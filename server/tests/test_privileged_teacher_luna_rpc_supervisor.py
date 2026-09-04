@@ -20,6 +20,9 @@ from shengji.rl.privileged_teacher_luna_turn_rpc import (
     DecisionPacket, PhaseContext, TeamMemory,
 )
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+from test_privileged_teacher_luna_rpc_collection import (
+    FakeCodexRun, TransportFactory,
+)
 
 
 SECRET = b"pt-luna-supervisor-test-secret!!"
@@ -844,3 +847,95 @@ def test_broken_manifest_symlink_is_occupied_and_never_retried(tmp_path):
     result = instance.run()
     assert result.route == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert runner.calls == 0
+
+
+def _sealed_run(tmp_path, *, games=2):
+    """Collect ``games`` real attempts through the fake transport and seal."""
+    root = tmp_path / "run"
+    private = root / "private"
+    public = root / "public"
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    schedule = supervisor.schedule_for_games(SECRET, games)
+    ledger = _ledger(private / "ledger", token_cap=1_000_000,
+                     per_call_token_reserve=1_000,
+                     runtime_sha256=supervisor._sha(RUNTIME),
+                     namespace=supervisor.SCHEMA)
+    runner = collection.RPCGameAttemptRunner(
+        seed_secret=SECRET, attempts_root=private / "attempts",
+        codex_binary=None, runtime=RUNTIME,
+        per_game_deadline_seconds=600, per_game_token_cap=100_000,
+        per_call_token_reserve=1_000,
+        transport_factory=TransportFactory(FakeCodexRun()))
+    instance = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=private, public_root=public,
+        runtime=RUNTIME, schedule=schedule, runner=runner, ledger=ledger,
+        workers=2)
+    return instance.run(), root
+
+
+def test_verify_run_reconstructs_sealed_terminal_from_seed_and_root(tmp_path):
+    result, root = _sealed_run(tmp_path)
+    assert result.route == COMPLETE
+    assert result.receipt["completed_games"] == 2
+    assert result.receipt["completed_deal_clusters"] == 1
+    assert result.receipt["ledger_terminal_accept_sha256"] is not None
+    assert result.receipt["resource_totals"]["ledger_spent_tokens"] > 0
+    terminal_path = root / "public" / "terminal.json"
+    assert json.loads(terminal_path.read_text()) == result.receipt
+
+    verified = supervisor.verify_run(root, seed_secret=SECRET)
+    assert verified.route == COMPLETE
+    assert verified.receipt == result.receipt
+
+    with pytest.raises(supervisor.RPCSupervisorError, match="seed drift"):
+        supervisor.verify_run(root, seed_secret=b"x" * 32)
+
+    forged = dict(result.receipt)
+    forged["completed_games"] = 3
+    forged["failed_games"] = -1
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = supervisor._sha(body)
+    terminal_path.chmod(0o600)
+    terminal_path.write_bytes(canonical_json_bytes(forged))
+    terminal_path.chmod(0o400)
+    with pytest.raises(supervisor.RPCSupervisorError):
+        supervisor.verify_run(root, seed_secret=SECRET)
+
+    # A forgery that passes the public shape check must still fail the
+    # private reconstruction.
+    totals = dict(result.receipt["resource_totals"])
+    totals["ledger_spent_tokens"] += 1
+    rebound = {**result.receipt, "resource_totals": totals}
+    body = {key: value for key, value in rebound.items()
+            if key != "receipt_sha256"}
+    rebound["receipt_sha256"] = supervisor._sha(body)
+    supervisor.validate_terminal_receipt(rebound)
+    terminal_path.chmod(0o600)
+    terminal_path.write_bytes(canonical_json_bytes(rebound))
+    terminal_path.chmod(0o400)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="reconstruction drift"):
+        supervisor.verify_run(root, seed_secret=SECRET)
+
+    terminal_path.unlink()
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="no sealed terminal"):
+        supervisor.verify_run(root, seed_secret=SECRET)
+
+
+def test_verify_run_reopens_attempts_against_rebuilt_roots(tmp_path):
+    _result, root = _sealed_run(tmp_path)
+    attempt = next((root / "private" / "attempts").iterdir())
+    trajectory_path = attempt / "trajectory.json"
+    trajectory = json.loads(trajectory_path.read_text())
+    trajectory["events"][0]["candidate_index"] = 1
+    trajectory_path.chmod(0o600)
+    trajectory_path.write_bytes(canonical_json_bytes(trajectory))
+    trajectory_path.chmod(0o400)
+    # The tampered attempt no longer reopens, so the sealed acceptance can
+    # not belong to a complete population.
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="acceptance drift|reconstruction drift"):
+        supervisor.verify_run(root, seed_secret=SECRET)

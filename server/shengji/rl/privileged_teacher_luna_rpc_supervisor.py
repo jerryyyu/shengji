@@ -137,6 +137,40 @@ def _attempt_path(root: Path, coordinate: tuple[str, int, int], mirror: int) -> 
     return root / f"{coordinate[0]}-{coordinate[1]}-{coordinate[2]}-mirror-{mirror}"
 
 
+def _read_sealed(path: Path, *, label: str) -> dict[str, object]:
+    """Read one immutable canonical JSON artifact (0o400, single link)."""
+    try:
+        descriptor = os.open(
+            path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            before = os.fstat(descriptor)
+            if before.st_size > 16 << 20:
+                raise RPCSupervisorError(f"{label} size drift")
+            chunks = []
+            while True:
+                chunk = os.read(descriptor, 1 << 20)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        value = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RPCSupervisorError(f"{label} reopen failed") from exc
+    identity = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or before.st_uid != os.getuid()
+            or stat.S_IMODE(before.st_mode) != 0o400
+            or any(getattr(before, key) != getattr(after, key)
+                   for key in identity)
+            or type(value) is not dict
+            or canonical_json_bytes(value) != raw):
+        raise RPCSupervisorError(f"{label} canonical bytes drift")
+    return value
+
+
 def validate_schedule(
         schedule: Sequence[tuple[tuple[str, int, int], int]],
 ) -> tuple[tuple[tuple[str, int, int], int], ...]:
@@ -735,80 +769,59 @@ class PTLunaRPCSupervisor:
             return selfplay.INCOMPLETE_ROUTE
         return selfplay.COMPLETE_ROUTE
 
-    def _run_locked(self) -> SupervisorResult:
+    def _reopen_terminal(self, receipt: Mapping[str, object]) \
+            -> SupervisorResult:
+        """Rebuild the terminal from private artifacts; require equality."""
+        validate_terminal_receipt(receipt)
+        self._publish_launch()
+        self._load_existing()
+        for coordinate, mirror in self.schedule:
+            if (coordinate, mirror) not in self._statuses:
+                self._statuses[(coordinate, mirror)] = self._reopen_one(
+                    coordinate, mirror)
+        stored_accept = receipt["ledger_terminal_accept_sha256"]
+        route = self._derive_route()
+        if self.ledger is not None and route == selfplay.COMPLETE_ROUTE:
+            if stored_accept is None:
+                # Every game completed but the ledger refused terminal
+                # acceptance: the run sealed a resource refusal, stably.
+                try:
+                    self.ledger.assert_within_limits()
+                except ResourceBoundaryError:
+                    route = REFUSE_RESOURCE_OR_PROVIDER
+                else:
+                    raise RPCSupervisorError(
+                        "terminal ledger acceptance absent")
+            elif self.ledger.terminal_acceptance_sha256() != stored_accept:
+                raise RPCSupervisorError("terminal ledger acceptance drift")
+        elif stored_accept is not None:
+            raise RPCSupervisorError("non-complete terminal acceptance drift")
+        expected = self._terminal(
+            route, ledger_terminal_accept_sha256=stored_accept)
+        if receipt != expected:
+            raise RPCSupervisorError("terminal reconstruction drift")
+        return SupervisorResult(receipt["route"], receipt)
+
+    def _recover_terminal(self) -> Path:
         terminal_path = self.public_root / "terminal.json"
         try:
             recover_linked_partial(terminal_path)
         except AtomicPublishError as exc:
             raise RPCSupervisorError("terminal recovery drift") from exc
+        return terminal_path
+
+    def _verify_locked(self) -> SupervisorResult:
+        terminal_path = self._recover_terminal()
+        if not terminal_path.exists():
+            raise RPCSupervisorError("run has no sealed terminal")
+        return self._reopen_terminal(
+            _read_sealed(terminal_path, label="terminal"))
+
+    def _run_locked(self) -> SupervisorResult:
+        terminal_path = self._recover_terminal()
         if terminal_path.exists():
-            try:
-                descriptor = os.open(
-                    terminal_path,
-                    os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-                try:
-                    before = os.fstat(descriptor)
-                    if before.st_size > 16 << 20:
-                        raise RPCSupervisorError("terminal size drift")
-                    chunks = []
-                    while True:
-                        chunk = os.read(descriptor, 1 << 20)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                    raw = b"".join(chunks)
-                    after = os.fstat(descriptor)
-                finally:
-                    os.close(descriptor)
-                receipt = json.loads(raw.decode("utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise RPCSupervisorError("terminal reopen failed") from exc
-            identity = ("st_dev", "st_ino", "st_size", "st_mtime_ns",
-                        "st_ctime_ns")
-            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
-                    or before.st_uid != os.getuid()
-                    or stat.S_IMODE(before.st_mode) != 0o400
-                    or any(getattr(before, key) != getattr(after, key)
-                           for key in identity)
-                    or canonical_json_bytes(receipt) != raw):
-                raise RPCSupervisorError("terminal canonical bytes drift")
-            validate_terminal_receipt(receipt)
-            self._publish_launch()
-            self._load_existing()
-            for coordinate, mirror in self.schedule:
-                if (coordinate, mirror) not in self._statuses:
-                    self._statuses[(coordinate, mirror)] = self._reopen_one(
-                        coordinate, mirror)
-            stored_accept = receipt["ledger_terminal_accept_sha256"]
-            attempt_route = self._derive_route()
-            if self.ledger is not None \
-                    and attempt_route == selfplay.COMPLETE_ROUTE:
-                if stored_accept is None:
-                    try:
-                        self.ledger.assert_within_limits()
-                    except ResourceBoundaryError:
-                        expected_route = REFUSE_RESOURCE_OR_PROVIDER
-                    else:
-                        raise RPCSupervisorError(
-                            "terminal ledger acceptance absent")
-                else:
-                    if self.ledger.terminal_acceptance_sha256() \
-                            != stored_accept:
-                        raise RPCSupervisorError(
-                            "terminal ledger acceptance drift")
-                    expected_route = attempt_route
-            else:
-                if stored_accept is not None:
-                    raise RPCSupervisorError(
-                        "non-complete terminal acceptance drift")
-                expected_route = attempt_route
-            expected = self._terminal(
-                expected_route,
-                ledger_terminal_accept_sha256=stored_accept)
-            if receipt != expected:
-                raise RPCSupervisorError(
-                    "terminal independent reconstruction drift")
-            return SupervisorResult(receipt["route"], receipt)
+            return self._reopen_terminal(
+                _read_sealed(terminal_path, label="terminal"))
         self._publish_launch()
         self._load_existing()
         pre_dispatch_refusal = self._sealed_defect_route()
@@ -905,13 +918,13 @@ class PTLunaRPCSupervisor:
         _publish(terminal_path, receipt)
         return SupervisorResult(receipt["route"], receipt)
 
-    def run(self) -> SupervisorResult:
+    def _with_run_lock(self, body) -> SupervisorResult:
         if not self._run_state_lock.acquire(blocking=False):
             raise RPCSupervisorError("supervisor run already active")
         try:
             self._run_lock_fd = _acquire_run_lock(self.private_root)
             try:
-                return self._run_locked()
+                return body()
             finally:
                 descriptor = self._run_lock_fd
                 self._run_lock_fd = None
@@ -922,6 +935,72 @@ class PTLunaRPCSupervisor:
         finally:
             self._run_state_lock.release()
 
+    def run(self) -> SupervisorResult:
+        """Collect every pending game, or reopen an already sealed run."""
+        return self._with_run_lock(lambda: self._run_locked())
+
+    def verify(self) -> SupervisorResult:
+        """Reopen a sealed run without dispatching; refuse an unsealed one."""
+        return self._with_run_lock(self._verify_locked)
+
+
+class _ReopenOnlyRunner:
+    """Runner stand-in for verification: it can reopen but never dispatch."""
+
+    def __init__(self, attempts_root: Path, runtime: Mapping[str, object]):
+        self.attempts_root = Path(attempts_root)
+        self.runtime_sha256 = _sha(runtime)
+
+    def __call__(self, coordinate, mirror):
+        raise RPCSupervisorError("verification never dispatches a game")
+
+
+def verify_run(root: Path, *, seed_secret: bytes) -> SupervisorResult:
+    """Reopen ``root/private`` and ``root/public`` and rebuild the terminal.
+
+    The seed secret is the only input besides the run root: the schedule
+    and census are re-derived from it, every attempt is reopened and
+    replayed against its rebuilt root, the ledger event chain is replayed
+    from its genesis, and the public terminal must equal the reconstruction.
+    """
+    private_root = Path(root) / "private"
+    public_root = Path(root) / "public"
+    _private_dir(private_root, "private supervisor root")
+    runtime = _read_sealed(private_root / "runtime.json", label="runtime")
+    census = _read_sealed(private_root / "census.json", label="census")
+    games = census.get("game_count")
+    if isinstance(games, bool) or not isinstance(games, int):
+        raise RPCSupervisorError("root census schema drift")
+    schedule = schedule_for_games(seed_secret, games)
+    ledger = None
+    namespace = SCHEMA
+    genesis_path = private_root / "ledger" / "genesis.json"
+    if genesis_path.exists():
+        genesis = _read_sealed(genesis_path, label="ledger genesis")
+        try:
+            namespace = genesis["namespace"]
+            ledger = ScientificBudgetLedger.open_or_create(
+                root=private_root / "ledger",
+                wall_nanoseconds=genesis["wall_nanoseconds"],
+                token_cap=genesis["token_cap"],
+                per_call_token_reserve=genesis["per_call_token_reserve"],
+                per_call_wall_reserve_milliseconds=genesis[
+                    "per_call_wall_reserve_milliseconds"],
+                boot_identity_sha256=genesis["boot_identity_sha256"],
+                runtime_sha256=genesis["runtime_sha256"],
+                namespace=namespace)
+        except (KeyError, TypeError, RPCCollectionError) as exc:
+            raise RPCSupervisorError("ledger genesis drift") from exc
+        if ledger.runtime_sha256 != _sha(runtime):
+            raise RPCSupervisorError("ledger runtime binding drift")
+    instance = PTLunaRPCSupervisor(
+        seed_secret=seed_secret, private_root=private_root,
+        public_root=public_root, runtime=runtime, schedule=schedule,
+        root_census=census,
+        runner=_ReopenOnlyRunner(private_root / "attempts", runtime),
+        ledger=ledger, ledger_namespace=namespace)
+    return instance.verify()
+
 
 __all__ = ["CENSUS_SCHEMA", "PROGRESS_SCHEMA", "TERMINAL_SCHEMA", "ROUTES",
            "COMPLETE_STATE_SOURCE_ACQUISITION",
@@ -929,4 +1008,4 @@ __all__ = ["CENSUS_SCHEMA", "PROGRESS_SCHEMA", "TERMINAL_SCHEMA", "ROUTES",
            "INCOMPLETE_STATE_SOURCE_ACQUISITION", "RPCSupervisorError",
            "SupervisorResult", "PTLunaRPCSupervisor", "build_root_census",
            "schedule_for_games", "validate_root_census", "validate_schedule",
-           "validate_terminal_receipt"]
+           "validate_terminal_receipt", "verify_run"]

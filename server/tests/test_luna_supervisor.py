@@ -939,3 +939,27 @@ def test_verify_run_reopens_attempts_against_rebuilt_roots(tmp_path):
     with pytest.raises(supervisor.RPCSupervisorError,
                        match="acceptance drift|reconstruction drift"):
         supervisor.verify_run(root, seed_secret=SECRET)
+
+
+def test_verify_run_refuses_forged_ledger_acceptance_hash(tmp_path):
+    """The sealed terminal's ledger-acceptance hash must match the ledger.
+
+    A shape-valid receipt whose ``ledger_terminal_accept_sha256`` was swapped
+    (self-hash recomputed, every total intact) passes the public checks and
+    would reconstruct byte-equal against itself; only the ledger comparison
+    catches it.
+    """
+    result, root = _sealed_run(tmp_path)
+    forged = dict(result.receipt)
+    forged["ledger_terminal_accept_sha256"] = "f" * 64
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = supervisor._sha(body)
+    supervisor.validate_terminal_receipt(forged)
+    terminal_path = root / "public" / "terminal.json"
+    terminal_path.chmod(0o600)
+    terminal_path.write_bytes(canonical_json_bytes(forged))
+    terminal_path.chmod(0o400)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="ledger acceptance drift"):
+        supervisor.verify_run(root, seed_secret=SECRET)

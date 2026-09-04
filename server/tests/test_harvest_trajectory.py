@@ -5,6 +5,7 @@ identity, shard manifest, resume witnesses, bury path.
 Reduced work (N=2 selection worlds, R=30 report worlds -- the LCB minimum)
 keeps the whole file around a minute of pure-engine self-play.
 """
+import hashlib
 import json
 import math
 import os
@@ -568,6 +569,24 @@ def test_resume_refuses_a_different_run(clean4, tmp_path):
         _generate(out, rounds=4, resume=False, **PLAIN)
     # nothing was touched
     assert _read_dir(out)["manifest_bytes"] == clean4["manifest_bytes"]
+
+
+def test_resume_refuses_transitive_source_drift(clean4, tmp_path, monkeypatch):
+    out = tmp_path / "source-drift"
+    shutil.copytree(clean4["out"], out)
+    original_digest = trajectory._source_tree_digest
+    monkeypatch.setattr(
+        trajectory, "_source_tree_digest",
+        lambda root: hashlib.sha256(
+            (original_digest(root) + ":changed-transitive-source").encode()
+        ).hexdigest(),
+    )
+    with pytest.raises(trajectory.TrajectoryError,
+                       match="source_tree_sha256"):
+        _generate(out, rounds=4, resume=True, **PLAIN)
+    # Admission fails before any completed artifact is touched.
+    assert _read_dir(out)["manifest_bytes"] == clean4["manifest_bytes"]
+    assert _read_dir(out)["bytes"] == clean4["bytes"]
 
 
 # W5 ------------------------------------ a corrupted shard is regenerated on resume

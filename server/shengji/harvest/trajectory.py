@@ -147,8 +147,9 @@ temporary name and ``os.replace``d into place, then made read-only.  Memory
 holds one cluster at a time.  Progress lines carry counts only.
 
 ``run.json`` pins the run identity (``run_id`` = a digest of policy, seed0,
-exploration knobs, effective work and cap -- never the wall clock -- plus
-the code identity).  ``--resume`` reopens an out dir with the SAME run_id:
+exploration knobs, effective work and cap -- never the wall clock) alongside
+the package-source and native-backend identity.  ``--resume`` reopens an out
+dir with the SAME run_id:
 clusters whose shard and sidecar verify (identity, sha256, byte size,
 record count) are kept, missing or invalid ones are regenerated, and a
 different run_id or a different generator/engine code identity refuses.
@@ -1106,8 +1107,28 @@ def _digest(path: Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
-CODE_IDENTITY_KEYS = ("trajectory_module_sha256_16", "mcbot_sha256_16",
-                      "registry_sha256_16", "legal_sha256_16", "ballot",
+def _source_tree_digest(root: Path) -> str:
+    """Content-bind every Python source that can participate in generation.
+
+    Resume must not mix shards produced before and after a change in a
+    transitive engine, policy, rebuild, schema, or serialization dependency.
+    Relative-path and byte-length framing makes the digest unambiguous while
+    allowing documentation-only commits at a different Git SHA.
+    """
+    digest = hashlib.sha256()
+    paths = sorted(root.rglob("*.py"),
+                   key=lambda path: path.relative_to(root).as_posix())
+    for path in paths:
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        payload = path.read_bytes()
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
+
+
+CODE_IDENTITY_KEYS = ("source_tree_sha256", "fast_module_sha256_16", "ballot",
                       "fast_engine", "require_voids")
 
 
@@ -1116,10 +1137,13 @@ def identity(config: dict) -> dict:
     from ..engine import combos, fast
     repo = SERVER.parent
     probe = make_trajectory_bot(config, seed=0, explore_rng=random.Random(0))
+    fast_path = getattr(getattr(fast, "_fast", None), "__file__", None)
     return {
         "git_sha": _git(["rev-parse", "HEAD"], repo),
         "git_dirty": bool(_git(["status", "--porcelain", "--untracked-files=no"],
                                repo)),
+        "source_tree_sha256": _source_tree_digest(SERVER / "shengji"),
+        "fast_module_sha256_16": (_digest(Path(fast_path)) if fast_path else None),
         "trajectory_module_sha256_16": _digest(Path(__file__)),
         "mcbot_sha256_16": _digest(SERVER / "shengji" / "ai" / "mcbot.py"),
         "registry_sha256_16": _digest(SERVER / "shengji" / "ai" / "registry.py"),

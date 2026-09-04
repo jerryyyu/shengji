@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_selfplay as selfplay
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
+from shengji.luna import game as selfplay
+from shengji.luna.turn import (
     CONTINUATIONS, DecisionPacket, Intent, PhaseContext, PlannerResponse,
     TeamMemory, TurnDriver, TurnValidationError, Usage,
 )
@@ -347,7 +347,7 @@ def test_packet_memory_and_provider_bindings_fail_at_driver_wiring(binding):
 def test_fake_two_team_game_completes_and_private_artifacts_reopen(tmp_path):
     rnd = game()
     fake = Fake()
-    from shengji.rl.privileged_teacher_luna_rpc_journal import FileTurnJournal
+    from shengji.luna.journal import FileTurnJournal
     journal = FileTurnJournal(tmp_path / "journal")
     rows = TurnDriver(rnd, fake, journal=journal).run()
     assert rnd.complete and rnd.failed is None

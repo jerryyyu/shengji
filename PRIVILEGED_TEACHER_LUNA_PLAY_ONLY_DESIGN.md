@@ -360,3 +360,45 @@ One exact-head source+freeze review must verify the real warning witness, the
 witness, the global-budget stop witness, fresh schedule identity, and the
 closed predecessor lineage. On PASS, the route may execute once. There is no
 extra rehearsal, census, or post-freeze review.
+
+## 11. Shared-budget isolation after the closed resilient route
+
+The section-10 route sealed `REFUSE_RESOURCE_OR_PROVIDER` after 20 complete,
+four incomplete, and eight pending games. Its terminal file is
+`9404154a5caac45f5fa6448f299cb8ff4949350710226510a0888c421980c8eb`,
+its receipt is
+`2f2491b91f208f01522df112cc38c6d32f682aa4e75922d367b3c7bafe0ca83a`,
+and its ledger charged 14,820,157 tokens. That result is final. Its ten
+complete mirror pairs remain engineering evidence only and are excluded from
+this route's schedule, scientific interpretation, Value labels, and training.
+
+One call exceeded the frozen per-call response timeout. The refusal was local
+to its game, but the ledger overloaded `crossed` to mean both "one settled
+call refused" and "the shared population budget is exhausted." The supervisor
+therefore set the controller stop event and killed three healthy in-flight
+provider processes; eight later games were never submitted. This violated the
+section-10 promise that only actual shared wall/token exhaustion aborts peers.
+
+The repaired route gives `crossed` exactly one meaning: the shared wall or
+token budget was actually exhausted. A settled per-call, provider, schema,
+mechanics, or game-local refusal remains charged and makes that game (and thus
+the population result) incomplete, but it does not set `crossed`, reject new
+packets from other predeclared games, or kill already-running peers. Terminal
+ledger acceptance additionally requires that every availability refusal has a
+later accepted redispatch and that no terminal refusal remains, so this
+separation cannot turn an incomplete population into a successful one.
+
+The new route changes no model, prompt, schedule size, worker count, token
+limit, wall limit, game deadline, or per-call reserve. It carries the same
+passed four-worker capacity receipt but uses a fresh seed secret, deterministic
+16-cluster/32-game mirrored schedule, namespace, roots, source claim, and
+freeze. Its lineage binds all four closed predecessor terminals: 24,749,862
+ledger tokens and 30 completed games in total. `route_ordinal` is exactly 1,
+`maximum_route_ordinal` is exactly 1, and no retry follows this attempt.
+
+One consolidated exact-head source+freeze review must verify the lineage, the
+local-refusal/shared-budget separation, a supervisor-level witness in which a
+local refusal leaves peers and a queued game intact, the opposite witness in
+which real shared-budget exhaustion stops both, and terminal refusal despite
+continued collection. On PASS, this fresh route executes once without another
+capacity census or rehearsal.

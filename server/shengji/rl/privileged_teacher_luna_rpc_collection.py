@@ -357,7 +357,8 @@ class ScientificBudgetLedger:
                     or terminal["elapsed_nanoseconds"] < 0
                     or terminal["elapsed_nanoseconds"] > self.wall_ns
                     or self._reservations or self._crossed
-                    or self._spent_tokens > self.token_cap):
+                    or self._spent_tokens > self.token_cap
+                    or self._has_terminal_refusal()):
                 raise RPCCollectionError(
                     "scientific budget terminal acceptance drift")
             self._terminal_accept = terminal
@@ -430,7 +431,13 @@ class ScientificBudgetLedger:
             self._responses[attempt_key] = (
                 provider, tokens, expected_accepted, packet, None)
             self._attempts[attempt_key] = attempt
-            if not expected_accepted:
+            # A response can refuse its own game without exhausting the
+            # population-wide budget (for example, by exceeding the
+            # per-call reserve while the global token cap still has room).
+            # Only an actual shared wall/token crossing stops peer games.
+            if (self._spent_tokens
+                    + len(self._reservations) * self.reserve_tokens
+                    > self.token_cap or elapsed > self.wall_ns):
                 self._crossed = True
         elif kind == "refuse":
             disposition = _strict_sha(
@@ -447,12 +454,13 @@ class ScientificBudgetLedger:
             self._responses[attempt_key] = (
                 disposition, tokens, False, packet, eligibility)
             self._attempts[attempt_key] = attempt
-            # A reviewed availability refusal is a settled physical attempt,
-            # but leaves exactly the next ordinal eligible.  Ordinal 2 is
-            # exhausted even if the provider-shaped refusal is otherwise
-            # redispatchable.
-            if (eligibility not in REDISPATCH_ELIGIBILITIES
-                    or attempt.attempt_ordinal >= 2):
+            # Retry eligibility remains packet-local: reserve() admits only
+            # the exact next reviewed ordinal and never admits a fourth
+            # attempt.  It must not be overloaded onto the population-wide
+            # shared-budget bit.
+            if (self._spent_tokens
+                    + len(self._reservations) * self.reserve_tokens
+                    > self.token_cap or elapsed > self.wall_ns):
                 self._crossed = True
         elif kind == "cancel":
             if attempt_key in self._responses \
@@ -728,6 +736,24 @@ class ScientificBudgetLedger:
                 return "cancelled"
             return "absent"
 
+    def _has_terminal_refusal(self) -> bool:
+        """Return whether a refusal lacks a later accepted redispatch."""
+        for key, (_, _, accepted, logical, eligibility) \
+                in self._responses.items():
+            if accepted:
+                continue
+            current = self._attempts[key]
+            recovered = eligibility in REDISPATCH_ELIGIBILITIES and any(
+                later_accepted
+                and later_logical == logical
+                and self._attempts[later_key].attempt_ordinal
+                > current.attempt_ordinal
+                for later_key, (_, _, later_accepted, later_logical, _)
+                in self._responses.items())
+            if not recovered:
+                return True
+        return False
+
     def reconcile_attempt_journals(self, attempts: Sequence[Path]) -> None:
         """Require a one-to-one durable journal/ledger disposition mapping."""
         expected_responses: dict[
@@ -816,7 +842,8 @@ class ScientificBudgetLedger:
         with self._lock:
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
             if self._crossed or self._spent_tokens > self.token_cap \
-                    or elapsed > self.wall_ns:
+                    or elapsed > self.wall_ns \
+                    or self._has_terminal_refusal():
                 raise ResourceBoundaryError(
                     "scientific terminal budget crossed")
 
@@ -827,7 +854,8 @@ class ScientificBudgetLedger:
                 return str(self._terminal_accept["terminal_accept_sha256"])
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
             if self._crossed or self._spent_tokens > self.token_cap \
-                    or elapsed > self.wall_ns or self._reservations:
+                    or elapsed > self.wall_ns or self._reservations \
+                    or self._has_terminal_refusal():
                 raise ResourceBoundaryError(
                     "scientific terminal budget crossed")
             body = {

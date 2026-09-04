@@ -231,6 +231,7 @@ def test_crash_after_eligible_refusal_replays_next_ordinal(tmp_path, monkeypatch
         "spent_tokens": 240, "accepted_response_count": 1,
         "refused_response_count": 1, "reserved_call_count": 0,
         "event_count": 4}
+    ledger.assert_within_limits()
     assert [replay._attempt(group).attempt_ordinal for group in replay._scan()] == [0, 1]
 
 
@@ -269,7 +270,10 @@ def test_retry_ordinal_two_is_exhausted_and_settled_once(tmp_path, monkeypatch):
         "spent_tokens", "refused_response_count", "reserved_call_count",
         "event_count", "crossed")} == {
         "spent_tokens": 300, "refused_response_count": 3,
-        "reserved_call_count": 0, "event_count": 6, "crossed": True}
+        "reserved_call_count": 0, "event_count": 6, "crossed": False}
+    with pytest.raises(collection.ResourceBoundaryError,
+                       match="terminal budget crossed"):
+        ledger.assert_within_limits()
 
     class FourthDispatch:
         calls = 0
@@ -555,7 +559,7 @@ def test_scientific_ledger_over_reserve_response_fails_before_engine(tmp_path):
     with pytest.raises(collection.ResourceBoundaryError,
                        match="budget crossed"):
         ledger.accept(_response(packet, tokens=101))
-    assert ledger.payload()["crossed"] is True
+    assert ledger.payload()["crossed"] is False
     ledger.accept(_response(
         accepted_packet, tokens=90, provider="e" * 64))
     reopened = collection.ScientificBudgetLedger(
@@ -592,7 +596,7 @@ def test_scientific_ledger_charges_known_refusal_and_replays(tmp_path):
         "refused_response_count", "crossed")} == {
         "spent_tokens": 120, "reserved_call_count": 0,
         "accepted_response_count": 0, "refused_response_count": 1,
-        "crossed": True}
+        "crossed": False}
     reopened = collection.ScientificBudgetLedger(
         root=tmp_path / "ledger",
         started_monotonic_nanoseconds=ledger.started_ns,
@@ -600,6 +604,41 @@ def test_scientific_ledger_charges_known_refusal_and_replays(tmp_path):
         per_call_token_reserve=ledger.reserve_tokens, **LEDGER_BINDING)
     reopened.refuse(disposition)
     assert reopened.payload() == ledger.payload()
+
+    # The refusal closes only this logical packet.  A later independent game
+    # may still spend from the shared budget, while a successful terminal
+    # acceptance remains impossible because the population is incomplete.
+    later = _packet(("3", 0, 0))
+    reopened.reserve(later)
+    reopened.accept(_response(later, tokens=90, provider="f" * 64))
+    assert reopened.payload()["accepted_response_count"] == 1
+    with pytest.raises(collection.ResourceBoundaryError,
+                       match="terminal budget crossed"):
+        reopened.assert_within_limits()
+
+
+def test_refusal_crosses_ledger_only_when_shared_token_cap_is_exhausted(
+        tmp_path):
+    ledger = collection.ScientificBudgetLedger(
+        root=tmp_path / "ledger",
+        started_monotonic_nanoseconds=collection.time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=150,
+        per_call_token_reserve=100, **LEDGER_BINDING)
+    packet = _packet()
+    ledger.reserve(packet)
+    ledger.refuse({
+        "packet_sha256": packet.sha256,
+        "disposition_sha256": "e" * 64,
+        "total_tokens": 151,
+        "failure_kind": "CodexProviderResourceError",
+        "failure_class": "resource-provider",
+    })
+
+    assert ledger.payload()["spent_tokens"] == 151
+    assert ledger.payload()["crossed"] is True
+    with pytest.raises(collection.ResourceBoundaryError,
+                       match="reservation refused"):
+        ledger.reserve(_packet(("3", 0, 0)))
 
 
 def test_complete_game_reopens_without_another_provider_call(tmp_path):
@@ -700,7 +739,7 @@ def test_unknown_provider_disposition_is_never_retried(tmp_path):
     assert reopened.failure_class == "resource-provider"
 
 
-def test_unknown_provider_disposition_charges_global_reserve_on_restart(
+def test_unknown_provider_disposition_charges_reserve_without_global_cross(
         tmp_path):
     fake = FakeCodexRun(crash_before_response=True)
     ledger = collection.ScientificBudgetLedger(
@@ -737,7 +776,7 @@ def test_unknown_provider_disposition_charges_global_reserve_on_restart(
         "spent_tokens", "reserved_call_count", "refused_response_count",
         "crossed")} == {
         "spent_tokens": 150, "reserved_call_count": 0,
-        "refused_response_count": 1, "crossed": True}
+        "refused_response_count": 1, "crossed": False}
     reopened = collection.reopen_attempt(
         tmp_path / "attempts" / "2-0-0-mirror-0",
         seed_secret=SECRET)
@@ -871,7 +910,7 @@ def test_rejected_sealed_response_charges_exact_usage_and_routes_mechanics(
         "spent_tokens", "reserved_call_count", "refused_response_count",
         "crossed")} == {
         "spent_tokens": 100, "reserved_call_count": 0,
-        "refused_response_count": 1, "crossed": True}
+        "refused_response_count": 1, "crossed": False}
     reopened = collection.reopen_attempt(
         tmp_path / "attempts" / "2-0-0-mirror-0",
         seed_secret=SECRET)
@@ -917,7 +956,7 @@ def test_over_reserve_response_settles_once_and_seals_resource_failure(
         "spent_tokens", "reserved_call_count", "refused_response_count",
         "crossed", "event_count")} == {
         "spent_tokens": 200, "reserved_call_count": 0,
-        "refused_response_count": 1, "crossed": True,
+        "refused_response_count": 1, "crossed": False,
         "event_count": 2}
     attempt = tmp_path / "attempts" / "2-0-0-mirror-0"
     assert {item.name for item in attempt.iterdir()} >= {
@@ -991,7 +1030,7 @@ def test_tool_event_seals_typed_incomplete_game(tmp_path):
     assert refusal["provider_private_evidence"]["trace_base64"]
 
 
-def test_tool_refusal_settles_global_ledger_with_actual_usage(tmp_path):
+def test_tool_refusal_settles_ledger_without_crossing_shared_budget(tmp_path):
     fake = FakeCodexRun(tool_event=True)
     ledger = collection.ScientificBudgetLedger(
         root=tmp_path / "ledger",
@@ -1015,7 +1054,7 @@ def test_tool_refusal_settles_global_ledger_with_actual_usage(tmp_path):
         "spent_tokens", "reserved_call_count", "refused_response_count",
         "crossed")} == {
         "spent_tokens": 120, "reserved_call_count": 0,
-        "refused_response_count": 1, "crossed": True}
+        "refused_response_count": 1, "crossed": False}
 
 
 def test_journal_refusal_route_survives_controller_death(tmp_path,
@@ -1146,7 +1185,7 @@ def test_late_response_is_charged_as_refusal_and_never_commits(
         "refused_response_count", "crossed", "event_count")} == {
         "spent_tokens": 120, "reserved_call_count": 0,
         "accepted_response_count": 0, "refused_response_count": 1,
-        "crossed": True, "event_count": 2}
+        "crossed": False, "event_count": 2}
     attempt = tmp_path / "attempts" / "2-0-0-mirror-0"
     reopened = collection.reopen_attempt(attempt, seed_secret=SECRET)
     assert reopened.failure_kind == "ResourceBoundaryError"

@@ -20,8 +20,14 @@ from .legal import DEFAULT_CAP
 SOURCES = ("luna-rpc", "room-log", "pt1", "highn", "human")
 
 
+def _log(*parts) -> None:
+    """Unbuffered progress lines (a redirected stdout is block-buffered and
+    a 30-minute PT1 replay would otherwise look stuck)."""
+    print(*parts, flush=True)
+
+
 def run_source(name: str, out: Path, *, cap: int | None, limit: int | None,
-               workers: int | None, log=print) -> dict:
+               workers: int | None, log=_log) -> dict:
     from .manifest import write_source
     registry = InputRegistry()
     t0 = time.perf_counter()
@@ -52,7 +58,7 @@ def run_source(name: str, out: Path, *, cap: int | None, limit: int | None,
     return sidecar
 
 
-def run_ballot_gap(out: Path, log=print) -> dict:
+def run_ballot_gap(out: Path, log=_log) -> dict:
     from .ballot_gap import build_report, headline, write_report
     t0 = time.perf_counter()
     report = build_report(InputRegistry())
@@ -62,7 +68,7 @@ def run_ballot_gap(out: Path, log=print) -> dict:
     return report
 
 
-def run_manifest(out: Path, log=print) -> dict:
+def run_manifest(out: Path, log=_log) -> dict:
     from .manifest import build_manifest, summary_lines
     manifest = build_manifest(out)
     for line in summary_lines(manifest):

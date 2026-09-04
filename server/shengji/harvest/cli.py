@@ -3,6 +3,9 @@
     harvest <source> --out DIR        one of luna-rpc room-log pt1 highn human
     harvest all --out DIR             every source + ballot-gap + manifest
     harvest ballot-gap --out DIR      the ballot-gap report only
+    harvest ballot-capture --out DIR [--inputs DIR] [--variants ...] [--limit N]
+                                      candidate-generator variant capture rates
+                                      over human.jsonl + luna-rpc.private.jsonl
     harvest manifest DIR              (re)build manifest.json from DIR
 """
 
@@ -14,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 
+from .ballot_capture import SOURCE_FILES, VARIANTS
 from .common import InputRegistry
 from .legal import DEFAULT_CAP
 
@@ -68,6 +72,28 @@ def run_ballot_gap(out: Path, log=_log) -> dict:
     return report
 
 
+def run_ballot_capture(out: Path, *, inputs: Path | None = None,
+                       variants: list[str] | None = None, limit: int | None = None,
+                       log=_log) -> dict:
+    """Read ``human.jsonl`` and ``luna-rpc.private.jsonl`` from ``inputs``
+    (default: ``out``, the ``harvest all`` layout) and write
+    ``ballot_capture.json`` / ``ballot_capture.md`` to ``out``."""
+    from .ballot_capture import build_report, headline, write_report
+    t0 = time.perf_counter()
+    inputs = Path(out if inputs is None else inputs)
+    paths = {name: inputs / file_name for name, file_name in SOURCE_FILES}
+    report = build_report(human=paths["human"], luna=paths["luna"],
+                          variants=tuple(variants or VARIANTS), limit=limit)
+    json_path, _ = write_report(out, report)
+    for line in headline(report):
+        log(line)
+    for note in report["notes"]:
+        if "source skipped" in note:
+            log(f"note: {note}")
+    log(f"ballot-capture -> {json_path} ({time.perf_counter() - t0:.1f}s)")
+    return report
+
+
 def run_manifest(out: Path, log=_log) -> dict:
     from .manifest import build_manifest, summary_lines
     manifest = build_manifest(out)
@@ -95,6 +121,17 @@ def build_parser() -> argparse.ArgumentParser:
     for name in (*SOURCES, "all"):
         add_common(sub.add_parser(name))
     sub.add_parser("ballot-gap").add_argument("--out", required=True, type=Path)
+    capture = sub.add_parser("ballot-capture")
+    capture.add_argument("--out", required=True, type=Path, help="output directory")
+    capture.add_argument("--inputs", type=Path, default=None,
+                         help="directory holding human.jsonl and "
+                              "luna-rpc.private.jsonl (default: --out)")
+    capture.add_argument("--variants", nargs="+", choices=VARIANTS, default=None,
+                         metavar="VARIANT",
+                         help=f"variants to score (default: all of {', '.join(VARIANTS)}; "
+                              "production is always included)")
+    capture.add_argument("--limit", type=int, default=None,
+                         help="score only the first N rows of each input file (smoke runs)")
     sub.add_parser("manifest").add_argument("dir", type=Path)
     return parser
 
@@ -107,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "ballot-gap":
         run_ballot_gap(args.out)
+        return 0
+    if args.command == "ballot-capture":
+        run_ballot_capture(args.out, inputs=args.inputs, variants=args.variants,
+                           limit=args.limit)
         return 0
     cap = None if args.cap == 0 else args.cap
     names = SOURCES if args.command == "all" else (args.command,)

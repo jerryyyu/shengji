@@ -15,7 +15,8 @@ concurrency:
 jobs:
   server:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # the trajectory generator file adds ~90 s of pure-engine self-play
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: server
@@ -43,6 +44,7 @@ jobs:
           tests/test_server_ws.py
           tests/test_point_banking.py
           tests/test_structured_bury.py
+          tests/test_harvest_trajectory.py
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"

@@ -169,7 +169,7 @@ validation battery.
 | `AI_POLICIES.md` | canonical AI results + every policy/toggle and durable conclusion |
 | `CORRECTNESS.md` | validation suite, house rules, incident index |
 | `incidents/` | postmortems (what happened, why detection was slow) |
-| `PERF.md` | profiling, shipped optimisations, ranked gaps |
+| `PERF.md` | engine/search speed rules, dated baselines, shipped optimisations (live perf work: issue #208) |
 | `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
 | `AGENTS.md` | automatically loaded execution, review, parallelism and long-run discipline |
 | `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |

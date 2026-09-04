@@ -45,7 +45,7 @@ compare only under like-for-like load.
 The August 3 gate was clean: 2,870 generation decisions and 16,550 teacher
 floats were bit-identical, duel records matched per game, the 900-round tier
 sweep was clean, and 20k+ edge comparisons plus 69k interleavings passed.
-`tests/test_fast_parity.py` and golden histories retain the executable gate.
+`server/tests/test_fast_parity.py` and golden histories retain the executable gate.
 Activation lives inside spawned generation workers and `META.json` records the
 engine mode.
 

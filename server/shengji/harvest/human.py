@@ -143,6 +143,12 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
     for _, record in sorted(ordered_bury, key=lambda t: t[0]):
         result.add(record, None)
         counts["bury_records"] += 1
+    if counts["pseudonym_mismatch"]:
+        # fail closed: a player_id that does not reproduce from the seat name
+        # means the pointer file and the logs disagree about who acted
+        raise HumanPointerError(
+            f"{counts['pseudonym_mismatch']} decision pointer(s) carry a "
+            "player_id that does not match the seat's pseudonym")
     result.counts = counts
     result.inputs = registry.rows()
     result.extras["manifest_stats"] = manifest.get("stats")

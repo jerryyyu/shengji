@@ -83,6 +83,12 @@ def extract_highn(files: Sequence[Path] = HIGHN_FILES, *, cap: int | None = 256,
         per_file[ref] = stats
     counts["rounds"] = len(rounds)
     counts["unique"] = len(first)
+    if counts["conflicting_duplicates"]:
+        # fail closed: two rows for the same (seed, ply) with different
+        # content means the corpus disagrees with itself about that decision
+        raise HighNFormatError(
+            f"{counts['conflicting_duplicates']} conflicting duplicate row(s): "
+            "same seed/ply, different content")
     result.counts = counts
     result.extras["per_file"] = per_file
     result.inputs = registry.rows()

@@ -57,25 +57,59 @@ def write_source(out_dir: Path, result: ExtractResult, *, cap: int | None) -> di
     return sidecar
 
 
+def _count_records(path: Path) -> int:
+    with path.open("rb") as fh:
+        return sum(1 for _ in fh)
+
+
 def build_manifest(out_dir: Path) -> dict:
-    """Merge the per-source sidecars in ``out_dir`` into ``manifest.json``,
-    re-hashing every output file present."""
+    """Merge the per-source sidecars in ``out_dir`` into ``manifest.json``.
+
+    The sidecars DECLARE the output population and this step closes it:
+    every declared output must exist with its declared sha256, record count
+    and private flag (private files must be named ``*.private.jsonl`` and be
+    mode 0600), and every ``*.jsonl`` present must be declared by exactly one
+    sidecar.  Any drift refuses instead of being recorded.
+    """
     out_dir = Path(out_dir)
     sources: dict[str, dict] = {}
+    declared: dict[str, tuple[str, dict]] = {}
     for path in sorted(out_dir.glob("*.manifest.json")):
         sidecar = json.loads(path.read_text())
-        sources[sidecar["source"]] = {k: v for k, v in sidecar.items()
-                                      if k not in ("schema", "record_schema")}
+        source = sidecar["source"]
+        if source in sources:
+            raise RuntimeError(f"{path.name}: duplicate sidecar for {source}")
+        sources[source] = {k: v for k, v in sidecar.items()
+                           if k not in ("schema", "record_schema")}
+        for name, info in sidecar.get("outputs", {}).items():
+            if name in declared:
+                raise RuntimeError(f"{name}: declared by two sidecars")
+            declared[name] = (source, info)
+    present = {p.name for p in out_dir.glob("*.jsonl")}
+    undeclared = sorted(present - set(declared))
+    if undeclared:
+        raise RuntimeError(f"undeclared output files: {undeclared}")
     outputs: dict[str, dict] = {}
-    for path in sorted(out_dir.glob("*.jsonl")):
-        outputs[path.name] = {"sha256": sha256_file(path),
-                              "bytes": path.stat().st_size,
-                              "private": path.name.endswith(".private.jsonl"),
-                              "mode": oct(path.stat().st_mode & 0o777)}
-        source = path.name.split(".")[0]
-        expected = sources.get(source, {}).get("outputs", {}).get(path.name)
-        if expected is not None and expected["sha256"] != outputs[path.name]["sha256"]:
-            raise RuntimeError(f"{path.name}: sha256 differs from its sidecar")
+    for name in sorted(declared):
+        source, info = declared[name]
+        path = out_dir / name
+        if not path.is_file():
+            raise RuntimeError(f"{name}: declared by {source} but missing")
+        private = bool(info.get("private", False))
+        if private != name.endswith(".private.jsonl"):
+            raise RuntimeError(f"{name}: private flag does not match its name")
+        mode = path.stat().st_mode & 0o777
+        if private and mode != 0o600:
+            raise RuntimeError(f"{name}: private output mode {oct(mode)} is not 0600")
+        digest = sha256_file(path)
+        if digest != info.get("sha256"):
+            raise RuntimeError(f"{name}: sha256 differs from its sidecar")
+        records = _count_records(path)
+        if records != int(info.get("records", -1)):
+            raise RuntimeError(f"{name}: record count {records} differs from "
+                               f"its sidecar ({info.get('records')})")
+        outputs[name] = {"sha256": digest, "bytes": path.stat().st_size,
+                         "records": records, "private": private, "mode": oct(mode)}
     gap_path = out_dir / "ballot_gap.json"
     ballot_gap = None
     if gap_path.is_file():

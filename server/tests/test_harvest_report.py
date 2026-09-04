@@ -77,3 +77,64 @@ def test_write_source_private_mode(tmp_path):
     assert mode == 0o600
     m = manifest.build_manifest(tmp_path)
     assert m["outputs"]["pt1.private.jsonl"]["private"] is True
+    assert m["outputs"]["pt1.private.jsonl"]["records"] == 1
+
+
+def _written_source(tmp_path):
+    """One source with a public and a private output, sidecar declared."""
+    from shengji.harvest.common import ExtractResult
+    from shengji.harvest.schema import finalize_record
+    rec = finalize_record({
+        "source": "pt1", "source_ref": "g", "policy": "p", "round_seed": 1,
+        "setup": {"trump_rank": "2", "banker": 0, "declarations": [],
+                  "declaration": None, "trump_suit": "S", "trump_is_nt": False,
+                  "buried": None},
+        "plays_prefix": [], "seat": 0, "ply": 0, "trick": 0, "role": "banker-team",
+        "legal_actions": [["S2"]], "legal_actions_complete": True,
+        "legal_actions_count": 1, "action": ["S2"],
+        "hidden_hands": {"hands_by_seat": [[], [], [], []], "buried": []},
+    })
+    result = ExtractResult("pt1", public=[rec], private=[rec], counts={"decisions": 1})
+    manifest.write_source(tmp_path, result, cap=1)
+    assert manifest.build_manifest(tmp_path)["outputs"].keys() == {
+        "pt1.jsonl", "pt1.private.jsonl"}
+    return tmp_path
+
+
+def test_build_manifest_refuses_missing_declared_private_output(tmp_path):
+    out = _written_source(tmp_path)
+    (out / "pt1.private.jsonl").unlink()
+    with pytest.raises(RuntimeError, match="declared by pt1 but missing"):
+        manifest.build_manifest(out)
+
+
+def test_build_manifest_refuses_undeclared_output(tmp_path):
+    out = _written_source(tmp_path)
+    (out / "stray.jsonl").write_text("{}\n")
+    with pytest.raises(RuntimeError, match="undeclared output files"):
+        manifest.build_manifest(out)
+
+
+def test_build_manifest_refuses_private_mode_drift(tmp_path):
+    out = _written_source(tmp_path)
+    os.chmod(out / "pt1.private.jsonl", 0o644)
+    with pytest.raises(RuntimeError, match="is not 0600"):
+        manifest.build_manifest(out)
+
+
+def test_build_manifest_refuses_record_count_drift(tmp_path):
+    out = _written_source(tmp_path)
+    sidecar_path = out / "pt1.manifest.json"
+    sidecar = json.loads(sidecar_path.read_text())
+    sidecar["outputs"]["pt1.jsonl"]["records"] += 1
+    sidecar_path.write_text(json.dumps(sidecar))
+    with pytest.raises(RuntimeError, match="record count"):
+        manifest.build_manifest(out)
+
+
+def test_build_manifest_refuses_content_drift(tmp_path):
+    out = _written_source(tmp_path)
+    with (out / "pt1.jsonl").open("a") as fh:
+        fh.write("{}\n")
+    with pytest.raises(RuntimeError, match="sha256 differs"):
+        manifest.build_manifest(out)

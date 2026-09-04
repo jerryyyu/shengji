@@ -19,6 +19,8 @@ pt1         shengji-pt1-evidence groups (state via round_seed)
 highn       server/rl_data/highn_*.jsonl (+ repo-root copy), deduped
 human       server/rl_data/human_v8 pointers resolved through room_log
 ballot_gap  teacher actions outside the production ballot (report)
+ballot_capture  capture rate of candidate-generator variants on human and
+            Luna decisions (report; issue #205 step 1)
 manifest    per-extraction manifest (counts + sha256 of inputs/outputs)
 cli         ``scripts/harvest.py`` entry point
 """

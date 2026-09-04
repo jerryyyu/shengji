@@ -24,7 +24,7 @@ from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
 SECRET = b"pt-luna-supervisor-test-secret!!"
 assert len(SECRET) == 32
-RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v1",
+RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v2",
            "boot_identity_sha256": "b" * 64}
 COMPLETE = supervisor.COMPLETE_STATE_SOURCE_ACQUISITION
 INCOMPLETE = supervisor.INCOMPLETE_STATE_SOURCE_ACQUISITION
@@ -146,7 +146,7 @@ def test_live_supervisor_owns_bound_runner_and_ledger(tmp_path, monkeypatch):
     private_root = (tmp_path / "private").resolve()
     public_root = (tmp_path / "public").resolve()
     runtime = {
-        "schema": "pt-luna-turn-rpc-runtime-v1",
+        "schema": "pt-luna-turn-rpc-runtime-v2",
         "boot_identity_sha256": "b" * 64,
         "source_set_sha256": "2" * 64,
         "codex_tool_catalog": {

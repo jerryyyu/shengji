@@ -18,11 +18,12 @@ import time
 from typing import Callable, Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_rpc_capacity import (
+from .privileged_teacher_luna_rpc_runtime import (
     FAILURE_KINDS,
     FAILURE_STAGES,
     NO_FAILURE_MESSAGE_SHA256,
     RPCConcurrency,
+    RUNTIME_SCHEMA,
     source_identity,
 )
 from .privileged_teacher_luna_rpc_io import (
@@ -1282,7 +1283,7 @@ class RPCGameAttemptRunner:
                 >= per_game_deadline_seconds * 1_000_000_000:
             raise RPCCollectionError("collection game budget drift")
         if type(runtime) is not dict \
-                or runtime.get("schema") != "pt-luna-turn-rpc-runtime-v1" \
+                or runtime.get("schema") != RUNTIME_SCHEMA \
                 or _strict_sha(runtime.get("boot_identity_sha256"),
                                "collection boot identity") \
                 != runtime.get("boot_identity_sha256"):

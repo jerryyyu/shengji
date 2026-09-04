@@ -27,7 +27,7 @@ from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
 SECRET = b"pt-luna-rpc-collection-secret!!!"
 assert len(SECRET) == 32
-RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v1", "test": True,
+RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v2", "test": True,
            "boot_identity_sha256": "b" * 64}
 LEDGER_BINDING = {
     "boot_identity_sha256": "b" * 64,

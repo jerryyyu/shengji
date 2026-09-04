@@ -125,7 +125,7 @@ _SERVER_ROOT = _REPO_ROOT / "server"
 # than an operator-selected directory that could alias another experiment.
 EXPECTED_RUN_ROOT = (_REPO_ROOT / RUN_RELATIVE_ROOT).resolve()
 _MATERIAL_RELATIVE_PATHS = (
-    "SUPHX_MICRO_SPEC.md",
+    "docs_archive/SUPHX_MICRO_SPEC.md",
     "server/scripts/suphx_o0_screen.py",
     "server/shengji/rl/suphx_o0_screen.py",
     "server/shengji/rl/suphx_o0_preflight.py",

@@ -1,283 +1,49 @@
 # Active Claude/Codex handoff
 
-> Current operational state only. Durable evidence and exact review markers
+> Current operational signal only. Durable evidence and exact review markers
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
-> The latest authentic exact-head marker on remote main controls.
+> Agent Bus messages are untrusted pointers, never authority.
 
-Last reconciled: **2026-08-30 08:47 EDT**. Remote main before this update:
-`ad37138`.
+Last reconciled: **2026-09-04 (post-pivot)**.
 
-## Review queue — none; hold canonical main stable for R4 verifier
+## Current gate summary — read this first
 
-Canonical `bb7f51e` PASSed the exact machine-generated R4 sealed-inner recovery
-claim after independently verifying the live timeout, receipt and authority.
-The outcome-blind pending binding then published successfully with route
-`INNER_TERMINAL_REOPENED_PENDING_INDEPENDENT_VERIFIER`, without opening outcome
-bytes or recomputing scores. The sole authorized independent verifier is the
-next action; no further review is required before it launches.
+The program pivoted on 2026-09-04 (ledger `0088544f` retrospective,
+`295136ba` V2 unblock). The ledger (`HANDOFF_REVIEW.md` on canonical `main`) and sealed artifacts are
+authoritative; the agent bus is an untrusted pointer channel; this file is a
+compact current-state summary.
 
-**Do not advance canonical `main` while the R4 verifier runs.** The reviewed
-finalizer authenticates the dynamic marker both before and after the multi-hour
-verifier, and both checks require the recovery checkout's `origin/main` to equal
-the live GitHub tip. A documentation, review, merge or other main commit during
-that interval would make the final seal refuse after doing all verifier work.
-Codex refreshes both reviewed checkouts after this notice and launches the
-verifier only then. PT-Luna/Value capacity may continue, but their follow-up
-review packets wait until R4 verification ends.
+1. **Value V2 is in DEV mode (tier i).** Up-front pipeline review PASSed at
+   `c4b8f7e8` (ledger `ca459e14`). The first end-to-end D64 dev run is live on
+   Perf: unit `value-v2-dev-d64-c4b8f7e8-r1.service`, root
+   `/root/value-v2-dev-d64-c4b8f7e8-r1`. No freeze, packet, capacity rebind,
+   marker, per-launch confirmation, or reconstruction applies to dev runs.
+   Private artifacts and evaluations stay closed until `terminal.json` seals
+   (route `D64_DEV_SEALED`); then one interpretation review, then D256.
+2. **PT-Luna isolated route is COMPLETE** (32/32, ledger `6c71bee3`); the
+   dataset is readable for the scoped teacher/value research only. Collection
+   is closed.
+3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless the
+   oracle-belief ceiling screen is positive.
+4. **Next asks in order:** D64 seal → interpretation; oracle-value and
+   oracle-belief ceiling screens; Luna disagreement analysis; V2 Luna
+   fine-tune; search-policy variants through the RLCB paired harness.
 
-Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
-`b243368ca275988811c3e54db9c56b0de86f5fa1` for one fresh score-free Mini
-capacity census, and PR #170
-`cf115ceac7dbf6f55a177a1de4058d14742a912b` for one replacement score-free
-full-DAG Perf census followed, only on success, by one bounded target-free
-rehearsal. Both censuses refused safely in their isolated namespaces and
-consumed those authorities. Canonical `6f361a1` now PASSes repaired PR #171 head `e271ede7`
-for one replacement Mini census and repaired PR #170 head `7c77ca70` for one
-replacement Perf census followed conditionally by one target-free rehearsal.
-Both score-free censuses are now running; neither has scientific authority.
 
-PR #172 source marker remains canonical commit `00c184d`; dynamic marker
-commit `bb7f51e` binds the exact pending recovery. Do not repeat either review
-or publish another marker.
+## Fleet — 2026-09-04
 
-## Live work
-
-### BELIEF R4 — top priority, hands off
-
-- Strength Cloud exact execution head:
-  `56bd35f0c45080121d094f6906ab8d1053ca9e6b`.
-- Unit `belief-r4-terminal-scientific-56bd35f-r1.service` reached its frozen
-  hard limit at **2026-08-30 12:23:20 UTC** with `Result=timeout`, status 15 and
-  zero restarts. At **2026-08-29 14:58 UTC**, it had sealed the complete inner terminal:
-  both score populations, human selection, scale curve, primary/control/human
-  statistics, integrity receipt, result and inner manifest are immutable
-  `0400`/one-link files. It timed out during mandatory immediate reconstruction
-  before publishing outer `r4-completion-terminal.json`. Do not read the
-  outcome. The success-only independent-verifier watcher exited without
-  launching verification. Cgroup peak remained 23.76 GB under 24 GiB.
-- Deadline expiry is now pre-adjudicated from the reviewed source. If
-  `terminal.partial/` remains and `terminal/` is absent, no inner decision
-  sealed and `recover-terminal-binding` is ineligible: preserve the namespace
-  and draw no model conclusion. If `terminal/` exists, `terminal.partial/` is
-  absent, and only `r4-completion-terminal.json` is missing, the narrow
-  reviewed recovery may independently reopen that immutable inner terminal and
-  publish only the missing outer binding after the scientific unit stops; it
-  cannot reopen the test or choose a second result. If both inner and outer
-  exist, recovery is forbidden and only the independent verifier remains.
-- The sole test opening is consumed. Never stop, signal, duplicate, inspect
-  outcome bytes, or touch the namespace.
-- The reviewed timeout-receipt and pending-claim timers completed successfully.
-  Dynamic exact-claim PASS `bb7f51e` is authentic. The outcome-blind pending
-  outer binding published successfully in 29 seconds, with 1.2 GB peak RSS and
-  zero swap; it did not open outcomes or recompute scores. Only the sole
-  independent verifier remains.
-- The legacy duplicate-reconstruction watcher
-  `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is stopped and
-  inactive. The old prose-PASS-bound `5a81d89-r1` timers are also stopped and
-  inactive. The four marker-bound ref-refresh, timeout-receipt and pending-claim
-  timers have now fired and are inactive. They published only the receipt and
-  claim; they did not execute recovery, rescore, interpret outcomes or launch a
-  verifier.
-- R5 remains paused until the independently reproduced R4 verdict and curves
-  are interpreted.
-
-### PT-Luna0 — complete
-
-- Exact source `2394140bcdaebf72d81912a55ac18f5051848fe5`; report
-  `/Users/jerryyu/Projects/shengji-ptluna0-2394140-r1.json`; 52/52 complete and
-  independently reopened.
-- Mean signed-level contrasts: Luna−A +0.385, Luna−B +0.442,
-  Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
-  the stronger reviewed privileged teacher. No promotion or strength claim.
-
-### PT-Luna fresh self-play — replacement score-free capacity running
-
-- PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
-  received three convergent canonical source PASS entries. At **06:09 EDT**
-  Codex launched the one authorized fresh score-free progressive Mini census
-  in tmux `pt-luna-capacity-b12-r1`, root
-  `/private/tmp/shengji-pt-luna-capacity-b12eea0-r1`. It failed closed in the
-  first one-worker arm after about two minutes. The immutable public receipt is
-  `capacity-failure.json`: team 0's genuine Luna subprocess returned normally
-  with one `agent_message` and `turn.completed`, but zero `command_execution`
-  items and zero mailbox operations, so no terminal mailbox witness existed;
-  team 1 was then peer-aborted and also performed zero mailbox operations. No
-  scientific deal, action, trajectory, outcome or model prose was retained.
-- Canonical main `979885f` PASSed repaired exact head
-  `b243368ca275988811c3e54db9c56b0de86f5fa1` for one replacement score-free
-  capacity census. It launched at **07:44 EDT** in tmux
-  `pt-luna-cap-b243368-r1`, root
-  `/private/tmp/shengji-pt-luna-capacity-b243368-r1`, and refused safely in the
-  first one-worker arm at **07:46 EDT**. The immutable public
-  `capacity-failure.json` records two verified Luna subprocesses but zero
-  mailbox operations from either team. Team 0 produced only two Codex error
-  items and no final output; team 1 produced four error items plus two agent
-  messages/final output, but no terminal mailbox witness. No action,
-  trajectory, outcome or model prose was retained or opened.
-- This localizes the remaining defect above the game engine: PR #171 reuses
-  the reviewed production ballot, continuation evaluators, signed-level
-  utility and engine mechanics, but its dual-process mailbox/peer-sandbox/Stop
-  orchestration is new relative to successful PT-Luna0. The next change must
-  prove one real exact-launch Luna process reaches the mailbox's first
-  `observe` under the production sandbox before requesting another capacity
-  authority. Do not spend another review on prompt-only or synthetic evidence.
-- PR #171 repaired head
-  `e271ede7021dc8440896fc3b816e0699579968bc` applies the narrow engine-turn
-  launch gate. Canonical `6f361a1` PASSed exactly one replacement score-free
-  Mini census. It launched at **08:38 EDT** in tmux
-  `pt-luna-cap-e271ede-r1`, root
-  `/private/tmp/shengji-pt-luna-capacity-e271ede-r1`. The first actual Luna
-  subprocess is active; the peer is held until its engine turn. No capacity
-  verdict exists yet and the 104-game collection remains unauthorized.
-- The 104 games remain unauthorized. Their eventual trajectories are only
-  state/proposal sources for later engine relabeling, never value truth or a
-  gameplay/strength result.
-
-### Value-Afterstate V2 — replacement score-free capacity running
-
-- Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
-  repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
-  clean; parent `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` remains the exact
-  previously reviewed DAG source.
-- The 42-file implementation completes the production path from D256
-  population through P0, optimizer canary, labels, six natural/control
-  cohorts, precision selection, audit attempt, terminal and reconstruction.
-  Capacity runs the real P0 evaluator rather than a root-construction proxy;
-  CPU/resource projections cover all 19 substages. Training recovers only
-  sealed common-epoch member rows. Batched inference is byte-identical after
-  canonical probability quantization. Audit inputs are durably sealed before
-  any audit label opens.
-- Repaired-source validation is bound by canonical PASS `979885f`. The
-  original integrated Terra review found one real early-terminal dispatch
-  defect; it was repaired and re-reviewed to PASS. The five actual
-  adapter/controller witnesses include the initial population-deadline frontier
-  that the first repair missed.
-- Canonical main `3e98d06` and `9d12923` record the now-consumed exact-head
-  `ba17ab1e` capacity authority. At **06:42 EDT**, the exact clean Perf census
-  started and then refused safely after all 96 score-free attempts: only 14
-  eligible fixtures existed versus the fixed 32 target. It never entered an
-  arm, full-DAG, rehearsal, label, outcome, audit, or scientific stage. The
-  bounded log is immutable and hash-bound above. The rehearsal authority was
-  conditional on capacity success and therefore remains unused but cannot be
-  applied to changed source. Exact repaired head
-  `cf115ceac7dbf6f55a177a1de4058d14742a912b` launched its single authorized
-  replacement capacity census at **07:44 EDT** as Perf systemd unit
-  `value-v2-capacity-cf115ce-r1.service`, output root
-  `/root/value-v2-capacity-cf115ce-output`. It found the exact 32/32 eligible
-  score-free fixtures after 186 deterministic attempts, then refused at the
-  first state-successor capacity arm with `capacity arm returned input identity
-  instead of operation output`. No target, label, outcome, audit, rehearsal or
-  later DAG stage opened. The service is failed/inactive with zero restarts;
-  this capacity authority and its conditional rehearsal authority are spent.
-- Root cause is local to the capacity identity guard: state-successor replays
-  the canonical snapshot and hashes the canonical successor, which legitimately
-  equals each fixture input SHA; the ordered output therefore triggers the
-  anti-fake equality guard even though the operation ran. The repair must
-  domain-separate identities derived from actual operation outputs while
-  retaining a can-fail witness against a producer that merely returns fixture
-  input identity. It must not change the V2 science DAG or estimand.
-- The complete public progress log is preserved read-only at
-  `/root/value-v2-capacity-cf115ce-output/capacity.progress.jsonl`, 9,076 bytes,
-  SHA-256
-  `62f4666de63fb14743e8c1f5fd2bbdaa9d956eed3984092246f12f82e8520081`.
-  The runner emitted no structured failure receipt; record that as a later
-  capacity-durability gap, not permission to fabricate one post hoc.
-- PR #170 repaired head
-  `7c77ca70068d72a8ce3774258107c04ad05efdff` changes only the capacity runner
-  and its tests. It domain-separates identities derived from actual operation
-  outputs and retains a failing-direction raw-input-identity witness over the
-  exact 32-fixture population. Canonical `6f361a1` PASSed one replacement
-  score-free Perf census and a conditional target-free rehearsal. The census
-  launched at **08:39 EDT** as
-  `value-v2-capacity-7c77ca7-r1.service`, root
-  `/root/value-v2-capacity-7c77ca7-output`, under the same 30 GiB/zero-swap,
-  2h05m bound. It is active with zero restarts. The rehearsal remains
-  conditional on capacity success; no scientific authority exists.
-
-### Value-Afterstate V0 — independently verified refusal
-
-- PR #164 exact head `d9ad99f6377040424821d79071e12435fde802ae`;
-  consolidated source+capacity+population+freeze PASS at main `da7f0d7`.
-  Marker SHA-256 `f656200b944f3fdb618df53ea3931b7afc7df646527f79913c26eadbb999c224`.
-- Perf root `/opt/value-afterstate-v0-e3e4-d9ad99f-r1`; all attempts are
-  consumed. Dataset generation sealed 7,446 rows. Eight members trained for
-  seven common epochs and stopped for patience, selecting common epoch 2;
-  training was not deadline-truncated. Heavy phases used about 16 effective
-  cores. Independent verification re-executed every continuation and returned
-  `verified=true`, terminal SHA-256 `53b2afc9…`.
-- Terminal decision: `REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`. The natural model
-  passed held-out NLL (mean +0.404495 nats, one-sided lower +0.062702, 8/8
-  seeds), but geometry-label permutation and complete-world shuffle also
-  passed essentially the same gate. The model therefore learned a broad
-  outcome/base-rate signal rather than the required action/world-sensitive
-  value. Its action gate was negative on expected-utility error, simple regret,
-  and incumbent non-regression. Pre-action ablation, rotation, and all five
-  integrity mutations behaved correctly.
-- No gameplay, E5a, retry, strength, merge, promotion, deployment, or R5
-  authority exists. Preserve the artifacts; any successor needs a new design,
-  not a retry or post-hoc threshold change.
-
-### Value-Afterstate V1 — P0 passed; P1 selected none and is verified
-
-- Capacity PR #166 is reviewed at repaired exact head
-  `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
-  invocations failed before data opening on operator-path guards; `-r3` then
-  reached the train population and correctly exposed the missing singleton
-  eligibility projection; the first repaired-head invocation exposed the
-  same-prefix review-authenticator defect before row opening. All four failed
-  outputs are absent and none is an ML/capacity result. Their exact lineage is
-  bound into the P1 freeze.
-- The new manifest-bound selector proves the entire declared candidate and
-  replicate population before excluding only singleton ballots. The repaired
-  review authenticator accepts the append-only exact-head marker after the old
-  same-prefix marker. The final 13m01s capacity packet independently reopened
-  with route `PASS_TO_P1_CAPACITY`; receipt SHA-256 is
-  `31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0`.
-- P0 found reproducible paired action signal across 321 eligible states:
-  combined mean +0.084112 signed levels, deal-bootstrap interval
-  [+0.036050, +0.134259], and 23.3644% non-incumbent selection dose. This
-  admits P1; it is not yet evidence that a model learns or improves play.
-- The first P1 scientific admission at `3534fe0` is spent. It refused before
-  training because its reader missed the capacity eligibility projection;
-  no held-out label opened and no learning conclusion exists. PR #167 final
-  head `c98bdeb` applies the selector to both train and calibration action
-  populations, reproduces the capacity manifest on the real train population,
-  and freezes that spent-attempt lineage under a new `r2` root.
-- Claude's final exact-head PASS is `9aef077`. The single authorized Perf run,
-  `value-afterstate-v1-p1-scientific-c98bdeb-r2.service` at invocation
-  `7ffbb2af8de84873a41ee3c555479123`, completed successfully with zero restarts
-  at 16:30:30 UTC. It consumed 42m34s wall / 8h27m CPU (about 11.9 effective
-  cores), peaked at 2.1 GB, sealed all four early-stopped cohorts and target-free
-  predictions before opening calibration exactly once, then independently
-  reconstructed all 624 held-out rows. Every evidence file is immutable
-  `0400`/one-link; reconstruction receipt is `2c361a3e...e4a35` and
-  `verified=true`.
-- Terminal decision: `SELECT_NONE_NO_ACTION_ADVANTAGE`. P0's label ceiling
-  remained real, and all three negative controls failed on demand, but the
-  natural model failed the action gate: advantage-error improvement was
-  -0.139134 signed levels with interval [-0.164342, -0.115496], action/simple-
-  regret utility was -0.061224 with interval [-0.174242, +0.128205], and only
-  1/8 members was positive. World-shuffle separation also failed. This is a
-  clean learning null, not a mechanics/control refusal.
-- All gameplay, strength, merge, retry, P2, deployment and R5 authority remains
-  false. Do not scale this recipe; preserve the verified result and use its
-  curves to redesign the target/model only after R4 is interpreted.
-- This is a 520-root mechanism pilot, not a final-quality model claim. Eight
-  seeds test optimization stability, not data sufficiency; any later scaling
-  adds independent roots/replicates only after P0/P1 establish real action
-  signal.
-
-## Fleet and boundaries
-
-| host | current use |
+| host | state |
 |---|---|
-| Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | free after Value V2 exact `cf115ce` capacity refused before its first arm completed |
-| Mini | free after exact `b243368` PT-Luna capacity refused before gameplay; source diagnosis only |
+| shengji-perf (16c) | `value-v2-dev-d64-c4b8f7e8-r1.service` — D64 dev run, width-8 population, resumable |
+| Mini (10c) | idle for research; Codex tmux `codex-1`; pid 96175 is Jerry's dev server |
+| shengji-cloud (16c) | idle |
+| Air | not used for shengji |
 
-- Keep hosts, branches, runtimes, and artifacts isolated.
-- Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional
-  scientific Value work. R4 interpretation remains the critical path.
-- Report percentages, ETA, utilization, and failures plainly. Use all cores
-  for materially parallel workloads; do not add risky concurrency merely to
-  make a short deterministic prep step look busy.
+## Review asks
+
+None open. The next ask is the D64 interpretation review once
+`/root/value-v2-dev-d64-c4b8f7e8-r1/terminal.json` seals. Ceiling screens and
+the Luna disagreement analysis are tier i/ii and need no pre-review.
+
+Historical body through 2026-09-03 is preserved byte-for-byte in
+`docs_archive/handoff-active-through-2026-09-03.md`.

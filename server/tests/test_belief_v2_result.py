@@ -73,7 +73,8 @@ def _sha(value: str) -> str:
 
 def _bindings():
     paths = (
-        "BELIEF_V1_SPEC.md", "BELIEF_V1_V2_DESIGN.md",
+        "docs_archive/BELIEF_V1_SPEC.md",
+        "docs_archive/BELIEF_V1_V2_DESIGN.md",
         "server/pyproject.toml", "server/setup.py", "server/uv.lock",
         "server/scripts/belief_v2_worker.py", "server/shengji/__init__.py",
     )

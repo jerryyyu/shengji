@@ -37,8 +37,8 @@ REQUIRED_ENVIRONMENT = (
     ("SHENGJI_REQUIRE_VOIDS", "1"),
 )
 REQUIRED_EXACT_PATHS = (
-    "BELIEF_V1_SPEC.md",
-    "BELIEF_V1_V2_DESIGN.md",
+    "docs_archive/BELIEF_V1_SPEC.md",
+    "docs_archive/BELIEF_V1_V2_DESIGN.md",
     "server/pyproject.toml",
     "server/setup.py",
     "server/uv.lock",

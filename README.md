@@ -7,34 +7,29 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-08-15
+## Project state — 2026-09-04
 
-The production bot is **`mc-s0-report-lcb`**, the first policy in this project
-to earn a fresh, preregistered superiority result over the previous N=30 MC
-bot. In plain English, it lets ordinary MC nominate a possible override, then
-rechecks that exact pair on 300 fresh shared simulations and changes its mind
-only when a conservative lower bound is positive. On 2,048 new paired deals it
-improved signed level utility by `+0.338 +/- 0.068` per round; a matched null
-was flat. Fly release 18 preserves release 17's off-event-loop decision
-runtime and adds the kitty X-ray only, so search no longer freezes room
-interaction and the policy itself remains unchanged.
+The production bot is **`mc-s0-report-lcb`**: ordinary MC nominates a possible
+override, then the exact pair is rechecked on 300 fresh shared simulations and
+the bot changes its mind only when a conservative lower bound is positive. On
+2,048 paired deals it improved signed level utility by `+0.338 ± 0.068` per
+round against `mc-strong`; a matched extra-work null was flat. It remains the
+only confirmed strength gain and the parent every challenger must beat.
 
-The last strength campaign is closed without a promoted challenger. The T4
-learned-search treatment, S4 point-banking continuation, and combined S6
-shuai-pai source all reached independently reviewed `SELECT_NONE` decisions.
-Two Pair-aware whole-game attempts produced no terminal evidence: Air timed
-out at `0/8` shards and the checkpoint successor failed closed on work
-telemetry. One T4 control arm was positive, but it used 14.8% more accepted
-worlds and 80.9% more searches than champion, so candidate widening and added
-compute remain confounded rather than established as a same-work win.
-
-Current research separates three claims: BELIEF predicts hidden-card ownership,
-afterstate value estimates continuation quality, and privileged teachers test
-whether stronger planning can exploit better information. Each must first pass
-its own offline or diagnostic gate before it may change production search. See
-[BACKLOG.md](BACKLOG.md) for the executable queue,
-[HANDOFF_ACTIVE.md](HANDOFF_ACTIVE.md) for live fleet state, and
-[AI_POLICIES.md](AI_POLICIES.md) for canonical measured results.
+Research since then has been rigorous and honest, and negative: BELIEF R4
+closed `NO_PRIMARY_POLICY_SIGNAL` (a better hidden-hand predictor changed
+1 of 104 decisions and no outcomes); the privileged-teacher lane produced its
+first complete 32-game Luna dataset after five attempts; Value-Afterstate V2
+produced six honest refusals and no data under its confirmatory protocol. The
+2026-09-04 retrospective (ledger `0088544f`) found causes in both the strategy and
+the process — component metrics that never transported, and deploy-grade
+ceremony on exploratory runs — and reset the program: V2 now runs in a
+lightweight DEV mode, each lane's ceiling is measured before further spend,
+and the planner (not information) is the lever being attacked. See
+[RL_PLAN.md](RL_PLAN.md) for the decision tree and rigor tiers,
+[BACKLOG.md](BACKLOG.md) for the queue, [AI_POLICIES.md](AI_POLICIES.md) for
+measured results, and [RESEARCH_PRINCIPLES.md](RESEARCH_PRINCIPLES.md) for the
+rules those results produced.
 
 ## Quick start
 
@@ -180,8 +175,8 @@ validation battery.
 | `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |
 | `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_ACTIVE.md` | current fleet truth and compact executable Codex/Claude mailbox |
-| `HANDOFF_REVIEW.md` | short active exact-review mailbox; completed ledgers are archived |
+| `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` |
+| `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; its existing authenticated historical rotation is preserved in `docs_archive/` |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |

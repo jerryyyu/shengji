@@ -1,7 +1,8 @@
 # Incidents
 
 Postmortems for correctness and operational failures. One file per
-incident, newest first. `CORRECTNESS.md` keeps the one-line index and
+incident, newest first. Numbers are assigned on publication to `main`; INC-20..22
+were written locally as 13..15 and renumbered when published. `CORRECTNESS.md` keeps the one-line index and
 the rules these incidents produced; this folder keeps the reasoning.
 
 **Severity levels**
@@ -14,6 +15,9 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
+| [INC-22](INC-20260830-22-v2-capacity-artifact-altitude.md) | 08-30 | S3 | Value V2 capacity compared the wrong inference artifact | finite refusal-vocabulary hash |
+| [INC-21](INC-20260829-21-r4-confirmatory-before-signal.md) | 08-29 | S3 | R4 paid confirmatory costs before establishing BELIEF signal — the process failure behind the 2026-09-04 program reset (ledger `0088544f`) | critical-path audit |
+| [INC-20](INC-20260824-20-r5-cache-resource-misdiagnosis.md) | 08-24 | S2 | R5 cache resource-cap dimension was misdiagnosed | freeze limits vs systemd MemoryPeak |
 | [INC-19](INC-20260830-19-belief-r4-all-or-nothing-dag.md) | 08-30 | S3 | BELIEF R4 made verification the critical path and discarded useful work | repeated multi-day critical-path and recovery audit |
 | [INC-18](INC-20260813-18-request-template-self-authorized-s5.md) | 08-13 | S3 | PR #74's request template self-authorized a partial S5 one-shot and consumed its admission | unexpected perf-host producer plus exact systemd/admission audit |
 | [INC-17](INC-20260812-17-request-template-looked-like-review-pass.md) | 08-12 | S4 | Codex request template at column one looked like an independent S5 PASS | prefix scan plus author-heading authentication |

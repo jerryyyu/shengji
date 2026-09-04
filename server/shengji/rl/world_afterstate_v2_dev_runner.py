@@ -46,7 +46,7 @@ from .world_afterstate import category_signed_level
 
 
 SCHEMA = "world-afterstate-v2-dev-d64-runner-v1"
-STAGE_WATCHDOG_SECONDS = 24 * 60 * 60
+STAGE_WATCHDOG_SECONDS = 2 * 60 * 60
 AUTHORITY = {
     "downstream_authorized": False, "gameplay_authorized": False,
     "strength_claim_authorized": False, "merge_authorized": False,

@@ -142,11 +142,14 @@ def test_controller_rejection_vocabulary_matches_source_driver_exactly():
 def test_real_driver_uses_process_workers_and_reports_true_width(
         tmp_path, fast_primitives, monkeypatch):
     process_widths = []
+    process_start_methods = []
     calls = []
 
     class ImmediateProcessPool:
         def __init__(self, *, max_workers, **_kwargs):
             process_widths.append(max_workers)
+            process_start_methods.append(
+                _kwargs["mp_context"].get_start_method())
 
         def __enter__(self):
             return self
@@ -177,6 +180,7 @@ def test_real_driver_uses_process_workers_and_reports_true_width(
         workers=4, progress_callback=progress.append)
 
     assert process_widths == [4]
+    assert process_start_methods == ["spawn"]
     assert len(calls) == receipt.accepted_slots == 256
     assert max(row["active_workers"] for row in progress) == 4
 

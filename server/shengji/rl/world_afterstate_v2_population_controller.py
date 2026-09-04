@@ -41,7 +41,8 @@ from .world_afterstate_v2_source_driver import (
 )
 from .world_afterstate_v2_execution import (
     _cgroup_cpu_nanoseconds, _cgroup_v2_directory, _live_telemetry,
-    _process_cpu_nanoseconds, verified_process_pool_kwargs,
+    _controller_context, _process_cpu_nanoseconds,
+    verified_process_pool_kwargs,
 )
 
 
@@ -1114,7 +1115,8 @@ def collect_population_v2(
                 # attempt driver crosses the process boundary; otherwise a
                 # wider ThreadPoolExecutor remains serialized by the GIL.
                 driver_pool = stack.enter_context(ProcessPoolExecutor(
-                    max_workers=workers, **verified_process_pool_kwargs()))
+                    max_workers=workers, mp_context=_controller_context(),
+                    **verified_process_pool_kwargs()))
 
                 def process_driver(
                         identity: Mapping[str, Any],

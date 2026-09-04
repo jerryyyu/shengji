@@ -6,6 +6,7 @@ identity, shard manifest, resume witnesses, bury path, class-knob overrides
 Reduced work (N=2 selection worlds, R=30 report worlds -- the LCB minimum)
 keeps the whole file around a minute and a half of pure-engine self-play.
 """
+import gc
 import hashlib
 import json
 import math
@@ -103,6 +104,32 @@ def clean4(tmp_path_factory):
     """An uninterrupted 4-round (2-cluster) plain run: the reference for the
     resume witnesses."""
     return _generate(tmp_path_factory.mktemp("clean4") / "run", rounds=4, **PLAIN)
+
+
+#: the retention / timing fixture: 6 clusters on the cheapest MCBot policy
+#: (plain ``mc``, one selection world, no report fold: ~0.6 s per cluster)
+RETENTION = dict(rounds=12, seed0=4_200_000, policy="mc", select_worlds=1,
+                 explore_rate=0.0, explore_k=0)
+
+
+@pytest.fixture(scope="module")
+def retention_run(tmp_path_factory):
+    """A 6-cluster run on 2 workers, sampling the parent's live cluster
+    results at every publish, plus the same run on 1 worker."""
+    live = []
+
+    def progress(event):
+        gc.collect()             # only strong references count
+        live.append((event["cluster"], len(trajectory.LIVE_RESULTS)))
+
+    out = tmp_path_factory.mktemp("retention") / "w2"
+    manifest = trajectory.generate(out_dir=out, workers=2, merge=False,
+                                   progress=progress, **RETENTION)
+    single = tmp_path_factory.mktemp("retention") / "w1"
+    trajectory.generate(out_dir=single, workers=1, merge=False, **RETENTION)
+    return {"out": out, "manifest": manifest, "live": live,
+            "runtime": json.loads((out / "runtime.json").read_text()),
+            "w2": _read_dir(out), "w1": _read_dir(single)}
 
 
 @pytest.fixture(scope="module")
@@ -636,6 +663,46 @@ def test_corrupted_shard_is_regenerated_on_resume(clean4, tmp_path):
     assert resumed["shards"] == clean4["shards"]
     assert resumed["manifest_bytes"] == clean4["manifest_bytes"]
     assert resumed["bytes"] == clean4["bytes"]
+
+
+# W6 --------------------------- the parent drops published results (#208)
+
+def test_parent_does_not_retain_published_results(retention_run):
+    live = retention_run["live"]
+    manifest = retention_run["manifest"]
+    assert manifest["clusters"] == 6 and len(live) == 6
+    assert retention_run["runtime"]["workers"] == 2
+    assert retention_run["runtime"]["clusters"]["generated"] == list(range(6))
+    # at every publish the parent holds at most the in-flight window of
+    # results (the one being published + those completed but not yet
+    # consumed), never every cluster published so far
+    window = trajectory.INFLIGHT_PER_WORKER * 2
+    assert max(n for _, n in live) <= window < 6
+    assert live[-1][1] <= 2                       # nothing accumulated by the end
+    assert len(trajectory.LIVE_RESULTS) == 0      # and nothing outlives the pool
+    # the bounded window changes scheduling only: bytes as on one worker
+    assert retention_run["w2"]["shards"] == retention_run["w1"]["shards"]
+    assert retention_run["w2"]["sidecars"] == retention_run["w1"]["sidecars"]
+    assert retention_run["w2"]["manifest_bytes"] == retention_run["w1"]["manifest_bytes"]
+
+
+def test_per_cluster_wall_secs_is_the_clusters_own_duration(retention_run):
+    per_cluster = retention_run["runtime"]["per_cluster"]
+    assert sorted(per_cluster) == [str(c) for c in range(6)]
+    finished = {}
+    for c, t in per_cluster.items():
+        # the task's own clock: both rounds plus the task's few ms of
+        # overhead -- not the time since the pool started
+        rounds = sum(t["round_wall_secs"])
+        assert len(t["round_wall_secs"]) == 2 and rounds > 0
+        # (each value is rounded to 4 decimals on its own, hence the slack)
+        assert -1e-3 <= t["wall_secs"] - rounds < 0.25, (c, t)
+        assert t["finished_at"] - t["started_at"] == pytest.approx(t["wall_secs"], abs=0.05)
+        finished[int(c)] = t["finished_at"]
+    # two workers: the sixth cluster cannot start before four others finished
+    assert per_cluster["5"]["started_at"] >= sorted(finished.values())[3]
+    total = retention_run["runtime"]["wall_secs"]
+    assert max(t["wall_secs"] for t in per_cluster.values()) < total
 
 
 # ------------------------------------------------------------ fail closed

@@ -141,36 +141,6 @@ def test_canary_source_review_cannot_be_coordinately_rehashed_to_other_source():
         validate_canary_receipt(forged)
 
 
-def test_canary_rechecks_live_runtime_before_receipt_publication(
-        tmp_path, monkeypatch):
-    from scripts import privileged_teacher_luna_rpc_canary as canary_cli
-
-    expected = runtime()
-    changed = copy.deepcopy(expected)
-    changed["source_set_sha256"] = "e" * 64
-    seen = iter((expected, changed))
-    review = source_review_auth(expected["source_set_sha256"])
-    monkeypatch.setattr(canary_cli, "source_review_claim",
-                        lambda _repo: review["review_claim"])
-    monkeypatch.setattr(canary_cli, "authenticate_review_claim",
-                        lambda **_kwargs: review)
-    monkeypatch.setattr(canary_cli, "source_identity",
-                        lambda _path: next(seen))
-    monkeypatch.setattr(canary_cli, "_run_one",
-                        lambda **kwargs: {"name": kwargs["name"]})
-    output = tmp_path / "canary.json"
-
-    with pytest.raises(ValueError, match="canary terminal runtime drift"):
-        canary_cli.main([
-            "--repo-root", str(tmp_path),
-            "--source-review-commit", "1" * 40,
-            "--codex-binary", "/test/codex",
-            "--work-root", str(tmp_path / "work"),
-            "--output", str(output),
-        ])
-    assert not output.exists()
-
-
 class PassingRunner:
     def __init__(self, tracker):
         self.tracker = tracker

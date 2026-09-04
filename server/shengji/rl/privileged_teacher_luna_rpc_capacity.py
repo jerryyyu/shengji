@@ -80,8 +80,6 @@ SOURCE_PATHS = (
     "shengji/rl/privileged_teacher_luna_rpc_capacity.py",
     "shengji/rl/privileged_teacher_luna_rpc_collection.py",
     "shengji/rl/privileged_teacher_luna_rpc_supervisor.py",
-    "scripts/privileged_teacher_luna_rpc_canary.py",
-    "scripts/privileged_teacher_luna_rpc_collection.py",
     "tests/test_privileged_teacher_luna_turn_rpc.py",
     "tests/test_privileged_teacher_luna_rpc_transport.py",
     "tests/test_privileged_teacher_luna_rpc_io.py",

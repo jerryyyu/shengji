@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
-import subprocess
 import sys
 import threading
 import time
@@ -27,42 +26,8 @@ SECRET = b"pt-luna-supervisor-test-secret!!"
 assert len(SECRET) == 32
 RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v1",
            "boot_identity_sha256": "b" * 64}
-
-
-def _freeze_payload(**updates):
-    body = {
-        "schema": supervisor.FREEZE_SCHEMA,
-        "execution_git": "1" * 40,
-        "source_set_sha256": "2" * 64,
-        "design_sha256": "3" * 64,
-        "seed_commitment_sha256": "4" * 64,
-        "schedule_sha256": "5" * 64,
-        "census_sha256": "6" * 64,
-        "capacity_receipt_sha256": "7" * 64,
-        "runtime_sha256": "8" * 64,
-        "capacity_route": supervisor.FULL_104_ELIGIBLE,
-        "selected_game_count": 104,
-        "selected_deal_cluster_count": 52,
-        "selected_workers": 2,
-        "capacity_measurement_game_deadline_nanoseconds": 1_000_000_000,
-        "per_game_deadline_nanoseconds": 1_000_000_000,
-        "per_game_token_cap": 100,
-        "per_call_token_reserve": 50,
-        "per_call_wall_reserve_milliseconds": 100,
-        "scientific_wall_nanoseconds": 10_000_000_000,
-        "scientific_token_budget": 10_000,
-        "private_root": "/private/test",
-        "public_root": "/public/test",
-        "namespace": "test",
-        "pilot_attempt_lineage": None,
-        "authenticated": False,
-        "scientific_execution_authorized": False,
-        "outcome_opening_authorized": False,
-        "authority": dict(supervisor.selfplay.AUTHORITY),
-    }
-    body.update(updates)
-    return {**body, "freeze_sha256": hashlib.sha256(
-        canonical_json_bytes(body)).hexdigest()}
+COMPLETE = supervisor.COMPLETE_STATE_SOURCE_ACQUISITION
+INCOMPLETE = supervisor.INCOMPLETE_STATE_SOURCE_ACQUISITION
 
 
 class FakeRunner:
@@ -73,26 +38,22 @@ class FakeRunner:
         self.attempts_root.mkdir(parents=True, exist_ok=True)
         self.stop_event = threading.Event()
         self.calls = 0
-        self.saw_admission = False
+        self.saw_launch = False
 
     def __call__(self, coordinate, mirror):
         self.calls += 1
-        self.saw_admission = (self.attempts_root.parent.parent
-                              / "public" / "admission.json").exists()
+        self.saw_launch = (self.attempts_root.parent / "census.json").exists()
         return object()
 
 
-def _make(tmp_path, *, schedule=None, full=False):
+def _make(tmp_path, *, schedule=None, workers=1):
     runner = FakeRunner(tmp_path / "private")
     if schedule is None:
         schedule = [(('2', 0, 0), 0)]
     return supervisor.PTLunaRPCSupervisor(
         seed_secret=SECRET, private_root=tmp_path / "private",
         public_root=tmp_path / "public", runtime=RUNTIME,
-        admission={"freeze": "freeze", "admission": "admission"},
-        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
-                          "selected_workers": 1},
-        runner=runner, schedule=schedule, require_full_population=full), runner
+        runner=runner, schedule=schedule, workers=workers), runner
 
 
 def _packet(coordinate=("2", 0, 0), mirror=0):
@@ -108,22 +69,31 @@ def _packet(coordinate=("2", 0, 0), mirror=0):
         phase=PhaseContext())
 
 
-def test_schedule_rejects_duplicate_and_default_is_exact():
+def _ledger(root, **overrides):
+    values = dict(
+        root=root, started_monotonic_nanoseconds=time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=10_000,
+        per_call_token_reserve=100, per_call_wall_reserve_milliseconds=1_000,
+        boot_identity_sha256="b" * 64, runtime_sha256="c" * 64,
+        namespace="supervisor-test")
+    values.update(overrides)
+    return collection.ScientificBudgetLedger(**values)
+
+
+def test_schedule_rejects_duplicates_and_full_population_is_104():
     with pytest.raises(supervisor.RPCSupervisorError):
-        supervisor.validate_schedule([(('2', 0, 0), 0), (('2', 0, 0), 0)],
-                                     require_full_population=False)
-    assert len(supervisor.validate_schedule()) == 104
+        supervisor.validate_schedule([(('2', 0, 0), 0), (('2', 0, 0), 0)])
+    assert len(supervisor.schedule_for_games(SECRET, 104)) == 104
 
 
-def test_pilot_schedule_is_first_sixteen_root_hashes_with_both_mirrors():
+def test_schedule_for_games_takes_lowest_root_hashes_with_both_mirrors():
     rows = supervisor.selfplay.root_census(SECRET).serialized()["coordinates"]
     expected_coordinates = [
         tuple(row["coordinate"])
         for row in sorted(rows, key=lambda row: (
             row["root_sha256"], tuple(row["coordinate"])))[:16]
     ]
-    schedule = supervisor.schedule_for_capacity_route(
-        SECRET, supervisor.PILOT_32_ELIGIBLE)
+    schedule = supervisor.schedule_for_games(SECRET, 32)
     assert len(schedule) == 32
     assert list(dict.fromkeys(coordinate for coordinate, _ in schedule)) == \
         expected_coordinates
@@ -131,333 +101,48 @@ def test_pilot_schedule_is_first_sixteen_root_hashes_with_both_mirrors():
         [mirror for coordinate, mirror in schedule if coordinate == expected]
         == [0, 1]
         for expected in expected_coordinates)
+    assert supervisor.schedule_for_games(SECRET, 32) == schedule
+    assert schedule[:2] == supervisor.schedule_for_games(SECRET, 2)
+    for games in (0, 1, 3, 106, True):
+        with pytest.raises(supervisor.RPCSupervisorError,
+                           match="game count"):
+            supervisor.schedule_for_games(SECRET, games)
 
 
-def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
-    freeze = _freeze_payload(
-        capacity_route=supervisor.PILOT_32_ELIGIBLE,
-        selected_game_count=32, selected_deal_cluster_count=16,
-        capacity_measurement_game_deadline_nanoseconds=
-            1_200_000_000_000,
-        per_game_deadline_nanoseconds=
-            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
-        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
-        scientific_wall_nanoseconds=12_000_000_000_000,
-        scientific_token_budget=26_404_925)
-    supervisor.validate_launch_freeze_shape(freeze)
-    claim = supervisor.freeze_review_claim(freeze)
-    assert claim["capacity_route"] == supervisor.PILOT_32_ELIGIBLE
-    assert claim["selected_game_count"] == 32
-    assert claim["selected_deal_cluster_count"] == 16
-    assert claim["capacity_measurement_game_deadline_nanoseconds"] \
-        == 1_200_000_000_000
-    assert claim["scientific_game_deadline_nanoseconds"] \
-        == 1_800_000_000_000
-    assert claim["pilot_attempt_lineage"]["route_ordinal"] == 1
-    assert claim["pilot_attempt_lineage"][
-        "retry_after_this_attempt_authorized"] is False
-    assert claim["pilot_attempt_lineage"]["prior_spent_tokens"] == 24_749_862
-    assert claim["pilot_attempt_lineage"]["prior_completed_games"] == 30
-    assert claim["pilot_attempt_lineage"]["closed_predecessor_attempts"][-1] \
-        == {
-            "attempt_ordinal": 4,
-            "terminal_file_sha256":
-                "9404154a5caac45f5fa6448f299cb8ff4949350710226510a0888c421980c8eb",
-            "terminal_receipt_sha256":
-                "2f2491b91f208f01522df112cc38c6d32f682aa4e75922d367b3c7bafe0ca83a",
-            "ledger_spent_tokens": 14_820_157,
-            "completed_games": 20,
-        }
-
-    forged = _freeze_payload(
-        capacity_route=supervisor.PILOT_32_ELIGIBLE,
-        selected_game_count=104, selected_deal_cluster_count=52,
-        capacity_measurement_game_deadline_nanoseconds=
-            1_200_000_000_000,
-        per_game_deadline_nanoseconds=
-            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
-        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
-        scientific_wall_nanoseconds=12_000_000_000_000,
-        scientific_token_budget=26_404_925)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="capacity route population"):
-        supervisor.validate_launch_freeze_shape(forged)
-
-    wrong_deadline = _freeze_payload(
-        capacity_route=supervisor.PILOT_32_ELIGIBLE,
-        selected_game_count=32, selected_deal_cluster_count=16,
-        capacity_measurement_game_deadline_nanoseconds=
-            1_200_000_000_000,
-        per_game_deadline_nanoseconds=1_200_000_000_000,
-        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
-        scientific_wall_nanoseconds=12_000_000_000_000,
-        scientific_token_budget=26_404_925)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot resilient-route binding"):
-        supervisor.validate_launch_freeze_shape(wrong_deadline)
-
-    lineage = supervisor._pilot_attempt_lineage()
-    lineage["prior_spent_tokens"] -= 1
-    wrong_lineage = _freeze_payload(
-        capacity_route=supervisor.PILOT_32_ELIGIBLE,
-        selected_game_count=32, selected_deal_cluster_count=16,
-        capacity_measurement_game_deadline_nanoseconds=
-            1_200_000_000_000,
-        per_game_deadline_nanoseconds=
-            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
-        pilot_attempt_lineage=lineage,
-        scientific_wall_nanoseconds=12_000_000_000_000,
-        scientific_token_budget=26_404_925)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot resilient-route binding"):
-        supervisor.validate_launch_freeze_shape(wrong_lineage)
-
-    second_route = supervisor._pilot_attempt_lineage()
-    second_route["route_ordinal"] = 2
-    second_route["maximum_route_ordinal"] = 2
-    second_route_freeze = _freeze_payload(
-        capacity_route=supervisor.PILOT_32_ELIGIBLE,
-        selected_game_count=32, selected_deal_cluster_count=16,
-        capacity_measurement_game_deadline_nanoseconds=
-            1_200_000_000_000,
-        per_game_deadline_nanoseconds=
-            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
-        pilot_attempt_lineage=second_route,
-        scientific_wall_nanoseconds=12_000_000_000_000,
-        scientific_token_budget=26_404_925)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot resilient-route binding"):
-        supervisor.validate_launch_freeze_shape(second_route_freeze)
-
-
-def test_final_pilot_freeze_carries_exact_capacity_without_another_census(
-        tmp_path, monkeypatch):
-    schedule = supervisor.schedule_for_capacity_route(
-        SECRET, supervisor.PILOT_32_ELIGIBLE)
+def test_root_census_binds_seed_and_scheduled_clusters():
+    schedule = supervisor.schedule_for_games(SECRET, 4)
     census = supervisor.build_root_census(SECRET, schedule)
-    current_claim = {
-        "execution_git": "9" * 40,
-        "source_set_sha256": "8" * 64,
-        "design_sha256": "7" * 64,
-    }
-    parent_claim = {
-        "execution_git": supervisor.PILOT_CAPACITY_SOURCE_EXECUTION_GIT,
-        "claim_sha256": supervisor.PILOT_CAPACITY_SOURCE_CLAIM_SHA256,
-    }
-    capacity = {
-        "route": supervisor.PILOT_32_ELIGIBLE,
-        "receipt_sha256": supervisor.PILOT_CAPACITY_RECEIPT_SHA256,
-        "runtime": RUNTIME,
-        "selected_workers": 4,
-        "selected_game_count": 32,
-        "selected_deal_cluster_count": 16,
-        "per_game_deadline_nanoseconds": 1_200_000_000_000,
-        "selected_population_wall_nanoseconds": 12_000_000_000_000,
-        "scientific_token_budget": 1_000_000_000,
-        "projected_pilot_token_count": 26_404_925,
-        "source_review": {"review_claim": parent_claim},
-        "arms": [{
-            "workers": 4, "passed": True,
-            "per_game_token_cap": 1_000_000,
-            "per_call_token_reserve": 100_000,
-            "per_call_wall_reserve_milliseconds": 90_000,
-        }],
-    }
-    monkeypatch.setattr(
-        supervisor, "validate_capacity_receipt", lambda _receipt: None)
-    monkeypatch.setattr(
-        supervisor, "source_review_claim", lambda _repo: current_claim)
-
-    freeze = supervisor.launch_freeze_payload(
-        repo_root=tmp_path, seed_secret=SECRET, census=census,
-        capacity_receipt=capacity, runtime=RUNTIME,
-        private_root=tmp_path / "private", public_root=tmp_path / "public",
-        namespace="pt-luna-final-pilot")
-
-    assert freeze["capacity_measurement_game_deadline_nanoseconds"] \
-        == 1_200_000_000_000
-    assert freeze["per_game_deadline_nanoseconds"] \
-        == supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS
-    assert freeze["scientific_wall_nanoseconds"] \
-        == 12_000_000_000_000
-    assert freeze["scientific_token_budget"] == 26_404_925
-    assert freeze["pilot_attempt_lineage"] \
-        == supervisor._pilot_attempt_lineage()
-
-    capacity["receipt_sha256"] = "0" * 64
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="freeze source review binding drift"):
-        supervisor.launch_freeze_payload(
-            repo_root=tmp_path, seed_secret=SECRET, census=census,
-            capacity_receipt=capacity, runtime=RUNTIME,
-            private_root=tmp_path / "private-2",
-            public_root=tmp_path / "public-2",
-            namespace="pt-luna-forged-capacity")
+    assert census["coordinate_count"] == 2 and census["game_count"] == 4
+    assert supervisor.validate_root_census(census, SECRET, schedule) \
+        == census["census_sha256"]
+    with pytest.raises(supervisor.RPCSupervisorError, match="seed drift"):
+        supervisor.validate_root_census(census, b"x" * 32, schedule)
+    with pytest.raises(supervisor.RPCSupervisorError, match="coverage"):
+        supervisor.validate_root_census(census, SECRET, schedule[:2])
+    forged = dict(census)
+    forged["game_count"] = 6
+    with pytest.raises(supervisor.RPCSupervisorError, match="hash drift"):
+        supervisor.validate_root_census(forged, SECRET, schedule)
 
 
-def test_capacity_runtime_carry_forward_allows_only_source_identity_fields():
-    measured = {
-        "execution_git": supervisor.PILOT_CAPACITY_SOURCE_EXECUTION_GIT,
-        "git_tree": "1" * 40,
-        "sources": {"old.py": "2" * 64},
-        "source_set_sha256": "3" * 64,
-        "boot_identity_sha256": "4" * 64,
-        "model": "gpt-5.6-luna",
-        "reasoning_effort": "medium",
-    }
-    current = {
-        **measured,
-        "execution_git": "5" * 40,
-        "git_tree": "6" * 40,
-        "sources": {"new.py": "7" * 64},
-        "source_set_sha256": "8" * 64,
-    }
-    capacity = {
-        "route": supervisor.PILOT_32_ELIGIBLE,
-        "receipt_sha256": supervisor.PILOT_CAPACITY_RECEIPT_SHA256,
-        "runtime": measured,
-    }
-    supervisor.validate_capacity_runtime_for_freeze(capacity, current)
-
-    current["reasoning_effort"] = "low"
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="capacity/runtime drift"):
-        supervisor.validate_capacity_runtime_for_freeze(capacity, current)
-
-
-def test_scientific_namespace_lock_refuses_second_live_controller(tmp_path):
+def test_run_lock_refuses_second_live_controller(tmp_path):
     root = tmp_path / "private"
     root.mkdir(mode=0o700)
-    first = supervisor._acquire_scientific_run_lock(root)
+    first = supervisor._acquire_run_lock(root)
     try:
         with pytest.raises(supervisor.RPCSupervisorError,
                            match="already active"):
-            supervisor._acquire_scientific_run_lock(root)
+            supervisor._acquire_run_lock(root)
     finally:
         supervisor.fcntl.flock(first, supervisor.fcntl.LOCK_UN)
         supervisor.os.close(first)
-    resumed = supervisor._acquire_scientific_run_lock(root)
+    resumed = supervisor._acquire_run_lock(root)
     supervisor.fcntl.flock(resumed, supervisor.fcntl.LOCK_UN)
     supervisor.os.close(resumed)
 
 
-def test_review_claim_seal_is_checked_before_remote_authentication():
-    claim = {"schema": supervisor.SOURCE_REVIEW_SCHEMA,
-             "claim_sha256": "0" * 64}
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="review claim seal drift"):
-        supervisor.authenticate_review_claim(
-            claim=claim, prefix=supervisor.SOURCE_REVIEW_PREFIX,
-            review_commit="1" * 40)
-
-
-def test_review_authentication_requires_exact_append_only_canonical_marker(
-        tmp_path, monkeypatch):
-    repo = tmp_path / "review"
-    repo.mkdir()
-    subprocess.run(("git", "init", "-b", "main"), cwd=repo,
-                   check=True, stdout=subprocess.PIPE)
-    subprocess.run(("git", "config", "user.name", "review-test"),
-                   cwd=repo, check=True)
-    subprocess.run(("git", "config", "user.email", "review@test.invalid"),
-                   cwd=repo, check=True)
-    ledger = repo / "HANDOFF_REVIEW.md"
-    ledger.write_bytes(b"base\n")
-    subprocess.run(("git", "add", "HANDOFF_REVIEW.md"), cwd=repo, check=True)
-    subprocess.run(("git", "commit", "-m", "base"), cwd=repo,
-                   check=True, stdout=subprocess.PIPE)
-    body = {"schema": supervisor.SOURCE_REVIEW_SCHEMA,
-            "execution_git": "a" * 40,
-            "source_set_sha256": "b" * 64,
-            "design_sha256s": {
-                "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md": "c" * 64,
-                "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md": "d" * 64,
-            },
-            "score_free_canary_authorized": True,
-            "score_free_capacity_authorized": True,
-            "scientific_execution_authorized": False,
-            "outcome_opening_authorized": False,
-            "merge_authorized": False,
-            "deployment_authorized": False,
-            "strength_claim_authorized": False,
-            "authority": dict(supervisor.selfplay.AUTHORITY)}
-    body["design_sha256"] = supervisor._sha(body["design_sha256s"])
-    claim = {**body, "claim_sha256": hashlib.sha256(
-        canonical_json_bytes(body)).hexdigest()}
-    marker = (supervisor.SOURCE_REVIEW_PREFIX.encode() + b" "
-              + canonical_json_bytes(claim))
-    with ledger.open("ab") as handle:
-        handle.write(marker)
-    subprocess.run(("git", "add", "HANDOFF_REVIEW.md"), cwd=repo, check=True)
-    subprocess.run(("git", "commit", "-m", "review marker"), cwd=repo,
-                   check=True, stdout=subprocess.PIPE)
-    review_commit = subprocess.check_output(
-        ("git", "rev-parse", "HEAD"), cwd=repo, text=True).strip()
-    monkeypatch.setattr(supervisor, "CANONICAL_REMOTE_URL", str(repo))
-    auth = supervisor.authenticate_review_claim(
-        claim=claim, prefix=supervisor.SOURCE_REVIEW_PREFIX,
-        review_commit=review_commit)
-    assert auth["review_commit"] == review_commit
-    assert auth["review_claim"] == claim
-
-
-def test_launch_freeze_deadline_must_round_trip_to_exact_seconds():
-    freeze = _freeze_payload(
-        per_game_deadline_nanoseconds=1_000_000_001)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="deadline granularity"):
-        supervisor.validate_launch_freeze_shape(freeze)
-
-
-def test_coordinated_freeze_budget_rehash_fails_live_rederivation(monkeypatch):
-    expected = _freeze_payload()
-    forged = _freeze_payload(scientific_token_budget=20_000)
-    monkeypatch.setattr(
-        supervisor, "launch_freeze_payload", lambda **_kwargs: expected)
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="launch freeze binding drift"):
-        supervisor.validate_launch_freeze(
-            forged, repo_root=Path("."), seed_secret=SECRET,
-            census={}, capacity_receipt={}, runtime={},
-            private_root=Path("/private/test"),
-            public_root=Path("/public/test"), namespace="test")
-
-
-def test_public_admission_binds_authenticated_freeze_sha(tmp_path):
-    instance, _runner = _make(tmp_path)
-    instance.admission = {
-        "review_commit": "1" * 40,
-        "review_marker_sha256": "2" * 64,
-        "review_claim": {"freeze_sha256": "3" * 64},
-    }
-    assert instance._admission_body()["freeze_sha256"] == "3" * 64
-
-
-def test_full_controller_authenticates_freeze_before_creating_namespace(
-        tmp_path, monkeypatch):
-    def refuse(**_kwargs):
-        raise supervisor.RPCSupervisorError("sentinel freeze auth")
-    monkeypatch.setattr(supervisor, "authenticate_review_claim", refuse)
-    private_root = tmp_path / "not-created-private"
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="sentinel freeze auth"):
-        supervisor.PTLunaRPCSupervisor(
-            seed_secret=SECRET, private_root=private_root,
-            public_root=tmp_path / "not-created-public", runtime=RUNTIME,
-            admission={"review_commit": "1" * 40},
-            capacity_receipt={
-                "route": supervisor.FULL_104_ELIGIBLE,
-                "selected_workers": 2,
-                "runtime": RUNTIME, "receipt_sha256": "7" * 64},
-            runner=object(), launch_freeze=_freeze_payload(),
-            require_full_population=True)
-    assert not private_root.exists()
-
-
-def test_formal_controller_internally_owns_bound_runner_ledger_and_timeout(
-        tmp_path, monkeypatch):
-    schedule = supervisor.validate_schedule()
-    census = supervisor.build_root_census(SECRET, schedule)
+def test_live_supervisor_owns_bound_runner_and_ledger(tmp_path, monkeypatch):
+    schedule = supervisor.schedule_for_games(SECRET, 2)
     private_root = (tmp_path / "private").resolve()
     public_root = (tmp_path / "public").resolve()
     runtime = {
@@ -467,81 +152,70 @@ def test_formal_controller_internally_owns_bound_runner_ledger_and_timeout(
         "codex_tool_catalog": {
             "schema": "pt-luna-codex-tool-catalog-v1"},
     }
-    capacity = {
-        "route": supervisor.FULL_104_ELIGIBLE, "selected_workers": 1,
-        "selected_game_count": 104,
-        "selected_deal_cluster_count": 52,
-        "selected_population_wall_nanoseconds": 10_000_000_000,
-        "runtime": runtime, "receipt_sha256": "7" * 64,
-        "scientific_wall_nanoseconds": 10_000_000_000,
-        "scientific_token_budget": 10_000,
-        "arms": [{"workers": 1, "per_call_token_reserve": 50,
-                  "per_call_wall_reserve_milliseconds": 1_000}],
-    }
-    freeze = _freeze_payload(
-        source_set_sha256=runtime["source_set_sha256"],
-        seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest(),
-        schedule_sha256=supervisor._schedule_sha(schedule),
-        census_sha256=census["census_sha256"],
-        runtime_sha256=supervisor._sha(runtime), selected_workers=1,
-        capacity_measurement_game_deadline_nanoseconds=600_000_000_000,
-        per_game_deadline_nanoseconds=600_000_000_000,
-        pilot_attempt_lineage=None,
-        per_game_token_cap=1_000, per_call_token_reserve=50,
-        per_call_wall_reserve_milliseconds=1_000,
-        scientific_wall_nanoseconds=10_000_000_000,
-        scientific_token_budget=10_000,
-        private_root=str(private_root), public_root=str(public_root),
-        namespace=supervisor.SCHEMA)
-    admission = {
-        "review_commit": "1" * 40,
-        "review_marker_sha256": "9" * 64,
-        "review_claim": supervisor.freeze_review_claim(freeze),
-    }
-    monkeypatch.setattr(
-        supervisor, "authenticate_review_claim",
-        lambda **_kwargs: admission)
     monkeypatch.setattr(
         collection, "source_identity", lambda _path: dict(runtime))
+    with pytest.raises(supervisor.RPCSupervisorError, match="token cap"):
+        supervisor.PTLunaRPCSupervisor(
+            seed_secret=SECRET, private_root=private_root,
+            public_root=public_root, runtime=runtime, schedule=schedule,
+            codex_binary=Path("/usr/bin/true"))
+    assert not private_root.exists()
     instance = supervisor.PTLunaRPCSupervisor(
         seed_secret=SECRET, private_root=private_root,
-        public_root=public_root, runtime=runtime,
-        admission=admission, capacity_receipt=capacity,
-        codex_binary=Path("/usr/bin/true"), launch_freeze=freeze,
-        schedule=schedule, expected_schedule=schedule,
-        root_census=census, require_full_population=True)
+        public_root=public_root, runtime=runtime, schedule=schedule,
+        codex_binary=Path("/usr/bin/true"), workers=2,
+        token_cap=10_000, per_game_token_cap=1_000,
+        per_call_token_reserve=50, per_call_wall_reserve_milliseconds=1_000,
+        per_game_deadline_seconds=600, wall_seconds=10)
     assert instance._run_lock_fd is None
+    assert instance.workers == 2
     assert type(instance.runner) is collection.RPCGameAttemptRunner
     assert type(instance.ledger) is collection.ScientificBudgetLedger
     assert instance.runner.seed_secret == SECRET
     assert instance.runner.attempts_root == private_root / "attempts"
     assert instance.runner.per_call_timeout_seconds == 1
+    assert instance.runner.per_game_token_cap == 1_000
+    assert instance.runner.per_game_deadline_ns == 600 * 1_000_000_000
     assert instance.ledger.root == private_root / "ledger"
-    assert instance.runner.scientific_binding is not None
-    assert instance.runner.scientific_binding["freeze_sha256"] \
-        == freeze["freeze_sha256"]
-    assert instance.runner.scientific_binding["ledger_genesis_sha256"] \
-        == instance.ledger.payload()["genesis_sha256"]
+    assert instance.ledger.token_cap == 10_000
+    assert instance.ledger.wall_ns == 10 * 1_000_000_000
+    assert instance.ledger.reserve_tokens == 50
+    assert instance.ledger.runtime_sha256 == supervisor._sha(runtime)
+    assert instance.runner.scientific_dispatch_reserver \
+        == instance.ledger.reserve
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="internally"):
+        supervisor.PTLunaRPCSupervisor(
+            seed_secret=SECRET, private_root=private_root,
+            public_root=public_root, runtime=runtime, schedule=schedule,
+            codex_binary=Path("/usr/bin/true"), token_cap=10_000,
+            runner=instance.runner)
 
     def refuse_ledger(**_kwargs):
         raise collection.RPCCollectionError("injected constructor failure")
 
     monkeypatch.setattr(
         collection.ScientificBudgetLedger, "open_or_create", refuse_ledger)
-    monkeypatch.setattr(
-        supervisor.ScientificBudgetLedger, "open_or_create", refuse_ledger)
     with pytest.raises(collection.RPCCollectionError,
                        match="injected constructor failure"):
         supervisor.PTLunaRPCSupervisor(
             seed_secret=SECRET, private_root=private_root,
-            public_root=public_root, runtime=runtime,
-            admission=admission, capacity_receipt=capacity,
-            codex_binary=Path("/usr/bin/true"), launch_freeze=freeze,
-            schedule=schedule, expected_schedule=schedule,
-            root_census=census, require_full_population=True)
-    descriptor = supervisor._acquire_scientific_run_lock(private_root)
+            public_root=public_root, runtime=runtime, schedule=schedule,
+            codex_binary=Path("/usr/bin/true"), token_cap=10_000)
+    descriptor = supervisor._acquire_run_lock(private_root)
     supervisor.fcntl.flock(descriptor, supervisor.fcntl.LOCK_UN)
     supervisor.os.close(descriptor)
+
+
+def test_injected_ledger_must_live_under_the_private_root(tmp_path):
+    runner = FakeRunner(tmp_path / "private")
+    ledger = _ledger(tmp_path / "elsewhere")
+    with pytest.raises(supervisor.RPCSupervisorError, match="ledger binding"):
+        supervisor.PTLunaRPCSupervisor(
+            seed_secret=SECRET, private_root=tmp_path / "private",
+            public_root=tmp_path / "public", runtime=RUNTIME,
+            runner=runner, ledger=ledger, schedule=[(('2', 0, 0), 0)],
+            ledger_namespace="supervisor-test")
 
 
 def test_same_supervisor_refuses_concurrent_run(tmp_path, monkeypatch):
@@ -552,8 +226,7 @@ def test_same_supervisor_refuses_concurrent_run(tmp_path, monkeypatch):
     def blocked_run():
         entered.set()
         assert release.wait(timeout=2)
-        return supervisor.SupervisorResult(
-            supervisor.CASUAL_INCOMPLETE_ROUTE, {"sentinel": True})
+        return supervisor.SupervisorResult(INCOMPLETE, {"sentinel": True})
 
     monkeypatch.setattr(instance, "_run_locked", blocked_run)
     results = []
@@ -628,210 +301,31 @@ def test_terminal_death_after_link_restarts_without_second_runner_call(
 
     restarted, second_runner = _make(tmp_path)
     result = restarted.run()
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.route == INCOMPLETE
     assert second_runner.calls == 0
     assert not rpc_io.partial_path(terminal).exists()
     assert terminal.stat().st_nlink == 1
 
 
-@pytest.mark.parametrize(
-    ("capacity_route", "expected_games", "expected_clusters", "selected_wall"),
-    [
-        (supervisor.FULL_104_ELIGIBLE, 104, 52,
-         28_800_000_000_000),
-        (supervisor.PILOT_32_ELIGIBLE, 32, 16,
-         12_000_000_000_000),
-    ])
-def test_collection_cli_runs_route_bound_population_and_restart_through_public_entry(
-        tmp_path, monkeypatch, capsys, capacity_route, expected_games,
-        expected_clusters, selected_wall):
-    from scripts import privileged_teacher_luna_rpc_collection as cli
-
-    schedule = supervisor.schedule_for_capacity_route(SECRET, capacity_route)
-    census = (supervisor.selfplay.root_census(SECRET).serialized()
-              if capacity_route == supervisor.FULL_104_ELIGIBLE
-              else supervisor.build_root_census(SECRET, schedule))
-    private_root = (tmp_path / "private").resolve()
-    public_root = (tmp_path / "public").resolve()
-    runtime = {
-        "schema": "pt-luna-turn-rpc-runtime-v1",
-        "boot_identity_sha256": "b" * 64,
-        "source_set_sha256": "2" * 64,
-        "codex_tool_catalog": {
-            "schema": "pt-luna-codex-tool-catalog-v1"},
-    }
-    source_claim_body = {
-        "schema": supervisor.SOURCE_REVIEW_SCHEMA,
-        "execution_git": "1" * 40,
-        "source_set_sha256": runtime["source_set_sha256"],
-        "design_sha256s": {
-            "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md": "3" * 64,
-            "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md": "4" * 64,
-        },
-        "score_free_canary_authorized": True,
-        "score_free_capacity_authorized": True,
-        "scientific_execution_authorized": False,
-        "outcome_opening_authorized": False,
-        "merge_authorized": False,
-        "deployment_authorized": False,
-        "strength_claim_authorized": False,
-        "authority": dict(supervisor.selfplay.AUTHORITY),
-    }
-    source_claim_body["design_sha256"] = supervisor._sha(
-        source_claim_body["design_sha256s"])
-    source_claim = {**source_claim_body, "claim_sha256": hashlib.sha256(
-        canonical_json_bytes(source_claim_body)).hexdigest()}
-    source_auth = {
-        "review_commit": "4" * 40,
-        "review_marker_sha256": "5" * 64,
-        "review_claim": source_claim,
-    }
-    capacity = {
-        "route": capacity_route, "selected_workers": 1,
-        "selected_game_count": expected_games,
-        "selected_deal_cluster_count": expected_clusters,
-        "selected_population_wall_nanoseconds": selected_wall,
-        "runtime": runtime, "receipt_sha256": "7" * 64,
-        "source_review": source_auth,
-        "scientific_wall_nanoseconds": 10_000_000_000,
-        "scientific_token_budget": (
-            26_404_925
-            if capacity_route == supervisor.PILOT_32_ELIGIBLE else 10_000),
-        "arms": [{"workers": 1, "passed": True,
-                  "per_game_token_cap": 1_000,
-                  "per_call_token_reserve": 50,
-                  "per_call_wall_reserve_milliseconds": 1_000}],
-    }
-    freeze = _freeze_payload(
-        source_set_sha256=runtime["source_set_sha256"],
-        seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest(),
-        schedule_sha256=supervisor._schedule_sha(schedule),
-        census_sha256=census["census_sha256"],
-        capacity_receipt_sha256=capacity["receipt_sha256"],
-        runtime_sha256=supervisor._sha(runtime), selected_workers=1,
-        capacity_route=capacity_route,
-        selected_game_count=expected_games,
-        selected_deal_cluster_count=expected_clusters,
-        capacity_measurement_game_deadline_nanoseconds=(
-            1_200_000_000_000
-            if capacity_route == supervisor.PILOT_32_ELIGIBLE
-            else 600_000_000_000),
-        per_game_deadline_nanoseconds=(
-            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS
-            if capacity_route == supervisor.PILOT_32_ELIGIBLE
-            else 600_000_000_000),
-        pilot_attempt_lineage=(
-            supervisor._pilot_attempt_lineage()
-            if capacity_route == supervisor.PILOT_32_ELIGIBLE else None),
-        per_game_token_cap=1_000, per_call_token_reserve=50,
-        per_call_wall_reserve_milliseconds=1_000,
-        scientific_wall_nanoseconds=selected_wall,
-        scientific_token_budget=(
-            26_404_925
-            if capacity_route == supervisor.PILOT_32_ELIGIBLE else 10_000),
-        private_root=str(private_root), public_root=str(public_root),
-        namespace="formal-cli-test")
-    freeze_auth = {
-        "review_commit": "6" * 40,
-        "review_marker_sha256": "8" * 64,
-        "review_claim": supervisor.freeze_review_claim(freeze),
-    }
-    secret_path = tmp_path / "secret.bin"
-    secret_path.write_bytes(SECRET)
-    secret_path.chmod(0o600)
-    for path, value in ((tmp_path / "capacity.json", capacity),
-                        (tmp_path / "freeze.json", freeze),
-                        (tmp_path / "census.json", census)):
-        path.write_bytes(canonical_json_bytes(value))
-        path.chmod(0o400)
-
-    monkeypatch.setattr(cli, "validate_capacity_receipt", lambda _value: None)
-    monkeypatch.setattr(supervisor, "validate_capacity_receipt",
-                        lambda _value: None)
-    monkeypatch.setattr(cli, "source_identity",
-                        lambda _path: dict(runtime))
-    monkeypatch.setattr(collection, "source_identity",
-                        lambda _path: dict(runtime))
-    monkeypatch.setattr(cli, "source_review_claim",
-                        lambda _repo: source_claim)
-    monkeypatch.setattr(cli, "validate_launch_freeze",
-                        lambda *_args, **_kwargs: None)
-
-    def authenticate(*, prefix, **_kwargs):
-        return source_auth if prefix == supervisor.SOURCE_REVIEW_PREFIX \
-            else freeze_auth
-
-    monkeypatch.setattr(cli, "authenticate_review_claim", authenticate)
-    monkeypatch.setattr(supervisor, "authenticate_review_claim", authenticate)
-    calls = []
-
-    def complete_without_provider(self, coordinate, mirror):
-        calls.append((coordinate, mirror))
-        path = supervisor._attempt_path(self.attempts_root, coordinate, mirror)
-        path.mkdir(mode=0o700)
-        manifest = path / "manifest.json"
-        manifest.write_bytes(b"{}\n")
-        manifest.chmod(0o400)
-        return object()
-
-    monkeypatch.setattr(
-        collection.RPCGameAttemptRunner, "__call__", complete_without_provider)
-    monkeypatch.setattr(
-        supervisor, "reopen_attempt",
-        lambda path, **_kwargs: AttemptReopen(
-            "complete", hashlib.sha256(str(path).encode()).hexdigest(),
-            None, None, None, {"total_tokens": 0,
-                               "response_count": 0}))
-    monkeypatch.setattr(
-        collection.ScientificBudgetLedger, "reconcile_attempt_journals",
-        lambda self, paths: None)
-    args = [
-        "run", "--repo-root", str(tmp_path),
-        "--seed-secret-file", str(secret_path),
-        "--capacity-receipt", str(tmp_path / "capacity.json"),
-        "--codex-binary", "/usr/bin/true",
-        "--private-root", str(private_root),
-        "--public-root", str(public_root),
-        "--namespace", "formal-cli-test",
-        "--freeze", str(tmp_path / "freeze.json"),
-        "--census", str(tmp_path / "census.json"),
-        "--review-commit", freeze_auth["review_commit"],
-    ]
-    assert cli.main(args) == 0
-    first_output = json.loads(capsys.readouterr().out)
-    terminal = json.loads((public_root / "terminal.json").read_text())
-    assert first_output["route"] == supervisor.COMPLETE_STATE_SOURCE_ACQUISITION
-    assert terminal["completed_games"] == expected_games
-    assert terminal["completed_deal_clusters"] == expected_clusters
-    assert len(calls) == expected_games
-
-    assert cli.main(args) == 0
-    second_output = json.loads(capsys.readouterr().out)
-    assert second_output == first_output
-    assert len(calls) == expected_games
-
-
-def test_launch_receipts_precede_provider_and_public_progress_has_no_score(
+def test_launch_facts_precede_provider_and_public_progress_has_no_score(
         tmp_path):
     instance, runner = _make(tmp_path)
     first = instance.run()
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert first.route == INCOMPLETE
     assert runner.calls == 1
-    assert runner.saw_admission
-    admission = json.loads((tmp_path / "public" / "admission.json").read_text())
-    assert admission["authority"]["gameplay_authorized"] is False
+    assert runner.saw_launch
+    census = json.loads((tmp_path / "private" / "census.json").read_text())
+    assert census["census_sha256"] == instance.census_sha256
+    stamped = json.loads((tmp_path / "private" / "runtime.json").read_text())
+    assert stamped == RUNTIME
     progress = list((tmp_path / "public" / "progress").glob("*.json"))
     assert progress
     for path in progress:
         value = json.loads(path.read_text())
         assert not supervisor._forbidden(value)
-
-
-def test_explicit_full_population_rejects_small_injected_schedule(tmp_path):
-    with pytest.raises(supervisor.RPCSupervisorError,
-                       match="exact formal schedule"):
-        supervisor.validate_schedule(
-            [(("2", 0, 0), 0)], require_full_population=True)
+    terminal = json.loads((tmp_path / "public" / "terminal.json").read_text())
+    assert terminal["runtime_sha256"] == supervisor._sha(RUNTIME)
+    assert not supervisor._forbidden(terminal)
 
 
 def test_partial_attempt_without_manifest_is_resumed_then_terminal_is_final(
@@ -856,7 +350,7 @@ def test_partial_attempt_without_manifest_is_resumed_then_terminal_is_final(
             "complete", "a" * 64, None, None, None,
             {"total_tokens": 7, "response_count": 1}))
     first = instance.run()
-    assert first.route == supervisor.CASUAL_COMPLETE_ROUTE
+    assert first.route == COMPLETE
     assert runner.calls == 1
     second = instance.run()
     assert second.receipt == first.receipt
@@ -867,28 +361,53 @@ def test_self_sealed_complete_terminal_cannot_bypass_private_reconstruction(
         tmp_path):
     instance, runner = _make(tmp_path)
     body = {"schema": supervisor.TERMINAL_SCHEMA,
-            "route": supervisor.COMPLETE_STATE_SOURCE_ACQUISITION,
-            "schedule_sha256": "1" * 64,
-            "census_sha256": "2" * 64,
-            "admission_sha256": "3" * 64,
+            "route": COMPLETE,
+            "schedule_sha256": supervisor._schedule_sha(instance.schedule),
+            "census_sha256": instance.census_sha256,
+            "runtime_sha256": supervisor._sha(RUNTIME),
             "attempt_manifest": [{"index": 0, "coordinate": ["2", 0, 0],
                                   "mirror": 0, "status": "complete",
                                   "manifest_sha256": "4" * 64}],
             "completed_games": 1,
             "completed_deal_clusters": 1, "failed_games": 0,
             "pending_games": 0, "resource_totals": {},
-            "pilot_attempt_lineage": None,
-            "ledger_terminal_accept_sha256": None,
-            "authority": dict(supervisor.selfplay.AUTHORITY)}
+            "ledger_terminal_accept_sha256": None}
     terminal = {**body, "receipt_sha256": hashlib.sha256(
         canonical_json_bytes(body)).hexdigest()}
+    supervisor.validate_terminal_receipt(terminal)
     path = tmp_path / "public" / "terminal.json"
     path.write_bytes(canonical_json_bytes(terminal))
     path.chmod(0o400)
     with pytest.raises(supervisor.RPCSupervisorError,
-                       match="casual terminal"):
+                       match="reconstruction drift"):
         instance.run()
     assert runner.calls == 0
+
+
+def test_terminal_receipt_validation_refuses_forgery_and_leaks():
+    instance_rows = [{"index": 0, "coordinate": ["2", 0, 0], "mirror": 0,
+                      "status": None, "manifest_sha256": None}]
+    body = {"schema": supervisor.TERMINAL_SCHEMA, "route": INCOMPLETE,
+            "schedule_sha256": "1" * 64, "census_sha256": "2" * 64,
+            "runtime_sha256": "3" * 64, "attempt_manifest": instance_rows,
+            "completed_games": 0, "completed_deal_clusters": 0,
+            "failed_games": 0, "pending_games": 1, "resource_totals": {},
+            "ledger_terminal_accept_sha256": None}
+    receipt = {**body, "receipt_sha256": supervisor._sha(body)}
+    supervisor.validate_terminal_receipt(receipt)
+    forged = {**receipt, "completed_games": 1}
+    with pytest.raises(supervisor.RPCSupervisorError, match="schema drift"):
+        supervisor.validate_terminal_receipt(forged)
+    rehashed_body = {**body, "route": COMPLETE}
+    with pytest.raises(supervisor.RPCSupervisorError, match="count"):
+        supervisor.validate_terminal_receipt(
+            {**rehashed_body,
+             "receipt_sha256": supervisor._sha(rehashed_body)})
+    leaking_body = {**body, "resource_totals": {"attacker_points": 80}}
+    with pytest.raises(supervisor.RPCSupervisorError, match="schema drift"):
+        supervisor.validate_terminal_receipt(
+            {**leaking_body,
+             "receipt_sha256": supervisor._sha(leaking_body)})
 
 
 def test_unsealed_controller_death_is_restart_stable_incomplete(
@@ -899,7 +418,7 @@ def test_unsealed_controller_death_is_restart_stable_incomplete(
         raise KeyboardInterrupt("synthetic controller death")
     monkeypatch.setattr(FakeRunner, "__call__", die)
     first = instance.run()
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert first.route == INCOMPLETE
     assert first.receipt["failed_games"] == 0
     assert first.receipt["pending_games"] == 1
     assert runner.calls == 1
@@ -910,7 +429,6 @@ def test_main_thread_interrupt_stops_and_cancels_pending_games(
     schedule = [(('2', 0, 0), mirror) for mirror in (0, 1)] \
         + [(('3', 0, 0), 0)]
     instance, runner = _make(tmp_path, schedule=schedule)
-    instance.workers = 1
     started = threading.Event()
     def wait_for_stop(self, _coordinate, _mirror):
         self.calls += 1
@@ -924,7 +442,7 @@ def test_main_thread_interrupt_stops_and_cancels_pending_games(
         raise KeyboardInterrupt("controller interrupt")
     monkeypatch.setattr(supervisor, "as_completed", interrupt)
     first = instance.run()
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert first.route == INCOMPLETE
     assert runner.calls == 1
 
 
@@ -987,10 +505,7 @@ def test_one_game_deadline_keeps_collecting_predeclared_independent_games(
     instance = supervisor.PTLunaRPCSupervisor(
         seed_secret=SECRET, private_root=private_root,
         public_root=tmp_path / "public", runtime=RUNTIME,
-        admission={"freeze": "freeze", "admission": "admission"},
-        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
-                          "selected_workers": 4},
-        runner=runner, schedule=schedule, require_full_population=False)
+        runner=runner, schedule=schedule, workers=4)
     real_reopen = supervisor.reopen_attempt
 
     def reopen(path, **_kwargs):
@@ -1006,7 +521,7 @@ def test_one_game_deadline_keeps_collecting_predeclared_independent_games(
 
     result = instance.run()
 
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.route == supervisor.REFUSE_RESOURCE_OR_PROVIDER
     assert result.receipt["completed_games"] == 4
     assert result.receipt["failed_games"] == 1
     assert result.receipt["pending_games"] == 0
@@ -1033,16 +548,8 @@ def test_local_ledger_refusal_does_not_kill_peers_or_erase_queue(
     private_root = tmp_path / "private"
     private_root.mkdir(mode=0o700)
     private_root.chmod(0o700)
-    ledger = collection.ScientificBudgetLedger(
-        root=private_root / "ledger",
-        started_monotonic_nanoseconds=time.monotonic_ns(),
-        wall_nanoseconds=1_000_000_000_000, token_cap=10_000,
-        per_call_token_reserve=100,
-        per_call_wall_reserve_milliseconds=1_000,
-        boot_identity_sha256="b" * 64,
-        runtime_sha256="c" * 64,
-        capacity_receipt_sha256="d" * 64,
-        namespace="local-refusal-supervisor-test")
+    ledger = _ledger(private_root / "ledger",
+                     namespace="local-refusal-supervisor-test")
 
     class LocalFailureRunner(FakeRunner):
         def __call__(self, coordinate, mirror):
@@ -1076,11 +583,7 @@ def test_local_ledger_refusal_does_not_kill_peers_or_erase_queue(
     instance = supervisor.PTLunaRPCSupervisor(
         seed_secret=SECRET, private_root=private_root,
         public_root=tmp_path / "public", runtime=RUNTIME,
-        admission={"freeze": "freeze", "admission": "admission"},
-        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
-                          "selected_workers": 4},
-        runner=runner, schedule=schedule, require_full_population=False)
-    instance.workers = 4
+        runner=runner, schedule=schedule, workers=4)
     instance.ledger = ledger
 
     def reopen(path, **_kwargs):
@@ -1096,10 +599,15 @@ def test_local_ledger_refusal_does_not_kill_peers_or_erase_queue(
              "response_count": 1 if status == "incomplete" else 0})
 
     monkeypatch.setattr(supervisor, "reopen_attempt", reopen)
+    # The fake runner seals no journals; the ledger/journal reconciliation
+    # is witnessed by the collection tests.
+    monkeypatch.setattr(
+        collection.ScientificBudgetLedger, "reconcile_attempt_journals",
+        lambda self, paths: None)
 
     result = instance.run()
 
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.route == supervisor.REFUSE_RESOURCE_OR_PROVIDER
     assert result.receipt["completed_games"] == 4
     assert result.receipt["failed_games"] == 1
     assert result.receipt["pending_games"] == 0
@@ -1114,8 +622,7 @@ def test_global_budget_boundary_stops_inflight_and_queued_population(
         tmp_path, monkeypatch):
     schedule = [
         ((rank, 0, 0), 0) for rank in ("2", "3", "4")]
-    instance, runner = _make(tmp_path, schedule=schedule)
-    instance.workers = 2
+    instance, runner = _make(tmp_path, schedule=schedule, workers=2)
     manager = rpc_transport.ActiveCallManager()
     provider_pid_path = tmp_path / "global-budget-provider.pid"
     calls = []
@@ -1138,6 +645,9 @@ def test_global_budget_boundary_stops_inflight_and_queued_population(
                     0 if self.crossed else 1_000),
                 "remaining_scientific_wall_ms": 2_000,
             }
+
+        def reconcile_attempt_journals(self, _paths):
+            return None
 
     budget = Budget()
     instance.ledger = budget
@@ -1183,7 +693,7 @@ def test_global_budget_boundary_stops_inflight_and_queued_population(
     result = instance.run()
 
     assert time.monotonic() - started < 5
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.route == supervisor.REFUSE_RESOURCE_OR_PROVIDER
     assert result.receipt["completed_games"] == 0
     assert result.receipt["failed_games"] == 2
     assert result.receipt["pending_games"] == 1
@@ -1223,7 +733,7 @@ def test_main_interrupt_kills_a_real_active_provider_group(
     started = time.monotonic()
     first = instance.run()
     assert time.monotonic() - started < 5
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert first.route == INCOMPLETE
     assert runner.calls == 1
     provider_pid = int(pid_path.read_text())
     with pytest.raises(ProcessLookupError):
@@ -1249,8 +759,7 @@ def test_existing_incomplete_attempt_routes_without_provider_retry(
             "incomplete", "b" * 64, None, "SyntheticFailure",
             failure_class, {"total_tokens": 9, "response_count": 1}))
     result = instance.run()
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert instance._derive_route() == route
+    assert result.route == route
     assert runner.calls == 0
 
 
@@ -1261,15 +770,11 @@ def test_corrupt_sealed_manifest_routes_mechanics_stably_without_retry(
     attempt.mkdir(mode=0o700)
     (attempt / "manifest.json").write_text("{}")
     first = instance.run()
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
+    assert first.route == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert runner.calls == 0
 
     second = instance.run()
     assert second.receipt == first.receipt
-    assert instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert runner.calls == 0
 
 
@@ -1283,9 +788,7 @@ def test_corrupt_first_manifest_prevents_all_other_provider_dispatches(
 
     result = instance.run()
 
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
+    assert result.route == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert runner.calls == 0
 
 
@@ -1310,12 +813,7 @@ def test_corrupt_partial_attempt_is_durable_mechanics_without_provider_call(
             transport_factory=factory)
         return supervisor.PTLunaRPCSupervisor(
             seed_secret=SECRET, private_root=private, public_root=public,
-            runtime=RUNTIME,
-            admission={"freeze": "freeze", "admission": "admission"},
-            capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
-                              "selected_workers": 1},
-            runner=runner, schedule=schedule,
-            require_full_population=False)
+            runtime=RUNTIME, runner=runner, schedule=schedule, workers=1)
 
     first_instance = make_instance()
     attempt = private / "attempts" / "2-0-0-mirror-0"
@@ -1325,9 +823,7 @@ def test_corrupt_partial_attempt_is_durable_mechanics_without_provider_call(
 
     first = first_instance.run()
 
-    assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert first_instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
+    assert first.route == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert factory.calls == 0
     refusal = attempt / "controller-refusal.json"
     assert refusal.is_file()
@@ -1337,8 +833,6 @@ def test_corrupt_partial_attempt_is_durable_mechanics_without_provider_call(
     second_instance = make_instance()
     second = second_instance.run()
     assert second.receipt == first.receipt
-    assert second_instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert factory.calls == 0
 
 
@@ -1348,23 +842,5 @@ def test_broken_manifest_symlink_is_occupied_and_never_retried(tmp_path):
     attempt.mkdir(mode=0o700)
     (attempt / "manifest.json").symlink_to(attempt / "missing-target")
     result = instance.run()
-    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert instance._derive_route() \
-        == supervisor.REFUSE_MECHANICS_OR_PRIVACY
+    assert result.route == supervisor.REFUSE_MECHANICS_OR_PRIVACY
     assert runner.calls == 0
-
-
-def test_bound_source_and_design_paths_exist_in_repository():
-    """Every path the runtime attestation hashes must exist at this head.
-
-    Pruning a bound file makes ``source_identity`` / ``source_review_claim``
-    refuse at launch; fail here instead, before a run root is ever created.
-    """
-    from pathlib import Path
-    from shengji.rl import privileged_teacher_luna_rpc_capacity as capacity
-    from shengji.rl import privileged_teacher_luna_rpc_supervisor as supervisor
-    server = Path(__file__).resolve().parents[1]
-    repo = server.parent
-    missing = [p for p in capacity.SOURCE_PATHS if not (server / p).is_file()]
-    missing += [p for p in supervisor.DESIGN_PATHS if not (repo / p).is_file()]
-    assert missing == [], missing

@@ -32,7 +32,6 @@ RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v1", "test": True,
 LEDGER_BINDING = {
     "boot_identity_sha256": "b" * 64,
     "runtime_sha256": "c" * 64,
-    "capacity_receipt_sha256": "d" * 64,
     "namespace": "pt-luna-test-namespace",
 }
 

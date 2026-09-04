@@ -170,7 +170,6 @@ class ScientificBudgetLedger:
                  per_call_token_reserve: int,
                  boot_identity_sha256: str,
                  runtime_sha256: str,
-                 capacity_receipt_sha256: str,
                  namespace: str,
                  per_call_wall_reserve_milliseconds: int = 91_000):
         values = (started_monotonic_nanoseconds, wall_nanoseconds, token_cap,
@@ -184,8 +183,7 @@ class ScientificBudgetLedger:
             raise RPCCollectionError("scientific budget ledger drift")
         for value, label in (
                 (boot_identity_sha256, "budget boot identity"),
-                (runtime_sha256, "budget runtime"),
-                (capacity_receipt_sha256, "budget capacity receipt")):
+                (runtime_sha256, "budget runtime")):
             _strict_sha(value, label)
         if type(namespace) is not str or not namespace \
                 or len(namespace) > 256:
@@ -197,7 +195,6 @@ class ScientificBudgetLedger:
         self.reserve_wall_ms = per_call_wall_reserve_milliseconds
         self.boot_identity_sha256 = boot_identity_sha256
         self.runtime_sha256 = runtime_sha256
-        self.capacity_receipt_sha256 = capacity_receipt_sha256
         self.namespace = namespace
         self._lock = threading.Lock()
         self._reservations: set[str] = set()
@@ -222,7 +219,7 @@ class ScientificBudgetLedger:
     def open_or_create(cls, *, root: Path, wall_nanoseconds: int,
                        token_cap: int, per_call_token_reserve: int,
                        boot_identity_sha256: str, runtime_sha256: str,
-                       capacity_receipt_sha256: str, namespace: str,
+                       namespace: str,
                        per_call_wall_reserve_milliseconds: int) \
             -> "ScientificBudgetLedger":
         genesis_path = Path(root) / "genesis.json"
@@ -246,12 +243,11 @@ class ScientificBudgetLedger:
                 per_call_wall_reserve_milliseconds,
             boot_identity_sha256=boot_identity_sha256,
             runtime_sha256=runtime_sha256,
-            capacity_receipt_sha256=capacity_receipt_sha256,
             namespace=namespace)
 
     def _genesis_body(self) -> dict[str, object]:
         return {
-            "schema": "pt-luna-budget-genesis-v3",
+            "schema": "pt-luna-budget-genesis-v4",
             "started_monotonic_nanoseconds": self.started_ns,
             "wall_nanoseconds": self.wall_ns,
             "token_cap": self.token_cap,
@@ -259,7 +255,6 @@ class ScientificBudgetLedger:
             "per_call_wall_reserve_milliseconds": self.reserve_wall_ms,
             "boot_identity_sha256": self.boot_identity_sha256,
             "runtime_sha256": self.runtime_sha256,
-            "capacity_receipt_sha256": self.capacity_receipt_sha256,
             "namespace": self.namespace,
         }
 

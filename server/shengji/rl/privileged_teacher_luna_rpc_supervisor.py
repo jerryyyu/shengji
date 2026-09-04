@@ -23,8 +23,10 @@ from typing import Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
 from .privileged_teacher_luna_rpc_collection import (
-    AttemptReopen, ResourceBoundaryError, RPCCollectionError,
-    RPCGameAttemptRunner, ScientificBudgetLedger, reopen_attempt,
+    AttemptReopen, RPCGameAttemptRunner, reopen_attempt,
+)
+from .privileged_teacher_luna_rpc_ledger import (
+    ResourceBoundaryError, RPCCollectionError, ScientificBudgetLedger,
 )
 from .privileged_teacher_luna_rpc_io import (
     AtomicPublishError, publish_exclusive_bytes, recover_linked_partial,

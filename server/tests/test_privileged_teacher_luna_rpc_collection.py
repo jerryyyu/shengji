@@ -660,11 +660,10 @@ def test_complete_game_reopens_without_another_provider_call(tmp_path):
     assert attempt.status == "complete"
     assert attempt.usage["response_count"] == provider_calls
     with pytest.raises(collection.RPCCollectionError,
-                       match="scientific binding"):
+                       match="runtime binding"):
         collection.reopen_attempt(
             tmp_path / "attempts" / "2-0-0-mirror-0",
-            seed_secret=SECRET,
-            expected_scientific_binding_sha256="e" * 64)
+            seed_secret=SECRET, expected_runtime_sha256="e" * 64)
 
 
 def test_attempt_runner_refuses_peer_memory_before_provider_dispatch(

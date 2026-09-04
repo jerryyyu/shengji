@@ -73,7 +73,9 @@ def _wire_fakes(monkeypatch: pytest.MonkeyPatch, root: Path):
     def population(*args, **kwargs):
         calls.append("population")
         receipt = {"population_sha256": "a" * 64}
-        runner._publish(root / "private" / "d256-population-receipt.json", receipt)
+        runner._publish_or_verify(
+            root / "private" / "d256-population-receipt.json", receipt,
+            "D256 receipt")
         kwargs["progress"]({"stage": "d256-population", "completed": 256,
                              "total": 256, "percent": 100,
                              "active_workers": 8, "elapsed_nanoseconds": 1,
@@ -135,19 +137,25 @@ def test_runner_wires_order_and_defers_audit_until_calibration(tmp_path: Path,
                                                                 monkeypatch: pytest.MonkeyPatch):
     calls = _wire_fakes(monkeypatch, tmp_path)
     original_labels = runner._label_stage
+    original_manifest = runner.prediction_population_manifest_v2
     # The seam records fit-select and audit labels while evaluation is observed
     # by replacing the already patched evaluator for this ordering assertion.
     events: list[str] = []
     def labels(*args, **kwargs):
         events.append(args[1])
         return original_labels(*args, **kwargs)
+    def manifest(*args, **kwargs):
+        events.append(f"prediction-{kwargs['split']}")
+        return original_manifest(*args, **kwargs)
     monkeypatch.setattr(runner, "_label_stage", labels)
+    monkeypatch.setattr(runner, "prediction_population_manifest_v2", manifest)
     monkeypatch.setattr(runner, "evaluate_v2", lambda *args, **kwargs:
                         (events.append("evaluation") or SimpleNamespace(
                             payload=lambda: {"metric": "sealed"})))
     runner.run_value_v2_dev_d64(tmp_path, repo=tmp_path, run_id="wire")
-    assert events == ["fit-epoch", "precision-select", "evaluation",
-                      "audit", "evaluation"]
+    assert events == ["fit-epoch", "prediction-select", "precision-select",
+                      "evaluation", "audit", "prediction-audit",
+                      "evaluation"]
     assert calls[:4] == ["population", "subset", "fit-epoch", "training"]
 
 
@@ -174,3 +182,25 @@ def test_runner_reopen_refuses_bound_checkpoint_drop(tmp_path: Path,
     (tmp_path / "private" / "training" / "checkpoint-0.bin").unlink()
     with pytest.raises(WorldAfterstateV2DevRunnerError, match="bound checkpoint"):
         reopen_value_v2_dev_d64(tmp_path, expected_run_id="bound")
+
+
+def test_runner_resume_refuses_tampered_d64_subset_receipt(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _wire_fakes(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        runner, "_label_stage",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            WorldAfterstateV2DevRunnerError("stop after subset")))
+    with pytest.raises(WorldAfterstateV2DevRunnerError,
+                       match="stop after subset"):
+        runner.run_value_v2_dev_d64(
+            tmp_path, repo=tmp_path, run_id="subset-resume")
+
+    subset_path = tmp_path / "private" / "d64-subset.json"
+    subset_path.chmod(0o600)
+    subset_path.write_bytes(canonical_json_bytes({"schema": "forged"}))
+    subset_path.chmod(0o400)
+    with pytest.raises(WorldAfterstateV2DevRunnerError,
+                       match="D64 subset receipt drift"):
+        runner.run_value_v2_dev_d64(
+            tmp_path, repo=tmp_path, run_id="subset-resume")

@@ -562,6 +562,9 @@ VLEAF_LEAF_TRICKS = (0, 1, 2, 4)
 #: complete-world value net's auxiliary points head on the determinized
 #: clone itself (#229's afterstate tensors: the sampled world IS the input).
 VLEAF_LEAF_MODELS = ("public", "cwv")
+#: where the leaf is consulted: ``all`` (every rollout) or ``report`` (only
+#: the report fold's paired worlds; selection rollouts are production's).
+VLEAF_LEAF_STAGES = ("all", "report")
 VLEAF_CHECKPOINT_ENV = "SHENGJI_VLEAF_CKPT"
 VLEAF_PRIOR_ENV = "SHENGJI_VLEAF_PRIOR"
 VLEAF_ALLOW_LEGACY_ENV = "SHENGJI_VLEAF_ALLOW_LEGACY"
@@ -579,37 +582,50 @@ def vleaf_checkpoint_sha256(path: str | os.PathLike) -> str:
     return h.hexdigest()
 
 
+def vleaf_policy_suffix(*, leaf_stage: str = "all") -> str:
+    """The variant flag in the policy name: ``""`` for the default (every
+    rollout), ``-report`` for the report-fold-only leaf."""
+    if leaf_stage not in VLEAF_LEAF_STAGES:
+        raise ValueError(f"leaf_stage must be one of {VLEAF_LEAF_STAGES}")
+    return "-report" if leaf_stage == "report" else ""
+
+
 def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None,
-                      leaf_model: str = "public") -> str:
+                      leaf_model: str = "public", leaf_stage: str = "all") -> str:
     """`mc-vleaf-<ckpt8>-t<T>` (public points head), `mc-vleaf-cwv-<ckpt8>-t<T>`
-    (complete-world points head) or `mc-vleaf-prior-t<T>` (control)."""
+    (complete-world points head) or `mc-vleaf-prior-t<T>` (control), plus
+    :func:`vleaf_policy_suffix` (``-report``)."""
     if type(leaf_tricks) is not int or leaf_tricks not in VLEAF_LEAF_TRICKS:
         raise ValueError(f"leaf_tricks must be one of {VLEAF_LEAF_TRICKS}")
     if leaf_model not in VLEAF_LEAF_MODELS:
         raise ValueError(f"leaf_model must be one of {VLEAF_LEAF_MODELS}")
+    suffix = vleaf_policy_suffix(leaf_stage=leaf_stage)
     if checkpoint_id is None:
-        return f"mc-vleaf-prior-t{leaf_tricks}"
+        return f"mc-vleaf-prior-t{leaf_tricks}{suffix}"
     if leaf_model == "cwv":
-        return f"mc-vleaf-cwv-{checkpoint_id}-t{leaf_tricks}"
-    return f"mc-vleaf-{checkpoint_id}-t{leaf_tricks}"
+        return f"mc-vleaf-cwv-{checkpoint_id}-t{leaf_tricks}{suffix}"
+    return f"mc-vleaf-{checkpoint_id}-t{leaf_tricks}{suffix}"
 
 
 def _make_vleaf_learned(checkpoint: str, sha256: str, leaf_tricks: int,
-                        allow_legacy: bool, leaf_model: str = "public"):
+                        allow_legacy: bool, leaf_model: str = "public",
+                        leaf_stage: str = "all"):
     def make(**kw):
         from ..train.leaf_policy import make_vleaf_bot
         return make_vleaf_bot(checkpoint=checkpoint, leaf_tricks=leaf_tricks,
                               seed=kw.get("seed"), allow_legacy=allow_legacy,
-                              expected_sha256=sha256, leaf_model=leaf_model)
+                              expected_sha256=sha256, leaf_model=leaf_model,
+                              leaf_stage=leaf_stage)
     make.vleaf_artifact = (checkpoint, sha256)
     return make
 
 
-def _make_vleaf_prior(prior: str, sha256: str, leaf_tricks: int):
+def _make_vleaf_prior(prior: str, sha256: str, leaf_tricks: int, leaf_stage: str = "all"):
     def make(**kw):
         from ..train.leaf_policy import make_vleaf_prior_bot
         return make_vleaf_prior_bot(prior=prior, leaf_tricks=leaf_tricks,
-                                    seed=kw.get("seed"), expected_sha256=sha256)
+                                    seed=kw.get("seed"), expected_sha256=sha256,
+                                    leaf_stage=leaf_stage)
     make.vleaf_artifact = (prior, sha256)
     return make
 
@@ -618,7 +634,7 @@ def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
                         prior: str | os.PathLike | None = None,
                         leaf_tricks=VLEAF_LEAF_TRICKS, allow_legacy: bool = False,
                         registry: dict | None = None,
-                        leaf_model: str = "public") -> dict[str, str]:
+                        leaf_model: str = "public", leaf_stage: str = "all") -> dict[str, str]:
     """Register the screen arms by name; returns ``{name: kind}`` (``learned``
     for the public head, ``cwv`` for the complete-world head, ``prior``).
 
@@ -630,6 +646,8 @@ def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
     registry = REGISTRY if registry is None else registry
     if leaf_model not in VLEAF_LEAF_MODELS:
         raise ValueError(f"leaf_model must be one of {VLEAF_LEAF_MODELS}")
+    variant = {"leaf_stage": leaf_stage}
+    vleaf_policy_suffix(**variant)     # refuses an unknown stage
     names: dict[str, str] = {}
     artifacts = []
     if checkpoint is not None:
@@ -643,11 +661,12 @@ def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
         for kind, path, sha in artifacts:
             if kind != "prior":
                 name = vleaf_policy_name(leaf_tricks=t, checkpoint_id=sha[:8],
-                                         leaf_model=leaf_model)
-                factory = _make_vleaf_learned(path, sha, t, bool(allow_legacy), leaf_model)
+                                         leaf_model=leaf_model, **variant)
+                factory = _make_vleaf_learned(path, sha, t, bool(allow_legacy), leaf_model,
+                                              **variant)
             else:
-                name = vleaf_policy_name(leaf_tricks=t)
-                factory = _make_vleaf_prior(path, sha, t)
+                name = vleaf_policy_name(leaf_tricks=t, **variant)
+                factory = _make_vleaf_prior(path, sha, t, **variant)
             existing = registry.get(name)
             bound = getattr(existing, "vleaf_artifact", None)
             if existing is not None and bound is None:

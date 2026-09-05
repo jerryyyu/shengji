@@ -26,6 +26,13 @@ CPU parity, run the paired mirrored screen.  See shengji/train/leaf_screen.py.
         --leaf-model cwv --checkpoint /path/to/cwv/runAB-mlp-points/best.pt --leaf-tricks 1 \
         --trump-ranks 2 --clusters 4 --workers 2 --out /path/to/calib-cwv
 
+    # variant (binds into the calibration and the names): the leaf in the
+    # report fold only (`--leaf-stage report`, mc-vleaf-cwv-<ckpt8>-t<T>-report;
+    # selection rollouts are production's, so parity N sits near production's 30)
+    SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/vleaf_screen.py calibrate \
+        --leaf-model cwv --leaf-stage report --checkpoint /path/to/cwv/best.pt --leaf-tricks 1 \
+        --trump-ranks 2 --grid 15,20,25,30 --clusters 4 --workers 2 --out /path/to/calib-report
+
 Every complete mirrored pair publishes atomically; rerun the identical
 command to finish only missing pairs.  Nothing here registers a production
 default or makes a strength claim.
@@ -89,6 +96,11 @@ def parser() -> argparse.ArgumentParser:
                             "aux points head on the determinized clone itself "
                             "(mc-vleaf-cwv-<ckpt8>-t<T>; needs a train_cwv.py --arch mlp "
                             "--aux-points checkpoint)")
+        p.add_argument("--leaf-stage", choices=S.LEAF_STAGES, default=S.DEFAULT_LEAF_STAGE,
+                       help="where the leaf is consulted: 'all' = every rollout (current "
+                            "behaviour); 'report' = only inside the report fold (the top two "
+                            "candidates on the R paired worlds), selection rollouts run to "
+                            "round end exactly as production's (name suffix -report)")
         p.add_argument("--clusters", type=int, default=4)
         p.add_argument("--seed0", type=int, default=seed0)
         p.add_argument("--workers", type=int, default=2)
@@ -175,11 +187,12 @@ def _calibrate(args) -> int:
                             checkpoint=args.checkpoint, allow_legacy=args.allow_legacy,
                             baseline_select_worlds=args.baseline_select_worlds,
                             report_worlds=args.report_worlds, trump_ranks=args.trump_ranks,
-                            leaf_model=args.leaf_model)
+                            leaf_model=args.leaf_model, leaf_stage=args.leaf_stage)
     calibration = S.calibrate(config, output=args.out, workers=args.workers, grid=args.grid)
     print(json.dumps({
         "chosen_arm_select_worlds": calibration["chosen_arm_select_worlds"],
         "arm_policy": calibration["arm_policy"], "leaf_model": calibration["leaf_model"],
+        "leaf_stage": calibration["leaf_stage"],
         "trump_ranks": calibration["trump_ranks"],
         "predicted_decision_cpu_ratio": calibration["predicted_decision_cpu_ratio"],
         "within_band": calibration["within_band"], "within_grid": calibration["within_grid"],
@@ -187,7 +200,8 @@ def _calibrate(args) -> int:
                   "per_decision_cpu_ratio": row["per_decision_cpu_ratio"],
                   "arm_cpu_s": row["decision_cpu_seconds"]["arm"],
                   "baseline_cpu_s": row["decision_cpu_seconds"]["baseline"],
-                  "per_leaf_usecs": row["per_leaf_usecs"]["arm"]}
+                  "per_leaf_usecs": row["per_leaf_usecs"]["arm"],
+                  "net_calls_by_stage": row["net_calls_by_stage"]["arm"]}
                  for row in calibration["grid"]],
         "fit": calibration["choice"].get("fit"),
         "outcomes_read": calibration["outcomes_read"],
@@ -231,7 +245,8 @@ def _run(args) -> int:
                                 prior=args.prior, baseline_select_worlds=args.baseline_select_worlds,
                                 report_worlds=args.report_worlds, calibration=calibration,
                                 bootstrap_replicates=args.bootstrap_replicates,
-                                trump_ranks=args.trump_ranks, leaf_model=args.leaf_model)
+                                trump_ranks=args.trump_ranks, leaf_model=args.leaf_model,
+                                leaf_stage=args.leaf_stage)
         summaries[arm] = S.run_arm(config, output=out / arm, workers=args.workers)
     combined = S.combined_summary(summaries, seed0=args.seed0,
                                   replicates=args.bootstrap_replicates)

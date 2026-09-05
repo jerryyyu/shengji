@@ -286,3 +286,70 @@ diagnostic; rerun the same command to finish only missing pairs. Changed
 policy/model inputs cannot silently mix into the existing output directory.
 The first summary is the result; there is no duplicate multi-hour integrity
 pass. No long-running cloud data or GPU training job is stopped for this run.
+
+## Many-world value shortlist + full MC report (DEV)
+
+`world_shortlist.py` is a complementary experiment to the value-at-leaf arm,
+not a replacement for it. It leaves the production ballot, tractor lock,
+Memory-constrained sampler and full-rollout report-LCB intact:
+
+```text
+Every production candidate × many shared sampled worlds
+    → heuristic prefix of 0, 1 or 3 tricks
+    → batched value estimates across candidates AND worlds
+    → incumbent + strongest few alternatives
+    → full heuristic rollouts on fresh shared refinement worlds
+    → one challenger vs incumbent on fresh full-rollout report worlds
+```
+
+The incumbent always survives. Model estimates only choose the shortlist;
+they never enter the refinement means or final LCB. Refinement and reporting
+use separately derived RNG streams. A short sampler dose returns the existing
+underfilled-search fallback, not a fabricated completed comparison.
+
+The original A-only/sweep checkpoints work with `--value-kind levels`:
+signed-level predictions are converted from the leaf actor's team to the
+root team and used only for ranking. `--value-kind points` instead requires
+the auxiliary final-attacker-points head. Actual terminal leaves use exact
+engine outcomes in the corresponding units and never call the model.
+Training on natural trajectories does not certify either head on these
+counterfactual leaves; this experiment measures that transfer. No true hidden
+cards are supplied to the model: hidden components are replaced by the
+sampled world before the continuation and actor-observation encoding.
+Older v2 checkpoint containers additionally require `--allow-legacy`; this
+does not manufacture the population provenance missing from that format.
+
+From `server/`, a small paired screen is:
+
+```sh
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 OMP_NUM_THREADS=1 \
+  OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 \
+  python scripts/world_shortlist_screen.py \
+  --checkpoint /path/to/sweep-model/best.pt --allow-legacy --value-kind levels \
+  --cheap-worlds 64 --refine-worlds 16 --shortlist-size 3 \
+  --leaf-tricks 1 --batch-size 128 --report-worlds 300 \
+  --trump-ranks 2 --clusters 4 --workers 4 \
+  --seed0 70360904 --out /path/to/new-dev-output
+```
+
+`--arm none` is production against itself; `--arm work --control-worlds N`
+gives ordinary MC a larger selection budget without a neural head. Both
+controls leave the baseline side unchanged. Model/checkpoint/recipe identity
+and completed mirrored pairs use the existing resumable runner. Stop/restart
+with the same command to retain complete pairs; do not reuse a directory for
+a changed model or recipe. Rank 2 is the default because current checkpoints
+were trained on that rank, not because other ranks are unimportant.
+
+Before a larger screen, `scripts/world_shortlist_benchmark.py` compares
+production and hybrid doses on identical early/middle states with bounded
+CPU workers. It records actual decision CPU, wall, sampled worlds and stage
+counts, never round outcomes. Example options: `--checkpoint PATH --deals 4
+--workers 4 --cheap-grid 32,64,128 --seed0 70460904 --out cost.json` with the
+same environment as above. Keep benchmark states separate from the gameplay
+comparison. Neither the budget settings nor batching establishes a speedup:
+encoding, sampling, shortlist refinement and the unchanged report all cost
+time. Compare measured CPU/wall before claiming equal-work strength; the
+screen always labels `equal_work_strength_claim: false`.
+
+Initial matched-state measurements and validation are recorded in
+[`world_shortlist_dev_20260905.md`](../../runs/world_shortlist_dev_20260905.md).

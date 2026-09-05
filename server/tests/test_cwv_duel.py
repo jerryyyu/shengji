@@ -306,6 +306,26 @@ def test_repair_of_a_torn_shard_never_touches_the_published_prefix(
     assert [duel.pair_key(r) for r in duel.read_shard(shard)] == [
         ("arm", 700, 0), ("arm", 700, 1), ("arm", 701, 0)]
 
+    # reader and sink share ONE boundary: a complete JSON line without its
+    # trailing newline is not a record for either, so the pair is replayed
+    # rather than read back by one and cut by the other.
+    with open(shard, "a") as fh:
+        fh.write(json.dumps({"run": "run-y", "label": "arm", "seed": 701, "flip": 1}))
+    assert [duel.pair_key(r) for r in duel.read_shard(shard)][-1] == ("arm", 701, 0)
+    after_lf = duel.valid_prefix_length(shard)
+    duel.ShardSink(shard)
+    assert os.path.getsize(shard) == after_lf
+    assert [duel.pair_key(r) for r in duel.read_shard(shard)][-1] == ("arm", 701, 0)
+    monkeypatch.setattr(duel, "register_cwv_policies", lambda *a, **k: [])
+    replayed = []
+    monkeypatch.setattr(duel, "play_shard",
+                        lambda *a, done=frozenset(), **k: replayed.append(done) or [])
+    duel._worker({"checkpoint": None, "worlds": [], "finish_trick": True, "lcb": 0.0,
+                  "run_id": "run-y", "plan": [("arm", "smart")], "clusters": [0, 1],
+                  "seed0": 700, "rank_spec": None, "opponent": "heuristic",
+                  "out": str(tmp_path), "shard": 0})
+    assert ("arm", 701, 1) not in replayed[0] and ("arm", 701, 0) in replayed[0]
+
     # RED under the old open-with-"w" repair: a failure at the first
     # json.dumps leaves zero records
     def failing_dumps(record):

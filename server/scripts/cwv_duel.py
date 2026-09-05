@@ -632,6 +632,8 @@ def read_shard(path: str) -> list[dict]:
         return records
     with open(path) as fh:
         for line in fh:
+            if not line.endswith("\n"):
+                break                      # unterminated tail: not a record
             line = line.strip()
             if not line:
                 continue

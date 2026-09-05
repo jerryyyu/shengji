@@ -753,3 +753,20 @@ def _register_cwv_from_env() -> None:
 
 
 _register_cwv_from_env()
+
+
+def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[str]:
+    """PUCT-over-sampled-worlds arms, named ``mc-cwvpuct-<ckpt8>-s<S>``.
+
+    Same identity rule as ``register_cwv_policies``: the VALUE checkpoint and
+    the simulation budget are in the name; the search parameters (world
+    pool, batch, c_puct, prior mode / prior checkpoint, receipt for the
+    control) are keyword arguments recorded in every decision and in the
+    duel's calibration binding.  ``mc-cwvpuct-prior-<ckpt8>-s<S>`` is the
+    matching no-learning control (uniform prior, stratified-prior leaf).
+    Returns the registered names.
+    """
+    from .cwv_puct import cwv_puct_registry_entries
+    entries = cwv_puct_registry_entries(checkpoint, simulations, **search)
+    REGISTRY.update(entries)
+    return sorted(entries)

@@ -20,14 +20,14 @@ CPU parity, run the paired mirrored screen.  See shengji/train/leaf_screen.py.
 
     # the complete-world net at the leaf (`--leaf-model cwv`): the checkpoint
     # is a train_cwv.py --arch mlp --aux-points best.pt; the arm is
-    # mc-vleaf-cwv-<ckpt8>-t<T>; calibrate and run take the same flag and a
+    # mc-vleaf-cwv-clamp-<ckpt8>-t<T>; calibrate and run take the same flag and a
     # calibration made for one leaf model is refused by the other
     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/vleaf_screen.py calibrate \
         --leaf-model cwv --checkpoint /path/to/cwv/runAB-mlp-points/best.pt --leaf-tricks 1 \
         --trump-ranks 2 --clusters 4 --workers 2 --out /path/to/calib-cwv
 
     # variant (binds into the calibration and the names): the leaf in the
-    # report fold only (`--leaf-stage report`, mc-vleaf-cwv-<ckpt8>-t<T>-report;
+    # report fold only (`--leaf-stage report`, mc-vleaf-cwv-clamp-<ckpt8>-t<T>-report;
     # selection rollouts are production's, so parity N sits near production's 30)
     SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/vleaf_screen.py calibrate \
         --leaf-model cwv --leaf-stage report --checkpoint /path/to/cwv/best.pt --leaf-tricks 1 \
@@ -94,7 +94,7 @@ def parser() -> argparse.ArgumentParser:
                             "checkpoint's aux points head on the public observation "
                             "(mc-vleaf-<ckpt8>-t<T>); 'cwv' = the complete-world value net's "
                             "aux points head on the determinized clone itself "
-                            "(mc-vleaf-cwv-<ckpt8>-t<T>; needs a train_cwv.py --arch mlp "
+                            "(mc-vleaf-cwv-clamp-<ckpt8>-t<T>; needs a train_cwv.py --arch mlp "
                             "--aux-points checkpoint)")
         p.add_argument("--leaf-stage", choices=S.LEAF_STAGES, default=S.DEFAULT_LEAF_STAGE,
                        help="where the leaf is consulted: 'all' = every rollout (current "

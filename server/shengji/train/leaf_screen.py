@@ -4,9 +4,11 @@ paired mirrored duel of a learned-leaf search against production.
 Arms (``leaf_policy.py``): ``learned`` = ``mc-vleaf-<ckpt8>-t<T>``, the
 production search whose rollout leaf is the checkpoint's points head after
 ``T`` tricks; with ``leaf_model="cwv"`` the learned arm is
-``mc-vleaf-cwv-<ckpt8>-t<T>``, the complete-world net's points head on the
-determinized clone; ``prior`` = ``mc-vleaf-prior-t<T>``, the same truncation
-with the stratified points prior at the leaf (the no-learning control).  The
+``mc-vleaf-cwv-clamp-<ckpt8>-t<T>``, the complete-world net's points head on
+the determinized clone floored at the clone's banked attacker points
+(``leaf_policy.POINTS_CLAMP``, part of the calibration identity); ``prior``
+= ``mc-vleaf-prior-t<T>``, the same truncation with the stratified points
+prior at the leaf (the no-learning control).  The
 baseline is always ``mc-s0-report-lcb`` at its registered N=30 / R=300.
 
 CPU parity (Codex's method, ``README.md``): the arm's decision CPU is
@@ -46,7 +48,7 @@ from ..engine.game import Game
 from ..engine.round import Round
 from ..oracle import screen as duel
 from .leaf_policy import (MCValueLeafSearch, PriorPointsLeaf, StratifiedPointsPrior,
-                          load_leaf_head)
+                          load_leaf_head, points_clamp_rule)
 from .search_screen import (TimedPolicy, _publish, _run_pending, bind_output_config,
                             execution_source_identity)
 
@@ -115,8 +117,9 @@ def require_matching_trump_ranks(calibration: dict, trump_ranks) -> None:
 
 
 #: what a calibration.json is the parity N FOR; a run must match every field
-CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "leaf_stage",
-                        "baseline_policy", "baseline_select_worlds", "report_worlds")
+CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "points_clamp",
+                        "leaf_stage", "baseline_policy", "baseline_select_worlds",
+                        "report_worlds")
 
 
 #: the only ``leaf_mode`` a legacy calibration / config may carry: the
@@ -175,6 +178,20 @@ def require_matching_leaf_model(calibration: dict, leaf_model: str) -> None:
                           f"{leaf_model}: re-calibrate for this leaf model")
 
 
+def require_matching_points_clamp(calibration: dict, leaf_model: str) -> None:
+    """A calibration binds the leaf's floor rule: the complete-world leaf now
+    floors its prediction at the banked attacker points
+    (``leaf_policy.POINTS_CLAMP``), which changes the arm's scores, so a
+    calibration written for the unclamped leaf (no ``points_clamp`` field)
+    or for another rule is not this arm's parity."""
+    wanted = points_clamp_rule(leaf_model)
+    made = calibration.get("points_clamp")
+    if made != wanted:
+        raise ScreenError(f"calibration was made with points_clamp={made!r}; this run's "
+                          f"--leaf-model {leaf_model} applies points_clamp={wanted!r}: "
+                          f"re-calibrate for this leaf")
+
+
 def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | None,
                                  leaf_tricks: int, base_policy: str,
                                  baseline_select_worlds: int, report_worlds: int,
@@ -192,6 +209,7 @@ def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | 
     mismatched = [(k, calibration.get(k), v) for k, v in wanted.items()
                   if calibration.get(k) != v]
     require_matching_leaf_model(calibration, leaf_model)
+    require_matching_points_clamp(calibration, leaf_model)
     require_plain_leaf_mode(calibration, what="calibration")
     require_matching_variant(calibration, leaf_stage=leaf_stage)
     if mismatched:
@@ -543,6 +561,7 @@ def calibrate(config: dict, *, output: Path, workers: int, grid=DEFAULT_GRID,
         "arm": config["arm"], "arm_policy": arm_policy_name(config),
         "leaf_tricks": config["leaf_tricks"],
         "leaf_model": config_leaf_model(config),
+        "points_clamp": points_clamp_rule(config_leaf_model(config)),
         "leaf_stage": config_variant(config)["leaf_stage"],
         "trump_ranks": list(config["trump_ranks"]),
         "checkpoint_sha256": config.get("checkpoint_sha256"),
@@ -623,6 +642,7 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         "bootstrap_replicates": int(bootstrap_replicates),
         "trump_ranks": list(ranks),
         "leaf_model": leaf_model,
+        "points_clamp": points_clamp_rule(leaf_model),
         "leaf_stage": leaf_stage,
     }
     if arm == "learned":
@@ -741,7 +761,8 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
         problems.append(f"rounds dealt trump ranks {dealt} outside the configured "
                         f"cycle {trump_ranks}")
     leaf_kind = ("stratified points prior" if config["arm"] != "learned"
-                 else "complete-world points head on the determinized clone"
+                 else "complete-world points head on the determinized clone, floored at "
+                      "the clone's banked attacker points"
                  if config_leaf_model(config) == "cwv" else "public points head")
     variant = config_variant(config)
     stage_text = ("in every rollout" if variant["leaf_stage"] == "all"
@@ -759,6 +780,7 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
                             f"baseline N={config['baseline_select_worlds']}/R={config['report_worlds']}"),
         "leaf_tricks": config["leaf_tricks"],
         "leaf_model": config_leaf_model(config),
+        "points_clamp": points_clamp_rule(config_leaf_model(config)),
         "leaf_stage": variant["leaf_stage"],
         "trump_ranks": trump_ranks,
         "trump_ranks_dealt": dealt,

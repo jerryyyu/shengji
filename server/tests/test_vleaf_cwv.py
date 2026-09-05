@@ -107,12 +107,16 @@ def test_cwv_leaf_returns_the_aux_points_head_and_terminal_leaves_stay_exact(cwv
     candidate = make_bot(BASE)._candidates(rnd, seat)[0]
     got = arm._rollout(rnd, seat, sampled, buried, list(candidate))
     clone = clone_at_horizon(rnd, seat, candidate, 1)
-    expected = torch_aux_points(cwv["model"], cwv["aux"], clone, clone.turn)
-    assert got == pytest.approx(expected, abs=1e-4)
-    assert got != pytest.approx(torch_level(cwv["model"], clone, clone.turn), abs=1e-4)
+    raw = torch_aux_points(cwv["model"], cwv["aux"], clone, clone.turn)
+    # The leaf is the head's prediction floored at the clone's banked points;
+    # the raw prediction is kept for the audit trail.
+    assert got == pytest.approx(max(raw, float(clone.attacker_points)), abs=1e-4)
+    assert leaf.points_raw == pytest.approx(raw, abs=1e-4)
+    assert raw != pytest.approx(torch_level(cwv["model"], clone, clone.turn), abs=1e-4)
     assert arm.leaf_counts["predicted_leaves"] == 1 and head.calls == 1
+    assert leaf.clamp_counts["predicted"] == 1
     assert leaf.encode_secs > 0 and leaf.forward_secs > 0
-    assert arm.policy_name == f"{BASE}+vleaf-cwv-t1"
+    assert arm.policy_name == f"{BASE}+vleaf-cwv-clamp-t1"
     # A leaf that reaches round end is production's exact points, never the head.
     rnd, seat = last_trick_state(4_242)
     sampled, buried = true_world(rnd, seat)
@@ -123,6 +127,84 @@ def test_cwv_leaf_returns_the_aux_points_head_and_terminal_leaves_stay_exact(cwv
     assert arm._rollout(rnd, seat, sampled, buried, list(candidate)) == exact
     assert head.calls == 1
     assert arm.leaf_counts["terminal_leaves"] == 1 and arm.leaf_counts["predicted_leaves"] == 0
+
+
+# ------------------------------- 1b. the floor at the banked attacker points
+
+class FakeHead:
+    """A points head returning a fixed value whatever the inputs."""
+
+    kind = "cwv"
+    metadata = {"checkpoint_sha256": "f" * 64}
+
+    def __init__(self, value):
+        self.value = float(value)
+        self.calls = 0
+
+    def final_attacker_points(self, inputs):
+        self.calls += 1
+        return self.value
+
+
+def banked_state(seed=4_244):
+    """A mid-round state where the attackers have already banked points."""
+    rnd = deal(seed)
+    seat = advance(rnd, lambda r: r.attacker_points >= 15 and len(r.history) >= 3)
+    assert rnd.attacker_points >= 15
+    return rnd, seat
+
+
+def test_cwv_leaf_floors_the_prediction_at_the_banked_attacker_points():
+    rnd, seat = banked_state()
+    banked = float(rnd.attacker_points)
+    # A head below the running total is lifted to it; the raw value survives.
+    leaf = L.CompleteWorldPointsLeaf(FakeHead(banked - 12.5))
+    value, raw, got_banked = leaf.predict(rnd, seat)
+    assert value == banked and raw == banked - 12.5 and got_banked == banked
+    assert leaf.final_attacker_points(rnd, seat) == banked
+    assert leaf.points_raw == banked - 12.5
+    assert leaf.clamp_counts == {"predicted": 2, "clamped": 2, "lift_points": 25.0}
+    # A head at or above the running total passes through unchanged.
+    for above in (banked, banked + 7.0):
+        leaf = L.CompleteWorldPointsLeaf(FakeHead(above))
+        assert leaf.final_attacker_points(rnd, seat) == above
+        assert leaf.points_raw == above
+        assert leaf.clamp_counts == {"predicted": 1, "clamped": 0, "lift_points": 0.0}
+    # The floor is the engine's own counter, the one a terminal leaf returns.
+    assert L.banked_attacker_points(rnd) == banked
+    assert L.clamp_at_banked(3.0, 10.0) == 10.0 and L.clamp_at_banked(11.0, 10.0) == 11.0
+    # The rule binds into the search's policy name and the telemetry.
+    arm = L.MCValueLeafSearch(leaf, seed=1, leaf_tricks=1)
+    assert arm.policy_name == f"{BASE}+vleaf-cwv-clamp-t1"
+    record = L.leaf_record(arm)
+    assert record["points_clamp"] == L.POINTS_CLAMP == "banked-v1"
+    assert record["points_raw"] == above and record["clamp_counts"] == leaf.clamp_counts
+    assert leaf.describe()["points_clamp"] == "banked-v1"
+    # The other leaves do not clamp and keep their names.
+    assert L.points_clamp_rule("cwv") == "banked-v1" and L.points_clamp_rule("public") is None
+    assert L.leaf_label(L.PriorPointsLeaf(prior_table())) == "prior"
+
+
+def test_cwv_leaf_floor_reaches_the_rollout_value():
+    """Through ``_rollout``: a predicted leaf of a truncated rollout is
+    floored at the CLONE's banked points (the candidate and the continuation
+    may have banked more than the root)."""
+    rnd, seat = banked_state()
+    sampled, buried = true_world(rnd, seat)
+    candidate = make_bot(BASE)._candidates(rnd, seat)[0]
+    arm = L.MCValueLeafSearch(L.CompleteWorldPointsLeaf(FakeHead(-50.0)), seed=1, leaf_tricks=1)
+    got = arm._rollout(rnd, seat, sampled, buried, list(candidate))
+    clone = clone_at_horizon(rnd, seat, candidate, 1)
+    assert clone.phase == "play" and got == float(clone.attacker_points) >= rnd.attacker_points
+    assert arm.leaf.points_raw == -50.0 and arm.leaf.clamp_counts["clamped"] == 1
+
+
+def test_witness_removed_floor_returns_an_impossible_leaf(monkeypatch):
+    rnd, seat = banked_state()
+    monkeypatch.setattr(L, "clamp_at_banked", lambda raw, banked: float(raw))
+    leaf = L.CompleteWorldPointsLeaf(FakeHead(1.0))
+    with pytest.raises(AssertionError):
+        assert leaf.final_attacker_points(rnd, seat) == float(rnd.attacker_points)
 
 
 def test_witness_level_head_at_the_leaf_is_caught(monkeypatch, cwv):
@@ -329,6 +411,8 @@ def calibration_for(cwv, *, leaf_model, prior_path, **overrides):
            "file_sha256": "x", "seed0": 1, "clusters": 1}
     if leaf_model is not None:
         cal["leaf_model"] = leaf_model
+    if leaf_model == "cwv":
+        cal["points_clamp"] = L.POINTS_CLAMP
     cal.update(overrides)
     return cal
 
@@ -348,7 +432,8 @@ def test_run_refuses_a_calibration_made_for_the_other_leaf_model(monkeypatch, cw
                         calibration=calibration_for(cwv, leaf_model="cwv", prior_path=prior_path),
                         **kw)
     assert ok["calibration"]["leaf_model"] == "cwv" and ok["leaf_model"] == "cwv"
-    assert ok["arm_policy"] == f"mc-vleaf-cwv-{cwv['sha256'][:8]}-t1"
+    assert ok["arm_policy"] == f"mc-vleaf-cwv-clamp-{cwv['sha256'][:8]}-t1"
+    assert ok["points_clamp"] == "banked-v1" and ok["calibration"]["points_clamp"] == "banked-v1"
     for arm in ("learned", "prior"):
         with pytest.raises(S.ScreenError, match="leaf-model public"):
             S.build_config(arm=arm, leaf_model="cwv",
@@ -365,6 +450,46 @@ def test_run_refuses_a_calibration_made_for_the_other_leaf_model(monkeypatch, cw
                        **kw)
 
 
+def test_run_refuses_a_cwv_calibration_made_for_the_unclamped_leaf(monkeypatch, cwv, prior_path):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    kw = dict(leaf_tricks=1, seed0=1, clusters=1, arm_select_worlds=7, checkpoint=cwv["path"],
+              prior=prior_path, baseline_select_worlds=1, report_worlds=30, trump_ranks=("2",))
+    assert "points_clamp" in S.CALIBRATION_IDENTITY
+    for arm in ("learned", "prior"):
+        # A calibration from before the floor existed was measured on the
+        # unclamped leaf, whose scores differ: refused.
+        cal = calibration_for(cwv, leaf_model="cwv", prior_path=prior_path)
+        del cal["points_clamp"]
+        with pytest.raises(S.ScreenError, match="points_clamp=None"):
+            S.build_config(arm=arm, leaf_model="cwv", calibration=cal, **kw)
+        # Another rule's name is not this one's either.
+        with pytest.raises(S.ScreenError, match="points_clamp='banked-v0'"):
+            S.build_config(arm=arm, leaf_model="cwv", **kw,
+                           calibration=calibration_for(cwv, leaf_model="cwv", prior_path=prior_path,
+                                                       points_clamp="banked-v0"))
+    # The public head is unclamped: a public calibration carries no rule.
+    ok = S.build_config(arm="prior", leaf_model="public", **kw,
+                        calibration=calibration_for(cwv, leaf_model="public", prior_path=prior_path))
+    assert ok["points_clamp"] is None
+    with pytest.raises(S.ScreenError, match="points_clamp='banked-v1'"):
+        S.build_config(arm="prior", leaf_model="public", **kw,
+                       calibration=calibration_for(cwv, leaf_model="public", prior_path=prior_path,
+                                                   points_clamp="banked-v1"))
+
+
+def test_witness_removed_points_clamp_binding_accepts_the_unclamped_calibration(
+        monkeypatch, cwv, prior_path):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(S, "require_matching_points_clamp", lambda calibration, leaf_model: None)
+    cal = calibration_for(cwv, leaf_model="cwv", prior_path=prior_path)
+    del cal["points_clamp"]
+    config = S.build_config(
+        arm="learned", leaf_model="cwv", leaf_tricks=1, seed0=1, clusters=1, arm_select_worlds=7,
+        checkpoint=cwv["path"], prior=prior_path, baseline_select_worlds=1, report_worlds=30,
+        trump_ranks=("2",), calibration=cal)
+    assert config["calibration"]["points_clamp"] is None
+
+
 def test_witness_removed_leaf_model_binding_accepts_the_other_calibration(monkeypatch, cwv,
                                                                           prior_path):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
@@ -373,7 +498,9 @@ def test_witness_removed_leaf_model_binding_accepts_the_other_calibration(monkey
         arm="learned", leaf_model="cwv", leaf_tricks=1, seed0=1, clusters=1, arm_select_worlds=7,
         checkpoint=cwv["path"], prior=prior_path, baseline_select_worlds=1, report_worlds=30,
         trump_ranks=("2",),
-        calibration=calibration_for(cwv, leaf_model="public", prior_path=prior_path))
+        # only the leaf-model binding is under test: carry the cwv leaf's clamp rule
+        calibration=calibration_for(cwv, leaf_model="public", prior_path=prior_path,
+                                    points_clamp=L.POINTS_CLAMP))
     assert config["calibration"]["leaf_model"] == "public"
 
 
@@ -396,9 +523,10 @@ def test_cwv_leaf_is_production_when_nothing_is_truncated(cwv):
 def test_registry_names_embed_cwv_and_the_checkpoint_id(cwv):
     registry = {BASE: REGISTRY[BASE]}
     names = register_vleaf_arms(checkpoint=cwv["path"], leaf_model="cwv", registry=registry)
-    assert names == {f"mc-vleaf-cwv-{cwv['sha256'][:8]}-t{t}": "cwv" for t in VLEAF_LEAF_TRICKS}
+    assert names == {f"mc-vleaf-cwv-clamp-{cwv['sha256'][:8]}-t{t}": "cwv"
+                     for t in VLEAF_LEAF_TRICKS}
     assert vleaf_policy_name(leaf_tricks=1, checkpoint_id="abcd1234", leaf_model="cwv") \
-        == "mc-vleaf-cwv-abcd1234-t1"
+        == "mc-vleaf-cwv-clamp-abcd1234-t1"
     assert vleaf_policy_name(leaf_tricks=1, checkpoint_id="abcd1234") == "mc-vleaf-abcd1234-t1"
     assert vleaf_policy_name(leaf_tricks=1, leaf_model="cwv") == "mc-vleaf-prior-t1"
     with pytest.raises(ValueError, match="leaf_model"):
@@ -411,6 +539,7 @@ def test_registry_names_embed_cwv_and_the_checkpoint_id(cwv):
         assert bot.rng.getstate() == random.Random(5).getstate()
     record = L.leaf_record(registry[next(iter(names))](seed=5))
     assert record["leaf"]["leaf_model"] == "cwv" and record["leaf"]["held_out_claim"] is False
+    assert record["points_clamp"] == "banked-v1" and record["leaf"]["points_clamp"] == "banked-v1"
 
 
 def test_real_cluster_with_the_cwv_leaf_counts_nn_calls(monkeypatch, tmp_path, cwv, prior_path):
@@ -419,7 +548,7 @@ def test_real_cluster_with_the_cwv_leaf_counts_nn_calls(monkeypatch, tmp_path, c
                             arm_select_worlds=1, checkpoint=cwv["path"], prior=prior_path,
                             baseline_select_worlds=1, report_worlds=30, bootstrap_replicates=100,
                             trump_ranks=("2",))
-    assert config["arm_policy"] == f"mc-vleaf-cwv-{cwv['sha256'][:8]}-t1"
+    assert config["arm_policy"] == f"mc-vleaf-cwv-clamp-{cwv['sha256'][:8]}-t1"
     assert config["model_metadata"]["sees_hidden_hands"] is True
     summary = S.run_arm(config, output=tmp_path / "cwv", workers=1, log=lambda s: None,
                         executor_factory=threads)

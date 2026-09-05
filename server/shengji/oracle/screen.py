@@ -102,6 +102,18 @@ more expensive stand-in for each buys inside the unchanged search:
     stamped in ``knobs.overrides``, in the arm description and in
     ``identity.knob_overrides``.
 
+``work``
+    Compute control, not an oracle: the production class itself with
+    ``N_DETERMINIZATIONS``/``REPORT_FOLD_WORLDS`` set to the absolute
+    ``work_select_worlds``/``work_report_worlds`` on the ARM side only; the
+    baseline stays registered production.  An oracle arm's gain at K times
+    production's rollouts is only evidence for its mechanism if production
+    given the same total rollouts does not gain as much; this arm measures
+    that.  At the registered values it is the ``none`` identity control.
+    Its ``identity.search_vector.equal`` is honestly False whenever the
+    arm's N/R differ from the registered values: that difference IS the
+    arm, and ``arm_over_baseline_total_rollouts`` records what it cost.
+
 INTERPRETATION (Codex review of PR #203, 2026-09-04).  Neither arm is an
 upper bound on what a learned component could buy.  The value arm is a
 bounded greedy one-ply rollout-policy modification scored by the same
@@ -162,7 +174,7 @@ from ..evaluation import counters as production_counters
 from ..harvest.legal import enumerate_legal
 
 ARMS = ("none", "null", "value", "prior", "both", "wide", "wide-value",
-        "knobs")
+        "knobs", "work")
 #: Which mixin each oracle arm carries.
 VALUE_ARMS = ("value", "both", "wide-value")
 PRIOR_ARMS = ("prior", "both")
@@ -204,6 +216,10 @@ KNOB_REFUSAL_REASONS = {
         "the candidate list (zero search would become a full search while "
         "identity.search_vector still read equal)"),
 }
+#: The production class at an absolute N/R on the arm side; not an oracle.
+WORK_ARM = "work"
+#: The one-sided paired LCB report rule is registered for n >= 30 worlds.
+WORK_MIN_REPORT_WORLDS = 30
 DEFAULT_BASE_POLICY = "mc-s0-report-lcb"
 #: Same shift the registry uses for every champion-matched null.
 NULL_SEED_OFFSET = 999_983
@@ -1059,10 +1075,41 @@ def make_oracle_bot(base_policy: str, arm: str, *, seed: int | None,
     return bot
 
 
+def work_arm_values(base_policy: str, select_worlds, report_worlds
+                    ) -> tuple[int, int]:
+    """Validate the work arm's absolute (N, R) for ``base_policy``."""
+    if select_worlds is None or report_worlds is None:
+        raise OracleScreenError(
+            "the work arm needs both work_select_worlds and work_report_worlds")
+    n, r = int(select_worlds), int(report_worlds)
+    if n < 1:
+        raise OracleScreenError("work_select_worlds must be >= 1")
+    if r < WORK_MIN_REPORT_WORLDS:
+        raise OracleScreenError(
+            f"work_report_worlds must be >= {WORK_MIN_REPORT_WORLDS}: the "
+            "LCB report rule is registered for at least that many worlds")
+    if base_policy_class(base_policy).REPORT_RULE == "none":
+        raise OracleScreenError(
+            f"base policy {base_policy!r} has no report fold to scale")
+    return n, r
+
+
+def make_work_bot(base_policy: str, *, seed: int | None, select_worlds,
+                  report_worlds):
+    """The compute-control arm: production itself at an absolute N and R."""
+    n, r = work_arm_values(base_policy, select_worlds, report_worlds)
+    bot = make_bot(base_policy, seed=seed)
+    bot.N_DETERMINIZATIONS = n
+    bot.REPORT_FOLD_WORLDS = r
+    bot.policy_name = f"{base_policy}+work-N{n}-R{r}"
+    return bot
+
+
 def make_side_bot(config: dict, side: str, seed: int):
     """One bot for one seat: ``side`` is ``arm`` or ``baseline``."""
     base = config["base_policy"]
     arm = config["arm"]
+    work = config.get("work") or {}
     if side == "baseline" or arm == "none":
         bot = make_bot(base, seed=seed)
     elif arm == "null":
@@ -1070,9 +1117,17 @@ def make_side_bot(config: dict, side: str, seed: int):
         bot.policy_name = f"{base}+null"
     elif arm == KNOBS_ARM:
         bot = make_knobs_bot(base, config["knobs"].get("overrides"), seed=seed)
+    elif arm == WORK_ARM:
+        if work.get("select_worlds") is not None or \
+                work.get("report_worlds") is not None:
+            raise OracleScreenError(
+                "the work arm cannot be combined with the smoke "
+                "select_worlds/report_worlds overrides")
+        bot = make_work_bot(base, seed=seed,
+                            select_worlds=work.get("work_select_worlds"),
+                            report_worlds=work.get("work_report_worlds"))
     else:
         bot = make_oracle_bot(base, arm, seed=seed, knobs=config["knobs"])
-    work = config.get("work") or {}
     if work.get("select_worlds") is not None:
         bot.N_DETERMINIZATIONS = int(work["select_worlds"])
     if work.get("report_worlds") is not None:
@@ -1113,8 +1168,15 @@ def work_counters(bots) -> dict:
 def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
                  knobs: dict | None = None, select_worlds: int | None = None,
                  report_worlds: int | None = None,
+                 work_select_worlds: int | None = None,
+                 work_report_worlds: int | None = None,
                  knob_overrides=None) -> dict:
-    """``knob_overrides`` (the knobs arm's ``--knob NAME=VALUE`` list or a
+    """``select_worlds``/``report_worlds`` are the SMOKE overrides (both
+    sides); ``work_select_worlds``/``work_report_worlds`` are the work arm's
+    absolute N/R (arm side only): ``work.effective`` is the baseline side's
+    work, ``work.arm_effective`` the arm side's, and they differ only for the
+    work arm, whose baseline is production and therefore not a smoke run.
+    ``knob_overrides`` (the knobs arm's ``--knob NAME=VALUE`` list or a
     mapping) is validated against the base class here, so a bad override
     refuses before any round runs; it lands in ``knobs.overrides``."""
     if arm not in ARMS:
@@ -1145,6 +1207,20 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
         if report_worlds < 0:
             raise OracleScreenError("report_worlds must be >= 0")
         effective["report_fold_worlds"] = int(report_worlds)
+    arm_effective = dict(effective)
+    if arm == WORK_ARM:
+        if select_worlds is not None or report_worlds is not None:
+            raise OracleScreenError(
+                "the work arm sets the arm side's N/R itself; the smoke "
+                "select_worlds/report_worlds overrides (both sides) cannot "
+                "be combined with it")
+        n, r = work_arm_values(base_policy, work_select_worlds,
+                               work_report_worlds)
+        arm_effective["n_determinizations"] = n
+        arm_effective["report_fold_worlds"] = r
+    elif work_select_worlds is not None or work_report_worlds is not None:
+        raise OracleScreenError(
+            "work_select_worlds/work_report_worlds apply to the work arm only")
     return {
         "arm": arm,
         "base_policy": base_policy,
@@ -1153,8 +1229,11 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
         "work": {
             "select_worlds": select_worlds,
             "report_worlds": report_worlds,
+            "work_select_worlds": work_select_worlds,
+            "work_report_worlds": work_report_worlds,
             "registered": registered,
             "effective": effective,
+            "arm_effective": arm_effective,
             "production": effective == registered,
         },
     }
@@ -1489,6 +1568,13 @@ def arm_description(config: dict) -> str:
             return f"{base} with no knob overrides (identity control)"
         return f"{base} with " + ", ".join(
             f"{name}={value!r}" for name, value in sorted(overrides.items()))
+    if arm == WORK_ARM:
+        w = config["work"]
+        return (f"{base} at N={w['arm_effective']['n_determinizations']} "
+                f"selection worlds, R={w['arm_effective']['report_fold_worlds']} "
+                f"report worlds vs production "
+                f"N={w['registered']['n_determinizations']}, "
+                f"R={w['registered']['report_fold_worlds']} (compute control)")
     parts = []
     if arm in VALUE_ARMS:
         parts.append(
@@ -1552,13 +1638,17 @@ def identity(config: dict, script_path: str | None = None) -> dict:
     elif config["arm"] == KNOBS_ARM:
         arm_bot = make_knobs_bot(config["base_policy"],
                                  config["knobs"].get("overrides"), seed=0)
+    elif config["arm"] == WORK_ARM:
+        arm_bot = make_side_bot(config, "arm", 0)
     if arm_bot is not None:
         ballots["arm"] = str(mc_ballot(arm_bot))
         ballots["arm_class"] = type(arm_bot).__name__
     # The complete work/report vector of each side at registered work (the
     # two-sided smoke overrides live in work.effective).  For the knobs arm
     # `equal` is the same-altitude equal-work witness; an oracle arm that
-    # changes leaf valuation (exact endgame on) honestly shows unequal.
+    # changes leaf valuation (exact endgame on) honestly shows unequal, and
+    # so does the work arm whenever its N/R differ from the registered
+    # values (that difference is the arm; work.arm_effective names it).
     vectors = {"baseline": search_vector(base, type(base))}
     vectors["arm"] = (dict(vectors["baseline"]) if arm_bot is None
                       else search_vector(arm_bot, type(base)))
@@ -1643,6 +1733,8 @@ def write_outputs(out_dir: str | os.PathLike, *, records, timings, summary,
 def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
                base_policy: str = DEFAULT_BASE_POLICY, knobs: dict | None = None,
                select_worlds: int | None = None, report_worlds: int | None = None,
+               work_select_worlds: int | None = None,
+               work_report_worlds: int | None = None,
                replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
                bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
                script_path: str | None = None, argv: list[str] | None = None,
@@ -1650,6 +1742,8 @@ def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
     config = build_config(arm=arm, base_policy=base_policy, knobs=knobs,
                           select_worlds=select_worlds,
                           report_worlds=report_worlds,
+                          work_select_worlds=work_select_worlds,
+                          work_report_worlds=work_report_worlds,
                           knob_overrides=knob_overrides)
     ident = identity(config, script_path)
     started = time.perf_counter()

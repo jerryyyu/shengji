@@ -1197,3 +1197,187 @@ def test_cli_refuses_to_mix_into_an_existing_run(cli_runs, tmp_path):
          "--rounds", "2", "--seed", "777", "--out", str(out), *TINY_WORK],
         cwd=SERVER, env=env, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 2 and "REFUSING" in proc.stderr
+
+
+# ------------------------------------------------- work arm (compute control)
+
+PRODUCTION_WORK = {"n_determinizations": 30, "report_fold_worlds": 300,
+                   "report_rule": "lcb"}
+
+
+def _start_cli(out: Path, *args: str) -> subprocess.Popen:
+    """A 2-round, 2-worker screen at PRODUCTION baseline work, not waited on."""
+    env = dict(os.environ)
+    env.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
+    cmd = [sys.executable, "-P", "-B", str(SCRIPT), "--rounds", "2",
+           "--seed", "777", "--out", str(out), "--workers", "2", *args]
+    return subprocess.Popen(cmd, cwd=SERVER, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+
+
+@pytest.fixture(scope="module")
+def work_runs(tmp_path_factory):
+    """The work arm's baseline must be production, so these rounds cost ~20 s
+    each without the fast engine; the three runs proceed concurrently."""
+    root = tmp_path_factory.mktemp("oracle_work")
+    procs = {
+        "none": _start_cli(root / "none", "--arm", "none"),
+        "work_production": _start_cli(
+            root / "work_production", "--arm", "work",
+            "--work-select-worlds", "30", "--work-report-worlds", "300"),
+        "work_tiny": _start_cli(
+            root / "work_tiny", "--arm", "work",
+            "--work-select-worlds", "1", "--work-report-worlds", "30"),
+    }
+    for name, proc in procs.items():
+        stdout, stderr = proc.communicate(timeout=600)
+        assert proc.returncode == 0, f"{name}: {stderr}{stdout}"
+    return {name: root / name for name in procs}
+
+
+def _summary(out: Path) -> dict:
+    return json.loads((out / "summary.json").read_text())
+
+
+def test_work_arm_scales_only_the_arm_side(work_runs):
+    cfg = S.build_config(arm="work", work_select_worlds=2, work_report_worlds=31)
+    prod_cls = S.base_policy_class(BASE)
+    arm = S.make_side_bot(cfg, "arm", 11)
+    base = S.make_side_bot(cfg, "baseline", 11)
+    assert type(arm) is type(base) is prod_cls, "no oracle mixin on either side"
+    assert (arm.N_DETERMINIZATIONS, arm.REPORT_FOLD_WORLDS) == (2, 31)
+    assert (base.N_DETERMINIZATIONS, base.REPORT_FOLD_WORLDS) == (30, 300)
+    assert (prod_cls.N_DETERMINIZATIONS, prod_cls.REPORT_FOLD_WORLDS) == \
+        (30, 300), "the arm's values live on the instance, never the class"
+    assert arm.policy_name == f"{BASE}+work-N2-R31"
+    assert base.policy_name == make_bot(BASE, seed=11).policy_name
+    # Round altitude: N=1/R=30 on the arm side against production, and the
+    # production counters yield the arm-over-baseline ratio unchanged.
+    for r in _rounds(work_runs["work_tiny"]):
+        a, b = r["work"]["arm"], r["work"]["baseline"]
+        assert 0 < a["rollouts"] < b["rollouts"] / 5
+        assert 0 < a["accepted_worlds"] < b["accepted_worlds"] / 5
+        assert all(a[k] == 0 and b[k] == 0 for k in S.ORACLE_COUNTERS)
+        assert a["total_rollouts"] == a["continuation_rollouts"] == a["rollouts"]
+        assert b["total_rollouts"] == b["continuation_rollouts"] == b["rollouts"]
+    summary = _summary(work_runs["work_tiny"])
+    assert 0 < summary["arm_over_baseline_total_rollouts"] < 0.2
+    assert summary["arm_over_baseline_total_rollouts"] == \
+        summary["arm_over_baseline_continuation_rollouts"]
+
+
+def test_work_arm_at_production_values_is_the_identity_control(work_runs):
+    control = _rounds(work_runs["none"])
+    arm = _rounds(work_runs["work_production"])
+    assert len(arm) == len(control) == 2
+    assert [r["arm_utility"] for r in arm] == [r["arm_utility"] for r in control]
+    assert [_comparable(r) for r in arm] == [_comparable(r) for r in control]
+    assert {r["arm"] for r in arm} == {"work"}
+    a, c = _summary(work_runs["work_production"]), _summary(work_runs["none"])
+    assert a["work_totals"] == c["work_totals"]
+    assert a["arm_signed_level_utility"] == c["arm_signed_level_utility"]
+    assert a["work"]["arm_effective"] == c["work"]["effective"] == PRODUCTION_WORK
+
+
+def test_work_arm_knobs_are_recorded_in_config_and_summary(work_runs):
+    cfg = S.build_config(arm="work", work_select_worlds=889,
+                         work_report_worlds=8890)
+    w = cfg["work"]
+    assert (w["work_select_worlds"], w["work_report_worlds"]) == (889, 8890)
+    assert w["arm_effective"] == {"n_determinizations": 889,
+                                  "report_fold_worlds": 8890,
+                                  "report_rule": "lcb"}
+    assert w["effective"] == w["registered"] == PRODUCTION_WORK
+    assert w["production"] is True, "the baseline IS production"
+    counts = lambda n: {"rollouts": n, "continuation_rollouts": n,  # noqa: E731
+                        "total_rollouts": n}
+    rec = {"cluster": 0, "arm_utility": 1, "arm_won": 1, "arm_role": "banker",
+           "attacker_points": 40,
+           "work": {"arm": counts(2963), "baseline": counts(100)}}
+    summary = S.summarize([rec], cfg, seed0=1, replicates=10)
+    assert summary["work"] == w
+    assert summary["arm_over_baseline_total_rollouts"] == 29.63
+    assert "N=889 selection worlds, R=8890 report worlds" in \
+        summary["arm_description"]
+    assert not any("NOT production" in p for p in summary["problems"])
+    # Other arms carry the knobs as None and one effective work for both sides.
+    other = S.build_config(arm="value", select_worlds=1, report_worlds=30)["work"]
+    assert other["work_select_worlds"] is other["work_report_worlds"] is None
+    assert other["arm_effective"] == other["effective"] != other["registered"]
+    # CLI altitude: the flags reach the written summary and runtime receipt.
+    for name, n, r in (("work_production", 30, 300), ("work_tiny", 1, 30)):
+        written = _summary(work_runs[name])
+        assert (written["work"]["work_select_worlds"],
+                written["work"]["work_report_worlds"]) == (n, r)
+        assert written["work"]["arm_effective"] == {
+            "n_determinizations": n, "report_fold_worlds": r,
+            "report_rule": "lcb"}
+        assert written["work"]["effective"] == PRODUCTION_WORK
+        assert written["work"]["production"] is True
+        assert written["problems"] == []
+        assert f"N={n} selection worlds, R={r} report worlds" in \
+            written["arm_description"]
+        assert written["identity"]["ballots"]["arm_class"] == written["base_class"]
+        assert written["identity"]["ballots"]["arm"] == \
+            written["identity"]["ballots"]["baseline"]
+        # The work-vector stamp is honest: equal only at the registered
+        # values, the arm's N/R are the work values, and nothing else moved.
+        vectors = written["identity"]["search_vector"]
+        assert vectors["equal"] is (n == 30 and r == 300)
+        assert (vectors["arm"]["N_DETERMINIZATIONS"],
+                vectors["arm"]["REPORT_FOLD_WORLDS"]) == (n, r)
+        assert (vectors["baseline"]["N_DETERMINIZATIONS"],
+                vectors["baseline"]["REPORT_FOLD_WORLDS"]) == (30, 300)
+        assert {k for k in vectors["arm"]
+                if vectors["arm"][k] != vectors["baseline"][k]} <= \
+            {"N_DETERMINIZATIONS", "REPORT_FOLD_WORLDS"}
+        assert written["identity"]["knob_overrides"] == {}
+        runtime = json.loads((work_runs[name] / "runtime.json").read_text())
+        assert runtime["argv"][-4:] == ["--work-select-worlds", str(n),
+                                        "--work-report-worlds", str(r)]
+
+
+def test_work_arm_refusals(tmp_path):
+    ok = {"work_select_worlds": 1, "work_report_worlds": 30}
+    assert S.build_config(arm="work", **ok)["work"]["arm_effective"] == {
+        "n_determinizations": 1, "report_fold_worlds": 30, "report_rule": "lcb"}
+    with pytest.raises(S.OracleScreenError, match="work_select_worlds must"):
+        S.build_config(arm="work", work_select_worlds=0, work_report_worlds=30)
+    with pytest.raises(S.OracleScreenError, match="work_report_worlds must"):
+        S.build_config(arm="work", work_select_worlds=1, work_report_worlds=29)
+    with pytest.raises(S.OracleScreenError, match="needs both"):
+        S.build_config(arm="work", work_select_worlds=1)
+    with pytest.raises(S.OracleScreenError, match="needs both"):
+        S.build_config(arm="work", work_report_worlds=30)
+    with pytest.raises(S.OracleScreenError, match="smoke"):
+        S.build_config(arm="work", select_worlds=1, **ok)
+    with pytest.raises(S.OracleScreenError, match="smoke"):
+        S.build_config(arm="work", report_worlds=30, **ok)
+    with pytest.raises(S.OracleScreenError, match="work arm only"):
+        S.build_config(arm="none", work_select_worlds=1)
+    with pytest.raises(S.OracleScreenError, match="report fold"):
+        S.build_config(arm="work", base_policy="mc-strong", **ok)
+    # The knobs arm's overrides and the work arm's N/R never cross over.
+    with pytest.raises(S.OracleScreenError, match="work arm only"):
+        S.build_config(arm="knobs", **ok)
+    with pytest.raises(S.OracleScreenError, match="belong to the 'knobs' arm"):
+        S.build_config(arm="work", knob_overrides=KNOBS_V3, **ok)
+    with pytest.raises(S.OracleScreenError, match="work_report_worlds must"):
+        S.make_work_bot(BASE, seed=1, select_worlds=1, report_worlds=29)
+    hand_built = S.build_config(arm="work", **ok)
+    hand_built["work"]["select_worlds"] = 1
+    with pytest.raises(S.OracleScreenError, match="smoke"):
+        S.make_side_bot(hand_built, "arm", 1)
+    # CLI altitude: the knobs are required, and the smoke overrides refused.
+    env = dict(os.environ)
+    env.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
+    for i, args in enumerate((
+            ["--arm", "work"],
+            ["--arm", "work", "--work-select-worlds", "1",
+             "--work-report-worlds", "30", *TINY_WORK])):
+        proc = subprocess.run(
+            [sys.executable, "-P", "-B", str(SCRIPT), "--rounds", "2",
+             "--seed", "777", "--out", str(tmp_path / f"refused{i}"), *args],
+            cwd=SERVER, env=env, capture_output=True, text=True, timeout=120)
+        assert proc.returncode == 2 and "REFUSING" in proc.stderr, proc.stderr
+        assert not (tmp_path / f"refused{i}").exists()

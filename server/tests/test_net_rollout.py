@@ -44,6 +44,7 @@ from shengji.train.net_rollout import (
     make_netroll_bot,
     netroll_policy_name,
     netroll_registry_entries,
+    register_netroll_from_env,
     register_netroll_policies,
 )
 
@@ -518,3 +519,54 @@ def test_non_mlp_and_foreign_checkpoints_are_refused(tmp_path):
     torch.save(payload, str(foreign))
     with pytest.raises(NetRolloutError, match="refused"):
         make_netroll_bot(str(foreign), net_tricks=1)
+
+
+# ------------------------------- 8. same-path replacement after registration
+
+def test_registered_name_refuses_a_checkpoint_replaced_at_the_same_path(tmp_path, monkeypatch):
+    path = tmp_path / "live.pt"
+    build = _load_script("cwv_dev_checkpoint").build_dev_checkpoint
+    build(str(path), rounds=2, max_epochs=1, architecture="mlp", width=16, quiet=True)
+    registered_sha = NS.file_sha256(path)
+    names = register_netroll_from_env({"SHENGJI_NETROLL_CKPT": str(path),
+                                       "SHENGJI_NETROLL_TRICKS": "1"})
+    try:
+        name = f"mc-netroll-{registered_sha[:8]}-k1"
+        assert name in names and REGISTRY[name].netroll_artifact[1] == registered_sha
+        bot = make_bot(name, seed=1)
+        assert bot.netroll_checkpoint_sha256 == registered_sha
+        # replace the file at the SAME path with different weights (another
+        # width and seed: different bytes, different size)
+        build(str(path), rounds=2, max_epochs=1, architecture="mlp", width=8, seed=7, quiet=True)
+        replaced_sha = NS.file_sha256(path)
+        assert replaced_sha != registered_sha
+        with pytest.raises(NetRolloutError, match="sha256 mismatch") as excinfo:
+            make_bot(name, seed=2)
+        assert registered_sha in str(excinfo.value) and replaced_sha in str(excinfo.value)
+        with pytest.raises(NetRolloutError, match="sha256 mismatch"):
+            make_bot(f"mc-netroll-prior-{registered_sha[:8]}-k1", seed=2)
+        # the env hook goes through the rebinding refusal: re-registering the
+        # replaced file under the name it now hashes to is a new artifact, and
+        # the OLD name is not silently rebound
+        again = register_netroll_from_env({"SHENGJI_NETROLL_CKPT": str(path),
+                                           "SHENGJI_NETROLL_TRICKS": "1"})
+        assert f"mc-netroll-{replaced_sha[:8]}-k1" in again
+        assert REGISTRY[name].netroll_artifact[1] == registered_sha
+        with pytest.raises(NetRolloutError, match="sha256 mismatch"):
+            make_bot(name, seed=3)
+
+        # RED when the check is bypassed: a factory that drops the registered
+        # sha loads the NEW weights under the OLD checkpoint-named policy.
+        original = NR.make_netroll_bot
+        monkeypatch.setattr(NR, "make_netroll_bot",
+                            lambda checkpoint, **kw: original(
+                                checkpoint, **{k: v for k, v in kw.items() if k != "expected_sha256"}))
+        mutant = make_bot(name, seed=4)
+        monkeypatch.undo()
+        assert mutant.netroll_checkpoint_sha256 == replaced_sha != registered_sha
+        with pytest.raises(NetRolloutError, match="sha256 mismatch"):
+            make_bot(name, seed=5)                       # restored: refuses again
+    finally:
+        for n in list(REGISTRY):
+            if n.startswith("mc-netroll-"):
+                REGISTRY.pop(n, None)

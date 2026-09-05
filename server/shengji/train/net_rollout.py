@@ -65,6 +65,7 @@ from ..ai.cwv_policy import (
     afterstate,
     checkpoint_id,
     child_position,
+    file_sha256,
     prior_evaluator_for,
     shared_evaluator,
 )
@@ -477,6 +478,18 @@ def make_netroll_bot(checkpoint: str | os.PathLike, *, net_tricks: int,
                      seed: int | None = None, receipt: str | os.PathLike | None = None,
                      threads: int | None = 1, expected_sha256: str | None = None
                      ) -> MCNetRolloutSearch:
+    if expected_sha256 is not None:
+        # The registered name carries the checkpoint's identity: the bytes at
+        # the path are hashed NOW, before any (cached) loader can hand back
+        # another file's weights under the registered name.
+        try:
+            on_disk = file_sha256(checkpoint)
+        except OSError as exc:
+            raise NetRolloutError(f"checkpoint refused: {exc}") from exc
+        if on_disk != expected_sha256:
+            raise NetRolloutError(
+                f"checkpoint {checkpoint} changed since registration: sha256 mismatch "
+                f"{on_disk} != {expected_sha256}")
     try:
         if prior:
             evaluator = prior_evaluator_for(checkpoint, receipt=receipt)
@@ -487,8 +500,8 @@ def make_netroll_bot(checkpoint: str | os.PathLike, *, net_tricks: int,
     require_mlp_evaluator(evaluator)
     actual = evaluator.checkpoint_sha256
     if expected_sha256 is not None and actual != expected_sha256:
-        raise NetRolloutError(f"checkpoint {checkpoint} changed since registration: "
-                              f"{actual} != {expected_sha256}")
+        raise NetRolloutError(f"checkpoint {checkpoint} changed since registration: sha256 "
+                              f"mismatch {actual} != {expected_sha256} (loaded weights)")
     bot = MCNetRolloutSearch(evaluator, seed=seed, net_tricks=int(net_tricks),
                              net_stage=net_stage)
     bot.netroll_checkpoint_sha256 = actual
@@ -500,15 +513,22 @@ def make_netroll_bot(checkpoint: str | os.PathLike, *, net_tricks: int,
 def netroll_registry_entries(checkpoint: str | os.PathLike, tricks: Sequence[int],
                              stages: Sequence[str] = ("report",), *,
                              receipt: str | os.PathLike | None = None) -> dict[str, Any]:
-    """``{name: factory}`` for every (K, stage): the arm and its control."""
-    ckpt8 = checkpoint_id(checkpoint)
+    """``{name: factory}`` for every (K, stage): the arm and its control.
+
+    The FULL sha256 of the checkpoint is captured here and every factory
+    passes it to :func:`make_netroll_bot`, so a file replaced at the same
+    path after registration is refused instead of loading new weights under
+    the old checkpoint-named policy."""
+    sha256 = file_sha256(checkpoint)
+    ckpt8 = sha256[:8]
     entries: dict[str, Any] = {}
 
     def factory(k: int, stage: str, prior: bool):
         def make(**kw):
             return make_netroll_bot(checkpoint, net_tricks=k, net_stage=stage, prior=prior,
-                                    seed=kw.get("seed"), receipt=receipt)
-        make.netroll_artifact = (str(checkpoint), ckpt8, k, stage, prior)
+                                    seed=kw.get("seed"), receipt=receipt,
+                                    expected_sha256=sha256)
+        make.netroll_artifact = (str(checkpoint), sha256, k, stage, prior)
         return make
 
     for stage in stages:
@@ -545,6 +565,19 @@ def env_registry_entries(environ: Mapping[str, str] | None = None) -> dict[str, 
     stages = [p for p in env.get(NETROLL_STAGES_ENV, "report").split(",") if p]
     return netroll_registry_entries(checkpoint, tricks, stages,
                                     receipt=env.get(NETROLL_RECEIPT_ENV) or None)
+
+
+def register_netroll_from_env(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Register the env-described arms through :func:`register_netroll_policies`
+    (its rebinding refusal included); returns the names, empty without a ckpt."""
+    env = os.environ if environ is None else environ
+    checkpoint = env.get(NETROLL_CHECKPOINT_ENV)
+    if not checkpoint:
+        return []
+    tricks = [int(p) for p in env.get(NETROLL_TRICKS_ENV, ",".join(map(str, DEFAULT_TRICKS))).split(",") if p]
+    stages = [p for p in env.get(NETROLL_STAGES_ENV, "report").split(",") if p]
+    return register_netroll_policies(checkpoint, tricks, stages,
+                                     receipt=env.get(NETROLL_RECEIPT_ENV) or None)
 
 
 def netroll_record(bot) -> dict:

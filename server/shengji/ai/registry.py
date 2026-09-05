@@ -762,8 +762,8 @@ def _register_netroll_from_env() -> None:
     import os
     if not os.environ.get("SHENGJI_NETROLL_CKPT"):
         return
-    from ..train.net_rollout import env_registry_entries as _netroll_entries
-    REGISTRY.update(_netroll_entries())
+    from ..train.net_rollout import register_netroll_from_env
+    register_netroll_from_env()
 
 
 _register_netroll_from_env()

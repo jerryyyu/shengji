@@ -13,8 +13,10 @@ recording the replicate; (e) the RED direction is ``test_red_*``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
 import json
+import multiprocessing
 import os
 import shutil
 from pathlib import Path
@@ -303,3 +305,75 @@ def test_red_without_the_check_run_b_would_be_dealt_again(registry, tmp_path, mo
     reg = seeds.load(registry)
     assert seeds.overlaps(reg, 20260906, 8000)[0]["name"] == "run-A"
     assert seeds.require_disjoint(reg, 20260906, 8000)      # RED: no refusal
+
+
+# ------------------------------------------ concurrency: one locked transaction
+
+def _contender(registry, barrier, name, seed0, clusters, result_dir):
+    """A process that asks for one window the moment every contender is
+    ready (the barrier), and leaves its verdict as a file."""
+    barrier.wait(timeout=30)
+    try:
+        receipt = seeds.check_and_register(name=name, purpose="trajectory", seed0=seed0,
+                                           clusters=clusters, refuse=None, path=registry)
+        verdict = {"admitted": True, "receipt": receipt}
+    except seeds.SeedWindowError as exc:
+        verdict = {"admitted": False, "error": str(exc)}
+    (Path(result_dir) / f"{name}.json").write_text(json.dumps(verdict))
+
+
+def _contend(registry, requests, result_dir, *, ctx="fork"):
+    """Run the requests (name, seed0, clusters) as concurrent processes that
+    start together; returns {name: verdict}.  fork: a monkeypatched module
+    (the RED witness) is inherited, and flock must cross processes either way."""
+    mp = multiprocessing.get_context(ctx)
+    barrier = mp.Barrier(len(requests))
+    procs = [mp.Process(target=_contender, args=(str(registry), barrier, n, s, c, str(result_dir)))
+             for n, s, c in requests]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join(60)
+    assert all(p.exitcode == 0 for p in procs), [p.exitcode for p in procs]
+    return {n: json.loads((Path(result_dir) / f"{n}.json").read_text()) for n, _, _ in requests}
+
+
+def test_witness_concurrent_same_span_admits_exactly_one(registry, tmp_path):
+    """Two concurrent disallowed requests for [77, 78): one admitted, the
+    other refused naming the winner, the registry holds exactly one."""
+    verdicts = _contend(registry, [("contender-1", 77, 1), ("contender-2", 77, 1)], tmp_path)
+    admitted = [n for n, v in verdicts.items() if v["admitted"]]
+    refused = [n for n, v in verdicts.items() if not v["admitted"]]
+    assert len(admitted) == 1 and len(refused) == 1, verdicts
+    assert admitted[0] in verdicts[refused[0]]["error"], "the loser names the winner"
+    assert "[77, 78)" in verdicts[refused[0]]["error"]
+    entries = [w for w in seeds.load(registry)["windows"] if w["span"] == [77, 78]]
+    assert [w["name"] for w in entries] == admitted
+    assert seeds.lock_path(registry).exists()
+
+
+def test_witness_concurrent_disjoint_spans_both_persist(registry, tmp_path):
+    verdicts = _contend(registry, [("left", 77, 1), ("right", 78, 1), ("far", 1_000, 5)], tmp_path)
+    assert all(v["admitted"] for v in verdicts.values()), verdicts
+    names = {w["name"] for w in seeds.load(registry)["windows"]}
+    assert {"left", "right", "far"} <= names
+    assert len(seeds.load(registry)["windows"]) == 15 + 3
+
+
+def test_red_without_the_lock_both_are_admitted_and_one_is_lost(registry, tmp_path, monkeypatch):
+    """The lock removed (and both contenders made to read the registry
+    before either writes, the interleaving the lock forbids): both requests
+    succeed and the ledger keeps one -- the lost update Codex reproduced."""
+    monkeypatch.setattr(seeds, "locked", lambda path=None: contextlib.nullcontext())
+    real_load = seeds.load
+    both_read = multiprocessing.get_context("fork").Barrier(2)
+
+    def load_then_wait(path=None):
+        doc = real_load(path)
+        both_read.wait(timeout=30)
+        return doc
+    monkeypatch.setattr(seeds, "load", load_then_wait)
+    verdicts = _contend(registry, [("contender-1", 77, 1), ("contender-2", 77, 1)], tmp_path)
+    assert all(v["admitted"] for v in verdicts.values()), verdicts       # RED: both admitted
+    entries = [w for w in real_load(registry)["windows"] if w["span"] == [77, 78]]
+    assert len(entries) == 1, "RED: one contender's entry was overwritten"

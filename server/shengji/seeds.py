@@ -9,9 +9,19 @@ code refused it -- the check lived in a memory.  This module makes the
 registry a file (``server/runs/seed_windows.json``, committed, append-only)
 and the check a refusal that every run performs BEFORE it deals anything.
 
-Rules (enforced by the callers, see ``scripts/trajectory.py``,
-``scripts/cwv_duel.py``, ``scripts/vleaf_screen.py``,
-``scripts/netroll_screen.py``):
+Covered entry points (each calls ``check_and_register`` before it deals):
+``shengji.harvest.trajectory.generate`` (``scripts/trajectory.py``),
+``scripts/cwv_duel.py calibrate`` and ``run``, ``scripts/vleaf_screen.py
+calibrate`` and ``run``, ``scripts/netroll_screen.py calibrate`` and ``run``.
+NOT wired yet: ``cwv_shortlist_screen``, ``learned_search_screen``,
+``world_shortlist_screen`` and ``oracle_screen`` -- their windows are neither
+checked nor registered.  The registry is a file local to this checkout /
+path: the check excludes overlaps within one checkout only, and the
+committed file on ``main`` is the source of truth that a cross-host
+allocation must consult (and append to, via a merged PR); this is not a
+fleet-wide exclusion.
+
+Rules:
 
 * a ``trajectory`` window (training data) must be disjoint from EVERY
   registered window; ``--allow-seed-overlap`` is the explicit override and
@@ -27,11 +37,20 @@ Rules (enforced by the callers, see ``scripts/trajectory.py``,
   (same name, seed0 and clusters) is accepted, a different span under the
   same name refuses.
 
+``check_and_register`` is ONE transaction -- read, check, append, write --
+under an exclusive ``fcntl.flock`` on the stable lock file
+``<registry>.lock`` next to the registry (never on the registry inode
+itself, which ``os.replace`` swaps on every write), so two concurrent
+requests for the same span cannot both be admitted: the second re-reads the
+registry inside the lock and sees the first.
+
 ``SHENGJI_SEED_WINDOWS`` points the registry elsewhere (tests; a scratch
 registry); the default is the committed file.
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import platform
@@ -209,13 +228,43 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def lock_path(path: str | os.PathLike | None = None) -> Path:
+    """The stable lock file next to the registry (``<registry>.lock``)."""
+    file = registry_path(path)
+    return file.with_name(file.name + ".lock")
+
+
+@contextlib.contextmanager
+def locked(path: str | os.PathLike | None = None):
+    """Hold the registry's exclusive ``fcntl.flock`` for the block.  The
+    lock lives on a separate, never-replaced file: the registry itself is
+    swapped by ``os.replace`` on every write, so a lock on its inode would
+    protect nothing.  Not re-entrant (flock is per open file description)."""
+    lock = lock_path(path)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def register(entry: dict, path: str | os.PathLike | None = None, *,
              reuse: bool = False) -> dict:
-    """Append ``entry`` to the registry atomically (temp file + os.replace).
-    A duplicate name refuses -- unless ``reuse`` and the registered window
-    has the same seed0 and clusters (a resume / rerun of the same run), in
-    which case the existing entry is returned unchanged and nothing is
-    written.  Returns the entry now in the registry."""
+    """Append ``entry`` to the registry atomically (temp file + os.replace)
+    under the registry lock.  A duplicate name refuses -- unless ``reuse``
+    and the registered window has the same seed0 and clusters (a resume /
+    rerun of the same run), in which case the existing entry is returned
+    unchanged and nothing is written.  Returns the entry now in the
+    registry.  Standalone use: no overlap check (see ``check_and_register``
+    for the checked transaction)."""
+    with locked(path):
+        return _register_locked(entry, path, reuse=reuse)
+
+
+def _register_locked(entry: dict, path=None, *, reuse: bool = False) -> dict:
+    """``register`` inside an already-held registry lock."""
     file = registry_path(path)
     _validate(entry, "new entry")
     registry = load(file)
@@ -241,7 +290,10 @@ def check_and_register(*, name: str, purpose: str, seed0: int, clusters: int,
                        resume: bool = False, note: str = "", path=None,
                        what: str | None = None) -> dict:
     """The one call the scripts make on start: refuse (or, with
-    ``allow_overlap``, record) the overlaps, then register the window.
+    ``allow_overlap``, record) the overlaps, then register the window --
+    as ONE transaction under the registry lock (read, check, append,
+    write), so of two concurrent requests for overlapping spans exactly one
+    is admitted and the other refuses naming it.
 
     ``refuse`` names the purposes an overlap always refuses (None = every
     purpose); overlaps with the other purposes refuse unless
@@ -250,17 +302,19 @@ def check_and_register(*, name: str, purpose: str, seed0: int, clusters: int,
     "resumed", "allow_seed_overlap", "conflicts": [...]}`` -- ``conflicts``
     are the windows this run deliberately replicates."""
     file = registry_path(path)
-    registry = load(file)
     what = what or f"{purpose} run {name}"
     exclude = name if resume else None
     always = PURPOSES if refuse is None else tuple(refuse)
-    require_disjoint(registry, seed0, clusters, purposes=always, exclude_name=exclude,
-                     what=what)
-    conflicts = overlaps(registry, seed0, clusters, exclude_name=exclude)
-    if conflicts and not allow_overlap:
-        require_disjoint(registry, seed0, clusters, exclude_name=exclude, what=what)
-    entry = register(make_entry(name=name, purpose=purpose, seed0=seed0, clusters=clusters,
-                                note=note), file, reuse=resume)
+    with locked(file):
+        registry = load(file)                       # re-read INSIDE the lock
+        require_disjoint(registry, seed0, clusters, purposes=always, exclude_name=exclude,
+                         what=what)
+        conflicts = overlaps(registry, seed0, clusters, exclude_name=exclude)
+        if conflicts and not allow_overlap:
+            require_disjoint(registry, seed0, clusters, exclude_name=exclude, what=what)
+        entry = _register_locked(make_entry(name=name, purpose=purpose, seed0=seed0,
+                                            clusters=clusters, note=note),
+                                 file, reuse=resume)
     lo, hi = window(seed0, clusters)
     return {"registry": str(file), "name": name, "purpose": purpose, "seed0": int(seed0),
             "clusters": int(clusters), "span": [lo, hi], "resumed": bool(resume),

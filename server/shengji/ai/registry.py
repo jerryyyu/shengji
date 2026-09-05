@@ -789,3 +789,17 @@ def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[s
     entries = cwv_puct_registry_entries(checkpoint, simulations, **search)
     REGISTRY.update(entries)
     return sorted(entries)
+
+
+def _register_netroll_from_env() -> None:
+    """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
+    the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
+    ``mc-netroll-prior-...`` controls; ``train.net_rollout``) at import."""
+    import os
+    if not os.environ.get("SHENGJI_NETROLL_CKPT"):
+        return
+    from ..train.net_rollout import register_netroll_from_env
+    register_netroll_from_env()
+
+
+_register_netroll_from_env()

@@ -80,6 +80,24 @@ class ProtocolFailure(RuntimeError):
 
 def counters(bots) -> dict:
     return {"rollouts": sum(getattr(b, "rollouts", 0) for b in bots),
+            # ARM 0 (PR #130): tie-break visibility — zero when the flag is
+            # off, so frozen-protocol counter shapes gain three constant keys.
+            "tie_shy_firings": sum(getattr(b, "tie_shy_firings", 0)
+                                   for b in bots),
+            "tie_shy_flips": sum(getattr(b, "tie_shy_flips", 0)
+                                 for b in bots),
+            "tie_shy_risk_saved": sum(getattr(b, "tie_shy_risk_saved", 0)
+                                      for b in bots),
+            "tie_shy_fire_lead": sum(getattr(b, "tie_shy_fire_lead", 0)
+                                     for b in bots),
+            "tie_shy_flip_lead": sum(getattr(b, "tie_shy_flip_lead", 0)
+                                     for b in bots),
+            "tie_shy_flip_trump": sum(getattr(b, "tie_shy_flip_trump", 0)
+                                      for b in bots),
+            "tie_shy_trump_guarded": sum(
+                getattr(b, "tie_shy_trump_guarded", 0) for b in bots),
+            "tie_shy_risk_saved_lead": sum(
+                getattr(b, "tie_shy_risk_saved_lead", 0) for b in bots),
             "searches": sum(getattr(b, "search_calls", 0) for b in bots),
             "search_secs": round(sum(getattr(b, "search_secs", 0.0)
                                      for b in bots), 4),
@@ -149,9 +167,30 @@ def run_arm(label, policy, opponent, clusters, seed0, fh, run_id,
                     [a1, a2])
                 opp_counters["policy_telemetry"] = policy_telemetry_fn(
                     [b1, b2])
+            # Margin/bracket recording (STRENGTH_STACK_PROPOSAL.md stage 1).
+            # Measurement-only: binary `won` still gates everything; these
+            # fields exist so margin/bracket composites can be analysed
+            # offline and, if Jerry adopts power option (b), pre-registered
+            # as gates. Brackets follow the engine's scoring thresholds
+            # (attacker points 0 / <40 / <80 / 80+ / 120+ / ...): the arm's
+            # seats attack when the banker sits on the opposing team for
+            # this flip.
+            arm_attacking = int(log.banker % 2 != (0 if flip == 0 else 1))
+            pts = int(log.attacker_points)
+            # Same bracket convention as MCBot's LEVEL_OBJECTIVE mapping
+            # (mcbot.py _level_score): 0 -> -3, 1-39 -> -2, 40-79 -> -1,
+            # 80-119 -> 0, then +1 per 40, capped at 3.
+            bracket = (min(3, (pts - 80) // 40) if pts >= 80
+                       else -3 if pts == 0 else -(1 + (79 - pts) // 40))
             rec = {"run": run_id, "label": label, "policy": policy,
                    "seed": seed, "flip": flip, "won": won,
                    "level_utility": (1 if won else -1) * max(1, int(log.level_change)),
+                   "attacker_points": pts,
+                   "arm_attacking": arm_attacking,
+                   "attacker_bracket": bracket,
+                   "arm_point_margin": (pts - 80) * (1 if arm_attacking
+                                                     else -1),
+                   "level_change": int(log.level_change),
                    "arm": arm_counters, "opp": opp_counters}
             recs.append(rec)
             fh.write(json.dumps(rec) + "\n")

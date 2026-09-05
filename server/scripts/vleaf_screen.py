@@ -52,6 +52,7 @@ if str(SERVER) not in sys.path:
 from shengji.ai.registry import VLEAF_LEAF_TRICKS  # noqa: E402
 from shengji.train import leaf_screen as S  # noqa: E402
 from shengji.train.leaf_policy import LeafError, fit_points_prior  # noqa: E402
+from shengji import seeds  # noqa: E402
 from shengji.train.search_screen import _publish  # noqa: E402
 
 
@@ -129,6 +130,11 @@ def parser() -> argparse.ArgumentParser:
                      help="accept a calibration whose parity N lies outside its measured grid "
                           "(an extrapolation, not an interpolation); prefer re-calibrating "
                           "with --grid around that N")
+    run.add_argument("--allow-seed-overlap", action="store_true",
+                     help="screen a window that overlaps another registered SCREEN / "
+                          "calibration window (a deliberate same-seed replicate; recorded "
+                          "in summary.json seed_window); an overlap with a trajectory "
+                          "(training) window always refuses")
     run.add_argument("--arms", default="learned,prior",
                      help="comma-separated subset of learned,prior")
     run.add_argument("--bootstrap-replicates", type=int, default=S.DEFAULT_BOOTSTRAP_REPLICATES)
@@ -181,7 +187,35 @@ def _fit_prior(args) -> int:
     return 0
 
 
+def _screen_window(args, out: Path) -> dict:
+    """The screen's deal window [seed0, seed0 + clusters) against the
+    seed-window registry BEFORE any deal: an overlap with a trajectory
+    (training) window always refuses; with another screen / calibration
+    window only with --allow-seed-overlap (a deliberate replicate, named in
+    the receipt).  The window is registered under this --out (a rerun of the
+    identical command reuses it)."""
+    return seeds.check_and_register(
+        name=f"vleaf-screen:{out.resolve()}", purpose="screen", seed0=args.seed0,
+        clusters=args.clusters, refuse=("trajectory",), allow_overlap=args.allow_seed_overlap,
+        resume=True, note=f"vleaf_screen run out={out.resolve()}",
+        what=f"vleaf_screen run {out}")
+
+
+def _calibration_window(args, out: Path) -> dict:
+    """Register the outcome-blind calibration window (refuses only a
+    trajectory overlap; other overlaps are recorded) and leave a receipt
+    next to calibration.json."""
+    receipt = seeds.check_and_register(
+        name=f"vleaf-calibrate:{out.resolve()}", purpose="calibration", seed0=args.seed0,
+        clusters=args.clusters, refuse=("trajectory",), allow_overlap=True, resume=True,
+        note=f"vleaf_screen calibrate out={out.resolve()}", what=f"vleaf_screen calibrate {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    _publish(out / "seed_window.json", receipt)
+    return receipt
+
+
 def _calibrate(args) -> int:
+    _calibration_window(args, Path(args.out))
     config = S.build_config(arm="learned", leaf_tricks=args.leaf_tricks, seed0=args.seed0,
                             clusters=args.clusters, arm_select_worlds=args.grid[0],
                             checkpoint=args.checkpoint, allow_legacy=args.allow_legacy,
@@ -237,6 +271,7 @@ def _run(args) -> int:
               file=sys.stderr)
         return 2
     out = Path(args.out)
+    seed_window = _screen_window(args, out)      # refuse before any deal
     summaries = {}
     for arm in arms:
         config = S.build_config(arm=arm, leaf_tricks=args.leaf_tricks, seed0=args.seed0,
@@ -250,6 +285,7 @@ def _run(args) -> int:
         summaries[arm] = S.run_arm(config, output=out / arm, workers=args.workers)
     combined = S.combined_summary(summaries, seed0=args.seed0,
                                   replicates=args.bootstrap_replicates)
+    combined["seed_window"] = seed_window
     _publish(out / "summary.json", combined)
     print(json.dumps(combined, indent=2, sort_keys=True))
     return 0
@@ -263,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "calibrate":
             return _calibrate(args)
         return _run(args)
-    except (S.ScreenError, LeafError) as exc:
+    except (S.ScreenError, LeafError, seeds.SeedWindowError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2
 

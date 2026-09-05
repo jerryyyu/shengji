@@ -13,6 +13,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 TESTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS))
 from review_ledger_guard import enforce_pr_head_extends_base
@@ -31,3 +33,26 @@ if os.environ.get("SHENGJI_FAST"):
         "SHENGJI_FAST=1 but shengji/engine/_fast is not built; run: "
         "uv run python setup.py build_ext --inplace"
     )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _session_seed_windows(tmp_path_factory):
+    """No test may write the committed ``server/runs/seed_windows.json``:
+    the whole session registers seed windows in a scratch registry (module-
+    and session-scoped fixtures included, which run before any function-
+    scoped fixture)."""
+    scratch = tmp_path_factory.mktemp("seed-windows") / "seed_windows.json"
+    previous = os.environ.get("SHENGJI_SEED_WINDOWS")
+    os.environ["SHENGJI_SEED_WINDOWS"] = str(scratch)
+    yield scratch
+    if previous is None:
+        os.environ.pop("SHENGJI_SEED_WINDOWS", None)
+    else:
+        os.environ["SHENGJI_SEED_WINDOWS"] = previous
+
+
+@pytest.fixture(autouse=True)
+def _scratch_seed_windows(tmp_path, monkeypatch):
+    """Each test gets its own fresh scratch registry (read the real ledger
+    explicitly through ``shengji.seeds.DEFAULT_REGISTRY`` when wanted)."""
+    monkeypatch.setenv("SHENGJI_SEED_WINDOWS", str(tmp_path / "seed_windows.json"))

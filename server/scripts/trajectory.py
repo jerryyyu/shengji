@@ -5,7 +5,17 @@
         --rounds N --seed S --workers W --out DIR [--policy NAME] \
         [--explore-rate R] [--explore-k K] [--select-worlds n] \
         [--report-worlds n] [--cap 256] [--knob NAME=VALUE ...] \
-        [--widen VARIANT ...] [--round-mix {first,sampled}] [--merge] [--resume]
+        [--widen VARIANT ...] [--round-mix {first,sampled}] [--merge] [--resume] \
+        [--allow-seed-overlap]
+
+Before anything is dealt the deal window [seed0, seed0 + rounds/2) is checked
+against the committed seed-window registry (``runs/seed_windows.json``,
+``shengji/seeds.py``, ``scripts/seed_windows.py list|check``): an overlap
+with ANY registered window refuses (Run B at seed0 20260906 re-dealt 7,999 of
+Run A's 8,000 deals and added nothing in training); ``--allow-seed-overlap``
+is the explicit override and ``manifest.json`` then records the overlapped
+windows under ``seed_window.conflicts``.  Every run registers its window
+(name = run_id) on start; ``--resume`` accepts its own registered window.
 
 Plays rounds/2 seeded deal clusters in both mirrors with all four seats on
 the same registry policy (default mc-s0-report-lcb), captures every play

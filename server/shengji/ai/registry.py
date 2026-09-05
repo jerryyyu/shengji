@@ -540,3 +540,84 @@ def _make_gate(path: str, gate: float):
 # search on the ~12% the net flags. Gate fitted on a disjoint holdout half.
 REGISTRY["mc-gate-v11pair"] = _make_gate("snapshots_v11pair/ep07.pt", 0.02)
 REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
+
+
+def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
+                          lcb: float = 0.0, receipt: str | None = None) -> list[str]:
+    """Complete-world-value one-ply arms, named by their VALUE checkpoint.
+
+    Same rule as ``_make_vleaf``: the checkpoint is the policy's identity, so
+    every name embeds ``<ckpt8>`` (sha256 of the file, first eight hex) and
+    the world count -- ``mc-cwv-<ckpt8>-w<W>`` -- and a bare ``mc-cwv`` never
+    exists.  ``mc-cwv-prior-<ckpt8>-w<W>`` is the matching NO-LEARNING control: the
+    same ballot, sampler and positions with the training receipt's stratified
+    prior as the value.  The checkpoint is loaded lazily, once per process,
+    and refused when its encoder identity is not the live afterstate encoder.
+    Returns the registered names.
+    """
+    from .cwv_policy import cwv_registry_entries
+    entries = cwv_registry_entries(checkpoint, worlds, finish_trick=finish_trick,
+                                   lcb=lcb, receipt=receipt)
+    REGISTRY.update(entries)
+    return sorted(entries)
+
+
+def scaled_policy_name(base_policy: str, multiplier: float) -> str:
+    return f"{base_policy}-x{float(multiplier):g}"
+
+
+def _make_scaled_policy(base_policy: str, multiplier: float):
+    """The named search policy with its selection AND report doses scaled.
+
+    Production's own compute curve is the bar for any learned bot: on fresh
+    deals `mc-s0-report-lcb` given 29.7x its rollouts (N=889/R=8890) scored
+    +0.215 [+0.125, +0.309] against itself at 1x (2026-09-05), more than the
+    value32 leaf probe.  ``N_DETERMINIZATIONS`` and ``REPORT_FOLD_WORLDS``
+    scale together, rounded; the ballot, allocation and report rule are the
+    base policy's, so the only treatment is the dose.
+    """
+    if float(multiplier) <= 0:
+        raise ValueError("a dose multiplier must be positive")
+
+    def make(**kw):
+        factory = REGISTRY[base_policy]
+        cls = factory if isinstance(factory, type) else type(make_bot(base_policy))
+        if not issubclass(cls, MCBot):
+            raise RuntimeError(f"{base_policy!r} is not an MC search policy")
+        scaled = type(f"{cls.__name__}x{float(multiplier):g}", (cls,), {
+            "N_DETERMINIZATIONS": max(1, round(cls.N_DETERMINIZATIONS * multiplier)),
+            "REPORT_FOLD_WORLDS": (round(cls.REPORT_FOLD_WORLDS * multiplier)
+                                   if cls.REPORT_FOLD_WORLDS else 0),
+        })
+        bot = scaled(seed=kw.get("seed"))
+        bot.dose_multiplier = float(multiplier)
+        bot.dose_base_policy = base_policy
+        return bot
+    return make
+
+
+def register_scaled_policies(base_policy: str, multipliers) -> list[str]:
+    """Register ``<base>-x<m>`` for every multiplier; return the names."""
+    names = []
+    for multiplier in multipliers:
+        name = scaled_policy_name(base_policy, multiplier)
+        REGISTRY[name] = _make_scaled_policy(base_policy, float(multiplier))
+        names.append(name)
+    return names
+
+
+# Production's compute curve at the ladder's rungs (N=90/R=900, N=300/R=3000).
+register_scaled_policies("mc-s0-report-lcb", (3, 10))
+
+
+def _register_cwv_from_env() -> None:
+    """``SHENGJI_CWV_CKPT`` (+ ``_WORLDS``/``_FINISH_TRICK``/``_LCB``/``_RECEIPT``)
+    registers the arms at import so ``scripts/evaluate.py`` can name them."""
+    import os
+    if not os.environ.get("SHENGJI_CWV_CKPT"):
+        return
+    from .cwv_policy import env_registry_entries
+    REGISTRY.update(env_registry_entries())
+
+
+_register_cwv_from_env()

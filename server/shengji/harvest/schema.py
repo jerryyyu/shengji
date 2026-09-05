@@ -40,6 +40,15 @@ exploration           self-play generator (``trajectory``) records only:
                       decision of an ``--explore-rate 0`` run, and
                       tractor-locked leads that never reach a ballot).
                       Sources that do not explore omit the key.
+widening              self-play generator records of a ``--widen`` run only:
+                      ``{"variants": [names], "added": [actions]}`` -- the
+                      run's candidate-set variants (``ballot_capture``) and
+                      the candidates they appended to the search ballot at
+                      this decision (after the policy's own list, before any
+                      exploration draw; ``added`` may be empty), ``null`` for
+                      a tractor-locked lead that never reached a ballot.
+                      Runs without ``--widen`` (and every other source) omit
+                      the key, so their bytes are unchanged.
 preference            self-play generator records only: the preregistered
                       policy target, ``{"softmax": [...], "final": [...],
                       "tau", "means", "paired_se", "refined_indices",
@@ -90,7 +99,7 @@ FIELDS = (
     "seat", "ply", "trick", "role",
     "legal_actions", "legal_actions_complete", "legal_actions_count",
     "ballot", "production_ballot", "allocation", "preference", "action_values",
-    "action", "engine_play", "outcome", "authority", "exploration",
+    "action", "engine_play", "outcome", "authority", "exploration", "widening",
     "state_private", "hidden_hands", "record_sha256",
 )
 PRIVATE_ONLY_FIELDS = ("hidden_hands", "public_record_sha256")
@@ -226,6 +235,19 @@ def validate_record(record: Mapping[str, Any]) -> None:
             keys = {tuple(sorted(a)) for a in record["ballot"]}
             if any(tuple(sorted(a)) not in keys for a in ex["added"]):
                 raise SchemaError("exploration.added must be on the ballot")
+    if "widening" in record and record["widening"] is not None:
+        wd = record["widening"]
+        variants = wd.get("variants") if isinstance(wd, dict) else None
+        if (not isinstance(wd, dict) or set(wd) != {"variants", "added"}
+                or not isinstance(variants, list) or not variants
+                or not all(isinstance(v, str) and v for v in variants)
+                or not _is_action_list(wd["added"])):
+            raise SchemaError("widening must be {variants: [non-empty names], "
+                              "added: [card lists]} or null")
+        if record["ballot"] is not None:
+            keys = {tuple(sorted(a)) for a in record["ballot"]}
+            if any(tuple(sorted(a)) not in keys for a in wd["added"]):
+                raise SchemaError("widening.added must be on the ballot")
     if "preference" in record and record["preference"] is not None:
         pref = record["preference"]
         if not isinstance(pref, dict) or not {"softmax", "final"} <= set(pref):

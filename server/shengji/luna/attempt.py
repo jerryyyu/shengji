@@ -51,6 +51,7 @@ from .transport import (
     CodexToolEventError,
     CodexTurnTransportError,
     _default_run,
+    PROMPT_PROFILES,
 )
 from .turn import (
     AttemptRef,
@@ -63,7 +64,8 @@ from .turn import (
 from .canonical import canonical_json_bytes
 
 
-ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v2"
+ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v3"
+LEGACY_ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v2"
 EVIDENCE_SCHEMA = "pt-luna-turn-rpc-game-evidence-v1"
 FAILURE_SCHEMA = "pt-luna-turn-rpc-game-failure-v2"
 MANIFEST_SCHEMA = "pt-luna-turn-rpc-game-manifest-v2"
@@ -234,23 +236,38 @@ def reopen_attempt(
         path: Path, *, seed_secret: bytes,
         expected_runtime_sha256: str | None = None,
         expected_coordinate: tuple[str, int, int] | None = None,
-        expected_mirror: int | None = None) \
+        expected_mirror: int | None = None,
+        expected_prompt_profile: str = "baseline") \
         -> AttemptReopen:
     """Reopen one complete/refused game without a provider call."""
     path = Path(path)
     _validate_private_dir(path, "game attempt directory")
     attempt = _read(path / "attempt.json")
     manifest = _read(path / "manifest.json")
-    if set(attempt) != {"schema", "coordinate", "mirror", "root_sha256",
+    current_keys = {"schema", "coordinate", "mirror", "root_sha256",
                        "seed_commitment_sha256", "runtime_sha256",
+                       "prompt_profile",
                        "boot_identity_sha256",
                        "started_monotonic_nanoseconds",
                        "per_game_deadline_nanoseconds", "per_game_token_cap",
                        "per_call_token_reserve",
                        "per_call_wall_reserve_milliseconds",
-                       "authority", "attempt_sha256"} \
-            or attempt["schema"] != ATTEMPT_SCHEMA:
+                       "authority", "attempt_sha256"}
+    legacy_keys = current_keys - {"prompt_profile"}
+    if type(expected_prompt_profile) is not str \
+            or expected_prompt_profile not in PROMPT_PROFILES:
+        raise RPCCollectionError("game prompt profile drift")
+    if not ((attempt.get("schema") == ATTEMPT_SCHEMA
+             and set(attempt) == current_keys)
+            or (attempt.get("schema") == LEGACY_ATTEMPT_SCHEMA
+                and set(attempt) == legacy_keys)):
         raise RPCCollectionError("game attempt schema drift")
+    attempt_profile = attempt.get("prompt_profile", "baseline")
+    if (attempt["schema"] == ATTEMPT_SCHEMA
+            and attempt_profile not in PROMPT_PROFILES):
+        raise RPCCollectionError("game prompt profile drift")
+    if attempt_profile != expected_prompt_profile:
+        raise RPCCollectionError("game prompt profile binding drift")
     attempt_body = {key: value for key, value in attempt.items()
                     if key != "attempt_sha256"}
     if attempt["attempt_sha256"] != _sha(attempt_body) \
@@ -400,7 +417,7 @@ class _CountingRun:
             self.concurrency.leave()
 
 
-TransportFactory = Callable[[Path], PlannerTransport]
+TransportFactory = Callable[..., PlannerTransport]
 
 
 class _DeadlineTransport:
@@ -465,10 +482,13 @@ class RPCGameAttemptRunner:
             per_call_token_reserve: int = 1,
             per_call_wall_reserve_milliseconds: int = 91_000,
             transport_factory: TransportFactory | None = None,
+            prompt_profile: str = "baseline",
             progress_callback: Callable[[Mapping[str, object]], object]
             | None = None):
         if type(seed_secret) is not bytes or len(seed_secret) != 32:
             raise RPCCollectionError("collection seed secret drift")
+        if prompt_profile not in PROMPT_PROFILES:
+            raise RPCCollectionError("collection prompt profile drift")
         if isinstance(per_game_deadline_seconds, bool) \
                 or not isinstance(per_game_deadline_seconds, int) \
                 or per_game_deadline_seconds <= 90 \
@@ -492,6 +512,7 @@ class RPCGameAttemptRunner:
                 != runtime.get("boot_identity_sha256"):
             raise RPCCollectionError("collection runtime drift")
         self.seed_secret = seed_secret
+        self.prompt_profile = prompt_profile
         self.attempts_root = Path(attempts_root)
         self.attempts_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         _validate_private_dir(self.attempts_root, "collection attempt root")
@@ -567,13 +588,21 @@ class RPCGameAttemptRunner:
                 codex_binary=Path(codex_binary), temp_root=temp,
                 timeout_seconds=self.per_call_timeout_seconds,
                 run_command=counted, runtime_attestor=lambda _: dict(catalog),
-                policy_mode="play-only")
+                policy_mode="play-only", prompt_profile=self.prompt_profile)
         else:
             self.transport_factory = transport_factory
 
     def terminate_active_calls(self) -> None:
         if self.active_call_manager is not None:
             self.active_call_manager.terminate()
+
+    def _transport(self, path: Path) -> PlannerTransport:
+        """The production factory binds the profile; old test fakes are baseline."""
+        transport = self.transport_factory(path)
+        actual = getattr(transport, "prompt_profile", "baseline")
+        if actual != self.prompt_profile:
+            raise RPCCollectionError("transport prompt profile binding drift")
+        return transport
 
     def _emit_progress(self, event: str, journal: FileTurnJournal,
                        absolute_deadline_ns: int) -> None:
@@ -596,6 +625,7 @@ class RPCGameAttemptRunner:
                 "seed_commitment_sha256": hashlib.sha256(
                     self.seed_secret).hexdigest(),
                 "runtime_sha256": self.runtime_sha256,
+                "prompt_profile": self.prompt_profile,
                 "boot_identity_sha256": self.runtime["boot_identity_sha256"],
                 "started_monotonic_nanoseconds": started,
                 "per_game_deadline_nanoseconds": self.per_game_deadline_ns,
@@ -783,7 +813,8 @@ class RPCGameAttemptRunner:
             result = reopen_attempt(
                 path, seed_secret=self.seed_secret,
                 expected_runtime_sha256=self.runtime_sha256,
-                expected_coordinate=coordinate, expected_mirror=mirror)
+                expected_coordinate=coordinate, expected_mirror=mirror,
+                expected_prompt_profile=self.prompt_profile)
             if result.artifacts is None:
                 raise RPCCollectionError("sealed game attempt is incomplete")
             return result.artifacts
@@ -800,9 +831,16 @@ class RPCGameAttemptRunner:
         else:
             attempt = _read(path / "attempt.json")
             started = attempt.get("started_monotonic_nanoseconds")
-            if attempt != self._attempt_body(
-                    coordinate, mirror, root_sha, started):
-                raise RPCCollectionError("resumed game attempt drift")
+            expected_attempt = self._attempt_body(
+                coordinate, mirror, root_sha, started)
+            if attempt != expected_attempt:
+                legacy_body = {key: value for key, value in expected_attempt.items()
+                               if key not in {"prompt_profile", "attempt_sha256"}}
+                legacy_body["schema"] = LEGACY_ATTEMPT_SCHEMA
+                legacy_attempt = {**legacy_body,
+                                  "attempt_sha256": _sha(legacy_body)}
+                if attempt != legacy_attempt or self.prompt_profile != "baseline":
+                    raise RPCCollectionError("resumed game attempt drift")
         if self.runtime.get("boot_identity_sha256") \
                 != _read(path / "attempt.json")["boot_identity_sha256"]:
             raise RPCCollectionError("resumed game boot identity drift")
@@ -844,7 +882,7 @@ class RPCGameAttemptRunner:
                     != runtime_stable_view(self.runtime):
                 raise RPCCollectionError("collection live runtime drift")
             transport = _DeadlineTransport(
-                self.transport_factory(path),
+                self._transport(path),
                 lambda: absolute_deadline_ns,
                 lambda event: self._emit_progress(
                     event, journal, absolute_deadline_ns),
@@ -970,7 +1008,8 @@ class RPCGameAttemptRunner:
             reopened = reopen_attempt(
                 path, seed_secret=self.seed_secret,
                 expected_runtime_sha256=self.runtime_sha256,
-                expected_coordinate=coordinate, expected_mirror=mirror)
+                expected_coordinate=coordinate, expected_mirror=mirror,
+                expected_prompt_profile=self.prompt_profile)
             if reopened.artifacts is None:
                 raise RPCCollectionError("completed game failed reopen")
             return reopened.artifacts
@@ -983,7 +1022,7 @@ class RPCGameAttemptRunner:
             raise RPCCollectionError("game attempt refused") from exc
 
 
-__all__ = ["ATTEMPT_SCHEMA", "AttemptReopen", "EVIDENCE_SCHEMA",
+__all__ = ["ATTEMPT_SCHEMA", "LEGACY_ATTEMPT_SCHEMA", "AttemptReopen", "EVIDENCE_SCHEMA",
            "FAILURE_SCHEMA", "MANIFEST_SCHEMA", "RPCCollectionError",
            "RPCGameAttemptRunner", "ResourceBoundaryError",
            "SettledResourceBoundaryError",

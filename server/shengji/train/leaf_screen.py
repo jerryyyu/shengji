@@ -44,7 +44,7 @@ from ..engine.round import Round
 from ..oracle import screen as duel
 from .leaf_policy import load_points_head, load_points_prior
 from .search_screen import (TimedPolicy, _publish, _run_pending, bind_output_config,
-                            execution_source_identity, reopen_shard)
+                            execution_source_identity)
 
 CONFIG_SCHEMA = "vleaf-screen-config-v1"
 CALIBRATION_SCHEMA = "vleaf-calibration-v1"
@@ -62,10 +62,46 @@ DEFAULT_SEED0 = 50_260_904
 #: ... and the calibration deals, apart from the screen's 1,024-cluster range.
 DEFAULT_CALIBRATION_SEED0 = 50_360_904
 DEFAULT_BOOTSTRAP_REPLICATES = 10_000
+#: cluster c deals trump rank trump_ranks[c % len]; the default is #222's
+#: 13-rank cycle.  Every checkpoint so far (Run A/B/C) was trained on rank-2
+#: first rounds and the encoder carries an explicit rank one-hot, so a
+#: learned leaf on another rank is out of distribution: `--trump-ranks 2`
+#: keeps the screen inside it.
+DEFAULT_TRUMP_RANKS = tuple(RANKS)
 
 
 class ScreenError(RuntimeError):
     pass
+
+
+def parse_trump_ranks(text: str) -> tuple[str, ...]:
+    """Comma-separated ranks, each one of RANKS, distinct, non-empty."""
+    ranks = tuple(part.strip() for part in str(text).split(","))
+    if not ranks or any(not r for r in ranks):
+        raise ScreenError("trump ranks must be a non-empty comma-separated list")
+    bad = [r for r in ranks if r not in RANKS]
+    if bad:
+        raise ScreenError(f"unknown trump rank(s) {bad}; ranks are {list(RANKS)}")
+    if len(set(ranks)) != len(ranks):
+        raise ScreenError("trump ranks must be distinct")
+    return ranks
+
+
+def cycle_rank(config: dict, cluster: int) -> str:
+    """The trump rank dealt to ``cluster`` under the config's rank cycle."""
+    ranks = list(config.get("trump_ranks") or DEFAULT_TRUMP_RANKS)
+    return ranks[cluster % len(ranks)]
+
+
+def require_matching_trump_ranks(calibration: dict, trump_ranks) -> None:
+    """A calibration binds its rank cycle: CPU parity measured on other
+    ranks is not this screen's parity.  A calibration written before the
+    option existed was made on the default cycle."""
+    made = list(calibration.get("trump_ranks") or DEFAULT_TRUMP_RANKS)
+    wanted = list(trump_ranks)
+    if made != wanted:
+        raise ScreenError(f"calibration was made with --trump-ranks {','.join(made)}; this "
+                          f"run asks for {','.join(wanted)}: re-calibrate on the same ranks")
 
 
 # --------------------------------------------------------------- policies
@@ -170,7 +206,7 @@ def run_cluster(config: dict, cluster: int) -> dict:
         created.append((side, wrapped))
         return wrapped
 
-    rank = RANKS[cluster % len(RANKS)]
+    rank = cycle_rank(config, cluster)
     base = duel.build_config(arm="none", select_worlds=config["baseline_select_worlds"],
                              report_worlds=config["report_worlds"])
     seed = config["seed0"] + cluster
@@ -180,6 +216,9 @@ def run_cluster(config: dict, cluster: int) -> dict:
             for mirror in (0, 1)]
     policy = arm_policy_name(config)
     for record, _ in rows:
+        if record["trump_rank"] != rank:
+            raise ScreenError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, "
+                              f"expected {rank!r}")
         record["arm"] = config["arm"]
         record["arm_policy"] = policy
         record["arm_select_worlds"] = int(config["arm_select_worlds"])
@@ -188,6 +227,25 @@ def run_cluster(config: dict, cluster: int) -> dict:
             "records": [r for r, _ in rows], "timings": [t for _, t in rows],
             "decision_traces": [{"mirror": i // 4, "side": side, "decisions": bot.decisions}
                                 for i, (side, bot) in enumerate(created)]}
+
+
+def reopen_shard(path: Path, config: dict, cluster: int) -> dict:
+    """A completed pair is reused only as its exact self: seed, the config's
+    rank for that cluster, both mirrors, the same arm policy and dose."""
+    shard = json.loads(Path(path).read_text())
+    rows = shard.get("records", [])
+    seed = config["seed0"] + cluster
+    rank = cycle_rank(config, cluster)
+    if (shard.get("cluster") != cluster or shard.get("seed") != seed
+            or shard.get("rank") != rank or len(rows) != 2
+            or [r.get("mirror") for r in rows] != [0, 1]
+            or any(r.get("cluster") != cluster or r.get("seed") != seed
+                   or r.get("trump_rank") != rank or r.get("arm") != config["arm"]
+                   or r.get("arm_policy") != config["arm_policy"]
+                   or r.get("arm_select_worlds") != config["arm_select_worlds"]
+                   for r in rows)):
+        raise ValueError("completed shard does not contain its exact mirrored pair")
+    return shard
 
 
 # ------------------------------------------------------------- calibration
@@ -312,6 +370,7 @@ def calibrate(config: dict, *, output: Path, workers: int, grid=DEFAULT_GRID,
         "outcomes_read": False,
         "arm": config["arm"], "arm_policy": arm_policy_name(config),
         "leaf_tricks": config["leaf_tricks"],
+        "trump_ranks": list(config["trump_ranks"]),
         "checkpoint_sha256": config.get("checkpoint_sha256"),
         "prior_sha256": config.get("prior_sha256"),
         "baseline_policy": VLEAF_BASE_POLICY,
@@ -362,7 +421,8 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
                  allow_legacy: bool = False, prior: str | None = None,
                  baseline_select_worlds: int = BASELINE_SELECT_WORLDS,
                  report_worlds: int = REPORT_WORLDS, calibration: dict | None = None,
-                 bootstrap_replicates: int = DEFAULT_BOOTSTRAP_REPLICATES) -> dict:
+                 bootstrap_replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
+                 trump_ranks: Sequence[str] | None = None) -> dict:
     if arm not in ARMS:
         raise ScreenError(f"arm must be one of {ARMS}")
     if clusters < 1 or arm_select_worlds < 1 or baseline_select_worlds < 1:
@@ -371,6 +431,10 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         raise ScreenError("the LCB report needs at least 30 paired worlds")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise ScreenError("SHENGJI_REQUIRE_VOIDS=1 is required")
+    ranks = (parse_trump_ranks(",".join(trump_ranks)) if trump_ranks is not None
+             else DEFAULT_TRUMP_RANKS)
+    if calibration is not None:
+        require_matching_trump_ranks(calibration, ranks)
     config = {
         "schema": CONFIG_SCHEMA, "arm": arm, "leaf_tricks": int(leaf_tricks),
         "seed0": int(seed0), "clusters": int(clusters),
@@ -379,6 +443,7 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         "report_worlds": int(report_worlds),
         "base_policy": VLEAF_BASE_POLICY,
         "bootstrap_replicates": int(bootstrap_replicates),
+        "trump_ranks": list(ranks),
     }
     if arm == "learned":
         if not checkpoint:
@@ -402,7 +467,8 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
     if calibration is not None:
         config["calibration"] = {k: calibration.get(k) for k in (
             "file_sha256", "chosen_arm_select_worlds", "predicted_decision_cpu_ratio",
-            "within_band", "within_grid", "seed0", "clusters", "checkpoint_sha256")}
+            "within_band", "within_grid", "seed0", "clusters", "checkpoint_sha256",
+            "trump_ranks")}
     package = Path(__file__).resolve().parents[1]
     config["source_sha256"] = execution_source_identity(package)
     config["runtime"] = _runtime()
@@ -468,6 +534,11 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
     elif not cost_matched:
         problems.append(f"measured decision-CPU ratio {cpu:.4f} outside the parity band "
                         f"{PARITY_BAND}: a cost-unmatched result, not an equal-work claim")
+    trump_ranks = list(config.get("trump_ranks") or DEFAULT_TRUMP_RANKS)
+    dealt = sorted({str(r["trump_rank"]) for r in records}, key=RANKS.index)
+    if any(r not in trump_ranks for r in dealt):
+        problems.append(f"rounds dealt trump ranks {dealt} outside the configured "
+                        f"cycle {trump_ranks}")
     leaf_kind = "points head" if config["arm"] == "learned" else "stratified points prior"
     out.update({
         "schema": SUMMARY_SCHEMA,
@@ -480,6 +551,8 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
                             f"from CPU calibration, report R={config['report_worlds']} unchanged; "
                             f"baseline N={config['baseline_select_worlds']}/R={config['report_worlds']}"),
         "leaf_tricks": config["leaf_tricks"],
+        "trump_ranks": trump_ranks,
+        "trump_ranks_dealt": dealt,
         "config": config,
         "completed_clusters": len(shards), "requested_clusters": config["clusters"],
         "complete": len(shards) == config["clusters"],
@@ -517,6 +590,7 @@ def combined_summary(summaries: dict[str, dict], *, seed0: int,
     for arm, s in summaries.items():
         out["arms"][arm] = {
             "arm_policy": s["arm_policy"], "rounds": s["rounds"], "clusters": s["clusters"],
+            "trump_ranks": s["trump_ranks"], "trump_ranks_dealt": s["trump_ranks_dealt"],
             "arm_signed_level_utility_per_round": s["arm_signed_level_utility"]["per_round"],
             "arm_win_rate": s["arm_win_rate"], "role_splits": s["role_splits"],
             "arm_over_baseline_decision_cpu": s["arm_over_baseline_decision_cpu"],

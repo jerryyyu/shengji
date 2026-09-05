@@ -50,6 +50,13 @@ def _grid(text: str) -> tuple[int, ...]:
     return grid
 
 
+def _trump_ranks(text: str) -> tuple[str, ...]:
+    try:
+        return S.parse_trump_ranks(text)
+    except S.ScreenError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -72,6 +79,12 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--workers", type=int, default=2)
         p.add_argument("--report-worlds", type=int, default=S.REPORT_WORLDS)
         p.add_argument("--baseline-select-worlds", type=int, default=S.BASELINE_SELECT_WORLDS)
+        p.add_argument("--trump-ranks", type=_trump_ranks, default=None,
+                       help="comma-separated trump ranks cycled over clusters (default: all 13, "
+                            "#222's cycle); the Run A/B/C checkpoints saw rank-2 first rounds "
+                            "only and the encoder one-hots the rank, so --trump-ranks 2 keeps "
+                            "the learned leaf in distribution; run refuses a calibration made "
+                            "on other ranks")
         p.add_argument("--out", type=Path, required=True)
 
     cal = sub.add_parser("calibrate", help="outcome-blind CPU-parity calibration of N")
@@ -146,10 +159,11 @@ def _calibrate(args) -> int:
                             clusters=args.clusters, arm_select_worlds=args.grid[0],
                             checkpoint=args.checkpoint, allow_legacy=args.allow_legacy,
                             baseline_select_worlds=args.baseline_select_worlds,
-                            report_worlds=args.report_worlds)
+                            report_worlds=args.report_worlds, trump_ranks=args.trump_ranks)
     calibration = S.calibrate(config, output=args.out, workers=args.workers, grid=args.grid)
     print(json.dumps({
         "chosen_arm_select_worlds": calibration["chosen_arm_select_worlds"],
+        "trump_ranks": calibration["trump_ranks"],
         "predicted_decision_cpu_ratio": calibration["predicted_decision_cpu_ratio"],
         "within_band": calibration["within_band"], "within_grid": calibration["within_grid"],
         "grid": [{"n": row["n"], "decision_cpu_ratio": row["decision_cpu_ratio"],
@@ -198,7 +212,8 @@ def _run(args) -> int:
                                 checkpoint=args.checkpoint, allow_legacy=args.allow_legacy,
                                 prior=args.prior, baseline_select_worlds=args.baseline_select_worlds,
                                 report_worlds=args.report_worlds, calibration=calibration,
-                                bootstrap_replicates=args.bootstrap_replicates)
+                                bootstrap_replicates=args.bootstrap_replicates,
+                                trump_ranks=args.trump_ranks)
         summaries[arm] = S.run_arm(config, output=out / arm, workers=args.workers)
     combined = S.combined_summary(summaries, seed0=args.seed0,
                                   replicates=args.bootstrap_replicates)

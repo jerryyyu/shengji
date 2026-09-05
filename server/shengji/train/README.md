@@ -252,7 +252,12 @@ leaf/NN-call counters, the minimum detectable effect for this round count and
 for 1,024 clusters) plus a combined summary with the learned-minus-prior
 paired contrast. `equal_work_strength_claim` is always False: a measured ratio
 outside 0.95-1.05 labels the result cost-unmatched. Calibrate on the machine
-that runs the screen; parity is a property of that CPU.
+that runs the screen; parity is a property of that CPU. `--trump-ranks`
+(default: #222's 13-rank cycle, cluster c deals rank c mod 13) pins the dealt
+trump ranks: every checkpoint so far (Run A/B/C) saw rank-2 first rounds only
+and the encoder one-hots the rank, so `--trump-ranks 2` keeps the learned leaf
+in distribution; both commands record `trump_ranks`, and `run` refuses a
+calibration made on other ranks.
 
 Measured on the Mini's fast engine: a full production continuation costs
 25-220 us depending on round phase, the T=1 learned leaf about 70-115 us

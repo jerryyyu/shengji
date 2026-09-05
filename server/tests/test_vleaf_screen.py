@@ -12,6 +12,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from shengji.ai.registry import REGISTRY
+from shengji.engine.cards import RANKS
 from shengji.train import leaf_screen as S
 from shengji.train.model import ValuePriorNet
 from shengji.train.search_screen import _publish
@@ -136,9 +137,10 @@ def threads(n):
 
 
 def tiny_config(arm, artifacts, **kw):
-    kw = {"baseline_select_worlds": 1, "report_worlds": 30, "bootstrap_replicates": 200, **kw}
-    return S.build_config(arm=arm, leaf_tricks=1, seed0=431, clusters=1, arm_select_worlds=1,
-                          checkpoint=artifacts["checkpoint"], prior=artifacts["prior"], **kw)
+    kw = {"baseline_select_worlds": 1, "report_worlds": 30, "bootstrap_replicates": 200,
+          "clusters": 1, "arm_select_worlds": 1, **kw}
+    return S.build_config(arm=arm, leaf_tricks=1, seed0=431, checkpoint=artifacts["checkpoint"],
+                          prior=artifacts["prior"], **kw)
 
 
 def test_real_cluster_through_registry_names_counts_leaf_work(monkeypatch, tmp_path, artifacts):
@@ -181,6 +183,7 @@ def test_real_cluster_through_registry_names_counts_leaf_work(monkeypatch, tmp_p
         assert summary["minimum_detectable_effect"]["projected_1024_clusters"]["clusters"] == 1024
         assert summary["arm_signed_level_utility"]["per_round"]["clusters"] == 1
         assert "work override in effect" in " ".join(summary["problems"])
+        assert summary["trump_ranks"] == list(RANKS) and summary["trump_ranks_dealt"] == ["2"]
         # A rerun reopens the completed pair instead of replaying it.
         again = S.run_arm(config, output=tmp_path / arm, workers=1, log=lambda s: None,
                           executor_factory=threads)
@@ -227,3 +230,74 @@ def test_calibrate_freezes_a_cpu_only_choice_and_is_resumable(monkeypatch, tmp_p
                                 baseline_select_worlds=1, report_worlds=30)
     assert run_config["calibration"]["file_sha256"] == on_disk["file_sha256"]
     assert run_config["arm_select_worlds"] == on_disk["chosen_arm_select_worlds"]
+    assert on_disk["trump_ranks"] == run_config["calibration"]["trump_ranks"] == list(RANKS)
+
+
+# ------------------------------------------------------------ trump ranks
+
+def test_trump_ranks_pin_every_round_and_the_summary(monkeypatch, artifacts):
+    """--trump-ranks 2 on cluster 1, which #222's cycle would deal rank 3."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    config = tiny_config("prior", artifacts, clusters=2, trump_ranks=("2",))
+    assert config["trump_ranks"] == ["2"]
+    shard = S.run_cluster(config, 1)
+    assert shard["rank"] == "2"
+    assert [r["trump_rank"] for r in shard["records"]] == ["2", "2"]
+    summary = S.summary_for([shard], config)
+    assert summary["trump_ranks"] == ["2"] and summary["trump_ranks_dealt"] == ["2"]
+    assert not any("outside the configured cycle" in p for p in summary["problems"])
+    assert S.combined_summary({"prior": summary}, seed0=431, replicates=10)["arms"]["prior"][
+        "trump_ranks"] == ["2"]
+    default = tiny_config("prior", artifacts, clusters=2)
+    assert default["trump_ranks"] == list(RANKS)
+    assert S.cycle_rank(default, 1) == "3" and S.cycle_rank(default, 13) == "2"
+    assert S.parse_trump_ranks("2, 9") == ("2", "9")
+    for bad in ("", "2,2", "Z", "2,,3"):
+        with pytest.raises(S.ScreenError):
+            S.parse_trump_ranks(bad)
+    with pytest.raises(S.ScreenError, match="unknown trump rank"):
+        tiny_config("prior", artifacts, trump_ranks=("2", "Z"))
+
+
+def test_witness_ignored_trump_ranks_flag_is_caught(monkeypatch, artifacts):
+    """Mutant: the cluster driver deals #222's 13-rank cycle whatever the flag."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(S, "cycle_rank", lambda config, cluster: RANKS[cluster % len(RANKS)])
+    config = tiny_config("prior", artifacts, clusters=2, trump_ranks=("2",))
+    shard = S.run_cluster(config, 1)
+    assert shard["rank"] == "3"                               # the pin above is RED
+    assert [r["trump_rank"] for r in shard["records"]] == ["3", "3"]
+    summary = S.summary_for([shard], config)
+    assert summary["trump_ranks"] == ["2"] and summary["trump_ranks_dealt"] == ["3"]
+    assert any("outside the configured cycle" in p for p in summary["problems"])
+
+
+def _calibration_file(path, **extra):
+    _publish(path, {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
+                    "chosen_arm_select_worlds": 3, **extra})
+    return S.load_calibration(path)
+
+
+def test_run_refuses_a_calibration_made_on_other_trump_ranks(monkeypatch, artifacts, tmp_path):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    rank2 = _calibration_file(tmp_path / "rank2.json", trump_ranks=["2"])
+    config = tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("2",))
+    assert config["trump_ranks"] == config["calibration"]["trump_ranks"] == ["2"]
+    with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
+        tiny_config("learned", artifacts, calibration=rank2)               # default cycle
+    with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
+        tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("3",))
+    # A calibration written before the option existed was made on the default cycle.
+    legacy = _calibration_file(tmp_path / "legacy.json")
+    assert tiny_config("learned", artifacts, calibration=legacy)["trump_ranks"] == list(RANKS)
+    with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
+        tiny_config("learned", artifacts, calibration=legacy, trump_ranks=("2",))
+
+
+def test_witness_removed_trump_rank_check_accepts_a_mismatch(monkeypatch, artifacts, tmp_path):
+    """Mutant: the calibration/run rank check is a no-op."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(S, "require_matching_trump_ranks", lambda calibration, trump_ranks: None)
+    rank2 = _calibration_file(tmp_path / "rank2.json", trump_ranks=["2"])
+    config = tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("3",))
+    assert config["trump_ranks"] == ["3"] and config["calibration"]["trump_ranks"] == ["2"]

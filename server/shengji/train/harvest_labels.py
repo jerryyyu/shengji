@@ -49,9 +49,21 @@ Data-quality rules from the harvest audit
   record whose ``work_key`` an earlier record (or an already-labelled row)
   owns gets a row refused ``duplicate_state`` naming its twin, and the
   manifest lists them (room-log rounds logged twice, Luna positions reached
-  in both mirrors, PT1's 4 seeds per position).  Rows written under an
-  older ``key_version`` are removed from their shard on the next run and
-  relabelled; rows at the current version resume.
+  in both mirrors, PT1's 4 seeds per position).  A record that fails
+  ``validate_record`` never owns a work key (it is refused
+  ``invalid_record`` before any dedup bookkeeping, at ingestion and when
+  ownership is rebuilt from resumed shards), so a corrupt first copy can
+  never shadow its valid twin.
+* Migration: a run first admits its inputs and the directory (every input
+  exists, policy / scale / cap match ``run.json``) WITHOUT touching a shard.
+  Shards holding rows of an older ``key_version`` are then MOVED aside to
+  ``shards/legacy-v<k>/`` (byte-identical, with a manifest), never
+  truncated; every legacy row whose original record validates gets its
+  keys re-derived under the current scheme and is carried forward into
+  ``shards/<source>.migrated.jsonl`` -- its search result depends only on
+  the record (seed, rebuild), never on the key -- except a ``duplicate_state``
+  row whose twin no longer owns its new work key (a mis-dedup): that row
+  is relabelled.
 * ``harvest.schema.validate_record`` runs on every record at ingestion
   (``invalid_record`` refusal: a hash drift, a foreign field, a
   cross-field violation) and again on the stripped record when a labelled
@@ -155,6 +167,11 @@ HUMAN_NOTE = ("human.jsonl is 100% contained in room-log.jsonl (the human_v8 sub
 REFUSALS = ("bury_decision", "not_play", "wrong_schema", "no_deck", "rebuild_failed",
             "turn_mismatch", "hidden_hands_mismatch", "role_drift", "action_illegal",
             "legal_set_mismatch", "search_failed", "duplicate_state", "invalid_record")
+#: refusals that never own a work key (a twin of theirs is not "done work")
+NON_OWNING = ("duplicate_state", "invalid_record")
+#: the keys a labelled row adds to its harvest record
+ROW_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key", "work_key",
+            "key_version", "migrated_from")
 BALLOT_SOURCE = f"production:{POLICY} MCBot._candidates at label time"
 UNSEARCHED = ("tractor_lock", "single_candidate")
 #: test-only fault injection: a worker raises after this many rows
@@ -542,12 +559,19 @@ def label_record(record: Mapping[str, Any], *, scale: int = 1, cap: int | None =
     except (KeyError, TypeError, ValueError, AttributeError):
         row["state_key"] = row["work_key"] = None
     started = time.perf_counter()
-    if duplicate_of is not None:
-        row["search_labels"] = None
-        row["label_refusal"] = {"reason": "duplicate_state", "detail": duplicate_of,
-                                "duplicate_of": duplicate_of, "wall_ms": 0.0}
-        return row
     try:
+        # identity first: an invalid record is refused before it can be a
+        # duplicate of anything (it never owns nor inherits a work key)
+        if record.get("schema") == SCHEMA:
+            try:
+                validate_record(record)
+            except SchemaError as exc:
+                raise LabelRefused("invalid_record", str(exc)) from exc
+        if duplicate_of is not None:
+            row["search_labels"] = None
+            row["label_refusal"] = {"reason": "duplicate_state", "detail": duplicate_of,
+                                    "duplicate_of": duplicate_of, "wall_ms": 0.0}
+            return row
         rnd, legal, diffs = rebuild_for_label(record, cap=cap)
         labels = search_labels(record, rnd, scale=scale, code_sha=code_sha, work=work,
                                legal=legal, prefix_diffs=diffs)
@@ -601,12 +625,18 @@ def read_shard(path: Path) -> tuple[list[dict], bool]:
     return rows, torn
 
 
+def row_key_version(row: Mapping[str, Any]) -> int:
+    return int(row.get("key_version") or 1)
+
+
 def scan_shards(out_dir: Path) -> tuple[list[tuple[Path, list[dict]]], dict]:
-    """``[(shard path, rows)]`` for every shard present, plus scan notes.
-    Rows written under another ``key_version`` (or none) are REMOVED from
-    their shard (rewritten atomically) so the run relabels them."""
+    """``[(shard path, rows)]`` for every shard present, plus scan notes --
+    READ-ONLY: a torn last line is reported (``torn``) and dropped from the
+    rows, shards holding rows of another ``key_version`` are reported
+    (``legacy``); ``truncate_torn`` / ``migrate_legacy`` do the writes,
+    after the run has been admitted."""
     shards_dir = Path(out_dir) / "shards"
-    notes: dict[str, Any] = {"torn": [], "shards": 0, "stale_rows_removed": 0,
+    notes: dict[str, Any] = {"torn": [], "shards": 0, "legacy": [], "legacy_rows": 0,
                              "key_version": KEY_VERSION}
     out: list[tuple[Path, list[dict]]] = []
     if not shards_dir.is_dir():
@@ -615,26 +645,120 @@ def scan_shards(out_dir: Path) -> tuple[list[tuple[Path, list[dict]]], dict]:
         rows, torn = read_shard(path)
         if torn:
             notes["torn"].append(path.name)
-            _truncate_torn(path)
-        fresh = [r for r in rows if int(r.get("key_version") or 1) == KEY_VERSION]
-        if len(fresh) != len(rows):
-            notes["stale_rows_removed"] += len(rows) - len(fresh)
-            _rewrite_shard(path, fresh)
-            rows = fresh
+        stale = sum(1 for r in rows if row_key_version(r) != KEY_VERSION)
+        if stale:
+            notes["legacy"].append(path.name)
+            notes["legacy_rows"] += stale
         out.append((path, rows))
         notes["shards"] += 1
     return out, notes
 
 
-def _rewrite_shard(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    mode = path.stat().st_mode & 0o777
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
-    with os.fdopen(fd, "wb") as fh:
-        os.fchmod(fh.fileno(), mode)
+def truncate_torn(out_dir: Path, names: Sequence[str]) -> None:
+    for name in names:
+        _truncate_torn(Path(out_dir) / "shards" / name)
+
+
+def _append_rows(path: Path, rows: Sequence[Mapping[str, Any]], *, private: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600 if private else 0o644)
+    try:
+        if private:
+            os.fchmod(fd, 0o600)
         for row in rows:
-            fh.write((canonical_json(row) + "\n").encode("ascii"))
-    os.replace(tmp, path)
+            _write_row(fd, row)
+    finally:
+        os.close(fd)
+
+
+def migrate_legacy(out_dir: Path, existing: Sequence[tuple[Path, list[dict]]]) -> dict:
+    """Move every shard holding rows of another ``key_version`` to
+    ``shards/legacy-v<k>/`` (byte-identical, with a manifest) and carry its
+    rows forward under the current scheme (module docstring): keys are
+    re-derived from the original record; a row whose record does not
+    validate, and a ``duplicate_state`` row whose twin does not own its new
+    work key, are NOT carried (they are relabelled).  Returns a summary."""
+    out_dir = Path(out_dir)
+    legacy_shards = [(p, rows) for p, rows in existing
+                     if any(row_key_version(r) != KEY_VERSION for r in rows)]
+    summary: dict[str, Any] = {"shards": [], "carried": 0, "carried_duplicates": 0,
+                               "relabel_invalid": 0, "relabel_misdedup": 0,
+                               "relabel_unkeyed": 0, "rows": 0, "legacy_dirs": []}
+    if not legacy_shards:
+        return summary
+    # owners under the NEW scheme: current rows first, then legacy rows
+    owners: dict[str, str] = {}
+    for _p, rows in existing:
+        for row in rows:
+            if row_key_version(row) == KEY_VERSION and row.get("work_key") \
+                    and (row.get("label_refusal") or {}).get("reason") not in NON_OWNING:
+                owners.setdefault(row["work_key"], row["record_sha256"])
+    rekeyed: list[tuple[Path, dict, dict | None]] = []      # (shard, row, new keys)
+    for path, rows in legacy_shards:
+        for row in rows:
+            record = {k: v for k, v in row.items() if k not in ROW_KEYS}
+            keys = None
+            try:
+                validate_record(record)
+                keys = {"state_key": state_key(record), "work_key": work_key(record),
+                        "deal_key": record_deal_key(record)}
+            except (SchemaError, KeyError, TypeError, ValueError, AttributeError):
+                keys = None
+            rekeyed.append((path, row, keys))
+            if keys and (row.get("label_refusal") or {}).get("reason") not in NON_OWNING:
+                owners.setdefault(keys["work_key"], row["record_sha256"])
+    carried: dict[str, list[dict]] = {}
+    privacy: dict[str, bool] = {}
+    for path, row, keys in rekeyed:
+        summary["rows"] += 1
+        if keys is None:
+            summary["relabel_invalid" if "seat" in row else "relabel_unkeyed"] += 1
+            continue
+        refusal = row.get("label_refusal") or {}
+        if refusal.get("reason") == "invalid_record":
+            summary["relabel_invalid"] += 1          # re-judged by the current validator
+            continue
+        if refusal.get("reason") == "duplicate_state":
+            if owners.get(keys["work_key"]) != refusal.get("duplicate_of"):
+                summary["relabel_misdedup"] += 1
+                continue
+            summary["carried_duplicates"] += 1
+        new_row = {**row, **keys, "key_version": KEY_VERSION}
+        if row_key_version(row) != KEY_VERSION:
+            new_row["migrated_from"] = row_key_version(row)
+        source = source_of_shard(path)
+        carried.setdefault(source, []).append(new_row)
+        privacy[source] = privacy.get(source, False) or ".private." in path.name
+        summary["carried"] += 1
+    # write the carried rows, then move the legacy shards aside (byte-identical)
+    for source, rows in carried.items():
+        suffix = ".private.jsonl" if privacy[source] else ".jsonl"
+        _append_rows(out_dir / "shards" / f"{source}.migrated{suffix}", rows,
+                     private=privacy[source])
+    for path, rows in legacy_shards:
+        version = min(row_key_version(r) for r in rows if row_key_version(r) != KEY_VERSION)
+        legacy_dir = out_dir / "shards" / f"legacy-v{version}"
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        target = legacy_dir / path.name
+        n = 1
+        while target.exists():
+            target = legacy_dir / f"{path.stem}.{n}{path.suffix}"
+            n += 1
+        digest = sha256_file(path)
+        size = path.stat().st_size
+        os.replace(path, target)
+        entry = {"name": target.name, "from": path.name, "sha256": digest, "bytes": size,
+                 "rows": len(rows), "key_version": version, "private": ".private." in path.name}
+        summary["shards"].append(entry)
+        mpath = legacy_dir / "manifest.json"
+        legacy_manifest = (json.loads(mpath.read_text()) if mpath.is_file()
+                           else {"schema": MANIFEST_SCHEMA + "-legacy", "files": []})
+        legacy_manifest["files"].append({**entry, "migrated_at": datetime.now(UTC).isoformat(),
+                                         "migrated_to_key_version": KEY_VERSION})
+        _atomic_write_text(mpath, json.dumps(legacy_manifest, indent=2, sort_keys=True) + "\n")
+        if str(legacy_dir) not in summary["legacy_dirs"]:
+            summary["legacy_dirs"].append(str(legacy_dir))
+    return summary
 
 
 def _truncate_torn(path: Path) -> None:
@@ -657,7 +781,7 @@ def _truncate_torn(path: Path) -> None:
 
 
 def source_of_shard(path: Path) -> str:
-    return path.name.split(".w", 1)[0]
+    return path.name.split(".", 1)[0]
 
 
 # ----------------------------------------------------------------- workers
@@ -721,34 +845,48 @@ def _sha_of_line(line: str) -> str:
     return line[j:j + 64]
 
 
-def _write_run(out_dir: Path, ident: dict, *, scale: int, cap: int | None,
-               allow_code_drift: bool, empty: bool = False) -> dict:
-    path = out_dir / "run.json"
+def check_resume(out_dir: Path, ident: dict, *, scale: int, cap: int | None,
+                 allow_code_drift: bool, has_rows: bool, migrating: bool) -> dict | None:
+    """READ-ONLY admission of ``out_dir`` for this run: the old ``run.json``
+    (or None) once policy / scale / cap match and the code identity is
+    acceptable (unchanged; or nothing labelled yet; or a key-version
+    migration, whose carried rows keep their own ``code_sha``; or
+    ``--allow-code-drift``)."""
+    path = Path(out_dir) / "run.json"
+    if not path.is_file():
+        return None
+    old = json.loads(path.read_text())
+    if old.get("policy") != POLICY or int(old.get("scale", -1)) != int(scale) \
+            or old.get("cap") != cap:
+        raise LabelError(f"{path}: this directory labels policy {old.get('policy')!r} "
+                         f"at scale {old.get('scale')} cap {old.get('cap')}; a "
+                         f"{POLICY!r}/scale {scale}/cap {cap} run cannot resume it")
+    drift = (old.get("code") or {}).get("source_tree_sha256") != ident["source_tree_sha256"]
+    if drift and has_rows and not migrating and not allow_code_drift:
+        raise LabelError(f"{path}: the source tree changed since this directory was "
+                         "started (labels would mix code versions); pass "
+                         "--allow-code-drift to continue anyway")
+    return old
+
+
+def _write_run(out_dir: Path, ident: dict, old: dict | None, *, scale: int, cap: int | None,
+               migration: Mapping[str, Any] | None = None) -> dict:
+    path = Path(out_dir) / "run.json"
     run = {"schema": RUN_SCHEMA, "policy": POLICY, "scale": int(scale), "cap": cap,
-           "seed_recipe": SEED_RECIPE, "code": ident,
+           "seed_recipe": SEED_RECIPE, "code": ident, "key_version": KEY_VERSION,
            "created_at": datetime.now(UTC).isoformat()}
-    if path.is_file():
-        old = json.loads(path.read_text())
-        if old.get("policy") != POLICY or int(old.get("scale", -1)) != int(scale) \
-                or old.get("cap") != cap:
-            raise LabelError(f"{path}: this directory labels policy {old.get('policy')!r} "
-                             f"at scale {old.get('scale')} cap {old.get('cap')}; a "
-                             f"{POLICY!r}/scale {scale}/cap {cap} run cannot resume it")
+    if old is not None:
         if (old.get("code") or {}).get("source_tree_sha256") != ident["source_tree_sha256"]:
-            if empty:
-                # nothing at the current key version survives: no row can mix
-                # with this code, so the directory restarts under it
-                run["code_drift_from"] = old.get("code")
-                run["restarted_at"] = datetime.now(UTC).isoformat()
-                _atomic_write_text(path, json.dumps(run, indent=2, sort_keys=True) + "\n")
-                return run
-            if not allow_code_drift:
-                raise LabelError(f"{path}: the source tree changed since this directory was "
-                                 "started (labels would mix code versions); pass "
-                                 "--allow-code-drift to continue anyway")
             run["code_drift_from"] = old.get("code")
         run["created_at"] = old.get("created_at", run["created_at"])
         run["resumed_at"] = datetime.now(UTC).isoformat()
+        if migration and migration.get("shards"):
+            run["migrations"] = [*(old.get("migrations") or []),
+                                 {"at": run["resumed_at"], "to_key_version": KEY_VERSION,
+                                  **{k: v for k, v in migration.items() if k != "shards"},
+                                  "shards": [s["from"] for s in migration["shards"]]}]
+        elif old.get("migrations"):
+            run["migrations"] = old["migrations"]
     _atomic_write_text(path, json.dumps(run, indent=2, sort_keys=True) + "\n")
     return run
 
@@ -773,7 +911,6 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
     if resume_notes:
         # the torn lines the run's opening scan dropped (this scan sees clean shards)
         notes["torn"] = sorted(set(notes["torn"]) | set(resume_notes.get("torn") or []))
-        notes["stale_rows_removed"] += int(resume_notes.get("stale_rows_removed") or 0)
     per_source: dict[str, dict] = {}
     rows_by_source: dict[str, dict[str, dict]] = {}
     duplicates: Counter = Counter()
@@ -922,14 +1059,40 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
     if int(workers) < 1:
         raise LabelError("--workers must be >= 1")
     out = Path(out_dir)
+    started = time.perf_counter()
+    # ---- admission: nothing below this line touches the directory until
+    # every input exists and the directory accepts this run
+    for source, path in inputs.items():
+        if source not in SOURCE_FILES:
+            raise LabelError(f"unknown source {source!r}; one of {SOURCES}")
+        if not Path(path).is_file():
+            raise LabelError(f"{source}: input {path} missing")
+    ident = code_identity()
+    existing, notes = scan_shards(out)                       # read-only
+    old_run = check_resume(out, ident, scale=int(scale), cap=cap,
+                           allow_code_drift=allow_code_drift,
+                           has_rows=any(rows for _p, rows in existing),
+                           migrating=bool(notes["legacy"]))
+    # ---- admitted: repair a torn line, migrate legacy shards, stamp run.json
     out.mkdir(parents=True, exist_ok=True)
     (out / "shards").mkdir(exist_ok=True)
-    started = time.perf_counter()
-    ident = code_identity()
-    existing, notes = scan_shards(out)
-    run_info = _write_run(out, ident, scale=int(scale), cap=cap,
-                          allow_code_drift=allow_code_drift,
-                          empty=not any(rows for _path, rows in existing))
+    # legacy shards move aside byte-identical (a torn tail included); only a
+    # shard that stays is cut back to its last complete line
+    migration = migrate_legacy(out, existing)
+    moved = {s["from"] for s in migration["shards"]}
+    if notes["torn"]:
+        truncate_torn(out, [n for n in notes["torn"] if n not in moved])
+        say(f"resume: dropped a torn last line in {notes['torn']}")
+    if migration["shards"]:
+        say(f"migration: {len(migration['shards'])} legacy shard(s) ({migration['rows']} rows) "
+            f"moved to {migration['legacy_dirs']}; carried {migration['carried']} "
+            f"(of which {migration['carried_duplicates']} duplicates), relabelling "
+            f"{migration['relabel_misdedup']} mis-deduped + {migration['relabel_invalid']} "
+            f"invalid + {migration['relabel_unkeyed']} unkeyed")
+        torn_names = list(notes["torn"])
+        existing, notes = scan_shards(out)
+        notes["torn"] = torn_names                # what this run found, moved or cut
+    run_info = _write_run(out, ident, old_run, scale=int(scale), cap=cap, migration=migration)
     done: set[str] = set()
     claimed: dict[str, str] = {}          # work_key -> the record_sha256 that owns it
     for _path, rows in existing:
@@ -937,13 +1100,8 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
             done.add(row["record_sha256"])
             key = row.get("work_key")
             refusal = row.get("label_refusal") or {}
-            if key and refusal.get("reason") != "duplicate_state":
+            if key and refusal.get("reason") not in NON_OWNING:
                 claimed.setdefault(key, row["record_sha256"])
-    if notes["torn"]:
-        say(f"resume: dropped a torn last line in {notes['torn']}")
-    if notes["stale_rows_removed"]:
-        say(f"resume: removed {notes['stale_rows_removed']} row(s) written under an older "
-            f"key_version (< {KEY_VERSION}); they are relabelled")
     say(f"resume: {len(done)} record(s) already labelled in {notes['shards']} shard(s)")
     tasks: list[tuple[str, str, str | None]] = []
     input_rows: dict[str, int] = {}
@@ -951,10 +1109,6 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
     n_dup = 0
     for source, path in inputs.items():
         path = Path(path)
-        if source not in SOURCE_FILES:
-            raise LabelError(f"unknown source {source!r}; one of {SOURCES}")
-        if not path.is_file():
-            raise LabelError(f"{source}: input {path} missing")
         lines = read_input(path)
         if limit is not None:
             lines = lines[:int(limit)]
@@ -967,9 +1121,12 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
                 continue
             record = json.loads(line)
             try:
+                # identity BEFORE any dedup bookkeeping: an invalid record
+                # never owns a work key and is never a twin
+                validate_record(record)
                 key = work_key(record)
-            except (KeyError, TypeError, ValueError, AttributeError):
-                key = None                      # malformed: refused at ingestion, never a twin
+            except (SchemaError, KeyError, TypeError, ValueError, AttributeError):
+                key = None                      # refused invalid_record by the worker
             twin = None if key is None else claimed.get(key)
             if twin is None and key is not None:
                 claimed[key] = sha
@@ -1029,6 +1186,7 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
         "secs_per_record_this_run": (round(wall / labelled_now, 4) if labelled_now else None),
         "worker_reports": worker_reports, "failures": failures,
     }
+    timings["migration"] = {k: v for k, v in migration.items() if k != "shards"}
     manifest = build_manifest(out, inputs={k: Path(v) for k, v in inputs.items()},
                               run=run_info, timings=timings, argv=argv,
                               input_rows=input_rows, merge=merge, resume_notes=notes)
@@ -1086,9 +1244,10 @@ def main(argv: list[str] | None = None) -> int:
 
 __all__ = [
     "BALLOT_SOURCE", "DEFAULT_SOURCES", "FAIL_AFTER_ENV", "HUMAN_NOTE", "KEY_VERSION",
-    "LABELS_SCHEMA", "MANIFEST_SCHEMA", "POLICY", "REFUSALS", "SEED_RECIPE",
+    "LABELS_SCHEMA", "NON_OWNING", "ROW_KEYS", "MANIFEST_SCHEMA", "POLICY", "REFUSALS", "SEED_RECIPE",
     "SOURCES", "SOURCE_FILES", "UNSEARCHED", "LabelError", "LabelMixin", "LabelRefused",
     "build_manifest", "code_identity", "label_record", "label_seed", "make_label_bot",
-    "read_shard", "rebuild_for_label", "record_deal_key", "replay_checked", "run",
-    "scan_shards", "search_labels", "state_key", "work_key",
+    "check_resume", "migrate_legacy", "read_shard", "rebuild_for_label", "record_deal_key",
+    "replay_checked", "row_key_version", "run", "scan_shards", "search_labels", "state_key",
+    "truncate_torn", "work_key",
 ]

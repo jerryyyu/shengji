@@ -37,6 +37,14 @@ the mutation that turns it RED.
    branch only); an outcome mutation that keeps the stale ``record_sha256``
    is refused at ingestion (``invalid_record``) and at consumption
    (``EvalError``) (RED: no ``validate_record`` at either point).
+6. Codex HOLD round 2: an invalid first copy (stale hash) never owns a work
+   key, so its valid twin is labelled, at ingestion and when ownership is
+   rebuilt from a resumed shard (RED: claim before validate -> the twin is
+   ``duplicate_state``); a missing input or an incompatible resume refuses
+   BEFORE any shard byte changes, and a legacy-version shard is moved to
+   ``shards/legacy-v1/`` byte-identical with a manifest while its rows are
+   carried forward (search labels retained) except a mis-deduped duplicate,
+   which is relabelled (RED: truncating legacy rows before admission).
 """
 from __future__ import annotations
 
@@ -502,22 +510,33 @@ def test_state_key_binds_setup_and_work_key_binds_action(records, tmp_path, monk
     assert manifest["key_version"] == harvest_labels.KEY_VERSION
     assert all(g["key_version"] == harvest_labels.KEY_VERSION for g in got.values())
 
-    # rows under an older key version are removed and relabelled; current ones resume
+    # rows under an older key version are migrated, never truncated (witness 6)
     shard = out / "shards" / "human.w0.jsonl"
     lines = [json.loads(line) for line in shard.read_text().splitlines()]
-    lines[0]["key_version"] = 1
-    del lines[1]["key_version"]                                # the pre-version scheme
+    lines[0]["key_version"] = 1                                 # the owner of the twin
+    del lines[3]["key_version"]                                 # the pre-version duplicate
     shard.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    before = shard.read_bytes()
     again = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
                                workers=1, log=None)
-    assert again["scan"]["stale_rows_removed"] == 2
-    assert again["timings"]["records_this_run"] == 2
+    mig = again["timings"]["migration"]
+    assert (mig["rows"], mig["carried"], mig["carried_duplicates"]) == (4, 4, 1)
+    assert mig["relabel_misdedup"] == 0 and again["timings"]["records_this_run"] == 0
+    legacy = out / "shards" / "legacy-v1" / "human.w0.jsonl"
+    assert legacy.read_bytes() == before and not shard.exists()
+    lm = json.loads((out / "shards" / "legacy-v1" / "manifest.json").read_text())
+    assert lm["files"][0]["rows"] == 4 and lm["files"][0]["migrated_to_key_version"] == 2
+    carried = [json.loads(line)
+               for line in (out / "shards" / "human.migrated.jsonl").read_text().splitlines()]
+    assert [c["record_sha256"] for c in carried] == [line["record_sha256"] for line in lines]
+    assert all(c["key_version"] == 2 for c in carried)
+    assert [c.get("migrated_from") for c in carried] == [1, None, None, 1]
+    assert carried[0]["search_labels"] == lines[0]["search_labels"]        # retained
+    assert carried[3]["label_refusal"]["duplicate_of"] == rows[0]["record_sha256"]
     assert again["sources"]["human"]["counts"]["rows"] == 4
-    shas = [json.loads(line)["record_sha256"] for line in shard.read_text().splitlines()]
-    assert len(shas) == 4 and len(set(shas)) == 4
     third = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
                                workers=1, log=None)
-    assert third["timings"]["records_this_run"] == 0 and third["scan"]["stale_rows_removed"] == 0
+    assert third["timings"]["records_this_run"] == 0 and not third["timings"]["migration"]["rows"]
 
 
 def test_identity_validated_at_ingestion_and_consumption(records, holdout_files, tmp_path):
@@ -566,3 +585,109 @@ def test_rank_only_holdout_on_a_fit_deal_is_refused(trained, store_dir, holdout_
     block = ok["holdouts"]["disjoint"]
     assert block["rank_regret"] is not None and block["population"]["shared_with_fit"] == 0
     assert block["population"]["deals"] == hold.counts["deals"] or block["population"]["deals"] >= 1
+
+
+# 6 ----------------------------------------------- Codex HOLD round 2
+
+def _stale_hash_copy(rec):
+    """An internally consistent mutation that keeps the OLD record_sha256."""
+    return {**rec, "outcome": {**rec["outcome"],
+                               "attacker_points": (rec["outcome"]["attacker_points"] + 40) % 200}}
+
+
+def test_invalid_first_copy_never_shadows_its_valid_twin(records, tmp_path, monkeypatch):
+    rec = _searched(records)[1]
+    invalid = _stale_hash_copy(rec)
+    twin = finalize_record({**rec, "policy": "human:twin"})     # valid, distinct hash
+    assert invalid["record_sha256"] != twin["record_sha256"]
+    assert harvest_labels.work_key(invalid) == harvest_labels.work_key(twin)
+    in_dir = tmp_path / "harvest"
+    in_dir.mkdir()
+    # the invalid row keeps its stale hash: written raw (write_jsonl re-encodes only)
+    write_jsonl(in_dir / "human.jsonl", [{**invalid, "source": "human"}
+                                         if False else invalid, twin])
+    monkeypatch.setattr(harvest_labels, "make_label_bot", lambda **kw: _make_test_bot(**kw))
+    monkeypatch.setitem(harvest_labels.SOURCE_FILES, "human", "human.jsonl")
+    out = tmp_path / "labels"
+    # the inputs are trajectory-sourced rows; the labeller only needs the file
+    manifest = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
+                                  workers=1, log=None)
+    c = manifest["sources"]["human"]["counts"]
+    assert c["refused"] == {"invalid_record": 1} and c["labelled"] == 1 and c["searched"] == 1
+    got = {g["record_sha256"]: g for g in (json.loads(line) for line in
+           (out / "shards" / "human.w0.jsonl").read_text().splitlines())}
+    assert got[twin["record_sha256"]]["search_labels"]["searched"] is True
+    assert got[invalid["record_sha256"]]["label_refusal"]["reason"] == "invalid_record"
+    assert got[invalid["record_sha256"]]["work_key"] == got[twin["record_sha256"]]["work_key"]
+
+    # ownership rebuilt from a resumed shard: an invalid_record row that
+    # carries the twin's work key (as an older labeller wrote it) owns nothing
+    out2 = tmp_path / "labels2"
+    (out2 / "shards").mkdir(parents=True)
+    stale_row = harvest_labels.label_record(invalid, work=TEST_WORK)
+    assert stale_row["label_refusal"]["reason"] == "invalid_record"
+    (out2 / "shards" / "human.w0.jsonl").write_text(json.dumps(stale_row) + "\n")
+    write_jsonl(in_dir / "human.jsonl", [twin])
+    manifest = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out2,
+                                  workers=1, log=None)
+    c = manifest["sources"]["human"]["counts"]
+    assert c["labelled"] == 1 and c["searched"] == 1 and "duplicate_state" not in c["refused"]
+
+
+def test_admission_before_mutation_and_legacy_migration(records, tmp_path, monkeypatch):
+    picks = _searched(records)[:3]
+    twin = finalize_record({**picks[1], "policy": "human:twin"})
+    in_dir, rows = _harvest_input(tmp_path, [*picks, twin])
+    inputs = {"human": in_dir / "human.jsonl"}
+    monkeypatch.setattr(harvest_labels, "make_label_bot", lambda **kw: _make_test_bot(**kw))
+    out = tmp_path / "labels"
+    harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
+    shard = out / "shards" / "human.w0.jsonl"
+    lines = [json.loads(line) for line in shard.read_text().splitlines()]
+    assert lines[3]["label_refusal"]["duplicate_of"] == rows[1]["record_sha256"]
+    # a legacy shard: version-1 rows, one duplicate MIS-deduped against a
+    # different state (the coarse old key), plus a torn last line
+    for line in lines:
+        line["key_version"] = 1
+    lines[3]["label_refusal"]["duplicate_of"] = rows[0]["record_sha256"]
+    lines[3]["label_refusal"]["detail"] = rows[0]["record_sha256"]
+    body = "".join(json.dumps(line) + "\n" for line in lines) + '{"torn": tru'
+    shard.write_text(body)
+    before = shard.read_bytes()
+    snapshot = {p.name: p.read_bytes() for p in (out / "shards").glob("*.jsonl")}
+    run_json = (out / "run.json").read_bytes()
+    # (a) a missing input refuses before any byte changes
+    with pytest.raises(harvest_labels.LabelError, match="missing"):
+        harvest_labels.run(inputs={"human": in_dir / "nope.jsonl"}, out_dir=out, workers=1,
+                           log=None)
+    assert {p.name: p.read_bytes() for p in (out / "shards").glob("*.jsonl")} == snapshot
+    assert (out / "run.json").read_bytes() == run_json
+    assert not (out / "shards" / "legacy-v1").exists()
+    # (b) an incompatible resume (scale) refuses before any byte changes
+    with pytest.raises(harvest_labels.LabelError, match="cannot resume"):
+        harvest_labels.run(inputs=inputs, out_dir=out, workers=1, scale=3, log=None)
+    assert {p.name: p.read_bytes() for p in (out / "shards").glob("*.jsonl")} == snapshot
+    # (c) the admitted run migrates: the legacy shard is preserved byte for
+    # byte, unaffected rows are retained, the mis-deduped row is relabelled
+    manifest = harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
+    legacy = out / "shards" / "legacy-v1" / "human.w0.jsonl"
+    assert legacy.read_bytes() == before                     # torn tail included
+    assert len(shard.read_text().splitlines()) == 1          # the fresh shard: 1 relabel
+    mig = manifest["timings"]["migration"]
+    assert (mig["rows"], mig["carried"], mig["relabel_misdedup"]) == (4, 3, 1)
+    assert manifest["timings"]["records_this_run"] == 1
+    assert manifest["scan"]["torn"] == ["human.w0.jsonl"]
+    carried = [json.loads(line)
+               for line in (out / "shards" / "human.migrated.jsonl").read_text().splitlines()]
+    assert [c["search_labels"] for c in carried] == [line["search_labels"] for line in lines[:3]]
+    relabelled = next(json.loads(line) for line in (out / "shards" / "human.w0.jsonl")
+                      .read_text().splitlines())
+    assert relabelled["record_sha256"] == rows[3]["record_sha256"]
+    assert relabelled["label_refusal"]["duplicate_of"] == rows[1]["record_sha256"]
+    c = manifest["sources"]["human"]["counts"]
+    assert c["rows"] == 4 and c["labelled"] == 3 and c["refused"] == {"duplicate_state": 1}
+    run_info = json.loads((out / "run.json").read_text())
+    assert run_info["migrations"][0]["shards"] == ["human.w0.jsonl"]
+    # resume after the migration is a no-op
+    again = harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
+    assert again["timings"]["records_this_run"] == 0 and again["timings"]["migration"]["rows"] == 0

@@ -877,7 +877,7 @@ def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | 
 
 HOLDOUT_LABELS_SCHEMA = "shengji-harvest-labels-v1"
 HOLDOUT_STRIP_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key", "work_key",
-                      "key_version")
+                      "key_version", "migrated_from")
 #: what each search-facing metric of a holdout needs, and why a holdout
 #: without it is SKIPPED (reported null), never approximated
 HOLDOUT_SUPPORT = {

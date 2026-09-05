@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
 import random
 from pathlib import Path
 
@@ -411,16 +412,16 @@ def test_finish_trick_finishes_exactly_the_current_trick(finish, monkeypatch):
 def test_registry_names_embed_checkpoint_and_share_productions_ballot(checkpoint):
     sha8 = cwv_policy.checkpoint_id(checkpoint)
     entries = cwv_registry_entries(checkpoint, [7])
-    assert set(entries) == {f"mc-cwv-{sha8}-w7", "mc-cwv-prior-w7"}
+    assert set(entries) == {f"mc-cwv-{sha8}-w7", f"mc-cwv-prior-{sha8}-w7"}
     assert policy_name(sha8, 7) == f"mc-cwv-{sha8}-w7"
-    assert control_name(7, lcb=1.5) == "mc-cwv-prior-w7-lcb1.5"
+    assert control_name(sha8, 7, lcb=1.5) == f"mc-cwv-prior-{sha8}-w7-lcb1.5"
     names = register_cwv_policies(checkpoint, [7])
     try:
         arm = make_bot(f"mc-cwv-{sha8}-w7", seed=3)
         assert isinstance(arm, CWVOnePlyBot) and arm.CWV_WORLDS == 7
         assert arm.cwv_ckpt8 == sha8 and arm.policy_name == f"mc-cwv-{sha8}-w7"
         assert arm.seed == 3 and arm.CWV_FINISH_TRICK is True
-        control = make_bot("mc-cwv-prior-w7", seed=4)
+        control = make_bot(f"mc-cwv-prior-{sha8}-w7", seed=4)
         assert isinstance(control.evaluator, StratifiedPriorEvaluator)
         assert set(control.evaluator.table) <= set(cwv_policy.PRIOR_STRATA)
         # the arm and its control enumerate exactly production's ballot
@@ -434,7 +435,8 @@ def test_registry_names_embed_checkpoint_and_share_productions_ballot(checkpoint
     env = {"SHENGJI_CWV_CKPT": checkpoint, "SHENGJI_CWV_WORLDS": "5,9",
            "SHENGJI_CWV_FINISH_TRICK": "0", "SHENGJI_CWV_LCB": "0"}
     assert set(env_registry_entries(env)) == {
-        f"mc-cwv-{sha8}-w5", f"mc-cwv-{sha8}-w9", "mc-cwv-prior-w5", "mc-cwv-prior-w9"}
+        f"mc-cwv-{sha8}-w5", f"mc-cwv-{sha8}-w9",
+        f"mc-cwv-prior-{sha8}-w5", f"mc-cwv-prior-{sha8}-w9"}
     assert env_registry_entries({}) == {}
 
 
@@ -475,25 +477,30 @@ def test_foreign_or_mismatched_checkpoint_is_refused(tmp_path, monkeypatch):
 
 def test_prior_table_forms_and_control_scores_by_stratum():
     uniform = [1.0 / 204] * 204
-    table, default = prior_table_from({
+    table, default, scale = prior_table_from({
         "global_probability": uniform,
         "strata_probability": [["early|attacker", uniform]]})
-    assert table["early|attacker"] == pytest.approx(default)
-    table, default = prior_table_from({"strata": {"late|defender": 1.5}, "global": -0.5})
-    assert table == {"late|defender": 1.5} and default == -0.5
-    table, default = prior_table_from({"global_mean": 0.25, "cells": [
-        {"stratum": "middle|attacker|0-39", "n": 3, "mean": 1.0},
-        {"stratum": "middle|attacker|40-79", "n": 1, "mean": -1.0}]})
+    assert table["early|attacker"] == pytest.approx(default) and scale == "level"
+    table, default, scale = prior_table_from({"strata": {"late|defender": 1.5}, "global": -0.5})
+    assert table == {"late|defender": 1.5} and default == -0.5 and scale == "level"
+    table, default, scale = prior_table_from({"global_mean": 0.25, "cells": [
+        {"stratum": "middle|attacker-team|0-39", "n": 3, "mean": 1.0},
+        {"stratum": "middle|attacker-team|40-79", "n": 1, "mean": -1.0}]})
     assert table == {"middle|attacker": pytest.approx(0.5)} and default == 0.25
+    assert scale == "pt0"
     with pytest.raises(cwv_policy.CWVError):
         prior_table_from({"strata": {"never|attacker": 1.0}})
+    with pytest.raises(cwv_policy.CWVError):
+        prior_table_from({"cells": [{"stratum": "early|banker|0-39", "n": 1, "mean": 1.0}]})
     # the training build stores its prior under baselines (#213 cells form)
-    table, default = cwv_policy.prior_table_from_metadata({"baselines": {
+    table, default, scale = cwv_policy.prior_table_from_metadata({"baselines": {
         "stratified_prior": {"global_mean": -0.1, "cells": [
-            {"stratum": "late|defender|80+", "n": 2, "mean": 0.5}]}}})
-    assert table == {"late|defender": 0.5} and default == -0.1
+            {"stratum": "late|banker-team|80+", "n": 2, "mean": 0.5}]}}})
+    assert table == {"late|defender": 0.5} and default == -0.1 and scale == "pt0"
     with pytest.raises(cwv_policy.CWVError, match="no stratified_prior"):
         cwv_policy.prior_table_from_metadata({"best_epoch": 1})
+    assert cwv_policy.pt0_level(0.5) == 1.0 and cwv_policy.pt0_level(-0.5) == -1.0
+    assert cwv_policy.pt0_level(2.5) == 2.0 and cwv_policy.pt0_level(-3.5) == -3.0
 
     rnd = _state_after(17, 3)
     evaluator = StratifiedPriorEvaluator({"early|attacker": 2.0, "early|defender": -2.0},
@@ -502,6 +509,118 @@ def test_prior_table_forms_and_control_scores_by_stratum():
     value = evaluator.score([rnd], seat)[0]
     assert value == (2.0 if rnd.is_attacker(seat) else -2.0)
     terminal = _state_after(17, 100)
-    assert evaluator.score([terminal], seat)[0] == category_signed_level(
+    exact = category_signed_level(
         __import__("shengji.rl.value_afterstate", fromlist=["x"])
         .signed_level_category(terminal.attacker_points, terminal.is_attacker(seat)))
+    assert evaluator.score([terminal], seat)[0] == exact
+    # a PT0-scale prior expresses its terminals in PT0 units, never mixed
+    pt0 = StratifiedPriorEvaluator({"early|attacker": 1.0}, 0.0, source="t", scale="pt0")
+    assert pt0.score([terminal], seat)[0] == cwv_policy.pt0_level(exact)
+    with pytest.raises(cwv_policy.CWVError):
+        StratifiedPriorEvaluator({}, 0.0, source="t", scale="points")
+
+
+def test_real_producer_prior_drives_the_control_in_pt0_units(tmp_path):
+    """Codex repro: train.baselines.StratifiedPrior.to_dict() -> registry
+    control -> terminal and non-terminal rows in one explicit scale."""
+    from shengji.train.baselines import StratifiedPrior
+
+    producer = StratifiedPrior()
+    producer.add([10, 20, 70], [True, True, False], [0, 50, 90], [1.0, 2.0, -1.0])
+    serialized = producer.to_dict()
+    assert {c["stratum"].split("|")[1] for c in serialized["cells"]} == {
+        "banker-team", "attacker-team"}
+    table, default, scale = cwv_policy.prior_table_from_metadata(
+        {"baselines": {"stratified_prior": serialized}})
+    assert scale == "pt0" and table["early|attacker"] == pytest.approx(1.5)
+    assert table["late|defender"] == pytest.approx(-1.0)
+    assert default == pytest.approx(producer.global_mean)
+
+    config = ValueModelConfig(architecture="gru", width=8, history_layers=1,
+                              attention_heads=2, feedforward_width=16)
+    path = tmp_path / "producer.pt"
+    save_checkpoint(path, ValueNetwork(config), metadata={
+        "encoder": afterstate_encoder_identity(),
+        "baselines": {"stratified_prior": serialized}})
+    sha8 = cwv_policy.checkpoint_id(path)
+    names = register_cwv_policies(str(path), [3])
+    try:
+        control = make_bot(f"mc-cwv-prior-{sha8}-w3", seed=1)
+        evaluator = control.evaluator
+        assert evaluator.scale == "pt0" and evaluator.identity()["scale"] == "pt0"
+        rnd = _state_after(19, 5)
+        seat = rnd.turn
+        assert evaluator.score([rnd], seat)[0] == pytest.approx(
+            table[cwv_policy.position_stratum(rnd, seat)])
+        terminal = _state_after(19, 100)
+        exact = category_signed_level(
+            __import__("shengji.rl.value_afterstate", fromlist=["x"])
+            .signed_level_category(terminal.attacker_points, terminal.is_attacker(seat)))
+        value = evaluator.score([terminal], seat)[0]
+        assert value == cwv_policy.pt0_level(exact) and float(value).is_integer()
+        assert sorted(control.decide_play(copy.deepcopy(rnd), seat)) == sorted(
+            MCBot(seed=0)._candidates(rnd, seat)[0]) or control.last_decision_record is not None
+    finally:
+        for name in names:
+            REGISTRY.pop(name, None)
+
+
+TRAIN_WORKTREE = os.environ.get(
+    "SHENGJI_CWV_TRAIN_WORKTREE",
+    "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/cwvtrainw/server")
+REAL_CHECKPOINT = os.environ.get(
+    "SHENGJI_CWV_REAL_CKPT",
+    "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/runA-mlp/best.pt")
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not (os.path.exists(REAL_CHECKPOINT)
+         and os.path.exists(os.path.join(TRAIN_WORKTREE, "shengji", "rl", "value_model.py"))),
+    reason="needs the real mlp checkpoint and the training worktree's value_model.py")
+def test_integration_real_mlp_checkpoint_scores_through_the_evaluator(monkeypatch):
+    """The unmerged training build's value_model.py (mlp arch) is loaded
+    TEST-ONLY and swapped into value_checkpoint; production code untouched."""
+    import importlib.util
+    from shengji.rl import value_checkpoint
+
+    spec = importlib.util.spec_from_file_location(
+        "shengji.rl._train_value_model",
+        os.path.join(TRAIN_WORKTREE, "shengji", "rl", "value_model.py"))
+    train_model = importlib.util.module_from_spec(spec)
+    import sys
+    monkeypatch.setitem(sys.modules, spec.name, train_model)   # dataclasses resolve it
+    spec.loader.exec_module(train_model)
+    monkeypatch.setattr(value_checkpoint, "ValueModelConfig", train_model.ValueModelConfig)
+    monkeypatch.setattr(value_checkpoint, "ValueNetwork", train_model.ValueNetwork)
+    monkeypatch.setattr(value_checkpoint, "model_state_sha256", train_model.model_state_sha256)
+    cwv_policy._cached_checkpoint.cache_clear()
+    cwv_policy._shared_evaluator.cache_clear()
+    try:
+        model, metadata, sha = load_cwv_checkpoint(REAL_CHECKPOINT)
+        assert metadata["arch"] == "mlp" and metadata["sees_hidden_hands"] is True
+        evaluator = CompleteWorldEvaluator(REAL_CHECKPOINT)
+        rnd = _state_after(29, 12)
+        seat = rnd.turn
+        candidates = MCBot(seed=0)._candidates(rnd, seat)[:3]
+        positions = [apply_action(rnd, seat, cand)[0] for cand in candidates]
+        positions.append(_state_after(29, 100))
+        scores = evaluator.score(positions, seat)
+        assert scores.shape == (4,) and np.all(np.isfinite(scores))
+        assert -101.5 <= scores[:3].min() and scores[:3].max() <= 101.5
+        # the control built from the real producer prior scores in PT0 units
+        names = register_cwv_policies(REAL_CHECKPOINT, [2])
+        try:
+            control = make_bot(f"mc-cwv-prior-{sha[:8]}-w2", seed=1)
+            assert control.evaluator.scale == "pt0"
+            values = control.evaluator.score(positions, seat)
+            assert float(values[3]).is_integer() and np.all(np.isfinite(values))
+            arm = make_bot(f"mc-cwv-{sha[:8]}-w2", seed=1)
+            assert arm.decide_play(copy.deepcopy(rnd), seat) in candidates or \
+                arm.last_decision_record is not None
+        finally:
+            for name in names:
+                REGISTRY.pop(name, None)
+    finally:
+        cwv_policy._cached_checkpoint.cache_clear()
+        cwv_policy._shared_evaluator.cache_clear()

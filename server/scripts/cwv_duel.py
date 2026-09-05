@@ -621,34 +621,122 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
     }
 
 
+def pair_key(record: dict) -> tuple:
+    return (record["label"], int(record["seed"]), int(record["flip"]))
+
+
+def read_shard(path: str) -> list[dict]:
+    """Every complete record line of a shard file (a torn tail is ignored)."""
+    records = []
+    if not os.path.exists(path):
+        return records
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                break                      # a torn last line from a crash
+    return records
+
+
+class ShardSink:
+    """Append one completed (arm, deal, flip) record per line, durably.
+
+    Each line is written and fsynced as soon as its round finishes, so a
+    crash loses at most the round in flight; a rerun with the same run id
+    reads the file back and plays only the pairs that are missing.
+    """
+
+    def __init__(self, path: str):
+        self.path = path
+        self.written = 0
+        # A torn tail from a crash mid-write would hide every later append
+        # from read_shard; rewrite the file with its complete lines only.
+        if os.path.exists(path):
+            complete = read_shard(path)
+            with open(path, "w") as fh:
+                for record in complete:
+                    fh.write(json.dumps(record) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+
+    def __call__(self, record: dict) -> None:
+        with open(self.path, "a") as fh:
+            fh.write(json.dumps(record) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        self.written += 1
+
+
 def play_shard(run_id: str, plan, clusters, seed0: int, rank_spec: str | None,
-               opponent: str, *, progress: bool = False) -> list[dict]:
-    """All plan entries for these clusters, evaluate.py's pairing per entry."""
+               opponent: str, *, progress: bool = False, sink=None,
+               done=frozenset()) -> list[dict]:
+    """All plan entries for these clusters, evaluate.py's pairing per entry.
+
+    ``sink(record)`` publishes each completed pair as it completes; pairs
+    whose key is in ``done`` are skipped (resume), never replayed.
+    """
     ranks = rank_plan(rank_spec)
     records = []
+    total = 2 * len(clusters) * len(plan)
+    played = 0
     for label, policy in plan:
         for cluster in clusters:
             seed = seed0 + cluster
             for flip in (0, 1):
+                if (label, seed, flip) in done:
+                    continue
                 log, arm, opp, timers = play_pair(
                     policy, opponent, seed, flip, trump_rank=rank_for(ranks, cluster))
-                records.append(_record(run_id, label, policy, seed, flip, log,
-                                       arm, opp, timers))
-        if progress:
-            print(f"    {label}: {2 * len(clusters)} rounds done", flush=True)
+                record = _record(run_id, label, policy, seed, flip, log, arm, opp, timers)
+                if sink is not None:
+                    sink(record)
+                records.append(record)
+                played += 1
+                if progress:
+                    print(f"    {label} seed {seed} flip {flip} done "
+                          f"({played + len(done)}/{total})", flush=True)
     return records
 
 
-def _worker(payload: dict) -> list[dict]:
-    """Process entry point: register the arms, then play the shard."""
+def shard_path(out: str, run_id: str, index: int) -> str:
+    return os.path.join(out, f"{run_id}.shard{index}.jsonl")
+
+
+def _worker(payload: dict) -> dict:
+    """Process entry point: register the arms, then play the shard.
+
+    Returns ``{"records": new records, "retained": records read back from
+    this shard's file before playing}``.
+    """
     register_cwv_policies(payload["checkpoint"], payload["worlds"],
                           finish_trick=payload["finish_trick"], lcb=payload["lcb"],
                           receipt=payload.get("receipt"))
     if payload.get("scaled_multipliers"):
         register_scaled_policies(payload["opponent"], payload["scaled_multipliers"])
-    return play_shard(payload["run_id"], payload["plan"], payload["clusters"],
-                      payload["seed0"], payload["rank_spec"], payload["opponent"],
-                      progress=payload.get("progress", False))
+    path = shard_path(payload["out"], payload["run_id"], payload["shard"])
+    retained = [rec for rec in read_shard(path) if rec.get("run") == payload["run_id"]]
+    done = {pair_key(rec) for rec in retained}
+    records = play_shard(payload["run_id"], payload["plan"], payload["clusters"],
+                         payload["seed0"], payload["rank_spec"], payload["opponent"],
+                         progress=payload.get("progress", False),
+                         sink=ShardSink(path), done=frozenset(done))
+    return {"records": records, "retained": retained}
+
+
+def preflight_arms(plan, seed: int = 0) -> None:
+    """Construct EVERY planned policy before any round is dealt, so a control
+    or checkpoint failure surfaces in seconds, not after the expensive arms."""
+    for label, policy in plan:
+        try:
+            make_bot(policy, seed=seed)
+        except Exception as exc:
+            raise CalibrationMismatch(
+                f"arm {label} ({policy}) cannot be constructed: "
+                f"{type(exc).__name__}: {exc}") from exc
 
 
 def shards(clusters: int, workers: int) -> list[list[int]]:
@@ -856,7 +944,7 @@ def run(args) -> dict:
                 "budget": r["budget"] + " (prod)",
                 "worlds": r["production"]["n_determinizations"]}
     plan.append(("reference", args.opponent))
-    plan.append(("control", control_name(rungs[0]["worlds"], lcb=args.lcb)))
+    plan.append(("control", control_name(ckpt8, rungs[0]["worlds"], lcb=args.lcb)))
     budgets_by_label["control"] = {"budget": rungs[0]["budget"] + " (prior)",
                                    "worlds": rungs[0]["worlds"]}
     metric, threshold = parse_bar(args.bar)         # fail before compute
@@ -864,9 +952,33 @@ def run(args) -> dict:
                           lcb=args.lcb, receipt=args.receipt)
     if scaled_multipliers:
         register_scaled_policies(args.opponent, scaled_multipliers)
+    preflight_arms(plan)                            # every arm, before any deal
     git = git_identity()
-    run_id = f"cwv_{int(time.time())}_{os.getpid()}_{git['short']}"
     os.makedirs(args.out, exist_ok=True)
+    configuration = {
+        "arms": {label: policy for label, policy in plan},
+        "opponent": args.opponent, "clusters": args.clusters, "seed0": args.seed0,
+        "workers": args.workers, "declared_bar": args.bar,
+        "budgets": [{"budget": r["budget"], "worlds": r["worlds"]} for r in rungs],
+        "trump_ranks": rank_spec_label(plan_ranks),
+        "finish_trick": args.finish_trick, "lcb": args.lcb,
+        "calibration_identity": calibration["identity_sha256"],
+        "checkpoint_sha256": sha,
+    }
+    if args.resume:
+        run_id = args.resume
+        manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
+        with open(manifest_path) as fh:
+            manifest = json.load(fh)
+        drift = [key for key, value in configuration.items()
+                 if manifest.get("configuration", {}).get(key) != value]
+        if drift:
+            raise CalibrationMismatch(
+                f"cannot resume {run_id}: configuration differs in {drift}")
+        print(f"resuming {run_id}: completed pairs are read back, only missing "
+              "pairs are played", flush=True)
+    else:
+        run_id = f"cwv_{int(time.time())}_{os.getpid()}_{git['short']}"
     manifest = {
         "schema": RUN_SCHEMA, "run": run_id,
         "arms": {label: policy for label, policy in plan},
@@ -888,11 +1000,13 @@ def run(args) -> dict:
         "machine": machine_identity(),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "equal_work_strength_claim": False,
+        "configuration": configuration,
     }
     manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
-    with open(manifest_path, "x") as fh:
-        json.dump(manifest, fh, indent=2)
-    print(json.dumps(manifest, indent=2), flush=True)
+    if not args.resume:
+        with open(manifest_path, "x") as fh:
+            json.dump(manifest, fh, indent=2)
+        print(json.dumps(manifest, indent=2), flush=True)
     if git["dirty"]:
         print("\nWARNING: tree is DIRTY -- the git SHA does not describe the code "
               "that ran. Recorded in the manifest.", flush=True)
@@ -904,30 +1018,43 @@ def run(args) -> dict:
         "rank_spec": rank_spec_label(plan_ranks) if plan_ranks else None,
         "opponent": args.opponent, "progress": index == 0,
         "scaled_multipliers": scaled_multipliers,
+        "out": args.out, "shard": index,
     } for index, chunk in enumerate(shards(args.clusters, args.workers))]
     if len(payloads) == 1:
-        record_lists = [_worker(payloads[0])]
+        outcomes = [_worker(payloads[0])]
     else:
         with ProcessPoolExecutor(max_workers=len(payloads),
                                  mp_context=mp.get_context("spawn")) as pool:
-            record_lists = list(pool.map(_worker, payloads))
-    records = [rec for chunk in record_lists for rec in chunk]
+            outcomes = list(pool.map(_worker, payloads))
+    retained = [rec for out in outcomes for rec in out["retained"]]
+    played = [rec for out in outcomes for rec in out["records"]]
+    records = retained + played
     records.sort(key=lambda r: ([label for label, _ in plan].index(r["label"]),
                                 r["seed"], r["flip"]))
+    expected = 2 * args.clusters * len(plan)
     records_path = os.path.join(args.out, f"{run_id}.jsonl")
-    with open(records_path, "x") as fh:
+    with open(records_path, "w") as fh:            # the merged view of the shards
         for rec in records:
             fh.write(json.dumps(rec) + "\n")
     results = {label: [r for r in records if r["label"] == label] for label, _ in plan}
     summary = summarize(results, plan, budgets_by_label=budgets_by_label, bar=args.bar)
     if git["dirty"]:
         summary["problems"].append("tree was DIRTY: the git SHA does not describe the run")
+    if len(records) != expected:
+        summary["problems"].append(
+            f"incomplete: {len(records)} of {expected} pairs; rerun with --resume {run_id}")
     summary.update({"run": run_id, "wall_minutes": round((time.time() - t_start) / 60, 2),
                     "records": records_path, "manifest": manifest_path,
-                    "declared_bar": args.bar})
+                    "declared_bar": args.bar, "pairs_expected": expected,
+                    "pairs_retained_from_earlier_attempts": len(retained),
+                    "pairs_played_this_attempt": len(played),
+                    "shards": [shard_path(args.out, run_id, i) for i in range(len(payloads))]})
     summary_path = os.path.join(args.out, f"{run_id}.summary.json")
-    with open(summary_path, "x") as fh:
+    with open(summary_path, "w") as fh:
         json.dump(summary, fh, indent=2)
+    if retained:
+        print(f"\nretained {len(retained)} pairs from earlier attempts of {run_id}; "
+              f"played {len(played)} this attempt", flush=True)
     print_summary(summary, plan)
     print(f"\nDECLARED BAR: {metric} > {threshold}")
     for label, _ in plan:
@@ -991,6 +1118,9 @@ def build_parser() -> argparse.ArgumentParser:
     duel.add_argument("--receipt", default=None,
                       help="training receipt JSON with the stratified prior (control)")
     duel.add_argument("--out", default="runs/logs")
+    duel.add_argument("--resume", default=None, metavar="RUN_ID",
+                      help="reuse this run id: read back completed pairs from its "
+                           "shard files and play only the missing ones")
     duel.add_argument("--allow-unmatched", action="store_true")
     finish = duel.add_mutually_exclusive_group()
     finish.add_argument("--finish-trick", dest="finish_trick", action="store_true", default=True)

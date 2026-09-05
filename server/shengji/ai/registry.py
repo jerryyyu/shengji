@@ -549,7 +549,7 @@ def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
     Same rule as ``_make_vleaf``: the checkpoint is the policy's identity, so
     every name embeds ``<ckpt8>`` (sha256 of the file, first eight hex) and
     the world count -- ``mc-cwv-<ckpt8>-w<W>`` -- and a bare ``mc-cwv`` never
-    exists.  ``mc-cwv-prior-w<W>`` is the matching NO-LEARNING control: the
+    exists.  ``mc-cwv-prior-<ckpt8>-w<W>`` is the matching NO-LEARNING control: the
     same ballot, sampler and positions with the training receipt's stratified
     prior as the value.  The checkpoint is loaded lazily, once per process,
     and refused when its encoder identity is not the live afterstate encoder.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import random
 from pathlib import Path
 
@@ -209,6 +210,52 @@ def _trace(monkeypatch, module, made, played):
 
 from shengji.ai.registry import make_bot as _real_make_bot  # noqa: E402
 from shengji.ai.env import play_round as real_play_round  # noqa: E402
+
+
+def test_pairs_are_published_as_they_complete_and_resume_never_replays(
+        duel, tmp_path, monkeypatch):
+    """Fault injection: the process dies after two pairs; the two are on disk,
+    a rerun under the same run id reads them back and plays only the rest."""
+    calls = []
+    real_play_pair = duel.play_pair
+
+    def dying_play_pair(policy, opponent, seed, flip, **kw):
+        calls.append((policy, seed, flip))
+        if len(calls) == 3:
+            raise RuntimeError("simulated crash after two completed pairs")
+        return real_play_pair(policy, opponent, seed, flip, **kw)
+    monkeypatch.setattr(duel, "play_pair", dying_play_pair)
+    payload = {"checkpoint": None, "worlds": [], "finish_trick": True, "lcb": 0.0,
+               "run_id": "run-x", "plan": [("arm", "smart")], "clusters": [0, 1],
+               "seed0": 700, "rank_spec": None, "opponent": "heuristic",
+               "out": str(tmp_path), "shard": 0}
+    monkeypatch.setattr(duel, "register_cwv_policies", lambda *a, **k: [])
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        duel._worker(payload)
+    shard = duel.shard_path(str(tmp_path), "run-x", 0)
+    on_disk = duel.read_shard(shard)
+    assert [duel.pair_key(r) for r in on_disk] == [("arm", 700, 0), ("arm", 700, 1)]
+
+    # a torn tail (crash mid-write) is ignored, not a fatal parse error
+    with open(shard, "a") as fh:
+        fh.write('{"label": "arm", "seed": 701, "fl')
+    assert len(duel.read_shard(shard)) == 2
+
+    calls.clear()
+    outcome = duel._worker(payload)                 # resume: same run id
+    assert [duel.pair_key(r) for r in outcome["retained"]] == [("arm", 700, 0), ("arm", 700, 1)]
+    assert [(s, f) for _, s, f in calls] == [(701, 0), (701, 1)], "earlier pairs not replayed"
+    assert [duel.pair_key(r) for r in outcome["records"]] == [("arm", 701, 0), ("arm", 701, 1)]
+    merged = duel.read_shard(shard)
+    assert len(merged) == 4 and len({duel.pair_key(r) for r in merged}) == 4
+
+    # RED when the sink is dropped: nothing survives the crash
+    calls.clear()
+    os.remove(shard)
+    monkeypatch.setattr(duel, "ShardSink", lambda path: (lambda record: None))
+    with pytest.raises(RuntimeError):
+        duel._worker(payload)
+    assert duel.read_shard(shard) == []
 
 
 def test_duel_pairing_equals_evaluation_run_arm(duel, tmp_path, monkeypatch):

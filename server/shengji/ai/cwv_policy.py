@@ -420,50 +420,84 @@ def _expected_level(probability: Sequence[float]) -> float:
     return float(values @ support)
 
 
-def prior_table_from(value: Mapping[str, Any]) -> tuple[dict[str, float], float]:
-    """Normalise a stratified prior into ``({phase|role: level}, global)``.
+#: The producer's role labels (``train.baselines.ROLES``) and this module's.
+PRIOR_ROLE_ALIASES = {"attacker-team": "attacker", "banker-team": "defender",
+                      "attacker": "attacker", "defender": "defender"}
+#: Utility scales a prior can be expressed in.  ``level``: #214's half-integer
+#: signed level (the support of ``category_signed_level``; what the learned
+#: net and ``terminal_distribution`` produce).  ``pt0``: the trajectory
+#: records' integer ``signed_level_utility`` (a takeover counts one level),
+#: which is what #213's ``StratifiedPrior`` cells average.  A control mixes
+#: the two never: its terminals are converted to the prior's own scale.
+PRIOR_SCALES = ("level", "pt0")
+
+
+def pt0_level(signed_level: float) -> float:
+    """The PT0 integer utility of a #214 signed level: ``sign * max(1,
+    floor(|u|))`` -- the training build's ``cwv_data.pt0_level`` recipe."""
+    value = float(signed_level)
+    if not math.isfinite(value) or value == 0.0:
+        raise CWVError("PT0 level needs a finite, non-zero signed level")
+    return math.copysign(max(1.0, math.floor(abs(value))), value)
+
+
+def _stratum(phase: str, role: str) -> str:
+    try:
+        key = f"{phase}|{PRIOR_ROLE_ALIASES[role]}"
+    except KeyError:
+        raise CWVError(f"prior stratum drift: {phase}|{role!r}") from None
+    if key not in PRIOR_STRATA:
+        raise CWVError(f"prior stratum drift: {key!r}")
+    return key
+
+
+def prior_table_from(value: Mapping[str, Any]) -> tuple[dict[str, float], float, str]:
+    """Normalise a stratified prior into ``({phase|role: value}, global, scale)``.
 
     Accepted shapes: ``value_metrics.StratifiedOutcomePrior`` fields
-    (``global_probability`` + ``strata_probability``); a plain map
-    ``{"strata": {stratum: level | {"expected_signed_level": level}},
-    "global": level}``; and #213's ``baselines.StratifiedPrior.to_dict()``
-    (``cells`` of ``phase|role|points`` means, collapsed over the points bin
-    by count).
+    (``global_probability`` + ``strata_probability``; scale ``level``); a
+    plain map ``{"strata": {stratum: level | {"expected_signed_level":
+    level}}, "global": level}`` (scale ``level``, or ``value["scale"]``); and
+    #213's ``baselines.StratifiedPrior.to_dict()`` (``cells`` of
+    ``phase|role|points`` PT0 means with the producer's ``banker-team`` /
+    ``attacker-team`` roles, collapsed over the points bin by count; scale
+    ``pt0``).
     """
     if "strata_probability" in value and "global_probability" in value:
         table = {}
         for key, probability in value["strata_probability"]:
-            if key not in PRIOR_STRATA:
-                raise CWVError(f"prior stratum drift: {key!r}")
-            table[key] = _expected_level(probability)
-        return table, _expected_level(value["global_probability"])
+            phase, role = str(key).split("|")[:2]
+            table[_stratum(phase, role)] = _expected_level(probability)
+        return table, _expected_level(value["global_probability"]), "level"
     if "strata" in value and isinstance(value["strata"], Mapping):
         table = {}
         for key, entry in value["strata"].items():
-            if key not in PRIOR_STRATA:
-                raise CWVError(f"prior stratum drift: {key!r}")
+            phase, role = str(key).split("|")[:2]
             level = entry.get("expected_signed_level") \
                 if isinstance(entry, Mapping) else entry
-            table[key] = float(level)
+            table[_stratum(phase, role)] = float(level)
         default = value.get("global", value.get("global_mean"))
         if default is None:
             if not table:
                 raise CWVError("prior table is empty")
             default = float(np.mean(list(table.values())))
-        return table, float(default)
+        scale = str(value.get("scale", "level"))
+        if scale not in PRIOR_SCALES:
+            raise CWVError(f"prior scale drift: {scale!r}")
+        return table, float(default), scale
     if "cells" in value:
         sums: dict[str, float] = {}
         counts: dict[str, int] = {}
         for cell in value["cells"]:
-            phase, role = str(cell["stratum"]).split("|")[:2]
-            key = f"{phase}|{role}"
-            if key not in PRIOR_STRATA:
-                raise CWVError(f"prior stratum drift: {key!r}")
+            parts = str(cell["stratum"]).split("|")
+            if len(parts) < 2:
+                raise CWVError(f"prior stratum drift: {cell['stratum']!r}")
+            key = _stratum(parts[0], parts[1])
             n = int(cell.get("n", 0))
             sums[key] = sums.get(key, 0.0) + float(cell["mean"]) * n
             counts[key] = counts.get(key, 0) + n
         table = {key: sums[key] / counts[key] for key in sums if counts[key]}
-        return table, float(value.get("global_mean", 0.0))
+        return table, float(value.get("global_mean", 0.0)), "pt0"
     raise CWVError("unrecognised stratified prior table")
 
 
@@ -478,8 +512,14 @@ class StratifiedPriorEvaluator:
     backend = "prior"
 
     def __init__(self, table: Mapping[str, float], global_value: float, *,
-                 source: str, checkpoint_sha256: str | None = None):
+                 source: str, checkpoint_sha256: str | None = None,
+                 scale: str = "level"):
+        if scale not in PRIOR_SCALES:
+            raise CWVError(f"prior scale drift: {scale!r}")
+        self.scale = scale
         self.table = {key: float(value) for key, value in table.items()}
+        if any(key not in PRIOR_STRATA for key in self.table):
+            raise CWVError("prior stratum drift")
         self.global_value = float(global_value)
         self.source = source
         self.checkpoint_sha256 = checkpoint_sha256
@@ -499,8 +539,13 @@ class StratifiedPriorEvaluator:
     def identity(self) -> dict[str, Any]:
         return {"kind": "stratified_prior", "backend": self.backend,
                 "source": self.source, "checkpoint_sha256": self.checkpoint_sha256,
-                "table": dict(sorted(self.table.items())),
+                "scale": self.scale, "table": dict(sorted(self.table.items())),
                 "global": self.global_value}
+
+    def terminal_value(self, rnd: Round, root_seat: int) -> float:
+        """The exact terminal value expressed in the prior's own scale."""
+        level = float(terminal_distribution(rnd, root_seat) @ self.support)
+        return pt0_level(level) if self.scale == "pt0" else level
 
     def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
         wall0, cpu0 = time.perf_counter(), time.process_time()
@@ -509,8 +554,7 @@ class StratifiedPriorEvaluator:
         values = np.empty(len(positions), dtype=np.float64)
         for index, rnd in enumerate(positions):
             if rnd.phase == "round_end":
-                values[index] = float(
-                    terminal_distribution(rnd, root_seat) @ self.support)
+                values[index] = self.terminal_value(rnd, root_seat)
                 self.terminal_rows += 1
             else:
                 values[index] = self.table.get(
@@ -523,7 +567,8 @@ class StratifiedPriorEvaluator:
 
 
 def prior_table_from_metadata(metadata: Mapping[str, Any], *,
-                              label: str = "checkpoint") -> tuple[dict[str, float], float]:
+                              label: str = "checkpoint"
+                              ) -> tuple[dict[str, float], float, str]:
     """The stratified prior a checkpoint carries: ``metadata["stratified_prior"]``
     (this module's dev checkpoints) or the training build's
     ``metadata["baselines"]["stratified_prior"]`` (#213 ``cells`` form)."""
@@ -555,17 +600,17 @@ def prior_evaluator_for(checkpoint: str | os.PathLike[str] | None, *,
                     inner = inner["stratified_prior"]
                 payload = inner
                 break
-        table, default = prior_table_from(payload)
+        table, default, scale = prior_table_from(payload)
         return StratifiedPriorEvaluator(
             table, default, source=str(Path(receipt).resolve()),
-            checkpoint_sha256=sha)
+            checkpoint_sha256=sha, scale=scale)
     if checkpoint is None:
         raise CWVError("a prior control needs a receipt or a checkpoint")
     _model, metadata, sha = load_cwv_checkpoint(checkpoint)
-    table, default = prior_table_from_metadata(metadata, label=str(checkpoint))
+    table, default, scale = prior_table_from_metadata(metadata, label=str(checkpoint))
     return StratifiedPriorEvaluator(
         table, default, source=f"checkpoint:{Path(checkpoint).resolve()}",
-        checkpoint_sha256=sha)
+        checkpoint_sha256=sha, scale=scale)
 
 
 # ------------------------------------------------- worlds and afterstates
@@ -839,9 +884,10 @@ def policy_name(ckpt8: str, worlds: int, *, lcb: float = 0.0) -> str:
     return f"mc-cwv-{ckpt8}-w{int(worlds)}{suffix}"
 
 
-def control_name(worlds: int, *, lcb: float = 0.0) -> str:
+def control_name(ckpt8: str, worlds: int, *, lcb: float = 0.0) -> str:
+    """The no-learning control is bound to its prior's checkpoint too."""
     suffix = f"-lcb{lcb:g}" if lcb else ""
-    return f"mc-cwv-prior-w{int(worlds)}{suffix}"
+    return f"mc-cwv-prior-{ckpt8}-w{int(worlds)}{suffix}"
 
 
 @lru_cache(maxsize=None)
@@ -911,7 +957,7 @@ def cwv_registry_entries(checkpoint: str | os.PathLike[str],
         if w < 1:
             raise CWVError("worlds must be positive")
         entries[policy_name(ckpt8, w, lcb=lcb)] = factory(w, False)
-        entries[control_name(w, lcb=lcb)] = factory(w, True)
+        entries[control_name(ckpt8, w, lcb=lcb)] = factory(w, True)
     return entries
 
 

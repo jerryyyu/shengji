@@ -251,3 +251,6 @@ open drafts whose stated gate is already terminal or superseded.
 - Preserve failed evidence and exact non-PASS verdicts.
 - House progression is uncapped; clipped `+/-3` is a named legacy RL target.
 - Measure before adopting, and keep human data/checkpoints out of git.
+- Deal seeds are windows `[seed0, seed0 + clusters)`; `trajectory.py` (generate), `cwv_duel.py calibrate|run`, `vleaf_screen.py calibrate|run` and `netroll_screen.py calibrate|run` check and register their window in one locked transaction against `server/runs/seed_windows.json` on start (append-only; `scripts/seed_windows.py list|check SEED0 CLUSTERS`). NOT wired yet: `cwv_shortlist_screen`, `learned_search_screen`, `world_shortlist_screen`, `oracle_screen`.
+- A trajectory window must be disjoint from every registered window and a screen from every trajectory window; the scripts refuse the overlap before dealing (Run B re-dealt 7,999 of Run A's 8,000 deals and added nothing).
+- `--allow-seed-overlap` is the only override (a deliberate same-seed replicate of another screen); the manifest then records the overlapped windows. The registry is local to the checkout: the committed file on `main` is the source of truth a cross-host allocation must consult and append to (not a fleet-wide exclusion).

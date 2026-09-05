@@ -1,0 +1,216 @@
+{
+  "schema": "shengji-seed-windows-v1",
+  "_comment": "Append-only ledger of deal-seed windows [seed0, seed0 + clusters). Every trajectory / screen / calibration run registers its window on start and refuses an overlap (shengji/seeds.py; scripts/seed_windows.py list|check). Never edit or delete an entry; add a new one.",
+  "windows": [
+    {
+      "name": "run-A",
+      "purpose": "trajectory",
+      "seed0": 20260905,
+      "clusters": 8000,
+      "span": [
+        20260905,
+        20268905
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Run A teacher trajectories (8,000 clusters / 16,000 rounds). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "run-B",
+      "purpose": "trajectory",
+      "seed0": 20260906,
+      "clusters": 8000,
+      "span": [
+        20260906,
+        20268906
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Run B (wide-ballot knobs). HISTORICAL OVERLAP: shares 7,999/8,000 deals with run-A and added nothing in training -- the case this registry prevents. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "run-C",
+      "purpose": "trajectory",
+      "seed0": 30260904,
+      "clusters": 32000,
+      "span": [
+        30260904,
+        30292904
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Run C: Run B's policy at a disjoint seed space, 32,000 clusters / 64,000 rounds. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "run-D",
+      "purpose": "trajectory",
+      "seed0": 40260904,
+      "clusters": 32000,
+      "span": [
+        40260904,
+        40292904
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Run D: wide ballot knobs, --widen union, --round-mix sampled, 32,000 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "run-E",
+      "purpose": "trajectory",
+      "seed0": 45260904,
+      "clusters": 16000,
+      "span": [
+        45260904,
+        45276904
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Run E: production 3x worlds (select 90 / report 900), Run D recipe, 16,000 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-50260904",
+      "purpose": "screen",
+      "seed0": 50260904,
+      "clusters": 256,
+      "span": [
+        50260904,
+        50261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "vleaf_screen default screen window (leaf_screen.DEFAULT_SEED0), 256 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-60260904",
+      "purpose": "screen",
+      "seed0": 60260904,
+      "clusters": 256,
+      "span": [
+        60260904,
+        60261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "screen window, 256 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-70260904",
+      "purpose": "screen",
+      "seed0": 70260904,
+      "clusters": 256,
+      "span": [
+        70260904,
+        70261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "cwv_duel default screen window (DUEL_SEED0), 256 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-80260904",
+      "purpose": "screen",
+      "seed0": 80260904,
+      "clusters": 256,
+      "span": [
+        80260904,
+        80261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "screen window, 256 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-90260904",
+      "purpose": "screen",
+      "seed0": 90260904,
+      "clusters": 256,
+      "span": [
+        90260904,
+        90261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "screen window, 256 clusters. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "calibration-70360904",
+      "purpose": "calibration",
+      "seed0": 70360904,
+      "clusters": 4,
+      "span": [
+        70360904,
+        70360908
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "cwv_duel calibrate default (CALIBRATION_SEED0), 4 outcome-blind deals x 2 mirrors. registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "calibration-88261904",
+      "purpose": "calibration",
+      "seed0": 88261904,
+      "clusters": 2,
+      "span": [
+        88261904,
+        88261906
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Codex: one real two-mirror smoke (cwv_full_legal_shortlist_dev_20260905). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "calibration-89260904",
+      "purpose": "calibration",
+      "seed0": 89260904,
+      "clusters": 2,
+      "span": [
+        89260904,
+        89260906
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "backfill",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "Codex: outcome-blind production states / full-round census (cwv_full_legal_shortlist_dev_20260905). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-oneply-mini-70260904",
+      "purpose": "screen",
+      "seed0": 70260904,
+      "clusters": 256,
+      "span": [
+        70260904,
+        70261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "one-ply Mini screen: INTENTIONAL REPLICATE of screen-70260904 (same deals by design, paired comparison across screens). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-leaf-mini-70260904",
+      "purpose": "screen",
+      "seed0": 70260904,
+      "clusters": 256,
+      "span": [
+        70260904,
+        70261160
+      ],
+      "created_at": "2026-09-05T00:00:00-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "14de6145e318726dca74b744688410ce43d5f804",
+      "note": "leaf Mini screen: INTENTIONAL REPLICATE of screen-70260904 (same deals by design). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    }
+  ]
+}

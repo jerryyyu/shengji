@@ -98,10 +98,19 @@ def _read_dir(out):
                          for s in manifest["shards"]}}
 
 
+def _seed_windows(out):
+    """A scratch seed-window registry next to ``out``: these tests deal the
+    same tiny windows over and over in fresh directories, which the committed
+    registry (server/runs/seed_windows.json) rightly refuses."""
+    out = Path(out)
+    return out.parent / f"{out.name}.seed_windows.json"
+
+
 def _generate(out, *, workers=1, policy=trajectory.DEFAULT_POLICY, rounds=ROUNDS,
               seed0=SEED0, merge=True, resume=False, **options):
     trajectory.generate(rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
-                        policy=policy, merge=merge, resume=resume, **WORK, **options)
+                        policy=policy, merge=merge, resume=resume, **WORK,
+                        seed_windows=_seed_windows(out), **options)
     return _read_dir(out)
 
 
@@ -230,9 +239,11 @@ def retention_run(tmp_path_factory):
 
     out = tmp_path_factory.mktemp("retention") / "w2"
     manifest = trajectory.generate(out_dir=out, workers=2, merge=False,
+                                   seed_windows=_seed_windows(out),
                                    progress=progress, **RETENTION)
     single = tmp_path_factory.mktemp("retention") / "w1"
-    trajectory.generate(out_dir=single, workers=1, merge=False, **RETENTION)
+    trajectory.generate(out_dir=single, workers=1, merge=False,
+                        seed_windows=_seed_windows(single), **RETENTION)
     return {"out": out, "manifest": manifest, "live": live,
             "runtime": json.loads((out / "runtime.json").read_text()),
             "w2": _read_dir(out), "w1": _read_dir(single)}
@@ -700,6 +711,7 @@ def test_worker_failure_keeps_shards_and_resume_completes_identically(
     with pytest.raises(trajectory.TrajectoryError,
                        match="cluster 1: TrajectoryError: injected"):
         trajectory.generate(rounds=4, seed0=SEED0, out_dir=out, workers=2, merge=True,
+                            seed_windows=_seed_windows(out),
                             **WORK, **PLAIN)
     # the cluster that finished is published and verifies; the failed one is absent
     config = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN)

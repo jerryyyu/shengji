@@ -88,6 +88,7 @@ from shengji.engine.game import Game  # noqa: E402
 from shengji.evaluation import (ProtocolFailure, arm_ballots,  # noqa: E402
                                 clustered_win_rate, counters, digest,
                                 paired_by_seed, parse_bar)
+from shengji import seeds  # noqa: E402
 from shengji.harvest.trajectory import start_round_at  # noqa: E402
 
 
@@ -611,6 +612,13 @@ def calibrate(args) -> dict:
     budgets = parse_budgets(args.budgets)
     plies = bot_plies(args.plies)
     search = search_from_args(args)
+    # the outcome-blind calibration deals are a registered window too: an
+    # overlap with a trajectory (training) window refuses, any other is recorded
+    seed_window = seeds.check_and_register(
+        name=f"cwv-calibrate:{os.path.abspath(args.out)}", purpose="calibration",
+        seed0=args.seed0, clusters=args.deals, refuse=("trajectory",), allow_overlap=True,
+        resume=True, note=f"cwv_duel calibrate {os.path.abspath(args.out)}",
+        what=f"cwv_duel calibrate {args.out}")
     if args.grid is None:
         args.grid = ",".join(str(w) for w in (DEFAULT_TREE_GRID if search else DEFAULT_GRID))
     grid = sorted({int(w) for w in str(args.grid).split(",") if w})
@@ -725,6 +733,7 @@ def calibrate(args) -> dict:
         "git": git_identity(),
         "cli_sha256_16": digest(os.path.abspath(__file__)),
         "library_sha256_16": digest(file_sha256.__code__.co_filename),
+        "seed_window": seed_window,
     }
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
     with open(args.out, "w") as fh:
@@ -1118,9 +1127,27 @@ def print_summary(summary: dict, plan) -> None:
     print(f"\nequal_work_strength_claim: {summary['equal_work_strength_claim']}")
 
 
+def seed_window_for_run(args, run_id: str) -> dict:
+    """The screen's deal window [seed0, seed0 + clusters) against the
+    seed-window registry, BEFORE any deal: an overlap with a trajectory
+    (training) window always refuses; an overlap with another screen /
+    calibration window refuses unless ``--allow-seed-overlap`` (a deliberate
+    same-seed replicate), and the returned receipt (stamped in the manifest)
+    names the windows it replicates.  Registers the window (name = run_id;
+    ``--resume RUN_ID`` reuses its own)."""
+    return seeds.check_and_register(
+        name=run_id, purpose="screen", seed0=args.seed0, clusters=args.clusters,
+        refuse=("trajectory",), allow_overlap=bool(getattr(args, "allow_seed_overlap", False)),
+        resume=bool(args.resume), note=f"cwv_duel run out={os.path.abspath(args.out)}",
+        what=f"cwv_duel screen {run_id}")
+
+
 def run(args) -> dict:
     from shengji.ai.cwv_policy import file_sha256, load_cwv_checkpoint
 
+    git = git_identity()
+    run_id = args.resume or f"cwv_{int(time.time())}_{os.getpid()}_{git['short']}"
+    seed_window = seed_window_for_run(args, run_id)     # refuse before any deal
     with open(args.calibration) as fh:
         calibration = json.load(fh)
     budgets = parse_budgets(args.budgets)
@@ -1175,7 +1202,6 @@ def run(args) -> dict:
     if scaled_multipliers:
         register_scaled_policies(args.opponent, scaled_multipliers)
     preflight_arms(plan)                            # every arm, before any deal
-    git = git_identity()
     os.makedirs(args.out, exist_ok=True)
     configuration = {
         "arms": {label: policy for label, policy in plan},
@@ -1189,7 +1215,6 @@ def run(args) -> dict:
         "checkpoint_sha256": sha,
     }
     if args.resume:
-        run_id = args.resume
         manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
         with open(manifest_path) as fh:
             manifest = json.load(fh)
@@ -1200,8 +1225,6 @@ def run(args) -> dict:
                 f"cannot resume {run_id}: configuration differs in {drift}")
         print(f"resuming {run_id}: completed pairs are read back, only missing "
               "pairs are played", flush=True)
-    else:
-        run_id = f"cwv_{int(time.time())}_{os.getpid()}_{git['short']}"
     manifest = {
         "schema": RUN_SCHEMA, "run": run_id,
         "arms": {label: policy for label, policy in plan},
@@ -1226,6 +1249,9 @@ def run(args) -> dict:
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         "equal_work_strength_claim": False,
         "configuration": configuration,
+        # the registered deal window; conflicts = the windows this screen
+        # deliberately replicates (--allow-seed-overlap), see shengji/seeds.py
+        "seed_window": seed_window,
     }
     manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
     if not args.resume:
@@ -1383,6 +1409,11 @@ def build_parser() -> argparse.ArgumentParser:
                       help="reuse this run id: read back completed pairs from its "
                            "shard files and play only the missing ones")
     duel.add_argument("--allow-unmatched", action="store_true")
+    duel.add_argument("--allow-seed-overlap", action="store_true",
+                      help="screen a window that overlaps another registered SCREEN / "
+                           "calibration window (a deliberate same-seed replicate; recorded "
+                           "in the manifest); an overlap with a trajectory (training) "
+                           "window always refuses")
     finish = duel.add_mutually_exclusive_group()
     finish.add_argument("--finish-trick", dest="finish_trick", action="store_true", default=True)
     finish.add_argument("--no-finish-trick", dest="finish_trick", action="store_false")
@@ -1400,7 +1431,7 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         args.func(args)
-    except (CalibrationMismatch, ProtocolFailure) as exc:
+    except (CalibrationMismatch, ProtocolFailure, seeds.SeedWindowError) as exc:
         print(f"REFUSING: {exc}")
         return 3
     return 0

@@ -305,6 +305,7 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 from typing import Callable, Iterator
 
+from .. import seeds
 from ..ai.mcbot import MCBot, _child_seed
 from ..ai.registry import make_bot
 from ..engine.cards import RANKS
@@ -1780,7 +1781,7 @@ def identity(config: dict) -> dict:
 
 def build_run_manifest(config: dict, ident: dict, *, rounds: int,
                        sidecars: dict[int, dict], merged: dict | None,
-                       out_dir: Path) -> dict:
+                       out_dir: Path, seed_window: dict | None = None) -> dict:
     counts: Counter = Counter()
     work: Counter = Counter()
     shards = []
@@ -1812,6 +1813,9 @@ def build_run_manifest(config: dict, ident: dict, *, rounds: int,
         "work_realized": {k: int(work[k]) for k in sorted(work)},
         "merged": merged,
         "identity": ident,
+        # the registered deal window and the windows it deliberately overlaps
+        # (only with --allow-seed-overlap; see shengji/seeds.py)
+        "seed_window": seed_window,
         "seeds": {"deal": "seed0 + cluster; Game(random.Random(seed))",
                   "seats": "seed + (0, 500000, 1000000, 1500000) as a1, a2, "
                            "b1, b2; mirror 0 seats [a1, b1, a2, b2], mirror 1 "
@@ -1932,12 +1936,24 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              resume: bool = False, knobs=None, widen=None,
              round_mix: str = DEFAULT_ROUND_MIX,
              progress: Callable[[dict], None] | None = None,
-             argv: list[str] | None = None) -> dict:
+             argv: list[str] | None = None,
+             allow_seed_overlap: bool = False,
+             seed_windows: str | os.PathLike | None = None) -> dict:
     """Generate the shard store in ``out_dir`` (+ ``trajectory.jsonl`` with
     ``merge``); returns the manifest.  Raises ``TrajectoryError`` when any
     cluster failed (published shards are kept for ``--resume``).
     ``knobs`` / ``widen`` are the ``--knob`` / ``--widen`` lists;
-    ``round_mix`` is ``--round-mix``."""
+    ``round_mix`` is ``--round-mix``.
+
+    Before anything is dealt the deal window ``[seed0, seed0 + rounds/2)``
+    is checked against the seed-window registry (``shengji.seeds``): an
+    overlap with ANY registered window refuses (Run B re-dealt 7,999 of Run
+    A's 8,000 deals this way) unless ``allow_seed_overlap``, in which case
+    the manifest's ``seed_window.conflicts`` records what was overlapped.
+    The run registers its window (name = run_id) on start; ``--resume``
+    accepts its own already-registered window.  ``seed_windows`` names the
+    registry file (default: ``$SHENGJI_SEED_WINDOWS`` or the committed
+    ``runs/seed_windows.json``); ``runtime.json`` records which was used."""
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     if rounds < 2 or rounds % 2:
         raise TrajectoryError("rounds must be an even number >= 2: every "
@@ -1950,7 +1966,34 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
                           widen=widen, round_mix=round_mix)
     out = Path(out_dir)
     ident = identity(config)
-    resumed = _open_run(out, config, ident, resume=resume)
+    clusters = rounds // 2
+    registry = seeds.registry_path(seed_windows)
+    try:
+        # refuse BEFORE any generation: a fresh run before run.json is even
+        # written; a --resume after _open_run has validated the run identity
+        # (its refusals name the run, the knobs, the round mix)
+        def disjoint():
+            seeds.require_disjoint(seeds.load(registry), seed0, clusters,
+                                   exclude_name=config["run_id"] if resume else None,
+                                   what=f"trajectory run {config['run_id']}",
+                                   allow=allow_seed_overlap)
+        if not resume:
+            disjoint()
+        resumed = _open_run(out, config, ident, resume=resume)
+        if resume:
+            disjoint()
+        seed_window = seeds.check_and_register(
+            name=config["run_id"], purpose="trajectory", seed0=seed0, clusters=clusters,
+            refuse=(), allow_overlap=allow_seed_overlap, resume=resume, path=registry,
+            note=f"trajectory {config['policy']} rounds={rounds} out={out.resolve()}",
+            what=f"trajectory run {config['run_id']}")
+    except seeds.SeedWindowError as exc:
+        raise TrajectoryError(str(exc)) from exc
+    # the registry's location and whether this invocation resumed are the
+    # invocation's, not the run's: they go to runtime.json, and manifest.json
+    # (deterministic) keeps the window and its recorded conflicts
+    seed_window_runtime = {"registry": seed_window.pop("registry"),
+                           "resumed": seed_window.pop("resumed")}
     started = time.perf_counter()
     sidecars, failures, receipt = run_clusters(
         config, rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
@@ -1958,6 +2001,7 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
     runtime = runtime_receipt(argv=argv, workers=workers, resume=resumed,
                               merge=merge, wall_secs=time.perf_counter() - started,
                               receipt=receipt)
+    runtime["seed_window"] = seed_window_runtime
     _atomic_write_text(out / "runtime.json",
                        json.dumps(runtime, indent=2, sort_keys=True) + "\n")
     if failures:
@@ -1968,7 +2012,7 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
             f"{out / 'shards'}; rerun with --resume to complete the run")
     merged = merge_shards(out, sidecars) if merge else None
     manifest = build_run_manifest(config, ident, rounds=rounds, sidecars=sidecars,
-                                  merged=merged, out_dir=out)
+                                  merged=merged, out_dir=out, seed_window=seed_window)
     _atomic_write_text(out / "manifest.json",
                        json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
@@ -2021,6 +2065,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resume", action="store_true",
                         help="continue a run in --out with the same run_id: verified "
                              "shards are kept, missing/invalid ones regenerated")
+    parser.add_argument("--allow-seed-overlap", action="store_true",
+                        help="deal a window that overlaps a registered seed window "
+                             f"({seeds.DEFAULT_REGISTRY.name}; refused by default -- Run B "
+                             "re-dealt 7,999 of Run A's deals); the overlapped windows are "
+                             "recorded in manifest.json seed_window.conflicts")
     return parser
 
 
@@ -2043,7 +2092,8 @@ def main(argv: list[str] | None = None) -> int:
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
             cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
             widen=args.widen, round_mix=args.round_mix, progress=progress,
-            argv=sys.argv if argv is None else ["trajectory", *argv])
+            argv=sys.argv if argv is None else ["trajectory", *argv],
+            allow_seed_overlap=args.allow_seed_overlap)
     except TrajectoryError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

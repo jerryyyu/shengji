@@ -1,7 +1,7 @@
 # Full-legal complete-world shortlist — DEV screen
 
-Status at 2026-09-05 19:54 UTC: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
-**five-arm 256-cluster screen running on Strength**, started at 19:47:38 UTC
+Status: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
+**two arms complete; learned-3x running on Strength**. The five-arm screen started at 19:47:38 UTC
 (15:47:38 EDT) after the two-ply job completed successfully at 19:47:15 UTC.
 No strength, promotion, deployment, or production-policy claim. Extends #227 using the
 merged #229/#230 evaluator/checkpoint, not the old public-observation head.
@@ -163,7 +163,33 @@ Pre-screen evidence and the exact operations plan are retained on Mini at
 SHA-256 `ba854716905f69097868a48e70021ccab2c49ac165b63c6c42d651c8b341c10d`.
 This archive contains timing evidence, not screen results.
 
-Remaining: run and retain all five arms; aggregate existing pair records once
+## Interim results — completed arms only
+
+Each row below contains all 256 fixed deal clusters / 512 mirrored rounds,
+not a partial sample. Intervals are 95% deal-cluster bootstrap intervals with
+1,000 resamples. Signed levels are the arm team's level gain (positive) or
+loss (negative) per round against production N30/R300, not additional wins.
+
+| Completed arm | Signed levels / round [95% CI] | Win rate | Actual decision CPU / wall vs baseline | Arm elapsed |
+|---|---:|---:|---:|---:|
+| Learned, nominal 1x (W1/N30/R300) | +0.002 [−0.070, +0.076] | 49.61% | 1.2813x / 1.2814x | 505.9 s |
+| Uniform, nominal 1x (N45/R300) | −0.078 [−0.145, −0.012] | 46.68% | 1.0323x / 1.0324x | 450.1 s |
+
+Both summaries are complete with zero reported problems. The learned arm
+evaluated 4,779,116 action/world afterstates and played an off-production-ballot
+action on 1,031/18,384 decisions (5.61%). The uniform arm did so on
+1,086/18,726 decisions (5.80%). Thus the full-legal path is exercised, but the
+one-world learned shortlist has not shown an improvement over production.
+Its cost exceeds both its nominal target and the uniform arm's cost; these
+rows do not establish an equal-work learned-versus-uniform gain. The matched
+cross-arm intervals will be reported after all five arms complete.
+
+These are the existing per-arm summaries under `screen/learned-1x/summary.json`
+and `screen/uniform-1x/summary.json`, not an additional gameplay run or replay.
+Uniform-1x completed at 20:03:42 UTC; learned-3x started immediately. Recipes,
+checkpoint and population remain fixed despite the interim readout.
+
+Remaining: finish and retain the three running/queued arms; aggregate existing pair records once
 without replaying games; publish per-arm utility/CIs and actual CPU/wall, plus
 deal-paired learned-minus-uniform (1x and 3x) and learned-3x-minus-production-3x
 contrasts. These contrasts compare paired outcomes against a common opponent,

@@ -1,4 +1,4 @@
-"""Complete-world value evaluator and the one-ply bot that uses it.
+"""Complete-world value evaluator, the one-ply bot and its two-ply variant.
 
 The bridge from model to policy (Jerry, 2026-09-04): a value net that sees
 the SAMPLED hidden hands is the ENTIRE evaluator -- no playouts.  For every
@@ -7,6 +7,18 @@ worlds with production's sampler, applies every candidate in every world
 (optionally letting the heuristic finish only the CURRENT trick), and scores
 all W x |ballot| reached positions in one batched forward pass from the root
 seat's team perspective.  ``score(a) = mean_w V`` and the bot plays argmax.
+
+The TWO-PLY variant (:class:`CWVTwoPlyBot`, registry ``mc-cwv2-<ckpt8>-w<W>``)
+keeps that root structure but replaces the heuristic trick finisher with the
+net itself: after each root candidate, every following seat of the current
+trick (``plies=1``) and, with ``plies=2``, the next trick's leader and its
+followers choose their move by a one-ply evaluation from THEIR team's
+perspective -- one batched forward per ply step over all worlds x all root
+candidates x all reply candidates -- and the reached positions are then
+scored from the root seat with one final forward.  The one-ply evidence
+(loses ~0.11 levels/round to production at every wall budget, and more
+worlds did not help) says its per-position error is systematic and it lacks
+depth; this is the depth.
 
 Everything a checkpoint needs is consumed through the merged #214 API only:
 ``value_checkpoint.load_checkpoint``, ``value_afterstate.tensors_from_round``
@@ -30,6 +42,8 @@ the shortlist to production's full-rollout report fold):
     values = evaluator.score(positions, seat)            # np.ndarray float64
         # expected signed level from ``seat``'s TEAM perspective, ONE batch;
         # terminal positions are exact and never touch the model
+    values = evaluator.score_many(positions, seats)      # per-row perspective
+        # row i from seats[i]'s team (the two-ply reply plies), still ONE batch
 
 Checkpoint metadata contract (the training build, claude/cwv-train, writes
 ``metadata["encoder"] = shengji.train.cwv_data.cwv_encoder_identity()``):
@@ -353,14 +367,26 @@ class CompleteWorldEvaluator:
                 "threads": self.threads, "max_batch": self.max_batch}
 
     def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
+        """Every position from ONE seat's team perspective (one batch)."""
+        return self.score_many(positions, [int(root_seat)] * len(positions))
+
+    def score_many(self, positions: Sequence[Round], seats: Sequence[int]) -> np.ndarray:
+        """Row ``i`` from ``seats[i]``'s TEAM perspective, still one batch.
+
+        The perspective is a per-row input tensor, so positions whose moving
+        seats differ (a reply ply whose leaders vary by world) share one
+        forward pass; the row order is the caller's and is never permuted.
+        """
         wall0, cpu0 = time.perf_counter(), time.process_time()
         n = len(positions)
         if n == 0:
             raise CWVError("evaluator received no positions")
+        if len(seats) != n:
+            raise CWVError("evaluator received misaligned seats")
         values = np.empty(n, dtype=np.float64)
         rows: list[ValueAfterstateTensors] = []
         pending: list[int] = []
-        for index, rnd in enumerate(positions):
+        for index, (rnd, root_seat) in enumerate(zip(positions, seats)):
             if rnd.phase == "round_end":
                 values[index] = float(
                     terminal_distribution(rnd, root_seat) @ self.support)
@@ -548,11 +574,16 @@ class StratifiedPriorEvaluator:
         return pt0_level(level) if self.scale == "pt0" else level
 
     def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
+        return self.score_many(positions, [int(root_seat)] * len(positions))
+
+    def score_many(self, positions: Sequence[Round], seats: Sequence[int]) -> np.ndarray:
         wall0, cpu0 = time.perf_counter(), time.process_time()
         if not positions:
             raise CWVError("evaluator received no positions")
+        if len(seats) != len(positions):
+            raise CWVError("evaluator received misaligned seats")
         values = np.empty(len(positions), dtype=np.float64)
-        for index, rnd in enumerate(positions):
+        for index, (rnd, root_seat) in enumerate(zip(positions, seats)):
             if rnd.phase == "round_end":
                 values[index] = self.terminal_value(rnd, root_seat)
                 self.terminal_rows += 1
@@ -718,6 +749,7 @@ class CWVOnePlyBot(MCBot):
     the evaluator is the one thing that differs from the production bot.
     """
 
+    CWV_MODE = "cwv_one_ply"
     CWV_WORLDS = 100          # W complete worlds per decision
     CWV_FINISH_TRICK = True   # heuristic finishes the CURRENT trick only
     CWV_LCB_K = 0.0           # score = mean - k * se (0 = plain mean)
@@ -727,7 +759,10 @@ class CWVOnePlyBot(MCBot):
         if evaluator is None or not hasattr(evaluator, "score"):
             raise CWVError("CWVOnePlyBot needs an evaluator with score()")
         self.evaluator = evaluator
-        self.positions_evaluated = 0
+        self.positions_evaluated = 0     # every row scored, root and reply plies
+        self.reply_positions_evaluated = 0
+        self.forward_passes = 0          # evaluator forward calls attributable
+        self.ply_steps = 0               # to this bot's searched decisions
         self.cwv_decisions = 0
         self.batch_wall_secs = 0.0
         self.batch_cpu_secs = 0.0
@@ -751,6 +786,15 @@ class CWVOnePlyBot(MCBot):
     def _finish_trick(self, clone: Round) -> None:
         """Let the heuristic play until the CURRENT trick resolves, no more."""
         finish_current_trick(clone, self.rollout_policy)
+
+    def _build_positions(self, rnd: Round, seat: int,
+                         candidates: Sequence[Sequence[str]],
+                         worlds: Sequence[tuple[list[list[str]], list[str]]]
+                         ) -> tuple[list[Round], dict[str, Any]]:
+        """The WORLD-MAJOR positions the final root forward scores, plus any
+        extra ``work`` fields.  One-ply: the afterstates, heuristic-finished."""
+        return [self._afterstate(rnd, seat, hands, buried, cand)
+                for hands, buried in worlds for cand in candidates], {}
 
     @staticmethod
     def reduce_scores(matrix: np.ndarray, lcb_k: float) -> tuple[np.ndarray, np.ndarray]:
@@ -793,10 +837,12 @@ class CWVOnePlyBot(MCBot):
         worlds, attempts = self.sample_worlds(rnd, seat, n_worlds, mem=mem)
         used = len(worlds)
         self.last_n_worlds = used
+        if getattr(self, "CWV_TRACE_PLIES", False):
+            self.last_worlds = worlds
         K = len(candidates)
         short = used < n_worlds
         self.last_alloc = {
-            "mode": "cwv_one_ply", "attempts": attempts,
+            "mode": self.CWV_MODE, "attempts": attempts,
             "attempt_cap": n_worlds * self.SAMPLE_ATTEMPT_FACTOR,
             "attempt_cap_hit": short, "worlds": used,
             "rollouts": used * K, "decision_rollouts": used * K,
@@ -809,10 +855,11 @@ class CWVOnePlyBot(MCBot):
         scores = [float("-inf")] * K
         best = 0
         batch_wall = batch_cpu = build_wall = 0.0
+        extra_work: dict[str, Any] = {}
+        forwards_before = int(getattr(self.evaluator, "forward_calls", 0))
         if used:
             build0 = time.perf_counter()
-            positions = [self._afterstate(rnd, seat, hands, buried, cand)
-                         for hands, buried in worlds for cand in candidates]
+            positions, extra_work = self._build_positions(rnd, seat, candidates, worlds)
             build_wall = time.perf_counter() - build0
             wall0, cpu0 = time.perf_counter(), time.process_time()
             values = np.asarray(self.evaluator.score(positions, seat), dtype=np.float64)
@@ -831,6 +878,8 @@ class CWVOnePlyBot(MCBot):
             self.batch_wall_secs += batch_wall
             self.batch_cpu_secs += batch_cpu
             self.build_wall_secs += build_wall
+        forwards = int(getattr(self.evaluator, "forward_calls", 0)) - forwards_before
+        self.forward_passes += forwards
         self.last_eval = (candidates, means)
         self.last_decision_record = {
             "schema": CWV_DECISION_SCHEMA,
@@ -857,6 +906,8 @@ class CWVOnePlyBot(MCBot):
             "alloc": self.last_alloc,
             "work": {
                 "positions": used * K,
+                "root_positions": used * K,
+                "forward_passes": forwards,
                 "selection_budget": n_worlds * K,
                 "selection_rollouts": used * K,
                 "total_budget": n_worlds * K,
@@ -864,6 +915,7 @@ class CWVOnePlyBot(MCBot):
                 "batch_wall_secs": batch_wall,
                 "batch_cpu_secs": batch_cpu,
                 "build_wall_secs": build_wall,
+                **extra_work,
             },
         }
         if short:
@@ -877,25 +929,182 @@ class CWVOnePlyBot(MCBot):
             started, sampler_before)
 
 
+# ------------------------------------------------------------- two-ply bot
+
+def child_position(clone: Round, seat: int, cards: Sequence[str]) -> Round:
+    """``clone`` with ``seat`` having played ``cards`` -- a fresh object, the
+    parent untouched (same shallow-copy discipline as :func:`afterstate`)."""
+    child: Round = copy.copy(clone)
+    child.hands = [list(hand) for hand in clone.hands]
+    child.buried = list(clone.buried)
+    assert clone.trick is not None
+    child.trick = Trick(
+        leader=clone.trick.leader,
+        plays=[TrickPlay(p.seat, list(p.cards)) for p in clone.trick.plays])
+    child.trick.running_points = clone.trick.running_points
+    child.trick.incumbent = clone.trick.incumbent
+    child.history = list(clone.history)
+    child.last_trick = clone.last_trick
+    child.message = None
+    child._trusted_rollout = True
+    child._determinized_world = True
+    child.play(seat, list(cards))
+    return child
+
+
+class CWVTwoPlyBot(CWVOnePlyBot):
+    """The one-ply bot with NET-CHOSEN replies instead of the heuristic.
+
+    For every root candidate in every sampled world the reply seats -- the
+    rest of the current trick with ``CWV_PLIES = 1``, plus the next trick's
+    leader and its followers with ``CWV_PLIES = 2`` -- each choose their own
+    move by a one-ply evaluation with the SAME net from THEIR team's
+    perspective: production's ballot for the seat, every legal candidate
+    applied, argmax of the net's expected level for the moving seat.  Every
+    ply step is ONE batched forward over all worlds x all root candidates x
+    all reply candidates (a single-candidate ballot, and production's
+    tractor-locked lead, are applied without the net, as at the root).  The
+    resulting positions are then scored from the root seat with one final
+    batched forward, exactly as the one-ply bot scores its afterstates.  A
+    position that reaches ``round_end`` mid-ply stops there and takes its
+    exact terminal value.
+
+    The prior control is the same structure with the stratified-prior table
+    as the net at every ply: its reply argmax can only separate candidates
+    through exact terminals, so it plays the first ballot entry otherwise.
+    """
+
+    CWV_MODE = "cwv_two_ply"
+    CWV_PLIES = 1             # 1: finish the current trick; 2: one more trick
+    CWV_FINISH_TRICK = False  # the net, never the heuristic, finishes a trick
+    CWV_TRACE_PLIES = False   # keep ``last_ply_trace`` (tests / audits)
+
+    def __init__(self, seed: int | None = None, *, evaluator=None):
+        super().__init__(seed, evaluator=evaluator)
+        if not hasattr(self.evaluator, "score_many"):
+            raise CWVError("CWVTwoPlyBot needs an evaluator with score_many()")
+        self.last_ply_trace: list[list[dict[str, Any]]] | None = None
+
+    def _reply_candidates(self, clone: Round, seat: int) -> list[list[str]]:
+        """Production's decision boundary for a reply seat: the tractor lock
+        on a lead, then the ballot."""
+        assert clone.trick is not None and clone.ordering is not None
+        if self.TRACTOR_LOCK and not clone.trick.plays:
+            pick = self.canonical_lead(clone, seat)
+            dec = decompose(pick, clone.ordering)
+            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+                return [pick]
+        return self._candidates(clone, seat)
+
+    @staticmethod
+    def _needs_reply(clone: Round, target_tricks: int) -> bool:
+        return clone.phase == "play" and len(clone.history) < target_tricks
+
+    def _reply_plies(self, clones: list[Round], target_tricks: int
+                     ) -> dict[str, Any]:
+        """Advance every clone in place until it has ``target_tricks``
+        resolved tricks (or the round ends), one batched forward per step."""
+        plies = int(self.CWV_PLIES)
+        if plies < 1:
+            raise CWVError("CWV_PLIES must be positive")
+        steps = 0
+        reply_rows = 0
+        trace: list[list[dict[str, Any]]] | None = [] if self.CWV_TRACE_PLIES else None
+        active = [i for i, clone in enumerate(clones)
+                  if self._needs_reply(clone, target_tricks)]
+        while active:
+            steps += 1
+            batch: list[Round] = []
+            seats: list[int] = []
+            groups: list[tuple[int, int, list[list[str]], int]] = []
+            step_trace: list[dict[str, Any]] = []
+            for index in active:
+                clone = clones[index]
+                seat = clone.turn
+                assert seat is not None
+                candidates = self._reply_candidates(clone, seat)
+                if len(candidates) == 1:
+                    clone.play(seat, list(candidates[0]))
+                    if trace is not None:
+                        step_trace.append({"index": index, "seat": seat,
+                                           "candidates": [list(candidates[0])],
+                                           "values": None, "chosen": 0})
+                    continue
+                start = len(batch)
+                for cand in candidates:
+                    batch.append(child_position(clone, seat, cand))
+                    seats.append(seat)
+                groups.append((index, seat, candidates, start))
+            if batch:
+                values = np.asarray(self.evaluator.score_many(batch, seats),
+                                    dtype=np.float64)
+                if values.shape != (len(batch),):
+                    raise CWVError("evaluator returned a misaligned reply vector")
+                reply_rows += len(batch)
+                for index, seat, candidates, start in groups:
+                    block = values[start:start + len(candidates)]
+                    chosen = int(np.argmax(block))      # ties: first candidate
+                    clones[index] = batch[start + chosen]
+                    if trace is not None:
+                        step_trace.append({"index": index, "seat": seat,
+                                           "candidates": [list(c) for c in candidates],
+                                           "values": block.tolist(), "chosen": chosen})
+            if trace is not None:
+                trace.append(sorted(step_trace, key=lambda t: t["index"]))
+            active = [i for i in active if self._needs_reply(clones[i], target_tricks)]
+        self.last_ply_trace = trace
+        self.reply_positions_evaluated += reply_rows
+        self.ply_steps += steps
+        return {"reply_positions": reply_rows, "ply_steps": steps, "plies": plies}
+
+    def _build_positions(self, rnd: Round, seat: int,
+                         candidates: Sequence[Sequence[str]],
+                         worlds: Sequence[tuple[list[list[str]], list[str]]]
+                         ) -> tuple[list[Round], dict[str, Any]]:
+        clones = [afterstate(rnd, seat, hands, buried, cand, finish_trick=False)
+                  for hands, buried in worlds for cand in candidates]
+        extra = self._reply_plies(clones, len(rnd.history) + int(self.CWV_PLIES))
+        self.positions_evaluated += extra["reply_positions"]
+        extra["positions"] = len(clones) + extra["reply_positions"]
+        return clones, extra
+
+
 # ------------------------------------------------------------- registry glue
 
-def policy_name(ckpt8: str, worlds: int, *, lcb: float = 0.0) -> str:
+def policy_name(ckpt8: str, worlds: int, *, lcb: float = 0.0,
+                plies: int | None = None) -> str:
+    """``mc-cwv-<ckpt8>-w<W>`` (one-ply) or ``mc-cwv2-<ckpt8>-w<W>[-p2]``."""
     suffix = f"-lcb{lcb:g}" if lcb else ""
-    return f"mc-cwv-{ckpt8}-w{int(worlds)}{suffix}"
+    if plies is None:
+        return f"mc-cwv-{ckpt8}-w{int(worlds)}{suffix}"
+    depth = "" if int(plies) == 1 else f"-p{int(plies)}"
+    return f"mc-cwv2-{ckpt8}-w{int(worlds)}{depth}{suffix}"
 
 
-def control_name(ckpt8: str, worlds: int, *, lcb: float = 0.0) -> str:
+def control_name(ckpt8: str, worlds: int, *, lcb: float = 0.0,
+                 plies: int | None = None) -> str:
     """The no-learning control is bound to its prior's checkpoint too."""
     suffix = f"-lcb{lcb:g}" if lcb else ""
-    return f"mc-cwv-prior-{ckpt8}-w{int(worlds)}{suffix}"
+    if plies is None:
+        return f"mc-cwv-prior-{ckpt8}-w{int(worlds)}{suffix}"
+    depth = "" if int(plies) == 1 else f"-p{int(plies)}"
+    return f"mc-cwv2-prior-{ckpt8}-w{int(worlds)}{depth}{suffix}"
 
 
 @lru_cache(maxsize=None)
-def _bot_class(worlds: int, finish_trick: bool, lcb: float) -> type:
-    name = f"CWVOnePly_w{worlds}" + ("" if finish_trick else "_nofinish") \
-        + (f"_lcb{lcb:g}" if lcb else "")
-    return type(name, (CWVOnePlyBot,), {
-        "CWV_WORLDS": int(worlds), "CWV_FINISH_TRICK": bool(finish_trick),
+def _bot_class(worlds: int, finish_trick: bool, lcb: float,
+               plies: int | None = None) -> type:
+    if plies is None:
+        name = f"CWVOnePly_w{worlds}" + ("" if finish_trick else "_nofinish") \
+            + (f"_lcb{lcb:g}" if lcb else "")
+        return type(name, (CWVOnePlyBot,), {
+            "CWV_WORLDS": int(worlds), "CWV_FINISH_TRICK": bool(finish_trick),
+            "CWV_LCB_K": float(lcb)})
+    if int(plies) not in (1, 2):
+        raise CWVError("plies must be 1 (current trick) or 2 (one more trick)")
+    name = f"CWVTwoPly_w{worlds}_p{int(plies)}" + (f"_lcb{lcb:g}" if lcb else "")
+    return type(name, (CWVTwoPlyBot,), {
+        "CWV_WORLDS": int(worlds), "CWV_PLIES": int(plies),
         "CWV_LCB_K": float(lcb)})
 
 
@@ -921,12 +1130,14 @@ def make_cwv_bot(checkpoint: str | os.PathLike[str], *, worlds: int,
                  seed: int | None = None, finish_trick: bool = True,
                  lcb: float = 0.0, prior: bool = False,
                  receipt: str | os.PathLike[str] | None = None,
-                 threads: int | None = 1) -> CWVOnePlyBot:
+                 threads: int | None = 1, plies: int | None = None) -> CWVOnePlyBot:
+    """``plies=None``: the one-ply bot; ``1`` or ``2``: :class:`CWVTwoPlyBot`."""
     if prior:
         evaluator = prior_evaluator_for(checkpoint, receipt=receipt)
     else:
         evaluator = shared_evaluator(checkpoint, threads=threads)
-    bot = _bot_class(int(worlds), bool(finish_trick), float(lcb))(
+    bot = _bot_class(int(worlds), bool(finish_trick), float(lcb),
+                     None if plies is None else int(plies))(
         seed, evaluator=evaluator)
     bot.cwv_checkpoint_sha256 = evaluator.checkpoint_sha256
     bot.cwv_ckpt8 = evaluator.ckpt8
@@ -936,28 +1147,32 @@ def make_cwv_bot(checkpoint: str | os.PathLike[str], *, worlds: int,
 def cwv_registry_entries(checkpoint: str | os.PathLike[str],
                          worlds: Sequence[int], *, finish_trick: bool = True,
                          lcb: float = 0.0,
-                         receipt: str | os.PathLike[str] | None = None
-                         ) -> dict[str, Any]:
+                         receipt: str | os.PathLike[str] | None = None,
+                         plies: int | None = None) -> dict[str, Any]:
     """``{name: factory}`` for every W: the arm and its no-learning control.
 
     Names embed the checkpoint id, in the style of ``_make_vleaf``: the
     checkpoint IS the policy's identity, so a bare ``mc-cwv`` never exists.
+    ``plies`` selects the two-ply bot (``mc-cwv2-...``) and its control.
     """
     ckpt8 = checkpoint_id(checkpoint)
     entries: dict[str, Any] = {}
+    if plies is not None and int(plies) not in (1, 2):
+        raise CWVError("plies must be 1 (current trick) or 2 (one more trick)")
 
     def factory(w: int, prior: bool):
         def make(**kw):
             return make_cwv_bot(
                 checkpoint, worlds=w, seed=kw.get("seed"),
-                finish_trick=finish_trick, lcb=lcb, prior=prior, receipt=receipt)
+                finish_trick=finish_trick, lcb=lcb, prior=prior, receipt=receipt,
+                plies=plies)
         return make
 
     for w in sorted({int(w) for w in worlds}):
         if w < 1:
             raise CWVError("worlds must be positive")
-        entries[policy_name(ckpt8, w, lcb=lcb)] = factory(w, False)
-        entries[control_name(ckpt8, w, lcb=lcb)] = factory(w, True)
+        entries[policy_name(ckpt8, w, lcb=lcb, plies=plies)] = factory(w, False)
+        entries[control_name(ckpt8, w, lcb=lcb, plies=plies)] = factory(w, True)
     return entries
 
 
@@ -969,6 +1184,7 @@ def env_registry_entries(environ: Mapping[str, str] | None = None) -> dict[str, 
     SHENGJI_CWV_FINISH_TRICK  1/0 (default 1)
     SHENGJI_CWV_LCB           k for mean - k*se (default 0 = plain mean)
     SHENGJI_CWV_RECEIPT       training receipt JSON for the prior control
+    SHENGJI_CWV_PLIES         unset/0: the one-ply bot; 1 or 2: the two-ply bot
     """
     env = os.environ if environ is None else environ
     checkpoint = env.get("SHENGJI_CWV_CKPT")
@@ -979,5 +1195,6 @@ def env_registry_entries(environ: Mapping[str, str] | None = None) -> dict[str, 
     finish = env.get("SHENGJI_CWV_FINISH_TRICK", "1") not in ("0", "false", "no", "")
     lcb = float(env.get("SHENGJI_CWV_LCB", "0") or 0.0)
     receipt = env.get("SHENGJI_CWV_RECEIPT") or None
+    plies = int(env.get("SHENGJI_CWV_PLIES", "0") or 0) or None
     return cwv_registry_entries(checkpoint, worlds, finish_trick=finish,
-                                lcb=lcb, receipt=receipt)
+                                lcb=lcb, receipt=receipt, plies=plies)

@@ -750,7 +750,7 @@ def test_pure_fast_interleave_cannot_corrupt_shared_caches():
 
 
 def test_generation_recording_parity():
-    """THE generation gate: distill_generate records VALUES, not just plays.
+    """THE generation gate: the search recorder records VALUES, not just plays.
 
     Runs RecordingMCBot self-play both ways on the same seed and requires
     bit-identical observations, candidate action encodings (same set AND
@@ -775,9 +775,9 @@ def test_generation_recording_parity():
     class RecordingMCBot(MCBot):
         """MCBot that records every search evaluation (observation,
         candidate encodings, per-candidate values, chosen index).  This was
-        `shengji.rl.distill_generate.RecordingMCBot`; the distillation lane
-        was removed on 2026-09-05 and the recorder now lives here because
-        the parity check is about the search, not the dataset."""
+        the distillation lane's recording teacher; that lane was removed on
+        2026-09-05 and the recorder now lives here because the parity check
+        is about the search, not the dataset."""
         def __init__(self, *a, **kw):
             super().__init__(*a, **kw)
             self.decisions: list[Decision] = []

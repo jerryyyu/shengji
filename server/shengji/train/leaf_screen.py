@@ -119,9 +119,35 @@ CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "leaf_
                         "baseline_policy", "baseline_select_worlds", "report_worlds")
 
 
-def config_variant(config: dict) -> dict:
+#: the only ``leaf_mode`` a legacy calibration / config may carry: the
+#: closed control-variate mode (PR #232) was never a valid parity matchup
+LEGACY_PLAIN_LEAF_MODE = "replace"
+LEGACY_DEFAULT_CV_BETA = 1.0
+
+
+def require_plain_leaf_mode(record: dict, *, what: str = "calibration") -> None:
+    """A legacy calibration or config that carries the removed
+    ``leaf_mode`` (or ``cv_beta``) is refused unless it names the plain
+    replacing leaf: a control-variate calibration's N was measured for full
+    playouts plus net calls and is not this arm's parity."""
+    mode = record.get("leaf_mode")
+    if mode is not None and mode != LEGACY_PLAIN_LEAF_MODE:
+        raise ScreenError(f"{what} carries leaf_mode={mode!r}: the control-variate mode was "
+                          f"removed (PR #232) and its parity N is not this arm's; "
+                          f"re-calibrate without it")
+    beta = record.get("cv_beta")
+    if beta is not None and (isinstance(beta, bool) or not isinstance(beta, (int, float))
+                             or float(beta) != LEGACY_DEFAULT_CV_BETA):
+        raise ScreenError(f"{what} carries cv_beta={beta!r}: the control-variate mode was "
+                          f"removed (PR #232) and its parity N is not this arm's; "
+                          f"re-calibrate without it")
+
+
+def config_variant(config: dict, *, what: str = "config") -> dict:
     """The arm's stage (the default, every rollout, for a config written
-    before the option existed)."""
+    before the option existed).  A record naming the removed control-variate
+    mode is refused (:func:`require_plain_leaf_mode`)."""
+    require_plain_leaf_mode(config, what=what)
     return {"leaf_stage": str(config.get("leaf_stage") or DEFAULT_LEAF_STAGE)}
 
 
@@ -130,7 +156,7 @@ def require_matching_variant(calibration: dict, *, leaf_stage: str) -> None:
     differently from the every-rollout leaf at every N, so parity measured
     for one is not the other's.  A calibration written before the option
     existed was made with the default."""
-    made = config_variant(calibration)
+    made = config_variant(calibration, what="calibration")
     wanted = {"leaf_stage": leaf_stage}
     if made != wanted:
         raise ScreenError(f"calibration was made with --leaf-stage {made['leaf_stage']}; "
@@ -166,6 +192,7 @@ def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | 
     mismatched = [(k, calibration.get(k), v) for k, v in wanted.items()
                   if calibration.get(k) != v]
     require_matching_leaf_model(calibration, leaf_model)
+    require_plain_leaf_mode(calibration, what="calibration")
     require_matching_variant(calibration, leaf_stage=leaf_stage)
     if mismatched:
         raise ScreenError("calibration was made for another matchup: " + "; ".join(

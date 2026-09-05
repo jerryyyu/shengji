@@ -331,6 +331,44 @@ def test_witness_removed_variant_binding_accepts_the_other_calibration(monkeypat
                    **config_kw(cwv, prior_path))
 
 
+def test_legacy_control_variate_calibration_is_refused(monkeypatch, cwv, prior_path):
+    """A calibration.json written by the removed control-variate mode (same
+    sha / T / R / ranks) is not this arm's parity N: refused by name of the
+    field; a legacy dict without ``leaf_mode`` or with the plain value is
+    accepted; a config carrying the mode is refused wherever the identity is
+    read."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    base = {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
+            "chosen_arm_select_worlds": 7, "checkpoint_sha256": cwv["sha256"],
+            "leaf_tricks": 1, "leaf_model": "cwv", "leaf_stage": "report",
+            "baseline_policy": BASE, "baseline_select_worlds": 1, "report_worlds": 30,
+            "trump_ranks": ["2"]}
+    kw = dict(arm="learned", leaf_stage="report", **config_kw(cwv, prior_path))
+    # absent, or the plain legacy value: accepted
+    S.build_config(calibration=dict(base), **kw)
+    S.build_config(calibration={**base, "leaf_mode": "replace", "cv_beta": 1.0}, **kw)
+    # the removed mode, or a beta off the plain default: refused, field named
+    with pytest.raises(S.ScreenError, match="leaf_mode='control-variate'"):
+        S.build_config(calibration={**base, "leaf_mode": "control-variate", "cv_beta": 1.0}, **kw)
+    with pytest.raises(S.ScreenError, match="leaf_mode='control-variate'"):
+        S.require_matching_calibration(
+            {**base, "leaf_mode": "control-variate"}, checkpoint_sha256=cwv["sha256"],
+            leaf_tricks=1, base_policy=BASE, baseline_select_worlds=1, report_worlds=30,
+            trump_ranks=("2",), leaf_model="cwv", leaf_stage="report")
+    with pytest.raises(S.ScreenError, match="cv_beta=0.5"):
+        S.build_config(calibration={**base, "leaf_mode": "replace", "cv_beta": 0.5}, **kw)
+    # the same refusal wherever the identity is read from a config
+    legacy_config = {"arm": "learned", "leaf_tricks": 1, "checkpoint_sha256": cwv["sha256"],
+                     "leaf_model": "cwv", "leaf_stage": "report", "leaf_mode": "control-variate"}
+    with pytest.raises(S.ScreenError, match="config carries leaf_mode='control-variate'"):
+        S.arm_policy_name(legacy_config)
+    with pytest.raises(S.ScreenError, match="leaf_mode='control-variate'"):
+        S.config_variant(legacy_config)
+    assert S.config_variant({**legacy_config, "leaf_mode": "replace"}) == {"leaf_stage": "report"}
+    # a fresh calibration never carries the field
+    assert "leaf_mode" not in S.build_config(**kw) and "cv_beta" not in S.build_config(**kw)
+
+
 @pytest.mark.parametrize("variant", [dict(leaf_stage="report"), dict(leaf_stage="all")])
 def test_real_cluster_counts_net_calls_per_stage(monkeypatch, tmp_path, cwv, prior_path, variant):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")

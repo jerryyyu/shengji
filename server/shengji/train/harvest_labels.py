@@ -53,7 +53,12 @@ Data-quality rules from the harvest audit
   ``validate_record`` never owns a work key (it is refused
   ``invalid_record`` before any dedup bookkeeping, at ingestion and when
   ownership is rebuilt from resumed shards), so a corrupt first copy can
-  never shadow its valid twin.
+  never shadow its valid twin.  Nor does an ``invalid_record`` row mark its
+  (stale) hash done: a valid record carrying that hash is labelled on the
+  next run and the stale row is SUPERSEDED (the manifest and the merged
+  file keep the valid row; ``counts.superseded_invalid`` and
+  ``superseded`` list the stale ones); two input rows sharing one hash are
+  each validated -- the valid one is kept whatever its position.
 * Migration: a run first admits its inputs and the directory (every input
   exists, policy / scale / cap match ``run.json``) WITHOUT touching a shard.
   Shards holding rows of an older ``key_version`` are then MOVED aside to
@@ -914,14 +919,25 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
     per_source: dict[str, dict] = {}
     rows_by_source: dict[str, dict[str, dict]] = {}
     duplicates: Counter = Counter()
+    superseded: dict[str, list[dict]] = {}
     shard_rows: list[dict] = []
     for path, rows in shards:
         source = source_of_shard(path)
         bucket = rows_by_source.setdefault(source, {})
         for row in rows:
             sha = row["record_sha256"]
-            if sha in bucket:
-                duplicates[source] += 1
+            invalid = (row.get("label_refusal") or {}).get("reason") == "invalid_record"
+            held = bucket.get(sha)
+            if held is not None:
+                held_invalid = (held.get("label_refusal") or {}).get("reason") == "invalid_record"
+                if held_invalid and not invalid:
+                    superseded.setdefault(source, []).append(
+                        {"record_sha256": sha, "superseded_by": "labelled"
+                         if row.get("search_labels") is not None
+                         else (row.get("label_refusal") or {}).get("reason")})
+                    bucket[sha] = row              # the valid record wins, whatever its position
+                else:
+                    duplicates[source] += 1
                 continue
             bucket[sha] = row
         shard_rows.append({"path": f"shards/{path.name}", "sha256": sha256_file(path),
@@ -936,6 +952,7 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
             "unsearched": Counter(), "refused": Counter(), "played_off_ballot": 0,
             "forced": 0, "failed_throw_prefix": 0, "record_ballot_differs": 0,
             "duplicate_state": 0, "duplicate_rows_dropped": int(duplicates.get(source, 0)),
+            "superseded_invalid": len(superseded.get(source, [])),
         }
         dup_rows: list[dict] = []
         walls: list[float] = []
@@ -980,6 +997,7 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
             "counts": counts, "complete": complete,
             "wall": {"labelled": _wall_stats(walls), "searched": _wall_stats(walls_searched)},
             "duplicates": sorted(dup_rows, key=lambda d: d["record_sha256"]),
+            "superseded": sorted(superseded.get(source, []), key=lambda d: d["record_sha256"]),
         }
         if merge and bucket:
             private = any(s["private"] for s in shard_rows if s["source"] == source)
@@ -1093,15 +1111,20 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
         existing, notes = scan_shards(out)
         notes["torn"] = torn_names                # what this run found, moved or cut
     run_info = _write_run(out, ident, old_run, scale=int(scale), cap=cap, migration=migration)
-    done: set[str] = set()
+    done: set[str] = set()                # hashes with a labelled / duplicate / non-identity row
+    invalid_done: set[str] = set()        # hashes whose only rows so far are invalid_record
     claimed: dict[str, str] = {}          # work_key -> the record_sha256 that owns it
     for _path, rows in existing:
         for row in rows:
+            refusal = row.get("label_refusal") or {}
+            if refusal.get("reason") == "invalid_record":
+                invalid_done.add(row["record_sha256"])   # never "done": a valid record
+                continue                                  # with this hash is still owed
             done.add(row["record_sha256"])
             key = row.get("work_key")
-            refusal = row.get("label_refusal") or {}
             if key and refusal.get("reason") not in NON_OWNING:
                 claimed.setdefault(key, row["record_sha256"])
+    invalid_done -= done
     say(f"resume: {len(done)} record(s) already labelled in {notes['shards']} shard(s)")
     tasks: list[tuple[str, str, str | None]] = []
     input_rows: dict[str, int] = {}
@@ -1115,20 +1138,27 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
         input_rows[source] = len(lines)
         privacy[source] = _is_private(path)
         todo: list[tuple[str, str, str | None]] = []
+        seen_valid: set[str] = set()          # hashes this run already queued as valid
         for line in lines:
             sha = _sha_of_line(line)
-            if sha in done:
+            if sha in done or sha in seen_valid:
                 continue
             record = json.loads(line)
             try:
                 # identity BEFORE any dedup bookkeeping: an invalid record
-                # never owns a work key and is never a twin
+                # never owns a work key, is never a twin and never marks its
+                # hash done (a valid record with that hash is still owed)
                 validate_record(record)
                 key = work_key(record)
             except (SchemaError, KeyError, TypeError, ValueError, AttributeError):
-                key = None                      # refused invalid_record by the worker
-            twin = None if key is None else claimed.get(key)
-            if twin is None and key is not None:
+                if sha in invalid_done:
+                    continue                    # already refused as invalid; nothing new
+                invalid_done.add(sha)
+                todo.append((source, line, None))   # refused invalid_record by the worker
+                continue
+            seen_valid.add(sha)
+            twin = claimed.get(key)
+            if twin is None:
                 claimed[key] = sha
             else:
                 n_dup += 1

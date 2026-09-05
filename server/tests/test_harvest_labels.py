@@ -45,6 +45,11 @@ the mutation that turns it RED.
    ``shards/legacy-v1/`` byte-identical with a manifest while its rows are
    carried forward (search labels retained) except a mis-deduped duplicate,
    which is relabelled (RED: truncating legacy rows before admission).
+7. Codex HOLD round 3: an ``invalid_record`` row never marks its stale hash
+   done -- the valid original with that hash is labelled on resume and the
+   stale row is superseded in the manifest and the merged file; two input
+   rows sharing one hash keep the valid one whatever its position (RED: a
+   done set that includes invalid_record rows).
 """
 from __future__ import annotations
 
@@ -691,3 +696,48 @@ def test_admission_before_mutation_and_legacy_migration(records, tmp_path, monke
     # resume after the migration is a no-op
     again = harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
     assert again["timings"]["records_this_run"] == 0 and again["timings"]["migration"]["rows"] == 0
+
+
+# 7 ----------------------------------------------- Codex HOLD round 3
+
+def test_invalid_row_never_marks_its_hash_done(records, tmp_path, monkeypatch):
+    rec = finalize_record({**_searched(records)[2], "source": "human"})
+    stale = _stale_hash_copy(rec)                            # same hash H, invalid
+    monkeypatch.setattr(harvest_labels, "make_label_bot", lambda **kw: _make_test_bot(**kw))
+    in_dir = tmp_path / "harvest"
+    in_dir.mkdir()
+    # (a) resume: a shard holding an invalid_record row for H; the input is
+    # the valid original with H
+    out = tmp_path / "labels"
+    (out / "shards").mkdir(parents=True)
+    stale_row = harvest_labels.label_record(stale, work=TEST_WORK)
+    assert stale_row["label_refusal"]["reason"] == "invalid_record"
+    (out / "shards" / "human.w0.jsonl").write_text(json.dumps(stale_row) + "\n")
+    write_jsonl(in_dir / "human.jsonl", [rec])
+    inputs = {"human": in_dir / "human.jsonl"}
+    manifest = harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
+    c = manifest["sources"]["human"]["counts"]
+    assert manifest["timings"]["records_this_run"] == 1 and c["labelled"] == 1
+    assert c["rows"] == 1 and c["superseded_invalid"] == 1 and c["refused"] == {}
+    assert manifest["sources"]["human"]["superseded"] == [
+        {"record_sha256": rec["record_sha256"], "superseded_by": "labelled"}]
+    merged = [json.loads(line) for line in (out / "human.labels.jsonl").read_text().splitlines()]
+    assert len(merged) == 1 and merged[0]["search_labels"] is not None
+    again = harvest_labels.run(inputs=inputs, out_dir=out, workers=1, log=None)
+    assert again["timings"]["records_this_run"] == 0
+    # (b) two input rows with one hash: the valid one is kept whatever its position
+    for order in ((stale, rec), (rec, stale)):
+        out2 = tmp_path / f"labels-{order[0] is rec}"
+        write_jsonl(in_dir / "human.jsonl", list(order))
+        manifest = harvest_labels.run(inputs=inputs, out_dir=out2, workers=1, log=None)
+        c = manifest["sources"]["human"]["counts"]
+        assert c["labelled"] == 1 and c["rows"] == 1 and c["input_rows"] == 2
+        assert c["superseded_invalid"] == (1 if order[0] is stale else 0)
+        # valid first: the later invalid copy of a queued hash is not even written
+        assert c["duplicate_rows_dropped"] == 0 and c["refused"] == {}
+        merged = [json.loads(line)
+                  for line in (out2 / "human.labels.jsonl").read_text().splitlines()]
+        assert merged[0]["search_labels"] is not None
+        # a rerun refuses nothing new and relabels nothing
+        again = harvest_labels.run(inputs=inputs, out_dir=out2, workers=1, log=None)
+        assert again["timings"]["records_this_run"] == 0

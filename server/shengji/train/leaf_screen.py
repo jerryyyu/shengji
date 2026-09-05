@@ -25,6 +25,7 @@ effect for the completed round count and for the planned 1,024 clusters.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -42,7 +43,8 @@ from ..engine.cards import RANKS
 from ..engine.game import Game
 from ..engine.round import Round
 from ..oracle import screen as duel
-from .leaf_policy import load_points_head, load_points_prior
+from .leaf_policy import (MCValueLeafSearch, PriorPointsLeaf, StratifiedPointsPrior,
+                          load_points_head)
 from .search_screen import (TimedPolicy, _publish, _run_pending, bind_output_config,
                             execution_source_identity)
 
@@ -104,6 +106,52 @@ def require_matching_trump_ranks(calibration: dict, trump_ranks) -> None:
                           f"run asks for {','.join(wanted)}: re-calibrate on the same ranks")
 
 
+#: what a calibration.json is the parity N FOR; a run must match every field
+CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "baseline_policy",
+                        "baseline_select_worlds", "report_worlds")
+
+
+def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | None,
+                                 leaf_tricks: int, base_policy: str,
+                                 baseline_select_worlds: int, report_worlds: int,
+                                 trump_ranks) -> None:
+    """A calibration is the CPU-parity N of ONE matchup: this points-head
+    checkpoint, this T, this base policy at this N/R dose, these trump ranks.
+    Any other run must re-calibrate; a missing field is a mismatch."""
+    wanted = {"checkpoint_sha256": checkpoint_sha256, "leaf_tricks": int(leaf_tricks),
+              "baseline_policy": base_policy,
+              "baseline_select_worlds": int(baseline_select_worlds),
+              "report_worlds": int(report_worlds)}
+    mismatched = [(k, calibration.get(k), v) for k, v in wanted.items()
+                  if calibration.get(k) != v]
+    if mismatched:
+        raise ScreenError("calibration was made for another matchup: " + "; ".join(
+            f"{k}: calibration {a!r} != run {b!r}" for k, a, b in mismatched)
+            + "; re-calibrate for this run")
+    require_matching_trump_ranks(calibration, trump_ranks)
+
+
+def require_bound_bytes(what: str, actual: str | None, expected: str | None) -> None:
+    """An artifact a worker is about to use must be the bytes the config bound."""
+    if not expected or actual != expected:
+        raise ScreenError(f"{what} bytes differ from the config's binding: "
+                          f"{actual} != {expected}")
+
+
+def bound_prior_table(config: dict) -> StratifiedPointsPrior:
+    """The control's table from the bytes the config carries, verified against
+    ``prior_sha256``.  A spawned worker never trusts the file at
+    ``config['prior']``: it may have changed since the config bound it."""
+    text = config.get("prior_bytes")
+    if not isinstance(text, str):
+        raise ScreenError("config carries no prior bytes")
+    require_bound_bytes("prior table", hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                        config.get("prior_sha256"))
+    table = StratifiedPointsPrior.from_dict(json.loads(text))
+    table.provenance["file_sha256"] = config["prior_sha256"]
+    return table
+
+
 # --------------------------------------------------------------- policies
 
 def arm_policy_name(config: dict) -> str:
@@ -114,11 +162,13 @@ def arm_policy_name(config: dict) -> str:
 
 
 def ensure_registered(config: dict) -> str:
-    """Register the arm's name in THIS process (workers are spawned)."""
-    learned = config["arm"] == "learned"
-    register_vleaf_arms(checkpoint=config["checkpoint"] if learned else None,
-                        prior=config["prior"] if not learned else None,
-                        leaf_tricks=(config["leaf_tricks"],),
+    """Register the learned arm's name in THIS process (workers are spawned),
+    after checking the checkpoint file is still the bytes the config bound."""
+    if config["arm"] != "learned":
+        raise ScreenError("only the learned arm is registered from a file")
+    require_bound_bytes("checkpoint file", vleaf_checkpoint_sha256(config["checkpoint"]),
+                        config.get("checkpoint_sha256"))
+    register_vleaf_arms(checkpoint=config["checkpoint"], leaf_tricks=(config["leaf_tricks"],),
                         allow_legacy=bool(config.get("allow_legacy", False)))
     return arm_policy_name(config)
 
@@ -127,8 +177,16 @@ def make_side(config: dict, side: str, seed: int):
     if side == "baseline":
         bot = make_bot(VLEAF_BASE_POLICY, seed=seed)
         bot.N_DETERMINIZATIONS = int(config["baseline_select_worlds"])
-    else:
+    elif config["arm"] == "learned":
         bot = make_bot(ensure_registered(config), seed=seed)
+        # The loader cache could hold an earlier version of the file.
+        require_bound_bytes("checkpoint", bot.leaf.head.metadata.get("checkpoint_sha256"),
+                            config.get("checkpoint_sha256"))
+        bot.N_DETERMINIZATIONS = int(config["arm_select_worlds"])
+    else:
+        bot = MCValueLeafSearch(PriorPointsLeaf(bound_prior_table(config)), seed=seed,
+                                leaf_tricks=int(config["leaf_tricks"]))
+        bot.policy_name = config["arm_policy"]
         bot.N_DETERMINIZATIONS = int(config["arm_select_worlds"])
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     return bot
@@ -433,8 +491,6 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         raise ScreenError("SHENGJI_REQUIRE_VOIDS=1 is required")
     ranks = (parse_trump_ranks(",".join(trump_ranks)) if trump_ranks is not None
              else DEFAULT_TRUMP_RANKS)
-    if calibration is not None:
-        require_matching_trump_ranks(calibration, ranks)
     config = {
         "schema": CONFIG_SCHEMA, "arm": arm, "leaf_tricks": int(leaf_tricks),
         "seed0": int(seed0), "clusters": int(clusters),
@@ -456,18 +512,37 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
             meta["population_digest"] = population.get("digest")
         config.update({"checkpoint": path, "checkpoint_sha256": head.metadata["checkpoint_sha256"],
                        "allow_legacy": bool(allow_legacy), "model_metadata": meta})
+        bound_checkpoint = config["checkpoint_sha256"]
     else:
         if not prior:
             raise ScreenError("the prior arm needs --prior")
         path = str(Path(prior).resolve())
-        table = load_points_prior(path)
-        config.update({"prior": path, "prior_sha256": table.provenance["file_sha256"],
-                       "prior_provenance": table.provenance, "prior_n": table.n})
+        raw = Path(path).read_bytes()
+        text = raw.decode("utf-8")
+        table = StratifiedPointsPrior.from_dict(json.loads(text))   # refuses another schema
+        # The config CARRIES the control's table: workers use these bytes,
+        # never the file, and verify them against prior_sha256 before use.
+        config.update({"prior": path, "prior_sha256": hashlib.sha256(raw).hexdigest(),
+                       "prior_bytes": text, "prior_provenance": table.provenance,
+                       "prior_n": table.n})
+        bound_checkpoint = None
+        if checkpoint:
+            # The control's dose is the learned arm's parity N: bind it to
+            # that checkpoint too.
+            bound_checkpoint = vleaf_checkpoint_sha256(Path(checkpoint).resolve())
+            config["companion_checkpoint_sha256"] = bound_checkpoint
     config["arm_policy"] = arm_policy_name(config)
     if calibration is not None:
+        if bound_checkpoint is None:
+            raise ScreenError("a calibration binds the learned arm's checkpoint; pass "
+                              "checkpoint= so the control's dose is bound to it")
+        require_matching_calibration(
+            calibration, checkpoint_sha256=bound_checkpoint, leaf_tricks=leaf_tricks,
+            base_policy=VLEAF_BASE_POLICY, baseline_select_worlds=baseline_select_worlds,
+            report_worlds=report_worlds, trump_ranks=ranks)
         config["calibration"] = {k: calibration.get(k) for k in (
             "file_sha256", "chosen_arm_select_worlds", "predicted_decision_cpu_ratio",
-            "within_band", "within_grid", "seed0", "clusters", "checkpoint_sha256",
+            "within_band", "within_grid", "seed0", "clusters", *CALIBRATION_IDENTITY,
             "trump_ranks")}
     package = Path(__file__).resolve().parents[1]
     config["source_sha256"] = execution_source_identity(package)

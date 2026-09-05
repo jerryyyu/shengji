@@ -3,8 +3,11 @@ CPU only (with its witness), the real mirrored cluster runs through the
 registry names and counts leaf work, summaries carry the declared fields."""
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -13,11 +16,15 @@ torch = pytest.importorskip("torch")
 
 from shengji.ai.registry import REGISTRY
 from shengji.engine.cards import RANKS
+from shengji.train import leaf_policy as L
 from shengji.train import leaf_screen as S
+from shengji.train.baselines import N_STRATA
 from shengji.train.model import ValuePriorNet
 from shengji.train.search_screen import _publish
 
 from test_vleaf_leaf import prior_table, save, small_arch  # noqa: E402
+
+SERVER = Path(__file__).resolve().parents[1]
 
 GRID = (30, 45, 60, 90)
 
@@ -152,7 +159,9 @@ def test_real_cluster_through_registry_names_counts_leaf_work(monkeypatch, tmp_p
         summary = S.run_arm(config, output=tmp_path / arm, workers=1, log=lambda s: None,
                             executor_factory=threads)
         summaries[arm] = summary
-        assert config["arm_policy"] in REGISTRY
+        # The learned arm is driven by its registry name; the control is built
+        # from the bytes the config carries and only labelled with its name.
+        assert (config["arm_policy"] in REGISTRY) == (arm == "learned")
         shard = json.loads((tmp_path / arm / "cluster-00000.json").read_text())
         assert [r["mirror"] for r in shard["records"]] == [0, 1]
         for row in shard["records"]:
@@ -272,15 +281,24 @@ def test_witness_ignored_trump_ranks_flag_is_caught(monkeypatch, artifacts):
     assert any("outside the configured cycle" in p for p in summary["problems"])
 
 
-def _calibration_file(path, **extra):
+def _sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _calibration_file(path, artifacts, **extra):
+    """A calibration bound to the test artifacts' matchup (tiny work), with
+    ``extra`` overriding fields."""
     _publish(path, {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
-                    "chosen_arm_select_worlds": 3, **extra})
+                    "chosen_arm_select_worlds": 3,
+                    "checkpoint_sha256": _sha(artifacts["checkpoint"]), "leaf_tricks": 1,
+                    "baseline_policy": S.VLEAF_BASE_POLICY, "baseline_select_worlds": 1,
+                    "report_worlds": 30, **extra})
     return S.load_calibration(path)
 
 
 def test_run_refuses_a_calibration_made_on_other_trump_ranks(monkeypatch, artifacts, tmp_path):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
-    rank2 = _calibration_file(tmp_path / "rank2.json", trump_ranks=["2"])
+    rank2 = _calibration_file(tmp_path / "rank2.json", artifacts, trump_ranks=["2"])
     config = tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("2",))
     assert config["trump_ranks"] == config["calibration"]["trump_ranks"] == ["2"]
     with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
@@ -288,7 +306,7 @@ def test_run_refuses_a_calibration_made_on_other_trump_ranks(monkeypatch, artifa
     with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
         tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("3",))
     # A calibration written before the option existed was made on the default cycle.
-    legacy = _calibration_file(tmp_path / "legacy.json")
+    legacy = _calibration_file(tmp_path / "legacy.json", artifacts)
     assert tiny_config("learned", artifacts, calibration=legacy)["trump_ranks"] == list(RANKS)
     with pytest.raises(S.ScreenError, match="re-calibrate on the same ranks"):
         tiny_config("learned", artifacts, calibration=legacy, trump_ranks=("2",))
@@ -298,6 +316,95 @@ def test_witness_removed_trump_rank_check_accepts_a_mismatch(monkeypatch, artifa
     """Mutant: the calibration/run rank check is a no-op."""
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     monkeypatch.setattr(S, "require_matching_trump_ranks", lambda calibration, trump_ranks: None)
-    rank2 = _calibration_file(tmp_path / "rank2.json", trump_ranks=["2"])
+    rank2 = _calibration_file(tmp_path / "rank2.json", artifacts, trump_ranks=["2"])
     config = tiny_config("learned", artifacts, calibration=rank2, trump_ranks=("3",))
     assert config["trump_ranks"] == ["3"] and config["calibration"]["trump_ranks"] == ["2"]
+
+
+# ------------------------------------------------- bound artifacts (PR #226)
+
+def test_worker_uses_the_bound_prior_bytes_and_refuses_tampering(monkeypatch, tmp_path, artifacts):
+    """The file changes after the config bound it: a spawned worker (empty
+    loader cache, no registered arm) still runs the bound bytes."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    path = tmp_path / "prior.json"
+    _publish(path, prior_table().to_dict())
+    config = tiny_config("prior", {**artifacts, "prior": str(path)})
+    bound = config["prior_sha256"]
+    assert bound == _sha(path) and json.loads(config["prior_bytes"])["schema"] == L.POINTS_PRIOR_SCHEMA
+    _publish(path, prior_table(sums=[200.0] * N_STRATA, counts=[1] * N_STRATA).to_dict())
+    L.load_points_prior.cache_clear()
+    monkeypatch.delitem(REGISTRY, config["arm_policy"], raising=False)
+    bot = S.make_side(config, "arm", 1)
+    assert bot.leaf.table.provenance["file_sha256"] == bound != _sha(path)
+    assert bot.leaf.table.prior.global_mean != 200.0
+    assert bot.policy_name == config["arm_policy"] and bot.LEAF_TRICKS == 1
+    # Tampered carried bytes, or none at all, refuse.
+    with pytest.raises(S.ScreenError, match="prior table bytes differ"):
+        S.make_side(dict(config, prior_bytes=path.read_text()), "arm", 1)
+    with pytest.raises(S.ScreenError, match="carries no prior bytes"):
+        S.make_side({k: v for k, v in config.items() if k != "prior_bytes"}, "arm", 1)
+    # The learned arm: the file and the loaded head must be the bound bytes.
+    learned = tiny_config("learned", artifacts)
+    with pytest.raises(S.ScreenError, match="checkpoint file bytes differ"):
+        S.make_side(dict(learned, checkpoint_sha256="0" * 64), "arm", 1)
+    assert S.make_side(learned, "arm", 1).leaf.head.metadata["checkpoint_sha256"] \
+        == learned["checkpoint_sha256"]
+
+
+def test_witness_removed_bytes_binding_runs_tampered_prior_bytes(monkeypatch, tmp_path, artifacts):
+    """Mutant: the bytes check is a no-op."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(S, "require_bound_bytes", lambda what, actual, expected: None)
+    path = tmp_path / "prior.json"
+    _publish(path, prior_table().to_dict())
+    config = tiny_config("prior", {**artifacts, "prior": str(path)})
+    _publish(path, prior_table(sums=[200.0] * N_STRATA, counts=[1] * N_STRATA).to_dict())
+    bot = S.make_side(dict(config, prior_bytes=path.read_text()), "arm", 1)
+    assert bot.leaf.table.prior.global_mean == 200.0          # the refusal above is RED
+
+
+def test_run_refuses_a_calibration_for_another_matchup(monkeypatch, tmp_path, artifacts):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    good = _calibration_file(tmp_path / "good.json", artifacts)
+    learned = tiny_config("learned", artifacts, calibration=good)
+    assert learned["calibration"]["checkpoint_sha256"] == learned["checkpoint_sha256"]
+    prior = tiny_config("prior", artifacts, calibration=good)
+    assert prior["companion_checkpoint_sha256"] == good["checkpoint_sha256"]
+    with pytest.raises(S.ScreenError, match="binds the learned arm's checkpoint"):
+        S.build_config(arm="prior", leaf_tricks=1, seed0=431, clusters=1, arm_select_worlds=1,
+                       prior=artifacts["prior"], calibration=good, baseline_select_worlds=1,
+                       report_worlds=30)
+    for field, value in (("checkpoint_sha256", "a" * 64), ("leaf_tricks", 4),
+                         ("baseline_policy", "mc-strong"), ("baseline_select_worlds", 30),
+                         ("report_worlds", 300)):
+        bad = _calibration_file(tmp_path / f"bad-{field}.json", artifacts, **{field: value})
+        with pytest.raises(S.ScreenError, match=f"another matchup.*{field}"):
+            tiny_config("learned", artifacts, calibration=bad)
+        with pytest.raises(S.ScreenError, match=f"another matchup.*{field}"):
+            tiny_config("prior", artifacts, calibration=bad)
+    # Through the CLI the mismatch never reaches the compute-launch boundary.
+    spec = importlib.util.spec_from_file_location("vleaf_cli", SERVER / "scripts/vleaf_screen.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    reached = []
+    monkeypatch.setattr(S, "run_arm", lambda config, **kw: reached.append(config))
+    bad = tmp_path / "bad-cli.json"
+    _publish(bad, dict(json.loads((tmp_path / "bad-leaf_tricks.json").read_text()),
+                       within_band=True, within_grid=True, predicted_decision_cpu_ratio=1.0))
+    code = cli.main(["run", "--checkpoint", artifacts["checkpoint"], "--prior", artifacts["prior"],
+                     "--calibration", str(bad), "--arms", "learned", "--out", str(tmp_path / "out"),
+                     "--baseline-select-worlds", "1", "--report-worlds", "30"])
+    assert code == 2 and not reached
+
+
+def test_witness_removed_calibration_binding_accepts_another_matchup(monkeypatch, tmp_path,
+                                                                     artifacts):
+    """Mutant: the calibration identity check is a no-op."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(S, "require_matching_calibration", lambda calibration, **kw: None)
+    bad = _calibration_file(tmp_path / "bad.json", artifacts, checkpoint_sha256="a" * 64,
+                            leaf_tricks=4)
+    config = tiny_config("learned", artifacts, calibration=bad)
+    assert config["calibration"]["checkpoint_sha256"] == "a" * 64 != config["checkpoint_sha256"]
+    assert config["calibration"]["leaf_tricks"] == 4 != config["leaf_tricks"]   # refusal RED

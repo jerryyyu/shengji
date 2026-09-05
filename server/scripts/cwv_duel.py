@@ -1,6 +1,12 @@
-"""Budget-ladder calibration and paired duel for the complete-world one-ply bot.
+"""Budget-ladder calibration and paired duel for the complete-world bots.
 
-Two subcommands, both bound to one checkpoint:
+Two subcommands, both bound to one checkpoint.  ``--plies 0`` (default) drives
+the one-ply bot of #229 (``mc-cwv-<ckpt8>-w<W>``, heuristic trick finish);
+``--plies 1`` / ``--plies 2`` drive the TWO-PLY bot (``mc-cwv2-<ckpt8>-w<W>``
+/ ``-p2``): the net itself chooses every reply for the rest of the current
+trick (1) or one more trick (2), one batched forward per ply step, then one
+final root forward.  The calibration binding carries ``plies``, so a ladder
+frozen for one bot is refused for the other.
 
   calibrate  Measure production's wall time per play decision on K outcome-
              blind deals (both mirrors, seeds 70360904+), then the one-ply
@@ -160,6 +166,8 @@ def search_from_args(args) -> dict | None:
     """``None`` for the one-ply bot; the search binding under ``--tree``."""
     if not getattr(args, "tree", False):
         return None
+    if int(getattr(args, "plies", 0) or 0):
+        raise CalibrationMismatch("--tree and --plies 1/2 are different bots; pass one")
     from shengji.ai.cwv_policy import file_sha256
     prior_sha = None
     if args.prior == "head":
@@ -180,7 +188,8 @@ def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
             prior_checkpoint=args.prior_checkpoint, receipt=receipt)
     else:
         register_cwv_policies(checkpoint, budgets, finish_trick=args.finish_trick,
-                              lcb=args.lcb, receipt=receipt)
+                              lcb=args.lcb, receipt=receipt,
+                              plies=bot_plies(getattr(args, "plies", 0)))
 
 
 def arm_name(args, ckpt8: str, budget: int) -> str:
@@ -188,7 +197,7 @@ def arm_name(args, ckpt8: str, budget: int) -> str:
     from shengji.ai.cwv_puct import puct_policy_name
     if getattr(args, "tree", False):
         return puct_policy_name(ckpt8, budget)
-    return policy_name(ckpt8, budget, lcb=args.lcb)
+    return policy_name(ckpt8, budget, lcb=args.lcb, plies=bot_plies(getattr(args, "plies", 0)))
 
 
 def control_arm_name(args, ckpt8: str, budget: int) -> str:
@@ -196,7 +205,7 @@ def control_arm_name(args, ckpt8: str, budget: int) -> str:
     from shengji.ai.cwv_puct import puct_control_name
     if getattr(args, "tree", False):
         return puct_control_name(ckpt8, budget)
-    return control_name(ckpt8, budget, lcb=args.lcb)
+    return control_name(ckpt8, budget, lcb=args.lcb, plies=bot_plies(getattr(args, "plies", 0)))
 
 
 def rank_plan(spec: str | None):
@@ -378,6 +387,10 @@ def measure_bot(policy: str, subset, *, seed: int = 11) -> dict:
         "batch_wall_secs": float(getattr(bot, "batch_wall_secs", 0.0)),
         "build_wall_secs": float(getattr(bot, "build_wall_secs", 0.0)),
         "short_searches": int(getattr(bot, "short_search_decisions", 0)),
+        "reply_positions": int(getattr(bot, "reply_positions_evaluated", 0)),
+        "forward_passes": int(getattr(bot, "forward_passes", 0)),
+        "forwards_per_decision": int(getattr(bot, "forward_passes", 0)) / max(1, searched),
+        "plies": int(getattr(bot, "CWV_PLIES", 0) or 0),
     }
 
 
@@ -474,14 +487,26 @@ def choose_budget_ladder(production_wall: float, grid, multipliers, *,
     return {"fit": fit, "ladder": rungs}
 
 
+def bot_plies(plies) -> int | None:
+    """``--plies`` -> the registry's ``plies`` (0 = the one-ply bot = None)."""
+    value = int(plies or 0)
+    if value not in (0, 1, 2):
+        raise ValueError("--plies must be 0 (one-ply bot), 1 or 2 (two-ply bot)")
+    return value or None
+
+
 def calibration_binding(checkpoint_sha256: str, *, finish_trick: bool, lcb: float,
                         base_policy: str, trump_ranks: str, budgets,
-                        production_ladder=(), search: dict | None = None) -> dict:
-    """``search`` is the PUCT binding (``search_binding``) for a tree
-    calibration and ``None`` for the one-ply bot; ``worlds`` in a rung is the
-    budget unit of the arm (W for the one-ply bot, S for the tree)."""
+                        production_ladder=(), plies: int = 0,
+                        search: dict | None = None) -> dict:
+    """``plies`` is the two-ply bot's depth (0 = the one-ply bot); ``search``
+    is the PUCT binding (``search_binding``) for a tree calibration and
+    ``None`` otherwise.  Both are recorded so a ladder frozen for one bot is
+    refused for another.  ``worlds`` in a rung is the budget unit of the arm
+    (W for the one-ply / two-ply bots, S for the tree)."""
     return {"checkpoint_sha256": checkpoint_sha256,
             "finish_trick": bool(finish_trick), "lcb": float(lcb),
+            "plies": int(plies or 0),
             "base_policy": base_policy, "trump_ranks": trump_ranks,
             "search": None if search is None else dict(search),
             "budgets": [{"budget": b["budget"], "multiplier": b["multiplier"],
@@ -502,7 +527,7 @@ def calibration_identity(binding: dict) -> str:
 def check_calibration(calibration: dict, *, checkpoint_sha256: str,
                       finish_trick: bool, lcb: float, base_policy: str,
                       trump_ranks: str, budgets: list[float],
-                      search: dict | None = None) -> list[dict]:
+                      plies: int = 0, search: dict | None = None) -> list[dict]:
     """Refuse a calibration bound to anything but the live configuration.
 
     ``search`` is the live PUCT binding (S is a budget; W, K, c_puct, prior
@@ -528,6 +553,9 @@ def check_calibration(calibration: dict, *, checkpoint_sha256: str,
         problems.append(f"finish_trick {binding.get('finish_trick')} != {finish_trick}")
     if float(binding.get("lcb", 0.0)) != float(lcb):
         problems.append(f"lcb {binding.get('lcb')} != {lcb}")
+    if int(binding.get("plies", 0) or 0) != int(plies or 0):
+        problems.append(f"plies {binding.get('plies', 0)} != {int(plies or 0)} "
+                        "(one-ply and two-ply ladders are not interchangeable)")
     if binding.get("base_policy") != base_policy:
         problems.append(f"base policy {binding.get('base_policy')!r} != {base_policy!r}")
     if binding.get("trump_ranks") != trump_ranks:
@@ -555,6 +583,7 @@ def calibrate(args) -> dict:
 
     plan = rank_plan(args.trump_ranks)
     budgets = parse_budgets(args.budgets)
+    plies = bot_plies(args.plies)
     search = search_from_args(args)
     if args.grid is None:
         args.grid = ",".join(str(w) for w in (DEFAULT_TREE_GRID if search else DEFAULT_GRID))
@@ -563,9 +592,12 @@ def calibrate(args) -> dict:
     ckpt8 = sha[:8]
     unit = "S" if search else "W"
     started = time.perf_counter()
-    print(f"calibrate: checkpoint {ckpt8} vs {args.base_policy} on {args.deals} "
-          f"deals x 2 mirrors (seed0 {args.seed0}, ranks {rank_spec_label(plan)}"
-          + (f", search {search}" if search else "") + ")", flush=True)
+    bot_label = "puct" if search else ("two-ply" if plies else "one-ply")
+    described = bot_label + (f", plies {plies}" if plies else "")
+    print(f"calibrate: checkpoint {ckpt8} ({described}) vs {args.base_policy} on "
+          f"{args.deals} deals x 2 mirrors (seed0 {args.seed0}, ranks "
+          f"{rank_spec_label(plan)}" + (f", search {search}" if search else "") + ")",
+          flush=True)
     production = measure_production(
         args.base_policy, deals=args.deals, seed0=args.seed0, plan=plan,
         subset_stride=args.subset_stride)
@@ -588,7 +620,8 @@ def calibrate(args) -> dict:
                      f", depth mean {row['mean_depth']:.2f} / max {row['max_depth_per_decision']:.1f}")
             print(f"  {unit}={worlds:5d}: mean wall {row['mean_wall']:.4f}s "
                   f"({row['ratio']:.2f}x), {row['positions_per_decision']:.0f} "
-                  f"positions/decision, {row['positions_per_second']:.0f} positions/s{depth}",
+                  f"positions/decision, {row['forwards_per_decision']:.1f} "
+                  f"forwards/decision, {row['positions_per_second']:.0f} positions/s{depth}",
                   flush=True)
         return measured[worlds]
 
@@ -636,7 +669,7 @@ def calibrate(args) -> dict:
         sha, finish_trick=args.finish_trick, lcb=args.lcb,
         base_policy=args.base_policy, trump_ranks=rank_spec_label(plan),
         budgets=chosen["ladder"], production_ladder=production_ladder,
-        search=search)
+        plies=plies or 0, search=search)
     calibration = {
         "schema": CALIBRATION_SCHEMA,
         "created": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -645,6 +678,8 @@ def calibrate(args) -> dict:
                        "ckpt8": ckpt8, "arch": metadata.get("arch"),
                        "declared_encoder": metadata.get("encoder")},
         "afterstate_encoder": afterstate_encoder_identity()["implementation_sha256"],
+        "bot": bot_label, "plies": plies or 0,
+        "arm_policy_at_1x": arm_name(args, ckpt8, best_1x["worlds"]),
         "binding": binding,
         "budget_unit": "simulations" if search else "worlds",
         "identity_sha256": calibration_identity(binding),
@@ -699,10 +734,13 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
             "cwv_decisions": sum(getattr(b, "cwv_decisions", 0) for b in bots),
             "batch_wall_secs": round(sum(getattr(b, "batch_wall_secs", 0.0) for b in bots), 4),
             "build_wall_secs": round(sum(getattr(b, "build_wall_secs", 0.0) for b in bots), 4),
+            "reply_positions_evaluated": sum(
+                getattr(b, "reply_positions_evaluated", 0) for b in bots),
+            "forward_passes": sum(getattr(b, "forward_passes", 0) for b in bots),
+            "ply_steps": sum(getattr(b, "ply_steps", 0) for b in bots),
             "simulations": sum(getattr(b, "simulations", 0) for b in bots),
             "sample_wall_secs": round(sum(getattr(b, "sample_wall_secs", 0.0) for b in bots), 4),
             "prior_wall_secs": round(sum(getattr(b, "prior_wall_secs", 0.0) for b in bots), 4),
-            "forward_passes": sum(getattr(b, "forward_passes", 0) for b in bots),
             "depth_sum": sum(getattr(b, "depth_sum", 0) for b in bots),
             "depth_max_total": sum(getattr(b, "depth_max_total", 0) for b in bots),
         }
@@ -837,10 +875,11 @@ def _worker(payload: dict) -> dict:
     if payload.get("arm_args"):
         register_arms(argparse.Namespace(**payload["arm_args"]), payload["checkpoint"],
                       payload["worlds"], receipt=payload.get("receipt"))
-    else:                                   # one-ply payloads without arm_args
+    else:                                   # payloads without arm_args
         register_cwv_policies(payload["checkpoint"], payload["worlds"],
                               finish_trick=payload["finish_trick"], lcb=payload["lcb"],
-                              receipt=payload.get("receipt"))
+                              receipt=payload.get("receipt"),
+                              plies=bot_plies(payload.get("plies", 0)))
     if payload.get("scaled_multipliers"):
         register_scaled_policies(payload["opponent"], payload["scaled_multipliers"])
     path = shard_path(payload["out"], payload["run_id"], payload["shard"])
@@ -942,6 +981,8 @@ def summarize(results: dict, plan, *, budgets_by_label: dict, bar: str,
         win, win_ci = clustered_win_rate(recs)
         searched = sum(r["arm"].get("cwv_decisions", 0) for r in recs)
         positions = sum(r["arm"].get("positions_evaluated", 0) for r in recs)
+        forwards = sum(r["arm"].get("forward_passes", 0) for r in recs)
+        reply_positions = sum(r["arm"].get("reply_positions_evaluated", 0) for r in recs)
         if searched:
             work_kind = "positions"
         else:                       # a production search arm counts rollouts
@@ -972,10 +1013,12 @@ def summarize(results: dict, plan, *, budgets_by_label: dict, bar: str,
             "work_kind": work_kind,
             "positions_per_decision": (positions / searched) if searched else None,
             "positions_evaluated": positions,
+            "reply_positions_evaluated": reply_positions,
+            "forward_passes": forwards,
+            "forwards_per_decision": (forwards / searched) if searched and work_kind == "positions" else None,
             "simulations_per_decision": (simulations / searched) if simulations else None,
             "mean_depth": (depth_sum / simulations) if simulations else None,
             "max_depth_per_decision": (depth_max_total / searched) if simulations else None,
-            "forward_passes_per_decision": (forwards / searched) if simulations else None,
             "wall_per_decision_parts": ({key: value / searched for key, value in wall_parts.items()}
                                         if searched else None),
             "short_searches": sum(r["arm"]["short_searches"] for r in recs),
@@ -1019,7 +1062,7 @@ def summarize(results: dict, plan, *, budgets_by_label: dict, bar: str,
 def print_summary(summary: dict, plan) -> None:
     print(f"\n{'label':10} {'S/W/N':>6} {'budget':>10} {'win%':>6} "
           f"{'paired utility/round':>21} {'bootstrap 95% CI':>20} "
-          f"{'wall x':>7} {'work/dec':>9} {'MDE/seed':>9} {'depth':>11}")
+          f"{'wall x':>7} {'work/dec':>9} {'fwd/dec':>8} {'MDE/seed':>9} {'depth':>11}")
     for label, _ in plan:
         e = summary["table"][label]
         lo, hi = e["bootstrap_ci_per_round"]
@@ -1029,11 +1072,12 @@ def print_summary(summary: dict, plan) -> None:
               f"[{lo:+.3f},{hi:+.3f}]"
               + f" {e['realized_wall_ratio'] or float('nan'):7.2f} "
               f"{(e['positions_per_decision'] or 0):8.0f}{e['work_kind'][0]} "
+              f"{(e['forwards_per_decision'] if e['forwards_per_decision'] is not None else float('nan')):8.1f} "
               f"{(e['minimum_detectable_effect_per_seed'] or float('nan')):9.3f}"
               + (f" {e['mean_depth']:5.2f}/{e['max_depth_per_decision']:4.1f}"
                  if e.get("mean_depth") is not None else f" {'-':>11}"))
     print("  work/dec: p = complete-world positions scored (tree: one per "
-          "simulation), r = rollouts; depth: mean leaf depth / mean per-decision max")
+          "simulation), r = rollouts; depth (tree): mean leaf depth / mean per-decision max")
     for label, _ in plan:
         e = summary["table"][label]
         if "minus_control" in e:
@@ -1055,13 +1099,14 @@ def run(args) -> dict:
         calibration = json.load(fh)
     budgets = parse_budgets(args.budgets)
     plan_ranks = rank_plan(args.trump_ranks)
+    plies = bot_plies(args.plies)
     checkpoint = args.checkpoint or calibration["checkpoint"]["path"]
     _model, _metadata, sha = load_cwv_checkpoint(checkpoint)
     search = search_from_args(args)
     rungs = check_calibration(
         calibration, checkpoint_sha256=sha, finish_trick=args.finish_trick,
         lcb=args.lcb, base_policy=args.opponent, trump_ranks=rank_spec_label(plan_ranks),
-        budgets=budgets, search=search)
+        budgets=budgets, plies=plies or 0, search=search)
     if not calibration.get("matched_1x", False) and not args.allow_unmatched:
         raise CalibrationMismatch(
             "calibration did not match production's wall within the band; "
@@ -1091,6 +1136,7 @@ def run(args) -> dict:
                                    "worlds": rungs[0]["worlds"]}
     metric, threshold = parse_bar(args.bar)         # fail before compute
     arm_args = {"tree": bool(search), "finish_trick": args.finish_trick, "lcb": args.lcb,
+                "plies": plies or 0,
                 "world_pool": getattr(args, "world_pool", None),
                 "batch": getattr(args, "batch", None),
                 "c_puct": getattr(args, "c_puct", None),
@@ -1108,7 +1154,7 @@ def run(args) -> dict:
         "workers": args.workers, "declared_bar": args.bar,
         "budgets": [{"budget": r["budget"], "worlds": r["worlds"]} for r in rungs],
         "trump_ranks": rank_spec_label(plan_ranks),
-        "finish_trick": args.finish_trick, "lcb": args.lcb,
+        "finish_trick": args.finish_trick, "lcb": args.lcb, "plies": plies or 0,
         "search": search,
         "calibration_identity": calibration["identity_sha256"],
         "checkpoint_sha256": sha,
@@ -1134,6 +1180,7 @@ def run(args) -> dict:
         "workers": args.workers, "declared_bar": args.bar,
         "budgets": rungs, "trump_ranks": rank_spec_label(plan_ranks),
         "finish_trick": args.finish_trick, "lcb": args.lcb,
+        "bot": "puct" if search else ("two-ply" if plies else "one-ply"), "plies": plies or 0,
         "search": search, "budget_unit": "simulations" if search else "worlds",
         "calibration": {"path": os.path.abspath(args.calibration),
                         "identity_sha256": calibration["identity_sha256"],
@@ -1162,7 +1209,8 @@ def run(args) -> dict:
     t_start = time.time()
     payloads = [{
         "checkpoint": checkpoint, "worlds": worlds, "finish_trick": args.finish_trick,
-        "lcb": args.lcb, "receipt": args.receipt, "run_id": run_id, "plan": plan,
+        "lcb": args.lcb, "plies": plies or 0,
+        "receipt": args.receipt, "run_id": run_id, "plan": plan,
         "arm_args": arm_args,
         "clusters": chunk, "seed0": args.seed0,
         "rank_spec": rank_spec_label(plan_ranks) if plan_ranks else None,
@@ -1262,6 +1310,9 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--max-iterations", type=int, default=3)
     cal.add_argument("--trump-ranks", default="canonical")
     cal.add_argument("--lcb", type=float, default=0.0)
+    cal.add_argument("--plies", type=int, default=0, choices=(0, 1, 2),
+                     help="0: the one-ply bot (#229); 1: two-ply, net finishes the "
+                          "current trick; 2: two-ply, one more full trick")
     finish = cal.add_mutually_exclusive_group()
     finish.add_argument("--finish-trick", dest="finish_trick", action="store_true", default=True)
     finish.add_argument("--no-finish-trick", dest="finish_trick", action="store_false")
@@ -1285,6 +1336,8 @@ def build_parser() -> argparse.ArgumentParser:
     duel.add_argument("--bar", default="paired_utility > 0")
     duel.add_argument("--trump-ranks", default="canonical")
     duel.add_argument("--lcb", type=float, default=0.0)
+    duel.add_argument("--plies", type=int, default=0, choices=(0, 1, 2),
+                      help="must equal the calibration's plies (0 one-ply; 1/2 two-ply)")
     duel.add_argument("--receipt", default=None,
                       help="training receipt JSON with the stratified prior (control)")
     duel.add_argument("--out", default="runs/logs")

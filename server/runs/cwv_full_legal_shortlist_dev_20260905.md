@@ -1,7 +1,8 @@
 # Full-legal complete-world shortlist — DEV screen
 
-Status: source implemented; **256-cluster screen not launched**. No strength,
-promotion, deployment, or production-policy claim. Extends #227 using the
+Status at 2026-09-05 18:55 UTC: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
+**256-cluster screen queued, not launched** behind Strength's two-ply job.
+No strength, promotion, deployment, or production-policy claim. Extends #227 using the
 merged #229/#230 evaluator/checkpoint, not the old public-observation head.
 The #222 driver conflict is resolved in the merged stack; no duplicate repair.
 
@@ -19,8 +20,9 @@ The #222 driver conflict is resolved in the merged stack; no duplicate repair.
    Uniform control selects the same number of alternatives without replacement
    and without model rankings. A forced singleton needs no ranking.
 4. Run production's unmodified adaptive selection, full rollouts, point-shy
-   handling and fresh report-LCB on this shortlist. The report remains R=300 in
-   the requested screen. Selection N and W are chosen from timing, not outcomes.
+   handling and fresh report-LCB on this shortlist. Learned and uniform arms
+   retain R=300; production's 3x comparator uses R=900. Selection N and W are
+   chosen from timing, not outcomes.
    Production's tractor-lock bypass is disabled in these two arms so that it
    cannot bypass the requested full-legal enumeration.
 
@@ -107,6 +109,55 @@ Do not reuse smoke or cost seeds as screen seeds.
   retained at `/private/tmp/cwv-shortlist-cost-mini-20260905/`, but is not used
   for choosing the screen dose. The cost sampler now avoids four-seat aliasing.
 
-Remaining: consolidated source review; exclusive Strength timing window;
-publish the dose choices; run and retain all five arms; append result/ledger
-and request the result review for merge under Jerry's authorization.
+## Published recipes and execution handoff
+
+The [pre-screen dose publication](https://github.com/jerryyyu/shengji/pull/236#issuecomment-5553657910)
+records these choices before any screen outcome. Executing source is the
+reviewed head `2f98cf404f58fdfd9bad823d04b21c581b49ef94`, merged as
+`05d3c3c7d61ed64729af2503625373b5416398d5`. The AB checkpoint above stays fixed.
+
+| Arm / output directory | Cheap worlds W | Selection N | Report R | Wall target |
+|---|---:|---:|---:|---:|
+| learned-1x | 1 | 30 | 300 | 1x |
+| uniform-1x | — | 45 | 300 | 1x |
+| learned-3x | 32 | 30 | 300 | 3x |
+| uniform-3x | — | 420 | 300 | 3x |
+| production-3x | — | 90 | 900 | 3x |
+
+All five use the same 256 rank-2 clusters and two mirrors, seed0=90260904,
+16 workers, numerical threads=1, batch size 128, and production N30/R300 as
+opponent. These are approximate wall targets, not established equal-work arms.
+
+The isolated Strength cost job retained 107/156 states before its operational
+20-minute limit. Only its complete first 84-state production round at
+seed89260904 supplies the full-round census: learned W1/N30 measured 0.951x;
+production N90/R900 measured 2.861x. The incomplete second round is retained,
+not pooled into that census or rerun. A shared-Mini full-round follow-up on
+the same 84 states measured learned W1/N30 at 1.004x and W32/N30 at 3.209x.
+Strength's W1/W4 timings **forecast**, but do not measure, W32/N30 near 2.98x.
+Mini uniform N80/N650 measured 1.188x/4.219x; interpolation gives approximately
+N45/N421, selected as N45/N420. Those selected uniform doses were not measured
+on Strength. The earlier 11-state Mini sample omitted leads and is diagnostic
+only. Actual screen costs will be reported even if the targets are missed;
+no post-outcome retuning or censoring.
+
+The model-free `cwv-shortlist-screen-20260905.service` queue owns the launch:
+two-ply completes successfully, then these five arms run sequentially, before
+the separately owned netroll screen. Do not start a duplicate launcher.
+Pinned source and operations are at `/root/cwv-shortlist-dev.tE2GiD` on
+Strength; outputs go under its `screen/` directory. Each arm retains atomic
+completed cluster pairs and can resume only missing pairs with identical
+inputs. Initial estimate is 4–6 hours **from screen start**, excluding the host
+wait; replace it with observed pair throughput once running.
+
+Pre-screen evidence and the exact operations plan are retained on Mini at
+`/Users/jerryyu/shengji-archive/2026-09-05/cwv-shortlist-pre-screen.tar.gz`,
+SHA-256 `ba854716905f69097868a48e70021ccab2c49ac165b63c6c42d651c8b341c10d`.
+This archive contains timing evidence, not screen results.
+
+Remaining: run and retain all five arms; aggregate existing pair records once
+without replaying games; publish per-arm utility/CIs and actual CPU/wall, plus
+deal-paired learned-minus-uniform (1x and 3x) and learned-3x-minus-production-3x
+contrasts. These contrasts compare paired outcomes against a common opponent,
+not direct duels between arms. Append the result and one ledger line, then
+request Claude's result review for merge. No screen result is available yet.

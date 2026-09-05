@@ -1,7 +1,7 @@
 # Full-legal complete-world shortlist — DEV screen
 
 Status: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
-**three arms complete; uniform-3x running on Strength**. The five-arm screen started at 19:47:38 UTC
+**four arms complete; production-3x running on Strength**. The five-arm screen started at 19:47:38 UTC
 (15:47:38 EDT) after the two-ply job completed successfully at 19:47:15 UTC.
 No strength, promotion, deployment, or production-policy claim. Extends #227 using the
 merged #229/#230 evaluator/checkpoint, not the old public-observation head.
@@ -178,8 +178,9 @@ loss (negative) per round against production N30/R300, not additional wins.
 | Learned, nominal 1x (W1/N30/R300) | +0.002 [−0.070, +0.076] | 49.61% | 1.2813x / 1.2814x | 505.9 s |
 | Uniform, nominal 1x (N45/R300) | −0.078 [−0.145, −0.012] | 46.68% | 1.0323x / 1.0324x | 450.1 s |
 | Learned, nominal 3x (W32/N30/R300) | +0.039 [−0.025, +0.106] | 52.15% | 10.8826x / 10.8829x | 3,019.7 s |
+| Uniform, nominal 3x (N420/R300) | −0.117 [−0.190, −0.045] | 44.73% | 2.8292x / 2.8293x | 874.2 s |
 
-All three summaries are complete with zero reported problems. The W1 learned arm
+All four summaries are complete with zero reported problems. The W1 learned arm
 evaluated 4,779,116 action/world afterstates and played an off-production-ballot
 action on 1,031/18,384 decisions (5.61%). The uniform arm did so on
 1,086/18,726 decisions (5.80%). Thus the full-legal path is exercised, but the
@@ -198,17 +199,25 @@ therefore made exhaustive candidate scoring much more expensive; this is not
 a demonstrated improvement at 3x work. No recipe or population was changed
 after seeing that overrun.
 
+The higher-work uniform control also loses to production: −0.117 signed levels
+per round at 2.83x measured wall. It played off-production-ballot actions on
+1,133/18,792 decisions (6.03%). Spending more selection work on a randomly
+chosen same-size shortlist did not rescue that control in this screen.
+
 These are the existing per-arm `summary.json` files under `screen/learned-1x/`,
-`screen/uniform-1x/` and `screen/learned-3x/`, not additional gameplay or replay.
-All three complete arm directories (774 files / 241,911,143 bytes) are retained
+`screen/uniform-1x/`, `screen/learned-3x/` and `screen/uniform-3x/`, not gameplay replay.
+All four complete arm directories (1,032 files / 322,519,919 bytes) are retained
 on Mini at `/Users/jerryyu/shengji-archive/2026-09-05/cwv-shortlist-screen/`;
 their copied summary hashes match Strength. Later arms will join that archive
 as they complete, without modifying the existing copies.
 Uniform-1x completed at 20:03:42 UTC; learned-3x started immediately. Recipes,
 checkpoint and population remain fixed despite the interim readout. Learned-3x
 completed its final pair at 20:54 UTC; uniform-3x started at 20:54:05 UTC.
+Uniform-3x completed all pairs in 874.2 seconds, then production-3x started at
+21:08:43 UTC. The exact checkpoint and operations scripts are also retained in
+the Mini archive; the copied checkpoint matches its pre-outcome SHA above.
 
-Remaining: finish and retain the two running/queued arms; aggregate existing pair records once
+Remaining: finish and retain production-3x; aggregate existing pair records once
 without replaying games; publish per-arm utility/CIs and actual CPU/wall, plus
 deal-paired learned-minus-uniform (1x and 3x) and learned-3x-minus-production-3x
 contrasts. These contrasts compare paired outcomes against a common opponent,

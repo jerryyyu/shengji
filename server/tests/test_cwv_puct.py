@@ -28,6 +28,7 @@ from shengji.ai.cwv_puct import (
     select_move,
 )
 from shengji.ai.cwv_policy import CWVError
+from shengji.ai.mcbot import MCBot
 from shengji.ai.smart import SmartBot
 from shengji.engine.game import Game
 
@@ -200,6 +201,9 @@ def test_search_backs_up_every_node_on_every_path():
         assert node.N == total + ended_at.get(node.key, 0), node.key
         assert node.pending == 0
         assert node.Q == pytest.approx(0.25)
+        # the attempted-action edges account for the same visits
+        assert sum(e.N for e in node.edges.values()) == total
+        assert all(e.pending == 0 for e in node.edges.values())
         return node.N
     walk(root)
 
@@ -210,7 +214,7 @@ def _violations(bot, rnd, seat):
     """Selections of an action the current world's ballot does not offer."""
     bad = []
     for tr in bot.last_trace:
-        for key, s, action, world_ballot in tr["moves"]:
+        for key, s, action, world_ballot, _accepted in tr["moves"]:
             if action not in world_ballot:
                 bad.append((key, s, action))
     return bad
@@ -226,7 +230,7 @@ def test_actions_illegal_in_the_current_world_are_never_selected(monkeypatch):
     # mask has something to mask
     below = [n for n in bot.last_root.children.values() if n.actions]
     assert any(len(n.actions) > len(set(w_b)) for n in below
-               for tr in bot.last_trace for key, s, a, w_b in tr["moves"]
+               for tr in bot.last_trace for key, s, a, w_b, _acc in tr["moves"]
                if key == n.key), "no node saw differing ballots across worlds"
     assert _violations(bot, rnd, seat) == []
 
@@ -294,8 +298,8 @@ def test_virtual_loss_is_removed_after_backup():
         assert sum(n.N for n in bot.last_root.children.values()) == 64
 
     # MUTANT: pending visits are not released at backup -- Q is polluted
-    def leaky(path, value):
-        for node in path:
+    def leaky(path, value, edges=()):
+        for node in (*path, *edges):
             node.N += 1
             node.W += value
     original = cwv_puct.backup
@@ -309,17 +313,106 @@ def test_virtual_loss_is_removed_after_backup():
     assert any(n.pending > 0 for n in nodes)
 
 
+# ------------------------------ 9. children keyed by the ACCEPTED transition
+
+def _mixed_outcome_state():
+    """A lead decision and a throw (an off-suit single plus a pair from the
+    seat's hand) that the engine accepts whole in some of 32 sampled worlds
+    and rewrites into a forced component in others -- the shape of Codex's
+    PR #233 finding (initial Game seed 154, sampler seed 73, ('DA','DQ','DQ')
+    -> 12 full / 20 forced).  Seeds from 154 up, first hit: seed 154, seat 3,
+    ('H9','HQ','HQ') -> 4 full / 28 forced ('H9',)."""
+    from collections import Counter
+    from shengji.ai.cwv_policy import sample_worlds
+    from shengji.ai.cwv_puct import world_clone
+    from shengji.ai.memory import Memory
+    from shengji.engine.cards import TRUMP
+
+    for seed in range(154, 200):
+        for plies in range(0, 48, 4):
+            rnd = _state_after(seed, plies)
+            if rnd.phase != "play" or rnd.trick.plays:
+                continue
+            seat = rnd.turn
+            ordering = rnd.ordering
+            by_suit: dict[str, Counter] = {}
+            for card in rnd.hands[seat]:
+                suit = ordering.eff_suit(card)
+                if suit != TRUMP:
+                    by_suit.setdefault(suit, Counter())[card] += 1
+            for suit, counts in by_suit.items():
+                pairs = [c for c, n in counts.items() if n >= 2]
+                singles = [c for c, n in counts.items() if n == 1]
+                if not pairs or not singles:
+                    continue
+                throw = action_key([singles[0], pairs[0], pairs[0]])
+                sampler = MCBot(seed=73)
+                worlds, _ = sample_worlds(sampler, rnd, seat, 32,
+                                          mem=Memory(rnd, seat, own_kitty=True))
+                if len(worlds) < 8:
+                    continue
+                outcomes = set()
+                for hands, buried in worlds:
+                    clone = world_clone(rnd, hands, buried)
+                    clone.play(seat, list(throw))
+                    outcomes.add(CWVPuctBot.accepted_play(clone, seat))
+                if len(outcomes) >= 2:
+                    return copy.deepcopy(rnd), seat, throw, outcomes, worlds
+    raise AssertionError("no mixed-outcome throw found")
+
+
+def test_full_and_forced_throw_land_in_different_children(monkeypatch):
+    rnd, seat, throw, outcomes, worlds = _mixed_outcome_state()
+    assert throw not in outcomes or len(outcomes) >= 2
+    stub = _StubEvaluator(lambda p, s: 0.0)
+    bot = _bot(stub, CWV_TRACE=True, CWV_SIMULATIONS=len(worlds) * 2,
+               CWV_BATCH=len(worlds), CWV_WORLD_POOL=len(worlds))
+    monkeypatch.setattr(bot, "sample_worlds",
+                        lambda rnd_, seat_, n, mem=None: (list(worlds)[:n], n))
+    monkeypatch.setattr(CWVPuctBot, "TRACTOR_LOCK", False)
+    # force the throw at the root in every simulation
+    monkeypatch.setattr(CWVPuctBot, "_select",
+                        lambda self, node, legal, root_seat, noise:
+                        throw if node.depth == 0 else legal[0])
+    bot.decide_play(rnd, seat)
+    root = bot.last_root
+    accepted = {acc for tr in bot.last_trace
+                for key, s, action, _wb, acc in tr["moves"] if key == () and action == throw}
+    assert accepted == outcomes and len(accepted) >= 2
+    # one edge carries the attempted action's statistics ...
+    assert root.edges[throw].N == len(worlds) * 2
+    # ... and every accepted outcome is its OWN child state, each visited
+    assert set(root.children) == outcomes
+    assert sum(root.children[a].N for a in outcomes) == len(worlds) * 2
+    assert all(root.children[a].N > 0 for a in outcomes)
+    # a child's ballots below are the ballots of ITS public state only
+    for acc in outcomes:
+        child = root.children[acc]
+        assert child.key == (acc,)
+
+    # MUTANT (the old keying): children keyed by the ATTEMPTED action merge
+    # the full throw and the forced play into one state
+    monkeypatch.setattr(CWVPuctBot, "accepted_play",
+                        staticmethod(lambda clone, s: throw))
+    mutant = _bot(stub, CWV_TRACE=True, CWV_SIMULATIONS=len(worlds) * 2,
+                  CWV_BATCH=len(worlds), CWV_WORLD_POOL=len(worlds))
+    monkeypatch.setattr(mutant, "sample_worlds",
+                        lambda rnd_, seat_, n, mem=None: (list(worlds)[:n], n))
+    mutant.decide_play(rnd, seat)
+    assert set(mutant.last_root.children) == {throw}          # RED: merged
+
+
 # ------------------------------------------------- 6. argmax visits
 
 def test_move_is_the_argmax_of_root_visits_not_values():
     root = Node((), 0)
     candidates = [["SA"], ["HK"], ["D3"]]
     for cand, n, w in zip(candidates, (10, 2, 5), (1.0, 1.8, 0.0)):
-        child = root.child(action_key(cand))
-        child.N, child.W = n, w
+        edge = root.edge(action_key(cand))
+        edge.N, edge.W = n, w
     assert select_move(root, candidates) == 0            # 10 visits, Q 0.1
     # MUTANT: argmax over Q picks the rarely visited high-Q child
-    by_value = max(range(3), key=lambda i: root.children[action_key(candidates[i])].Q)
+    by_value = max(range(3), key=lambda i: root.edges[action_key(candidates[i])].Q)
     assert by_value == 1 and by_value != select_move(root, candidates)
 
     # end to end: a stub that rewards one root action makes it dominate

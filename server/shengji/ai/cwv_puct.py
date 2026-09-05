@@ -99,18 +99,38 @@ def action_key(cards: Sequence[str]) -> tuple[str, ...]:
 
 # ----------------------------------------------------------------- the tree
 
+class Edge:
+    """Statistics of one ATTEMPTED action at a node (what PUCT selects and
+    what the root's visit counts are read from)."""
+
+    __slots__ = ("N", "W", "pending")
+
+    def __init__(self):
+        self.N = 0
+        self.W = 0.0
+        self.pending = 0
+
+    @property
+    def Q(self) -> float:
+        return self.W / self.N if self.N else 0.0
+
+
 class Node:
-    """One public state below the root: statistics, children, prior.
+    """One public state below the root: statistics, edges, children, prior.
 
     ``N``/``W``: completed visits and their summed root-team values.
     ``pending``: paths in flight under virtual loss (removed at backup).
     ``seat``: the seat to act here (``None`` at a terminal).  ``actions``:
     the union over worlds of the ballots seen here, in first-seen order;
-    ``prior``: ``{action: P}`` for the priced ones; ``children``: created
-    child nodes by action.
+    ``prior``: ``{action: P}`` for the priced ones.  ``edges``: per ATTEMPTED
+    action, the statistics PUCT selects on.  ``children``: child states keyed
+    by the ACCEPTED public transition -- the play the engine resolved after
+    ``clone.play`` -- because a throw the engine refuses in one world becomes
+    a forced play with another public outcome, and the two must not share a
+    state node (Codex, PR #233).
     """
 
-    __slots__ = ("N", "W", "pending", "seat", "actions", "prior", "children",
+    __slots__ = ("N", "W", "pending", "seat", "actions", "prior", "edges", "children",
                  "terminal", "depth", "key", "world_ballots")
 
     def __init__(self, key: tuple, depth: int):
@@ -122,6 +142,7 @@ class Node:
         self.seat: int | None = None
         self.actions: list[tuple[str, ...]] = []
         self.prior: dict[tuple[str, ...], float] = {}
+        self.edges: dict[tuple[str, ...], Edge] = {}
         self.children: dict[tuple[str, ...], Node] = {}
         self.terminal = False
         #: this node's ballot per world index (deterministic per world)
@@ -134,11 +155,18 @@ class Node:
     def mean_prior(self) -> float:
         return (sum(self.prior.values()) / len(self.prior)) if self.prior else 1.0
 
-    def child(self, action: tuple[str, ...]) -> "Node":
-        node = self.children.get(action)
+    def edge(self, action: tuple[str, ...]) -> Edge:
+        edge = self.edges.get(action)
+        if edge is None:
+            edge = self.edges[action] = Edge()
+        return edge
+
+    def child(self, accepted: tuple[str, ...]) -> "Node":
+        """The child state reached by the ACCEPTED play ``accepted``."""
+        node = self.children.get(accepted)
         if node is None:
-            node = Node(self.key + (action,), self.depth + 1)
-            self.children[action] = node
+            node = Node(self.key + (accepted,), self.depth + 1)
+            self.children[accepted] = node
         return node
 
 
@@ -173,23 +201,24 @@ def select_move(root: Node, candidates: Sequence[Sequence[str]]) -> int:
     best = 0
     best_key = None
     for index, cand in enumerate(candidates):
-        node = root.children.get(action_key(cand))
-        n = node.N if node is not None else 0
-        q = node.Q if node is not None and node.N else float("-inf")
+        edge = root.edges.get(action_key(cand))
+        n = edge.N if edge is not None else 0
+        q = edge.Q if edge is not None and edge.N else float("-inf")
         key = (n, q)
         if best_key is None or key > best_key:
             best, best_key = index, key
     return best
 
 
-def backup(path: Sequence[Node], value: float) -> None:
-    """Add ``value`` (root-team perspective) to EVERY node on the path,
-    increment its visits and release the path's pending virtual loss."""
-    for node in path:
-        node.N += 1
-        node.W += value
-        if node.pending > 0:
-            node.pending -= 1
+def backup(path: Sequence[Node], value: float, edges: Sequence[Edge] = ()) -> None:
+    """Add ``value`` (root-team perspective) to EVERY node on the path (and
+    every attempted-action edge taken), increment visits and release the
+    path's pending virtual loss."""
+    for stat in (*path, *edges):
+        stat.N += 1
+        stat.W += value
+        if stat.pending > 0:
+            stat.pending -= 1
 
 
 # ------------------------------------------------------------ prior head
@@ -458,8 +487,8 @@ class CWVPuctBot(MCBot):
         stats = []
         priors = []
         for a in legal:
-            child = node.children.get(a)
-            stats.append((child.N, child.W, child.pending) if child is not None
+            edge = node.edges.get(a)
+            stats.append((edge.N, edge.W, edge.pending) if edge is not None
                          else (0, 0.0, 0))
             p = node.prior[a]
             if root_noise is not None:
@@ -472,14 +501,29 @@ class CWVPuctBot(MCBot):
         best = max(range(len(legal)), key=lambda i: scores[i])
         return legal[best]
 
+    @staticmethod
+    def accepted_play(clone: Round, seat: int) -> tuple[str, ...]:
+        """The play the engine ACCEPTED for ``seat`` in its newest trick (a
+        refused throw comes back as the forced component)."""
+        trick = clone.trick
+        if trick is not None and trick.plays and trick.plays[-1].seat == seat:
+            return action_key(trick.plays[-1].cards)
+        last = clone.history[-1].plays[-1]
+        if last.seat != seat:
+            raise CWVError("engine transition drift: the newest play is not the mover's")
+        return action_key(last.cards)
+
     def _simulate(self, root: Node, rnd: Round, root_seat: int, world, world_index: int,
                   prior_requests: list, root_noise: dict | None
-                  ) -> tuple[list[Node], Round, dict | None]:
-        """Descend one path under virtual loss; return ``(path, leaf, trace)``."""
+                  ) -> tuple[list[Node], Round, dict | None, list[Edge]]:
+        """Descend one path under virtual loss; return ``(path, leaf, trace,
+        edges)`` -- the state nodes visited and the attempted-action edges
+        taken."""
         hands, buried = world
         clone = world_clone(rnd, hands, buried)
         node = root
         path = [root]
+        edges: list[Edge] = []
         trace = {"world": world_index, "moves": []} if self.CWV_TRACE else None
         while True:
             if node.terminal or clone.phase != "play":
@@ -500,19 +544,21 @@ class CWVPuctBot(MCBot):
             if not legal:
                 raise CWVError("no legal child in this world at a non-terminal node")
             action = self._select(node, legal, root_seat, root_noise if node is root else None)
-            if trace is not None:
-                trace["moves"].append((node.key, seat, action, tuple(world_ballot)))
-            fresh = action not in node.children
-            child = node.child(action)
+            edges.append(node.edge(action))
             clone.play(seat, list(action))
+            accepted = self.accepted_play(clone, seat)
+            if trace is not None:
+                trace["moves"].append((node.key, seat, action, tuple(world_ballot), accepted))
+            fresh = accepted not in node.children
+            child = node.child(accepted)
             path.append(child)
             node = child
             if fresh:
                 self._expand(node, clone, prior_requests)
                 break
-        for visited in path:
+        for visited in (*path, *edges):
             visited.pending += 1
-        return path, clone, trace
+        return path, clone, trace, edges
 
     def _search(self, rnd: Round, seat: int, candidates: Sequence[Sequence[str]],
                 worlds: Sequence) -> tuple[Node, dict]:
@@ -543,15 +589,16 @@ class CWVPuctBot(MCBot):
         while done < S:
             batch = min(K, S - done)
             build0 = time.perf_counter()
-            paths, leaves, traces = [], [], []
+            paths, leaves, traces, edge_paths = [], [], [], []
             for i in range(batch):
                 index = done + i
-                path, leaf, tr = self._simulate(
+                path, leaf, tr, edges = self._simulate(
                     root, rnd, seat, worlds[index % pool], index % pool,
                     prior_requests, root_noise)
                 paths.append(path)
                 leaves.append(leaf)
                 traces.append(tr)
+                edge_paths.append(edges)
             stats["build_wall"] += time.perf_counter() - build0
             wall0, cpu0 = time.perf_counter(), time.process_time()
             values = np.asarray(self.evaluator.score(leaves, seat), dtype=np.float64)
@@ -560,8 +607,8 @@ class CWVPuctBot(MCBot):
             if values.shape != (batch,):
                 raise CWVError("evaluator returned a misaligned value vector")
             self._serve_prior_requests(prior_requests)
-            for path, leaf, value, tr in zip(paths, leaves, values, traces):
-                backup(path, float(value))
+            for path, leaf, value, tr, edges in zip(paths, leaves, values, traces, edge_paths):
+                backup(path, float(value), edges)
                 depth = len(path) - 1
                 stats["max_depth"] = max(stats["max_depth"], depth)
                 stats["depth_sum"] += depth
@@ -634,10 +681,10 @@ class CWVPuctBot(MCBot):
             root, stats = self._search(rnd, seat, candidates, worlds)
             self.last_root = root
             for index, cand in enumerate(candidates):
-                child = root.children.get(action_key(cand))
-                if child is not None and child.N:
-                    visits[index] = child.N
-                    means[index] = child.Q
+                edge = root.edges.get(action_key(cand))
+                if edge is not None and edge.N:
+                    visits[index] = edge.N
+                    means[index] = edge.Q
             best = select_move(root, candidates)
             self.last_alloc["n_by_candidate"] = visits
             self.positions_evaluated += stats["positions"]

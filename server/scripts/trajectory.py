@@ -5,7 +5,7 @@
         --rounds N --seed S --workers W --out DIR [--policy NAME] \
         [--explore-rate R] [--explore-k K] [--select-worlds n] \
         [--report-worlds n] [--cap 256] [--knob NAME=VALUE ...] \
-        [--widen VARIANT ...] [--merge] [--resume]
+        [--widen VARIANT ...] [--round-mix {first,sampled}] [--merge] [--resume]
 
 Plays rounds/2 seeded deal clusters in both mirrors with all four seats on
 the same registry policy (default mc-s0-report-lcb), captures every play
@@ -33,9 +33,15 @@ ballot.  Either way each record's ``production_ballot`` is the UNMODIFIED
 production list, ``ballot`` is what the search ran, and the overrides /
 variants are part of the run_id and of ``run.json`` / ``manifest.json``
 (``config.knobs`` / ``config.widen``), so such a store can never be resumed
-or mixed with a plain one.  See ``shengji/harvest/trajectory.py`` for the
-record mapping, the allocation and preference definitions, root
-exploration, knobs, widening and the shard/resume contract.
+or mixed with a plain one.  ``--round-mix sampled`` plays each cluster at a
+trump rank drawn uniformly over the 13 ranks with a banker that is unknown
+(a first round) with probability 0.25 and otherwise a uniform seat, from a
+stream seeded by (seed0, cluster) and shared by both mirrors, instead of
+the default ``first`` (every cluster a fresh game's rank-2 first round;
+byte-identical to before the option); the mix is part of the run_id and
+``--resume`` refuses a different one.  See ``shengji/harvest/trajectory.py``
+for the record mapping, the allocation and preference definitions, root
+exploration, knobs, widening, the round mix and the shard/resume contract.
 """
 from __future__ import annotations
 

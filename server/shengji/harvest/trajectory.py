@@ -189,6 +189,43 @@ stamped as ``config.widen``; runs without ``--widen`` omit the ``widening``
 key entirely and are byte-identical to a run of the same configuration
 before widening existed.
 
+Round mix (``--round-mix {first,sampled}``)
+--------------------------------------------
+Every cluster of a ``first`` run (the default) is a fresh game's FIRST
+round: ``Game.start_round`` on a fresh ``Game`` (``banker=None``,
+``level_idx=[0, 0]``) deals at trump rank 2 with no banker until the first
+declaration (seat 0 when nobody declares).  A store of first rounds never
+shows a head 12 of the 13 trump ranks or a banker seat known before the
+deal -- both inputs of the production observation encoder (a 13-way
+trump-rank one-hot and a seat-relative banker one-hot).  ``sampled`` draws
+the round each cluster plays (``round_mix_draw``): from
+``random.Random(_child_seed((seed0, cluster), "round-mix-v1"))`` -- its own
+stream, never the deal rng -- the trump rank uniform over the 13 ranks,
+then the banker None (a first round, as above) with probability
+``FIRST_ROUND_SHARE`` (0.25) and otherwise a uniform seat 0..3.  The round
+is constructed explicitly (``start_round_at``, the way PR #222's
+``search_screen.run_cluster`` does it: the banker team's level set to the
+rank, ``Round(rank, banker, game.rng)``, ``round_no`` bumped) because
+``Game.start_round`` plays rank 2 whenever no banker is known yet.  Both
+mirrors of a cluster share the draw and the deck, and the deck is the
+seed's shuffle as before: ``Round.__init__`` shuffles BEFORE it reads the
+rank, so at one seed every rank and banker deal the SAME 108 cards -- which
+is why the draw is per cluster over the clusters' distinct seeds and there
+is no "rank cycle at a fixed seed" mode (it would replay one deal 13
+times).  The records need no new field: ``setup.trump_rank`` /
+``setup.banker`` / ``deck`` already rebuild any round
+(``rebuild.state_for_record``), and the ``deck_from_seed`` reproducibility
+assertion is kept.  ``round_mix`` is stamped in ``config`` (run.json,
+manifest.json) and enters ``run_id`` when it is not ``first``, so
+``--resume`` with a different mix refuses like a knob change; a
+``sampled`` sidecar carries ``round_mix`` and the cluster's drawn
+``trump_rank`` / ``banker`` (plus the resolved banker per round), and
+``verify_shard`` re-derives the draw from (config, cluster) and checks it
+against the sidecar and against EVERY record's stored rank and banker, so
+a shard played at another round never verifies.  A ``first`` run's
+records, shards, sidecars and ``run_id`` are byte-identical to a run
+before this option existed.
+
 Bury decisions
 --------------
 ``MCBot.decide_bury`` exposes ``last_bury_record`` only when ``MC_BURY`` is
@@ -270,8 +307,9 @@ from typing import Callable, Iterator
 
 from ..ai.mcbot import MCBot, _child_seed
 from ..ai.registry import make_bot
+from ..engine.cards import RANKS
 from ..engine.game import Game
-from ..engine.round import actual_play_after
+from ..engine.round import Round, actual_play_after
 from ..evaluation import counters as production_counters
 from . import ballot_capture
 from .common import action_key, sha256_file, write_jsonl
@@ -300,6 +338,25 @@ ALLOCATION_COUNTER = ("fixed-design work split: selection worlds per candidate "
 BURY_ALLOCATION_COUNTER = "bury worlds per candidate (n_by_candidate); NOT a preference"
 TAU_FLOOR = 1e-6
 EXPLORE_STREAM = "trajectory-explore"
+#: ``--round-mix``: the round each cluster plays (module docstring).
+#: ``first`` = a fresh game's first round, today's bytes
+ROUND_MIXES = ("first", "sampled")
+DEFAULT_ROUND_MIX = "first"
+#: the per-cluster (rank, banker) draw of ``sampled`` has its own stream,
+#: never the deal rng: the deck stays the one the seed has always dealt
+ROUND_MIX_STREAM = "round-mix-v1"
+#: the share of sampled clusters played as a FIRST round (no banker until
+#: the first declaration; seat 0 when nobody declares)
+FIRST_ROUND_SHARE = 0.25
+#: the ``seeds`` stamp of the manifest, per mix
+ROUND_MIX_SEEDS = {
+    "first": "Game.start_round() on a fresh Game: trump rank 2, banker None "
+             "until the first declaration (seat 0 when nobody declares)",
+    "sampled": f"random.Random(_child_seed((seed0, cluster), {ROUND_MIX_STREAM!r})): "
+               f"trump rank uniform over the {len(RANKS)} ranks, then banker None "
+               f"with probability {FIRST_ROUND_SHARE} else a uniform seat 0..3; "
+               "both mirrors share the draw and the deck (start_round_at)",
+}
 #: seat seeds relative to the deal seed, as ``evaluation.run_arm`` assigns
 #: them to ``a1, a2, b1, b2``
 SEAT_SEED_OFFSETS = (0, 500_000, 1_000_000, 1_500_000)
@@ -697,6 +754,55 @@ def explore_seed(seed: int, mirror: int, seat: int) -> int:
     return _child_seed((seed, mirror, seat), EXPLORE_STREAM)
 
 
+# ---------------------------------------------------------------- round mix
+
+def round_mix_draw(round_mix: str, seed0: int, cluster: int
+                   ) -> tuple[str, int | None]:
+    """The ``(trump_rank, banker)`` cluster ``cluster`` plays under
+    ``round_mix`` (module docstring).
+
+    ``first``: rank 2 and no banker yet -- what ``Game.start_round`` deals
+    on a fresh ``Game``.  ``sampled``: from ``random.Random(_child_seed(
+    (seed0, cluster), ROUND_MIX_STREAM))`` -- its own stream, never the
+    deal rng -- the rank uniform over ``RANKS``, then the banker None with
+    probability ``FIRST_ROUND_SHARE`` else a uniform seat.  A pure function
+    of (round_mix, seed0, cluster): both mirrors share it, and
+    ``verify_shard`` re-derives it.
+    """
+    if round_mix == "first":
+        return RANKS[0], None
+    if round_mix != "sampled":
+        raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
+                              + ", ".join(ROUND_MIXES))
+    rng = random.Random(_child_seed((int(seed0), int(cluster)), ROUND_MIX_STREAM))
+    rank = RANKS[rng.randrange(len(RANKS))]
+    banker = None if rng.random() < FIRST_ROUND_SHARE else rng.randrange(4)
+    return rank, banker
+
+
+def start_round_at(game: Game, trump_rank: str, banker: int | None) -> Round:
+    """Begin ``game``'s round at an explicit trump rank and banker, the way
+    PR #222's ``search_screen.run_cluster`` does: ``Game.start_round`` plays
+    rank 2 whenever no banker is known yet, so the round is constructed
+    directly and the game's levels and banker are set to match it (the
+    banker team's level is the rank; with no banker yet both teams', as
+    whichever seat declares first takes the deal at this rank) --
+    ``finish_round`` reads them.  The deck is ``game.rng``'s shuffle,
+    exactly as ``start_round`` deals it: the rank and banker do not enter
+    the shuffle (``Round.__init__`` shuffles before it reads them)."""
+    assert not game.game_over and game.round is None
+    level = RANKS.index(trump_rank)
+    if banker is None:
+        game.level_idx = [level, level]
+    else:
+        game.level_idx[banker % 2] = level
+    game.banker = banker
+    game.round = Round(trump_rank, banker, game.rng)
+    game.round_no += 1
+    game.result = None
+    return game.round
+
+
 # ------------------------------------------------------------ configuration
 
 def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
@@ -705,17 +811,22 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                  select_worlds: int | None = None,
                  report_worlds: int | None = None,
                  cap: int | None = DEFAULT_CAP,
-                 knobs=None, widen=None) -> dict:
+                 knobs=None, widen=None,
+                 round_mix: str = DEFAULT_ROUND_MIX) -> dict:
     """``knobs`` (``--knob NAME=VALUE`` strings or a mapping) and ``widen``
     (``--widen`` variant names) are validated here, so a bad override or an
     unknown variant refuses before any round; they land in ``config.knobs``
-    (sorted, coerced) and ``config.widen`` (sorted, de-duplicated)."""
+    (sorted, coerced) and ``config.widen`` (sorted, de-duplicated).
+    ``round_mix`` (``--round-mix``) lands in ``config.round_mix``."""
     if not 0.0 <= float(explore_rate) <= 1.0:
         raise TrajectoryError("explore_rate must be in [0, 1]")
     if int(explore_k) < 0:
         raise TrajectoryError("explore_k must be >= 0")
     if cap is not None and int(cap) < 1:
         raise TrajectoryError("cap must be >= 1 (or None for unbounded)")
+    if round_mix not in ROUND_MIXES:
+        raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
+                              + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
     if not isinstance(probe, MCBot):
         raise TrajectoryError(
@@ -765,6 +876,7 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         "trajectory_class": trajectory_class(data_cls).__name__,
         "knobs": overrides,
         "widen": widen_names,
+        "round_mix": str(round_mix),
         "seed0": int(seed0),
         "explore_rate": float(explore_rate),
         "explore_k": int(explore_k),
@@ -794,9 +906,9 @@ def run_id_for(config: dict) -> str:
     """A digest of what generates the records, so a rerun at the same seed
     and knobs reproduces ``source_ref`` byte for byte.
 
-    Class-knob overrides and widening variants enter the payload only when
-    present, so a run without them keeps the run_id it had before those
-    options existed."""
+    Class-knob overrides, widening variants and a round mix other than
+    ``first`` enter the payload only when present, so a run without them
+    keeps the run_id it had before those options existed."""
     payload = {
         "policy": config["policy"],
         "seed0": config["seed0"],
@@ -809,6 +921,8 @@ def run_id_for(config: dict) -> str:
         payload["knobs"] = dict(sorted(config["knobs"].items()))
     if config.get("widen"):
         payload["widen"] = sorted(config["widen"])
+    if config.get("round_mix", DEFAULT_ROUND_MIX) != DEFAULT_ROUND_MIX:
+        payload["round_mix"] = config["round_mix"]
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
     return f"traj-s{config['seed0']}-{digest[:12]}"
 
@@ -1125,15 +1239,24 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
 
     Drives the round exactly as ``shengji.ai.env.play_round`` does (deal with
     declarations, the final declare pass, finalize, bury, play), so that at
-    ``explore_rate == 0`` the four bots make production's decisions.
+    ``explore_rate == 0`` the four bots make production's decisions.  The
+    round itself is the cluster's ``round_mix_draw``: a fresh game's first
+    round through ``Game.start_round`` under ``first`` (today's bytes), or
+    the drawn rank/banker through ``start_round_at`` under ``sampled``.
     """
     run_id = config["run_id"]
     started = time.perf_counter()
     bots = [make_trajectory_bot(config, seed=s,
                                 explore_rng=random.Random(explore_seed(seed, mirror, seat)))
             for seat, s in enumerate(mirror_seat_seeds(seed, mirror))]
+    rank, drawn_banker = round_mix_draw(config["round_mix"], config["seed0"], cluster)
     game = Game(random.Random(seed))
-    rnd = game.start_round()
+    if config["round_mix"] == DEFAULT_ROUND_MIX:
+        rnd = game.start_round()        # the path before --round-mix existed
+    else:
+        rnd = start_round_at(game, rank, drawn_banker)
+    if (rnd.trump_rank, rnd.banker) != (rank, drawn_banker):
+        raise TrajectoryError("the round does not play the cluster's drawn rank/banker")
     deck = list(rnd.deck)
     if deck != deck_from_seed(rnd.trump_rank, rnd.banker, seed):
         raise TrajectoryError("the deal is not reproducible from round_seed")
@@ -1221,6 +1344,7 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
     }
     return records, {"counts": dict(stats), "work": work, "timing": timing,
                      "cluster": cluster, "mirror": mirror, "seed": seed,
+                     "trump_rank": rnd.trump_rank, "banker": banker,
                      "attacker_points": int(result.attacker_points)}
 
 
@@ -1308,7 +1432,16 @@ def _atomic_write_text(path: Path, text: str, mode: int = 0o644) -> None:
 def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
                   records: list[dict], stats: list[dict]) -> dict:
     """Write the cluster's shard + sidecar atomically (temp name, then
-    ``os.replace``), read-only once published.  Returns the sidecar."""
+    ``os.replace``), read-only once published.  Returns the sidecar.
+
+    A ``sampled`` sidecar names the round the cluster played (``round_mix``,
+    the drawn ``trump_rank`` / ``banker``, the resolved banker per round);
+    a ``first`` sidecar stays byte-identical to one written before the
+    option existed."""
+    rank, drawn_banker = round_mix_draw(config["round_mix"], config["seed0"], cluster)
+    if any(st["trump_rank"] != rank for st in stats) or (
+            drawn_banker is not None and any(st["banker"] != drawn_banker for st in stats)):
+        raise TrajectoryError(f"cluster {cluster} played a round other than its draw")
     jsonl, side = shard_paths(out_dir, cluster)
     jsonl.parent.mkdir(parents=True, exist_ok=True)
     tmp = jsonl.with_name(jsonl.name + ".tmp")
@@ -1337,6 +1470,12 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
                     "decisions": st["counts"].get("decisions", 0),
                     "attacker_points": st["attacker_points"]} for st in stats],
     }
+    if config["round_mix"] != DEFAULT_ROUND_MIX:
+        sidecar["round_mix"] = config["round_mix"]
+        sidecar["trump_rank"] = rank
+        sidecar["banker"] = drawn_banker
+        for entry, st in zip(sidecar["rounds"], stats):
+            entry["banker"] = st["banker"]
     _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n",
                        mode=0o444)
     return sidecar
@@ -1345,7 +1484,15 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
 def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
                  ) -> tuple[dict | None, str]:
     """The sidecar when the published shard verifies (identity, sha256, byte
-    size, record count), else ``(None, reason)``."""
+    size, record count, and the round the cluster played), else ``(None,
+    reason)``.
+
+    The round is re-derived from (config, cluster) -- ``round_mix_draw`` --
+    and checked against the sidecar (a ``sampled`` one names it) and against
+    EVERY record's stored ``setup.trump_rank`` / ``setup.banker``: a drawn
+    banker verbatim, a first round's as the engine resolves it (the declarer,
+    seat 0 when nobody declared).  A shard played at another round never
+    verifies, so ``--resume`` regenerates it."""
     jsonl, side = shard_paths(out_dir, cluster)
     if not jsonl.is_file() or not side.is_file():
         return None, "missing"
@@ -1358,12 +1505,36 @@ def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
             or sidecar.get("cluster") != cluster or sidecar.get("seed") != seed
             or sidecar.get("path") != f"shards/{jsonl.name}"):
         return None, "sidecar identity"
+    round_mix = config.get("round_mix", DEFAULT_ROUND_MIX)
+    rank, banker = round_mix_draw(round_mix, config["seed0"], cluster)
+    if sidecar.get("round_mix", DEFAULT_ROUND_MIX) != round_mix:
+        return None, "round mix"
+    if round_mix != DEFAULT_ROUND_MIX and (
+            sidecar.get("trump_rank") != rank
+            or "banker" not in sidecar or sidecar["banker"] != banker):
+        return None, "round mix"
     if jsonl.stat().st_size != sidecar.get("bytes"):
         return None, "byte size"
     if sha256_file(jsonl) != sidecar.get("sha256"):
         return None, "sha256"
+    n = 0
     with jsonl.open("rb") as fh:
-        n = sum(1 for _ in fh)
+        for line in fh:
+            n += 1
+            try:
+                setup = json.loads(line)["setup"]
+                stored_rank, stored_banker = setup["trump_rank"], setup["banker"]
+                declaration = setup["declaration"]
+            except (ValueError, KeyError, TypeError):
+                return None, "record unreadable"
+            if stored_rank != rank:
+                return None, "trump rank"
+            if banker is None:
+                expected = declaration["seat"] if declaration else 0
+            else:
+                expected = banker
+            if stored_banker != expected:
+                return None, "banker"
     if n != sidecar.get("records"):
         return None, "record count"
     return sidecar, "ok"
@@ -1598,6 +1769,9 @@ def identity(config: dict) -> dict:
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "env": environment_identity(),
         "ballot": str(mc_ballot(probe)),
+        # the round mix is a run knob (config.round_mix, part of run_id when
+        # not ``first``): stamped here for the reader, not a code-identity key
+        "round_mix": config["round_mix"],
         "python": sys.version.split()[0],
     }
 
@@ -1643,7 +1817,9 @@ def build_run_manifest(config: dict, ident: dict, *, rounds: int,
                            "b1, b2; mirror 0 seats [a1, b1, a2, b2], mirror 1 "
                            "[b1, a1, b2, a2]",
                   "explore": f"random.Random(_child_seed((seed, mirror, seat), "
-                             f"{EXPLORE_STREAM!r}))"},
+                             f"{EXPLORE_STREAM!r}))",
+                  "round_mix": f"{config['round_mix']}: "
+                               + ROUND_MIX_SEEDS[config["round_mix"]]},
         "notes": [
             "allocation (kind search-work) = the fixed-design work split "
             "(selection worlds per candidate + report-fold worlds credited to "
@@ -1715,6 +1891,12 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
                 f"resume refused: {out_dir} holds run {existing.get('run_id')} "
                 f"widened by {old_widen} but {sorted(config['widen'])} was "
                 "requested; shards of different ballots never mix")
+        old_mix = old_config.get("round_mix") or DEFAULT_ROUND_MIX
+        if old_mix != config["round_mix"]:
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"with round mix {old_mix!r} but {config['round_mix']!r} was "
+                "requested; shards of different round mixes never mix")
         if existing.get("run_id") != config["run_id"]:
             raise TrajectoryError(
                 f"resume refused: {out_dir} holds run {existing.get('run_id')} "
@@ -1748,12 +1930,14 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              select_worlds: int | None = None, report_worlds: int | None = None,
              cap: int | None = DEFAULT_CAP, merge: bool = False,
              resume: bool = False, knobs=None, widen=None,
+             round_mix: str = DEFAULT_ROUND_MIX,
              progress: Callable[[dict], None] | None = None,
              argv: list[str] | None = None) -> dict:
     """Generate the shard store in ``out_dir`` (+ ``trajectory.jsonl`` with
     ``merge``); returns the manifest.  Raises ``TrajectoryError`` when any
     cluster failed (published shards are kept for ``--resume``).
-    ``knobs`` / ``widen`` are the ``--knob`` / ``--widen`` lists."""
+    ``knobs`` / ``widen`` are the ``--knob`` / ``--widen`` lists;
+    ``round_mix`` is ``--round-mix``."""
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     if rounds < 2 or rounds % 2:
         raise TrajectoryError("rounds must be an even number >= 2: every "
@@ -1763,7 +1947,7 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
     config = build_config(policy=policy, seed0=seed0, explore_rate=explore_rate,
                           explore_k=explore_k, select_worlds=select_worlds,
                           report_worlds=report_worlds, cap=cap, knobs=knobs,
-                          widen=widen)
+                          widen=widen, round_mix=round_mix)
     out = Path(out_dir)
     ident = identity(config)
     resumed = _open_run(out, config, ident, resume=resume)
@@ -1824,6 +2008,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--widen", action="append", default=[], metavar="VARIANT",
                         help="append a ballot_capture candidate-set variant to every "
                              f"search ballot (repeatable; one of {', '.join(WIDEN_VARIANTS)})")
+    parser.add_argument("--round-mix", choices=ROUND_MIXES, default=DEFAULT_ROUND_MIX,
+                        help="the round each cluster plays: 'first' = a fresh game's "
+                             "first round (trump rank 2, banker by declaration; the "
+                             "default, byte-identical to before this option); 'sampled' "
+                             f"= per cluster a trump rank uniform over the {len(RANKS)} "
+                             f"ranks and a banker (none with probability {FIRST_ROUND_SHARE}, "
+                             "else a uniform seat) from a stream seeded by (seed0, "
+                             "cluster); both mirrors share it")
     parser.add_argument("--merge", action="store_true",
                         help="also write trajectory.jsonl (shards concatenated in cluster order)")
     parser.add_argument("--resume", action="store_true",
@@ -1850,7 +2042,7 @@ def main(argv: list[str] | None = None) -> int:
             explore_rate=args.explore_rate, explore_k=args.explore_k,
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
             cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
-            widen=args.widen, progress=progress,
+            widen=args.widen, round_mix=args.round_mix, progress=progress,
             argv=sys.argv if argv is None else ["trajectory", *argv])
     except TrajectoryError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
@@ -1860,6 +2052,7 @@ def main(argv: list[str] | None = None) -> int:
     wall = runtime["wall_secs"]
     rss = runtime["peak_rss_bytes"]
     print(f"{SOURCE}: run_id={manifest['run_id']} clusters={manifest['clusters']} "
+          f"round_mix={manifest['config']['round_mix']} "
           f"rounds={counts['rounds']} decisions={counts['decisions']} "
           f"bury_records={counts['bury_records']} searched={counts['searched']} "
           f"explored={counts['explore_fired']} added={counts['explore_added']} "

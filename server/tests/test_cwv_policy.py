@@ -487,6 +487,13 @@ def test_prior_table_forms_and_control_scores_by_stratum():
     assert table == {"middle|attacker": pytest.approx(0.5)} and default == 0.25
     with pytest.raises(cwv_policy.CWVError):
         prior_table_from({"strata": {"never|attacker": 1.0}})
+    # the training build stores its prior under baselines (#213 cells form)
+    table, default = cwv_policy.prior_table_from_metadata({"baselines": {
+        "stratified_prior": {"global_mean": -0.1, "cells": [
+            {"stratum": "late|defender|80+", "n": 2, "mean": 0.5}]}}})
+    assert table == {"late|defender": 0.5} and default == -0.1
+    with pytest.raises(cwv_policy.CWVError, match="no stratified_prior"):
+        cwv_policy.prior_table_from_metadata({"best_epoch": 1})
 
     rnd = _state_after(17, 3)
     evaluator = StratifiedPriorEvaluator({"early|attacker": 2.0, "early|defender": -2.0},

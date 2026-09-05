@@ -522,6 +522,23 @@ class StratifiedPriorEvaluator:
         return values
 
 
+def prior_table_from_metadata(metadata: Mapping[str, Any], *,
+                              label: str = "checkpoint") -> tuple[dict[str, float], float]:
+    """The stratified prior a checkpoint carries: ``metadata["stratified_prior"]``
+    (this module's dev checkpoints) or the training build's
+    ``metadata["baselines"]["stratified_prior"]`` (#213 ``cells`` form)."""
+    prior = metadata.get("stratified_prior")
+    if not isinstance(prior, Mapping):
+        baselines = metadata.get("baselines")
+        if isinstance(baselines, Mapping):
+            prior = baselines.get("stratified_prior")
+    if not isinstance(prior, Mapping):
+        raise CWVError(
+            f"{label}: metadata carries no stratified_prior; pass the "
+            "training receipt (SHENGJI_CWV_RECEIPT / --receipt)")
+    return prior_table_from(prior)
+
+
 def prior_evaluator_for(checkpoint: str | os.PathLike[str] | None, *,
                         receipt: str | os.PathLike[str] | None = None
                         ) -> StratifiedPriorEvaluator:
@@ -545,12 +562,7 @@ def prior_evaluator_for(checkpoint: str | os.PathLike[str] | None, *,
     if checkpoint is None:
         raise CWVError("a prior control needs a receipt or a checkpoint")
     _model, metadata, sha = load_cwv_checkpoint(checkpoint)
-    prior = metadata.get("stratified_prior")
-    if not isinstance(prior, Mapping):
-        raise CWVError(
-            f"{checkpoint}: metadata carries no stratified_prior; pass the "
-            "training receipt (SHENGJI_CWV_RECEIPT / --receipt)")
-    table, default = prior_table_from(prior)
+    table, default = prior_table_from_metadata(metadata, label=str(checkpoint))
     return StratifiedPriorEvaluator(
         table, default, source=f"checkpoint:{Path(checkpoint).resolve()}",
         checkpoint_sha256=sha)

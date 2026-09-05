@@ -14,11 +14,15 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
   both    value + prior
   none    production on both sides (identity control for neutral knobs)
   null    production vs its champion-matched null (noise floor on these deals)
+  work    compute control: production itself with N=--work-select-worlds and
+          R=--work-report-worlds on the ARM side only (absolute values;
+          production at its registered N=30/R=300 is the none control)
 
 The baseline is always the registered production class (--base-policy,
 default mc-s0-report-lcb) at its registered work.  --select-worlds and
 --report-worlds override BOTH sides' work for smoke tests only; the summary
-then says so.  --rounds is the total number of rounds: rounds/2 seeded deal
+then says so, and they cannot be combined with --arm work.  --rounds is the
+total number of rounds: rounds/2 seeded deal
 clusters, each played in both mirrors.  Fixed seeds reproduce rounds.jsonl and
 summary.json byte for byte at any worker count; wall-clock lives in
 timing.jsonl and runtime.json.
@@ -75,6 +79,13 @@ def parser() -> argparse.ArgumentParser:
                     help="SMOKE ONLY: override N on both sides")
     ap.add_argument("--report-worlds", type=int, default=None,
                     help="SMOKE ONLY: override R on both sides (LCB needs >= 30)")
+    ap.add_argument("--work-select-worlds", type=int, default=None,
+                    help="--arm work (required): the ARM side's N, absolute; "
+                         "the baseline keeps its registered N")
+    ap.add_argument("--work-report-worlds", type=int, default=None,
+                    help="--arm work (required): the ARM side's R, absolute "
+                         f"(>= {S.WORK_MIN_REPORT_WORLDS}); the baseline "
+                         "keeps its registered R")
     ap.add_argument("--bootstrap-replicates", type=int,
                     default=S.DEFAULT_BOOTSTRAP_REPLICATES)
     ap.add_argument("--bootstrap-seed", type=int,
@@ -100,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out, workers=args.workers,
             base_policy=args.base_policy, knobs=knobs,
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
+            work_select_worlds=args.work_select_worlds,
+            work_report_worlds=args.work_report_worlds,
             replicates=args.bootstrap_replicates,
             bootstrap_seed=args.bootstrap_seed, script_path=str(SCRIPT),
             argv=sys.argv if argv is None else [str(SCRIPT), *argv],

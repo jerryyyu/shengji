@@ -40,6 +40,15 @@ more expensive stand-in for each buys inside the unchanged search:
     the champion-matched null (same policy, RNG stream shifted by the registry
     offset) so the reviewer sees the noise floor on the same deals.
 
+``work``
+    Compute control: the production class itself (no oracle code) with
+    ``N_DETERMINIZATIONS``/``REPORT_FOLD_WORLDS`` set to the absolute
+    ``work_select_worlds``/``work_report_worlds`` on the ARM side only; the
+    baseline stays registered production.  An oracle arm's gain at K times
+    production's rollouts is only evidence for its mechanism if production
+    given the same total rollouts does not gain as much; this arm measures
+    that.  At the registered values it is the ``none`` identity control.
+
 INTERPRETATION (Codex review of PR #203, 2026-09-04).  Neither arm is an
 upper bound on what a learned component could buy.  The value arm is a
 bounded greedy one-ply rollout-policy modification scored by the same
@@ -96,8 +105,10 @@ from ..engine.game import Game
 from ..engine.round import Trick, TrickPlay
 from ..evaluation import counters as production_counters
 
-ARMS = ("none", "null", "value", "prior", "both")
+ARMS = ("none", "null", "value", "prior", "both", "work")
 DEFAULT_BASE_POLICY = "mc-s0-report-lcb"
+#: The one-sided paired LCB report rule is registered for n >= 30 worlds.
+WORK_MIN_REPORT_WORLDS = 30
 #: Same shift the registry uses for every champion-matched null.
 NULL_SEED_OFFSET = 999_983
 ROUND_SCHEMA = "oracle-ceiling-round-v1"
@@ -532,18 +543,57 @@ def make_oracle_bot(base_policy: str, arm: str, *, seed: int | None,
     return bot
 
 
+def work_arm_values(base_policy: str, select_worlds, report_worlds
+                    ) -> tuple[int, int]:
+    """Validate the work arm's absolute (N, R) for ``base_policy``."""
+    if select_worlds is None or report_worlds is None:
+        raise OracleScreenError(
+            "the work arm needs both work_select_worlds and work_report_worlds")
+    n, r = int(select_worlds), int(report_worlds)
+    if n < 1:
+        raise OracleScreenError("work_select_worlds must be >= 1")
+    if r < WORK_MIN_REPORT_WORLDS:
+        raise OracleScreenError(
+            f"work_report_worlds must be >= {WORK_MIN_REPORT_WORLDS}: the "
+            "LCB report rule is registered for at least that many worlds")
+    if base_policy_class(base_policy).REPORT_RULE == "none":
+        raise OracleScreenError(
+            f"base policy {base_policy!r} has no report fold to scale")
+    return n, r
+
+
+def make_work_bot(base_policy: str, *, seed: int | None, select_worlds,
+                  report_worlds):
+    """The compute-control arm: production itself at an absolute N and R."""
+    n, r = work_arm_values(base_policy, select_worlds, report_worlds)
+    bot = make_bot(base_policy, seed=seed)
+    bot.N_DETERMINIZATIONS = n
+    bot.REPORT_FOLD_WORLDS = r
+    bot.policy_name = f"{base_policy}+work-N{n}-R{r}"
+    return bot
+
+
 def make_side_bot(config: dict, side: str, seed: int):
     """One bot for one seat: ``side`` is ``arm`` or ``baseline``."""
     base = config["base_policy"]
     arm = config["arm"]
+    work = config.get("work") or {}
     if side == "baseline" or arm == "none":
         bot = make_bot(base, seed=seed)
     elif arm == "null":
         bot = make_bot(base, seed=seed + NULL_SEED_OFFSET)
         bot.policy_name = f"{base}+null"
+    elif arm == "work":
+        if work.get("select_worlds") is not None or \
+                work.get("report_worlds") is not None:
+            raise OracleScreenError(
+                "the work arm cannot be combined with the smoke "
+                "select_worlds/report_worlds overrides")
+        bot = make_work_bot(base, seed=seed,
+                            select_worlds=work.get("work_select_worlds"),
+                            report_worlds=work.get("work_report_worlds"))
     else:
         bot = make_oracle_bot(base, arm, seed=seed, knobs=config["knobs"])
-    work = config.get("work") or {}
     if work.get("select_worlds") is not None:
         bot.N_DETERMINIZATIONS = int(work["select_worlds"])
     if work.get("report_worlds") is not None:
@@ -578,7 +628,14 @@ def work_counters(bots) -> dict:
 
 def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
                  knobs: dict | None = None, select_worlds: int | None = None,
-                 report_worlds: int | None = None) -> dict:
+                 report_worlds: int | None = None,
+                 work_select_worlds: int | None = None,
+                 work_report_worlds: int | None = None) -> dict:
+    """``select_worlds``/``report_worlds`` are the SMOKE overrides (both
+    sides); ``work_select_worlds``/``work_report_worlds`` are the work arm's
+    absolute N/R (arm side only).  ``work.effective`` is the baseline side's
+    work, ``work.arm_effective`` the arm side's; they differ only for the
+    work arm, whose baseline is production and therefore not a smoke run."""
     if arm not in ARMS:
         raise OracleScreenError(f"arm must be one of {ARMS}, got {arm!r}")
     base_cls = base_policy_class(base_policy)
@@ -598,6 +655,20 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
         if report_worlds < 0:
             raise OracleScreenError("report_worlds must be >= 0")
         effective["report_fold_worlds"] = int(report_worlds)
+    arm_effective = dict(effective)
+    if arm == "work":
+        if select_worlds is not None or report_worlds is not None:
+            raise OracleScreenError(
+                "the work arm sets the arm side's N/R itself; the smoke "
+                "select_worlds/report_worlds overrides (both sides) cannot "
+                "be combined with it")
+        n, r = work_arm_values(base_policy, work_select_worlds,
+                               work_report_worlds)
+        arm_effective["n_determinizations"] = n
+        arm_effective["report_fold_worlds"] = r
+    elif work_select_worlds is not None or work_report_worlds is not None:
+        raise OracleScreenError(
+            "work_select_worlds/work_report_worlds apply to the work arm only")
     return {
         "arm": arm,
         "base_policy": base_policy,
@@ -606,8 +677,11 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
         "work": {
             "select_worlds": select_worlds,
             "report_worlds": report_worlds,
+            "work_select_worlds": work_select_worlds,
+            "work_report_worlds": work_report_worlds,
             "registered": registered,
             "effective": effective,
+            "arm_effective": arm_effective,
             "production": effective == registered,
         },
     }
@@ -864,6 +938,13 @@ def arm_description(config: dict) -> str:
     if arm == "null":
         return (f"{base} vs its champion-matched null "
                 f"(seed offset {NULL_SEED_OFFSET})")
+    if arm == "work":
+        w = config["work"]
+        return (f"{base} at N={w['arm_effective']['n_determinizations']} "
+                f"selection worlds, R={w['arm_effective']['report_fold_worlds']} "
+                f"report worlds vs production "
+                f"N={w['registered']['n_determinizations']}, "
+                f"R={w['registered']['report_fold_worlds']} (compute control)")
     parts = []
     if arm in ("value", "both"):
         parts.append(
@@ -912,6 +993,10 @@ def identity(config: dict, script_path: str | None = None) -> dict:
     if config["arm"] in ("value", "prior", "both"):
         arm_bot = make_oracle_bot(config["base_policy"], config["arm"],
                                   seed=0, knobs=config["knobs"])
+        ballots["arm"] = str(mc_ballot(arm_bot))
+        ballots["arm_class"] = type(arm_bot).__name__
+    elif config["arm"] == "work":
+        arm_bot = make_side_bot(config, "arm", 0)
         ballots["arm"] = str(mc_ballot(arm_bot))
         ballots["arm_class"] = type(arm_bot).__name__
     return {
@@ -988,13 +1073,17 @@ def write_outputs(out_dir: str | os.PathLike, *, records, timings, summary,
 def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
                base_policy: str = DEFAULT_BASE_POLICY, knobs: dict | None = None,
                select_worlds: int | None = None, report_worlds: int | None = None,
+               work_select_worlds: int | None = None,
+               work_report_worlds: int | None = None,
                replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
                bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
                script_path: str | None = None, argv: list[str] | None = None,
                progress: bool = False) -> dict:
     config = build_config(arm=arm, base_policy=base_policy, knobs=knobs,
                           select_worlds=select_worlds,
-                          report_worlds=report_worlds)
+                          report_worlds=report_worlds,
+                          work_select_worlds=work_select_worlds,
+                          work_report_worlds=work_report_worlds)
     ident = identity(config, script_path)
     started = time.perf_counter()
 

@@ -167,6 +167,45 @@ full rollouts but uniform root priors (no learned prior or value). It retains
 the same allocator and report rule. Compare measured costs as well as outcomes
 before attributing any benefit to learning rather than broader search.
 
+### Fresh results — the diagnostic positive did not replicate
+
+Both corrected comparisons completed all 104 deal clusters / 208 mirrored
+rounds, under executing source `90c5a614`. The learned-prior run took 382.1
+seconds and the uniform control 375.8 seconds, with four Mini CPU workers.
+Both recorded zero short searches, zero zero-world searches and zero failed
+worlds. The control recorded zero value evaluations and zero neural inference
+time: it loaded the common checkpoint container but used neither learned head.
+
+| Fresh arm vs production MC-LCB | Wins / 208 | Signed levels / round (95% deal-cluster interval) | CPU / MC-LCB |
+| --- | ---: | ---: | ---: |
+| Prior_weight=3, full rollouts | 99 (47.6%) | −0.08173 [−0.18269, +0.02885] | 0.98624 |
+| Uniform prior, full rollouts | 100 (48.1%) | −0.08173 [−0.18750, +0.01442] | 0.96625 |
+
+The learned-minus-uniform difference in their performance against MC-LCB is
+0.00000 levels/round, with paired-deal bootstrap interval [−0.12019, +0.12981]
+(1,000 resamples, seed 20260904). That is not a direct learned-versus-uniform
+duel. Neither comparison establishes superiority or equivalence; neither
+supports scaling or deployment. The 26-deal positive was a screening hypothesis
+and must not be presented as a confirmed win.
+
+In the fresh learned arm, 1,757/6,207 searched decisions (28.3%) accepted the
+challenger through the final report; 4,450 reverted to the heuristic incumbent.
+It played 355 off-ballot actions, versus 201 for uniform. Thus the model changes
+search behavior, but different moves/coverage did not yield a measured strength
+gain. These counts do not identify whether the selector, the report's fixed
+continuation, or model error is the cause.
+
+Disposition: do not add recursive search to this recipe yet. One- and
+three-trick leaves evaluate counterfactual states reached through a fixed
+heuristic under sampled worlds, whereas the current model learned natural
+RunA trajectories. The next-actor team sign is mechanically consistent, but
+the conditional information and state distribution differ; lower natural-state
+MAE alone does not certify action ranking on those leaves. Before investing in
+a tree, measure candidate/leaf ranking against paired continuation returns and
+test whether a prior improves allocation over uniform. These remain next
+experiments, not conclusions that MCTS cannot work. No further hyperparameter
+search was made on these 104 outcomes.
+
 ## Run and recover
 
 From `server/`, with the reviewed native extension built:

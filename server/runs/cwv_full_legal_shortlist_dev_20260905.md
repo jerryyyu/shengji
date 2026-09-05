@@ -1,7 +1,8 @@
 # Full-legal complete-world shortlist — DEV screen
 
-Status at 2026-09-05 18:55 UTC: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
-**256-cluster screen queued, not launched** behind Strength's two-ply job.
+Status at 2026-09-05 19:54 UTC: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
+**five-arm 256-cluster screen running on Strength**, started at 19:47:38 UTC
+(15:47:38 EDT) after the two-ply job completed successfully at 19:47:15 UTC.
 No strength, promotion, deployment, or production-policy claim. Extends #227 using the
 merged #229/#230 evaluator/checkpoint, not the old public-observation head.
 The #222 driver conflict is resolved in the merged stack; no duplicate repair.
@@ -147,8 +148,15 @@ the separately owned netroll screen. Do not start a duplicate launcher.
 Pinned source and operations are at `/root/cwv-shortlist-dev.tE2GiD` on
 Strength; outputs go under its `screen/` directory. Each arm retains atomic
 completed cluster pairs and can resume only missing pairs with identical
-inputs. Initial estimate is 4–6 hours **from screen start**, excluding the host
-wait; replace it with observed pair throughput once running.
+inputs. The live unit's driver and 16 spawned workers were independently
+verified; all workers were using approximately one core each. The first arm
+completed all 256 pairs in 505.9 seconds with zero summary problems; the queue
+started uniform-1x at 19:56:08 UTC. Its measured decision CPU/wall was
+1.2813x/1.2814x baseline: the nominal 1x target was exceeded and will be
+reported as such, not presented as equal work. This is faster than the initial
+4–6-hour total planning estimate; later arms have larger doses, so do not
+extrapolate total duration from the first arm alone. Progress and stage
+timestamps remain in the saved logs and `screen/pipeline-status.json`.
 
 Pre-screen evidence and the exact operations plan are retained on Mini at
 `/Users/jerryyu/shengji-archive/2026-09-05/cwv-shortlist-pre-screen.tar.gz`,
@@ -160,4 +168,5 @@ without replaying games; publish per-arm utility/CIs and actual CPU/wall, plus
 deal-paired learned-minus-uniform (1x and 3x) and learned-3x-minus-production-3x
 contrasts. These contrasts compare paired outcomes against a common opponent,
 not direct duels between arms. Append the result and one ledger line, then
-request Claude's result review for merge. No screen result is available yet.
+request Claude's result review for merge. The complete five-arm comparison is
+not available yet.

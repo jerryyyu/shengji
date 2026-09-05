@@ -14,10 +14,13 @@ No retraining, BELIEF dependency, or production registry entry is required.
 - Allocate root investigations with a PUCT-style rule. Compare a challenger
   and the incumbent on the same sampled world. An incumbent investigation
   evaluates it once, not twice.
-- Apply the candidate in the engine, complete its current trick, and predict
+- Apply the candidate in the engine, complete one trick by default, and predict
   value for the resulting acting seat. Convert by partnership to root-team
   signed levels. Terminal leaves use the engine result. Value-only and
-  prior-only ablations are available, but not a new training sweep.
+  prior-only ablations are available. `--leaf-tricks 3` instead finishes three
+  tricks with the fixed heuristic continuation before evaluating the leaf;
+  it does not branch/search opponents' replies. `--leaf-tricks 0` evaluates
+  immediately after the action and has not been screened below.
 - Nominate one challenger, then run **unchanged production fresh-world full
   rollouts and its 300-world paired LCB report** against the original heuristic
   incumbent. Neural selection values do not enter this confidence calculation.
@@ -29,6 +32,11 @@ ballots, not exhaustive actions or MCTS visits; off-ballot generalization is
 unproven. Its leaf value predicts outcomes under the training policy, not an
 optimal perfect-information value. Unchanged report continuations can still
 reject an actually good move they misunderstand.
+
+`--paired-advantage` changes both root allocation and final challenger ranking
+to mean candidate-minus-incumbent value from the same sampled worlds. Without
+it, each action uses its absolute mean. The flag defaults to false; the
+independent full-rollout report is unchanged in either case.
 
 `SearchConfig(self_play=True)` enables root Dirichlet noise and samples the
 played action from allocation visits on separate RNG streams. Mandatory
@@ -94,6 +102,70 @@ is evidence that the model has distilled PT-Luna yet.
 Full result and interpretation: [PR #222](https://github.com/jerryyyu/shengji/pull/222#issuecomment-5547202677).
 Local artifacts, including earlier unfavorable CPU calibration, remain under
 `/Users/jerryyu/shengji-archive/learned-search-20260904/`.
+
+### Six diagnostic ablations — same 26 deals, not independent confirmations
+
+All arms keep candidate N12/R300 versus baseline N30/R300, all 13 ranks, and
+four CPU workers. The first two used source `c8415708`; the later four used
+`c02b838f`. The latter adds optional paired ranking and three-trick leaves,
+with defaults preserving the original behavior. Each artifact records its
+complete executing source and checkpoint identity. Intervals below bootstrap
+deal clusters, not the two mirrored rounds as independent samples.
+
+| Variant | Wins / 52 | Signed levels / round (95% interval) | CPU / MC-LCB |
+| --- | ---: | ---: | ---: |
+| Original combined heads, one trick | 21 | −0.212 [−0.385, −0.038] | 0.976 |
+| Original prior only, full rollouts | 23 | −0.115 [−0.346, +0.077] | 0.954 |
+| Original value only, one trick | 22 | −0.096 [−0.269, +0.058] | 0.932 |
+| Original combined heads, paired ranking | 24 | −0.173 [−0.423, +0.077] | 0.982 |
+| Original combined heads, three tricks | 20 | −0.269 [−0.442, −0.115] | 1.000 |
+| Sweep prior_weight=3, prior only | 28 | +0.115 [−0.038, +0.269] | 0.962 |
+| Sweep aux_search_mean=3, value only | 21 | −0.173 [−0.365, +0.038] | 0.939 |
+
+The checkpoint swaps were chosen before their gameplay outcomes: prior weight
+3 for improved prior fitting and auxiliary weight 3 for lower validation value
+MAE. Their checkpoint SHAs are respectively
+`3d88cb285eb9b60c7f8c2adce5064b6653909dd37c8c628a891959eac8853f39`
+and `97005c86ac24f04761c4cde3c4c8bb18249e0e02373e7c0dc602fcfe69766937`.
+Both retain explicit legacy-schema loading and have no Luna training data.
+The lower-cost value arms are not exactly CPU-matched comparisons.
+
+Interpretation: deeper heuristic continuation did not rescue the value head
+on these deals, and lower held-out value error did not translate into better
+gameplay here. This does not establish a causal one-vs-three-trick difference
+or disprove recursive search. The prior-only checkpoint is the one positive
+point estimate, but its interval crosses zero and choosing among reused-deal
+arms makes it hypothesis-generating only. Do not expand a configuration sweep
+until this hypothesis faces fresh games.
+
+Fresh follow-up: keep that prior-only recipe unchanged on 104 new paired deal
+clusters / 208 rounds, seeds `2026090701..2026090804`, same rank cycle and
+N12/R300 versus N30/R300, in `fresh-prior3-n12-104`. Plan and all raw
+diagnostic artifacts are preserved in the archive above. Expected wall is
+7–9 minutes with four Mini CPU workers, leaving the MPS training sweep alone.
+Do not stop or tune on intermediate outcomes. Report measured cost and failures
+alongside results; a positive screen still needs a no-learning allocation
+control before attributing the result to a learned prior.
+
+Fresh-screen engineering finding: at `c02b838f`, cluster 14 reached 27,346
+legal actions whose float32 softmax summed to 1.000001471914402. The consumer
+correctly rejected that non-unit distribution. Only 12 complete pairs were
+published: the executor's context-manager exit waited for all queued tasks
+before reporting the exception, discarding their later results. The partial
+artifact is retained and is not a gameplay verdict. Repair `90c5a614` normalizes
+the global emitted probability mass without relaxing the consumer guard,
+bounds in-flight work, reports failure immediately, and saves already-running
+successes. All 37 focused tests pass, including a main-path failure/draining
+witness; the exact failed pair now completes. One independent delta review
+passed. The comparison restarts in `fresh-prior3-n12-104-repaired` on the
+same 104 seeds and settings, carrying the new numerical producer identity.
+Old partials remain separate; no seed or model selection used their outcomes.
+
+One fixed control follows regardless of that result's sign:
+`fresh-uniform-n12-104`, same seeds and N12/R300, exhaustive legal actions and
+full rollouts but uniform root priors (no learned prior or value). It retains
+the same allocator and report rule. Compare measured costs as well as outcomes
+before attributing any benefit to learning rather than broader search.
 
 ## Run and recover
 

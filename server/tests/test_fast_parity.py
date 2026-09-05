@@ -766,8 +766,48 @@ def test_generation_recording_parity():
     import random as _random
 
     from shengji.ai.env import play_round
+    from shengji.ai.mcbot import MCBot
     from shengji.engine.game import Game
-    from shengji.rl.distill_generate import RecordingMCBot
+    from shengji.rl.actions import enumerate_actions
+    from shengji.rl.dataset import Decision
+    from shengji.rl.encode import encode_action, encode_obs
+
+    class RecordingMCBot(MCBot):
+        """MCBot that records every search evaluation (observation,
+        candidate encodings, per-candidate values, chosen index).  This was
+        `shengji.rl.distill_generate.RecordingMCBot`; the distillation lane
+        was removed on 2026-09-05 and the recorder now lives here because
+        the parity check is about the search, not the dataset."""
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.decisions: list[Decision] = []
+
+        def decide_play(self, rnd, seat):
+            play = super().decide_play(rnd, seat)
+            if self.last_eval is not None:
+                candidates, values = self.last_eval
+                key = sorted(play)
+                chosen = next((i for i, a in enumerate(candidates)
+                               if sorted(a) == key), 0)
+                self.decisions.append(Decision(
+                    obs=encode_obs(rnd, seat),
+                    chosen=chosen, seat=seat,
+                    actions=[encode_action(a, rnd) for a in candidates],
+                    action_values=list(values)))
+            else:
+                acts = enumerate_actions(rnd, seat, include_throws=True)
+                if len(acts) > 1:
+                    key = sorted(play)
+                    chosen = next((i for i, a in enumerate(acts)
+                                   if sorted(a) == key), None)
+                    if chosen is None:
+                        acts.append(play)
+                        chosen = len(acts) - 1
+                    self.decisions.append(Decision(
+                        obs=encode_obs(rnd, seat),
+                        chosen=chosen, seat=seat,
+                        actions=[encode_action(a, rnd) for a in acts]))
+            return play
 
     def run(seed):
         bot = RecordingMCBot(seed=seed)

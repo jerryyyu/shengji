@@ -22,8 +22,25 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
           summary's wide_coverage block and a problems entry say so, or
           --wide-require-complete refuses the round and the run exits 2.
   wide-value  wide + value
+  knobs   NOT an oracle: the production class with candidate-generator knobs
+          overridden by --knob NAME=VALUE (repeatable), screened at equal
+          work.  Accepted: the ballot switches RETAIN_ALL_LEAD_PAIRS,
+          V3_LEAD_SINGLES, RISKY_THROWS, TRUMP_BALLOT, WIDE_LEAD_BALLOT
+          (0/1/true/false) and the ballot caps LEAD_MAX_CANDIDATES,
+          FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES, BURY_MAX_CANDIDATES (int
+          >= 1).  Every other class attribute (search work, recovery,
+          sampling, report/statistical and exact-endgame controls, and
+          TRACTOR_LOCK, whose locked leads skip the search entirely) is
+          refused BY NAME, so the work/report vector stays production's on
+          both sides (identity.search_vector);
+          the override set is stamped in the summary and the extra ballot
+          work is counted.  Without --knob it is the none control.
   none    production on both sides (identity control for neutral knobs)
   null    production vs its champion-matched null (noise floor on these deals)
+
+    SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/oracle_screen.py --arm knobs \
+        --knob V3_LEAD_SINGLES=1 --knob LEAD_MAX_CANDIDATES=64 \
+        --rounds 64 --seed 145000000 --workers 16 --out runs/oracle/knobs-v3
 
 The baseline is always the registered production class (--base-policy,
 default mc-s0-report-lcb) at its registered work.  --select-worlds and
@@ -99,6 +116,12 @@ def parser() -> argparse.ArgumentParser:
                          "--wide-cap refuses its round, the run stops, records "
                          "the refusal in summary.json and exits 2 (default: "
                          "rank the capped prefix and report wide_coverage)")
+    ap.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
+                    help="knobs arm only: override a candidate-generator knob "
+                         "of the base policy (repeatable): a ballot switch "
+                         "takes 0/1/true/false, a ballot cap an int >= 1; any "
+                         "other name, or a bad or out-of-bounds value, refuses "
+                         "the run before any round")
     ap.add_argument("--select-worlds", type=int, default=None,
                     help="SMOKE ONLY: override N on both sides")
     ap.add_argument("--report-worlds", type=int, default=None,
@@ -137,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             replicates=args.bootstrap_replicates,
             bootstrap_seed=args.bootstrap_seed, script_path=str(SCRIPT),
             argv=sys.argv if argv is None else [str(SCRIPT), *argv],
-            progress=args.progress)
+            progress=args.progress, knob_overrides=args.knob)
     except S.OracleScreenError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         paths = getattr(exc, "paths", None)

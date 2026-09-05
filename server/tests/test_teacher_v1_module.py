@@ -13,9 +13,9 @@ import pytest
 
 from shengji.ai.registry import make_bot
 from shengji.engine.game import Game
-from shengji.teacher_v1 import (EXPERIMENT, SEED_START, derive_stream,
-                                replay_state, split_for_deal, targets,
-                                tensor_problems)
+from shengji.teacher_v1 import (EXPERIMENT, SEED_START,  # noqa: E402
+                                STATE_SCHEMA, derive_stream, replay_state,
+                                split_for_deal, targets, tensor_problems)
 
 
 def raw_state(seed=SEED_START + 123, *, follow=False):

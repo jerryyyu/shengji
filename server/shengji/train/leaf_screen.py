@@ -39,14 +39,15 @@ from typing import Sequence
 
 import numpy as np
 
-from ..ai.registry import (VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, make_bot, register_vleaf_arms,
+from ..ai.registry import (VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_MODES,
+                           VLEAF_LEAF_STAGES, make_bot, register_vleaf_arms,
                            vleaf_checkpoint_sha256, vleaf_policy_name)
 from ..engine.cards import RANKS
 from ..engine.game import Game
 from ..engine.round import Round
 from ..oracle import screen as duel
-from .leaf_policy import (MCValueLeafSearch, PriorPointsLeaf, StratifiedPointsPrior,
-                          load_leaf_head)
+from .leaf_policy import (DEFAULT_CV_BETA, MCValueLeafSearch, PriorPointsLeaf,
+                          StratifiedPointsPrior, load_leaf_head)
 from .search_screen import (TimedPolicy, _publish, _run_pending, bind_output_config,
                             execution_source_identity)
 
@@ -57,6 +58,10 @@ COMBINED_SCHEMA = "vleaf-screen-combined-v1"
 ARMS = ("learned", "prior")
 LEAF_MODELS = VLEAF_LEAF_MODELS
 DEFAULT_LEAF_MODEL = "public"
+LEAF_STAGES = VLEAF_LEAF_STAGES
+DEFAULT_LEAF_STAGE = "all"
+LEAF_MODES = VLEAF_LEAF_MODES
+DEFAULT_LEAF_MODE = "replace"
 #: leaf kinds whose predicted leaves are neural-net calls
 NN_LEAF_KINDS = ("learned", "cwv")
 DEFAULT_GRID = (30, 45, 60, 90)
@@ -113,8 +118,32 @@ def require_matching_trump_ranks(calibration: dict, trump_ranks) -> None:
 
 
 #: what a calibration.json is the parity N FOR; a run must match every field
-CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "baseline_policy",
-                        "baseline_select_worlds", "report_worlds")
+CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "leaf_stage",
+                        "leaf_mode", "cv_beta", "baseline_policy", "baseline_select_worlds",
+                        "report_worlds")
+
+
+def config_variant(config: dict) -> dict:
+    """The arm's stage / mode / beta (defaults for a config written before
+    the options existed: every rollout, the replacing leaf)."""
+    return {"leaf_stage": str(config.get("leaf_stage") or DEFAULT_LEAF_STAGE),
+            "leaf_mode": str(config.get("leaf_mode") or DEFAULT_LEAF_MODE),
+            "beta": float(config.get("cv_beta", DEFAULT_CV_BETA))}
+
+
+def require_matching_variant(calibration: dict, *, leaf_stage: str, leaf_mode: str,
+                             beta: float) -> None:
+    """A calibration binds the variant: the report-fold-only leaf and the
+    control variate cost differently from the replacing leaf at every N, so
+    parity measured for one is not another's.  A calibration written before
+    the options existed was made with the defaults."""
+    made = config_variant(calibration)
+    wanted = {"leaf_stage": leaf_stage, "leaf_mode": leaf_mode, "beta": float(beta)}
+    if made != wanted:
+        raise ScreenError(f"calibration was made with --leaf-stage {made['leaf_stage']} "
+                          f"--leaf-mode {made['leaf_mode']} --beta {made['beta']:g}; this run "
+                          f"asks for --leaf-stage {leaf_stage} --leaf-mode {leaf_mode} "
+                          f"--beta {float(beta):g}: re-calibrate for this variant")
 
 
 def require_matching_leaf_model(calibration: dict, leaf_model: str) -> None:
@@ -131,7 +160,10 @@ def require_matching_leaf_model(calibration: dict, leaf_model: str) -> None:
 def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | None,
                                  leaf_tricks: int, base_policy: str,
                                  baseline_select_worlds: int, report_worlds: int,
-                                 trump_ranks, leaf_model: str = DEFAULT_LEAF_MODEL) -> None:
+                                 trump_ranks, leaf_model: str = DEFAULT_LEAF_MODEL,
+                                 leaf_stage: str = DEFAULT_LEAF_STAGE,
+                                 leaf_mode: str = DEFAULT_LEAF_MODE,
+                                 beta: float = DEFAULT_CV_BETA) -> None:
     """A calibration is the CPU-parity N of ONE matchup: this points-head
     checkpoint under this leaf model, this T, this base policy at this N/R
     dose, these trump ranks.  Any other run must re-calibrate; a missing
@@ -144,6 +176,7 @@ def require_matching_calibration(calibration: dict, *, checkpoint_sha256: str | 
     mismatched = [(k, calibration.get(k), v) for k, v in wanted.items()
                   if calibration.get(k) != v]
     require_matching_leaf_model(calibration, leaf_model)
+    require_matching_variant(calibration, leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
     if mismatched:
         raise ScreenError("calibration was made for another matchup: " + "; ".join(
             f"{k}: calibration {a!r} != run {b!r}" for k, a, b in mismatched)
@@ -179,11 +212,12 @@ def config_leaf_model(config: dict) -> str:
 
 
 def arm_policy_name(config: dict) -> str:
+    variant = config_variant(config)
     if config["arm"] == "learned":
         return vleaf_policy_name(leaf_tricks=config["leaf_tricks"],
                                  checkpoint_id=config["checkpoint_sha256"][:8],
-                                 leaf_model=config_leaf_model(config))
-    return vleaf_policy_name(leaf_tricks=config["leaf_tricks"])
+                                 leaf_model=config_leaf_model(config), **variant)
+    return vleaf_policy_name(leaf_tricks=config["leaf_tricks"], **variant)
 
 
 def ensure_registered(config: dict) -> str:
@@ -195,8 +229,18 @@ def ensure_registered(config: dict) -> str:
                         config.get("checkpoint_sha256"))
     register_vleaf_arms(checkpoint=config["checkpoint"], leaf_tricks=(config["leaf_tricks"],),
                         allow_legacy=bool(config.get("allow_legacy", False)),
-                        leaf_model=config_leaf_model(config))
+                        leaf_model=config_leaf_model(config), **config_variant(config))
     return arm_policy_name(config)
+
+
+def require_variant(bot, config: dict) -> None:
+    """The bot a name built carries the config's stage / mode / beta."""
+    variant = config_variant(config)
+    got = {"leaf_stage": getattr(bot, "leaf_stage", None),
+           "leaf_mode": getattr(bot, "leaf_mode", None), "beta": getattr(bot, "beta", None)}
+    if got != variant:
+        raise ScreenError(f"registered arm {config['arm_policy']!r} carries variant {got}, "
+                          f"config asks for {variant}")
 
 
 def make_side(config: dict, side: str, seed: int):
@@ -211,11 +255,13 @@ def make_side(config: dict, side: str, seed: int):
         if bot.leaf.kind != ("cwv" if config_leaf_model(config) == "cwv" else "learned"):
             raise ScreenError(f"registered arm {config['arm_policy']!r} carries a "
                               f"{bot.leaf.kind!r} leaf, config asks for {config_leaf_model(config)}")
+        require_variant(bot, config)
         bot.N_DETERMINIZATIONS = int(config["arm_select_worlds"])
     else:
         bot = MCValueLeafSearch(PriorPointsLeaf(bound_prior_table(config)), seed=seed,
-                                leaf_tricks=int(config["leaf_tricks"]))
+                                leaf_tricks=int(config["leaf_tricks"]), **config_variant(config))
         bot.policy_name = config["arm_policy"]
+        require_variant(bot, config)
         bot.N_DETERMINIZATIONS = int(config["arm_select_worlds"])
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     return bot
@@ -232,6 +278,8 @@ class LeafTimedPolicy(TimedPolicy):
         self.play_calls += 1
         counts = getattr(self.bot, "leaf_counts", None)
         before = dict(counts) if counts else None
+        stages = getattr(self.bot, "stage_counts", None)
+        before_stages = dict(stages) if stages else None
         before_secs = float(getattr(self.bot, "leaf_secs", 0.0))
         recorded = len(self.decisions)
         try:
@@ -240,10 +288,14 @@ class LeafTimedPolicy(TimedPolicy):
             if before is not None and len(self.decisions) > recorded:
                 self.decisions[-1]["leaf"] = {k: counts[k] - before[k] for k in before}
                 self.decisions[-1]["leaf_secs"] = self.bot.leaf_secs - before_secs
+                if before_stages is not None:
+                    self.decisions[-1]["stage"] = {k: stages[k] - before_stages[k]
+                                                   for k in before_stages}
 
 
 LEAF_COUNTERS = ("leaf_calls", "terminal_leaves", "exact_leaves", "predicted_leaves",
                  "leaf_plies")
+STAGE_COUNTERS = ("selection_net_calls", "report_net_calls", "control_variate_calls")
 
 
 def work_counters(bots) -> dict:
@@ -254,8 +306,14 @@ def work_counters(bots) -> dict:
     out["play_calls"] = int(sum(getattr(b, "play_calls", 0) for b in bots))
     for name in LEAF_COUNTERS:
         out[name] = int(sum((getattr(b, "leaf_counts", None) or {}).get(name, 0) for b in bots))
-    out["nn_calls"] = int(sum((getattr(b, "leaf_counts", None) or {}).get("predicted_leaves", 0)
+    for name in STAGE_COUNTERS:
+        out[name] = int(sum((getattr(b, "stage_counts", None) or {}).get(name, 0) for b in bots))
+    # A net call either replaced the leaf (predicted_leaves) or fed the
+    # control variate; the stage counters count both.
+    out["nn_calls"] = int(sum(sum((getattr(b, "stage_counts", None) or {}).get(name, 0)
+                                  for name in ("selection_net_calls", "report_net_calls"))
                               for b in bots if getattr(getattr(b, "leaf", None), "kind", None) in NN_LEAF_KINDS))
+    out["net_calls"] = int(out["selection_net_calls"] + out["report_net_calls"])
     # The cwv leaf splits its cost: afterstate tensors vs the numpy forward.
     for name in ("encode_secs", "forward_secs"):
         out[f"leaf_{name}"] = float(sum(getattr(getattr(b, "leaf", None), name, 0.0) for b in bots))
@@ -341,7 +399,9 @@ def reopen_shard(path: Path, config: dict, cluster: int) -> dict:
 # ------------------------------------------------------------- calibration
 
 CPU_FIELDS = ("decision_cpu_seconds", "decision_wall_seconds", "play_calls", "search_calls",
-              "rollouts", "predicted_leaves", "leaf_secs", "leaf_encode_secs", "leaf_forward_secs")
+              "rollouts", "predicted_leaves", "net_calls", "selection_net_calls",
+              "report_net_calls", "control_variate_calls", "leaf_secs", "leaf_encode_secs",
+              "leaf_forward_secs")
 
 
 def cpu_rows(shards: Sequence[dict]) -> list[dict]:
@@ -378,11 +438,16 @@ def cpu_ratio(rows: Sequence[dict]) -> dict:
         "play_calls": {s: int(totals[s]["play_calls"]) for s in totals},
         "rollouts": {s: int(totals[s]["rollouts"]) for s in totals},
         "predicted_leaves": {s: int(totals[s]["predicted_leaves"]) for s in totals},
+        "net_calls": {s: int(totals[s]["net_calls"]) for s in totals},
+        "net_calls_by_stage": {s: {"selection": int(totals[s]["selection_net_calls"]),
+                                   "report": int(totals[s]["report_net_calls"]),
+                                   "control_variate": int(totals[s]["control_variate_calls"])}
+                               for s in totals},
         "leaf_secs": {s: totals[s]["leaf_secs"] for s in totals},
         "leaf_encode_secs": {s: totals[s]["leaf_encode_secs"] for s in totals},
         "leaf_forward_secs": {s: totals[s]["leaf_forward_secs"] for s in totals},
-        "per_leaf_usecs": {s: (1e6 * totals[s]["leaf_secs"] / totals[s]["predicted_leaves"]
-                               if totals[s]["predicted_leaves"] else None) for s in totals},
+        "per_leaf_usecs": {s: (1e6 * totals[s]["leaf_secs"] / totals[s]["net_calls"]
+                               if totals[s]["net_calls"] else None) for s in totals},
     }
 
 
@@ -465,6 +530,9 @@ def calibrate(config: dict, *, output: Path, workers: int, grid=DEFAULT_GRID,
         "arm": config["arm"], "arm_policy": arm_policy_name(config),
         "leaf_tricks": config["leaf_tricks"],
         "leaf_model": config_leaf_model(config),
+        "leaf_stage": config_variant(config)["leaf_stage"],
+        "leaf_mode": config_variant(config)["leaf_mode"],
+        "cv_beta": config_variant(config)["beta"],
         "trump_ranks": list(config["trump_ranks"]),
         "checkpoint_sha256": config.get("checkpoint_sha256"),
         "prior_sha256": config.get("prior_sha256"),
@@ -518,11 +586,18 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
                  report_worlds: int = REPORT_WORLDS, calibration: dict | None = None,
                  bootstrap_replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
                  trump_ranks: Sequence[str] | None = None,
-                 leaf_model: str = DEFAULT_LEAF_MODEL) -> dict:
+                 leaf_model: str = DEFAULT_LEAF_MODEL, leaf_stage: str = DEFAULT_LEAF_STAGE,
+                 leaf_mode: str = DEFAULT_LEAF_MODE, beta: float = DEFAULT_CV_BETA) -> dict:
     if arm not in ARMS:
         raise ScreenError(f"arm must be one of {ARMS}")
     if leaf_model not in LEAF_MODELS:
         raise ScreenError(f"leaf_model must be one of {LEAF_MODELS}")
+    if leaf_stage not in LEAF_STAGES:
+        raise ScreenError(f"leaf_stage must be one of {LEAF_STAGES}")
+    if leaf_mode not in LEAF_MODES:
+        raise ScreenError(f"leaf_mode must be one of {LEAF_MODES}")
+    if isinstance(beta, bool) or not isinstance(beta, (int, float)) or not math.isfinite(beta):
+        raise ScreenError("beta must be a finite number")
     if clusters < 1 or arm_select_worlds < 1 or baseline_select_worlds < 1:
         raise ScreenError("clusters and selection worlds must be positive")
     if report_worlds < 30:
@@ -541,6 +616,9 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         "bootstrap_replicates": int(bootstrap_replicates),
         "trump_ranks": list(ranks),
         "leaf_model": leaf_model,
+        "leaf_stage": leaf_stage,
+        "leaf_mode": leaf_mode,
+        "cv_beta": float(beta),
     }
     if arm == "learned":
         if not checkpoint:
@@ -581,7 +659,8 @@ def build_config(*, arm: str, leaf_tricks: int, seed0: int, clusters: int,
         require_matching_calibration(
             calibration, checkpoint_sha256=bound_checkpoint, leaf_tricks=leaf_tricks,
             base_policy=VLEAF_BASE_POLICY, baseline_select_worlds=baseline_select_worlds,
-            report_worlds=report_worlds, trump_ranks=ranks, leaf_model=leaf_model)
+            report_worlds=report_worlds, trump_ranks=ranks, leaf_model=leaf_model,
+            leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
         config["calibration"] = {k: calibration.get(k) for k in (
             "file_sha256", "chosen_arm_select_worlds", "predicted_decision_cpu_ratio",
             "within_band", "within_grid", "seed0", "clusters", *CALIBRATION_IDENTITY,
@@ -659,18 +738,28 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
     leaf_kind = ("stratified points prior" if config["arm"] != "learned"
                  else "complete-world points head on the determinized clone"
                  if config_leaf_model(config) == "cwv" else "public points head")
+    variant = config_variant(config)
+    stage_text = ("in every rollout" if variant["leaf_stage"] == "all"
+                  else "in the report fold only (selection rollouts are production's)")
+    mode_text = (f"replaced after {config['leaf_tricks']} trick(s) by the {leaf_kind}"
+                 if variant["leaf_mode"] == "replace" else
+                 f"kept to round end, the {leaf_kind} at trick {config['leaf_tricks']} "
+                 f"subtracted as a per-candidate centred control variate (beta={variant['beta']:g})")
     out.update({
         "schema": SUMMARY_SCHEMA,
         "claim": ("DEV equal-work screen on fresh deals; descriptive only: not confirmation, "
                   "promotion or deployment"),
         "arm": config["arm"], "arm_policy": config["arm_policy"],
-        "arm_description": (f"{VLEAF_BASE_POLICY} with its rollout leaf replaced after "
-                            f"{config['leaf_tricks']} trick(s) by the {leaf_kind} "
-                            f"(final attacker points); selection N={config['arm_select_worlds']} "
+        "arm_description": (f"{VLEAF_BASE_POLICY} with its rollout leaf {mode_text} "
+                            f"(final attacker points) {stage_text}; "
+                            f"selection N={config['arm_select_worlds']} "
                             f"from CPU calibration, report R={config['report_worlds']} unchanged; "
                             f"baseline N={config['baseline_select_worlds']}/R={config['report_worlds']}"),
         "leaf_tricks": config["leaf_tricks"],
         "leaf_model": config_leaf_model(config),
+        "leaf_stage": variant["leaf_stage"],
+        "leaf_mode": variant["leaf_mode"],
+        "cv_beta": variant["beta"],
         "trump_ranks": trump_ranks,
         "trump_ranks_dealt": dealt,
         "config": config,
@@ -682,13 +771,14 @@ def summary_for(shards: Sequence[dict], config: dict) -> dict:
         "cpu_parity_band": list(PARITY_BAND),
         "cost_matched": cost_matched,
         "leaf_counters": {side: {name: totals[side].get(name, 0) for name in (
-            *LEAF_COUNTERS, "nn_calls", "prior_lookups", "rollouts", "continuation_rollouts",
+            *LEAF_COUNTERS, *STAGE_COUNTERS, "net_calls", "nn_calls", "prior_lookups",
+            "rollouts", "continuation_rollouts",
             "play_calls", "searches", "short_searches", "zero_world", "decision_cpu_seconds",
             "leaf_secs", "leaf_encode_secs", "leaf_forward_secs")}
             for side in ("arm", "baseline")},
         "per_leaf_usecs": {side: (1e6 * totals[side].get("leaf_secs", 0.0)
-                                  / totals[side]["predicted_leaves"]
-                                  if totals[side].get("predicted_leaves") else None)
+                                  / totals[side]["net_calls"]
+                                  if totals[side].get("net_calls") else None)
                            for side in ("arm", "baseline")},
         "per_cluster_arm_utility": per_cluster,
         "minimum_detectable_effect": {
@@ -714,7 +804,8 @@ def combined_summary(summaries: dict[str, dict], *, seed0: int,
     for arm, s in summaries.items():
         out["arms"][arm] = {
             "arm_policy": s["arm_policy"], "rounds": s["rounds"], "clusters": s["clusters"],
-            "leaf_model": s.get("leaf_model"),
+            "leaf_model": s.get("leaf_model"), "leaf_stage": s.get("leaf_stage"),
+            "leaf_mode": s.get("leaf_mode"), "cv_beta": s.get("cv_beta"),
             "trump_ranks": s["trump_ranks"], "trump_ranks_dealt": s["trump_ranks_dealt"],
             "arm_signed_level_utility_per_round": s["arm_signed_level_utility"]["per_round"],
             "arm_win_rate": s["arm_win_rate"], "role_splits": s["role_splits"],

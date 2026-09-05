@@ -43,6 +43,20 @@ Three leaf evaluators share the truncation:
   target.  Identical truncation and world dose, so a learned-minus-prior
   difference isolates "learned leaf" from "truncation + more worlds".
 
+Two variants scope or soften the substitution (both bind into the policy
+name, the calibration identity and the summary):
+
+* ``leaf_stage="report"`` (``-report``): the leaf is consulted only inside
+  the report fold (``MCBot._report_fold_gap``: the top two candidates on the
+  R paired worlds, ~77% of production's rollouts); selection rollouts run
+  to round end and are production's byte for byte.
+* ``leaf_mode="control-variate"`` (``-cv``): the rollout runs to round end
+  as production does and the net's estimate ``X`` at the horizon is
+  subtracted as a per-candidate centred control variate, ``Y - beta * (X -
+  mean_c X)``.  The centring sums to zero per candidate, so every mean and
+  the report fold's paired gap are production's; only the fold's paired SE
+  (hence the LCB statistic) changes.  ``beta=0`` is production exactly.
+
 A checkpoint without a points head is refused; identity checks (encoder
 SHA, checkpoint schema) go through ``SearchHeads.from_checkpoint`` (public)
 or ``train_cwv.load_cwv_checkpoint`` (cwv).  Nothing here registers a
@@ -61,8 +75,9 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_TRICKS,
-                           vleaf_checkpoint_sha256)
+from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_MODES,
+                           VLEAF_LEAF_STAGES, VLEAF_LEAF_TRICKS, vleaf_checkpoint_sha256,
+                           vleaf_policy_suffix)
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
 from ..rl.value_afterstate import PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS, tensors_from_round
@@ -575,12 +590,47 @@ class PriorPointsLeaf:
 
 # ---------------------------------------------------------------------- bot
 
+#: where the leaf is consulted: ``all`` = every rollout (selection and
+#: report fold); ``report`` = only inside ``_report_fold_gap`` (the top two
+#: candidates on the R paired worlds), selection rollouts run to round end
+#: exactly as production's.
+LEAF_STAGES = VLEAF_LEAF_STAGES
+#: how the leaf's estimate enters the value: ``replace`` = the rollout stops
+#: at the horizon and returns the estimate; ``control-variate`` = the rollout
+#: runs to round end and the estimate is a centred control variate (below).
+LEAF_MODES = VLEAF_LEAF_MODES
+DEFAULT_CV_BETA = 1.0
+
+
+def policy_suffix(*, leaf_stage: str = "all", leaf_mode: str = "replace",
+                  beta: float = DEFAULT_CV_BETA) -> str:
+    """``-report`` / ``-cv`` (``-cv-b<beta>`` off the default) after ``-t<T>``."""
+    return vleaf_policy_suffix(leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
+
+
 class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
-    """Production search; ONLY ``_rollout`` is overridden (module docstring)."""
+    """Production search; ``_rollout`` is overridden (module docstring), and
+    ``_report_fold_gap`` / ``decide_play`` only to scope the leaf to a stage
+    and to apply the control variate:
+
+    * ``leaf_stage="report"``: ``_rollout`` consults ``_leaf_on()``; the flag
+      is raised for the duration of ``_report_fold_gap`` (delegating to
+      production's) and is down during selection, whose rollouts therefore
+      run to round end untouched (values byte-identical to production's).
+    * ``leaf_mode="control-variate"``: the rollout runs to round end as
+      production does and buffers the net's estimate ``X`` of that world at
+      the horizon; when a candidate's batch of worlds completes the value is
+      ``Y - beta * (X - mean_c X)`` with the mean over that candidate's worlds
+      of the batch.  The centring sums to zero, so per-candidate means and
+      the paired gap are production's exactly; only the paired SE changes
+      (``_cv_report_fold``), hence the LCB rule's statistic.
+    """
 
     LEAF_TRICKS = 1
 
-    def __init__(self, leaf, *, seed: int | None = None, leaf_tricks: int = 1):
+    def __init__(self, leaf, *, seed: int | None = None, leaf_tricks: int = 1,
+                 leaf_stage: str = "all", leaf_mode: str = "replace",
+                 beta: float = DEFAULT_CV_BETA):
         super().__init__(seed)
         # The registry names cover SUPPORTED_LEAF_TRICKS; the class accepts any
         # horizon so a horizon beyond the round is the identity witness.
@@ -588,14 +638,153 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
             raise LeafError("leaf_tricks must be a non-negative integer")
         if not callable(getattr(leaf, "final_attacker_points", None)):
             raise LeafError("leaf must provide final_attacker_points(clone, seat)")
+        if leaf_stage not in LEAF_STAGES:
+            raise LeafError(f"leaf_stage must be one of {LEAF_STAGES}, got {leaf_stage!r}")
+        if leaf_mode not in LEAF_MODES:
+            raise LeafError(f"leaf_mode must be one of {LEAF_MODES}, got {leaf_mode!r}")
+        if isinstance(beta, bool) or not isinstance(beta, (int, float)) or not math.isfinite(beta):
+            raise LeafError("beta must be a finite number")
         self.LEAF_TRICKS = leaf_tricks
         self.leaf = leaf
-        self.policy_name = f"{VLEAF_BASE_POLICY}+vleaf-{leaf.kind}-t{leaf_tricks}"
+        self.leaf_stage = leaf_stage
+        self.leaf_mode = leaf_mode
+        self.beta = float(beta)
+        self.policy_name = (f"{VLEAF_BASE_POLICY}+vleaf-{leaf.kind}-t{leaf_tricks}"
+                            + policy_suffix(leaf_stage=leaf_stage, leaf_mode=leaf_mode,
+                                            beta=self.beta))
         # Cumulative, like MCBot's own counters: leaf_calls == rollouts scored,
         # and terminal + exact + predicted == leaf_calls.
         self.leaf_counts = {"leaf_calls": 0, "terminal_leaves": 0, "exact_leaves": 0,
                             "predicted_leaves": 0, "leaf_plies": 0}
+        # Net calls by stage (a control-variate call is a net call that did
+        # not replace the leaf: it is counted here, never in predicted_leaves).
+        self.stage_counts = {"selection_net_calls": 0, "report_net_calls": 0,
+                             "control_variate_calls": 0}
         self.leaf_secs = 0.0
+        self._leaf_active = leaf_stage == "all"
+        self._in_report_fold = False
+        # control variate: (candidate key -> [X or None per rollout, in order]);
+        # the offsets say where the report fold's entries start
+        self._cv_buffer: dict[tuple[str, ...], list[float | None]] = {}
+        self._cv_report_offsets: dict[tuple[str, ...], int] = {}
+        self.last_control_variate = None
+
+    # ------------------------------------------------------------- stages
+
+    def _leaf_on(self) -> bool:
+        """Whether this rollout may consult the leaf (the stage flag)."""
+        return self._leaf_active
+
+    def _report_fold_gap(self, rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                         *, seed: int, keep_deltas: bool = False):
+        """Production's report fold with the leaf flag raised for its duration."""
+        was_active, was_report = self._leaf_active, self._in_report_fold
+        self._leaf_active = True
+        self._in_report_fold = True
+        try:
+            if self.leaf_mode == "control-variate":
+                return self._cv_report_fold(rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                                            seed=seed, keep_deltas=keep_deltas)
+            return super()._report_fold_gap(rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                                            seed=seed, keep_deltas=keep_deltas)
+        finally:
+            self._leaf_active, self._in_report_fold = was_active, was_report
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        if self.leaf_mode != "control-variate":
+            return super().decide_play(rnd, seat)
+        self._cv_buffer = {}
+        self._cv_report_offsets = {}
+        self.last_control_variate = None
+        try:
+            return super().decide_play(rnd, seat)
+        finally:
+            record = self.last_decision_record
+            if record is not None:
+                record["control_variate"] = self._cv_decision_summary(record)
+            self._cv_buffer = {}
+
+    # ---------------------------------------------------------- control variate
+
+    @staticmethod
+    def _cv_centred(values: Sequence[float | None]) -> tuple[list[float], float | None]:
+        """``X - mean(X)`` over one candidate's batch (0.0 where the rollout
+        never reached the horizon: no estimate, no correction); the sum of the
+        corrections is zero by construction."""
+        known = [x for x in values if x is not None]
+        if not known:
+            return [0.0] * len(values), None
+        mean = math.fsum(known) / len(known)
+        return [0.0 if x is None else x - mean for x in values], mean
+
+    def _cv_report_fold(self, rnd, seat, mem, i_attack, cand_a, cand_b, n, *, seed, keep_deltas):
+        """The control variate applied where the report fold forms its paired
+        gap: production's fold runs unchanged (same draws, same rollouts, the
+        buffered X per rollout), then each candidate's centred correction is
+        subtracted from its per-world value and the paired SE is recomputed
+        from the corrected deltas.  The gap is production's: the corrections
+        sum to zero per candidate."""
+        key_a, key_b = tuple(cand_a), tuple(cand_b)
+        before = {k: len(self._cv_buffer.get(k, ())) for k in (key_a, key_b)}
+        out = super()._report_fold_gap(rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                                       seed=seed, keep_deltas=True)
+        deltas = out["deltas"]
+        used = out["worlds"]
+        xa = self._cv_buffer.get(key_a, [])[before[key_a]:]
+        xb = self._cv_buffer.get(key_b, [])[before[key_b]:]
+        if len(xa) != used or len(xb) != used or len(deltas) != used:
+            raise LeafError("control variate: buffered estimates do not match the report worlds")
+        self._cv_report_offsets = dict(before)
+        ca, mean_a = self._cv_centred(xa)
+        cb, mean_b = self._cv_centred(xb)
+        sign = 1.0 if i_attack else -1.0
+        beta = self.beta
+        # values were sign-flipped to the acting team before pairing; so is X
+        corrected = [d - beta * sign * (a - b) for d, a, b in zip(deltas, ca, cb)]
+        d_sum = math.fsum(corrected)
+        d_sq = math.fsum(c * c for c in corrected)
+        raw_se = out["se"]
+        se = self._paired_se(d_sum, d_sq, used)
+        # The gap stays production's: each candidate's corrections sum to
+        # zero (correction_sum witnesses it), so the corrected paired mean is
+        # the raw paired mean up to float residue.
+        out["se"] = se
+        out["control_variate"] = {
+            "beta": beta, "worlds": used,
+            "net_calls": {"a": sum(x is not None for x in xa), "b": sum(x is not None for x in xb)},
+            "mean_estimate": {"a": mean_a, "b": mean_b},
+            "correction_sum": {"a": math.fsum(beta * c for c in ca),
+                               "b": math.fsum(beta * c for c in cb)},
+            "max_abs_correction": max((abs(beta * c) for c in (*ca, *cb)), default=0.0),
+            "gap_from_corrected": d_sum / used if used else 0.0,
+            "raw_se": raw_se, "se": se,
+            "variance_ratio": ((se / raw_se) ** 2 if raw_se and math.isfinite(raw_se)
+                               and math.isfinite(se) else None),
+        }
+        if keep_deltas:
+            out["raw_deltas"] = deltas
+            out["deltas"] = corrected
+        else:
+            del out["deltas"]
+        return out
+
+    def _cv_decision_summary(self, record: dict) -> dict:
+        """Per-candidate centring facts of the selection stage (its means are
+        invariant under the centred correction, so nothing is rewritten) plus
+        the report fold's correction."""
+        selection = {}
+        for cand in record.get("candidates", []):
+            key = tuple(cand)
+            xs = self._cv_buffer.get(key, [])[:self._cv_report_offsets.get(key, None)]
+            _, mean = self._cv_centred(xs)
+            selection[" ".join(cand)] = {"rollouts": len(xs),
+                                         "net_calls": sum(x is not None for x in xs),
+                                         "mean_estimate": mean}
+        report = (record.get("report_fold") or {}).get("control_variate")
+        return {"beta": self.beta, "leaf_stage": self.leaf_stage,
+                "selection_means_unchanged": True, "selection": selection, "report": report}
+
+    # ------------------------------------------------------------- rollout
 
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str], *,
@@ -617,23 +806,41 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME
-        horizon = self._leaf_horizon(rnd)
         counts = self.leaf_counts
         counts["leaf_calls"] += 1
+        leaf_on = self._leaf_on()
+        # A stage whose leaf is off runs to round end: production's loop.
+        horizon = self._leaf_horizon(rnd) if leaf_on else None
+        control_variate = leaf_on and self.leaf_mode == "control-variate"
+        buffer = self._cv_buffer.setdefault(tuple(candidate), []) if control_variate else None
+        estimate = None
+        stage = "report_net_calls" if self._in_report_fold else "selection_net_calls"
         while clone.phase == "play":
             exact = (self._exact_endgame_value(clone, exact_session)
                      if _exact_on else None)
             if exact is not None:
                 counts["exact_leaves"] += 1
+                if buffer is not None:
+                    buffer.append(estimate)
                 return exact
-            if len(clone.history) >= horizon:
-                counts["predicted_leaves"] += 1
-                return self._leaf_value(clone)
+            if horizon is not None and len(clone.history) >= horizon:
+                if buffer is None:
+                    counts["predicted_leaves"] += 1
+                    self.stage_counts[stage] += 1
+                    return self._leaf_value(clone)
+                # control variate: the estimate, in the units the caller
+                # scores the playout in, is buffered and the playout goes on
+                estimate = self._score(self._leaf_value(clone))
+                self.stage_counts[stage] += 1
+                self.stage_counts["control_variate_calls"] += 1
+                horizon = None
             s = clone.turn
             assert s is not None
             clone.play(s, policy.decide_play(clone, s))
             counts["leaf_plies"] += 1
         counts["terminal_leaves"] += 1
+        if buffer is not None:
+            buffer.append(estimate)
         return self._terminal_value(clone)
 
     @staticmethod
@@ -701,24 +908,28 @@ def make_learned_leaf(head):
 def make_vleaf_bot(*, checkpoint: str | os.PathLike, leaf_tricks: int = 1,
                    seed: int | None = None, allow_legacy: bool = False,
                    expected_sha256: str | None = None,
-                   leaf_model: str = "public") -> MCValueLeafSearch:
+                   leaf_model: str = "public", leaf_stage: str = "all",
+                   leaf_mode: str = "replace", beta: float = DEFAULT_CV_BETA) -> MCValueLeafSearch:
     head = load_leaf_head(checkpoint, leaf_model=leaf_model, allow_legacy=allow_legacy)
     actual = head.metadata.get("checkpoint_sha256")
     if expected_sha256 is not None and actual != expected_sha256:
         raise RuntimeError(f"checkpoint {checkpoint} changed since registration: "
                            f"{actual} != {expected_sha256}")
-    return MCValueLeafSearch(make_learned_leaf(head), seed=seed, leaf_tricks=leaf_tricks)
+    return MCValueLeafSearch(make_learned_leaf(head), seed=seed, leaf_tricks=leaf_tricks,
+                             leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
 
 
 def make_vleaf_prior_bot(*, prior: str | os.PathLike, leaf_tricks: int = 1,
                          seed: int | None = None,
-                         expected_sha256: str | None = None) -> MCValueLeafSearch:
+                         expected_sha256: str | None = None, leaf_stage: str = "all",
+                         leaf_mode: str = "replace", beta: float = DEFAULT_CV_BETA) -> MCValueLeafSearch:
     table = load_points_prior(str(Path(prior).resolve()))
     actual = table.provenance.get("file_sha256")
     if expected_sha256 is not None and actual != expected_sha256:
         raise RuntimeError(f"points prior {prior} changed since registration: "
                            f"{actual} != {expected_sha256}")
-    return MCValueLeafSearch(PriorPointsLeaf(table), seed=seed, leaf_tricks=leaf_tricks)
+    return MCValueLeafSearch(PriorPointsLeaf(table), seed=seed, leaf_tricks=leaf_tricks,
+                             leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
 
 
 def leaf_record(bot) -> dict:
@@ -729,7 +940,11 @@ def leaf_record(bot) -> dict:
         "schema": LEAF_RECORD_SCHEMA,
         "leaf": leaf.describe() if leaf is not None else None,
         "leaf_tricks": getattr(bot, "LEAF_TRICKS", None) if leaf is not None else None,
+        "leaf_stage": getattr(bot, "leaf_stage", None) if leaf is not None else None,
+        "leaf_mode": getattr(bot, "leaf_mode", None) if leaf is not None else None,
+        "beta": getattr(bot, "beta", None) if leaf is not None else None,
         "counts": counts,
+        "stage_counts": dict(getattr(bot, "stage_counts", None) or {}),
         "leaf_secs": float(getattr(bot, "leaf_secs", 0.0)),
         "leaf_encode_secs": float(getattr(leaf, "encode_secs", 0.0)),
         "leaf_forward_secs": float(getattr(leaf, "forward_secs", 0.0)),

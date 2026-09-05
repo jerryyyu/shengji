@@ -872,12 +872,282 @@ def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | 
     return block
 
 
+# ------------------------------------------------- labelled harvest holdouts
+
+HOLDOUT_LABELS_SCHEMA = "shengji-harvest-labels-v1"
+HOLDOUT_STRIP_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key")
+#: what each search-facing metric of a holdout needs, and why a holdout
+#: without it is SKIPPED (reported null), never approximated
+HOLDOUT_SUPPORT = {
+    "rank_regret": "search_labels with >= 2 finite production means (label_harvest)",
+    "calibration": "outcome (attacker_points + signed_level_utility) on the record",
+    "points": "outcome.attacker_points on the record (the aux points head)",
+}
+
+
+@dataclass
+class LabeledHoldout:
+    """A labelled harvest file (``harvest_labels``): the rows (deduplicated
+    by ``record_sha256``, first occurrence wins), what they support and the
+    labeller's identity."""
+
+    path: str
+    sha256: str
+    rows: list[dict]
+    counts: dict
+    supports: dict
+    identity: dict
+    sources: dict
+    policies: dict
+    private: bool
+
+    def describe(self) -> dict:
+        return {"path": self.path, "sha256": self.sha256, "private": self.private,
+                "counts": dict(self.counts), "supports": dict(self.supports),
+                "identity": dict(self.identity), "sources": dict(self.sources),
+                "policies": dict(self.policies), "support_needs": dict(HOLDOUT_SUPPORT)}
+
+
+def holdout_record(row: Mapping[str, Any]) -> dict:
+    """The untouched harvest record inside a labelled row (its
+    ``record_sha256`` is valid again once the label keys are gone)."""
+    return {k: v for k, v in row.items() if k not in HOLDOUT_STRIP_KEYS}
+
+
+def holdout_search_means(row: Mapping[str, Any]) -> tuple[list[int], list[float]] | None:
+    """``(ballot indices, means)`` of a row's production labels (the
+    ``search_labels`` ballot, acting-team perspective, points scale), or
+    None without at least two finite means."""
+    labels = row.get("search_labels")
+    if not isinstance(labels, dict) or not labels.get("searched") or labels.get("forced"):
+        return None
+    ballot = labels.get("ballot")
+    means = labels.get("means")
+    eligible = labels.get("eligible_indices")
+    if not isinstance(ballot, list) or not isinstance(means, list) \
+            or not isinstance(eligible, list) or len(means) != len(ballot):
+        return None
+    pairs = []
+    for index in eligible:
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(ballot):
+            continue
+        mean = means[index]
+        if isinstance(mean, bool) or not isinstance(mean, (int, float)) or not math.isfinite(mean):
+            continue
+        pairs.append((int(index), float(mean)))
+    if len(pairs) < 2:
+        return None
+    return [i for i, _ in pairs], [m for _, m in pairs]
+
+
+def _has_outcome(record: Mapping[str, Any]) -> bool:
+    outcome = record.get("outcome")
+    return (isinstance(outcome, dict) and isinstance(outcome.get("attacker_points"), int)
+            and not isinstance(outcome.get("attacker_points"), bool)
+            and outcome.get("signed_level_utility") is not None)
+
+
+def load_labeled_holdout(path: str | os.PathLike) -> LabeledHoldout:
+    """Read a labelled harvest file (a merged ``<source>.labels[.private]
+    .jsonl`` or one shard) and say what it supports.  Refuses a file whose
+    rows are not labelled rows, and one that mixes labeller identities
+    (policy / scale / work) -- its metrics would not be one quantity."""
+    path = Path(path)
+    if not path.is_file():
+        raise EvalError(f"{path}: not a file")
+    digest = hashlib.sha256()
+    rows: list[dict] = []
+    seen: set[str] = set()
+    counts: dict[str, Any] = {"lines": 0, "rows": 0, "duplicates": 0, "labelled": 0,
+                              "searched": 0, "unsearched": {}, "refused": {},
+                              "rank_eligible": 0, "with_outcome": 0,
+                              "rank_eligible_with_outcome": 0, "played_off_ballot": 0,
+                              "forced": 0, "duplicate_state": 0, "failed_throw_prefix": 0,
+                              "deals": 0}
+    identities: dict[tuple, int] = {}
+    code_shas: dict[str, int] = {}
+    deals: set[str] = set()
+    sources: dict[str, int] = {}
+    policies: dict[str, int] = {}
+    with open(path, "rb") as fh:
+        for raw in fh:
+            digest.update(raw)
+            line = raw.strip()
+            if not line:
+                continue
+            counts["lines"] += 1
+            row = json.loads(line)
+            if not isinstance(row, dict) or "search_labels" not in row \
+                    or "label_refusal" not in row or not row.get("record_sha256"):
+                raise EvalError(f"{path}: line {counts['lines']} is not a labelled harvest row "
+                                "(search_labels / label_refusal / record_sha256 missing)")
+            sha = str(row["record_sha256"])
+            if sha in seen:
+                counts["duplicates"] += 1
+                continue
+            seen.add(sha)
+            rows.append(row)
+            counts["rows"] += 1
+            sources[str(row.get("source"))] = sources.get(str(row.get("source")), 0) + 1
+            policies[str(row.get("policy"))] = policies.get(str(row.get("policy")), 0) + 1
+            has_outcome = _has_outcome(row)
+            counts["with_outcome"] += int(has_outcome)
+            if row.get("deal_key"):
+                deals.add(str(row["deal_key"]))
+            labels = row["search_labels"]
+            if labels is None:
+                reason = (row.get("label_refusal") or {}).get("reason", "?")
+                counts["refused"][reason] = counts["refused"].get(reason, 0) + 1
+                counts["duplicate_state"] += int(reason == "duplicate_state")
+                continue
+            if labels.get("schema") != HOLDOUT_LABELS_SCHEMA:
+                raise EvalError(f"{path}: search_labels schema {labels.get('schema')!r} is not "
+                                f"{HOLDOUT_LABELS_SCHEMA!r}")
+            counts["labelled"] += 1
+            ident = (str(labels.get("policy")), int(labels.get("scale", 1)),
+                     int(labels.get("n_worlds", 0)), int(labels.get("report_worlds", 0)),
+                     str(labels.get("report_rule")),
+                     None if labels.get("work_override") is None
+                     else tuple(labels["work_override"]))
+            identities[ident] = identities.get(ident, 0) + 1
+            code = str(labels.get("code_sha"))
+            code_shas[code] = code_shas.get(code, 0) + 1
+            if labels.get("searched"):
+                counts["searched"] += 1
+            else:
+                reason = str(labels.get("reason"))
+                counts["unsearched"][reason] = counts["unsearched"].get(reason, 0) + 1
+            if not labels.get("played_in_ballot", True):
+                counts["played_off_ballot"] += 1
+            counts["forced"] += int(bool(labels.get("forced")))
+            counts["failed_throw_prefix"] += int(bool(labels.get("failed_throw_prefix")))
+            eligible = holdout_search_means(row) is not None
+            counts["rank_eligible"] += int(eligible)
+            counts["rank_eligible_with_outcome"] += int(eligible and has_outcome)
+    if len(identities) > 1:
+        raise EvalError(f"{path}: mixed labeller identities {sorted(identities)}: one holdout "
+                        "must be one labeller (policy, scale, work)")
+    ident = next(iter(identities)) if identities else None
+    identity = {
+        "policy": None if ident is None else ident[0],
+        "scale": None if ident is None else ident[1],
+        "n_worlds": None if ident is None else ident[2],
+        "report_worlds": None if ident is None else ident[3],
+        "report_rule": None if ident is None else ident[4],
+        "work_override": None if ident is None else ident[5],
+        "code_shas": dict(sorted(code_shas.items())),
+        "labels_schema": HOLDOUT_LABELS_SCHEMA,
+    }
+    counts["unsearched"] = dict(sorted(counts["unsearched"].items()))
+    counts["refused"] = dict(sorted(counts["refused"].items()))
+    counts["deals"] = len(deals)
+    supports = {
+        "rank_regret": counts["rank_eligible"] > 0,
+        "calibration": counts["with_outcome"] > 0,
+        "points": counts["with_outcome"] > 0,
+    }
+    return LabeledHoldout(path=str(path.resolve()), sha256=digest.hexdigest(), rows=rows,
+                          counts=counts, supports=supports, identity=identity,
+                          sources=dict(sorted(sources.items())),
+                          policies=dict(sorted(policies.items())),
+                          private=not (path.stat().st_mode & 0o044))
+
+
+def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: bool,
+                              limit: int | None = None) -> tuple[list[dict], dict]:
+    """``score_candidates`` entries for every rank-eligible labelled row
+    (the labels' ballot applied in the record's TRUE world, encoded once),
+    in file order; no outcome is needed.  Returns ``(entries, counts)``."""
+    entries: list[dict] = []
+    counts = {"rows": 0, "rank_eligible": 0, "encoded": 0, "rebuild_failed": 0,
+              "turn_mismatch": 0, "action_failed": 0}
+    for row in rows:
+        counts["rows"] += 1
+        means = holdout_search_means(row)
+        if means is None:
+            continue
+        counts["rank_eligible"] += 1
+        if limit is not None and len(entries) >= int(limit):
+            continue
+        record = holdout_record(row)
+        seat = int(record["seat"])
+        try:
+            rnd = state_for_record(record)
+        except (RebuildError, ValueError, KeyError, AssertionError, TypeError):
+            counts["rebuild_failed"] += 1
+            continue
+        if rnd.phase != "play" or rnd.turn != seat:
+            counts["turn_mismatch"] += 1
+            continue
+        indices, values = means
+        ballot = row["search_labels"]["ballot"]
+        try:
+            scored = score_candidates(rnd, seat, [ballot[i] for i in indices], history=history)
+        except ValueAfterstateError:
+            counts["action_failed"] += 1
+            continue
+        scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["source_ref"] = str(record["source_ref"])
+        scored["deal_key"] = deal_key(list(record["deck"])) if isinstance(record.get("deck"), list) \
+            else f"ref:{record['source_ref']}"
+        entries.append(scored)
+        counts["encoded"] += 1
+    return entries, counts
+
+
+def holdout_candidate_set(holdout: LabeledHoldout, *, history: bool, limit: int | None = None,
+                          label: str = "") -> CandidateSet:
+    """The holdout's ``CandidateSet`` (``rank_metrics`` input): the same
+    arrays, scale and metric definitions as the self-play candidate sets,
+    with the production labels as the search means."""
+    started = time.perf_counter()
+    entries, counts = holdout_candidate_entries(holdout.rows, history=history, limit=limit)
+    digest = hashlib.sha256(json.dumps({
+        "schema": CANDIDATE_SET_SCHEMA, "holdout": holdout.sha256,
+        "encoder": cwv_encoder_identity()["implementation_sha256"],
+        "history": bool(history), "limit": limit}, sort_keys=True).encode("ascii")).hexdigest()
+    meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": digest,
+            "encoder": cwv_encoder_identity(), "history": bool(history),
+            "per_shard_limit": None if limit is None else int(limit), "shards": 1,
+            "search_means": SEARCH_MEANS_SCALE + " -- here: production labels "
+                                                 "(harvest_labels, search_labels.means)",
+            "rank_scale": RANK_SCALE, "label": label, "holdout": holdout.path,
+            "holdout_sha256": holdout.sha256, "counts": counts,
+            "secs": round(time.perf_counter() - started, 3)}
+    out = CandidateSet.concatenate(entries, meta, history=history)
+    out.meta["records"] = out.records
+    out.meta["candidates"] = out.candidates
+    return out
+
+
+def materialize_holdout_records(holdout: LabeledHoldout, out_path: str | os.PathLike) -> Path:
+    """Write the holdout's untouched harvest records (label keys stripped,
+    every ``record_sha256`` valid) as one canonical JSONL so the row-level
+    pipeline (``cwv_data.prepare_stores`` -> ``bridge_record``) reads them
+    unchanged; 0600 when the holdout is private.  Returns the path."""
+    from ..harvest.schema import encode_line
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(f"{out_path.name}.{os.getpid()}.tmp")
+    mode = 0o600 if holdout.private else 0o644
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "wb") as fh:
+        os.fchmod(fh.fileno(), mode)
+        for row in holdout.rows:
+            fh.write(encode_line(holdout_record(row)).encode("ascii"))
+    os.replace(tmp, out_path)
+    return out_path
+
+
 __all__ = [
     "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_REGRET_DEFINITION",
     "RANK_SCALE",
+    "HOLDOUT_LABELS_SCHEMA", "HOLDOUT_SUPPORT", "LabeledHoldout",
     "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",
     "candidate_agreement", "candidate_levels", "candidate_pass", "candidate_set_digest",
-    "candidate_tensors", "ensure_candidate_set", "iter_shard_results",
+    "candidate_tensors", "ensure_candidate_set", "holdout_candidate_entries",
+    "holdout_candidate_set", "holdout_record", "holdout_search_means", "iter_shard_results",
+    "load_labeled_holdout", "materialize_holdout_records",
     "level_of_search_mean", "load_public_head", "paired_agreement", "points_metrics",
     "public_values", "rank_metrics", "score_candidates", "search_facing_metrics",
     "spearman", "summarize_agreement",

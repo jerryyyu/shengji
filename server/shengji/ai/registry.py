@@ -592,9 +592,12 @@ def vleaf_policy_suffix(*, leaf_stage: str = "all") -> str:
 
 def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None,
                       leaf_model: str = "public", leaf_stage: str = "all") -> str:
-    """`mc-vleaf-<ckpt8>-t<T>` (public points head), `mc-vleaf-cwv-<ckpt8>-t<T>`
-    (complete-world points head) or `mc-vleaf-prior-t<T>` (control), plus
-    :func:`vleaf_policy_suffix` (``-report``)."""
+    """`mc-vleaf-<ckpt8>-t<T>` (public points head),
+    `mc-vleaf-cwv-clamp-<ckpt8>-t<T>` (complete-world points head floored at
+    the clone's banked attacker points, ``leaf_policy.POINTS_CLAMP``; the
+    unclamped `mc-vleaf-cwv-<ckpt8>-t<T>` is retired, its scores differ) or
+    `mc-vleaf-prior-t<T>` (control), plus :func:`vleaf_policy_suffix`
+    (``-report``)."""
     if type(leaf_tricks) is not int or leaf_tricks not in VLEAF_LEAF_TRICKS:
         raise ValueError(f"leaf_tricks must be one of {VLEAF_LEAF_TRICKS}")
     if leaf_model not in VLEAF_LEAF_MODELS:
@@ -603,7 +606,7 @@ def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None,
     if checkpoint_id is None:
         return f"mc-vleaf-prior-t{leaf_tricks}{suffix}"
     if leaf_model == "cwv":
-        return f"mc-vleaf-cwv-{checkpoint_id}-t{leaf_tricks}{suffix}"
+        return f"mc-vleaf-cwv-clamp-{checkpoint_id}-t{leaf_tricks}{suffix}"
     return f"mc-vleaf-{checkpoint_id}-t{leaf_tricks}{suffix}"
 
 

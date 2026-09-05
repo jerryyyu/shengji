@@ -251,7 +251,7 @@ def test_constructor_and_names_refuse_unknown_variants(cwv):
     with pytest.raises(TypeError):
         vleaf_policy_suffix(leaf_mode="control-variate")
     assert vleaf_policy_name(leaf_tricks=1, checkpoint_id="abcd1234", leaf_model="cwv",
-                             leaf_stage="report") == "mc-vleaf-cwv-abcd1234-t1-report"
+                             leaf_stage="report") == "mc-vleaf-cwv-clamp-abcd1234-t1-report"
     assert vleaf_policy_name(leaf_tricks=1, leaf_stage="report") == "mc-vleaf-prior-t1-report"
     with pytest.raises(ValueError, match="leaf_stage"):
         vleaf_policy_name(leaf_tricks=1, leaf_stage="fold")
@@ -269,7 +269,7 @@ def test_registry_builds_the_variants_by_name(cwv):
     registry = {BASE: REGISTRY[BASE]}
     names = register_vleaf_arms(checkpoint=cwv["path"], leaf_model="cwv", leaf_tricks=(1,),
                                 leaf_stage="report", registry=registry)
-    name = f"mc-vleaf-cwv-{cwv['sha256'][:8]}-t1-report"
+    name = f"mc-vleaf-cwv-clamp-{cwv['sha256'][:8]}-t1-report"
     assert names == {name: "cwv"}
     bot = registry[name](seed=5)
     assert bot.leaf_stage == "report"
@@ -282,7 +282,7 @@ def test_registry_builds_the_variants_by_name(cwv):
     # the plain name is a different policy and both coexist
     plain = register_vleaf_arms(checkpoint=cwv["path"], leaf_model="cwv", leaf_tricks=(1,),
                                 registry=registry)
-    assert set(plain) == {f"mc-vleaf-cwv-{cwv['sha256'][:8]}-t1"} and name in registry
+    assert set(plain) == {f"mc-vleaf-cwv-clamp-{cwv['sha256'][:8]}-t1"} and name in registry
 
 
 def config_kw(cwv, prior_path, **kw):
@@ -298,7 +298,7 @@ def test_calibration_binds_the_variant(monkeypatch, cwv, prior_path):
     assert made["leaf_stage"] == "report" and "leaf_mode" not in made and "cv_beta" not in made
     calibration = {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
                    "chosen_arm_select_worlds": 7, "checkpoint_sha256": cwv["sha256"],
-                   "leaf_tricks": 1, "leaf_model": "cwv", "leaf_stage": "report",
+                   "leaf_tricks": 1, "leaf_model": "cwv", "points_clamp": "banked-v1", "leaf_stage": "report",
                    "baseline_policy": BASE, "baseline_select_worlds": 1, "report_worlds": 30,
                    "trump_ranks": ["2"]}
     # the same variant is accepted ...
@@ -314,8 +314,8 @@ def test_calibration_binds_the_variant(monkeypatch, cwv, prior_path):
     with pytest.raises(S.ScreenError, match="re-calibrate for this variant"):
         S.build_config(arm="learned", leaf_stage="report", calibration=legacy,
                        **config_kw(cwv, prior_path))
-    assert S.CALIBRATION_IDENTITY[:4] == ("checkpoint_sha256", "leaf_tricks", "leaf_model",
-                                          "leaf_stage")
+    assert S.CALIBRATION_IDENTITY[:5] == ("checkpoint_sha256", "leaf_tricks", "leaf_model",
+                                          "points_clamp", "leaf_stage")
     assert "leaf_mode" not in S.CALIBRATION_IDENTITY and "cv_beta" not in S.CALIBRATION_IDENTITY
 
 
@@ -324,7 +324,7 @@ def test_witness_removed_variant_binding_accepts_the_other_calibration(monkeypat
     monkeypatch.setattr(S, "require_matching_variant", lambda *a, **k: None)
     calibration = {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
                    "chosen_arm_select_worlds": 7, "checkpoint_sha256": cwv["sha256"],
-                   "leaf_tricks": 1, "leaf_model": "cwv", "leaf_stage": "all",
+                   "leaf_tricks": 1, "leaf_model": "cwv", "points_clamp": "banked-v1", "leaf_stage": "all",
                    "baseline_policy": BASE, "baseline_select_worlds": 1, "report_worlds": 30,
                    "trump_ranks": ["2"]}
     S.build_config(arm="learned", leaf_stage="report", calibration=calibration,
@@ -340,7 +340,7 @@ def test_legacy_control_variate_calibration_is_refused(monkeypatch, cwv, prior_p
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     base = {"schema": S.CALIBRATION_SCHEMA, "outcomes_read": False,
             "chosen_arm_select_worlds": 7, "checkpoint_sha256": cwv["sha256"],
-            "leaf_tricks": 1, "leaf_model": "cwv", "leaf_stage": "report",
+            "leaf_tricks": 1, "leaf_model": "cwv", "points_clamp": "banked-v1", "leaf_stage": "report",
             "baseline_policy": BASE, "baseline_select_worlds": 1, "report_worlds": 30,
             "trump_ranks": ["2"]}
     kw = dict(arm="learned", leaf_stage="report", **config_kw(cwv, prior_path))

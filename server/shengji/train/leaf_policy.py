@@ -36,7 +36,17 @@ Three leaf evaluators share the truncation:
   sampled hands and burial into the world tensor.  Same numpy export, same
   units.  The one-ply play test of that net (#229) lost to production at
   every budget while beating a no-learning control; this leaf puts the same
-  net under production's own rollouts, the cheapest depth test.
+  net under production's own rollouts, the cheapest depth test.  Its
+  prediction is FLOORED at the attacker points the clone has already banked
+  (``clone.attacker_points``, the counter ``_terminal_value`` reads at round
+  end; the kitty bonus is not banked until the last trick resolves, so it is
+  never part of the floor): the calibration audit found 5.5% of the head's
+  raw predictions below the running total, which no final total can be.
+  The raw prediction stays in the telemetry (``points_raw``,
+  ``clamp_counts``) and the rule name :data:`POINTS_CLAMP` binds into the
+  policy names (``mc-vleaf-cwv-clamp-...``) and the calibration identity, so
+  a calibration made for the unclamped leaf refuses.  The public head is
+  not clamped (its own audit is pending; its names are unchanged).
 * :class:`PriorPointsLeaf` — the NO-LEARNING control: the stratified prior
   the trainer fits on the training rows (phase x role x attacker points so
   far, 18 cells; ``baselines.py``) refitted on the FINAL attacker points
@@ -89,6 +99,10 @@ POINTS_PRIOR_SCHEMA = "vleaf-points-prior-v1"
 #: the aux points head is trained on ``attacker_points / POINTS_SCALE``
 #: (model.py for the public head, train_cwv.AuxPointsHead for the cwv head)
 POINTS_SCALE = 100.0
+#: the complete-world leaf's floor rule: predicted final attacker points =
+#: max(head, attacker points ALREADY banked in the clone).  Binds into the
+#: policy names and ``leaf_screen.CALIBRATION_IDENTITY`` (bump on change).
+POINTS_CLAMP = "banked-v1"
 SUPPORTED_LEAF_TRICKS = VLEAF_LEAF_TRICKS
 LEAF_MODELS = VLEAF_LEAF_MODELS
 #: value_model.MLP_INPUT_DIM without importing torch into every worker (tested equal)
@@ -125,6 +139,35 @@ def gelu(x: np.ndarray) -> np.ndarray:
     """torch.nn.GELU(approximate='none'): 0.5 x (1 + erf(x / sqrt 2))."""
     x = np.asarray(x, dtype=np.float64)
     return 0.5 * x * (1.0 + erf(x / math.sqrt(2.0)))
+
+
+# --------------------------------------------------------------- the clamp
+
+def banked_attacker_points(clone: Round) -> float:
+    """Attacker points already captured in ``clone``: the engine's own
+    running counter (``Round.attacker_points``, incremented per trick the
+    attackers win; the kitty bonus joins it only when the last trick
+    resolves), the same source ``MCValueLeafSearch._terminal_value`` reads."""
+    return float(clone.attacker_points)
+
+
+def clamp_at_banked(raw: float, banked: float) -> float:
+    """:data:`POINTS_CLAMP`: a final total can never be below the running
+    total, so a prediction under ``banked`` is lifted to it; anything at or
+    above passes through unchanged."""
+    return float(raw) if raw >= banked else float(banked)
+
+
+def points_clamp_rule(leaf_model: str) -> str | None:
+    """The clamp a leaf model applies: the complete-world leaf floors at the
+    banked points; the public head (and the prior control) is unclamped."""
+    return POINTS_CLAMP if leaf_model == "cwv" else None
+
+
+def leaf_label(leaf) -> str:
+    """``kind`` plus ``-clamp`` for a leaf that floors at the banked points:
+    the segment of the policy name that says which estimator scored the leaf."""
+    return str(leaf.kind) + ("-clamp" if getattr(leaf, "points_clamp", None) else "")
 
 
 # ---------------------------------------------------------------- points head
@@ -538,20 +581,39 @@ class CompleteWorldPointsLeaf:
     per-leaf cost (tensors vs numpy MLP) for the profile."""
 
     kind = "cwv"
+    #: the floor rule (module docstring); ``None`` on a leaf that does not clamp
+    points_clamp = POINTS_CLAMP
 
     def __init__(self, head: CompleteWorldPointsHead):
         self.head = head
         self.encode_secs = 0.0
         self.forward_secs = 0.0
+        #: the head's last RAW prediction (before the floor), for the audit trail
+        self.points_raw: float | None = None
+        #: predicted leaves, how many the floor lifted, and the total lift
+        self.clamp_counts = {"predicted": 0, "clamped": 0, "lift_points": 0.0}
 
-    def final_attacker_points(self, clone: Round, seat: int) -> float:
+    def predict(self, clone: Round, seat: int) -> tuple[float, float, float]:
+        """``(value, points_raw, banked)``: the head's raw prediction floored
+        at the clone's banked attacker points (:func:`clamp_at_banked`)."""
         t0 = perf_counter()
         inputs = cwv_leaf_inputs(clone, seat)
         t1 = perf_counter()
-        value = self.head.final_attacker_points(inputs)
+        raw = self.head.final_attacker_points(inputs)
         self.forward_secs += perf_counter() - t1
         self.encode_secs += t1 - t0
-        return value
+        banked = banked_attacker_points(clone)
+        value = clamp_at_banked(raw, banked)
+        self.points_raw = raw
+        counts = self.clamp_counts
+        counts["predicted"] += 1
+        if value != raw:
+            counts["clamped"] += 1
+            counts["lift_points"] += value - raw
+        return value, raw, banked
+
+    def final_attacker_points(self, clone: Round, seat: int) -> float:
+        return self.predict(clone, seat)[0]
 
     def describe(self) -> dict:
         meta = self.head.metadata
@@ -562,9 +624,10 @@ class CompleteWorldPointsLeaf:
                 "epoch": meta.get("epoch"), "schema": meta.get("schema"),
                 "arch": meta.get("arch"), "sees_hidden_hands": meta.get("sees_hidden_hands"),
                 "encoder_implementation_sha256": enc.get("implementation_sha256"),
-                "held_out_claim": False,
+                "held_out_claim": False, "points_clamp": self.points_clamp,
                 "target": ("final attacker points (complete-world aux points head x 100 on "
-                           "the determinized clone)")}
+                           "the determinized clone, floored at the clone's banked "
+                           "attacker points)")}
 
 
 class PriorPointsLeaf:
@@ -629,7 +692,7 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
         self.LEAF_TRICKS = leaf_tricks
         self.leaf = leaf
         self.leaf_stage = leaf_stage
-        self.policy_name = (f"{VLEAF_BASE_POLICY}+vleaf-{leaf.kind}-t{leaf_tricks}"
+        self.policy_name = (f"{VLEAF_BASE_POLICY}+vleaf-{leaf_label(leaf)}-t{leaf_tricks}"
                             + policy_suffix(leaf_stage=leaf_stage))
         # Cumulative, like MCBot's own counters: leaf_calls == rollouts scored,
         # and terminal + exact + predicted == leaf_calls.
@@ -806,6 +869,11 @@ def leaf_record(bot) -> dict:
         "counts": counts,
         "stage_counts": dict(getattr(bot, "stage_counts", None) or {}),
         "leaf_secs": float(getattr(bot, "leaf_secs", 0.0)),
+        # The floor's audit trail: the rule, how often it lifted a leaf and
+        # by how much in total, and the head's last raw prediction.
+        "points_clamp": getattr(leaf, "points_clamp", None) if leaf is not None else None,
+        "clamp_counts": dict(getattr(leaf, "clamp_counts", None) or {}),
+        "points_raw": getattr(leaf, "points_raw", None) if leaf is not None else None,
         "leaf_encode_secs": float(getattr(leaf, "encode_secs", 0.0)),
         "leaf_forward_secs": float(getattr(leaf, "forward_secs", 0.0)),
     }

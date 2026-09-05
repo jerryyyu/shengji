@@ -18,8 +18,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import multiprocessing
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,8 +48,10 @@ from .baselines import StratifiedPrior, cluster_bootstrap
 from .cwv_data import (
     HISTORY_META_DIM,
     compact_history,
+    cwv_encoder_identity,
     deal_key,
     expand_history,
+    expected_levels,
     iter_records,
     pt0_level,
     search_means,
@@ -449,8 +454,431 @@ def candidate_tensors(entry: Mapping[str, np.ndarray], device: torch.device | st
     }
 
 
+# ------------------------------------------------- search-facing metrics
+#
+# Jerry's rule: the training validation metric, the held-out model eval and
+# what the search consumes are the SAME quantity computed by the SAME code.
+# ``search_facing_metrics`` is that code; ``train_cwv`` calls it from the
+# per-epoch validation, from the final val/test pass and from ``evaluate``.
+
+CANDIDATE_SET_SCHEMA = "shengji-cwv-candidate-set-v1"
+SEARCH_MEANS_SCALE = ("acting-team-signed final attacker points averaged over the search's "
+                      "worlds (MCBot mc-s0-report-lcb; sign flipped for a defender)")
+RANK_SCALE = ("#214 half-integer signed level (category_signed_level) for the acting seat's "
+              "team: the scale the search's leaf consumes (cwv_policy / cwv_puct score "
+              "positions by probabilities @ category_signed_level support)")
+RANK_REGRET_DEFINITION = (
+    "rank_regret = U(E[points])_best - U(E[points])_pick: the level-bracket transform "
+    "(level_of_search_mean) of the search's MEAN points per candidate, an MC-ranking proxy "
+    "-- NOT E[U] (the mean of per-world levels, which the records do not carry); "
+    "rank_regret_points is the untransformed mean-points regret")
+#: which search designs consume which head, and on which positions
+CONSUMERS = {
+    "level_head": {
+        "quantity": "expected signed level (probabilities @ category_signed_level support)",
+        "consumed_by": ["one-ply (ai.cwv_policy CompleteWorldEvaluator)",
+                        "shortlist (train.cwv_shortlist)", "netroll (train.net_rollout)",
+                        "PUCT prior / leaf (ai.cwv_puct)"],
+        "positions": "every ballot candidate's afterstate (sampled worlds; the metric "
+                     "scores the TRUE world), ranked among the decision's candidates",
+        "metrics": ["rank_regret (level scale; U(E[points]), an MC-ranking proxy, not E[U])",
+                    "rank_regret_points", "rank_top1",
+                    "cross_entropy", "value_mae (PT0)", "value_level_mae"],
+        "recommended_select_metric": "val_rank_regret",
+    },
+    "points_head": {
+        "quantity": "final attacker points (aux head on the mlp trunk, target points / 100)",
+        "consumed_by": ["vleaf leaf (train.leaf_policy CompleteWorldPointsHead)"],
+        "positions": "one heuristic trick past a candidate (the leaf's finished afterstate); "
+                     "the metric scores the record's own afterstate rows",
+        "metrics": ["points_mae", "points_bias (pred - real)", "points_below_banked"],
+        "recommended_select_metric": "val_points_mae",
+    },
+}
+
+
+def level_of_search_mean(mean: float, root_is_attacker: bool) -> float:
+    """The signed level of one search mean (``SEARCH_MEANS_SCALE``): the
+    mean's attacker points rounded to the integer bracket
+    ``signed_level_category`` maps, from the acting team's perspective."""
+    points = float(mean) if root_is_attacker else -float(mean)
+    points = int(min(max(round(points), 0), 4_120))
+    return category_signed_level(signed_level_category(points, bool(root_is_attacker)))
+
+
+@dataclass
+class CandidateSet:
+    """The candidate afterstates of the search records of one split, flat:
+    record ``r`` owns candidate rows ``offsets[r]:offsets[r + 1]``.  Built
+    once (``build_candidate_set``), persisted next to the row cache, and
+    scored by one batched forward per epoch."""
+
+    public: np.ndarray            # [n, PUBLIC_DIM] float32
+    world: np.ndarray             # [n, WORLD_RECEIVERS, N_CARDS] uint8
+    perspective: np.ndarray       # [n] uint8 (1 = the acting seat attacks)
+    terminal: np.ndarray          # [n] bool
+    terminal_level: np.ndarray    # [n] float64 exact level of a terminal candidate
+    means: np.ndarray             # [n] float64 search means (SEARCH_MEANS_SCALE)
+    offsets: np.ndarray           # [records + 1] int64
+    deal_key: np.ndarray          # [records] str
+    role_attacker: np.ndarray     # [records] bool
+    source_ref: np.ndarray        # [records] str
+    meta: dict
+    history_cards: np.ndarray | None = None
+    history_meta: np.ndarray | None = None
+    history_offsets: np.ndarray | None = None   # [n + 1]
+
+    ARRAYS = ("public", "world", "perspective", "terminal", "terminal_level", "means",
+              "offsets", "deal_key", "role_attacker", "source_ref")
+    HISTORY_ARRAYS = ("history_cards", "history_meta", "history_offsets")
+
+    @property
+    def records(self) -> int:
+        return int(self.offsets.size - 1)
+
+    @property
+    def candidates(self) -> int:
+        return int(self.public.shape[0])
+
+    @property
+    def history(self) -> bool:
+        return self.history_offsets is not None
+
+    def means_level(self) -> np.ndarray:
+        """Every candidate's search mean on the level scale (``RANK_SCALE``)."""
+        widths = np.diff(self.offsets)
+        attacker = np.repeat(self.role_attacker.astype(bool), widths)
+        return np.asarray([level_of_search_mean(m, bool(a))
+                           for m, a in zip(self.means.tolist(), attacker.tolist())],
+                          dtype=np.float64)
+
+    def batch_entry(self, lo: int, hi: int) -> dict:
+        """Rows ``lo:hi`` as a ``candidate_tensors`` entry."""
+        entry = {"public": self.public[lo:hi], "world": self.world[lo:hi],
+                 "perspective": self.perspective[lo:hi]}
+        if self.history:
+            assert self.history_offsets is not None
+            o = self.history_offsets[lo:hi + 1]
+            entry["history_offsets"] = o - o[0]
+            entry["history_cards"] = self.history_cards[o[0]:o[-1]]
+            entry["history_meta"] = self.history_meta[o[0]:o[-1]]
+        return entry
+
+    def save(self, path: str | os.PathLike) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        arrays = {name: getattr(self, name) for name in self.ARRAYS}
+        if self.history:
+            arrays.update({name: getattr(self, name) for name in self.HISTORY_ARRAYS})
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as fh:
+            np.savez_compressed(fh, meta=np.asarray(json.dumps(self.meta, sort_keys=True)),
+                                **arrays)
+        os.replace(tmp, path)
+
+    @classmethod
+    def load(cls, path: str | os.PathLike) -> "CandidateSet":
+        with np.load(path, allow_pickle=False) as npz:
+            meta = json.loads(str(npz["meta"]))
+            if meta.get("schema") != CANDIDATE_SET_SCHEMA:
+                raise EvalError(f"{path}: candidate set schema {meta.get('schema')!r}")
+            arrays = {name: npz[name] for name in cls.ARRAYS}
+            if "history_offsets" in npz.files:
+                arrays.update({name: npz[name] for name in cls.HISTORY_ARRAYS})
+        return cls(meta=meta, **arrays)
+
+    @classmethod
+    def empty(cls, meta: Mapping[str, Any], *, history: bool = False) -> "CandidateSet":
+        return cls.concatenate([], meta, history=history)
+
+    @classmethod
+    def concatenate(cls, entries: Sequence[Mapping[str, Any]], meta: Mapping[str, Any], *,
+                    history: bool) -> "CandidateSet":
+        """One set from ``score_candidates`` entries (each with ``means``,
+        ``deal_key``, ``source_ref``), in the given order."""
+        widths = np.asarray([int(e["means"].size) for e in entries], dtype=np.int64)
+        offsets = np.zeros(len(entries) + 1, dtype=np.int64)
+        offsets[1:] = np.cumsum(widths)
+
+        def cat(name, dtype, shape):
+            if entries:
+                return np.concatenate([np.asarray(e[name], dtype=dtype) for e in entries])
+            return np.zeros((0, *shape), dtype=dtype)
+
+        out = cls(
+            public=cat("public", np.float32, (PUBLIC_DIM,)),
+            world=cat("world", np.uint8, (WORLD_RECEIVERS, N_CARDS)),
+            perspective=cat("perspective", np.uint8, ()),
+            terminal=cat("terminal", bool, ()),
+            terminal_level=cat("terminal_level", np.float64, ()),
+            means=cat("means", np.float64, ()),
+            offsets=offsets,
+            deal_key=np.asarray([e["deal_key"] for e in entries], dtype=str),
+            role_attacker=np.asarray([bool(e["role_attacker"]) for e in entries], dtype=bool),
+            source_ref=np.asarray([e["source_ref"] for e in entries], dtype=str),
+            meta=dict(meta))
+        if history:
+            lengths = [np.diff(e["history_offsets"]) for e in entries]
+            h_off = np.zeros(int(offsets[-1]) + 1, dtype=np.int64)
+            if entries:
+                h_off[1:] = np.cumsum(np.concatenate(lengths))
+            out.history_offsets = h_off
+            out.history_cards = cat("history_cards", np.uint8, (N_CARDS,))
+            out.history_meta = cat("history_meta", np.uint8, (HISTORY_META_DIM,))
+        return out
+
+
+def _candidate_set_task(task: tuple) -> list[dict]:
+    """Pool worker: the first ``limit`` search records of one shard among
+    the selected deals, every candidate applied in the TRUE world."""
+    shard, selected, limit, history = task
+    keep = None if selected is None else set(selected)
+    entries: list[dict] = []
+    for record in iter_records(shard):
+        if len(entries) >= limit:
+            break
+        if record.get("decision_kind") != "play" or record.get("outcome") is None:
+            continue
+        means = search_means(record)
+        if means is None:
+            continue
+        deck = record.get("deck")
+        if not isinstance(deck, list):
+            continue
+        key = deal_key(list(deck))
+        if keep is not None and key not in keep:
+            continue
+        seat = int(record["seat"])
+        try:
+            rnd = state_for_record(record)
+        except (RebuildError, ValueError, KeyError, AssertionError, TypeError):
+            continue
+        if rnd.phase != "play" or rnd.turn != seat:
+            continue
+        indices, values = means
+        try:
+            scored = score_candidates(rnd, seat, [record["ballot"][i] for i in indices],
+                                      history=history)
+        except ValueAfterstateError:
+            continue
+        scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["source_ref"] = str(record["source_ref"])
+        scored["deal_key"] = key
+        entries.append(scored)
+    return entries
+
+
+def _pool_map(fn: Callable, tasks: Sequence[tuple], *, workers: int) -> Iterator[Any]:
+    if workers <= 1 or len(tasks) <= 1:
+        for task in tasks:
+            yield fn(task)
+        return
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(processes=min(workers, len(tasks))) as pool:
+        yield from pool.imap_unordered(fn, tasks)
+
+
+def candidate_set_digest(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
+                         per_shard_limit: int, history: bool) -> str:
+    """Identity of a candidate set: encoder, flavour, per-shard cap and the
+    (shard, selected deals) list in order."""
+    h = hashlib.sha256()
+    h.update(json.dumps({
+        "schema": CANDIDATE_SET_SCHEMA,
+        "encoder": cwv_encoder_identity()["implementation_sha256"],
+        "history": bool(history), "per_shard_limit": int(per_shard_limit),
+        "shards": [[shard.sha256, None if keys is None else sorted(keys)]
+                   for shard, keys in shard_keys],
+    }, sort_keys=True).encode("ascii"))
+    return h.hexdigest()
+
+
+def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
+                        per_shard_limit: int, history: bool, workers: int,
+                        label: str = "", progress: Callable[[str], None] | None = None
+                        ) -> CandidateSet:
+    """Rebuild the first ``per_shard_limit`` search records of every
+    ``(shard, deal keys)`` (``None`` = every deal) into one ``CandidateSet``
+    (shard order = the input order, so the set is a function of its
+    digest)."""
+    started = time.perf_counter()
+    tasks = [(shard, None if keys is None else list(keys), int(per_shard_limit), bool(history))
+             for shard, keys in shard_keys]
+    by_shard: dict[str, list[dict]] = {}
+    labels = [shard.sha256 for shard, _keys in shard_keys]
+    done = 0
+    for entries in _pool_map(_candidate_set_task, tasks, workers=workers):
+        done += 1
+        if entries:
+            # the worker returns in completion order; key by shard for a stable order
+            key = entries[0]["source_ref"]
+            by_shard[key] = entries
+        if progress and (done % 500 == 0 or done == len(tasks)):
+            progress(f"candidate set{(' ' + label) if label else ''}: {done}/{len(tasks)} "
+                     f"shards ({round(time.perf_counter() - started, 1)}s)")
+    ordered: list[dict] = []
+    for entries in sorted(by_shard.values(), key=lambda es: es[0]["source_ref"]):
+        ordered.extend(entries)
+    meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": candidate_set_digest(
+                shard_keys, per_shard_limit=per_shard_limit, history=history),
+            "encoder": cwv_encoder_identity(), "history": bool(history),
+            "per_shard_limit": int(per_shard_limit), "shards": len(labels),
+            "search_means": SEARCH_MEANS_SCALE, "rank_scale": RANK_SCALE,
+            "secs": round(time.perf_counter() - started, 3), "label": label}
+    out = CandidateSet.concatenate(ordered, meta, history=history)
+    out.meta["records"] = out.records
+    out.meta["candidates"] = out.candidates
+    return out
+
+
+def ensure_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
+                         cache_dir: str | os.PathLike | None, *, per_shard_limit: int,
+                         history: bool, workers: int, label: str = "",
+                         progress: Callable[[str], None] | None = None) -> CandidateSet:
+    """``build_candidate_set`` memoised in ``cache_dir`` by digest."""
+    digest = candidate_set_digest(shard_keys, per_shard_limit=per_shard_limit, history=history)
+    path = (None if cache_dir is None
+            else Path(cache_dir) / f"candidates-{digest[:24]}{'.cwvh' if history else ''}.npz")
+    if path is not None and path.is_file():
+        try:
+            cached = CandidateSet.load(path)
+        except (EvalError, OSError, ValueError, KeyError):
+            cached = None
+        if cached is not None and cached.meta.get("digest") == digest:
+            cached.meta["loaded_from"] = str(path)
+            if progress:
+                progress(f"candidate set{(' ' + label) if label else ''}: {cached.records} "
+                         f"records / {cached.candidates} candidates from {path.name}")
+            return cached
+    built = build_candidate_set(shard_keys, per_shard_limit=per_shard_limit, history=history,
+                                workers=workers, label=label, progress=progress)
+    if path is not None:
+        built.save(path)
+        built.meta["saved_to"] = str(path)
+    return built
+
+
+@torch.no_grad()
+def candidate_levels(forward: Callable[[Mapping[str, torch.Tensor]], torch.Tensor],
+                     cands: CandidateSet, device: torch.device | str, *,
+                     batch_size: int = 4096) -> np.ndarray:
+    """The scorer's value per candidate on ``RANK_SCALE``: ``forward(tensors)
+    -> logits`` over the 204 classes, expected signed level; terminal rows
+    carry their exact level (as the search's evaluator does)."""
+    n = cands.candidates
+    levels = np.empty(n, dtype=np.float64)
+    for lo in range(0, n, batch_size):
+        hi = min(n, lo + batch_size)
+        t = candidate_tensors(cands.batch_entry(lo, hi), device)
+        logits = forward(t)
+        prob = torch.softmax(logits.to(torch.float32), dim=1).cpu().numpy().astype(np.float64)
+        level, _pt0 = expected_levels(prob)
+        levels[lo:hi] = level
+    levels = np.where(cands.terminal, cands.terminal_level, levels)
+    return levels
+
+
+def _no_rank() -> dict:
+    return {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
+            "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
+            "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION}
+
+
+def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
+    """Per-decision candidate ranking against the search, averaged over the
+    set's records (each with >= 2 candidates and finite search means):
+
+    * ``rank_regret``: level of the search's best mean minus the level of
+      the mean of the scorer's argmax candidate (a uniform draw among tied
+      maxima), ``RANK_SCALE``, >= 0 -- U(E[points]), the bracket transform
+      of the search's MEAN points (``RANK_REGRET_DEFINITION``): an
+      MC-ranking proxy, not E[U];
+    * ``rank_regret_points``: the same on the search's own scale;
+    * ``rank_top1``: probability the scorer's top pick is a search argmax;
+    * ``rank_regret_max``: the mean spread (best minus worst mean level) --
+      the regret of an inverted ranking."""
+    levels = np.asarray(levels, dtype=np.float64)
+    if levels.shape != (cands.candidates,):
+        raise EvalError("candidate levels are misaligned with the candidate set")
+    n = cands.records
+    if n == 0:
+        return _no_rank()
+    if not np.all(np.isfinite(levels)):
+        raise EvalError("candidate levels must be finite")
+    mean_level = cands.means_level()
+    regret = np.empty(n)
+    regret_pts = np.empty(n)
+    top1 = np.empty(n)
+    spread = np.empty(n)
+    for r in range(n):
+        lo, hi = int(cands.offsets[r]), int(cands.offsets[r + 1])
+        s = levels[lo:hi]
+        m = cands.means[lo:hi]
+        ml = mean_level[lo:hi]
+        top = np.flatnonzero(s == s.max())
+        regret[r] = ml.max() - ml[top].mean()
+        regret_pts[r] = m.max() - m[top].mean()
+        top1[r] = float((m == m.max())[top].mean())
+        spread[r] = ml.max() - ml.min()
+    return {
+        "rank_records": int(n), "rank_candidates": int(cands.candidates),
+        "rank_regret": float(regret.mean()), "rank_regret_points": float(regret_pts.mean()),
+        "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),
+        "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
+    }
+
+
+def points_metrics(aux_pred: np.ndarray, attacker_points: np.ndarray,
+                   points_so_far: np.ndarray) -> dict:
+    """The points head on the split's rows: MAE and bias (pred minus real,
+    attacker points) and the fraction predicted below the points already
+    banked at the decision state (impossible outcomes)."""
+    pred = np.asarray(aux_pred, dtype=np.float64)
+    has = np.isfinite(pred)
+    if not has.any():
+        return {"points_n": 0, "points_mae": None, "points_bias": None,
+                "points_below_banked": None}
+    err = pred[has] - np.asarray(attacker_points, dtype=np.float64)[has]
+    banked = np.asarray(points_so_far, dtype=np.float64)[has]
+    return {
+        "points_n": int(has.sum()),
+        "points_mae": float(np.abs(err).mean()),
+        "points_bias": float(err.mean()),
+        "points_below_banked": float((pred[has] < banked).mean()),
+    }
+
+
+def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | None,
+                          cands: CandidateSet | None) -> dict:
+    """THE search-facing block (``CONSUMERS``): the level head's per-decision
+    ranking (``rank_metrics`` over ``cands`` scored by ``levels``), the
+    points head on the rows (``points_metrics``) and the row-level CE / MAE
+    of ``train_cwv.run_eval``'s arrays ``ev``.  One function for the
+    per-epoch validation, the final val/test pass and ``evaluate``."""
+    n = int(ev["ce"].size) if "ce" in ev else 0
+    block: dict[str, Any] = {
+        "n": n,
+        "cross_entropy": float(ev["ce"].mean()) if n else None,
+        "value_mae": (float(np.abs(ev["expected_pt0"] - ev["utility"]).mean()) if n else None),
+        "value_level_mae": (float(np.abs(ev["expected_level"] - ev["target_level"]).mean())
+                            if n else None),
+    }
+    if cands is not None and levels is not None:
+        block.update(rank_metrics(levels, cands))
+    else:
+        block.update(_no_rank())
+    block.update(points_metrics(ev["aux_pred"], ev["attacker_points"], ev["points_so_far"])
+                 if n else points_metrics(np.zeros(0), np.zeros(0), np.zeros(0)))
+    return block
+
+
 __all__ = [
-    "EvalError", "SCORERS", "ShardResult", "candidate_agreement", "candidate_pass",
-    "candidate_tensors", "iter_shard_results", "load_public_head", "paired_agreement",
-    "public_values", "score_candidates", "spearman", "summarize_agreement",
+    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_REGRET_DEFINITION",
+    "RANK_SCALE",
+    "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",
+    "candidate_agreement", "candidate_levels", "candidate_pass", "candidate_set_digest",
+    "candidate_tensors", "ensure_candidate_set", "iter_shard_results",
+    "level_of_search_mean", "load_public_head", "paired_agreement", "points_metrics",
+    "public_values", "rank_metrics", "score_candidates", "search_facing_metrics",
+    "spearman", "summarize_agreement",
 ]

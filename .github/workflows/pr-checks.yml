@@ -64,6 +64,34 @@ jobs:
           tests/test_report_world_reuse.py
           tests/test_mc_benchmark_normalization.py
 
+  luna-profiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        tests:
+          - "tests/test_luna_attempt.py tests/test_luna_supervisor.py"
+          - "tests/test_luna_cli.py tests/test_luna_transport.py"
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
+      - name: Test Luna collector prompt profiles
+        env:
+          SHENGJI_FAST: "1"
+        run: uv run pytest -q ${{ matrix.tests }}
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10

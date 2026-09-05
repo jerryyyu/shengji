@@ -11,7 +11,8 @@ Two subcommands, both bound to one checkpoint:
              predicted wall ratio.  Chosen from wall time only -- no outcome
              is ever read -- and written to calibration.json bound to the
              checkpoint sha, --finish-trick, --lcb, the base policy, the trump
-             ranks and the budget set.
+             ranks and the budget set.  Run it ALONE on an idle machine: the
+             band is narrower than the timing noise a concurrent job adds.
 
   run        The strength-vs-compute screen: one learned arm per budget
              (mc-cwv-<ckpt8>-w<W_b>), the NO-LEARNING control mc-cwv-prior-w<W_1x>,
@@ -346,24 +347,57 @@ def worlds_for_wall(fit: dict, target_wall: float) -> int:
     return max(1, int(round((target_wall - fit["a"]) / fit["b"])))
 
 
-def choose_budget_ladder(production_wall: float, grid, multipliers) -> dict:
+def matched_measurement(measured, production_wall: float):
+    """The measured row inside the band closest to 1.0x, if any."""
+    inside = [row for row in measured
+              if MATCH_BAND[0] <= row["mean_wall"] / production_wall <= MATCH_BAND[1]]
+    if not inside:
+        return None
+    return min(inside, key=lambda row: abs(row["mean_wall"] / production_wall - 1.0))
+
+
+def local_worlds_for_wall(measured, target_wall: float) -> int:
+    """W for a wall target: interpolate between the nearest measured rows
+    that bracket it (timing is only locally linear at the 5% scale), else
+    the global line fit."""
+    below = [r for r in measured if r["mean_wall"] <= target_wall]
+    above = [r for r in measured if r["mean_wall"] > target_wall]
+    if below and above:
+        lo = max(below, key=lambda r: r["mean_wall"])
+        hi = min(above, key=lambda r: r["mean_wall"])
+        if hi["worlds"] > lo["worlds"] and hi["mean_wall"] > lo["mean_wall"]:
+            frac = (target_wall - lo["mean_wall"]) / (hi["mean_wall"] - lo["mean_wall"])
+            return max(1, int(round(lo["worlds"] + frac * (hi["worlds"] - lo["worlds"]))))
+    return worlds_for_wall(fit_line([(r["worlds"], r["mean_wall"]) for r in measured]),
+                           target_wall)
+
+
+def choose_budget_ladder(production_wall: float, grid, multipliers, *,
+                         anchors=None) -> dict:
     """The ladder is a function of WALL TIME only.
 
     ``grid`` rows carry ``worlds`` and ``mean_wall``; any other field (a
-    decoy utility, a win rate) is ignored by construction.  Rungs are
-    strictly increasing in W, forced upward when two targets round together.
+    decoy utility, a win rate) is ignored by construction.  ``anchors``
+    (``{multiplier: worlds}``) pins a rung to a MEASURED W -- the verified
+    1x -- instead of the fit.  Rungs are strictly increasing in W, forced
+    upward when two targets round together.
     """
     fit = fit_line([(row["worlds"], row["mean_wall"]) for row in grid])
+    anchors = dict(anchors or {})
     rungs = []
     previous = 0
     for multiplier in sorted(parse_budgets(multipliers)):
         target = multiplier * production_wall
-        worlds = max(previous + 1, worlds_for_wall(fit, target))
+        if multiplier in anchors:
+            worlds = max(previous + 1, int(anchors[multiplier]))
+        else:
+            worlds = max(previous + 1, worlds_for_wall(fit, target))
         predicted = fit["a"] + fit["b"] * worlds
         rungs.append({"budget": budget_label(multiplier), "multiplier": multiplier,
                       "worlds": worlds, "target_wall": target,
                       "predicted_wall": predicted,
-                      "predicted_ratio": predicted / production_wall})
+                      "predicted_ratio": predicted / production_wall,
+                      "anchored": multiplier in anchors})
         previous = worlds
     return {"fit": fit, "ladder": rungs}
 
@@ -467,17 +501,25 @@ def calibrate(args) -> dict:
 
     for worlds in grid:
         measure(worlds)
+    # 1x is VERIFIED by measurement: keep proposing W (local interpolation
+    # between the measured rows that bracket production's wall) until a
+    # measured row sits inside the band, then anchor the ladder on it.
     verification = []
-    chosen = None
     for iteration in range(1, args.max_iterations + 1):
-        chosen = choose_budget_ladder(target, list(measured.values()), budgets)
-        rung = chosen["ladder"][0]
-        row = measure(rung["worlds"])
-        verification.append({"iteration": iteration, "worlds": rung["worlds"],
-                             "measured_wall": row["mean_wall"], "ratio": row["ratio"]})
-        if MATCH_BAND[0] <= row["ratio"] <= MATCH_BAND[1]:
+        if matched_measurement(measured.values(), target) is not None:
             break
-    matched = MATCH_BAND[0] <= verification[-1]["ratio"] <= MATCH_BAND[1]
+        proposal = local_worlds_for_wall(measured.values(), target)
+        if proposal in measured:                     # no progress: step once
+            proposal = proposal + (1 if measured[proposal]["ratio"] < 1.0 else -1)
+        row = measure(max(1, proposal))
+        verification.append({"iteration": iteration, "worlds": row["worlds"],
+                             "measured_wall": row["mean_wall"], "ratio": row["ratio"]})
+    best_1x = matched_measurement(measured.values(), target)
+    matched = best_1x is not None
+    if best_1x is None:
+        best_1x = min(measured.values(), key=lambda row: abs(row["ratio"] - 1.0))
+    chosen = choose_budget_ladder(target, list(measured.values()), budgets,
+                                  anchors={1.0: best_1x["worlds"]})
     for rung in chosen["ladder"]:
         row = measured.get(rung["worlds"])
         rung["measured_wall"] = None if row is None else row["mean_wall"]

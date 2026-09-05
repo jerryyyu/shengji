@@ -81,6 +81,15 @@ def test_budget_ladder_is_a_function_of_wall_time_only_and_monotone(duel):
     # colliding targets are forced apart, never equal
     tight = duel.choose_budget_ladder(0.15, grid, ["1x", "1.001x", "1.002x"])
     assert [r["worlds"] for r in tight["ladder"]] == [165, 166, 167]
+    # a measured 1x anchor pins its rung and the others stay monotone
+    anchored = duel.choose_budget_ladder(0.15, grid, ["1x", "3x", "10x"],
+                                         anchors={1.0: 172})
+    assert [r["worlds"] for r in anchored["ladder"]] == [172, 499, 1668]
+    assert [r["anchored"] for r in anchored["ladder"]] == [True, False, False]
+    assert duel.matched_measurement(grid, 0.15) is None
+    assert duel.matched_measurement(grid + [{"worlds": 160, "mean_wall": 0.146}], 0.15)["worlds"] == 160
+    assert duel.local_worlds_for_wall(grid, 0.15) == 167     # between 100 and 300
+    assert duel.local_worlds_for_wall(grid, 2.0) > 1000       # beyond the grid: the fit
     with pytest.raises(ValueError):
         duel.choose_budget_ladder(0.15, _grid([(30, 0.9), (100, 0.1)], [0, 0]), ["1x"])
 

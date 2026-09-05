@@ -21,12 +21,22 @@ The prediction is in production's rollout units (final attacker points), so
 ``_score``, the attacker/banker sign flip, the paired report fold and the LCB
 rule are untouched: only the estimator of the leaf changes.
 
-Two leaf evaluators share the truncation:
+Three leaf evaluators share the truncation:
 
-* :class:`LearnedPointsLeaf` — the checkpoint's auxiliary points head
-  (``model.py``: ``value_head`` column 1, trained on ``attacker_points / 100``),
-  exported once per process to numpy and run single-row (torch per-call
-  overhead is too high inside the rollout loop).
+* :class:`LearnedPointsLeaf` (``--leaf-model public``) — the search
+  checkpoint's auxiliary points head (``model.py``: ``value_head`` column 1,
+  trained on ``attacker_points / 100``) on the PUBLIC observation of the
+  clone's seat to act, exported once per process to numpy and run single-row
+  (torch per-call overhead is too high inside the rollout loop).
+* :class:`CompleteWorldPointsLeaf` (``--leaf-model cwv``) — the
+  complete-world value net's auxiliary points head (``train_cwv.py``:
+  ``AuxPointsHead`` on the ``mlp`` trunk, trained on ``attacker_points /
+  100``) on the determinized clone ITSELF: the clone is a complete world, so
+  ``value_afterstate.tensors_from_round(clone, seat_to_act)`` encodes the
+  sampled hands and burial into the world tensor.  Same numpy export, same
+  units.  The one-ply play test of that net (#229) lost to production at
+  every budget while beating a no-learning control; this leaf puts the same
+  net under production's own rollouts, the cheapest depth test.
 * :class:`PriorPointsLeaf` — the NO-LEARNING control: the stratified prior
   the trainer fits on the training rows (phase x role x attacker points so
   far, 18 cells; ``baselines.py``) refitted on the FINAL attacker points
@@ -34,8 +44,9 @@ Two leaf evaluators share the truncation:
   difference isolates "learned leaf" from "truncation + more worlds".
 
 A checkpoint without a points head is refused; identity checks (encoder
-SHA, checkpoint schema) go through ``SearchHeads.from_checkpoint``.  Nothing
-here registers a production default.
+SHA, checkpoint schema) go through ``SearchHeads.from_checkpoint`` (public)
+or ``train_cwv.load_cwv_checkpoint`` (cwv).  Nothing here registers a
+production default.
 """
 from __future__ import annotations
 
@@ -50,18 +61,21 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_TRICKS,
+from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_TRICKS,
                            vleaf_checkpoint_sha256)
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import encode_obs
+from ..rl.value_afterstate import tensors_from_round
 from .baselines import N_STRATA, POINT_BINS, ROLES, StratifiedPrior
 from .data import PLAYS_PER_ROUND, check_meta, part_keys, read_column, read_meta, split_deals
 
 LEAF_RECORD_SCHEMA = "vleaf-leaf-v1"
 POINTS_PRIOR_SCHEMA = "vleaf-points-prior-v1"
-#: the aux points head is trained on ``attacker_points / POINTS_SCALE`` (model.py)
+#: the aux points head is trained on ``attacker_points / POINTS_SCALE``
+#: (model.py for the public head, train_cwv.AuxPointsHead for the cwv head)
 POINTS_SCALE = 100.0
 SUPPORTED_LEAF_TRICKS = VLEAF_LEAF_TRICKS
+LEAF_MODELS = VLEAF_LEAF_MODELS
 
 
 class LeafError(ValueError):
@@ -215,6 +229,142 @@ class PointsHead:
         return value
 
 
+# --------------------------------------------- complete-world points head
+
+def require_cwv_points_head(metadata: Mapping[str, Any], *, arch: str | None = None) -> None:
+    """Refuse a complete-world checkpoint without the auxiliary points head
+    (``train_cwv.py``: ``--aux-points`` stores ``metadata['aux_points_head']``)
+    or with an architecture whose trunk it cannot read."""
+    if arch is not None and arch != "mlp":
+        raise LeafError(f"complete-world leaf needs the mlp architecture, checkpoint is {arch!r}")
+    head = metadata.get("aux_points_head")
+    if not isinstance(head, Mapping) or not head:
+        raise LeafError("checkpoint has no points head: metadata.aux_points_head is null "
+                        "(train with --aux-points)")
+
+
+class CompleteWorldPointsHead:
+    """The complete-world net's ``mlp`` trunk plus its auxiliary points head
+    as a numpy MLP: ``[public | world.ravel | perspective]`` (804) ->
+    GELU(W1) -> GELU(W2) -> aux linear (one output, attacker points / 100).
+    Dropout is identity at inference.  Single-row float64, like
+    :class:`PointsHead`; torch's own single-row forward is not faster and
+    the export is witnessed equal within 1e-5.
+    """
+
+    leaf_model = "cwv"
+
+    def __init__(self, hidden: Sequence[tuple[np.ndarray, np.ndarray]],
+                 output: tuple[np.ndarray, np.ndarray], *,
+                 metadata: Mapping[str, Any] | None = None):
+        if not hidden:
+            raise LeafError("complete-world points head needs at least one hidden layer")
+        self.hidden = [(np.ascontiguousarray(w.T, dtype=np.float64),
+                        np.ascontiguousarray(b, dtype=np.float64)) for w, b in hidden]
+        w, b = output
+        self.output = (np.ascontiguousarray(w.T, dtype=np.float64),
+                       np.ascontiguousarray(b, dtype=np.float64))
+        if self.output[0].shape[1] != 1 or self.output[1].shape != (1,):
+            raise LeafError("complete-world points head must emit exactly one output")
+        self.input_dim = int(self.hidden[0][0].shape[0])
+        width = self.input_dim
+        for wt, bias in self.hidden:
+            if wt.shape[0] != width or bias.shape != (wt.shape[1],):
+                raise LeafError("complete-world points head layers do not chain")
+            width = wt.shape[1]
+        if self.output[0].shape[0] != width:
+            raise LeafError("complete-world points head output layer does not chain")
+        self.metadata = copy.deepcopy(dict(metadata or {}))
+        self.calls = 0
+
+    @classmethod
+    def from_model(cls, model, aux_head, *, metadata: Mapping[str, Any] | None = None
+                   ) -> "CompleteWorldPointsHead":
+        """Export a ``ValueNetwork(architecture='mlp')`` trunk and its
+        ``AuxPointsHead``; refuses another architecture, a missing head or a
+        non-exact GELU."""
+        import torch
+        from torch import nn
+
+        config = getattr(model, "config", None)
+        if getattr(config, "architecture", None) != "mlp":
+            raise LeafError("complete-world leaf needs the mlp architecture "
+                            f"(checkpoint is {getattr(config, 'architecture', None)!r})")
+        if aux_head is None:
+            raise LeafError("checkpoint has no points head: metadata.aux_points_head is null "
+                            "(train with --aux-points)")
+
+        def linear(module) -> tuple[np.ndarray, np.ndarray]:
+            if not isinstance(module, nn.Linear) or module.bias is None:
+                raise LeafError(f"expected a biased nn.Linear, found {type(module).__name__}")
+            with torch.no_grad():
+                return (module.weight.detach().cpu().double().numpy().copy(),
+                        module.bias.detach().cpu().double().numpy().copy())
+
+        hidden = []
+        trunk = list(model.trunk)
+        i = 0
+        while i < len(trunk):
+            hidden.append(linear(trunk[i]))
+            act = trunk[i + 1]
+            if not isinstance(act, nn.GELU) or getattr(act, "approximate", "none") != "none":
+                raise LeafError(f"expected an exact nn.GELU, found {type(act).__name__}")
+            i += 2
+            if i < len(trunk) and isinstance(trunk[i], nn.Dropout):
+                i += 1
+        output = linear(aux_head.linear)
+        meta = dict(metadata or {})
+        meta["points_head"] = {"source": "metadata.aux_points_head on the mlp trunk",
+                               "target": "final attacker points / 100", "scale": POINTS_SCALE,
+                               "model_config": dict(config.payload())}
+        return cls(hidden, output, metadata=meta)
+
+    @classmethod
+    def from_checkpoint(cls, path: str | os.PathLike) -> "CompleteWorldPointsHead":
+        """Load through ``train_cwv.load_cwv_checkpoint`` (schema, arch and
+        afterstate-encoder identity checks), then export the points head."""
+        from .train_cwv import TrainError, load_cwv_checkpoint
+
+        path = str(Path(path).resolve())
+        try:
+            model, metadata, aux = load_cwv_checkpoint(path, "cpu")
+        except TrainError as exc:
+            raise LeafError(f"complete-world checkpoint refused: {exc}") from exc
+        require_cwv_points_head(metadata, arch=metadata.get("arch"))
+        meta = {k: metadata.get(k) for k in ("schema", "arch", "epoch", "encoder", "git",
+                                             "selection", "headline", "model_config")}
+        meta["checkpoint_sha256"] = vleaf_checkpoint_sha256(path)
+        meta["checkpoint"] = path
+        meta["sees_hidden_hands"] = metadata.get("sees_hidden_hands")
+        return cls.from_model(model, aux, metadata=meta)
+
+    def forward(self, inputs) -> np.ndarray:
+        """Aux head output (points / 100) for one row (``[1]``) or a batch (``[B, 1]``)."""
+        x = np.asarray(inputs, dtype=np.float64)
+        if x.shape[-1] != self.input_dim:
+            raise LeafError(f"input width {x.shape[-1]} != {self.input_dim}")
+        for wt, bias in self.hidden:
+            x = gelu(x @ wt + bias)
+        wt, bias = self.output
+        return x @ wt + bias
+
+    def final_attacker_points(self, inputs) -> float:
+        self.calls += 1
+        value = float(self.forward(inputs)[0]) * POINTS_SCALE
+        if not math.isfinite(value):
+            raise LeafError("complete-world points head returned a non-finite leaf value")
+        return value
+
+
+def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
+    """The mlp's input row for a complete world from ``seat``'s perspective:
+    ``value_afterstate.tensors_from_round`` (the same encoding the net was
+    trained on; the world tensor holds all four hands and the burial), laid
+    out as the trunk reads it (``value_model.ValueNetwork.features``)."""
+    t = tensors_from_round(clone, seat)
+    return np.concatenate((t.public, t.world.reshape(-1), t.perspective))
+
+
 # --------------------------------------------------------- stratified prior
 
 def leaf_ply(clone: Round) -> int:
@@ -342,6 +492,41 @@ class LearnedPointsLeaf:
                 "target": "final attacker points (points head, column 1 x 100)"}
 
 
+class CompleteWorldPointsLeaf:
+    """The complete-world points head on the determinized clone, from the
+    clone's seat to act.  ``encode_secs`` / ``forward_secs`` split the
+    per-leaf cost (tensors vs numpy MLP) for the profile."""
+
+    kind = "cwv"
+
+    def __init__(self, head: CompleteWorldPointsHead):
+        self.head = head
+        self.encode_secs = 0.0
+        self.forward_secs = 0.0
+
+    def final_attacker_points(self, clone: Round, seat: int) -> float:
+        t0 = perf_counter()
+        inputs = cwv_leaf_inputs(clone, seat)
+        t1 = perf_counter()
+        value = self.head.final_attacker_points(inputs)
+        self.forward_secs += perf_counter() - t1
+        self.encode_secs += t1 - t0
+        return value
+
+    def describe(self) -> dict:
+        meta = self.head.metadata
+        sha = meta.get("checkpoint_sha256")
+        enc = meta.get("encoder") or {}
+        return {"kind": self.kind, "leaf_model": "cwv", "checkpoint_sha256": sha,
+                "checkpoint_id": sha[:8] if isinstance(sha, str) else None,
+                "epoch": meta.get("epoch"), "schema": meta.get("schema"),
+                "arch": meta.get("arch"), "sees_hidden_hands": meta.get("sees_hidden_hands"),
+                "encoder_implementation_sha256": enc.get("implementation_sha256"),
+                "held_out_claim": False,
+                "target": ("final attacker points (complete-world aux points head x 100 on "
+                           "the determinized clone)")}
+
+
 class PriorPointsLeaf:
     """The stratified points prior at the clone's seat to act."""
 
@@ -456,19 +641,43 @@ def load_points_head(path: str, allow_legacy: bool = False) -> PointsHead:
 
 
 @lru_cache(maxsize=4)
+def load_cwv_points_head(path: str) -> CompleteWorldPointsHead:
+    """Once per process: the complete-world checkpoint's trunk + aux head as numpy."""
+    return CompleteWorldPointsHead.from_checkpoint(path)
+
+
+@lru_cache(maxsize=4)
 def load_points_prior(path: str) -> StratifiedPointsPrior:
     return StratifiedPointsPrior.from_json(path)
 
 
+def load_leaf_head(checkpoint: str | os.PathLike, *, leaf_model: str = "public",
+                   allow_legacy: bool = False):
+    """The points head named by ``leaf_model``; refuses an unknown model."""
+    if leaf_model not in LEAF_MODELS:
+        raise LeafError(f"leaf_model must be one of {LEAF_MODELS}, got {leaf_model!r}")
+    path = str(Path(checkpoint).resolve())
+    if leaf_model == "cwv":
+        return load_cwv_points_head(path)
+    return load_points_head(path, bool(allow_legacy))
+
+
+def make_learned_leaf(head):
+    if isinstance(head, CompleteWorldPointsHead):
+        return CompleteWorldPointsLeaf(head)
+    return LearnedPointsLeaf(head)
+
+
 def make_vleaf_bot(*, checkpoint: str | os.PathLike, leaf_tricks: int = 1,
                    seed: int | None = None, allow_legacy: bool = False,
-                   expected_sha256: str | None = None) -> MCValueLeafSearch:
-    head = load_points_head(str(Path(checkpoint).resolve()), bool(allow_legacy))
+                   expected_sha256: str | None = None,
+                   leaf_model: str = "public") -> MCValueLeafSearch:
+    head = load_leaf_head(checkpoint, leaf_model=leaf_model, allow_legacy=allow_legacy)
     actual = head.metadata.get("checkpoint_sha256")
     if expected_sha256 is not None and actual != expected_sha256:
         raise RuntimeError(f"checkpoint {checkpoint} changed since registration: "
                            f"{actual} != {expected_sha256}")
-    return MCValueLeafSearch(LearnedPointsLeaf(head), seed=seed, leaf_tricks=leaf_tricks)
+    return MCValueLeafSearch(make_learned_leaf(head), seed=seed, leaf_tricks=leaf_tricks)
 
 
 def make_vleaf_prior_bot(*, prior: str | os.PathLike, leaf_tricks: int = 1,
@@ -492,4 +701,6 @@ def leaf_record(bot) -> dict:
         "leaf_tricks": getattr(bot, "LEAF_TRICKS", None) if leaf is not None else None,
         "counts": counts,
         "leaf_secs": float(getattr(bot, "leaf_secs", 0.0)),
+        "leaf_encode_secs": float(getattr(leaf, "encode_secs", 0.0)),
+        "leaf_forward_secs": float(getattr(leaf, "forward_secs", 0.0)),
     }

@@ -565,9 +565,6 @@ VLEAF_LEAF_MODELS = ("public", "cwv")
 #: where the leaf is consulted: ``all`` (every rollout) or ``report`` (only
 #: the report fold's paired worlds; selection rollouts are production's).
 VLEAF_LEAF_STAGES = ("all", "report")
-#: how the estimate enters the value: ``replace`` (the truncated leaf) or
-#: ``control-variate`` (full playout, the estimate centred per candidate).
-VLEAF_LEAF_MODES = ("replace", "control-variate")
 VLEAF_CHECKPOINT_ENV = "SHENGJI_VLEAF_CKPT"
 VLEAF_PRIOR_ENV = "SHENGJI_VLEAF_PRIOR"
 VLEAF_ALLOW_LEGACY_ENV = "SHENGJI_VLEAF_ALLOW_LEGACY"
@@ -585,34 +582,24 @@ def vleaf_checkpoint_sha256(path: str | os.PathLike) -> str:
     return h.hexdigest()
 
 
-def vleaf_policy_suffix(*, leaf_stage: str = "all", leaf_mode: str = "replace",
-                        beta: float = 1.0) -> str:
-    """The variant flags in the policy name: ``""`` for the defaults,
-    ``-report`` for the report-fold-only leaf, ``-cv`` for the control
-    variate (``-cv-b<beta>`` when beta is not 1.0); both may combine."""
+def vleaf_policy_suffix(*, leaf_stage: str = "all") -> str:
+    """The variant flag in the policy name: ``""`` for the default (every
+    rollout), ``-report`` for the report-fold-only leaf."""
     if leaf_stage not in VLEAF_LEAF_STAGES:
         raise ValueError(f"leaf_stage must be one of {VLEAF_LEAF_STAGES}")
-    if leaf_mode not in VLEAF_LEAF_MODES:
-        raise ValueError(f"leaf_mode must be one of {VLEAF_LEAF_MODES}")
-    if isinstance(beta, bool) or not isinstance(beta, (int, float)) or beta != beta:
-        raise ValueError("beta must be a finite number")
-    suffix = "-report" if leaf_stage == "report" else ""
-    if leaf_mode == "control-variate":
-        suffix += "-cv" if float(beta) == 1.0 else f"-cv-b{float(beta):g}"
-    return suffix
+    return "-report" if leaf_stage == "report" else ""
 
 
 def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None,
-                      leaf_model: str = "public", leaf_stage: str = "all",
-                      leaf_mode: str = "replace", beta: float = 1.0) -> str:
+                      leaf_model: str = "public", leaf_stage: str = "all") -> str:
     """`mc-vleaf-<ckpt8>-t<T>` (public points head), `mc-vleaf-cwv-<ckpt8>-t<T>`
     (complete-world points head) or `mc-vleaf-prior-t<T>` (control), plus
-    :func:`vleaf_policy_suffix` (``-report``, ``-cv``)."""
+    :func:`vleaf_policy_suffix` (``-report``)."""
     if type(leaf_tricks) is not int or leaf_tricks not in VLEAF_LEAF_TRICKS:
         raise ValueError(f"leaf_tricks must be one of {VLEAF_LEAF_TRICKS}")
     if leaf_model not in VLEAF_LEAF_MODELS:
         raise ValueError(f"leaf_model must be one of {VLEAF_LEAF_MODELS}")
-    suffix = vleaf_policy_suffix(leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
+    suffix = vleaf_policy_suffix(leaf_stage=leaf_stage)
     if checkpoint_id is None:
         return f"mc-vleaf-prior-t{leaf_tricks}{suffix}"
     if leaf_model == "cwv":
@@ -622,24 +609,23 @@ def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None,
 
 def _make_vleaf_learned(checkpoint: str, sha256: str, leaf_tricks: int,
                         allow_legacy: bool, leaf_model: str = "public",
-                        leaf_stage: str = "all", leaf_mode: str = "replace", beta: float = 1.0):
+                        leaf_stage: str = "all"):
     def make(**kw):
         from ..train.leaf_policy import make_vleaf_bot
         return make_vleaf_bot(checkpoint=checkpoint, leaf_tricks=leaf_tricks,
                               seed=kw.get("seed"), allow_legacy=allow_legacy,
                               expected_sha256=sha256, leaf_model=leaf_model,
-                              leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
+                              leaf_stage=leaf_stage)
     make.vleaf_artifact = (checkpoint, sha256)
     return make
 
 
-def _make_vleaf_prior(prior: str, sha256: str, leaf_tricks: int,
-                      leaf_stage: str = "all", leaf_mode: str = "replace", beta: float = 1.0):
+def _make_vleaf_prior(prior: str, sha256: str, leaf_tricks: int, leaf_stage: str = "all"):
     def make(**kw):
         from ..train.leaf_policy import make_vleaf_prior_bot
         return make_vleaf_prior_bot(prior=prior, leaf_tricks=leaf_tricks,
                                     seed=kw.get("seed"), expected_sha256=sha256,
-                                    leaf_stage=leaf_stage, leaf_mode=leaf_mode, beta=beta)
+                                    leaf_stage=leaf_stage)
     make.vleaf_artifact = (prior, sha256)
     return make
 
@@ -648,8 +634,7 @@ def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
                         prior: str | os.PathLike | None = None,
                         leaf_tricks=VLEAF_LEAF_TRICKS, allow_legacy: bool = False,
                         registry: dict | None = None,
-                        leaf_model: str = "public", leaf_stage: str = "all",
-                        leaf_mode: str = "replace", beta: float = 1.0) -> dict[str, str]:
+                        leaf_model: str = "public", leaf_stage: str = "all") -> dict[str, str]:
     """Register the screen arms by name; returns ``{name: kind}`` (``learned``
     for the public head, ``cwv`` for the complete-world head, ``prior``).
 
@@ -661,8 +646,8 @@ def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
     registry = REGISTRY if registry is None else registry
     if leaf_model not in VLEAF_LEAF_MODELS:
         raise ValueError(f"leaf_model must be one of {VLEAF_LEAF_MODELS}")
-    variant = {"leaf_stage": leaf_stage, "leaf_mode": leaf_mode, "beta": float(beta)}
-    vleaf_policy_suffix(**variant)     # refuses an unknown stage or mode
+    variant = {"leaf_stage": leaf_stage}
+    vleaf_policy_suffix(**variant)     # refuses an unknown stage
     names: dict[str, str] = {}
     artifacts = []
     if checkpoint is not None:

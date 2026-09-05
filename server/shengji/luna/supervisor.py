@@ -32,6 +32,7 @@ from .atomic_io import (
     AtomicPublishError, publish_exclusive_bytes, recover_linked_partial,
 )
 from .turn import TurnRPCError
+from .transport import PROMPT_PROFILES
 from .canonical import canonical_json_bytes
 
 
@@ -40,6 +41,8 @@ CENSUS_SCHEMA = "pt-luna-turn-rpc-supervisor-census-v2"
 PROGRESS_SCHEMA = "pt-luna-turn-rpc-progress-v3"
 TERMINAL_SCHEMA = "pt-luna-turn-rpc-terminal-v3"
 CONTROLLER_REFUSAL_SCHEMA = "pt-luna-turn-rpc-controller-refusal-v2"
+PROMPT_PROFILE_SCHEMA = "pt-luna-prompt-profile-v1"
+PROMPT_PROFILE_NAME = "prompt-profile.json"
 DEFAULT_WORKERS = 4
 DEFAULT_GAME_DEADLINE_SECONDS = 1_800
 DEFAULT_WALL_SECONDS = 12_000
@@ -81,6 +84,28 @@ def _strict_sha(value: object, label: str) -> str:
             or any(char not in "0123456789abcdef" for char in value):
         raise RPCSupervisorError(f"{label} drift")
     return value
+
+
+def _prompt_profile_payload(profile: str) -> dict[str, object]:
+    if profile not in PROMPT_PROFILES:
+        raise RPCSupervisorError("prompt profile drift")
+    body = {"schema": PROMPT_PROFILE_SCHEMA, "prompt_profile": profile}
+    return {**body, "profile_sha256": _sha(body)}
+
+
+def _read_prompt_profile(private_root: Path) -> str:
+    path = private_root / PROMPT_PROFILE_NAME
+    if not path.exists():
+        return "baseline"
+    value = _read_sealed(path, label="prompt profile")
+    body = {key: item for key, item in value.items()
+            if key != "profile_sha256"}
+    if (set(value) != {"schema", "prompt_profile", "profile_sha256"}
+            or value.get("schema") != PROMPT_PROFILE_SCHEMA
+            or value.get("profile_sha256") != _sha(body)
+            or value.get("prompt_profile") not in PROMPT_PROFILES):
+        raise RPCSupervisorError("prompt profile schema drift")
+    return value["prompt_profile"]
 
 
 def _positive(value: object, label: str) -> int:
@@ -296,11 +321,15 @@ def validate_terminal_receipt(receipt: Mapping[str, object]) -> None:
         raise RPCSupervisorError("terminal receipt schema drift")
     body = {key: value for key, value in receipt.items()
             if key != "receipt_sha256"}
-    if (set(receipt) != {"schema", "route", "schedule_sha256", "census_sha256",
+    terminal_keys = {"schema", "route", "schedule_sha256", "census_sha256",
                          "runtime_sha256", "attempt_manifest",
                          "completed_games", "completed_deal_clusters",
                          "failed_games", "pending_games", "resource_totals",
                          "ledger_terminal_accept_sha256", "receipt_sha256"}
+    if (set(receipt) not in (
+            terminal_keys, terminal_keys | {"prompt_profile"})
+            or (set(receipt) == terminal_keys | {"prompt_profile"}
+                and receipt.get("prompt_profile") not in PROMPT_PROFILES)
             or receipt.get("schema") != TERMINAL_SCHEMA
             or receipt.get("route") not in ROUTES
             or receipt.get("receipt_sha256") != _sha(body)
@@ -372,9 +401,12 @@ class PTLunaRPCSupervisor:
                 DEFAULT_PER_CALL_WALL_RESERVE_MS,
             per_game_deadline_seconds: int = DEFAULT_GAME_DEADLINE_SECONDS,
             wall_seconds: int = DEFAULT_WALL_SECONDS,
-            ledger_namespace: str = SCHEMA):
+            ledger_namespace: str = SCHEMA,
+            prompt_profile: str = "baseline"):
         if type(seed_secret) is not bytes or len(seed_secret) != 32:
             raise RPCSupervisorError("seed secret drift")
+        if prompt_profile not in PROMPT_PROFILES:
+            raise RPCSupervisorError("prompt profile drift")
         if type(runtime) is not dict or not runtime:
             raise RPCSupervisorError("runtime identity drift")
         if type(ledger_namespace) is not str or not ledger_namespace \
@@ -384,6 +416,7 @@ class PTLunaRPCSupervisor:
         self.private_root = Path(private_root)
         self.public_root = Path(public_root)
         self.runtime = dict(runtime)
+        self.prompt_profile = prompt_profile
         self.schedule = validate_schedule(schedule)
         census = (build_root_census(seed_secret, self.schedule)
                   if root_census is None else dict(root_census))
@@ -424,10 +457,16 @@ class PTLunaRPCSupervisor:
                 per_call_token_reserve=per_call_token_reserve,
                 per_call_wall_reserve_milliseconds=
                     per_call_wall_reserve_milliseconds,
-                stop_event=threading.Event())
+                stop_event=threading.Event(),
+                prompt_profile=prompt_profile)
         elif runner is None:
             raise RPCSupervisorError("injected runner required")
         self.runner = runner
+        runner_profile = getattr(runner, "prompt_profile", prompt_profile)
+        if runner_profile != prompt_profile:
+            raise RPCSupervisorError("runner prompt profile binding drift")
+        if not hasattr(runner, "prompt_profile"):
+            runner.prompt_profile = prompt_profile
         self.ledger = ledger
         if self.ledger is not None and (
                 self.ledger.root.resolve()
@@ -532,8 +571,19 @@ class PTLunaRPCSupervisor:
 
     def _publish_launch(self) -> None:
         """Publish the seed-derived launch facts before any provider call."""
+        profile_path = self.private_root / PROMPT_PROFILE_NAME
+        existing_profile = (None if not profile_path.exists()
+                            else _read_prompt_profile(self.private_root))
+        if existing_profile is None and (self.private_root / "census.json").exists():
+            # Runs predating profile support always used the baseline prompt.
+            existing_profile = "baseline"
+        if (existing_profile is not None
+                and existing_profile != self.prompt_profile):
+            raise RPCSupervisorError("run prompt profile binding drift")
         _publish(self.private_root / "census.json", self.census)
         _publish(self.private_root / "runtime.json", self.runtime)
+        _publish(self.private_root / PROMPT_PROFILE_NAME,
+                 _prompt_profile_payload(self.prompt_profile))
 
     def _reopen_one(self, coordinate, mirror) -> AttemptReopen | None:
         path = _attempt_path(self.attempts_root, coordinate, mirror)
@@ -544,7 +594,8 @@ class PTLunaRPCSupervisor:
                                   expected_runtime_sha256=getattr(
                                       self.runner, "runtime_sha256", None),
                                   expected_coordinate=coordinate,
-                                  expected_mirror=mirror)
+                                  expected_mirror=mirror,
+                                  expected_prompt_profile=self.prompt_profile)
         except Exception as exc:
             self._errors[(coordinate, mirror)] = exc
             return None
@@ -711,6 +762,7 @@ class PTLunaRPCSupervisor:
             raise RPCSupervisorError("terminal route drift")
         rows = self._manifest_rows()
         body = {"schema": TERMINAL_SCHEMA, "route": route,
+                "prompt_profile": self.prompt_profile,
                 "schedule_sha256": _schedule_sha(self.schedule),
                 "census_sha256": self.census_sha256,
                 "runtime_sha256": _sha(self.runtime),
@@ -800,6 +852,12 @@ class PTLunaRPCSupervisor:
             raise RPCSupervisorError("non-complete terminal acceptance drift")
         expected = self._terminal(
             route, ledger_terminal_accept_sha256=stored_accept)
+        if "prompt_profile" not in receipt:
+            # v3 terminals predate the profile field and are baseline roots.
+            expected.pop("prompt_profile", None)
+            body = {key: value for key, value in expected.items()
+                    if key != "receipt_sha256"}
+            expected["receipt_sha256"] = _sha(body)
         if receipt != expected:
             raise RPCSupervisorError("terminal reconstruction drift")
         return SupervisorResult(receipt["route"], receipt)
@@ -957,7 +1015,8 @@ class _ReopenOnlyRunner:
         raise RPCSupervisorError("verification never dispatches a game")
 
 
-def verify_run(root: Path, *, seed_secret: bytes) -> SupervisorResult:
+def verify_run(root: Path, *, seed_secret: bytes,
+               prompt_profile: str | None = None) -> SupervisorResult:
     """Reopen ``root/private`` and ``root/public`` and rebuild the terminal.
 
     The seed secret is the only input besides the run root: the schedule
@@ -968,6 +1027,12 @@ def verify_run(root: Path, *, seed_secret: bytes) -> SupervisorResult:
     private_root = Path(root) / "private"
     public_root = Path(root) / "public"
     _private_dir(private_root, "private supervisor root")
+    stored_profile = _read_prompt_profile(private_root)
+    if prompt_profile is None:
+        prompt_profile = stored_profile
+    if (prompt_profile not in PROMPT_PROFILES
+            or prompt_profile != stored_profile):
+        raise RPCSupervisorError("run prompt profile binding drift")
     runtime = _read_sealed(private_root / "runtime.json", label="runtime")
     census = _read_sealed(private_root / "census.json", label="census")
     games = census.get("game_count")
@@ -1000,11 +1065,13 @@ def verify_run(root: Path, *, seed_secret: bytes) -> SupervisorResult:
         public_root=public_root, runtime=runtime, schedule=schedule,
         root_census=census,
         runner=_ReopenOnlyRunner(private_root / "attempts", runtime),
-        ledger=ledger, ledger_namespace=namespace)
+        ledger=ledger, ledger_namespace=namespace,
+        prompt_profile=prompt_profile)
     return instance.verify()
 
 
 __all__ = ["CENSUS_SCHEMA", "PROGRESS_SCHEMA", "TERMINAL_SCHEMA", "ROUTES",
+           "PROMPT_PROFILES", "PROMPT_PROFILE_SCHEMA",
            "COMPLETE_STATE_SOURCE_ACQUISITION",
            "REFUSE_MECHANICS_OR_PRIVACY", "REFUSE_RESOURCE_OR_PROVIDER",
            "INCOMPLETE_STATE_SOURCE_ACQUISITION", "RPCSupervisorError",

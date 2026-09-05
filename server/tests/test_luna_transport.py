@@ -42,6 +42,11 @@ from shengji.luna.canonical import canonical_json_bytes
 SECRET = b"luna-rpc-transport-secret-32b!!!"
 assert len(SECRET) == 32
 
+# SHA-256 of planner_prompt(packet()) evaluated from the parent c82eac20
+# transport.py, before prompt profiles were introduced.
+PARENT_BASELINE_PROMPT_SHA256 = (
+    "934d466b9cfbdc5ad153ea9fc5716fa987f8171b1236277e8a661a10d6b3f066")
+
 
 def test_parent_death_watchdog_kills_provider_process(tmp_path):
     pid_path = tmp_path / "provider.pid"
@@ -347,13 +352,14 @@ def sealed_disposition(kind, message, *, stage="provider-response",
 
 
 def transport(tmp_path, fake, *, deadline_provider=None, timeout_seconds=90,
-              policy_mode="free"):
+              policy_mode="free", prompt_profile="baseline"):
     return CodexExecPlannerTransport(
         codex_binary="/usr/bin/true", temp_root=tmp_path,
         timeout_seconds=timeout_seconds, run_command=fake,
         runtime_attestor=lambda _: {
             "schema": "pt-luna-codex-tool-catalog-v1"},
-        deadline_provider=deadline_provider, policy_mode=policy_mode)
+        deadline_provider=deadline_provider, policy_mode=policy_mode,
+        prompt_profile=prompt_profile)
 
 
 def test_valid_call_has_no_tool_surface_and_binds_usage(tmp_path):
@@ -370,6 +376,48 @@ def test_valid_call_has_no_tool_surface_and_binds_usage(tmp_path):
     assert b'"hands_by_seat"' in prompt
     assert timeout == 90
     assert not workspace.exists()
+
+
+def test_prompt_profile_is_opt_in_and_baseline_prompt_is_unchanged():
+    decision = packet()
+    baseline = transport_module.planner_prompt(decision)
+    assert baseline == transport_module.planner_prompt(
+        decision, prompt_profile="baseline")
+    assert hashlib.sha256(baseline.encode()).hexdigest() == \
+        PARENT_BASELINE_PROMPT_SHA256
+    assert "Analysis-guided rubric" not in baseline
+    guided = transport_module.planner_prompt(
+        decision, prompt_profile="analysis-guided")
+    assert "Analysis-guided rubric" in guided
+    for phrase in (
+            "signed-level utility", "worst-case", "median", "mean",
+            "sensitivity", "robustly better", "material",
+            "control", "partner", "points", "trump",
+            "threshold"):
+        assert phrase in guided
+    play_only = transport_module.planner_prompt(
+        decision, policy_mode="play-only", prompt_profile="analysis-guided")
+    assert "multi-trick plan" in play_only
+    assert "second rollout" not in play_only
+    assert "worst-case" not in play_only
+    with pytest.raises(CodexTurnTransportError, match="prompt profile"):
+        transport_module.planner_prompt(decision, prompt_profile="invalid")
+
+
+def test_private_evidence_binds_prompt_profile(tmp_path):
+    decision = packet()
+    active = transport(tmp_path, FakeRun(), prompt_profile="analysis-guided")
+    response = active.call(decision)
+    private = active.take_private_evidence(decision, response)
+    assert private["request"]["prompt_profile"] == "analysis-guided"
+    forged = copy.deepcopy(private)
+    forged["request"]["prompt_profile"] = "baseline"
+    body = {key: value for key, value in forged.items()
+            if key != "evidence_sha256"}
+    forged["evidence_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(CodexTurnTransportError, match="packet binding"):
+        validate_private_evidence(forged, packet=decision, response=response)
 
 
 def test_dynamic_game_deadline_reaches_run_seam(tmp_path):

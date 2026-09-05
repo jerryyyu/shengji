@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import stat
@@ -57,6 +58,44 @@ def _secret_file(tmp_path):
     path.write_bytes(SECRET)
     path.chmod(0o600)
     return path
+
+
+def test_collect_rejects_invalid_prompt_profile_before_provider_call(
+        tmp_path, cli):
+    with pytest.raises(SystemExit):
+        cli.main(["collect", "--games", "2", "--token-ceiling", "1000",
+                  "--out", str(tmp_path / "run"),
+                  "--prompt-profile", "invalid"])
+    assert not (tmp_path / "run").exists()
+
+
+def test_collect_guided_profile_reaches_sealed_real_transport(
+        tmp_path, cli, monkeypatch):
+    """The CLI profile must survive construction to a real transport.
+
+    A tool-event refusal stops the one scheduled game after the provider
+    request, keeping this witness bounded while still sealing its evidence.
+    """
+    secret_path = _secret_file(tmp_path)
+    root = tmp_path / "run"
+    monkeypatch.setattr(cli, "schedule_for_games",
+                        lambda _secret, _games: [(('2', 0, 0), 0)])
+    cli.fake.tool_event = True
+
+    assert cli.main(_collect_args(root, "--prompt-profile",
+                                  "analysis-guided")) == 1
+    attempt = root / "private" / "attempts" / "2-0-0-mirror-0"
+    attempt_body = json.loads((attempt / "attempt.json").read_text())
+    assert attempt_body["prompt_profile"] == "analysis-guided"
+    refusal_paths = sorted((attempt / "journal").glob("*-refusal.json"))
+    assert refusal_paths
+    refusal = json.loads(refusal_paths[-1].read_text())
+    private = refusal["provider_private_evidence"]
+    assert private["request"]["prompt_profile"] == "analysis-guided"
+    prompt = base64.b64decode(private["prompt_base64"]).decode()
+    assert "Analysis-guided rubric" in prompt
+    assert "multi-trick plan" in prompt
+    assert cli.fake.calls > 0
 
 
 def test_collect_then_reopen_then_verify_through_the_cli(

@@ -543,7 +543,8 @@ REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
 
 
 def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
-                          lcb: float = 0.0, receipt: str | None = None) -> list[str]:
+                          lcb: float = 0.0, receipt: str | None = None,
+                          plies: int | None = None) -> list[str]:
     """Complete-world-value one-ply arms, named by their VALUE checkpoint.
 
     Same rule as ``_make_vleaf``: the checkpoint is the policy's identity, so
@@ -553,11 +554,14 @@ def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
     same ballot, sampler and positions with the training receipt's stratified
     prior as the value.  The checkpoint is loaded lazily, once per process,
     and refused when its encoder identity is not the live afterstate encoder.
+    ``plies`` (1 or 2) registers the TWO-PLY bot instead -- net-chosen replies
+    for the rest of the current trick (1) or one more trick (2) --
+    as ``mc-cwv2-<ckpt8>-w<W>[-p2]`` with control ``mc-cwv2-prior-...``.
     Returns the registered names.
     """
     from .cwv_policy import cwv_registry_entries
     entries = cwv_registry_entries(checkpoint, worlds, finish_trick=finish_trick,
-                                   lcb=lcb, receipt=receipt)
+                                   lcb=lcb, receipt=receipt, plies=plies)
     REGISTRY.update(entries)
     return sorted(entries)
 

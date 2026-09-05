@@ -1,4 +1,5 @@
-"""Extractor: the high-N diagnostic corpus (``scripts/highn_build.py`` rows).
+"""Extractor: the high-N diagnostic corpus (rows written by the 2026-08
+``highn_build.py`` script, removed 2026-09-05; the corpus files remain).
 
 Files (spec order): ``server/rl_data/highn_corpus_all.jsonl``,
 ``highn_late_air.jsonl``, ``highn_late_mini.jsonl``,

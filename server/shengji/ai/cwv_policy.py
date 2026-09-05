@@ -31,18 +31,28 @@ the shortlist to production's full-rollout report fold):
         # expected signed level from ``seat``'s TEAM perspective, ONE batch;
         # terminal positions are exact and never touch the model
 
-Checkpoint metadata contract (the training build writes it; see the report):
+Checkpoint metadata contract (the training build, claude/cwv-train, writes
+``metadata["encoder"] = shengji.train.cwv_data.cwv_encoder_identity()``):
 the checkpoint must declare the afterstate encoder it was trained against.
-Accepted forms, any one of which must equal :func:`afterstate_encoder_identity`
-``["implementation_sha256"]`` or the sha256 of ``value_afterstate.py`` itself:
+:func:`afterstate_encoder_identity` is that recipe -- schema
+``shengji-cwv-encoder-identity-v1`` over the executable closure of
+``tensors_from_round`` (nine source files) -- and imports the training
+module's function once the branches are merged so there is one source of
+truth.  Accepted declarations, any one of which must equal the live
+``implementation_sha256`` (or, for hand-made checkpoints, the sha256 of
+``value_afterstate.py`` itself):
 
     metadata["encoder"]            = {"implementation_sha256": <sha>, ...} | <sha>
     metadata["encoder_identity"]   = {"implementation_sha256": <sha>, ...} | <sha>
     metadata["afterstate_encoder"] = <sha>
 
 A checkpoint without any of these is foreign and is refused; so is one whose
-declared sha matches neither.  A no-learning control reads its stratified
-prior table from ``metadata["stratified_prior"]`` or from a receipt JSON.
+declared sha matches neither (the refusal names the drifted source files
+when the declaration carries ``source_sha256s``).  A no-learning control
+reads its stratified prior table from ``metadata["stratified_prior"]`` or
+from a receipt JSON.  The training build's ``mlp`` architecture ignores the
+history tensor, so the evaluator feeds it a one-row history instead of the
+padded sequence; the sequence architectures receive the full history.
 """
 
 from __future__ import annotations
@@ -75,22 +85,29 @@ from .memory import Memory
 
 
 CWV_DECISION_SCHEMA = "cwv-decision-v1"
-AFTERSTATE_IDENTITY_SCHEMA = "cwv-afterstate-encoder-identity-v1"
+#: The training build's identity schema (``shengji.train.cwv_data``); the
+#: recipe below reproduces it byte for byte until the branches merge.
+AFTERSTATE_IDENTITY_SCHEMA = "shengji-cwv-encoder-identity-v1"
 PRIOR_STRATA = tuple(f"{phase}|{role}" for phase in ("early", "middle", "late")
                      for role in ("attacker", "defender"))
 
 _SHENGJI = Path(__file__).resolve().parents[1]
-#: The executable closure of ``tensors_from_round``: the afterstate module,
-#: the public observation encoder and its Memory, the public-history encoder
-#: and the card/combo helpers they call.  Editing any of these changes what a
-#: checkpoint is scored on, so it changes the identity a checkpoint must carry.
+#: The executable closure of ``tensors_from_round`` and the training bridge
+#: (the same nine files as ``cwv_data.CWV_SOURCE_PATHS``): the afterstate
+#: module, the public observation encoder and its Memory, the public-history
+#: encoder, the card/combo/round engine and the record rebuild/utility
+#: helpers.  Editing any of these changes what a checkpoint is scored on, so
+#: it changes the identity a checkpoint must carry.
 AFTERSTATE_SOURCE_PATHS = {
     "value_afterstate": _SHENGJI / "rl" / "value_afterstate.py",
-    "douzero_micro": _SHENGJI / "rl" / "douzero_micro.py",
     "encode": _SHENGJI / "rl" / "encode.py",
+    "douzero_micro": _SHENGJI / "rl" / "douzero_micro.py",
     "memory": _SHENGJI / "ai" / "memory.py",
     "cards": _SHENGJI / "engine" / "cards.py",
     "combos": _SHENGJI / "engine" / "combos.py",
+    "round": _SHENGJI / "engine" / "round.py",
+    "rebuild": _SHENGJI / "harvest" / "rebuild.py",
+    "teacher_v1": _SHENGJI / "teacher_v1.py",
 }
 
 
@@ -112,12 +129,13 @@ def file_sha256(path: str | os.PathLike[str]) -> str:
     return digest.hexdigest()
 
 
-def afterstate_encoder_identity() -> dict[str, Any]:
-    """Rehash the afterstate encoder's executable closure on every call."""
+def local_encoder_identity() -> dict[str, Any]:
+    """This module's replica of the training build's identity recipe."""
     sources = {name: file_sha256(path)
                for name, path in AFTERSTATE_SOURCE_PATHS.items()}
-    payload = "|".join(f"{name}:{digest}"
-                       for name, digest in sorted(sources.items()))
+    payload = "|".join(
+        [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
+        + [f"{name}:{digest}" for name, digest in sorted(sources.items())])
     return {
         "identity_schema": AFTERSTATE_IDENTITY_SCHEMA,
         "afterstate_schema": AFTERSTATE_SCHEMA,
@@ -126,18 +144,44 @@ def afterstate_encoder_identity() -> dict[str, Any]:
     }
 
 
+def afterstate_encoder_identity() -> dict[str, Any]:
+    """Rehash the afterstate encoder's executable closure on every call.
+
+    Once the training build is merged its ``cwv_encoder_identity`` is the
+    single source of truth and is used directly; until then the local
+    replica (same schema, same nine files, same payload) stands in.
+    """
+    try:
+        from ..train.cwv_data import cwv_encoder_identity
+    except ImportError:
+        return local_encoder_identity()
+    identity = dict(cwv_encoder_identity())
+    if identity.get("identity_schema") != AFTERSTATE_IDENTITY_SCHEMA \
+            or not isinstance(identity.get("implementation_sha256"), str) \
+            or not isinstance(identity.get("source_sha256s"), Mapping):
+        raise CWVError("the training build's encoder identity schema drifted")
+    return identity
+
+
+_DECLARATION_KEYS = ("implementation_sha256", "afterstate_sha256",
+                     "value_afterstate_sha256", "sha256", "identity")
+
+
 def _sha_values(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, Mapping):
-        out: list[str] = []
-        for key, inner in value.items():
-            if key == "source_sha256s":
-                continue
-            if isinstance(inner, str) and ("sha" in str(key) or key == "identity"):
-                out.append(inner)
-        return out
+        return [inner for key, inner in value.items()
+                if key in _DECLARATION_KEYS and isinstance(inner, str)]
     return []
+
+
+def _declared_sources(metadata: Mapping[str, Any]) -> Mapping[str, str]:
+    for key in ("encoder", "encoder_identity", "afterstate_encoder_identity"):
+        value = metadata.get(key)
+        if isinstance(value, Mapping) and isinstance(value.get("source_sha256s"), Mapping):
+            return value["source_sha256s"]
+    return {}
 
 
 def declared_encoder_shas(metadata: Mapping[str, Any]) -> list[str]:
@@ -167,12 +211,16 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     for sha in declared:
         if sha in accepted:
             return sha
+    drifted = sorted(
+        name for name, sha in _declared_sources(metadata).items()
+        if name in current["source_sha256s"] and current["source_sha256s"][name] != sha)
+    detail = (f"; drifted sources: {', '.join(drifted)}" if drifted else "")
     raise CWVCheckpointMismatch(
         f"{label}checkpoint encoder identity {[s[:12] for s in declared]} "
         f"matches neither the afterstate encoder "
         f"{current['implementation_sha256'][:12]} nor value_afterstate.py "
         f"{current['source_sha256s']['value_afterstate'][:12]}; a net may "
-        "only score the encoding it was trained on")
+        f"only score the encoding it was trained on{detail}")
 
 
 @lru_cache(maxsize=8)
@@ -202,18 +250,28 @@ def checkpoint_id(path: str | os.PathLike[str]) -> str:
 
 # ----------------------------------------------------------------- evaluator
 
-def _stack(rows: Sequence[ValueAfterstateTensors]):
-    """Stack validated afterstate tensors into one padded torch batch."""
+def _stack(rows: Sequence[ValueAfterstateTensors], *, history_free: bool = False):
+    """Stack validated afterstate tensors into one padded torch batch.
+
+    ``history_free`` (the ``mlp`` architecture, which never reads the
+    history) sends a one-row zero history with a true mask instead of the
+    padded sequence: same public/world/perspective bytes, none of the
+    ``rows x 100 x 64`` allocation.
+    """
     import torch
 
-    length = max(len(row.history) for row in rows)
     width = rows[0].history.shape[1]
-    history = np.zeros((len(rows), length, width), dtype=np.float32)
-    mask = np.zeros((len(rows), length), dtype=np.bool_)
-    for index, row in enumerate(rows):
-        n = len(row.history)
-        history[index, :n] = row.history
-        mask[index, :n] = True
+    if history_free:
+        history = np.zeros((len(rows), 1, width), dtype=np.float32)
+        mask = np.ones((len(rows), 1), dtype=np.bool_)
+    else:
+        length = max(len(row.history) for row in rows)
+        history = np.zeros((len(rows), length, width), dtype=np.float32)
+        mask = np.zeros((len(rows), length), dtype=np.bool_)
+        for index, row in enumerate(rows):
+            n = len(row.history)
+            history[index, :n] = row.history
+            mask[index, :n] = True
     return (torch.from_numpy(np.stack([row.public for row in rows])),
             torch.from_numpy(history), torch.from_numpy(mask),
             torch.from_numpy(np.stack([row.world for row in rows])),
@@ -324,10 +382,13 @@ class CompleteWorldEvaluator:
         import torch
 
         out = np.empty((len(rows), OUTCOME_CLASSES), dtype=np.float64)
+        history_free = getattr(getattr(self.model, "config", None),
+                               "architecture", None) == "mlp"
         with torch.inference_mode():
             for start in range(0, len(rows), self.max_batch):
                 chunk = rows[start:start + self.max_batch]
-                public, history, mask, world, perspective = _stack(chunk)
+                public, history, mask, world, perspective = _stack(
+                    chunk, history_free=history_free)
                 if self.device != "cpu":
                     public, history, mask, world, perspective = (
                         public.to(self.device), history.to(self.device),

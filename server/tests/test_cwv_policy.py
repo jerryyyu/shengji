@@ -170,6 +170,77 @@ def test_batched_scores_equal_per_position_api_and_terminals_bypass_model(checkp
         guarded.score([positions[0]], seat)
 
 
+def test_mlp_architecture_receives_a_history_free_batch_with_identical_scores():
+    """The training build's ``mlp`` ignores history; the evaluator must not
+    pay for the padded sequence, and the fixed-size tensors must be intact."""
+    import torch
+    from types import SimpleNamespace
+    from shengji.rl.value_afterstate import (PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS,
+                                             tensors_from_round)
+    from shengji.rl.encode import N_CARDS
+
+    class HistoryFree(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.config = SimpleNamespace(architecture="mlp")
+            self.head = torch.nn.Linear(PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM,
+                                        204)
+            self.history_lengths = []
+
+        def forward(self, public, history, mask, world, perspective):
+            self.history_lengths.append(int(history.shape[1]))
+            assert mask.dtype == torch.bool and bool(torch.all(mask.any(dim=1)))
+            return self.head(torch.cat((public, world.flatten(start_dim=1), perspective), dim=1))
+
+    torch.manual_seed(3)
+    model = HistoryFree()
+    rnd = _state_after(23, 30)
+    seat = rnd.turn
+    candidates = MCBot(seed=0)._candidates(rnd, seat)[:3]
+    positions = [apply_action(rnd, seat, cand)[0] for cand in candidates]
+    evaluator = CompleteWorldEvaluator(None, model=model)
+    scores = evaluator.score(positions, seat)
+    assert model.history_lengths == [1], "the mlp path sends a one-row history"
+    rows = [tensors_from_round(p, seat) for p in positions]
+    full = [predict_tensors_reference(model, row) for row in rows]
+    assert np.allclose(scores, full, atol=1e-6)
+    # RED when the history-free path corrupts the fixed-size tensors: the
+    # sequence path (full history) must give the same numbers.
+    model.config.architecture = "gru"
+    assert np.allclose(evaluator.score(positions, seat), scores, atol=1e-6)
+    assert model.history_lengths[-1] > 1
+
+
+def predict_tensors_reference(model, row):
+    """#214's predict_tensors on one row (full padded history)."""
+    from shengji.rl.value_inference import predict_tensors
+    return predict_tensors(model, [row])[0].expected_signed_level
+
+
+def test_encoder_identity_is_the_training_builds_recipe():
+    import hashlib
+    from shengji.rl.value_afterstate import AFTERSTATE_SCHEMA
+
+    identity = afterstate_encoder_identity()
+    assert identity["identity_schema"] == "shengji-cwv-encoder-identity-v1"
+    assert set(identity["source_sha256s"]) == {
+        "value_afterstate", "encode", "douzero_micro", "memory", "cards",
+        "combos", "round", "rebuild", "teacher_v1"}
+    payload = "|".join(
+        ["shengji-cwv-encoder-identity-v1", AFTERSTATE_SCHEMA]
+        + [f"{name}:{sha}" for name, sha in sorted(identity["source_sha256s"].items())])
+    assert identity["implementation_sha256"] == hashlib.sha256(payload.encode("ascii")).hexdigest()
+    for name, path in cwv_policy.AFTERSTATE_SOURCE_PATHS.items():
+        assert identity["source_sha256s"][name] == cwv_policy.file_sha256(path)
+    assert cwv_policy.local_encoder_identity()["implementation_sha256"] == \
+        identity["implementation_sha256"]
+    # a declaration carrying drifted sources is refused and the file is named
+    drifted = {"encoder": {**identity, "implementation_sha256": "f" * 64,
+                           "source_sha256s": {**identity["source_sha256s"], "memory": "0" * 64}}}
+    with pytest.raises(CWVCheckpointMismatch, match="drifted sources: memory"):
+        verify_checkpoint_identity(drifted)
+
+
 # ------------------------------------------------------------- 2. decision
 
 def test_one_ply_decision_plays_the_candidate_the_evaluator_prefers(checkpoint):

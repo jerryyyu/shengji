@@ -34,6 +34,38 @@ more expensive stand-in for each buys inside the unchanged search:
 ``both``
     Both mixins on one bot.
 
+``wide``
+    Wide-ballot coverage arm (issue #205 step 2).  The production BALLOT is
+    replaced by the best candidates of a CAPPED deterministic prefix of the
+    legal set unioned with the production ballot; everything else is
+    production.  Per contested decision
+    ``enumerate_legal(rnd, seat, cap=WIDE_CAP, must_include=ballot)`` lists
+    the enumerator's first ``WIDE_CAP`` legal actions in its fixed order and
+    appends every production action that prefix missed.  A legal set larger
+    than the cap makes the listing INCOMPLETE: the arm then ranks a prefix,
+    not the legal set, and supports no coverage claim beyond that prefix.
+    Stage 1 scores every listed action on ``WIDE_SCREEN_WORLDS`` shared
+    worlds and keeps the top ``WIDE_KEEP_STAGE1`` (the incumbent always
+    survives); stage 2 ranks the survivors with the prior's
+    ``PRIOR_WORLDS``-world machinery and keeps ``WIDE_KEEP_TOP`` (incumbent
+    at index 0, or the oracle's favourite with ``PRIOR_ANCHOR``).  That
+    ballot goes to the production search with ``N_DETERMINIZATIONS``
+    UNCHANGED: a wider ballot simply costs more selection worlds, which the
+    counters record (``wide_fixed_n``).
+
+    Incompleteness is never silent.  Every capped decision is counted
+    (``oracle_wide_capped``), the summary carries a ``wide_coverage`` block
+    (decisions, complete, capped, capped_rate, legal_count_total,
+    listed_total) plus a ``problems`` entry whenever ``capped_rate > 0``,
+    and the arm description names the cap.  ``WIDE_REQUIRE_COMPLETE``
+    (``--wide-require-complete``) fails closed instead: the first incomplete
+    enumeration refuses its round, the run stops, the refusal is recorded in
+    ``summary.problems`` (and ``summary.refused``) and the run exits
+    non-zero.
+
+``wide-value``
+    ``wide`` stacked with ``value``, as ``both`` stacks ``prior`` with it.
+
 ``none`` / ``null``
     Controls: ``none`` plays the production policy on both sides with the
     arm's seeds (the identity witness for a neutral-knob arm); ``null`` plays
@@ -57,13 +89,15 @@ completed runs; read "ceiling" in them as "probe".
 
 Neutral knobs reproduce production decisions exactly: ``LEAF_MULTIPLIER=1``
 with the exact solver off routes every leaf through the production
-``_rollout``; ``PRIOR_KEEP_TOP=0`` never computes a prior.  Both are tested.
+``_rollout``; ``PRIOR_KEEP_TOP=0`` never computes a prior; ``WIDE_KEEP_TOP=0``
+never enumerates.  All three are tested.
 
 The arms count their extra work honestly.  ``rollouts`` keeps production's
 meaning (leaves scored by the search); ``continuation_rollouts`` is the number
 of plain continuations actually played; ``prior_rollouts``/``prior_worlds``
-are the oracle prior's own sampling, kept apart from the production sampler
-counters that the decision record reports.
+and ``wide_stage1_rollouts``/``wide_stage2_rollouts``/``wide_worlds`` are the
+oracles' own sampling, kept apart from the production sampler counters that
+the decision record reports; ``total_rollouts`` charges all of it to the arm.
 
 Design/measurement rules follow ``shengji.evaluation``: both mirrors of one
 seeded deal are one cluster, the cluster is the uncertainty unit, and the
@@ -95,8 +129,14 @@ from ..engine.combos import decompose
 from ..engine.game import Game
 from ..engine.round import Trick, TrickPlay
 from ..evaluation import counters as production_counters
+from ..harvest.legal import enumerate_legal
 
-ARMS = ("none", "null", "value", "prior", "both")
+ARMS = ("none", "null", "value", "prior", "both", "wide", "wide-value")
+#: Which mixin each oracle arm carries.
+VALUE_ARMS = ("value", "both", "wide-value")
+PRIOR_ARMS = ("prior", "both")
+WIDE_ARMS = ("wide", "wide-value")
+ORACLE_ARMS = ("value", "prior", "both", "wide", "wide-value")
 DEFAULT_BASE_POLICY = "mc-s0-report-lcb"
 #: Same shift the registry uses for every champion-matched null.
 NULL_SEED_OFFSET = 999_983
@@ -111,6 +151,30 @@ SERVER = Path(__file__).resolve().parents[2]
 
 class OracleScreenError(RuntimeError):
     """The requested screen cannot support its stated measurement."""
+
+
+class OracleRoundRefused(OracleScreenError):
+    """A round refused its own measurement (a fail-closed knob fired inside a
+    decision): the run stops, records the refusal and exits non-zero."""
+
+    def __init__(self, cluster: int, seed: int, mirror: int, reason: str):
+        # Positional args only, so the exception pickles across the worker
+        # pool unchanged.
+        super().__init__(cluster, seed, mirror, reason)
+        self.cluster = cluster
+        self.seed = seed
+        self.mirror = mirror
+        self.reason = reason
+        #: Filled by ``run_screen`` once the refusal has been written out.
+        self.paths: dict[str, str] | None = None
+
+    def __str__(self) -> str:
+        return (f"round refused (cluster {self.cluster}, seed {self.seed}, "
+                f"mirror {self.mirror}): {self.reason}")
+
+    def as_record(self) -> dict:
+        return {"cluster": self.cluster, "seed": self.seed,
+                "mirror": self.mirror, "reason": self.reason}
 
 
 # ------------------------------------------------------------------ value arm
@@ -397,44 +461,14 @@ class OraclePriorMixin:
 
     def _oracle_prior_ranking(self, rnd, seat, full):
         n = int(self.PRIOR_WORLDS)
-        if n <= 0:
-            raise OracleScreenError("PRIOR_WORLDS must be positive")
-        started = time.perf_counter()
-        seed = _child_seed(self.rng.getstate(), "oracle-prior")
-        mem = Memory(rnd, seat, own_kitty=getattr(self, "BANKER_KITTY", True))
-        i_attack = rnd.is_attacker(seat)
-        totals = [0.0] * len(full)
-        used = attempts = 0
-        cap = n * self.SAMPLE_ATTEMPT_FACTOR
-        before = self._sampler_snapshot()
-        original_rng = self.rng
-        exact_flag = self.EXACT_ENDGAME
-        self.rng = random.Random(seed)
-        # The reference ranks with the PLAIN production continuation, as the
-        # high-N corpus did; the value arm's deeper leaf is bypassed by
-        # calling MCBot._rollout directly.
-        self.EXACT_ENDGAME = False
-        try:
-            while used < n and attempts < cap:
-                attempts += 1
-                sampled = self._sample_hands(rnd, seat, mem)
-                if sampled is None:
-                    continue
-                hands, buried = sampled
-                for i, cand in enumerate(full):
-                    v = self._score(MCBot._rollout(
-                        self, rnd, seat, hands, buried, list(cand)))
-                    totals[i] += v if i_attack else -v
-                used += 1
-        finally:
-            self.rng = original_rng
-            self.EXACT_ENDGAME = exact_flag
-            self.oracle_prior_secs += time.perf_counter() - started
-        delta = self._sampler_delta(before)
+        means, order, info, delta, secs = _shared_world_ranking(
+            self, rnd, seat, full, worlds=n, stream="oracle-prior")
+        self.oracle_prior_secs += secs
         self.oracle_prior_sample_attempts += delta["sample_attempts"]
         self.oracle_prior_accepted_worlds += delta["accepted_worlds"]
         self.oracle_prior_failed_worlds += delta["failed_worlds"]
         self.oracle_prior_rejected_worlds += delta["rejected_worlds"]
+        used = info["worlds"]
         self.oracle_prior_worlds += used
         self.oracle_prior_rollouts += used * len(full)
         if used < n:
@@ -442,18 +476,273 @@ class OraclePriorMixin:
         if used == 0:
             self.oracle_prior_zero_world += 1
             return None
-        means = [t / used for t in totals]
-        order = sorted(range(len(full)), key=lambda i: (-means[i], i))
-        info = {
-            "full_ballot": [list(c) for c in full],
-            "means": list(means),
-            "order": list(order),
-            "worlds": used,
-            "worlds_requested": n,
-            "attempts": attempts,
-            "seed": seed,
-        }
         return means, order, info
+
+
+def _shared_world_ranking(bot, rnd, seat, full, *, worlds: int, stream: str):
+    """Rank ``full`` by paired means on ``worlds`` fresh shared worlds.
+
+    The ``highn_build.py`` reference method, shared by the prior arm and both
+    stages of the wide arm: every candidate is scored on the SAME worlds,
+    drawn from the production sampler on the named child stream, with the
+    PLAIN production continuation (``MCBot._rollout`` called directly, so the
+    value arm's deeper leaf and the exact solver are bypassed).  ``bot.rng``
+    is swapped for the child stream and restored, so the production
+    selection/report streams neither advance nor change.
+
+    Returns ``(means, order, info, sampler_delta, secs)``; ``means`` and
+    ``order`` are None when no world could be sampled.
+    """
+    n = int(worlds)
+    if n <= 0:
+        raise OracleScreenError(f"{stream}: the world count must be positive")
+    started = time.perf_counter()
+    seed = _child_seed(bot.rng.getstate(), stream)
+    mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
+    i_attack = rnd.is_attacker(seat)
+    totals = [0.0] * len(full)
+    used = attempts = 0
+    cap = n * bot.SAMPLE_ATTEMPT_FACTOR
+    before = bot._sampler_snapshot()
+    original_rng = bot.rng
+    exact_flag = bot.EXACT_ENDGAME
+    bot.rng = random.Random(seed)
+    bot.EXACT_ENDGAME = False
+    try:
+        while used < n and attempts < cap:
+            attempts += 1
+            sampled = bot._sample_hands(rnd, seat, mem)
+            if sampled is None:
+                continue
+            hands, buried = sampled
+            for i, cand in enumerate(full):
+                v = bot._score(MCBot._rollout(
+                    bot, rnd, seat, hands, buried, list(cand)))
+                totals[i] += v if i_attack else -v
+            used += 1
+    finally:
+        bot.rng = original_rng
+        bot.EXACT_ENDGAME = exact_flag
+    secs = time.perf_counter() - started
+    delta = bot._sampler_delta(before)
+    info = {
+        "full_ballot": [list(c) for c in full],
+        "means": None,
+        "order": None,
+        "worlds": used,
+        "worlds_requested": n,
+        "attempts": attempts,
+        "seed": seed,
+        "stream": stream,
+    }
+    if used == 0:
+        return None, None, info, delta, secs
+    means = [t / used for t in totals]
+    order = sorted(range(len(full)), key=lambda i: (-means[i], i))
+    info["means"] = list(means)
+    info["order"] = list(order)
+    return means, order, info, delta, secs
+
+
+# ------------------------------------------------------------------- wide arm
+
+class OracleWideMixin:
+    """Replace the production ballot with the best of a capped legal prefix
+    unioned with the production ballot.
+
+    ``WIDE_KEEP_TOP`` is the number of ballot entries the production search
+    receives; ``0`` disables the arm (neutral knob).  A contested decision
+    (the same ones the prior arm treats: not a locked tractor lead, more than
+    one production candidate) runs:
+
+    1. ``L = enumerate_legal(rnd, seat, cap=WIDE_CAP, must_include=ballot)``
+       where ``ballot`` is the production ballot, whose candidate 0 is the
+       incumbent: the enumerator's first ``WIDE_CAP`` legal actions in its
+       fixed order plus every production action that prefix missed, so every
+       production action is in ``L``; on-ballot actions keep production's
+       card order.  ``L`` is the legal set only when ``legal.complete``.  A
+       capped listing is counted (``oracle_wide_capped``) and, with
+       ``WIDE_REQUIRE_COMPLETE``, refuses the decision (``OracleScreenError``)
+       before anything is ranked, which fails the round closed.
+    2. Stage 1 scores every action in ``L`` on ``WIDE_SCREEN_WORLDS`` shared
+       worlds from the ``oracle-wide`` child stream and keeps the incumbent
+       plus the ``WIDE_KEEP_STAGE1 - 1`` best others, in rank order.
+    3. Stage 2 ranks the survivors on ``PRIOR_WORLDS`` worlds from the
+       ``oracle-prior`` child stream (the prior arm's own evaluation, applied
+       to the wider list) and keeps ``WIDE_KEEP_TOP``: the incumbent at index
+       0 plus the best-ranked others, or with ``PRIOR_ANCHOR`` the top
+       ``WIDE_KEEP_TOP`` in rank order.
+    4. That ballot goes to ``super().decide_play`` with ``N_DETERMINIZATIONS``
+       unchanged (``wide_fixed_n``); the report fold is untouched.
+
+    The incumbent leads every list so ties break in its favour, as in the
+    prior arm.  Neither stage advances ``self.rng``, so the report seed the
+    production search derives from the pre-decision state is production's.
+
+    The coverage counters (``legal_seen``, ``capped``, ``legal_count``,
+    ``uncountable``) describe the decisions that received a wide ballot; a
+    decision whose stage sampled zero worlds falls back to production and
+    counts only as ``zero_world``.
+    """
+
+    WIDE_CAP = 256
+    WIDE_SCREEN_WORLDS = 24
+    WIDE_KEEP_STAGE1 = 16
+    WIDE_KEEP_TOP = 0
+    WIDE_REQUIRE_COMPLETE = False
+    #: Stage 2 reuses the prior's world count and anchor rule.
+    PRIOR_WORLDS = 240
+    PRIOR_ANCHOR = False
+
+    def __init__(self, seed: int | None = None):
+        super().__init__(seed)
+        self._oracle_wide_ballot = None
+        self.last_oracle_wide = None
+        self.oracle_wide_decisions = 0
+        self.oracle_wide_legal_seen = 0
+        self.oracle_wide_capped = 0
+        self.oracle_wide_legal_count = 0
+        self.oracle_wide_uncountable = 0
+        self.oracle_wide_stage1_rollouts = 0
+        self.oracle_wide_stage2_rollouts = 0
+        self.oracle_wide_worlds = 0
+        self.oracle_wide_candidates_kept = 0
+        self.oracle_wide_offballot_kept = 0
+        self.oracle_wide_offballot_chosen = 0
+        self.oracle_wide_incumbent_replaced = 0
+        self.oracle_wide_short = 0
+        self.oracle_wide_zero_world = 0
+        self.oracle_wide_sample_attempts = 0
+        self.oracle_wide_accepted_worlds = 0
+        self.oracle_wide_failed_worlds = 0
+        self.oracle_wide_rejected_worlds = 0
+        # Enumeration plus both stages; production's search_secs starts after.
+        self.oracle_wide_secs = 0.0
+
+    def _candidates(self, rnd, seat):
+        if self._oracle_wide_ballot is not None:
+            return self._oracle_wide_ballot
+        return super()._candidates(rnd, seat)
+
+    def decide_play(self, rnd, seat):
+        self.last_oracle_wide = None
+        if self.WIDE_KEEP_TOP <= 0:
+            return super().decide_play(rnd, seat)
+        if self.TRACTOR_LOCK and not rnd.trick.plays:
+            pick = self.canonical_lead(rnd, seat)
+            dec = decompose(pick, rnd.ordering)
+            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+                return super().decide_play(rnd, seat)
+        full = MCBot._candidates(self, rnd, seat)
+        if len(full) <= 1:
+            return super().decide_play(rnd, seat)
+        started = time.perf_counter()
+        legal = enumerate_legal(rnd, seat, cap=int(self.WIDE_CAP),
+                                must_include=full)
+        if self.WIDE_REQUIRE_COMPLETE and not legal.complete:
+            self.oracle_wide_secs += time.perf_counter() - started
+            raise OracleScreenError(
+                f"wide: {legal.kind} enumeration incomplete at cap "
+                f"{int(self.WIDE_CAP)} (legal count "
+                f"{'uncountable' if legal.count is None else legal.count}, "
+                f"listed {len(legal.actions)}); WIDE_REQUIRE_COMPLETE "
+                "refuses to rank a capped prefix")
+        by_key = {tuple(sorted(c)): list(c) for c in full}
+        incumbent_key = tuple(sorted(full[0]))
+        stage1 = [list(full[0])]
+        on_ballot = [True]
+        for action in legal.actions:
+            key = tuple(sorted(action))
+            if key == incumbent_key:
+                continue
+            prod = by_key.get(key)
+            stage1.append(list(action) if prod is None else prod)
+            on_ballot.append(prod is not None)
+        n1 = int(self.WIDE_SCREEN_WORLDS)
+        _, order1, info1, delta1, _ = _shared_world_ranking(
+            self, rnd, seat, stage1, worlds=n1, stream="oracle-wide")
+        self._oracle_wide_charge(delta1, info1["worlds"], n1, len(stage1),
+                                 stage=1)
+        if order1 is None:
+            self.oracle_wide_zero_world += 1
+            self.oracle_wide_secs += time.perf_counter() - started
+            return super().decide_play(rnd, seat)
+        keep1 = min(int(self.WIDE_KEEP_STAGE1), len(stage1))
+        kept1 = [0] + [i for i in order1 if i != 0][:keep1 - 1]
+        stage2 = [stage1[i] for i in kept1]
+        on_ballot2 = [on_ballot[i] for i in kept1]
+        n2 = int(self.PRIOR_WORLDS)
+        _, order2, info2, delta2, _ = _shared_world_ranking(
+            self, rnd, seat, stage2, worlds=n2, stream="oracle-prior")
+        self._oracle_wide_charge(delta2, info2["worlds"], n2, len(stage2),
+                                 stage=2)
+        if order2 is None:
+            self.oracle_wide_zero_world += 1
+            self.oracle_wide_secs += time.perf_counter() - started
+            return super().decide_play(rnd, seat)
+        keep = min(int(self.WIDE_KEEP_TOP), len(stage2))
+        if self.PRIOR_ANCHOR:
+            kept = order2[:keep]
+        else:
+            kept = [0] + [i for i in order2 if i != 0][:keep - 1]
+        ballot = [list(stage2[i]) for i in kept]
+        offballot_kept = sum(not on_ballot2[i] for i in kept)
+        self.oracle_wide_secs += time.perf_counter() - started
+        info = {
+            "production_ballot": [list(c) for c in full],
+            "legal_kind": legal.kind,
+            "legal_count": legal.count,
+            "legal_listed": len(legal.actions),
+            "legal_complete": legal.complete,
+            "cap": int(self.WIDE_CAP),
+            "stage1": info1,
+            "stage1_on_ballot": list(on_ballot),
+            "stage1_kept": list(kept1),
+            "stage2": info2,
+            "kept_indices": list(kept),
+            "ballot": [list(c) for c in ballot],
+            "ballot_on_production": [on_ballot2[i] for i in kept],
+            "offballot_kept": offballot_kept,
+            "incumbent_replaced": bool(kept[0] != 0),
+            "n_determinizations": self.N_DETERMINIZATIONS,
+            "wide_fixed_n": True,
+        }
+        self.oracle_wide_decisions += 1
+        self.oracle_wide_legal_seen += len(legal.actions)
+        self.oracle_wide_capped += int(not legal.complete)
+        if legal.count is None:
+            self.oracle_wide_uncountable += 1
+        else:
+            self.oracle_wide_legal_count += int(legal.count)
+        self.oracle_wide_candidates_kept += len(ballot)
+        self.oracle_wide_offballot_kept += offballot_kept
+        self.oracle_wide_incumbent_replaced += int(kept[0] != 0)
+        self._oracle_wide_ballot = ballot
+        try:
+            played = super().decide_play(rnd, seat)
+        finally:
+            self._oracle_wide_ballot = None
+        chosen_off = tuple(sorted(played)) not in by_key
+        self.oracle_wide_offballot_chosen += int(chosen_off)
+        info["played"] = list(played)
+        info["offballot_chosen"] = chosen_off
+        self.last_oracle_wide = info
+        if self.last_decision_record is not None:
+            self.last_decision_record["oracle_wide"] = info
+        return played
+
+    def _oracle_wide_charge(self, delta, used, requested, width, *, stage):
+        self.oracle_wide_sample_attempts += delta["sample_attempts"]
+        self.oracle_wide_accepted_worlds += delta["accepted_worlds"]
+        self.oracle_wide_failed_worlds += delta["failed_worlds"]
+        self.oracle_wide_rejected_worlds += delta["rejected_worlds"]
+        self.oracle_wide_worlds += used
+        if stage == 1:
+            self.oracle_wide_stage1_rollouts += used * width
+        else:
+            self.oracle_wide_stage2_rollouts += used * width
+        if used < requested:
+            self.oracle_wide_short += 1
 
 
 ORACLE_COUNTERS = (
@@ -466,6 +755,15 @@ ORACLE_COUNTERS = (
     "oracle_prior_incumbent_replaced", "oracle_prior_sample_attempts",
     "oracle_prior_accepted_worlds", "oracle_prior_failed_worlds",
     "oracle_prior_rejected_worlds",
+    "oracle_wide_decisions", "oracle_wide_legal_seen", "oracle_wide_capped",
+    "oracle_wide_legal_count", "oracle_wide_uncountable",
+    "oracle_wide_stage1_rollouts", "oracle_wide_stage2_rollouts",
+    "oracle_wide_worlds", "oracle_wide_candidates_kept",
+    "oracle_wide_offballot_kept", "oracle_wide_offballot_chosen",
+    "oracle_wide_incumbent_replaced", "oracle_wide_short",
+    "oracle_wide_zero_world", "oracle_wide_sample_attempts",
+    "oracle_wide_accepted_worlds", "oracle_wide_failed_worlds",
+    "oracle_wide_rejected_worlds",
 )
 
 
@@ -474,11 +772,13 @@ ORACLE_COUNTERS = (
 @lru_cache(maxsize=None)
 def _oracle_class(arm: str, base_cls: type) -> type:
     mixins: tuple[type, ...] = ()
-    if arm in ("value", "both"):
+    if arm in VALUE_ARMS:
         mixins += (OracleValueMixin,)
-    if arm in ("prior", "both"):
+    if arm in PRIOR_ARMS:
         mixins += (OraclePriorMixin,)
-    name = f"Oracle_{arm}_{base_cls.__name__}"
+    if arm in WIDE_ARMS:
+        mixins += (OracleWideMixin,)
+    name = f"Oracle_{arm.replace('-', '_')}_{base_cls.__name__}"
     return type(name, mixins + (base_cls,), {})
 
 
@@ -502,19 +802,28 @@ def knob_defaults() -> dict:
         "prior_keep_top": 3,
         "prior_equal_work": True,
         "prior_anchor": False,
+        "wide_cap": 256,
+        "wide_screen_worlds": 24,
+        "wide_keep_stage1": 16,
+        "wide_keep_top": 8,
+        # Fail closed on a legal set larger than wide_cap; off, the capped
+        # prefix is ranked and the incompleteness reported prominently.
+        "wide_require_complete": False,
+        # A stamp, not a switch: the wide ballot always meets production's N.
+        "wide_fixed_n": True,
     }
 
 
 def make_oracle_bot(base_policy: str, arm: str, *, seed: int | None,
                     knobs: dict | None = None):
     """Construct the arm's bot: the production class with oracle mixins."""
-    if arm not in ("value", "prior", "both"):
+    if arm not in ORACLE_ARMS:
         raise OracleScreenError(f"{arm!r} is not an oracle arm")
     k = dict(knob_defaults())
     k.update(knobs or {})
     base_cls = base_policy_class(base_policy)
     bot = _oracle_class(arm, base_cls)(seed)
-    if arm in ("value", "both"):
+    if arm in VALUE_ARMS:
         if int(k["leaf_multiplier"]) < 1:
             raise OracleScreenError("leaf_multiplier must be >= 1")
         bot.LEAF_MULTIPLIER = int(k["leaf_multiplier"])
@@ -523,10 +832,27 @@ def make_oracle_bot(base_policy: str, arm: str, *, seed: int | None,
             bot.EXACT_ENDGAME = True
             bot.EXACT_ENDGAME_MAX_CARDS = cards
             bot.EXACT_ENDGAME_MAX_NODES = int(k["exact_endgame_nodes"])
-    if arm in ("prior", "both"):
+    if arm in PRIOR_ARMS:
         bot.PRIOR_WORLDS = int(k["prior_worlds"])
         bot.PRIOR_KEEP_TOP = int(k["prior_keep_top"])
         bot.PRIOR_EQUAL_WORK = bool(k["prior_equal_work"])
+        bot.PRIOR_ANCHOR = bool(k["prior_anchor"])
+    if arm in WIDE_ARMS:
+        for name in ("wide_cap", "wide_screen_worlds", "wide_keep_stage1"):
+            if int(k[name]) < 1:
+                raise OracleScreenError(f"{name} must be >= 1")
+        if int(k["wide_keep_top"]) < 0:
+            raise OracleScreenError("wide_keep_top must be >= 0 (0 = no oracle)")
+        if not bool(k["wide_fixed_n"]):
+            raise OracleScreenError(
+                "the wide arm hands its ballot to production at N unchanged; "
+                "wide_fixed_n cannot be switched off")
+        bot.WIDE_CAP = int(k["wide_cap"])
+        bot.WIDE_SCREEN_WORLDS = int(k["wide_screen_worlds"])
+        bot.WIDE_KEEP_STAGE1 = int(k["wide_keep_stage1"])
+        bot.WIDE_KEEP_TOP = int(k["wide_keep_top"])
+        bot.WIDE_REQUIRE_COMPLETE = bool(k["wide_require_complete"])
+        bot.PRIOR_WORLDS = int(k["prior_worlds"])
         bot.PRIOR_ANCHOR = bool(k["prior_anchor"])
     bot.policy_name = f"{base_policy}+oracle-{arm}"
     return bot
@@ -562,15 +888,20 @@ def work_counters(bots) -> dict:
     out["continuation_rollouts"] = (out["rollouts"] - out["oracle_leaves"]
                                     + out["oracle_continuation_rollouts"])
     # Everything the side actually played: production-stage continuations
-    # (deepened or not) plus the oracle prior's own ranking rollouts.
+    # (deepened or not) plus the oracle prior's ranking rollouts and the wide
+    # arm's two screening stages.
     out["total_rollouts"] = (out["continuation_rollouts"]
-                             + out["oracle_prior_rollouts"])
-    # The production sampler counters include the oracle prior's own draws;
-    # these are the production stages' share alone.
+                             + out["oracle_prior_rollouts"]
+                             + out["oracle_wide_stage1_rollouts"]
+                             + out["oracle_wide_stage2_rollouts"])
+    # The production sampler counters include the oracles' own draws; these
+    # are the production stages' share alone.
     out["search_sample_attempts"] = (out["sample_attempts"]
-                                     - out["oracle_prior_sample_attempts"])
+                                     - out["oracle_prior_sample_attempts"]
+                                     - out["oracle_wide_sample_attempts"])
     out["search_worlds"] = (out["accepted_worlds"]
-                            - out["oracle_prior_accepted_worlds"])
+                            - out["oracle_prior_accepted_worlds"]
+                            - out["oracle_wide_accepted_worlds"])
     return out
 
 
@@ -633,7 +964,10 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
     pol = [a1, b1, a2, b2] if mirror == 0 else [b1, a1, b2, a2]
     arm_team = 0 if mirror == 0 else 1
     started = time.perf_counter()
-    log = play_round(Game(random.Random(seed)), pol, record=True)
+    try:
+        log = play_round(Game(random.Random(seed)), pol, record=True)
+    except OracleScreenError as exc:
+        raise OracleRoundRefused(cluster, seed, mirror, str(exc)) from exc
     wall = time.perf_counter() - started
     arm_won = int(log.winner_team == arm_team)
     level = max(1, int(log.level_change))
@@ -667,6 +1001,8 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
         "arm_search_secs": round(a1.search_secs + a2.search_secs, 4),
         "arm_prior_secs": round(
             sum(getattr(b, "oracle_prior_secs", 0.0) for b in (a1, a2)), 4),
+        "arm_wide_secs": round(
+            sum(getattr(b, "oracle_wide_secs", 0.0) for b in (a1, a2)), 4),
         "baseline_search_secs": round(b1.search_secs + b2.search_secs, 4),
     }
     return record, timing
@@ -682,7 +1018,9 @@ def run_rounds(config: dict, *, rounds: int, seed0: int, workers: int = 1,
     """Play ``rounds`` rounds (``rounds/2`` clusters x both mirrors).
 
     Output order is fixed by (cluster, mirror) regardless of worker
-    scheduling, so a run with any worker count reproduces byte for byte.
+    scheduling, so a run with any worker count reproduces byte for byte; a
+    refused round (``OracleRoundRefused``) propagates, and with a pool it is
+    the first refusal in that same order.
     """
     if rounds < 2 or rounds % 2:
         raise OracleScreenError(
@@ -708,7 +1046,12 @@ def run_rounds(config: dict, *, rounds: int, seed0: int, workers: int = 1,
             futures = {pool.submit(_round_task, task): (task[1], task[3])
                        for task in tasks}
             for future, key in futures.items():
-                results[key] = future.result()
+                try:
+                    results[key] = future.result()
+                except OracleScreenError:
+                    # Fail closed: nothing queued behind the refusal starts.
+                    pool.shutdown(cancel_futures=True)
+                    raise
                 done += 1
                 if progress:
                     progress(done, len(tasks), results[key][0])
@@ -749,7 +1092,10 @@ def _mean(values):
 
 def summarize(records: list[dict], config: dict, *, seed0: int,
               replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
-              bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED) -> dict:
+              bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
+              refused: dict | None = None) -> dict:
+    """``refused`` (``OracleRoundRefused.as_record()``) marks a run that a
+    round refused: it heads ``problems`` and is stamped as ``refused``."""
     by_cluster: dict[int, list[dict]] = {}
     for r in records:
         by_cluster.setdefault(r["cluster"], []).append(r)
@@ -788,6 +1134,11 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
     total_ratio = ratio_of("total_rollouts")
 
     problems = []
+    if refused is not None:
+        problems.append(
+            f"REFUSED (cluster {refused['cluster']}, seed {refused['seed']}, "
+            f"mirror {refused['mirror']}): {refused['reason']}; the run "
+            "stopped there and recorded no round")
     for side in ("arm", "baseline"):
         t = totals[side]
         if t.get("short_searches"):
@@ -810,6 +1161,45 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
             problems.append(
                 f"{side}: oracle prior short={t.get('oracle_prior_short', 0)} "
                 f"zero_world={t.get('oracle_prior_zero_world', 0)}")
+        if t.get("oracle_wide_short") or t.get("oracle_wide_zero_world"):
+            problems.append(
+                f"{side}: oracle wide short={t.get('oracle_wide_short', 0)} "
+                f"zero_world={t.get('oracle_wide_zero_world', 0)}")
+    # Coverage diagnostics of the wide arm: how much of the kept ballot, and
+    # how many final actions, came from outside the production ballot.
+    wide = totals["arm"]
+    kept = wide.get("oracle_wide_candidates_kept", 0)
+    wide_decisions = wide.get("oracle_wide_decisions", 0)
+    offballot_kept_rate = (wide["oracle_wide_offballot_kept"] / kept
+                           if kept else None)
+    offballot_chosen_rate = (wide["oracle_wide_offballot_chosen"]
+                             / wide_decisions if wide_decisions else None)
+    # Coverage of the wide arm's enumeration.  A capped listing is a
+    # deterministic legal prefix + the production ballot, not the legal set;
+    # that limit is named here and in problems, not buried in a counter.
+    coverage = None
+    if config["arm"] in WIDE_ARMS:
+        capped = wide.get("oracle_wide_capped", 0)
+        coverage = {
+            "cap": int(config["knobs"]["wide_cap"]),
+            "require_complete": bool(config["knobs"]["wide_require_complete"]),
+            "decisions": wide_decisions,
+            "complete": wide_decisions - capped,
+            "capped": capped,
+            "capped_rate": capped / wide_decisions if wide_decisions else None,
+            # Sum of the exact legal counts: exact when uncountable_decisions
+            # is 0, otherwise a lower bound.
+            "legal_count_total": wide.get("oracle_wide_legal_count", 0),
+            "uncountable_decisions": wide.get("oracle_wide_uncountable", 0),
+            "listed_total": wide.get("oracle_wide_legal_seen", 0),
+        }
+        if capped:
+            problems.append(
+                f"arm: wide enumeration capped at {coverage['cap']} in "
+                f"{capped}/{wide_decisions} contested decisions (capped_rate "
+                f"{coverage['capped_rate']:.3f}): those ballots came from a "
+                "deterministic legal prefix + the production ballot, NOT "
+                "the legal set")
     if not os.environ.get("SHENGJI_REQUIRE_VOIDS"):
         problems.append("SHENGJI_REQUIRE_VOIDS unset: sampled worlds may "
                         "violate observed voids")
@@ -831,6 +1221,7 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
         "seed0": seed0,
         "rounds": len(records),
         "clusters": len(clusters),
+        "refused": refused,
         "metric": ("arm signed level utility per round; positive means the "
                    "arm's team gained levels against the baseline's team on "
                    "the same mirrored deal; cluster = one deal (both mirrors)"),
@@ -851,6 +1242,9 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
         "work_totals": totals,
         "arm_over_baseline_continuation_rollouts": ratio,
         "arm_over_baseline_total_rollouts": total_ratio,
+        "oracle_wide_offballot_kept_rate": offballot_kept_rate,
+        "oracle_wide_offballot_chosen_rate": offballot_chosen_rate,
+        "wide_coverage": coverage,
         "problems": problems,
     }
 
@@ -865,14 +1259,14 @@ def arm_description(config: dict) -> str:
         return (f"{base} vs its champion-matched null "
                 f"(seed offset {NULL_SEED_OFFSET})")
     parts = []
-    if arm in ("value", "both"):
+    if arm in VALUE_ARMS:
         parts.append(
             f"oracle value: {k['leaf_multiplier']} continuation rollouts per "
             "leaf spent on greedy one-ply rollout improvement"
             + (f", exact endgame at <= {k['exact_endgame_cards']} cards "
                f"({k['exact_endgame_nodes']} nodes)"
                if int(k["exact_endgame_cards"]) > 0 else ", no exact endgame"))
-    if arm in ("prior", "both"):
+    if arm in PRIOR_ARMS:
         parts.append(
             f"oracle prior: ballot ranked on {k['prior_worlds']} shared "
             f"worlds, keep top {k['prior_keep_top']}"
@@ -880,6 +1274,17 @@ def arm_description(config: dict) -> str:
                else " (incumbent kept)")
             + (", selection worlds scaled to equal work"
                if k["prior_equal_work"] else ", N unchanged"))
+    if arm in WIDE_ARMS:
+        parts.append(
+            f"oracle wide: capped legal prefix (cap {k['wide_cap']}) + "
+            f"production ballot, screened on {k['wide_screen_worlds']} shared "
+            f"worlds, top {k['wide_keep_stage1']} ranked on "
+            f"{k['prior_worlds']} shared worlds, keep top {k['wide_keep_top']}"
+            + (" (anchor replaces incumbent)" if k["prior_anchor"]
+               else " (incumbent kept)")
+            + ", N unchanged"
+            + (", complete enumeration required (a capped prefix refuses)"
+               if k["wide_require_complete"] else ""))
     return f"{base} + " + "; ".join(parts)
 
 
@@ -909,7 +1314,7 @@ def identity(config: dict, script_path: str | None = None) -> dict:
     repo = SERVER.parent
     base = make_bot(config["base_policy"], seed=0)
     ballots = {"baseline": str(mc_ballot(base))}
-    if config["arm"] in ("value", "prior", "both"):
+    if config["arm"] in ORACLE_ARMS:
         arm_bot = make_oracle_bot(config["base_policy"], config["arm"],
                                   seed=0, knobs=config["knobs"])
         ballots["arm"] = str(mc_ballot(arm_bot))
@@ -948,6 +1353,7 @@ def runtime_receipt(*, workers: int, wall_secs: float, argv: list[str],
         "round_wall_secs_max": round(max(walls), 3) if walls else None,
         "arm_search_secs": round(sum(t["arm_search_secs"] for t in timings), 3),
         "arm_prior_secs": round(sum(t["arm_prior_secs"] for t in timings), 3),
+        "arm_wide_secs": round(sum(t["arm_wide_secs"] for t in timings), 3),
         "baseline_search_secs": round(
             sum(t["baseline_search_secs"] for t in timings), 3),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1003,11 +1409,19 @@ def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
               f"{rec['mirror']} arm_utility {rec['arm_utility']:+d} "
               f"({rec['arm_role']})", flush=True)
 
-    records, timings = run_rounds(config, rounds=rounds, seed0=seed0,
-                                  workers=workers,
-                                  progress=report if progress else None)
+    refused = None
+    try:
+        records, timings = run_rounds(config, rounds=rounds, seed0=seed0,
+                                      workers=workers,
+                                      progress=report if progress else None)
+    except OracleRoundRefused as exc:
+        # Fail closed, on the record: the refusal becomes the run's summary
+        # (no round, problems headed by the refusal) and is then re-raised
+        # so the caller exits non-zero.
+        refused, records, timings = exc, [], []
     summary = summarize(records, config, seed0=seed0, replicates=replicates,
-                        bootstrap_seed=bootstrap_seed)
+                        bootstrap_seed=bootstrap_seed,
+                        refused=None if refused is None else refused.as_record())
     summary["identity"] = ident
     runtime = runtime_receipt(workers=workers,
                               wall_secs=time.perf_counter() - started,
@@ -1015,4 +1429,7 @@ def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
     paths = write_outputs(out_dir, records=records, timings=timings,
                           summary=summary, runtime=runtime)
     summary["paths"] = paths
+    if refused is not None:
+        refused.paths = paths
+        raise refused
     return summary

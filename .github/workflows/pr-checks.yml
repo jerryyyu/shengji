@@ -45,6 +45,8 @@ jobs:
           tests/test_structured_bury.py
           tests/test_oracle_screen.py
           tests/test_harvest_ballot_capture.py
+          tests/test_report_world_reuse.py
+          tests/test_mc_benchmark_normalization.py
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"
@@ -59,6 +61,8 @@ jobs:
           tests/test_duel_factories_seeded.py
           tests/test_point_banking.py
           tests/test_structured_bury.py
+          tests/test_report_world_reuse.py
+          tests/test_mc_benchmark_normalization.py
 
   frontend:
     runs-on: ubuntu-latest

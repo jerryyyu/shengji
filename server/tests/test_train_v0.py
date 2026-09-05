@@ -5,7 +5,9 @@ the persisted fit/selection populations (standalone evaluation, foreign
 stores), stratified prior, prior masking + CE, training smoke with seed
 determinism, preference derivation / skip, parallel cache build byte
 identity, auxiliary search-mean head, sweep driver, bounded residency
-with a peak-RSS memory witness (unfiltered and ``keep``-filtered).
+with a peak-RSS memory witness (unfiltered and ``keep``-filtered), packed
+features (lossless round trip + identical losses, packed-size residency
+accounting, old-format caches rebuilt).
 
 Pure engine + torch on CPU.  Three shard stores are generated here at
 reduced work (N=2 selection worlds, R=30 report worlds):
@@ -205,16 +207,17 @@ def test_loader_encoder_round_trip(store_dir, records, luna, tmp_path):
         again, rebuilt2 = data.ensure_cache(shard, cache, witness_seed=1)
         assert not rebuilt2 and np.array_equal(again.obs, block.obs)
         assert np.array_equal(again.cand_feats, block.cand_feats)
+        obs, cand_feats = block.obs, block.cand_feats        # unpacked once (test only)
         for i in range(block.n):
             r = by_sha[block.record_sha256[i].decode()]
             rnd = rebuild.state_for_record(r)
-            assert np.array_equal(block.obs[i], np.asarray(encode.encode_obs(rnd, r["seat"]),
-                                                           np.float32))
+            assert np.array_equal(obs[i], np.asarray(encode.encode_obs(rnd, r["seat"]),
+                                                     np.float32))
             lo, hi = block.cand_offsets[i], block.cand_offsets[i + 1]
             assert hi - lo == len(r["ballot"])
             expected = np.asarray([encode.encode_action(c, rnd) for c in r["ballot"]],
                                   np.float32)
-            assert np.array_equal(block.cand_feats[lo:hi], expected)
+            assert np.array_equal(cand_feats[lo:hi], expected)
             assert block.utility[i] == r["outcome"]["signed_level_utility"]
             assert block.attacker_points[i] == r["outcome"]["attacker_points"]
             assert block.points_so_far[i] == rnd.attacker_points
@@ -254,10 +257,11 @@ def test_loader_encoder_round_trip(store_dir, records, luna, tmp_path):
     assert pref["missing"] == N_LUNA and pref["final_from_action"] == N_LUNA
     assert pref["stored"] == pref["derived"] == 0
     assert not lblock.has_softmax.any() and (lblock.played >= 0).all()
+    lobs = lblock.obs
     for i, r in enumerate(rows):
         rnd = rebuild.state_for_record(r)
-        assert np.array_equal(lblock.obs[i], np.asarray(encode.encode_obs(rnd, r["seat"]),
-                                                        np.float32))
+        assert np.array_equal(lobs[i], np.asarray(encode.encode_obs(rnd, r["seat"]),
+                                                  np.float32))
         keys = [action_key(c) for c in r["ballot"]]
         assert lblock.played[i] == keys.index(action_key(r["action"]))
         assert lblock.cluster[i] == r["source_ref"].split("#")[0].replace(
@@ -291,7 +295,9 @@ def test_privacy_boundary_is_structural_every_row(store_dir, records, tmp_path, 
         if played:
             partner = rnd.hands[(seat + 2) % 4]
             if partner:
-                obs[0] += 1e-3 * encode.CARD_INDEX[partner[0]]
+                # into a float32 column (the attacker points): a card plane
+                # would refuse the non-dyadic value at packing time
+                obs[508] += 1e-3 * encode.CARD_INDEX[partner[0]]
         return obs
 
     monkeypatch.setattr(data, "encode_obs", leaky)
@@ -1102,10 +1108,20 @@ def test_sweep_reuses_one_cache_and_matches_standalone_runs(store_dir, luna, lun
 
 # 11 ------------------------------------------ bounded residency + memory witness
 
+def _synthetic_features(rng, rows: int, layout: data.FeatureLayout) -> np.ndarray:
+    """Random float32 vectors an encoder of ``layout`` could have produced
+    (counts 0 / .5 / 1, multiples of 1/8, free scalars)."""
+    x = np.zeros((rows, layout.dim), dtype=np.float32)
+    x[:, layout.bits2] = rng.integers(0, 3, size=(rows, len(layout.bits2))) * np.float32(0.5)
+    x[:, layout.u8] = rng.integers(0, 32, size=(rows, len(layout.u8))) * np.float32(0.125)
+    x[:, layout.f32] = rng.random((rows, len(layout.f32)), dtype=np.float32)
+    return x
+
+
 def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
     """A cache file of ``rows`` synthetic rows in the production layout
-    (schema, encoder identity, shard binding, witness settings, nbytes);
-    every 50 consecutive rows are one deal."""
+    (schema, encoder identity, packing, shard binding, witness settings,
+    nbytes); every 50 consecutive rows are one deal."""
     rng = np.random.default_rng(i)
     widths = rng.integers(1, kmax + 1, size=rows)
     offsets = np.zeros(rows + 1, dtype=np.int64)
@@ -1113,9 +1129,9 @@ def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
     total = int(offsets[-1])
     deals = [_synthetic_deal(i, r // 50) for r in range(rows)]
     arrays = {
-        "obs": rng.standard_normal((rows, encode.OBS_DIM), dtype=np.float32),
+        **data.pack_features(_synthetic_features(rng, rows, data.OBS_LAYOUT),
+                             _synthetic_features(rng, total, data.CAND_LAYOUT)),
         "cand_offsets": offsets,
-        "cand_feats": rng.standard_normal((total, encode.ACT_DIM), dtype=np.float32),
         "cand_softmax": np.full(total, 0.5, dtype=np.float32),
         "has_softmax": np.ones(rows, dtype=bool),
         "played": np.zeros(rows, dtype=np.int32),
@@ -1135,6 +1151,7 @@ def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
     sha = hashlib.sha256(f"synthetic-{i}-{rows}".encode("ascii")).hexdigest()
     meta = {
         "schema": data.CACHE_SCHEMA, "encoder": data.encoder_identity(),
+        "packing": data.PACKING,
         "shard": {"label": f"synthetic-{i}", "sha256": sha, "records": rows, "cluster": i,
                   "store": "synthetic"},
         "counts": {"encoded": rows, "records": rows,
@@ -1143,6 +1160,8 @@ def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
         "witness_seed": 0, "witness_every": 1, "witness_sampled": False,
         "deal_key_schema": data.DEAL_KEY_SCHEMA, "deals": len(set(deals)),
         "nbytes": int(sum(a.nbytes for a in arrays.values())),
+        "features": {"packed_nbytes": int(sum(arrays[k].nbytes for k in data.Block.PACKED)),
+                     "float32_nbytes": data.float32_nbytes(rows, total)},
     }
     path = data.cache_path(cache_dir, sha)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1185,7 +1204,7 @@ elif mode == "blocks":
     for i in range(len(store)):
         block = store.block(i)
         rows += block.n
-        digest += float(block.obs[:, 0].sum())
+        digest += float(block.obs_bits[:, 0].sum())      # the resident (packed) column
         del block
 elif mode == "blocks_full_then_subset":
     # the pre-repair filtered load: reserve the subset, decode the WHOLE
@@ -1198,7 +1217,7 @@ elif mode == "blocks_full_then_subset":
         del full
         store.residency.admit((store.id, i), block, label=shard.label)
         rows += block.n
-        digest += float(block.obs[:, 0].sum())
+        digest += float(block.obs_bits[:, 0].sum())
         del block
 after = peak()
 print(json.dumps({"before": before, "after": after, "rows": rows, "digest": digest,
@@ -1218,7 +1237,7 @@ def _memory_probe(entries, budget, window, *, mode="batches", keep=None):
 
 
 def test_residency_is_bounded_and_batches_do_not_depend_on_the_budget(tmp_path):
-    n_blocks, rows = 16, 3000
+    n_blocks, rows = 16, 15000                     # about 10 MB packed per block
     entries = [_synthetic_cache(tmp_path / "cache", i, rows) for i in range(n_blocks)]
     sizes = [data.read_meta(p)["nbytes"] for _s, p in entries]
     total = sum(sizes)
@@ -1292,16 +1311,16 @@ def test_residency_is_bounded_and_batches_do_not_depend_on_the_budget(tmp_path):
 
 
 def test_filtered_loading_decodes_only_the_kept_rows_within_the_budget(tmp_path):
-    n_blocks, rows = 6, 6000                       # about 19 MB decoded per block
+    n_blocks, rows = 6, 30000                      # about 19 MB decoded (packed) per block
     entries = [_synthetic_cache(tmp_path / "cache", i, rows) for i in range(n_blocks)]
     full_sizes = [data.read_meta(p)["nbytes"] for _s, p in entries]
     assert all(16 * 2 ** 20 < s < 24 * 2 ** 20 for s in full_sizes)
-    # keep 12 of the 120 deals of every odd block, everything of the even ones
+    # keep 12 of the 600 deals of every odd block, everything of the even ones
     keep = [None if i % 2 == 0 else {_synthetic_deal(i, d) for d in range(3, 15)}
             for i in range(n_blocks)]
     unbounded = data.BlockStore(entries, keep=keep)
     assert unbounded.rows() == [rows if i % 2 == 0 else 600 for i in range(n_blocks)]
-    assert len(unbounded.keys()) == 3 * 120 + 3 * 12
+    assert len(unbounded.keys()) == 3 * 600 + 3 * 12
     # a filtered entry decodes ONLY its kept rows: the block equals the full
     # block's subset, byte for byte, and its exact size was known up front
     for i in range(n_blocks):
@@ -1321,7 +1340,7 @@ def test_filtered_loading_decodes_only_the_kept_rows_within_the_budget(tmp_path)
     # a window / the budget see the filtered sizes, so a store whose FULL
     # blocks are far above the budget trains when its kept rows fit
     subset = max(unbounded.sizes[i] for i in range(1, n_blocks, 2))
-    budget = 2 * subset + 2 ** 20
+    budget = 2 * subset + 2 ** 16
     assert budget < min(full_sizes) // 3
     filtered_only = [(entries[i], keep[i]) for i in range(1, n_blocks, 2)]
     store = data.BlockStore([e for e, _k in filtered_only], resident_bytes=budget,
@@ -1352,3 +1371,183 @@ def test_filtered_loading_decodes_only_the_kept_rows_within_the_budget(tmp_path)
     assert grew_streaming <= budget + overhead, (grew_streaming, budget, streaming)
     assert grew_full > budget + overhead, (grew_full, budget, full_then_subset)   # RED
     assert grew_full >= min(full_sizes)                          # a whole block went resident
+
+
+# 12 --------------------------------- packed features: lossless, accounted, keyed
+
+def _reference_batch(block: data.Block, records_by_sha: dict, idx: np.ndarray) -> dict:
+    """The batch of rows ``idx`` built from the ENCODER's float32 vectors
+    (never from the cache): the independent reference for ``collate``."""
+    idx = np.asarray(idx, dtype=np.int64)
+    widths = block.widths[idx]
+    kmax = max(int(widths.max()), 1)
+    obs = np.zeros((len(idx), encode.OBS_DIM), np.float32)
+    cand = np.zeros((len(idx), kmax, encode.ACT_DIM), np.float32)
+    for j, i in enumerate(idx.tolist()):
+        r = records_by_sha[block.record_sha256[i].decode()]
+        rnd = rebuild.state_for_record(r)
+        obs[j] = np.asarray(encode.encode_obs(rnd, r["seat"]), np.float32)
+        for k, c in enumerate(r["ballot"]):
+            cand[j, k] = np.asarray(encode.encode_action(c, rnd), np.float32)
+    return {"obs": obs, "cand": cand}
+
+
+def _step_losses(batch: dict, seed: int = 0) -> dict:
+    """The losses of one training step on ``batch`` with a freshly seeded
+    model (the same seed: the same weights)."""
+    torch.manual_seed(seed)
+    net = model_mod.ValuePriorNet()
+    t = train_v0.to_tensors(batch, torch.device("cpu"), "softmax")
+    losses = model_mod.batch_losses(net, t, prior_weight=1.0)
+    return {k: float(v.item()) for k, v in losses.items()}
+
+
+def test_packed_features_are_lossless_and_train_identically(store_dir, records, tmp_path):
+    by_sha = {r["record_sha256"]: r for r in records}
+    _store, entries = _entries(store_dir, tmp_path / "cache")
+    bs = data.BlockStore(entries)
+    checked = 0
+    for block in bs.iter_blocks():
+        # the resident members ARE the packed ones (uint8 / a few float32 columns)
+        assert block.obs_bits.dtype == np.uint8 and block.cand_bits.dtype == np.uint8
+        assert block.obs_bits.shape == (block.n, data.OBS_LAYOUT.bits_width)
+        assert block.obs_f32.shape == (block.n, 2) and block.cand_f32.shape[1] == 1
+        assert block.cand_u8.shape == (int(block.cand_offsets[-1]), 4)
+        obs, cand = block.obs, block.cand_feats
+        for i in range(block.n):
+            r = by_sha[block.record_sha256[i].decode()]
+            rnd = rebuild.state_for_record(r)
+            # unpack(pack(x)) == x, BYTE for byte, on every row and every candidate
+            ref = np.asarray(encode.encode_obs(rnd, r["seat"]), np.float32)
+            assert obs[i].tobytes() == ref.tobytes()
+            lo, hi = block.cand_offsets[i], block.cand_offsets[i + 1]
+            ref_c = np.asarray([encode.encode_action(c, rnd) for c in r["ballot"]], np.float32)
+            assert cand[lo:hi].tobytes() == ref_c.tobytes()
+            checked += 1
+        # packing the encoder's vectors again gives exactly the cached members
+        packed = data.pack_features(obs, cand)
+        for name in data.Block.PACKED:
+            assert np.array_equal(packed[name], getattr(block, name)), name
+        assert data.OBS_LAYOUT.packed_bytes_per_row == 141
+        assert data.CAND_LAYOUT.packed_bytes_per_row == 22
+    assert checked == len(records)
+    # a training step on the packed path (collate unpacks per batch) yields
+    # exactly the losses of a step on the encoder's own float32 vectors
+    block = max(bs.iter_blocks(), key=lambda b: int((b.points_so_far > 0).sum()))
+    idx = np.flatnonzero(block.points_so_far > 0)[:96]      # rows whose scalar is not 0
+    assert idx.size >= 16
+    batch = data.collate(block, idx)
+    reference = _reference_batch(block, by_sha, idx)
+    assert batch["obs"].tobytes() == reference["obs"].tobytes()
+    assert batch["cand"].tobytes() == reference["cand"].tobytes()
+    packed_losses = _step_losses(batch)
+    assert packed_losses == _step_losses({**batch, **reference})
+    assert packed_losses["total"] > 0
+    # RED: a scalar feature (attacker points / 200, column 508) quantised to
+    # a uint8 at the packer's scale (round to 1/8) changes the observation
+    # bytes AND the losses of the same step -- the comparison above detects
+    # it -- and the packer refuses a layout that would store that column in
+    # a byte
+    col = 508
+    assert data.OBS_SEGMENTS[4][0] == "attacker_points" and col in data.OBS_LAYOUT.f32
+    lossy = reference["obs"].copy()
+    lossy[:, col] = (np.round(lossy[:, col] * data.U8_SCALE) / data.U8_SCALE).astype(np.float32)
+    assert (lossy[:, col] != reference["obs"][:, col]).sum() >= 16
+    assert _step_losses({**batch, "obs": lossy}) != packed_losses
+    quantised = [[name, width, "u8" if name == "attacker_points" else kind]
+                 for name, width, kind in data.OBS_SEGMENTS]
+    with pytest.raises(data.TrainDataError, match="cannot store exactly"):
+        data.FeatureLayout("obs", quantised, encode.OBS_DIM).pack(reference["obs"])
+    # every segment kind is exercised, and a wrong segment table refuses at import
+    assert {kind for _n, _w, kind in data.OBS_SEGMENTS + data.CAND_SEGMENTS} == {"bits2", "u8", "f32"}
+    with pytest.raises(ValueError, match="cover"):
+        data.FeatureLayout("obs", data.OBS_SEGMENTS[:-1], encode.OBS_DIM)
+
+
+def test_residency_accounts_for_the_packed_size(store_dir, tmp_path):
+    _store, entries = _entries(store_dir, tmp_path / "cache")
+    bs = data.BlockStore(entries)
+    unpacked_total = 0
+    for i, (shard, path) in enumerate(entries):
+        meta = data.read_meta(path)
+        block = bs.block(i)
+        packed = int(sum(getattr(block, k).nbytes for k in data.Block.PACKED))
+        f32 = data.float32_nbytes(block.n, int(block.cand_offsets[-1]))
+        assert f32 == block.n * encode.OBS_DIM * 4 + int(block.cand_offsets[-1]) * encode.ACT_DIM * 4
+        # the reported size is the PACKED size: the sum of the resident arrays
+        assert (block.nbytes == meta["nbytes"] == bs.sizes[i]
+                == sum(getattr(block, k).nbytes for k in data.Block.ARRAYS))
+        assert meta["features"] == {"packed_nbytes": packed, "float32_nbytes": f32}
+        assert f32 > 10 * packed                              # 13x measured on the corpus
+        # RED under float32 accounting: the same rows unpacked would report far more
+        unpacked = block.nbytes - packed + f32
+        assert block.nbytes < unpacked / 3
+        unpacked_total += unpacked
+    assert bs.residency.bytes == bs.nbytes == sum(bs.sizes)
+    receipt = train_v0.residency_receipt(bs.residency, decoded_bytes=bs.nbytes)
+    assert receipt["decoded_bytes_data"] == receipt["resident_bytes"] == bs.nbytes
+    assert "PACKED" in receipt["contract"]
+    # a budget of exactly the packed corpus holds every block resident,
+    # although the same rows unpacked would not fit it (they would stream)
+    assert unpacked_total > bs.nbytes
+    fits = data.BlockStore(entries, resident_bytes=bs.nbytes)
+    rows = sum(int(b["obs"].shape[0]) for b in fits.iter_batches(
+        lambda b: np.ones(b.n, dtype=bool), 64, rng=np.random.default_rng(0)))
+    assert rows == sum(bs.rows()) and fits.residency.evictions == 0
+    assert fits.residency.peak_bytes == bs.nbytes
+    with pytest.raises(data.TrainDataError, match="above the residency budget"):
+        data.BlockStore(entries, resident_bytes=min(bs.sizes) - 1).block(bs.sizes.index(min(bs.sizes)))
+
+
+def _write_cache(path: Path, arrays: dict, meta: dict) -> None:
+    with open(path, "wb") as fh:
+        np.savez(fh, meta=np.asarray(json.dumps(meta, sort_keys=True)), **arrays)
+
+
+def test_old_format_caches_are_rebuilt_not_misread(store_dir, tmp_path, monkeypatch):
+    store = data.discover_store(store_dir)
+    shard = store.shards[0]
+    cache = tmp_path / "cache"
+    path, _counts = data.build_cache(shard, cache, witness_seed=1)
+    fresh = path.read_bytes()
+    block = data.load_block(path)
+    assert block.meta["schema"] == data.CACHE_SCHEMA and block.meta["packing"] == data.PACKING
+    # the pre-packing (v3) layout of the SAME rows: float32 obs / cand_feats
+    # members, schema v3, no packing key
+    old_arrays = {"obs": block.obs, "cand_offsets": block.cand_offsets,
+                  "cand_feats": block.cand_feats, "cand_softmax": block.cand_softmax}
+    for name in data.Block.SCALARS:
+        old_arrays[name] = getattr(block, name)
+    old_meta = {k: v for k, v in block.meta.items() if k not in ("packing", "features")}
+    old_meta["schema"] = "shengji-train-cache-v3"
+    old_meta["nbytes"] = int(sum(a.nbytes for a in old_arrays.values()))
+    assert old_meta["nbytes"] > 3 * block.nbytes
+    _write_cache(path, old_arrays, old_meta)
+    assert data.read_meta(path)["schema"] == "shengji-train-cache-v3"
+    with pytest.raises(data.TrainDataError, match="cache schema"):
+        data.load_block(path)
+    (meta, rebuilt), = data.ensure_caches([(shard, False)], cache, witness_seed=1, workers=1)
+    assert rebuilt and meta["schema"] == data.CACHE_SCHEMA and meta["packing"] == data.PACKING
+    assert path.read_bytes() == fresh                     # rebuilt: the packed file again
+    assert data.load_block(path).obs_bits.dtype == np.uint8
+    # a current-schema file packed with ANOTHER layout is rebuilt as well
+    other = dict(block.meta)
+    other["packing"] = {**data.PACKING, "version": 0}
+    packed_arrays = {name: getattr(block, name) for name in data.Block.ARRAYS}
+    _write_cache(path, packed_arrays, other)
+    with pytest.raises(data.TrainDataError, match="another feature layout"):
+        data.load_block(path)
+    (meta, rebuilt), = data.ensure_caches([(shard, False)], cache, witness_seed=1, workers=1)
+    assert rebuilt and path.read_bytes() == fresh
+    _blk, rebuilt2 = data.ensure_cache(shard, cache, witness_seed=1)
+    assert not rebuilt2                                    # valid: reused
+    # RED with the format key dropped (the v3 schema accepted as current and
+    # no packing check): the stale float32 file passes as valid, ensure_caches
+    # REUSES it and the loader misreads it (no packed member to decode)
+    _write_cache(path, old_arrays, old_meta)
+    monkeypatch.setattr(data, "CACHE_SCHEMA", "shengji-train-cache-v3")
+    monkeypatch.setattr(data, "PACKING", None)
+    (meta, rebuilt), = data.ensure_caches([(shard, False)], cache, witness_seed=1, workers=1)
+    assert not rebuilt and meta["schema"] == "shengji-train-cache-v3"
+    with pytest.raises(KeyError):
+        data.load_block(path)

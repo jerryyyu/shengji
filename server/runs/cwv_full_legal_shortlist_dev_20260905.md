@@ -1,8 +1,9 @@
 # Full-legal complete-world shortlist — DEV screen
 
 Status: source PASS and merged in [#236](https://github.com/jerryyyu/shengji/pull/236);
-**four arms complete; production-3x running on Strength**. The five-arm screen started at 19:47:38 UTC
-(15:47:38 EDT) after the two-ply job completed successfully at 19:47:15 UTC.
+**all five arms complete; results ready for review in [#240](https://github.com/jerryyyu/shengji/pull/240)**.
+The screen ran from 19:47:38 to 21:23:16 UTC (15:47:38–17:23:16 EDT),
+95.6 minutes total, after the two-ply job completed successfully at 19:47:15 UTC.
 No strength, promotion, deployment, or production-policy claim. Extends #227 using the
 merged #229/#230 evaluator/checkpoint, not the old public-observation head.
 The #222 driver conflict is resolved in the merged stack; no duplicate repair.
@@ -145,28 +146,27 @@ on Strength. The earlier 11-state Mini sample omitted leads and is diagnostic
 only. Actual screen costs will be reported even if the targets are missed;
 no post-outcome retuning or censoring.
 
-The model-free `cwv-shortlist-screen-20260905.service` queue owns the launch:
-two-ply completes successfully, then these five arms run sequentially, before
-the separately owned netroll screen. Do not start a duplicate launcher.
+The model-free `cwv-shortlist-screen-20260905.service` queue ran the five arms
+sequentially after two-ply, before the separately owned netroll screen. It
+exited successfully: `MainPID=0`, `Result=success`, `ExecMainStatus=0`.
+Strength was released to the next owner; no duplicate launcher is needed.
 Pinned source and operations are at `/root/cwv-shortlist-dev.tE2GiD` on
 Strength; outputs go under its `screen/` directory. Each arm retains atomic
 completed cluster pairs and can resume only missing pairs with identical
 inputs. The live unit's driver and 16 spawned workers were independently
-verified; all workers were using approximately one core each. The first arm
-completed all 256 pairs in 505.9 seconds with zero summary problems; the queue
-started uniform-1x at 19:56:08 UTC. Its measured decision CPU/wall was
-1.2813x/1.2814x baseline: the nominal 1x target was exceeded and will be
-reported as such, not presented as equal work. This is faster than the initial
-4–6-hour total planning estimate; later arms have larger doses, so do not
-extrapolate total duration from the first arm alone. Progress and stage
-timestamps remain in the saved logs and `screen/pipeline-status.json`.
+verified; all workers were using approximately one core each outside the
+normal final-pair tail. The five-arm run finished in 95.6 minutes, below the
+initial 4–6-hour planning estimate. That total duration does not make the
+arms equal-work: the measured decision costs below disclose both learned
+arms' target misses. Progress and stage timestamps remain in the saved logs
+and `screen/pipeline-status.json`.
 
 Pre-screen evidence and the exact operations plan are retained on Mini at
 `/Users/jerryyu/shengji-archive/2026-09-05/cwv-shortlist-pre-screen.tar.gz`,
 SHA-256 `ba854716905f69097868a48e70021ccab2c49ac165b63c6c42d651c8b341c10d`.
 This archive contains timing evidence, not screen results.
 
-## Interim results — completed arms only
+## Final results
 
 Each row below contains all 256 fixed deal clusters / 512 mirrored rounds,
 not a partial sample. Intervals are 95% deal-cluster bootstrap intervals with
@@ -179,15 +179,16 @@ loss (negative) per round against production N30/R300, not additional wins.
 | Uniform, nominal 1x (N45/R300) | −0.078 [−0.145, −0.012] | 46.68% | 1.0323x / 1.0324x | 450.1 s |
 | Learned, nominal 3x (W32/N30/R300) | +0.039 [−0.025, +0.106] | 52.15% | 10.8826x / 10.8829x | 3,019.7 s |
 | Uniform, nominal 3x (N420/R300) | −0.117 [−0.190, −0.045] | 44.73% | 2.8292x / 2.8293x | 874.2 s |
+| Production, nominal 3x (N90/R900) | +0.068 [0.000, +0.137] | 53.32% | 2.9582x / 2.9579x | 868.6 s |
 
-All four summaries are complete with zero reported problems. The W1 learned arm
+All five summaries are complete with zero reported problems. The W1 learned arm
 evaluated 4,779,116 action/world afterstates and played an off-production-ballot
 action on 1,031/18,384 decisions (5.61%). The uniform arm did so on
 1,086/18,726 decisions (5.80%). Thus the full-legal path is exercised, but the
 one-world learned shortlist has not shown an improvement over production.
 Its cost exceeds both its nominal target and the uniform arm's cost; these
 rows do not establish an equal-work learned-versus-uniform gain. The matched
-cross-arm intervals will be reported after all five arms complete.
+cross-arm intervals below use every completed pair.
 
 The W32 learned arm evaluated 152,517,376 action/world afterstates and played
 an off-production-ballot action on 1,098/18,320 decisions (5.99%). Its interval
@@ -205,22 +206,61 @@ per round at 2.83x measured wall. It played off-production-ballot actions on
 chosen same-size shortlist did not rescue that control in this screen.
 
 These are the existing per-arm `summary.json` files under `screen/learned-1x/`,
-`screen/uniform-1x/`, `screen/learned-3x/` and `screen/uniform-3x/`, not gameplay replay.
-All four complete arm directories (1,032 files / 322,519,919 bytes) are retained
+`screen/uniform-1x/`, `screen/learned-3x/`, `screen/uniform-3x/` and
+`screen/production-3x/`, not gameplay replay.
+All five complete arm directories (1,290 files / 357,382,797 bytes) are retained
 on Mini at `/Users/jerryyu/shengji-archive/2026-09-05/cwv-shortlist-screen/`;
-their copied summary hashes match Strength. Later arms will join that archive
-as they complete, without modifying the existing copies.
+their copied summary hashes match Strength. Each arm retains its config,
+summary, 256 atomic cluster-pair records and decision traces.
 Uniform-1x completed at 20:03:42 UTC; learned-3x started immediately. Recipes,
 checkpoint and population remain fixed despite the interim readout. Learned-3x
 completed its final pair at 20:54 UTC; uniform-3x started at 20:54:05 UTC.
 Uniform-3x completed all pairs in 874.2 seconds, then production-3x started at
-21:08:43 UTC. The exact checkpoint and operations scripts are also retained in
+21:08:43 UTC and completed all pairs in 868.6 seconds. The exact checkpoint,
+operations scripts, five stage logs and final pipeline status are retained in
 the Mini archive; the copied checkpoint matches its pre-outcome SHA above.
 
-Remaining: finish and retain production-3x; aggregate existing pair records once
-without replaying games; publish per-arm utility/CIs and actual CPU/wall, plus
-deal-paired learned-minus-uniform (1x and 3x) and learned-3x-minus-production-3x
-contrasts. These contrasts compare paired outcomes against a common opponent,
-not direct duels between arms. Append the result and one ledger line, then
-request Claude's result review for merge. The complete five-arm comparison is
-not available yet.
+## Paired contrasts and interpretation
+
+For each contrast, subtract the two arms' mirror-averaged utilities within
+each of the same 256 deal clusters, then bootstrap those 256 differences
+(1,000 resamples; seeds 90260904, 90260905 and 90260906 in table order).
+These compare outcomes against a common opponent, not direct duels between
+the arms. Costs remain unequal; the nominal labels do not establish parity.
+
+| Contrast | Signed levels / round difference [95% cluster CI] |
+|---|---:|
+| Learned-1x minus uniform-1x | +0.080 [−0.014, +0.184] |
+| Learned-3x minus uniform-3x | +0.156 [+0.070, +0.242] |
+| Learned-3x minus production-3x | −0.029 [−0.117, +0.070] |
+
+Neither learned arm demonstrates an improvement over production. W32 improves
+over its random-shortlist control in this DEV screen, but at substantially
+higher cost (10.88x versus 2.83x baseline). That does not isolate an equal-work
+learning benefit. Production's own 3x arm has a higher point estimate than
+W32 while costing less, but their paired interval does not establish either
+arm as stronger. Do not promote or make a strength claim from these results.
+
+The engineering path works: exhaustive legal enumeration, learned/uniform
+same-size shortlists, unchanged full-rollout/report selection and complete
+paired evidence. The tested recipe has not shown a useful strength-per-compute
+gain. Any future recipe must address the measured exhaustive-scoring cost
+and earn its result on a separately declared exploratory population; this
+screen was not retuned, censored or rerun after its timing miss.
+
+The saved-data fold took under two seconds locally and performed no engine
+rollouts, model inference or training. Its `screen-ops/summarize.py` requires
+all five exact cluster populations before emitting final contrasts; focused
+witnesses cover mirror averaging/sign, seed drift and missing arms/clusters.
+The compact `aggregate.json` retains configs, work, outcomes and contrasts;
+the large source-hash maps remain in the unmodified per-arm summaries.
+Aggregate SHA-256:
+`0ac017d22cd2ab0dd46e97d9fc34afb95783ef3e0ea861a90b519d67822c536e`.
+
+All five arms consumed 79,512.9 summed decision-CPU seconds across both
+sides (22.1 decision core-hours); this is measured decision work, not a
+claim about the controller's entire CPU accounting. Stage elapsed times above
+include parallel work and must not be confused with these summed CPU costs.
+
+Remaining delivery step: one Claude results review and merge of this record
+and its ledger entry on PASS under Jerry's existing goal authorization.

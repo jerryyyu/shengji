@@ -27,6 +27,16 @@ the mutation that turns it RED.
    function: rank regret on both, CE / points only where the outcome
    exists (skipped with the reason otherwise); a holdout on a fit deal is
    refused (RED: an approximated outcome).
+5. Codex HOLD (PR #243): the state key is bound to the rebuilt state and the
+   work key to the played action -- two legal burials at one deck / prefix
+   / seat are both labelled, two played actions at one state are both
+   scored, identical twins still dedup (RED: a key over deck + prefix +
+   seat only); rows under an older ``key_version`` are removed and
+   relabelled while current rows resume; a rank-only holdout on a fit deal
+   is refused before any metric (RED: the check inside the calibration
+   branch only); an outcome mutation that keeps the stale ``record_sha256``
+   is refused at ingestion (``invalid_record``) and at consumption
+   (``EvalError``) (RED: no ``validate_record`` at either point).
 """
 from __future__ import annotations
 
@@ -84,25 +94,30 @@ def test_rebuild_refusals_name_the_reason(records):
         prefix = json.loads(json.dumps(later["plays_prefix"]))
         assert sorted(prefix[src["ply"]]["cards"]) == sorted(src["engine_play"])
         prefix[src["ply"]]["cards"] = list(src["action"])       # the submitted throw
-        _rnd, _legal, diffs = harvest_labels.rebuild_for_label({**later, "plays_prefix": prefix})
+        thrown_rec = finalize_record({**later, "plays_prefix": prefix})
+        _rnd, _legal, diffs = harvest_labels.rebuild_for_label(thrown_rec)
         assert diffs == [[src["ply"], list(src["action"]), src["engine_play"]]]
-        row = harvest_labels.label_record({**later, "plays_prefix": prefix}, work=TEST_WORK)
+        row = harvest_labels.label_record(thrown_rec, work=TEST_WORK)
         assert row["search_labels"]["failed_throw_prefix"] is True
     del thrown
 
     # bury decisions have no play search
-    bury = {**rec, "decision_kind": "bury", "ply": None, "trick": None, "plays_prefix": []}
+    bury = finalize_record({**rec, "decision_kind": "bury", "ply": None, "trick": None,
+                            "plays_prefix": [], "action": list(rec["setup"]["buried"]),
+                            "legal_actions": None, "legal_actions_complete": False,
+                            "legal_actions_count": None, "ballot": None, "allocation": None,
+                            "action_values": None, "preference": None, "exploration": None})
     with pytest.raises(harvest_labels.LabelRefused, match="bury_decision"):
         harvest_labels.rebuild_for_label(bury)
 
     # hidden hands: a dropped card in the acting hand is a mismatch
     snapshot = rebuild.hands_snapshot(rnd)
-    with_hands = {**rec, "hidden_hands": snapshot}
+    with_hands = finalize_record({**rec, "hidden_hands": snapshot})
     harvest_labels.rebuild_for_label(with_hands)          # consistent hands pass
     mutated = json.loads(json.dumps(snapshot))
     mutated["hands_by_seat"][rec["seat"]].pop(0)
     with pytest.raises(harvest_labels.LabelRefused, match="hidden_hands_mismatch"):
-        harvest_labels.rebuild_for_label({**rec, "hidden_hands": mutated})
+        harvest_labels.rebuild_for_label(finalize_record({**rec, "hidden_hands": mutated}))
 
     # the deck: swap one card of the acting (banker, opening lead) hand with a
     # card of the next seat -> a different hand -> the record's legal set no
@@ -118,7 +133,7 @@ def test_rebuild_refusals_name_the_reason(records):
     theirs = next(i for i in range(100) if i % 4 == other_seat and deck[i] != deck[mine]
                   and deck[i] not in reserved)
     deck[mine], deck[theirs] = deck[theirs], deck[mine]
-    swapped = {**rec, "deck": deck}
+    swapped = finalize_record({**rec, "deck": deck})
     with pytest.raises(harvest_labels.LabelRefused, match="legal_set_mismatch"):
         harvest_labels.rebuild_for_label(swapped)
     # label_record turns the refusal into a row with the reason, no labels
@@ -160,8 +175,8 @@ def test_capture_matches_production_ballot_and_flags_off_ballot_play(records):
     assert labels["record_ballot_matches"] is True and labels["failed_throw_prefix"] is False
     assert row["deal_key"].startswith("deck:") and len(row["state_key"]) == 32
     # every row keeps the input record untouched
-    assert {k: v for k, v in row.items()
-            if k not in ("search_labels", "label_refusal", "deal_key", "state_key")} == rec
+    assert {k: v for k, v in row.items() if k not in cwv_eval.HOLDOUT_STRIP_KEYS} == rec
+    assert cwv_eval.holdout_record(row) == rec
     # a forced decision (one legal action) is flagged and never searched
     forced = next((r for r in records if r["decision_kind"] == "play"
                    and r["legal_actions_complete"] and r["legal_actions_count"] == 1), None)
@@ -233,7 +248,8 @@ def test_resume_after_a_killed_worker_has_no_duplicates(records, tmp_path, monke
     assert counts["refused"] == {"duplicate_state": 1} and counts["duplicate_state"] == 1
     assert manifest["sources"]["human"]["duplicates"] == [
         {"record_sha256": rows[4]["record_sha256"], "duplicate_of": rows[2]["record_sha256"],
-         "state_key": harvest_labels.state_key(rows[2])}]
+         "state_key": harvest_labels.state_key(rows[2]),
+         "work_key": harvest_labels.work_key(rows[2])}]
     assert manifest["sources"]["human"]["complete"] is True
     assert manifest["scan"]["torn"] == ["human.w0.jsonl"]
     assert manifest["timings"]["records_this_run"] == 4
@@ -435,3 +451,118 @@ def test_evaluate_and_train_report_holdouts_through_one_function(trained, holdou
     assert rc["config"]["eval_holdouts"] == {"outcome": str(with_outcome.resolve())}
     metrics = json.loads((tmp_path / "t" / "metrics.json").read_text())
     assert metrics["holdouts"]["outcome"]["rank_regret"] == pytest.approx(got["rank_regret"])
+
+
+# 5 ------------------------------------------------- Codex HOLD (PR #243)
+
+def test_state_key_binds_setup_and_work_key_binds_action(records, tmp_path, monkeypatch):
+    rec = next(r for r in _searched(records) if r["ply"] == 0)
+    rnd, _legal, _diffs = harvest_labels.rebuild_for_label(rec)
+    banker = rec["setup"]["banker"]
+    # a second legal burial at the SAME deck / empty prefix / seat: swap one
+    # buried card with a banker hand card (both plain, neither declared)
+    declared = set()
+    for d in rec["setup"]["declarations"]:
+        declared |= set(d["cards"])
+    keep = next(c for c in rec["setup"]["buried"] if c not in declared)
+    swap = next(c for c in rnd.hands[banker] if c not in declared
+                and c not in rec["setup"]["buried"] and c not in rec["action"])
+    buried2 = sorted([c for c in rec["setup"]["buried"] if c != keep] + [swap])
+    other = finalize_record({**rec, "setup": {**rec["setup"], "buried": buried2},
+                             "legal_actions": None, "legal_actions_complete": False,
+                             "legal_actions_count": None, "ballot": None, "allocation": None,
+                             "action_values": None, "preference": None, "exploration": None})
+    harvest_labels.rebuild_for_label(other)                 # a legal, different state
+    assert harvest_labels.state_key(rec) != harvest_labels.state_key(other)
+    # the same state with another played action: another work key
+    keys = {action_key(c) for c in rec["ballot"]}
+    off = next(a for a in rec["legal_actions"] if action_key(a) not in keys)
+    other_action = finalize_record({**rec, "action": list(off)})
+    assert harvest_labels.state_key(rec) == harvest_labels.state_key(other_action)
+    assert harvest_labels.work_key(rec) != harvest_labels.work_key(other_action)
+    # an identical twin (another policy label): the same work key
+    twin = finalize_record({**rec, "policy": "human:twin"})
+    assert harvest_labels.work_key(rec) == harvest_labels.work_key(twin)
+
+    # run(): both burials labelled, both actions scored, the twin dedups
+    in_dir, rows = _harvest_input(tmp_path, [rec, other, other_action, twin])
+    monkeypatch.setattr(harvest_labels, "make_label_bot", lambda **kw: _make_test_bot(**kw))
+    out = tmp_path / "labels"
+    manifest = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
+                                  workers=1, log=None)
+    c = manifest["sources"]["human"]["counts"]
+    assert c["rows"] == 4 and c["labelled"] == 3 and c["refused"] == {"duplicate_state": 1}
+    got = {g["record_sha256"]: g for g in (json.loads(line) for line in
+           (out / "human.labels.jsonl").read_text().splitlines())}
+    assert got[rows[1]["record_sha256"]]["search_labels"]["searched"] is True
+    scored = got[rows[2]["record_sha256"]]["search_labels"]
+    assert scored["searched"] and scored["played_in_ballot"] is False
+    assert scored["ballot"][scored["played_index"]] == list(off)
+    assert got[rows[3]["record_sha256"]]["label_refusal"]["duplicate_of"] == rows[0]["record_sha256"]
+    assert manifest["key_version"] == harvest_labels.KEY_VERSION
+    assert all(g["key_version"] == harvest_labels.KEY_VERSION for g in got.values())
+
+    # rows under an older key version are removed and relabelled; current ones resume
+    shard = out / "shards" / "human.w0.jsonl"
+    lines = [json.loads(line) for line in shard.read_text().splitlines()]
+    lines[0]["key_version"] = 1
+    del lines[1]["key_version"]                                # the pre-version scheme
+    shard.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    again = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
+                               workers=1, log=None)
+    assert again["scan"]["stale_rows_removed"] == 2
+    assert again["timings"]["records_this_run"] == 2
+    assert again["sources"]["human"]["counts"]["rows"] == 4
+    shas = [json.loads(line)["record_sha256"] for line in shard.read_text().splitlines()]
+    assert len(shas) == 4 and len(set(shas)) == 4
+    third = harvest_labels.run(inputs={"human": in_dir / "human.jsonl"}, out_dir=out,
+                               workers=1, log=None)
+    assert third["timings"]["records_this_run"] == 0 and third["scan"]["stale_rows_removed"] == 0
+
+
+def test_identity_validated_at_ingestion_and_consumption(records, holdout_files, tmp_path):
+    rec = _searched(records)[0]
+    # an internally consistent outcome mutation that keeps the OLD record_sha256
+    flipped = {**rec, "outcome": {**rec["outcome"],
+                                  "attacker_points": (rec["outcome"]["attacker_points"] + 40) % 200}}
+    assert flipped["record_sha256"] == rec["record_sha256"]
+    with pytest.raises(harvest_labels.LabelRefused, match="invalid_record.*record_sha256 drift"):
+        harvest_labels.rebuild_for_label(flipped)
+    row = harvest_labels.label_record(flipped, work=TEST_WORK)
+    assert row["search_labels"] is None and row["label_refusal"]["reason"] == "invalid_record"
+    # at consumption: the same mutation inside a labelled row
+    with_outcome, _no_outcome, _picks = holdout_files
+    rows = [json.loads(line) for line in with_outcome.read_text().splitlines()]
+    victim = next(r for r in rows if r["search_labels"] is not None)
+    victim["outcome"] = {**victim["outcome"],
+                         "attacker_points": (victim["outcome"]["attacker_points"] + 40) % 200}
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    with pytest.raises(cwv_eval.EvalError, match="record_sha256 drift"):
+        cwv_eval.load_labeled_holdout(bad)
+    hold = cwv_eval.load_labeled_holdout(with_outcome)
+    hold.rows[0] = victim                                    # past the loader's check
+    with pytest.raises(cwv_eval.EvalError, match="invalid record"):
+        cwv_eval.materialize_holdout_records(hold, tmp_path / "m.jsonl")
+
+
+def test_rank_only_holdout_on_a_fit_deal_is_refused(trained, store_dir, holdout_files, tmp_path):
+    out, _kw, _receipt = trained
+    _with, no_outcome, _picks = holdout_files
+    by_deal: dict = {}
+    for r in _searched(_records(store_dir)):
+        by_deal.setdefault(tuple(r["deck"]), []).append(r)
+    fit_rank_only = tmp_path / "fit-rank-only.jsonl"
+    write_jsonl(fit_rank_only, _labelled_rows([r for rs in by_deal.values() for r in rs[:2]],
+                                              drop_outcome=True))
+    hold = cwv_eval.load_labeled_holdout(fit_rank_only)
+    assert hold.supports == {"rank_regret": True, "calibration": False, "points": False}
+    common = dict(checkpoint=str(out / "best.pt"), device="cpu", n_boot=10,
+                  cache_dir=str(out / "cache"), cache_workers=1, eval_workers=1, bench_batch=8,
+                  log=None)
+    with pytest.raises(train_v0.TrainError, match="not held out"):
+        train_cwv.evaluate(out=tmp_path / "f", eval_holdout=[f"fit={fit_rank_only}"], **common)
+    ok = train_cwv.evaluate(out=tmp_path / "g", eval_holdout=[f"disjoint={no_outcome}"], **common)
+    block = ok["holdouts"]["disjoint"]
+    assert block["rank_regret"] is not None and block["population"]["shared_with_fit"] == 0
+    assert block["population"]["deals"] == hold.counts["deals"] or block["population"]["deals"] >= 1

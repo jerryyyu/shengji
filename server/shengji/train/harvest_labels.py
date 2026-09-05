@@ -39,12 +39,23 @@ set -- and stamped ``prefix_engine_diffs`` / ``failed_throw_prefix``.
 
 Data-quality rules from the harvest audit
 -----------------------------------------
-* Exact duplicates (``state_key`` = sha256 of deck + canonical plays_prefix
-  + seat + decision_kind: room-log rounds logged twice, Luna positions
-  reached in both mirrors, PT1's 4 seeds per position) are labelled ONCE:
-  the first occurrence in input order (and any already-labelled twin from
-  an earlier run) gets the search; every other gets a row refused
-  ``duplicate_state`` naming its twin, and the manifest lists them.
+* Identical labelling WORK is done ONCE.  ``state_key`` (``KEY_VERSION``
+  2) is bound to the rebuilt state: the deck, the WHOLE setup (trump rank,
+  banker, every declaration, the final declaration, trump, the burial,
+  passes -- which with the deck fixes every hand after the burial), the
+  canonical plays_prefix, the seat and the decision kind; ``work_key`` adds
+  the played action (the search force-includes it, so a different played
+  action at one state is different work and is labelled separately).  A
+  record whose ``work_key`` an earlier record (or an already-labelled row)
+  owns gets a row refused ``duplicate_state`` naming its twin, and the
+  manifest lists them (room-log rounds logged twice, Luna positions reached
+  in both mirrors, PT1's 4 seeds per position).  Rows written under an
+  older ``key_version`` are removed from their shard on the next run and
+  relabelled; rows at the current version resume.
+* ``harvest.schema.validate_record`` runs on every record at ingestion
+  (``invalid_record`` refusal: a hash drift, a foreign field, a
+  cross-field violation) and again on the stripped record when a labelled
+  file is consumed (``cwv_eval.load_labeled_holdout``).
 * ``human`` is 100% contained in ``room-log`` (its rows are the human_v8
   subset of the room-log human plays): it is not in the default
   ``--sources`` and is refused as duplicates when labelled next to room-log.
@@ -114,12 +125,14 @@ from ..harvest.common import action_key, sha256_file
 from ..engine.round import actual_play_after
 from ..harvest.legal import DEFAULT_CAP, LegalSet, enumerate_legal, is_legal
 from ..harvest.rebuild import RebuildError, actor_role, deck_from_seed, round_from_setup
-from ..harvest.schema import SCHEMA, canonical_json
+from ..harvest.schema import SCHEMA, SchemaError, canonical_json, validate_record
 from .data import TrainDataError, deal_key
 from ..harvest.trajectory import (SERVER, _source_tree_digest, action_values_from_record,
                                   allocation_from_record, environment_identity)
 
 LABELS_SCHEMA = "shengji-harvest-labels-v1"
+#: the state/work key scheme; rows at another version are relabelled
+KEY_VERSION = 2
 MANIFEST_SCHEMA = "shengji-harvest-labels-manifest-v1"
 RUN_SCHEMA = "shengji-harvest-labels-run-v1"
 POLICY = "mc-s0-report-lcb"
@@ -141,7 +154,7 @@ HUMAN_NOTE = ("human.jsonl is 100% contained in room-log.jsonl (the human_v8 sub
               "--sources and, when labelled next to room-log, its rows are duplicate_state")
 REFUSALS = ("bury_decision", "not_play", "wrong_schema", "no_deck", "rebuild_failed",
             "turn_mismatch", "hidden_hands_mismatch", "role_drift", "action_illegal",
-            "legal_set_mismatch", "search_failed", "duplicate_state")
+            "legal_set_mismatch", "search_failed", "duplicate_state", "invalid_record")
 BALLOT_SOURCE = f"production:{POLICY} MCBot._candidates at label time"
 UNSEARCHED = ("tractor_lock", "single_candidate")
 #: test-only fault injection: a worker raises after this many rows
@@ -172,11 +185,35 @@ def label_seed(record_sha256: str, scale: int = 1) -> int:
 
 # ----------------------------------------------------------------- rebuild
 
+def _canonical_setup(setup: Mapping[str, Any]) -> dict:
+    decl = setup.get("declaration")
+    return {
+        "trump_rank": setup.get("trump_rank"), "banker": setup.get("banker"),
+        "declarations": [[int(d["seat"]), sorted(d["cards"])]
+                         for d in setup.get("declarations") or []],
+        "declaration": None if decl is None else [int(decl["seat"]), sorted(decl["cards"]),
+                                                  decl.get("strength")],
+        "trump_suit": setup.get("trump_suit"), "trump_is_nt": bool(setup.get("trump_is_nt")),
+        "buried": sorted(setup.get("buried") or []),
+        "passed": sorted(int(x) for x in setup.get("passed") or []),
+    }
+
+
 def state_key(record: Mapping[str, Any]) -> str:
-    """The exact-duplicate key of a decision (audit): deck + canonical
+    """The identity of the rebuilt decision state (``KEY_VERSION``): deck +
+    whole setup (declarations, final declaration, trump, burial, passes:
+    with the deck this fixes every hand after the burial) + canonical
     plays_prefix + seat + decision_kind."""
     prefix = [[int(p["seat"]), sorted(p["cards"])] for p in record.get("plays_prefix") or []]
-    body = [record.get("deck"), prefix, int(record["seat"]), record.get("decision_kind")]
+    body = [KEY_VERSION, record.get("deck"), _canonical_setup(record.get("setup") or {}),
+            prefix, int(record["seat"]), record.get("decision_kind")]
+    return hashlib.sha256(canonical_json(body).encode("ascii")).hexdigest()[:32]
+
+
+def work_key(record: Mapping[str, Any]) -> str:
+    """The identity of the labelling WORK: the state plus the played action
+    the search must include."""
+    body = [KEY_VERSION, state_key(record), sorted(record.get("action") or [])]
     return hashlib.sha256(canonical_json(body).encode("ascii")).hexdigest()[:32]
 
 
@@ -219,6 +256,10 @@ def rebuild_for_label(record: Mapping[str, Any], *, cap: int | None = DEFAULT_CA
     or raises ``LabelRefused``."""
     if record.get("schema") != SCHEMA:
         raise LabelRefused("wrong_schema", repr(record.get("schema")))
+    try:
+        validate_record(record)
+    except SchemaError as exc:
+        raise LabelRefused("invalid_record", str(exc)) from exc
     kind = record.get("decision_kind")
     if kind == "bury":
         raise LabelRefused("bury_decision", "no play search at a bury decision")
@@ -494,7 +535,12 @@ def label_record(record: Mapping[str, Any], *, scale: int = 1, cap: int | None =
     search, refused ``duplicate_state``)."""
     row = dict(record)
     row["deal_key"] = record_deal_key(record)
-    row["state_key"] = state_key(record) if "seat" in record else None
+    row["key_version"] = KEY_VERSION
+    try:
+        row["state_key"] = state_key(record)
+        row["work_key"] = work_key(record)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        row["state_key"] = row["work_key"] = None
     started = time.perf_counter()
     if duplicate_of is not None:
         row["search_labels"] = None
@@ -556,9 +602,12 @@ def read_shard(path: Path) -> tuple[list[dict], bool]:
 
 
 def scan_shards(out_dir: Path) -> tuple[list[tuple[Path, list[dict]]], dict]:
-    """``[(shard path, rows)]`` for every shard present, plus scan notes."""
+    """``[(shard path, rows)]`` for every shard present, plus scan notes.
+    Rows written under another ``key_version`` (or none) are REMOVED from
+    their shard (rewritten atomically) so the run relabels them."""
     shards_dir = Path(out_dir) / "shards"
-    notes = {"torn": [], "shards": 0}
+    notes: dict[str, Any] = {"torn": [], "shards": 0, "stale_rows_removed": 0,
+                             "key_version": KEY_VERSION}
     out: list[tuple[Path, list[dict]]] = []
     if not shards_dir.is_dir():
         return out, notes
@@ -567,9 +616,25 @@ def scan_shards(out_dir: Path) -> tuple[list[tuple[Path, list[dict]]], dict]:
         if torn:
             notes["torn"].append(path.name)
             _truncate_torn(path)
+        fresh = [r for r in rows if int(r.get("key_version") or 1) == KEY_VERSION]
+        if len(fresh) != len(rows):
+            notes["stale_rows_removed"] += len(rows) - len(fresh)
+            _rewrite_shard(path, fresh)
+            rows = fresh
         out.append((path, rows))
         notes["shards"] += 1
     return out, notes
+
+
+def _rewrite_shard(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    mode = path.stat().st_mode & 0o777
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "wb") as fh:
+        os.fchmod(fh.fileno(), mode)
+        for row in rows:
+            fh.write((canonical_json(row) + "\n").encode("ascii"))
+    os.replace(tmp, path)
 
 
 def _truncate_torn(path: Path) -> None:
@@ -657,7 +722,7 @@ def _sha_of_line(line: str) -> str:
 
 
 def _write_run(out_dir: Path, ident: dict, *, scale: int, cap: int | None,
-               allow_code_drift: bool) -> dict:
+               allow_code_drift: bool, empty: bool = False) -> dict:
     path = out_dir / "run.json"
     run = {"schema": RUN_SCHEMA, "policy": POLICY, "scale": int(scale), "cap": cap,
            "seed_recipe": SEED_RECIPE, "code": ident,
@@ -670,6 +735,13 @@ def _write_run(out_dir: Path, ident: dict, *, scale: int, cap: int | None,
                              f"at scale {old.get('scale')} cap {old.get('cap')}; a "
                              f"{POLICY!r}/scale {scale}/cap {cap} run cannot resume it")
         if (old.get("code") or {}).get("source_tree_sha256") != ident["source_tree_sha256"]:
+            if empty:
+                # nothing at the current key version survives: no row can mix
+                # with this code, so the directory restarts under it
+                run["code_drift_from"] = old.get("code")
+                run["restarted_at"] = datetime.now(UTC).isoformat()
+                _atomic_write_text(path, json.dumps(run, indent=2, sort_keys=True) + "\n")
+                return run
             if not allow_code_drift:
                 raise LabelError(f"{path}: the source tree changed since this directory was "
                                  "started (labels would mix code versions); pass "
@@ -701,6 +773,7 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
     if resume_notes:
         # the torn lines the run's opening scan dropped (this scan sees clean shards)
         notes["torn"] = sorted(set(notes["torn"]) | set(resume_notes.get("torn") or []))
+        notes["stale_rows_removed"] += int(resume_notes.get("stale_rows_removed") or 0)
     per_source: dict[str, dict] = {}
     rows_by_source: dict[str, dict[str, dict]] = {}
     duplicates: Counter = Counter()
@@ -743,7 +816,8 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
                     counts["duplicate_state"] += 1
                     dup_rows.append({"record_sha256": row["record_sha256"],
                                      "duplicate_of": refusal.get("duplicate_of"),
-                                     "state_key": row.get("state_key")})
+                                     "state_key": row.get("state_key"),
+                                     "work_key": row.get("work_key")})
                 continue
             counts["labelled"] += 1
             counts["forced"] += int(bool(labels.get("forced")))
@@ -811,11 +885,17 @@ def build_manifest(out_dir: Path, *, inputs: Mapping[str, Path], run: dict,
         "work": {"n_worlds": 30 * int(run["scale"]), "report_worlds": 300 * int(run["scale"]),
                  "report_rule": "lcb"},
         "seed_recipe": SEED_RECIPE,
+        "key_version": KEY_VERSION,
+        "state_key": "sha256(KEY_VERSION, deck, canonical setup incl. declarations/burial/"
+                     "passes, canonical plays_prefix, seat, decision_kind)[:32]",
+        "work_key": "sha256(KEY_VERSION, state_key, sorted played action)[:32]; "
+                    "duplicate_state dedups by work_key",
         "code": run["code"],
         "sources": per_source,
         "totals": totals,
         "notes": [HUMAN_NOTE,
-                  "duplicate_state rows are exact twins (state_key) of a labelled row; "
+                  "duplicate_state rows are exact twins (work_key: state + played action) of "
+                  "a labelled row; "
                   "forced rows have one legal action and no search; failed_throw_prefix rows "
                   "carry a recorded submitted throw the engine replaced (prefix_engine_diffs)"],
         "shards": shard_rows,
@@ -846,20 +926,24 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
     (out / "shards").mkdir(exist_ok=True)
     started = time.perf_counter()
     ident = code_identity()
-    run_info = _write_run(out, ident, scale=int(scale), cap=cap,
-                          allow_code_drift=allow_code_drift)
     existing, notes = scan_shards(out)
+    run_info = _write_run(out, ident, scale=int(scale), cap=cap,
+                          allow_code_drift=allow_code_drift,
+                          empty=not any(rows for _path, rows in existing))
     done: set[str] = set()
-    claimed: dict[str, str] = {}          # state_key -> the record_sha256 that owns it
+    claimed: dict[str, str] = {}          # work_key -> the record_sha256 that owns it
     for _path, rows in existing:
         for row in rows:
             done.add(row["record_sha256"])
-            key = row.get("state_key")
+            key = row.get("work_key")
             refusal = row.get("label_refusal") or {}
             if key and refusal.get("reason") != "duplicate_state":
                 claimed.setdefault(key, row["record_sha256"])
     if notes["torn"]:
         say(f"resume: dropped a torn last line in {notes['torn']}")
+    if notes["stale_rows_removed"]:
+        say(f"resume: removed {notes['stale_rows_removed']} row(s) written under an older "
+            f"key_version (< {KEY_VERSION}); they are relabelled")
     say(f"resume: {len(done)} record(s) already labelled in {notes['shards']} shard(s)")
     tasks: list[tuple[str, str, str | None]] = []
     input_rows: dict[str, int] = {}
@@ -882,9 +966,12 @@ def run(*, inputs: Mapping[str, Path], out_dir: str | os.PathLike, workers: int 
             if sha in done:
                 continue
             record = json.loads(line)
-            key = state_key(record)
-            twin = claimed.get(key)
-            if twin is None:
+            try:
+                key = work_key(record)
+            except (KeyError, TypeError, ValueError, AttributeError):
+                key = None                      # malformed: refused at ingestion, never a twin
+            twin = None if key is None else claimed.get(key)
+            if twin is None and key is not None:
                 claimed[key] = sha
             else:
                 n_dup += 1
@@ -998,9 +1085,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 __all__ = [
-    "BALLOT_SOURCE", "DEFAULT_SOURCES", "FAIL_AFTER_ENV", "HUMAN_NOTE", "LABELS_SCHEMA", "MANIFEST_SCHEMA", "POLICY", "REFUSALS", "SEED_RECIPE",
+    "BALLOT_SOURCE", "DEFAULT_SOURCES", "FAIL_AFTER_ENV", "HUMAN_NOTE", "KEY_VERSION",
+    "LABELS_SCHEMA", "MANIFEST_SCHEMA", "POLICY", "REFUSALS", "SEED_RECIPE",
     "SOURCES", "SOURCE_FILES", "UNSEARCHED", "LabelError", "LabelMixin", "LabelRefused",
     "build_manifest", "code_identity", "label_record", "label_seed", "make_label_bot",
     "read_shard", "rebuild_for_label", "record_deal_key", "replay_checked", "run",
-    "scan_shards", "search_labels", "state_key",
+    "scan_shards", "search_labels", "state_key", "work_key",
 ]

@@ -32,6 +32,7 @@ import numpy as np
 import torch
 
 from ..harvest.rebuild import RebuildError, state_for_record
+from ..harvest.schema import SchemaError, validate_record
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM, encode_obs
 from ..rl.value_afterstate import (
@@ -875,7 +876,8 @@ def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | 
 # ------------------------------------------------- labelled harvest holdouts
 
 HOLDOUT_LABELS_SCHEMA = "shengji-harvest-labels-v1"
-HOLDOUT_STRIP_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key")
+HOLDOUT_STRIP_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key", "work_key",
+                      "key_version")
 #: what each search-facing metric of a holdout needs, and why a holdout
 #: without it is SKIPPED (reported null), never approximated
 HOLDOUT_SUPPORT = {
@@ -906,6 +908,18 @@ class LabeledHoldout:
                 "counts": dict(self.counts), "supports": dict(self.supports),
                 "identity": dict(self.identity), "sources": dict(self.sources),
                 "policies": dict(self.policies), "support_needs": dict(HOLDOUT_SUPPORT)}
+
+
+def holdout_deal_keys(holdout: "LabeledHoldout") -> set[str]:
+    """The deal identity (``train.data.deal_key`` over the record's deck) of
+    EVERY row of the holdout, labelled or not: the exposure check must see
+    the whole file, not only the rows a metric branch consumes."""
+    keys: set[str] = set()
+    for row in holdout.rows:
+        deck = row.get("deck")
+        if isinstance(deck, list):
+            keys.add(deal_key(list(deck)))
+    return keys
 
 
 def holdout_record(row: Mapping[str, Any]) -> dict:
@@ -985,6 +999,14 @@ def load_labeled_holdout(path: str | os.PathLike) -> LabeledHoldout:
             if sha in seen:
                 counts["duplicates"] += 1
                 continue
+            # the record inside the row must still be the harvest record it
+            # claims to be (hash, fields, cross-field rules): validated at
+            # consumption, exactly as the labeller validated it at ingestion
+            try:
+                validate_record(holdout_record(row))
+            except SchemaError as exc:
+                raise EvalError(f"{path}: line {counts['lines']} ({sha[:12]}): the labelled "
+                                f"row's record is not a valid decision record: {exc}") from exc
             seen.add(sha)
             rows.append(row)
             counts["rows"] += 1
@@ -1134,7 +1156,13 @@ def materialize_holdout_records(holdout: LabeledHoldout, out_path: str | os.Path
     with os.fdopen(fd, "wb") as fh:
         os.fchmod(fh.fileno(), mode)
         for row in holdout.rows:
-            fh.write(encode_line(holdout_record(row)).encode("ascii"))
+            record = holdout_record(row)
+            try:
+                validate_record(record)
+            except SchemaError as exc:
+                raise EvalError(f"{holdout.path}: {row.get('record_sha256', '')[:12]}: "
+                                f"refusing to materialize an invalid record: {exc}") from exc
+            fh.write(encode_line(record).encode("ascii"))
     os.replace(tmp, out_path)
     return out_path
 
@@ -1146,7 +1174,8 @@ __all__ = [
     "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",
     "candidate_agreement", "candidate_levels", "candidate_pass", "candidate_set_digest",
     "candidate_tensors", "ensure_candidate_set", "holdout_candidate_entries",
-    "holdout_candidate_set", "holdout_record", "holdout_search_means", "iter_shard_results",
+    "holdout_candidate_set", "holdout_deal_keys", "holdout_record", "holdout_search_means",
+    "iter_shard_results",
     "load_labeled_holdout", "materialize_holdout_records",
     "level_of_search_mean", "load_public_head", "paired_agreement", "points_metrics",
     "public_values", "rank_metrics", "score_candidates", "search_facing_metrics",

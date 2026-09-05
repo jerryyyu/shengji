@@ -157,6 +157,7 @@ from .cwv_eval import (
     candidate_tensors,
     ensure_candidate_set,
     holdout_candidate_set,
+    holdout_deal_keys,
     load_labeled_holdout,
     load_public_head,
     materialize_holdout_records,
@@ -686,6 +687,22 @@ def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
             f"with outcome {hold.counts['with_outcome']}) sources={hold.sources} "
             f"labeller={hold.identity['policy']} x{hold.identity['scale']} "
             f"N{hold.identity['n_worlds']}/R{hold.identity['report_worlds']}")
+        # held out?  The deal identities of EVERY row (rank-only files
+        # included) against the fit/selection population and the cumulative
+        # exposure, BEFORE any metric is computed (Codex HOLD, PR #243)
+        keys = holdout_deal_keys(hold)
+        pop = population_report(keys, population)
+        pop["exposure"] = exposure_report(keys, exposure)
+        shared = pop["shared_with_fit"] + pop["shared_with_selection"]
+        if shared:
+            raise TrainError(f"--eval-holdout {name} shares {shared} deal(s) with the "
+                             "checkpoint's fit/selection population: not held out; refusing")
+        if pop["exposure"]["exposed"]:
+            raise TrainError(f"--eval-holdout {name} shares {pop['exposure']['exposed']} "
+                             "deal(s) with the cumulative fit/selection exposure: not held "
+                             "out; refusing")
+        say(f"holdout {name}: {pop['deals']} deals, none shared with the fit/selection "
+            f"population or the exposure (in_test={pop['in_test']} novel={pop['novel']})")
         cands = None
         levels = None
         if hold.supports["rank_regret"]:
@@ -694,24 +711,17 @@ def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
             if cands.records:
                 levels = rank_levels(model, cands, dev, batch_size=batch_size)
         ev: dict[str, np.ndarray] = {}
-        rows_block: dict[str, Any] = {"n": 0, "population": None, "cache": None}
+        rows_block: dict[str, Any] = {"n": 0, "population": pop, "cache": None}
         if hold.supports["calibration"]:
             materialized = materialize_holdout_records(
                 hold, cache / "holdouts" / f"{name}-{hold.sha256[:16]}.jsonl")
             prepared = prepare_stores([str(materialized)], cache, limit_clusters=None,
                                       history=history, witness_seed=int(seed), progress=say,
                                       cache_workers=workers, residency=residency)
-            keys = prepared.block_store.keys()
-            pop = population_report(keys, population)
-            pop["exposure"] = exposure_report(keys, exposure)
-            shared = pop["shared_with_fit"] + pop["shared_with_selection"]
-            if shared:
-                raise TrainError(f"--eval-holdout {name} shares {shared} deal(s) with the "
-                                 "checkpoint's fit/selection population: not held out; refusing")
-            if pop["exposure"]["exposed"]:
-                raise TrainError(f"--eval-holdout {name} shares {pop['exposure']['exposed']} "
-                                 "deal(s) with the cumulative fit/selection exposure: not held "
-                                 "out; refusing")
+            encoded = set(prepared.block_store.keys())
+            if encoded - keys:
+                raise TrainError(f"--eval-holdout {name}: encoded rows carry "
+                                 f"{len(encoded - keys)} deal(s) the exposure check did not see")
             ev = run_eval(model, prepared.block_store, lambda b: np.ones(b.n, dtype=bool), dev,
                           batch_size=batch_size, aux_head=aux_head)
             rows_block = {"n": int(ev["ce"].size), "population": pop,
@@ -744,6 +754,7 @@ def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
             "holdout": hold.describe(),
             "supports": dict(hold.supports),
             "skipped": skipped,
+            "population": pop,
             "rows": rows_block,
             "candidate_set": (None if cands is None
                               else {k: v for k, v in cands.meta.items() if k != "encoder"}),

@@ -753,3 +753,17 @@ def _register_cwv_from_env() -> None:
 
 
 _register_cwv_from_env()
+
+
+def _register_netroll_from_env() -> None:
+    """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
+    the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
+    ``mc-netroll-prior-...`` controls; ``train.net_rollout``) at import."""
+    import os
+    if not os.environ.get("SHENGJI_NETROLL_CKPT"):
+        return
+    from ..train.net_rollout import env_registry_entries as _netroll_entries
+    REGISTRY.update(_netroll_entries())
+
+
+_register_netroll_from_env()

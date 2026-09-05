@@ -64,8 +64,8 @@ import numpy as np
 from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_TRICKS,
                            vleaf_checkpoint_sha256)
 from ..engine.round import Round, Trick, TrickPlay
-from ..rl.encode import encode_obs
-from ..rl.value_afterstate import tensors_from_round
+from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
+from ..rl.value_afterstate import PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS, tensors_from_round
 from .baselines import N_STRATA, POINT_BINS, ROLES, StratifiedPrior
 from .data import PLAYS_PER_ROUND, check_meta, part_keys, read_column, read_meta, split_deals
 
@@ -76,6 +76,8 @@ POINTS_PRIOR_SCHEMA = "vleaf-points-prior-v1"
 POINTS_SCALE = 100.0
 SUPPORTED_LEAF_TRICKS = VLEAF_LEAF_TRICKS
 LEAF_MODELS = VLEAF_LEAF_MODELS
+#: value_model.MLP_INPUT_DIM without importing torch into every worker (tested equal)
+MLP_INPUT_DIM = PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
 
 
 class LeafError(ValueError):
@@ -356,13 +358,36 @@ class CompleteWorldPointsHead:
         return value
 
 
-def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
-    """The mlp's input row for a complete world from ``seat``'s perspective:
-    ``value_afterstate.tensors_from_round`` (the same encoding the net was
-    trained on; the world tensor holds all four hands and the burial), laid
-    out as the trunk reads it (``value_model.ValueNetwork.features``)."""
+def cwv_reference_inputs(clone: Round, seat: int) -> np.ndarray:
+    """The mlp's input row through ``value_afterstate.tensors_from_round``
+    (the encoding the net was trained on), laid out as the trunk reads it
+    (``value_model.ValueNetwork.features``: public | world.ravel | perspective)."""
     t = tensors_from_round(clone, seat)
     return np.concatenate((t.public, t.world.reshape(-1), t.perspective))
+
+
+def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
+    """:func:`cwv_reference_inputs`, byte for byte (tested on real states),
+    without the two costs the leaf never uses: the public-history tensor (the
+    ``mlp`` trunk reads none) and the deck-conservation check (the
+    determinizer already validated the clone's world).  ~50 us instead of
+    ~120 us per leaf, next to a ~30 us forward."""
+    x = np.zeros(MLP_INPUT_DIM, dtype=np.float32)
+    x[:OBS_DIM] = encode_obs(clone, seat)
+    x[OBS_DIM] = float(clone.phase == "round_end")
+    world = x[PUBLIC_DIM:PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS].reshape(WORLD_RECEIVERS, N_CARDS)
+    hands = clone.hands
+    for relative in range(4):
+        row = world[relative]
+        for card in hands[(seat + relative) % 4]:
+            row[CARD_INDEX[card]] += 0.5
+    row = world[4]
+    for card in clone.buried:
+        row[CARD_INDEX[card]] += 0.5
+    attacker = clone.is_attacker(seat)
+    x[PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS] = float(attacker)
+    x[PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + 1] = float(not attacker)
+    return x
 
 
 # --------------------------------------------------------- stratified prior

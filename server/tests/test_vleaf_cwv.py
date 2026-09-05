@@ -25,8 +25,8 @@ from shengji.train.cwv_data import cwv_encoder_identity
 from shengji.train.search_screen import _publish
 from shengji.train.train_cwv import AuxPointsHead, save_cwv_checkpoint
 
-from test_vleaf_leaf import (BASE, NO_TRUNCATION, _play_seat0, _tiny, last_trick_state,
-                             mid_trick_state, prior_table, true_world)
+from test_vleaf_leaf import (BASE, NO_TRUNCATION, _play_seat0, _tiny, advance, deal,
+                             last_trick_state, mid_trick_state, prior_table, true_world)
 from test_vleaf_screen import threads
 
 
@@ -180,6 +180,49 @@ def test_witness_public_encoder_at_the_leaf_is_caught(monkeypatch, cwv):
     other = swapped_hidden_hands(clone, clone.turn)
     assert leaf.final_attacker_points(clone, clone.turn) == pytest.approx(
         leaf.final_attacker_points(other, clone.turn), abs=1e-9)
+
+
+# ------------------------------------- 2b. the fast input row is the reference
+
+def states_across_the_round():
+    out = []
+    for seed in (4_242, 4_243, 4_244):
+        for tricks in (0, 3, 7, 11, 15):
+            rnd = deal(seed)
+            # at least one play made: the reference needs a public-history event,
+            # and a leaf always follows the candidate's play
+            seat = advance(rnd, lambda r, t=tricks: len(r.history) >= t
+                           and len(r.trick.plays) == 1 + t % 3)
+            out.append((rnd, seat))
+    return out
+
+
+def test_fast_leaf_inputs_are_tensors_from_round_byte_for_byte():
+    assert L.MLP_INPUT_DIM == MLP_INPUT_DIM
+    seen = 0
+    for rnd, seat in states_across_the_round():
+        for root in range(4):
+            fast = L.cwv_leaf_inputs(rnd, root)
+            assert fast.dtype == np.float32 and fast.shape == (MLP_INPUT_DIM,)
+            assert np.array_equal(fast, L.cwv_reference_inputs(rnd, root))
+            seen += 1
+    assert seen == 60
+
+
+def test_witness_dropped_burial_row_breaks_the_reference_equality(monkeypatch):
+    original = L.cwv_leaf_inputs
+
+    def without_burial(clone, seat):
+        saved = clone.buried
+        clone.buried = []
+        try:
+            return original(clone, seat)
+        finally:
+            clone.buried = saved
+
+    monkeypatch.setattr(L, "cwv_leaf_inputs", without_burial)
+    rnd, seat = mid_trick_state(4_242)
+    assert not np.array_equal(L.cwv_leaf_inputs(rnd, seat), L.cwv_reference_inputs(rnd, seat))
 
 
 # ------------------------------------------------------------ 3. numpy == torch

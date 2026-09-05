@@ -371,6 +371,7 @@ class CWVPuctBot(MCBot):
         self.batch_cpu_secs = 0.0
         self.build_wall_secs = 0.0
         self.prior_wall_secs = 0.0
+        self.sample_wall_secs = 0.0     # world-pool sampling per decision
         self.last_root: Node | None = None
         self.last_trace: list[dict] | None = None
 
@@ -604,7 +605,10 @@ class CWVPuctBot(MCBot):
         pre_rng_state = self.rng.getstate()
         pool = int(self.CWV_WORLD_POOL)
         mem = Memory(rnd, seat, own_kitty=getattr(self, "BANKER_KITTY", True))
+        sample0 = time.perf_counter()
         worlds, attempts = self.sample_worlds(rnd, seat, pool, mem=mem)
+        sample_wall = time.perf_counter() - sample0
+        self.sample_wall_secs += sample_wall
         used = len(worlds)
         self.last_n_worlds = used
         K = len(candidates)
@@ -684,6 +688,7 @@ class CWVPuctBot(MCBot):
                 "batch_wall_secs": stats["batch_wall"],
                 "batch_cpu_secs": stats["batch_cpu"],
                 "build_wall_secs": stats["build_wall"],
+                "sample_wall_secs": sample_wall,
             },
         }
         if short:

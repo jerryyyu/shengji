@@ -700,6 +700,8 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
             "batch_wall_secs": round(sum(getattr(b, "batch_wall_secs", 0.0) for b in bots), 4),
             "build_wall_secs": round(sum(getattr(b, "build_wall_secs", 0.0) for b in bots), 4),
             "simulations": sum(getattr(b, "simulations", 0) for b in bots),
+            "sample_wall_secs": round(sum(getattr(b, "sample_wall_secs", 0.0) for b in bots), 4),
+            "prior_wall_secs": round(sum(getattr(b, "prior_wall_secs", 0.0) for b in bots), 4),
             "forward_passes": sum(getattr(b, "forward_passes", 0) for b in bots),
             "depth_sum": sum(getattr(b, "depth_sum", 0) for b in bots),
             "depth_max_total": sum(getattr(b, "depth_max_total", 0) for b in bots),
@@ -953,6 +955,8 @@ def summarize(results: dict, plan, *, budgets_by_label: dict, bar: str,
         depth_sum = sum(r["arm"].get("depth_sum", 0) for r in recs)
         depth_max_total = sum(r["arm"].get("depth_max_total", 0) for r in recs)
         forwards = sum(r["arm"].get("forward_passes", 0) for r in recs)
+        wall_parts = {key: sum(r["arm"].get(key, 0.0) for r in recs) for key in (
+            "sample_wall_secs", "build_wall_secs", "batch_wall_secs", "prior_wall_secs")}
         entry = {
             "policy": policy, "rounds": rounds, "seeds": n,
             "budget": budget or None,
@@ -972,6 +976,8 @@ def summarize(results: dict, plan, *, budgets_by_label: dict, bar: str,
             "mean_depth": (depth_sum / simulations) if simulations else None,
             "max_depth_per_decision": (depth_max_total / searched) if simulations else None,
             "forward_passes_per_decision": (forwards / searched) if simulations else None,
+            "wall_per_decision_parts": ({key: value / searched for key, value in wall_parts.items()}
+                                        if searched else None),
             "short_searches": sum(r["arm"]["short_searches"] for r in recs),
             "minimum_detectable_effect_per_seed": (2.80 * sd / math.sqrt(n)) if n > 1 else None,
             "bar": {"metric": metric, "threshold": threshold,

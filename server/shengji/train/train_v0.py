@@ -749,7 +749,8 @@ def residency_receipt(residency: Residency, *, decoded_bytes: int, luna_bytes: i
         "decoded_bytes_luna": int(luna_bytes),
         "all_resident_bytes": int(decoded_bytes) + int(luna_bytes),
         "contract": ("at most budget_bytes of decoded blocks resident at any time (LRU); "
-                     "batches gathered from the resident window; None = unbounded"),
+                     "features resident PACKED (data.PACKING: lossless), unpacked per "
+                     "batch; batches gathered from the resident window; None = unbounded"),
     }
 
 

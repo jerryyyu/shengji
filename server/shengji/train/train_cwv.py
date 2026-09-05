@@ -68,6 +68,22 @@ which search designs consume which head on which positions.  ``rank_regret``
 is the level-bracket transform of the search's MEAN points, U(E[points]),
 an MC-ranking proxy -- not E[U].
 
+Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
+--------------------------------------------------------------------
+A file written by ``scripts/label_harvest.py`` (``train.harvest_labels``:
+off-distribution harvest positions -- human, Luna, PT1, room-log, highn --
+labelled with production's own search) is a search-facing holdout.  The
+final test pass of ``train`` and ``evaluate`` call the SAME
+``cwv_eval.search_facing_metrics`` on it and report the block under
+``search_facing.holdouts.<name>`` (and ``receipt["holdouts"]``): rank
+regret / top-1 from the labels' ballot and means (every candidate applied
+in the record's true world), CE / value MAE / reliability and the points
+head from the record's outcome.  What a source cannot support is SKIPPED
+and reported null with the reason (``cwv_eval.HOLDOUT_SUPPORT``): PT1 and
+highn rows carry no outcome, so only their ranking is scored; a holdout
+sharing a deal with the fit/selection population or the cumulative
+exposure is refused, exactly as ``--eval-luna``.
+
 Cumulative exposure (warm start)
 --------------------------------
 Every checkpoint and receipt persists ``exposure``: the deal keys this run
@@ -132,6 +148,7 @@ from .cwv_data import (
 )
 from .cwv_eval import (
     CONSUMERS,
+    HOLDOUT_SUPPORT,
     EvalError,
     SCORERS,
     CandidateSet,
@@ -139,7 +156,11 @@ from .cwv_eval import (
     candidate_pass,
     candidate_tensors,
     ensure_candidate_set,
+    holdout_candidate_set,
+    holdout_deal_keys,
+    load_labeled_holdout,
     load_public_head,
+    materialize_holdout_records,
     paired_agreement,
     search_facing_metrics,
     summarize_agreement,
@@ -622,6 +643,141 @@ def search_facing(model: ValueNetwork, ev: Mapping[str, np.ndarray],
     return block
 
 
+def parse_holdouts(specs: Sequence[str] | None) -> dict[str, str]:
+    """``--eval-holdout NAME=PATH`` (repeatable) -> ``{name: path}``; names
+    are unique identifiers, paths must exist."""
+    out: dict[str, str] = {}
+    for spec in specs or ():
+        name, sep, path = str(spec).partition("=")
+        name = name.strip()
+        if not sep or not name or not path.strip():
+            raise TrainError(f"--eval-holdout {spec!r}: expected NAME=PATH")
+        if not name.replace("-", "_").replace(".", "_").isidentifier():
+            raise TrainError(f"--eval-holdout {spec!r}: NAME must be an identifier-like label")
+        if name in out:
+            raise TrainError(f"--eval-holdout {spec!r}: duplicate holdout name {name!r}")
+        resolved = Path(path.strip()).expanduser()
+        if not resolved.is_file():
+            raise TrainError(f"--eval-holdout {spec!r}: {resolved} is not a file")
+        out[name] = str(resolved.resolve())
+    return out
+
+
+def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
+                   aux_head: "AuxPointsHead | None", dev: torch.device, batch_size: int,
+                   history: bool, seed: int, cache: Path, workers: int,
+                   residency: "Residency | None", population: Mapping[str, Any],
+                   exposure: Mapping[str, Any], n_boot: int,
+                   say: Callable[[str], None]) -> dict[str, dict]:
+    """``search_facing_metrics`` on every labelled harvest holdout (module
+    docstring): the labels' candidate set for the ranking, the record
+    rows (through ``prepare_stores`` on the untouched records) for CE /
+    MAE / reliability / points when the outcome is present.  Unsupported
+    metrics stay null with their reason; a deal overlap with the
+    fit/selection population or the cumulative exposure refuses."""
+    blocks: dict[str, dict] = {}
+    for name, path in holdouts.items():
+        t0 = time.perf_counter()
+        try:
+            hold = load_labeled_holdout(path)
+        except (EvalError, ValueError) as exc:
+            raise TrainError(f"--eval-holdout {name}={path}: {exc}") from exc
+        say(f"holdout {name}: {hold.counts['rows']} rows (labelled {hold.counts['labelled']}, "
+            f"searched {hold.counts['searched']}, rank-eligible {hold.counts['rank_eligible']}, "
+            f"with outcome {hold.counts['with_outcome']}) sources={hold.sources} "
+            f"labeller={hold.identity['policy']} x{hold.identity['scale']} "
+            f"N{hold.identity['n_worlds']}/R{hold.identity['report_worlds']}")
+        # held out?  The deal identities of EVERY row (rank-only files
+        # included) against the fit/selection population and the cumulative
+        # exposure, BEFORE any metric is computed (Codex HOLD, PR #243)
+        keys = holdout_deal_keys(hold)
+        pop = population_report(keys, population)
+        pop["exposure"] = exposure_report(keys, exposure)
+        shared = pop["shared_with_fit"] + pop["shared_with_selection"]
+        if shared:
+            raise TrainError(f"--eval-holdout {name} shares {shared} deal(s) with the "
+                             "checkpoint's fit/selection population: not held out; refusing")
+        if pop["exposure"]["exposed"]:
+            raise TrainError(f"--eval-holdout {name} shares {pop['exposure']['exposed']} "
+                             "deal(s) with the cumulative fit/selection exposure: not held "
+                             "out; refusing")
+        say(f"holdout {name}: {pop['deals']} deals, none shared with the fit/selection "
+            f"population or the exposure (in_test={pop['in_test']} novel={pop['novel']})")
+        cands = None
+        levels = None
+        if hold.supports["rank_regret"]:
+            with rng_guard():
+                cands = holdout_candidate_set(hold, history=history, label=name)
+            if cands.records:
+                levels = rank_levels(model, cands, dev, batch_size=batch_size)
+        ev: dict[str, np.ndarray] = {}
+        rows_block: dict[str, Any] = {"n": 0, "population": pop, "cache": None}
+        if hold.supports["calibration"]:
+            materialized = materialize_holdout_records(
+                hold, cache / "holdouts" / f"{name}-{hold.sha256[:16]}.jsonl")
+            prepared = prepare_stores([str(materialized)], cache, limit_clusters=None,
+                                      history=history, witness_seed=int(seed), progress=say,
+                                      cache_workers=workers, residency=residency)
+            encoded = set(prepared.block_store.keys())
+            if encoded - keys:
+                raise TrainError(f"--eval-holdout {name}: encoded rows carry "
+                                 f"{len(encoded - keys)} deal(s) the exposure check did not see")
+            ev = run_eval(model, prepared.block_store, lambda b: np.ones(b.n, dtype=bool), dev,
+                          batch_size=batch_size, aux_head=aux_head)
+            rows_block = {"n": int(ev["ce"].size), "population": pop,
+                          "counts": prepared.counts, "cache": prepared.cache_files,
+                          "materialized": str(materialized)}
+        block = search_facing_metrics(ev, levels=levels, cands=cands)
+        if int(block["n"]):
+            block["rps"] = float(ev["rps"].mean())
+            block["deals"] = int(np.unique(ev["deal_key"]).size)
+            block["reliability"] = {
+                "bins": 10,
+                "pt0": reliability_table(ev["expected_pt0"], ev["utility"], bins=10),
+                "level": reliability_table(ev["expected_level"], ev["target_level"], bins=10),
+            }
+            err = ev["expected_pt0"] - ev["utility"]
+            block["value_mae_ci95"] = cluster_bootstrap(np.abs(err), ev["deal_key"],
+                                                        n_boot=n_boot, seed=int(seed) + 11)
+        skipped = {}
+        if not hold.supports["rank_regret"]:
+            skipped["rank_regret"] = f"needs {HOLDOUT_SUPPORT['rank_regret']}"
+        if not hold.supports["calibration"]:
+            skipped["calibration"] = f"needs {HOLDOUT_SUPPORT['calibration']}"
+            skipped["cross_entropy"] = skipped["value_mae"] = skipped["calibration"]
+        if not hold.supports["points"]:
+            skipped["points"] = f"needs {HOLDOUT_SUPPORT['points']}"
+        elif aux_head is None:
+            skipped["points"] = "the checkpoint has no points head (--aux-points)"
+        block.update({
+            "name": name,
+            "holdout": hold.describe(),
+            "supports": dict(hold.supports),
+            "skipped": skipped,
+            "population": pop,
+            "rows": rows_block,
+            "candidate_set": (None if cands is None
+                              else {k: v for k, v in cands.meta.items() if k != "encoder"}),
+            "held_out": True,
+            "role": "labelled harvest holdout: off-distribution positions labelled by "
+                    "production search (harvest_labels); never fitted or selected on",
+            "secs": round(time.perf_counter() - t0, 3),
+        })
+        line = f"holdout {name}:"
+        if block.get("rank_regret") is not None:
+            line += (f" rank_regret={block['rank_regret']:.4f} rank_top1={block['rank_top1']:.3f} "
+                     f"(n={block['rank_records']})")
+        if block.get("cross_entropy") is not None:
+            line += f" ce={block['cross_entropy']:.4f} value_mae={block['value_mae']:.4f} (n={block['n']})"
+        if block.get("points_mae") is not None:
+            line += f" points_mae={block['points_mae']:.2f} points_bias={block['points_bias']:+.2f}"
+        if skipped:
+            line += f" skipped={sorted(skipped)}"
+        say(line)
+        blocks[name] = block
+    return blocks
+
+
 class Selector:
     """Epoch selection on one lower-is-better validation metric
     (``SELECT_METRICS``): ``observe`` returns ``(improved, stop)``."""
@@ -1009,9 +1165,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
+          eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
+    holdouts = parse_holdouts(eval_holdout)
     config = build_config(
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
@@ -1022,6 +1180,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed)
+    config["eval_holdouts"] = dict(holdouts)
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
     started = time.perf_counter()
@@ -1312,6 +1471,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     for name, cands in (("val", val_cands), ("test", test_cands)):
         final[name]["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
+    holdout_report = holdout_blocks(
+        holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
+        history=history, seed=seed, cache=cache, workers=workers, residency=residency,
+        population=population, exposure=exposure, n_boot=n_boot, say=say)
+    final["test"]["search_facing"]["holdouts"] = holdout_report
     luna_receipt = None
     if luna is not None:
         luna_store, luna_blocks = luna
@@ -1406,6 +1570,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                    for r in epoch_rows]},
         "consumer": consumer,
         "init": init_info,
+        "holdouts": holdout_report,
         "model": {"architecture": model_cfg.architecture, "parameters": n_params,
                   "config": model_cfg.payload()},
         "residency": residency_receipt(
@@ -1426,6 +1591,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                            "selection": selection, "baselines": baselines,
                                            "best_epoch": best["epoch"],
                                            "consumer": consumer, "init": init_info,
+                                           "holdouts": holdout_report,
                                            "inference_benchmark": bench})
     _say_final(say, final, wall)
     return receipt
@@ -1460,6 +1626,17 @@ def _say_final(say: Callable[[str], None], final: Mapping[str, Any], wall: float
             line += (f" points_mae={sf['points_mae']:.2f} points_bias={sf['points_bias']:+.2f} "
                      f"below_banked={sf['points_below_banked']:.3f}")
         say(line)
+        for hname, hb in (sf.get("holdouts") or {}).items():
+            hline = f"final {name} holdout {hname}:"
+            if hb.get("rank_regret") is not None:
+                hline += f" rank_regret={hb['rank_regret']:.4f} rank_top1={hb['rank_top1']:.3f}"
+            if hb.get("cross_entropy") is not None:
+                hline += f" ce={hb['cross_entropy']:.4f} value_mae={hb['value_mae']:.4f}"
+            if hb.get("points_mae") is not None:
+                hline += f" points_mae={hb['points_mae']:.2f}"
+            if hb.get("skipped"):
+                hline += f" skipped={sorted(hb['skipped'])}"
+            say(hline)
     say(f"wall={wall}s")
 
 
@@ -1472,13 +1649,16 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
              rank_limit: int | None = None, cache_dir: str | None = None,
              cache_workers: int | None = None, eval_workers: int | None = None,
              resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
+             eval_holdout: Sequence[str] | None = None,
              argv: list[str] | None = None,
              log: Callable[[str], None] | None = print) -> dict:
     """Score a checkpoint against populations checked against the deal
     identities it was fitted and selected on (``train_v0.evaluate``'s
     rules)."""
-    if not data and not eval_luna:
-        raise TrainError("evaluate needs --data DIR and/or --eval-luna PATH")
+    holdouts = parse_holdouts(eval_holdout)
+    if not data and not eval_luna and not holdouts:
+        raise TrainError("evaluate needs --data DIR, --eval-luna PATH and/or "
+                         "--eval-holdout NAME=PATH")
     if split not in EVAL_SPLITS:
         raise TrainError(f"--split must be one of {EVAL_SPLITS}")
     budget = _resident_budget(resident_bytes)
@@ -1618,7 +1798,14 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                         "shared_with_test": int(luna_population["in_test"]),
                         "population": luna_population,
                         "checked_against": dict(population["digest"])}
-    bench = bench_inference(model, bench_rows(bench_source, int(bench_batch)))
+    holdout_report = holdout_blocks(
+        holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
+        history=history, seed=int(config["seed"]), cache=cache, workers=workers,
+        residency=residency, population=population, exposure=exposure, n_boot=n_boot, say=say)
+    if data:
+        final[split]["search_facing"]["holdouts"] = holdout_report
+    bench = (bench_inference(model, bench_rows(bench_source, int(bench_batch)))
+             if bench_source else None)
     wall = round(time.perf_counter() - started, 3)
     headline = next((name for name in ("test", "novel", "luna")
                      if name in final and final[name].get("held_out")), None)
@@ -1662,6 +1849,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         "consumer": consumer_block(str(config.get("select_metric", DEFAULTS["select_metric"])),
                                    bool(aux_head is not None)),
         "init": (metadata.get("config") or {}).get("init"),
+        "holdouts": holdout_report,
         "model": {"architecture": model.config.architecture, "config": model.config.payload()},
         "residency": residency_receipt(residency, decoded_bytes=decoded, luna_bytes=luna_bytes),
         "peak_memory": peak_memory(dev),
@@ -1675,6 +1863,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
                                            "final": final, "ranking": ranking,
                                            "headline": headline, "baselines": baselines,
+                                           "holdouts": holdout_report,
                                            "inference_benchmark": bench})
     _say_final(say, final, wall)
     return receipt
@@ -1711,6 +1900,10 @@ def build_parser() -> argparse.ArgumentParser:
                             "ceil(N / shards))")
         p.add_argument("--bench-batch", type=int, default=DEFAULTS["bench_batch"],
                        help="positions per batch of the CPU inference benchmark")
+        p.add_argument("--eval-holdout", action="append", default=None, metavar="NAME=PATH",
+                       help="labelled harvest file (scripts/label_harvest.py) scored as a "
+                            "search-facing holdout under search_facing.holdouts.NAME "
+                            "(repeatable)")
 
     t = sub.add_parser("train", help="train the complete-world value net")
     common(t)
@@ -1777,7 +1970,8 @@ def main(argv: list[str] | None = None) -> int:
     exec_kw = dict(cache_dir=args.cache_dir, cache_workers=args.cache_workers,
                    eval_workers=args.eval_workers, resident_bytes=args.resident_bytes,
                    public_head=args.public_head, rank_limit=args.rank_limit,
-                   bench_batch=args.bench_batch, argv=full_argv, log=log)
+                   bench_batch=args.bench_batch, eval_holdout=args.eval_holdout,
+                   argv=full_argv, log=log)
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, arch=args.arch,

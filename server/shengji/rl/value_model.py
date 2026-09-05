@@ -1,9 +1,14 @@
-"""Compact state-only GRU/Transformer value network.
+"""Compact state-only GRU/Transformer value network, plus an MLP fast path.
 
-Both architectures consume the same afterstate tensors and emit the same
+All architectures consume the same afterstate tensors and emit the same
 ordered 204-category terminal distribution.  The GRU is the historical
 throughput baseline; the Transformer is the preferred trajectory experiment.
-Neither architecture receives a candidate action or search-policy feature.
+The ``mlp`` architecture is the batched fast path for search consumers: it
+reads the fixed-size public, world and perspective tensors only
+(concatenated, ``feedforward_width -> width`` trunk, GELU, dropout); the
+history tensors are validated for the shared batch contract and otherwise
+ignored.  No architecture receives a candidate action or search-policy
+feature.
 """
 
 from __future__ import annotations
@@ -27,6 +32,9 @@ from .value_afterstate import (
 from .encode import N_CARDS
 
 
+MLP_INPUT_DIM = PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+
+
 class ValueModelError(ValueError):
     """A model configuration, batch, or parameter state drifted."""
 
@@ -47,8 +55,8 @@ class ValueModelConfig:
             self.width, self.history_layers, self.attention_heads,
             self.feedforward_width, self.max_history, self.outcome_classes)
         if type(self.architecture) is not str \
-                or self.architecture not in ("transformer", "gru"):
-            raise ValueModelError("architecture must be transformer or gru")
+                or self.architecture not in ("transformer", "gru", "mlp"):
+            raise ValueModelError("architecture must be transformer, gru or mlp")
         if any(type(value) is not int for value in integer_fields) \
                 or isinstance(self.dropout, bool) \
                 or not isinstance(self.dropout, (int, float)) \
@@ -91,6 +99,19 @@ class ValueNetwork(nn.Module):
         config.validate()
         self.config = config
         width = config.width
+        if config.architecture == "mlp":
+            # The fast path: one trunk over the concatenated fixed-size
+            # tensors; no history encoder is built.  The sequence
+            # architectures below are constructed exactly as before.
+            self.history_position = None
+            self.history_encoder = None
+            self.trunk = nn.Sequential(
+                nn.Linear(MLP_INPUT_DIM, config.feedforward_width), nn.GELU(),
+                nn.Dropout(config.dropout),
+                nn.Linear(config.feedforward_width, width), nn.GELU(),
+                nn.Dropout(config.dropout))
+            self.head = nn.Linear(width, OUTCOME_CLASSES)
+            return
         self.public_encoder = nn.Sequential(
             nn.Linear(PUBLIC_DIM, width), nn.ReLU(), nn.LayerNorm(width))
         self.world_encoder = nn.Sequential(
@@ -117,6 +138,16 @@ class ValueNetwork(nn.Module):
         self.fused = nn.Sequential(
             nn.Linear(4 * width, 2 * width), nn.GELU(),
             nn.LayerNorm(2 * width), nn.Linear(2 * width, OUTCOME_CLASSES))
+
+    def features(self, public: torch.Tensor, world: torch.Tensor,
+                 perspective: torch.Tensor) -> torch.Tensor:
+        """The mlp trunk's ``width``-dim embedding of the fixed-size tensors
+        (an auxiliary head may read it); the sequence architectures expose
+        no intermediate."""
+        if self.config.architecture != "mlp":
+            raise ValueModelError("features are exposed by the mlp architecture only")
+        return self.trunk(torch.cat(
+            (public, world.flatten(start_dim=1), perspective), dim=1))
 
     def _history_context(self, history: torch.Tensor,
                          history_mask: torch.Tensor) -> torch.Tensor:
@@ -147,6 +178,8 @@ class ValueNetwork(nn.Module):
                 or world.shape != (batch, WORLD_RECEIVERS, N_CARDS) \
                 or perspective.shape != (batch, PERSPECTIVE_DIM):
             raise ValueModelError("model batch shape drift")
+        if self.config.architecture == "mlp":
+            return self.head(self.features(public, world, perspective))
         context = torch.cat((
             self.public_encoder(public),
             self._history_context(history, history_mask),

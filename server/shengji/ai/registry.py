@@ -6,6 +6,10 @@ var (default "smart")."""
 
 from __future__ import annotations
 
+import hashlib
+import os
+from pathlib import Path
+
 from .heuristic import HeuristicBot
 from .legacy_b3f8f61 import MCBotPreFix
 from .mcbot import MCBot, MCSmartRoll
@@ -540,3 +544,108 @@ def _make_gate(path: str, gate: float):
 # search on the ~12% the net flags. Gate fitted on a disjoint holdout half.
 REGISTRY["mc-gate-v11pair"] = _make_gate("snapshots_v11pair/ep07.pt", 0.02)
 REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
+
+
+# ---------------------------------------------------------------------------
+# Value-at-leaf screen arms (DEV; shengji/train/leaf_policy.py).  The arm is
+# the production search class with ONE override — its rollout leaf — and its
+# strength depends entirely on the points head that evaluates truncated
+# leaves, so the checkpoint id is part of the policy name, exactly as
+# `_make_vleaf` above insists.  Nothing is registered by default: the arms
+# appear only through `register_vleaf_arms` (the screen driver) or when the
+# environment names the artifacts, so `scripts/evaluate.py` can drive them by
+# name while the default registry stays production-only.
+VLEAF_BASE_POLICY = "mc-s0-report-lcb"
+VLEAF_LEAF_TRICKS = (0, 1, 2, 4)
+VLEAF_CHECKPOINT_ENV = "SHENGJI_VLEAF_CKPT"
+VLEAF_PRIOR_ENV = "SHENGJI_VLEAF_PRIOR"
+VLEAF_ALLOW_LEGACY_ENV = "SHENGJI_VLEAF_ALLOW_LEGACY"
+
+
+def vleaf_checkpoint_sha256(path: str | os.PathLike) -> str:
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError as exc:
+        raise RuntimeError(f"value-at-leaf artifact {path} is unreadable: {exc}") from exc
+    return h.hexdigest()
+
+
+def vleaf_policy_name(*, leaf_tricks: int, checkpoint_id: str | None = None) -> str:
+    """`mc-vleaf-<ckpt8>-t<T>` (learned leaf) or `mc-vleaf-prior-t<T>` (control)."""
+    if type(leaf_tricks) is not int or leaf_tricks not in VLEAF_LEAF_TRICKS:
+        raise ValueError(f"leaf_tricks must be one of {VLEAF_LEAF_TRICKS}")
+    if checkpoint_id is None:
+        return f"mc-vleaf-prior-t{leaf_tricks}"
+    return f"mc-vleaf-{checkpoint_id}-t{leaf_tricks}"
+
+
+def _make_vleaf_learned(checkpoint: str, sha256: str, leaf_tricks: int,
+                        allow_legacy: bool):
+    def make(**kw):
+        from ..train.leaf_policy import make_vleaf_bot
+        return make_vleaf_bot(checkpoint=checkpoint, leaf_tricks=leaf_tricks,
+                              seed=kw.get("seed"), allow_legacy=allow_legacy,
+                              expected_sha256=sha256)
+    make.vleaf_artifact = (checkpoint, sha256)
+    return make
+
+
+def _make_vleaf_prior(prior: str, sha256: str, leaf_tricks: int):
+    def make(**kw):
+        from ..train.leaf_policy import make_vleaf_prior_bot
+        return make_vleaf_prior_bot(prior=prior, leaf_tricks=leaf_tricks,
+                                    seed=kw.get("seed"), expected_sha256=sha256)
+    make.vleaf_artifact = (prior, sha256)
+    return make
+
+
+def register_vleaf_arms(*, checkpoint: str | os.PathLike | None = None,
+                        prior: str | os.PathLike | None = None,
+                        leaf_tricks=VLEAF_LEAF_TRICKS, allow_legacy: bool = False,
+                        registry: dict | None = None) -> dict[str, str]:
+    """Register the screen arms by name; returns ``{name: kind}``.
+
+    Idempotent for the same artifact bytes.  A name already bound to a
+    different file refuses: a registry name is a policy identity, and a
+    control silently rebound to another prior table would not be the control
+    the record names.
+    """
+    registry = REGISTRY if registry is None else registry
+    names: dict[str, str] = {}
+    artifacts = []
+    if checkpoint is not None:
+        path = str(Path(checkpoint).resolve())
+        artifacts.append(("learned", path, vleaf_checkpoint_sha256(path)))
+    if prior is not None:
+        path = str(Path(prior).resolve())
+        artifacts.append(("prior", path, vleaf_checkpoint_sha256(path)))
+    for t in leaf_tricks:
+        for kind, path, sha in artifacts:
+            if kind == "learned":
+                name = vleaf_policy_name(leaf_tricks=t, checkpoint_id=sha[:8])
+                factory = _make_vleaf_learned(path, sha, t, bool(allow_legacy))
+            else:
+                name = vleaf_policy_name(leaf_tricks=t)
+                factory = _make_vleaf_prior(path, sha, t)
+            existing = registry.get(name)
+            bound = getattr(existing, "vleaf_artifact", None)
+            if existing is not None and bound is None:
+                raise RuntimeError(f"{name!r} is already a registered policy")
+            if bound is not None and bound[1] != sha:
+                raise RuntimeError(
+                    f"{name!r} is bound to {bound[0]} ({bound[1][:12]}); refusing "
+                    f"to rebind it to {path} ({sha[:12]})")
+            if existing is None:
+                registry[name] = factory
+            names[name] = kind
+    return names
+
+
+if os.environ.get(VLEAF_CHECKPOINT_ENV) or os.environ.get(VLEAF_PRIOR_ENV):
+    register_vleaf_arms(
+        checkpoint=os.environ.get(VLEAF_CHECKPOINT_ENV) or None,
+        prior=os.environ.get(VLEAF_PRIOR_ENV) or None,
+        allow_legacy=os.environ.get(VLEAF_ALLOW_LEGACY_ENV) == "1")

@@ -206,6 +206,60 @@ test whether a prior improves allocation over uniform. These remain next
 experiments, not conclusions that MCTS cannot work. No further hyperparameter
 search was made on these 104 outcomes.
 
+## Value-at-leaf equal-work screen (DEV, not deployed)
+
+The first real test of the value direction, at the LEAF rather than the root:
+`leaf_policy.py` subclasses the production `mc-s0-report-lcb` and overrides
+ONLY `_rollout`. The determinized clone is built exactly as production builds
+it, the candidate is played, the heuristic continuation runs for at most `T`
+tricks (`--leaf-tricks`, 0/1/2/4), and a leaf that reached round end returns
+`float(clone.attacker_points)` exactly as production does. Otherwise the leaf
+returns a prediction of the round's FINAL attacker points for that clone,
+encoded from the clone's seat to act — production's rollout units, so
+`_score`, the attacker/banker sign flip, the paired report fold and the LCB
+rule are untouched. Two leaves share the truncation:
+
+- `mc-vleaf-<ckpt8>-t<T>`: the checkpoint's auxiliary points head
+  (`--aux-points`; `value_head` column 1 x 100), exported once per process
+  to numpy and run single-row (torch per-call overhead is too high inside the
+  rollout loop; the exact GELU uses a 2e-4 erf table, |error| < 1e-8).
+  Loading goes through `SearchHeads.from_checkpoint` (encoder SHA, schema v3,
+  v2 only with `--allow-legacy`); a checkpoint without a points head is refused.
+- `mc-vleaf-prior-t<T>`: the no-learning control. Same truncation and dose;
+  the leaf is the trainer's stratified prior (phase x role x attacker points
+  so far, 18 cells) refitted on the FINAL attacker points of the receipt's
+  TRAIN cache files (`scripts/vleaf_screen.py fit-prior`). A learned-minus-prior
+  contrast on the same deals isolates "learned leaf" from "truncation + more
+  worlds".
+
+The names are registered only by the screen driver or when
+`SHENGJI_VLEAF_CKPT` / `SHENGJI_VLEAF_PRIOR` name the artifacts, so the default
+registry is unchanged and `scripts/evaluate.py` can still drive the arms by
+name.
+
+CPU parity follows the method above: `calibrate` plays outcome-blind
+calibration deals (seed space 50360904+, both mirrors) with the learned arm at
+N in {30, 45, 60, 90} (R = 300 unchanged), measures decision CPU with
+`TimedPolicy`, fits the arm/production CPU ratio as a line in N (selection work
+grows with N, the report fold is fixed) and freezes the N at ratio 1.0 in
+`calibration.json`. The choice is a function of CPU only; a solution outside
+the grid is reported as an extrapolation. `run` then plays fresh clusters
+(seed0 50260904, disjoint from every training window and from the calibration
+deals) for `learned` and `prior` against production through the paired
+mirrored harness, and writes per-arm summaries (deal-cluster bootstrap on
+signed level utility, win rate, role splits, measured CPU ratio, rollout and
+leaf/NN-call counters, the minimum detectable effect for this round count and
+for 1,024 clusters) plus a combined summary with the learned-minus-prior
+paired contrast. `equal_work_strength_claim` is always False: a measured ratio
+outside 0.95-1.05 labels the result cost-unmatched. Calibrate on the machine
+that runs the screen; parity is a property of that CPU.
+
+Measured on the Mini's fast engine: a full production continuation costs
+25-220 us depending on round phase, the T=1 learned leaf about 70-115 us
+(dominated by `encode_obs`, whose source is part of the checkpoint identity),
+so the leaf is cheaper than a continuation only early in the round and the
+parity N is an empirical, machine-specific number.
+
 ## Run and recover
 
 From `server/`, with the reviewed native extension built:

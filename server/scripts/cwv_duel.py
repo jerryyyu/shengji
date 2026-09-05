@@ -159,17 +159,19 @@ def budget_label(multiplier: float) -> str:
 
 def search_binding(*, world_pool: int, batch: int, c_puct: float, prior: str,
                    prior_checkpoint_sha256: str | None, leaf: str = "net",
-                   leaf_playouts: int = 1) -> dict:
+                   leaf_playouts: int = 1, prior_temperature: float = 1.0) -> dict:
     """The PUCT search parameters a tree calibration is bound to (S is the
     budget and lives in the rungs).  The leaf keys follow the bot's own
     ``search_identity``: absent for the net leaf (the v1 binding, so the
     existing net-leaf calibrations stay valid), ``leaf``/``leaf_playouts``
     for a playout leaf (``check_calibration`` compares the union of keys, so
-    a binding made under one leaf never serves the other)."""
-    from shengji.ai.cwv_puct import leaf_identity
+    a binding made under one leaf never serves the other).  Likewise
+    ``prior_temperature`` only under ``prior="value"``."""
+    from shengji.ai.cwv_puct import leaf_identity, prior_identity
     return {"kind": "puct", "world_pool": int(world_pool), "batch": int(batch),
             "c_puct": float(c_puct), "prior": str(prior),
             "prior_checkpoint_sha256": prior_checkpoint_sha256,
+            **prior_identity(prior, prior_temperature),
             **leaf_identity(leaf, leaf_playouts)}
 
 
@@ -189,7 +191,8 @@ def search_from_args(args) -> dict | None:
                           c_puct=args.c_puct, prior=args.prior,
                           prior_checkpoint_sha256=prior_sha,
                           leaf=getattr(args, "leaf", "net"),
-                          leaf_playouts=int(getattr(args, "leaf_playouts", 1)))
+                          leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
+                          prior_temperature=float(getattr(args, "prior_temperature", 1.0)))
 
 
 def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
@@ -200,7 +203,8 @@ def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
             c_puct=args.c_puct, prior=args.prior,
             prior_checkpoint=args.prior_checkpoint, receipt=receipt,
             leaf=getattr(args, "leaf", "net"),
-            leaf_playouts=int(getattr(args, "leaf_playouts", 1)))
+            leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
+            prior_temperature=float(getattr(args, "prior_temperature", 1.0)))
     else:
         register_cwv_policies(checkpoint, budgets, finish_trick=args.finish_trick,
                               lcb=args.lcb, receipt=receipt,
@@ -209,7 +213,9 @@ def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
 
 def _leaf_kw(args) -> dict:
     return {"leaf": getattr(args, "leaf", "net"),
-            "leaf_playouts": int(getattr(args, "leaf_playouts", 1))}
+            "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
+            "prior": getattr(args, "prior", "uniform"),
+            "prior_temperature": float(getattr(args, "prior_temperature", 1.0))}
 
 
 def arm_name(args, ckpt8: str, budget: int) -> str:
@@ -1163,7 +1169,8 @@ def run(args) -> dict:
                 "prior": getattr(args, "prior", None),
                 "prior_checkpoint": getattr(args, "prior_checkpoint", None),
                 "leaf": getattr(args, "leaf", "net"),
-                "leaf_playouts": int(getattr(args, "leaf_playouts", 1))}
+                "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
+                "prior_temperature": float(getattr(args, "prior_temperature", 1.0))}
     register_arms(args, checkpoint, worlds, receipt=args.receipt)
     if scaled_multipliers:
         register_scaled_policies(args.opponent, scaled_multipliers)
@@ -1308,10 +1315,14 @@ def add_tree_arguments(parser: argparse.ArgumentParser) -> None:
     tree.add_argument("--batch", type=int, default=DEFAULT_BATCH,
                       help="K simulations per batched leaf evaluation")
     tree.add_argument("--c-puct", type=float, default=DEFAULT_C_PUCT)
-    tree.add_argument("--prior", choices=PRIOR_MODES, default="uniform")
+    tree.add_argument("--prior", choices=PRIOR_MODES, default="uniform",
+                      help="uniform; head (--prior-checkpoint); value: softmax of the "
+                           "complete-world net's one-ply afterstate values (arms -vprior)")
     tree.add_argument("--prior-checkpoint", default=None,
                       help="shengji-train-v0 checkpoint whose public prior head prices "
                            "the ballot (--prior head)")
+    tree.add_argument("--prior-temperature", type=float, default=1.0,
+                      help="softmax temperature of --prior value (level scale; arms -vprior<T>)")
     tree.add_argument("--leaf", choices=LEAF_MODES, default="net",
                       help="leaf value: the net (default) or production's heuristic "
                            "playout of the sampled world to round end (arms -pleaf)")

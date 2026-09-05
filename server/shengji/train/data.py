@@ -75,22 +75,47 @@ unknown or whose mean is null/non-finite carries no aux target
 
 Cache
 -----
-``<out>/cache/<shard sha256>.<encoder sha256[:12]>.npz`` per shard: obs,
-ragged per-candidate action features (offsets), targets and ids, plus a
-``meta`` JSON (schema, encoder identity, shard hash, counts, witness
-settings, decoded ``nbytes``).  Rebuilt when missing or when either key
-changes; never a source of truth.  The file is a pure function of (shard
-bytes, encoder, witness seed, witness_every): no timing or host detail is
-stamped inside, so ``ensure_caches`` may build the missing shards in a pool
-of spawned worker processes (``workers`` at a time, one shard per task) and
-produce byte-identical files to the in-process build.
+``<out>/cache/<shard sha256>.<encoder sha256[:12]>.npz`` per shard: the
+PACKED observation (``obs_bits`` / ``obs_f32``), ragged per-candidate
+action features (``cand_offsets`` + ``cand_bits`` / ``cand_u8`` /
+``cand_f32``), targets and ids, plus a ``meta`` JSON (schema, encoder
+identity, the ``packing`` layout, shard hash, counts, witness settings,
+decoded ``nbytes`` = the packed size).  Rebuilt when missing or when any
+key (schema, packing layout, encoder, shard hash) changes; never a source
+of truth.  The file is a pure function of (shard bytes, encoder, witness
+seed, witness_every): no timing or host detail is stamped inside, so
+``ensure_caches`` may build the missing shards in a pool of spawned worker
+processes (``workers`` at a time, one shard per task) and produce
+byte-identical files to the in-process build.
+
+PACKED features (lossless, resident form)
+-----------------------------------------
+The encoder's float32 vectors are almost entirely small dyadic values:
+the 54 x 9 card planes are counts 0 / .5 / 1, the trump / rank / banker /
+role / void features one-hots, and the candidate scalars multiples of 1/8
+(``n / 8``, ``n / 4``); only the attacker points (``/ 200``), the cards
+remaining (``/ 100``) and a candidate's points (``/ 25``) are not.
+``OBS_LAYOUT`` / ``CAND_LAYOUT`` (``FeatureLayout``, from the
+``OBS_SEGMENTS`` / ``CAND_SEGMENTS`` of ``rl.encode``) store every column
+by kind: ``bits2`` columns hold ``x * 2`` in two bits (four per byte),
+``u8`` columns ``x * 8`` in a byte and ``f32`` columns the float32 itself.
+``pack`` refuses a value its kind cannot hold exactly and PROVES the
+round trip on every row it packs (``unpack(pack(x))`` must equal ``x``
+byte for byte), so the packed block is the encoding, not an approximation:
+``gather`` unpacks a batch to float32 on the fly and the training step
+sees exactly the bytes the encoder produced.  A 531-float observation
+(2124 bytes) becomes 141 bytes, a 60-float candidate (240) 22.  The
+``packing`` layout is stamped in every cache ``meta`` and is part of the
+format key: a cache of another layout (or the pre-packing float32 layout)
+is rebuilt, never misread.
 
 RESIDENCY contract (bounded, honest)
 ------------------------------------
 ``BlockStore`` decodes blocks on demand into a ``Residency`` (an LRU of
 decoded blocks with a byte budget, shared by every store of one run): at
-most ``resident_bytes`` of decoded blocks are held at any time (``None``:
-everything stays resident; the store then IS the corpus in memory).  Room
+most ``resident_bytes`` of decoded (PACKED) blocks are held at any time
+(``None``: everything stays resident; the store then IS the corpus in
+memory).  Room
 is made BEFORE a block is decoded (its exact size is known up front: the
 cache meta's ``nbytes``, or ``filtered_nbytes`` for a ``keep``-filtered
 entry, which decodes ONLY its kept rows through ``load_block_rows``), and
@@ -100,7 +125,8 @@ unfiltered copy), so evicting a block unmaps its pages at once instead
 of leaving them in the allocator's cache -- the bound holds for the
 process RSS, not only for the bookkeeping.  A batch
 is gathered straight from the resident blocks of the current shuffle
-window (``gather``: one batch-sized copy, never a window-sized one), so
+window (``gather``: one batch-sized copy, unpacked to float32, never a
+window-sized one), so
 the data's memory is ``resident_bytes`` plus one batch plus the per-window
 index arrays.  A window holds at most ``window`` blocks and at most
 ``resident_bytes`` of them; a single block above the budget refuses (raise
@@ -139,12 +165,14 @@ from ..harvest.trajectory import (MANIFEST_SCHEMA as TRAJECTORY_MANIFEST_SCHEMA,
                                   SHARD_SCHEMA, TrajectoryError,
                                   preference_from_record)
 from ..rl.encode import (ACT_DIM, CARD_INDEX, ENC_VERSION, ENCODER_IMPLEMENTATION_SHA256,
-                         ENCODER_SOURCE_SHA256S, OBS_DIM, OBS_SCHEMA,
+                         ENCODER_SOURCE_SHA256S, N_CARDS, OBS_DIM, OBS_SCHEMA,
                          encode_action, encode_obs)
 from ..rl.encoder_identity import encoder_contract
 
-#: v3: + deal_key column, nbytes / witness_every / witness_sampled in meta
-CACHE_SCHEMA = "shengji-train-cache-v3"
+#: v3: + deal_key column, nbytes / witness_every / witness_sampled in meta;
+#: v4: obs / candidate features stored PACKED (module docstring), ``packing``
+#: layout in meta, ``nbytes`` = the packed size
+CACHE_SCHEMA = "shengji-train-cache-v4"
 HARVEST_MANIFEST_SCHEMA = "shengji-harvest-manifest-v1"
 LAYOUTS = ("shard-store", "merged", "jsonl")
 #: the deal identity recipe; MUST equal ``rl.value_afterstate.DEAL_KEY_SCHEMA``
@@ -692,29 +720,207 @@ def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
         search_mean=search_mean)
 
 
+# ---------------------------------------------------------- packed features
+
+#: a ``bits2`` column holds ``x * BITS2_SCALE`` in two bits (x in {0, .5, 1})
+BITS2_SCALE = 2
+#: a ``u8`` column holds ``x * U8_SCALE`` in one byte (x a multiple of 1/8)
+U8_SCALE = 8
+_BIT_SHIFTS = np.asarray([0, 2, 4, 6], dtype=np.uint8)
+#: the column segments of ``rl.encode.encode_obs`` / ``encode_action`` as
+#: ``[name, width, kind]`` (JSON-native: stamped in the cache meta); the
+#: order and widths are the encoder's, pinned by ``FeatureLayout`` against
+#: OBS_DIM / ACT_DIM.  ``f32`` marks the columns no dyadic kind holds.
+OBS_SEGMENTS = [["card_planes", N_CARDS * 9, "bits2"], ["trump_suit", 5, "bits2"],
+                ["trump_rank", 13, "bits2"], ["banker_rel", 4, "bits2"],
+                ["attacker_points", 1, "f32"], ["cards_remaining", 1, "f32"],
+                ["is_attacker", 1, "bits2"], ["voids", 20, "bits2"]]
+CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],
+                 ["max_pair_run", 1, "u8"], ["all_trump", 1, "bits2"], ["points", 1, "f32"],
+                 ["n_components", 1, "u8"]]
+#: the packed layout: part of the cache format key (``check_meta``)
+PACKING = {"version": 1, "bits2_scale": BITS2_SCALE, "u8_scale": U8_SCALE,
+           "obs": OBS_SEGMENTS, "cand": CAND_SEGMENTS}
+
+
+class FeatureLayout:
+    """How a float32 feature vector of ``dim`` columns is packed (module
+    docstring: PACKED features): ``bits2`` columns as two bits each (four
+    per byte, ``bits``), ``u8`` columns as one byte each (``u8``), ``f32``
+    columns verbatim (``f32``).  ``pack`` refuses a value its kind cannot
+    hold and verifies the byte-exact round trip; ``unpack`` is the inverse
+    (a cast and a power-of-two scale: exact)."""
+
+    KINDS = ("bits2", "u8", "f32")
+
+    def __init__(self, name: str, segments: Sequence[Sequence], dim: int):
+        self.name = name
+        cols: dict[str, list[int]] = {kind: [] for kind in self.KINDS}
+        start = 0
+        for _label, width, kind in segments:
+            if kind not in cols:
+                raise ValueError(f"{name}: unknown column kind {kind!r}")
+            cols[kind].extend(range(start, start + int(width)))
+            start += int(width)
+        if start != int(dim):
+            raise ValueError(f"{name}: the segments cover {start} columns, the vector has {dim}")
+        self.dim = int(dim)
+        self.bits2 = np.asarray(cols["bits2"], dtype=np.int64)
+        self.u8 = np.asarray(cols["u8"], dtype=np.int64)
+        self.f32 = np.asarray(cols["f32"], dtype=np.int64)
+        #: bytes of the ``bits`` member per row: four 2-bit columns per byte
+        self.bits_width = (len(self.bits2) + 3) // 4
+        #: the columns of each kind as ``[start, end)`` runs (slice copies
+        #: in ``unpack``, no per-column scatter)
+        self._runs = {kind: self._column_runs(getattr(self, kind))
+                      for kind in ("bits2", "u8", "f32")}
+
+    @staticmethod
+    def _column_runs(cols: np.ndarray) -> list[tuple[int, int]]:
+        runs: list[tuple[int, int]] = []
+        for c in cols.tolist():
+            if runs and runs[-1][1] == c:
+                runs[-1] = (runs[-1][0], c + 1)
+            else:
+                runs.append((c, c + 1))
+        return runs
+
+    @property
+    def packed_bytes_per_row(self) -> int:
+        return self.bits_width + len(self.u8) + 4 * len(self.f32)
+
+    def _quantise(self, x: np.ndarray, cols: np.ndarray, scale: int, top: int, kind: str
+                  ) -> np.ndarray:
+        q = x[:, cols] * np.float32(scale)
+        if q.size:
+            ok = (q == np.rint(q)) & (q >= 0) & (q <= top)
+            if not ok.all():
+                bad = cols[np.flatnonzero(~ok.all(axis=0))]
+                raise TrainDataError(
+                    f"{self.name}: column(s) {bad.tolist()} hold values a {kind} column "
+                    f"cannot store exactly (not a multiple of 1/{scale} in [0, {top / scale}]); "
+                    "the encoder layout changed without a packing update")
+        return q.astype(np.uint8)
+
+    def pack(self, x: np.ndarray) -> dict[str, np.ndarray]:
+        """``{"bits", "u8", "f32"}`` of the float32 rows ``x`` [n, dim];
+        raises unless ``unpack`` gives back exactly ``x``."""
+        x = np.ascontiguousarray(x)
+        if x.dtype != np.float32 or x.ndim != 2 or x.shape[1] != self.dim:
+            raise TrainDataError(f"{self.name}: expected float32 [n, {self.dim}], got "
+                                 f"{x.dtype} {x.shape}")
+        n = int(x.shape[0])
+        buf = np.zeros((n, self.bits_width * 4), dtype=np.uint8)
+        buf[:, :len(self.bits2)] = self._quantise(x, self.bits2, BITS2_SCALE, 3, "bits2")
+        buf = buf.reshape(n, self.bits_width, 4)
+        bits = buf[:, :, 0] | (buf[:, :, 1] << 2) | (buf[:, :, 2] << 4) | (buf[:, :, 3] << 6)
+        out = {
+            "bits": np.ascontiguousarray(bits, dtype=np.uint8),
+            "u8": self._quantise(x, self.u8, U8_SCALE, 255, "u8"),
+            "f32": np.ascontiguousarray(x[:, self.f32], dtype=np.float32),
+        }
+        back = self.unpack(out["bits"], out["u8"], out["f32"])
+        if not np.array_equal(back.view(np.uint32), x.view(np.uint32)):
+            raise TrainDataError(f"{self.name}: packing is not lossless; refusing to cache")
+        return out
+
+    def unpack(self, bits: np.ndarray, u8: np.ndarray | None, f32: np.ndarray | None, *,
+               out: np.ndarray | None = None) -> np.ndarray:
+        """The float32 rows [n, dim] of the packed members (into ``out``
+        when given)."""
+        n = int(bits.shape[0])
+        if out is None:
+            out = np.empty((n, self.dim), dtype=np.float32)
+        if len(self.bits2):
+            q = ((bits[:, :, None] >> _BIT_SHIFTS) & np.uint8(3)).reshape(n, self.bits_width * 4)
+            pos = 0
+            for start, end in self._runs["bits2"]:
+                np.multiply(q[:, pos:pos + end - start], np.float32(1 / BITS2_SCALE),
+                            out=out[:, start:end], dtype=np.float32)
+                pos += end - start
+        pos = 0
+        for start, end in self._runs["u8"]:
+            np.multiply(u8[:, pos:pos + end - start], np.float32(1 / U8_SCALE),
+                        out=out[:, start:end], dtype=np.float32)
+            pos += end - start
+        pos = 0
+        for start, end in self._runs["f32"]:
+            out[:, start:end] = f32[:, pos:pos + end - start]
+            pos += end - start
+        return out
+
+
+OBS_LAYOUT = FeatureLayout("obs", OBS_SEGMENTS, OBS_DIM)
+CAND_LAYOUT = FeatureLayout("cand", CAND_SEGMENTS, ACT_DIM)
+
+
+def pack_features(obs: np.ndarray, cand: np.ndarray) -> dict[str, np.ndarray]:
+    """The packed cache members of float32 ``obs`` [n, OBS_DIM] and ``cand``
+    [m, ACT_DIM] (``Block.PACKED``); every row's round trip is verified."""
+    o = OBS_LAYOUT.pack(obs)
+    c = CAND_LAYOUT.pack(cand)
+    return {"obs_bits": o["bits"], "obs_f32": o["f32"], "cand_bits": c["bits"],
+            "cand_u8": c["u8"], "cand_f32": c["f32"]}
+
+
+def float32_nbytes(rows: int, cand_rows: int) -> int:
+    """What the observation / candidate features of ``rows`` records with
+    ``cand_rows`` candidates take unpacked (the pre-v4 resident size of
+    those arrays)."""
+    return int(rows) * OBS_DIM * 4 + int(cand_rows) * ACT_DIM * 4
+
+
 # ------------------------------------------------------------------- blocks
 
 class Block:
-    """One cached shard, fully decoded (numpy arrays)."""
+    """One cached shard, fully decoded (numpy arrays); the observation and
+    candidate features stay PACKED (``obs_bits`` / ``obs_f32``,
+    ``cand_bits`` / ``cand_u8`` / ``cand_f32``) and are unpacked to float32
+    per batch (``obs_rows`` / ``cand_rows``; ``obs`` / ``cand_feats``
+    unpack the whole block: diagnostics and tests, never the batch path)."""
 
-    ARRAYS = ("obs", "cand_offsets", "cand_feats", "cand_softmax", "has_softmax",
+    ARRAYS = ("obs_bits", "obs_f32", "cand_offsets", "cand_bits", "cand_u8", "cand_f32",
+              "cand_softmax", "has_softmax",
               "played", "utility", "attacker_points", "points_so_far", "ply",
               "role_attacker", "seat", "cluster", "record_sha256", "source_ref",
               "search_mean", "has_search_mean", "deal_key")
+    #: the packed feature members (``pack_features``)
+    PACKED = ("obs_bits", "obs_f32", "cand_bits", "cand_u8", "cand_f32")
+    #: one row per ballot entry (the rest are one row per record)
+    CAND_ARRAYS = ("cand_bits", "cand_u8", "cand_f32", "cand_softmax")
     #: per-row scalar arrays (everything but the observation / candidate arrays)
-    SCALARS = ARRAYS[4:]
+    SCALARS = ARRAYS[ARRAYS.index("has_softmax"):]
 
     def __init__(self, arrays: dict[str, np.ndarray], meta: dict, path: str | None = None):
         for name in self.ARRAYS:
             setattr(self, name, arrays[name])
         self.meta = meta
         self.path = path
-        self.n = int(self.obs.shape[0])
+        self.n = int(self.obs_bits.shape[0])
         self.nbytes = int(sum(int(arrays[name].nbytes) for name in self.ARRAYS))
 
     @property
     def widths(self) -> np.ndarray:
         return self.cand_offsets[1:] - self.cand_offsets[:-1]
+
+    @property
+    def obs(self) -> np.ndarray:
+        """Every observation unpacked, float32 [n, OBS_DIM] (a full copy)."""
+        return OBS_LAYOUT.unpack(self.obs_bits, None, self.obs_f32)
+
+    @property
+    def cand_feats(self) -> np.ndarray:
+        """Every candidate unpacked, float32 [m, ACT_DIM] (a full copy)."""
+        return CAND_LAYOUT.unpack(self.cand_bits, self.cand_u8, self.cand_f32)
+
+    def obs_rows(self, idx: np.ndarray) -> np.ndarray:
+        """Observations ``idx`` unpacked, float32 [len(idx), OBS_DIM]."""
+        return OBS_LAYOUT.unpack(self.obs_bits[idx], None, self.obs_f32[idx])
+
+    def cand_rows(self, src: np.ndarray) -> np.ndarray:
+        """Candidates ``src`` (indices into the ragged candidate arrays)
+        unpacked, float32 [len(src), ACT_DIM]."""
+        return CAND_LAYOUT.unpack(self.cand_bits[src], self.cand_u8[src], self.cand_f32[src])
 
     def subset(self, idx: np.ndarray) -> "Block":
         """Rows ``idx`` (any order) as a new block; candidates re-packed."""
@@ -726,12 +932,11 @@ class Block:
                + (np.arange(total) - np.repeat(np.cumsum(widths) - widths, widths)))
         offsets = np.zeros(len(idx) + 1, dtype=np.int64)
         offsets[1:] = np.cumsum(widths)
-        arrays = {
-            "obs": self.obs[idx], "cand_offsets": offsets,
-            "cand_feats": self.cand_feats[src], "cand_softmax": self.cand_softmax[src],
-        }
-        for name in self.SCALARS:
-            arrays[name] = getattr(self, name)[idx]
+        arrays = {"cand_offsets": offsets}
+        for name in self.ARRAYS:
+            if name == "cand_offsets":
+                continue
+            arrays[name] = getattr(self, name)[src if name in self.CAND_ARRAYS else idx]
         return Block(arrays, self.meta, self.path)
 
 
@@ -1010,7 +1215,7 @@ def filtered_nbytes(headers: Mapping[str, tuple[tuple[int, ...], np.dtype]], *, 
         shape, dtype = headers[name]
         if name == "cand_offsets":
             count = rows + 1
-        elif name in ("cand_feats", "cand_softmax"):
+        elif name in Block.CAND_ARRAYS:
             count = cand_rows
         else:
             count = rows
@@ -1038,7 +1243,7 @@ def load_block_rows(path: str | os.PathLike, keep_idx: np.ndarray, *,
                 if widths.size:
                     offsets[1:] = np.cumsum(widths)
                 arrays[name] = offsets
-            elif name in ("cand_feats", "cand_softmax"):
+            elif name in Block.CAND_ARRAYS:
                 arrays[name] = _read_member_rows(zf, name, cand_ranges)
             else:
                 arrays[name] = _read_member_rows(zf, name, row_ranges)
@@ -1167,10 +1372,14 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
                            "encoded rows were witnessed; refusing")
     offsets = np.zeros(n + 1, dtype=np.int64)
     offsets[1:] = np.cumsum(np.asarray(widths, dtype=np.int64)) if n else 0
+    # the float32 encodings exist only here, in the builder: the cache (and
+    # the resident block) hold the packed, round-trip-verified form
+    packed = pack_features(
+        np.stack(obs_rows) if n else np.zeros((0, OBS_DIM), np.float32),
+        np.concatenate(cand_rows) if n else np.zeros((0, ACT_DIM), np.float32))
     arrays = {
-        "obs": (np.stack(obs_rows) if n else np.zeros((0, OBS_DIM), np.float32)),
+        **packed,
         "cand_offsets": offsets,
-        "cand_feats": (np.concatenate(cand_rows) if n else np.zeros((0, ACT_DIM), np.float32)),
         "cand_softmax": (np.concatenate(soft_rows) if n else np.zeros(0, np.float32)),
         "has_softmax": np.asarray(scalars["has_softmax"], dtype=bool),
         "played": np.asarray(scalars["played"], dtype=np.int32),
@@ -1188,9 +1397,11 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         "deal_key": np.asarray(scalars["deal_key"], dtype=str),
     }
     nbytes = int(sum(int(a.nbytes) for a in arrays.values()))
+    packed_nbytes = int(sum(int(arrays[name].nbytes) for name in Block.PACKED))
     meta = {
         "schema": CACHE_SCHEMA,
         "encoder": encoder_identity(),
+        "packing": PACKING,
         "shard": {"label": shard.label, "sha256": shard.sha256, "records": shard.records,
                   "cluster": shard.cluster, "store": shard.store},
         "counts": counts,
@@ -1200,6 +1411,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         "deal_key_schema": DEAL_KEY_SCHEMA,
         "deals": int(len(set(scalars["deal_key"]))),
         "nbytes": nbytes,
+        "features": {"packed_nbytes": packed_nbytes,
+                     "float32_nbytes": float32_nbytes(n, int(offsets[-1]))},
     }
     path = cache_path(cache_dir, shard.sha256)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1215,10 +1428,13 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
 
 def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
                shard_sha256: str | None = None, witness_every: int | None = None) -> dict:
-    """Refuse a cache ``meta`` of another schema / encoder / shard, or one
-    whose privacy witness was sparser than ``witness_every`` requires."""
+    """Refuse a cache ``meta`` of another schema / packing layout / encoder
+    / shard, or one whose privacy witness was sparser than ``witness_every``
+    requires."""
     if meta.get("schema") != CACHE_SCHEMA:
         raise TrainDataError(f"{path}: cache schema {meta.get('schema')!r}")
+    if meta.get("packing") != PACKING:
+        raise TrainDataError(f"{path}: cache packed with another feature layout")
     enc = meta.get("encoder") or {}
     if (enc.get("implementation_sha256") != ENCODER_IMPLEMENTATION_SHA256
             or enc.get("enc_version") != ENC_VERSION):
@@ -1454,9 +1670,11 @@ def gather(blocks: Sequence[Block], which: np.ndarray, rows: np.ndarray
            ) -> dict[str, np.ndarray]:
     """Rows ``rows[j]`` of ``blocks[which[j]]``, in that order, as one batch
     padded to the widest ballot of the batch: candidates outside a record's
-    ballot are masked (never scored).  One batch-sized copy (the wide
-    arrays over anonymous mmaps, ``_anon_zeros``, so batch churn does not
-    accumulate in the allocator); the blocks themselves are not copied."""
+    ballot are masked (never scored).  The observation and candidate
+    features are unpacked to float32 here, for the batch only (the blocks
+    stay packed).  One batch-sized copy (the wide arrays over anonymous
+    mmaps, ``_anon_zeros``, so batch churn does not accumulate in the
+    allocator); the blocks themselves are not copied."""
     which = np.asarray(which, dtype=np.int64)
     rows = np.asarray(rows, dtype=np.int64)
     b = len(rows)
@@ -1477,14 +1695,14 @@ def gather(blocks: Sequence[Block], which: np.ndarray, rows: np.ndarray
     for name, dtype in _SCALAR_DTYPES.items():
         out[name] = np.empty(b, dtype=dtype)
     for block, pos, sel in parts:
-        out["obs"][pos] = block.obs[sel]
+        out["obs"][pos] = block.obs_rows(sel)
         w = widths[pos]
         total = int(w.sum())
         if total:
             rr = np.repeat(pos, w)
             cols = np.arange(total) - np.repeat(np.cumsum(w) - w, w)
             src = np.repeat(block.cand_offsets[sel], w) + cols
-            out["cand"][rr, cols] = block.cand_feats[src]
+            out["cand"][rr, cols] = block.cand_rows(src)
             out["mask"][rr, cols] = True
             out["target"][rr, cols] = block.cand_softmax[src]
         for name in _SCALAR_DTYPES:

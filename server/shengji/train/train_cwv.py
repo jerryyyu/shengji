@@ -83,6 +83,7 @@ from .cwv_data import (
     collate,
     cwv_encoder_identity,
     expected_levels,
+    median_pt0,
     prepare_stores,
     tensors_of,
 )
@@ -296,9 +297,9 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
              batch_size: int, aux_head: AuxPointsHead | None = None) -> dict[str, np.ndarray]:
     """Per-row predictions and losses over the selected rows."""
     model.eval()
-    keys = ("expected_level", "expected_pt0", "ce", "rps", "target", "target_level",
-            "utility", "ply", "role_attacker", "points_so_far", "attacker_points",
-            "deal_key", "source_ref", "aux_pred", "has_search_means")
+    keys = ("expected_level", "expected_pt0", "median_pt0", "ce", "rps", "target",
+            "target_level", "utility", "ply", "role_attacker", "points_so_far",
+            "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
     out: dict[str, list] = {k: [] for k in keys}
     for block in store.iter_blocks():
         sel = np.flatnonzero(mask_fn(block))
@@ -317,6 +318,7 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
             tgt = raw["target"].astype(np.int64)
             out["expected_level"].append(level)
             out["expected_pt0"].append(pt0)
+            out["median_pt0"].append(median_pt0(prob))
             out["ce"].append(ce.cpu().numpy().astype(np.float64))
             out["rps"].append(_rps(prob, tgt))
             out["target"].append(tgt)
@@ -350,6 +352,7 @@ def quick_metrics(ev: Mapping[str, np.ndarray]) -> dict:
         "rps": float(ev["rps"].mean()),
         "value_mae": float(np.abs(err).mean()),
         "value_mse": float((err ** 2).mean()),
+        "value_median_mae": float(np.abs(ev["median_pt0"] - ev["utility"]).mean()),
         "value_level_mae": float(np.abs(err_level).mean()),
         "aux_points_mae": (float(np.abs(ev["aux_pred"][has_aux]
                                         - ev["attacker_points"][has_aux]).mean())
@@ -372,6 +375,13 @@ def full_metrics(ev: Mapping[str, np.ndarray], baselines: Mapping[str, Any], *, 
         "scale": "PT0 signed level for the acting seat's partnership "
                  "(outcome.signed_level_utility); model = expected PT0 level of the "
                  "204-class distribution",
+    }
+    metrics["value_median"] = {
+        **value_summary(ev["median_pt0"], base, ev["utility"], ev["deal_key"],
+                        n_boot=n_boot, seed=seed + 20),
+        "scale": "PT0 signed level; model = MEDIAN PT0 level of the 204-class "
+                 "distribution (the MAE-optimal point estimate; the expectation above "
+                 "is MSE-optimal)",
     }
     err_level = ev["expected_level"] - ev["target_level"]
     metrics["value_level"] = {
@@ -403,9 +413,17 @@ def full_metrics(ev: Mapping[str, np.ndarray], baselines: Mapping[str, Any], *, 
         }
         if has.any():
             e_m = ev["expected_pt0"][has] - ev["utility"][has]
+            e_md = ev["median_pt0"][has] - ev["utility"][has]
             e_p = values[has] - ev["utility"][has]
             block.update({
                 "model": {"mae": float(np.abs(e_m).mean()), "mse": float((e_m ** 2).mean())},
+                "model_median": {"mae": float(np.abs(e_md).mean()),
+                                 "mse": float((e_md ** 2).mean())},
+                "paired_diff_median_minus_public": {
+                    "abs_error": cluster_bootstrap(np.abs(e_md) - np.abs(e_p),
+                                                   ev["deal_key"][has], n_boot=n_boot,
+                                                   seed=seed + 9),
+                },
                 "public_head": {"mae": float(np.abs(e_p).mean()),
                                 "mse": float((e_p ** 2).mean())},
                 "paired_diff_model_minus_public": {

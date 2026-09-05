@@ -206,9 +206,20 @@ def target_category(attacker_points: int, root_is_attacker: bool) -> int:
 
 
 def expected_levels(probability: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """``(expected #214 signed level, expected PT0 level)`` per row."""
+    """``(expected #214 signed level, expected PT0 level)`` per row (the
+    expectation is the MSE-optimal point estimate)."""
     prob = np.asarray(probability, dtype=np.float64)
     return prob @ LEVEL_SUPPORT, prob @ PT0_SUPPORT
+
+
+def median_pt0(probability: np.ndarray) -> np.ndarray:
+    """The distribution's median PT0 level per row (the MAE-optimal point
+    estimate): the support is ordered, so it is the PT0 level of the first
+    category whose cumulative mass reaches one half."""
+    prob = np.asarray(probability, dtype=np.float64)
+    cumulative = np.cumsum(prob, axis=1)
+    index = np.argmax(cumulative >= 0.5, axis=1)
+    return PT0_SUPPORT[index]
 
 
 # ------------------------------------------------------------------ bridge

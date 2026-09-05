@@ -684,7 +684,12 @@ def load_leaf_head(checkpoint: str | os.PathLike, *, leaf_model: str = "public",
     path = str(Path(checkpoint).resolve())
     if leaf_model == "cwv":
         return load_cwv_points_head(path)
-    return load_points_head(path, bool(allow_legacy))
+    try:
+        return load_points_head(path, bool(allow_legacy))
+    except LeafError:
+        raise
+    except ValueError as exc:       # SearchHeads' schema / encoder refusals
+        raise LeafError(f"public checkpoint refused: {exc}") from exc
 
 
 def make_learned_leaf(head):

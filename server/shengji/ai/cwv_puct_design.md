@@ -69,3 +69,29 @@ the Mini for the MLP; the descent is pure Python on the fast engine).
   (ii) virtual loss removed exactly at backup (RED when a pending path leaks into `Q`);
   (iii) argmax visits, not `Q` (RED when a rarely-visited high-`Q` child wins);
   (iv) budget from wall time only, ladder monotone (shared with 2a's witness).
+
+## Implementation notes (claude/cwv-puct, `shengji/ai/cwv_puct.py`)
+- `CWVPuctBot` (registry `mc-cwvpuct-<ckpt8>-s<S>`, control `mc-cwvpuct-prior-<ckpt8>-s<S>`
+  via `registry.register_cwv_puct_policies`). Constructor knobs: `CWV_SIMULATIONS` (S),
+  `CWV_WORLD_POOL` (W, default 32, drawn round-robin), `CWV_BATCH` (K, default 16),
+  `CWV_C_PUCT` (1.5), `CWV_VIRTUAL_LOSS` (1.0), `CWV_PRIOR` (`uniform` | `head`),
+  Dirichlet alpha/epsilon (off).  The world pool is the only world mode built (the
+  "fresh sample per simulation" option of the design is not implemented).
+- Prior head = `shengji.train.train_v0` checkpoint (`PublicPriorHead`), softmaxed over the
+  node's ballot for the seat to act, using `rl.encode.encode_obs` of the world clone (public
+  information + that seat's hand in the world).  Priors are cached per (node, action); a
+  world whose ballot adds actions to a node queues a prior request served in the next
+  batched step (newcomers take the node's mean prior until then).
+- A node's ballot per world is cached (`Node.world_ballots`): the ballot generator was
+  two thirds of the descent's wall under the head prior.
+- Virtual loss: a pending path counts one extra visit on each node, priced `vloss` worse
+  to the seat selecting there; released at backup.  Leaf value = root team's signed level;
+  opponent nodes select with the negated objective.
+- Per decision the record carries simulations, positions, forward passes, max and mean
+  leaf depth, terminal leaves, root visits / Q / prior, and the `search` identity.
+- `scripts/cwv_duel.py --tree` calibrates S (grid 64/256/1024/4096) against production's
+  wall on outcome-blind deals and runs the PUCT arm, its control, production's x3/x10 arms
+  and the reference; the calibration binding carries W, K, c_puct, prior mode and the prior
+  checkpoint sha and refuses a mismatch.
+- Witnesses: `tests/test_cwv_puct.py` (selection formula, back-up, legality mask, batched
+  == per-leaf scoring, virtual-loss release, argmax visits, identity binding, zero-signal).

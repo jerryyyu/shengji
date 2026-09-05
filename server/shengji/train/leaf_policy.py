@@ -43,6 +43,21 @@ Three leaf evaluators share the truncation:
   target.  Identical truncation and world dose, so a learned-minus-prior
   difference isolates "learned leaf" from "truncation + more worlds".
 
+One variant scopes the substitution (it binds into the policy name, the
+calibration identity and the summary):
+
+* ``leaf_stage="report"`` (``-report``): the leaf is consulted only inside
+  the report fold (``MCBot._report_fold_gap``: the top two candidates on the
+  R paired worlds, ~77% of production's rollouts); selection rollouts run
+  to round end and are production's byte for byte.
+
+There is deliberately no "control-variate" mode: a correction centred on
+each candidate's SAME report sample sums to zero, so the corrected paired
+mean is the raw paired mean while the residual per-world SE drops the
+uncertainty of the fitted control mean; substituting that residual for
+``_paired_se`` makes the LCB falsely confident (Codex HOLD, PR #232).  The
+report fold's decision SE is production's raw ``_paired_se``, always.
+
 A checkpoint without a points head is refused; identity checks (encoder
 SHA, checkpoint schema) go through ``SearchHeads.from_checkpoint`` (public)
 or ``train_cwv.load_cwv_checkpoint`` (cwv).  Nothing here registers a
@@ -61,8 +76,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_TRICKS,
-                           vleaf_checkpoint_sha256)
+from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_STAGES,
+                           VLEAF_LEAF_TRICKS, vleaf_checkpoint_sha256, vleaf_policy_suffix)
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
 from ..rl.value_afterstate import PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS, tensors_from_round
@@ -575,12 +590,33 @@ class PriorPointsLeaf:
 
 # ---------------------------------------------------------------------- bot
 
+#: where the leaf is consulted: ``all`` = every rollout (selection and
+#: report fold); ``report`` = only inside ``_report_fold_gap`` (the top two
+#: candidates on the R paired worlds), selection rollouts run to round end
+#: exactly as production's.
+LEAF_STAGES = VLEAF_LEAF_STAGES
+
+
+def policy_suffix(*, leaf_stage: str = "all") -> str:
+    """``-report`` after ``-t<T>`` for the report-fold-only leaf, else ``""``."""
+    return vleaf_policy_suffix(leaf_stage=leaf_stage)
+
+
 class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
-    """Production search; ONLY ``_rollout`` is overridden (module docstring)."""
+    """Production search; ``_rollout`` is overridden (module docstring), and
+    ``_report_fold_gap`` only to scope the leaf to a stage:
+
+    * ``leaf_stage="report"``: ``_rollout`` consults ``_leaf_on()``; the flag
+      is raised for the duration of ``_report_fold_gap`` (delegating to
+      production's, whose gap and ``_paired_se`` are returned untouched) and
+      is down during selection, whose rollouts therefore run to round end
+      untouched (values byte-identical to production's).
+    """
 
     LEAF_TRICKS = 1
 
-    def __init__(self, leaf, *, seed: int | None = None, leaf_tricks: int = 1):
+    def __init__(self, leaf, *, seed: int | None = None, leaf_tricks: int = 1,
+                 leaf_stage: str = "all"):
         super().__init__(seed)
         # The registry names cover SUPPORTED_LEAF_TRICKS; the class accepts any
         # horizon so a horizon beyond the round is the identity witness.
@@ -588,14 +624,45 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
             raise LeafError("leaf_tricks must be a non-negative integer")
         if not callable(getattr(leaf, "final_attacker_points", None)):
             raise LeafError("leaf must provide final_attacker_points(clone, seat)")
+        if leaf_stage not in LEAF_STAGES:
+            raise LeafError(f"leaf_stage must be one of {LEAF_STAGES}, got {leaf_stage!r}")
         self.LEAF_TRICKS = leaf_tricks
         self.leaf = leaf
-        self.policy_name = f"{VLEAF_BASE_POLICY}+vleaf-{leaf.kind}-t{leaf_tricks}"
+        self.leaf_stage = leaf_stage
+        self.policy_name = (f"{VLEAF_BASE_POLICY}+vleaf-{leaf.kind}-t{leaf_tricks}"
+                            + policy_suffix(leaf_stage=leaf_stage))
         # Cumulative, like MCBot's own counters: leaf_calls == rollouts scored,
         # and terminal + exact + predicted == leaf_calls.
         self.leaf_counts = {"leaf_calls": 0, "terminal_leaves": 0, "exact_leaves": 0,
                             "predicted_leaves": 0, "leaf_plies": 0}
+        # Net calls by stage: every predicted leaf is one of these.
+        self.stage_counts = {"selection_net_calls": 0, "report_net_calls": 0}
         self.leaf_secs = 0.0
+        self._leaf_active = leaf_stage == "all"
+        self._in_report_fold = False
+
+    # ------------------------------------------------------------- stages
+
+    def _leaf_on(self) -> bool:
+        """Whether this rollout may consult the leaf (the stage flag)."""
+        return self._leaf_active
+
+    def _report_fold_gap(self, rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                         *, seed: int, keep_deltas: bool = False):
+        """Production's report fold with the leaf flag raised for its duration.
+
+        The fold's ``gap`` and ``se`` are production's ``_paired_se`` of the
+        raw paired deltas: nothing here rescales the decision SE."""
+        was_active, was_report = self._leaf_active, self._in_report_fold
+        self._leaf_active = True
+        self._in_report_fold = True
+        try:
+            return super()._report_fold_gap(rnd, seat, mem, i_attack, cand_a, cand_b, n,
+                                            seed=seed, keep_deltas=keep_deltas)
+        finally:
+            self._leaf_active, self._in_report_fold = was_active, was_report
+
+    # ------------------------------------------------------------- rollout
 
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str], *,
@@ -617,17 +684,20 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME
-        horizon = self._leaf_horizon(rnd)
         counts = self.leaf_counts
         counts["leaf_calls"] += 1
+        # A stage whose leaf is off runs to round end: production's loop.
+        horizon = self._leaf_horizon(rnd) if self._leaf_on() else None
+        stage = "report_net_calls" if self._in_report_fold else "selection_net_calls"
         while clone.phase == "play":
             exact = (self._exact_endgame_value(clone, exact_session)
                      if _exact_on else None)
             if exact is not None:
                 counts["exact_leaves"] += 1
                 return exact
-            if len(clone.history) >= horizon:
+            if horizon is not None and len(clone.history) >= horizon:
                 counts["predicted_leaves"] += 1
+                self.stage_counts[stage] += 1
                 return self._leaf_value(clone)
             s = clone.turn
             assert s is not None
@@ -701,24 +771,27 @@ def make_learned_leaf(head):
 def make_vleaf_bot(*, checkpoint: str | os.PathLike, leaf_tricks: int = 1,
                    seed: int | None = None, allow_legacy: bool = False,
                    expected_sha256: str | None = None,
-                   leaf_model: str = "public") -> MCValueLeafSearch:
+                   leaf_model: str = "public", leaf_stage: str = "all") -> MCValueLeafSearch:
     head = load_leaf_head(checkpoint, leaf_model=leaf_model, allow_legacy=allow_legacy)
     actual = head.metadata.get("checkpoint_sha256")
     if expected_sha256 is not None and actual != expected_sha256:
         raise RuntimeError(f"checkpoint {checkpoint} changed since registration: "
                            f"{actual} != {expected_sha256}")
-    return MCValueLeafSearch(make_learned_leaf(head), seed=seed, leaf_tricks=leaf_tricks)
+    return MCValueLeafSearch(make_learned_leaf(head), seed=seed, leaf_tricks=leaf_tricks,
+                             leaf_stage=leaf_stage)
 
 
 def make_vleaf_prior_bot(*, prior: str | os.PathLike, leaf_tricks: int = 1,
                          seed: int | None = None,
-                         expected_sha256: str | None = None) -> MCValueLeafSearch:
+                         expected_sha256: str | None = None,
+                         leaf_stage: str = "all") -> MCValueLeafSearch:
     table = load_points_prior(str(Path(prior).resolve()))
     actual = table.provenance.get("file_sha256")
     if expected_sha256 is not None and actual != expected_sha256:
         raise RuntimeError(f"points prior {prior} changed since registration: "
                            f"{actual} != {expected_sha256}")
-    return MCValueLeafSearch(PriorPointsLeaf(table), seed=seed, leaf_tricks=leaf_tricks)
+    return MCValueLeafSearch(PriorPointsLeaf(table), seed=seed, leaf_tricks=leaf_tricks,
+                             leaf_stage=leaf_stage)
 
 
 def leaf_record(bot) -> dict:
@@ -729,7 +802,9 @@ def leaf_record(bot) -> dict:
         "schema": LEAF_RECORD_SCHEMA,
         "leaf": leaf.describe() if leaf is not None else None,
         "leaf_tricks": getattr(bot, "LEAF_TRICKS", None) if leaf is not None else None,
+        "leaf_stage": getattr(bot, "leaf_stage", None) if leaf is not None else None,
         "counts": counts,
+        "stage_counts": dict(getattr(bot, "stage_counts", None) or {}),
         "leaf_secs": float(getattr(bot, "leaf_secs", 0.0)),
         "leaf_encode_secs": float(getattr(leaf, "encode_secs", 0.0)),
         "leaf_forward_secs": float(getattr(leaf, "forward_secs", 0.0)),

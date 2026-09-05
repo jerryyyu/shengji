@@ -417,5 +417,13 @@ records, and Git history. The closed BELIEF V1 design set
 `docs_archive/BELIEF_V1_B2_RUNBOOK.md`) and
 `docs_archive/SUPHX_MICRO_SPEC.md` moved to `docs_archive/` on 2026-09-04.
 Their archived paths remain source-bound for reproducible future re-entry.
+On 2026-09-05 the closed code lanes themselves (belief, suphx,
+douzero_learning_screen, distill, the dead rl lineage, the S0/S3/S4/S5,
+teacher, v11, H0, pair-ballot and RLCB campaign scripts, and the early-August
+one-off scripts) were deleted from the tree; the tag
+`archive/code-lanes-pre-cleanup-20260905` and the `archive/pr-*` tags keep
+them, and `docs_archive/PRIVILEGED_TEACHER_V1_PROPOSAL.md` holds the closed
+PT1 proposal.  `shengji/teacher_v1.py`, `rl/douzero_micro.py` and
+`rl/torch_policy.py` stay because live modules or registry rows import them.
 Update this file only when the architecture, estimand, or live decision tree
 changes.

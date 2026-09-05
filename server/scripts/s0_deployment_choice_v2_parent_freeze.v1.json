@@ -1,9 +1,0 @@
-{
-  "binding_digest": "635e8ba76152be955d5b262791838ef4d2f0152c1b3b43d5ef2ba98361483498",
-  "dependency_freeze_sha256": "760189f11f8474e17e1d7e20e8231b7935e9e6cc6172eb44037490e8b9d6dbab",
-  "dependency_script_sha256": "375fb5e0b0d53395e2ba40ee1bcf735e2e376e89227e23ce8c83f8b2015e2036",
-  "evidence_root": "/Users/jerryyu/Projects/shengji-s0-mini/server",
-  "registry_sha256": "3e2831616645f74b025e09b3663e73001b6798e94eafaebc0353665bdc8ceea3",
-  "schema": "s0-deployment-choice-v2-parent-freeze-v1",
-  "script_sha256": "0e0e1744a1e085e1796eae99174c2f1d75aa78359139477c8ba0a719cd03574b"
-}

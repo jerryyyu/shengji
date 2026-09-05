@@ -24,7 +24,7 @@ more expensive stand-in for each buys inside the unchanged search:
 ``prior``
     Production search work, but the ballot is ranked and pruned per decision
     by a 240-world high-N paired evaluation of the very same candidates (the
-    ``highn_build.py`` reference method: shared worlds across candidates,
+    high-N reference method: shared worlds across candidates,
     plain production continuation).  The incumbent stays candidate 0; the
     remaining ``PRIOR_KEEP_TOP - 1`` slots take the best-ranked other
     candidates in rank order.  Selection worlds scale so that the pruned
@@ -457,7 +457,7 @@ class OraclePriorMixin:
     The ranking uses ``PRIOR_WORLDS`` fresh worlds from the production
     sampler on a named child stream (``oracle-prior``), scored with the plain
     production continuation for every candidate on every world, exactly as
-    ``scripts/highn_build.py`` built the 240-world reference.  The production
+    the 2026-08 high-N corpus builder built the 240-world reference.  The production
     selection/report streams are untouched: the prior neither advances
     ``self.rng`` nor changes the report seed derived from it.
     """
@@ -565,7 +565,7 @@ class OraclePriorMixin:
 def _shared_world_ranking(bot, rnd, seat, full, *, worlds: int, stream: str):
     """Rank ``full`` by paired means on ``worlds`` fresh shared worlds.
 
-    The ``highn_build.py`` reference method, shared by the prior arm and both
+    The high-N reference method, shared by the prior arm and both
     stages of the wide arm: every candidate is scored on the SAME worlds,
     drawn from the production sampler on the named child stream, with the
     PLAIN production continuation (``MCBot._rollout`` called directly, so the

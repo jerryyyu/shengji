@@ -11,7 +11,6 @@ import pytest
 SCRIPTS = Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-import v11_revalidate as V11  # noqa: E402
 from shengji.ai.mcbot import MCBot  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
 from shengji.ai.smart import SmartBot  # noqa: E402
@@ -222,34 +221,6 @@ def test_real_corrected_encoder_checkpoint_has_named_non_inert_witness():
     }
 
 
-def test_v11_actor_repairs_named_teacher_v2_off_ballot_witness():
-    """The exact v2 refusal must remain a falsifying regression witness."""
-    import teacher_v1_states as teacher_states
-    from shengji.teacher_v1 import action_key, replay_state
-
-    seed = 143_000_001
-    row = teacher_states.capture_deal(
-        seed,
-        teacher_states.target_for_deal(teacher_states.EXPERIMENT, seed),
-        teacher_states.actor_identity(),
-    )
-    assert row is not None
-    assert (row["state_id"], row["ply"], row["seat"], row["role"],
-            row["decision"]) == (
-                "143000001:44:0", 44, 0, "defender", "lead")
-    rnd = replay_state({
-        **row, "selection_probability": 1.0, "kind": "raw",
-    })
-    original_hand = list(rnd.hands[0])
-    ballot = make_bot("mc-strong", seed=1)._candidates(rnd, 0)
-    bot = make_bot("rl-override-v11pair", seed=1)
-    played = bot.decide_play(rnd, 0)
-
-    assert list(rnd.hands[0]) == original_hand
-    assert action_key(played) == action_key(ballot[0]) == ("C2",)
-    assert action_key(played) in {action_key(action) for action in ballot}
-
-
 def test_v11_actor_stays_in_exact_mc_ballot_across_both_roles():
     """Broad actor scan catches canonical lead/follow regressions."""
     from shengji.teacher_v1 import action_key
@@ -326,12 +297,13 @@ def test_v11_override_checkpoint_identity_is_absolute_and_cwd_independent(
     fake.mkdir()
     (fake / "ep07.npz").write_bytes(b"cwd lookalike must never be loaded")
     monkeypatch.chdir(tmp_path)
+    from shengji.ai import registry
+
+    frozen = (Path(registry.__file__).resolve().parents[2]
+              / "snapshots_v11pair" / "ep07.npz").resolve()
     bot = make_bot("rl-override-v11pair", seed=7)
-    assert Path(bot.checkpoint_path) == V11.CHECKPOINT.resolve()
-    assert bot.checkpoint_sha256 == V11.CHECKPOINT_SHA256
-    contract = V11.policy_contract("rl-override-v11pair")
-    assert contract["checkpoint_path"] == str(V11.CHECKPOINT.resolve())
-    assert contract["checkpoint_sha256"] == V11.CHECKPOINT_SHA256
+    assert Path(bot.checkpoint_path) == frozen
+    assert bot.checkpoint_sha256 == registry._V11PAIR_NPZ_SHA256
 
 
 def test_frozen_checkpoint_is_required_not_a_silent_fallback(tmp_path):
@@ -353,48 +325,3 @@ def test_npnet_is_cached_across_fresh_round_bots():
         "a process-wide checkpoint cache must be immutable"
 
 
-def test_revalidation_protocol_is_frozen_and_uses_real_n30_null():
-    assert V11.SEED0 == 121_000_000
-    assert V11.SEED_HI == 121_002_047
-    assert V11.TOTAL_CLUSTERS == 2_048
-    assert V11.SHARD_COUNT == 8 and V11.CLUSTERS_PER_SHARD == 256
-    assert V11.LABELS == {
-        "arm": "rl-override-v11pair",
-        "null": "mc-strong-null",
-        "reference": "mc-strong",
-    }
-    assert V11.protocol_problems() == []
-
-
-def test_revalidation_gate_requires_two_superiority_lcbs_and_clean_null():
-    def c(mean, half):
-        return {"mean": mean, "half_width_95": half}
-
-    passing = {
-        "arm-reference": c(0.30, 0.20),
-        "arm-null": c(0.28, 0.20),
-        "null-reference": c(0.01, 0.10),
-    }
-    assert V11.gate_criteria(passing)["all"] is True
-    for key in ("arm-reference", "arm-null"):
-        failed = {name: dict(value) for name, value in passing.items()}
-        failed[key] = c(0.10, 0.20)
-        assert V11.gate_criteria(failed)["all"] is False
-    failed = {name: dict(value) for name, value in passing.items()}
-    failed["null-reference"] = c(0.20, 0.10)
-    assert V11.gate_criteria(failed)["all"] is False
-
-
-def test_revalidation_record_gate_refuses_any_sampler_or_work_failure():
-    clean = {"sample_attempts": 30, "accepted_worlds": 30,
-             "failed_worlds": 0, "rejected_worlds": 0,
-             "short_searches": 0, "zero_world": 0, "void_fallbacks": 0}
-    rows = {
-        label: [{"seed": 1, "flip": flip,
-                 "arm": dict(clean), "opp": dict(clean)}
-                for flip in (0, 1)]
-        for label in V11.LABELS
-    }
-    assert V11.record_problems(rows) == []
-    rows["arm"][0]["opp"]["rejected_worlds"] = 1
-    assert "arm/opp: nonzero rejected_worlds" in V11.record_problems(rows)

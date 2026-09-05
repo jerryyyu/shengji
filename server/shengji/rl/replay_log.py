@@ -1,7 +1,7 @@
 """Shared helpers for reconstructing game state from JSONL logs.
 
 Single home for the rebuild-a-Round-from-a-log block that analysis
-tooling (replay, xray, analyze_human, eval_vs_human, mine_disagreements,
+tooling (replay, xray, harvest/room_log, ballot_gap,
 human_shards) previously each carried a copy of.
 """
 

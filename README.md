@@ -86,7 +86,7 @@ server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
                          registry.py + env.py + tournament.py (evaluation;
                          ladder and all measurements in AI_POLICIES.md)
 server/shengji/rl/       learned-policy pipeline: encoder, action
-                         enumeration, BC/distillation/DMC training
+                         enumeration, afterstate value model
                          (roadmap in RL_PLAN.md)
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
 server/tests/            unit tests + randomized self-play soak tests
@@ -124,9 +124,11 @@ against the named live champion establish a new strength claim.
 
 Training pipeline (`server/shengji/rl/`, roadmap and full experiment
 log in `RL_PLAN.md`): observation/action encoders, legal-play
-enumeration, BC + search-distillation + DMC self-play trainers, an
-oracle value baseline, and an Elo tournament + human-agreement
-validation battery.
+enumeration, the afterstate value model behind the `mc-cwv-*` bots, the
+trajectory/oracle screens under `server/shengji/train/`, and an Elo
+tournament + human-agreement validation battery.  The BC/distillation/DMC,
+suphx and belief lanes were removed on 2026-09-05 (tag
+`archive/code-lanes-pre-cleanup-20260905` keeps them).
 
 ## Evaluation glossary
 
@@ -153,8 +155,6 @@ validation battery.
   `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any
   position, including the banker's chosen kitty bury and any available
   bury-search candidates/work account.
-- `scripts/analyze_human.py`, `scripts/eval_vs_human.py` — score human
-  decisions against the bot / the whole policy ladder.
 - `scripts/fetch_fly_logs.sh` — stage, validate, refresh and hash prod logs.
 - `python -m shengji.rl.human_shards` — build a fresh replay-audited,
   provenance-bound human play/bury corpus; raw human choices remain proposal

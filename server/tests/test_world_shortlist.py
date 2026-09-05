@@ -277,6 +277,51 @@ def test_real_points_head_batch_matches_scalar_and_crosses_world_boundary():
     assert max(bot.heads.calls) <= 2
 
 
+@pytest.mark.parametrize("value_kind", ["levels", "points"])
+@pytest.mark.parametrize("batch_size", [5, 128])
+def test_varying_leaf_scores_keep_candidate_world_mapping(value_kind, batch_size):
+    """Batch transport must preserve nonconstant per-candidate/world values."""
+    rnd = play_state()
+    seat = rnd.turn
+    weights = np.random.default_rng(81).normal(size=OBS_DIM)
+
+    def scores(observations):
+        return np.asarray(observations, dtype=np.float64) @ weights
+
+    class VaryingHeads(Heads):
+        def values(self, leaves):
+            self.calls.append(len(leaves))
+            return scores([encode_obs(leaf, leaf.turn) for leaf in leaves])
+
+    def make(batch):
+        bot = WorldShortlistBot(
+            ModelHeads(tiny_model()) if value_kind == "points" else VaryingHeads(),
+            seed=29, config=WorldShortlistConfig(
+                cheap_worlds=6, refine_worlds=1, value_kind=value_kind,
+                batch_size=batch))
+        if value_kind == "points":
+            bot._points_head.forward = lambda obs: np.column_stack(
+                (np.zeros(len(obs)), scores(obs)))
+        return bot
+
+    scalar = make(1)
+    candidates = scalar._candidates(rnd, seat)
+    worlds, _, _ = scalar._sample_stage(
+        rnd, seat, Memory(rnd, seat, own_kitty=scalar.BANKER_KITTY), 6, None)
+    assert len(candidates) >= 3 and len(worlds) == 6
+    expected = np.asarray(scalar._cheap_values(
+        rnd, seat, candidates, worlds, rnd.is_attacker(seat)))
+    # Prove neither matrix axis is constant: a row permutation or transposed
+    # assignment must not be masked by identical fixture predictions.
+    assert np.max(np.ptp(expected, axis=0)) > 1e-6
+    assert np.max(np.ptp(expected, axis=1)) > 1e-6
+    batched = make(batch_size)
+    got = batched._cheap_values(
+        rnd, seat, candidates, worlds, rnd.is_attacker(seat))
+    np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-10)
+    assert batched.hybrid_counts["model_batches"] < scalar.hybrid_counts["model_batches"]
+
+
 def test_refine_underfill_keeps_cheap_work_but_no_refinement_or_report(monkeypatch):
     rnd = play_state()
     seat = rnd.turn

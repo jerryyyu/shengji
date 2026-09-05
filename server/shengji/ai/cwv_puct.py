@@ -43,7 +43,15 @@ control that isolates the tree from the prior).  Priors are cached per
 (node, action): a world whose ballot introduces actions the node has not
 seen queues a prior request that is served in the next batched step; until
 then the newcomer takes the node's mean prior.  Optional Dirichlet noise at
-the root (off by default).
+the root (off by default).  ``prior="value"`` prices the ballot by the
+complete-world net itself: the one-ply afterstate of every ballot action
+(``cwv_policy.child_position``, the two-ply / net-rollout ballot) is scored
+in ONE ``score_many`` from the ACTING seat's team perspective (the seat
+maximises its own team, as ``net_rollout._net_perspective``) and the prior
+is ``softmax(values / prior_temperature)`` (``value_prior``; the
+temperature is on the level scale, default 1).  With ``leaf="playout"``
+this is the arm in which the net's ranking guides a tree whose values are
+production's playouts.
 
 Batching.  ``CWV_BATCH`` (K) simulations are descended together under
 VIRTUAL LOSS -- a pending path adds one pending visit to each of its nodes,
@@ -52,9 +60,22 @@ scored in ONE ``score`` call, then every path is backed up and its pending
 visits removed.  Budget = ``CWV_SIMULATIONS`` (S) per decision; move =
 argmax root visits (temperature 0; ties by ``Q``, then ballot order).
 
+Leaf.  ``leaf="net"`` (default) hands the leaf position to the evaluator.
+``leaf="playout"`` values the leaf by production's own continuation
+instead: a HEURISTIC PLAYOUT of the sampled world from the leaf to round
+end (``MCBot._rollout``'s loop -- ``rollout_policy`` (HeuristicBot) plays
+every seat, the S3b exact-endgame hook applies when ``EXACT_ENDGAME`` is
+on and the world is inside the proved bound), converted EXPLICITLY from
+production's attacker-points scale to the tree's signed-level scale
+(``playout_level``: ``attacker_level_utility`` signed from the root seat's
+team, the same map ``terminal_distribution`` applies to a terminal leaf).
+``leaf_playouts`` averages several playouts per leaf.  The net (or the
+prior table) is then only the prior.
+
 The no-learning control is the same tree with a uniform prior and the
 stratified-prior table (``StratifiedPriorEvaluator``, PT0 units as in the
-one-ply control) at the leaf.  Declare and bury stay production's.
+one-ply control) at the leaf (under ``leaf="playout"``: the same playout
+leaf, i.e. no learned component at all).  Declare and bury stay production's.
 """
 
 from __future__ import annotations
@@ -71,10 +92,12 @@ import numpy as np
 
 from ..engine.combos import decompose
 from ..engine.round import Round, Trick, TrickPlay
+from ..rl.value_afterstate import category_signed_level, signed_level_category
 from .cwv_policy import (
     CWVError,
     StratifiedPriorEvaluator,
     checkpoint_id,
+    child_position,
     file_sha256,
     prior_evaluator_for,
     sample_worlds,
@@ -85,7 +108,9 @@ from .memory import Memory
 
 
 CWV_PUCT_DECISION_SCHEMA = "cwv-puct-decision-v1"
-PRIOR_MODES = ("uniform", "head")
+PRIOR_MODES = ("uniform", "head", "value")
+DEFAULT_PRIOR_TEMPERATURE = 1.0
+LEAF_MODES = ("net", "playout")
 DEFAULT_WORLD_POOL = 32
 DEFAULT_BATCH = 16
 DEFAULT_C_PUCT = 1.5
@@ -353,6 +378,75 @@ def world_clone(rnd: Round, hands: Sequence[Sequence[str]], buried: Sequence[str
     return clone
 
 
+def playout_level(attacker_points: int | float, root_is_attacker: bool) -> float:
+    """Production's playout outcome (final ATTACKER POINTS, what
+    ``MCBot._rollout`` and ``_exact_endgame_value`` return) on the tree's
+    scale: the SIGNED LEVEL from the root seat's team, exactly the value a
+    terminal leaf takes under ``leaf="net"`` (``terminal_distribution @
+    support`` = ``category_signed_level(signed_level_category(...))``)."""
+    points = float(attacker_points)
+    if not points.is_integer():
+        raise CWVError("a playout outcome must be an integer attacker-point total")
+    return category_signed_level(signed_level_category(int(points), bool(root_is_attacker)))
+
+
+def leaf_copy(leaf: Round) -> Round:
+    """A private continuation copy of a reached leaf (the leaf itself stays
+    as reached, for traces and for further playouts)."""
+    clone: Round = copy.copy(leaf)
+    clone.hands = [list(hand) for hand in leaf.hands]
+    clone.buried = list(leaf.buried)
+    if leaf.trick is not None:
+        clone.trick = Trick(
+            leader=leaf.trick.leader,
+            plays=[TrickPlay(p.seat, list(p.cards)) for p in leaf.trick.plays])
+    clone.history = list(leaf.history)
+    clone.message = None
+    return clone
+
+
+def value_prior(values: Sequence[float], temperature: float) -> np.ndarray:
+    """``softmax(values / temperature)`` over a ballot (pure, for witnesses).
+    ``values`` are signed levels from the acting seat's team perspective."""
+    t = float(temperature)
+    if not (t > 0.0) or not math.isfinite(t):
+        raise CWVError("prior temperature must be a positive finite number")
+    v = np.asarray(values, dtype=np.float64)
+    if v.ndim != 1 or v.size == 0 or not np.all(np.isfinite(v)):
+        raise CWVError("value prior needs a finite non-empty value vector")
+    z = v / t
+    z = np.exp(z - z.max())
+    return z / z.sum()
+
+
+def prior_identity(prior: str, prior_temperature: float) -> dict[str, Any]:
+    """The prior's identity keys beyond ``prior`` itself: ``uniform`` and
+    ``head`` add nothing (the v1 record / binding, unchanged); ``value``
+    binds its temperature."""
+    if prior not in PRIOR_MODES:
+        raise CWVError(f"prior mode must be one of {PRIOR_MODES}")
+    t = float(prior_temperature)
+    if not (t > 0.0) or not math.isfinite(t):
+        raise CWVError("prior temperature must be a positive finite number")
+    if prior != "value":
+        return {}
+    return {"prior_temperature": t}
+
+
+def leaf_identity(leaf: str, leaf_playouts: int) -> dict[str, Any]:
+    """The leaf's identity keys.  ``net`` is the implicit default of the
+    v1 record / calibration binding (no keys: nothing existing changes);
+    ``playout`` binds the mode and the playouts per leaf, so a binding or a
+    record made under one leaf never matches the other."""
+    if leaf not in LEAF_MODES:
+        raise CWVError(f"leaf mode must be one of {LEAF_MODES}")
+    if int(leaf_playouts) < 1:
+        raise CWVError("leaf_playouts must be positive")
+    if leaf == "net":
+        return {}
+    return {"leaf": leaf, "leaf_playouts": int(leaf_playouts)}
+
+
 # ----------------------------------------------------------------------- bot
 
 class CWVPuctBot(MCBot):
@@ -369,7 +463,10 @@ class CWVPuctBot(MCBot):
     CWV_BATCH = DEFAULT_BATCH      # K: simulations per batched leaf step
     CWV_C_PUCT = DEFAULT_C_PUCT
     CWV_VIRTUAL_LOSS = DEFAULT_VIRTUAL_LOSS
-    CWV_PRIOR = "uniform"          # "uniform" | "head"
+    CWV_PRIOR = "uniform"          # "uniform" | "head" | "value"
+    CWV_PRIOR_TEMPERATURE = DEFAULT_PRIOR_TEMPERATURE   # prior="value" softmax
+    CWV_LEAF = "net"               # "net" | "playout" (heuristic playout leaf)
+    CWV_LEAF_PLAYOUTS = 1          # playouts averaged per leaf (leaf="playout")
     CWV_DIRICHLET_ALPHA = 0.0      # root noise, off by default
     CWV_DIRICHLET_EPSILON = 0.0
     CWV_TRACE = False              # keep a per-simulation trace (witnesses)
@@ -380,11 +477,18 @@ class CWVPuctBot(MCBot):
             raise CWVError("CWVPuctBot needs an evaluator with score()")
         if self.CWV_PRIOR not in PRIOR_MODES:
             raise CWVError(f"prior mode must be one of {PRIOR_MODES}")
+        if self.CWV_LEAF not in LEAF_MODES:
+            raise CWVError(f"leaf mode must be one of {LEAF_MODES}")
+        if int(self.CWV_LEAF_PLAYOUTS) < 1:
+            raise CWVError("leaf_playouts must be positive")
         if self.CWV_PRIOR == "head" and (
                 prior_head is None or not hasattr(prior_head, "batch_from_encoded")
                 or not hasattr(prior_head, "encode")):
             raise CWVError("prior='head' needs a prior head with encode() and "
                            "batch_from_encoded()")
+        if self.CWV_PRIOR == "value" and not hasattr(evaluator, "score_many"):
+            raise CWVError("prior='value' needs an evaluator with score_many()")
+        prior_identity(self.CWV_PRIOR, self.CWV_PRIOR_TEMPERATURE)   # validates
         if int(self.CWV_SIMULATIONS) < 1 or int(self.CWV_WORLD_POOL) < 1 \
                 or int(self.CWV_BATCH) < 1:
             raise CWVError("simulations, world pool and batch must be positive")
@@ -401,6 +505,8 @@ class CWVPuctBot(MCBot):
         self.build_wall_secs = 0.0
         self.prior_wall_secs = 0.0
         self.sample_wall_secs = 0.0     # world-pool sampling per decision
+        self.leaf_playouts = 0          # heuristic playouts run at leaves
+        self.exact_leaves = 0           # leaves settled by the exact-endgame hook
         self.last_root: Node | None = None
         self.last_trace: list[dict] | None = None
 
@@ -414,8 +520,10 @@ class CWVPuctBot(MCBot):
                 "prior_head": (self.prior_head.identity()
                                if self.prior_head is not None
                                and hasattr(self.prior_head, "identity") else None),
+                **prior_identity(self.CWV_PRIOR, self.CWV_PRIOR_TEMPERATURE),
                 "dirichlet_alpha": float(self.CWV_DIRICHLET_ALPHA),
-                "dirichlet_epsilon": float(self.CWV_DIRICHLET_EPSILON)}
+                "dirichlet_epsilon": float(self.CWV_DIRICHLET_EPSILON),
+                **leaf_identity(self.CWV_LEAF, self.CWV_LEAF_PLAYOUTS)}
 
     # ------------------------------------------------------------ sampling
     def sample_worlds(self, rnd: Round, seat: int, n: int, *, mem=None):
@@ -453,26 +561,99 @@ class CWVPuctBot(MCBot):
         if self.CWV_PRIOR == "uniform":
             for a in new:
                 node.prior[a] = 1.0
+            return
+        fill = node.mean_prior()
+        for a in new:
+            node.prior[a] = fill
+        if self.CWV_PRIOR == "value":
+            # the one-ply afterstates of this world's ballot, priced from the
+            # acting seat's team in the next batched score_many
+            prior_requests.append((node, ballot, self._afterstates(clone, seat, ballot), seat))
         else:
-            fill = node.mean_prior()
-            for a in new:
-                node.prior[a] = fill
             prior_requests.append((node, ballot, self.prior_head.encode(
-                clone, seat, [list(a) for a in ballot])))
+                clone, seat, [list(a) for a in ballot]), None))
+
+    @staticmethod
+    def _afterstates(clone: Round, seat: int, ballot: Sequence[tuple[str, ...]]
+                     ) -> list[Round]:
+        return [child_position(clone, seat, list(a)) for a in ballot]
+
+    def _value_prior_rows(self, requests: Sequence[tuple]) -> list[np.ndarray]:
+        """ONE ``score_many`` over every queued afterstate; per request the
+        softmax of its block at ``CWV_PRIOR_TEMPERATURE``."""
+        positions: list[Round] = []
+        seats: list[int] = []
+        for _node, _ballot, afterstates, seat in requests:
+            positions.extend(afterstates)
+            seats.extend([int(seat)] * len(afterstates))
+        values = np.asarray(self.evaluator.score_many(positions, seats), dtype=np.float64)
+        if values.shape != (len(positions),):
+            raise CWVError("evaluator returned a misaligned prior value vector")
+        rows = []
+        start = 0
+        for _node, _ballot, afterstates, _seat in requests:
+            rows.append(value_prior(values[start:start + len(afterstates)],
+                                    self.CWV_PRIOR_TEMPERATURE))
+            start += len(afterstates)
+        return rows
 
     def _serve_prior_requests(self, prior_requests: list) -> None:
-        if not prior_requests or self.prior_head is None:
+        if not prior_requests or self.CWV_PRIOR == "uniform":
             prior_requests.clear()
             return
         wall0 = time.perf_counter()
-        probs = self.prior_head.batch_from_encoded(
-            [encoded for _node, _ballot, encoded in prior_requests])
-        for (node, ballot, _encoded), p in zip(prior_requests, probs):
+        if self.CWV_PRIOR == "value":
+            probs = self._value_prior_rows(prior_requests)
+        else:
+            probs = self.prior_head.batch_from_encoded(
+                [encoded for _node, _ballot, encoded, _seat in prior_requests])
+        for (node, ballot, _encoded, _seat), p in zip(prior_requests, probs):
             for a, value in zip(ballot, p):
                 node.prior[a] = float(value)
         self.forward_passes += 1
         self.prior_wall_secs += time.perf_counter() - wall0
         prior_requests.clear()
+
+    # ---------------------------------------------------------- leaf value
+    def _playout(self, leaf: Round, root_seat: int, session) -> tuple[float, bool]:
+        """One heuristic playout of ``leaf`` (a private copy) to round end:
+        ``MCBot._rollout``'s continuation loop, verbatim -- the exact-endgame
+        hook first when enabled, else ``rollout_policy`` for every seat --
+        with the outcome converted to the tree's scale.  Returns ``(value,
+        exact)``."""
+        clone = leaf_copy(leaf)
+        root_is_attacker = clone.is_attacker(root_seat)
+        policy = self.rollout_policy
+        _exact_on = self.EXACT_ENDGAME
+        while clone.phase == "play":
+            exact = (self._exact_endgame_value(clone, session)
+                     if _exact_on else None)
+            if exact is not None:
+                return playout_level(exact, root_is_attacker), True
+            s = clone.turn
+            assert s is not None
+            clone.play(s, policy.decide_play(clone, s))
+        return playout_level(clone.attacker_points, root_is_attacker), False
+
+    def _playout_values(self, leaves: Sequence[Round], root_seat: int,
+                        sessions: Sequence[Any]) -> tuple[np.ndarray, int, int]:
+        """``leaf_playouts`` playouts per leaf, averaged.  Returns ``(values,
+        playouts, exact_leaves)``; ``sessions[i]`` is leaf ``i``'s world's
+        exact-endgame cache (``None`` when the hook is off)."""
+        n = int(self.CWV_LEAF_PLAYOUTS)
+        values = np.empty(len(leaves), dtype=np.float64)
+        exact_leaves = 0
+        for index, (leaf, session) in enumerate(zip(leaves, sessions)):
+            total = 0.0
+            exact_all = True
+            for _ in range(n):
+                value, exact = self._playout(leaf, root_seat, session)
+                total += value
+                exact_all = exact_all and exact
+            values[index] = total / n
+            if exact_all:
+                exact_leaves += 1
+        return values, n * len(leaves), exact_leaves
 
     def _legal_children(self, node: Node, world_ballot: Sequence[tuple[str, ...]]
                         ) -> list[tuple[str, ...]]:
@@ -567,6 +748,16 @@ class CWVPuctBot(MCBot):
         root.actions = [action_key(c) for c in candidates]
         if self.CWV_PRIOR == "uniform":
             root.prior = {a: 1.0 for a in root.actions}
+        elif self.CWV_PRIOR == "value":
+            wall0 = time.perf_counter()
+            hands, buried = worlds[0]
+            # the root's afterstates in the first sampled world (as every
+            # world-dependent prior: the ballot is the root's, post-lock)
+            probs = self._value_prior_rows([(root, root.actions, self._afterstates(
+                world_clone(rnd, hands, buried), seat, root.actions), seat)])[0]
+            root.prior = {a: float(p) for a, p in zip(root.actions, probs)}
+            self.forward_passes += 1
+            self.prior_wall_secs += time.perf_counter() - wall0
         else:
             probs = self.prior_head.probabilities(rnd, seat, [list(c) for c in candidates])
             root.prior = {a: float(p) for a, p in zip(root.actions, probs)}
@@ -581,7 +772,14 @@ class CWVPuctBot(MCBot):
         pool = len(worlds)
         stats = {"simulations": 0, "positions": 0, "forward_passes": 0,
                  "max_depth": 0, "depth_sum": 0, "batch_wall": 0.0,
-                 "batch_cpu": 0.0, "build_wall": 0.0, "terminal_leaves": 0}
+                 "batch_cpu": 0.0, "build_wall": 0.0, "terminal_leaves": 0,
+                 "playouts": 0, "exact_leaves": 0}
+        playout_leaf = self.CWV_LEAF == "playout"
+        sessions: list[Any] = []
+        if playout_leaf and self.EXACT_ENDGAME:
+            # one exact cache per determinization, as production's decision
+            sessions = [self._new_exact_world_session(rnd, list(buried))
+                        for _hands, buried in worlds]
         prior_requests: list = []
         trace: list[dict] = []
         done = 0
@@ -589,7 +787,7 @@ class CWVPuctBot(MCBot):
         while done < S:
             batch = min(K, S - done)
             build0 = time.perf_counter()
-            paths, leaves, traces, edge_paths = [], [], [], []
+            paths, leaves, traces, edge_paths, leaf_sessions = [], [], [], [], []
             for i in range(batch):
                 index = done + i
                 path, leaf, tr, edges = self._simulate(
@@ -599,9 +797,16 @@ class CWVPuctBot(MCBot):
                 leaves.append(leaf)
                 traces.append(tr)
                 edge_paths.append(edges)
+                leaf_sessions.append(sessions[index % pool] if sessions else None)
             stats["build_wall"] += time.perf_counter() - build0
             wall0, cpu0 = time.perf_counter(), time.process_time()
-            values = np.asarray(self.evaluator.score(leaves, seat), dtype=np.float64)
+            if playout_leaf:
+                values, playouts, exact_leaves = self._playout_values(
+                    leaves, seat, leaf_sessions)
+                stats["playouts"] += playouts
+                stats["exact_leaves"] += exact_leaves
+            else:
+                values = np.asarray(self.evaluator.score(leaves, seat), dtype=np.float64)
             stats["batch_wall"] += time.perf_counter() - wall0
             stats["batch_cpu"] += time.process_time() - cpu0
             if values.shape != (batch,):
@@ -675,7 +880,8 @@ class CWVPuctBot(MCBot):
         best = 0
         stats = {"simulations": 0, "positions": 0, "forward_passes": 0,
                  "max_depth": 0, "depth_sum": 0, "batch_wall": 0.0,
-                 "batch_cpu": 0.0, "build_wall": 0.0, "terminal_leaves": 0}
+                 "batch_cpu": 0.0, "build_wall": 0.0, "terminal_leaves": 0,
+                 "playouts": 0, "exact_leaves": 0}
         root = None
         if not short:
             root, stats = self._search(rnd, seat, candidates, worlds)
@@ -696,6 +902,8 @@ class CWVPuctBot(MCBot):
             self.batch_wall_secs += stats["batch_wall"]
             self.batch_cpu_secs += stats["batch_cpu"]
             self.build_wall_secs += stats["build_wall"]
+            self.leaf_playouts += stats["playouts"]
+            self.exact_leaves += stats["exact_leaves"]
         self.last_eval = (candidates, means)
         self.last_decision_record = {
             "schema": CWV_PUCT_DECISION_SCHEMA,
@@ -736,6 +944,9 @@ class CWVPuctBot(MCBot):
                 "batch_cpu_secs": stats["batch_cpu"],
                 "build_wall_secs": stats["build_wall"],
                 "sample_wall_secs": sample_wall,
+                **({"playouts": stats["playouts"],
+                    "exact_leaves": stats["exact_leaves"]}
+                   if self.CWV_LEAF == "playout" else {}),
             },
         }
         if short:
@@ -750,23 +961,52 @@ class CWVPuctBot(MCBot):
 
 # ------------------------------------------------------------- registry glue
 
-def puct_policy_name(ckpt8: str, simulations: int) -> str:
-    return f"mc-cwvpuct-{ckpt8}-s{int(simulations)}"
+def prior_suffix(prior: str = "uniform",
+                 prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE) -> str:
+    """``""`` for uniform / head; ``-vprior`` / ``-vprior<T>`` for the value prior."""
+    if not prior_identity(prior, prior_temperature):
+        return ""
+    t = float(prior_temperature)
+    return "-vprior" if t == 1.0 else f"-vprior{t:g}"
 
 
-def puct_control_name(ckpt8: str, simulations: int) -> str:
-    return f"mc-cwvpuct-prior-{ckpt8}-s{int(simulations)}"
+def leaf_suffix(leaf: str = "net", leaf_playouts: int = 1) -> str:
+    """``""`` for the net leaf; ``-pleaf`` / ``-pleaf<n>`` for a playout leaf."""
+    if not leaf_identity(leaf, leaf_playouts):
+        return ""
+    return "-pleaf" if int(leaf_playouts) == 1 else f"-pleaf{int(leaf_playouts)}"
+
+
+def puct_policy_name(ckpt8: str, simulations: int, *, leaf: str = "net",
+                     leaf_playouts: int = 1, prior: str = "uniform",
+                     prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE) -> str:
+    return (f"mc-cwvpuct-{ckpt8}-s{int(simulations)}"
+            f"{prior_suffix(prior, prior_temperature)}{leaf_suffix(leaf, leaf_playouts)}")
+
+
+def puct_control_name(ckpt8: str, simulations: int, *, leaf: str = "net",
+                      leaf_playouts: int = 1, prior: str = "uniform",
+                      prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE) -> str:
+    """The control is always the uniform prior: no prior suffix."""
+    del prior, prior_temperature
+    return f"mc-cwvpuct-prior-{ckpt8}-s{int(simulations)}{leaf_suffix(leaf, leaf_playouts)}"
 
 
 @lru_cache(maxsize=None)
 def _bot_class(simulations: int, world_pool: int, batch: int, c_puct: float,
-               prior: str, virtual_loss: float, alpha: float, epsilon: float) -> type:
-    name = f"CWVPuct_s{simulations}_w{world_pool}_k{batch}_c{c_puct:g}_{prior}"
+               prior: str, virtual_loss: float, alpha: float, epsilon: float,
+               leaf: str = "net", leaf_playouts: int = 1,
+               prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE) -> type:
+    name = (f"CWVPuct_s{simulations}_w{world_pool}_k{batch}_c{c_puct:g}_{prior}"
+            + prior_suffix(prior, prior_temperature).replace("-", "_").replace(".", "p")
+            + leaf_suffix(leaf, leaf_playouts).replace("-", "_"))
     return type(name, (CWVPuctBot,), {
         "CWV_SIMULATIONS": int(simulations), "CWV_WORLD_POOL": int(world_pool),
         "CWV_BATCH": int(batch), "CWV_C_PUCT": float(c_puct), "CWV_PRIOR": prior,
         "CWV_VIRTUAL_LOSS": float(virtual_loss),
-        "CWV_DIRICHLET_ALPHA": float(alpha), "CWV_DIRICHLET_EPSILON": float(epsilon)})
+        "CWV_DIRICHLET_ALPHA": float(alpha), "CWV_DIRICHLET_EPSILON": float(epsilon),
+        "CWV_LEAF": leaf, "CWV_LEAF_PLAYOUTS": int(leaf_playouts),
+        "CWV_PRIOR_TEMPERATURE": float(prior_temperature)})
 
 
 def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
@@ -778,9 +1018,13 @@ def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
                       receipt: str | os.PathLike[str] | None = None,
                       virtual_loss: float = DEFAULT_VIRTUAL_LOSS,
                       dirichlet_alpha: float = 0.0, dirichlet_epsilon: float = 0.0,
-                      threads: int | None = 1) -> CWVPuctBot:
+                      threads: int | None = 1, leaf: str = "net",
+                      leaf_playouts: int = 1,
+                      prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE) -> CWVPuctBot:
     if prior not in PRIOR_MODES:
         raise CWVError(f"prior mode must be one of {PRIOR_MODES}")
+    leaf_identity(leaf, leaf_playouts)                 # validates
+    prior_identity(prior, prior_temperature)
     if prior == "head" and not control and prior_checkpoint is None:
         raise CWVError("prior='head' needs --prior-checkpoint")
     if control:
@@ -797,7 +1041,8 @@ def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
             head = shared_prior_head(prior_checkpoint)
     cls = _bot_class(int(simulations), int(world_pool), int(batch), float(c_puct),
                      prior_mode, float(virtual_loss), float(dirichlet_alpha),
-                     float(dirichlet_epsilon))
+                     float(dirichlet_epsilon), leaf, int(leaf_playouts),
+                     float(prior_temperature))
     bot = cls(seed, evaluator=evaluator, prior_head=head)
     bot.cwv_checkpoint_sha256 = evaluator.checkpoint_sha256
     bot.cwv_ckpt8 = evaluator.ckpt8
@@ -814,15 +1059,24 @@ def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                               receipt: str | os.PathLike[str] | None = None,
                               virtual_loss: float = DEFAULT_VIRTUAL_LOSS,
                               dirichlet_alpha: float = 0.0,
-                              dirichlet_epsilon: float = 0.0) -> dict[str, Any]:
-    """``{name: factory}`` per S: ``mc-cwvpuct-<ckpt8>-s<S>`` and its control.
+                              dirichlet_epsilon: float = 0.0,
+                              leaf: str = "net", leaf_playouts: int = 1,
+                              prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE
+                              ) -> dict[str, Any]:
+    """``{name: factory}`` per S: ``mc-cwvpuct-<ckpt8>-s<S>[-vprior[<T>]][-pleaf[<n>]]``
+    and its control.
 
-    The name binds the VALUE checkpoint and the simulation budget; the
-    remaining search parameters (W, K, c_puct, prior mode and prior
-    checkpoint) are part of the bot's ``search_identity`` and of the duel's
-    calibration binding.
+    The name binds the VALUE checkpoint, the simulation budget, the value
+    prior (``-vprior``/``-vprior<T>`` for ``prior="value"`` at temperature
+    T; nothing for uniform / head) and the leaf mode (``-pleaf``/
+    ``-pleaf<n>`` for ``leaf="playout"`` with ``n`` playouts per leaf;
+    nothing for the net leaf); the remaining search parameters (W, K,
+    c_puct, prior mode and prior checkpoint) are part of the bot's
+    ``search_identity`` and of the duel's calibration binding.
     """
     ckpt8 = checkpoint_id(checkpoint)
+    leaf_identity(leaf, leaf_playouts)                 # validates
+    prior_identity(prior, prior_temperature)
     entries: dict[str, Any] = {}
 
     def factory(s: int, control: bool):
@@ -831,12 +1085,15 @@ def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                 checkpoint, simulations=s, seed=kw.get("seed"), world_pool=world_pool,
                 batch=batch, c_puct=c_puct, prior=prior, prior_checkpoint=prior_checkpoint,
                 control=control, receipt=receipt, virtual_loss=virtual_loss,
-                dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon)
+                dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon,
+                leaf=leaf, leaf_playouts=leaf_playouts, prior_temperature=prior_temperature)
         return make
 
+    names = dict(leaf=leaf, leaf_playouts=leaf_playouts, prior=prior,
+                 prior_temperature=prior_temperature)
     for s in sorted({int(s) for s in simulations}):
         if s < 1:
             raise CWVError("simulations must be positive")
-        entries[puct_policy_name(ckpt8, s)] = factory(s, False)
-        entries[puct_control_name(ckpt8, s)] = factory(s, True)
+        entries[puct_policy_name(ckpt8, s, **names)] = factory(s, False)
+        entries[puct_control_name(ckpt8, s, **names)] = factory(s, True)
     return entries

@@ -1,0 +1,35 @@
+{
+ "schema": "shengji-trajectory-neutral-digest-v1",
+ "purpose": "anchor of test_no_knobs_and_no_widen_is_byte_identical: the shard and sidecar digests of a fixed tiny plain run, produced by the code as committed; a deliberate format change must regenerate this file in the same commit",
+ "recipe": "cd server && PYTHONPATH=.:tests SHENGJI_REQUIRE_VOIDS=1 python -P -B -c \"import json, tempfile, test_harvest_trajectory as t; print(json.dumps(t.neutral_fixture(tempfile.mkdtemp()), indent=1))\" > tests/fixtures/trajectory_neutral_digest.json",
+ "config": {
+  "policy": "mc-s0-report-lcb",
+  "rounds": 2,
+  "seed0": 4100000,
+  "select_worlds": 2,
+  "report_worlds": 30,
+  "explore_rate": 0.0,
+  "explore_k": 2,
+  "cap": 256
+ },
+ "platform": {
+  "system": "Darwin",
+  "machine": "arm64"
+ },
+ "python": "3.14.3",
+ "run_id": "traj-s4100000-b8fbc705e8e1",
+ "shard": {
+  "path": "shards/cluster-000000.jsonl",
+  "sha256": "78fd4311967d737b01fb4ee7a4a1df8ca2f7a357de0d39787abe4408677b0cef",
+  "bytes": 733940,
+  "records": 160
+ },
+ "sidecar": {
+  "path": "shards/cluster-000000.json",
+  "sha256": "585436d0b0e4950d6574b24823ce0f51d1a7625a0f7048948e2fab4bd457adc1"
+ },
+ "structural": {
+  "records_sha256": "9f6a19fae63c20955fff7c21d8e90547fec1f1724ac1766ee5bc16e21ef7df58",
+  "sidecar_sha256": "69ee72a4d8a5380274f2ba9a56456a587ab05c85d938ce6b32b6768cfd93b90f"
+ }
+}

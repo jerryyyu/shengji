@@ -4,11 +4,14 @@
     python scripts/harvest.py <source> --out DIR    (luna-rpc room-log pt1 highn human)
     python scripts/harvest.py all --out DIR
     python scripts/harvest.py ballot-gap --out DIR
+    python scripts/harvest.py ballot-capture --out DIR [--inputs DIR] [--variants ...]
     python scripts/harvest.py manifest DIR
 
 Outputs per source: ``<source>.jsonl`` (public fields) and, for sources with
 hidden hands, ``<source>.private.jsonl`` (mode 0600); plus ``manifest.json``
-and ``ballot_gap.json``.  See ``shengji/harvest/schema.py`` for the record.
+and ``ballot_gap.json``.  ``ballot-capture`` reads an extraction directory
+and writes ``ballot_capture.json`` / ``ballot_capture.md`` (counts only).
+See ``shengji/harvest/schema.py`` for the record.
 """
 from __future__ import annotations
 

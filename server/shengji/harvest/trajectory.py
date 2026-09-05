@@ -26,9 +26,17 @@ Record mapping (``shengji-decision-record-v1``, ``source: "trajectory"``)
 * ``round_seed`` and ``deck`` are both public: the deal is the
   reproducibility handle (as for room-log/highn); ``hidden_hands`` is null
   and there is no private split.
-* ``ballot`` is the candidate list the search actually ran, exploration-added
-  entries included; ``production_ballot`` is present only when exploration
-  widened it and holds the plain ``MCBot._candidates`` list.
+* ``ballot`` is the candidate list the search actually ran: the data
+  policy's own ``_candidates`` list, then the ``--widen`` additions, then
+  the exploration draw.  ``production_ballot`` holds PRODUCTION's list --
+  the registry class's ``_candidates`` with NO ``--knob`` override applied
+  (computed on a separate, unmodified instance of the base class when
+  overrides are active) -- and is present whenever the ballot may differ
+  from it: on every decision that reached a ballot in a ``--knob`` or
+  ``--widen`` run, and on the decisions exploration widened otherwise.
+  This is load-bearing: the ballot-gap and prior analyses read
+  ``production_ballot`` as "what production would have considered", so it
+  is never the overridden class's list.
 * ``legal_actions`` is the BOUNDED listing of ``harvest.legal`` (cap 256 by
   default; the ballot and the taken action are always included, and
   ``legal_actions_complete`` / ``legal_actions_count`` say exactly what was
@@ -124,6 +132,100 @@ Added candidates receive selection worlds like any other candidate.  A
 tractor-locked lead returns before a ballot exists (as in the oracle prior
 arm) and is never widened.
 
+Class-knob overrides (``--knob NAME=VALUE``)
+--------------------------------------------
+The DATA policy may differ from production by CANDIDATE-GENERATOR knobs
+alone.  ``--knob`` accepts exactly ``KNOB_WHITELIST`` -- ``TRACTOR_LOCK``,
+``RETAIN_ALL_LEAD_PAIRS``, ``V3_LEAD_SINGLES``, ``RISKY_THROWS``,
+``TRUMP_BALLOT``, ``WIDE_LEAD_BALLOT``, ``LEAD_MAX_CANDIDATES``,
+``FOLLOW_MAX_CANDIDATES``, ``MAX_CANDIDATES``, ``BURY_MAX_CANDIDATES`` --
+and refuses every other name before any round: the work knobs
+``N_DETERMINIZATIONS`` / ``REPORT_FOLD_WORLDS`` go through
+``--select-worlds`` / ``--report-worlds`` (stamped as effective work), and
+sampling, report/statistical, allocation, exact-endgame and bury-search
+controls are not data-policy knobs at all (Codex's review of the probe
+screen's knobs arm, #212).  Values are coerced to the attribute's own type
+(bool accepts 0/1/true/false; int) and bounded: a candidate cap must be an
+int >= 1 (``LEAD_MAX_CANDIDATES=0`` would crash at ``candidates[0]`` on the
+first decision), and ``RETAIN_ALL_LEAD_PAIRS`` needs ``LEAD_MAX_CANDIDATES
+>= 13`` (candidate zero plus the 12 pair codes a 25-card hand can hold --
+MCBot's own guarantee, which it otherwise enforces mid-round); duplicates
+and names the registry factory sets per instance refuse too.  Because no
+accepted knob touches the search, the effective work vector (N, R, report
+rule) of a ``--knob`` run is production's plus any ``--select-worlds`` /
+``--report-worlds`` (tested for every whitelisted knob).  The data policy
+is then ``type("Knobs_<Base>", (base_cls,), overrides)`` with
+``TrajectoryMixin`` layered on top exactly as without overrides, so every
+seat searches the overridden class's ballot, while ``production_ballot``
+is computed from the UNMODIFIED base class: a second, plain registry
+instance at the same seat seed is the probe, and its ``_candidates`` list
+is what the record stores.  ``policy`` stays the registry name
+(``make_bot(policy)`` still builds production).  The sorted override set
+is part of ``run_id`` and is stamped in ``run.json`` / ``manifest.json``
+as ``config.knobs``, so a store generated with overrides can never be
+resumed or mixed with one generated without them (``--resume`` with a
+different set refuses).  ``policy_flags`` describe the data policy
+(``tractor_lock`` is the flag an accepted knob can change);
+``work.registered`` is production's.  Without ``--knob`` the records,
+sidecars and ``run_id`` are byte-identical to a run before this option
+existed.
+
+Ballot widening (``--widen VARIANT``)
+--------------------------------------
+On top of any overrides and before the exploration draw, the search ballot
+becomes the data policy's list followed by the candidates of the selected
+``harvest.ballot_capture`` variants (``wide``, ``all-trump``,
+``top-2-suit``, ``top-3-suit``, ``points``; ``union`` = wide + all-trump +
+top-3-suit + points) that are not already on it -- every one engine-legal
+(``harvest.legal.is_legal``), in sorted ``action_key`` order.  Each play
+record of such a run carries ``widening = {"variants": [the run's sorted
+variant names], "added": [the appended candidates]}`` (``null`` for a
+tractor-locked lead, which never reaches a ballot; ``--knob
+TRACTOR_LOCK=0`` searches every lead).  Widened candidates receive
+selection worlds like any other candidate, so the search work scales with
+the widened ballot (``allocation.selection_worlds`` has one entry per
+ballot candidate).  The sorted variant list is part of ``run_id`` and is
+stamped as ``config.widen``; runs without ``--widen`` omit the ``widening``
+key entirely and are byte-identical to a run of the same configuration
+before widening existed.
+
+Round mix (``--round-mix {first,sampled}``)
+--------------------------------------------
+Every cluster of a ``first`` run (the default) is a fresh game's FIRST
+round: ``Game.start_round`` on a fresh ``Game`` (``banker=None``,
+``level_idx=[0, 0]``) deals at trump rank 2 with no banker until the first
+declaration (seat 0 when nobody declares).  A store of first rounds never
+shows a head 12 of the 13 trump ranks or a banker seat known before the
+deal -- both inputs of the production observation encoder (a 13-way
+trump-rank one-hot and a seat-relative banker one-hot).  ``sampled`` draws
+the round each cluster plays (``round_mix_draw``): from
+``random.Random(_child_seed((seed0, cluster), "round-mix-v1"))`` -- its own
+stream, never the deal rng -- the trump rank uniform over the 13 ranks,
+then the banker None (a first round, as above) with probability
+``FIRST_ROUND_SHARE`` (0.25) and otherwise a uniform seat 0..3.  The round
+is constructed explicitly (``start_round_at``, the way PR #222's
+``search_screen.run_cluster`` does it: the banker team's level set to the
+rank, ``Round(rank, banker, game.rng)``, ``round_no`` bumped) because
+``Game.start_round`` plays rank 2 whenever no banker is known yet.  Both
+mirrors of a cluster share the draw and the deck, and the deck is the
+seed's shuffle as before: ``Round.__init__`` shuffles BEFORE it reads the
+rank, so at one seed every rank and banker deal the SAME 108 cards -- which
+is why the draw is per cluster over the clusters' distinct seeds and there
+is no "rank cycle at a fixed seed" mode (it would replay one deal 13
+times).  The records need no new field: ``setup.trump_rank`` /
+``setup.banker`` / ``deck`` already rebuild any round
+(``rebuild.state_for_record``), and the ``deck_from_seed`` reproducibility
+assertion is kept.  ``round_mix`` is stamped in ``config`` (run.json,
+manifest.json) and enters ``run_id`` when it is not ``first``, so
+``--resume`` with a different mix refuses like a knob change; a
+``sampled`` sidecar carries ``round_mix`` and the cluster's drawn
+``trump_rank`` / ``banker`` (plus the resolved banker per round), and
+``verify_shard`` re-derives the draw from (config, cluster) and checks it
+against the sidecar and against EVERY record's stored rank and banker, so
+a shard played at another round never verifies.  A ``first`` run's
+records, shards, sidecars and ``run_id`` are byte-identical to a run
+before this option existed.
+
 Bury decisions
 --------------
 ``MCBot.decide_bury`` exposes ``last_bury_record`` only when ``MC_BURY`` is
@@ -143,16 +245,28 @@ an IMMUTABLE shard ``shards/cluster-<index:06d>.jsonl`` (records in
 ``(mirror, seat, ply)`` order, a bury record first within its seat) plus a
 sidecar ``shards/cluster-<index:06d>.json`` (run_id, cluster, seed, sha256,
 byte size, record count, counts, realized work): both are written to a
-temporary name and ``os.replace``d into place, then made read-only.  Memory
-holds one cluster at a time.  Progress lines carry counts only.
+temporary name and ``os.replace``d into place, then made read-only.  The
+parent submits at most ``INFLIGHT_PER_WORKER x workers`` clusters ahead and
+drops each result the moment its shard is published, so its memory stays
+bounded however many clusters a run has (#208: submitting every cluster at
+once and keeping the Future mapping until the pool closed retained every
+published cluster's records); ``runtime.json`` stamps each cluster's OWN
+task duration and wall-clock start/finish.  Progress lines carry counts
+only.
 
 ``run.json`` pins the run identity (``run_id`` = a digest of policy, seed0,
-exploration knobs, effective work and cap -- never the wall clock) alongside
-the package-source and native-backend identity.  ``--resume`` reopens an out
-dir with the SAME run_id:
-clusters whose shard and sidecar verify (identity, sha256, byte size,
-record count) are kept, missing or invalid ones are regenerated, and a
-different run_id or a different generator/engine code identity refuses.
+exploration knobs, effective work, cap and, when present, the class-knob
+overrides and widening variants -- never the wall clock) alongside the
+package-source and native-backend identity and the sampling environment
+(``SHENGJI_WEIGHTED_SPLITS``, ``SHENGJI_UNIFORM_DEAL``,
+``SHENGJI_PHYSICAL_FILLS`` -- import-time switches of ``ai/mcbot.py`` that
+change world sampling -- plus ``SHENGJI_FAST`` and
+``SHENGJI_REQUIRE_VOIDS``, each recorded as given, null when unset, and as
+the value the code resolved).  ``--resume`` reopens an out dir with the
+SAME run_id: clusters whose shard and sidecar verify (identity, sha256,
+byte size, record count) are kept, missing or invalid ones are
+regenerated, and a different run_id, generator/engine code identity or
+sampling environment refuses.
 Without ``--resume`` an out dir that already holds a run refuses.  A worker
 failure never discards published shards: the remaining clusters are still
 drained and published, then the run fails loudly, naming the failed
@@ -173,6 +287,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import math
 import multiprocessing
@@ -184,20 +299,23 @@ import statistics
 import subprocess
 import sys
 import time
+import weakref
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 from typing import Callable, Iterator
 
 from ..ai.mcbot import MCBot, _child_seed
 from ..ai.registry import make_bot
+from ..engine.cards import RANKS
 from ..engine.game import Game
-from ..engine.round import actual_play_after
+from ..engine.round import Round, actual_play_after
 from ..evaluation import counters as production_counters
+from . import ballot_capture
 from .common import action_key, sha256_file, write_jsonl
 from .legal import (COUNT_CEILING, DEFAULT_CAP, LegalSet, bury_action_count,
                     count_follow_actions, count_lead_actions, enumerate_legal,
-                    iter_follow_actions, iter_lead_actions)
+                    is_legal, iter_follow_actions, iter_lead_actions)
 from .rebuild import (actor_role, deck_from_seed, outcome_for,
                       round_from_setup, setup_from_round)
 from .schema import SCHEMA, canonical_json, finalize_record
@@ -220,15 +338,59 @@ ALLOCATION_COUNTER = ("fixed-design work split: selection worlds per candidate "
 BURY_ALLOCATION_COUNTER = "bury worlds per candidate (n_by_candidate); NOT a preference"
 TAU_FLOOR = 1e-6
 EXPLORE_STREAM = "trajectory-explore"
+#: ``--round-mix``: the round each cluster plays (module docstring).
+#: ``first`` = a fresh game's first round, today's bytes
+ROUND_MIXES = ("first", "sampled")
+DEFAULT_ROUND_MIX = "first"
+#: the per-cluster (rank, banker) draw of ``sampled`` has its own stream,
+#: never the deal rng: the deck stays the one the seed has always dealt
+ROUND_MIX_STREAM = "round-mix-v1"
+#: the share of sampled clusters played as a FIRST round (no banker until
+#: the first declaration; seat 0 when nobody declares)
+FIRST_ROUND_SHARE = 0.25
+#: the ``seeds`` stamp of the manifest, per mix
+ROUND_MIX_SEEDS = {
+    "first": "Game.start_round() on a fresh Game: trump rank 2, banker None "
+             "until the first declaration (seat 0 when nobody declares)",
+    "sampled": f"random.Random(_child_seed((seed0, cluster), {ROUND_MIX_STREAM!r})): "
+               f"trump rank uniform over the {len(RANKS)} ranks, then banker None "
+               f"with probability {FIRST_ROUND_SHARE} else a uniform seat 0..3; "
+               "both mirrors share the draw and the deck (start_round_at)",
+}
 #: seat seeds relative to the deal seed, as ``evaluation.run_arm`` assigns
 #: them to ``a1, a2, b1, b2``
 SEAT_SEED_OFFSETS = (0, 500_000, 1_000_000, 1_500_000)
 #: test-only fault injection: comma-separated cluster indices whose task
 #: raises before doing any work (inherited by spawned workers)
 FAIL_CLUSTERS_ENV = "SHENGJI_TRAJECTORY_FAIL_CLUSTERS"
+#: clusters submitted ahead per worker: bounds what the parent can hold
+INFLIGHT_PER_WORKER = 2
+#: search work has its own two-sided flags (``--select-worlds`` /
+#: ``--report-worlds``) and is stamped as ``work.effective``; a class-knob
+#: override of it would bypass that stamp, so it is refused
+KNOB_WORK_NAMES = ("N_DETERMINIZATIONS", "REPORT_FOLD_WORLDS")
+#: the candidate-generator surface ``--knob`` accepts; every other class
+#: attribute (work, sampling, report/statistical, allocation, exact-endgame
+#: and bury-search controls) refuses by name (Codex review, #212)
+KNOB_WHITELIST = ("TRACTOR_LOCK", "RETAIN_ALL_LEAD_PAIRS", "V3_LEAD_SINGLES",
+                  "RISKY_THROWS", "TRUMP_BALLOT", "WIDE_LEAD_BALLOT",
+                  "LEAD_MAX_CANDIDATES", "FOLLOW_MAX_CANDIDATES", "MAX_CANDIDATES",
+                  "BURY_MAX_CANDIDATES")
+#: caps are ints >= 1: ``LEAD_MAX_CANDIDATES=0`` would crash at
+#: ``candidates[0]`` on the first decision instead of refusing up front
+KNOB_CAP_NAMES = ("LEAD_MAX_CANDIDATES", "FOLLOW_MAX_CANDIDATES", "MAX_CANDIDATES",
+                  "BURY_MAX_CANDIDATES")
+#: ``RETAIN_ALL_LEAD_PAIRS`` keeps candidate zero plus every pair code a
+#: 25-card hand can hold (12) under the lead cap; MCBot raises mid-round
+#: when the cap is narrower, so the combination refuses before any round
+RETAIN_ALL_LEAD_PAIRS_MIN_CAP = 13
+#: ``--widen`` names: the candidate-set variants of ``ballot_capture``
+#: (``production`` is their baseline, not a widening)
+WIDEN_VARIANTS = tuple(v for v in ballot_capture.VARIANTS if v != "production")
 COUNT_KEYS = ("rounds", "decisions", "bury_records", "searched", "tractor_locked",
               "single_candidate", "explore_opportunities", "explore_fired",
               "explore_added", "explore_played", "explore_pool_skipped",
+              "widen_decisions", "widen_added", "widen_played",
               "short_searches", "zero_world", "incomplete_work", "failed_throws",
               "plays", "records")
 SERVER = Path(__file__).resolve().parents[2]
@@ -285,35 +447,199 @@ def sample_off_ballot(rnd, seat: int, k: int, rng: random.Random,
     return [list(key) for _, key in reservoir], n
 
 
+# ----------------------------------------------------- class-knob overrides
+
+def _coerce_knob(name: str, current, raw):
+    """Coerce ``raw`` (a command-line string or a native value) to the type
+    of the attribute's current value; refuse anything that does not
+    round-trip."""
+    if isinstance(current, bool):
+        if isinstance(raw, bool):
+            return raw
+        text = str(raw).strip().lower()
+        if text in ("1", "true"):
+            return True
+        if text in ("0", "false"):
+            return False
+        raise TrajectoryError(
+            f"knob {name}: {raw!r} is not a bool (use 0/1/true/false)")
+    if isinstance(current, int):
+        if isinstance(raw, bool):
+            raise TrajectoryError(f"knob {name}: expects an int, got {raw!r}")
+        if isinstance(raw, int):
+            return raw
+        try:
+            return int(str(raw).strip())
+        except ValueError:
+            raise TrajectoryError(f"knob {name}: {raw!r} is not an int") from None
+    if isinstance(current, float):
+        if isinstance(raw, bool):
+            raise TrajectoryError(f"knob {name}: expects a float, got {raw!r}")
+        try:
+            value = float(str(raw).strip()) if isinstance(raw, str) else float(raw)
+        except (TypeError, ValueError):
+            raise TrajectoryError(f"knob {name}: {raw!r} is not a float") from None
+        if not math.isfinite(value):
+            raise TrajectoryError(f"knob {name}: {raw!r} is not finite")
+        return value
+    if isinstance(current, str):
+        if not isinstance(raw, str):
+            raise TrajectoryError(f"knob {name}: expects a str, got {raw!r}")
+        return raw
+    raise TrajectoryError(
+        f"knob {name}: its value {current!r} ({type(current).__name__}) is not "
+        "a bool/int/float/str class knob and cannot be overridden")
+
+
+def parse_knob_overrides(base_cls: type, specs) -> dict:
+    """``NAME=VALUE`` strings (or a ``{NAME: value}`` mapping) -> a dict of
+    class-attribute overrides, sorted by name and coerced to each
+    attribute's type.  Only the candidate-generator knobs of
+    ``KNOB_WHITELIST`` are accepted (every other name refuses), caps must be
+    >= 1, and retaining every lead pair needs ``LEAD_MAX_CANDIDATES >=
+    RETAIN_ALL_LEAD_PAIRS_MIN_CAP`` (module docstring)."""
+    if isinstance(specs, dict):
+        items = list(specs.items())
+    else:
+        items = []
+        for spec in specs or ():
+            if not isinstance(spec, str) or "=" not in spec:
+                raise TrajectoryError(f"knob {spec!r}: expected NAME=VALUE")
+            name, _, value = spec.partition("=")
+            items.append((name.strip(), value))
+    out: dict = {}
+    for name, raw in items:
+        if not name.isidentifier() or name.startswith("_"):
+            raise TrajectoryError(f"knob {name!r}: not a public attribute name")
+        if name in out:
+            raise TrajectoryError(f"knob {name}: given more than once")
+        if name in KNOB_WORK_NAMES:
+            raise TrajectoryError(
+                f"knob {name}: search work is not a policy knob; "
+                "--select-worlds/--report-worlds set it (stamped as effective work)")
+        if name not in KNOB_WHITELIST:
+            raise TrajectoryError(
+                f"knob {name}: not on the candidate-generator whitelist; --knob "
+                f"accepts only {', '.join(KNOB_WHITELIST)}")
+        try:
+            current = inspect.getattr_static(base_cls, name)
+        except AttributeError:
+            raise TrajectoryError(
+                f"unknown knob {name}: not a class attribute of "
+                f"{base_cls.__name__}") from None
+        if callable(current) or hasattr(current, "__get__"):
+            raise TrajectoryError(
+                f"knob {name}: {base_cls.__name__}.{name} is a method or "
+                "descriptor, not a class knob")
+        value = _coerce_knob(name, current, raw)
+        if name in KNOB_CAP_NAMES and value < 1:
+            raise TrajectoryError(
+                f"knob {name}: a candidate cap must be >= 1, got {value}")
+        out[name] = value
+    if out:
+        def effective(name: str):
+            return out[name] if name in out else inspect.getattr_static(base_cls, name)
+
+        if (effective("RETAIN_ALL_LEAD_PAIRS")
+                and effective("LEAD_MAX_CANDIDATES") < RETAIN_ALL_LEAD_PAIRS_MIN_CAP):
+            raise TrajectoryError(
+                "knob RETAIN_ALL_LEAD_PAIRS needs LEAD_MAX_CANDIDATES >= "
+                f"{RETAIN_ALL_LEAD_PAIRS_MIN_CAP} (candidate zero plus every pair "
+                f"code a hand can hold), got {effective('LEAD_MAX_CANDIDATES')}")
+    return dict(sorted(out.items()))
+
+
+_KNOBS_CLASSES: dict[tuple, type] = {}
+
+
+def knobs_class(base_cls: type, overrides: dict) -> type:
+    """The registry class with class attributes overridden; one class per
+    (base, override set), so every seat of a run shares its identity."""
+    key = (base_cls, tuple(sorted(overrides.items())))
+    cls = _KNOBS_CLASSES.get(key)
+    if cls is None:
+        cls = type(f"Knobs_{base_cls.__name__}", (base_cls,),
+                   dict(sorted(overrides.items())))
+        _KNOBS_CLASSES[key] = cls
+    return cls
+
+
+# ---------------------------------------------------------- ballot widening
+
+def parse_widen(specs) -> list[str]:
+    """``--widen`` names -> the sorted, de-duplicated variant list; an
+    unknown name refuses."""
+    names: list[str] = []
+    for spec in specs or ():
+        name = spec.strip() if isinstance(spec, str) else spec
+        if name not in WIDEN_VARIANTS:
+            raise TrajectoryError(
+                f"unknown widen variant {spec!r}: expected one of "
+                + ", ".join(WIDEN_VARIANTS))
+        if name not in names:
+            names.append(name)
+    return sorted(names)
+
+
+def widen_extensions(variants) -> tuple[str, ...]:
+    """The ``ballot_capture`` extension functions a widen set expands to
+    (``union`` = its ``UNION_OF``), in the module's variant order."""
+    names: set[str] = set()
+    for name in variants:
+        names.update(ballot_capture.UNION_OF if name == "union" else (name,))
+    return tuple(n for n in ballot_capture.VARIANTS if n in names)
+
+
+def widen_candidates(rnd, seat: int, extensions, exclude) -> list[list[str]]:
+    """The candidates the widening appends at this state: the union of the
+    extensions' sets minus ``exclude``, engine-legal only, in sorted
+    ``action_key`` order (deterministic, so shard bytes stay reproducible)."""
+    excluded = {action_key(c) for c in exclude}
+    keys: set[tuple[str, ...]] = set()
+    for name in extensions:
+        keys.update(action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat))
+    return [list(k) for k in sorted(keys - excluded) if is_legal(rnd, seat, list(k))]
+
+
 # ------------------------------------------------------------------ the bot
 
 class TrajectoryMixin:
-    """Root exploration and ballot capture layered on a production MCBot.
+    """Root exploration, ballot widening and ballot capture layered on a
+    production MCBot (or on its ``Knobs_`` subclass).
 
     ``_candidates`` is the injection point: ``MCBot.decide_play`` calls it
     exactly once per decision that reaches a ballot and runs the search on
-    the list it returns.  The override records the production list, draws
-    the exploration sample from the dedicated stream over the full legal
-    enumeration, and enumerates the bounded listing for the record with the
-    whole ballot force-included.  The search stream ``self.rng`` is never
-    read here.
+    the list it returns.  The override records production's list (from the
+    unmodified probe when class knobs are active), appends the ``--widen``
+    candidates, draws the exploration sample from the dedicated stream over
+    the full legal enumeration, and enumerates the bounded listing for the
+    record with the whole ballot force-included.  The search stream
+    ``self.rng`` is never read here.
     """
 
     EXPLORE_RATE = 0.0
     EXPLORE_K = 0
     LEGAL_CAP: int | None = DEFAULT_CAP
+    #: the run's sorted ``--widen`` variant names (``()`` = no widening)
+    WIDEN: tuple[str, ...] = ()
 
-    def _trajectory_init(self, explore_rng: random.Random) -> None:
+    def _trajectory_init(self, explore_rng: random.Random,
+                         production_probe=None) -> None:
         self.explore_rng = explore_rng
+        #: an UNMODIFIED registry instance when class knobs are active: its
+        #: ``_candidates`` is what ``production_ballot`` records
+        self.production_probe = production_probe
         self.explore_opportunities = 0
         self.explore_fired = 0
         self.explore_added = 0
         self.explore_pool_skipped = 0
+        self.widen_added = 0
         self._trajectory_reset()
 
     def _trajectory_reset(self) -> None:
         self.last_ballot: list[list[str]] | None = None
         self.last_production_ballot: list[list[str]] | None = None
+        self.last_widening: dict | None = None
         self.last_exploration: dict | None = None
         self.last_legal: LegalSet | None = None
 
@@ -326,14 +652,28 @@ class TrajectoryMixin:
             raise TrajectoryError(
                 "MCBot._candidates was consulted twice in one decision; the "
                 "exploration draw would be repeated")
+        # the data policy's own list: the registry class's, or the Knobs_
+        # subclass's when overrides are active
         base = [list(c) for c in super()._candidates(rnd, seat)]
+        if self.production_probe is None:
+            production = [list(c) for c in base]
+        else:
+            production = [list(c) for c in self.production_probe._candidates(rnd, seat)]
         ballot = [list(c) for c in base]
+        widening = None
+        if self.WIDEN:
+            added = widen_candidates(rnd, seat, widen_extensions(self.WIDEN),
+                                     exclude=ballot)
+            ballot.extend(list(a) for a in added)
+            widening = {"variants": list(self.WIDEN),
+                        "added": [list(a) for a in added]}
+            self.widen_added += len(added)
         exploration = None
         if self.EXPLORE_RATE > 0 and self.EXPLORE_K > 0:
             self.explore_opportunities += 1
             if self.explore_rng.random() < self.EXPLORE_RATE:
                 added, pool_count = sample_off_ballot(
-                    rnd, seat, self.EXPLORE_K, self.explore_rng, exclude=base)
+                    rnd, seat, self.EXPLORE_K, self.explore_rng, exclude=ballot)
                 ballot.extend(list(a) for a in added)
                 exploration = {"rate": float(self.EXPLORE_RATE),
                                "added": [list(a) for a in added],
@@ -343,8 +683,9 @@ class TrajectoryMixin:
                 if pool_count is None:
                     self.explore_pool_skipped += 1
         legal = enumerate_legal(rnd, seat, cap=self.LEGAL_CAP, must_include=ballot)
-        self.last_production_ballot = base
+        self.last_production_ballot = production
         self.last_ballot = ballot
+        self.last_widening = widening
         self.last_exploration = exploration
         self.last_legal = legal
         return [list(c) for c in ballot]
@@ -364,17 +705,36 @@ def trajectory_class(base_cls: type) -> type:
 
 def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     """The registry policy, built by name with its seed forwarded, re-classed
-    onto the mixin and given the run's exploration/work knobs."""
+    onto the mixin (over the ``Knobs_`` subclass when ``config["knobs"]`` is
+    non-empty) and given the run's exploration/widening/work knobs.
+
+    With overrides, a second, UNMODIFIED registry instance at the same seed
+    is attached as ``production_probe``: ``production_ballot`` is its
+    ``_candidates`` list, never the overridden class's (module docstring).
+    """
     bot = make_bot(config["policy"], seed=seed)
     if not isinstance(bot, MCBot):
         raise TrajectoryError(
             f"policy {config['policy']!r} is not an MCBot search policy: it "
             "has no ballot and no decision record to harvest")
-    bot.__class__ = trajectory_class(type(bot))
-    bot._trajectory_init(explore_rng)
+    overrides = dict(config.get("knobs") or {})
+    data_cls = type(bot)
+    probe = None
+    if overrides:
+        shadowed = [name for name in overrides if name in vars(bot)]
+        if shadowed:
+            raise TrajectoryError(
+                f"knob {shadowed[0]}: the registry factory for "
+                f"{config['policy']!r} sets it per instance; a class override "
+                "would be shadowed")
+        data_cls = knobs_class(type(bot), overrides)
+        probe = make_bot(config["policy"], seed=seed)
+    bot.__class__ = trajectory_class(data_cls)
+    bot._trajectory_init(explore_rng, production_probe=probe)
     bot.EXPLORE_RATE = float(config["explore_rate"])
     bot.EXPLORE_K = int(config["explore_k"])
     bot.LEGAL_CAP = config["cap"]
+    bot.WIDEN = tuple(config.get("widen") or ())
     work = config["work"]
     if work["select_worlds"] is not None:
         bot.N_DETERMINIZATIONS = int(work["select_worlds"])
@@ -394,6 +754,55 @@ def explore_seed(seed: int, mirror: int, seat: int) -> int:
     return _child_seed((seed, mirror, seat), EXPLORE_STREAM)
 
 
+# ---------------------------------------------------------------- round mix
+
+def round_mix_draw(round_mix: str, seed0: int, cluster: int
+                   ) -> tuple[str, int | None]:
+    """The ``(trump_rank, banker)`` cluster ``cluster`` plays under
+    ``round_mix`` (module docstring).
+
+    ``first``: rank 2 and no banker yet -- what ``Game.start_round`` deals
+    on a fresh ``Game``.  ``sampled``: from ``random.Random(_child_seed(
+    (seed0, cluster), ROUND_MIX_STREAM))`` -- its own stream, never the
+    deal rng -- the rank uniform over ``RANKS``, then the banker None with
+    probability ``FIRST_ROUND_SHARE`` else a uniform seat.  A pure function
+    of (round_mix, seed0, cluster): both mirrors share it, and
+    ``verify_shard`` re-derives it.
+    """
+    if round_mix == "first":
+        return RANKS[0], None
+    if round_mix != "sampled":
+        raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
+                              + ", ".join(ROUND_MIXES))
+    rng = random.Random(_child_seed((int(seed0), int(cluster)), ROUND_MIX_STREAM))
+    rank = RANKS[rng.randrange(len(RANKS))]
+    banker = None if rng.random() < FIRST_ROUND_SHARE else rng.randrange(4)
+    return rank, banker
+
+
+def start_round_at(game: Game, trump_rank: str, banker: int | None) -> Round:
+    """Begin ``game``'s round at an explicit trump rank and banker, the way
+    PR #222's ``search_screen.run_cluster`` does: ``Game.start_round`` plays
+    rank 2 whenever no banker is known yet, so the round is constructed
+    directly and the game's levels and banker are set to match it (the
+    banker team's level is the rank; with no banker yet both teams', as
+    whichever seat declares first takes the deal at this rank) --
+    ``finish_round`` reads them.  The deck is ``game.rng``'s shuffle,
+    exactly as ``start_round`` deals it: the rank and banker do not enter
+    the shuffle (``Round.__init__`` shuffles before it reads them)."""
+    assert not game.game_over and game.round is None
+    level = RANKS.index(trump_rank)
+    if banker is None:
+        game.level_idx = [level, level]
+    else:
+        game.level_idx[banker % 2] = level
+    game.banker = banker
+    game.round = Round(trump_rank, banker, game.rng)
+    game.round_no += 1
+    game.result = None
+    return game.round
+
+
 # ------------------------------------------------------------ configuration
 
 def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
@@ -401,24 +810,48 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                  explore_k: int = DEFAULT_EXPLORE_K,
                  select_worlds: int | None = None,
                  report_worlds: int | None = None,
-                 cap: int | None = DEFAULT_CAP) -> dict:
+                 cap: int | None = DEFAULT_CAP,
+                 knobs=None, widen=None,
+                 round_mix: str = DEFAULT_ROUND_MIX) -> dict:
+    """``knobs`` (``--knob NAME=VALUE`` strings or a mapping) and ``widen``
+    (``--widen`` variant names) are validated here, so a bad override or an
+    unknown variant refuses before any round; they land in ``config.knobs``
+    (sorted, coerced) and ``config.widen`` (sorted, de-duplicated).
+    ``round_mix`` (``--round-mix``) lands in ``config.round_mix``."""
     if not 0.0 <= float(explore_rate) <= 1.0:
         raise TrajectoryError("explore_rate must be in [0, 1]")
     if int(explore_k) < 0:
         raise TrajectoryError("explore_k must be >= 0")
     if cap is not None and int(cap) < 1:
         raise TrajectoryError("cap must be >= 1 (or None for unbounded)")
+    if round_mix not in ROUND_MIXES:
+        raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
+                              + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
     if not isinstance(probe, MCBot):
         raise TrajectoryError(
             f"policy {policy!r} is not an MCBot search policy: it has no "
             "ballot and no decision record to harvest")
+    base_cls = type(probe)
+    overrides = parse_knob_overrides(base_cls, knobs)
+    shadowed = [name for name in overrides if name in vars(probe)]
+    if shadowed:
+        raise TrajectoryError(
+            f"knob {shadowed[0]}: the registry factory for {policy!r} sets it "
+            "per instance; a class override would be shadowed")
+    widen_names = parse_widen(widen)
     registered = {
         "n_determinizations": int(probe.N_DETERMINIZATIONS),
         "report_fold_worlds": int(probe.REPORT_FOLD_WORLDS),
         "report_rule": str(probe.REPORT_RULE),
     }
+    # from here on the probe IS the data policy: policy_flags describe what
+    # generates the records.  The whitelist keeps the search untouched, so
+    # the effective report rule read below is production's (tested per knob)
+    data_cls = knobs_class(base_cls, overrides) if overrides else base_cls
+    probe.__class__ = data_cls
     effective = dict(registered)
+    effective["report_rule"] = str(probe.REPORT_RULE)
     if select_worlds is not None:
         if int(select_worlds) < 1:
             raise TrajectoryError("select_worlds must be >= 1")
@@ -439,8 +872,11 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                               "worlds (MCBot refuses fewer)")
     config = {
         "policy": policy,
-        "policy_class": type(probe).__name__,
-        "trajectory_class": trajectory_class(type(probe)).__name__,
+        "policy_class": base_cls.__name__,
+        "trajectory_class": trajectory_class(data_cls).__name__,
+        "knobs": overrides,
+        "widen": widen_names,
+        "round_mix": str(round_mix),
         "seed0": int(seed0),
         "explore_rate": float(explore_rate),
         "explore_k": int(explore_k),
@@ -468,7 +904,11 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
 
 def run_id_for(config: dict) -> str:
     """A digest of what generates the records, so a rerun at the same seed
-    and knobs reproduces ``source_ref`` byte for byte."""
+    and knobs reproduces ``source_ref`` byte for byte.
+
+    Class-knob overrides, widening variants and a round mix other than
+    ``first`` enter the payload only when present, so a run without them
+    keeps the run_id it had before those options existed."""
     payload = {
         "policy": config["policy"],
         "seed0": config["seed0"],
@@ -477,6 +917,12 @@ def run_id_for(config: dict) -> str:
         "cap": config["cap"],
         "work": config["work"]["effective"],
     }
+    if config.get("knobs"):
+        payload["knobs"] = dict(sorted(config["knobs"].items()))
+    if config.get("widen"):
+        payload["widen"] = sorted(config["widen"])
+    if config.get("round_mix", DEFAULT_ROUND_MIX) != DEFAULT_ROUND_MIX:
+        payload["round_mix"] = config["round_mix"]
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
     return f"traj-s{config['seed0']}-{digest[:12]}"
 
@@ -658,6 +1104,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
     legal = bot.last_legal
     production_ballot = None
     exploration = bot.last_exploration
+    widening = bot.last_widening
+    # class knobs or widening: the ballot may differ from production's list
+    # on ANY decision, so production's list is stamped on every one
+    if ballot is not None and (bot.production_probe is not None or bot.WIDEN):
+        production_ballot = bot.last_production_ballot
     if ballot is None:
         # a tractor-locked lead: returned before any ballot was enumerated
         stats["tractor_locked"] += 1
@@ -691,7 +1142,12 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         added_keys = {action_key(a) for a in exploration["added"]}
         if action_key(action) in added_keys:
             stats["explore_played"] += 1
-    return {
+    if widening is not None:
+        stats["widen_decisions"] += 1
+        stats["widen_added"] += len(widening["added"])
+        if action_key(action) in {action_key(a) for a in widening["added"]}:
+            stats["widen_played"] += 1
+    fields = {
         **base,
         "source_ref": f"{run_id}:{cluster}:{mirror}:{seat}:{len(prefix)}",
         "decision_kind": "play",
@@ -711,6 +1167,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         "action": list(action),
         "exploration": exploration,
     }
+    if bot.WIDEN:
+        # only a widening run carries the key (null for a tractor-locked
+        # lead); other runs stay byte-identical
+        fields["widening"] = widening
+    return fields
 
 
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
@@ -778,15 +1239,24 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
 
     Drives the round exactly as ``shengji.ai.env.play_round`` does (deal with
     declarations, the final declare pass, finalize, bury, play), so that at
-    ``explore_rate == 0`` the four bots make production's decisions.
+    ``explore_rate == 0`` the four bots make production's decisions.  The
+    round itself is the cluster's ``round_mix_draw``: a fresh game's first
+    round through ``Game.start_round`` under ``first`` (today's bytes), or
+    the drawn rank/banker through ``start_round_at`` under ``sampled``.
     """
     run_id = config["run_id"]
     started = time.perf_counter()
     bots = [make_trajectory_bot(config, seed=s,
                                 explore_rng=random.Random(explore_seed(seed, mirror, seat)))
             for seat, s in enumerate(mirror_seat_seeds(seed, mirror))]
+    rank, drawn_banker = round_mix_draw(config["round_mix"], config["seed0"], cluster)
     game = Game(random.Random(seed))
-    rnd = game.start_round()
+    if config["round_mix"] == DEFAULT_ROUND_MIX:
+        rnd = game.start_round()        # the path before --round-mix existed
+    else:
+        rnd = start_round_at(game, rank, drawn_banker)
+    if (rnd.trump_rank, rnd.banker) != (rank, drawn_banker):
+        raise TrajectoryError("the round does not play the cluster's drawn rank/banker")
     deck = list(rnd.deck)
     if deck != deck_from_seed(rnd.trump_rank, rnd.banker, seed):
         raise TrajectoryError("the deal is not reproducible from round_seed")
@@ -874,6 +1344,7 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
     }
     return records, {"counts": dict(stats), "work": work, "timing": timing,
                      "cluster": cluster, "mirror": mirror, "seed": seed,
+                     "trump_rank": rnd.trump_rank, "banker": banker,
                      "attacker_points": int(result.attacker_points)}
 
 
@@ -902,9 +1373,46 @@ def play_trajectory_cluster(config: dict, cluster: int, seed: int
     return records, stats
 
 
-def _cluster_task(args):
+#: every ``ClusterResult`` alive in this process (weak references): the
+#: retention witness reads it from the progress callback
+LIVE_RESULTS: weakref.WeakSet = weakref.WeakSet()
+
+
+class ClusterResult:
+    """One cluster's records, per-round stats and task timing, as the task
+    hands them back.  Instances register weakly in ``LIVE_RESULTS`` -- on
+    construction in the worker, on unpickling in the parent -- so a test
+    can witness that the parent drops each result once its shard is
+    published (#208: the parent used to retain every published cluster)."""
+
+    __slots__ = ("records", "stats", "timing", "__weakref__")
+
+    def __init__(self, records: list[dict], stats: list[dict], timing: dict):
+        self.records = records
+        self.stats = stats
+        self.timing = timing
+        LIVE_RESULTS.add(self)
+
+    def __getstate__(self):
+        return (self.records, self.stats, self.timing)
+
+    def __setstate__(self, state):
+        self.records, self.stats, self.timing = state
+        LIVE_RESULTS.add(self)
+
+
+def _cluster_task(args) -> ClusterResult:
+    """The unit of work, timed by itself: ``timing.wall_secs`` is this
+    cluster's OWN duration, whichever process runs it and whenever it was
+    scheduled; ``started_at`` / ``finished_at`` are wall-clock stamps."""
     config, cluster, seed = args
-    return play_trajectory_cluster(config, cluster, seed)
+    started_at = time.time()
+    started = time.perf_counter()
+    records, stats = play_trajectory_cluster(config, cluster, seed)
+    timing = {"started_at": round(started_at, 3),
+              "finished_at": round(time.time(), 3),
+              "wall_secs": round(time.perf_counter() - started, 4)}
+    return ClusterResult(records, stats, timing)
 
 
 # ------------------------------------------------------------------- shards
@@ -924,7 +1432,16 @@ def _atomic_write_text(path: Path, text: str, mode: int = 0o644) -> None:
 def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
                   records: list[dict], stats: list[dict]) -> dict:
     """Write the cluster's shard + sidecar atomically (temp name, then
-    ``os.replace``), read-only once published.  Returns the sidecar."""
+    ``os.replace``), read-only once published.  Returns the sidecar.
+
+    A ``sampled`` sidecar names the round the cluster played (``round_mix``,
+    the drawn ``trump_rank`` / ``banker``, the resolved banker per round);
+    a ``first`` sidecar stays byte-identical to one written before the
+    option existed."""
+    rank, drawn_banker = round_mix_draw(config["round_mix"], config["seed0"], cluster)
+    if any(st["trump_rank"] != rank for st in stats) or (
+            drawn_banker is not None and any(st["banker"] != drawn_banker for st in stats)):
+        raise TrajectoryError(f"cluster {cluster} played a round other than its draw")
     jsonl, side = shard_paths(out_dir, cluster)
     jsonl.parent.mkdir(parents=True, exist_ok=True)
     tmp = jsonl.with_name(jsonl.name + ".tmp")
@@ -953,6 +1470,12 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
                     "decisions": st["counts"].get("decisions", 0),
                     "attacker_points": st["attacker_points"]} for st in stats],
     }
+    if config["round_mix"] != DEFAULT_ROUND_MIX:
+        sidecar["round_mix"] = config["round_mix"]
+        sidecar["trump_rank"] = rank
+        sidecar["banker"] = drawn_banker
+        for entry, st in zip(sidecar["rounds"], stats):
+            entry["banker"] = st["banker"]
     _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n",
                        mode=0o444)
     return sidecar
@@ -961,7 +1484,15 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
 def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
                  ) -> tuple[dict | None, str]:
     """The sidecar when the published shard verifies (identity, sha256, byte
-    size, record count), else ``(None, reason)``."""
+    size, record count, and the round the cluster played), else ``(None,
+    reason)``.
+
+    The round is re-derived from (config, cluster) -- ``round_mix_draw`` --
+    and checked against the sidecar (a ``sampled`` one names it) and against
+    EVERY record's stored ``setup.trump_rank`` / ``setup.banker``: a drawn
+    banker verbatim, a first round's as the engine resolves it (the declarer,
+    seat 0 when nobody declared).  A shard played at another round never
+    verifies, so ``--resume`` regenerates it."""
     jsonl, side = shard_paths(out_dir, cluster)
     if not jsonl.is_file() or not side.is_file():
         return None, "missing"
@@ -974,12 +1505,36 @@ def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
             or sidecar.get("cluster") != cluster or sidecar.get("seed") != seed
             or sidecar.get("path") != f"shards/{jsonl.name}"):
         return None, "sidecar identity"
+    round_mix = config.get("round_mix", DEFAULT_ROUND_MIX)
+    rank, banker = round_mix_draw(round_mix, config["seed0"], cluster)
+    if sidecar.get("round_mix", DEFAULT_ROUND_MIX) != round_mix:
+        return None, "round mix"
+    if round_mix != DEFAULT_ROUND_MIX and (
+            sidecar.get("trump_rank") != rank
+            or "banker" not in sidecar or sidecar["banker"] != banker):
+        return None, "round mix"
     if jsonl.stat().st_size != sidecar.get("bytes"):
         return None, "byte size"
     if sha256_file(jsonl) != sidecar.get("sha256"):
         return None, "sha256"
+    n = 0
     with jsonl.open("rb") as fh:
-        n = sum(1 for _ in fh)
+        for line in fh:
+            n += 1
+            try:
+                setup = json.loads(line)["setup"]
+                stored_rank, stored_banker = setup["trump_rank"], setup["banker"]
+                declaration = setup["declaration"]
+            except (ValueError, KeyError, TypeError):
+                return None, "record unreadable"
+            if stored_rank != rank:
+                return None, "trump rank"
+            if banker is None:
+                expected = declaration["seat"] if declaration else 0
+            else:
+                expected = banker
+            if stored_banker != expected:
+                return None, "banker"
     if n != sidecar.get("records"):
         return None, "record count"
     return sidecar, "ok"
@@ -1025,41 +1580,61 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
                 continue
         todo.append(c)
 
-    def publish(cluster: int, result, started: float) -> None:
-        records, stats = result
-        sidecars[cluster] = publish_shard(out_dir, config, cluster,
-                                          seed0 + cluster, records, stats)
+    def publish(cluster: int, result: ClusterResult) -> None:
+        sidecars[cluster] = publish_shard(out_dir, config, cluster, seed0 + cluster,
+                                          result.records, result.stats)
         timing[cluster] = {
-            "wall_secs": round(time.perf_counter() - started, 4),
-            "round_wall_secs": [st["timing"]["wall_secs"] for st in stats],
-            "search_secs": round(sum(st["timing"]["search_secs"] for st in stats), 4),
+            **result.timing,        # the task's OWN duration and wall-clock stamps
+            "round_wall_secs": [st["timing"]["wall_secs"] for st in result.stats],
+            "search_secs": round(sum(st["timing"]["search_secs"]
+                                     for st in result.stats), 4),
         }
         note(cluster, sidecars[cluster], False)
 
+    def consume(cluster: int, future) -> None:
+        try:
+            result = future.result()
+        except Exception as exc:  # noqa: BLE001 - drained, then re-raised as one
+            failures.append((cluster, f"{type(exc).__name__}: {exc}"))
+            return
+        publish(cluster, result)
+
     if workers == 1:
         for c in todo:
-            started = time.perf_counter()
             try:
                 result = _cluster_task((config, c, seed0 + c))
             except Exception as exc:  # noqa: BLE001 - reported, then re-raised as one
                 failures.append((c, f"{type(exc).__name__}: {exc}"))
                 continue
-            publish(c, result, started)
+            publish(c, result)
+            del result
     elif todo:
         ctx = multiprocessing.get_context("spawn")
-        started_all = time.perf_counter()
-        with ProcessPoolExecutor(max_workers=min(workers, len(todo)),
-                                 mp_context=ctx) as pool:
-            futures = {pool.submit(_cluster_task, (config, c, seed0 + c)): c
-                       for c in todo}
-            for future in as_completed(futures):
-                c = futures[future]
-                try:
-                    result = future.result()
-                except Exception as exc:  # noqa: BLE001 - drained, then re-raised
-                    failures.append((c, f"{type(exc).__name__}: {exc}"))
-                    continue
-                publish(c, result, started_all)
+        max_workers = min(workers, len(todo))
+        window = INFLIGHT_PER_WORKER * max_workers
+        queue = list(todo)
+        # Future -> cluster for the clusters in flight only.  Each Future is
+        # popped as it completes, so its result is reclaimed once published;
+        # submitting everything up front and keeping the whole mapping
+        # retained every published cluster's records until the pool closed
+        # (#208: 12 GiB parent RSS, +2.8 MiB per cluster).
+        in_flight: dict = {}
+        with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as pool:
+            def fill() -> None:
+                while queue and len(in_flight) < window:
+                    c = queue.pop(0)
+                    in_flight[pool.submit(_cluster_task, (config, c, seed0 + c))] = c
+
+            fill()
+            while in_flight:
+                finished, _ = wait(list(in_flight), return_when=FIRST_COMPLETED)
+                completed = sorted(finished, key=in_flight.__getitem__)
+                del finished
+                while completed:
+                    future = completed.pop(0)
+                    consume(in_flight.pop(future), future)
+                    del future                   # the last reference to the result
+                fill()
     failures.sort()
     receipt = {
         "requested": len(clusters),
@@ -1128,8 +1703,50 @@ def _source_tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+#: environment inputs that change generation: the import-time sampling
+#: switches of ``ai/mcbot.py`` (they change world sampling), the engine
+#: backend and the void constraint.  ``identity()["env"]`` records each as
+#: given (null when unset) AND as the value the code resolved; ``--resume``
+#: compares both, so a store generated under one setting never continues
+#: under another (Codex review of #218, blocker 2).
+ENV_IDENTITY_KEYS = ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
+                     "SHENGJI_PHYSICAL_FILLS", "SHENGJI_FAST", "SHENGJI_REQUIRE_VOIDS")
 CODE_IDENTITY_KEYS = ("source_tree_sha256", "fast_module_sha256_16", "ballot",
-                      "fast_engine", "require_voids")
+                      "fast_engine", "require_voids", "env")
+
+
+def environment_identity() -> dict:
+    """The behaviour-changing environment inputs, raw and resolved.
+
+    The mcbot switches are read once, when the module is imported, so the
+    resolved values are the module's constants, not a fresh look at
+    ``os.environ``."""
+    from ..ai import mcbot
+    from ..engine import combos, fast
+    return {
+        "raw": {name: os.environ.get(name) for name in ENV_IDENTITY_KEYS},
+        "resolved": {
+            "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
+            "uniform_deal": bool(mcbot.UNIFORM_DEAL),
+            "physical_fills": bool(mcbot.PHYSICAL_FILLS),
+            "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+            "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        },
+    }
+
+
+def _env_drift(old: dict | None, new: dict) -> list[str]:
+    """The raw variables and resolved switches that differ between a stored
+    environment identity and the current one; every name when the store
+    predates the binding and recorded no environment at all."""
+    if not old:
+        return sorted(new.get("raw") or {}) + sorted(new.get("resolved") or {})
+    names: list[str] = []
+    for part in ("raw", "resolved"):
+        before, after = old.get(part) or {}, new.get(part) or {}
+        names.extend(sorted(n for n in set(before) | set(after)
+                            if before.get(n) != after.get(n)))
+    return names
 
 
 def identity(config: dict) -> dict:
@@ -1150,7 +1767,11 @@ def identity(config: dict) -> dict:
         "legal_sha256_16": _digest(SERVER / "shengji" / "harvest" / "legal.py"),
         "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        "env": environment_identity(),
         "ballot": str(mc_ballot(probe)),
+        # the round mix is a run knob (config.round_mix, part of run_id when
+        # not ``first``): stamped here for the reader, not a code-identity key
+        "round_mix": config["round_mix"],
         "python": sys.version.split()[0],
     }
 
@@ -1196,7 +1817,9 @@ def build_run_manifest(config: dict, ident: dict, *, rounds: int,
                            "b1, b2; mirror 0 seats [a1, b1, a2, b2], mirror 1 "
                            "[b1, a1, b2, a2]",
                   "explore": f"random.Random(_child_seed((seed, mirror, seat), "
-                             f"{EXPLORE_STREAM!r}))"},
+                             f"{EXPLORE_STREAM!r}))",
+                  "round_mix": f"{config['round_mix']}: "
+                               + ROUND_MIX_SEEDS[config["round_mix"]]},
         "notes": [
             "allocation (kind search-work) = the fixed-design work split "
             "(selection worlds per candidate + report-fold worlds credited to "
@@ -1255,6 +1878,25 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
             raise TrajectoryError(
                 f"{out_dir} already holds run {existing.get('run_id')}; pass "
                 "--resume to continue it or choose a fresh directory")
+        old_config = existing.get("config") or {}
+        old_knobs = dict(old_config.get("knobs") or {})
+        if old_knobs != dict(config["knobs"]):
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"with class-knob overrides {old_knobs} but {dict(config['knobs'])} "
+                "were requested; shards of different data policies never mix")
+        old_widen = sorted(old_config.get("widen") or [])
+        if old_widen != sorted(config["widen"]):
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"widened by {old_widen} but {sorted(config['widen'])} was "
+                "requested; shards of different ballots never mix")
+        old_mix = old_config.get("round_mix") or DEFAULT_ROUND_MIX
+        if old_mix != config["round_mix"]:
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"with round mix {old_mix!r} but {config['round_mix']!r} was "
+                "requested; shards of different round mixes never mix")
         if existing.get("run_id") != config["run_id"]:
             raise TrajectoryError(
                 f"resume refused: {out_dir} holds run {existing.get('run_id')} "
@@ -1262,10 +1904,14 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
         old = existing.get("identity") or {}
         drift = [k for k in CODE_IDENTITY_KEYS if old.get(k) != ident.get(k)]
         if drift:
+            detail = ""
+            if "env" in drift:
+                detail = ("; the sampling environment differs: "
+                          + ", ".join(_env_drift(old.get("env"), ident["env"])))
             raise TrajectoryError(
                 "resume refused: the generator/engine code identity differs "
-                f"from the run's ({', '.join(drift)}); shards would not be "
-                "byte-comparable")
+                f"from the run's ({', '.join(drift)}){detail}; shards would not "
+                "be byte-comparable")
         return True
     if (out_dir / "shards").exists():
         raise TrajectoryError(f"{out_dir}/shards exists without run.json; "
@@ -1283,12 +1929,15 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              explore_k: int = DEFAULT_EXPLORE_K,
              select_worlds: int | None = None, report_worlds: int | None = None,
              cap: int | None = DEFAULT_CAP, merge: bool = False,
-             resume: bool = False,
+             resume: bool = False, knobs=None, widen=None,
+             round_mix: str = DEFAULT_ROUND_MIX,
              progress: Callable[[dict], None] | None = None,
              argv: list[str] | None = None) -> dict:
     """Generate the shard store in ``out_dir`` (+ ``trajectory.jsonl`` with
     ``merge``); returns the manifest.  Raises ``TrajectoryError`` when any
-    cluster failed (published shards are kept for ``--resume``)."""
+    cluster failed (published shards are kept for ``--resume``).
+    ``knobs`` / ``widen`` are the ``--knob`` / ``--widen`` lists;
+    ``round_mix`` is ``--round-mix``."""
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     if rounds < 2 or rounds % 2:
         raise TrajectoryError("rounds must be an even number >= 2: every "
@@ -1297,7 +1946,8 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
         raise TrajectoryError("workers must be >= 1")
     config = build_config(policy=policy, seed0=seed0, explore_rate=explore_rate,
                           explore_k=explore_k, select_worlds=select_worlds,
-                          report_worlds=report_worlds, cap=cap)
+                          report_worlds=report_worlds, cap=cap, knobs=knobs,
+                          widen=widen, round_mix=round_mix)
     out = Path(out_dir)
     ident = identity(config)
     resumed = _open_run(out, config, ident, resume=resume)
@@ -1348,6 +1998,24 @@ def build_parser() -> argparse.ArgumentParser:
                         help="override R report worlds (reduced work; LCB needs >= 30)")
     parser.add_argument("--cap", type=int, default=DEFAULT_CAP,
                         help=f"max legal actions listed per record (default {DEFAULT_CAP}; 0 = unbounded)")
+    parser.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
+                        help="override one candidate-generator class knob of the "
+                             "policy's class for the DATA policy (repeatable; one of "
+                             f"{', '.join(KNOB_WHITELIST)}; caps >= 1); "
+                             "production_ballot stays the unmodified class's list; "
+                             "every other name refuses (search work goes through "
+                             "--select-worlds/--report-worlds)")
+    parser.add_argument("--widen", action="append", default=[], metavar="VARIANT",
+                        help="append a ballot_capture candidate-set variant to every "
+                             f"search ballot (repeatable; one of {', '.join(WIDEN_VARIANTS)})")
+    parser.add_argument("--round-mix", choices=ROUND_MIXES, default=DEFAULT_ROUND_MIX,
+                        help="the round each cluster plays: 'first' = a fresh game's "
+                             "first round (trump rank 2, banker by declaration; the "
+                             "default, byte-identical to before this option); 'sampled' "
+                             f"= per cluster a trump rank uniform over the {len(RANKS)} "
+                             f"ranks and a banker (none with probability {FIRST_ROUND_SHARE}, "
+                             "else a uniform seat) from a stream seeded by (seed0, "
+                             "cluster); both mirrors share it")
     parser.add_argument("--merge", action="store_true",
                         help="also write trajectory.jsonl (shards concatenated in cluster order)")
     parser.add_argument("--resume", action="store_true",
@@ -1373,7 +2041,8 @@ def main(argv: list[str] | None = None) -> int:
             workers=args.workers, policy=args.policy,
             explore_rate=args.explore_rate, explore_k=args.explore_k,
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
-            cap=cap, merge=args.merge, resume=args.resume, progress=progress,
+            cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
+            widen=args.widen, round_mix=args.round_mix, progress=progress,
             argv=sys.argv if argv is None else ["trajectory", *argv])
     except TrajectoryError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
@@ -1383,9 +2052,11 @@ def main(argv: list[str] | None = None) -> int:
     wall = runtime["wall_secs"]
     rss = runtime["peak_rss_bytes"]
     print(f"{SOURCE}: run_id={manifest['run_id']} clusters={manifest['clusters']} "
+          f"round_mix={manifest['config']['round_mix']} "
           f"rounds={counts['rounds']} decisions={counts['decisions']} "
           f"bury_records={counts['bury_records']} searched={counts['searched']} "
           f"explored={counts['explore_fired']} added={counts['explore_added']} "
+          f"widened={counts['widen_decisions']} widen_added={counts['widen_added']} "
           f"short={counts['short_searches']} wall={wall}s "
           f"decisions/s={round(counts['decisions'] / wall, 3) if wall else None} "
           f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f}",

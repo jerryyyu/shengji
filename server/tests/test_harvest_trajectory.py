@@ -1,33 +1,88 @@
 """trajectory generator: round-trip, determinism, width invariance,
 allocation vs preference, exploration over the full legal set, production
-identity, shard manifest, resume witnesses, bury path.
+identity, shard manifest, resume witnesses, bury path, class-knob overrides
+(``--knob``), ballot widening (``--widen``) and the round mix
+(``--round-mix``: every trump rank, banker and first-round case).
 
 Reduced work (N=2 selection worlds, R=30 report worlds -- the LCB minimum)
-keeps the whole file around a minute of pure-engine self-play.
+keeps the whole file around a minute and a half of pure-engine self-play.
 """
+import gc
 import hashlib
+import inspect
 import json
 import math
 import os
+import platform
 import random
 import shutil
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
 
 import pytest
 
+from shengji.ai import mcbot
 from shengji.ai.env import play_round
 from shengji.ai.registry import make_bot
+from shengji.engine.cards import RANKS
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
-from shengji.harvest import legal, rebuild, trajectory
-from shengji.harvest.common import action_key, sha256_file
-from shengji.harvest.schema import SchemaError, finalize_record, validate_record
+from shengji.harvest import ballot_capture, legal, rebuild, trajectory
+from shengji.harvest.common import action_key, sha256_file, write_jsonl
+from shengji.harvest.schema import (SchemaError, canonical_json, finalize_record,
+                                    validate_record)
 
+SERVER = Path(__file__).resolve().parents[1]
 SEED0 = 4_100_000
 ROUNDS = 2
 WORK = {"select_worlds": 2, "report_worlds": 30}
 EXPLORE = {"explore_rate": 0.5, "explore_k": 2}
 PLAIN = {"explore_rate": 0.0, "explore_k": 2}
+#: the committed anchor of the neutral-byte witness (see ``neutral_fixture``)
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "trajectory_neutral_digest.json"
+FIXTURE_CONFIG = {"policy": trajectory.DEFAULT_POLICY, "rounds": ROUNDS, "seed0": SEED0,
+                  **WORK, **PLAIN, "cap": legal.DEFAULT_CAP}
+#: ``--knob`` overrides of the knobs fixture and their coerced values
+KNOBS = ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=64"]
+KNOB_VALUES = {"LEAD_MAX_CANDIDATES": 64, "V3_LEAD_SINGLES": True}
+#: the Run B data-policy overrides (issue #205 follow-up)
+RUN_B_KNOBS = {"V3_LEAD_SINGLES": True, "LEAD_MAX_CANDIDATES": 64,
+               "FOLLOW_MAX_CANDIDATES": 64, "TRACTOR_LOCK": False,
+               "RETAIN_ALL_LEAD_PAIRS": True}
+WIDEN = ["union"]
+#: ``--round-mix sampled``; the sampled fixture plays 4 clusters (8 rounds),
+#: whose draws at SEED0 cover both banker cases and four trump ranks
+SAMPLED = {"round_mix": "sampled"}
+SAMPLED_ROUNDS = 8
+#: run_id of the PLAIN configuration as generated BEFORE --knob/--widen
+#: existed (c82eac20): the neutral witness -- a run without either option
+#: must keep the identity its stores already carry
+PLAIN_RUN_ID = "traj-s4100000-b8fbc705e8e1"
+#: run_id of the Run B configuration (RUN_B_KNOBS, --widen union,
+#: --explore-rate 0.1, production work) at seed0 4_100_000, computed at
+#: 131f1e81 -- the head Run B launched from; later commits must keep it
+RUN_B_RUN_ID = "traj-s4100000-610ab5d18010"
+#: the candidate-generator whitelist --knob accepts, each with a legal
+#: non-default value
+WHITELIST = {"TRACTOR_LOCK": False, "RETAIN_ALL_LEAD_PAIRS": True,
+             "V3_LEAD_SINGLES": True, "RISKY_THROWS": True, "TRUMP_BALLOT": True,
+             "WIDE_LEAD_BALLOT": False, "LEAD_MAX_CANDIDATES": 64,
+             "FOLLOW_MAX_CANDIDATES": 64, "MAX_CANDIDATES": 16,
+             "BURY_MAX_CANDIDATES": 64}
+#: refused BY NAME: work, sampling, report/statistical, allocation,
+#: exact-endgame, bury-search and other controls, plus non-knobs
+NOT_KNOBS = ("EXTRA_SELECTION_WORK", "REQUIRE_EXACT_WORK", "SAMPLE_ATTEMPT_FACTOR",
+             "SAMPLE_RETRIES", "EXACT_ENDGAME", "EXACT_ENDGAME_MAX_CARDS",
+             "EXACT_ENDGAME_MAX_NODES", "REPORT_RULE", "REPORT_MIN_GAIN",
+             "REPORT_ALPHA", "REPORT_T_CRITICAL", "MARGIN", "LEAD_MARGIN",
+             "POINT_SHY_EPS", "CONFIDENCE_OVERRIDE", "CONFIDENCE_Z",
+             "ADAPTIVE_ALLOCATION", "RANDOM_ALLOCATION", "LEVEL_OBJECTIVE",
+             "MC_BURY", "N_BURY_WORLDS", "STRUCTURED_BURY", "BURY_MAX_ROLLOUTS",
+             "BURY_REQUIRE_EXACT_WORK", "DECLARER_PIN", "V3_LEAD_RANDOM",
+             "WIDE_FOLLOW_BALLOT", "NOPE", "decide_play", "rng")
 
 
 def _read_dir(out):
@@ -44,10 +99,75 @@ def _read_dir(out):
 
 
 def _generate(out, *, workers=1, policy=trajectory.DEFAULT_POLICY, rounds=ROUNDS,
-              seed0=SEED0, merge=True, resume=False, **knobs):
+              seed0=SEED0, merge=True, resume=False, **options):
     trajectory.generate(rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
-                        policy=policy, merge=merge, resume=resume, **WORK, **knobs)
+                        policy=policy, merge=merge, resume=resume, **WORK, **options)
     return _read_dir(out)
+
+
+def _structural(value):
+    """The parsed JSON with every float, and every field derived from exact
+    bytes, replaced by a placeholder: the keys, structure, ints, strings and
+    card lists a serialization drift changes.  Floats are excluded because
+    ``preference.softmax`` comes from ``math.exp``, whose last bit may
+    differ between libm implementations (macOS vs the Linux CI runner)."""
+    if isinstance(value, float):
+        return "<float>"
+    if isinstance(value, dict):
+        return {k: ("<bytes>" if k in ("record_sha256", "sha256", "bytes")
+                    else _structural(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_structural(v) for v in value]
+    return value
+
+
+def _structural_digest(documents) -> str:
+    digest = hashlib.sha256()
+    for doc in documents:
+        digest.update(canonical_json(_structural(doc)).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def fixture_digests(run) -> dict:
+    """What the committed fixture pins, from a generated run: the exact
+    shard / sidecar digests (platform-exact) and the float-free structural
+    digests (portable)."""
+    shard = run["manifest"]["shards"][0]
+    return {
+        "run_id": run["manifest"]["run_id"],
+        "shard": {"path": shard["path"],
+                  "sha256": hashlib.sha256(run["shards"][0]).hexdigest(),
+                  "bytes": len(run["shards"][0]), "records": shard["records"]},
+        "sidecar": {"path": shard["sidecar"],
+                    "sha256": hashlib.sha256(run["sidecars"][0]).hexdigest()},
+        "structural": {
+            "records_sha256": _structural_digest(run["records"]),
+            "sidecar_sha256": _structural_digest([json.loads(run["sidecars"][0])]),
+        },
+    }
+
+
+def neutral_fixture(out_dir) -> dict:
+    """Regenerate the content of ``tests/fixtures/trajectory_neutral_digest.json``
+    (the fixture file carries the one-liner).  A DELIBERATE record or
+    sidecar format change must rewrite that file in the same commit."""
+    run = _generate(Path(out_dir), **PLAIN)
+    return {
+        "schema": "shengji-trajectory-neutral-digest-v1",
+        "purpose": "anchor of test_no_knobs_and_no_widen_is_byte_identical: the shard "
+                   "and sidecar digests of a fixed tiny plain run, produced by the code "
+                   "as committed; a deliberate format change must regenerate this file "
+                   "in the same commit",
+        "recipe": "cd server && PYTHONPATH=.:tests SHENGJI_REQUIRE_VOIDS=1 python -P -B "
+                  "-c \"import json, tempfile, test_harvest_trajectory as t; "
+                  "print(json.dumps(t.neutral_fixture(tempfile.mkdtemp()), indent=1))\" "
+                  "> tests/fixtures/trajectory_neutral_digest.json",
+        "config": dict(FIXTURE_CONFIG),
+        "platform": {"system": platform.system(), "machine": platform.machine()},
+        "python": platform.python_version(),
+        **fixture_digests(run),
+    }
 
 
 def _by_round(records):
@@ -92,14 +212,62 @@ def clean4(tmp_path_factory):
     return _generate(tmp_path_factory.mktemp("clean4") / "run", rounds=4, **PLAIN)
 
 
+#: the retention / timing fixture: 6 clusters on the cheapest MCBot policy
+#: (plain ``mc``, one selection world, no report fold: ~0.6 s per cluster)
+RETENTION = dict(rounds=12, seed0=4_200_000, policy="mc", select_worlds=1,
+                 explore_rate=0.0, explore_k=0)
+
+
+@pytest.fixture(scope="module")
+def retention_run(tmp_path_factory):
+    """A 6-cluster run on 2 workers, sampling the parent's live cluster
+    results at every publish, plus the same run on 1 worker."""
+    live = []
+
+    def progress(event):
+        gc.collect()             # only strong references count
+        live.append((event["cluster"], len(trajectory.LIVE_RESULTS)))
+
+    out = tmp_path_factory.mktemp("retention") / "w2"
+    manifest = trajectory.generate(out_dir=out, workers=2, merge=False,
+                                   progress=progress, **RETENTION)
+    single = tmp_path_factory.mktemp("retention") / "w1"
+    trajectory.generate(out_dir=single, workers=1, merge=False, **RETENTION)
+    return {"out": out, "manifest": manifest, "live": live,
+            "runtime": json.loads((out / "runtime.json").read_text()),
+            "w2": _read_dir(out), "w1": _read_dir(single)}
+
+
+@pytest.fixture(scope="module")
+def knobs_run(tmp_path_factory):
+    """The plain configuration with the V3 lead singles and a 64-slot lead
+    cap as class-knob overrides: lead ballots widen, follows do not."""
+    return _generate(tmp_path_factory.mktemp("knobs") / "run", knobs=KNOBS, **PLAIN)
+
+
+@pytest.fixture(scope="module")
+def widen_run(tmp_path_factory):
+    """The plain configuration widened by ``--widen union``."""
+    return _generate(tmp_path_factory.mktemp("widen") / "run", widen=WIDEN, **PLAIN)
+
+
+@pytest.fixture(scope="module")
+def sampled_run(tmp_path_factory):
+    """The plain configuration under ``--round-mix sampled``: 4 clusters, each
+    at its drawn trump rank and banker."""
+    return _generate(tmp_path_factory.mktemp("sampled") / "run", rounds=SAMPLED_ROUNDS,
+                     **PLAIN, **SAMPLED)
+
+
 # 1 ---------------------------------------------------------------- round trip
 
-@pytest.mark.parametrize("run", ["explore_run", "plain_run"])
+@pytest.mark.parametrize("run", ["explore_run", "plain_run", "sampled_run"])
 def test_round_trip_through_rebuild(run, request):
     run = request.getfixturevalue(run)
     records = run["records"]
     counts = run["manifest"]["counts"]
-    assert counts["rounds"] == ROUNDS
+    seed0 = run["manifest"]["seed0"]
+    assert counts["rounds"] == run["manifest"]["rounds"]
     assert counts["decisions"] == len(records) > 0
     assert counts["bury_records"] == 0          # the default policy exposes none
     assert counts["short_searches"] == counts["zero_world"] == 0
@@ -140,7 +308,7 @@ def test_round_trip_through_rebuild(run, request):
     for (cluster, mirror), recs in _by_round(records).items():
         recs = _plays(recs)
         assert [r["ply"] for r in recs] == list(range(len(recs)))
-        assert {r["round_seed"] for r in recs} == {SEED0 + cluster}
+        assert {r["round_seed"] for r in recs} == {seed0 + cluster}
         rnd = rebuild.round_from_setup(recs[0]["deck"], recs[0]["setup"])
         prefix = []
         for r in recs:
@@ -612,6 +780,46 @@ def test_corrupted_shard_is_regenerated_on_resume(clean4, tmp_path):
     assert resumed["bytes"] == clean4["bytes"]
 
 
+# W6 --------------------------- the parent drops published results (#208)
+
+def test_parent_does_not_retain_published_results(retention_run):
+    live = retention_run["live"]
+    manifest = retention_run["manifest"]
+    assert manifest["clusters"] == 6 and len(live) == 6
+    assert retention_run["runtime"]["workers"] == 2
+    assert retention_run["runtime"]["clusters"]["generated"] == list(range(6))
+    # at every publish the parent holds at most the in-flight window of
+    # results (the one being published + those completed but not yet
+    # consumed), never every cluster published so far
+    window = trajectory.INFLIGHT_PER_WORKER * 2
+    assert max(n for _, n in live) <= window < 6
+    assert live[-1][1] <= 2                       # nothing accumulated by the end
+    assert len(trajectory.LIVE_RESULTS) == 0      # and nothing outlives the pool
+    # the bounded window changes scheduling only: bytes as on one worker
+    assert retention_run["w2"]["shards"] == retention_run["w1"]["shards"]
+    assert retention_run["w2"]["sidecars"] == retention_run["w1"]["sidecars"]
+    assert retention_run["w2"]["manifest_bytes"] == retention_run["w1"]["manifest_bytes"]
+
+
+def test_per_cluster_wall_secs_is_the_clusters_own_duration(retention_run):
+    per_cluster = retention_run["runtime"]["per_cluster"]
+    assert sorted(per_cluster) == [str(c) for c in range(6)]
+    finished = {}
+    for c, t in per_cluster.items():
+        # the task's own clock: both rounds plus the task's few ms of
+        # overhead -- not the time since the pool started
+        rounds = sum(t["round_wall_secs"])
+        assert len(t["round_wall_secs"]) == 2 and rounds > 0
+        # (each value is rounded to 4 decimals on its own, hence the slack)
+        assert -1e-3 <= t["wall_secs"] - rounds < 0.25, (c, t)
+        assert t["finished_at"] - t["started_at"] == pytest.approx(t["wall_secs"], abs=0.05)
+        finished[int(c)] = t["finished_at"]
+    # two workers: the sixth cluster cannot start before four others finished
+    assert per_cluster["5"]["started_at"] >= sorted(finished.values())[3]
+    total = retention_run["runtime"]["wall_secs"]
+    assert max(t["wall_secs"] for t in per_cluster.values()) < total
+
+
 # ------------------------------------------------------------ fail closed
 
 def test_refuses_unsupported_configurations(tmp_path):
@@ -628,8 +836,8 @@ def test_refuses_unsupported_configurations(tmp_path):
         trajectory.run_clusters(config, rounds=2, seed0=1, out_dir=tmp_path, workers=0)
 
 
-def test_schema_exploration_and_preference_fields():
-    base = {
+def _schema_base():
+    return {
         "source": "trajectory", "source_ref": "r:0:0:1:1", "policy": "p",
         "round_seed": 7, "deck": None,
         "setup": {"trump_rank": "2", "banker": 0, "declarations": [],
@@ -642,6 +850,10 @@ def test_schema_exploration_and_preference_fields():
         "allocation": None, "action_values": None, "action": ["S4"],
         "outcome": None, "hidden_hands": None,
     }
+
+
+def test_schema_exploration_and_preference_fields():
+    base = _schema_base()
     ex = {"rate": 0.1, "added": [["S4"]], "pool_count": 1}
     ok = finalize_record({**base, "exploration": ex})
     assert ok["exploration"] == ex
@@ -662,3 +874,754 @@ def test_schema_exploration_and_preference_fields():
                 {**pref, "softmax": [1.5, -0.5]}, "nope"):
         with pytest.raises(SchemaError):
             finalize_record({**base, "preference": bad})
+
+
+def test_schema_widening_field():
+    base = _schema_base()
+    wd = {"variants": ["union"], "added": [["S4"]]}
+    assert finalize_record({**base, "widening": wd})["widening"] == wd
+    assert finalize_record({**base, "widening": None})["widening"] is None
+    assert "widening" not in finalize_record(base)          # sources that do not widen
+    empty = {"variants": ["points"], "added": []}
+    assert finalize_record({**base, "widening": empty})["widening"] == empty
+    for bad in ({"variants": [], "added": []}, {"variants": ["union"]},
+                {"variants": ["union"], "added": [["S9"]]},        # not on the ballot
+                {"variants": "union", "added": []}, {"variants": ["union"], "added": "S4"},
+                {"variants": [""], "added": []},
+                {"variants": ["union"], "added": [], "extra": 1}, "nope"):
+        with pytest.raises(SchemaError):
+            finalize_record({**base, "widening": bad})
+
+
+# K1 ------------------------------------ no --knob / --widen: bytes as today
+
+def test_no_knobs_and_no_widen_is_byte_identical(plain_run, tmp_path):
+    neutral = _generate(tmp_path / "neutral", knobs=[], widen=[], round_mix="first", **PLAIN)
+    assert neutral["manifest"]["run_id"] == plain_run["manifest"]["run_id"] == PLAIN_RUN_ID
+    assert neutral["bytes"] == plain_run["bytes"]
+    assert neutral["shards"] == plain_run["shards"]
+    assert neutral["sidecars"] == plain_run["sidecars"]
+    assert neutral["manifest_bytes"] == plain_run["manifest_bytes"]
+    for spec in ({}, {"knobs": None}, {"knobs": []}, {"knobs": {}}, {"widen": None},
+                 {"widen": []}, {"knobs": [], "widen": []}, {"round_mix": "first"},
+                 {"knobs": [], "widen": [], "round_mix": "first"}):
+        cfg = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, **spec)
+        assert cfg["run_id"] == PLAIN_RUN_ID
+        assert cfg["knobs"] == {} and cfg["widen"] == [] and cfg["round_mix"] == "first"
+        assert cfg["trajectory_class"] == "Trajectory_MCS0ReportLCB"
+    cfg = plain_run["manifest"]["config"]
+    assert cfg["knobs"] == {} and cfg["widen"] == [] and cfg["round_mix"] == "first"
+    assert all("widening" not in r and "production_ballot" not in r
+               for r in plain_run["records"])
+    # Anchored: both arms above come from the same code, so a serialization
+    # drift they share would pass.  The digests committed under
+    # tests/fixtures/ were produced by the code as committed (recipe in the
+    # file); a DELIBERATE record/sidecar format change must regenerate that
+    # file in the same commit.  The exact shard/sidecar digests are enforced
+    # on the platform that produced them; the float-free structural digests
+    # (keys, ints, strings, card lists) everywhere -- see ``_structural``.
+    fixture = json.loads(FIXTURE.read_text())
+    assert fixture["config"] == FIXTURE_CONFIG
+    same_platform = fixture["platform"] == {"system": platform.system(),
+                                            "machine": platform.machine()}
+    for run in (neutral, plain_run):
+        got = fixture_digests(run)
+        assert got["run_id"] == fixture["run_id"] == PLAIN_RUN_ID
+        assert got["structural"] == fixture["structural"]
+        assert got["shard"]["records"] == fixture["shard"]["records"]
+        assert got["shard"]["path"] == fixture["shard"]["path"]
+        if same_platform:
+            assert got["shard"] == fixture["shard"]
+            assert got["sidecar"] == fixture["sidecar"]
+
+
+# K9 --------------------- resume refuses a different sampling environment
+
+def test_identity_binds_the_sampling_environment(plain_run, tmp_path):
+    run_json = json.loads((plain_run["out"] / "run.json").read_text())
+    env = run_json["identity"]["env"]
+    assert "env" in trajectory.CODE_IDENTITY_KEYS
+    assert set(env["raw"]) == set(trajectory.ENV_IDENTITY_KEYS)
+    for name in trajectory.ENV_IDENTITY_KEYS:          # as given, null when unset
+        assert env["raw"][name] == os.environ.get(name)
+    assert env["raw"]["SHENGJI_REQUIRE_VOIDS"] == "1"
+    assert env["resolved"] == {
+        "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
+        "uniform_deal": bool(mcbot.UNIFORM_DEAL),
+        "physical_fills": bool(mcbot.PHYSICAL_FILLS),
+        "fast_engine": run_json["identity"]["fast_engine"],
+        "require_voids": True,
+    }
+    assert trajectory._env_drift(None, env) == sorted(env["raw"]) + sorted(env["resolved"])
+    assert trajectory._env_drift(env, env) == []
+    # a store generated under one sampling environment refuses --resume under
+    # another.  The switches are read when mcbot is imported, so the resume
+    # runs in a fresh interpreter through the command line.
+    out = tmp_path / "env"
+    shutil.copytree(plain_run["out"], out)
+    cli = [sys.executable, "-P", "-B", str(SERVER / "scripts" / "trajectory.py"),
+           "--rounds", str(ROUNDS), "--seed", str(SEED0), "--out", str(out),
+           "--select-worlds", str(WORK["select_worlds"]),
+           "--report-worlds", str(WORK["report_worlds"]),
+           "--explore-rate", "0", "--explore-k", "2", "--merge", "--resume"]
+    base_env = {**os.environ, "PYTHONPATH": str(SERVER), "PYTHONDONTWRITEBYTECODE": "1"}
+    # control: the same environment (and options) resumes and reuses the shard
+    ok = subprocess.run(cli, env=base_env, capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stderr
+    assert json.loads((out / "runtime.json").read_text())["clusters"]["reused"] == [0]
+    for name in ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL", "SHENGJI_PHYSICAL_FILLS"):
+        other = dict(base_env)
+        if other.get(name):
+            other.pop(name)
+        else:
+            other[name] = "1"
+        bad = subprocess.run(cli, env=other, capture_output=True, text=True)
+        assert bad.returncode == 2, (name, bad.stderr)
+        assert "resume refused" in bad.stderr and name in bad.stderr, (name, bad.stderr)
+    # nothing was touched
+    assert _read_dir(out)["shards"] == plain_run["shards"]
+    assert _read_dir(out)["manifest_bytes"] == plain_run["manifest_bytes"]
+
+
+# K2 ----------------------------------------------- refusals before any round
+
+def test_knob_and_widen_refusals_happen_before_any_round(tmp_path, capsys):
+    def refuses(match, **kw):
+        with pytest.raises(trajectory.TrajectoryError, match=match):
+            trajectory.build_config(seed0=1, **WORK, **kw)
+
+    assert set(trajectory.KNOB_WHITELIST) == set(WHITELIST)
+    assert set(trajectory.KNOB_CAP_NAMES) < set(WHITELIST)
+    # everything outside the candidate-generator whitelist refuses BY NAME
+    for name in NOT_KNOBS:
+        refuses(f"knob {name}: not on the candidate-generator whitelist",
+                knobs=[f"{name}=1"])
+    refuses("search work is not a policy knob", knobs=["N_DETERMINIZATIONS=5"])
+    refuses("search work is not a policy knob", knobs=["REPORT_FOLD_WORLDS=30"])
+    refuses("not a public attribute name", knobs=["_rng=1"])
+    refuses("expected NAME=VALUE", knobs=["LEAD_MAX_CANDIDATES"])
+    refuses("given more than once", knobs=["LEAD_MAX_CANDIDATES=64",
+                                           "LEAD_MAX_CANDIDATES=32"])
+    # values are coerced to the attribute's own type ...
+    refuses("not a bool", knobs=["V3_LEAD_SINGLES=maybe"])
+    refuses("not an int", knobs=["LEAD_MAX_CANDIDATES=1.5"])
+    # ... and bounded: a candidate cap is an int >= 1 (0 would crash at
+    # candidates[0] on the first decision), and retaining every lead pair
+    # needs the slots MCBot's guarantee assumes
+    for name in trajectory.KNOB_CAP_NAMES:
+        refuses("candidate cap must be >= 1", knobs=[f"{name}=0"])
+        refuses("candidate cap must be >= 1", knobs=[f"{name}=-3"])
+    refuses("RETAIN_ALL_LEAD_PAIRS needs LEAD_MAX_CANDIDATES >= 13",
+            knobs=["RETAIN_ALL_LEAD_PAIRS=1", "LEAD_MAX_CANDIDATES=8"])
+    for ok in (["RETAIN_ALL_LEAD_PAIRS=1"], ["LEAD_MAX_CANDIDATES=8"],
+               ["RETAIN_ALL_LEAD_PAIRS=1", "LEAD_MAX_CANDIDATES=13"]):
+        assert trajectory.build_config(seed0=1, **WORK, knobs=ok)["knobs"]
+    refuses("unknown widen variant", widen=["nope"])
+    refuses("unknown widen variant", widen=["production"])
+    # every whitelisted knob is accepted, in any spelling of its value
+    cfg = trajectory.build_config(seed0=1, **WORK,
+                                  knobs=[f"{n}={v}" for n, v in WHITELIST.items()])
+    assert cfg["knobs"] == dict(sorted(WHITELIST.items()))
+    spelled = trajectory.build_config(seed0=1, **WORK, knobs=[
+        "V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES= 64 ", "TRACTOR_LOCK=0"])
+    assert spelled["knobs"] == {"LEAD_MAX_CANDIDATES": 64, "TRACTOR_LOCK": False,
+                                "V3_LEAD_SINGLES": True}
+    assert spelled["knobs"] == trajectory.build_config(seed0=1, **WORK, knobs={
+        "TRACTOR_LOCK": 0, "V3_LEAD_SINGLES": 1, "LEAD_MAX_CANDIDATES": 64})["knobs"]
+    # the coercion rules themselves (no whitelisted knob is a float/str/None)
+    assert trajectory._coerce_knob("X", 1.5, "2") == 2.0
+    assert trajectory._coerce_knob("X", "lcb", "mean") == "mean"
+    for current, raw in ((1.5, "nan"), (1.5, "abc"), (None, "3"), ("lcb", 3),
+                         (5, True), (True, "yes")):
+        with pytest.raises(trajectory.TrajectoryError):
+            trajectory._coerce_knob("X", current, raw)
+    assert trajectory.parse_widen(["union", "wide", "union"]) == ["union", "wide"]
+    assert trajectory.widen_extensions(["union"]) == ballot_capture.UNION_OF
+    # the command line refuses the same way, before touching the out dir
+    out = tmp_path / "never"
+    base = ["--rounds", "2", "--seed", "1", "--out", str(out),
+            "--select-worlds", "2", "--report-worlds", "30"]
+    for extra in (["--knob", "MARGIN=2"], ["--knob", "EXTRA_SELECTION_WORK=1"],
+                  ["--knob", "LEAD_MAX_CANDIDATES=0"], ["--knob", "N_DETERMINIZATIONS=5"],
+                  ["--knob", "V3_LEAD_SINGLES=1", "--knob", "V3_LEAD_SINGLES=0"],
+                  ["--widen", "nope"]):
+        assert trajectory.main([*base, *extra]) == 2
+        assert "REFUSING: " in capsys.readouterr().err
+    assert not out.exists()
+
+
+# K3 ----------------- knobs widen the search; production_ballot stays production
+
+def _independent_knobs_bot(overrides, seed=0):
+    """The overridden class rebuilt from scratch, without the generator."""
+    bot = make_bot(trajectory.DEFAULT_POLICY, seed=seed)
+    bot.__class__ = type("IndependentKnobs", (type(bot),), dict(overrides))
+    return bot
+
+
+def test_knobs_widen_the_search_ballot_and_keep_production_ballot(knobs_run, plain_run):
+    records = knobs_run["records"]
+    manifest = knobs_run["manifest"]
+    assert manifest["run_id"] != plain_run["manifest"]["run_id"]
+    assert manifest["config"]["knobs"] == KNOB_VALUES
+    assert manifest["config"]["policy_class"] == "MCS0ReportLCB"
+    assert manifest["config"]["trajectory_class"] == "Trajectory_Knobs_MCS0ReportLCB"
+    assert manifest["counts"]["explore_fired"] == 0
+    production = make_bot(trajectory.DEFAULT_POLICY, seed=0)
+    knobbed = _independent_knobs_bot(KNOB_VALUES)
+    widened = 0
+    for r in records:
+        validate_record(r)
+        assert r["policy"] == trajectory.DEFAULT_POLICY   # make_bot(policy) builds production
+        assert "widening" not in r
+        rnd = rebuild.state_for_record(r)
+        if r["allocation"]["reason"] == "tractor_lock":
+            assert "production_ballot" not in r
+            continue
+        prod = r["production_ballot"]                      # on EVERY decision with a ballot
+        # production's list, computed independently from the base class ...
+        assert prod == [list(c) for c in production._candidates(rnd, r["seat"])]
+        # ... and the searched ballot is the overridden class's list
+        assert r["ballot"] == [list(c) for c in knobbed._candidates(rnd, r["seat"])]
+        assert r["ballot"][:len(prod)] == prod             # production first, then the widening
+        assert {action_key(c) for c in prod} <= {action_key(c) for c in r["ballot"]}
+        k = len(r["ballot"])
+        pref, alloc = r["preference"], r["allocation"]
+        for key in ("softmax", "final"):
+            assert len(pref[key]) == k and abs(sum(pref[key]) - 1.0) <= 1e-9
+        assert len(alloc["weights"]) == len(alloc["selection_worlds"]) == k
+        assert action_key(r["ballot"][alloc["played_index"]]) == action_key(r["action"])
+        if alloc["searched"]:
+            assert alloc["selection_worlds"] == [WORK["select_worlds"]] * k
+            assert len(r["action_values"]["means"]) == k
+        if k > len(prod):
+            widened += 1
+            assert r["ply"] % 4 == 0        # these overrides only touch LEAD ballots
+    assert widened > 0
+
+
+# K4 --------------------------------- manifest / run.json stamp the identity
+
+def test_manifest_and_run_json_stamp_knobs_and_widen(knobs_run, widen_run, plain_run):
+    for run, knobs, widen in ((knobs_run, KNOB_VALUES, []), (widen_run, {}, WIDEN),
+                              (plain_run, {}, [])):
+        manifest = run["manifest"]
+        run_json = json.loads((run["out"] / "run.json").read_text())
+        for cfg in (manifest["config"], run_json["config"]):
+            assert cfg["knobs"] == knobs and cfg["widen"] == widen
+        expected = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                           knobs=knobs, widen=widen)["run_id"]
+        assert run_json["run_id"] == manifest["run_id"] == expected
+        assert all(s["run_id"] == manifest["run_id"] for s in
+                   (json.loads(b) for b in run["sidecars"].values()))
+        assert all(r["source_ref"].startswith(manifest["run_id"] + ":")
+                   for r in run["records"])
+    ids = {plain_run["manifest"]["run_id"], knobs_run["manifest"]["run_id"],
+           widen_run["manifest"]["run_id"]}
+    assert len(ids) == 3
+    # the override SET is the identity, not its spelling or order
+    for spelling in (["V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES=64"],
+                     ["LEAD_MAX_CANDIDATES=64", "V3_LEAD_SINGLES=1"], KNOB_VALUES):
+        cfg = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, knobs=spelling)
+        assert cfg["run_id"] == knobs_run["manifest"]["run_id"]
+    for other in (["V3_LEAD_SINGLES=1"], ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=32"],
+                  [*KNOBS, "TRACTOR_LOCK=0"]):
+        assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                       knobs=other)["run_id"] not in ids
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, widen=["union", "union"]
+                                   )["run_id"] == widen_run["manifest"]["run_id"]
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, widen=["wide"]
+                                   )["run_id"] not in ids
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, knobs=KNOBS,
+                                   widen=WIDEN)["run_id"] not in ids
+    # policy_flags describe the DATA policy; work.registered stays production's
+    cfg = trajectory.build_config(seed0=1, **WORK, knobs=["TRACTOR_LOCK=0"])
+    assert cfg["policy_flags"]["tractor_lock"] is False and cfg["policy_flags"]["mc_bury"] is False
+    assert cfg["work"]["registered"] == knobs_run["manifest"]["config"]["work"]["registered"]
+    assert cfg["work"]["registered"]["n_determinizations"] == 30
+
+
+# K8 ---------------- every accepted knob leaves the work vector production's
+
+def _non_default(base_cls, name):
+    """A legal value that differs from the class default, by type."""
+    current = inspect.getattr_static(base_cls, name)
+    if isinstance(current, bool):
+        return not current
+    if isinstance(current, int):
+        return current + 1
+    if isinstance(current, float):
+        return current + 1.0
+    return str(current) + "x"
+
+
+def test_accepted_knobs_keep_the_effective_work_vector(knobs_run):
+    base_cls = type(make_bot(trajectory.DEFAULT_POLICY, seed=0))
+    production = trajectory.build_config(seed0=1)["work"]
+    assert production["effective"] == production["registered"] == {
+        "n_determinizations": 30, "report_fold_worlds": 300, "report_rule": "lcb"}
+    # one whitelisted knob at a time, then all of them: N, R and the report
+    # rule are production's -- no accepted knob touches the search
+    for name in trajectory.KNOB_WHITELIST:
+        work = trajectory.build_config(seed0=1, knobs={name: _non_default(base_cls, name)})["work"]
+        assert work["effective"] == work["registered"] == production["registered"], name
+        assert work["production"] is True, name
+    everything = {n: _non_default(base_cls, n) for n in trajectory.KNOB_WHITELIST}
+    work = trajectory.build_config(seed0=1, knobs=everything)["work"]
+    assert work["effective"] == production["registered"] and work["production"] is True
+    # the manifest stamps exactly that vector (plus the requested reduced work)
+    cfg = knobs_run["manifest"]["config"]
+    assert cfg["work"] == trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                                  knobs=KNOBS)["work"]
+    assert cfg["work"]["registered"] == production["registered"]
+    assert cfg["work"]["effective"] == {**production["registered"],
+                                        "n_determinizations": WORK["select_worlds"],
+                                        "report_fold_worlds": WORK["report_worlds"]}
+    # the Run B knob set: all five on the whitelist, work and identity unchanged
+    run_b = trajectory.build_config(seed0=SEED0, knobs=RUN_B_KNOBS, widen=WIDEN,
+                                    explore_rate=0.1, explore_k=2)
+    assert run_b["knobs"] == dict(sorted(RUN_B_KNOBS.items()))
+    assert run_b["work"]["effective"] == production["registered"]
+    assert run_b["work"]["production"] is True
+    assert run_b["run_id"] == RUN_B_RUN_ID
+
+
+# K5 ------------------------------ resume refuses a different knob / widen set
+
+def test_resume_refuses_a_different_knob_or_widen_set(knobs_run, widen_run, clean4,
+                                                      tmp_path):
+    knobs_copy, widen_copy, plain_copy = (tmp_path / n for n in ("knobs", "widen", "plain"))
+    shutil.copytree(knobs_run["out"], knobs_copy)
+    shutil.copytree(widen_run["out"], widen_copy)
+    shutil.copytree(clean4["out"], plain_copy)
+    cases = [
+        (knobs_copy, {}),                                                  # no overrides
+        (knobs_copy, {"knobs": ["V3_LEAD_SINGLES=1"]}),                   # a subset
+        (knobs_copy, {"knobs": [*KNOBS, "TRACTOR_LOCK=0"]}),               # a superset
+        (knobs_copy, {"knobs": ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=32"]}),
+        (knobs_copy, {"knobs": KNOBS, "widen": WIDEN}),                    # widening added
+        (widen_copy, {}),
+        (widen_copy, {"widen": ["wide"]}),
+        (widen_copy, {"widen": [*WIDEN, "points"]}),
+        (widen_copy, {"widen": WIDEN, "knobs": KNOBS}),
+        (plain_copy, {"knobs": KNOBS}),
+        (plain_copy, {"widen": WIDEN}),
+    ]
+    for out, options in cases:
+        rounds = 4 if out is plain_copy else ROUNDS
+        with pytest.raises(trajectory.TrajectoryError, match="resume refused"):
+            _generate(out, rounds=rounds, resume=True, **PLAIN, **options)
+    # nothing was touched
+    assert _read_dir(knobs_copy)["manifest_bytes"] == knobs_run["manifest_bytes"]
+    assert _read_dir(widen_copy)["manifest_bytes"] == widen_run["manifest_bytes"]
+    assert _read_dir(plain_copy)["manifest_bytes"] == clean4["manifest_bytes"]
+    # the same set, in another spelling, resumes and reuses every shard
+    for out, run, options in ((knobs_copy, knobs_run,
+                               {"knobs": ["LEAD_MAX_CANDIDATES=64", "V3_LEAD_SINGLES=true"]}),
+                              (widen_copy, widen_run, {"widen": ["union", "union"]})):
+        resumed = _generate(out, resume=True, **PLAIN, **options)
+        runtime = json.loads((out / "runtime.json").read_text())
+        assert runtime["clusters"] == {"requested": 1, "reused": [0], "generated": [],
+                                       "failed": []}
+        assert resumed["shards"] == run["shards"] and resumed["bytes"] == run["bytes"]
+        assert resumed["manifest_bytes"] == run["manifest_bytes"]
+
+
+# K6 -------------------------- --widen union: every variant's candidates, work
+
+def test_widen_union_appends_every_variant_candidate(widen_run, plain_run):
+    records = widen_run["records"]
+    manifest = widen_run["manifest"]
+    counts = manifest["counts"]
+    assert manifest["run_id"] != plain_run["manifest"]["run_id"]
+    assert manifest["config"]["widen"] == ["union"] and manifest["config"]["knobs"] == {}
+    assert manifest["config"]["trajectory_class"] == "Trajectory_MCS0ReportLCB"
+    assert counts["explore_fired"] == 0
+    production = make_bot(trajectory.DEFAULT_POLICY, seed=0)
+    decisions = added_total = played_added = lead_widened = follow_widened = 0
+    for r in records:
+        validate_record(r)
+        assert r["policy"] == trajectory.DEFAULT_POLICY
+        rnd = rebuild.state_for_record(r)
+        seat = r["seat"]
+        if r["allocation"]["reason"] == "tractor_lock":
+            assert r["widening"] is None and "production_ballot" not in r
+            continue
+        decisions += 1
+        prod = r["production_ballot"]
+        assert prod == [list(c) for c in production._candidates(rnd, seat)]
+        wd = r["widening"]
+        assert wd["variants"] == ["union"]
+        assert r["ballot"] == prod + wd["added"]       # production first, then the widening
+        keys = {action_key(c) for c in r["ballot"]}
+        prod_keys = {action_key(c) for c in prod}
+        assert len(keys) == len(r["ballot"])           # no duplicates
+        # every variant's set, recomputed here, is covered -- and nothing else
+        expected = set()
+        for name in ballot_capture.UNION_OF:
+            expected |= {action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat)}
+        expected = {k for k in expected if legal.is_legal(rnd, seat, list(k))}
+        assert expected <= keys
+        assert {action_key(a) for a in wd["added"]} == expected - prod_keys
+        assert wd["added"] == [list(k) for k in sorted(action_key(a) for a in wd["added"])]
+        listing = {tuple(a) for a in r["legal_actions"]}
+        for a in wd["added"]:
+            assert legal.is_legal(rnd, seat, a) and legal.engine_accepts(rnd, seat, a)
+            assert action_key(a) in listing
+        added_total += len(wd["added"])
+        if action_key(r["action"]) in {action_key(a) for a in wd["added"]}:
+            played_added += 1
+        k = len(r["ballot"])
+        pref, alloc = r["preference"], r["allocation"]
+        for key in ("softmax", "final"):
+            assert len(pref[key]) == k and abs(sum(pref[key]) - 1.0) <= 1e-9
+        assert len(alloc["weights"]) == len(alloc["selection_worlds"]) == k
+        if alloc["searched"]:
+            # work accounting: N selection worlds for every widened candidate
+            assert alloc["selection_worlds"] == [WORK["select_worlds"]] * k
+            assert alloc["total_worlds"] == WORK["select_worlds"] * k + sum(alloc["report_worlds"])
+            assert len(r["action_values"]["means"]) == k
+        if wd["added"]:
+            if r["ply"] % 4 == 0:
+                lead_widened += 1
+            else:
+                follow_widened += 1
+    assert counts["widen_decisions"] == decisions > 0
+    assert counts["widen_added"] == added_total > 0
+    assert counts["widen_played"] == played_added
+    assert lead_widened > 0 and follow_widened > 0
+
+
+# K7 ----------------- knobs + widening + exploration compose on one decision
+
+def test_knobs_widening_and_exploration_compose(widen_run):
+    """The Run B shape without rollouts: one contested lead state, the bot's
+    ``_candidates`` called directly."""
+    config = trajectory.build_config(seed0=SEED0, **WORK, explore_rate=1.0, explore_k=2,
+                                     knobs=RUN_B_KNOBS, widen=WIDEN)
+    assert config["knobs"] == dict(sorted(RUN_B_KNOBS.items()))
+    assert config["policy_flags"]["tractor_lock"] is False
+    r = next(r for r in _plays(widen_run["records"])
+             if r["ply"] % 4 == 0 and len(r["production_ballot"]) > 1)
+    rnd = rebuild.state_for_record(r)
+    seat = r["seat"]
+    bot = trajectory.make_trajectory_bot(config, seed=7, explore_rng=random.Random(1))
+    assert type(bot).__name__ == "Trajectory_Knobs_MCS0ReportLCB"
+    assert type(bot.production_probe).__name__ == "MCS0ReportLCB"
+    ballot = bot._candidates(rnd, seat)
+    prod = bot.last_production_ballot
+    assert prod == r["production_ballot"]
+    assert prod == [list(c) for c in make_bot(trajectory.DEFAULT_POLICY, seed=0)
+                    ._candidates(rnd, seat)]
+    own = [list(c) for c in _independent_knobs_bot(RUN_B_KNOBS)._candidates(rnd, seat)]
+    wd, ex = bot.last_widening, bot.last_exploration
+    assert ex is not None and ex["rate"] == 1.0
+    assert ballot == own + wd["added"] + ex["added"]      # overrides, widening, exploration
+    parts = [own, wd["added"], ex["added"]]
+    assert len({action_key(a) for part in parts for a in part}) == len(ballot)
+    assert len(own) > len(prod) and len(ballot) > len(own)
+    assert wd["variants"] == ["union"]
+    expected = set()
+    for name in ballot_capture.UNION_OF:
+        expected |= {action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat)}
+    assert {k for k in expected if legal.is_legal(rnd, seat, list(k))} <= {
+        action_key(c) for c in ballot}
+    assert {action_key(c) for c in ballot} <= bot.last_legal.keys()
+    assert bot.explore_fired == 1 and bot.widen_added == len(wd["added"])
+    with pytest.raises(trajectory.TrajectoryError, match="consulted twice"):
+        bot._candidates(rnd, seat)
+
+
+# R1 ------------------------------- --round-mix first: today's bytes, anchored
+
+def test_round_mix_first_is_byte_identical(plain_run):
+    """``first`` (the default) is what every cluster played before the option
+    existed: a fresh game's first round -- trump rank 2, no banker until the
+    first declaration.  ``plain_run`` is generated under the default and the
+    anchored fixture pins its shard and sidecar bytes, so a draw applied
+    under ``first`` shows up here (K1 regenerates the same store with an
+    explicit ``round_mix="first"`` and compares byte for byte)."""
+    assert trajectory.DEFAULT_ROUND_MIX == "first"
+    assert trajectory.ROUND_MIXES == ("first", "sampled")
+    manifest = plain_run["manifest"]
+    run_json = json.loads((plain_run["out"] / "run.json").read_text())
+    assert manifest["config"]["round_mix"] == run_json["config"]["round_mix"] == "first"
+    assert manifest["identity"]["round_mix"] == run_json["identity"]["round_mix"] == "first"
+    assert manifest["seeds"]["round_mix"].startswith("first: Game.start_round()")
+    for spec in ({}, {"round_mix": "first"}, {"knobs": [], "widen": [], "round_mix": "first"}):
+        cfg = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, **spec)
+        assert cfg["run_id"] == PLAIN_RUN_ID and cfg["round_mix"] == "first"
+    # every cluster is a fresh game's first round: rank 2, and the banker the
+    # engine resolves at finalize_declare (the declarer; seat 0 when nobody did)
+    for seed0 in (SEED0, SEED0 + 1, 40_260_904):
+        assert all(trajectory.round_mix_draw("first", seed0, c) == ("2", None)
+                   for c in range(260))
+    records = plain_run["records"]
+    assert {r["setup"]["trump_rank"] for r in records} == {"2"}
+    for r in records:
+        declaration = r["setup"]["declaration"]
+        assert r["setup"]["banker"] == (declaration["seat"] if declaration else 0)
+    # the sidecar carries no round-mix key: its bytes are as before the option
+    sidecar = json.loads(plain_run["sidecars"][0])
+    assert not {"round_mix", "trump_rank", "banker"} & set(sidecar)
+    assert all("banker" not in entry for entry in sidecar["rounds"])
+    assert trajectory.verify_shard(plain_run["out"], manifest["config"], 0, SEED0)[1] == "ok"
+    # the anchored digests: platform-exact where they were produced, the
+    # float-free structural ones everywhere (as K1 enforces them)
+    fixture = json.loads(FIXTURE.read_text())
+    got = fixture_digests(plain_run)
+    assert got["run_id"] == fixture["run_id"] == PLAIN_RUN_ID
+    assert got["structural"] == fixture["structural"]
+    if fixture["platform"] == {"system": platform.system(), "machine": platform.machine()}:
+        assert got["shard"] == fixture["shard"] and got["sidecar"] == fixture["sidecar"]
+
+
+# R2 --------- sampled: every rank, both banker cases, a function of (seed0, cluster)
+
+def test_sampled_round_mix_covers_every_rank_and_both_banker_cases():
+    clusters = 260
+    draws = [trajectory.round_mix_draw("sampled", SEED0, c) for c in range(clusters)]
+    ranks = Counter(rank for rank, _ in draws)
+    bankers = Counter(banker for _, banker in draws)
+    assert set(ranks) == set(RANKS)                     # all 13 trump ranks ...
+    assert min(ranks.values()) >= 10                    # ... each well represented (20 expected)
+    assert set(bankers) == {None, 0, 1, 2, 3}           # first rounds and every banker seat
+    assert 0.15 <= bankers[None] / clusters <= 0.35     # FIRST_ROUND_SHARE = 0.25
+    # a deterministic function of (seed0, cluster) that depends on both ...
+    assert draws == [trajectory.round_mix_draw("sampled", SEED0, c) for c in range(clusters)]
+    assert len(set(draws)) > len(RANKS)
+    assert draws != [trajectory.round_mix_draw("sampled", SEED0 + 1, c) for c in range(clusters)]
+    # ... pinned: the stream is the identity of every sampled store's rounds
+    assert draws[:4] == [("A", 0), ("2", 3), ("4", None), ("Q", 2)]
+    # the documented stream, in the documented order (rank, then banker)
+    for c in (0, 1, 2, 3, clusters - 1):
+        rng = random.Random(mcbot._child_seed((SEED0, c), trajectory.ROUND_MIX_STREAM))
+        rank = RANKS[rng.randrange(len(RANKS))]
+        banker = None if rng.random() < trajectory.FIRST_ROUND_SHARE else rng.randrange(4)
+        assert draws[c] == (rank, banker)
+    # the deal rng is untouched: at ONE seed every draw deals the same cards
+    # (Round shuffles before it reads the rank), so ranks vary across the
+    # clusters' distinct seeds only -- the reason there is no fixed-seed cycle
+    assert len({tuple(rebuild.deck_from_seed(r, b, SEED0)) for r, b in draws}) == 1
+    assert rebuild.deck_from_seed(*draws[0], SEED0) == rebuild.deck_from_seed("2", None, SEED0)
+    # start_round_at deals that deck at the drawn rank/banker; game and round agree
+    for c in range(4):
+        rank, banker = draws[c]
+        game = Game(random.Random(SEED0 + c))
+        rnd = trajectory.start_round_at(game, rank, banker)
+        assert rnd.deck == rebuild.deck_from_seed(rank, banker, SEED0 + c)
+        assert (rnd.trump_rank, rnd.banker, rnd.first_round) == (rank, banker, banker is None)
+        assert game.banker == banker and game.round is rnd and game.round_no == 1
+        assert game.levels == ((rank, rank) if banker is None else
+                               tuple(rank if t == banker % 2 else "2" for t in (0, 1)))
+    # unknown mixes refuse before any round, from the API and the command line
+    with pytest.raises(trajectory.TrajectoryError, match="unknown round mix"):
+        trajectory.round_mix_draw("cycle", SEED0, 0)
+    with pytest.raises(trajectory.TrajectoryError, match="unknown round mix"):
+        trajectory.build_config(seed0=1, **WORK, round_mix="cycle")
+    with pytest.raises(SystemExit):
+        trajectory.build_parser().parse_args(["--rounds", "2", "--seed", "1", "--out", "x",
+                                              "--round-mix", "cycle"])
+    assert trajectory.build_parser().parse_args(
+        ["--rounds", "2", "--seed", "1", "--out", "x"]).round_mix == "first"
+
+
+# R3 ------------------------ both mirrors of a cluster share rank, banker and deck
+
+def test_both_mirrors_share_the_clusters_rank_banker_and_deck(sampled_run):
+    manifest = sampled_run["manifest"]
+    assert manifest["config"]["round_mix"] == "sampled"
+    assert manifest["clusters"] == SAMPLED_ROUNDS // 2
+    rounds = _by_round(sampled_run["records"])
+    draws = {}
+    for cluster in range(manifest["clusters"]):
+        rank, banker = draws[cluster] = trajectory.round_mix_draw("sampled", SEED0, cluster)
+        deck = rebuild.deck_from_seed(rank, banker, SEED0 + cluster)
+        resolved = []
+        for mirror in (0, 1):
+            recs = rounds[(cluster, mirror)]
+            assert {r["setup"]["trump_rank"] for r in recs} == {rank}
+            assert all(r["deck"] == deck and r["round_seed"] == SEED0 + cluster for r in recs)
+            assert len({r["setup"]["banker"] for r in recs}) == 1
+            seat = recs[0]["setup"]["banker"]
+            declaration = recs[0]["setup"]["declaration"]
+            if banker is None:          # a first round: the declarer takes the deal
+                assert seat == (declaration["seat"] if declaration else 0)
+            else:                       # the drawn banker keeps it, whoever declared
+                assert seat == banker
+            resolved.append(seat)
+        # the sidecar names the draw and the resolved banker of each mirror
+        sidecar = json.loads(sampled_run["sidecars"][cluster])
+        assert (sidecar["round_mix"], sidecar["trump_rank"], sidecar["banker"]) == (
+            "sampled", rank, banker)
+        assert [(e["mirror"], e["banker"]) for e in sidecar["rounds"]] == list(enumerate(resolved))
+    # the fixture's clusters exercise both banker cases and ranks other than 2
+    assert {b is None for _, b in draws.values()} == {True, False}
+    assert len({r for r, _ in draws.values()}) >= 3
+
+
+# R4 ----- a sampled dry run rebuilds, verifies, stamps round_mix; a corrupt rank refuses
+
+def _restamp(out, cluster, *, record=None, sidecar=None):
+    """Rewrite one published shard/sidecar in place with a mutation, keeping the
+    sidecar's sha256 / byte size / record count consistent, so that only the
+    round checks of ``verify_shard`` can refuse it."""
+    jsonl, side = trajectory.shard_paths(out, cluster)
+    records = [json.loads(line) for line in jsonl.read_bytes().splitlines()]
+    if record is not None:
+        record(records)
+    os.chmod(jsonl, 0o644)
+    n, digest = write_jsonl(jsonl, records)
+    meta = json.loads(side.read_text())
+    meta.update(sha256=digest, bytes=jsonl.stat().st_size, records=n)
+    if sidecar is not None:
+        sidecar(meta)
+    os.chmod(side, 0o644)
+    side.write_text(json.dumps(meta, indent=1, sort_keys=True) + "\n")
+
+
+def test_sampled_dry_run_rebuilds_verifies_and_stamps_round_mix(sampled_run, tmp_path):
+    out, manifest, records = sampled_run["out"], sampled_run["manifest"], sampled_run["records"]
+    config = manifest["config"]
+    run_json = json.loads((out / "run.json").read_text())
+    assert manifest["clusters"] == 4 and manifest["counts"]["rounds"] == SAMPLED_ROUNDS
+    assert config["round_mix"] == run_json["config"]["round_mix"] == "sampled"
+    assert manifest["identity"]["round_mix"] == run_json["identity"]["round_mix"] == "sampled"
+    assert manifest["seeds"]["round_mix"].startswith(
+        "sampled: random.Random(_child_seed((seed0, cluster), 'round-mix-v1'))")
+    expected = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, **SAMPLED)
+    assert run_json["run_id"] == manifest["run_id"] == expected["run_id"] != PLAIN_RUN_ID
+    for shard in manifest["shards"]:
+        assert trajectory.verify_shard(out, config, shard["cluster"], shard["seed"])[1] == "ok"
+        sidecar = json.loads(sampled_run["sidecars"][shard["cluster"]])
+        assert sidecar["run_id"] == manifest["run_id"] and sidecar["round_mix"] == "sampled"
+        assert (sidecar["trump_rank"], sidecar["banker"]) == trajectory.round_mix_draw(
+            "sampled", SEED0, shard["cluster"])
+    # every record rebuilds at its stored rank and banker (the whole round-trip
+    # battery runs on this store too: test_round_trip_through_rebuild[sampled_run])
+    for r in records:
+        validate_record(r)
+        rnd = rebuild.state_for_record(r)
+        assert rnd.phase == "play" and rnd.turn == r["seat"]
+        assert (rnd.trump_rank, rnd.banker) == (r["setup"]["trump_rank"], r["setup"]["banker"])
+        assert legal.is_legal(rnd, r["seat"], r["action"])
+    # at explore_rate 0 the four bots make production's decisions at the
+    # sampled round: the plain policy replays the game started at the draw
+    # (one round per banker case; the whole store is the same code path)
+    first_round = next(c for c in range(4)
+                       if trajectory.round_mix_draw("sampled", SEED0, c)[1] is None)
+    with_banker = next(c for c in range(4)
+                       if trajectory.round_mix_draw("sampled", SEED0, c)[1] is not None)
+    rounds = _by_round(records)
+    for cluster, mirror in ((first_round, 0), (with_banker, 0)):
+        recs = _plays(rounds[(cluster, mirror)])
+        seed = SEED0 + cluster
+        rank, banker = trajectory.round_mix_draw("sampled", SEED0, cluster)
+        bots = []
+        for s in trajectory.mirror_seat_seeds(seed, mirror):
+            bot = make_bot(trajectory.DEFAULT_POLICY, seed=s)
+            bot.N_DETERMINIZATIONS = WORK["select_worlds"]
+            bot.REPORT_FOLD_WORLDS = WORK["report_worlds"]
+            bots.append(bot)
+        game = Game(random.Random(seed))
+        game.start_round = lambda game=game: trajectory.start_round_at(game, rank, banker)
+        log = play_round(game, bots, record=True)
+        assert (log.trump_rank, log.banker) == (rank, recs[0]["setup"]["banker"])
+        assert [(s, sorted(c)) for s, c in log.history] == [
+            (r["seat"], sorted(r.get("engine_play", r["action"]))) for r in recs]
+        assert log.attacker_points == recs[0]["outcome"]["attacker_points"]
+        assert log.winner_team == recs[0]["outcome"]["winner_team"]
+        assert log.level_change == recs[0]["outcome"]["level_change"]
+    # a record whose stored rank or banker is not the cluster's draw refuses,
+    # and so does a sidecar that names another round
+
+    def tampered(name, cluster, **mutation):
+        copy = tmp_path / name
+        shutil.copytree(out, copy)
+        _restamp(copy, cluster, **mutation)
+        return trajectory.verify_shard(copy, config, cluster, SEED0 + cluster)[1]
+
+    rank, banker = trajectory.round_mix_draw("sampled", SEED0, with_banker)
+    other_rank = RANKS[(RANKS.index(rank) + 1) % len(RANKS)]
+    assert tampered("untouched", with_banker) == "ok"           # the restamp itself is neutral
+    assert tampered("rank", with_banker, record=lambda recs: recs[-1]["setup"].__setitem__(
+        "trump_rank", other_rank)) == "trump rank"
+    assert tampered("banker", with_banker, record=lambda recs: recs[0]["setup"].__setitem__(
+        "banker", (banker + 1) % 4)) == "banker"
+
+    def other_seat(recs):
+        declaration = recs[0]["setup"]["declaration"]
+        recs[0]["setup"]["banker"] = ((declaration["seat"] if declaration else 0) + 1) % 4
+
+    assert tampered("first-round-banker", first_round, record=other_seat) == "banker"
+    assert tampered("sidecar-rank", with_banker, sidecar=lambda s: s.__setitem__(
+        "trump_rank", other_rank)) == "round mix"
+    assert tampered("sidecar-banker", with_banker, sidecar=lambda s: s.pop("banker")) == "round mix"
+    assert tampered("sidecar-mix", with_banker, sidecar=lambda s: s.__setitem__(
+        "round_mix", "first")) == "round mix"
+    # --resume regenerates the refused cluster and reproduces the clean bytes
+    copy = tmp_path / "rank"
+    resumed = _generate(copy, rounds=SAMPLED_ROUNDS, resume=True, **PLAIN, **SAMPLED)
+    runtime = json.loads((copy / "runtime.json").read_text())
+    assert runtime["clusters"] == {"requested": 4, "reused": sorted({0, 1, 2, 3} - {with_banker}),
+                                   "generated": [with_banker], "failed": []}
+    assert resumed["shards"] == sampled_run["shards"]
+    assert resumed["sidecars"] == sampled_run["sidecars"]
+    assert resumed["manifest_bytes"] == sampled_run["manifest_bytes"]
+
+
+# R5 --------------------------------- --resume refuses a different round mix
+
+def test_resume_refuses_a_different_round_mix(sampled_run, clean4, tmp_path):
+    sampled_copy, plain_copy = tmp_path / "sampled", tmp_path / "plain"
+    shutil.copytree(sampled_run["out"], sampled_copy)
+    shutil.copytree(clean4["out"], plain_copy)
+    for out, rounds, options in ((sampled_copy, SAMPLED_ROUNDS, {}),
+                                 (sampled_copy, SAMPLED_ROUNDS, {"round_mix": "first"}),
+                                 (plain_copy, 4, SAMPLED)):
+        with pytest.raises(trajectory.TrajectoryError, match="resume refused.*round mix"):
+            _generate(out, rounds=rounds, resume=True, **PLAIN, **options)
+    # nothing was touched
+    assert _read_dir(sampled_copy)["manifest_bytes"] == sampled_run["manifest_bytes"]
+    assert _read_dir(plain_copy)["manifest_bytes"] == clean4["manifest_bytes"]
+    # the mix is part of the run identity when it is not first; first keeps
+    # every id the existing stores carry
+    first = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, round_mix="first")
+    sampled = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, round_mix="sampled")
+    assert first["run_id"] == PLAIN_RUN_ID
+    assert sampled["run_id"] == sampled_run["manifest"]["run_id"] != PLAIN_RUN_ID
+    run_b = dict(seed0=SEED0, knobs=RUN_B_KNOBS, widen=WIDEN, explore_rate=0.1, explore_k=2)
+    assert trajectory.build_config(**run_b, round_mix="first")["run_id"] == RUN_B_RUN_ID
+    assert trajectory.build_config(**run_b, round_mix="sampled")["run_id"] != RUN_B_RUN_ID
+    # a store's own mix resumes and reuses every shard
+    resumed = _generate(sampled_copy, rounds=SAMPLED_ROUNDS, resume=True, **PLAIN, **SAMPLED)
+    runtime = json.loads((sampled_copy / "runtime.json").read_text())
+    assert runtime["clusters"] == {"requested": 4, "reused": [0, 1, 2, 3], "generated": [],
+                                   "failed": []}
+    assert resumed["shards"] == sampled_run["shards"]
+    assert resumed["manifest_bytes"] == sampled_run["manifest_bytes"]
+    # the command line refuses the same way (exit 2), before touching the store
+    cli = [sys.executable, "-P", "-B", str(SERVER / "scripts" / "trajectory.py"),
+           "--rounds", "4", "--seed", str(SEED0), "--out", str(plain_copy),
+           "--select-worlds", str(WORK["select_worlds"]),
+           "--report-worlds", str(WORK["report_worlds"]),
+           "--explore-rate", "0", "--explore-k", "2", "--merge", "--resume",
+           "--round-mix", "sampled"]
+    proc = subprocess.run(cli, env={**os.environ, "PYTHONPATH": str(SERVER),
+                                    "PYTHONDONTWRITEBYTECODE": "1"},
+                          capture_output=True, text=True)
+    assert proc.returncode == 2, proc.stderr
+    assert "resume refused" in proc.stderr and "round mix" in proc.stderr
+    assert _read_dir(plain_copy)["manifest_bytes"] == clean4["manifest_bytes"]
+    # a store from before the option (no round_mix stamped anywhere) is a
+    # first store: sampled refuses it, first resumes it and reuses every shard
+    run_path = plain_copy / "run.json"
+    stored = json.loads(run_path.read_text())
+    del stored["config"]["round_mix"], stored["identity"]["round_mix"]
+    run_path.write_text(json.dumps(stored, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(trajectory.TrajectoryError, match="resume refused.*round mix"):
+        _generate(plain_copy, rounds=4, resume=True, **PLAIN, **SAMPLED)
+    resumed = _generate(plain_copy, rounds=4, resume=True, **PLAIN)
+    assert json.loads((plain_copy / "runtime.json").read_text())["clusters"]["reused"] == [0, 1]
+    assert resumed["shards"] == clean4["shards"]
+    assert resumed["manifest_bytes"] == clean4["manifest_bytes"]

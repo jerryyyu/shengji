@@ -642,6 +642,23 @@ def read_shard(path: str) -> list[dict]:
     return records
 
 
+def valid_prefix_length(path: str) -> int:
+    """Byte offset just past the last complete JSON line of a shard file."""
+    boundary = 0
+    with open(path, "rb") as fh:
+        for raw in fh:
+            if not raw.endswith(b"\n"):
+                break                      # unterminated: torn by a crash
+            text = raw.strip()
+            if text:
+                try:
+                    json.loads(text)
+                except json.JSONDecodeError:
+                    break
+            boundary += len(raw)
+    return boundary
+
+
 class ShardSink:
     """Append one completed (arm, deal, flip) record per line, durably.
 
@@ -654,14 +671,16 @@ class ShardSink:
         self.path = path
         self.written = 0
         # A torn tail from a crash mid-write would hide every later append
-        # from read_shard; rewrite the file with its complete lines only.
+        # from read_shard.  Repair NARROWLY: an intact file is never opened
+        # for writing, and a torn tail is cut at the validated byte boundary
+        # (os.truncate), so the already-published prefix is never rewritten
+        # and cannot be lost by a failure during the repair itself.
         if os.path.exists(path):
-            complete = read_shard(path)
-            with open(path, "w") as fh:
-                for record in complete:
-                    fh.write(json.dumps(record) + "\n")
-                fh.flush()
-                os.fsync(fh.fileno())
+            boundary = valid_prefix_length(path)
+            if boundary < os.path.getsize(path):
+                os.truncate(path, boundary)
+                with open(path, "rb") as fh:
+                    os.fsync(fh.fileno())
 
     def __call__(self, record: dict) -> None:
         with open(self.path, "a") as fh:

@@ -258,6 +258,71 @@ def test_pairs_are_published_as_they_complete_and_resume_never_replays(
     assert duel.read_shard(shard) == []
 
 
+def test_repair_of_a_torn_shard_never_touches_the_published_prefix(
+        duel, tmp_path, monkeypatch):
+    """Codex P1: a failure DURING a resume's repair must not destroy retained
+    rows, and an intact shard must never be opened for writing."""
+    shard = str(tmp_path / "run-y.shard0.jsonl")
+    rows = [{"run": "run-y", "label": "arm", "seed": 700, "flip": f, "won": f}
+            for f in (0, 1)]
+    with open(shard, "w") as fh:
+        for row in rows:
+            fh.write(json.dumps(row) + "\n")
+    intact = open(shard, "rb").read()
+
+    # an intact file: construction opens nothing for writing
+    real_open = open
+    writes = []
+
+    def spying_open(path, mode="r", *a, **k):
+        if str(path) == shard and any(c in mode for c in "wa+"):
+            writes.append(mode)
+        return real_open(path, mode, *a, **k)
+    monkeypatch.setattr("builtins.open", spying_open)
+    duel.ShardSink(shard)
+    assert writes == [] and open(shard, "rb").read() == intact
+
+    # a torn tail, and the repair is interrupted (truncate fails): the
+    # published prefix survives byte for byte and the next resume reads it
+    with open(shard, "a") as fh:
+        fh.write('{"run": "run-y", "label": "arm", "seed": 701, "fl')
+    torn = open(shard, "rb").read()
+    assert duel.valid_prefix_length(shard) == len(intact)
+
+    def failing_truncate(path, length):
+        raise OSError("simulated failure during repair")
+    monkeypatch.setattr(duel.os, "truncate", failing_truncate)
+    with pytest.raises(OSError, match="during repair"):
+        duel.ShardSink(shard)
+    assert open(shard, "rb").read() == torn, "nothing was rewritten"
+    assert [duel.pair_key(r) for r in duel.read_shard(shard)] == [
+        ("arm", 700, 0), ("arm", 700, 1)]
+    monkeypatch.undo()
+
+    # the successful repair cuts exactly the invalid tail and appends after it
+    sink = duel.ShardSink(shard)
+    assert open(shard, "rb").read() == intact
+    sink({"run": "run-y", "label": "arm", "seed": 701, "flip": 0})
+    assert [duel.pair_key(r) for r in duel.read_shard(shard)] == [
+        ("arm", 700, 0), ("arm", 700, 1), ("arm", 701, 0)]
+
+    # RED under the old open-with-"w" repair: a failure at the first
+    # json.dumps leaves zero records
+    def failing_dumps(record):
+        raise RuntimeError("serialization failure at the first json.dumps")
+
+    def old_repair(path):
+        complete = duel.read_shard(path)
+        with open(path, "w") as fh:                  # the P1: opened with "w"
+            for record in complete:
+                fh.write(failing_dumps(record) + "\n")
+    with open(shard, "a") as fh:
+        fh.write('{"torn": ')
+    with pytest.raises(RuntimeError):
+        old_repair(shard)
+    assert duel.read_shard(shard) == []
+
+
 def test_duel_pairing_equals_evaluation_run_arm(duel, tmp_path, monkeypatch):
     made_ref, played_ref = [], []
     _trace(monkeypatch, evaluation, made_ref, played_ref)

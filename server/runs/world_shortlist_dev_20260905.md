@@ -1,8 +1,71 @@
-# Many-world shortlist: initial DEV cost probe (2026-09-05)
+# Many-world shortlist: DEV cost and gameplay results (2026-09-05)
 
-Result: the producer-to-consumer implementation and focused tests work. The
-small cost probe supports trying a 32/64-world cheap stage; **it says nothing
-yet about playing strength**. No large gameplay screen or deployment ran.
+Result: the implementation completed a 16-deal pilot and a separate
+256-deal-per-arm screen. **Neither existing hybrid model demonstrated a
+strength gain over production.** Both used about 18% more decision CPU.
+No production deployment or new model training ran.
+
+## Completed 256-deal screen
+
+Executing head `c760848537dd2674fb5b671ffff90956219203d2`; policy source is
+unchanged from reviewed `47094e203fa5bb143283b6116b2e82d57aa3fcfb` (the newer
+head strengthens only the batch-order test). Three sequential arms, each
+256 fresh independent deal clusters / 512 mirrored rounds against production
+MC-LCB N30/R300, same seeds `70361904` through `70362159`, rank 2 only.
+Both checkpoints and the N64/refinement16/K3/T1/batch128/R300 recipe were
+fixed before the screen; the pilot was not used to pick a winning head.
+
+| Arm | Signed levels/round | 95% deal-cluster interval | Win rate | Decision CPU / baseline | Arm / baseline CPU seconds |
+|---|---:|---:|---:|---:|---:|
+| Level-head hybrid, 64 cheap worlds | -0.03320 | [-0.09961, +0.02539] | 49.02% | 1.1845x | 4,077.85 / 3,442.73 |
+| Points-head hybrid, 64 cheap worlds | -0.01563 | [-0.08013, +0.05469] | 50.00% | 1.1804x | 4,081.19 / 3,457.52 |
+| Ordinary MC, N45/R300 | +0.02539 | [-0.04102, +0.09766] | 52.34% | 1.0958x | 3,822.37 / 3,488.23 |
+
+All three completed 256/256 pairs with **zero reported problems, failed
+worlds, or underfilled searches**, on both sides. Intervals use 1,000
+bootstrap replicates over deals, not 512 independent rounds. All include
+zero: neither a positive hybrid result nor a statistically established
+ordering between these three arms follows from their point estimates.
+
+MC45 was selected in a separate outcome-blind cost measurement before
+gameplay: 16 MC-generated deals at seed `70461904`, plies 0/8/24/48, all
+seven arms on the same 64 positions with shuffled measurement order. Choose
+the smallest tested MC N in 30/45/60/75/90 costing at least the mean of the
+two fixed hybrids. Measured ratios were 1.11761 (levels), 1.09705 (points),
+and 1.14533 (MC45); the measurement took 32.79s. Gameplay moved the actual
+ratios to those above, so this is **not an exact equal-work comparison**.
+
+Strength unit `world-shortlist-dev256-20260905` started at 06:57:39 UTC and
+exited successfully at 07:21:59 UTC on September 5: **24m20.688s wall,
+6h14m59.269s CPU, 6.4 GiB peak**, with 16 workers and one numerical thread
+each (about 15.4 cores utilized on average). No timeout, restart or recovery
+was needed; completed pairs were published throughout. Other hosts and
+production were untouched.
+
+Each hybrid evaluated about 5.8 million learned leaves, retained the
+incumbent plus two alternatives, then used about 10 million full
+continuation rollouts including the report fold. This reduced full
+continuations from the baseline's roughly 12 million but did not save CPU:
+the learned inference path alone consumed 654-683s. Fewer full rollouts is
+not the same as a faster or stronger policy.
+
+Artifacts: `/root/world-shortlist-dev.kzwYaa/dev256/{levels64,points64,work45}`
+on Strength; complete copies (all 768 pair shards, configs, summaries) at
+`/Users/jerryyu/shengji-archive/world-shortlist-20260905/dev256/` on Mini.
+All 768 copied shards passed the existing recipe/mirror/seed reopener on
+first consumption; no games or model scoring were rerun. The launch script
+and `cost-control-mcstates.json` are also archived. Originals remain intact.
+
+The earlier 16-deal pilot (seeds `70360904` through `70360919`) finished four
+arms in 150.6s with no errors: identity +0.09375, levels +0.06250, points
+0.00000, MC45 -0.12500 signed levels/round. It established mechanics and a
+runtime estimate, not a strength gain. All pilot shards are retained in
+the sibling `dev16/` archive.
+
+Reading: do not scale this unchanged hybrid on the basis of these results.
+The next separate experiment is #229's complete-world evaluator, whose
+inputs and use of the value model differ from these actor-visible heads.
+This screen neither evaluates nor refutes that newer model/consumer pair.
 
 ## What changes
 
@@ -75,7 +138,7 @@ are retained at the remote root above and copied to
 - `cost-levels.json`: SHA256 `bfaa7529eea8aa4df75328b94fae8f19d6edc63290b58c357a7062d8481e137c`
 - `cost-points.json`: SHA256 `d52e562927e8870b3527a9157bfc556536edf86ae5a5856cfba8a3b0a57d1255`
 
-## Validation and next useful measurement
+## Initial implementation validation (before gameplay)
 
 The new tests plus neighboring inference/policy/screen/value-leaf tests passed
 **95/95**. After the independent review's one trace-wiring repair, the focused
@@ -85,7 +148,6 @@ hidden-world twin identity for both head types; real batched/scalar agreement;
 incumbent retention; fresh/refill RNG behavior; model exclusion from full
 refinement/report; and exact persisted candidate-index/counter mapping.
 
-Next: a small mirrored DEV gameplay comparison on separate seeds, using the
-existing resumable screen, production identity control, and measured-work MC
-control before any equal-work conclusion. Reuse completed pairs; no additional
-freeze, census or duplicate integrity run is needed for that learning test.
+That initial next step was completed by the pilot and 256-deal screen above,
+using the existing resumable runner without another freeze, census, or
+duplicate integrity run.

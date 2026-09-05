@@ -467,6 +467,11 @@ SEARCH_MEANS_SCALE = ("acting-team-signed final attacker points averaged over th
 RANK_SCALE = ("#214 half-integer signed level (category_signed_level) for the acting seat's "
               "team: the scale the search's leaf consumes (cwv_policy / cwv_puct score "
               "positions by probabilities @ category_signed_level support)")
+RANK_REGRET_DEFINITION = (
+    "rank_regret = U(E[points])_best - U(E[points])_pick: the level-bracket transform "
+    "(level_of_search_mean) of the search's MEAN points per candidate, an MC-ranking proxy "
+    "-- NOT E[U] (the mean of per-world levels, which the records do not carry); "
+    "rank_regret_points is the untransformed mean-points regret")
 #: which search designs consume which head, and on which positions
 CONSUMERS = {
     "level_head": {
@@ -476,7 +481,8 @@ CONSUMERS = {
                         "PUCT prior / leaf (ai.cwv_puct)"],
         "positions": "every ballot candidate's afterstate (sampled worlds; the metric "
                      "scores the TRUE world), ranked among the decision's candidates",
-        "metrics": ["rank_regret (level scale)", "rank_regret_points", "rank_top1",
+        "metrics": ["rank_regret (level scale; U(E[points]), an MC-ranking proxy, not E[U])",
+                    "rank_regret_points", "rank_top1",
                     "cross_entropy", "value_mae (PT0)", "value_level_mae"],
         "recommended_select_metric": "val_rank_regret",
     },
@@ -775,7 +781,7 @@ def candidate_levels(forward: Callable[[Mapping[str, torch.Tensor]], torch.Tenso
 def _no_rank() -> dict:
     return {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
             "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
-            "rank_scale": RANK_SCALE}
+            "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION}
 
 
 def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
@@ -784,7 +790,9 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
 
     * ``rank_regret``: level of the search's best mean minus the level of
       the mean of the scorer's argmax candidate (a uniform draw among tied
-      maxima), ``RANK_SCALE``, >= 0;
+      maxima), ``RANK_SCALE``, >= 0 -- U(E[points]), the bracket transform
+      of the search's MEAN points (``RANK_REGRET_DEFINITION``): an
+      MC-ranking proxy, not E[U];
     * ``rank_regret_points``: the same on the search's own scale;
     * ``rank_top1``: probability the scorer's top pick is a search argmax;
     * ``rank_regret_max``: the mean spread (best minus worst mean level) --
@@ -816,7 +824,7 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
         "rank_records": int(n), "rank_candidates": int(cands.candidates),
         "rank_regret": float(regret.mean()), "rank_regret_points": float(regret_pts.mean()),
         "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),
-        "rank_scale": RANK_SCALE,
+        "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
     }
 
 
@@ -865,7 +873,8 @@ def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | 
 
 
 __all__ = [
-    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_SCALE",
+    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_REGRET_DEFINITION",
+    "RANK_SCALE",
     "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",
     "candidate_agreement", "candidate_levels", "candidate_pass", "candidate_set_digest",
     "candidate_tensors", "ensure_candidate_set", "iter_shard_results",

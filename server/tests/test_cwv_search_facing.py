@@ -18,6 +18,13 @@
 5. The same function feeds the per-epoch validation, the final val/test
    pass and ``evaluate`` (``evaluate`` reproduces the receipt's test block)
    and the receipt carries the ``consumer`` block.
+6. Cumulative exposure (Codex HOLD on PR #242): a checkpoint trained on
+   population P1 warm-started on P2 > P1 with the same seed puts a P1-fit
+   deal into P2's val/test -> refused naming the counts; with
+   ``init_exclude_exposed`` it runs and the receipt's excluded counts equal
+   the migrated deals (never added to train); a disjoint warm start works
+   unchanged; the exposure is the union and ``evaluate --split novel``
+   consults it (RED: disabling ``exposure_conflict``).
 """
 from __future__ import annotations
 
@@ -35,7 +42,20 @@ from shengji.rl.value_afterstate import (  # noqa: E402
 )
 from shengji.train import cwv_eval, train_cwv, train_v0  # noqa: E402
 
-from test_cwv_train import THIRDS, store_dir  # noqa: E402, F401  (module fixture)
+from test_cwv_train import (  # noqa: E402, F401  (module fixtures)
+    EXPLORE,
+    SEED0,
+    THIRDS,
+    WORK,
+    _records,
+    other_dir,
+    other_records,
+    records,
+    store_dir,
+)
+from shengji.harvest import trajectory  # noqa: E402
+from shengji.train.data import split_deals  # noqa: E402
+from shengji.train.cwv_data import deal_key  # noqa: E402
 
 
 # 1 ---------------------------------------------------------- rank regret
@@ -251,3 +271,105 @@ def test_warm_start_loads_weights_and_refuses_mismatch(trained, tmp_path):
                                                     "aux_points": False,
                                                     "init": str(out / "best.pt")})
     del src_val
+
+
+# 6 ----------------------------------------------------- cumulative exposure
+
+@pytest.fixture(scope="module")
+def third_dir(tmp_path_factory):
+    out = tmp_path_factory.mktemp("cwv-third") / "run"
+    trajectory.generate(rounds=6, seed0=SEED0 + 55_555, out_dir=out, workers=1, merge=False,
+                        **WORK, **EXPLORE)
+    return out
+
+
+def _migrating_seed(keys1, keys2):
+    """A seed whose split over P2 puts a P1 fit/selection deal into P2's
+    val or test while leaving every P2 part non-empty after exclusion."""
+    for seed in range(1, 400):
+        a1 = split_deals(sorted(keys1), seed=seed, **THIRDS)
+        fit = {k for k, v in a1.items() if v == "train"}
+        exposed = {k for k, v in a1.items() if v in ("train", "val")}
+        a2 = split_deals(sorted(keys2), seed=seed, **THIRDS)
+        migrated = {"val": sorted(k for k, v in a2.items() if v == "val" and k in fit),
+                    "test": sorted(k for k, v in a2.items() if v == "test" and k in exposed)}
+        if not any(migrated.values()):
+            continue
+        dropped = set(migrated["val"]) | set(migrated["test"])
+        remaining = {part: [k for k, v in a2.items() if v == part and k not in dropped]
+                     for part in ("train", "val", "test")}
+        if all(remaining.values()) and all(a1.values()):
+            return seed, migrated
+    raise AssertionError("no migrating seed")
+
+
+def test_warm_start_refuses_or_excludes_ancestral_exposure(store_dir, other_dir, third_dir,
+                                                           records, other_records, tmp_path):
+    keys1 = {deal_key(r["deck"]) for r in records}
+    keys3 = {deal_key(r["deck"]) for r in _records(third_dir)}
+    keys2 = keys1 | {deal_key(r["deck"]) for r in other_records} | keys3
+    assert len(keys1) == 3 and len(keys3) == 3 and len(keys2) == 7 and not keys1 & keys3
+    seed, migrated = _migrating_seed(keys1, keys2)
+    n_migrated = {part: len(v) for part, v in migrated.items()}
+    kw = dict(arch="mlp", device="cpu", epochs=1, seed=seed, batch_size=64, n_boot=10,
+              hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=8,
+              val_rank_records=20, **THIRDS)
+    p1 = train_cwv.train(data=[str(store_dir)], out=tmp_path / "p1", **kw)
+    exposure = p1["exposure"]
+    assert exposure["schema"] == train_cwv.EXPOSURE_SCHEMA and exposure["ancestors"] == []
+    assert set(exposure["fit"]) == set(p1["population"]["train"])
+    assert set(exposure["selection"]) == set(p1["population"]["val"])
+    # the checkpoint payload carries it too
+    _m, meta, _a = train_cwv.load_cwv_checkpoint(tmp_path / "p1" / "best.pt")
+    assert meta["exposure"]["digest"] == exposure["digest"]
+    # P2 > P1, same seed: a P1 fit/selection deal lands in P2's val/test -> refused
+    p2 = dict(data=[str(store_dir), str(other_dir), str(third_dir)],
+              init=str(tmp_path / "p1" / "best.pt"))
+    with pytest.raises(train_v0.TrainError, match=(
+            rf"{n_migrated['val']} deal\(s\) .* fit on land in this run's val and "
+            rf"{n_migrated['test']} fit-or-selected deal\(s\) in its test")):
+        train_cwv.train(out=tmp_path / "p2-refused", **p2, **kw)
+    assert not (tmp_path / "p2-refused" / "best.pt").exists()
+    # --init-exclude-exposed: runs; the excluded counts ARE the migrated deals,
+    # which are in no part of the new run (never added to train)
+    r = train_cwv.train(out=tmp_path / "p2", init_exclude_exposed=True, **p2, **kw)
+    assert {k: r["init"]["excluded"][k] for k in ("val", "test")} == n_migrated
+    assert r["config"]["init_exclude_exposed"] is True
+    pop = r["population"]
+    for part in ("train", "val", "test"):
+        assert not set(pop[part]) & (set(migrated["val"]) | set(migrated["test"]))
+    exposed1 = set(exposure["fit"]) | set(exposure["selection"])
+    assert not set(pop["val"]) & set(exposure["fit"]) and not set(pop["test"]) & exposed1
+    assert r["final"]["test"]["population"]["exposure"]["exposed"] == 0
+    assert r["final"]["val"]["population"]["exposure"]["in_fit"] == 0
+    # the exposure is cumulative: the union, with the ancestor named
+    assert set(r["exposure"]["fit"]) == set(exposure["fit"]) | set(pop["train"])
+    assert set(r["exposure"]["selection"]) == set(exposure["selection"]) | set(pop["val"])
+    assert [a["digest"] for a in r["exposure"]["ancestors"]] == [exposure["digest"]]
+    assert r["init"]["exposure"]["counts"] == exposure["counts"]
+    # a second warm start cannot erase it: evaluate --split novel on P2's
+    # stores finds no novel deal (every deal is in the population or exposed)
+    with pytest.raises(train_v0.TrainError, match="no deal of the checkpoint's 'novel'"):
+        train_cwv.evaluate(checkpoint=str(tmp_path / "p2" / "best.pt"), out=tmp_path / "e",
+                           data=p2["data"], split="novel", device="cpu",
+                           n_boot=10, cache_dir=str(tmp_path / "p2" / "cache"),
+                           cache_workers=1, eval_workers=1, bench_batch=8, log=None)
+    # the evaluated test block reports the exposure check against the cumulative digest
+    ev = train_cwv.evaluate(checkpoint=str(tmp_path / "p2" / "best.pt"), out=tmp_path / "e2",
+                            data=p2["data"], split="test", device="cpu",
+                            n_boot=10, cache_dir=str(tmp_path / "p2" / "cache"),
+                            cache_workers=1, eval_workers=1, bench_batch=8, log=None)
+    assert ev["final"]["test"]["population"]["exposure"] == {
+        **ev["final"]["test"]["population"]["exposure"], "exposed": 0,
+        "checked_against": r["exposure"]["digest"]}
+    # ... and the store-level check counts the CUMULATIVE exposure (P1's and P2's)
+    assert ev["split"]["population_match"]["exposure"]["exposed"] == \
+        r["exposure"]["counts"]["exposed"] > len(exposed1)
+    # a compatible warm start (disjoint populations) works unchanged
+    c = train_cwv.train(data=[str(third_dir)], out=tmp_path / "p3",
+                        init=str(tmp_path / "p1" / "best.pt"), **kw)
+    assert c["init"]["excluded"] == {**c["init"]["excluded"], "val": 0, "test": 0}
+    assert c["exposure"]["counts"]["fit"] == len(exposure["fit"]) + len(c["population"]["train"])
+    # exclusion without --init is refused up front
+    with pytest.raises(train_v0.TrainError, match="needs --init"):
+        train_cwv.build_config(data=["x"], init_exclude_exposed=True)

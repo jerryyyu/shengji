@@ -4,7 +4,7 @@
         --arch mlp|seq [--device mps|cpu] [--limit-clusters N] [--aux-points]
         [--seed N] [--public-head CKPT] [--epochs 20] [--batch-size 1024]
         [--select-metric val_ce|val_rank_regret|val_points_mae] [--val-rank-records N]
-        [--init CKPT [--init-lr-scale F]] ...
+        [--init CKPT [--init-lr-scale F] [--init-exclude-exposed]] ...
     train_cwv.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
         [--split test|novel|val|train|all] [--public-head CKPT]
 
@@ -64,7 +64,24 @@ recommendation for the ranking consumers: one-ply / shortlist / netroll /
 PUCT) or ``val_points_mae`` (the recommendation for the leaf).  ``--init``
 warm-starts trunk and heads from a checkpoint of the same architecture and
 feature layout (refused otherwise); the receipt's ``consumer`` block names
-which search designs consume which head on which positions.
+which search designs consume which head on which positions.  ``rank_regret``
+is the level-bracket transform of the search's MEAN points, U(E[points]),
+an MC-ranking proxy -- not E[U].
+
+Cumulative exposure (warm start)
+--------------------------------
+Every checkpoint and receipt persists ``exposure``: the deal keys this run
+FIT on (train) and SELECTED on (val), united with every warm-start
+ancestor's (``--init`` loads the source's block; a checkpoint without one
+exposes its own persisted population).  A warm start recomputes the split
+over its own, usually larger, population, so an ancestral fit/selection
+deal can land in the new val or test (an ancestral FIT deal in val, an
+ancestral fit-or-selected deal in test): ``--init`` REFUSES that, naming
+the counts per split, unless ``--init-exclude-exposed`` drops those deals from
+the new val/test (never into train; the receipt's ``init.excluded`` and
+stdout carry the counts).  ``evaluate --split novel`` and the Luna
+evaluation consult the cumulative exposure, so a second warm start cannot
+erase it.
 """
 
 from __future__ import annotations
@@ -72,6 +89,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import copy
+import hashlib
 import math
 import os
 import random
@@ -79,7 +97,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -127,6 +145,7 @@ from .cwv_eval import (
     summarize_agreement,
 )
 from .data import (
+    DEAL_KEY_SCHEMA,
     Residency,
     TrainDataError,
     default_cache_workers,
@@ -161,6 +180,7 @@ from .train_v0 import (
 )
 
 RECEIPT_SCHEMA = "shengji-cwv-receipt-v1"
+EXPOSURE_SCHEMA = "shengji-cwv-exposure-v1"
 CHECKPOINT_METADATA_SCHEMA = "shengji-cwv-checkpoint-metadata-v1"
 ARCHES = ("mlp", "seq")
 SEQ_KINDS = ("transformer", "gru")
@@ -174,7 +194,9 @@ SELECT_METRICS = {
                                        "the search's best candidate minus the level of the "
                                        "net's argmax candidate, per decision, averaged "
                                        "(cwv_eval.rank_metrics; the ranking consumers' "
-                                       "quantity)"),
+                                       "quantity; levels are U(E[points]), the bracket "
+                                       "transform of the search's MEAN points -- an "
+                                       "MC-ranking proxy, not E[U])"),
     "val_points_mae": ("points_mae", "validation MAE of the aux points head in attacker "
                                      "points (cwv_eval.points_metrics; the vleaf leaf's "
                                      "quantity)"),
@@ -193,7 +215,7 @@ REQUIRED_RECEIPT_FIELDS = (
     "data", "luna", "counts", "split", "population", "headline", "selection", "baselines",
     "epochs", "best_epoch", "stopped_early", "final", "checkpoints", "public_head",
     "ranking", "residency", "peak_memory", "cache_dir", "cache_workers",
-    "inference_benchmark", "consumer", "init",
+    "inference_benchmark", "consumer", "init", "exposure",
 )
 PRIVACY = {
     "sees_hidden_hands": SEES_HIDDEN_HANDS,
@@ -648,15 +670,91 @@ def consumer_block(select_metric: str, aux_points: bool) -> dict:
                     "(cwv_eval.search_facing_metrics)"}
 
 
+# --------------------------------------------------------------- exposure
+
+def exposure_block(fit: Collection[str], selection: Collection[str], *,
+                   ancestors: Sequence[Mapping[str, Any]] = (), note: str | None = None) -> dict:
+    """The cumulative exposure of a checkpoint: every deal it (or a
+    warm-start ancestor) was FIT on and every deal it (or an ancestor) was
+    SELECTED on; persisted in the checkpoint payload and the receipt."""
+    fit_keys = sorted(set(str(k) for k in fit))
+    sel_keys = sorted(set(str(k) for k in selection))
+    return {
+        "schema": EXPOSURE_SCHEMA, "deal_key_schema": DEAL_KEY_SCHEMA,
+        "fit": fit_keys, "selection": sel_keys,
+        "counts": {"fit": len(fit_keys), "selection": len(sel_keys),
+                   "exposed": len(set(fit_keys) | set(sel_keys))},
+        "digest": {"fit": hashlib.sha256("\n".join(fit_keys).encode()).hexdigest(),
+                   "selection": hashlib.sha256("\n".join(sel_keys).encode()).hexdigest()},
+        "ancestors": [dict(a) for a in ancestors],
+        "note": note or ("cumulative: this run's fit (train) and selection (val) deals united "
+                         "with every warm-start ancestor's"),
+    }
+
+
+def exposure_sets(exposure: Mapping[str, Any] | None) -> dict[str, set[str]]:
+    """``{"fit", "selection"}`` as sets from a persisted exposure, validated."""
+    if not isinstance(exposure, Mapping) or exposure.get("schema") != EXPOSURE_SCHEMA:
+        raise TrainError(f"checkpoint carries no {EXPOSURE_SCHEMA} exposure block")
+    if exposure.get("deal_key_schema") != DEAL_KEY_SCHEMA:
+        raise TrainError("exposure deal-key schema differs from this build's")
+    out = {}
+    for part in ("fit", "selection"):
+        keys = exposure.get(part)
+        if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+            raise TrainError(f"exposure.{part} is not a list of deal keys")
+        out[part] = set(keys)
+    return out
+
+
+def exposure_of_checkpoint(metadata: Mapping[str, Any], *, path: str) -> dict:
+    """The source's cumulative exposure: its persisted block, or -- for a
+    checkpoint that predates the block -- its own persisted population's
+    fit (train) and selection (val) deals."""
+    if isinstance(metadata.get("exposure"), Mapping):
+        exposure_sets(metadata["exposure"])
+        return dict(metadata["exposure"])
+    sets = population_sets(metadata.get("population"))
+    return exposure_block(sets["train"], sets["val"], note=(
+        f"derived from the persisted population of {path} (the checkpoint predates the "
+        "exposure block; its own warm-start ancestors, if any, are unknown)"))
+
+
+def exposure_conflict(exposure: Mapping[str, Any], assignment: Mapping[str, str]
+                      ) -> dict[str, list[str]]:
+    """The ancestral deals a new split would not hold out (sorted keys per
+    part): ancestral FIT deals assigned to ``val``, ancestral fit-OR-
+    selected deals assigned to ``test``.  (A deal an ancestor only selected
+    on may stay in val: still tuning-only, never fit; so a warm start on
+    the identical split is compatible.)"""
+    sets = exposure_sets(exposure)
+    return {"val": sorted(k for k, v in assignment.items() if v == "val" and k in sets["fit"]),
+            "test": sorted(k for k, v in assignment.items()
+                           if v == "test" and k in (sets["fit"] | sets["selection"]))}
+
+
+def exposure_report(keys: Collection[str], exposure: Mapping[str, Any]) -> dict:
+    """How a set of deal keys relates to a cumulative exposure."""
+    keys = set(str(k) for k in keys)
+    sets = exposure_sets(exposure)
+    return {"deals": len(keys), "in_fit": len(keys & sets["fit"]),
+            "in_selection": len(keys & sets["selection"]),
+            "exposed": len(keys & (sets["fit"] | sets["selection"])),
+            "checked_against": dict(exposure["digest"])}
+
+
 # ------------------------------------------------------------- warm start
 
 def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
-               config: Mapping[str, Any], device: torch.device) -> dict:
+               config: Mapping[str, Any], device: torch.device, *,
+               loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None) -> dict:
     """Load ``init``'s trunk + heads into ``model`` (and the aux head when
     both sides have one); refused unless the architecture, the model
     configuration (hidden widths) and the feature layout (encoder identity,
-    ``load_cwv_checkpoint``'s check) all match."""
-    source, metadata, source_aux = load_cwv_checkpoint(init, device)
+    ``load_cwv_checkpoint``'s check) all match.  The exposure check
+    (``exposure_conflict``) runs on the split, before this."""
+    source, metadata, source_aux = (load_cwv_checkpoint(init, device) if loaded is None
+                                    else loaded)
     if metadata.get("arch") != config["arch"]:
         raise TrainError(f"--init {init}: arch {metadata.get('arch')!r} != --arch "
                          f"{config['arch']!r}")
@@ -685,6 +783,8 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         "aux_points_head_in_init": source_aux is not None,
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
+        "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()
+                     if k in ("counts", "digest", "ancestors", "note")},
     }
 
 
@@ -767,7 +867,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  select_metric: str = DEFAULTS["select_metric"],
                  val_rank_records: int = DEFAULTS["val_rank_records"],
                  init: str | None = None,
-                 init_lr_scale: float = DEFAULTS["init_lr_scale"]) -> dict:
+                 init_lr_scale: float = DEFAULTS["init_lr_scale"],
+                 init_exclude_exposed: bool = False) -> dict:
     """Everything that determines the trained model and its metrics."""
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
@@ -781,6 +882,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--select-metric val_rank_regret needs --val-rank-records > 0")
     if not (math.isfinite(float(init_lr_scale)) and float(init_lr_scale) > 0):
         raise TrainError("--init-lr-scale must be a finite scale > 0")
+    if init_exclude_exposed and init is None:
+        raise TrainError("--init-exclude-exposed needs --init")
     if epochs < 1 or batch_size < 1 or patience < 0:
         raise TrainError("epochs/batch_size >= 1 and patience >= 0 are required")
     for name, frac in (("val_fraction", val_fraction), ("test_fraction", test_fraction)):
@@ -812,6 +915,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "select_metric": select_metric, "val_rank_records": int(val_rank_records),
         "init": None if init is None else str(Path(init).resolve()),
         "init_lr_scale": float(init_lr_scale) if init is not None else 1.0,
+        "init_exclude_exposed": bool(init_exclude_exposed),
         "split_method": "three-way by deal_key: rank of sha256(seed|deal_key); "
                         "top test_fraction -> test, next val_fraction -> val, rest train",
         "view": VIEW, "sees_hidden_hands": SEES_HIDDEN_HANDS,
@@ -904,7 +1008,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
-          init_lr_scale: float = DEFAULTS["init_lr_scale"],
+          init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
@@ -917,7 +1021,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
-        init_lr_scale=init_lr_scale)
+        init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed)
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
     started = time.perf_counter()
@@ -945,6 +1049,32 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
     assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
                              test_fraction=test_fraction)
+    init_loaded = None
+    source_exposure = None
+    init_excluded = None
+    if init is not None:
+        init_loaded = load_cwv_checkpoint(init, dev)
+        source_exposure = exposure_of_checkpoint(init_loaded[1], path=init)
+        conflict = exposure_conflict(source_exposure, assignment)
+        n_conflict = {part: len(keys) for part, keys in conflict.items()}
+        if any(n_conflict.values()) and not init_exclude_exposed:
+            raise TrainError(
+                f"--init {init}: {n_conflict['val']} deal(s) the source (or an ancestor) was "
+                f"fit on land in this run's val and {n_conflict['test']} fit-or-selected "
+                f"deal(s) in its test (exposure fit={source_exposure['counts']['fit']} "
+                f"selection={source_exposure['counts']['selection']}); the new val/test "
+                "would not be held out from the warm start. Pass --init-exclude-exposed to "
+                "drop those deals from val/test (never into train), or change the data/seed")
+        for part, keys in conflict.items():
+            for key in keys:
+                del assignment[key]          # dropped: in no part of this run
+        init_excluded = {**n_conflict, "note": "ancestral fit/selection deals removed from "
+                                               "this run's val/test by --init-exclude-exposed "
+                                               "(never added to train)"}
+        say(f"init exposure: source fit={source_exposure['counts']['fit']} "
+            f"selection={source_exposure['counts']['selection']} deals; excluded from this "
+            f"run's val={n_conflict['val']} test={n_conflict['test']} "
+            f"(--init-exclude-exposed={init_exclude_exposed})")
     masks = {part: (lambda b, p=part: split_mask(b, assignment, p))
              for part in ("train", "val", "test")}
     n_rows = {part: 0 for part in masks}
@@ -970,6 +1100,21 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
     population = fit_population(assignment, stores=prepared.stores)
+    if source_exposure is None:
+        exposure = exposure_block(population["train"], population["val"])
+    else:
+        src = exposure_sets(source_exposure)
+        exposure = exposure_block(
+            src["fit"] | set(population["train"]), src["selection"] | set(population["val"]),
+            ancestors=[*source_exposure.get("ancestors", []),
+                       {"path": str(Path(init).resolve()), "sha256": file_sha256(init),
+                        "epoch": init_loaded[1].get("epoch"),
+                        "counts": dict(source_exposure["counts"]),
+                        "digest": dict(source_exposure["digest"])}])
+        assert not set(population["val"]) & src["fit"]
+        assert not set(population["test"]) & (src["fit"] | src["selection"])
+    say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
+        f"deals (ancestors {len(exposure['ancestors'])})")
     baselines = fit_baselines(store, masks["train"])
     say(f"baselines: stratified prior n={baselines['stratified_prior']['n']} "
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
@@ -993,6 +1138,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                        residency=residency)
         refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         luna_population = population_report(luna_prepared.block_store.keys(), population)
+        luna_exposure = exposure_report(luna_prepared.block_store.keys(), exposure)
+        if luna_exposure["exposed"]:
+            raise TrainError(f"--eval-luna {eval_luna} shares {luna_exposure['exposed']} "
+                             "deal(s) with the cumulative fit/selection exposure (a warm-start "
+                             "ancestor saw them): not held out; refusing")
+        luna_population["exposure"] = luna_exposure
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
         say(f"luna: {luna_prepared.counts['records_total']} rows over "
             f"{luna_prepared.counts['deals_total']} deals, none shared with the data stores")
@@ -1012,7 +1163,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     aux_head = AuxPointsHead(model_cfg.width).to(dev) if aux_points else None
     init_info = None
     if init is not None:
-        init_info = apply_init(model, aux_head, init, config, dev)
+        init_info = apply_init(model, aux_head, init, config, dev, loaded=init_loaded)
+        init_info["excluded"] = init_excluded
+        init_info["exclude_exposed"] = bool(init_exclude_exposed)
         say(f"init: {init_info['path']} sha={init_info['sha256'][:12]} "
             f"epoch={init_info['epoch']} aux_head_loaded={init_info['aux_points_head_loaded']} "
             f"lr={lr} x {init_lr_scale}")
@@ -1061,8 +1214,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
-        "population": population, "baselines": baselines, "git": git_identity(),
-        "receipt_schema": RECEIPT_SCHEMA,
+        "population": population, "exposure": exposure, "baselines": baselines,
+        "git": git_identity(), "receipt_schema": RECEIPT_SCHEMA,
     }
     n_params = int(sum(p.numel() for p in model.parameters()))
     say(f"model: {model_cfg.architecture} params={n_params}")
@@ -1145,6 +1298,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     }
     final["test"]["population"] = population_report(population["test"], population)
     final["val"]["population"] = population_report(population["val"], population)
+    final["test"]["population"]["exposure"] = exposure_report(population["test"], exposure)
+    final["val"]["population"]["exposure"] = exposure_report(population["val"], exposure)
     ranking = {"test": ranking_block(test_pass, n_boot=n_boot, seed=seed)}
     final["test"]["ranking"] = ranking["test"]
     test_cands = candidate_set_for(store, test_keys, cache, n_records=int(val_rank_records),
@@ -1231,6 +1386,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "counts": prepared.counts,
         "split": split,
         "population": population,
+        "exposure": exposure,
         "headline": HEADLINE,
         "headline_numbers": headline,
         "selection": selection,
@@ -1340,6 +1496,9 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     history = metadata["arch"] == "seq"
     population = metadata.get("population")
     sets = population_sets(population)
+    exposure = exposure_of_checkpoint(metadata, path=str(checkpoint))
+    exposed = exposure_sets(exposure)
+    exposed_all = exposed["fit"] | exposed["selection"]
     seeds = seed_everything(int(config["seed"]), dev)
     baselines = metadata["baselines"]
     n_boot = int(n_boot if n_boot is not None else config["n_boot"])
@@ -1370,10 +1529,12 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         decoded = prepared.counts["decoded_bytes"]
         data_keys = set(store.keys())
         match = population_report(data_keys, population)
+        match["exposure"] = exposure_report(data_keys, exposure)
         say(f"population: store deals={match['deals']} in_train={match['in_train']} "
-            f"in_val={match['in_val']} in_test={match['in_test']} novel={match['novel']}")
+            f"in_val={match['in_val']} in_test={match['in_test']} novel={match['novel']} "
+            f"(exposed to a warm-start ancestor: {match['exposure']['exposed']})")
         parts = {"train": sets["train"], "val": sets["val"], "test": sets["test"],
-                 "novel": data_keys - sets["train"] - sets["val"] - sets["test"],
+                 "novel": data_keys - sets["train"] - sets["val"] - sets["test"] - exposed_all,
                  "all": data_keys}
         selected = parts[split] & data_keys
         if not selected:
@@ -1408,6 +1569,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         else:
             block = labelled(split, metrics)
         block["population"] = population_report(selected, population)
+        block["population"]["exposure"] = exposure_report(selected, exposure)
         ranking[split] = ranking_block(pass_result, n_boot=n_boot, seed=int(config["seed"]))
         block["ranking"] = ranking[split]
         final[split] = block
@@ -1423,10 +1585,16 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None, **prepare_kw)
         luna_bytes = luna_prepared.counts["decoded_bytes"]
         luna_population = population_report(luna_prepared.block_store.keys(), population)
+        luna_population["exposure"] = exposure_report(luna_prepared.block_store.keys(), exposure)
         shared = luna_population["shared_with_fit"] + luna_population["shared_with_selection"]
         if shared:
             raise TrainError(f"--eval-luna {eval_luna} shares {shared} deal(s) with the "
                              "checkpoint's fit/selection population: not held out; refusing")
+        if luna_population["exposure"]["exposed"]:
+            raise TrainError(f"--eval-luna {eval_luna} shares "
+                             f"{luna_population['exposure']['exposed']} deal(s) with the "
+                             "cumulative fit/selection exposure (a warm-start ancestor saw "
+                             "them): not held out; refusing")
         luna_blocks = luna_prepared.block_store
         luna_pass = candidate_pass(
             [(shard, None) for shard, _path in luna_blocks.entries],
@@ -1478,6 +1646,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         "counts": counts,
         "split": split_info,
         "population": population,
+        "exposure": exposure,
         "headline": headline,
         "selection": metadata.get("selection"),
         "baselines": baselines,
@@ -1583,6 +1752,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "feature layout whose trunk and heads are loaded")
     t.add_argument("--init-lr-scale", type=float, default=DEFAULTS["init_lr_scale"],
                    help="multiply --lr by this with --init")
+    t.add_argument("--init-exclude-exposed", action="store_true",
+                   help="with --init: drop the source's (and its ancestors') fit/selection "
+                        "deals from this run's val/test instead of refusing (never into train)")
 
     e = sub.add_parser("evaluate", help="score a checkpoint")
     common(e)
@@ -1619,7 +1791,8 @@ def main(argv: list[str] | None = None) -> int:
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   val_rank_records=args.val_rank_records, init=args.init,
-                  init_lr_scale=args.init_lr_scale, **exec_kw)
+                  init_lr_scale=args.init_lr_scale,
+                  init_exclude_exposed=args.init_exclude_exposed, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

@@ -221,6 +221,101 @@ def bind_output_config(output, config):
         _publish(path, config)
 
 
+def _run_pending(config, pending, shards, *, output, workers,
+                 executor_factory=None, task_fn=run_cluster):
+    """Run at most ``workers`` pairs, retaining successes after a failure.
+
+    Failure is published as soon as its future completes.  Futures already
+    running are drained so their valid immutable shards remain reusable; work
+    not yet running is cancelled and never replenished.
+    """
+    if not pending:
+        return
+    initial_completed = len(shards)
+    requested = initial_completed + len(pending)
+    failure_path = output / "failure.json"
+    failed: set[int] = set()
+    first_error = None
+    started = time.perf_counter()
+    next_cluster = iter(pending)
+    tasks = {}
+    if executor_factory is None:
+        ctx = multiprocessing.get_context("spawn")
+        executor_factory = lambda n: ProcessPoolExecutor(max_workers=n, mp_context=ctx)
+    pool = executor_factory(min(workers, len(pending)))
+
+    def publish_failure():
+        _publish(failure_path, {
+            "type": type(first_error).__name__,
+            "message": str(first_error),
+            "failed_clusters": sorted(failed),
+            "completed_clusters": sorted(s["cluster"] for s in shards),
+            "recovery": "rerun the identical command; completed mirrored pairs are retained",
+        })
+
+    def submit_one():
+        cluster = next(next_cluster)
+        tasks[pool.submit(task_fn, config, cluster)] = cluster
+
+    def progress():
+        elapsed = time.perf_counter() - started
+        done_new = len(shards) - initial_completed
+        if first_error is not None:
+            print(f"{len(shards)}/{requested} pairs "
+                  f"({100*len(shards)/requested:.1f}%) "
+                  f"elapsed={elapsed:.1f}s draining after failure "
+                  f"workers={workers}", flush=True)
+        else:
+            eta = (f"{elapsed / done_new * (len(pending) - done_new):.1f}s"
+                   if done_new else "pending first pair")
+            print(f"{len(shards)}/{requested} pairs "
+                  f"({100*len(shards)/requested:.1f}%) "
+                  f"elapsed={elapsed:.1f}s eta={eta} workers={workers}", flush=True)
+
+    try:
+        for _ in range(min(workers, len(pending))):
+            submit_one()
+        while tasks:
+            finished, still_pending = wait(
+                set(tasks), timeout=30, return_when=FIRST_COMPLETED)
+            if not finished:
+                progress()
+                continue
+            submitted = tasks
+            tasks = {future: submitted[future] for future in still_pending}
+            for future in finished:
+                cluster = submitted[future]
+                try:
+                    shard = future.result()
+                    _publish(output / f"cluster-{shard['cluster']:05}.json", shard)
+                    shards.append(shard)
+                except BaseException as exc:
+                    failed.add(cluster)
+                    if first_error is None:
+                        first_error = exc
+                    publish_failure()
+            if first_error is None:
+                while len(tasks) < workers:
+                    try:
+                        submit_one()
+                    except StopIteration:
+                        break
+            else:
+                # Already-submitted but not-yet-running tasks must not become
+                # new work after the first failure.
+                retained = {}
+                for future, cluster in tasks.items():
+                    if not future.cancel():
+                        retained[future] = cluster
+                tasks = retained
+                publish_failure()
+            progress()
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+    if first_error is not None:
+        raise first_error
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
@@ -266,30 +361,16 @@ def main(argv=None):
             shards.append(reopen_shard(path, config, cluster))
         else:
             pending.append(cluster)
-    started = time.perf_counter()
-    ctx = multiprocessing.get_context("spawn")
     try:
-        with ProcessPoolExecutor(max_workers=min(args.workers, max(1, len(pending))), mp_context=ctx) as pool:
-            tasks = {pool.submit(run_cluster, config, c): c for c in pending}
-            remaining = set(tasks)
-            while remaining:
-                finished, remaining = wait(remaining, timeout=30, return_when=FIRST_COMPLETED)
-                for future in finished:
-                    shard = future.result()
-                    _publish(args.out / f"cluster-{shard['cluster']:05}.json", shard)
-                    shards.append(shard)
-                elapsed = time.perf_counter() - started
-                done_new = len(shards) - (args.clusters - len(pending))
-                eta = (f"{elapsed / done_new * (args.clusters - len(shards)):.1f}s"
-                       if done_new else "pending first pair")
-                print(f"{len(shards)}/{args.clusters} pairs ({100*len(shards)/args.clusters:.1f}%) "
-                      f"elapsed={elapsed:.1f}s eta={eta} workers={args.workers}", flush=True)
+        _run_pending(config, pending, shards, output=args.out, workers=args.workers)
     except Exception as exc:
-        _publish(args.out / "failure.json", {
-            "type": type(exc).__name__, "message": str(exc),
-            "completed_clusters": sorted(s["cluster"] for s in shards),
-            "recovery": "rerun the identical command; completed mirrored pairs are retained",
-        })
+        if not (args.out / "failure.json").exists():
+            _publish(args.out / "failure.json", {
+                "type": type(exc).__name__, "message": str(exc),
+                "failed_clusters": [],
+                "completed_clusters": sorted(s["cluster"] for s in shards),
+                "recovery": "rerun the identical command; completed mirrored pairs are retained",
+            })
         raise
     finally:
         if shards:

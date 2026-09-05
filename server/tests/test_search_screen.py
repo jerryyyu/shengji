@@ -1,5 +1,9 @@
 """Real mirrored driver, full cost recording, and retained pair boundaries."""
 import copy
+import json
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 
 import pytest
 
@@ -16,6 +20,8 @@ def config(arm="none"):
 
 
 class Heads:
+    metadata = {"checkpoint_sha256": "test-checkpoint"}
+
     def priors(self, rnd, seat, actions):
         return [1 / len(actions)] * len(actions)
 
@@ -107,3 +113,80 @@ def test_changed_transitive_game_dependency_refuses_resuming_old_pairs(tmp_path)
     with pytest.raises(ValueError, match="^existing output belongs to a different configuration$"):
         S.bind_output_config(output, changed)
     S.bind_output_config(output, old)  # original config was not overwritten
+
+
+def test_bounded_pending_failure_publishes_and_drains_running_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    cfg = config()
+    cfg["clusters"] = 4
+    # A real shard lets the final partial summary exercise its normal schema.
+    retained_shard = S.run_cluster(cfg, 1)
+    started = threading.Event()
+    release = threading.Event()
+    submitted = []
+    holder = []
+
+    def task(_config, cluster):
+        if cluster == 0:
+            # Ensure the peer is already running before the failure appears.
+            assert started.wait(5)
+            raise RuntimeError("cluster 0 failed")
+        if cluster == 1:
+            started.set()
+            assert release.wait(5)
+            return retained_shard
+        raise AssertionError(f"unexpected post-failure submission: {cluster}")
+
+    def executor_factory(n):
+        pool = ThreadPoolExecutor(max_workers=n)
+        original_submit = pool.submit
+
+        def submit(fn, _config, cluster):
+            submitted.append(cluster)
+            return original_submit(fn, _config, cluster)
+
+        pool.submit = submit
+        return pool
+
+    def runner():
+        try:
+            S.main(["--checkpoint", "unused", "--out", str(tmp_path),
+                    "--arm", "none", "--clusters", "4", "--seed0", "431",
+                    "--workers", "2", "--select-worlds", "1",
+                    "--report-worlds", "30"])
+        except BaseException as exc:
+            holder.append(exc)
+
+    real_runner = S._run_pending
+
+    def injected_runner(config_, pending, shards, *, output, workers):
+        return real_runner(config_, pending, shards, output=output, workers=workers,
+                           executor_factory=executor_factory, task_fn=task)
+
+    monkeypatch.setattr(S, "loaded_heads", lambda *args: Heads())
+    monkeypatch.setattr(S, "_run_pending", injected_runner)
+
+    thread = threading.Thread(target=runner)
+    thread.start()
+    assert started.wait(5)
+    failure = tmp_path / "failure.json"
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not failure.exists():
+        time.sleep(0.01)
+    assert failure.exists()
+    immediate = json.loads(failure.read_text())
+    assert immediate["failed_clusters"] == [0]
+    assert immediate["completed_clusters"] == []
+    assert submitted == [0, 1]
+    assert thread.is_alive()  # running work is being drained, not abandoned
+
+    release.set()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert len(holder) == 1 and isinstance(holder[0], RuntimeError)
+    final = json.loads(failure.read_text())
+    assert final["failed_clusters"] == [0]
+    assert final["completed_clusters"] == [1]
+    assert (tmp_path / "cluster-00001.json").exists()
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["complete"] is False

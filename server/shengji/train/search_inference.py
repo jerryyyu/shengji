@@ -190,8 +190,16 @@ class SearchHeads:
                 result = probs.detach().cpu().tolist()
             if not all(math.isfinite(float(v)) for v in result):
                 raise ValueError("prior output is non-finite")
+            # A float32 softmax over tens of thousands of legal actions can
+            # miss unit mass by >1e-6. Normalize the *whole* emitted population
+            # in Python double precision, preserving ratios and chunk order.
+            # Do not relax the consumer's simplex check or normalize chunks.
+            total = math.fsum(result)
+            if total <= 0:
+                raise ValueError("prior output has no probability mass")
+            result = [float(v) / total for v in result]
             self.counters["prior_action_rows"] += len(actions)
-            return [float(v) for v in result]
+            return result
         finally:
             self.counters["inference_secs"] += perf_counter() - started
 

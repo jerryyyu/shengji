@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import random
 
 import pytest
@@ -106,6 +107,50 @@ def test_prior_encoding_and_tensors_are_bounded_to_chunk(monkeypatch, model):
     model.prior_head = RecordingPrior(model.prior_head)
     SearchHeads(model, batch_size=2).priors(rnd, 0, actions)
     assert chunks == [2, 2, 1]
+
+
+@pytest.mark.parametrize("batch_size", [256, 4096])
+def test_large_legal_population_normalizes_emitted_mass(monkeypatch, model, batch_size):
+    """The fresh duel hit this at 27,346 actions, beyond the small fixtures."""
+    import shengji.train.search_inference as search_inference
+
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        logits = torch.randn(27346, generator=torch.Generator().manual_seed(12))
+        original_softmax = torch.softmax
+        # Pin the failure independently of CPU-specific reduction kernels.
+        # ARM's observed drift was 1.47e-6; inject a similar mass error so
+        # x86 kernels that already sum accurately still witness the repair.
+        def drifted_softmax(values, dim):
+            p = original_softmax(values, dim)
+            return p * (1.00001 / math.fsum(p.tolist()))
+
+        monkeypatch.setattr(torch, "softmax", drifted_softmax)
+        raw = drifted_softmax(logits, 0).tolist()
+        # Canary: uncorrected emitted mass violates the real consumer guard.
+        assert not math.isclose(math.fsum(raw), 1.0, rel_tol=1e-6, abs_tol=1e-8)
+
+        # Use unique numerical actions to carry known logits through the real
+        # chunked inference adapter; legality belongs to the enumerator tests.
+        monkeypatch.setattr(search_inference, "encode_action", lambda action, rnd:
+                            [float(logits[action[0]])] + [0.0] * (ACT_DIM - 1))
+
+        class KnownLogits(torch.nn.Module):
+            def forward(self, joined):
+                return joined[..., model.embed_dim:model.embed_dim + 1]
+
+        model.prior_head = KnownLogits()
+        adapter = SearchHeads(model, batch_size=batch_size)
+        got = adapter.priors(_round(), 0, [[i] for i in range(len(logits))])
+        assert len(got) == len(logits)
+        assert math.isclose(sum(got), 1.0, rel_tol=0, abs_tol=1e-12)
+        expected = [p / math.fsum(raw) for p in raw]
+        assert got == expected
+        assert min(got) > 0
+        assert adapter.counters["prior_action_rows"] == len(logits)
+    finally:
+        torch.set_num_threads(threads)
 
 
 def test_values_are_direct_signed_outputs_and_hidden_twin_is_ignored(model):

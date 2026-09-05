@@ -15,6 +15,7 @@ concurrency:
 jobs:
   server:
     runs-on: ubuntu-latest
+    # the trajectory generator file adds ~90 s of pure-engine self-play
     timeout-minutes: 15
     defaults:
       run:
@@ -43,6 +44,7 @@ jobs:
           tests/test_server_ws.py
           tests/test_point_banking.py
           tests/test_structured_bury.py
+          tests/test_harvest_trajectory.py
           tests/test_oracle_screen.py
           tests/test_harvest_ballot_capture.py
           tests/test_report_world_reuse.py

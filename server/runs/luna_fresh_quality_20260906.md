@@ -51,6 +51,31 @@ not the old four-game exhaustive Cartesian bootstrap.
 
 ## What remains required
 
+Saved calls can be analyzed without contacting the provider:
+
+```sh
+python -B scripts/luna_quality_analyze.py --panel-root PRIVATE_PANEL \
+  --calls-root SAVED_CALLS --out NEW_PRIVATE_ANALYSIS --workers 4 --max-seconds 120
+```
+
+The analyzer verifies the saved packet/action mapping, then evaluates the two
+teacher choices and the recorded production choice in the same known world.
+It uses `smart-all` as the primary fixed continuation and `heuristic-all` as a
+separate sensitivity, never an average of the two. Each deal contributes one
+mean difference regardless of how many captured positions survived. The
+10,000-replicate deal bootstrap reports fit and validation separately, and is
+independent of worker completion order. These are proxy diagnostics, not
+optimal-action labels or gameplay results.
+
+Each completed position is retained in a private shard. The wall setting is a
+soft admission deadline: stop admitting work, drain already submitted finite
+positions, and leave pending positions for the identical recipe's resume.
+Progress reports missing, failed and completed positions; partial processing
+does not publish a final manifest. Completed analysis reopens its shards
+instead of repeating engine continuations. A final manifest describes the
+saved-call population, not proof that every requested teacher call succeeded;
+reported missing/refused counts must accompany any quality interpretation.
+
 Decision agreement and continuation-based value comparisons are diagnostics,
 not a substitute for paired gameplay. A separate rollout-enabled teacher arm
 must measure the tool/planning gap without confounding the batching contrast.

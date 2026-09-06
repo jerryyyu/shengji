@@ -370,3 +370,82 @@ seed/replicate count. No new model evaluation or policy tuning produced this
 contrast. Optimized W32's completed cost and trajectory readout is still needed;
 the seven-state 3.657x speedup must not be substituted into this table as a
 whole-game measurement. This is exploratory opened DEV, not a promotion result.
+
+### Optimized W32 completed — exact saved trajectories, 2.85x less decision wall
+
+Exact reviewed source `30b5eddeda9c510fb8f6592b73449c1a713a9fe4` completed all
+256 pairs / 512 mirrored rounds, exit0, with no summary problems. The queued
+read-only comparison found **zero mismatched clusters**. Both normalized saved
+trace chains hash to
+`35331c35d8462560ff7bf1f1b97dd643d5d4d4a3deffa3dc59692459c67697c3`.
+The comparison retains the decisions, saved scores, report seeds/statistics,
+history digests, outcomes, model rows/batches and sampler/rollout counters;
+only the previously named timing and opt-in cache metadata differ. This is
+decision-preserving engineering on the original opened deals, not another
+independent strength result.
+
+| Quantity | Original W32 | Static encoding + successor reuse |
+|---|---:|---:|
+| Signed levels/round vs production N30/R300 | +0.13867 | +0.13867 (identical) |
+| 95% paired-deal interval | [+0.06445, +0.21680] | identical |
+| Total arm decision wall | 33,952.56s | 11,916.94s |
+| Ranking wall | 30,924.20s | 8,719.90s |
+| Actual arm/opponent decision wall | 10.6126x | 3.5287x |
+| Full MC rollouts | 11,038,770 | identical |
+| Scored action/world rows (includes exact terminals) | 149,192,288 | identical |
+| Scoring batches | 1,170,992 | identical |
+| Paired-run progress-loop elapsed | 48m57.3s | 24m23.9s |
+
+Thus decision wall fell **64.90% (2.849x speedup)**, ranking wall fell by a
+factor of **3.546x**, and the parallel job's elapsed time improved **2.006x**.
+The separate process timer includes startup/summary overhead and reports
+**24m27.11s**, 15,332.00 CPU seconds, **1,045% mean CPU (~10.45 cores)**,
+483,160KiB maximum child RSS and zero swaps. The largest observed live cgroup
+peak was **4.8645GiB**, distinct from child RSS. This is a measured snapshot of
+the cgroup peak, not a retained post-exit aggregate-RSS receipt.
+
+The lower whole-job speedup is important. The last pair, cluster255, ran alone
+for **507.9s after pair255/256 completed**. Its two widest ranking decisions
+have 64,897 and 44,760 submissions; they recorded **zero leaf-cache hits** and
+took 330.58s and 201.25s. Other wide positions do collapse: cluster151's
+55,314-action decision recorded 1,769,212 hits and 836 leaf completions across
+32 worlds. Do not extrapolate the earlier 6,958-to-25 example to every wide
+position, or infer that increasing the cache bound would fix a zero-hit case
+without checking its accepted-successor population.
+
+Across all decisions there were 134,486,297 leaf hits / 149,192,288 root-action
+applications (**90.14% row-weighted reuse**), 14,705,991 leaf completions,
+14,702,710 tensor constructions and 134,486,297 tensor hits. Terminal leaves
+need no neural input, so leaf and tensor completion counts need not coincide.
+There were 3,281 exact terminal rows and 149,189,007 nonterminal model rows;
+the earlier shorthand "neural rows" for all 149,192,288 scoring rows included
+those exact terminals. Scoring-batch counts likewise describe evaluator calls,
+not necessarily a network forward for an all-terminal batch.
+Only 4,136 of 15,180 non-forced ranking decisions had any leaf hit: most savings
+come from large repeated-action populations, not most decisions. Cache maxima
+stayed at 128 entries each. Scoring batches averaged **127.407 / 128 rows
+(99.54% occupancy)**; reducing neural rows was not part of this optimization.
+
+Ranking still consumes **73.17%** of arm decision wall. The optimized arm also
+remains **above the descriptive 3x target** at 3.5287x; neither the label nor
+the unchanged signed-level metric creates an equal-work pass. Against the retained
+production-x3 control (2.9579x), the same-deal utility difference remains
++0.07031 [−0.02344, +0.16602], unresolved. Against production-x10, the utility
+difference remains +0.03320 [−0.07236, +0.13677], now at much lower measured arm
+cost. This supports a better measured strength/cost tradeoff, not a resolved
+head-to-head superiority at precisely matched compute.
+
+Completed replay and process log are preserved on Mini at
+`~/shengji-archive/2026-09-06/cwv-shortlist-scaling/w32-paired/` and
+`w32-paired.log`. `scaling-tail.log` retains the parity proof and comparisons;
+its current archive is a snapshot while the tail continues. After the guard
+passed, the predeclared W64/N30/R300 arm started automatically on 16 Strength
+workers; W32/N60/R600 remains next, without outcome-dependent changes.
+
+Follow-up engineering opportunity, **not applied to these running arms**:
+schedule known expensive replay pairs earlier using prior timing only, while
+preserving per-deal seeds, recipes and sorted results. Witness worker/order
+independence before using it. The progress ETA currently extrapolates completed
+pair means and repeatedly predicted seconds during this eight-minute tail;
+future monitoring should distinguish an active straggler from an average-rate
+ETA. Neither requires discarding or rerunning completed evidence.

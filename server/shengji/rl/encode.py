@@ -11,13 +11,14 @@ import hashlib
 from collections import Counter
 from pathlib import Path
 
-from ..engine.cards import RANKS, SUITS, TRUMP, make_deck
+from ..engine.cards import RANKS, SUITS, TRUMP, make_deck, total_points
 from ..engine.combos import decompose
+from ..engine.legal import beats
 from ..engine.round import Round
 from ..ai.memory import Memory
 
-ENC_VERSION = 1
-OBS_SCHEMA = "rl-observation-v1-public-no-private-kitty"
+ENC_VERSION = 2
+OBS_SCHEMA = "rl-observation-v2-trick-state"
 
 
 def _source_sha256(path: Path) -> str:
@@ -50,7 +51,8 @@ CARD_INDEX["LJ"] = len(CARD_INDEX)
 CARD_INDEX["BJ"] = len(CARD_INDEX)
 N_CARDS = 54
 
-OBS_DIM = N_CARDS * 9 + 5 + 13 + 4 + 1 + 1 + 1 + 20  # = 531
+#: v1 block, then the v2 additions: 16 trick-local, 5 points-regime, 8 hand shape
+OBS_DIM = N_CARDS * 9 + 5 + 13 + 4 + 1 + 1 + 1 + 20 + 16 + 5 + 8  # = 560
 ACT_DIM = N_CARDS + 6                                  # = 60
 
 
@@ -59,6 +61,34 @@ def _counts(cards) -> list[float]:
     for c in cards:
         v[CARD_INDEX[c]] += 0.5  # counts 0/1/2 -> 0/.5/1
     return v
+
+
+
+def trick_state(rnd: Round, seat: int) -> tuple[int | None, str | None, int]:
+    """``(winning seat, lead effective suit, points on the table)`` for the
+    trick in progress, or ``(None, None, 0)`` when ``seat`` is on lead.
+
+    ``Round`` keeps a running incumbent only inside a trusted rollout; on the
+    ordinary path the winner is resolved when the trick completes. This
+    recomputes it the same way ``Round`` does, so the observation can carry a
+    fact the acting player plainly has and the v1 vector never stated.
+    """
+    trick = rnd.trick
+    if trick is None or not trick.plays:
+        return None, None, 0
+    o = rnd.ordering
+    assert o is not None
+    lead = trick.plays[0].cards
+    winner = trick.plays[0].seat
+    inc_suit = o.eff_suit(lead[0])
+    inc_top = decompose(lead, o).top_level()
+    for tp in trick.plays[1:]:
+        won, top = beats(tp.cards, lead, inc_suit, inc_top, o)
+        if won:
+            winner, inc_top = tp.seat, top
+            inc_suit = o.eff_suit(tp.cards[0])
+    points = total_points(c for tp in trick.plays for c in tp.cards)
+    return winner, o.eff_suit(lead[0]), points
 
 
 def encode_obs(rnd: Round, seat: int) -> list[float]:
@@ -112,7 +142,48 @@ def encode_obs(rnd: Round, seat: int) -> list[float]:
         s = (seat + rel) % 4
         for eff in list(SUITS) + [TRUMP]:
             obs.append(1.0 if eff in mem.voids[s] else 0.0)
-    assert len(obs) == OBS_DIM
+
+    # --- v2: the trick in progress (16) -------------------------------
+    winner, lead_suit, trick_pts = trick_state(rnd, seat)
+    winner_rel = [0.0] * 4
+    if winner is not None:
+        winner_rel[(winner - seat) % 4] = 1.0
+    obs += winner_rel
+    obs.append(1.0 if (winner is not None and winner != seat
+                       and (winner - seat) % 2 == 0) else 0.0)
+    obs.append(min(trick_pts, 80) / 80.0)
+    lead_onehot = [0.0] * 5
+    if lead_suit is not None:
+        lead_onehot[(list(SUITS) + [TRUMP]).index(lead_suit)] = 1.0
+    obs += lead_onehot
+    played_here = 0 if rnd.trick is None else len(rnd.trick.plays)
+    position = [0.0] * 4
+    position[min(played_here, 3)] = 1.0
+    obs += position
+    obs.append(len(rnd.trick.plays[0].cards) / 6.0
+               if (rnd.trick is not None and rnd.trick.plays) else 0.0)
+
+    # --- v2: the points regime (5) ------------------------------------
+    # A point near the 80 threshold decides the level; a point at 20 does not.
+    # v1 gave only a linear fraction of 200 and never stated the kink.
+    pts_now = min(rnd.attacker_points, 200)
+    obs.append(max(-1.0, min(1.0, (pts_now - 80) / 80.0)))
+    band = [0.0] * 4
+    band[0 if pts_now < 40 else 1 if pts_now < 80 else 2 if pts_now < 120 else 3] = 1.0
+    obs += band
+
+    # --- v2: what the hand is made of (8) -----------------------------
+    hand = rnd.hands[seat]
+    eff = [o.eff_suit(c) for c in hand]
+    for name in list(SUITS) + [TRUMP]:
+        obs.append(eff.count(name) / 27.0)
+    obs.append(sum(1 for c in mem.unseen.elements()
+                   if o.eff_suit(c) == TRUMP) / 27.0)
+    counts = Counter(hand)
+    obs.append(sum(1 for v in counts.values() if v >= 2) / 13.0)
+    obs.append(len(hand) / 27.0)
+
+    assert len(obs) == OBS_DIM, f"{len(obs)} != {OBS_DIM}"
     return obs
 
 

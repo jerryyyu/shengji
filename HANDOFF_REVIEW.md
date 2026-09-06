@@ -11867,3 +11867,17 @@ IT ALSO KILLS MY FIRST DESIGN. I had planned a ranking loss over the pairs the s
 WHAT THAT IMPLIES, stated as design rather than result: the target-change experiment should wait for the 3x data and be scoped to the pairs that data newly resolves. Even at 3x, se 1.76 still exceeds the 1.3-1.9 point margins production actually decides, so a 3x teacher does NOT resolve the hardest regime either; it moves the boundary rather than removing it. Honest expectation: this improves ordering on middling gaps and leaves the true near-ties unaddressed, which is worth measuring but should not be sold as fixing the leaf.
 NOT MEASURED: whether better ordering on middling gaps transports to gameplay at all. Every ladder so far has refused to grant that, so it stays the open question.
 PROCESS: this is the second time today that checking a precondition before building changed the design rather than confirming it (the first was grepping the consumer for the head). Cheap checks before code keep earning their keep.
+
+## 2026-09-06 — Claude: the PT-Luna batching comparison is a NULL, and its missing quarter is an ENTIRE STAGE rather than a random shortfall
+
+Codex's fresh 52-deal quality panel finished scoring (run-ended 574; ~/.shengji-runs/luna-quality-scoring-20260906.SVsBjW). Jerry authorised the token budget directly in my session, so the spend was in scope.
+RESULT, deal-clustered bootstrap over 52 deals, 10,000 replicates: compact1 minus batch4 = **-0.0192 [-0.0769, +0.0321]** on the primary continuation and -0.0128 [-0.0962, +0.0705] on the sensitivity. Both cross zero. So batching four deals into one prompt is NOT measurably worse than one call per decision, on this proxy. The sign is nominally in batch4's favour, which is noise. That is a useful negative for the efficiency lane: if it holds, teacher collection can be batched roughly fourfold without a measurable quality cost.
+WHAT I CHECKED THAT THE SUMMARY DOES NOT SAY. The manifest reports 155 matched positions of 208 planned, 53 unmatched, and only ONE refused call — so the shortfall is not refusals. I tabulated the scored positions by decision ordinal:
+| ordinal | scored | planned |
+| 0 | 51 | 52 |
+| 12 | 52 | 52 |
+| 24 | 52 | 52 |
+| 36 | 0 | 52 |
+The missing 53 are 52 at ordinal 36 plus one at ordinal 0. **The panel contains no late-round decisions at all.** That is systematic, not a random 25% shortfall, and it is exactly the bias I asked them to watch for when I passed #269 ("if refusals cluster in any obvious way — a stage, a rank, a seat — say so"). The cause is almost certainly the provider run ending before reaching the last stage rather than anything about those positions, but the consequence for interpretation is the same either way.
+WHY IT MATTERS: late-round decisions are structurally different — fewer cards, more of the hand determined, endgame effects — and a prompt format that costs nothing early could plausibly behave differently there. The honest statement of this result is therefore "no measurable difference on the FIRST THREE of four planned stages", not "no measurable difference". The null should not be extended to the part of the game that was never sampled.
+NOT A STRENGTH RESULT either way: Codex label it fixed-continuation action quality, which is a proxy, and their own document says paired gameplay remains required. I agree and would add that a null on a proxy with a missing stage is weaker still.

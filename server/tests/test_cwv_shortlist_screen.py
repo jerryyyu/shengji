@@ -1,5 +1,6 @@
 """Pure wiring and receipt tests for the exhaustive shortlist screen."""
 import copy
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -71,6 +72,31 @@ def test_reopen_binds_recipe_and_rank(tmp_path):
     changed["shortlist"]["alternatives"] = 3
     with pytest.raises(ValueError, match="^completed shard does not match"):
         S.reopen_shard(path, changed, 0)
+
+
+def test_cli_binds_k8_into_uniform_worker_and_persisted_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    seen = []
+
+    def no_work(config, pending, shards, **kwargs):
+        seen.append((config, pending, shards))
+
+    monkeypatch.setattr(S, "_run_pending", no_work)
+    out = tmp_path / "screen"
+    assert S.main(["--arm", "uniform", "--alternatives", "8",
+                   "--clusters", "1", "--workers", "1", "--seed0", "17",
+                   "--out", str(out)]) == 0
+
+    assert seen and seen[0][1] == [0]
+    config = seen[0][0]
+    assert config["shortlist"]["alternatives"] == 8
+    assert config["shortlist"]["uniform"] is True
+    persisted = json.loads((out / "config.json").read_text())
+    assert persisted["shortlist"]["alternatives"] == 8
+    worker_bot = S.make_side(persisted, "arm", seed=17)
+    assert worker_bot.shortlist_config.alternatives == 8
+    assert worker_bot.N_DETERMINIZATIONS == 30
+    assert worker_bot.REPORT_FOLD_WORLDS == 300
 
 
 def test_summary_flags_wall_target_without_censoring_completion(monkeypatch):

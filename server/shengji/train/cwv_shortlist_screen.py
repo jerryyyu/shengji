@@ -5,6 +5,7 @@ import argparse
 import copy
 from dataclasses import asdict
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -23,6 +24,59 @@ BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity")
+
+
+def _cost_order(directory: Path, clusters, seed0: int) -> dict:
+    """Read prior completed shard timings for execution-only scheduling."""
+    costs = {}
+    directory = directory.resolve()
+    for cluster in clusters:
+        path = directory / f"cluster-{cluster:05}.json"
+        if not path.is_file():
+            raise ValueError(f"cost-order artifact missing cluster {cluster}: {path}")
+        try:
+            shard = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"invalid cost-order artifact for cluster {cluster}") from exc
+        expected_seed = seed0 + cluster
+        if (shard.get("schema") != "cwv-shortlist-shard-v1"
+                or type(shard.get("cluster")) is not int
+                or shard.get("cluster") != cluster
+                or type(shard.get("seed")) is not int
+                or shard.get("seed") != expected_seed
+                or shard.get("rank") != RANK):
+            raise ValueError(f"cost-order artifact drift for cluster {cluster}")
+        timings = shard.get("timings")
+        if type(timings) is not list or len(timings) != 2:
+            raise ValueError(f"cost-order artifact requires two mirrors for cluster {cluster}")
+        walls = []
+        mirrors = []
+        for timing in timings:
+            if type(timing) is not dict:
+                raise ValueError(f"invalid cost-order timing for cluster {cluster}")
+            mirror = timing.get("mirror")
+            wall = timing.get("wall_secs")
+            if (type(mirror) is not int or mirror not in (0, 1)
+                    or mirror in mirrors
+                    or type(timing.get("cluster")) is not int
+                    or timing.get("cluster") != cluster
+                    or type(timing.get("seed")) is not int
+                    or timing.get("seed") != expected_seed
+                    or type(wall) not in (int, float) or isinstance(wall, bool)
+                    or not math.isfinite(wall) or wall < 0):
+                raise ValueError(f"invalid cost-order timing for cluster {cluster}")
+            mirrors.append(mirror)
+            walls.append(wall)
+        costs[cluster] = sum(walls)
+        if not math.isfinite(costs[cluster]):
+            raise ValueError(f"nonfinite cost-order total for cluster {cluster}")
+    ordered = sorted(clusters, key=lambda cluster: (-costs[cluster], cluster))
+    return {
+        "source": str(directory),
+        "criterion": "sum prior shard timings wall_secs",
+        "clusters": ordered,
+        "cluster_wall_secs": {str(cluster): costs[cluster] for cluster in ordered},
+    }
 
 
 class CwvTimedPolicy(TimedPolicy):
@@ -220,6 +274,8 @@ def main(argv=None):
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--cost-order-from", type=Path,
+                        help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
@@ -266,6 +322,10 @@ def main(argv=None):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0)
+                  if args.cost_order_from is not None else None)
+    if cost_order is not None:
+        config["execution_order"] = cost_order
     bind_output_config(args.out, config)
     shards, pending = [], []
     for cluster in range(args.clusters):
@@ -274,6 +334,9 @@ def main(argv=None):
             shards.append(reopen_shard(path, config, cluster))
         else:
             pending.append(cluster)
+    if cost_order is not None:
+        costs = cost_order["cluster_wall_secs"]
+        pending.sort(key=lambda cluster: (-costs[str(cluster)], cluster))
     try:
         _run_pending(config, pending, shards, output=args.out, workers=args.workers,
                      task_fn=run_cluster)

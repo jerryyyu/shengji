@@ -123,6 +123,38 @@ def _verify_panel(panel_root: Path, *, require_population: bool = True):
     return manifest, rows, manifest_sha
 
 
+def _select_rows(rows: Sequence[Mapping[str, object]],
+                 manifest: Mapping[str, object], coordinates: object
+                 ) -> list[Mapping[str, object]]:
+    """Validate an explicit roster, retaining the verified panel's order."""
+    if type(coordinates) not in (list, tuple) or not coordinates:
+        raise QualityGameplayError("coordinate selection must be a non-empty array")
+    requested: set[tuple[str, int, int]] = set()
+    for value in coordinates:
+        if type(value) not in (list, tuple) or len(value) != 3:
+            raise QualityGameplayError("coordinate selection triple drift")
+        rank, banker, replicate = value
+        if (type(rank) is not str or type(banker) is not int
+                or type(replicate) is not int):
+            raise QualityGameplayError("coordinate selection type drift")
+        try:
+            key = game.LunaCoordinate(rank, banker, replicate).cluster_key
+        except Exception as exc:
+            raise QualityGameplayError("coordinate selection value drift") from exc
+        if key in requested:
+            raise QualityGameplayError("coordinate selection duplicate")
+        requested.add(key)
+    by_coordinate = {tuple(row["coordinate"]): row for row in rows}
+    unknown = requested - set(by_coordinate)
+    if unknown:
+        raise QualityGameplayError("coordinate selection unknown root")
+    entries = manifest.get("shards")
+    if type(entries) is not list:
+        raise QualityGameplayError("panel manifest shard list drift")
+    return [by_coordinate[tuple(entry["coordinate"])] for entry in entries
+            if tuple(entry["coordinate"]) in requested]
+
+
 def _caller_sha() -> str:
     return _sha_bytes(Path(__file__).read_bytes())
 
@@ -424,8 +456,9 @@ def _publish_partial(record: _Game, root: Path, reason: str) -> None:
 
 
 def _pilot_inputs(manifest: Mapping[str, object], manifest_sha: str,
-                  roster: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    return {"comparison": "batch4-vs-compact1-paired-gameplay-play-only",
+                  roster: Sequence[Mapping[str, object]], *,
+                  source_panel_count: int | None = None) -> dict[str, object]:
+    inputs = {"comparison": "batch4-vs-compact1-paired-gameplay-play-only",
             "panel_manifest_sha256": manifest_sha,
             "panel_schema": manifest.get("schema"),
             "root_split_roster": [dict(row) for row in roster],
@@ -443,6 +476,11 @@ def _pilot_inputs(manifest: Mapping[str, object], manifest_sha: str,
             "schedule": "sorted coordinate waves of eight; mirror0 then mirror1; "
                         "cycle-even batch4 then compact1, cycle-odd compact1 then batch4; "
                         "one live game per coordinate per cycle"}
+    if source_panel_count is not None:
+        inputs.update({"scope": "bounded-coordinate-tranche",
+                       "source_panel_count": source_panel_count,
+                       "selected_coordinate_count": len(roster)})
+    return inputs
 
 
 def _progress(root: Path, records: Sequence[_Game], pilot: object,
@@ -494,12 +532,18 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                  call_seconds: int = DEFAULT_CALL_SECONDS,
                  codex_binary: Path = Path("codex"),
                  pilot_factory: Callable[[object], object] | None = None,
-                 require_population: bool = True) -> dict[str, object]:
+                 require_population: bool = True,
+                 coordinates: Sequence[Sequence[object]] | None = None
+                 ) -> dict[str, object]:
     if any(isinstance(value, bool) or not isinstance(value, int) or value < 1
            for value in (tokens, wall_seconds, call_seconds)):
         raise QualityGameplayError("token and time limits must be positive")
     manifest, rows, manifest_sha = _verify_panel(
-        Path(panel_root), require_population=require_population)
+        Path(panel_root), require_population=(True if coordinates is not None
+                                              else require_population))
+    source_panel_count = len(rows) if coordinates is not None else None
+    if coordinates is not None:
+        rows = _select_rows(rows, manifest, coordinates)
     roster = _verify_game_roster(rows)
     records = _make_games(rows)
     args = argparse.Namespace(mode="gameplay", private_root=Path(panel_root),
@@ -509,7 +553,8 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
     pilot = (pilot_factory or token_pilot.Pilot)(args)
     root = Path(out)
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    pilot.configure(_pilot_inputs(manifest, manifest_sha, roster))
+    pilot.configure(_pilot_inputs(manifest, manifest_sha, roster,
+                                  source_panel_count=source_panel_count))
     call_index = 0
     try:
         for wave_start in range(0, len(rows), WAVE_SIZE):
@@ -590,10 +635,15 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
     if not all(item.game.complete or item.game.failed for item in records):
         return _progress(root, records, pilot, status="stopped", call_count=call_index)
     failed_games = sum(bool(item.game.failed) for item in records)
+    tranche = coordinates is not None
     result = {"schema": RESULT_SCHEMA,
-              "status": ("paired-gameplay-panel-complete-with-refusals" if failed_games
-                         else "paired-gameplay-complete"),
-              "interpretation": "Matched batch4-vs-compact1 play-only paired gameplay; both Luna agents are real and mirror assignments swap teams. No MC arm, rollout-enabled arm, or strength claim.",
+              "status": (("paired-gameplay-tranche-complete-with-refusals" if failed_games
+                          else "paired-gameplay-tranche-complete") if tranche else
+                         ("paired-gameplay-panel-complete-with-refusals" if failed_games
+                          else "paired-gameplay-complete")),
+              "interpretation": ("Bounded coordinate tranche of matched batch4-vs-compact1 play-only paired gameplay; both Luna agents are real and mirror assignments swap teams. No MC arm, rollout-enabled arm, or strength claim."
+                                 if tranche else
+                                 "Matched batch4-vs-compact1 play-only paired gameplay; both Luna agents are real and mirror assignments swap teams. No MC arm, rollout-enabled arm, or strength claim."),
               "panel_manifest_sha256": manifest_sha, "root_split_roster": roster,
               "caller_sha256": _caller_sha(), "games": len(records),
               "completed_games": sum(item.game.complete for item in records),
@@ -606,6 +656,9 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
               "pilot_arms": token_pilot.summarize(getattr(pilot, "rows", [])),
               "charged_tokens": getattr(pilot, "charged", None),
               "wave_size": WAVE_SIZE,
+              **({"scope": "bounded-coordinate-tranche",
+                  "source_panel_count": source_panel_count,
+                  "selected_coordinate_count": len(rows)} if tranche else {}),
               "schedule": "sorted coordinate waves of eight; mirror0 then mirror1; "
                           "cycle-even batch4 then compact1, cycle-odd compact1 then batch4; "
                           "one live game per coordinate per cycle"}
@@ -616,6 +669,8 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--panel-root", type=Path, required=True)
+    parser.add_argument("--coordinates-file", type=Path,
+                        help="canonical JSON array of selected root triples")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--codex-binary", type=Path, required=True)
     parser.add_argument("--tokens", type=int, required=True)
@@ -625,9 +680,13 @@ def main(argv: list[str] | None = None) -> int:
     if any(value < 1 for value in (args.tokens, args.wall_seconds, args.call_seconds)):
         parser.error("token and time limits must be positive")
     try:
+        coordinates = (None if args.coordinates_file is None
+                       else _load_json(args.coordinates_file))
+        if args.coordinates_file is not None and type(coordinates) is not list:
+            raise QualityGameplayError("coordinate selection must be a non-empty array")
         run_gameplay(args.panel_root, args.out, tokens=args.tokens,
                      wall_seconds=args.wall_seconds, call_seconds=args.call_seconds,
-                     codex_binary=args.codex_binary)
+                     codex_binary=args.codex_binary, coordinates=coordinates)
     except Exception as exc:
         parser.error(str(exc))
     return 0

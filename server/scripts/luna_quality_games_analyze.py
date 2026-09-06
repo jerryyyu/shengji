@@ -35,6 +35,9 @@ def analyze(out: Path) -> dict:
         "mirror1": {"team0": "compact1", "team1": "batch4"}}
     if inputs["agent_assignment"] != expected_assignment:
         raise collector.QualityGameplayError("gameplay arm assignment drift")
+    scope = inputs.get("scope")
+    if scope is not None and scope != "bounded-coordinate-tranche":
+        raise collector.QualityGameplayError("gameplay scope drift")
     roster = inputs["root_split_roster"]
     seen = set()
     pairs, missing, coverage = [], [], Counter()
@@ -93,11 +96,18 @@ def analyze(out: Path) -> dict:
     # or second replay is needed just to display costs and failures.
     accounting_path = result_path if result_path.exists() else (progress[-1] if progress else None)
     accounting = collector._load_json(accounting_path) if accounting_path else {}
-    if accounting.get("status") == "paired-gameplay-complete" and missing:
+    if accounting.get("status") in {"paired-gameplay-complete",
+                                    "paired-gameplay-tranche-complete"} and missing:
         raise collector.QualityGameplayError("completed gameplay is missing games")
+    complete = not missing and bool(roster)
     return {
         "schema": "luna-quality-gameplay-readout-v1",
-        "status": "complete-panel" if not missing and roster else "partial-panel",
+        **({"scope": scope,
+            "source_panel_count": inputs["source_panel_count"]}
+           if scope is not None else {}),
+        "status": (("complete-tranche" if complete else "partial-tranche")
+                   if scope is not None else
+                   ("complete-panel" if complete else "partial-panel")),
         "planned_deals": len(roster), "planned_games": 2 * len(roster),
         "completed_games": completed_games, "complete_pairs": len(pairs),
         "missing_games": missing, "pairs": pairs,

@@ -17,6 +17,10 @@ from shengji.harvest import trajectory
 from shengji.train import cwv_data
 from shengji.train.data import Residency, SplitSelector, split_deals
 
+#: deliberately small so shards are NOT all resident: a parallel run over a
+#: fully resident store submits nothing and any parity it reports is vacuous
+#: (Codex, review of #279).
+_BUDGET = 1_500_000
 SEED0 = 4_300_000
 ROUNDS = 8
 WORK = {"select_worlds": 2, "report_worlds": 30}
@@ -31,7 +35,7 @@ def store_and_selector(tmp_path_factory):
     cache = tmp_path_factory.mktemp("pdec-cache")
     prepared = cwv_data.prepare_stores([str(out)], Path(cache), limit_clusters=None,
                                        history=False, witness_seed=1, cache_workers=1,
-                                       residency=Residency(64_000_000))
+                                       residency=Residency(_BUDGET))
     store = prepared.block_store
     assignment = split_deals(store.keys(), seed=1, val_fraction=0.25, test_fraction=0.25)
     return store, SplitSelector(assignment, "train")
@@ -54,8 +58,43 @@ def test_worker_count_does_not_change_the_batches(store_and_selector):
     base, n = _digest(store, selector, 0)
     assert n > 1, "the fixture must produce several batches"
     for workers in (1, 2):
+        before = store.decode_submitted
         assert _digest(store, selector, workers) == (base, n), \
             f"{workers} worker(s) changed the batch stream"
+        assert store.decode_submitted > before, (
+            f"{workers} worker(s) submitted nothing, so this proved nothing")
+
+
+def test_serial_run_submits_nothing(store_and_selector):
+    store, selector = store_and_selector
+    before = store.decode_submitted
+    _digest(store, selector, 0)
+    assert store.decode_submitted == before
+
+
+def test_live_decoded_bytes_stay_inside_the_budget(store_and_selector, monkeypatch):
+    """Room must be made BEFORE dispatch, as the serial path does.
+
+    A pool receives its payloads before anything is admitted, so reserving
+    only per block lets the in-flight set exceed the budget by whatever is
+    in transit.
+    """
+    store, selector = store_and_selector
+    seen = []
+    real = type(store).block
+
+    def watched(self, i, *, pinned=(), decoded=None):
+        if decoded is not None:
+            seen.append(self.residency.bytes + int(self.sizes[i]))
+        return real(self, i, pinned=pinned, decoded=decoded)
+
+    monkeypatch.setattr(type(store), "block", watched)
+    before = store.decode_submitted
+    _digest(store, selector, 2)
+    assert store.decode_submitted > before, "nothing was dispatched"
+    assert seen, "no decoded payload was observed"
+    assert max(seen) <= _BUDGET, (
+        f"live decoded bytes {max(seen)} exceeded the {_BUDGET} byte budget")
 
 
 def test_the_comparison_can_fail(store_and_selector):

@@ -808,6 +808,10 @@ class CwvBlockStore:
     def _key(self, i: int) -> tuple:
         return (self.id, i)
 
+    #: shards dispatched to a decode pool since construction; a parallel
+    #: run that never submits is a serial run, so tests assert on this.
+    decode_submitted = 0
+
     def decode_task(self, i: int) -> tuple[str, str | None, bool | None]:
         """The picklable argument ``decode_arrays`` needs for shard ``i``."""
         shard, path = self.entries[i]
@@ -903,10 +907,33 @@ class CwvBlockStore:
         # sequence stays a function of rng alone either way, and the in-flight
         # payload is bounded by the window at ~0.4 MB a shard.
         def submit(group):
+            """Dispatch the window's non-resident shards, after making room.
+
+            The serial path makes room BEFORE it decodes, so live decoded
+            bytes never exceed the residency budget. A pool receives its
+            payloads before anything is admitted, so room must be made for
+            the WHOLE dispatched set up front or the budget is exceeded by
+            the amount in flight (Codex, review of #279).
+
+            The staging bound is therefore explicit: the non-resident bytes
+            of one window. When those do not fit the budget at all there is
+            nothing to reserve against, so the window decodes serially
+            rather than silently shrinking the window, which would change
+            the batch order.
+            """
             if pool is None:
                 return {}
-            return {i: pool.submit(decode_arrays, self.decode_task(i))
-                    for i in group if not self.is_resident(i)}
+            todo = [i for i in group if not self.is_resident(i)]
+            if not todo:
+                return {}
+            need = sum(int(self.sizes[i]) for i in todo)
+            budget = self.residency.budget
+            if budget is not None and need > budget:
+                return {}
+            self.residency.make_room(need, label="parallel decode staging",
+                                     pinned={self._key(i) for i in group})
+            self.decode_submitted += len(todo)
+            return {i: pool.submit(decode_arrays, self.decode_task(i)) for i in todo}
         try:
             for group in groups:
                 pending = submit(group)

@@ -11718,5 +11718,5 @@ Archived: shengji-archive/2026-09-06/shortlist-regret/. The learned-1x arm is re
 Completing 5348e481 with the rerun learned-1x arm (the one my premature launch cost; sealed checkpoint bb15e4b2, rc=0, 256/256 pairs, 14.8 min, 1.31x wall):
 - CE-selected A+B+C at W1: +0.047 [-0.025, +0.113] (retained).
 - REGRET-selected at W1: -0.027 [-0.094, +0.047].
-- PAIRED per round, same 256 clusters: regret minus CE = see run log; both rungs put the regret checkpoint BELOW the CE one, and the W1 regret arm is the first shortlist arm measured at or below zero against production.
+- PAIRED per round, same 256 clusters: regret minus CE = -0.0742 [-0.1484, +0.0000], 47 clusters better / 61 worse / 148 tied. The upper bound lands exactly on zero, so this rung is marginal, NOT resolved. Both rungs put the regret checkpoint below the CE one (W32 -0.0586, W1 -0.0742), and the W1 regret arm is the first shortlist arm measured below zero against production.
 Two independent widths agreeing on the sign strengthens the selector decision made in 5348e481 (A+C+D on val_ce) without changing its strength: neither paired interval excludes zero individually. Archived shengji-archive/2026-09-06/shortlist-regret/ (both arms, config, summaries, per-cluster records).

@@ -1,4 +1,5 @@
 import copy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import time
@@ -8,13 +9,15 @@ import pytest
 from scripts import luna_quality_compare as compare
 from scripts import luna_quality_games as gameplay
 from scripts import luna_token_pilot as token_pilot
-from shengji.luna import game, quality_panel
+from shengji.luna import game, quality_panel, token_batch
 from shengji.luna.canonical import canonical_json_bytes
+from shengji.luna.transport import CODE_MODE_DISABLED_DIAGNOSTIC, InvocationResult
 
 from test_luna_quality_games import FakePilot, FastProduction, SECRET
 
 
 def _full_panel(path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
     rows = []
     entries = []
     for coordinate in game.LunaDesign().root_coordinates:
@@ -33,6 +36,102 @@ def _full_panel(path):
 
 COORDINATES = [["2", 0, 0], ["3", 1, 1], ["4", 0, 0], ["5", 1, 1],
                ["6", 0, 0], ["7", 1, 1], ["8", 0, 0], ["9", 1, 1]]
+
+
+class AdmissionRunner:
+    """Mock the actual batch subprocess while retaining real Pilot evidence."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, command, prompt, workspace, timeout):
+        del workspace, timeout
+        self.calls += 1
+        context = json.loads(prompt.decode().split("BATCH_CONTEXT_JSON\n", 1)[1])
+        final = {"decisions": [{"slot": row["slot"], "candidate_index": 0,
+                                 "confidence": "low", "planning_note": "admission-test"}
+                                for row in context]}
+        raw = json.dumps(final, separators=(",", ":")).encode()
+        Path(command[command.index("--output-last-message") + 1]).write_bytes(raw)
+        usage = {"input_tokens": 20_000, "cached_input_tokens": 5_000,
+                 "output_tokens": 20_000, "reasoning_output_tokens": 10_000,
+                 "cache_write_input_tokens": 0}
+        events = [{"type": "thread.started"},
+                  {"type": "item.completed", "item": {
+                      "id": "diagnostic", "type": "error",
+                      "message": CODE_MODE_DISABLED_DIAGNOSTIC}},
+                  {"type": "turn.started"},
+                  {"type": "item.completed", "item": {
+                      "id": "message", "type": "agent_message", "text": raw.decode()}},
+                  {"type": "turn.completed", "usage": usage}]
+        trace = b"".join(json.dumps(event, separators=(",", ":")).encode() + b"\n"
+                          for event in events)
+        return InvocationResult(0, trace, b"", 8)
+
+
+def _real_gameplay_pilot(monkeypatch, runner):
+    class BaseTransport:
+        runtime = {"test": "fixed"}
+        model = game.MODEL
+        reasoning_effort = "medium"
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+    class BatchTransport(token_batch.CompactBatchTransport):
+        def __init__(self, **kwargs):
+            kwargs.update(codex_binary="/usr/bin/true", temp_root=kwargs.get("temp_root"),
+                          run_command=runner,
+                          runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"})
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(token_pilot, "CodexExecPlannerTransport", BaseTransport)
+    monkeypatch.setattr(token_batch, "CompactBatchTransport", BatchTransport)
+
+
+def _run_real_tranche(tmp_path, monkeypatch, runner, *, tokens):
+    panel = tmp_path / "panel"
+    _full_panel(panel)
+    _real_gameplay_pilot(monkeypatch, runner)
+    return gameplay.run_gameplay(
+        panel, tmp_path / "out", tokens=tokens, wall_seconds=18_000,
+        call_seconds=120, codex_binary=Path("/usr/bin/true"),
+        coordinates=COORDINATES)
+
+
+def test_real_pilot_admission_stop_publishes_partials_and_reopens(tmp_path,
+                                                                  monkeypatch):
+    runner = AdmissionRunner()
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="pilot admission budget exhausted"):
+        _run_real_tranche(tmp_path, monkeypatch, runner, tokens=100_000)
+    assert runner.calls == 2
+    progress = sorted(out.glob("progress-*.json"))
+    assert gameplay._load_json(progress[-1])["status"] == "stopped"
+    metadata = list(out.glob("*-partial-metadata-*.json"))
+    trajectories = list(out.glob("*-partial-trajectory-*.json"))
+    assert len(metadata) == len(trajectories) == 16
+    assert any(gameplay._load_json(path)["events"] for path in trajectories)
+    assert not list(out.glob("*-terminal.json"))
+    config = (out / "config.json").read_bytes()
+
+    with pytest.raises(RuntimeError, match="pilot admission budget exhausted"):
+        _run_real_tranche(tmp_path, monkeypatch, runner, tokens=100_000)
+    assert runner.calls == 2
+    assert (out / "config.json").read_bytes() == config
+
+    with pytest.raises(ValueError, match="inputs or implementation changed"):
+        _run_real_tranche(tmp_path, monkeypatch, runner, tokens=100_001)
+    assert runner.calls == 2
+
+
+def test_real_pilot_high_admission_ceiling_completes_tranche(tmp_path, monkeypatch):
+    runner = AdmissionRunner()
+    result = _run_real_tranche(tmp_path, monkeypatch, runner,
+                               tokens=30_000_000)
+    assert result["status"] == "paired-gameplay-tranche-complete"
+    assert result["completed_games"] == 16
+    assert len(list((tmp_path / "out").glob("*-terminal.json"))) == 16
 
 
 def test_cli_coordinate_tranche_runs_16_games_and_binds_scope(tmp_path, monkeypatch):

@@ -4,6 +4,11 @@
 `search_policy.py` plugs it into the production MC-LCB selection/report split.
 No retraining, BELIEF dependency, or production registry entry is required.
 
+**Current positive DEV consumer:** the complete-world **full-legal W32
+shortlist** below, not the older RunA prior/value experiment described first
+in this file. See [MC vs W32 and the results](../../../AI_POLICIES.md#experimental-w32-shortlist)
+for the A+B+C milestone and its limits.
+
 ## What changes
 
 - Use the current constrained hidden-world sampler.
@@ -287,7 +292,38 @@ policy/model inputs cannot silently mix into the existing output directory.
 The first summary is the result; there is no duplicate multi-hour integrity
 pass. No long-running cloud data or GPU training job is stopped for this run.
 
-## Many-world value shortlist + full MC report (DEV)
+## Full-legal complete-world W32 shortlist (DEV)
+
+`cwv_shortlist.py` / `scripts/cwv_shortlist_screen.py` extend the older
+`world_shortlist.py` experiment: the candidate population is now **all legal
+submitted actions**, not production's ballot, and the evaluator sees complete
+**sampled** worlds rather than the older actor-observation head.
+
+```text
+Actor-visible root → exhaustive legal actions × 32 shared compatible worlds
+    → engine applies action; heuristic finishes CURRENT trick
+    → batch complete-world expected signed-level values (exact at terminal)
+    → four alternatives + unchanged heuristic incumbent
+    → full N30 MC selection → fresh R300 paired report → final play
+```
+
+This named arm disables tractor-lock bypass for exhaustive leads, keeps
+ranking randomness separate, and inherits the full final MC/report path.
+It is not the `mc-cwv-*` one-ply argmax bot and not recursive PUCT. Four
+alternatives means at most **five** final candidates including the incumbent.
+
+The CE-selected A+B+C MLP checkpoint gained +0.1387 levels/round
+[+0.0645,+0.2168] on 256 paired rank-2 DEV deals. Reviewed opt-in static
+encoding/successor reuse (#249/#252/#254, not yet merged) preserved all saved
+trajectories with 2.849× less decision wall. W64 and doubled final MC did not
+show a resolved improvement. The
+[completed run record](https://github.com/jerryyyu/shengji/blob/114f4fc71c55358cf80f364850cb60e2c25c5979/server/runs/cwv_full_legal_shortlist_dev_20260905.md)
+binds the exact checkpoint, source, commands and counters; directory labels
+such as `3x` are not measured costs. Next recipes must use fresh output roots,
+retain completed pairs on resume, and separate checkpoint/settings changes
+from engineering. No production or scaled-run authority is conveyed here.
+
+## Earlier production-ballot value shortlist (DEV)
 
 `world_shortlist.py` is a complementary experiment to the value-at-leaf arm,
 not a replacement for it. It leaves the production ballot, tractor lock,

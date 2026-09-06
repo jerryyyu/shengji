@@ -85,6 +85,21 @@ jobs:
         run: uv run python setup.py build_ext --inplace
       - name: Import every shengji module
         run: uv run python -P -B -m pytest -q tests/test_import_walk.py
+      - name: Test CWV consumers in pure mode
+        env:
+          SHENGJI_REQUIRE_VOIDS: "1"
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: env -u SHENGJI_FAST uv run python -B -m pytest -q tests/test_*cwv*.py
+      - name: Test CWV consumers in compiled mode
+        env:
+          SHENGJI_FAST: "1"
+          SHENGJI_REQUIRE_VOIDS: "1"
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: uv run python -B -m pytest -q tests/test_*cwv*.py
 
   luna-profiles:
     runs-on: ubuntu-latest

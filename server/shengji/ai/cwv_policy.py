@@ -392,8 +392,11 @@ class CompleteWorldEvaluator:
     def score(self, positions: Sequence[Round], root_seat: int, *,
               tensor_cache=None) -> np.ndarray:
         """Every position from ONE seat's team perspective (one batch)."""
-        return self.score_many(positions, [int(root_seat)] * len(positions),
-                               tensor_cache=tensor_cache)
+        seats = [int(root_seat)] * len(positions)
+        # Preserve the existing override contract when reuse is not requested.
+        if tensor_cache is None:
+            return self.score_many(positions, seats)
+        return self.score_many(positions, seats, tensor_cache=tensor_cache)
 
     def score_many(self, positions: Sequence[Round], seats: Sequence[int], *,
                    tensor_cache=None) -> np.ndarray:

@@ -1,8 +1,9 @@
 # PERF.md — engine/search speed: rules, baselines, shipped results
 
-Durable record only. Live performance work (fresh profiles, ranked candidates,
-in-progress optimizations) is tracked in GitHub issue #208, not here. The
-historical plan/gaps/candidate sections that used to live in this file are
+Durable record only. General engine/runner performance work is tracked in
+[issue #208](https://github.com/jerryyyu/shengji/issues/208); shortlist-specific
+engineering and scaling in [#248](https://github.com/jerryyyu/shengji/issues/248).
+The historical plan/gaps/candidate sections that used to live in this file are
 preserved byte-for-byte in `docs_archive/perf-through-2026-09-04.md`.
 
 Update this file only when an optimization ships (add a row) or a measured
@@ -12,6 +13,8 @@ baseline moves (replace the row and date it).
 
 | date | metric | value | conditions |
 |---|---|---|---|
+| 2026-09-06 | W32 decision-preserving engineering, **not shipped** | **2.849×** decision speedup; ranking 3.546×; parallel job 2.006× | A+B+C checkpoint, same 256 paired rank-2 deals / 512 rounds, Strength 16 workers; normalized saved trajectories and work counts identical; #249/#252/#254 opt-in stack |
+| 2026-09-06 | Optimized W32 remaining cost | 3.5287× opponent decision wall; 73.17% of arm wall in ranking; 99.54% scoring-batch occupancy | Not equal-production-cost; 24m27s process wall, ~10.45 mean cores; one late pair left an 8m28s tail. Increasing batch size is not an assumed gain. |
 | 2026-09-04 | production search throughput, fast engine | 3,500–4,100 rollouts/s per worker; ~775 rollouts per decision | shengji-cloud 16 workers, oracle probe run1 `runtime.json`/`summary.json` (archived `shengji-archive/2026-09-04/oracle-run1`) |
 | 2026-09-04 | compiled vs pure Python, one 2-round cluster, identical output hash | 17.56 s vs 80.31 s (4.57x) | shengji-cloud, `SHENGJI_FAST=1`, Codex profile on issue #208 |
 | 2026-09-04 | where search time goes (cProfile shares, compiled) | report fold 80% of `decide_play`; `_rollout` 61%; sampling (`_sample_hands`/`_assign`) 38%; heuristic continuation 21% | one compiled 2-round cluster; shares overlap, do not add; issue #208 |
@@ -29,6 +32,30 @@ baseline moves (replace the row and date it).
 
 Reproduce the engine baseline from `server/runs/perf_audit_20260802.md` and
 compare only under like-for-like load.
+
+### W32 engineering boundary
+
+The completed [W32 readout](https://github.com/jerryyyu/shengji/blob/114f4fc71c55358cf80f364850cb60e2c25c5979/server/runs/cwv_full_legal_shortlist_dev_20260905.md)
+compares the full consumer path, not just a selected microbenchmark. Static
+MLP encoding avoids discarded history and reuses unchanged public features;
+bounded world-scoped caches reuse equivalent accepted-action successors and tensors.
+Every root action still goes through the engine. All 149.19M scoring rows,
+batch order, RNG/work counts and saved decisions remain unchanged; there is
+no neural-score deduplication or candidate pruning. Sequence-model inputs are
+not replaced by the MLP shortcut.
+
+The 6,958-submission → 25-successor example explains a major source of reuse,
+not a universal compression ratio: two wide follow positions with 64,897 and
+44,760 actions had **zero** hits. Next engineering work should measure
+cache-bypass overhead on such follows and improve replay-pair scheduling,
+with explicit parity tests. Neither a larger cache nor perfect core use can
+be assumed to fix their per-decision cost. Faster batch completion and faster
+individual decisions are separate metrics.
+
+Two-stage model pruning, more shortlist alternatives, additional worlds and
+deeper continuation change the policy. Their cost/quality experiments stay
+separate from the exact speedup; the engineering PRs remain unmerged until
+final integration/CI and Claude review. Production is unchanged.
 
 ## Shipped
 

@@ -189,3 +189,69 @@ executing source and enabled mode explicitly. This conditional adoption does
 not change the checkpoint, world counts, RNG, submitted action set, model batch
 shapes, or final MC policy. No live PUCT job is altered. If parity or review
 fails, keep the original path and investigate before adopting the optimization.
+
+### Isolated engineering A/B completed — 2026-09-06 02:54 UTC
+
+On released Strength, exact PR #254 source
+`30b5eddeda9c510fb8f6592b73449c1a713a9fe4` ran the actual ABC checkpoint on
+seven existing saved positions, W32/N30/R300, batch128. Four learned modes and
+production/production-x3/uniform controls produced all 49 requested rows. All
+14 encoding and 14 successor-reuse pairs had exactly equal ordered score hashes,
+batch populations, shortlist/final MC decisions and post-decision RNG state.
+
+| Encoding / successor reuse | Seven-position end-to-end wall | Ranking wall | Speed vs reference/off |
+|---|---:|---:|---:|
+| Reference / off | 42.260s | 41.075s | 1.000x |
+| Static / off | 37.243s | 36.082s | 1.135x |
+| Reference / on | 11.887s | 10.711s | 3.555x |
+| Static / on | 11.557s | 10.374s | 3.657x |
+
+The 6,958-action position dominates: 40.156s -> 10.294s (3.901x). **Excluding
+that position, the combined speedup is 1.665x**, not 3.657x. These selected
+positions are not a natural-frequency corpus, so neither the ratio to production
+(32.13x -> 8.79x here) nor the aggregate speedup replaces the full-game cost.
+There are no repeated timing trials or timing confidence intervals in this
+diagnostic; sub-millisecond forced positions should not be read as speed evidence.
+
+Both reuse modes still process 227,552 action/world neural rows in 1,779 batches
+(1,776 of 128, one of 96, two of 64). Finished-leaf and tensor constructions fall
+to 2,177 each, with 225,375 reuse hits. Peak logical leaf entries are 36 and peak
+tensor entries 128; each cache is bounded at 128. All actions still undergo
+engine validation, and no neural rows or inference batches are elided.
+
+Learned arms used approximately one effective CPU core each (CPU/wall 0.9998–
+0.9999), deliberately isolated/sequential for a per-decision A/B. The process
+lifetime RSS high-water was 356,278,272 bytes in every arm. This does **not**
+measure per-arm memory savings or the aggregate RSS of 16 independent workers.
+Native engine mode was enabled; torch/native math used one thread. All measured
+decisions together took 109.870s, with no game outcomes opened by this profile.
+
+Raw 49 rows, config, summary and log are retained at
+`~/shengji-archive/2026-09-06/cwv-successor-profile/` on Mini, copied from
+`/root/cwv-successor-profile.x94hty/` on Strength. The stored config binds the
+source modules, checkpoint, native library and saved-state input SHA. Claude's
+source review remains the condition before incorporating reuse into scaling.
+
+### Production x10 launched — 2026-09-06
+
+The separate production control started on released Strength from exact source
+`508231a32a799fd76956f837b8223b3384bd8d7c` (PR #251), after all eight focused
+screen/CLI wiring tests passed in the executing compiled environment. It does
+not use the pending encoding/reuse changes. Unit:
+`cwv-scaling-prod10-20260906.service`; root:
+`/root/cwv-scaling-prod10.9nHvPq/`; output subdirectory: `production-10x`.
+
+```sh
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 OMP_NUM_THREADS=1 \
+OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  python -u -B scripts/cwv_shortlist_screen.py --arm production \
+  --production-multiplier 10 --target-wall-multiplier 10 \
+  --clusters 256 --workers 16 --seed0 90260904 --out OUTPUT
+```
+
+The existing per-pair progress/ETA and atomic-shard recovery are unchanged.
+An outer 7,200s / 24GiB process limit protects the host; expiry retains completed
+pairs and is not a scientific discard rule. Initial ETA remains 45–60 minutes,
+to be replaced by measured pair pace. No job was interrupted to make room.
+Optimized learned-arm launch is still pending the source approval described
+above; no new teacher collection, merge or deployment is bundled here.

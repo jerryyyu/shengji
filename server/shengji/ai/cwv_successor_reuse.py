@@ -16,14 +16,28 @@ class WorldSuccessorCache:
     """Reuse finished successors for one fixed root/world instance."""
 
     def __init__(self, root, seat: int, hands: Sequence[Sequence[str]],
-                 buried: Sequence[str], max_entries: int = 128):
+                 buried: Sequence[str], max_entries: int = 128, *,
+                 prepare_leads: bool = True):
         if type(max_entries) is not int or max_entries < 1:
             raise ValueError("max_entries must be a positive integer")
+        if type(prepare_leads) is not bool:
+            raise ValueError("prepare_leads must be boolean")
         self.root = root
         self.seat = seat
         self.hands = [list(hand) for hand in hands]
         self.buried = list(buried)
         self.max_entries = max_entries
+        self._lead_validation = None
+        # Preparation is optional; preserve the cache's lazy-root contract
+        # when a caller supplies a root without engine decision metadata.
+        trick = getattr(root, "trick", None)
+        ordering = getattr(root, "ordering", None)
+        if (prepare_leads and trick is not None
+                and not trick.plays and ordering is not None):
+            from ..engine.legal import PreparedLeadValidation
+            others = [self.hands[s] for s in range(4) if s != seat]
+            self._lead_validation = PreparedLeadValidation(
+                self.hands[seat], others, ordering)
         self._leaves: OrderedDict[tuple[str, ...], Any] = OrderedDict()
         self.root_actions = 0
         self.leaf_hits = 0
@@ -43,6 +57,11 @@ class WorldSuccessorCache:
     def entries(self) -> int:
         return len(self._leaves)
 
+    @property
+    def lead_validation(self):
+        """The root-only prepared context, when this cache enabled it."""
+        return self._lead_validation
+
     def leaf(self, candidate: Sequence[str]):
         """Validate every submitted action, reusing only its finished leaf."""
         # Local imports avoid making cwv_policy import this module recursively.
@@ -50,9 +69,12 @@ class WorldSuccessorCache:
         from ..engine.round import actual_play_after
 
         self.root_actions += 1
+        kwargs = {}
+        if self._lead_validation is not None:
+            kwargs["_lead_validation"] = self._lead_validation
         clone = afterstate(
             self.root, self.seat, self.hands, self.buried, candidate,
-            finish_trick=False)
+            finish_trick=False, **kwargs)
         accepted = tuple(actual_play_after(
             clone, self.seat, self.root.last_trick))
         cached = self._leaves.get(accepted)

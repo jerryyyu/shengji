@@ -734,7 +734,16 @@ _BIT_SHIFTS = np.asarray([0, 2, 4, 6], dtype=np.uint8)
 OBS_SEGMENTS = [["card_planes", N_CARDS * 9, "bits2"], ["trump_suit", 5, "bits2"],
                 ["trump_rank", 13, "bits2"], ["banker_rel", 4, "bits2"],
                 ["attacker_points", 1, "f32"], ["cards_remaining", 1, "f32"],
-                ["is_attacker", 1, "bits2"], ["voids", 20, "bits2"]]
+                ["is_attacker", 1, "bits2"], ["voids", 20, "bits2"],
+                # encoder v2: the trick in progress, the points regime and hand shape.
+                # Kinds follow what each column can hold EXACTLY: indicators pack as
+                # bits2, anything scaled by a non-power-of-two denominator stays f32.
+                ["winner_rel", 4, "bits2"], ["partner_winning", 1, "bits2"],
+                ["trick_points", 1, "f32"], ["lead_suit", 5, "bits2"],
+                ["trick_position", 4, "bits2"], ["lead_len", 1, "f32"],
+                ["points_to_threshold", 1, "f32"], ["points_band", 4, "bits2"],
+                ["suit_lengths", 5, "f32"], ["unseen_trump", 1, "f32"],
+                ["pairs_held", 1, "f32"], ["hand_size", 1, "f32"]]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],
                  ["max_pair_run", 1, "u8"], ["all_trump", 1, "bits2"], ["points", 1, "f32"],
                  ["n_components", 1, "u8"]]

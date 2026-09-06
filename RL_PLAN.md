@@ -79,8 +79,13 @@ when a candidate beats the champion on a tier ii paired screen.
    selective work allocation and deeper search are separate policy experiments,
    not part of the bit-identical optimization. The existing ballot-rooted PUCT
    ladder is closed; any future shortlist-rooted depth test is distinct.
-   First establish mixed-rank K4 coverage on the separate 260-cluster screen.
-   Then test Jerry's double-shortlist: keep the root five, rank inner legal
+   The separate 260-cluster, balanced 13-rank K4 screen is complete: +0.06154
+   levels/round, 95% CI `[-0.00577,+0.13462]`, an inconclusive broader-rank
+   estimate. All ranks and 50 actual no-trump rounds were observed. Ranking
+   took about 80% of decision wall, with 59.16% of ranking cost in the most
+   expensive 1% of decisions. Do not ascribe differences from rank-2 solely
+   to rank, because deals changed too.
+   Next test Jerry's double-shortlist: keep the root five, rank inner legal
    actions for one extra trick, preserve root MC-LCB verification and compare
    with an equally deep unlearned continuation. Label per-world privileged
    continuations as simulations, not executable hidden-information policies.
@@ -353,8 +358,8 @@ mixed teacher outcomes are not interchangeable targets. Sol can first supply
 a bounded compatibility/cost sample, followed by a declared sampling recipe.
 Neither this plan nor the W32 result launches scaled collection. PT52 private
 panel `sl6QAC` is complete (52/208; 26 fit / 26 validation; 13 ranks × 4;
-NT4; no LLM calls). Its caller is in PR261 awaiting source/design review;
-the unrelated CI timing flake was rerun without a source repair. Compact1
+NT4; no LLM calls). Its caller in PR261 has source/design PASS at `59668ff3`;
+the proposed provider ceiling remains separate. Compact1
 versus batch4 and a separate free-tool bridge remain planned; the old quality
 evidence is inconclusive. Details:
 [teacher efficiency investigation](https://github.com/jerryyyu/shengji/blob/724d811676363a13e164d6d8d7ceca16745b7c2f/TEACHER_TOKEN_EFFICIENCY.md).

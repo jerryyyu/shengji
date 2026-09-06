@@ -55,3 +55,40 @@ whole-process wall and CPU. Keep the old rank-2 result separate: changing both
 rank and deals prevents attributing any difference solely to rank. Higher-cost
 strength is permitted; measured cost is disclosed, not an equal-cost launch gate.
 No duplicate full-game reconstruction is required. Retain raw shards and logs.
+
+## Completed result — 2026-09-06, 04:08 ET
+
+All 260 pairs / 520 rounds completed at executing source `bc89b557`, exit 0.
+The mixed-rank estimate is **positive but inconclusive**: +0.06154 signed
+levels per round, deal-clustered 95% bootstrap CI `[-0.00577,+0.13462]`.
+Win rate was 52.5%, CI `[49.42%,55.77%]`. These are the original summary's
+1,000-replicate intervals; no outcome-dependent population extension was run.
+The difference from the previous rank-2 result cannot be attributed to rank:
+the seeds also changed. Twenty deals per rank do not support separate claims.
+
+| Evidence | Observed |
+|---|---|
+| Actual rank coverage | 40 rounds for each of all 13 ranks; both mirrors checked |
+| Actual suit coverage | C92 / D124 / H126 / S128 / NT50 rounds |
+| Whole-process wall / CPU | 22m52.81s / 19,068.83s; 13.89 mean cores, 16 workers, zero swaps |
+| Arm / production decision wall | 15,708.57s / 3,310.50s = 4.745× |
+| Arm ranking wall | 12,575.60s, about 80% of arm decision wall |
+| Arm / production full rollouts | 11,269,140 / 11,911,470 |
+| Cheap ranking evaluations | 246,722,176 |
+
+Saved traces locate the next engineering target without another gameplay run:
+the most expensive 1% of ranking decisions account for 59.16% of ranking wall;
+the largest ranking pass took 382.55s. Existing successor reuse avoided
+233,785,943 leaf completions (12,936,233 remained), but did not eliminate the
+full matrix of neural scoring rows. This is profiling evidence, not a promised
+additional speedup or permission to prune candidates under an exactness claim.
+
+Raw shards, summary, log and launch script are retained on Mini at
+`~/shengji-archive/2026-09-06/cwv-ranks13/` (85MB), and on Strength at
+`/root/cwv-ranks13-20260906.YtvILo`. Summary SHA:
+`069995e821ffed02a69e8281758ff8ac0d4f28aa360b9000b91ad1712686848d`.
+The [full readout](https://github.com/jerryyyu/shengji/pull/258#issuecomment-5557969812)
+records the inherited generic summary-label caveat: use the actual config,
+shortlist recipe and work counters, not `arm_description`/`work.production`.
+Artifacts are unchanged. Strength was explicitly released to Claude's queued
+Run F after completion and local preservation; no Codex follow-up was armed.

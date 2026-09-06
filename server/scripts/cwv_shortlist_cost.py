@@ -103,6 +103,7 @@ def main(argv=None):
     parser.add_argument("--stride", type=int, default=8)
     parser.add_argument("--world-grid", default="1,2")
     parser.add_argument("--selection-grid", default="1,30,90")
+    parser.add_argument("--alternatives", type=int, default=4)
     parser.add_argument("--encoding-grid", default="reference")
     parser.add_argument("--successor-grid", default="off",
                         help="off,on compares repeated work against bounded successor reuse")
@@ -121,8 +122,8 @@ def main(argv=None):
     if (not encodings or len(set(encodings)) != len(encodings)
             or any(e not in ("reference", "mlp-static") for e in encodings)):
         parser.error("encoding-grid must contain distinct reference and/or mlp-static")
-    if min(args.deals, args.stride, *worlds, *selections) < 1:
-        parser.error("positive grids, deals, and stride required")
+    if min(args.deals, args.stride, args.alternatives, *worlds, *selections) < 1:
+        parser.error("positive grids, deals, stride, and alternatives required")
     evaluators = {e: shared_evaluator(args.checkpoint, threads=1, encoding=e)
                   for e in encodings}
     states_raw = None if args.states_json is None else args.states_json.read_bytes()
@@ -133,6 +134,7 @@ def main(argv=None):
         "states_json_sha256": None if states_raw is None else hashlib.sha256(states_raw).hexdigest(),
         "deals": args.deals, "stride": args.stride,
         "worlds": worlds, "selection_worlds": selections,
+        "alternatives": args.alternatives,
         "source_sha256": execution_source_identity(Path(__file__).resolve().parents[1] / "shengji"),
         "cost_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "python": platform.python_version(), "platform": platform.platform(),
@@ -160,10 +162,14 @@ def main(argv=None):
                       for start in range(0, len(captured), args.stride))
         print(f"captured deal {index + 1}/{args.deals}: {len(captured)} decisions", flush=True)
     recipes = [("production", None, None, False), ("production-3x", None, None, False)]
-    recipes += [(f"learned-w{w}-n{n}-{e}" + ("-reuse" if mode == "on" else ""),
-                 CWVShortlistConfig(worlds=w, selection_worlds=n), e, mode == "on")
+    label = "" if args.alternatives == 4 else f"-k{args.alternatives}"
+    recipes += [(f"learned-w{w}-n{n}-{e}{label}" + ("-reuse" if mode == "on" else ""),
+                 CWVShortlistConfig(worlds=w, selection_worlds=n,
+                                    alternatives=args.alternatives), e, mode == "on")
                 for w in worlds for n in selections for e in encodings for mode in reuse_modes]
-    recipes += [(f"uniform-n{n}", CWVShortlistConfig(selection_worlds=n, uniform=True), None, False)
+    recipes += [(f"uniform-n{n}{label}",
+                 CWVShortlistConfig(selection_worlds=n, alternatives=args.alternatives,
+                                    uniform=True), None, False)
                 for n in selections]
     rows = []
     for index, (snapshot, seat) in enumerate(states):

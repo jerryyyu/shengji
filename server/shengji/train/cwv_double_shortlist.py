@@ -44,6 +44,11 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
     ADAPTIVE_ALLOCATION = True
     DOUBLE_RECORD_SCHEMA = "cwv-double-shortlist-v2"
     GUIDANCE_MODE = "selection-fraction-ceil-v2"
+    # Pure memo retention, never an action/search cap. A very wide operation
+    # may temporarily exceed these thresholds; trim at bounded rank-batch and
+    # branch boundaries rather than retain the union of every simulation.
+    ORDERING_DECOMPOSITION_LIMIT = 65_536
+    ORDERING_TRACTOR_LIMIT = 8_192
 
     # Reuse the existing uniform-selection and paired-report adapters. They
     # draw production worlds/moments and invoke this class's lockstep hook.
@@ -253,6 +258,27 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                    state.turn, state.attacker_points, branch)
         return hashlib.sha256(repr(payload).encode()).hexdigest()
 
+    def _trim_ordering_memos(self, states):
+        if type(self.rollout_policy) is not HeuristicBot:
+            return
+        seen = set()
+        for state in states:
+            if type(state) is not Round or type(state.ordering) is not Ordering:
+                continue
+            ordering = state.ordering
+            if id(ordering) in seen:
+                continue
+            seen.add(id(ordering))
+            for name, limit in (("_dcache", self.ORDERING_DECOMPOSITION_LIMIT),
+                                ("_trcache", self.ORDERING_TRACTOR_LIMIT)):
+                cache = getattr(ordering, name, None)
+                if type(cache) is dict and len(cache) > limit:
+                    # Native _fast_ctx holds aliases to these exact dicts.
+                    # Replacing the attributes would retain the old caches
+                    # and split the pure/compiled paths. Values are pure;
+                    # missing entries are simply recomputed identically.
+                    cache.clear()
+
     def _copy_state(self, state):
         # Keep game state (including trusted trick caches and arbitrary extra
         # attributes) deeply isolated.  Only the exact engine Ordering is
@@ -263,6 +289,7 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         # custom rounds/orderings/policies that could mutate those tables.
         if (type(state) is Round and type(state.ordering) is Ordering
                 and type(self.rollout_policy) is HeuristicBot):
+            self._trim_ordering_memos([state])
             return copy.deepcopy(state, {id(state.ordering): state.ordering})
         return copy.deepcopy(state)
 
@@ -346,6 +373,7 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
             for action, owner, position, value in zip(
                     batch_actions, owners, batch_positions, values):
                 consider(owner, action, float(value), position)
+            self._trim_ordering_memos(batch_positions)
             batch_positions.clear()
             batch_owners.clear()
             batch_actions.clear()
@@ -356,9 +384,11 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         # action lists while later parents are enumerated.
         for owner, parent in enumerate(parents):
             state, mover, branch = parent["state"], parent["mover"], parent["branch"]
+            self._trim_ordering_memos([state])
             incumbent = tuple(sorted(self.rollout_policy.decide_play(state, mover)))
             legal = parent.get("legal") or enumerate_legal(
                 state, mover, cap=None, must_include=[incumbent])
+            self._trim_ordering_memos([state])
             actions = [tuple(sorted(action)) for action in legal.actions]
             if not actions or incumbent not in actions:
                 raise DoubleShortlistError(

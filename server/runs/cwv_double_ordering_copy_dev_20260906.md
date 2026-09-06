@@ -38,9 +38,49 @@ engine behavior is installed.
   extra caches and preserve `last_trick is history[-1]` within each clone.
 - Round/Ordering/policy subclasses keep their original deepcopy isolation.
 
-Local pure engine: 69 focused tests pass, including 13 new copy witnesses.
-Compiled-path and wall A/B results will be attached to the PR at the exact
-head; no inference from merely setting the native environment flag.
+At `87552e9649627de002201d5a9c480c15beb57e18`, 69 focused tests passed
+in both pure and explicitly activated compiled mode. The isolated real-fit
+follow measured 88.3999s with old deepcopy versus 9.2515s with shared Ordering
+(9.555x), with the entire semantic cost record identical. The optimized
+opening completed in 112.041s; its expired old baseline proves neither parity
+nor a speedup. Copy-cost summary SHA:
+`9d976a100914f30dd2ac783d5b1fa505c1f14f021dbd46940b9661f6ee481a22`.
+
+## Full-game memory failure and retention repair
+
+The first 26-deal, balanced-13-rank screen started eight workers at
+2026-09-06 10:59:17 UTC. At 11:05:17 the 27 GiB cgroup limit OOM-killed a
+worker, before a requested manual stop reached it. Peak aggregate memory was
+27 GiB (one observed worker exceeded 7 GiB RSS); no pair shard completed.
+The learned arm and success-dependent followup queue are terminal. Uniform
+and flat controls did not start. This is an operational failure, not a
+negative strength result. It also demonstrates that fixed-position timing
+and parity did not establish full-game memory safety.
+
+The shared Ordering retains the union of pure memo entries from simulated
+continuations. A bounded 120s probe on an already-submitted seed (91261166,
+rank 4) observed 457,855 decomposition entries and 7,709 tractor entries,
+with 1.24 GiB peak RSS before its diagnostic timeout. That seed was not
+identified as the largest failed worker: this is evidence of cache retention,
+not proof that caches explain every byte of the OOM.
+
+The repaired path clears decomposition memos above 65,536 entries and tractor
+memos above 8,192 entries at copy, parent-enumeration and model-batch
+boundaries. These are retention thresholds, **not action/search caps or hard
+peak-memory guarantees**: one exhaustive enumeration may temporarily exceed
+them. Entries are pure and recomputed on a miss. Clearing is in place because
+native `_fast_ctx` retains aliases to the exact dictionaries; replacing an
+attribute would leave the old native cache alive. Exact custom types retain
+the previous behavior, as in the copy optimization.
+
+Eight added tests cover native aliases, pure-engine caches, custom types,
+inclusive thresholds, and real learned/uniform decisions with root/inner
+reuse on and off. Forced tiny limits witness nonzero clearing in actual
+multi-row ranking batches, while actions, evaluator inputs/outputs, MC
+records, RNG and physical input state remain exact. Removing the batch trim
+must fail that consumer witness rather than be masked by later copy trims.
+Repaired-head compiled validation and bounded wall/memory evidence are
+published on PR #266 before any full-screen restart.
 
 ## Retained measurement pointers
 
@@ -55,12 +95,12 @@ Mini archive:
 | `inner-profile/profile.pstats` | `adecb8ccd30323648c4ecf56be2a911915d4101719cf31f600f6f63a4d08db80` |
 | `inner-profile/status.json` | `81c59f04319bef96a2704d24f0f339c5b1d40d824e04028231b63301db40b61b` |
 
-Next measurement: exact source, existing ABC checkpoint and fixed fit follow;
-old deepcopy versus the memo-seeded copy, both with inner cache reuse enabled.
-Also time the optimized opening alone; do not repeat its twice-expired old
-baseline or claim that this unpaired timing proves opening parity.
-Retain per-case receipts and compare the entire existing semantic cost record.
-One numerical thread, no competing Strength job,
-300s per decision, 10 GiB process bound. Do not report a timeout as parity or
-extrapolate two decisions to game speed/strength. The 26-pair strength
-experiment remains unlaunched and keeps its requested one-extra-trick depth.
+The initial copy A/B, failed screen and diagnostic artifacts are retained at
+`/root/cwv-double-copy-20260906.cgL6DU` and the Mini archive above. A repair uses
+a new immutable source archive and output attempt, never edits the failed
+source/config in place. The existing 26-deal window and one-extra-trick
+4/30-guidance recipe remain unchanged. Next: bounded same-seed memory
+measurement and exact fixed-follow comparison, then the same full population
+only if the repaired path has credible resource headroom. No new seed
+selection, depth reduction, outcome claim from incomplete work, or repeat of
+the twice-expired old opening probe.

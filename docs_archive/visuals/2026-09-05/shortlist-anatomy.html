@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W32 shortlist anatomy</title>
+  <style>
+    :root { --paper:#f4f5f7; --panel:#fff; --ink:#1e2833; --muted:#65727f;
+      --rule:#d5dae0; --net:#117a75; --net-soft:#d6ecea;
+      --prod:#a8741c; --prod-soft:#f3e7cc; --world:#3b4f63; --world-soft:#dfe5ec; }
+    @media (prefers-color-scheme: dark) { :root { --paper:#151a20; --panel:#1d242c;
+      --ink:#e6ebf0; --muted:#98a4b0; --rule:#323c47; --net:#4fc1b9;
+      --net-soft:#173f3d; --prod:#e0b25a; --prod-soft:#3f321a;
+      --world:#aab8c8; --world-soft:#2b3642; } }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.55 system-ui,sans-serif }
+    main { max-width:1060px; margin:auto; padding:40px 24px 64px }
+    .eyebrow { margin:0 0 6px; color:var(--muted); font-size:12px; letter-spacing:.07em; text-transform:uppercase }
+    h1 { margin:0 0 10px; font:600 32px/1.12 Georgia,serif }
+    .lede { max-width:72ch; margin:0 0 22px; color:var(--muted); font-size:18px }
+    figure { margin:18px 0 14px; padding:20px 22px 14px; overflow-x:auto; border:1px solid var(--rule); border-radius:7px; background:var(--panel) }
+    svg { display:block; width:100%; min-width:760px; height:auto }
+    svg text { fill:var(--ink); font:12px system-ui,sans-serif }
+    svg .mono { font:11px ui-monospace,SFMono-Regular,Menlo,monospace }
+    svg .muted { fill:var(--muted) }
+    svg .head { fill:var(--muted); font-size:11px; letter-spacing:.06em }
+    figcaption { margin-top:10px; max-width:82ch; color:var(--muted); font-size:13px }
+    .legend { display:flex; flex-wrap:wrap; gap:10px 20px; margin:10px 0 18px; color:var(--muted); font-size:13px }
+    .swatch { display:inline-block; width:11px; height:11px; margin-right:5px; border:1px solid currentColor; border-radius:2px; vertical-align:-1px }
+    p { max-width:72ch } a { color:var(--net) } .credit { margin-top:28px; color:var(--muted); font-size:12px }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Sheng Ji AI · W32 root shortlist · 2026-09-06</p>
+  <h1>How the full-legal shortlist hands work to MC-LCB</h1>
+  <p class="lede">W32 is a root-selection screen: a complete-world model ranks every legal submitted action on 32 shared sampled worlds, then hands a bounded ballot to the existing production search. It is a proposal mechanism, not a replacement search or a recursive PUCT tree.</p>
+  <figure>
+    <svg viewBox="0 0 1000 420" role="img" aria-labelledby="pipeline-title pipeline-desc">
+      <title id="pipeline-title">Full-legal W32 shortlist pipeline</title>
+      <desc id="pipeline-desc">Every legal action is evaluated on 32 shared sampled worlds, four model alternatives and the heuristic incumbent are passed to inherited N30 selection, then a fresh R300 paired report decides whether to play the challenger or retain the incumbent.</desc>
+      <defs>
+        <marker id="arrow-net" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--net)"/></marker>
+        <marker id="arrow-prod" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--prod)"/></marker>
+      </defs>
+      <text x="18" y="20" class="head">EVERY LEGAL ACTION</text>
+      <text x="285" y="20" class="head" text-anchor="middle">32 SHARED RANKING WORLDS</text>
+      <text x="505" y="20" class="head" text-anchor="middle">SHORTLIST</text>
+      <text x="730" y="20" class="head" text-anchor="middle">INHERITED MC-LCB</text>
+      <text x="946" y="20" class="head" text-anchor="middle">PLAY</text>
+      <g fill="var(--panel)" stroke="var(--muted)" stroke-width="1.3">
+        <rect x="18" y="42" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="58" width="84" height="9" rx="2"/><rect x="18" y="74" width="84" height="9" rx="2"/>
+        <rect x="18" y="90" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="106" width="84" height="9" rx="2"/><rect x="18" y="122" width="84" height="9" rx="2"/>
+        <rect x="18" y="138" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="154" width="84" height="9" rx="2"/><rect x="18" y="170" width="84" height="9" rx="2"/>
+        <rect x="18" y="186" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="202" width="84" height="9" rx="2"/><rect x="18" y="218" width="84" height="9" rx="2"/>
+        <rect x="18" y="234" width="84" height="9" rx="2"/><rect x="18" y="250" width="84" height="9" rx="2"/><rect x="18" y="266" width="84" height="9" rx="2"/><rect x="18" y="282" width="84" height="9" rx="2"/>
+      </g>
+      <path d="M104,158 C150,158 178,90 238,90 M104,158 C150,158 178,142 238,142 M104,158 C150,158 178,194 238,194 M104,158 C150,158 178,246 238,246" fill="none" stroke="var(--rule)" stroke-width="1.4"/>
+      <g fill="var(--world-soft)" stroke="var(--world)" stroke-width="1.5"><rect x="240" y="77" width="90" height="26" rx="3"/><rect x="240" y="129" width="90" height="26" rx="3"/><rect x="240" y="181" width="90" height="26" rx="3"/><rect x="240" y="233" width="90" height="26" rx="3"/></g>
+      <text x="285" y="94" class="mono" text-anchor="middle">world 1</text><text x="285" y="146" class="mono" text-anchor="middle">world 2</text><text x="285" y="198" class="mono" text-anchor="middle">world 3</text><text x="285" y="250" class="mono" text-anchor="middle">world 32</text>
+      <text x="285" y="284" class="muted" text-anchor="middle">each action sees the same 32</text>
+      <path d="M332,168 L380,168" fill="none" stroke="var(--net)" stroke-width="1.5" marker-end="url(#arrow-net)"/><path d="M400,150 L418,168 L400,186 L382,168 Z" fill="var(--net)"/>
+      <text x="400" y="302" class="muted" text-anchor="middle">engine applies action</text><text x="400" y="317" class="muted" text-anchor="middle">heuristic finishes trick; model ranks</text>
+      <path d="M420,168 C435,168 445,88 460,88 M420,168 C435,168 445,126 460,126 M420,168 C435,168 445,164 460,164 M420,168 C435,168 445,202 460,202 M420,168 C435,168 445,240 460,240" fill="none" stroke="var(--net)" stroke-width="1.4"/>
+      <g stroke-width="1.5"><rect x="462" y="77" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="115" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="153" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="191" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="229" width="86" height="22" rx="3" fill="var(--prod-soft)" stroke="var(--prod)"/></g>
+      <text x="505" y="92" class="mono" text-anchor="middle">model 1</text><text x="505" y="130" class="mono" text-anchor="middle">model 2</text><text x="505" y="168" class="mono" text-anchor="middle">model 3</text><text x="505" y="206" class="mono" text-anchor="middle">model 4</text><text x="505" y="244" class="mono" text-anchor="middle">incumbent</text>
+      <text x="505" y="278" class="muted" text-anchor="middle">four alternatives + incumbent</text>
+      <path d="M550,168 L638,168" fill="none" stroke="var(--prod)" stroke-width="1.5" marker-end="url(#arrow-prod)"/><rect x="640" y="68" width="180" height="200" rx="5" fill="var(--prod-soft)" stroke="var(--prod)" stroke-width="1.5"/>
+      <text x="730" y="100" text-anchor="middle">N30 selection worlds</text><text x="730" y="124" text-anchor="middle">full heuristic playouts</text><text x="730" y="148" text-anchor="middle">paired candidate means</text><text x="730" y="172" text-anchor="middle">nominate one challenger</text><path d="M730,184 L730,215" fill="none" stroke="var(--prod)" stroke-width="1.4" marker-end="url(#arrow-prod)"/><text x="730" y="242" text-anchor="middle">fresh R300 report fold</text><text x="730" y="258" class="muted" text-anchor="middle">challenger + incumbent</text>
+      <path d="M822,168 L916,168" fill="none" stroke="var(--prod)" stroke-width="1.5" marker-end="url(#arrow-prod)"/><circle cx="930" cy="168" r="11" fill="var(--ink)"/><text x="930" y="204" class="muted" text-anchor="middle">chosen play</text>
+      <text x="18" y="340" class="head">DECISION BOUNDARY</text><text x="18" y="362">Report completes and paired LCB ≥ 0?</text><text x="18" y="386" class="muted">yes → play the challenger · no → retain the heuristic incumbent</text><text x="610" y="362" class="muted">Ranking and verification are separate stages.</text><text x="610" y="386" class="muted">This root screen is not recursive PUCT.</text>
+    </svg>
+    <figcaption>Teal is complete-world model ranking, amber is inherited MC-LCB verification, and slate is a sampled compatible world. The selection and report folds draw their own worlds; the 32 ranking worlds are not reused as either fold.</figcaption>
+  </figure>
+  <div class="legend" aria-label="Diagram legend"><span><i class="swatch" style="background:var(--net-soft);color:var(--net)"></i>model proposes candidates</span><span><i class="swatch" style="background:var(--prod-soft);color:var(--prod)"></i>MC-LCB verifies</span><span><i class="swatch" style="background:var(--world-soft);color:var(--world)"></i>sampled world</span></div>
+  <p>The ranking branch enumerates all legal actions, applies each action in a compatible sampled world, completes the current trick with the heuristic, and ranks the resulting complete-world values. The heuristic incumbent is always retained. Forced singleton decisions and the production tractor-lock bypass are outside this search-path illustration; W32 disables that bypass when enumerating its legal population.</p>
+  <p>The inherited final search uses N30 shared selection worlds and a separate fresh R300 paired report for the nominated challenger and incumbent. A complete report whose paired lower confidence bound reaches zero may accept the challenger; otherwise the incumbent remains. Uniform selection is the reference; opt-in adaptive allocation changes only how root selection work is allocated and does not change production or the default.</p>
+  <p><a href="../../../AI_POLICIES.md#experimental-w32-shortlist">Read the canonical W32 results and limitations in AI_POLICIES.md.</a></p>
+  <p class="credit">Adapted from the Jerry-supplied Claude archive asset <code>shortlist-anatomy.html</code>; curated as a mechanics-only explainer on 2026-09-06. No numerical result is asserted here.</p>
+</main>
+</body>
+</html>

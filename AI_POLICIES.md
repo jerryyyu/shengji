@@ -118,6 +118,8 @@ are replaced by sampled compatible hands/burial. Terminal leaves use exact
 engine outcomes. A training architecture preference does not change the
 identity of this measured checkpoint.
 
+[Standalone W32 pipeline explainer](docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
+
 ### Measured result and scaling
 
 Same 256 deal clusters / 512 mirrored **rank-2** rounds, seed0 `90260904`.
@@ -192,6 +194,24 @@ different policy, so this is not a pure timing A/B. This remains an
 exploratory DEV screen with no promotion or deployment authority. The
 [authoritative readout](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557759351)
 records the result and archive identity.
+
+### Double-shortlist and adaptive allocation
+
+The one-extra-trick screen completed on 26 broader-rank deals. Learned inner
+ranking versus flat W32 scored −0.09615 levels/round (95% CI
+[−0.34615,+0.15385]); uniform inner continuation scored −0.07692
+[−0.25000,+0.09663]. Both are inconclusive. Their measured decision-wall
+ratios were 116.242× and 7.627× their respective flat opponents. These are
+separate matches, not additive effects or a direct learned-versus-uniform
+contrast. Full artifacts and cost attribution are in
+[the scaling ledger](https://github.com/jerryyyu/shengji/issues/248).
+
+Further unchanged-recipe/all-world depth escalation is parked. The next
+distinct mechanism is [adaptive root allocation (#278)](https://github.com/jerryyyu/shengji/pull/278):
+redistribute selection rollouts among surviving W32 finalists, retaining the
+independent R300 report. It is opt-in research, not evidence of improved
+strength or a production-default change. Flat optimized W32/K4 remains the
+supported experimental reference.
 
 ## Search and heuristic behavior that survives
 

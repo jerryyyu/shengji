@@ -449,3 +449,56 @@ independence before using it. The progress ETA currently extrapolates completed
 pair means and repeatedly predicted seconds during this eight-minute tail;
 future monitoring should distinguish an active straggler from an average-rate
 ETA. Neither requires discarding or rerunning completed evidence.
+
+### W64 completed — extra ranking worlds did not earn their cost here
+
+All 256 pairs / 512 rounds completed, exit0, with no summary problems. The
+complete config differs from optimized W32 **only in `shortlist.worlds`,
+32 -> 64**; checkpoint, source hashes, runtime, encoding/reuse, four
+alternatives, final N30/R300 and all other fields match. No pruning or new
+checkpoint is bundled with this width comparison.
+
+| Quantity | Optimized W32 | Optimized W64 |
+|---|---:|---:|
+| Signed levels/round vs production N30/R300 | +0.13867 | +0.09570 |
+| 95% deal-bootstrap interval | [+0.06445, +0.21680] | [+0.02930, +0.16606] |
+| Actual arm/opponent decision wall | 3.5287x | 6.2658x |
+| Total arm decision wall | 11,916.94s | 20,307.54s |
+| Ranking wall | 8,719.90s | 17,231.91s |
+| Full MC rollouts | 11,038,770 | 11,035,110 |
+| Scored action/world rows, including exact terminals | 149,192,288 | 301,555,328 |
+| Scoring batches | 1,170,992 | 2,359,346 |
+
+Paired W64 minus W32 is **−0.04297 [−0.09570, +0.00781]**, using the same
+256 mirrored deal clusters, 1,000 bootstrap replicates and seed20260904.
+That interval includes zero: do not call W64 statistically worse or claim
+that additional worlds never help. This bounded opened-DEV run simply provides
+no improvement to justify **1.704x total arm decision wall**. The two
+arm/opponent ratios differ somewhat more because changed trajectories also
+change opponent decision time. This is a same-deal comparison against a common
+production opponent, not a direct W64-versus-W32 duel or fresh confirmation.
+
+Ranking wall nearly doubled (**1.976x**) and now consumes **84.85%** of arm
+decision wall. Aggregate scoring rows are slightly more than twice W32's
+because the decisions/trajectories differ, not because another parameter was
+changed. Of W64's scoring rows, 6,592 are exact terminals and 301,548,736 reach
+the model; batch occupancy averages 99.85%. The final MC budgets did not change.
+
+Process wall was **41m25.27s**, with 23,584.09 CPU seconds, **948% mean CPU
+(~9.49 cores)**, maximum child RSS 494,976KiB and no swaps. The observed live
+cgroup peak before transition was about 4.81GiB. Progress-loop wall was
+41m22.3s; its final pair alone added 925.5s after 255/256 completed. As with
+W32, the single-pair tail depresses whole-job core utilization. Do not confuse
+that batch-scheduling limitation with the measured per-decision cost of W64.
+
+Archive: `~/shengji-archive/2026-09-06/cwv-shortlist-scaling/w64-paired/`, with
+the process timer in `scaling-tail.log`. The comparison helper re-read and
+reduced completed saved records on Mini; no model inference or new rollout
+evaluation was needed. The full-source config comparison was exact after
+substituting only the intended world count.
+
+The queued **W32/N60/R600** arm started automatically after W64's successful
+exit, on the same 16-worker Strength unit and exact source. It was not selected
+in reaction to this result. Interim width conclusion: retain W32 as the
+reference; do not escalate to W128 on this evidence. The final-rollout readout
+is still needed before selecting the next bounded search recipe.

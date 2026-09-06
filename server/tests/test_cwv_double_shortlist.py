@@ -375,6 +375,58 @@ def test_guided_branches_share_cross_parent_partial_batch_with_row_movers(monkey
     np.testing.assert_array_equal(result, expected)
 
 
+def test_inner_successor_reuse_preserves_rank_and_reports_bounded_cache_hits():
+    """The opt-in cache changes completion work, not submitted rows or values."""
+    class CacheAwareNet(PointsNet):
+        def __init__(self):
+            super().__init__()
+            self.encoder = lambda position, seat: (position, seat)
+
+        def score_many(self, positions, seats, *, tensor_cache=None):
+            encoded = [((tensor_cache.encode(position, self.encoder, seat)
+                         if tensor_cache is not None else (position, seat)))
+                       for position, seat in zip(positions, seats)]
+            assert len(encoded) == len(positions)
+            return super().score_many(positions, seats)
+
+    rnd = play_state()
+    mover = rnd.turn
+    legal = enumerate_legal(rnd, mover, cap=None)
+    stats_keys = ("inner_actions", "inner_finalist_actions", "inner_net_rows",
+                  "inner_batches", "inner_full_rollouts")
+    def stats():
+        return {key: 0 for key in stats_keys}
+
+    off_net = CacheAwareNet()
+    off = CWVDoubleShortlistBot(off_net, inner_worlds=1, inner_batch_size=128)
+    off_stats = stats()
+    off_finalists, off_leaves = off._rank_inner(
+        rnd, mover, (0, 0, 0), off_stats, legal)
+
+    on_net = CacheAwareNet()
+    on = CWVDoubleShortlistBot(on_net, inner_worlds=1, inner_batch_size=128,
+                               inner_reuse_successors=True)
+    source = round_signature(rnd)
+    on_stats = stats()
+    on_finalists, on_leaves = on._rank_inner(
+        rnd, mover, (0, 0, 0), on_stats, legal)
+
+    assert off_finalists == on_finalists
+    assert [round_signature(off_leaves[a]) for a in off_finalists] == [
+        round_signature(on_leaves[a]) for a in on_finalists]
+    assert off_stats["inner_net_rows"] == len(legal.actions)
+    assert on_stats["inner_net_rows"] == off_stats["inner_net_rows"]
+    assert on_stats["inner_actions"] == len(legal.actions)
+    # The fixture has several action encodings with the same accepted play.
+    assert on_stats["inner_cache_root_actions"] == len(legal.actions)
+    assert on_stats["inner_cache_leaf_hits"] > 0
+    assert on_stats["inner_cache_leaf_completions"] < len(legal.actions)
+    assert on_stats["inner_tensor_hits"] > 0
+    assert on_stats["inner_cache_peak_entries"] <= 128
+    assert on_stats["inner_tensor_peak_entries"] <= 128
+    assert round_signature(rnd) == source
+
+
 @pytest.mark.parametrize("prior_plays,attack", [(1, True), (2, False)])
 @pytest.mark.parametrize("tie", [False, True])
 def test_inner_chooser_uses_movers_terminal_value_and_incumbent_ties(

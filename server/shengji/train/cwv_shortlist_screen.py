@@ -155,7 +155,9 @@ def make_side(config: dict, side: str, seed: int):
                                    inner_mode=inner["mode"],
                                    inner_worlds=inner["worlds"],
                                    inner_alternatives=4,
-                                   inner_batch_size=inner["batch_size"])
+                                   inner_batch_size=inner["batch_size"],
+                                   inner_reuse_successors=inner.get(
+                                       "reuse_successors", False))
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
@@ -363,6 +365,8 @@ def main(argv=None):
     parser.add_argument("--inner-worlds", type=int, default=4,
                         help="guided fraction numerator over --selection-worlds; scaled to each accepted world set")
     parser.add_argument("--inner-batch-size", type=int, default=128)
+    parser.add_argument("--inner-reuse-successors", action="store_true",
+                        help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
     parser.add_argument("--clusters", type=int, default=4)
@@ -391,6 +395,8 @@ def main(argv=None):
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
         if min(args.inner_worlds, args.inner_batch_size) < 1:
             parser.error("inner worlds and batch size must be positive")
+    if args.inner_reuse_successors and args.inner_mode is None:
+        parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
         parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
     trump_ranks = None
@@ -442,6 +448,8 @@ def main(argv=None):
             "extra_tricks": 1, "alternatives": 4,
             "information": "per-sampled-world perfect information; simulation only",
         }
+        if args.inner_reuse_successors:
+            config["double_shortlist"]["reuse_successors"] = True
     if args.baseline != "production":
         config["baseline"] = args.baseline
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,

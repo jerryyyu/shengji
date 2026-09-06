@@ -473,6 +473,37 @@ RANK_REGRET_DEFINITION = (
     "(level_of_search_mean) of the search's MEAN points per candidate, an MC-ranking proxy "
     "-- NOT E[U] (the mean of per-world levels, which the records do not carry); "
     "rank_regret_points is the untransformed mean-points regret")
+#: the k of the top-k ranking metrics.  ``cwv_shortlist`` keeps
+#: ``alternatives = 4`` net-ranked actions plus production's incumbent and
+#: hands that SET to the unchanged MC-LCB search, so the SHAPE the shortlist
+#: consumes is a top-k set rather than a top-1 pick; k = 4 mirrors the
+#: measured design and 1 / 2 / 8 bracket it.  These metrics are a
+#: BALLOT-SCOPED PROXY for that shape, NOT the shortlist's own quantity:
+#: they rank the decision's stored ballot candidates (mean ~7.5 actions),
+#: whereas the shortlist ranks EVERY LEGAL action (mean ~1,371, max ~5e5)
+#: and unions production's incumbent, which a CandidateSet does not retain.
+#: Measured 2026-09-06: the A+B+C over A+B advantage VANISHES at k = 4 on
+#: all four labelled holdouts, so this proxy did not reproduce the sealed
+#: shortlist result; do not read it as the shortlist's offline predictor.
+DEFAULT_RANK_KS = (1, 2, 4, 8)
+RANK_AT_K_DEFINITION = (
+    "rank_regret_at_k = U(E[points])_best - E[U(E[points])_best-among-the-net's-top-k]: the "
+    "SAME level-bracket transform, terminal handling and RANK_SCALE as rank_regret, with the "
+    "candidate set widened from the net's argmax to its top k.  The top-k set is the first k "
+    "of the candidates ordered by net level, ties broken UNIFORMLY at random (the same rule "
+    "rank_regret uses for k = 1), and the metric is the EXPECTATION over that tie-break, so "
+    "rank_regret_at_1 == rank_regret exactly.  k >= the decision's candidate count gives 0.  "
+    "Like rank_regret these are U(E[points]) -- the bracket transform of the search's MEAN "
+    "points, an MC-ranking proxy, NOT E[U]. "
+    "SCOPE: these rank the decision's STORED BALLOT candidates only, and union no incumbent, "
+    "so they are a BALLOT-SCOPED PROXY for a top-k consumer rather than an exhaustive "
+    "full-legal-action quantity; see CONSUMERS for which designs that proxy does and does "
+    "not stand in for. "
+    "rank_recall_at_k = P(a search argmax is inside the net's top-k) under the same uniform "
+    "tie-break, where the search's argmax set is every candidate whose MEAN equals the "
+    "record's best mean (the tie rule rank_top1 already uses); rank_recall_at_1 == rank_top1. "
+    "rank_regret_at_k is non-increasing in k and rank_recall_at_k non-decreasing, because a "
+    "single uniform ordering couples the top-k sets (top-k subset of top-(k+1)).")
 #: which search designs consume which head, and on which positions
 CONSUMERS = {
     "level_head": {
@@ -484,8 +515,36 @@ CONSUMERS = {
                      "scores the TRUE world), ranked among the decision's candidates",
         "metrics": ["rank_regret (level scale; U(E[points]), an MC-ranking proxy, not E[U])",
                     "rank_regret_points", "rank_top1",
+                    "rank_regret_at_k / rank_recall_at_k (same scale and same U(E[points]) "
+                    "MC-ranking-proxy caveat, top-k instead of top-1)",
                     "cross_entropy", "value_mae (PT0)", "value_level_mae"],
         "recommended_select_metric": "val_rank_regret",
+        #: WHICH consumer reads WHICH shape of the ranking.  A design that
+        #: hands the search a SET of net-ranked actions is measured by the
+        #: top-k metrics; a design that plays or priors the net's single
+        #: pick is measured by the top-1 ones.
+        "top_k_consumers": ["shortlist (train.cwv_shortlist): keeps alternatives = 4 "
+                            "net-ranked actions PLUS production's incumbent and hands that "
+                            "SET to the unchanged MC-LCB search.  rank_regret_at_4 / "
+                            "rank_recall_at_4 share its SHAPE but are a BALLOT-SCOPED PROXY, "
+                            "not its quantity: ballot-only (no exhaustive legal enumeration) "
+                            "and no incumbent union.  Measured 2026-09-06: the proxy does NOT "
+                            "reproduce the sealed shortlist checkpoint contrast",
+                            "netroll (train.net_rollout) when it shortlists"],
+        "top_1_consumers": ["one-ply (ai.cwv_policy CompleteWorldEvaluator): plays the net's "
+                            "argmax -- rank_regret / rank_top1",
+                            "PUCT prior / leaf (ai.cwv_puct): the prior's mass is dominated "
+                            "by the net's top pick -- rank_regret / rank_top1"],
+        "rank_ks": list(DEFAULT_RANK_KS),
+        "recommended_select_metric_topk": "val_rank_regret_at_4",
+        #: the top-k metrics share the SHAPE of a top-k consumer but are
+        #: ballot-scoped and union no incumbent, so they are a proxy, not
+        #: the consumer's own quantity.  Measured 2026-09-06: the proxy did
+        #: not reproduce the sealed shortlist checkpoint contrast.
+        "select_metric_scope": ("ballot-scoped proxy: ranks the stored ballot candidates "
+                                "(mean ~7.5 actions), unions no incumbent, and does not "
+                                "enumerate the full legal action set (mean ~1,371); the "
+                                "in-search screen remains the selector of record"),
     },
     "points_head": {
         "quantity": "final attacker points (aux head on the mlp trunk, target points / 100)",
@@ -779,13 +838,88 @@ def candidate_levels(forward: Callable[[Mapping[str, torch.Tensor]], torch.Tenso
     return levels
 
 
-def _no_rank() -> dict:
-    return {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
-            "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
-            "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION}
+def _rank_ks(ks: Sequence[int] | None) -> tuple[int, ...]:
+    """The validated, de-duplicated, ascending k of the top-k metrics."""
+    values = DEFAULT_RANK_KS if ks is None else tuple(ks)
+    out = []
+    for k in values:
+        if isinstance(k, bool) or not isinstance(k, (int, np.integer)) or int(k) < 1:
+            raise EvalError(f"rank_metrics: every k must be a positive integer, got {k!r}")
+        if int(k) not in out:
+            out.append(int(k))
+    if not out:
+        raise EvalError("rank_metrics: at least one k is required")
+    return tuple(sorted(out))
 
 
-def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
+def _no_rank(ks: Sequence[int] | None = None) -> dict:
+    out = {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
+           "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
+           "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
+           "rank_at_k_definition": RANK_AT_K_DEFINITION}
+    ks = _rank_ks(ks)
+    out["rank_ks"] = list(ks)
+    out["rank_regret_at_k"] = {str(k): None for k in ks}
+    out["rank_recall_at_k"] = {str(k): None for k in ks}
+    for k in ks:
+        out[f"rank_regret_at_{k}"] = None
+        out[f"rank_recall_at_{k}"] = None
+    return out
+
+
+def _score_groups(scores: np.ndarray) -> list[np.ndarray]:
+    """The candidate rows grouped by equal net score, best group first."""
+    return [np.flatnonzero(scores == value) for value in np.unique(scores)[::-1]]
+
+
+def _top_k_split(groups: Sequence[np.ndarray], k: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """The net's top-``k`` under uniform tie-breaking, as
+    ``(certain, boundary, slots)``: ``certain`` are the rows in EVERY top-k
+    set, ``boundary`` the tied rows of which a uniform ``slots``-subset
+    completes it (``slots == 0`` -> the set is exactly ``certain``)."""
+    certain: list[int] = []
+    for group in groups:                             # distinct scores, best first
+        if len(certain) + group.size <= k:
+            certain.extend(group.tolist())
+            if len(certain) == k:
+                break
+        else:
+            return np.asarray(certain, dtype=np.int64), group, k - len(certain)
+    return np.asarray(certain, dtype=np.int64), np.zeros(0, dtype=np.int64), 0
+
+
+def _expected_subset_max(values: np.ndarray, slots: int) -> float:
+    """``E[max]`` of a uniformly random ``slots``-subset of ``values``.
+    ``slots == 1`` is the plain mean -- the SAME expression ``rank_regret``
+    uses for a tie among the scorer's maxima, so k = 1 is bit-identical."""
+    g = int(values.size)
+    if slots >= g:
+        return float(values.max())
+    if slots == 1:
+        return float(values.mean())
+    ordered = np.sort(values)                        # ascending
+    total = float(math.comb(g, slots))
+    weights = np.asarray([math.comb(j, slots) - math.comb(j - 1, slots)
+                          for j in range(1, g + 1)], dtype=np.float64)
+    return float((ordered * weights).sum() / total)
+
+
+def _subset_hit_probability(hit: np.ndarray, slots: int) -> float:
+    """``P(at least one True)`` in a uniformly random ``slots``-subset of the
+    boolean ``hit``; ``slots == 1`` is the plain mean (``rank_top1``)."""
+    g = int(hit.size)
+    if slots >= g:
+        return 1.0 if bool(hit.any()) else 0.0
+    if slots == 1:
+        return float(hit.mean())
+    misses = int((~hit).sum())
+    if misses < slots:
+        return 1.0
+    return float(1.0 - math.comb(misses, slots) / math.comb(g, slots))
+
+
+def rank_metrics(levels: np.ndarray, cands: CandidateSet, *,
+                 ks: Sequence[int] | None = None) -> dict:
     """Per-decision candidate ranking against the search, averaged over the
     set's records (each with >= 2 candidates and finite search means):
 
@@ -797,13 +931,25 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
     * ``rank_regret_points``: the same on the search's own scale;
     * ``rank_top1``: probability the scorer's top pick is a search argmax;
     * ``rank_regret_max``: the mean spread (best minus worst mean level) --
-      the regret of an inverted ranking."""
+      the regret of an inverted ranking;
+    * ``rank_regret_at_k`` / ``rank_recall_at_k`` for every k in ``ks``
+      (default ``DEFAULT_RANK_KS``), also flat as ``rank_regret_at_<k>`` /
+      ``rank_recall_at_<k>`` so ``train_cwv.SELECT_METRICS`` can read them:
+      the SAME level scale, level-bracket transform, terminal handling and
+      U(E[points]) MC-ranking-proxy caveat as ``rank_regret``, with the
+      scorer's single argmax widened to its top k
+      (``RANK_AT_K_DEFINITION``).  ``rank_regret_at_1 == rank_regret`` and
+      ``rank_recall_at_1 == rank_top1`` exactly.  These are the shape the
+      SHORTLIST consumes (``cwv_shortlist``, 4 net-ranked alternatives
+      handed as a SET to the unchanged MC-LCB search); the top-1 pair is
+      the shape one-ply and the PUCT prior consume."""
     levels = np.asarray(levels, dtype=np.float64)
+    ks = _rank_ks(ks)
     if levels.shape != (cands.candidates,):
         raise EvalError("candidate levels are misaligned with the candidate set")
     n = cands.records
     if n == 0:
-        return _no_rank()
+        return _no_rank(ks)
     if not np.all(np.isfinite(levels)):
         raise EvalError("candidate levels must be finite")
     mean_level = cands.means_level()
@@ -811,6 +957,8 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
     regret_pts = np.empty(n)
     top1 = np.empty(n)
     spread = np.empty(n)
+    regret_k = {k: np.empty(n) for k in ks}
+    recall_k = {k: np.empty(n) for k in ks}
     for r in range(n):
         lo, hi = int(cands.offsets[r]), int(cands.offsets[r + 1])
         s = levels[lo:hi]
@@ -821,12 +969,38 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
         regret_pts[r] = m.max() - m[top].mean()
         top1[r] = float((m == m.max())[top].mean())
         spread[r] = ml.max() - ml.min()
-    return {
+        best = float(ml.max())
+        is_argmax = m == m.max()                      # the search's tied argmax set
+        groups = _score_groups(s)
+        for k in ks:
+            certain, boundary, slots = _top_k_split(groups, k)
+            floor = float(ml[certain].max()) if certain.size else -math.inf
+            if slots == 0:
+                reached = floor
+                hit = 1.0 if bool(is_argmax[certain].any()) else 0.0
+            else:
+                edge = ml[boundary]
+                reached = _expected_subset_max(
+                    edge if floor == -math.inf else np.maximum(edge, floor), slots)
+                if certain.size and bool(is_argmax[certain].any()):
+                    hit = 1.0
+                else:
+                    hit = _subset_hit_probability(is_argmax[boundary], slots)
+            regret_k[k][r] = best - reached
+            recall_k[k][r] = hit
+    out = {
         "rank_records": int(n), "rank_candidates": int(cands.candidates),
         "rank_regret": float(regret.mean()), "rank_regret_points": float(regret_pts.mean()),
         "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),
         "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
+        "rank_at_k_definition": RANK_AT_K_DEFINITION, "rank_ks": list(ks),
+        "rank_regret_at_k": {str(k): float(regret_k[k].mean()) for k in ks},
+        "rank_recall_at_k": {str(k): float(recall_k[k].mean()) for k in ks},
     }
+    for k in ks:
+        out[f"rank_regret_at_{k}"] = out["rank_regret_at_k"][str(k)]
+        out[f"rank_recall_at_{k}"] = out["rank_recall_at_k"][str(k)]
+    return out
 
 
 def points_metrics(aux_pred: np.ndarray, attacker_points: np.ndarray,
@@ -1168,7 +1342,8 @@ def materialize_holdout_records(holdout: LabeledHoldout, out_path: str | os.Path
 
 
 __all__ = [
-    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_REGRET_DEFINITION",
+    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "DEFAULT_RANK_KS", "EvalError",
+    "RANK_AT_K_DEFINITION", "RANK_REGRET_DEFINITION",
     "RANK_SCALE",
     "HOLDOUT_LABELS_SCHEMA", "HOLDOUT_SUPPORT", "LabeledHoldout",
     "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",

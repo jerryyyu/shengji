@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import random
 from typing import Any
 
 import numpy as np
 
 from ..ai.cwv_policy import afterstate
-from ..ai.cwv_successor_reuse import WorldSuccessorCache
+from ..ai.cwv_successor_reuse import TensorInputCache, WorldSuccessorCache
 from ..ai.heuristic import HeuristicBot
 from .cwv_shortlist import CWVShortlistBot
 from .net_rollout import MCNetRolloutSearch
@@ -51,7 +52,7 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
     def __init__(self, evaluator, *, seed=0, config=None,
                  reuse_successors=False, inner_mode="learned",
                  inner_worlds=4, inner_alternatives=4,
-                 inner_batch_size=128):
+                 inner_batch_size=128, inner_reuse_successors=False):
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors)
         if inner_mode not in {"learned", "uniform", "heuristic"}:
@@ -70,17 +71,42 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         if inner_mode == "learned" and not callable(getattr(evaluator, "score_many", None)):
             raise DoubleShortlistError(
                 "learned inner shortlist requires evaluator.score_many(positions, seats)")
+        if type(inner_reuse_successors) is not bool:
+            raise DoubleShortlistError("inner_reuse_successors must be boolean")
+        if inner_reuse_successors and inner_mode == "learned":
+            # Reuse is an explicit opt-in contract.  In particular, do not
+            # catch a TypeError from score_many: evaluator failures must stay
+            # visible instead of silently changing the scientific path.
+            try:
+                signature = inspect.signature(evaluator.score_many)
+            except (TypeError, ValueError) as exc:
+                raise DoubleShortlistError(
+                    "inner successor reuse requires score_many(..., tensor_cache=...)") from exc
+            parameters = signature.parameters.values()
+            if ("tensor_cache" not in signature.parameters and
+                    not any(p.kind is inspect.Parameter.VAR_KEYWORD
+                            for p in parameters)):
+                raise DoubleShortlistError(
+                    "inner successor reuse requires score_many(..., tensor_cache=...)")
         self.inner_mode = inner_mode
         self.inner_worlds = inner_worlds
         self.inner_alternatives = inner_alternatives
         self.inner_batch_size = inner_batch_size
+        self.inner_reuse_successors = inner_reuse_successors
         self.last_double_shortlist: dict[str, Any] | None = None
+        self.last_inner_successor_reuse: dict[str, Any] | None = None
         self._double_stage_records: list[dict[str, Any]] = []
         self.double_shortlist_counts = {
             "calls": 0, "guided_worlds": 0, "inner_actions": 0,
             "inner_finalist_actions": 0, "inner_net_rows": 0,
             "inner_batches": 0, "inner_cross_parent_batches": 0,
             "inner_full_rollouts": 0,
+        }
+        self.inner_successor_counts = {
+            "calls": 0, "root_actions": 0, "leaf_hits": 0,
+            "leaf_completions": 0, "peak_entries": 0,
+            "tensor_hits": 0, "tensor_completions": 0,
+            "peak_tensor_entries": 0,
         }
 
     def _guidance_counts(self, actual_worlds: int) -> tuple[int, int, int]:
@@ -103,11 +129,55 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         return numerator, denominator, target
 
     # -------------------------------------------------------------- records
+    @staticmethod
+    def _inner_reuse_fields():
+        return ("inner_cache_root_actions", "inner_cache_leaf_hits",
+                "inner_cache_leaf_completions", "inner_cache_peak_entries",
+                "inner_tensor_hits", "inner_tensor_completions",
+                "inner_tensor_peak_entries")
+
+    def _capture_inner_reuse(self, stats):
+        """Move internal cache counters into one non-scientific receipt."""
+        if not self.inner_reuse_successors:
+            # Do not leak implementation counters into the ordinary
+            # double-shortlist record when the opt-in is disabled.
+            for field in self._inner_reuse_fields():
+                stats.pop(field, None)
+            return
+        diagnostic = {
+            "schema": "cwv-inner-successor-reuse-v1",
+            "max_entries_per_cache": 128,
+            "root_actions": stats.get("inner_cache_root_actions", 0),
+            "leaf_hits": stats.get("inner_cache_leaf_hits", 0),
+            "leaf_completions": stats.get("inner_cache_leaf_completions", 0),
+            "peak_entries": stats.get("inner_cache_peak_entries", 0),
+            "tensor_hits": stats.get("inner_tensor_hits", 0),
+            "tensor_completions": stats.get("inner_tensor_completions", 0),
+            "peak_tensor_entries": stats.get("inner_tensor_peak_entries", 0),
+        }
+        stats["inner_successor_reuse"] = diagnostic
+        for field in self._inner_reuse_fields():
+            stats.pop(field, None)
+        self.inner_successor_counts["calls"] += 1
+        for source, target in (
+                ("root_actions", "root_actions"),
+                ("leaf_hits", "leaf_hits"),
+                ("leaf_completions", "leaf_completions"),
+                ("tensor_hits", "tensor_hits"),
+                ("tensor_completions", "tensor_completions")):
+            self.inner_successor_counts[target] += diagnostic[source]
+        self.inner_successor_counts["peak_entries"] = max(
+            self.inner_successor_counts["peak_entries"], diagnostic["peak_entries"])
+        self.inner_successor_counts["peak_tensor_entries"] = max(
+            self.inner_successor_counts["peak_tensor_entries"],
+            diagnostic["peak_tensor_entries"])
+        self.last_inner_successor_reuse = copy.deepcopy(diagnostic)
+
     def _aggregate_record(self) -> dict[str, Any] | None:
         if not self._double_stage_records:
             return None
         rows = self._double_stage_records
-        return {
+        result = {
             "schema": self.DOUBLE_RECORD_SCHEMA,
             "guidance": self.GUIDANCE_MODE,
             "mode": self.inner_mode,
@@ -128,10 +198,29 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
             "one_extra_trick_horizon": rows[0]["one_extra_trick_horizon"],
             "stages": [copy.deepcopy(r) for r in rows],
         }
+        if self.inner_reuse_successors:
+            diagnostics = [r["inner_successor_reuse"] for r in rows
+                           if "inner_successor_reuse" in r]
+            merged = {
+                "schema": "cwv-inner-successor-reuse-v1",
+                "max_entries_per_cache": 128,
+                "root_actions": sum(d["root_actions"] for d in diagnostics),
+                "leaf_hits": sum(d["leaf_hits"] for d in diagnostics),
+                "leaf_completions": sum(d["leaf_completions"] for d in diagnostics),
+                "peak_entries": max((d["peak_entries"] for d in diagnostics), default=0),
+                "tensor_hits": sum(d["tensor_hits"] for d in diagnostics),
+                "tensor_completions": sum(d["tensor_completions"] for d in diagnostics),
+                "peak_tensor_entries": max(
+                    (d["peak_tensor_entries"] for d in diagnostics), default=0),
+            }
+            result["inner_successor_reuse"] = merged
+            self.last_inner_successor_reuse = copy.deepcopy(merged)
+        return result
 
     def decide_play(self, rnd, seat):
         self._double_stage_records = []
         self.last_double_shortlist = None
+        self.last_inner_successor_reuse = None
         played = super().decide_play(rnd, seat)
         detail = self._aggregate_record()
         if detail is not None:
@@ -205,6 +294,12 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         batch_owners: list[int] = []
         batch_actions: list[tuple[str, ...]] = []
         records = []
+        # This cache spans only this bounded rank wave.  It therefore permits
+        # a partial parent tail to share an evaluator input with the next
+        # parent, without retaining state across waves/worlds/stages.
+        tensor_cache = (TensorInputCache(max_entries=128)
+                        if self.inner_reuse_successors and
+                        self.inner_mode == "learned" else None)
 
         def consider(owner, action, value, leaf):
             record = records[owner]
@@ -223,9 +318,14 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
             if not batch_positions:
                 return
             owners = list(batch_owners)
-            values = np.asarray(self.evaluator.score_many(
-                batch_positions,
-                [records[owner]["mover"] for owner in owners]), dtype=np.float64)
+            seats = [records[owner]["mover"] for owner in owners]
+            if tensor_cache is None:
+                values = np.asarray(self.evaluator.score_many(
+                    batch_positions, seats), dtype=np.float64)
+            else:
+                values = np.asarray(self.evaluator.score_many(
+                    batch_positions, seats, tensor_cache=tensor_cache),
+                    dtype=np.float64)
             if values.shape != (len(batch_positions),) or not np.isfinite(values).all():
                 raise DoubleShortlistError(
                     "inner evaluator returned a misaligned or non-finite batch")
@@ -268,18 +368,50 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                 record["leaves"] = {}
                 del actions, legal
                 continue
+            # A WorldSuccessorCache is valid only for the exact default
+            # heuristic.  Every submitted action still passes through
+            # ``leaf`` so legality and accepted-action canonicalization are
+            # unchanged; only equivalent finished leaves are shared.
+            successor_cache = (WorldSuccessorCache(
+                state, mover, state.hands, state.buried, max_entries=128)
+                if self.inner_reuse_successors and
+                type(self.rollout_policy) is HeuristicBot else None)
             for action in actions:
-                leaf = afterstate(record["state"], record["mover"],
-                                  record["state"].hands,
-                                  record["state"].buried, action,
-                                  finish_trick=True, policy=self.rollout_policy)
+                leaf = (successor_cache.leaf(action)
+                        if successor_cache is not None else
+                        afterstate(record["state"], record["mover"],
+                                   record["state"].hands,
+                                   record["state"].buried, action,
+                                   finish_trick=True, policy=self.rollout_policy))
                 batch_positions.append(leaf)
                 batch_owners.append(owner)
                 batch_actions.append(action)
                 if len(batch_positions) >= self.inner_batch_size:
                     flush()
+            if successor_cache is not None:
+                cache_stats = successor_cache.counters
+                stats["inner_cache_root_actions"] = (
+                    stats.get("inner_cache_root_actions", 0) +
+                    cache_stats["root_actions"])
+                stats["inner_cache_leaf_hits"] = (
+                    stats.get("inner_cache_leaf_hits", 0) +
+                    cache_stats["leaf_hits"])
+                stats["inner_cache_leaf_completions"] = (
+                    stats.get("inner_cache_leaf_completions", 0) +
+                    cache_stats["leaf_completions"])
+                stats["inner_cache_peak_entries"] = max(
+                    stats.get("inner_cache_peak_entries", 0),
+                    cache_stats["peak_entries"])
             del actions, legal
         flush()
+        if tensor_cache is not None:
+            stats["inner_tensor_hits"] = (
+                stats.get("inner_tensor_hits", 0) + tensor_cache.hits)
+            stats["inner_tensor_completions"] = (
+                stats.get("inner_tensor_completions", 0) + tensor_cache.completions)
+            stats["inner_tensor_peak_entries"] = max(
+                stats.get("inner_tensor_peak_entries", 0),
+                tensor_cache.peak_entries)
         if self.inner_mode == "heuristic":
             return [([r["incumbent"]], {}) for r in records]
         if self.inner_mode == "uniform":
@@ -364,6 +496,13 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                  "inner_net_rows": 0, "inner_batches": 0,
                  "inner_cross_parent_batches": 0,
                  "inner_full_rollouts": 0,
+                 "inner_cache_root_actions": 0,
+                 "inner_cache_leaf_hits": 0,
+                 "inner_cache_leaf_completions": 0,
+                 "inner_cache_peak_entries": 0,
+                 "inner_tensor_hits": 0,
+                 "inner_tensor_completions": 0,
+                 "inner_tensor_peak_entries": 0,
                  "one_extra_trick_horizon": len(rnd.history) + 2}
         values = np.empty((n_worlds, n_candidates), dtype=np.float64)
         guided_limit = stats["actual_inner_worlds"]
@@ -387,6 +526,9 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                 values[branch["wi"], branch["ci"]] = value
         if not np.isfinite(values).all():
             raise DoubleShortlistError("double-shortlist continuation produced no value")
+        # Keep cache work entirely outside the scientific double-shortlist
+        # counters and stage schema.  The nested receipt is opt-in only.
+        self._capture_inner_reuse(stats)
         self.double_shortlist_counts["calls"] += 1
         for key in ("actual_inner_worlds", "inner_actions", "inner_finalist_actions",
                     "inner_net_rows", "inner_batches", "inner_cross_parent_batches",

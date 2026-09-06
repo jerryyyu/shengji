@@ -143,6 +143,24 @@ def test_calibration_is_outcome_blind_and_runs_refuse_a_foreign_binding(
     real_play_round = duel.play_round
     monkeypatch.setattr(duel, "play_round",
                         lambda game, policies: _Poisoned(real_play_round(game, policies)))
+    # This is an outcome-isolation/binding witness, not a wall benchmark.
+    # Still execute the real production and model consumers; only replace
+    # their timing observations so shared-runner jitter cannot invert W2/W4.
+    real_production, real_measure = duel.measure_production, duel.measure_bot
+    measured_worlds = []
+
+    def stable_production(*args, **kwargs):
+        result = real_production(*args, **kwargs)
+        return {**result, "subset_mean_wall": 0.004}
+
+    def stable_measure(*args, **kwargs):
+        result = real_measure(*args, **kwargs)
+        assert result["decisions"] > 0
+        measured_worlds.append(result["worlds"])
+        return {**result, "mean_wall": 0.001 * result["worlds"]}
+
+    monkeypatch.setattr(duel, "measure_production", stable_production)
+    monkeypatch.setattr(duel, "measure_bot", stable_measure)
     args = duel.build_parser().parse_args([
         "calibrate", "--checkpoint", checkpoint, "--out", str(tmp_path / "cal.json"),
         "--base-policy", "mc-lite", "--deals", "1", "--grid", "2,4",
@@ -154,6 +172,8 @@ def test_calibration_is_outcome_blind_and_runs_refuse_a_foreign_binding(
             if name.startswith("mc-cwv-"):
                 REGISTRY.pop(name)
     assert calibration["outcome_blind"] is True
+    assert {2, 4, 15, 50}.issubset(measured_worlds)
+    assert calibration["matched_1x"] is True
     assert calibration["production"]["decisions"] > 0
     ladder = calibration["ladder"]
     assert [r["budget"] for r in ladder] == ["1x", "3x", "10x"]

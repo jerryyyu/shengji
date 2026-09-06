@@ -50,6 +50,45 @@ def _load_script(name: str):
     return module
 
 
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_score_preserves_legacy_score_many_signature_without_cache(explicit_none):
+    """The opt-in cache must not add kwargs to an uncached override."""
+    positions = [object(), object()]
+    expected = np.array([0.25, -0.5])
+    calls = []
+
+    class LegacyEvaluator(CompleteWorldEvaluator):
+        def score_many(self, rows, seats):
+            calls.append((rows, seats))
+            return expected
+
+    evaluator = object.__new__(LegacyEvaluator)
+    kwargs = {"tensor_cache": None} if explicit_none else {}
+    assert evaluator.score(positions, 2, **kwargs) is expected
+    assert len(calls) == 1
+    assert calls[0][0] is positions
+    assert calls[0][1] == [2, 2]
+
+
+def test_score_forwards_explicit_tensor_cache_without_replacing_it():
+    positions = [object(), object()]
+    cache = object()
+    expected = np.array([0.25, -0.5])
+    calls = []
+
+    class CacheAwareEvaluator(CompleteWorldEvaluator):
+        def score_many(self, rows, seats, *, tensor_cache):
+            calls.append((rows, seats, tensor_cache))
+            return expected
+
+    evaluator = object.__new__(CacheAwareEvaluator)
+    assert evaluator.score(positions, 3, tensor_cache=cache) is expected
+    assert len(calls) == 1
+    assert calls[0][0] is positions
+    assert calls[0][1] == [3, 3]
+    assert calls[0][2] is cache
+
+
 @pytest.fixture(scope="module")
 def checkpoint(tmp_path_factory) -> str:
     """A tiny checkpoint trained through value_training on two rounds."""

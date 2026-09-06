@@ -2,6 +2,8 @@
 from types import SimpleNamespace
 import time
 from dataclasses import replace
+import hashlib
+import sys
 
 import pytest
 
@@ -173,3 +175,122 @@ def test_wrong_game_response_refuses_before_commit():
         drivers[0].step()
     assert game._state_snapshot(games[0].rnd) == before
     assert drivers[0].decision_index == 0
+
+
+def _scale16_fake_pilot(tmp_path, *, fail_after_wave=False):
+    calls = []
+
+    class FakePilot:
+        root = tmp_path
+        args = SimpleNamespace(arms=["batch4"], population="scale16")
+        rows = []
+        charged = 0
+        completed_games = 0
+        target_games = 16
+
+        def configure(self, inputs):
+            self.roots = list(inputs)
+            assert len(self.roots) == 16
+            assert len(set(self.roots)) == 16
+
+        def call(self, arm, index, packets):
+            assert arm == "batch4"
+            assert 1 <= len(packets) <= 4
+            wave = {pilot.SCALE16_COORDINATES.index(p.coordinate) // 4
+                    for p in packets}
+            assert len(wave) == 1
+            calls.append((index, tuple(p.coordinate for p in packets), wave.pop()))
+            if fail_after_wave and calls[-1][2] >= 1:
+                row = {"accepted": False, "usage": None, "decisions": []}
+                self.rows.append(row)
+                return row, None
+            responses = tuple(PlannerResponse(
+                Intent("play", p.decision_sha256, candidate_index=0,
+                       confidence="low", planning_note="scale16"),
+                Usage(1, 0, 1, 1), team=p.team, packet_sha256=p.sha256,
+                memory_sha256=p.memory.sha256, provider_request_sha256="a" * 64,
+                provider_response_sha256="b" * 64) for p in packets)
+            row = {"accepted": True, "usage": {"total_tokens": 4},
+                   "decisions": [{}, {}, {}, {}]}
+            self.rows.append(row)
+            return row, responses
+
+        def finish(self, extra):
+            return extra
+
+    return FakePilot(), calls
+
+
+def test_scale16_rounds_are_four_isolated_waves_and_fresh_roots(tmp_path):
+    fake, calls = _scale16_fake_pilot(tmp_path)
+    result = pilot.rounds(fake)
+    assert result["completed_games"] == result["target_games"] == 16
+    assert result["completed_rounds"] == 16
+    tokens = sum(row["usage"]["total_tokens"] for row in fake.rows)
+    assert result["completed_rounds_per_million_reported_tokens"] == 16e6 / tokens
+    assert len({wave for _index, _coords, wave in calls}) == 4
+    assert all(len(set(packets)) == len(packets)
+               for _index, packets, _wave in calls)
+    old_secret = hashlib.sha256(
+        b"teacher-token-full-round-pilot-2026-09-05-v1").digest()
+    old_coords = [("2", 0, 0), ("5", 1, 0), ("9", 0, 0), ("K", 1, 0)]
+    old_roots = {game.LunaSelfPlayGame(game.build_root(old_secret, c),
+                                       coordinate=c, seed_secret=old_secret).root_sha256
+                 for c in old_coords}
+    assert not old_roots.intersection(set(fake.roots))
+    assert len(list(tmp_path.glob("game-*-terminal.json"))) == 16
+    assert len(list(tmp_path.glob("game-*-trajectory.json"))) == 16
+
+
+def test_scale16_late_refusal_keeps_first_wave_and_counts(tmp_path):
+    fake, calls = _scale16_fake_pilot(tmp_path, fail_after_wave=True)
+    result = pilot.rounds(fake)
+    assert result["status"] == "stopped-on-refusal"
+    assert result["completed_games"] == 4 and result["target_games"] == 16
+    assert result["completed_rounds"] == 4
+    assert len(list(tmp_path.glob("game-*-terminal.json"))) == 4
+    assert len(calls) > 1 and all(wave == 0 for _index, _coords, wave in calls[:-1])
+
+
+def test_scale16_actual_finish_persists_partial_round_count(tmp_path):
+    fake, _calls = _scale16_fake_pilot(tmp_path, fail_after_wave=True)
+    actual = object.__new__(pilot.Pilot)
+    actual.root = tmp_path
+    actual.args = SimpleNamespace(arms=["batch4"], population="scale16",
+                                   mode="rounds", tokens=6_000_000,
+                                   wall_seconds=10_800, call_seconds=90)
+    actual.source = {}
+    actual.created = time.time()
+    actual.charged = 0
+    actual.rows = []
+    actual.completed_games = actual.completed_rounds = 0
+    actual.target_games = 16
+    actual.configure = fake.configure
+
+    def call(arm, index, packets):
+        row, responses = fake.call(arm, index, packets)
+        actual.rows.append({**row, "arm": arm, "index": index})
+        actual.charged += (row.get("usage") or {}).get("total_tokens", 0)
+        return row, responses
+
+    actual.call = call
+    pilot.rounds(actual)
+    persisted = pilot.load(tmp_path / "result.json")
+    assert persisted["completed_rounds"] == 4
+    assert persisted["completed_games"] == 4
+    assert persisted["target_games"] == 16
+
+
+@pytest.mark.parametrize("extra", [
+    ["--population", "scale16", "snapshots", "--arms", "batch4"],
+    ["--population", "scale16", "rounds", "--arms", "batch2"],
+    ["--population", "scale16", "rounds", "--arms", "batch4",
+     "--wall-seconds", "10801"],
+    ["--population", "scale16", "rounds", "--arms", "batch4",
+     "--call-seconds", "91"],
+])
+def test_scale16_argument_caps_and_mode_are_closed(monkeypatch, tmp_path, extra):
+    monkeypatch.setattr(sys, "argv", ["pilot", *extra, "--out", str(tmp_path),
+                                       "--codex-binary", "/usr/bin/true"])
+    with pytest.raises(SystemExit):
+        pilot.main()

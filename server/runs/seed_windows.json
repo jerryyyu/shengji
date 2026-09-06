@@ -217,7 +217,10 @@
       "purpose": "screen",
       "seed0": 91260904,
       "clusters": 260,
-      "span": [91260904, 91261164],
+      "span": [
+        91260904,
+        91261164
+      ],
       "created_at": "2026-09-06T07:40:00Z",
       "host": "shengji-cloud",
       "git_head": "ce68f6eda0768614ccc25267580521172e5bf96e",
@@ -228,11 +231,28 @@
       "purpose": "screen",
       "seed0": 91261164,
       "clusters": 26,
-      "span": [91261164, 91261190],
+      "span": [
+        91261164,
+        91261190
+      ],
       "created_at": "2026-09-06T10:53:00Z",
       "host": "shengji-cloud",
       "git_head": "87552e9649627de002201d5a9c480c15beb57e18",
       "note": "Reserved before dealing: three intentional matched arms on the SAME 26 clusters, learned-inner vs flat W32, uniform-inner vs flat W32, and flat W32 vs production. ABC checkpoint, K4+incumbent, rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A repeated twice, two mirrors. Source reviewed under PR264/265/266. Guidance 4/30 of selection/report worlds, one extra trick, per-world privileged simulation only. Not 78 independent deals; no cost-matched or production claim. See cwv_double_ranks13_dev_20260906.md."
+    },
+    {
+      "name": "traj-s55260904-d5b9f32e2daa",
+      "purpose": "trajectory",
+      "seed0": 55260904,
+      "clusters": 8000,
+      "span": [
+        55260904,
+        55268904
+      ],
+      "created_at": "2026-09-06T08:16:48+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "9b059ff4ba40ba9a85810020f2e8340a0d856e4c",
+      "note": "Run F teacher trajectories: Run E recipe (N90/R900 3x worlds, explore 0.1/k2, wide-ballot knobs, --widen union, --round-mix sampled, rank/banker diverse), 16,000 rounds, out /root/traj-out/runF on shengji-cloud. REGISTERED BY THE RUN ITSELF at launch 2026-09-06 08:16Z, but only in that host's working copy; committed here so the canonical registry reflects a window that is really dealt. Currently PAUSED at 179/8000 clusters with shards preserved, host handed to Codex; resumes under the same name."
     }
   ]
 }

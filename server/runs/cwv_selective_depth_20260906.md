@@ -1,8 +1,47 @@
 # Selective extra-trick guidance: bounded DEV follow-up
 
-Source and local timing checks complete; **no gameplay screen launched**. This is a single new recipe
+**Completed: no demonstrated improvement over flat W32.** This is a single new recipe
 against optimized flat W32, not another allocation-threshold/world-dose sweep.
 Tracked in #248; separate from Claude's PUCT, training and F2 data generation.
+
+## Completed 260-deal result
+
+Executed source `0279b3b866293650da7b14e8f0bdfd1fba875531`, ABC checkpoint
+`3f00500c5bf207e51d50ccd59a7b78c4f917b0a8adf3f39b31e660f81baa84ec`.
+Strength completed all 260 mirrored pairs / 520 rounds in **2,687.1 seconds
+(44m47s)** with 16 single-thread workers; exit 0, no refused or failed worlds.
+
+| Measure | Selective depth versus flat ABC W32 |
+|---|---:|
+| Signed level utility per round | −0.00577 |
+| 95% deal-clustered interval | [−0.06736, +0.05769] |
+| Positive / negative / zero deal outcomes | 41 / 44 / 175 |
+| Decision wall ratio | 1.5892× |
+| Continuation rollouts ratio | 2.0227× |
+| Triggered / measured search decisions | 8,844 / 14,945 (59.18%) |
+
+This is an inconclusive strength contrast, not equivalence or evidence that
+every selective-depth policy fails. The intervention was substantial: 2,678,339
+eligible inner positions, 782,481 skipped inner positions (156,277 rejected by
+the raw-follow bound), 10,954,581 inner finalist rollouts and 157,816 extra outer
+rollouts. Aggregate counters were checked once against the retained shards.
+Decision-wall ratios compare different gameplay trajectories, not an isolated
+engineering speedup.
+
+The fixed 13-rank schedule supplied 40 rounds per rank. Actual trump coverage:
+C 92, D 124, H 126, S 128, NT 50. This is the previously opened broader-rank DEV
+population `[91260904,91261164)`, not fresh confirmation or a production screen.
+
+Keep optimized **flat W32** as the supported reference. Do not automatically
+scale this gate, add another depth or sweep its threshold after this result.
+Investigate better uncertainty signals or continuation quality using retained
+evidence before paying for another gameplay arm.
+
+Cloud artifacts: `/root/cwv-selective-depth-20260906.zGHhJL/screen/` on Strength.
+Local retained copy, including all paired shards:
+`~/shengji-archive/2026-09-06/selective-depth-final.v2zmnG/`.
+The source checkout used by the run remains unchanged; this result update is
+documentation only. Strength was handed back to Claude for F2 after completion.
 
 ## What the completed screens justify
 

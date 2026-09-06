@@ -13,7 +13,7 @@ selection worlds per candidate, R300 independent report worlds, static MLP
 encoding and successor reuse. Do not select a new checkpoint for this screen.
 
 For each root candidate, finish the current trick in each sampled world. In
-the first **four worlds of each independent selection/report set**, play one
+the first **4/30 of each independent selection/report set**, play one
 additional trick using an inner shortlist. At each mover's turn, rank the
 **exhaustive** legal set from that mover's team perspective, retain the
 heuristic incumbent plus four alternatives, and run each finalist to round
@@ -23,9 +23,19 @@ the remainder with the heuristic. Those terminal points—not neural leaf
 values—enter the existing root paired means, standard errors and MC-LCB rule.
 
 The root ranking worlds are not reused as selection/report draws. Those
-streams stay independent. The four-world prefix intentionally means a
-different guided fraction in selection (4/30) and report (4/300), not an
-all-world deeper search. Record those doses; a later all-world arm is separate.
+streams stay independent. Scale the guided count to the actual accepted-world
+population: `ceil(n * min(inner_worlds, selection_worlds) / selection_worlds)`.
+Thus full selection uses 4/30 and each full report fold uses 40/300, estimating
+the same mixture of guided and heuristic continuations. For an underfilled
+batch, rounding can add less than one guided world; report both actual counts
+and the target fraction. The heuristic control guides zero worlds. This is not
+an all-world deeper search; a later all-world arm is separate.
+
+This is the explicit `selection-fraction-ceil-v2` recipe, replacing the
+unexecuted four-worlds-per-stream proposal reviewed at `1278350e`. The old
+proposal mixed 13% guidance in selection with 1.3% in report, confounding a
+depth failure with a changed continuation estimand. Old same-count recipes
+must not resume as this recipe. The report stage now costs more; measure it.
 Root-equivalent successors can share finished leaves, but evolving branches
 must clone them before mutation. Inner scoring packs rows from different
 live world/candidate parents into bounded batches of 128, with an explicit
@@ -49,6 +59,19 @@ failed deals. All arms use the same checkpoint and root recipe:
    finalist count and terminal verification, but no learned inner ranking.
 3. Flat optimized W32 versus production on the same deal seeds, anchoring
    interpretation of this new population.
+
+Predeclare learned-minus-uniform on matched deal clusters as the primary
+mechanism contrast; show both against flat W32, and the separate production
+anchor. Choosing the best of five single heuristic completions may exploit
+continuation-specific errors; terminal points are not optimal-play values.
+Two deals per rank cannot support per-rank conclusions. Keep this pilot
+exploratory even if a small-sample interval happens to exclude zero.
+
+The fraction witnesses exercise the actual continuation dispatcher at 30/300
+accepted worlds with cheap stub continuations (4/40 guided). Separate tests
+drive the real decision and report adapters, including a natural-state
+N30/R30 LCB check and a synthetic N1/R3 unequal-population check. These are
+mechanics tests, not measurements of real-checkpoint throughput or strength.
 
 The `heuristic` inner mode is the code-level flat-parity control, not an extra
 gameplay arm. Keep each arm's atomic mirrored-pair shards and its immutable

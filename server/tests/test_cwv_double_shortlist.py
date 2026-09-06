@@ -151,17 +151,31 @@ def test_real_decide_play_heuristic_mode_matches_flat_selection_and_report():
 
 
 def test_real_decide_play_learned_reaches_both_consumers():
-    rnd = play_state()
+    # Synthetic two-card hands and fixed sampled worlds isolate consumer
+    # wiring; the screen test covers a natural state and the real sampler.
+    rnd = copy.deepcopy(play_state())
+    rnd.hands = [["SA", "D5"], ["SK", "D6"], ["S3", "C4"], ["S4", "D4"]]
     bot = CWVDoubleShortlistBot(
         PointsNet(), seed=23,
         config=CWVShortlistConfig(worlds=1, selection_worlds=1),
         inner_mode="learned", inner_worlds=1, inner_batch_size=19)
-    bot.REPORT_FOLD_WORLDS = 30
-    bot.REPORT_RULE = "lcb"
+    # A small mean report still exercises the independent report consumer;
+    # the production LCB minimum is covered by the screen integration.
+    bot.REPORT_FOLD_WORLDS = 3
+    bot.REPORT_RULE = "mean"
+    fixed = [list(hand) for hand in rnd.hands]
+    sampled = {s: list(fixed[s]) for s in range(4) if s != rnd.turn}
+    bot._sample_hands = lambda *args: (sampled, [])
+    bot._complete_determinized_hands = lambda *args, **kwargs: [
+        list(hand) for hand in fixed]
+    bot._prepare_report_world = lambda *args, **kwargs: type(
+        "Prepared", (), {"hands": tuple(tuple(h) for h in fixed), "buried": ()})()
     bot.decide_play(rnd, rnd.turn)
     detail = bot.last_decision_record["cwv_double_shortlist"]
     assert [row["stage"] for row in detail["stages"]] == ["selection", "report"]
-    assert all(row["actual_inner_worlds"] == 1 for row in detail["stages"])
+    assert [row["actual_inner_worlds"] for row in detail["stages"]] == [1, 3]
+    assert [row["guidance_numerator"] for row in detail["stages"]] == [1, 1]
+    assert [row["guidance_denominator"] for row in detail["stages"]] == [1, 1]
     assert detail["inner_net_rows"] > 0
     assert detail["inner_full_rollouts"] > 0
     assert detail["inner_net_rows"] == bot.double_shortlist_counts["inner_net_rows"]
@@ -268,6 +282,50 @@ def test_terminal_root_bypasses_inner_net():
     assert net.calls == []
 
 
+def test_guidance_fraction_ceil_zero_and_saturation_without_rollout_cost(monkeypatch):
+    class FakeState:
+        phase = "play"
+        history = []
+        turn = 0
+
+    def run(bot, count, stage="selection"):
+        seen = []
+        monkeypatch.setattr(bot, "_root_leaf",
+                            lambda *args, **kwargs: FakeState())
+        monkeypatch.setattr(bot, "_finish_heuristic", lambda state: 0.0)
+        monkeypatch.setattr(bot, "_guided_many",
+                            lambda branches, stats: seen.append(len(branches))
+                            or [0.0] * len(branches))
+        worlds = [([], []) for _ in range(count)]
+        root = type("Root", (), {"history": []})()
+        bot._lockstep_values(root, 0, worlds, [["A"]], stage=stage)
+        return bot.last_double_shortlist["stages"][-1], seen
+
+    bot = CWVDoubleShortlistBot(None,
+                                config=CWVShortlistConfig(uniform=True),
+                                inner_mode="uniform", inner_worlds=4)
+    bot.N_DETERMINIZATIONS = 30
+    stage, seen = run(bot, 30)
+    assert stage["guidance_numerator"] == 4
+    assert stage["guidance_denominator"] == 30
+    assert stage["target_inner_worlds"] == stage["actual_inner_worlds"] == 4
+    assert seen == [4]
+    stage, seen = run(bot, 300, stage="report")
+    assert stage["target_inner_worlds"] == stage["actual_inner_worlds"] == 40
+    assert seen == [40]
+    stage, seen = run(bot, 3)
+    assert stage["target_inner_worlds"] == stage["actual_inner_worlds"] == 1
+    assert seen == [1]
+    stage, seen = run(bot, 0)
+    assert stage["target_inner_worlds"] == stage["actual_inner_worlds"] == 0
+    assert seen == []
+    bot.inner_worlds = 99
+    stage, seen = run(bot, 12)
+    assert stage["guidance_numerator"] == stage["guidance_denominator"] == 30
+    assert stage["target_inner_worlds"] == stage["actual_inner_worlds"] == 12
+    assert seen == [12]
+
+
 def test_guided_branches_share_cross_parent_partial_batch_with_row_movers(monkeypatch):
     from shengji.train import cwv_double_shortlist as module
 
@@ -293,8 +351,9 @@ def test_guided_branches_share_cross_parent_partial_batch_with_row_movers(monkey
             return super().score_many(positions, seats)
 
     monkeypatch.setattr(module, "afterstate", tag_actual_mover)
-    bot = CWVDoubleShortlistBot(SeatCheckingNet(), inner_worlds=2,
-                                inner_batch_size=6)
+    bot = CWVDoubleShortlistBot(
+        SeatCheckingNet(), config=CWVShortlistConfig(selection_worlds=1),
+        inner_worlds=2, inner_batch_size=6)
     # Swap two hidden hands to make the sampled-world branches have different
     # winners/movers while preserving the same real Round input.
     world_b_hands = [list(h) for h in root.hands]

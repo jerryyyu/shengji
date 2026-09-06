@@ -31,15 +31,16 @@ class DoubleShortlistError(ValueError):
 class CWVDoubleShortlistBot(CWVShortlistBot):
     """Full-legal root shortlist plus one inner, five-action shortlist.
 
-    Only the first ``inner_worlds`` worlds in each independent production
-    selection/report call are guided.  Every other world is the inherited
-    heuristic rollout, preserving the production estimator and its paired
-    arithmetic.
+    The first bounded fraction of worlds in each independent production
+    selection/report call are guided.  The configured ``inner_worlds`` is the
+    numerator and the production selection-world count is the denominator;
+    every other world is the inherited heuristic rollout.
     """
 
     NET_STAGE = "all"
     ADAPTIVE_ALLOCATION = True
-    DOUBLE_RECORD_SCHEMA = "cwv-double-shortlist-v1"
+    DOUBLE_RECORD_SCHEMA = "cwv-double-shortlist-v2"
+    GUIDANCE_MODE = "selection-fraction-ceil-v2"
 
     # Reuse the existing uniform-selection and paired-report adapters. They
     # draw production worlds/moments and invoke this class's lockstep hook.
@@ -82,6 +83,25 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
             "inner_full_rollouts": 0,
         }
 
+    def _guidance_counts(self, actual_worlds: int) -> tuple[int, int, int]:
+        """Return ``(numerator, denominator, target guided worlds)``.
+
+        ``inner_worlds`` is deliberately the numerator of a fraction whose
+        denominator is the configured production selection-world count.  The
+        same fraction therefore applies to independent selection and report
+        batches, including short batches and a saturated numerator.
+        """
+        denominator = int(self.N_DETERMINIZATIONS)
+        if denominator < 1:
+            raise DoubleShortlistError(
+                "N_DETERMINIZATIONS must be positive for double-shortlist guidance")
+        numerator = min(self.inner_worlds, denominator)
+        if self.inner_mode == "heuristic" or actual_worlds <= 0:
+            return numerator, denominator, 0
+        target = min(actual_worlds,
+                     (actual_worlds * numerator + denominator - 1) // denominator)
+        return numerator, denominator, target
+
     # -------------------------------------------------------------- records
     def _aggregate_record(self) -> dict[str, Any] | None:
         if not self._double_stage_records:
@@ -89,9 +109,12 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
         rows = self._double_stage_records
         return {
             "schema": self.DOUBLE_RECORD_SCHEMA,
+            "guidance": self.GUIDANCE_MODE,
             "mode": self.inner_mode,
-            "inner_world_cap": self.inner_worlds,
-            "world_cap": self.inner_worlds,
+            "inner_selection_worlds": self.inner_worlds,
+            "guidance_numerator": rows[0]["guidance_numerator"],
+            "guidance_denominator": rows[0]["guidance_denominator"],
+            "target_inner_worlds": sum(r["target_inner_worlds"] for r in rows),
             "inner_alternatives": self.inner_alternatives,
             "inner_batch_size": self.inner_batch_size,
             "actual_inner_worlds": sum(r["actual_inner_worlds"] for r in rows),
@@ -331,9 +354,12 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
             raise DoubleShortlistError(
                 "CWVDoubleShortlistBot does not support EXACT_ENDGAME yet")
         n_worlds, n_candidates = len(worlds), len(candidates)
+        numerator, denominator, target_inner = self._guidance_counts(n_worlds)
         stats = {"stage": stage, "worlds": n_worlds,
-                 "actual_inner_worlds": (0 if self.inner_mode == "heuristic"
-                                         else min(self.inner_worlds, n_worlds)),
+                 "guidance_numerator": numerator,
+                 "guidance_denominator": denominator,
+                 "target_inner_worlds": target_inner,
+                 "actual_inner_worlds": target_inner,
                  "inner_actions": 0, "inner_finalist_actions": 0,
                  "inner_net_rows": 0, "inner_batches": 0,
                  "inner_cross_parent_batches": 0,

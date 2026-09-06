@@ -149,6 +149,8 @@ def make_side(config: dict, side: str, seed: int):
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
     if inner is not None:
+        if inner.get("guidance") != "selection-fraction-ceil-v2":
+            raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
                                    inner_mode=inner["mode"],
                                    inner_worlds=inner["worlds"],
@@ -359,7 +361,7 @@ def main(argv=None):
     parser.add_argument("--inner-mode", choices=("learned", "uniform", "heuristic"),
                         help="DEV: one extra trick of per-world shortlist continuation; learned root only")
     parser.add_argument("--inner-worlds", type=int, default=4,
-                        help="guided prefix of each independent selection/report world set")
+                        help="guided fraction numerator over --selection-worlds; scaled to each accepted world set")
     parser.add_argument("--inner-batch-size", type=int, default=128)
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
@@ -434,6 +436,7 @@ def main(argv=None):
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:
         config["double_shortlist"] = {
+            "guidance": "selection-fraction-ceil-v2",
             "mode": args.inner_mode, "worlds": args.inner_worlds,
             "batch_size": args.inner_batch_size,
             "extra_tricks": 1, "alternatives": 4,

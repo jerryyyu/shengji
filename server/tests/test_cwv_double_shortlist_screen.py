@@ -27,7 +27,7 @@ def test_cli_persists_inner_recipe_and_constructs_actual_comparator(tmp_path, mo
     out = tmp_path / "screen"
     assert S.main([
         "--arm", "learned", "--checkpoint", str(tmp_path / "unused.pt"),
-        "--worlds", "1", "--selection-worlds", "1", "--report-worlds", "30",
+        "--worlds", "1", "--selection-worlds", "30", "--report-worlds", "30",
         "--inner-mode", "learned", "--inner-worlds", "1",
         "--inner-batch-size", "7", "--baseline", "flat-shortlist",
         "--clusters", "1", "--seed0", "17", "--out", str(out),
@@ -40,10 +40,11 @@ def test_cli_persists_inner_recipe_and_constructs_actual_comparator(tmp_path, mo
     assert type(baseline) is CWVShortlistBot
     assert arm.inner_mode == "learned" and arm.inner_worlds == 1
     assert arm.inner_batch_size == 7
-    assert arm.N_DETERMINIZATIONS == baseline.N_DETERMINIZATIONS == 1
+    assert arm.N_DETERMINIZATIONS == baseline.N_DETERMINIZATIONS == 30
     assert arm.REPORT_FOLD_WORLDS == baseline.REPORT_FOLD_WORLDS == 30
     assert arm.shortlist_config == baseline.shortlist_config
     assert S._recipe(config)["double_shortlist"] == config["double_shortlist"]
+    assert config["double_shortlist"]["guidance"] == "selection-fraction-ceil-v2"
     assert S._recipe(config)["baseline"] == "flat-shortlist"
 
     # Exercise the timed worker's real decision consumer, not just the helper.
@@ -51,6 +52,9 @@ def test_cli_persists_inner_recipe_and_constructs_actual_comparator(tmp_path, mo
     wrapped = S.CwvTimedPolicy(arm)
     wrapped.decide_play(state, state.turn)
     detail = wrapped.decisions[-1]["cwv_double_shortlist"]
+    assert {row["stage"] for row in detail["stages"]} == {"selection", "report"}
+    assert all(row["worlds"] == 30 and row["actual_inner_worlds"] == 1
+               for row in detail["stages"])
     assert detail["inner_full_rollouts"] > 0
     counts = S.work_counters([wrapped])
     assert counts["double_inner_full_rollouts"] == detail["inner_full_rollouts"]
@@ -60,7 +64,8 @@ def test_cli_persists_inner_recipe_and_constructs_actual_comparator(tmp_path, mo
 
 
 def test_inner_recipe_changes_cannot_reopen_completed_pairs(tmp_path):
-    config = cfg("learned", double_shortlist={"mode": "learned", "worlds": 4},
+    config = cfg("learned", double_shortlist={"mode": "learned", "worlds": 4,
+                 "guidance": "selection-fraction-ceil-v2"},
                  baseline="flat-shortlist")
     shard = {
         "schema": "cwv-shortlist-shard-v1", "cluster": 0, "seed": 17,
@@ -76,9 +81,21 @@ def test_inner_recipe_changes_cannot_reopen_completed_pairs(tmp_path):
     with pytest.raises(ValueError, match="completed shard"):
         S.reopen_shard(path, changed, 0)
     changed = copy.deepcopy(config)
+    del changed["double_shortlist"]["guidance"]
+    with pytest.raises(ValueError, match="completed shard"):
+        S.reopen_shard(path, changed, 0)
+    changed = copy.deepcopy(config)
     changed["baseline"] = "production"
     with pytest.raises(ValueError, match="completed shard"):
         S.reopen_shard(path, changed, 0)
+
+
+def test_legacy_same_count_recipe_cannot_execute_as_equal_fraction(monkeypatch):
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **kw: Evaluator())
+    config = cfg("learned", double_shortlist={"mode": "learned", "worlds": 4,
+                 "batch_size": 128}, checkpoint_sha256="a" * 64)
+    with pytest.raises(ValueError, match="^double-shortlist guidance recipe is not selection-fraction-ceil-v2$"):
+        S.make_side(config, "arm", 23)
 
 
 @pytest.mark.parametrize("extra", [

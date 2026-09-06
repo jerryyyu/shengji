@@ -70,3 +70,27 @@ an affordable fixed continuation before spending the larger budget; do not stop
 on the first favorable repeated interval or choose favorable replacement roots.
 The completed tranche establishes usable full-game collection and meaningful
 token savings, **not completion of the larger quality experiment**.
+
+## Prepared continuation — not authorized or launched
+
+`runs/luna_quality_gameplay_remaining44_20260906.json` contains exactly the
+original manifest's unused coordinates, in manifest order. The existing panel
+and selector validators confirm **44 deals, zero overlap**, 22 fit and 22
+validation roots. Their actual root trumps are C 11, D 9, H 11, S 11 and NT 2.
+Together with tranche one this restores the complete 52-deal rank-balanced
+panel. No provider calls or outcome-based root selection were used to prepare it.
+
+Proposed additional ceiling for Jerry's decision: **45M reported/reserved tokens
+and 18 hours**, against a linear 38.75M-token / 14.5-hour estimate. This is not
+funded by the unused portion of tranche one's allowance. Do not launch without
+the new ceiling. Keep source behavior, model/reasoning, prompt, tools, team
+memory, one provider, eight-coordinate waves and 120-second call cap unchanged.
+The last four-coordinate wave may batch less efficiently; costs remain estimates.
+
+Use a new private output root; do not extend the completed eight-deal run or
+transplant calls. Existing recovery retains completed games and accepted provider
+responses under the original deadline/budget. Report the 44-deal tranche and
+pooled 52-deal exploratory estimates, always bootstrapping by deal and disclosing
+incomplete pairs. No repeated-significance stopping, replacements, automatic
+larger tranche or teacher/data promotion. This is an expanded roster and budget,
+not another implementation, smoke/capacity run or source-review cycle.

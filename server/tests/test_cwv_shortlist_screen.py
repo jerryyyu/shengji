@@ -28,6 +28,40 @@ def test_baseline_dose_is_fixed_when_production_arm_is_scaled():
     assert (arm.N_DETERMINIZATIONS, arm.REPORT_FOLD_WORLDS) == (90, 900)
 
 
+@pytest.mark.parametrize("options, expected", [
+    (["--arm", "production", "--production-multiplier", "10",
+      "--target-wall-multiplier", "10"], (300, 3000, 1)),
+    (["--arm", "learned", "--checkpoint", "fixture", "--worlds", "64",
+      "--target-wall-multiplier", "20"], (30, 300, 64)),
+    (["--arm", "learned", "--checkpoint", "fixture", "--worlds", "32",
+      "--selection-worlds", "60", "--report-worlds", "600",
+      "--target-wall-multiplier", "10"], (60, 600, 32)),
+])
+def test_scaling_cli_wires_exact_arm_without_scaling_baseline(tmp_path, monkeypatch, options, expected):
+    captured = {}
+    evaluator = SimpleNamespace(checkpoint_sha256="fixture", identity=lambda: {"fixture": True})
+    monkeypatch.setattr(S, "shared_evaluator", lambda *args, **kwargs: evaluator)
+    monkeypatch.setattr(S, "execution_source_identity", lambda _path: {"test": "fixture"})
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+
+    def pending(config, cluster_ids, shards, *, workers, **kwargs):
+        captured.update(config)
+        assert cluster_ids == list(range(256))
+        assert workers == 16
+        assert shards == []
+
+    monkeypatch.setattr(S, "_run_pending", pending)
+    assert S.main([*options, "--seed0", "90260904", "--clusters", "256",
+                   "--workers", "16", "--out", str(tmp_path)]) == 0
+    arm = S.make_side(captured, "arm", 7)
+    baseline = S.make_side(captured, "baseline", 7)
+    assert (arm.N_DETERMINIZATIONS, arm.REPORT_FOLD_WORLDS,
+            captured["shortlist"]["worlds"]) == expected
+    assert (baseline.N_DETERMINIZATIONS, baseline.REPORT_FOLD_WORLDS) == (30, 300)
+    assert captured["shortlist"]["alternatives"] == 4
+    assert captured["shortlist"]["batch_size"] == 128
+
+
 def test_worker_refuses_changed_checkpoint_before_policy_construction(monkeypatch):
     class Evaluator:
         checkpoint_sha256 = "worker-sha"

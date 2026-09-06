@@ -253,5 +253,48 @@ The existing per-pair progress/ETA and atomic-shard recovery are unchanged.
 An outer 7,200s / 24GiB process limit protects the host; expiry retains completed
 pairs and is not a scientific discard rule. Initial ETA remains 45–60 minutes,
 to be replaced by measured pair pace. No job was interrupted to make room.
-Optimized learned-arm launch is still pending the source approval described
-above; no new teacher collection, merge or deployment is bundled here.
+No new teacher collection, merge or deployment is bundled here.
+
+### Reviewed optimized replay queued; retained production x3 reused
+
+Claude PASSed exact optimization source `30b5edde` in
+[#254 comment 5556545319](https://github.com/jerryyyu/shengji/pull/254#issuecomment-5556545319).
+The pass includes 316 real-state equivalence checks, 161-position checkpoint
+parity and can-fail world-key/pruning mutations. Rebase for the current CI
+fixture is a **pre-merge** follow-up, not a change to this executing source.
+
+The queued unit `cwv-scaling-w32-optimized-20260906.service` waits for the live
+production-x10 unit to end and its complete 256-pair summary to exist without a
+failure record. It then runs the identical original W32/N30/R300/4-alternative/
+batch128/256-deal recipe with `--encoding mlp-static --reuse-successors` on
+16 workers, from the already profiled `/root/cwv-successor-profile.x94hty/`
+tree. Output: `w32-paired/`; log: `w32-paired.log` in that tree.
+The small wait wrapper is retained beside it as
+`launch_optimized_w32_after_prod10.sh`; it does not start W64 or MC-x2 by itself.
+Its 3-hour outer limit includes waiting, retains completed pairs, and does not
+discard the run's science on expiry.
+
+This repeats the **same opened** 256 deals to measure representative optimized
+end-to-end cost and check trajectory preservation; it is not fresh confirmation
+or a second opportunity to select W32 by its outcomes. Reuse the old reference
+run rather than rerunning an unoptimized comparator. Afterwards run W64 and
+W32/N60/R600 separately, with the same optimization mode and checkpoint. Existing
+#254 CLI already supports all three doses; no source integration/review round is
+needed. Keep its descriptive wall target at 3x and report actual cost/overrun,
+not an equal-work pass. The multiplier label does not control search effort.
+
+There is also a completed same-population production-x3 control in
+`~/shengji-archive/2026-09-05/cwv-shortlist-screen/production-3x/`: N90/R900,
+256 pairs, identical original source/native hashes. Reusing it avoids another
+control run. Its utility is +0.06836 signed levels/round (95% CI [0, +0.13672])
+at 2.9579x production decision wall. On paired deal means, retained ABC W32 minus
+production-x3 is +0.07031 [−0.02344, +0.16602], **not a resolved superiority**.
+The old W32 cost was still 10.6126x; compare against optimized cost only when the
+queued measurement finishes. None of these same-population comparisons is a
+direct candidate-vs-candidate duel or independent confirmatory evidence.
+
+The bounded read-only comparison driver is retained at
+`/private/tmp/shengji-cwv-scaling.IZpVEL/compare_completed.py`. It reads complete
+mirrored shards, reconciles their utility means to stored summaries, pairs deal
+coordinates and reuses the existing screen's bootstrap (1,000 replicates,
+seed20260904); no model/rollout recomputation or partial outcome selection.

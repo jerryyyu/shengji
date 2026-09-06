@@ -11918,3 +11918,23 @@ HOW IT HAPPENED: `arm_signed_level_utility` carries both conventions side by sid
 RANK-2 RESULT for the same checkpoint, for completeness: +0.1445 [+0.0039, +0.2773], reproducing A+B+C's +0.1387 rather than improving on it, at the same 3.5x wall. So the extra data shows up outside rank 2 and not at it, which is where Runs A and C already had coverage.
 ALSO TODAY, from Codex and acked: selective extra-trick depth is -0.00577 [-0.06736, +0.05769] at 1.5892x wall with the gate firing on 59.18% of contested decisions, so a real intervention with no gain rather than an underpowered one; keep flat. And the bounded Luna gameplay tranche finished inside its ceiling at 7.045M of 9M tokens, batch4 +0.125 [-0.25, +0.50] on 8 deals (inconclusive) at 2.324x token efficiency per decision; the remaining 44 deals would need roughly 38.75M more and have no ceiling.
 PROCESS, mine: I opened PR #283 (encoder v2) having run only my own new test file and the training suites. CI and then the adjacent suites found five failures, and one is not a fixable pin: `test_v11_anchor` loads the registered bot `rl-override-v11pair`, a real archived v1 checkpoint, which cannot run at 560-wide inputs. There is no version dispatch anywhere; `ENC_VERSION` is a single global and the cache refuses a different one. So a v2 that REPLACES v1 breaks every archived checkpoint and the registry bots built on them, and the PR is the wrong shape rather than merely incomplete. It should be additive. I described this in the PR as "existing checkpoints are not loadable, so it trains from scratch", which understated it.
+
+## 2026-09-06 — Claude: RETRACTING fd4df46d. The original scorecard was right, my correction was wrong, and A+C+D is WORSE than A+B+C at rank 2
+
+In fd4df46d I claimed the "advantage roughly halves outside rank 2" line compared a per-cluster figure with a per-round one, and that like-for-like it was an 11% drop. Codex challenged it. I read the archived file rather than assuming a second time, and they are right.
+
+MEASURED, from `2026-09-05/cwv-shortlist-abc-rerun/learned-3x/summary.json` (identical values in `2026-09-06/cwv-shortlist-scaling/w32-paired/`): the +0.1387 [+0.0645, +0.2168] headline is `per_round`. Its `per_cluster_sum` is +0.2773 [+0.1444, +0.4141]. So the scorecard was already stating a per-round number, the 13-rank +0.0615 is also per round, and **the original "roughly halves" claim was correct**. My 11% figure came from comparing the archived per-cluster value against a per-round one, which is the exact error I accused the scorecard of.
+
+THE TABLE, every number PER ROUND, which is the convention the headline uses:
+
+| checkpoint | population | per round |
+| --- | --- | --- |
+| A+B+C | 256, rank 2 | +0.138672 [+0.0645, +0.2168] |
+| A+B+C | 260, 13 ranks | +0.061538 [-0.0058, +0.1346] |
+| A+C+D | 256, rank 2 | +0.072266 [+0.0057, +0.1445] |
+| A+C+D | 260, 13 ranks | +0.101923 [+0.0385, +0.1712] |
+
+WHICH CHANGES THE RESULT I REPORTED. I said A+C+D "reproduces A+B+C rather than improving on it" at rank 2. It does not: **+0.0723 against +0.1387 is roughly half**. And outside rank 2 the order reverses: +0.1019 against +0.0615. So the rank-diverse training data appears to help where it has coverage and cost something where Runs A and C already had it. That crossover is the actual finding and it is more interesting than what I first reported, but it is FOUR SEPARATE UNPAIRED SCREENS and no cross-population contrast has been computed, so read it as a pattern to test rather than a result.
+WHAT SURVIVES UNCHANGED: the 13-rank PAIRED contrast on identical deals, A+C+D minus A+B+C = +0.0808 per cluster [-0.0538, +0.2192], i.e. +0.0404 per round [-0.0269, +0.1096]. Unresolved. And A+C+D's 13-rank interval excludes zero where A+B+C's does not.
+PROCESS. This is the second time in one evening I have quoted these summaries in the wrong unit, and the second correction Codex has had to make on it. The schema carries `per_round` and `per_cluster_sum` side by side and I twice inferred which one a note meant instead of opening the file. The rule, now with two failures behind it: NAME THE CONVENTION WITH EVERY NUMBER, and read the summary rather than the prose quoting it. Also, when I "correct" a standing claim, verify the claim's own source first; I corrected a line that was right, using the mistake I was accusing it of.
+Codex is also right that a cross-population significance statement is not a difference test, and that the #285 gate-firing rate is coverage rather than power.

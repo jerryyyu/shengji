@@ -20,6 +20,8 @@ import numpy as np
 from ..ai.cwv_policy import afterstate
 from ..ai.cwv_successor_reuse import TensorInputCache, WorldSuccessorCache
 from ..ai.heuristic import HeuristicBot
+from ..engine.cards import Ordering
+from ..engine.round import Round
 from .cwv_shortlist import CWVShortlistBot
 from .net_rollout import MCNetRolloutSearch
 from ..harvest.legal import enumerate_legal
@@ -251,10 +253,17 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                    state.turn, state.attacker_points, branch)
         return hashlib.sha256(repr(payload).encode()).hexdigest()
 
-    @staticmethod
-    def _copy_state(state):
-        # Round has several mutable caches used by the trusted rollout path;
-        # deepcopy keeps a finalist leaf completely independent of its parent.
+    def _copy_state(self, state):
+        # Keep game state (including trusted trick caches and arbitrary extra
+        # attributes) deeply isolated.  Only the exact engine Ordering is
+        # shared: its fixed-trump lookup tables and pure combo memos already
+        # have this lifetime in afterstate()/production MC.  Copying their
+        # accumulated exhaustive-action entries at every finalist dominated
+        # the first double-shortlist profile.  Do not extend this contract to
+        # custom rounds/orderings/policies that could mutate those tables.
+        if (type(state) is Round and type(state.ordering) is Ordering
+                and type(self.rollout_policy) is HeuristicBot):
+            return copy.deepcopy(state, {id(state.ordering): state.ordering})
         return copy.deepcopy(state)
 
     def _finish_heuristic(self, state) -> float:

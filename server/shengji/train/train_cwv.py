@@ -184,6 +184,7 @@ from .data import (
     split_counts,
     split_deals,
     split_mask,
+    SplitSelector,
 )
 from .train_v0 import (
     EVAL_SPLITS,
@@ -1264,7 +1265,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"selection={source_exposure['counts']['selection']} deals; excluded from this "
             f"run's val={n_conflict['val']} test={n_conflict['test']} "
             f"(--init-exclude-exposed={init_exclude_exposed})")
-    masks = {part: (lambda b, p=part: split_mask(b, assignment, p))
+    masks = {part: SplitSelector(assignment, part)
              for part in ("train", "val", "test")}
     n_rows = {part: 0 for part in masks}
     for block in store.iter_blocks():

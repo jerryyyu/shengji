@@ -180,11 +180,12 @@ def make_side(config: dict, side: str, seed: int):
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
-    # The treatment is opt-in at the learned root only.  Production, uniform,
-    # and flat-shortlist baseline bots must remain on the inherited allocator.
-    bot.ADAPTIVE_ALLOCATION = (
-        allocation == "adaptive" and arm == "learned"
-        and side == "arm" and not flat_baseline and inner is None)
+    # Double-shortlist owns this flag: its existing selection-stage guidance
+    # uses that hook. Only configure the new root allocator for flat bots.
+    if inner is None:
+        bot.ADAPTIVE_ALLOCATION = (
+            allocation == "adaptive" and arm == "learned"
+            and side == "arm" and not flat_baseline)
     return bot
 
 

@@ -151,3 +151,11 @@ An anchored mutation disabling `make_side`'s adaptive assignment turns this
 test red; restoring the assignment returns all six new tests to green.
 The same file tests incompatible recipes and refusal to resume a uniform
 shard as adaptive. This replaces a helper-only allocator probe.
+
+CI then found an existing double-shortlist consumer regression: an unconditional
+assignment of the new root flag disabled that bot's selection-stage hook. Before
+any launch, the factory was repaired to leave double-shortlist's constructor-owned
+flag unchanged. The existing real-decision test is included in the focused set;
+all 20 adaptive/screen/double-screen tests pass in both pure and compiled mode.
+This preserves the parked arm's behavior without combining it with adaptive-root
+allocation or changing the proposed experiment.

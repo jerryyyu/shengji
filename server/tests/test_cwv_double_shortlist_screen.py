@@ -38,6 +38,8 @@ def test_cli_persists_inner_recipe_and_constructs_actual_comparator(tmp_path, mo
     baseline = S.make_side(config, "baseline", 23)
     assert type(arm) is CWVDoubleShortlistBot
     assert type(baseline) is CWVShortlistBot
+    assert arm.ADAPTIVE_ALLOCATION is True
+    assert baseline.ADAPTIVE_ALLOCATION is False
     assert arm.inner_mode == "learned" and arm.inner_worlds == 1
     assert arm.inner_batch_size == 7
     assert arm.N_DETERMINIZATIONS == baseline.N_DETERMINIZATIONS == 30

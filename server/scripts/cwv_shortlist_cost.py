@@ -51,8 +51,8 @@ class ScoreTrace:
         self.digest = hashlib.sha256()
         self.batches = Counter()
 
-    def score(self, positions, seat):
-        values = self.evaluator.score(positions, seat)
+    def score(self, positions, seat, **kwargs):
+        values = self.evaluator.score(positions, seat, **kwargs)
         self.batches[len(positions)] += 1
         self.digest.update(len(positions).to_bytes(8, "little"))
         self.digest.update(values.astype("<f8", copy=False).tobytes())
@@ -65,13 +65,31 @@ def encoding_parity(rows):
     for row in rows:
         if row.get("encoding") is None:
             continue
-        key = (row["state"], json.dumps(row["config"], sort_keys=True))
+        key = (row["state"], json.dumps(row["config"], sort_keys=True),
+               row.get("reuse_successors", False))
         pairs.setdefault(key, {})[row["encoding"]] = row
     checked = 0
     for pair in pairs.values():
         if set(pair) == {"reference", "mlp-static"}:
             if pair["reference"]["semantic"] != pair["mlp-static"]["semantic"]:
                 raise ValueError("encoding changed scores, shortlist, decision or RNG")
+            checked += 1
+    return checked
+
+
+def successor_parity(rows):
+    """Reuse must preserve the same scores, batches, final MC decision and RNG."""
+    pairs = {}
+    for row in rows:
+        if row.get("encoding") is None:
+            continue
+        key = (row["state"], json.dumps(row["config"], sort_keys=True), row["encoding"])
+        pairs.setdefault(key, {})[row.get("reuse_successors", False)] = row
+    checked = 0
+    for pair in pairs.values():
+        if set(pair) == {False, True}:
+            if pair[False]["semantic"] != pair[True]["semantic"]:
+                raise ValueError("successor reuse changed scores, shortlist, decision or RNG")
             checked += 1
     return checked
 
@@ -86,6 +104,8 @@ def main(argv=None):
     parser.add_argument("--world-grid", default="1,2")
     parser.add_argument("--selection-grid", default="1,30,90")
     parser.add_argument("--encoding-grid", default="reference")
+    parser.add_argument("--successor-grid", default="off",
+                        help="off,on compares repeated work against bounded successor reuse")
     parser.add_argument("--states-json", type=Path,
                         help="reuse a private JSON list of existing Luna engine snapshots; no recapture")
     args = parser.parse_args(argv)
@@ -94,6 +114,10 @@ def main(argv=None):
     worlds = [int(w) for w in args.world_grid.split(",")]
     selections = [int(n) for n in args.selection_grid.split(",")]
     encodings = args.encoding_grid.split(",")
+    reuse_modes = args.successor_grid.split(",")
+    if (not reuse_modes or len(set(reuse_modes)) != len(reuse_modes)
+            or any(mode not in ("off", "on") for mode in reuse_modes)):
+        parser.error("successor-grid must contain distinct off and/or on")
     if (not encodings or len(set(encodings)) != len(encodings)
             or any(e not in ("reference", "mlp-static") for e in encodings)):
         parser.error("encoding-grid must contain distinct reference and/or mlp-static")
@@ -105,6 +129,7 @@ def main(argv=None):
     config = {
         "checkpoint": {e: v.identity() for e, v in evaluators.items()}, "seed0": args.seed0,
         "encodings": encodings,
+        "successor_modes": reuse_modes,
         "states_json_sha256": None if states_raw is None else hashlib.sha256(states_raw).hexdigest(),
         "deals": args.deals, "stride": args.stride,
         "worlds": worlds, "selection_worlds": selections,
@@ -134,17 +159,18 @@ def main(argv=None):
         states.extend(chooser.choice(captured[start:start + args.stride])
                       for start in range(0, len(captured), args.stride))
         print(f"captured deal {index + 1}/{args.deals}: {len(captured)} decisions", flush=True)
-    recipes = [("production", None, None), ("production-3x", None, None)]
-    recipes += [(f"learned-w{w}-n{n}-{e}", CWVShortlistConfig(worlds=w, selection_worlds=n), e)
-                for w in worlds for n in selections for e in encodings]
-    recipes += [(f"uniform-n{n}", CWVShortlistConfig(selection_worlds=n, uniform=True), None)
+    recipes = [("production", None, None, False), ("production-3x", None, None, False)]
+    recipes += [(f"learned-w{w}-n{n}-{e}" + ("-reuse" if mode == "on" else ""),
+                 CWVShortlistConfig(worlds=w, selection_worlds=n), e, mode == "on")
+                for w in worlds for n in selections for e in encodings for mode in reuse_modes]
+    recipes += [(f"uniform-n{n}", CWVShortlistConfig(selection_worlds=n, uniform=True), None, False)
                 for n in selections]
     rows = []
     for index, (snapshot, seat) in enumerate(states):
         # Counterbalance timing order independently of scores/outcomes.
         order = list(recipes)
         random.Random(args.seed0 + index).shuffle(order)
-        for name, recipe, encoding in order:
+        for name, recipe, encoding, reuse_successors in order:
             path = args.out / f"state-{index:04}-{name}.json"
             if path.exists():
                 row = json.loads(path.read_text())
@@ -157,7 +183,8 @@ def main(argv=None):
             if recipe is None:
                 bot = make_bot("mc-s0-report-lcb-x3" if name.endswith("3x") else "mc-s0-report-lcb", seed=seed)
             else:
-                bot = CWVShortlistBot(trace, seed=seed, config=recipe)
+                bot = CWVShortlistBot(trace, seed=seed, config=recipe,
+                                      reuse_successors=reuse_successors)
             rnd = copy.deepcopy(snapshot)
             wall, cpu = time.perf_counter(), time.process_time()
             played = bot.decide_play(rnd, seat)
@@ -167,7 +194,8 @@ def main(argv=None):
                 "played": played,
                 "rng_sha256": hashlib.sha256(repr(bot.rng.getstate()).encode()).hexdigest(),
                 "shortlist": None if detail is None else {
-                    k: v for k, v in detail.items() if k != "wall_seconds"},
+                    k: v for k, v in detail.items()
+                    if k not in ("wall_seconds", "successor_reuse")},
                 "scores_sha256": None if trace is None else trace.digest.hexdigest(),
                 "batch_sizes": None if trace is None else dict(trace.batches),
             }
@@ -176,6 +204,8 @@ def main(argv=None):
             row = {
                 "state": index, "recipe": name, "trick": len(snapshot.history),
                 "encoding": encoding, "semantic": semantic,
+                "reuse_successors": reuse_successors,
+                "successor_reuse": getattr(bot, "last_successor_reuse", None),
                 "seat": seat, "is_lead": not bool(snapshot.trick.plays),
                 "wall_seconds": wall_elapsed,
                 "cpu_seconds": cpu_elapsed,
@@ -189,11 +219,13 @@ def main(argv=None):
             _publish(path, row)
             rows.append(row)
         encoding_parity(rows)
+        successor_parity(rows)
         print(f"{index + 1}/{len(states)} states ({100*(index+1)/len(states):.1f}%)", flush=True)
     totals = {name: sum(r["wall_seconds"] for r in rows if r["recipe"] == name)
-              for name, _, _ in recipes}
+              for name, _, _, _ in recipes}
     result = {"config": config, "states": len(states), "totals_wall_seconds": totals,
               "encoding_pairs_bit_identical": encoding_parity(rows),
+              "successor_pairs_bit_identical": successor_parity(rows),
               "wall_ratio": {n: t / totals["production"] for n, t in totals.items()},
               "note": "State-matched timing only; not strength evidence. RSS is process-lifetime high-water, not per-arm memory savings. CPU/wall measures effective cores; each evaluator uses one thread. No equality inferred from N."}
     _publish(args.out / "summary.json", result)

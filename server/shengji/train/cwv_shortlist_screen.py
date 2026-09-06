@@ -80,7 +80,8 @@ def make_side(config: dict, side: str, seed: int):
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     bot = CWVShortlistBot(evaluator, seed=seed,
-                          config=_shortlist_config(config))
+                          config=_shortlist_config(config),
+                          reuse_successors=config.get("reuse_successors", False))
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     return bot
 
@@ -117,6 +118,8 @@ def _recipe(config):
     # field and must continue to reopen its legacy shards as reference.
     if "encoding" in config:
         recipe["encoding"] = _encoding(config)
+    if "reuse_successors" in config:
+        recipe["reuse_successors"] = config["reuse_successors"]
     return recipe
 
 
@@ -211,6 +214,8 @@ def main(argv=None):
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--encoding", choices=("reference", "mlp-static"),
                         default="reference")
+    parser.add_argument("--reuse-successors", action="store_true",
+                        help="reuse equivalent leaves/inputs without changing action rows or model batches")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -226,6 +231,8 @@ def main(argv=None):
         parser.error("learned requires --checkpoint")
     if args.arm != "learned" and args.checkpoint:
         parser.error("--checkpoint is only valid for learned")
+    if args.reuse_successors and args.arm != "learned":
+        parser.error("--reuse-successors is only valid for learned")
     checkpoint = str(Path(args.checkpoint).resolve()) if args.checkpoint else None
     checkpoint_sha = None
     checkpoint_recipe = None
@@ -256,6 +263,9 @@ def main(argv=None):
                                         "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                                         "VECLIB_MAXIMUM_THREADS", "MKL_NUM_THREADS")}},
     }
+    # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
+    if args.reuse_successors:
+        config["reuse_successors"] = True
     bind_output_config(args.out, config)
     shards, pending = [], []
     for cluster in range(args.clusters):

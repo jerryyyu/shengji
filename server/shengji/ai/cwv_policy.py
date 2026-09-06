@@ -389,11 +389,14 @@ class CompleteWorldEvaluator:
                 "effective_encoding": self.effective_encoding,
                 "adapter": adapter}
 
-    def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
+    def score(self, positions: Sequence[Round], root_seat: int, *,
+              tensor_cache=None) -> np.ndarray:
         """Every position from ONE seat's team perspective (one batch)."""
-        return self.score_many(positions, [int(root_seat)] * len(positions))
+        return self.score_many(positions, [int(root_seat)] * len(positions),
+                               tensor_cache=tensor_cache)
 
-    def score_many(self, positions: Sequence[Round], seats: Sequence[int]) -> np.ndarray:
+    def score_many(self, positions: Sequence[Round], seats: Sequence[int], *,
+                   tensor_cache=None) -> np.ndarray:
         """Row ``i`` from ``seats[i]``'s TEAM perspective, still one batch.
 
         The perspective is a per-row input tensor, so positions whose moving
@@ -417,7 +420,8 @@ class CompleteWorldEvaluator:
                 values[index] = float(
                     terminal_distribution(rnd, root_seat) @ self.support)
             else:
-                rows.append(encoder(rnd, root_seat))
+                rows.append(encoder(rnd, root_seat) if tensor_cache is None else
+                            tensor_cache.encode(rnd, encoder, root_seat))
                 pending.append(index)
         if rows:
             values[pending] = self.probabilities(rows) @ self.support

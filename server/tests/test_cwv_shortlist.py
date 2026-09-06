@@ -42,6 +42,33 @@ def test_real_enumerator_every_action_world_is_scored_in_bounded_batches():
     assert round_signature(rnd) == original
 
 
+def test_k8_keeps_incumbent_and_exhaustively_scores_all_legal_actions():
+    rnd = play_state()
+    original = round_signature(rnd)
+    evaluator = Values()
+    bot = CWVShortlistBot(
+        evaluator, seed=13,
+        config=CWVShortlistConfig(worlds=1, selection_worlds=30,
+                                   alternatives=8, batch_size=17))
+    before_rng = bot.rng.getstate()
+    legal = enumerate_legal(rnd, rnd.turn, cap=None)
+    assert len(legal.actions) >= 9
+
+    production = REGISTRY["mc-s0-report-lcb"](seed=13)._candidates(rnd, rnd.turn)
+    selected = bot._candidates(rnd, rnd.turn)
+
+    assert selected[0] == sorted(production[0])
+    assert len(selected) == 9
+    assert len({tuple(action) for action in selected}) == 9
+    assert bot.shortlist_config.alternatives == 8
+    assert bot.N_DETERMINIZATIONS == 30
+    assert bot.REPORT_FOLD_WORLDS == 300
+    assert sum(len(rows) for rows, _ in evaluator.calls) == len(legal.actions)
+    assert bot.shortlist_counts["cheap_evaluations"] == len(legal.actions)
+    assert bot.rng.getstate() == before_rng
+    assert round_signature(rnd) == original
+
+
 def test_full_decision_can_nominate_an_offballot_action_without_changing_search(monkeypatch):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     rnd = play_state()

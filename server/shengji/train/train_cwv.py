@@ -233,18 +233,24 @@ SELECT_METRICS = {
 #: the TOP-K ranking metrics: the quantity the SHORTLIST consumes.
 #: ``cwv_shortlist`` keeps ``alternatives`` net-ranked actions plus
 #: production's incumbent and hands that SET to the unchanged MC-LCB
-#: search, so its offline signal is the regret of the net's top-k set, not
-#: of its single argmax.  ``val_rank_regret_at_1`` is ``val_rank_regret``
-#: by construction (cwv_eval asserts the identity).
+#: search, so a top-k SHAPE is the right offline shape for it rather than
+#: a top-1 argmax.  These metrics are only a BALLOT-SCOPED PROXY for that
+#: shape: they rank the decision's stored ballot candidates and union no
+#: incumbent, whereas the shortlist enumerates every legal action.
+#: Measured 2026-09-06: the proxy did NOT reproduce the sealed shortlist
+#: checkpoint contrast, so the in-search screen remains the selector of
+#: record.  ``val_rank_regret_at_1`` is ``val_rank_regret`` by
+#: construction (cwv_eval asserts the identity).
 for _k in RANK_KS:
     SELECT_METRICS[f"val_rank_regret_at_{_k}"] = (
         f"rank_regret_at_{_k}",
         f"validation rank regret AT k={_k} of the level head: level of the search's best "
         f"candidate minus the expected level of the search's best candidate INSIDE the net's "
         f"top-{_k} (uniform tie-breaking), per decision, averaged "
-        f"(cwv_eval.rank_metrics; the SHORTLIST's quantity -- cwv_shortlist hands the search "
-        f"its k net-ranked alternatives plus production's incumbent; levels are U(E[points]), "
-        f"the bracket transform of the search's MEAN points -- an MC-ranking proxy, not E[U])")
+        f"(cwv_eval.rank_metrics; a BALLOT-SCOPED PROXY for a top-k consumer, NOT the "
+        f"shortlist's own quantity: ballot candidates only, no incumbent union, no exhaustive "
+        f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
+        f"MEAN points -- an MC-ranking proxy, not E[U])")
 del _k
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,

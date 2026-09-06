@@ -118,7 +118,9 @@ are replaced by sampled compatible hands/burial. Terminal leaves use exact
 engine outcomes. A training architecture preference does not change the
 identity of this measured checkpoint.
 
-[Standalone W32 pipeline explainer](docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
+![Full-legal W32 shortlist pipeline](docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
+
+[Open the standalone W32 pipeline explainer](docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
 
 ### Measured result and scaling
 

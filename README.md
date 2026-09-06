@@ -32,6 +32,8 @@ and [improvement plan](RL_PLAN.md#current-decision-tree). Extra ranking worlds
 and doubled final rollouts have not demonstrated an additional gain; next is
 testing which alternatives reach search, separately from further speedups.
 
+![Full-legal W32 shortlist pipeline](docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
+
 The earlier BELIEF R4/R5 lane is closed. PT-Sol/Luna supplied promising
 privileged-teacher results and retained datasets; D64 learned outcome shape
 without establishing accurate action values. These remain useful lessons,

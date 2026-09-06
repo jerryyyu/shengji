@@ -312,7 +312,9 @@ ranking randomness separate, and inherits the full final MC/report path.
 It is not the `mc-cwv-*` one-ply argmax bot and not recursive PUCT. Four
 alternatives means at most **five** final candidates including the incumbent.
 
-[Standalone W32 pipeline explainer](../../../docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
+![Full-legal W32 shortlist pipeline](../../../docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
+
+[Open the standalone W32 pipeline explainer](../../../docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
 
 The CE-selected A+B+C MLP checkpoint gained +0.1387 levels/round
 [+0.0645,+0.2168] on 256 paired rank-2 DEV deals. Reviewed opt-in static

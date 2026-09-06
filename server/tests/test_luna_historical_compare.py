@@ -181,6 +181,65 @@ def test_existing_pilot_journals_both_arms_and_reopens_without_redispatch(
     assert all(p.stat().st_mode & 0o077 == 0 for p in out.glob("*.json"))
 
 
+@pytest.mark.parametrize(
+    "tokens, expected_status, expected_dispatch, expected_files",
+    [(1_000_000, "historical-comparison-complete", 5, 5),
+     (100_000, "historical-comparison-truncated", 2, 2)])
+def test_pilot_budget_boundary_reports_per_call_usage_and_reopens(
+        tmp_path, monkeypatch, tokens, expected_status, expected_dispatch,
+        expected_files):
+    """Admission uses a 40k-per-call witness and retains bounded journals."""
+    from shengji.luna import token_batch
+
+    panel_fixture(tmp_path / "panel", count=4)
+    dispatched = []
+
+    class Transport:
+        runtime = {"test": "offline"}
+        model, reasoning_effort = "fixture-only", "medium"
+        last_evidence = {"fixture": True}
+
+        def __init__(self, **_):
+            pass
+
+        def call_many(self, packets):
+            packets = tuple(packets)
+            dispatched.append(packets)
+            per_packet = 40_000 // len(packets)
+            responses = tuple(PlannerResponse(
+                Intent("play", packet.decision_sha256, candidate_index=0,
+                       confidence="low", planning_note="offline witness"),
+                Usage(per_packet, 0, per_packet, 1), team=packet.team,
+                packet_sha256=packet.sha256,
+                memory_sha256=packet.memory.sha256)
+                for packet in packets)
+            assert sum(response.usage.total_tokens for response in responses) == 40_000
+            return responses
+
+    monkeypatch.setattr(compare.pilot_module, "CodexExecPlannerTransport", Transport)
+    monkeypatch.setattr(token_batch, "CompactBatchTransport", Transport)
+    out = tmp_path / "calls"
+    kwargs = dict(tokens=tokens, wall_seconds=120, require_complete=False)
+    result = compare.run_compare(tmp_path / "panel", out, **kwargs)
+    assert result["status"] == expected_status
+    assert result["actual_call_count"] == expected_dispatch
+    if tokens == 1_000_000:
+        assert result["stopped"] is None
+    else:
+        assert result["stopped"].startswith(
+            "pilot admission budget exhausted")
+        assert result["charged_tokens"] == 80_000
+    call_files = sorted(out.glob("compact1-*.json")) + sorted(out.glob("batch4-*.json"))
+    assert len(call_files) == expected_files
+    assert all(json.loads(path.read_text())["usage"]["total_tokens"] == 40_000
+               for path in call_files)
+    before = {path.name: path.read_bytes() for path in call_files}
+    reopened = compare.run_compare(tmp_path / "panel", out, **kwargs)
+    assert reopened == result
+    assert len(dispatched) == expected_dispatch
+    assert {path.name: path.read_bytes() for path in call_files} == before
+
+
 def test_zero_provider_prepare_is_cli_default(tmp_path, monkeypatch, capsys):
     panel_fixture(tmp_path, 1)
     prepare = compare.prepare_panel

@@ -25,6 +25,15 @@ The current engine consumes all 170 snapshots, preserves the original ordered
 ballots, and reproduces each archived selected immediate transition exactly.
 This is mechanics compatibility, not new evidence of teacher strength.
 
+Within those **170 manifest-selected positions**, the recorded teacher chose
+ballot candidate zero 135 times (79.41%) and departed 35 times. Quote any action
+agreement against this always-zero floor, not against random choice. The 35
+departures are a useful descriptive subset, not a newly selected primary
+population; keep all matched states in the predeclared continuation contrasts.
+A directory glob counts 171 positions/136 zero choices because it also includes
+the preserved interrupted replay shard. That shard is provenance, not an extra
+sample in the completed manifest.
+
 Private persistent panel:
 `~/.shengji-runs/luna-historical-panel-20260906.UEJmWS/`
 with manifest file SHA

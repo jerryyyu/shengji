@@ -730,7 +730,8 @@ def finish_current_trick(clone: Round, policy=None) -> None:
 
 def afterstate(rnd: Round, seat: int, hands: Sequence[Sequence[str]],
                buried: Sequence[str], candidate: Sequence[str], *,
-               finish_trick: bool = False, policy=None) -> Round:
+               finish_trick: bool = False, policy=None,
+               _lead_validation=None) -> Round:
     """Clone exactly as ``MCBot._rollout`` does, play ``candidate``, stop."""
     clone: Round = copy.copy(rnd)
     clone.hands = [list(hand) for hand in hands]
@@ -744,7 +745,10 @@ def afterstate(rnd: Round, seat: int, hands: Sequence[Sequence[str]],
     clone.message = None
     clone._trusted_rollout = True
     clone._determinized_world = True
-    clone.play(seat, list(candidate))
+    if _lead_validation is None:
+        clone.play(seat, list(candidate))
+    else:
+        clone.play(seat, list(candidate), _lead_validation=_lead_validation)
     if finish_trick:
         finish_current_trick(clone, policy)
     return clone

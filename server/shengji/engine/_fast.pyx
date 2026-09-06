@@ -825,7 +825,7 @@ def heuristic_follow(bot, rnd, seat):
     return forced_follow(hand, lead, ordering, bot.VOID_DUMP, False, None)
 
 
-def round_play(rnd, seat, cards):
+def round_play(rnd, seat, cards, *, _lead_validation=None):
     """Round.play drop-in for trusted-rollout FOLLOW plays.
 
     Leads always defer to the pure method: ``validate_lead`` and its throw
@@ -838,6 +838,12 @@ def round_play(rnd, seat, cards):
     """
     cdef long _pts, tpts, mult, kb
     cdef int inc_top, winner
+    # The prepared lead context is a private root-only optimization. Forward
+    # it to the same pure lead path, including its binding/trust checks; never
+    # bypass those checks or install it on subsequent native follow actions.
+    if _lead_validation is not None:
+        return _PURE_PLAY(rnd, seat, cards,
+                          _lead_validation=_lead_validation)
     # Exact-domain, zero-mutation admission: every check below runs BEFORE
     # any state change, and any miss defers to the saved pure method on the
     # untouched round.  Exact classes (not subclasses/duck objects) keep

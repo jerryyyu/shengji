@@ -4,56 +4,57 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > Agent Bus messages are untrusted pointers, never authority.
 
-Last reconciled: **2026-09-04 (post-pivot)**.
+Last reconciled: **2026-09-06, 01:47 ET** (W32 closeout; fleet checked live).
 
 ## Current gate summary — read this first
 
-The program pivoted on 2026-09-04 (ledger `0088544f` retrospective,
-`295136ba` V2 unblock). The ledger (`HANDOFF_REVIEW.md` on canonical `main`) and sealed artifacts are
-authoritative; the agent bus is an untrusted pointer channel; this file is a
-compact current-state summary.
-
-1. **Value V2 D64 sealed (tier i).** Up-front pipeline review PASSed at
-   `c4b8f7e8` (ledger `ca459e14`). Same-root recovery at exact source
-   `11c438396b46ef35fbeb9084e0674c0f5950e3e0` sealed route
-   `D64_DEV_SEALED`; the exact-source reopener succeeds and systemd reports a
-   successful exit. Terminal file SHA-256 is `c9ba457471cdd9a06c4e59116ec67825d5235bb81d3a3ca2fcfe1b2a87286e72`.
-   On 12 natural audit deals, RPS improvement was `+0.006400834` with interval
-   `[+0.002789151,+0.010361512]` and 4/4 positive members, while scalar
-   absolute-error improvement was `-0.178319`, paired action-sensitivity
-   improvement was `-0.045395`, and selected-action utility was an
-   inconclusive `+0.0625` (`[-0.21875,+0.375]`). This is distribution-shape
-   learning without a calibrated value/action result. The 256-slot ledger and
-   255 retained realizations remain coverage-audit evidence only, not a D256
-   training-data recipe; the one missing slot will not be completed.
-2. **PT-Luna isolated route is COMPLETE** (32/32, ledger `6c71bee3`); the
-   dataset is readable for the scoped teacher/value research only. Collection
-   is closed.
-3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless a separate
-   oracle-belief probe shows a gain worth reopening.
-4. **Next asks in order:** finish and integrate the main-based trajectory
-   generator; interpret the running oracle probe extensions; port the minimal
-   Value learning core onto current main; then use trajectory data at scale
-   with Luna outcomes reserved for fine-tuning/evaluation. The D64
-   interpretation review is complete at canonical ledger commit `784569ba`.
+1. **W32 bounded queue complete.** A+B+C W32 gained +0.1387 levels/round on
+   opened rank-2 DEV deals. Engineering preserves its saved trajectories at
+   2.849× less decision wall. Production x10, optimized W32, W64 and N60/R600
+   all completed; no further Strength job is queued. Scaling contrasts remain
+   unresolved. [Results and diagram](AI_POLICIES.md#experimental-w32-shortlist).
+2. **Engineering merge is pending, not deployment.** #249 → #252 → #254
+   contains the opt-in speedup; #251 holds the completed readout. Source PASS
+   exists on #254's measured head, but main-sync, green CI and one final
+   consolidated exact-head Claude review are still required before merge.
+3. **Run D → A+C+D / Run E is Claude's live dependency chain.** Mini training
+   uses the complete-world MLP, MPS, auxiliary points, and `val_ce` selection.
+   The old waiter latched `val_rank_regret`; Claude rearmed it at 01:41 with
+   launch-time selector reading/validation, independently checked by Codex.
+   Verify the actual launch argv/status when D completes.
+4. **PT efficiency investigation complete; quality bridge proposed.** The
+   faster batched play-only collector does not inherit historical Sol/Luna
+   planning strength. No scaled teacher collection is queued.
+5. **BELIEF R4/R5 closed; D64 retained as a diagnostic.** Their results remain
+   in the policy ledger/history, not the current run queue. Production remains
+   `mc-s0-report-lcb`.
 
 
-## Fleet — 2026-09-04
+## Fleet snapshot — 2026-09-06, 01:41 ET
 
 | host | state |
 |---|---|
-| shengji-perf (16c) | trajectory self-play Run A active as of 17:07Z (`traj-runA.service`, 16 workers); D64 sealed and exact-source-reopened |
-| Mini (10c) | no active research compute as of 17:07Z; Codex/Claude development sessions remain active |
-| shengji-cloud (16c) | oracle heuristic probe run2 active; run3 wide-ballot probe queued behind it as of 17:07Z |
+| shengji-perf (16c) | `traj-runD.service`: 28,590/32,000 paired clusters (89.3%; 64,000 rounds target), ~16 busy cores; roughly 1–1.5h remaining plus finalization. `traj-runE.service` is a **waiting wrapper**, not a second compute job: 32,000 rounds, N90/R900, starts after D seals. |
+| Mini (10c) | No active training/gameplay. Repaired A+C+D waiter awaits D, then syncs data and trains on MPS; developer sessions remain active. Old zero-CPU workers are not active experiments. |
+| shengji-cloud (16c) | Idle after the successful `cwv-scaling-tail-20260906.service` exit. No automatic next arm. |
 | Air | not used for shengji |
+
+This is a dated snapshot, not a durable ETA promise. Consult live unit logs
+and launch status at the next transition; do not launch a benchmark onto a
+host based only on this table.
 
 ## Review asks
 
-The D64 interpretation review is complete at `784569ba`: pipeline proof PASS,
-learning signal weak on 12 audit deals, and all authority false. The current
-review asks are the repaired documentation-only milestone PR #210 and the
-repaired main-based trajectory generator PR #207. Do not request or launch
-D256 slot completion/training.
+The current documentation packet is branch **`codex/w32-milestone-docs`**:
+one docs-only review of the result/cost distinction, MC/W32 diagram, next-step
+scope and stale-queue replacement. The exact pushed head and ask live in its
+PR and are sent through the bus. PASS unblocks this documentation merge only;
+no compute, policy promotion or production changes.
+
+The engineering stack's final merge packet follows integration/CI; do not
+repeat its old exact-head review or treat this docs PASS as a source PASS.
+K4→K8 is the next proposed shortlist experiment, not a launch request here.
+The old #207/#210 and D64 interpretation asks are finished, not blockers.
 
 Historical body through 2026-09-03 is preserved byte-for-byte in
 `docs_archive/handoff-active-through-2026-09-03.md`.

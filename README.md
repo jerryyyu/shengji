@@ -7,25 +7,35 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-09-04
+## Project state — 2026-09-06
 
 The production bot is **`mc-s0-report-lcb`**: ordinary MC nominates a possible
 override, then the exact pair is rechecked on 300 fresh shared simulations and
-the bot changes its mind only when a conservative lower bound is positive. On
+the bot changes its mind only when a conservative lower bound clears its
+threshold (zero, with equality accepted). On
 2,048 paired deals it improved signed level utility by `+0.338 ± 0.068` per
 round against `mc-strong`; a matched extra-work null was flat. It remains the
 only confirmed strength gain and the parent every challenger must beat.
 
-Research since then has been rigorous and honest, and negative: BELIEF R4
-closed `NO_PRIMARY_POLICY_SIGNAL` (a better hidden-hand predictor changed
-1 of 104 decisions and no outcomes); the privileged-teacher lane produced its
-first complete 32-game Luna dataset after five attempts; Value-Afterstate V2
-produced six honest refusals and no data under its confirmatory protocol. The
-2026-09-04 retrospective (ledger `0088544f`) found causes in both the strategy and
-the process — component metrics that never transported, and deploy-grade
-ceremony on exploratory runs — and reset the program: V2 now runs in a
-lightweight DEV mode, each lane's ceiling is measured before further spend,
-and the planner (not information) is the lever being attacked. See
+**New experimental milestone: model-guided W32 shortlist.** A value model
+ranks *every legal action* across 32 sampled hidden worlds, then production's
+full Monte Carlo search checks four alternatives plus its heuristic incumbent.
+On 256 paired deals / 512 mirrored rounds, the A+B+C model scored **+0.139
+signed levels per round** versus production (95% interval **[+0.064, +0.217]**).
+Decision-preserving engineering made it **2.85× faster**, lowering measured
+decision cost from **10.61× to 3.53× production**. This is a positive DEV
+screen, **not deployed or independently confirmed**; superiority over
+production given comparable extra compute remains unresolved.
+
+See the [MC vs W32 diagram and results](AI_POLICIES.md#experimental-w32-shortlist)
+and [improvement plan](RL_PLAN.md#current-decision-tree). Extra ranking worlds
+and doubled final rollouts have not demonstrated an additional gain; next is
+testing which alternatives reach search, separately from further speedups.
+
+The earlier BELIEF R4/R5 lane is closed. PT-Sol/Luna supplied promising
+privileged-teacher results and retained datasets; D64 learned outcome shape
+without establishing accurate action values. These remain useful lessons,
+not production policies. See
 [RL_PLAN.md](RL_PLAN.md) for the decision tree and rigor tiers,
 [BACKLOG.md](BACKLOG.md) for the queue, [AI_POLICIES.md](AI_POLICIES.md) for
 measured results, and [RESEARCH_PRINCIPLES.md](RESEARCH_PRINCIPLES.md) for the
@@ -108,6 +118,10 @@ and promotion caveats in `AI_POLICIES.md`:
   paired report check described above. `mc-strong` is its policy rollback.
 - **`mc` (source fallback, not production)** — the older N=10 determinized
   search policy.
+- **W32 shortlist (experimental, not registered/deployed)** — the positive
+  A+B+C screen above. The network proposes; full MC rollouts and the report
+  fold still decide. It uses the existing constrained sampler, not BELIEF R4
+  or true opponent hands. [Architecture and evidence](AI_POLICIES.md#experimental-w32-shortlist).
 - **`rl-override-v11pair` (experimental)** — the best learned milestone beat
   SmartBot 57.7%, but the corrected direct-v2 screen lost to current search and
   selected none. Keep it only as a bounded proposal/ranking and teacher

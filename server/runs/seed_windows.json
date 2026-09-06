@@ -211,6 +211,17 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": "14de6145e318726dca74b744688410ce43d5f804",
       "note": "leaf Mini screen: INTENTIONAL REPLICATE of screen-70260904 (same deals by design). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-cwv-k4-ranks13-20260906",
+      "purpose": "screen",
+      "seed0": 91260904,
+      "clusters": 260,
+      "span": [91260904, 91261164],
+      "created_at": "2026-09-06T07:40:00Z",
+      "host": "shengji-cloud",
+      "git_head": "ce68f6eda0768614ccc25267580521172e5bf96e",
+      "note": "PR258 first fresh mixed-rank K4/ABC/W32 vs production screen; fixed cluster-modulo rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A, 20 clusters per rank and two mirrors. Allocated before launch under PR259 documented range; source-reviewed head recorded here, executing head recorded in launch/readout. No per-rank strength claim."
     }
   ]
 }

@@ -36,6 +36,14 @@ compare only under like-for-like load.
 
 ### W32 engineering boundary
 
+The fresh [13-rank screen](server/runs/cwv_rank_diverse_dev_20260906.md)
+completed 260 pairs in 22m53s at 13.89 mean cores. Its 4.745× production
+decision cost includes 12,575.60s ranking wall (about 80%). The most expensive
+1% of ranking decisions consumed 59.16% of that ranking time, with a 382.55s
+maximum. The cache avoided 233.79M leaf completions, yet scoring still covered
+246.72M rows. Target this measured tail and repeated ranking work; these
+figures do not establish that neural-output deduplication is bit-identical.
+
 The completed [W32 readout](https://github.com/jerryyyu/shengji/blob/114f4fc71c55358cf80f364850cb60e2c25c5979/server/runs/cwv_full_legal_shortlist_dev_20260905.md)
 compares the full consumer path, not just a selected microbenchmark. Static
 MLP encoding avoids discarded history and reuses unchanged public features;

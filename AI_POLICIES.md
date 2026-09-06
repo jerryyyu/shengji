@@ -167,6 +167,18 @@ this milestone. [Next steps](RL_PLAN.md#current-decision-tree) and
 [shortlist tracker #248](https://github.com/jerryyyu/shengji/issues/248) keep
 policy scaling separate from engineering. No production configuration changed.
 
+### Fresh 13-rank check
+
+On a separate 260-deal / 520-round population balanced over all 13 ranks,
+the same optimized K4 recipe measured **+0.06154** signed levels per round
+(95% deal-clustered CI `[-0.00577,+0.13462]`), with a 52.5% win rate.
+This broader-rank result is **inconclusive**, not a confirmed generalization
+of the rank-2 win. Actual declarations included 50 no-trump rounds; rank
+diversity and no-trump coverage are separate observations. Decision wall was
+4.745× production, and the 16-worker job finished in 22m53s. Both deals and
+ranks changed, so the smaller point estimate does not isolate a rank effect.
+[Recipe, coverage and retained artifacts](server/runs/cwv_rank_diverse_dev_20260906.md).
+
 ### K8 wider-shortlist screen
 
 The completed K8 screen used the same A+B+C checkpoint, W32/N30/R300,

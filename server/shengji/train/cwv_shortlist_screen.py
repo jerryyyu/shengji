@@ -14,7 +14,7 @@ from ..ai.cwv_policy import shared_evaluator
 from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
-from .leaf_screen import _game_factory_for
+from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
     execution_source_identity,
@@ -26,7 +26,13 @@ RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity")
 
 
-def _cost_order(directory: Path, clusters, seed0: int) -> dict:
+def rank_for(config: dict, cluster: int) -> str:
+    """Return the configured rank for a cluster, preserving legacy rank 2."""
+    ranks = config.get("trump_ranks") or (RANK,)
+    return ranks[cluster % len(ranks)]
+
+
+def _cost_order(directory: Path, clusters, seed0: int, trump_ranks=None) -> dict:
     """Read prior completed shard timings for execution-only scheduling."""
     costs = {}
     directory = directory.resolve()
@@ -39,12 +45,13 @@ def _cost_order(directory: Path, clusters, seed0: int) -> dict:
         except (OSError, ValueError) as exc:
             raise ValueError(f"invalid cost-order artifact for cluster {cluster}") from exc
         expected_seed = seed0 + cluster
+        rank = rank_for({"trump_ranks": trump_ranks}, cluster)
         if (shard.get("schema") != "cwv-shortlist-shard-v1"
                 or type(shard.get("cluster")) is not int
                 or shard.get("cluster") != cluster
                 or type(shard.get("seed")) is not int
                 or shard.get("seed") != expected_seed
-                or shard.get("rank") != RANK):
+                or shard.get("rank") != rank):
             raise ValueError(f"cost-order artifact drift for cluster {cluster}")
         timings = shard.get("timings")
         if type(timings) is not list or len(timings) != 2:
@@ -159,6 +166,7 @@ def work_counters(bots):
 
 
 def _recipe(config):
+    ranks = config.get("trump_ranks")
     recipe = {
         "schema": config["schema"], "arm": config["arm"],
         "checkpoint_sha256": config["checkpoint_sha256"],
@@ -166,7 +174,7 @@ def _recipe(config):
         "report_worlds": config["report_worlds"],
         "production_multiplier": config["production_multiplier"],
         "target_wall_multiplier": config["target_wall_multiplier"],
-        "rank": RANK,
+        "rank": RANK if not ranks else ranks[0] if len(ranks) == 1 else None,
     }
     # New receipts bind the requested mode.  A pre-mode config has no such
     # field and must continue to reopen its legacy shards as reference.
@@ -174,6 +182,8 @@ def _recipe(config):
         recipe["encoding"] = _encoding(config)
     if "reuse_successors" in config:
         recipe["reuse_successors"] = config["reuse_successors"]
+    if "trump_ranks" in config:
+        recipe["trump_ranks"] = config["trump_ranks"]
     return recipe
 
 
@@ -185,18 +195,40 @@ def run_cluster(config, cluster):
         created.append((side, wrapped))
         return wrapped
 
+    rank = rank_for(config, cluster)
     base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
     seed = config["seed0"] + cluster
+    games = []
+
+    def game_factory(rng):
+        game = _game_factory_for(rank)(rng)
+        games.append(game)
+        return game
+
     rows = [duel.play_screen_round(
         base, cluster, seed, mirror, bot_factory=factory,
-        counter_fn=work_counters, game_factory=_game_factory_for(RANK))
+        counter_fn=work_counters, game_factory=game_factory)
             for mirror in (0, 1)]
-    for record, _ in rows:
+    if len(rows) != len(games):
+        raise ValueError("ranked screen game factory did not produce one game per mirror")
+    for (record, _), game in zip(rows, games, strict=True):
+        if record["trump_rank"] != rank:
+            raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
         record["arm"] = config["arm"]
+        if "trump_ranks" in config:
+            round_state = getattr(game, "round", None)
+            actual_suit = getattr(round_state, "trump_suit", None)
+            if actual_suit is None:
+                if not getattr(round_state, "trump_is_nt", False):
+                    raise ValueError(f"cluster {cluster} has no declared trump suit/NT witness")
+                actual_suit = "NT"
+            if actual_suit not in ("S", "H", "D", "C", "NT"):
+                raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
+            record["trump_suit"] = actual_suit
     return {
         "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
-        "seed": seed, "rank": RANK, "recipe": _recipe(config),
+        "seed": seed, "rank": rank, "recipe": _recipe(config),
         "records": [record for record, _ in rows],
         "timings": [timing for _, timing in rows],
         "decision_traces": [{"mirror": i // 4, "side": side,
@@ -209,13 +241,17 @@ def reopen_shard(path, config, cluster):
     shard = json.loads(path.read_text())
     rows = shard.get("records", [])
     seed = config["seed0"] + cluster
+    rank = rank_for(config, cluster)
     if (shard.get("schema") != "cwv-shortlist-shard-v1"
             or shard.get("cluster") != cluster or shard.get("seed") != seed
-            or shard.get("rank") != RANK or shard.get("recipe") != _recipe(config)
+            or shard.get("rank") != rank or shard.get("recipe") != _recipe(config)
             or len(rows) != 2 or [r.get("mirror") for r in rows] != [0, 1]
             or any(r.get("cluster") != cluster or r.get("seed") != seed
-                   or r.get("trump_rank") != RANK
-                   or r.get("arm") != config["arm"] for r in rows)):
+                   or r.get("trump_rank") != rank
+                   or r.get("arm") != config["arm"]
+                   or ("trump_ranks" in config
+                       and r.get("trump_suit") not in ("S", "H", "D", "C", "NT"))
+                   for r in rows)):
         raise ValueError("completed shard does not match its mirrored pair and recipe")
     return shard
 
@@ -237,7 +273,9 @@ def summary_for(shards, config):
     target = int(config["target_wall_multiplier"])
     result.update({
         "schema": "cwv-shortlist-summary-v1", "config": config,
-        "arm": config["arm"], "rank": RANK,
+        "arm": config["arm"],
+        "rank": (RANK if "trump_ranks" not in config
+                 else config["trump_ranks"][0] if len(config["trump_ranks"]) == 1 else None),
         "claim": "exploratory DEV paired screen; no equal-work or strength claim",
         "completed_clusters": len(shards),
         "requested_clusters": config["clusters"],
@@ -252,6 +290,21 @@ def summary_for(shards, config):
         "work_caveat": "Decision wall/CPU and cheap evaluations are measured separately; "
                         "a target overrun does not censor or invalidate outcomes.",
     })
+    if "trump_ranks" in config:
+        records = [record for shard in shards for record in shard["records"]]
+        by_rank = {rank: 0 for rank in config["trump_ranks"]}
+        by_suit = {suit: 0 for suit in ("S", "H", "D", "C", "NT")}
+        for record in records:
+            rank = record.get("trump_rank")
+            suit = record.get("trump_suit")
+            if rank not in by_rank:
+                raise ValueError(f"record trump rank {rank!r} is outside configured cycle")
+            if suit not in by_suit:
+                raise ValueError(f"record lacks a valid actual trump suit/NT: {suit!r}")
+            by_rank[rank] += 1
+            by_suit[suit] += 1
+        result["trump_ranks"] = list(config["trump_ranks"])
+        result["coverage"] = {"by_rank": by_rank, "by_trump_suit": by_suit}
     return result
 
 
@@ -274,6 +327,8 @@ def main(argv=None):
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--trump-ranks",
+                        help="comma-separated distinct trump ranks for the cluster cycle")
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
@@ -289,6 +344,12 @@ def main(argv=None):
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
         parser.error("--reuse-successors is only valid for learned")
+    trump_ranks = None
+    if args.trump_ranks is not None:
+        try:
+            trump_ranks = parse_trump_ranks(args.trump_ranks)
+        except Exception as exc:
+            parser.error(str(exc))
     checkpoint = str(Path(args.checkpoint).resolve()) if args.checkpoint else None
     checkpoint_sha = None
     checkpoint_recipe = None
@@ -322,7 +383,10 @@ def main(argv=None):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
-    cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0)
+    if trump_ranks is not None:
+        config["trump_ranks"] = list(trump_ranks)
+    cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
+                              trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)
     if cost_order is not None:
         config["execution_order"] = cost_order

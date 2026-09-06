@@ -334,3 +334,39 @@ existing completed-pair percentage/ETA plus process CPU/RSS/time reports.
 The tail's 6-hour outer host limit includes time spent waiting for W32. Any
 failure or saved-trace mismatch stops the tail without advancing; every
 completed pair remains on disk for the existing identical-recipe recovery.
+
+### Production x10 completed — the missing comparable-compute control
+
+All 256 pairs / 512 mirrored rounds completed normally in **39m58.04s**, exit0,
+on 16 Strength workers. Process-tree CPU averaged 1,557% (~15.57 cores); measured
+user+system CPU was 37,361.59s, no swaps. `/usr/bin/time`'s maximum child RSS was
+508,892KiB; that is not the sum of worker memory (the observed live cgroup memory
+was about 6GiB). The optimized-W32 wait unit then started automatically.
+
+| Arm | Signed levels/round [95% deal CI] | Actual arm/opponent decision wall | Total arm decision wall |
+|---|---|---:|---:|
+| Retained ABC W32, unoptimized | +0.13867 [+0.06445, +0.21680] | 10.6126x | 33,952.56s |
+| Production x10, N300/R3000 | +0.10547 [+0.03511, +0.17773] | 9.8880x | 33,902.01s |
+
+W32 minus production-x10, paired on the 256 shared deal coordinates, is
+**+0.03320 [−0.07236, +0.13677]**. Thus the missing control does not establish a
+W32 advantage at comparable compute. The two total arm decision times differ
+by only 0.15%; their within-run opponent-normalized ratios differ more because
+their trajectories also change opponent decision time. No exact equal-work
+label is inferred from nominal N or the `10x` name.
+
+Production-x10 used 120,932,400 full rollouts versus W32's 11,038,770 full
+rollouts plus 149,192,288 cheap neural action/world rows. These are distinct
+work types, not interchangeable sample counts. The raw config's generic
+`report_worlds=300` and shortlist N30 fields are not production-x10's actual
+dose: the production worker applies `production_multiplier=10`, yielding
+N300/R3000; the opponent remains N30/R300.
+
+Result source: `/root/cwv-scaling-prod10.9nHvPq/production-10x/`; preserved on
+Mini under `~/shengji-archive/2026-09-06/cwv-shortlist-scaling/production-10x/`
+with the process log alongside. The read-only comparison helper reconciled all
+256 paired utilities with the stored summary and reused the original bootstrap
+seed/replicate count. No new model evaluation or policy tuning produced this
+contrast. Optimized W32's completed cost and trajectory readout is still needed;
+the seven-state 3.657x speedup must not be substituted into this table as a
+whole-game measurement. This is exploratory opened DEV, not a promotion result.

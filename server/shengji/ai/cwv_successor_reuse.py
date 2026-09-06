@@ -28,12 +28,16 @@ class WorldSuccessorCache:
         self.buried = list(buried)
         self.max_entries = max_entries
         self._lead_validation = None
-        if (prepare_leads and root.trick is not None
-                and not root.trick.plays and root.ordering is not None):
+        # Preparation is optional; preserve the cache's lazy-root contract
+        # when a caller supplies a root without engine decision metadata.
+        trick = getattr(root, "trick", None)
+        ordering = getattr(root, "ordering", None)
+        if (prepare_leads and trick is not None
+                and not trick.plays and ordering is not None):
             from ..engine.legal import PreparedLeadValidation
             others = [self.hands[s] for s in range(4) if s != seat]
             self._lead_validation = PreparedLeadValidation(
-                self.hands[seat], others, root.ordering)
+                self.hands[seat], others, ordering)
         self._leaves: OrderedDict[tuple[str, ...], Any] = OrderedDict()
         self.root_actions = 0
         self.leaf_hits = 0

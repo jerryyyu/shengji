@@ -64,8 +64,12 @@ cover lead structures, trump/no-trump, equal ranks, changed-world fallback,
 invalid cards, untrusted injection, follows, terminal and eviction behavior.
 The cache-to-engine witness must turn red if the preparation is disconnected.
 
-At the prepared implementation, the focused lead/cache/native-play suite passes
-47 tests in pure and compiled modes. A separate in-memory mutation that strips
+At the prepared implementation, the focused lead/cache/native-play suite,
+including double-shortlist consumers, passes 67 tests in pure and compiled
+modes. CI found that eager preparation accessed `root.trick` on an existing
+lightweight double-shortlist test root. Preparation now falls back when engine
+decision metadata is absent; the existing fraction/saturation consumer witness
+passes unchanged. A separate in-memory mutation that strips
 the context at the `afterstate` boundary leaves the output equal but turns the
 actual repeated-root consumer witness red (`context.calls`: 0 rather than 2).
 This proves the test checks the optimization wiring, not only output equality.

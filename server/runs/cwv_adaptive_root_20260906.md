@@ -159,3 +159,95 @@ flag unchanged. The existing real-decision test is included in the focused set;
 all 20 adaptive/screen/double-screen tests pass in both pure and compiled mode.
 This preserves the parked arm's behavior without combining it with adaptive-root
 allocation or changing the proposed experiment.
+
+## Completed screen — September 6
+
+**No demonstrated incremental strength gain.** All 260 deals / 520 mirrored
+rounds completed with no reported problems. Adaptive minus uniform flat W32
+was **+0.00577 signed levels per round**, deal-clustered 95% bootstrap interval
+**[−0.05774, +0.07308]**. This is inconclusive, not equivalence or a new win.
+The actual opponent was flat W32, not production MC; do not add this estimate
+to the earlier W32-versus-production result.
+
+| Quantity | Observed result |
+|---|---:|
+| Adaptive round win rate | 50.5769%, clustered interval [47.8846%, 53.4615%] |
+| Adaptive / flat decision wall | 0.96663x |
+| Adaptive / flat decision CPU | 0.96662x |
+| Adaptive / flat total full rollouts | 1.00117x |
+| Completed pairs | 260 / 260 |
+| Whole-job elapsed | 2,108.6 seconds (35m09s), 16 one-thread workers |
+| Rank coverage | 20 deals / 40 mirrored rounds at each of 13 ranks |
+| Actual suit coverage, rounds | C 92, D 124, H 126, S 128, NT 50 |
+
+The roughly 3.3% lower decision wall is **not decision-preserving optimization
+evidence**: the policies reach different trajectories and candidate populations.
+Measured arm/flat shortlist time was 13,017.93 / 13,600.40 seconds, versus
+16,056.99 / 16,611.29 seconds for all decisions. Ranking therefore still accounts
+for about 81–82% of decision time. Both teams together accumulated 32,659.45 CPU
+seconds, about 15.49 decision-CPU cores over the job wall; this excludes other
+worker/parent overhead. The run did not need a repeated capacity census or an
+engine/model reconstruction pass.
+
+There were 49 positive, 50 negative and 161 zero paired level sums. **Zero paired
+outcomes do not imply unchanged decisions**; both mirrors remain in all 260
+bootstrap clusters. The 1,000-replicate bootstrap seeds are retained in the
+summary. This was the already-opened broader-rank DEV population, not a fresh
+confirmation or a post-outcome population expansion.
+
+### Did the intervention actually happen?
+
+Yes. A read-only reduction of all 260 retained shards (1,040 trace groups,
+17,798 decisions per side) gives:
+
+| Decision-trace quantity | Adaptive | Uniform flat |
+|---|---:|---:|
+| Contested decisions with an allocation/report | 14,868 | 14,855 |
+| Decisions with pruning | 7,492 (50.39% of contested) | 0 |
+| Unequal candidate sample counts | 7,419 | 0 |
+| Report accepted challenger | 4,857 (32.67% of contested) | 4,697 (31.62%) |
+| Report retained incumbent | 10,011 | 10,158 |
+| Missing/incomplete contested reports | 0 | 0 |
+| Allocation underfill / attempt-cap hits | 0 / 0 | 0 / 0 |
+| Explicit dummy selection rollouts | 8,116 across 5,334 decisions | 0 |
+
+Adaptive survivor counts were 2: 5,125; 3: 3,557; 4: 2,503; 5: 3,683.
+The 73 pruned decisions with equal final sample counts are possible when pruning
+happens at the end of the budget; pruning is not identical to actual reallocation.
+Every adaptive allocation was recorded as `deterministic_adaptive`, and every
+baseline allocation as `uniform`. Forced decisions (2,930 / 2,943) correctly have
+no stale allocation/report. Generic trace fields such as `counts` and `leaf_tricks`
+are null; the populated `selection_allocation`, `cwv_shortlist` and top-level
+`reason` fields were used, not those placeholders.
+
+This rules out a silently disabled treatment as the explanation for the null.
+It does **not** establish that the extra 160 challenger overrides were correct:
+the sides reach different states. Nor does a null here show that all adaptive or
+selective-depth strategies fail. It limits this allocator/checkpoint/DEV recipe.
+
+Existing successor reuse produced 229,696,304 hits / 17,601,072 completions for
+the adaptive side and 229,609,264 / 21,361,296 for flat. These are already-banked
+savings, not a new prospective optimization. Their difference also demonstrates
+why the 3.3% observed timing difference is not an isolated engineering A/B.
+
+### Source and retention
+
+- Executing source: `07e7ff94b630d809d757ad2715778d80e1236d56`.
+- Source PASS: [PR #278 review](https://github.com/jerryyyu/shengji/pull/278#issuecomment-5561639276).
+- Exact launch: [PR #278 record](https://github.com/jerryyyu/shengji/pull/278#issuecomment-5561705753).
+- Original root: `shengji-cloud:/root/cwv-adaptive-root-run-20260906.ijXCaw/`.
+- Retained Mini copy: `~/shengji-archive/2026-09-06/adaptive-root-final.3ga88X/`.
+- Summary SHA256: `fd1ad46b5f16c35f4c4207d01fcc3e637291012227e50d62cae6070e75337094`.
+- Config SHA256: `17b81ff742159ebed3d793cf671afcb8948af5ce86bebb67d293ca274b22e60a`.
+
+Both locations contain all 260 pair shards; config/summary hashes agree at first
+archive consumption. Full traces, failures (none reported), timings, launch
+recipe and every result are preserved, not only favorable deals. The original
+cloud evidence was not deleted. The service was verified inactive with MainPID 0,
+Result success and exit status 0 before Strength was handed back to Claude for
+F2. No follow-up arm was automatically launched.
+
+**Reference stays optimized flat W32/K4/N30/R300.** Adaptive allocation did not
+show a reason to replace it here. Selective depth remains a separate untested
+mechanism; do not escalate worlds, population or confidence settings merely to
+chase this screen's sign. No production default or deployment changes.

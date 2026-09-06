@@ -1,6 +1,6 @@
-# RL and belief research plan
+# Learning and search research plan
 
-Last reconciled: **2026-09-04 (post-pivot)**. This document owns research architecture,
+Last reconciled: **2026-09-06 (W32 milestone)**. This document owns research architecture,
 estimands, and the decision tree. `BACKLOG.md` owns priority; live compute and
 exact review asks are in `HANDOFF_ACTIVE.md`; policy names and deployment state
 are in `AI_POLICIES.md`; immutable receipts and verdicts are in
@@ -16,12 +16,13 @@ Do not append run diaries or duplicate exact packet hashes here.
 Build a Shengji policy that is demonstrably stronger than the exact live
 `mc-s0-report-lcb` champion under a correct engine and reproducible evaluator.
 The only confirmed strength gain to date is RLCB itself (`+0.338 ± 0.068`
-signed levels vs `mc-strong`, 2,048 clusters). Every other lane in the
-project's history — V11, Direct-Q, teacher direct play, S4/S6, PT1, C0,
-BELIEF R4 — improved a component metric that did not transport into
-whole-game utility. The 2026-09-04 retrospective (ledger `0088544f`) therefore
-reorders the program: ceiling before component, planner before information,
-transport before scale, rigor proportional to claim altitude.
+signed levels vs `mc-strong`, 2,048 clusters). Earlier component gains often
+failed to improve play; the September 4 retrospective (ledger `0088544f`)
+shifted the emphasis to direct consumer tests and rigor proportional to the
+claim. PT-Sol/Luna and now **A+B+C W32 shortlisting** are positive exploratory
+whole-round results, not new confirmed/deployed policies. W32 is particularly
+useful because it uses sampled worlds available to a real policy, not true
+opponent hands. Its equal-compute advantage is still unresolved.
 
 Evidence labels:
 
@@ -46,48 +47,83 @@ Rigor is matched to the claim a run supports, never applied at flat rate.
 | **ii — selection screen** | choosing between designs | tier i plus a preregistered comparison, literal parent, matched null | the tier iii machinery |
 | **iii — confirmation** | a deploy or strength claim | the full immutable machinery: exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
 
-Value V2 runs in tier i as of ledger `295136ba`. A lane enters tier iii only
+Value V2 moved to tier i at ledger `295136ba`. A lane enters tier iii only
 when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
-1. **Value V2 D64 sealed in DEV mode.** Its ordered outcome-distribution score
-   improved over the train-only prior, but scalar expected-value error and
-   sibling-action sensitivity worsened; selected-action utility was
-   inconclusive. Interpret that mismatch before choosing any successor. The
-   frozen 256-slot ledger remains a coverage-audit set only; do not complete
-   its missing slot or use slot targeting as the next training-data recipe.
-   No confirmatory ceremony.
-2. **Use cheap heuristic probes before a second major spend.** Run1 on 256
-   fresh mirrored rounds found identity null, value-only and prior-only
-   inconclusive, and the combined value+prior probe `+0.109
-   [+0.016,+0.203]` at about 9.6x production work. These are expensive
-   heuristic probes, not upper-bound ceilings; weak/null results are
-   non-closing. Deeper/exact-endgame and wide-ballot probes are running. The
-   oracle-belief probe remains unrun, and C0 suggests its upside may be small.
-3. **Attack the planner.** C0 (perfect information, fixed planner) lost; PT-Sol0
-   (perfect information, flexible planner) won `+17/26`. Use the sealed Luna
-   dataset diagnostically — where the flexible planner disagrees with
-   production and wins, by mechanism — to derive direct search-policy variants
-   for the RLCB paired harness.
-4. **Prove transport before promoting a consumer.** D64 did not establish a
-   usable scalar/action-value recipe. The next pretraining source is natural
-   trajectory self-play at scale from the harvest package and PR #207, with
-   raw states re-encoded by the minimal state-only Value core. Its Transformer
-   is the preferred experiment and its same-input GRU is a throughput baseline,
-   not a separate estimand. Then fine-tune on Luna
-   outcomes (value targets, not
-   action imitation) and test whether search with the fine-tuned leaf value
-   moves toward the teacher on the disagreement set. The frozen 256-slot
-   population is coverage-audit evidence only, not a training-data target.
-   No further teacher collection until that transports.
-5. **BELIEF R4/R5 closed** unless a separate oracle-belief probe shows a gain
-   worth reopening.
-6. **Confirm strength last.** Any successor must beat literal production and a
-   behavior/work-matched null on fresh mirrored rounds under tier iii.
+1. **Keep optimized A+B+C W32 as the experimental reference.** It ranks the
+   exhaustive legal set on 32 constrained sampled worlds, keeps four
+   alternatives plus the heuristic incumbent, and lets production N30/R300
+   full rollouts decide. On 256 paired rank-2 deals it gained +0.1387 signed
+   levels/round; exact-trajectory engineering cut decision wall 2.849×, to
+   3.53× production. See [the diagram and full comparison](AI_POLICIES.md#experimental-w32-shortlist).
+   This is not a claim that an accurate standalone leaf value has been solved.
+2. **Integrate the decision-preserving speedup before another scaling run.**
+   Main-sync #249 → #252 → #254, run focused parity plus normal CI, then ask
+   Claude for one consolidated exact-head merge review. No extra gameplay or
+   repeated model reconstruction merely to integrate unchanged semantics.
+3. **Next policy question: four → eight alternatives.** Hold W32, N30/R300,
+   checkpoint, sampler and continuation fixed. Measure whether admitting more
+   candidates improves paired utility enough to justify the added final
+   selection cost. W64 and N60/R600 both cost more without a demonstrated
+   improvement; their crossing-zero intervals do not close those ideas
+   universally. K8 is proposed, not already run.
+4. **Improve cost without silently changing policy.** Profile zero-reuse wide
+   follows and bypass useless cache bookkeeping where equivalence is proven;
+   schedule known expensive replay pairs earlier and show straggler-aware ETA.
+   Ranking still takes 73% of W32 decision wall. Two-stage candidate pruning,
+   selective work allocation and deeper search are separate policy experiments,
+   not part of the bit-identical optimization.
+5. **Improve the model against its actual consumer.** Train on independently
+   grouped trajectory sources; measure full-legal candidate admission, not
+   just top-k ordering within production's existing ballot. The current win
+   uses an MLP with an auxiliary points head, CE-selected from A+B+C; it does
+   not validate a Transformer, a learned policy prior or a BELIEF dependency.
+   A+C+D is the next data/model comparison, with checkpoint changes tested
+   separately from shortlist settings. Run B largely reuses Run A deals, so
+   more rows must not be counted as more independent games.
+6. **Keep teacher quality and collection efficiency separate.** Retain the
+   stronger Sol/Luna planning data and compare cheap batched collection with
+   the original rollout-enabled teacher before scaling it for fitting. Use
+   fresh deal-disjoint fit/selection/final-validation sets and name the actual
+   continuation behind every value target. Cheap play-only prompts do not
+   inherit historical teacher strength. See the teacher section below.
+7. **Confirm strength last, with a useful matched control.** The original
+   W32−production-x10 difference is unresolved at comparable wall; optimized
+   W32 is cheaper but not exactly matched to production x3. A fresh comparison
+   must separate learned candidate admission from extra compute and cover
+   diverse trump ranks with an appropriately trained model. Repeated tuning
+   on the opened rank-2 deals is not independent confirmation.
+
+Codex owns shortlist engineering/scaling; Claude owns the separate PUCT and
+model experiments. Share measured findings, not an assumption that shortlist
+automatically becomes PUCT. BELIEF R4/R5 remains closed. D64's retained
+256-slot/255-realization set remains coverage-audit evidence only, not a
+slot-targeted training recipe.
 
 The current prioritized form of this tree is in `BACKLOG.md`.
-## BELIEF world-model contract
+
+### What the milestone does and does not establish
+
+The promising division of labor is **model proposes over a broad legal set;
+sampled-world full rollouts verify a small set**. Candidate admission is a
+plausible mechanism, not isolated causal proof of the win. More samples reduce
+Monte Carlo noise but cannot by themselves repair model or continuation bias.
+The completed W64/final-MC experiments tested the payoff directly and found no
+resolved increment. Do not infer that their failure proves a particular bias.
+
+Recursive MCTS/PUCT would additionally maintain interior states, allocate
+visits using priors and backed-up values, and resolve hidden-information and
+partnership choices. W32 has none of that tree machinery. Keep it as the
+working reference while testing any deeper consumer. The eventual
+search→data→model loop needs a measured improvement at each link; offline
+loss or extra tree depth alone does not establish it.
+
+## Retired BELIEF world-model contract
+
+This section preserves the R4 design and information boundary for possible
+future re-entry. It is **not active work or the W32 model architecture**.
 
 ### Four information layers
 
@@ -118,7 +154,7 @@ points, remaining card population, hand sizes, void evidence, and pair/run or
 declaration constraints. The target records the true count of each physical
 card code at each hidden receiver: three other hands plus the burial.
 
-The current model is a small recurrent ownership predictor:
+The retired R4 model was a small recurrent ownership predictor:
 
 1. canonical public events are tokenized in chronological order;
 2. a GRU summarizes the variable-length declaration/play history;
@@ -131,8 +167,8 @@ happened before it: failing to feed, playing a joker under pressure, following
 short, or declining a declaration can update the posterior. Each decision in a
 round supplies a supervised example and is scored against the true hidden
 allocation. The GRU is a V1 engineering choice, not a claim that recurrence is
-optimal; transformer, set/graph, or hybrid encoders should be compared only
-after R4/R5 curves reveal the actual underfit/overfit and throughput regime.
+optimal. Comparing a Transformer, set/graph or hybrid ownership encoder would
+require a separately justified reopening, not another R4/R5 run by default.
 
 ### What V1 can and cannot express
 
@@ -226,9 +262,9 @@ The exact design owns thresholds, but the conceptual gates are:
 7. **Usefulness readiness:** exact projection succeeds, its calibration drift
    is measured, and no gate merely restates the primary Brier comparison.
 
-## From belief to stronger play
+## Retained belief-to-policy ladder (inactive)
 
-The deployment ladder is intentionally conservative:
+If a future belief lane is justified, its staged consumer checks remain:
 
 1. **Prediction only:** establish held-out ownership calibration.
 2. **Sampler only:** generate legal complete worlds from the posterior and
@@ -284,28 +320,41 @@ privileged teacher, prove the teacher itself beats the public production policy
 on exact states and then in realistic full-round populations.
 
 The sealed `pt-luna-rpc-isolated-b0b1bd95-r1` dataset (32 complete games,
-ledger `6c71bee3`) plus the 1,578 earlier reopenable Luna decisions are the
-teacher artifact; PT-Sol remains the higher-quality reference. Teacher
-collection is closed. The current path is: pretrain a minimal Value learner on
-natural trajectory self-play at scale, fine-tune it on Luna outcomes as value
-targets with a held-out teacher-agreement slice, and
-test whether search with the fine-tuned leaf value moves toward the teacher on
-the states where the flexible planner disagreed with production and won. That
-is an exploratory transport screen, not a powered strength claim; a fresh-root
-tier ii/iii comparison follows only if it transports.
+ledger `6c71bee3`) and earlier reopenable Luna decisions remain teacher
+evidence; Sol remains the higher-quality reference on the shared measured
+roots. The old collection attempt is complete, not a permanent prohibition
+on new bounded teacher experiments.
+
+The newer token-efficiency investigation found **2.70× completed rounds per
+token and 2.08× rounds per wall time** for a four-decision batch on four
+matched starting rounds. A 16-game cost extension completed with no failures.
+Those are engineering/cost observations, not strength or quality equivalence
+to the historical tool-using planner. Before a larger collection, compare the
+compact/batched play-only recipe with the rollout-enabled teacher on a fresh
+quality bridge. Only batch current decisions from distinct deals; do not put
+mirrored/future turns from one deal into the same request. Host-side routing
+is not a semantic privacy guarantee inside a shared model context.
+
+Use fresh independent deal groups, keep validation separate from fit and
+selection, and label the continuation actually played. If one value estimand
+is intended, apply the same named engine continuation to relabel states;
+mixed teacher outcomes are not interchangeable targets. Sol can first supply
+a bounded compatibility/cost sample, followed by a declared sampling recipe.
+Neither this plan nor the W32 result launches scaled collection. Details:
+[teacher efficiency investigation](https://github.com/jerryyyu/shengji/blob/724d811676363a13e164d6d8d7ceca16745b7c2f/TEACHER_TOKEN_EFFICIENCY.md).
 
 ## Search and teacher strategy
 
-The research program has three ordered pillars:
+The active research program has three connected questions:
 
-1. **Search capacity and allocation.** RLCB is the proven driver. The old T4
-   widening positive is compute-confounded, so confirm candidate width and
-   work in three arms before attributing the gain.
-2. **World representation.** Better public-history belief can improve the
-   worlds search sees at every decision. This is the R4/R5 question.
-3. **Learning from stronger search/teachers.** Only after the search stack is
-   stronger and its targets are contract-clean should it supervise direct Q,
-   value, pairwise, policy, or uncertainty heads.
+1. **Candidate admission and search cost.** Keep the positive W32 reference;
+   separate exact speedups, wider shortlists and compute-matched controls.
+2. **Allocation and depth.** Test a small change against that reference before
+   building a larger PUCT recipe. The old T4 compute-confounded widening result
+   and the new full-legal W32 result are different experiments.
+3. **Model and teacher transport.** Improve data/targets against the actual
+   search consumer, preserve held-out games, then test the resulting policy.
+   Neither a better teacher nor better offline prediction guarantees this link.
 
 More search on a bad world distribution can waste compute; a better belief with
 a bad consumer can also lose. Measure search work, posterior quality, consumer

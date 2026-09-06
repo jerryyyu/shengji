@@ -3,7 +3,8 @@
     train_cwv.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         --arch mlp|seq [--device mps|cpu] [--limit-clusters N] [--aux-points]
         [--seed N] [--public-head CKPT] [--epochs 20] [--batch-size 1024]
-        [--select-metric val_ce|val_rank_regret|val_points_mae] [--val-rank-records N]
+        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae]
+        [--val-rank-records N]
         [--init CKPT [--init-lr-scale F] [--init-exclude-exposed]] ...
     train_cwv.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
         [--split test|novel|val|train|all] [--public-head CKPT]
@@ -60,13 +61,19 @@ against the search's means, on the level scale the search consumes),
 head, what the vleaf leaf consumes) next to CE / MAE.  ``--select-metric``
 picks which one drives early stopping and ``best.pt``: ``val_ce`` (the
 default, byte-identical to the historical runs), ``val_rank_regret`` (the
-recommendation for the ranking consumers: one-ply / shortlist / netroll /
-PUCT) or ``val_points_mae`` (the recommendation for the leaf).  ``--init``
+recommendation for the TOP-1 consumers: one-ply and the PUCT prior, which
+play or prior the net's single pick), ``val_rank_regret_at_4`` (the
+recommendation for the SHORTLIST, which keeps 4 net-ranked alternatives
+plus production's incumbent and hands that SET to the unchanged MC-LCB
+search) or ``val_points_mae`` (the recommendation for the leaf).  The same
+function also reports ``rank_recall_at_k`` (the chance a search argmax is
+inside the net's top k).  ``--init``
 warm-starts trunk and heads from a checkpoint of the same architecture and
 feature layout (refused otherwise); the receipt's ``consumer`` block names
-which search designs consume which head on which positions.  ``rank_regret``
-is the level-bracket transform of the search's MEAN points, U(E[points]),
-an MC-ranking proxy -- not E[U].
+which search designs consume which head on which positions, and which of
+them read the top-1 shape and which the top-k shape.  ``rank_regret`` and
+``rank_regret_at_k`` alike are the level-bracket transform of the search's
+MEAN points, U(E[points]), an MC-ranking proxy -- not E[U].
 
 Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
 --------------------------------------------------------------------
@@ -148,6 +155,7 @@ from .cwv_data import (
 )
 from .cwv_eval import (
     CONSUMERS,
+    DEFAULT_RANK_KS as RANK_KS,
     HOLDOUT_SUPPORT,
     EvalError,
     SCORERS,
@@ -222,6 +230,28 @@ SELECT_METRICS = {
                                      "points (cwv_eval.points_metrics; the vleaf leaf's "
                                      "quantity)"),
 }
+#: the TOP-K ranking metrics: the quantity the SHORTLIST consumes.
+#: ``cwv_shortlist`` keeps ``alternatives`` net-ranked actions plus
+#: production's incumbent and hands that SET to the unchanged MC-LCB
+#: search, so a top-k SHAPE is the right offline shape for it rather than
+#: a top-1 argmax.  These metrics are only a BALLOT-SCOPED PROXY for that
+#: shape: they rank the decision's stored ballot candidates and union no
+#: incumbent, whereas the shortlist enumerates every legal action.
+#: Measured 2026-09-06: the proxy did NOT reproduce the sealed shortlist
+#: checkpoint contrast, so the in-search screen remains the selector of
+#: record.  ``val_rank_regret_at_1`` is ``val_rank_regret`` by
+#: construction (cwv_eval asserts the identity).
+for _k in RANK_KS:
+    SELECT_METRICS[f"val_rank_regret_at_{_k}"] = (
+        f"rank_regret_at_{_k}",
+        f"validation rank regret AT k={_k} of the level head: level of the search's best "
+        f"candidate minus the expected level of the search's best candidate INSIDE the net's "
+        f"top-{_k} (uniform tie-breaking), per decision, averaged "
+        f"(cwv_eval.rank_metrics; a BALLOT-SCOPED PROXY for a top-k consumer, NOT the "
+        f"shortlist's own quantity: ballot candidates only, no incumbent union, no exhaustive "
+        f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
+        f"MEAN points -- an MC-ranking proxy, not E[U])")
+del _k
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "val_fraction": 0.1, "test_fraction": 0.1, "hidden": 512, "dropout": 0.1,
@@ -1034,8 +1064,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--select-metric val_points_mae needs --aux-points")
     if int(val_rank_records) < 0:
         raise TrainError("--val-rank-records must be >= 0 (0 disables the rank pass)")
-    if select_metric == "val_rank_regret" and int(val_rank_records) == 0:
-        raise TrainError("--select-metric val_rank_regret needs --val-rank-records > 0")
+    if select_metric.startswith("val_rank_regret") and int(val_rank_records) == 0:
+        raise TrainError(f"--select-metric {select_metric} needs --val-rank-records > 0")
     if not (math.isfinite(float(init_lr_scale)) and float(init_lr_scale) > 0):
         raise TrainError("--init-lr-scale must be a finite scale > 0")
     if init_exclude_exposed and init is None:
@@ -1284,8 +1314,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"candidate set (val): {val_cands.records} records / {val_cands.candidates} "
             f"candidates (per-shard cap {val_cands.meta['per_shard_limit']}, "
             f"{val_cands.meta.get('secs', 0)}s)")
-    if select_metric == "val_rank_regret" and (val_cands is None or val_cands.records == 0):
-        raise TrainError("--select-metric val_rank_regret: the validation split has no "
+    if select_metric.startswith("val_rank_regret") and (val_cands is None
+                                                        or val_cands.records == 0):
+        raise TrainError(f"--select-metric {select_metric}: the validation split has no "
                          "search record (no action_values means)")
 
     luna: tuple[Any, CwvBlockStore] | None = None
@@ -1356,6 +1387,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if metrics.get("rank_regret") is not None:
             shown["val_rank_regret"] = f"val_rank_regret={metrics['rank_regret']:.4f}"
             shown["val_rank_top1"] = f"val_rank_top1={metrics['rank_top1']:.3f}"
+            for k in RANK_KS:
+                value = metrics.get(f"rank_regret_at_{k}")
+                if value is not None:
+                    shown[f"val_rank_regret_at_{k}"] = f"val_rank_regret_at_{k}={value:.4f}"
+                    shown[f"val_rank_recall_at_{k}"] = (
+                        f"val_rank_recall_at_{k}={metrics[f'rank_recall_at_{k}']:.3f}")
         if metrics.get("points_mae") is not None:
             shown["val_points_mae"] = f"val_points_mae={metrics['points_mae']:.2f}"
             shown["val_points_bias"] = f"val_points_bias={metrics['points_bias']:+.2f}"
@@ -1519,6 +1556,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "test_points_mae": final["test"]["search_facing"].get("points_mae"),
         "test_points_bias": final["test"]["search_facing"].get("points_bias"),
         "val_rank_regret": final["val"]["search_facing"].get("rank_regret"),
+        "test_rank_regret_at_k": final["test"]["search_facing"].get("rank_regret_at_k"),
+        "test_rank_recall_at_k": final["test"]["search_facing"].get("rank_recall_at_k"),
+        "val_rank_regret_at_k": final["val"]["search_facing"].get("rank_regret_at_k"),
         "forward_positions_per_second_cpu_1024": bench.get("forward_positions_per_second"),
     }
     save_cwv_checkpoint(out_dir / "best.pt", model, metadata={
@@ -1935,8 +1975,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
-                        "val_rank_regret is the recommendation for the ranking consumers, "
-                        "val_points_mae for the vleaf leaf)")
+                        "val_rank_regret is the recommendation for the top-1 ranking "
+                        "consumers (one-ply, PUCT prior), val_rank_regret_at_4 for the "
+                        "shortlist, val_points_mae for the vleaf leaf)")
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")

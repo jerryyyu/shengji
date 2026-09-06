@@ -12,7 +12,8 @@ from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 from tests.test_cwv_static_encoding import _state_after
 
 
-def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(tmp_path, monkeypatch):
+@pytest.mark.parametrize("reuse_grid", ["off", "off,on"])
+def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(tmp_path, monkeypatch, reuse_grid):
     import torch
 
     torch.manual_seed(29)
@@ -34,13 +35,16 @@ def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(tmp_path, mo
     out = tmp_path / "out"
     args = ["--checkpoint", "fixture", "--out", str(out),
             "--states-json", str(source), "--world-grid", "1",
-            "--selection-grid", "1", "--encoding-grid", "reference,mlp-static"]
+            "--selection-grid", "1", "--encoding-grid", "reference,mlp-static",
+            "--successor-grid", reuse_grid]
     assert cost.main(args) == 0
     summary = json.loads((out / "summary.json").read_text())
-    assert summary["encoding_pairs_bit_identical"] == 1
+    modes = len(reuse_grid.split(","))
+    assert summary["encoding_pairs_bit_identical"] == modes
+    assert summary["successor_pairs_bit_identical"] == (2 if modes == 2 else 0)
     rows = [json.loads(p.read_text()) for p in out.glob("state-*.json")]
     learned = [r for r in rows if r["encoding"] is not None]
-    assert len(learned) == 2
+    assert len(learned) == 2 * modes
     assert all(r["counts"]["cheap_evaluations"] > 0 for r in learned)
     assert all(r["process_peak_rss_bytes"] > 0 for r in rows)
     assert all(r["effective_cpu_cores"] > 0 for r in rows)
@@ -52,6 +56,11 @@ def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(tmp_path, mo
     changed[0]["semantic"]["played"] = ["mutated"]
     with pytest.raises(ValueError, match="^encoding changed scores, shortlist, decision or RNG$"):
         cost.encoding_parity(changed)
+    if modes == 2:
+        changed = copy.deepcopy(learned)
+        changed[0]["semantic"]["scores_sha256"] = "mutated"
+        with pytest.raises(ValueError, match="^successor reuse changed scores, shortlist, decision or RNG$"):
+            cost.successor_parity(changed)
     changed = copy.deepcopy(learned)
     changed[0]["semantic"]["scores_sha256"] = "mutated"
     with pytest.raises(ValueError, match="^encoding changed scores, shortlist, decision or RNG$"):

@@ -16,6 +16,7 @@ import time
 import numpy as np
 
 from ..ai.cwv_policy import afterstate, sample_worlds
+from ..ai.cwv_successor_reuse import TensorInputCache, WorldSuccessorCache
 from ..ai.mcbot import _child_seed
 from ..ai.registry import REGISTRY
 from ..harvest.legal import enumerate_legal
@@ -43,9 +44,15 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
     # final point-shy tie-breaking are inherited from literal production.
     TRACTOR_LOCK = False
 
-    def __init__(self, evaluator, *, seed=0, config=None):
+    def __init__(self, evaluator, *, seed=0, config=None, reuse_successors=False):
         super().__init__(seed)
         self.shortlist_config = config or CWVShortlistConfig()
+        if type(reuse_successors) is not bool:
+            raise ValueError("reuse_successors must be boolean")
+        if reuse_successors and self.shortlist_config.uniform:
+            raise ValueError("successor reuse requires the learned shortlist")
+        self.reuse_successors = reuse_successors
+        self.last_successor_reuse = None
         if not self.shortlist_config.uniform and evaluator is None:
             raise ValueError("learned shortlist requires a complete-world evaluator")
         self.evaluator = evaluator
@@ -61,11 +68,19 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         """Score EVERY action/world, retaining only O(K + batch_size) state."""
         sums = np.zeros(len(actions), dtype=np.float64)
         pending, indices = [], []
+        # The tensor cache spans this decision, not one world: the original
+        # forward batches can straddle world boundaries. Exact leaf identity
+        # keeps those worlds distinct without flushing/changing batch shapes.
+        tensor_cache = TensorInputCache() if self.reuse_successors else None
+        reuse = {"root_actions": 0, "leaf_hits": 0, "leaf_completions": 0,
+                 "peak_entries": 0}
 
         def flush():
             if not pending:
                 return
-            values = np.asarray(self.evaluator.score(pending, seat), dtype=np.float64)
+            scored = (self.evaluator.score(pending, seat) if tensor_cache is None
+                      else self.evaluator.score(pending, seat, tensor_cache=tensor_cache))
+            values = np.asarray(scored, dtype=np.float64)
             if values.shape != (len(pending),) or not np.isfinite(values).all():
                 raise ValueError("CWV shortlist requires one finite root-team value per afterstate")
             np.add.at(sums, indices, values)
@@ -75,20 +90,33 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             indices.clear()
 
         for hands, buried in worlds:
+            successor_cache = (WorldSuccessorCache(rnd, seat, hands, buried)
+                               if self.reuse_successors else None)
             for index, action in enumerate(actions):
                 # Exactly the #229 convention: engine root action, heuristic
                 # finishes this trick, then complete-world value (terminal exact).
-                leaf = afterstate(rnd, seat, hands, buried, action, finish_trick=True)
+                leaf = (afterstate(rnd, seat, hands, buried, action, finish_trick=True)
+                        if successor_cache is None else successor_cache.leaf(action))
                 self.shortlist_counts["terminal_afterstates"] += int(leaf.phase == "round_end")
                 pending.append(leaf)
                 indices.append(index)
                 if len(pending) == self.shortlist_config.batch_size:
                     flush()
+            if successor_cache is not None:
+                for key in ("root_actions", "leaf_hits", "leaf_completions"):
+                    reuse[key] += successor_cache.counters[key]
+                reuse["peak_entries"] = max(reuse["peak_entries"], successor_cache.peak_entries)
         flush()
+        self.last_successor_reuse = (None if tensor_cache is None else {
+            "schema": "cwv-successor-reuse-v1", "max_entries_per_cache": 128,
+            **reuse, "tensor_hits": tensor_cache.hits,
+            "tensor_completions": tensor_cache.completions,
+            "peak_tensor_entries": tensor_cache.peak_entries})
         return sums / len(worlds)
 
     def _candidates(self, rnd, seat):
         started = time.perf_counter()
+        self.last_successor_reuse = None
         production = super()._candidates(rnd, seat)
         incumbent = tuple(sorted(production[0]))
         legal = enumerate_legal(rnd, seat, cap=None, must_include=production)
@@ -146,6 +174,8 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             "cheap_sampler_delta": self._sampler_delta(sampler_before),
             "counts": {k: self.shortlist_counts[k] - before[k] for k in before},
         }
+        if self.reuse_successors:
+            self.last_shortlist["successor_reuse"] = self.last_successor_reuse
         elapsed = time.perf_counter() - started
         self.shortlist_wall_seconds += elapsed
         self.last_shortlist["wall_seconds"] = elapsed

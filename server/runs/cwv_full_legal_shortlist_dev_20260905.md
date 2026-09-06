@@ -502,3 +502,139 @@ exit, on the same 16-worker Strength unit and exact source. It was not selected
 in reaction to this result. Interim width conclusion: retain W32 as the
 reference; do not escalate to W128 on this evidence. The final-rollout readout
 is still needed before selecting the next bounded search recipe.
+
+### Final MC budget completed — doubling rollouts did not demonstrate a gain
+
+The last predeclared arm completed all 256 pairs / 512 mirrored rounds, exit0,
+with no problems or refusal. The tail unit then performed its saved-file
+comparison and exited successfully: no further gameplay is queued. Source
+remains `30b5eddeda9c510fb8f6592b73449c1a713a9fe4`.
+
+The complete config equals optimized W32's config after changing only
+`shortlist.selection_worlds: 30 -> 60` and `report_worlds: 300 -> 600`.
+Checkpoint, four alternatives, W32 ranking, batch128, encoding/reuse, runtime,
+source hashes and deal population match. All **15,210 searched arm decisions**
+actually recorded N60/R600; all **15,085 searched opponent decisions** recorded
+N30/R300. Every corresponding completed report receipt used the stated number
+of worlds. Another 3,074 arm decisions were forced, without an MC dose trace.
+
+Important inherited-summary caveat: `arm_description` still says identity
+control and `work.arm_effective` still shows the base registry's N30/R300.
+`summary_for` inherits those template fields from the base duel summarizer;
+they do not describe the executed learned arm. The full config, per-decision
+`selection_N`/`report_worlds`, report receipts and measured counters establish
+the actual dose above. This is misleading report metadata, not an identity
+run or a missing budget change. Preserve the original artifacts; fix these
+labels with consumer-level witnesses in a future source update, not by
+rewriting receipts or repeating this run.
+
+| Quantity | Optimized W32 N30/R300 | Optimized W32 N60/R600 |
+|---|---:|---:|
+| Signed levels/round vs production N30/R300 | +0.13867 | +0.12109 |
+| 95% deal-bootstrap interval | [+0.06445, +0.21680] | [+0.04688, +0.19146] |
+| Actual arm/opponent decision wall | 3.5287x | 4.4921x |
+| Total arm decision wall | 11,916.94s | 14,991.52s |
+| Ranking wall | 8,719.90s | 8,698.35s |
+| Full MC rollouts | 11,038,770 | 22,113,360 |
+| Scored action/world rows, including exact terminals | 149,192,288 | 146,923,008 |
+| Scoring batches | 1,170,992 | 1,153,282 |
+
+Paired MC2 minus W32: **−0.01758 [−0.11919, +0.07227]**, with 57 deal
+clusters better, 60 worse and 139 tied. Same 1,000-replicate deal bootstrap,
+seed 20260904. No improvement is demonstrated for **25.80% more total arm
+decision wall**; the interval also does not establish harm. Neither this
+result nor W64 closes higher-compute search in general. Here the two extra-work
+allocations failed to earn their cost on the observed point estimates.
+
+Ranking work/time stayed nearly unchanged because W remained 32; it accounts
+for **58.02%** of this arm's decision time. Non-ranking decision time grew to
+6,293.17s, and full rollouts rose **2.003x**. Different trajectories explain
+the small non-doubling of aggregate counts. There were 3,572 exact terminal
+scoring rows and 146,919,436 nonterminal model rows; average scoring-batch
+occupancy was **99.53%**. Both logical cache maxima remained 128.
+
+Whole-process elapsed was **27m35.24s**, with 18,369.22 CPU seconds,
+**1,109% mean CPU (~11.10 cores)**, maximum child RSS 502,076KiB and no swaps.
+The largest observed shared-unit cgroup peak during MC2 was **5.1133GiB**;
+this is a sampled live peak, not a separate post-exit per-arm RSS receipt.
+Progress-loop elapsed was 1,651.8s; the final pair added **512.7s** after
+255/256 finished. The average-pair ETA kept predicting seconds during this
+eight-minute tail; completed work was retained and the live worker was not
+restarted.
+
+Mini archive: `~/shengji-archive/2026-09-06/cwv-shortlist-scaling/` now contains
+`w32-mc2-paired/`, the **final** `scaling-tail.log` (not an in-flight snapshot),
+`mc2-dose-cost-readout.json` and `final-comparison.json`. The latter reuses the
+existing paired comparison helper on completed W32, production-x3,
+production-x10, W64 and MC2 records. No model inference, new labels or gameplay
+was needed for closeout. Original Strength artifacts remain intact.
+
+### Combined readout and smallest next step
+
+All rows below are measured against normal production on the same 256 rank-2
+deals and mirrors. The optimized W32 row is the exact engineering replay of
+the original, not a new independent strength observation. Actual cost ratios
+use each arm's opponent decision wall; use total arm times when comparing
+cost across trajectories. These are opened DEV comparisons, not deployment
+evidence, exhaustive-rank coverage or direct candidate duels.
+
+| Arm | Signed levels/round [95% interval] | Actual decision-wall ratio |
+|---|---|---:|
+| Production N90/R900 (retained control) | +0.06836 [0, +0.13672] | 2.9579x |
+| Production N300/R3000 | +0.10547 [+0.03511, +0.17773] | 9.8880x |
+| Original W32 N30/R300 | +0.13867 [+0.06445, +0.21680] | 10.6126x |
+| **Optimized W32 N30/R300** | **same +0.13867, identical decisions** | **3.5287x** |
+| Optimized W64 N30/R300 | +0.09570 [+0.02930, +0.16606] | 6.2658x |
+| Optimized W32 N60/R600 | +0.12109 [+0.04688, +0.19146] | 4.4921x |
+
+The comparable-compute contrast remains unresolved: original W32 minus
+production-x10 = +0.03320 [−0.07236, +0.13677], at nearly identical total
+arm decision wall. Engineering then retained that W32 performance at much
+lower cost. Optimized W32 minus production-x3 = +0.07031 [−0.02344, +0.16602],
+but their costs are not exactly matched. Do not interpolate an unrun
+production 4–6x result or turn positive point estimates into a resolved lead.
+
+**Retain optimized W32/N30/R300 as the working reference.** It is the least
+costly learned arm tested here and has the highest point estimate, not a
+proven globally optimal recipe. No W128 or larger uniform rollout escalation
+is justified by this bounded screen alone.
+
+1. **Next policy question: admission breadth, four -> eight alternatives.**
+   Use the existing harness and same ABC checkpoint, W32/N30/R300, batch128,
+   encoding/reuse and heuristic anchor. Change only `alternatives`; do not
+   simultaneously change the checkpoint, prune worlds or deepen search.
+   This tests whether the final search needs better options rather than more
+   samples of its current options. Keeping eight instead of four is cheap
+   for the existing ranking matrix but adds MC selection work; report that
+   measured cost and the paired uncertainty. This is a proposed bounded
+   follow-up, not another launch in the completed queue. A selected recipe
+   then needs a fresh disjoint, rank/suit-diverse comparison with a production
+   control at measured comparable work before a stronger claim.
+2. **Next engineering steps:** bypass futile successor-cache work for legal
+   follow roots and schedule historically expensive replay pairs earlier,
+   with exact decision/order/seed/recovery witnesses. The saved-time scheduling
+   calculation projects 1.51x batch throughput, not measured latency improvement.
+   Neither change was applied to these runs. Also correct the inherited
+   summary labels and make active-straggler ETAs explicit before the next run.
+3. **Two-stage pruning stays a separate policy experiment.** The corrected
+   precheck gives k4/K200 only 48/59 agreement on binding states; its >=30,000-
+   action tail is unmeasured despite representing 26.2% of model rows in that
+   source. Its old wall projections predate the 2.849x engineering gain and
+   are not measured wall savings. Include that tail and distinguish agreement
+   with W32 from actual rollout quality before selecting a pruning recipe.
+   Random-subset rollout residual correction and selective depth remain later
+   named hypotheses, not additions hidden inside this comparison.
+
+Teacher-data investigation is also complete in #246,
+`TEACHER_TOKEN_EFFICIENCY.md`: matched batch4 delivered 2.70x rounds per raw
+token and 2.08x rounds per wall; the authorized 16-game cost extension finished.
+Quality is inconclusive, so the proposed next teacher step is a bounded bridge
+to historical rollout-enabled Luna before scale-up, followed by the existing
+journal's resume wiring and an explicit Sol compatibility/cost check. The
+proposed collection keeps fit/selection/validation deals disjoint and labels
+the actual continuation policy; no new teacher collection is launched here.
+
+This completes the bounded teacher/engineering/scaling investigation requested
+in the active goal. #248 remains the follow-up tracker, and #254's pre-merge
+rebase/CI cleanup is still separate. No merge, deployment, production-default
+change or scaled teacher collection follows from these results.

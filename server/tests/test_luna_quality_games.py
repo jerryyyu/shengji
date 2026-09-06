@@ -67,9 +67,20 @@ class FakePilot:
             provider_request_sha256=f"{index + 1:064x}",
             provider_response_sha256=f"{index + 2:064x}")
             for packet in packets)
+        decisions = [{"packet_sha256": response.packet_sha256,
+                      "candidate_index": response.intent.candidate_index,
+                      "confidence": response.intent.confidence,
+                      "planning_note": response.intent.planning_note}
+                     for response in responses]
         row = {"arm": arm, "index": index, "packet_hashes": [p.sha256 for p in packets],
-               "accepted": True, "decisions": [{} for _ in packets],
-               "usage": {"total_tokens": len(packets)}}
+               "accepted": True, "decisions": decisions,
+               "usage": {"input_tokens": len(packets),
+                         "cached_input_tokens": 0,
+                         "output_tokens": 0,
+                         "reasoning_output_tokens": 0,
+                         "total_tokens": len(packets),
+                         "wall_ms": len(packets)},
+               "private_evidence": None}
         self.rows.append(row)
         return row, responses
 
@@ -212,6 +223,20 @@ def test_provider_refusal_quarantines_deals_not_whole_panel(tmp_path, failed_arm
     assert result["failed_games"] == 2 * len(coordinates)
     assert result["completed_games"] == 8 - 2 * len(coordinates) > 0
     assert len({index for _, index, _ in pilot.calls}) == len(pilot.calls)
+    partial_metadata = list((tmp_path / "out").glob("*-partial-metadata-*.json"))
+    partial_trajectories = list((tmp_path / "out").glob("*-partial-trajectory-*.json"))
+    assert len(partial_metadata) == len(partial_trajectories) == result["failed_games"]
+    for metadata_path in partial_metadata:
+        metadata = gameplay._load_json(metadata_path)
+        assert metadata["completed"] is False
+        assert "terminal_outcome" not in metadata
+        trajectory = gameplay._load_json(
+            metadata_path.parent /
+            metadata_path.name.replace("partial-metadata", "partial-trajectory"))
+        assert metadata["trajectory_sha256"] == gameplay._sha(trajectory)
+        assert metadata["root_sha256"] == trajectory["root_sha256"]
+        assert metadata["coordinate"] == trajectory["coordinate"]
+        assert metadata["mirror"] == trajectory["mirror"]
     for _, index, packets in pilot.calls:
         if index > refused_index:
             assert not set(p.coordinate for p in packets) & set(coordinates)
@@ -223,6 +248,69 @@ def test_provider_refusal_quarantines_deals_not_whole_panel(tmp_path, failed_arm
     actual = readout.analyze(tmp_path / "out")
     assert actual["complete_pairs"] == 4 - len(coordinates)
     assert actual["status"] == "partial-panel"
+
+
+def test_real_pilot_direct_response_mismatch_refuses_before_step_and_cache_recovers(
+        tmp_path, monkeypatch):
+    _panel(tmp_path)
+    out = tmp_path / "out"
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir(mode=0o700)
+    records, captured = [], {}
+    make_games = gameplay._make_games
+
+    def track_games(rows):
+        records.extend(make_games(rows))
+        return records
+
+    monkeypatch.setattr(gameplay, "_make_games", track_games)
+    runner = RealBatchRunner()
+
+    def factory(args):
+        pilot = _real_pilot(out, temp_root, runner)
+        pilot.args = args
+        pilot.base = SimpleNamespace(runtime={"test": True}, model=game.MODEL,
+                                     reasoning_effort="medium")
+        pilot.source = {"test": "same-source"}
+        call = pilot.call
+
+        def altered_call(arm, index, packets):
+            row, responses = call(arm, index, packets)
+            if index == 0:
+                assert arm == "batch4" and len(responses) == 2
+                captured.update(row=row, packets=packets)
+                original = responses[1]
+                altered = PlannerResponse(
+                    Intent("play", original.intent.decision_sha256,
+                           original.intent.candidate_index, original.intent.confidence,
+                           planning_note="different-but-valid-direct-note"),
+                    original.usage, original.tool_event_count, original.team,
+                    original.packet_sha256, original.memory_sha256,
+                    original.provider_request_sha256, original.provider_response_sha256)
+                # Both responses individually pass TurnDriver's normal checks.
+                # Only the new recorded-vs-returned binding can reject this.
+                return row, (responses[0], altered)
+            return row, responses
+
+        pilot.call = altered_call
+        return pilot
+
+    with pytest.raises(gameplay.QualityGameplayError,
+                       match="^provider response candidate decision drift$"):
+        gameplay.run_gameplay(tmp_path, out, pilot_factory=factory,
+                              require_population=False)
+    assert runner.calls == 1 and records
+    assert all(record.driver.decision_index == 0 for record in records)
+    assert not list(out.glob("*-terminal.json"))
+
+    # Recovery consumes the recorded original without another provider call.
+    second_runner = RealBatchRunner()
+    second = _real_pilot(out, temp_root, second_runner)
+    cached, replay = second.call("batch4", 0, captured["packets"])
+    assert cached == captured["row"] and replay is None and second_runner.calls == 0
+    recovered = gameplay._responses(cached, captured["packets"], replay)
+    assert [response.intent.planning_note for response in recovered] == ["cached-plan"] * 2
+    gameplay._preflight_responses(captured["packets"], recovered)
 
 
 def test_malformed_second_batch_response_advances_zero_games(tmp_path):
@@ -364,6 +452,26 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
     saved = {p.name: p.read_bytes() for p in recovered.glob("state-*.json")}
     saved_calls = {p.name: p.read_bytes() for p in recovered.glob("*-000[01].json")}
     assert len(saved_calls) == 2 and saved
+    partial_before = {p.name: p.read_bytes() for p in recovered.glob("*-partial-*.json")}
+    assert len(partial_before) == 8  # All four unfinished mirrors have data + metadata.
+    partial_histories = [gameplay._load_json(path) for path in
+                         recovered.glob("*-partial-trajectory-*.json")]
+    assert any(row["events"] for row in partial_histories), "retain already-played moves"
+    stop = gameplay._load_json(next(recovered.glob("progress-*.json")))
+    stopped_games = {(tuple(row["coordinate"]), row["mirror"]): row
+                     for row in stop["state"]["games"]}
+    assert sum(row["decision_index"] for row in stopped_games.values()) > 0
+    for partial in partial_histories:
+        current = stopped_games[tuple(partial["coordinate"]), partial["mirror"]]
+        if partial["events"]:
+            assert partial["events"][-1]["state_after"] == current["state"]
+        metadata_path = next(recovered.glob(gameplay._game_name(
+            tuple(partial["coordinate"]), partial["mirror"], "partial-metadata-*")))
+        metadata = gameplay._load_json(metadata_path)
+        assert metadata["split"] == quality_panel.deal_split(tuple(partial["coordinate"]))
+        assert metadata["completed"] is False
+        assert metadata["trajectory_sha256"] == gameplay._sha(partial)
+    assert not list(recovered.glob("*-terminal.json"))
     original_config = (recovered / "config.json").read_bytes()
     clock[0] += 7
     result = gameplay.run_gameplay(panel, recovered, tokens=5_000_000,
@@ -375,6 +483,8 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
     assert (recovered / "config.json").read_bytes() == original_config
     assert instances[-1].remaining_at_configure == 1193
     for name, raw in {**saved, **saved_calls}.items():
+        assert (recovered / name).read_bytes() == raw
+    for name, raw in partial_before.items():
         assert (recovered / name).read_bytes() == raw
     assert result["charged_tokens"] == sum(row["charged_tokens"] for row in instances[-1].rows)
     assert len({(row["arm"], row["index"]) for row in instances[-1].rows}) == result["call_count"]

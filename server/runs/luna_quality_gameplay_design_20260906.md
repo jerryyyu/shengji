@@ -25,6 +25,9 @@ This makes the primary contrast direct head-to-head instead of the provisional
 two separately MC-opposed arms described in #261. It saves opponent games and
 isolates the batching comparison. It cannot inherit or reproduce either
 teacher's historical margin over MC; that remains a separate bridge.
+Fewer engine games do not imply half the LLM calls: both sides here are Luna,
+whereas only one side would be Luna in each MC-opposed game. Size tokens from
+actual provider decisions, not the number of game files.
 
 This does **not** compare either arm with production MC or establish parity
 with the historically stronger rollout-enabled teacher. A separate
@@ -77,6 +80,11 @@ first valid slot while discarding another slot.
 Each completed game immediately publishes its trajectory, terminal receipt
 and explicit arm/split/continuation metadata. Losing and tied games are kept
 alongside wins. Partial states and call evidence remain available on failure.
+Provider refusals and collector-wide stops also publish the accepted partial
+trajectory for each unfinished affected game with its root, split, arm,
+continuation and stop reason. These have distinct partial filenames, no
+terminal outcome, and cannot be mistaken for completed-game receipts. Later
+recovery may publish a completed trajectory without overwriting the partial.
 Model prose is kept separate from engine transitions and is never a value
 label. Terminal outcomes describe this particular pair of continuation
 policies, not optimal play or MC continuation values.
@@ -95,6 +103,13 @@ they are not ordinary provider refusals. Completed artifacts are never
 overwritten. No independent multi-hour
 reconstruction stage is added: replay exists for recovery, while final
 aggregation reads the small completed-game receipts.
+
+Before committing a fresh response, the collector binds its chosen action,
+planning note, confidence and usage to the persisted call row, plus provider
+identity hashes when evidence is present. The entire batch passes this check
+before its first move is applied. Cached responses are reconstructed from the
+saved provider evidence. Thus live execution and recovery cannot silently
+consume different returned and recorded actions.
 
 Per-call state snapshots contain only the one-to-four games changed by that
 call, not all 104 game states. Recovery uses the bound roots and saved calls;
@@ -127,6 +142,15 @@ bridge and any larger confirmation. No production deployment or automatic
 data/model promotion follows from either source approval or a DEV result.
 
 ## Cost evidence, not a launch estimate
+
+The fresh 207-matched-position diagnostic is now complete; see
+[its readout](luna_fresh_quality_result_20260906.md). It measures about 2.98x
+reported-token efficiency with no clear fixed-continuation quality difference,
+not full-game equivalence. Its means suggest roughly 45.4M tokens and 23 hours
+for this roster before growing plans, partial batches and operational overhead.
+The one observed compact timeout must also inform expected complete-pair yield;
+it cannot be ignored by extrapolating successful requests only. No new run is
+launched by this source packet.
 
 The completed September 5 batch4 scale16 pilot used 3,825,314 reported tokens
 for 1,013 decisions in 16 whole games and 6,665 seconds wall. Its 283 calls

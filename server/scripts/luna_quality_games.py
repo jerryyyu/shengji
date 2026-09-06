@@ -291,10 +291,46 @@ def _responses(row: Mapping[str, object], packets: Sequence[DecisionPacket],
     if type(direct) not in (list, tuple) or len(direct) != len(packets):
         raise QualityGameplayError("provider response count drift")
     try:
-        return tuple(value if type(value) is PlannerResponse
-                     else PlannerResponse.from_mapping(value) for value in direct)
+        responses = tuple(value if type(value) is PlannerResponse
+                          else PlannerResponse.from_mapping(value) for value in direct)
     except Exception as exc:
         raise QualityGameplayError("provider response shape drift") from exc
+    expected_decisions = [{
+        "packet_sha256": response.packet_sha256,
+        "candidate_index": response.intent.candidate_index,
+        "confidence": response.intent.confidence,
+        "planning_note": response.intent.planning_note,
+    } for response in responses]
+    if row.get("decisions") != expected_decisions:
+        raise QualityGameplayError("provider response candidate decision drift")
+
+    expected_usage = {
+        key: sum(response.usage.payload()[key] for response in responses)
+        for key in ("input_tokens", "cached_input_tokens",
+                    "cache_write_input_tokens", "output_tokens",
+                    "reasoning_output_tokens", "total_tokens", "wall_ms")}
+    recorded_usage = row.get("usage")
+    if (type(recorded_usage) is not dict
+            or set(recorded_usage) - set(expected_usage)
+            or any(recorded_usage.get(key) != expected_usage[key]
+                   for key in recorded_usage)):
+        raise QualityGameplayError("provider response usage drift")
+    required_usage = ("input_tokens", "cached_input_tokens", "output_tokens",
+                      "reasoning_output_tokens", "total_tokens", "wall_ms")
+    if any(key not in recorded_usage for key in required_usage):
+        raise QualityGameplayError("provider response usage drift")
+
+    evidence = row.get("private_evidence")
+    if evidence is not None:
+        if type(evidence) is not dict:
+            raise QualityGameplayError("provider private evidence drift")
+        request_sha = evidence.get("provider_request_sha256")
+        response_sha = evidence.get("provider_response_sha256")
+        if any(response.provider_request_sha256 != request_sha
+               or response.provider_response_sha256 != response_sha
+               for response in responses):
+            raise QualityGameplayError("provider private evidence binding drift")
+    return responses
 
 
 def _validate_call_row(row: object, arm: str, index: int,
@@ -360,6 +396,33 @@ def _publish_completed(record: _Game, root: Path) -> None:
     })
 
 
+def _publish_partial(record: _Game, root: Path, reason: str) -> None:
+    """Publish the accepted trajectory accumulated before a non-terminal stop."""
+    if record.game.complete:
+        return
+    if record.game.failed is None:
+        record.game.fail(reason)
+    sealed = record.game.sealed_trajectory()
+    partial_tag = _sha(reason)[:16]
+    _publish(root / _game_name(record.coordinate, record.mirror,
+                               f"partial-trajectory-{partial_tag}"), sealed.body)
+    _publish(root / _game_name(record.coordinate, record.mirror,
+                               f"partial-metadata-{partial_tag}"), {
+        "schema": RESULT_SCHEMA + "-game-partial-metadata",
+        "comparison": "batch4-vs-compact1-play-only",
+        "coordinate": list(record.coordinate), "mirror": record.mirror,
+        "split": quality_panel.deal_split(record.coordinate),
+        "root_sha256": record.game.root_sha256,
+        "agent_for_team": {"0": game.agent_for_team(record.mirror, 0),
+                            "1": game.agent_for_team(record.mirror, 1)},
+        "arms": {"agent0": "batch4", "agent1": "compact1"},
+        "continuation": "play-only",
+        "reason": reason,
+        "completed": False,
+        "trajectory_sha256": sealed.sha256,
+    })
+
+
 def _pilot_inputs(manifest: Mapping[str, object], manifest_sha: str,
                   roster: Sequence[Mapping[str, object]]) -> dict[str, object]:
     return {"comparison": "batch4-vs-compact1-paired-gameplay-play-only",
@@ -418,6 +481,7 @@ def _quarantine_refusal(root: Path, records: Sequence[_Game], chosen: Sequence[_
     for item in records:
         if item.coordinate in coordinates and not item.game.complete and not item.game.failed:
             item.game.fail(reason)
+            _publish_partial(item, root, reason)
             affected.append({"coordinate": list(item.coordinate), "mirror": item.mirror})
     _publish(root / f"refusal-{call_index:08d}.json", {
         "schema": RESULT_SCHEMA + "-refusal", "call_index": call_index,
@@ -516,6 +580,10 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                                 call_index += 1
                     cycle += 1
     except Exception as exc:
+        reason = f"collector stopped at call {call_index}: {type(exc).__name__}: {exc}"
+        for item in records:
+            if not item.game.complete:
+                _publish_partial(item, root, reason)
         _progress(root, records, pilot, status="stopped", error=f"{type(exc).__name__}: {exc}",
                   call_count=call_index)
         raise

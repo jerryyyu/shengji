@@ -816,8 +816,18 @@ class CwvBlockStore:
     def keys_of(self, i: int) -> list[str]:
         return self._keys[i].tolist()
 
-    def iter_blocks(self) -> Iterator[CwvBlock]:
+    def iter_blocks(self, *, skip: Callable[[list[str]], bool] | None = None
+                    ) -> Iterator[CwvBlock]:
+        """Every block, or only those ``skip`` does not reject.
+
+        ``skip`` is asked about a shard's recorded deal keys (``keys_of``),
+        which are known without decoding it. A split is assigned by deal and
+        a shard holds one deal, so an evaluation over one part can decline
+        roughly nine shards in ten before paying to decode them.
+        """
         for i in range(len(self.entries)):
+            if skip is not None and skip(self.keys_of(i)):
+                continue
             yield self.block(i)
 
     def windows(self, order: Sequence[int], window: int) -> list[list[int]]:

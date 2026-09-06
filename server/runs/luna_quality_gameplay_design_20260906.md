@@ -84,8 +84,15 @@ policies, not optimal play or MC continuation values.
 Recovery replays already accepted recorded responses through the same turn
 validator, without another provider call. The original deadline, token
 accounting, roots and source remain bound. An unsettled reservation or saved
-refusal stops admission rather than being silently retried or charged as
-free. Completed artifacts are never overwritten. No independent multi-hour
+provider refusal is retained and charged conservatively, never retried or
+charged as free. Quarantine only the affected deal(s), including any unfinished
+mirror, and continue the other fixed deals. A failed batch quarantines every
+deal in that request. Do not spend additional calls completing a mirror that
+cannot form a complete pair, substitute replacement deals, or change the
+original budget. Completed games stay intact even if their other mirror fails.
+Malformed accepted responses or source/packet drift still stop the collector;
+they are not ordinary provider refusals. Completed artifacts are never
+overwritten. No independent multi-hour
 reconstruction stage is added: replay exists for recovery, while final
 aggregation reads the small completed-game receipts.
 
@@ -141,8 +148,10 @@ does not size the historical rollout-enabled teacher. This is why the current
 Use the current fresh comparison's call latency, failure/missingness pattern,
 token cost and quality diagnostic before proposing the full-game budget. A
 per-request success rate alone is not a complete-game success rate: failures
-compound over all turns and both mirrors. The current full-game source stops
-on a failed turn and preserves evidence, but must not be launched at scale
-if that measured reliability predicts mostly incomplete pairs. Resolve the
-call allowance and independent-game failure handling in this packet before
-its one consolidated launch review, not after burning a gameplay budget.
+compound over all turns and both mirrors. The collector quarantines failed
+deals so unrelated games can continue, but must not be launched at scale if
+measured reliability predicts mostly incomplete pairs. Resolve the call
+allowance and expected complete-pair count in this packet before its one
+consolidated launch review, not after burning a gameplay budget. A completed
+schedule containing refusals has a distinct status and is not a complete
+104-game panel or evidence of equivalence.

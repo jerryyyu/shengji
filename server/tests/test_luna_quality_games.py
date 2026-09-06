@@ -89,12 +89,15 @@ class BadSecondPilot(FakePilot):
 
 
 class RealBatchRunner:
-    def __init__(self):
+    def __init__(self, refuse_at=None):
         self.calls = 0
+        self.refuse_at = refuse_at
 
     def __call__(self, command, prompt, workspace, timeout):
         del workspace, timeout
         self.calls += 1
+        if self.calls == self.refuse_at:
+            raise TimeoutError("synthetic provider timeout, usage unknown")
         context = json.loads(prompt.decode().split("BATCH_CONTEXT_JSON\n", 1)[1])
         final = {"decisions": [{"slot": row["slot"], "candidate_index": 0,
                                  "confidence": "low", "planning_note": "cached-plan"}
@@ -184,6 +187,44 @@ def test_eight_game_wave_fills_batch4_without_mixing_mirrors(tmp_path):
         assert len({p.mirror for p in packets}) == 1
 
 
+@pytest.mark.parametrize("failed_arm", ["compact1", "batch4"])
+def test_provider_refusal_quarantines_deals_not_whole_panel(tmp_path, failed_arm):
+    _panel(tmp_path, count=4)
+
+    class RefusingPilot(FakePilot):
+        refused = None
+
+        def call(self, arm, index, packets):
+            row, responses = super().call(arm, index, packets)
+            if arm == failed_arm and self.refused is None:
+                self.refused = (index, tuple(p.coordinate for p in packets))
+                row.update(accepted=False, decisions=[], error="synthetic provider timeout")
+                return row, None
+            assert self.refused is None or index != self.refused[0], "no retry"
+            return row, responses
+
+    result = gameplay.run_gameplay(tmp_path, tmp_path / "out",
+                                   pilot_factory=RefusingPilot,
+                                   require_population=False)
+    pilot = FakePilot.instances[-1]
+    refused_index, coordinates = pilot.refused
+    assert result["status"] == "paired-gameplay-panel-complete-with-refusals"
+    assert result["failed_games"] == 2 * len(coordinates)
+    assert result["completed_games"] == 8 - 2 * len(coordinates) > 0
+    assert len({index for _, index, _ in pilot.calls}) == len(pilot.calls)
+    for _, index, packets in pilot.calls:
+        if index > refused_index:
+            assert not set(p.coordinate for p in packets) & set(coordinates)
+    refusal = gameplay._load_json(tmp_path / "out" / f"refusal-{refused_index:08d}.json")
+    assert refusal["retry"] is False
+    assert len(refusal["quarantined"]) == 2 * len(coordinates)
+    from scripts import luna_quality_games_analyze as readout
+    gameplay._publish(tmp_path / "out" / "config.json", {"inputs": pilot.inputs})
+    actual = readout.analyze(tmp_path / "out")
+    assert actual["complete_pairs"] == 4 - len(coordinates)
+    assert actual["status"] == "partial-panel"
+
+
 def test_malformed_second_batch_response_advances_zero_games(tmp_path):
     _panel(tmp_path)
     with pytest.raises(gameplay.QualityGameplayError, match="candidate"):
@@ -257,7 +298,8 @@ def test_cached_packet_usage_and_response_tamper_refuses(tmp_path):
         path.write_bytes(canonical_json_bytes(original))
 
 
-def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp_path, monkeypatch):
+@pytest.mark.parametrize("refuse_at", [None, 2])
+def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp_path, monkeypatch, refuse_at):
     """Exercise the scheduler, real Pilot persistence/configure, and turn wiring."""
     panel = tmp_path / "panel"
     panel.mkdir()
@@ -310,7 +352,7 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
 
         return PersistedPilot, instances
 
-    interrupted_runner = RealBatchRunner()
+    interrupted_runner = RealBatchRunner(refuse_at=refuse_at)
     factory, instances = factory_for(interrupted_runner, crash=True)
     recovered = tmp_path / "recovered"
     with pytest.raises(RuntimeError, match="^crash after provider publication, before turn commit$"):
@@ -327,7 +369,8 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
     result = gameplay.run_gameplay(panel, recovered, tokens=5_000_000,
                                    wall_seconds=1200, pilot_factory=factory,
                                    require_population=False)
-    assert result["completed_games"] == 4
+    assert result["completed_games"] == (4 if refuse_at is None else 2)
+    assert result["failed_games"] == (0 if refuse_at is None else 2)
     assert instances[-1].cache_hits == [0, 1]
     assert (recovered / "config.json").read_bytes() == original_config
     assert instances[-1].remaining_at_configure == 1193
@@ -336,13 +379,18 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
     assert result["charged_tokens"] == sum(row["charged_tokens"] for row in instances[-1].rows)
     assert len({(row["arm"], row["index"]) for row in instances[-1].rows}) == result["call_count"]
     for row in instances[-1].rows:
+        if not row["accepted"]:
+            refusal = gameplay._load_json(recovered / f"refusal-{row['index']:08d}.json")
+            assert refusal["retry"] is False and len(refusal["quarantined"]) == 2
+            assert row["usage"] is None and row["charged_tokens"] == 30_000
+            continue
         # Store only changed-game inspection snapshots, not 104 states/RPC.
         # Recovery is from retained calls and the bound roots.
         state = gameplay._load_json(recovered / f"state-{row['index']:08d}.json")
         assert {(tuple(item["coordinate"]), item["mirror"]) for item in state["games"]} == {
             (tuple(packet["coordinate"]), packet["mirror"]) for packet in row["packets"]}
 
-    reference_runner = RealBatchRunner()
+    reference_runner = RealBatchRunner(refuse_at=refuse_at)
     reference_factory, _ = factory_for(reference_runner)
     reference = tmp_path / "reference"
     reference_result = gameplay.run_gameplay(panel, reference, tokens=5_000_000,
@@ -352,7 +400,7 @@ def test_full_gameplay_recovery_reuses_calls_and_matches_uninterrupted_games(tmp
     assert result["charged_tokens"] == reference_result["charged_tokens"]
     for suffix in ("terminal", "trajectory", "metadata"):
         paths = sorted(reference.glob(f"game-*-{suffix}.json"))
-        assert len(paths) == 4
+        assert len(paths) == result["completed_games"]
         for path in paths:
             assert (recovered / path.name).read_bytes() == path.read_bytes()
     assert gameplay._load_json(recovered / f"state-{result['call_count'] - 1:08d}.json") == \

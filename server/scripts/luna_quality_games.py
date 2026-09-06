@@ -375,6 +375,8 @@ def _pilot_inputs(manifest: Mapping[str, object], manifest_sha: str,
                             "tools": "disabled", "disabled_features": list(transport.DISABLED_FEATURES),
                             "max_batch": MAX_BATCH},
             "wave_size": WAVE_SIZE,
+            "provider_refusal": "retain failed call; quarantine affected deal and any unfinished mirror; "
+                                "continue other fixed deals; no retries or replacement deals",
             "schedule": "sorted coordinate waves of eight; mirror0 then mirror1; "
                         "cycle-even batch4 then compact1, cycle-odd compact1 then batch4; "
                         "one live game per coordinate per cycle"}
@@ -388,6 +390,7 @@ def _progress(root: Path, records: Sequence[_Game], pilot: object,
             "pilot_arms": token_pilot.summarize(getattr(pilot, "rows", [])),
             "charged_tokens": getattr(pilot, "charged", None),
             "completed_games": sum(item.game.complete for item in records),
+            "failed_games": sum(bool(item.game.failed) for item in records),
             "total_games": len(records),
             "state": _state_body(records, call_index=call_count),
             "games": [{"coordinate": list(item.coordinate), "mirror": item.mirror,
@@ -399,6 +402,27 @@ def _progress(root: Path, records: Sequence[_Game], pilot: object,
     # different state without colliding with an earlier immutable receipt.
     _publish(root / f"progress-{call_count:08d}-{_sha(body)[:16]}.json", body)
     return body
+
+
+def _quarantine_refusal(root: Path, records: Sequence[_Game], chosen: Sequence[_Game],
+                        row: Mapping[str, object], call_index: int) -> None:
+    """Keep a failed provider call from discarding unrelated, independent deals.
+
+    Do not invent a move or retry. Its incomplete deal cannot contribute a
+    paired score, so do not spend on that deal's remaining mirror either.
+    Already completed games and every earlier call remain intact.
+    """
+    coordinates = {item.coordinate for item in chosen}
+    reason = f"provider refusal at call {call_index}: {row.get('error')}"
+    affected = []
+    for item in records:
+        if item.coordinate in coordinates and not item.game.complete and not item.game.failed:
+            item.game.fail(reason)
+            affected.append({"coordinate": list(item.coordinate), "mirror": item.mirror})
+    _publish(root / f"refusal-{call_index:08d}.json", {
+        "schema": RESULT_SCHEMA + "-refusal", "call_index": call_index,
+        "arm": row["arm"], "packet_hashes": row["packet_hashes"],
+        "reason": reason, "quarantined": affected, "retry": False})
 
 
 def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
@@ -435,13 +459,14 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                         if item.coordinate in wave_coordinates
                         and item.mirror == mirror]
                 cycle = 0
-                while any(not item.game.complete for item in wave):
+                while any(not item.game.complete and not item.game.failed for item in wave):
                     processed_coordinates: set[tuple[str, int, int]] = set()
                     priority = (ARMS if cycle % 2 == 0 else tuple(reversed(ARMS)))
                     for arm in priority:
                         if arm == "batch4":
                             eligible = [item for item in sorted(wave, key=lambda x: (x.coordinate, x.mirror))
-                                        if not item.game.complete and item.coordinate not in processed_coordinates
+                                        if not item.game.complete and not item.game.failed
+                                        and item.coordinate not in processed_coordinates
                                         and game.agent_for_team(item.mirror, item.game.acting_team) == 0]
                             for start in range(0, len(eligible), MAX_BATCH):
                                 chosen = eligible[start:start + MAX_BATCH]
@@ -449,8 +474,11 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                                 row, direct = pilot.call("batch4", call_index, packets)
                                 row = _validate_call_row(row, "batch4", call_index, packets)
                                 if not row.get("accepted"):
-                                    return _progress(root, records, pilot, status="stopped-on-refusal",
-                                                     error=row.get("error"), call_count=call_index)
+                                    _quarantine_refusal(root, records, chosen, row, call_index)
+                                    call_index += 1
+                                    _progress(root, records, pilot, status="running-with-refusals",
+                                              call_count=call_index)
+                                    continue
                                 responses = _responses(row, packets, direct)
                                 _preflight_responses(packets, responses)
                                 for item, response in zip(chosen, responses, strict=True):
@@ -464,7 +492,7 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                                 call_index += 1
                         else:
                             for item in sorted(wave, key=lambda x: (x.coordinate, x.mirror)):
-                                if item.game.complete or item.coordinate in processed_coordinates:
+                                if item.game.complete or item.game.failed or item.coordinate in processed_coordinates:
                                     continue
                                 if game.agent_for_team(item.mirror, item.game.acting_team) != 1:
                                     continue
@@ -472,8 +500,11 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                                 row, direct = pilot.call("compact1", call_index, (packet,))
                                 row = _validate_call_row(row, "compact1", call_index, (packet,))
                                 if not row.get("accepted"):
-                                    return _progress(root, records, pilot, status="stopped-on-refusal",
-                                                     error=row.get("error"), call_count=call_index)
+                                    _quarantine_refusal(root, records, (item,), row, call_index)
+                                    call_index += 1
+                                    _progress(root, records, pilot, status="running-with-refusals",
+                                              call_count=call_index)
+                                    continue
                                 response = _responses(row, (packet,), direct)
                                 _preflight_responses((packet,), response)
                                 item.ready.response = response[0]
@@ -488,13 +519,17 @@ def run_gameplay(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
         _progress(root, records, pilot, status="stopped", error=f"{type(exc).__name__}: {exc}",
                   call_count=call_index)
         raise
-    if not all(item.game.complete for item in records):
+    if not all(item.game.complete or item.game.failed for item in records):
         return _progress(root, records, pilot, status="stopped", call_count=call_index)
-    result = {"schema": RESULT_SCHEMA, "status": "paired-gameplay-complete",
+    failed_games = sum(bool(item.game.failed) for item in records)
+    result = {"schema": RESULT_SCHEMA,
+              "status": ("paired-gameplay-panel-complete-with-refusals" if failed_games
+                         else "paired-gameplay-complete"),
               "interpretation": "Matched batch4-vs-compact1 play-only paired gameplay; both Luna agents are real and mirror assignments swap teams. No MC arm, rollout-enabled arm, or strength claim.",
               "panel_manifest_sha256": manifest_sha, "root_split_roster": roster,
               "caller_sha256": _caller_sha(), "games": len(records),
-              "completed_games": len(records), "call_count": call_index,
+              "completed_games": sum(item.game.complete for item in records),
+              "failed_games": failed_games, "call_count": call_index,
               "arms": list(ARMS), "mirror_order": [0, 1],
               "transport": {"policy_mode": "play-only", "prompt_profile": "baseline",
                           "model": game.MODEL, "reasoning_effort": "medium",

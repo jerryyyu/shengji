@@ -1679,6 +1679,17 @@ class SplitSelector:
     def __call__(self, block: Block) -> np.ndarray:
         return keys_mask(block.deal_key, self._keys)
 
+    def selects_any(self, deal_keys: Sequence[str]) -> bool:
+        """Whether any of ``deal_keys`` is in this part.
+
+        Answered from the store's recorded keys, so a caller can skip a
+        block without decoding it. A shard whose keys are all in another
+        part cannot contribute a row here.
+        """
+        if not self._keys.size:
+            return False
+        return bool(keys_mask(np.asarray(list(deal_keys), dtype=str), self._keys).any())
+
 
 def split_mask(block: Block, assignment: Mapping[str, str], part: str) -> np.ndarray:
     """Rows of ``block`` whose ``deal_key`` is assigned to ``part``."""

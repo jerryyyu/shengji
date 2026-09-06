@@ -419,7 +419,11 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
             "target_level", "utility", "ply", "role_attacker", "points_so_far",
             "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
     out: dict[str, list] = {k: [] for k in keys}
-    for block in store.iter_blocks():
+    # A shard holds one deal and the split is by deal, so a selector that can
+    # answer from recorded keys lets us decline most shards without decoding.
+    selects_any = getattr(mask_fn, "selects_any", None)
+    skip = (lambda deal_keys: not selects_any(deal_keys)) if selects_any else None
+    for block in store.iter_blocks(skip=skip):
         sel = np.flatnonzero(mask_fn(block))
         if not sel.size:
             continue

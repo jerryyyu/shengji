@@ -253,6 +253,20 @@
       "host": "ubuntu-32gb-hel1-1",
       "git_head": "9b059ff4ba40ba9a85810020f2e8340a0d856e4c",
       "note": "Run F teacher trajectories: Run E recipe (N90/R900 3x worlds, explore 0.1/k2, wide-ballot knobs, --widen union, --round-mix sampled, rank/banker diverse), 16,000 rounds, out /root/traj-out/runF on shengji-cloud. REGISTERED BY THE RUN ITSELF at launch 2026-09-06 08:16Z, but only in that host's working copy; committed here so the canonical registry reflects a window that is really dealt. Currently PAUSED at 179/8000 clusters with shards preserved, host handed to Codex; resumes under the same name."
+    },
+    {
+      "name": "traj-s65260904-95a09f059125",
+      "purpose": "trajectory",
+      "seed0": 65260904,
+      "clusters": 8000,
+      "span": [
+        65260904,
+        65268904
+      ],
+      "created_at": "2026-09-06T18:26:41+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "e5fb03ab2487d61123f7b3e945a421018f54feaa",
+      "note": "Run F2: Run E recipe (N90/R900) under the compiled engine, replacing the pure-Python Run F remainder (issue #272). registered by the run itself on start 2026-09-06 18:26:41 UTC"
     }
   ]
 }

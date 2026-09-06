@@ -475,9 +475,16 @@ RANK_REGRET_DEFINITION = (
     "rank_regret_points is the untransformed mean-points regret")
 #: the k of the top-k ranking metrics.  ``cwv_shortlist`` keeps
 #: ``alternatives = 4`` net-ranked actions plus production's incumbent and
-#: hands that SET to the unchanged MC-LCB search, so the quantity the
-#: shortlist consumes is a top-k set, not a top-1 pick; k = 4 is the
-#: measured design, 1 / 2 / 8 bracket it.
+#: hands that SET to the unchanged MC-LCB search, so the SHAPE the shortlist
+#: consumes is a top-k set rather than a top-1 pick; k = 4 mirrors the
+#: measured design and 1 / 2 / 8 bracket it.  These metrics are a
+#: BALLOT-SCOPED PROXY for that shape, NOT the shortlist's own quantity:
+#: they rank the decision's stored ballot candidates (mean ~7.5 actions),
+#: whereas the shortlist ranks EVERY LEGAL action (mean ~1,371, max ~5e5)
+#: and unions production's incumbent, which a CandidateSet does not retain.
+#: Measured 2026-09-06: the A+B+C over A+B advantage VANISHES at k = 4 on
+#: all four labelled holdouts, so this proxy did not reproduce the sealed
+#: shortlist result; do not read it as the shortlist's offline predictor.
 DEFAULT_RANK_KS = (1, 2, 4, 8)
 RANK_AT_K_DEFINITION = (
     "rank_regret_at_k = U(E[points])_best - E[U(E[points])_best-among-the-net's-top-k]: the "
@@ -488,6 +495,10 @@ RANK_AT_K_DEFINITION = (
     "rank_regret_at_1 == rank_regret exactly.  k >= the decision's candidate count gives 0.  "
     "Like rank_regret these are U(E[points]) -- the bracket transform of the search's MEAN "
     "points, an MC-ranking proxy, NOT E[U]. "
+    "SCOPE: these rank the decision's STORED BALLOT candidates only, and union no incumbent, "
+    "so they are a BALLOT-SCOPED PROXY for a top-k consumer rather than an exhaustive "
+    "full-legal-action quantity; see CONSUMERS for which designs that proxy does and does "
+    "not stand in for. "
     "rank_recall_at_k = P(a search argmax is inside the net's top-k) under the same uniform "
     "tie-break, where the search's argmax set is every candidate whose MEAN equals the "
     "record's best mean (the tie rule rank_top1 already uses); rank_recall_at_1 == rank_top1. "
@@ -514,8 +525,11 @@ CONSUMERS = {
         #: pick is measured by the top-1 ones.
         "top_k_consumers": ["shortlist (train.cwv_shortlist): keeps alternatives = 4 "
                             "net-ranked actions PLUS production's incumbent and hands that "
-                            "SET to the unchanged MC-LCB search -- rank_regret_at_4 / "
-                            "rank_recall_at_4 are its offline quantity",
+                            "SET to the unchanged MC-LCB search.  rank_regret_at_4 / "
+                            "rank_recall_at_4 share its SHAPE but are a BALLOT-SCOPED PROXY, "
+                            "not its quantity: ballot-only (no exhaustive legal enumeration) "
+                            "and no incumbent union.  Measured 2026-09-06: the proxy does NOT "
+                            "reproduce the sealed shortlist checkpoint contrast",
                             "netroll (train.net_rollout) when it shortlists"],
         "top_1_consumers": ["one-ply (ai.cwv_policy CompleteWorldEvaluator): plays the net's "
                             "argmax -- rank_regret / rank_top1",
@@ -523,6 +537,14 @@ CONSUMERS = {
                             "by the net's top pick -- rank_regret / rank_top1"],
         "rank_ks": list(DEFAULT_RANK_KS),
         "recommended_select_metric_topk": "val_rank_regret_at_4",
+        #: the top-k metrics share the SHAPE of a top-k consumer but are
+        #: ballot-scoped and union no incumbent, so they are a proxy, not
+        #: the consumer's own quantity.  Measured 2026-09-06: the proxy did
+        #: not reproduce the sealed shortlist checkpoint contrast.
+        "select_metric_scope": ("ballot-scoped proxy: ranks the stored ballot candidates "
+                                "(mean ~7.5 actions), unions no incumbent, and does not "
+                                "enumerate the full legal action set (mean ~1,371); the "
+                                "in-search screen remains the selector of record"),
     },
     "points_head": {
         "quantity": "final attacker points (aux head on the mlp trunk, target points / 100)",

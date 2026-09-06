@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-06**. This file defines the current callable-policy
+Last reconciled: **2026-09-06 (K8 screen)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -61,7 +61,7 @@ ever differ.
 | learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. No learned checkpoint is production-authorized. |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
-| `CWVShortlistBot` (DEV harness class, no global policy name) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; four alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. | A+B+C W32 positive exploratory screen; optimized implementation reviewed on its branch, not merged/deployed. See below. |
+| `CWVShortlistBot` (DEV harness class, no global policy name) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. | A+B+C W32/K4 and K8 are exploratory screens; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
 
 Example local selection:
 
@@ -136,7 +136,7 @@ wins**. Intervals below are 95% paired-deal bootstrap intervals.
 Static encoding and bounded successor/tensor reuse reduced W32 decision wall
 by **64.9% (2.849× faster)**. All 256 normalized saved cluster traces matched;
 the optimized replay is engineering evidence, not 256 new independent deals.
-The parallel job became 2.01× faster; that is distinct from decision latency.
+The parallel job became 2.006× faster; that is distinct from decision latency.
 
 The like-for-like contrasts against W32 matter more than comparing table
 point estimates:
@@ -156,7 +156,8 @@ payoff here**, not proof that more search never helps. Comparisons share
 opened DEV deals and a common production opponent; they are not direct
 candidate-vs-candidate duels, independent confirmation, or evidence across all
 trump ranks. Engineering preserves the positive screen at much lower cost;
-equal-compute superiority and production readiness remain unproven.
+equal-compute superiority and production readiness remain unproven. The
+optimization is opt-in only; no production policy or default changed.
 
 Full source/checkpoint identities, raw-artifact locations, counters and the
 MC2 inherited-summary-label caveat are in the
@@ -165,6 +166,20 @@ Use that A+B+C readout, not the older A+B screen or a directory named `3x`, for
 this milestone. [Next steps](RL_PLAN.md#current-decision-tree) and
 [shortlist tracker #248](https://github.com/jerryyyu/shengji/issues/248) keep
 policy scaling separate from engineering. No production configuration changed.
+
+### K8 wider-shortlist screen
+
+The completed K8 screen used the same A+B+C checkpoint, W32/N30/R300,
+batch-128 static encoding/reuse, and 256 paired rank-2 deals (512 rounds),
+but admitted eight alternatives rather than K4's four. K8 versus production
+was **+0.08203** signed levels/round (95% CI `[+0.00972, +0.15430]`). The
+direct K8 − K4 contrast was **−0.05664** (95% CI `[-0.11328, -0.00391]`;
+17 favorable, 32 unfavorable, 207 tied clusters). Keep K4; do not escalate
+to K16. K8 took 16m10.35s at 15.76 mean cores, but its wider shortlist is a
+different policy, so this is not a pure timing A/B. This remains an
+exploratory DEV screen with no promotion or deployment authority. The
+[authoritative readout](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557759351)
+records the result and archive identity.
 
 ## Search and heuristic behavior that survives
 
@@ -205,6 +220,7 @@ production claims.
 | **PT1** | Clean negative despite high action-flip dose: exact teacher guidance did not produce the required utility improvement. |
 | **PT-Full** | A single true-world collapse was bad; repeated true-world search recovered most of that loss but did not beat the public ensemble. |
 | **C0** | Fixed perfect-information consumer variants all lost to both required parents; local bare-point symptom fixes did not transport. |
+| **K8 shortlist** | Exploratory DEV screen: +0.08203 versus production (95% CI `[+0.00972,+0.15430]`), but −0.05664 directly versus K4 (95% CI `[-0.11328,-0.00391]`; 17 favorable / 32 unfavorable / 207 tied). Keep K4; no K16 escalation or deployment. |
 | **Value-Afterstate V0** | `REFUSE_MECHANICS_OR_NEGATIVE_CONTROL` (2026-08-28, source `d9ad99f6`, independently verified): the first afterstate value screen refused on its own mechanics/negative-control gates; no value signal was established. |
 | **Value-Afterstate V1 P1** | `SELECT_NONE_NO_ACTION_ADVANTAGE` (2026-08-29, reproduced exactly): the natural arm was the worst of four, beaten by two of its own negative controls. A clean learning null that motivated the V2 absolute-leaf redesign. |
 | **PT-Sol0 / PT-Luna0** | First reviewed flexible-planner milestone. On the same 26 full-round roots and 52 mirrored treatment roles, Sol beat exact production arm A by `+17/26` signed levels per role and Luna by `+5/13`; both also beat B and C0-S on average. Luna was `-7/26` versus Sol, so Sol remains the quality teacher while Luna is the cheaper scaling candidate. This is open-DEV privileged-information mechanism evidence—not a registered policy, fresh strength result, or deployment authority. |

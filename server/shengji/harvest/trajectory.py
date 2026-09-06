@@ -1868,6 +1868,11 @@ def runtime_receipt(*, argv, workers: int, resume: bool, merge: bool,
                 resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss),
         },
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        # generation is ~99% search, so the engine that ran it is the run's
+        # cost story. manifest.json already carries it as a code-identity
+        # key; it is repeated here, and printed, because the identity block
+        # is not what anyone reads while a 16-hour run is in flight.
+        "fast_engine": bool(environment_identity()["resolved"]["fast_engine"]),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -2109,7 +2114,8 @@ def main(argv: list[str] | None = None) -> int:
           f"widened={counts['widen_decisions']} widen_added={counts['widen_added']} "
           f"short={counts['short_searches']} wall={wall}s "
           f"decisions/s={round(counts['decisions'] / wall, 3) if wall else None} "
-          f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f}",
+          f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f} "
+          f"fast_engine={'on' if runtime.get('fast_engine') else 'OFF'}",
           flush=True)
     for shard in manifest["shards"]:
         print(f"  {shard['path']}: records={shard['records']} sha256={shard['sha256']}",

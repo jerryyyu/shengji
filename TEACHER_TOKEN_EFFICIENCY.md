@@ -5,6 +5,27 @@ collection. This is a bounded diagnostic, not a new scientific collection,
 policy promotion, or repeat of the historical teacher-strength screen.
 Tracking: [#216](https://github.com/jerryyyu/shengji/issues/216).
 
+## Current state — September 6
+
+The [fresh 52-deal diagnostic](server/runs/luna_fresh_quality_result_20260906.md)
+is complete: 208 sampled positions, 208 Batch4 and 207 Compact1 accepted
+labels. Batch4 used about 2.98x fewer reported tokens per accepted decision;
+the fixed-continuation quality difference is inconclusive, not equivalence.
+Keep the 26 fit deals (104 positions with both labels) separate from the 26
+validation deals. These are action labels on MC-generated states, not new
+complete Luna games or value targets. Failures and both arms remain retained.
+
+The [direct paired-gameplay source](server/runs/luna_quality_gameplay_design_20260906.md)
+is merged in #270, but its forecast of roughly 45.4M tokens/23 hours is not
+a launch budget. A separate [historical-teacher bridge](server/runs/luna_historical_bridge_20260906.md)
+replays the original rollout-enabled teacher's saved choices: 52 role games,
+26 independent deals, 170 selected positions. This avoids paying to regenerate
+that reference; it does not make the old games fresh validation data. The
+new compact responses and common-continuation comparison remain to be run.
+
+The sections below retain the earlier four-deal pilot and its original commands
+for provenance. Their "next"/"pending" wording is historical, not today's queue.
+
 ## Retained-run profile
 
 The successful `pt-luna-rpc-isolated-b0b1bd95-r1` dataset contains 32 complete

@@ -519,7 +519,7 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                                    "horizon": len(root_leaf.history) + 1}], stats)[0]
 
     def _lockstep_values(self, rnd, seat, worlds, candidates, *, stage,
-                         sessions=None):
+                         sessions=None, baseline_values=None):
         del sessions
         if self.EXACT_ENDGAME:
             raise DoubleShortlistError(
@@ -543,10 +543,21 @@ class CWVDoubleShortlistBot(CWVShortlistBot):
                  "inner_tensor_completions": 0,
                  "inner_tensor_peak_entries": 0,
                  "one_extra_trick_horizon": len(rnd.history) + 2}
-        values = np.empty((n_worlds, n_candidates), dtype=np.float64)
+        if baseline_values is None:
+            values = np.empty((n_worlds, n_candidates), dtype=np.float64)
+        else:
+            values = np.asarray(baseline_values, dtype=np.float64)
+            if values.shape != (n_worlds, n_candidates) or not np.isfinite(values).all():
+                raise DoubleShortlistError(
+                    "baseline continuation matrix is misaligned or non-finite")
+            # The caller has already paid for every flat continuation.  Only
+            # the guided prefix below may construct and replace a leaf.
+            values = values.copy()
         guided_limit = stats["actual_inner_worlds"]
         guided = []
         for wi, (hands, buried) in enumerate(worlds):
+            if baseline_values is not None and wi >= guided_limit:
+                continue
             cache = (WorldSuccessorCache(rnd, seat, hands, buried)
                      if type(self.rollout_policy) is HeuristicBot else None)
             for ci, candidate in enumerate(candidates):

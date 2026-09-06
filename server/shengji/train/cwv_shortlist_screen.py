@@ -15,6 +15,7 @@ from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_selective_depth import CWVSelectiveDepthBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -111,6 +112,9 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            selective = getattr(self.bot, "last_selective_depth", None)
+            if selective is not None and len(self.decisions) > before:
+                self.decisions[-1]["cwv_selective_depth"] = copy.deepcopy(selective)
             record = getattr(self.bot, "last_decision_record", None)
             if record is not None and len(self.decisions) > before:
                 allocation = record.get("alloc")
@@ -139,9 +143,34 @@ def _selection_allocation(config: dict) -> str:
     return allocation
 
 
+def _selective_depth(config: dict) -> dict | None:
+    selective = config.get("selective_depth")
+    if selective is None:
+        return None
+    if (type(selective) is not dict
+            or set(selective) != {"gate", "z", "inner_legal_limit", "raw_follow_limit"}
+            or selective["gate"] != "paired-flat-gap-v1"
+            or type(selective["raw_follow_limit"]) is not int
+            or selective["raw_follow_limit"] != 4096
+            or type(selective["z"]) not in (int, float)
+            or not math.isfinite(selective["z"]) or selective["z"] <= 0
+            or type(selective["inner_legal_limit"]) is not int
+            or selective["inner_legal_limit"] < 1):
+        raise ValueError("invalid selective-depth gate recipe")
+    inner = config.get("double_shortlist")
+    if (config.get("arm") != "learned" or type(inner) is not dict
+            or inner.get("mode") != "learned"
+            or config.get("selection_allocation", "uniform") != "uniform"):
+        raise ValueError("selective depth requires learned inner guidance and uniform selection")
+    if type(inner.get("worlds")) is not int or inner["worlds"] != 4:
+        raise ValueError("selective depth requires four guided selection worlds")
+    return selective
+
+
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
     allocation = _selection_allocation(config)
+    selective = _selective_depth(config)
     flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
     if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
@@ -170,7 +199,12 @@ def make_side(config: dict, side: str, seed: int):
     if inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
-        bot = CWVDoubleShortlistBot(evaluator, **kwargs,
+        cls = CWVDoubleShortlistBot
+        if selective is not None:
+            cls = CWVSelectiveDepthBot
+            kwargs.update(gate_z=selective["z"],
+                          inner_legal_limit=selective["inner_legal_limit"])
+        bot = cls(evaluator, **kwargs,
                                    inner_mode=inner["mode"],
                                    inner_worlds=inner["worlds"],
                                    inner_alternatives=4,
@@ -197,6 +231,9 @@ def work_counters(bots):
             out[name] = out.get(name, 0) + int(value)
         for key, value in getattr(bot, "double_shortlist_counts", {}).items():
             name = "double_" + key
+            out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, "selective_depth_counts", {}).items():
+            name = "selective_" + key
             out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
@@ -233,7 +270,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "selective_depth"):
         if key in config:
             recipe[key] = config[key]
     if "selection_allocation" in config:
@@ -358,6 +395,12 @@ def summary_for(shards, config):
         allocation = _selection_allocation(config)
         result["selection_allocation"] = allocation
         result["allocation_label"] = f"{allocation}-root-selection"
+    if "selective_depth" in config:
+        result["selective_depth"] = _selective_depth(config)
+        result["arm_description"] = (
+            "flat exhaustive learned root shortlist; flat-selection uncertainty "
+            "gates one extra trick of width-limited learned guidance in sampled "
+            "worlds; independent root MC-LCB report")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -400,6 +443,10 @@ def main(argv=None):
     parser.add_argument("--inner-batch-size", type=int, default=128)
     parser.add_argument("--inner-reuse-successors", action="store_true",
                         help="reuse exact inner successor leaves and evaluator inputs")
+    parser.add_argument("--selective-depth", action="store_true",
+                        help="gate learned inner guidance using ordinary selection evidence")
+    parser.add_argument("--inner-legal-limit", type=int,
+                        help="selective only: skip guidance when the complete inner legal set exceeds this (default128)")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
     parser.add_argument("--clusters", type=int, default=4)
@@ -435,6 +482,16 @@ def main(argv=None):
             parser.error("--selection-allocation adaptive is incompatible with --inner-mode")
     if args.inner_reuse_successors and args.inner_mode is None:
         parser.error("--inner-reuse-successors requires --inner-mode")
+    if args.selective_depth:
+        if (args.arm != "learned" or args.inner_mode != "learned"
+                or args.selection_allocation not in (None, "uniform")):
+            parser.error("--selective-depth requires learned inner guidance and uniform selection")
+        if args.inner_legal_limit is not None and args.inner_legal_limit < 1:
+            parser.error("--inner-legal-limit must be positive")
+        if args.inner_worlds != 4:
+            parser.error("--selective-depth requires --inner-worlds 4")
+    elif args.inner_legal_limit is not None:
+        parser.error("--inner-legal-limit requires --selective-depth")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
         parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
     trump_ranks = None
@@ -488,6 +545,13 @@ def main(argv=None):
         }
         if args.inner_reuse_successors:
             config["double_shortlist"]["reuse_successors"] = True
+    if args.selective_depth:
+        config["selective_depth"] = {
+            "gate": "paired-flat-gap-v1", "z": 1.7,
+            "raw_follow_limit": 4096,
+            "inner_legal_limit": (128 if args.inner_legal_limit is None
+                                  else args.inner_legal_limit),
+        }
     if args.baseline != "production":
         config["baseline"] = args.baseline
     if args.selection_allocation is not None:

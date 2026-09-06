@@ -298,3 +298,39 @@ The bounded read-only comparison driver is retained at
 mirrored shards, reconciles their utility means to stored summaries, pairs deal
 coordinates and reuses the existing screen's bootstrap (1,000 replicates,
 seed20260904); no model/rollout recomputation or partial outcome selection.
+
+### Remaining fixed-dose arms queued behind the replay
+
+`cwv-scaling-tail-20260906.service` waits for the optimized-W32 unit to end.
+Before starting any new arm it requires the completed W32 summary and compares
+all saved mirrored traces against the original reference. The comparison keeps
+chosen actions, recorded shortlist means, report statistics/seeds, history
+digests, outcomes, sampler/full-rollout counts and neural row/batch counts.
+Only named timing fields and the new encoding/reuse flags/cache telemetry are
+ignored. Eight in-memory mutations of actual retained evidence (including play,
+history, score, seed, and batch count changes) all fail this comparison; altered
+timings/opt-in metadata are accepted. This reads files, not another model or
+rollout evaluation. It does not claim that the old shards stored every raw
+per-action neural score; those exact-score comparisons are the separate profile.
+
+The source and the `compare_engineering_replay.py`, `compare_completed.py`,
+`launch_scaling_tail_after_w32.sh` analysis/queue helpers are retained under
+`/root/cwv-successor-profile.x94hty/`. The original Strength reference summary
+and config at `/root/cwv-shortlist-abc-20260905.WZyZtH/learned-3x/` match the
+Mini archive's SHA-256s. No existing run, source file or artifact is rewritten.
+
+The fixed order is:
+
+1. Read the completed production-x10 and optimized-W32 paired comparison.
+2. W64/N30/R300 -> `w64-paired/`.
+3. Restore W32 and use N60/R600 -> `w32-mc2-paired/`.
+4. Read completed summaries/shards and print their paired comparisons.
+
+Both new arms retain the same reviewed source, ABC checkpoint, 256 deal
+coordinates, four alternatives, batch128, static encoding/reuse, and 16 workers
+with one native thread each. This is not a parameter sweep: no outcome chooses
+the next setting. `scaling-tail.log` identifies each phase and carries the
+existing completed-pair percentage/ETA plus process CPU/RSS/time reports.
+The tail's 6-hour outer host limit includes time spent waiting for W32. Any
+failure or saved-trace mismatch stops the tail without advancing; every
+completed pair remains on disk for the existing identical-recipe recovery.

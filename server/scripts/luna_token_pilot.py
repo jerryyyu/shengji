@@ -24,6 +24,12 @@ from shengji.luna.turn import DecisionPacket, PhaseContext, TurnDriver, Usage
 
 
 ARMS = {"baseline": 1, "compact1": 1, "batch2": 2, "batch4": 4}
+POPULATIONS = ("pilot4", "scale16")
+SCALE16_SECRET = hashlib.sha256(
+    b"teacher-token-scale16-20260906-v1").digest()
+SCALE16_COORDINATES = tuple(
+    (rank, index % 2, 0) for index, rank in enumerate(engine.RANKS)
+) + (("2", 1, 1), ("7", 0, 1), ("A", 1, 1))
 FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens",
           "reasoning_output_tokens", "total_tokens", "wall_ms")
 
@@ -103,6 +109,10 @@ class Pilot:
             raise ValueError("pilot directory must be private (mode 700)")
         self.rows = []
         self.charged = 0
+        self.completed_games = 0
+        self.completed_rounds = 0
+        self.target_games = (16 if getattr(args, "population", "pilot4")
+                             == "scale16" else 4)
         self.created = time.time()
         self.deadline_ns = time.monotonic_ns() + args.wall_seconds * 1_000_000_000
         self.base = CodexExecPlannerTransport(
@@ -122,13 +132,21 @@ class Pilot:
                                  Path(engine.__file__))}
 
     def configure(self, inputs):
+        population = getattr(self.args, "population", "pilot4")
         config = {"mode": self.args.mode, "arms": self.args.arms,
+                  "population": population,
+                  "target_games": self.target_games,
                   "tokens": self.args.tokens, "wall_seconds": self.args.wall_seconds,
                   "call_seconds": self.args.call_seconds, "runtime": self.base.runtime,
                   "source": self.source, "inputs": inputs,
                   "model": self.base.model, "effort": self.base.reasoning_effort,
                   "provider_concurrency": 1, "claim": "opened-DEV diagnostic",
                   "created_unix": self.created}
+        if self.args.mode == "rounds":
+            # In rounds mode inputs are root hashes. Snapshot inputs are
+            # decision packet hashes and must not be mislabeled as roots.
+            config["population_count"] = len(inputs)
+            config["root_hashes"] = list(inputs)
         path = self.root / "config.json"
         if path.exists():
             old = load(path)
@@ -165,8 +183,13 @@ class Pilot:
         remaining = (self.deadline_ns - time.monotonic_ns()) / 1e9
         if self.charged + reserve > self.args.tokens or remaining < self.args.call_seconds:
             raise RuntimeError("pilot admission budget exhausted; completed calls retained")
+        completed_rounds = getattr(self, "completed_rounds", 0)
+        target_games = getattr(self, "target_games", 4)
         print(json.dumps({"event": "call-start", "arm": arm, "batch": index,
-                          "decisions": len(packets), "reported_or_reserved_tokens": self.charged}),
+                          "decisions": len(packets),
+                          "completed_rounds": completed_rounds,
+                          "target_games": target_games,
+                          "reported_or_reserved_tokens": self.charged}),
               flush=True)
         row = {"arm": arm, "index": index, "packet_hashes": [p.sha256 for p in packets],
                "packets": [p.payload() for p in packets], "accepted": False,
@@ -212,17 +235,32 @@ class Pilot:
         print(json.dumps({"event": "call-finished", "arm": arm, "batch": index,
                           "accepted": row["accepted"], "error": row["error"],
                           "elapsed_seconds": row["elapsed_seconds"],
+                          "completed_rounds": getattr(self, "completed_rounds", 0),
+                          "target_games": getattr(self, "target_games", 4),
                           "reported_or_reserved_tokens": self.charged,
                           "summary": summarize(self.rows)[arm]}), flush=True)
         return row, responses
 
     def finish(self, extra):
+        population = getattr(self.args, "population", "pilot4")
+        completed_games = int(extra.get("completed_games",
+                                       getattr(self, "completed_games", 0)))
+        completed_rounds = int(extra.get("completed_rounds",
+                                         getattr(self, "completed_rounds",
+                                                 completed_games)))
+        target_games = int(extra.get("target_games", getattr(
+            self, "target_games", 16 if population == "scale16" else 4)))
         result = {"schema": "luna-token-pilot-v1", "source": self.source,
                   "arms": summarize(self.rows), "charged_tokens": self.charged,
                   "wall_seconds": time.time() - self.created,
-                  "interpretation": "Exploratory; four independent games, not 16 independent games. "
+                  "population": population,
+                  "completed_games": completed_games,
+                  "completed_rounds": completed_rounds,
+                  "target_games": target_games,
+                  "interpretation": (f"Exploratory; {target_games} independent games, "
+                    f"not {target_games * 4} independent games. "
                     "Reported raw tokens are not subscription quota or billing estimates. "
-                    "The play-only collector is not the historical rollout-enabled teacher.",
+                    "The play-only collector is not the historical rollout-enabled teacher."),
                   **extra}
         path = self.root / "result.json"
         if path.exists():
@@ -270,10 +308,22 @@ def driver_packet(driver):
 def rounds(pilot):
     if len(pilot.args.arms) != 1:
         raise ValueError("full-round invocation has exactly one arm")
-    secret = hashlib.sha256(b"teacher-token-full-round-pilot-2026-09-05-v1").digest()
-    coords = [("2", 0, 0), ("5", 1, 0), ("9", 0, 0), ("K", 1, 0)]
+    population = getattr(pilot.args, "population", "pilot4")
+    if population == "scale16":
+        secret = SCALE16_SECRET
+        coords = list(SCALE16_COORDINATES)
+    elif population == "pilot4":
+        secret = hashlib.sha256(
+            b"teacher-token-full-round-pilot-2026-09-05-v1").digest()
+        coords = [("2", 0, 0), ("5", 1, 0), ("9", 0, 0), ("K", 1, 0)]
+    else:
+        raise ValueError("unknown pilot population")
+    if population == "scale16" and pilot.args.arms != ["batch4"]:
+        raise ValueError("scale16 requires exactly one batch4 arm")
     games = [engine.LunaSelfPlayGame(engine.build_root(secret, c), coordinate=c,
                                     seed_secret=secret) for c in coords]
+    target_games = len(games)
+    pilot.target_games = target_games
     pilot.configure([g.root_sha256 for g in games])
     if list(pilot.root.glob("*-0*.json")):
         raise ValueError("round pilot already started; retain output, do not replay calls")
@@ -282,29 +332,51 @@ def rounds(pilot):
     completed = set()
     arm = pilot.args.arms[0]
     index = 0
-    while len(completed) < len(games):
-        live = [i for i, g in enumerate(games) if not g.complete]
-        for start in range(0, len(live), ARMS[arm]):
-            ids = live[start:start + ARMS[arm]]
-            packets = [driver_packet(drivers[i]) for i in ids]
-            row, responses = pilot.call(arm, index, packets)
-            index += 1
-            if not row["accepted"]:
-                return pilot.finish({"status": "stopped-on-refusal", "completed_rounds": len(completed)})
-            for i, response in zip(ids, responses, strict=True):
-                slots[i].response = response
-                drivers[i].step()  # Full existing validation + engine transition + team memory.
-                if games[i].complete:
-                    completed.add(i)
-                    publish(pilot.root / f"game-{i}-terminal.json", games[i].terminal_receipt().payload())
-                    publish(pilot.root / f"game-{i}-trajectory.json", games[i].sealed_trajectory().body)
-            publish(pilot.root / f"state-{index:04d}.json",
-                    [{"coordinate": list(g.coordinate), "state": engine._state_snapshot(g.rnd),
-                      "memories": {str(t): m.payload() for t, m in d.memories.items()},
-                      "decision_index": d.decision_index} for g, d in zip(games, drivers, strict=True)])
+    # Scale16 is deliberately four sequential waves.  A provider call never
+    # mixes games from separate waves, and completed wave artifacts remain on
+    # disk if a later wave refuses or exhausts admission.
+    for wave_start in range(0, len(games), 4):
+        wave_ids = list(range(wave_start, min(wave_start + 4, len(games))))
+        while any(not games[i].complete for i in wave_ids):
+            live = [i for i in wave_ids if not games[i].complete]
+            for start in range(0, len(live), ARMS[arm]):
+                ids = live[start:start + ARMS[arm]]
+                packets = [driver_packet(drivers[i]) for i in ids]
+                row, responses = pilot.call(arm, index, packets)
+                index += 1
+                if not row["accepted"]:
+                    pilot.completed_games = len(completed)
+                    pilot.completed_rounds = len(completed)
+                    return pilot.finish({"status": "stopped-on-refusal",
+                                         "completed_rounds": len(completed),
+                                         "completed_games": len(completed),
+                                         "target_games": target_games})
+                for i, response in zip(ids, responses, strict=True):
+                    slots[i].response = response
+                    drivers[i].step()  # Full validation + engine transition + memory.
+                    if games[i].complete:
+                        completed.add(i)
+                        pilot.completed_games = len(completed)
+                        pilot.completed_rounds = len(completed)
+                        publish(pilot.root / f"game-{i}-terminal.json",
+                                games[i].terminal_receipt().payload())
+                        publish(pilot.root / f"game-{i}-trajectory.json",
+                                games[i].sealed_trajectory().body)
+                publish(pilot.root / f"state-{index:04d}.json",
+                        [{"coordinate": list(g.coordinate), "state": engine._state_snapshot(g.rnd),
+                          "memories": {str(t): m.payload() for t, m in d.memories.items()},
+                          "decision_index": d.decision_index}
+                         for g, d in zip(games, drivers, strict=True)])
     tokens = sum((r.get("usage") or {}).get("total_tokens", 0) for r in pilot.rows)
-    return pilot.finish({"status": "four-rounds-complete", "completed_rounds": 4,
-                         "completed_rounds_per_million_reported_tokens": 4e6 / tokens})
+    pilot.completed_games = len(completed)
+    pilot.completed_rounds = len(completed)
+    return pilot.finish({"status": ("four-rounds-complete" if population == "pilot4"
+                                     else "scale16-rounds-complete"),
+                         "completed_rounds": len(completed),
+                         "completed_games": len(completed),
+                         "target_games": target_games,
+                         "completed_rounds_per_million_reported_tokens":
+                             len(completed) * 1e6 / tokens if tokens else None})
 
 
 def main():
@@ -314,14 +386,21 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--codex-binary", type=Path, required=True)
     parser.add_argument("--arms", nargs="+", choices=ARMS, default=list(ARMS))
+    parser.add_argument("--population", choices=POPULATIONS, default="pilot4")
     parser.add_argument("--tokens", type=int, default=1_000_000)
     parser.add_argument("--wall-seconds", type=int, default=1200)
     parser.add_argument("--call-seconds", type=int, default=90)
     args = parser.parse_args()
-    if not 1 <= args.tokens <= 6_000_000 or not 1 <= args.wall_seconds <= 5400:
-        parser.error("small pilot only: at most 6M reported/reserved tokens and 90m")
+    max_wall = 5400 if args.population == "pilot4" else 10800
+    if not 1 <= args.tokens <= 6_000_000 or not 1 <= args.wall_seconds <= max_wall:
+        parser.error("pilot caps: at most 6M tokens and population wall cap")
+    if not 1 <= args.call_seconds <= 90:
+        parser.error("call timeout must be between 1 and 90 seconds")
     if len(set(args.arms)) != len(args.arms):
         parser.error("duplicate arms")
+    if args.population == "scale16" and (
+            args.mode != "rounds" or args.arms != ["batch4"]):
+        parser.error("scale16 requires rounds mode with exactly --arms batch4")
     pilot = Pilot(args)
     try:
         (snapshots if args.mode == "snapshots" else rounds)(pilot)

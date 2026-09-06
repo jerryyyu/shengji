@@ -100,7 +100,7 @@ from .data import (CACHE_WORKERS_CAP, DEAL_KEY_SCHEMA, PRIVACY_TRIALS, Block, Bl
                    Residency, Store, TrainDataError, cache_path, check_witness_every, collate,
                    default_cache_workers, default_resident_bytes, discover_store,
                    encoder_identity, ensure_caches, first_deals, physical_memory_bytes,
-                   split_counts, split_deals, split_mask)
+                   split_counts, split_deals, split_mask, SplitSelector)
 from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
                     ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
                     trunk_for)
@@ -886,7 +886,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
     assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
                              test_fraction=test_fraction)
-    masks = {part: (lambda b, p=part: split_mask(b, assignment, p)) for part in ("train", "val", "test")}
+    masks = {part: SplitSelector(assignment, part) for part in ("train", "val", "test")}
     n_rows = {part: 0 for part in masks}
     for block in store.iter_blocks():
         for part, fn in masks.items():

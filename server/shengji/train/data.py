@@ -1647,12 +1647,42 @@ def part_keys(assignment: Mapping[str, str], part: str) -> np.ndarray:
     return np.asarray(sorted(k for k, v in assignment.items() if v == part), dtype=str)
 
 
+def keys_mask(deal_key: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """Entries of ``deal_key`` present in ``keys``, which must be sorted and
+    unique as ``part_keys`` returns them.
+
+    Equivalent to ``np.isin(deal_key, keys)`` but binary-searches the sorted
+    keys instead of hashing them; on the training stores the hash dominates
+    the epoch, because every block pays it again.
+    """
+    if not keys.size:
+        return np.zeros(len(deal_key), dtype=bool)
+    pos = np.searchsorted(keys, deal_key)
+    np.clip(pos, 0, keys.size - 1, out=pos)
+    return keys[pos] == deal_key
+
+
+class SplitSelector:
+    """Membership test for one split part, with the key array built once.
+
+    ``split_mask`` rebuilds and rehashes the part's key array on every call,
+    which the batch iterators make once per block per epoch. Callers that
+    select the same part repeatedly should hold one of these instead.
+    """
+
+    __slots__ = ("part", "_keys")
+
+    def __init__(self, assignment: Mapping[str, str], part: str) -> None:
+        self.part = part
+        self._keys = part_keys(assignment, part)
+
+    def __call__(self, block: Block) -> np.ndarray:
+        return keys_mask(block.deal_key, self._keys)
+
+
 def split_mask(block: Block, assignment: Mapping[str, str], part: str) -> np.ndarray:
     """Rows of ``block`` whose ``deal_key`` is assigned to ``part``."""
-    keys = part_keys(assignment, part)
-    if not keys.size:
-        return np.zeros(block.n, dtype=bool)
-    return np.isin(block.deal_key, keys)
+    return keys_mask(block.deal_key, part_keys(assignment, part))
 
 
 def split_counts(assignment: Mapping[str, str]) -> dict[str, int]:

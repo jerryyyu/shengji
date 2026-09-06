@@ -118,6 +118,7 @@ from .data import (
     scan_deal_keys,
     split_deals,
     split_mask,
+    SplitSelector,
 )
 
 CACHE_SCHEMA = "shengji-cwv-cache-v1"
@@ -1094,6 +1095,6 @@ __all__ = [
     "check_witness", "collate", "compact_history", "cwv_encoder_identity", "deal_assignment",
     "ensure_caches", "expand_history", "expected_levels", "gather", "load_block",
     "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means",
-    "split_deals", "split_mask", "target_category", "tensors_of", "tensors_rows",
+    "split_deals", "split_mask", "SplitSelector", "target_category", "tensors_of", "tensors_rows",
     "world_conservation", "world_witness", "LEVEL_SUPPORT", "PT0_SUPPORT",
 ]

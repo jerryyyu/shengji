@@ -222,6 +222,17 @@
       "host": "shengji-cloud",
       "git_head": "ce68f6eda0768614ccc25267580521172e5bf96e",
       "note": "PR258 first fresh mixed-rank K4/ABC/W32 vs production screen; fixed cluster-modulo rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A, 20 clusters per rank and two mirrors. Allocated before launch under PR259 documented range; source-reviewed head recorded here, executing head recorded in launch/readout. No per-rank strength claim."
+    },
+    {
+      "name": "screen-cwv-double-ranks13-20260906",
+      "purpose": "screen",
+      "seed0": 91261164,
+      "clusters": 26,
+      "span": [91261164, 91261190],
+      "created_at": "2026-09-06T10:53:00Z",
+      "host": "shengji-cloud",
+      "git_head": "87552e9649627de002201d5a9c480c15beb57e18",
+      "note": "Reserved before dealing: three intentional matched arms on the SAME 26 clusters, learned-inner vs flat W32, uniform-inner vs flat W32, and flat W32 vs production. ABC checkpoint, K4+incumbent, rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A repeated twice, two mirrors. Source reviewed under PR264/265/266. Guidance 4/30 of selection/report worlds, one extra trick, per-world privileged simulation only. Not 78 independent deals; no cost-matched or production claim. See cwv_double_ranks13_dev_20260906.md."
     }
   ]
 }

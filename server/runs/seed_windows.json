@@ -1,6 +1,6 @@
 {
   "schema": "shengji-seed-windows-v1",
-  "_comment": "Append-only ledger of deal-seed windows [seed0, seed0 + clusters). Every trajectory / screen / calibration run registers its window on start and refuses an overlap (shengji/seeds.py; scripts/seed_windows.py list|check). Never edit or delete an entry; add a new one.",
+  "_comment": "Append-only ledger of deal-seed windows [seed0, seed0 + clusters). Every trajectory / screen / calibration run registers its window on start and refuses an overlap (shengji/seeds.py; scripts/seed_windows.py list|check). Never edit or delete an entry; add a new one.  RESERVED RANGE, no entry yet: [91260904, 91280904) is set aside for the RANK-DIVERSE strength screens (Jerry, 2026-09-06: measure strength outside rank 2). Those screens cycle the trump rank BY CLUSTER (ranks[cluster % len(ranks)]), so a run needs ONE CONTIGUOUS block and the ranks interleave inside it; do not carve this range per rank. The run registers its own window here on start, with its own name and its actual cluster count -- pre-registering a differently sized placeholder does NOT work, because reuse/resume matches on name AND seed0 AND clusters, so a 260-cluster run cannot claim a 1040-cluster reservation. Rank 2 keeps screen-90260904, which every existing shortlist result uses.",
   "windows": [
     {
       "name": "run-A",

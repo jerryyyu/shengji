@@ -2089,6 +2089,12 @@ def main(argv: list[str] | None = None) -> int:
               f"decisions={event['decisions']} total={event['total_decisions']}",
               flush=True)
 
+    # before anything is dealt, and flushed: a 16-hour run must not have to
+    # finish before it says which engine it is spending those hours in
+    _engine_on = environment_identity()["resolved"]["fast_engine"]
+    print(f"{SOURCE}: fast_engine={'on' if _engine_on else 'OFF'} "
+          f"workers={args.workers} rounds={args.rounds}", flush=True)
+
     try:
         manifest = generate(
             rounds=args.rounds, seed0=args.seed, out_dir=args.out,

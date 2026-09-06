@@ -152,7 +152,8 @@ def run_compare(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                 call_seconds: int = DEFAULT_CALL_SECONDS,
                 codex_binary: Path = Path("codex"),
                 pilot_factory: Callable[[object], object] | None = None,
-                require_population: bool = True) -> dict[str, object]:
+                require_population: bool = True,
+                continue_independent_refusals: bool = False) -> dict[str, object]:
     manifest, rows, manifest_sha = _verify_panel(panel_root,
                                                  require_population=require_population)
     groups, missing = build_groups(rows)
@@ -170,8 +171,16 @@ def run_compare(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
               "production_policy": quality_panel.PRODUCTION_POLICY,
               "requested_ordinals": list(quality_panel.REQUESTED_ORDINALS),
               "caller_sha256": _caller_sha()}
+    if continue_independent_refusals:
+        inputs["refusal_policy"] = {
+            "continue_independent_refusals": True,
+            "failed_calls_are_retained": True,
+            "failed_batch_loses_all_slots": True,
+            "retry": False,
+        }
     pilot.configure(inputs)
     call_count = 0
+    refused_packet_count = 0
     stopped = None
     for ordinal in sorted(groups):
         packets = groups[ordinal]
@@ -188,6 +197,9 @@ def run_compare(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
                     row, _ = pilot.call(arm, index, batch)
                     call_count += 1
                     if not row["accepted"]:
+                        refused_packet_count += len(batch)
+                        if continue_independent_refusals:
+                            continue
                         stopped = "stopped-on-refusal"
                         break
                 if stopped:
@@ -198,8 +210,15 @@ def run_compare(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
             break
     known = sum(row.get("usage") is not None for row in pilot.rows)
     unknown = sum(row.get("usage") is None for row in pilot.rows)
+    failed = sum(not row.get("accepted", False) for row in pilot.rows)
+    processed_packets = sum(len(row.get("decisions", ()))
+                            for row in pilot.rows if row.get("accepted"))
+    if continue_independent_refusals and stopped is None and failed:
+        status = "comparison-panel-complete-with-refusals"
+    else:
+        status = stopped or "comparison-panel-complete"
     result = pilot.finish({
-        "status": stopped or "comparison-panel-complete",
+        "status": status,
         "interpretation": (
             "Independent-state compact1/batch4 token diagnostic only; source is "
             "production MC panel awaiting teacher relabels. No quality score, "
@@ -212,6 +231,10 @@ def run_compare(panel_root: Path, out: Path, *, tokens: int = DEFAULT_TOKENS,
         "distinct_coordinates": len(rows),
         "actual_packet_count": sum(len(value) for value in groups.values()),
         "actual_call_count": call_count,
+        "processed_packet_count": processed_packets,
+        "refused_packet_count": refused_packet_count,
+        "failed_call_count": failed,
+        "continue_independent_refusals": continue_independent_refusals,
         "known_usage_calls": known,
         "unknown_usage_calls": unknown,
     })
@@ -226,13 +249,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wall-seconds", type=int, default=DEFAULT_WALL_SECONDS)
     parser.add_argument("--call-seconds", type=int, default=DEFAULT_CALL_SECONDS)
     parser.add_argument("--codex-binary", type=Path, required=True)
+    parser.add_argument("--continue-independent-refusals", action="store_true",
+                        help="retain failed independent calls and continue the fixed schedule")
     args = parser.parse_args(argv)
     if args.tokens < 1 or args.wall_seconds < 1 or args.call_seconds < 1:
         parser.error("token and time limits must be positive")
     try:
         run_compare(args.panel_root, args.out, tokens=args.tokens,
                     wall_seconds=args.wall_seconds, call_seconds=args.call_seconds,
-                    codex_binary=args.codex_binary)
+                    codex_binary=args.codex_binary,
+                    continue_independent_refusals=args.continue_independent_refusals)
     except Exception as exc:
         parser.error(str(exc))
     return 0

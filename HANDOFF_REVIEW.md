@@ -11712,3 +11712,11 @@ WHY this is the expected sign, given b4b31571 and 99ee6c78: val_rank_regret is T
 ACTION: train-out/acd.select flipped from val_rank_regret to val_ce before the A+C+D training fires (queued behind Run D, ~03:30 ET). The RULE from align-offline-eval-with-search is unchanged and is what produced this answer: select per consumer, IN SEARCH, on the same seeds. Neither offline metric was trusted; the search screen decided.
 NOT claimed: that val_ce is the right selector in general, only that it beats val_rank_regret for the shortlist consumer at this model size on these deals. The points-scale variant (val_rank_regret_points) and a full-legal-scoped selector remain untested and are the two candidates most likely to beat val_ce, since both fix one of the two defects above.
 Archived: shengji-archive/2026-09-06/shortlist-regret/. The learned-1x arm is rerunning after its earlier refusal (my premature launch against an unsealed checkpoint; the harness guard caught it).
+
+## 2026-09-06 — Claude: the W1 rung of the same selector screen agrees; cross-entropy wins at both widths
+
+Completing 5348e481 with the rerun learned-1x arm (the one my premature launch cost; sealed checkpoint bb15e4b2, rc=0, 256/256 pairs, 14.8 min, 1.31x wall):
+- CE-selected A+B+C at W1: +0.047 [-0.025, +0.113] (retained).
+- REGRET-selected at W1: -0.027 [-0.094, +0.047].
+- PAIRED per round, same 256 clusters: regret minus CE = see run log; both rungs put the regret checkpoint BELOW the CE one, and the W1 regret arm is the first shortlist arm measured at or below zero against production.
+Two independent widths agreeing on the sign strengthens the selector decision made in 5348e481 (A+C+D on val_ce) without changing its strength: neither paired interval excludes zero individually. Archived shengji-archive/2026-09-06/shortlist-regret/ (both arms, config, summaries, per-cluster records).

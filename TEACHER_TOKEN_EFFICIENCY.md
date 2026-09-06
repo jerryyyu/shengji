@@ -14,6 +14,11 @@ rounds per wall time**. Quality remains inconclusive on the small continuation
 panel. Keep the adapter opt-in and bridge to the historical rollout-enabled
 teacher before collecting at scale.
 
+The subsequently authorized **16-game cost check also completed**: 1,013 model
+decisions, 3.825M reported tokens, 111.08 minutes, zero failures, and all 13
+trump ranks including two no-trump games. This confirms the broader cost run
+worked; it does not establish teacher quality or inherit the historical PT win.
+
 ## Retained-run profile
 
 The successful `pt-luna-rpc-isolated-b0b1bd95-r1` dataset contains 32 complete
@@ -234,6 +239,64 @@ differ. It started only after batch4 completed. Do not substitute the older
 32-game average for this matched result or infer a strength gain from
 self-play outcomes; the two arms can take different paths through each game.
 
+## Expanded 16-game cost check — complete
+
+Jerry explicitly authorized this bounded extension after the four-round result.
+Source [PR #247](https://github.com/jerryyyu/shengji/pull/247), head
+`8b332db0396294d3015453caa169b38633d412fc`; artifact:
+`/Users/jerryyu/.shengji-runs/teacher-token-scale16-20260905.CCpsso/`.
+It used the same pinned Luna/medium play-only transport, one provider process,
+four sequential waves of four games, and bounds of 6M reported/reserved tokens,
+three hours, and 90 seconds/call. It finished normally within those bounds.
+
+| Quantity | Observed |
+|---|---:|
+| Complete independent games / target | 16 / 16 |
+| Accepted calls / model decisions | 283 / 1,013 |
+| Failed / unknown-usage calls | 0 / 0 |
+| Elapsed wall | 6,665.09 seconds / 111.08 minutes |
+| Input tokens, including cached | 3,510,943 |
+| Cached input (subset) | 1,810,944 |
+| Output tokens, including reasoning | 314,371 |
+| Reasoning output (subset) | 275,535 |
+| Total input + output | 3,825,314 |
+| Tokens / model decision | 3,776.22 |
+| Completed games / million reported tokens | 4.183 |
+| Model decisions / provider minute | 9.127 |
+
+Reconciled `result.json` against all 283 completed call rows (not their pending
+reservation duplicates), 16 terminal receipts and 16 trajectories. There are
+1,208 recorded engine actions: 1,013 mapped model decisions and 195 non-model
+actions. Do not confuse these with failed-throw substitutions: all 1,013 selected
+model actions matched the engine-accepted cards. No replay or new labels were
+needed to read this result.
+
+All 13 trump ranks appeared. Games by actual trump suit: S=5, H=4, C=3, D=2,
+no-trump=2. The 16 root hashes are disjoint from the old four-round pilot. The
+game, batch adapter and transport source hashes match that pilot; only the
+pilot script changed for the larger population/progress metadata. The producing
+four source hashes also match the retained clean source checkout.
+
+| Actual batch size | Calls | Accepted decisions | Reported tokens |
+|---:|---:|---:|---:|
+| 4 | 217 | 868 | 3,000,633 |
+| 3 | 24 | 72 | 325,767 |
+| 2 | 31 | 62 | 381,012 |
+| 1 | 11 | 11 | 117,902 |
+
+The wider run stayed near the small pilot's cost per decision (3,776 versus
+3,829 tokens). Its better games-per-token figure also reflects fewer decisions
+per game on different deals; it is **not a matched efficiency improvement over
+the four-round arm**. Tail batches remain a cost, but early and late positions
+differ, so this table is not a causal estimate of queue-refill savings. There is
+still no quality comparison against the historical rollout-enabled teacher on
+these 16 games. Preserve them with play-only/full-information provenance; do not
+promote them to clean final validation after using them for this investigation.
+
+No larger collection starts automatically. The quality bridge and journaled
+resume work below remain the proposed next teacher steps; shortlist engineering
+and scaling continue separately.
+
 ## Reproduction and current boundary
 
 From an installed checkout's `server/` directory:
@@ -261,7 +324,8 @@ uv run --frozen python -B scripts/luna_token_pilot.py rounds --out NEW_BATCH4_OU
 uv run --frozen python -B scripts/luna_token_pilot.py rounds --out NEW_BASELINE_OUTPUT --codex-binary PINNED_CODEX_BINARY --arms baseline --tokens 3500000 --wall-seconds 4500 --call-seconds 90
 ```
 
-The snapshot panel, continuation check and both full-round arms are complete.
+The snapshot panel, continuation check, both matched full-round arms and the
+separately authorized 16-game cost check are complete.
 Snapshot mode reopens saved
 calls without dispatch. Full-round mode preserves completed trajectories and
 partial states, but deliberately does not resume partial games. The batch

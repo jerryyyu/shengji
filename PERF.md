@@ -13,6 +13,7 @@ baseline moves (replace the row and date it).
 
 | date | metric | value | conditions |
 |---|---|---|---|
+| 2026-09-06 | K8 wider-shortlist paired screen | **+0.08203** vs production (95% CI `[+0.00972, +0.15430]`); direct K8 − K4 **−0.05664** (95% CI `[-0.11328, -0.00391]`) | 256 paired rank-2 deals / 512 rounds; same A+B+C, W32/N30/R300, batch 128, static/reuse; 16m10.35s wall, 15.76 mean cores; eight vs four alternatives, so not a pure timing A/B; K4 retained |
 | 2026-09-06 | W32 decision-preserving engineering, **merged opt-in; not deployed by default** | **2.849×** decision speedup; ranking 3.546×; parallel job 2.006× | A+B+C checkpoint, same 256 paired rank-2 deals / 512 rounds, Strength 16 workers; normalized saved trajectories and work counts identical; #249/#252/#254 merged stack |
 | 2026-09-06 | Optimized W32 remaining cost | 3.5287× opponent decision wall; 73.17% of arm wall in ranking; 99.54% scoring-batch occupancy | Not equal-production-cost; 24m27s process wall, ~10.45 mean cores; one late pair left an 8m28s tail. Increasing batch size is not an assumed gain. |
 | 2026-09-04 | production search throughput, fast engine | 3,500–4,100 rollouts/s per worker; ~775 rollouts per decision | shengji-cloud 16 workers, oracle probe run1 `runtime.json`/`summary.json` (archived `shengji-archive/2026-09-04/oracle-run1`) |
@@ -56,6 +57,10 @@ Two-stage model pruning, more shortlist alternatives, additional worlds and
 deeper continuation change the policy. Their cost/quality experiments stay
 separate from the exact speedup. The merged optimization remains opt-in only;
 production defaults and policy are unchanged.
+
+The K8 screen is a wider policy, not a timing-only replay of K4: it measured
++0.08203 versus production but −0.05664 directly versus K4, so K4 remains the
+reference and no K16 escalation follows.
 
 ## Shipped
 

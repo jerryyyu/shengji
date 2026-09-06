@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-06 (W32 milestone)**. This file is the prioritized
+Last reconciled: **2026-09-06 (K8 screen)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -27,9 +27,9 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
 | **COMPLETE** | **W32 engineering integration — Codex** | A+B+C W32: +0.1387 levels/round [+0.0645,+0.2168] on 256 opened rank-2 deals. Optimized replay preserves all saved traces and cuts decision wall 2.849× (10.61× → 3.53× production). #249 (`270bd3b9`) → #252 (`0a0d70d1`) → #254 (`0d355c4c`) merged after source PASS and CI; #251 holds the completed scaling readout. | Keep the optimization opt-in and record the measured result; no gameplay rerun is needed to integrate unchanged semantics. | No deployment or production-default change. |
-| **P0** | **Shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | K8 is running Strength on 256 paired rank-2 deals / 512 rounds with the same A+B+C checkpoint, W32/N30/R300, batch 128, static encoding and reuse. Cost-order scheduling is descending prior pair time only; completed shards are resumable. Prior W64 and MC2 negative contrasts remain unresolved. | Report K8 strength and cost. Separately run the fresh balanced 13-rank K4 reference comparison; then investigate double-shortlist/depth and selective work. | Strength-first; higher compute is acceptable. Equal-cost matching is an optional diagnostic, not a gate. Use light resource safeguards and stop at 2h while retaining progress. |
-| **P1** | **Model/data and PUCT — Claude** | A+B+C complete-world MLP is the measured W32 checkpoint. Run D produces diverse trajectory data; A+C+D training waits for it, with Run E queued afterward on Perf. D64's earlier result remains a small prediction diagnostic, not this consumer's certificate. | Test new checkpoint quality in the actual full-legal shortlist; keep model changes separate from K/W/N/R changes. PUCT remains a separate consumer experiment, sharing findings with shortlist. | No claim that within-ballot metrics, more rows or tree depth imply stronger play. Keep independent deal counts and continuation identities explicit. |
-| **P1** | **PT-Luna efficiency and quality — Codex** | Historical Sol/Luna planning wins retained. Four-round batch4 comparison: 2.70× rounds/token, 2.08× rounds/wall; 16-game cost extension complete. PT52 fresh-deal panel/preparation is under parent review; no provider collection has launched, and old quality evidence is inconclusive. | Compare compact1 vs batch4 and run the separate free-tool bridge before a costed Luna/Sol collection proposal for disjoint fit and validation. Reuse the existing resumable runner. | No scaled collection from these cost numbers alone; mixed continuation outcomes are not one value target. |
+| **P0** | **Shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | K8 completed on 256 paired rank-2 deals / 512 rounds: +0.08203 vs production (95% CI `[+0.00972,+0.15430]`). K4 was +0.13867; direct K8 − K4 was −0.05664 (95% CI `[-0.11328,-0.00391]`; 17 favorable / 32 unfavorable / 207 tied). K8 took 16m10.35s at 15.76 mean cores; not a pure timing A/B. | Keep K4; no automatic K16 escalation. Fresh balanced 13-rank K4 comparison launched 03:45 ET on Strength: 260 pairs / 16 workers. Next investigate selective allocation and double-shortlist separately. | Source PASS reused; actual seed span `[91260904,91261164)` committed in #258. Strength first: more compute allowed, cost matching optional. Recoverable 2h operational stop; no promotion. |
+| **P1** | **Model/data and PUCT — Claude** | A+B+C complete-world MLP is the measured W32 checkpoint. A dated peer report says Run D sealed 03:27 ET, Run E launched on Perf, and A+C+D was syncing to Mini at 03:28; this is not live status. D64 remains a small prediction diagnostic, not this consumer's certificate. The existing ballot-rooted PUCT ladder is closed. | Test new checkpoint quality in the actual full-legal shortlist; keep model changes separate from K/W/N/R changes. Future shortlist-rooted depth is a distinct experiment. | No claim that within-ballot metrics, more rows or tree depth imply stronger play. Keep independent deal counts and continuation identities explicit. |
+| **P1** | **PT-Luna efficiency and quality — Codex** | Historical Sol/Luna planning wins retained. Four-round batch4 comparison: 2.70× rounds/token, 2.08× rounds/wall; 16-game cost extension complete. PT52 private panel `sl6QAC` has 52 deals / 208 positions, 26 fit / 26 validation, 13 ranks × 4, NT4; no LLM calls. | PR261 source/design review, matched compact1 vs batch4 calls and bounded game-clustered quality analysis; then the separate rollout-enabled bridge and paired gameplay. The unrelated CI wall-fit flake was rerun, not patched. | Proposed provider ceiling 6M tokens / 3h awaits explicit clarification; source review proceeds separately. Old quality evidence is inconclusive; mixed continuations are not one value target. |
 | **P2** | **Fresh strength confirmation** | RLCB remains the only confirmed/deployed gain. W32 is a positive DEV screen, not a replacement for it. | Freeze one selected consumer and compare against literal production plus a useful work/behavior control on fresh mirrored deals. | Separate candidate selection from confirmation; old T4 widening is not the new W32 experiment. |
 | **CLOSED** | **BELIEF R4 / R5** | R4 terminal `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). R5 closed. | Reopens only if a separate oracle-belief probe shows a gain worth pursuing. | No belief compute otherwise. |
 | **COMPLETE** | **Original PT-Luna isolated collection** | Five attempts, one complete 32-game dataset retained; failed predecessors remain engineering evidence. | Reuse within its data contract. New bounded efficiency experiments are tracked separately above. | No retrospective upgrade of predecessor quality or independence. |
@@ -37,13 +37,13 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 ## Immediate sequence
 
-1. Let the bounded K8 Strength run complete or stop at its operational limit;
-   retain resumable shards and report measured strength and cost.
+1. Retain the sealed K8 readout, keep K4, and do not escalate to K16.
 2. Preserve Claude's Run D → Run E data queue and Run D → Mini A+C+D training
    dependency. Do not take a contended host for a performance benchmark.
-3. After K8, run the prepared rank-diverse fresh 13-rank comparison separately;
-   it is not launched and still needs seed registration with Claude. Neither
-   W128 nor more uniform rollout work follows automatically from K8.
+3. Let the rank-diverse fresh 13-rank comparison complete: PR258 at `bc89b557`
+   launched 03:45 ET on Strength, 260 pairs / 16 workers. Its actual allocation
+   `[91260904,91261164)` is committed; PR259 documents the larger reserved range.
+   Neither W128 nor more uniform rollout work follows automatically from K8.
 4. Improve teacher efficiency only alongside a quality check against the
    original planning harness. Scale a declared data recipe, not a cost proxy.
 5. Confirm a selected policy on fresh deals with measured work controls.

@@ -166,6 +166,32 @@ this milestone. [Next steps](RL_PLAN.md#current-decision-tree) and
 [shortlist tracker #248](https://github.com/jerryyyu/shengji/issues/248) keep
 policy scaling separate from engineering. No production configuration changed.
 
+### Play it locally (DEV only, opt-in)
+
+Nothing is registered by default; `SHENGJI_CWV_SHORTLIST_CKPT` makes exactly one
+arm appear, named `mc-cwv-shortlist-<ckpt8>-w32`, which `SHENGJI_BOT` can then
+select on a local dev server. Ask the registry for the name, then start the
+server with it:
+
+```bash
+cd server
+export SHENGJI_CWV_SHORTLIST_CKPT=/path/to/runABC-mlp-points/best.pt   # A+B+C
+python -c "from shengji.ai.cwv_shortlist_policy import env_shortlist_entries as e; print(*e())"
+SHENGJI_BOT=mc-cwv-shortlist-3f00500c-w32 uv run shengji-server        # the printed name
+```
+
+Both opt-in speed options are on (static MLP encoding, and the bounded
+successor/tensor reuse merged in #254). Expect it to
+feel slower per move, and unevenly so: on one local A+B+C position pair a wide
+432-action lead cost 415 ms against production's 176 ms (**2.4x**, down from
+1322 ms / 7.5x with reuse off), while a narrow three-action follow cost 145 ms
+against 135 ms (1.1x). Through the real dev server the slowest bot move over
+four tricks took 1.61 s of search against production's 0.43 s, with the 0.70 s
+pacing floor hiding most moves; the server process peaked at 511 MB RSS versus
+82 MB for production, because it deep-copies the whole bot -- model included --
+once per bot turn. Unset the variable and the registry is byte-for-byte
+production's; no default moves.
+
 ## Search and heuristic behavior that survives
 
 These are governing conclusions, not an invitation to reproduce old toggle

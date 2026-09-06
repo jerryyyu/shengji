@@ -808,3 +808,18 @@ def _register_netroll_from_env() -> None:
 
 
 _register_netroll_from_env()
+
+
+def _register_cwv_shortlist_from_env() -> None:
+    """``SHENGJI_CWV_SHORTLIST_CKPT`` (+ ``_WORLDS``) registers the DEV
+    model-guided shortlist arms (``mc-cwv-shortlist-<ckpt8>-w<W>``) at import,
+    so a LOCAL server can name one through ``SHENGJI_BOT``.  Unset, nothing is
+    registered and the registry is exactly production's."""
+    import os
+    if not os.environ.get("SHENGJI_CWV_SHORTLIST_CKPT"):
+        return
+    from .cwv_shortlist_policy import env_shortlist_entries
+    REGISTRY.update(env_shortlist_entries())
+
+
+_register_cwv_shortlist_from_env()

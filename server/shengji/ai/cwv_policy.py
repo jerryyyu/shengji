@@ -24,8 +24,10 @@ Everything a checkpoint needs is consumed through the merged #214 API only:
 ``value_checkpoint.load_checkpoint``, ``value_afterstate.tensors_from_round``
 and ``terminal_distribution``, ``value_metrics.category_signed_level``.  This
 module owns batching (stack tensors, one forward per call), the encoder
-identity gate, the no-learning stratified-prior control and the registry
-factories.  It never edits or bypasses ``shengji/rl/value_*.py``.
+identity gate, the opt-in MLP static-input adapter, the no-learning
+stratified-prior control and the registry factories. The adapter preserves
+reference refusal behavior while omitting history rows the MLP discards;
+it never changes the checkpoint-bound training encoder.
 
 Stable consumer API (kept minimal for other arms -- e.g. a hybrid that
 shortlists candidates on many cheap worlds with this evaluator and then hands
@@ -93,6 +95,10 @@ from ..rl.value_afterstate import (
     phase_for_ply,
     tensors_from_round,
     terminal_distribution,
+)
+from .cwv_static_encoding import (
+    static_encoding_identity,
+    tensors_from_round_static,
 )
 from .mcbot import MCBot, _ballot_identity, _runtime_identity
 from .memory import Memory
@@ -319,8 +325,12 @@ class CompleteWorldEvaluator:
     def __init__(self, checkpoint: str | os.PathLike[str] | None, *,
                  device: str = "cpu", threads: int | None = 1,
                  max_batch: int = 4096, model=None,
-                 metadata: Mapping[str, Any] | None = None):
+                 metadata: Mapping[str, Any] | None = None,
+                 encoding: str = "reference"):
         import torch
+
+        if encoding not in ("reference", "mlp-static"):
+            raise CWVError("encoding must be 'reference' or 'mlp-static'")
 
         if model is None:
             if checkpoint is None:
@@ -337,6 +347,7 @@ class CompleteWorldEvaluator:
             self.model = model.to(device)
         if hasattr(self.model, "eval"):
             self.model.eval()
+        self.encoding = encoding
         self.device = device
         if threads:
             torch.set_num_threads(int(threads))
@@ -359,12 +370,24 @@ class CompleteWorldEvaluator:
     def ckpt8(self) -> str | None:
         return None if self.checkpoint_sha256 is None else self.checkpoint_sha256[:8]
 
+    @property
+    def effective_encoding(self) -> str:
+        """Apply the static adapter only while the model is actually an MLP."""
+        return ("mlp-static" if self.encoding == "mlp-static" and
+                getattr(getattr(self.model, "config", None), "architecture", None)
+                == "mlp" else "reference")
+
     def identity(self) -> dict[str, Any]:
+        adapter = (static_encoding_identity()
+                   if self.effective_encoding == "mlp-static" else None)
         return {"kind": "complete_world_value", "backend": self.backend,
                 "checkpoint": self.checkpoint_path,
                 "checkpoint_sha256": self.checkpoint_sha256,
                 "ckpt8": self.ckpt8, "device": self.device,
-                "threads": self.threads, "max_batch": self.max_batch}
+                "threads": self.threads, "max_batch": self.max_batch,
+                "encoding": self.encoding,
+                "effective_encoding": self.effective_encoding,
+                "adapter": adapter}
 
     def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
         """Every position from ONE seat's team perspective (one batch)."""
@@ -386,12 +409,15 @@ class CompleteWorldEvaluator:
         values = np.empty(n, dtype=np.float64)
         rows: list[ValueAfterstateTensors] = []
         pending: list[int] = []
+        encoder = (tensors_from_round_static
+                   if self.effective_encoding == "mlp-static"
+                   else tensors_from_round)
         for index, (rnd, root_seat) in enumerate(zip(positions, seats)):
             if rnd.phase == "round_end":
                 values[index] = float(
                     terminal_distribution(rnd, root_seat) @ self.support)
             else:
-                rows.append(tensors_from_round(rnd, root_seat))
+                rows.append(encoder(rnd, root_seat))
                 pending.append(index)
         if rows:
             values[pending] = self.probabilities(rows) @ self.support
@@ -1110,20 +1136,22 @@ def _bot_class(worlds: int, finish_trick: bool, lcb: float,
 
 @lru_cache(maxsize=8)
 def _shared_evaluator(path: str, mtime_ns: int, size: int, threads: int | None,
-                      max_batch: int) -> CompleteWorldEvaluator:
+                      max_batch: int, encoding: str) -> CompleteWorldEvaluator:
     del mtime_ns, size
-    return CompleteWorldEvaluator(path, threads=threads, max_batch=max_batch)
+    return CompleteWorldEvaluator(path, threads=threads, max_batch=max_batch,
+                                   encoding=encoding)
 
 
 def shared_evaluator(checkpoint: str | os.PathLike[str], *, threads: int | None = 1,
-                     max_batch: int = 4096) -> CompleteWorldEvaluator:
-    """One evaluator per (checkpoint file, threads) per process."""
+                     max_batch: int = 4096,
+                     encoding: str = "reference") -> CompleteWorldEvaluator:
+    """One evaluator per (checkpoint file, threads, encoding) per process."""
     resolved = Path(checkpoint).resolve()
     if not resolved.is_file():
         raise CWVError(f"checkpoint not found: {resolved}")
     stat = resolved.stat()
     return _shared_evaluator(str(resolved), stat.st_mtime_ns, stat.st_size,
-                             threads, int(max_batch))
+                             threads, int(max_batch), encoding)
 
 
 def make_cwv_bot(checkpoint: str | os.PathLike[str], *, worlds: int,

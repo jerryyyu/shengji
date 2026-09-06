@@ -52,6 +52,11 @@ def _shortlist_config(config: dict) -> CWVShortlistConfig:
     return CWVShortlistConfig(**config["shortlist"])
 
 
+def _encoding(config: dict) -> str:
+    """Reopen legacy configs as reference-encoded screens."""
+    return config.get("encoding", "reference")
+
+
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
     if side == "baseline" or arm == "identity" or arm == "production":
@@ -70,7 +75,8 @@ def make_side(config: dict, side: str, seed: int):
         evaluator = shared_evaluator(config["checkpoint"], threads=1,
                                      max_batch=config.get(
                                          "batch_size",
-                                         config["shortlist"]["batch_size"]))
+                                         config["shortlist"]["batch_size"]),
+                                     encoding=_encoding(config))
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     bot = CWVShortlistBot(evaluator, seed=seed,
@@ -98,7 +104,7 @@ def work_counters(bots):
 
 
 def _recipe(config):
-    return {
+    recipe = {
         "schema": config["schema"], "arm": config["arm"],
         "checkpoint_sha256": config["checkpoint_sha256"],
         "shortlist": config["shortlist"],
@@ -107,6 +113,11 @@ def _recipe(config):
         "target_wall_multiplier": config["target_wall_multiplier"],
         "rank": RANK,
     }
+    # New receipts bind the requested mode.  A pre-mode config has no such
+    # field and must continue to reopen its legacy shards as reference.
+    if "encoding" in config:
+        recipe["encoding"] = _encoding(config)
+    return recipe
 
 
 def run_cluster(config, cluster):
@@ -198,6 +209,8 @@ def main(argv=None):
     parser.add_argument("--production-multiplier", type=int, choices=(1, 3), default=1)
     parser.add_argument("--target-wall-multiplier", type=int, choices=(1, 3), default=1)
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--encoding", choices=("reference", "mlp-static"),
+                        default="reference")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -217,7 +230,9 @@ def main(argv=None):
     checkpoint_sha = None
     checkpoint_recipe = None
     if args.arm == "learned":
-        evaluator = shared_evaluator(checkpoint, threads=1, max_batch=args.batch_size)
+        evaluator = shared_evaluator(
+            checkpoint, threads=1, max_batch=args.batch_size,
+            encoding=args.encoding)
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
     shortlist = CWVShortlistConfig(
@@ -228,6 +243,7 @@ def main(argv=None):
         "schema": "cwv-shortlist-config-v1", "arm": args.arm,
         "checkpoint": checkpoint, "checkpoint_sha256": checkpoint_sha,
         "checkpoint_recipe": checkpoint_recipe,
+        "encoding": args.encoding,
         "shortlist": asdict(shortlist), "batch_size": args.batch_size,
         "report_worlds": args.report_worlds,
         "production_multiplier": args.production_multiplier,

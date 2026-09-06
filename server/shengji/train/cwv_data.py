@@ -73,6 +73,7 @@ import os
 import random
 import time
 import zipfile
+from concurrent.futures import ProcessPoolExecutor
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -667,6 +668,23 @@ def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
     return CwvBlock(arrays, meta, str(path))
 
 
+def decode_arrays(task: tuple[str, str | None, bool | None]
+                  ) -> tuple[dict[str, np.ndarray], dict]:
+    """Decode one cached shard to ``(arrays, meta)`` in a worker process.
+
+    The hash and flavour check runs HERE, in the child, so a parallel decode
+    is as fail-closed as ``load_block``; the parent only wraps the result.
+    Module level and argument-picklable so a process pool can call it.
+    """
+    path, shard_sha256, history = task
+    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
+                      history=history)
+    names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
+    with zipfile.ZipFile(path) as zf:
+        arrays = {name: _read_member(zf, name) for name in names}
+    return arrays, meta
+
+
 def _valid_meta(path: Path, shard_sha256: str, history: bool) -> dict | None:
     if not Path(path).is_file():
         return None
@@ -790,7 +808,20 @@ class CwvBlockStore:
     def _key(self, i: int) -> tuple:
         return (self.id, i)
 
-    def block(self, i: int, *, pinned: Collection[int] = ()) -> CwvBlock:
+    #: shards dispatched to a decode pool since construction; a parallel
+    #: run that never submits is a serial run, so tests assert on this.
+    decode_submitted = 0
+
+    def decode_task(self, i: int) -> tuple[str, str | None, bool | None]:
+        """The picklable argument ``decode_arrays`` needs for shard ``i``."""
+        shard, path = self.entries[i]
+        return (str(path), shard.sha256, self.history)
+
+    def is_resident(self, i: int) -> bool:
+        return self.residency.get(self._key(i)) is not None
+
+    def block(self, i: int, *, pinned: Collection[int] = (),
+              decoded: tuple[dict, dict] | None = None) -> CwvBlock:
         key = self._key(i)
         block = self.residency.get(key)
         if block is not None:
@@ -798,7 +829,11 @@ class CwvBlockStore:
         shard, path = self.entries[i]
         pins = {self._key(j) for j in pinned}
         self.residency.make_room(self.sizes[i], label=shard.label, pinned=pins)
-        block = load_block(path, shard_sha256=shard.sha256, history=self.history)
+        if decoded is None:
+            block = load_block(path, shard_sha256=shard.sha256, history=self.history)
+        else:
+            arrays, meta = decoded
+            block = CwvBlock(arrays, meta, str(path))
         if self.keep_idx[i] is not None:
             block = block.subset(self.keep_idx[i])
         self.residency.admit(key, block, label=shard.label, pinned=pins)
@@ -853,7 +888,8 @@ class CwvBlockStore:
         return groups
 
     def iter_batches(self, mask_fn: Callable[[CwvBlock], np.ndarray], batch_size: int, *,
-                     rng: np.random.Generator | None = None, window: int = 64
+                     rng: np.random.Generator | None = None, window: int = 64,
+                     decode_workers: int = 0
                      ) -> Iterator[dict[str, np.ndarray]]:
         """Batches over the rows ``mask_fn`` selects, gathered from the
         resident blocks of each window; the batch sequence is a function of
@@ -862,24 +898,67 @@ class CwvBlockStore:
         if rng is not None:
             rng.shuffle(order)
         batch_size = max(1, int(batch_size))
-        for group in self.windows(order, window):
-            blocks = [self.block(i, pinned=group) for i in group]
-            which_parts: list[np.ndarray] = []
-            row_parts: list[np.ndarray] = []
-            for j, block in enumerate(blocks):
-                sel = np.flatnonzero(mask_fn(block))
-                which_parts.append(np.full(sel.size, j, dtype=np.int64))
-                row_parts.append(sel.astype(np.int64))
-            which = np.concatenate(which_parts) if which_parts else np.zeros(0, np.int64)
-            rows = np.concatenate(row_parts) if row_parts else np.zeros(0, np.int64)
-            if rows.size:
-                idx = np.arange(rows.size)
-                if rng is not None:
-                    rng.shuffle(idx)
-                for b0 in range(0, rows.size, batch_size):
-                    sl = idx[b0:b0 + batch_size]
-                    yield gather(blocks, which[sl], rows[sl])
-            del blocks, which, rows
+        groups = self.windows(order, window)
+        pool = (ProcessPoolExecutor(max_workers=int(decode_workers))
+                if int(decode_workers) > 0 and len(groups) > 1 else None)
+        # Decode the window's shards concurrently and wait for them. Lookahead
+        # was tried first and bought nothing: it can only hide decode behind the
+        # consumer, and the consumer is far cheaper than the decode. The batch
+        # sequence stays a function of rng alone either way, and the in-flight
+        # payload is bounded by the window at ~0.4 MB a shard.
+        def submit(group):
+            """Dispatch the window's non-resident shards, after making room.
+
+            The serial path makes room BEFORE it decodes, so live decoded
+            bytes never exceed the residency budget. A pool receives its
+            payloads before anything is admitted, so room must be made for
+            the WHOLE dispatched set up front or the budget is exceeded by
+            the amount in flight (Codex, review of #279).
+
+            The staging bound is therefore explicit: the non-resident bytes
+            of one window. When those do not fit the budget at all there is
+            nothing to reserve against, so the window decodes serially
+            rather than silently shrinking the window, which would change
+            the batch order.
+            """
+            if pool is None:
+                return {}
+            todo = [i for i in group if not self.is_resident(i)]
+            if not todo:
+                return {}
+            need = sum(int(self.sizes[i]) for i in todo)
+            budget = self.residency.budget
+            if budget is not None and need > budget:
+                return {}
+            self.residency.make_room(need, label="parallel decode staging",
+                                     pinned={self._key(i) for i in group})
+            self.decode_submitted += len(todo)
+            return {i: pool.submit(decode_arrays, self.decode_task(i)) for i in todo}
+        try:
+            for group in groups:
+                pending = submit(group)
+                blocks = [self.block(i, pinned=group,
+                                     decoded=(pending.pop(i).result() if i in pending else None))
+                          for i in group]
+                which_parts: list[np.ndarray] = []
+                row_parts: list[np.ndarray] = []
+                for j, block in enumerate(blocks):
+                    sel = np.flatnonzero(mask_fn(block))
+                    which_parts.append(np.full(sel.size, j, dtype=np.int64))
+                    row_parts.append(sel.astype(np.int64))
+                which = np.concatenate(which_parts) if which_parts else np.zeros(0, np.int64)
+                rows = np.concatenate(row_parts) if row_parts else np.zeros(0, np.int64)
+                if rows.size:
+                    idx = np.arange(rows.size)
+                    if rng is not None:
+                        rng.shuffle(idx)
+                    for b0 in range(0, rows.size, batch_size):
+                        sl = idx[b0:b0 + batch_size]
+                        yield gather(blocks, which[sl], rows[sl])
+                del blocks, which, rows
+        finally:
+            if pool is not None:
+                pool.shutdown(cancel_futures=True)
 
 
 _SCALAR_DTYPES = {"perspective": np.uint8, "target": np.int64, "utility": np.float32,

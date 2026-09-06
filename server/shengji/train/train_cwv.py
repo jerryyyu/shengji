@@ -256,7 +256,8 @@ del _k
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "val_fraction": 0.1, "test_fraction": 0.1, "hidden": 512, "dropout": 0.1,
-    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "seq_kind": "transformer",
+    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "decode_workers": 0,
+    "seq_kind": "transformer",
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
@@ -1051,6 +1052,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  hidden: int = DEFAULTS["hidden"], dropout: float = DEFAULTS["dropout"],
                  aux_points: bool = False, aux_weight: float = DEFAULTS["aux_weight"],
                  n_boot: int = DEFAULTS["n_boot"], window: int = DEFAULTS["window"],
+                 decode_workers: int = DEFAULTS["decode_workers"],
                  seq_kind: str = DEFAULTS["seq_kind"], seq_width: int = DEFAULTS["seq_width"],
                  seq_layers: int = DEFAULTS["seq_layers"], seq_heads: int = DEFAULTS["seq_heads"],
                  seq_feedforward: int = DEFAULTS["seq_feedforward"],
@@ -1100,7 +1102,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "test_fraction": float(test_fraction), "hidden": int(hidden),
         "dropout": float(dropout), "aux_points": bool(aux_points),
         "aux_weight": float(aux_weight) if aux_points else 0.0, "n_boot": int(n_boot),
-        "window": int(window), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
+        "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
         "select_metric": select_metric, "val_rank_records": int(val_rank_records),
@@ -1190,7 +1192,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           test_fraction: float = DEFAULTS["test_fraction"], hidden: int = DEFAULTS["hidden"],
           dropout: float = DEFAULTS["dropout"], aux_points: bool = False,
           aux_weight: float = DEFAULTS["aux_weight"], n_boot: int = DEFAULTS["n_boot"],
-          window: int = DEFAULTS["window"], seq_kind: str = DEFAULTS["seq_kind"],
+          window: int = DEFAULTS["window"], decode_workers: int = DEFAULTS["decode_workers"],
+          seq_kind: str = DEFAULTS["seq_kind"],
           seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
           seq_heads: int = DEFAULTS["seq_heads"],
           seq_feedforward: int = DEFAULTS["seq_feedforward"], public_head: str | None = None,
@@ -1210,7 +1213,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
         test_fraction=test_fraction, hidden=hidden, dropout=dropout, aux_points=aux_points,
-        aux_weight=aux_weight, n_boot=n_boot, window=window, seq_kind=seq_kind,
+        aux_weight=aux_weight, n_boot=n_boot, window=window,
+        decode_workers=decode_workers, seq_kind=seq_kind,
         seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
@@ -1428,7 +1432,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         sums = {"total": 0.0, "ce": 0.0, "aux": 0.0}
         rows = 0
         batches = 0
-        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window):
+        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
+                                      decode_workers=decode_workers):
             t = tensors_of(raw, dev)
             logits, aux = forward_batch(model, t, aux_head)
             ce = nn.functional.cross_entropy(logits, t["target"])
@@ -1972,6 +1977,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
                    help="shards per shuffle window (also bounded by --resident-bytes)")
+    t.add_argument("--decode-workers", type=int, default=DEFAULTS["decode_workers"],
+                   help="decode a window's shards in this many worker processes "
+                        "(0 = in this process, the default; the batch sequence is "
+                        "identical either way)")
     t.add_argument("--seq-kind", choices=SEQ_KINDS, default=DEFAULTS["seq_kind"])
     t.add_argument("--seq-width", type=int, default=DEFAULTS["seq_width"])
     t.add_argument("--seq-layers", type=int, default=DEFAULTS["seq_layers"])
@@ -2027,7 +2036,8 @@ def main(argv: list[str] | None = None) -> int:
                   patience=args.patience, val_fraction=args.val_fraction,
                   test_fraction=args.test_fraction, hidden=args.hidden, dropout=args.dropout,
                   aux_points=args.aux_points, aux_weight=args.aux_weight, n_boot=args.n_boot,
-                  window=args.window, seq_kind=args.seq_kind, seq_width=args.seq_width,
+                  window=args.window, decode_workers=args.decode_workers,
+                  seq_kind=args.seq_kind, seq_width=args.seq_width,
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   val_rank_records=args.val_rank_records, init=args.init,

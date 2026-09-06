@@ -29,14 +29,20 @@ comparison and lowest-beatable-component checks for each submitted action.
 Ordering and hand snapshots bind the facts; mismatches fall back to the ordinary
 validator. Facts and leaf caches are bounded and belong to one world instance.
 
-`WorldSuccessorCache` explicitly supplies the context through `afterstate` to
-the first `Round.play`. Only trusted determinized rollout clones accept it.
-The native `round_play` entry accepts the same private keyword and forwards a
-supplied context to the Python method, where the trust and binding checks live.
-Native leads already used that Python path. Ordinary `Round.play`, production
-policy defaults, later simulated plays and follows keep their previous path.
-No global engine patch or inspection of saved native-dispatch internals is used
-by the code; the native extension must be rebuilt for this source revision.
+`WorldSuccessorCache` supplies the context only to the research `afterstate`
+adapter. The adapter resolves the submitted throw against the fixed world, then
+applies its accepted cards through **unchanged `Round.play`**. A failed throw
+reduces to one component, which is cheap to validate normally; its original
+penalty message is restored on the private clone. Standing throws deliberately
+validate again. Subsequent simulated plays and follows keep their previous path.
+No global engine patch, native dispatch change or checkpoint identity exemption
+is used. `round.py` and `_fast.pyx` remain byte-identical to the PR base.
+
+The first draft threaded a keyword through `Round.play`. A real saved-model
+load caught that this changed the checkpoint-bound encoder identity, even though
+the 67 engine/cache tests passed. That approach was removed, not excused by a
+metadata rewrite or a weaker check. The narrowed adapter loads the untouched
+ABC checkpoint and the older real-checkpoint integration test passes again.
 
 All root afterstates are still constructed and validated. No candidate is pruned,
 no score row is deduplicated, batch sizes/order and precision do not change, and
@@ -65,8 +71,9 @@ invalid cards, untrusted injection, follows, terminal and eviction behavior.
 The cache-to-engine witness must turn red if the preparation is disconnected.
 
 At the prepared implementation, the focused lead/cache/native-play suite,
-including double-shortlist consumers, passes 67 tests in pure and compiled
-modes. CI found that eager preparation accessed `root.trick` on an existing
+including double-shortlist consumers and the real-checkpoint integration,
+passes 68 tests in pure and compiled modes. CI found that eager preparation
+accessed `root.trick` on an existing
 lightweight double-shortlist test root. Preparation now falls back when engine
 decision metadata is absent; the existing fraction/saturation consumer witness
 passes unchanged. A separate in-memory mutation that strips

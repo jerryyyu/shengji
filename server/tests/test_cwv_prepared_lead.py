@@ -173,38 +173,40 @@ def _state_signature(rnd):
             trick_signature(rnd.trick), trick_signature(rnd.last_trick))
 
 
-def test_round_prepared_lead_is_trusted_only_and_matches_default():
-    ordinary = _lead_round()
-    prepared = copy.deepcopy(ordinary)
-    ordinary._trusted_rollout = True
-    ordinary._determinized_world = True
-    prepared._trusted_rollout = True
-    prepared._determinized_world = True
+@pytest.mark.parametrize("play", [["S2"], ["S5", "S5"],
+                                  ["S2", "S3", "S4", "S5", "S5"]])
+def test_afterstate_prepared_lead_matches_default_without_mutating_root(play):
+    root = _lead_round()
+    before = _state_signature(root)
     context = PreparedLeadValidation(
-        prepared.hands[0], prepared.hands[1:], prepared.ordering)
-    play = ["S2", "S3", "S4", "S5", "S5"]
-    ordinary.play(0, play)
-    prepared.play(0, play, _lead_validation=context)
+        root.hands[0], root.hands[1:], root.ordering)
+    ordinary = cwv_policy.afterstate(root, 0, root.hands, [], play)
+    prepared = cwv_policy.afterstate(
+        root, 0, root.hands, [], play, _lead_validation=context)
     assert _state_signature(prepared) == _state_signature(ordinary)
+    assert _state_signature(root) == before
+    assert not getattr(root, "_trusted_rollout", False)
     assert context.calls == 1
 
 
-@pytest.mark.parametrize("trusted,determinized,wrong_type", [
-    (False, False, False), (True, False, False), (False, True, False),
-    (True, True, True),
-])
-def test_each_private_context_admission_guard_refuses_before_mutation(
-        trusted, determinized, wrong_type):
+def test_engine_play_has_no_prepared_context_override():
     refused = _lead_round()
-    refused._trusted_rollout = trusted
-    refused._determinized_world = determinized
     before = _state_signature(refused)
-    context = (object() if wrong_type else PreparedLeadValidation(
-        refused.hands[0], refused.hands[1:], refused.ordering))
-    with pytest.raises(IllegalPlay, match=(
-            r"^Prepared lead validation requires a trusted determinized rollout\.$")):
+    context = PreparedLeadValidation(
+        refused.hands[0], refused.hands[1:], refused.ordering)
+    with pytest.raises(TypeError, match="_lead_validation"):
         refused.play(0, ["S2"], _lead_validation=context)
     assert _state_signature(refused) == before
+
+
+def test_afterstate_refuses_an_untyped_prepared_context():
+    root = _lead_round()
+    before = _state_signature(root)
+    with pytest.raises(cwv_policy.CWVError, match=(
+            "^afterstate requires an exact prepared lead context$")):
+        cwv_policy.afterstate(root, 0, root.hands, [], ["S2"],
+                              _lead_validation=object())
+    assert _state_signature(root) == before
 
 
 def test_world_cache_wires_root_prepared_context_and_can_disable_it(monkeypatch):

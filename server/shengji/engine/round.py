@@ -8,9 +8,7 @@ from dataclasses import dataclass, field
 
 from .cards import BJ, LJ, Ordering, card_rank, card_suit, is_joker, make_deck, total_points
 from .combos import decompose
-from .legal import (IllegalPlay, PreparedLeadValidation, beats,
-                    check_in_hand, uniform_suit, validate_follow,
-                    validate_lead)
+from .legal import IllegalPlay, beats, check_in_hand, uniform_suit, validate_follow, validate_lead
 
 KITTY_SIZE = 8
 HAND_SIZE = 25
@@ -181,25 +179,13 @@ class Round:
         self.turn = seat
 
     # ------------------------------------------------------------------- play
-    def play(self, seat: int, cards: list[str], *,
-             _lead_validation=None) -> None:
+    def play(self, seat: int, cards: list[str]) -> None:
         self._require(seat, "play")
         assert self.trick is not None and self.ordering is not None
-        if (_lead_validation is not None
-                and (not getattr(self, "_trusted_rollout", False)
-                     or not getattr(self, "_determinized_world", False)
-                     or type(_lead_validation) is not PreparedLeadValidation)):
-            raise IllegalPlay(
-                "Prepared lead validation requires a trusted determinized rollout.")
         self.message = None
         if not self.trick.plays:
             others = [self.hands[s] for s in range(4) if s != seat]
-            if _lead_validation is None:
-                cards, msg = validate_lead(
-                    cards, self.hands[seat], others, self.ordering)
-            else:
-                cards, msg = _lead_validation.validate(
-                    cards, self.hands[seat], others, self.ordering)
+            cards, msg = validate_lead(cards, self.hands[seat], others, self.ordering)
             self.message = msg
         elif not getattr(self, "_trusted_rollout", False):
             # Rollout fast path (perf audit 2026-08-02): heuristic follows

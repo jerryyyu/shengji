@@ -745,10 +745,25 @@ def afterstate(rnd: Round, seat: int, hands: Sequence[Sequence[str]],
     clone.message = None
     clone._trusted_rollout = True
     clone._determinized_world = True
-    if _lead_validation is None:
-        clone.play(seat, list(candidate))
+    if _lead_validation is not None:
+        from ..engine.legal import PreparedLeadValidation
+        if type(_lead_validation) is not PreparedLeadValidation:
+            raise CWVError("afterstate requires an exact prepared lead context")
+    if _lead_validation is not None and not clone.trick.plays:
+        # Keep the engine and its checkpoint-bound source identity unchanged.
+        # A failed throw reduces to a single component, whose ordinary play
+        # validation is cheap. Standing throws deliberately validate again.
+        clone._require(seat, "play")
+        others = [clone.hands[s] for s in range(4) if s != seat]
+        accepted, message = _lead_validation.validate(
+            list(candidate), clone.hands[seat], others, clone.ordering)
+        clone.play(seat, accepted)
+        # The accepted component stands on its own, so preserve the original
+        # submitted throw's penalty message. A lead cannot resolve the trick.
+        if message is not None:
+            clone.message = message
     else:
-        clone.play(seat, list(candidate), _lead_validation=_lead_validation)
+        clone.play(seat, list(candidate))
     if finish_trick:
         finish_current_trick(clone, policy)
     return clone

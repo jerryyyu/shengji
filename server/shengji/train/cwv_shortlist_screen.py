@@ -14,6 +14,7 @@ from ..ai.cwv_policy import shared_evaluator
 from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
+from .cwv_double_shortlist import CWVDoubleShortlistBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -107,6 +108,9 @@ class CwvTimedPolicy(TimedPolicy):
                         "forced": True,
                         "cwv_shortlist": detail,
                     })
+            inner = getattr(self.bot, "last_double_shortlist", None)
+            if inner is not None and len(self.decisions) > before:
+                self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -120,7 +124,8 @@ def _encoding(config: dict) -> str:
 
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
-    if side == "baseline" or arm == "identity" or arm == "production":
+    flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
+    if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
         if side == "arm" and arm == "production":
             multiplier = int(config["production_multiplier"])
@@ -140,9 +145,17 @@ def make_side(config: dict, side: str, seed: int):
                                      encoding=_encoding(config))
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
-    bot = CWVShortlistBot(evaluator, seed=seed,
-                          config=_shortlist_config(config),
-                          reuse_successors=config.get("reuse_successors", False))
+    inner = config.get("double_shortlist") if side == "arm" else None
+    kwargs = dict(seed=seed, config=_shortlist_config(config),
+                  reuse_successors=config.get("reuse_successors", False))
+    if inner is not None:
+        bot = CWVDoubleShortlistBot(evaluator, **kwargs,
+                                   inner_mode=inner["mode"],
+                                   inner_worlds=inner["worlds"],
+                                   inner_alternatives=4,
+                                   inner_batch_size=inner["batch_size"])
+    else:
+        bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     return bot
 
@@ -153,6 +166,9 @@ def work_counters(bots):
         for key, value in getattr(bot, "shortlist_counts", {}).items():
             name = "cwv_" + key
             out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, "double_shortlist_counts", {}).items():
+            name = "double_" + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))
@@ -162,6 +178,10 @@ def work_counters(bots):
     out["full_rollout_accepted_worlds"] = int(out["accepted_worlds"] - out.get("cwv_cheap_worlds", 0))
     out["continuation_rollouts"] = int(out["rollouts"])
     out["total_rollouts"] = int(out["rollouts"])
+    if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
+        out["inner_continuation_rollouts"] = int(out.get("double_inner_full_rollouts", 0))
+        out["outer_continuation_rollouts"] = (
+            out["total_rollouts"] - out["inner_continuation_rollouts"])
     return out
 
 
@@ -184,6 +204,9 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
+    for key in ("double_shortlist", "baseline"):
+        if key in config:
+            recipe[key] = config[key]
     return recipe
 
 
@@ -290,6 +313,16 @@ def summary_for(shards, config):
         "work_caveat": "Decision wall/CPU and cheap evaluations are measured separately; "
                         "a target overrun does not censor or invalidate outcomes.",
     })
+    if "double_shortlist" in config or "baseline" in config:
+        result["claim"] = "exploratory paired DEV strength estimate; not confirmation or deployment"
+        result["arm_description"] = (
+            "exhaustive learned root shortlist; bounded per-world perfect-information "
+            "inner shortlist continuation, then terminal heuristic values and root MC-LCB"
+            if "double_shortlist" in config else "flat exhaustive learned root shortlist")
+        result["baseline_description"] = config.get("baseline", "production")
+        result["work_caveat"] += (
+            " Inner finalist continuations count separately and are included exactly once "
+            "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -323,6 +356,13 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--inner-mode", choices=("learned", "uniform", "heuristic"),
+                        help="DEV: one extra trick of per-world shortlist continuation; learned root only")
+    parser.add_argument("--inner-worlds", type=int, default=4,
+                        help="guided prefix of each independent selection/report world set")
+    parser.add_argument("--inner-batch-size", type=int, default=128)
+    parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
+                        default="production")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -344,6 +384,13 @@ def main(argv=None):
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
         parser.error("--reuse-successors is only valid for learned")
+    if args.inner_mode is not None:
+        if args.arm != "learned" or args.alternatives != 4:
+            parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
+        if min(args.inner_worlds, args.inner_batch_size) < 1:
+            parser.error("inner worlds and batch size must be positive")
+    if args.baseline == "flat-shortlist" and args.arm != "learned":
+        parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -385,6 +432,15 @@ def main(argv=None):
         config["reuse_successors"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
+    if args.inner_mode is not None:
+        config["double_shortlist"] = {
+            "mode": args.inner_mode, "worlds": args.inner_worlds,
+            "batch_size": args.inner_batch_size,
+            "extra_tricks": 1, "alternatives": 4,
+            "information": "per-sampled-world perfect information; simulation only",
+        }
+    if args.baseline != "production":
+        config["baseline"] = args.baseline
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)

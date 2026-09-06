@@ -61,7 +61,7 @@ ever differ.
 | learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. No learned checkpoint is production-authorized. |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
-| `CWVShortlistBot` (DEV harness class, no global policy name) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; four alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. | A+B+C W32 positive exploratory screen; optimized implementation reviewed on its branch, not merged/deployed. See below. |
+| `CWVShortlistBot` (DEV harness class, no global policy name) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; four alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. | A+B+C W32 positive exploratory screen; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
 
 Example local selection:
 
@@ -136,7 +136,7 @@ wins**. Intervals below are 95% paired-deal bootstrap intervals.
 Static encoding and bounded successor/tensor reuse reduced W32 decision wall
 by **64.9% (2.849× faster)**. All 256 normalized saved cluster traces matched;
 the optimized replay is engineering evidence, not 256 new independent deals.
-The parallel job became 2.01× faster; that is distinct from decision latency.
+The parallel job became 2.006× faster; that is distinct from decision latency.
 
 The like-for-like contrasts against W32 matter more than comparing table
 point estimates:
@@ -156,7 +156,8 @@ payoff here**, not proof that more search never helps. Comparisons share
 opened DEV deals and a common production opponent; they are not direct
 candidate-vs-candidate duels, independent confirmation, or evidence across all
 trump ranks. Engineering preserves the positive screen at much lower cost;
-equal-compute superiority and production readiness remain unproven.
+equal-compute superiority and production readiness remain unproven. The
+optimization is opt-in only; no production policy or default changed.
 
 Full source/checkpoint identities, raw-artifact locations, counters and the
 MC2 inherited-summary-label caveat are in the

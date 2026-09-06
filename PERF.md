@@ -13,7 +13,7 @@ baseline moves (replace the row and date it).
 
 | date | metric | value | conditions |
 |---|---|---|---|
-| 2026-09-06 | W32 decision-preserving engineering, **not shipped** | **2.849×** decision speedup; ranking 3.546×; parallel job 2.006× | A+B+C checkpoint, same 256 paired rank-2 deals / 512 rounds, Strength 16 workers; normalized saved trajectories and work counts identical; #249/#252/#254 opt-in stack |
+| 2026-09-06 | W32 decision-preserving engineering, **merged opt-in; not deployed by default** | **2.849×** decision speedup; ranking 3.546×; parallel job 2.006× | A+B+C checkpoint, same 256 paired rank-2 deals / 512 rounds, Strength 16 workers; normalized saved trajectories and work counts identical; #249/#252/#254 merged stack |
 | 2026-09-06 | Optimized W32 remaining cost | 3.5287× opponent decision wall; 73.17% of arm wall in ranking; 99.54% scoring-batch occupancy | Not equal-production-cost; 24m27s process wall, ~10.45 mean cores; one late pair left an 8m28s tail. Increasing batch size is not an assumed gain. |
 | 2026-09-04 | production search throughput, fast engine | 3,500–4,100 rollouts/s per worker; ~775 rollouts per decision | shengji-cloud 16 workers, oracle probe run1 `runtime.json`/`summary.json` (archived `shengji-archive/2026-09-04/oracle-run1`) |
 | 2026-09-04 | compiled vs pure Python, one 2-round cluster, identical output hash | 17.56 s vs 80.31 s (4.57x) | shengji-cloud, `SHENGJI_FAST=1`, Codex profile on issue #208 |
@@ -54,8 +54,8 @@ individual decisions are separate metrics.
 
 Two-stage model pruning, more shortlist alternatives, additional worlds and
 deeper continuation change the policy. Their cost/quality experiments stay
-separate from the exact speedup; the engineering PRs remain unmerged until
-final integration/CI and Claude review. Production is unchanged.
+separate from the exact speedup. The merged optimization remains opt-in only;
+production defaults and policy are unchanged.
 
 ## Shipped
 

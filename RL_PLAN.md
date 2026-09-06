@@ -59,16 +59,17 @@ when a candidate beats the champion on a tier ii paired screen.
    levels/round; exact-trajectory engineering cut decision wall 2.849×, to
    3.53× production. See [the diagram and full comparison](AI_POLICIES.md#experimental-w32-shortlist).
    This is not a claim that an accurate standalone leaf value has been solved.
-2. **Integrate the decision-preserving speedup before another scaling run.**
-   Main-sync #249 → #252 → #254, run focused parity plus normal CI, then ask
-   Claude for one consolidated exact-head merge review. No extra gameplay or
-   repeated model reconstruction merely to integrate unchanged semantics.
-3. **Next policy question: four → eight alternatives.** Hold W32, N30/R300,
-   checkpoint, sampler and continuation fixed. Measure whether admitting more
-   candidates improves paired utility enough to justify the added final
-   selection cost. W64 and N60/R600 both cost more without a demonstrated
-   improvement; their crossing-zero intervals do not close those ideas
-   universally. K8 is proposed, not already run.
+2. **Keep the decision-preserving speedup opt-in after integration.** #249 →
+   #252 → #254 are merged after source PASS and CI; no production policy or
+   default changed. No extra gameplay or repeated model reconstruction is
+   needed to integrate unchanged semantics.
+3. **Run the four → eight alternative test.** K8 is currently running Strength
+   on the same A+B+C checkpoint, W32/N30/R300, batch 128, static encoding and
+   reuse, over 256 paired rank-2 deals / 512 rounds. Cost-order scheduling is
+   descending prior pair time only, and completed shards are resumable. Hold
+   strength first: higher compute is acceptable and equal-cost matching is an
+   optional diagnostic, not a gate. W64 and N60/R600 remain unresolved
+   negative contrasts; K8's new strength and cost are not yet measured.
 4. **Improve cost without silently changing policy.** Profile zero-reuse wide
    follows and bypass useless cache bookkeeping where equivalence is proven;
    schedule known expensive replay pairs earlier and show straggler-aware ETA.
@@ -340,7 +341,10 @@ selection, and label the continuation actually played. If one value estimand
 is intended, apply the same named engine continuation to relabel states;
 mixed teacher outcomes are not interchangeable targets. Sol can first supply
 a bounded compatibility/cost sample, followed by a declared sampling recipe.
-Neither this plan nor the W32 result launches scaled collection. Details:
+Neither this plan nor the W32 result launches scaled collection. The PT52
+fresh-deal panel/preparation is under review; no provider collection has
+launched. Compact1 versus batch4 and a separate free-tool bridge remain
+planned; the old quality evidence is inconclusive. Details:
 [teacher efficiency investigation](https://github.com/jerryyyu/shengji/blob/724d811676363a13e164d6d8d7ceca16745b7c2f/TEACHER_TOKEN_EFFICIENCY.md).
 
 ## Search and teacher strategy

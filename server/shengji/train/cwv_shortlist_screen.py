@@ -111,6 +111,11 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            record = getattr(self.bot, "last_decision_record", None)
+            if record is not None and len(self.decisions) > before:
+                allocation = record.get("alloc")
+                if allocation is not None:
+                    self.decisions[-1]["selection_allocation"] = copy.deepcopy(allocation)
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -122,8 +127,21 @@ def _encoding(config: dict) -> str:
     return config.get("encoding", "reference")
 
 
+def _selection_allocation(config: dict) -> str:
+    allocation = config.get("selection_allocation", "uniform")
+    if allocation not in ("uniform", "adaptive"):
+        raise ValueError("selection allocation must be uniform or adaptive")
+    if allocation == "adaptive":
+        if config.get("arm") != "learned":
+            raise ValueError("adaptive selection allocation requires learned arm")
+        if config.get("double_shortlist") is not None:
+            raise ValueError("adaptive selection allocation is incompatible with double-shortlist")
+    return allocation
+
+
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
+    allocation = _selection_allocation(config)
     flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
     if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
@@ -134,6 +152,7 @@ def make_side(config: dict, side: str, seed: int):
         else:
             bot.N_DETERMINIZATIONS = BASELINE_SELECT_WORLDS
             bot.REPORT_FOLD_WORLDS = BASELINE_REPORT_WORLDS
+        bot.ADAPTIVE_ALLOCATION = False
         return bot
 
     evaluator = None
@@ -161,6 +180,11 @@ def make_side(config: dict, side: str, seed: int):
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
+    # The treatment is opt-in at the learned root only.  Production, uniform,
+    # and flat-shortlist baseline bots must remain on the inherited allocator.
+    bot.ADAPTIVE_ALLOCATION = (
+        allocation == "adaptive" and arm == "learned"
+        and side == "arm" and not flat_baseline and inner is None)
     return bot
 
 
@@ -211,6 +235,8 @@ def _recipe(config):
     for key in ("double_shortlist", "baseline"):
         if key in config:
             recipe[key] = config[key]
+    if "selection_allocation" in config:
+        recipe["selection_allocation"] = _selection_allocation(config)
     return recipe
 
 
@@ -327,6 +353,10 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Inner finalist continuations count separately and are included exactly once "
             "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+    if "selection_allocation" in config:
+        allocation = _selection_allocation(config)
+        result["selection_allocation"] = allocation
+        result["allocation_label"] = f"{allocation}-root-selection"
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -351,6 +381,8 @@ def main(argv=None):
     parser.add_argument("--checkpoint")
     parser.add_argument("--worlds", type=int, default=1)
     parser.add_argument("--selection-worlds", type=int, default=30)
+    parser.add_argument("--selection-allocation", choices=("uniform", "adaptive"),
+                        help="opt in to bounded adaptive allocation for the learned root")
     parser.add_argument("--alternatives", type=int, default=4)
     parser.add_argument("--report-worlds", type=int, default=300)
     parser.add_argument("--production-multiplier", type=int, choices=(1, 3), default=1)
@@ -395,6 +427,11 @@ def main(argv=None):
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
         if min(args.inner_worlds, args.inner_batch_size) < 1:
             parser.error("inner worlds and batch size must be positive")
+    if args.selection_allocation == "adaptive":
+        if args.arm != "learned":
+            parser.error("--selection-allocation adaptive requires --arm learned")
+        if args.inner_mode is not None:
+            parser.error("--selection-allocation adaptive is incompatible with --inner-mode")
     if args.inner_reuse_successors and args.inner_mode is None:
         parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
@@ -452,6 +489,8 @@ def main(argv=None):
             config["double_shortlist"]["reuse_successors"] = True
     if args.baseline != "production":
         config["baseline"] = args.baseline
+    if args.selection_allocation is not None:
+        config["selection_allocation"] = args.selection_allocation
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)

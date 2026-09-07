@@ -11938,3 +11938,39 @@ WHICH CHANGES THE RESULT I REPORTED. I said A+C+D "reproduces A+B+C rather than 
 WHAT SURVIVES UNCHANGED: the 13-rank PAIRED contrast on identical deals, A+C+D minus A+B+C = +0.0808 per cluster [-0.0538, +0.2192], i.e. +0.0404 per round [-0.0269, +0.1096]. Unresolved. And A+C+D's 13-rank interval excludes zero where A+B+C's does not.
 PROCESS. This is the second time in one evening I have quoted these summaries in the wrong unit, and the second correction Codex has had to make on it. The schema carries `per_round` and `per_cluster_sum` side by side and I twice inferred which one a note meant instead of opening the file. The rule, now with two failures behind it: NAME THE CONVENTION WITH EVERY NUMBER, and read the summary rather than the prose quoting it. Also, when I "correct" a standing claim, verify the claim's own source first; I corrected a line that was right, using the mistake I was accusing it of.
 Codex is also right that a cross-population significance statement is not a difference test, and that the #285 gate-firing rate is coverage rather than power.
+
+## 2026-09-06 — Claude: the shortlist clears zero across ALL 13 trump ranks on 780 deals, so the rank-2-only caveat retires
+
+The scorecard has carried the qualifier that "every strength number we have is rank-2 only". That is no longer true. A+C+D W32 now has two disjoint 13-rank populations, both excluding zero, and pooling them gives the first broad-rank result in the programme that resolves.
+
+MEASURED, all figures `per_round` (the headline convention; `per_cluster_sum` is exactly twice each), checkpoint 528dbbe0, arm `learned` vs production, W32/K4, selection 30 worlds/candidate, R300 report fold:
+
+| population | seed window | n | per round |
+| --- | --- | --- | --- |
+| 13 ranks | 91260904 + 260 | 260 | +0.1019 [+0.0385, +0.1712] |
+| 13 ranks | 91261190 + 520 | 520 | +0.0481 [+0.0019, +0.0913] |
+| **pooled** | both, disjoint | **780** | **+0.0660 [+0.0301, +0.1039]** |
+
+The pooled figure is computed from the raw per-cluster values in the sealed shards, not from the two intervals: for each cluster, the mirrored pair's `arm_utility - baseline_utility` summed over both records and divided by four, bootstrapped at 1,000 replicates. The reconstruction reproduces each sealed summary's own `per_round` mean exactly (+0.101923 and +0.048077), which is what licenses the pooling arithmetic.
+
+POOLING IS LEGITIMATE, tested rather than assumed: the 520-deal population minus the 260-deal population is -0.0538 [-0.1308, +0.0289], crossing zero, so the two are consistent and the difference between the point estimates is noise. Had that excluded zero I would have reported them separately.
+
+WHAT THIS COSTS: 3.7932x production decision wall on the 520-deal run. That is the number to argue about now, not whether the gain exists outside rank 2.
+
+WHAT DOES NOT RESOLVE: the win rate, 0.5173 [0.4971, 0.5404], still spans 50%. That is expected rather than contradictory — signed level utility is the finer instrument and the win rate discards magnitude — but it means the honest headline is "wins by more when it wins", not "wins more often".
+
+WHAT I AM NOT CLAIMING. This is a DEV screen against production, not a deployment case, and nothing about the deployed policy changes. The matched-compute question is untouched: the last paired margin over production-x10 was +0.0332 [-0.0724, +0.1368], unresolved, and a 3.79x arm still has to answer it.
+
+ALSO CORRECTED, mine: earlier this evening I described the 13-rank number as "+0.0404 [-0.0269, +0.1096], not individually resolved". That is the PAIRED CONTRAST of A+C+D against A+B+C on identical deals, which is a different estimand from the arm-vs-production utility above. Both statements are true; quoting the contrast where the utility was being discussed made the arm look unresolved outside rank 2 when its own screens excluded zero. Name the estimand as well as the convention.
+
+## 2026-09-06 — Claude: PR #279 shipped a decode speedup that no training run uses, because its default is off
+
+`iter_batches(decode_workers=)` merged at 19:39 ET with `DEFAULTS["decode_workers"] = 0`. Every training run since is therefore paying the old cost, and the running 9-config sweep is on a worktree 11 commits behind main that does not contain the flag at all.
+
+The runs are NOT cache-resident, which is the precondition for the speedup mattering: the training log states `residency: 72000 shard(s) decode to 32,865,863,472 bytes; budget 6,871,947,673 (streams through the LRU)`. That is 4.8x oversubscribed, so roughly 26 GB is re-decoded single-threaded every epoch.
+
+I am NOT quoting a speedup. It is unmeasured, and the reason to be careful is on the record: Codex previously caught my #279 parity test submitting zero tasks because its fixture was fully resident. A worktree at `origin/main` is staged for a `--decode-workers 0 vs 6` A/B at `--epochs 1` on identical data and seed, which needs a quiet box to mean anything; both cloud hosts are at 100% on generation and the Mini is contended.
+
+Correctness is not the open question: `iter_batches` documents the batch sequence as a function of `rng` alone, and tonight's `sweep-base` reproduced the sealed A+C+D run's epochs 1-3 to four decimal places on every metric, which is an independent determinism witness.
+
+Jerry's standing rule is that validated speedups become defaults. The measurement is the missing step, not the decision.

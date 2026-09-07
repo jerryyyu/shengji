@@ -19,7 +19,20 @@ from ..ai.mcbot import MCBot as MCBotBase
 from ..ai.smart import SmartBot
 from ..engine.round import Round
 from .actions import enumerate_actions
-from .encode import encode_action, encode_obs
+from .encode import encode_action
+from .encode_versions import ENC_VERSION, call_encode, encode_obs
+
+
+def net_enc_version(net) -> int:
+    """The encoder version a LOADED net wants its observations in.
+
+    Every net this module scores with (``NpNet``, and the torch nets of
+    ``rl.model``) carries its own input width, so the dispatch follows the
+    checkpoint.  A net that predates the attribute is v1, which is what a
+    531-wide archived checkpoint is.
+    """
+    version = getattr(net, "enc_version", None)
+    return ENC_VERSION if version is None else int(version)
 
 
 V11_INFLUENCE_FIELDS = (
@@ -129,7 +142,7 @@ class RLBot(SmartBot):
         actions = enumerate_actions(rnd, seat)
         if len(actions) == 1:
             return actions[0]
-        obs = encode_obs(rnd, seat)
+        obs = call_encode(encode_obs, rnd, seat, net_enc_version(self.net))
         encoded = [encode_action(a, rnd) for a in actions]
         scores = self.net.score_candidates(obs, encoded)
         return actions[int(scores.argmax())]
@@ -232,7 +245,7 @@ class MCValueLeaf(MCBotBase):
         # code, so it compared an assumption against a constant and could not
         # fail; v13abs was evaluated this way and looked like a failed idea.
         actions = enumerate_actions(clone, s)
-        obs = encode_obs(clone, s)
+        obs = call_encode(encode_obs, clone, s, net_enc_version(self.net))
         vals = self.net.value_candidates(
             obs, [encode_action(a, clone) for a in actions])
         v = float(vals.max()) * 100.0  # actor plays their best
@@ -331,7 +344,7 @@ class RLOverrideBot(SmartBot):
             # surface and make the exceptional path visible in telemetry.
             return actions[0]
         actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
-        obs = encode_obs(rnd, seat)
+        obs = call_encode(encode_obs, rnd, seat, net_enc_version(self.net))
         enc = [encode_action(a, rnd) for a in actions]
         d = self.net.value_candidates(obs, enc)
         d = [float(x) - float(d[0]) for x in d]        # deltas vs the baseline
@@ -381,7 +394,7 @@ class MCGatedOverride(RLOverrideBot):
         except StopIteration:
             return actions[0]
         actions = [actions[i0]] + actions[:i0] + actions[i0 + 1:]
-        obs = encode_obs(rnd, seat)
+        obs = call_encode(encode_obs, rnd, seat, net_enc_version(self.net))
         enc = [encode_action(a, rnd) for a in actions]
         d = self.net.value_candidates(obs, enc)
         d = [float(x) - float(d[0]) for x in d]
@@ -527,7 +540,7 @@ class MCV11ProtectedAnchor(MCBotBase):
         triggered = False
         if len(full) > 1:
             totals["model_scored"] += 1
-            obs = encode_obs(rnd, seat)
+            obs = call_encode(encode_obs, rnd, seat, net_enc_version(self.net))
             encoded = [encode_action(action, rnd) for action in full]
             values = [float(x) for x in self.net.value_candidates(obs, encoded)]
             if len(values) != len(full) or not all(map(math.isfinite, values)):
@@ -665,7 +678,7 @@ class MCPriorRace(MCBotBase):
         full = super()._candidates(rnd, seat)
         if len(full) <= self.KEEP:
             return super().decide_play(rnd, seat)
-        obs = encode_obs(rnd, seat)
+        obs = call_encode(encode_obs, rnd, seat, net_enc_version(self.net))
         enc = [encode_action(a, rnd) for a in full]
         v = self.net.value_candidates(obs, enc)
         order = sorted(range(len(full)), key=lambda i: -float(v[i]))

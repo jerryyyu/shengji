@@ -89,7 +89,8 @@ import numpy as np
 from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_STAGES,
                            VLEAF_LEAF_TRICKS, vleaf_checkpoint_sha256, vleaf_policy_suffix)
 from ..engine.round import Round, Trick, TrickPlay
-from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
+from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM
+from ..rl.encode_versions import call_encode, encode_obs, encoder_version_for
 from ..rl.value_afterstate import PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS, tensors_from_round
 from .baselines import N_STRATA, POINT_BINS, ROLES, StratifiedPrior
 from .data import PLAYS_PER_ROUND, check_meta, part_keys, read_column, read_meta, split_deals
@@ -281,6 +282,14 @@ class PointsHead:
         wt, bias = self.output
         return x @ wt + bias
 
+    @property
+    def enc_version(self) -> int:
+        """The encoder version this HEAD's own input width names.
+
+        A points head reads the raw observation; a complete-world head reads
+        a wider row and never answers here (``LeafError``)."""
+        return encoder_version_for(self.obs_dim)
+
     def final_attacker_points(self, obs) -> float:
         self.calls += 1
         value = float(self.forward(obs)[1]) * POINTS_SCALE
@@ -430,6 +439,9 @@ def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
     ``mlp`` trunk reads none) and the deck-conservation check (the
     determinizer already validated the clone's world).  ~50 us instead of
     ~120 us per leaf, next to a ~30 us forward."""
+    # The complete-world lane is encoder v1 only: its public tensor comes
+    # from ``rl.value_afterstate``, whose file digest is the key archived
+    # CWV checkpoints are accepted on (``ai.cwv_policy``).
     x = np.zeros(MLP_INPUT_DIM, dtype=np.float32)
     x[:OBS_DIM] = encode_obs(clone, seat)
     x[OBS_DIM] = float(clone.phase == "round_end")
@@ -563,7 +575,8 @@ class LearnedPointsLeaf:
         self.head = head
 
     def final_attacker_points(self, clone: Round, seat: int) -> float:
-        return self.head.final_attacker_points(encode_obs(clone, seat))
+        return self.head.final_attacker_points(
+            call_encode(encode_obs, clone, seat, self.head.enc_version))
 
     def describe(self) -> dict:
         meta = self.head.metadata

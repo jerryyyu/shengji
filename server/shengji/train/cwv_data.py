@@ -87,6 +87,7 @@ from ..harvest.rebuild import RebuildError, state_for_record
 from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
+from ..rl.encode_versions import ENC_VERSION, check_version
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -155,15 +156,26 @@ CWV_SOURCE_PATHS = {
 
 # ---------------------------------------------------------------- identity
 
-def cwv_encoder_identity() -> dict:
+def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     """Stamped in every cache ``meta``, checkpoint and receipt; the cache
-    key is its ``implementation_sha256`` (rehashed on every call)."""
+    key is its ``implementation_sha256`` (rehashed on every call).
+
+    ``version`` is the observation encoder version the public slice carries.
+    v1's payload is FROZEN -- ``ai.cwv_policy.local_encoder_identity`` is an
+    independent replica of this recipe and archived CWV checkpoints are
+    accepted against it -- so only a later version extends the payload.
+    """
+    version = check_version(version)
     sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
-    payload = "|".join([IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
+    parts = [IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
+    if version != 1:
+        parts.append(f"enc_version:{version}")
+    payload = "|".join(parts
                        + [f"{name}:{digest}" for name, digest in sorted(sources.items())])
     return {
         "identity_schema": IDENTITY_SCHEMA,
         "afterstate_schema": AFTERSTATE_SCHEMA,
+        "enc_version": version,
         "public_dim": PUBLIC_DIM,
         "world_shape": [WORLD_RECEIVERS, N_CARDS],
         "perspective_dim": PERSPECTIVE_DIM,
@@ -175,13 +187,17 @@ def cwv_encoder_identity() -> dict:
     }
 
 
-def encoder_cache_key() -> str:
-    return cwv_encoder_identity()["implementation_sha256"][:12]
+def encoder_cache_key(version: int = ENC_VERSION) -> str:
+    """The cache-file key of the CWV encoder at ``version``; the version is
+    in the key, so a v1 cache and a v2 cache cannot land on one path."""
+    version = check_version(version)
+    return f"v{version}-{cwv_encoder_identity(version)['implementation_sha256'][:12]}"
 
 
-def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *, history: bool = False) -> Path:
+def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *, history: bool = False,
+               version: int = ENC_VERSION) -> Path:
     flavour = "cwvh" if history else "cwv"
-    return Path(cache_dir) / f"{shard_sha256}.{flavour}-{encoder_cache_key()}.npz"
+    return Path(cache_dir) / f"{shard_sha256}.{flavour}-{encoder_cache_key(version)}.npz"
 
 
 # ------------------------------------------------------------------ levels
@@ -648,7 +664,8 @@ def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
     if meta.get("schema") != CACHE_SCHEMA:
         raise TrainDataError(f"{path}: cache schema {meta.get('schema')!r}")
     enc = meta.get("encoder") or {}
-    if enc.get("implementation_sha256") != cwv_encoder_identity()["implementation_sha256"]:
+    version = check_version(enc.get("enc_version", ENC_VERSION))
+    if enc.get("implementation_sha256") != cwv_encoder_identity(version)["implementation_sha256"]:
         raise TrainDataError(f"{path}: cache built by another encoder")
     if shard_sha256 is not None and meta["shard"]["sha256"] != shard_sha256:
         raise TrainDataError(f"{path}: cache derived from another shard")

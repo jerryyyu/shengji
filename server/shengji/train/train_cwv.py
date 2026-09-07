@@ -127,6 +127,7 @@ import torch
 from torch import nn
 
 from ..rl.douzero_micro import HISTORY_MAX_EVENTS
+from ..rl.encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
 from ..rl.value_afterstate import OUTCOME_CLASSES, ValueAfterstateTensors
 from ..rl.value_checkpoint import (
     ValueCheckpointError,
@@ -261,6 +262,10 @@ DEFAULTS = {
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
+    # A fresh run has no checkpoint to read a version from, so the encoder
+    # version has to be selectable here.  It stays 1: see build_config for
+    # why the complete-world lane cannot yet be widened.
+    "encoder_version": ENC_VERSION,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "argv", "started", "wall_secs", "device", "versions", "git",
@@ -1061,8 +1066,28 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  val_rank_records: int = DEFAULTS["val_rank_records"],
                  init: str | None = None,
                  init_lr_scale: float = DEFAULTS["init_lr_scale"],
-                 init_exclude_exposed: bool = False) -> dict:
+                 init_exclude_exposed: bool = False,
+                 encoder_version: int = DEFAULTS["encoder_version"]) -> dict:
     """Everything that determines the trained model and its metrics."""
+    try:
+        encoder_version = check_version(encoder_version)
+    except ValueError as exc:
+        raise TrainError(f"--encoder-version: {exc}") from None
+    if encoder_version != 1:
+        # The complete-world public tensor is ``rl.value_afterstate``'s, and
+        # THAT file's sha256 is the key ``ai.cwv_policy.verify_checkpoint_
+        # identity`` accepts archived CWV checkpoints on.  Widening it would
+        # orphan every archived complete-world net, which is exactly the
+        # failure this branch exists to avoid.  The v2 lane is reachable
+        # through ``train_v0.py --encoder-version 2`` (arch['obs_dim'] 560),
+        # whose checkpoints inference dispatches on by width.
+        raise TrainError(
+            f"--encoder-version {encoder_version} is not available for the "
+            "complete-world trainer: its public tensor comes from "
+            "rl/value_afterstate.py, whose file digest is what "
+            "ai/cwv_policy.verify_checkpoint_identity accepts archived CWV "
+            "checkpoints on. Train a v2 net with train_v0.py "
+            "--encoder-version 2 instead.")
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
     if select_metric not in SELECT_METRICS:
@@ -1091,9 +1116,10 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
                           seq_feedforward=seq_feedforward)
-    identity = cwv_encoder_identity()
+    identity = cwv_encoder_identity(encoder_version)
     return {
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
+        "encoder_version": int(encoder_version),
         "eval_luna": None if eval_luna is None else str(Path(eval_luna).resolve()),
         "arch": arch, "model_config": config.payload(), "epochs": int(epochs),
         "seed": int(seed), "limit_clusters": limit_clusters, "lr": float(lr),
@@ -1203,6 +1229,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
+          encoder_version: int = DEFAULTS["encoder_version"],
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1218,7 +1245,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
-        init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed)
+        init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
+        encoder_version=encoder_version)
     config["eval_holdouts"] = dict(holdouts)
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
@@ -1968,6 +1996,11 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--patience", type=int, default=DEFAULTS["patience"])
     t.add_argument("--val-fraction", type=float, default=DEFAULTS["val_fraction"])
     t.add_argument("--test-fraction", type=float, default=DEFAULTS["test_fraction"])
+    t.add_argument("--encoder-version", type=int, choices=sorted(OBS_DIM_BY_VERSION),
+                   default=DEFAULTS["encoder_version"],
+                   help="observation encoder layout to TRAIN on; recorded in the run "
+                        "config and the checkpoint's encoder identity. Only 1 is "
+                        "available here (see build_config); use train_v0.py for v2")
     t.add_argument("--hidden", type=int, default=DEFAULTS["hidden"],
                    help="mlp trunk widths [N, N // 2]")
     t.add_argument("--dropout", type=float, default=DEFAULTS["dropout"])
@@ -2042,7 +2075,8 @@ def main(argv: list[str] | None = None) -> int:
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
-                  init_exclude_exposed=args.init_exclude_exposed, **exec_kw)
+                  init_exclude_exposed=args.init_exclude_exposed,
+                  encoder_version=args.encoder_version, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

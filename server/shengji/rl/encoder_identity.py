@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from .encode import ENC_VERSION, OBS_SCHEMA
+from .encode_versions import ENC_VERSION, OBS_SCHEMA_BY_VERSION, check_version
 
 
 IDENTITY_SCHEMA = "rl-encoder-transitive-source-contract-v1"
@@ -48,12 +48,18 @@ def implementation_sha256(sources: dict[str, str]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def encoder_contract() -> dict:
+def encoder_contract(version: int = ENC_VERSION) -> dict:
+    """The transitive source contract for encoder ``version``.
+
+    The version is part of the contract: two caches or checkpoints built by
+    the same sources but different layouts must not compare equal.
+    """
+    version = check_version(version)
     sources = source_sha256s()
     return {
         "identity_schema": IDENTITY_SCHEMA,
-        "schema": OBS_SCHEMA,
-        "layout_version": ENC_VERSION,
+        "schema": OBS_SCHEMA_BY_VERSION[version],
+        "layout_version": version,
         "implementation_sha256": implementation_sha256(sources),
         "source_sha256s": sources,
     }

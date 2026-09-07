@@ -16,7 +16,7 @@ import numpy as np
 from ..ai.mcbot import _child_seed
 from ..ai.registry import REGISTRY
 from ..oracle.screen import OracleValueMixin
-from ..rl.encode import encode_obs
+from ..rl.encode_versions import call_encode, encode_obs
 from .leaf_policy import PointsHead
 from .search_policy import SearchError, terminal_utility
 
@@ -132,8 +132,9 @@ class WorldShortlistBot(REGISTRY["mc-s0-report-lcb"]):
                     signed = float(value) if leaf.turn % 2 == seat % 2 else -float(value)
                     scores[ci][wi] = 40.0 * signed
             else:
-                obs = np.asarray([encode_obs(leaf, leaf.turn) for leaf in leaves],
-                                 dtype=np.float64)
+                version = self._points_head.enc_version
+                obs = np.asarray([call_encode(encode_obs, leaf, leaf.turn, version)
+                                  for leaf in leaves], dtype=np.float64)
                 values = np.asarray(self._points_head.forward(obs), dtype=np.float64)
                 if values.ndim != 2 or values.shape != (len(leaves), 2):
                     raise SearchError("cheap points head must return [rows, 2]")

@@ -17,8 +17,11 @@ import numpy as np
 from ..engine.cards import Ordering
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import (
-    CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP, _counts, encode_obs,
+    CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP, _counts,
 )
+from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
+                                  encode_obs)
+from ..rl.value_afterstate_v2 import tensors_from_round as tensors_from_round_v2
 from ..rl.douzero_micro import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
     WORLD_RECEIVERS,
@@ -110,16 +113,21 @@ def _static_obs_eligible(rnd, seat: int) -> bool:
         return False
 
 
-def encode_obs_static(rnd: Round, seat: int) -> list[float]:
+def encode_obs_static(rnd: Round, seat: int, *,
+                      version: int = ENC_VERSION) -> list[float]:
     """Encode the fixed observation without constructing ``Memory``.
 
     The direct path consumes only Memory's played-card, unseen-card, and void
     results.  Pair/run deductions and declaration pins are intentionally not
     reconstructed.  Unsupported shapes delegate to the original encoder so
     its historical refusal type and message remain authoritative.
+
+    Only encoder v1 has a static fast path; any later version delegates to
+    ``encode_obs`` outright, which is correct by construction rather than by
+    a second hand-written copy of the layout.
     """
-    if not _static_obs_eligible(rnd, seat):
-        return encode_obs(rnd, seat)
+    if check_version(version) != 1 or not _static_obs_eligible(rnd, seat):
+        return call_encode(encode_obs, rnd, seat, version)
     try:
         ordering = rnd.ordering
         played_by = [[] for _ in range(4)]
@@ -179,10 +187,10 @@ def encode_obs_static(rnd: Round, seat: int) -> list[float]:
             for eff in list(SUITS) + [TRUMP]:
                 obs.append(float(eff in voids[observed_seat]))
         if len(obs) != OBS_DIM:
-            return encode_obs(rnd, seat)
+            return call_encode(encode_obs, rnd, seat, version)
         return obs
     except Exception:
-        return encode_obs(rnd, seat)
+        return call_encode(encode_obs, rnd, seat, version)
 
 
 def _events(rnd):
@@ -221,8 +229,17 @@ def _history_is_valid(rnd) -> bool:
         return False
 
 
-def _fused_static_tensors(rnd, seat: int) -> ValueAfterstateTensors | None:
+def _fused_static_tensors(rnd, seat: int,
+                          version: int = ENC_VERSION) -> ValueAfterstateTensors | None:
     """Build and check ordinary engine inputs in one card traversal.
+
+    The fused traversal writes the v1 observation layout only, and it is
+    gated on the ENCODER VERSION, not on its own length check.  That check
+    compares against ``OBS_DIM``, which is 531 for every version because the
+    encoder is additive -- so at v2 it would compare 531 against 531 and
+    PASS, handing a v2 caller a v1-shaped tensor.  A length guard against a
+    constant that does not move cannot detect the mismatch it looks like it
+    detects; only the explicit version gate below can.
 
     No trust flag or cross-call cache is involved. The same traversal that
     constructs played/hand planes counts the entire physical population and
@@ -230,6 +247,8 @@ def _fused_static_tensors(rnd, seat: int) -> ValueAfterstateTensors | None:
     established path, preserving its exception type, message and ordering.
     Half-copy increments are exactly representable, as in the training encoder.
     """
+    if check_version(version) != ENC_VERSION:
+        return None
     try:
         if (type(rnd) is not Round or type(seat) is not int or not 0 <= seat < 4
                 or rnd.phase != "play" or type(rnd.ordering) is not Ordering
@@ -345,7 +364,8 @@ def _fused_static_tensors(rnd, seat: int) -> ValueAfterstateTensors | None:
         return None
 
 
-def tensors_from_round_static(rnd, root_seat: int) -> ValueAfterstateTensors:
+def tensors_from_round_static(rnd, root_seat: int, *,
+                              version: int = ENC_VERSION) -> ValueAfterstateTensors:
     """Return MLP model inputs without unused Memory/history work.
 
     Public/world/perspective construction deliberately follows the operation
@@ -353,7 +373,13 @@ def tensors_from_round_static(rnd, root_seat: int) -> ValueAfterstateTensors:
     history is the same input produced by ``cwv_policy._stack(history_free)``.
     """
     root_seat = _seat(root_seat, "root seat")
-    fused = _fused_static_tensors(rnd, root_seat)
+    version = check_version(version)
+    if version != ENC_VERSION:
+        # Only v1 has a static fast path; a later version goes to that
+        # version's REFERENCE builder (``value_afterstate_v2``), never to the
+        # fused builder, which writes the v1 layout.
+        return tensors_from_round_v2(rnd, root_seat, version=version)
+    fused = _fused_static_tensors(rnd, root_seat, version)
     if fused is not None:
         return fused
     _validate_complete_round(rnd)

@@ -24,6 +24,21 @@ class NpNet:
         z = np.load(path)
         self.w = {k: z[k].astype(np.float32) for k in z.files}
 
+    @property
+    def obs_dim(self) -> int:
+        """The observation width this EXPORTED CHECKPOINT expects.
+
+        The first trunk weight is [hidden, obs_dim], so an archived v1 net
+        keeps declaring 531 no matter how wide later encoder versions get;
+        ``encode.encoder_version_for`` turns it into the version to encode
+        with."""
+        return int(self.w["t0w"].shape[1])
+
+    @property
+    def enc_version(self) -> int:
+        from .encode_versions import encoder_version_for
+        return encoder_version_for(self.obs_dim)
+
     @staticmethod
     def _lin(x, w, b):
         return x @ w.T + b

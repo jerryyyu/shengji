@@ -24,6 +24,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..rl.encode import ACT_DIM, OBS_DIM
+from ..rl.encode_versions import encoder_version_for
 
 MODEL_SCHEMA = "shengji-train-v0-model-v1"
 DEFAULT_HIDDEN = 512
@@ -60,6 +61,10 @@ class ValuePriorNet(nn.Module):
         super().__init__()
         arch = {**DEFAULT_ARCH, **(arch or {})}
         self.arch = arch
+        #: the encoder version this net's inputs must come from.  ``arch``
+        #: is persisted with the checkpoint, so a loaded net keeps naming
+        #: the encoder it was trained on (``encode_obs(..., version=)``).
+        self.enc_version = encoder_version_for(int(arch["obs_dim"]))
         layers: list[nn.Module] = []
         width = int(arch["obs_dim"])
         for hidden in arch["trunk"]:

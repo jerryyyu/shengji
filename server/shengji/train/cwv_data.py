@@ -88,6 +88,7 @@ from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
 from ..rl.encode_versions import ENC_VERSION, check_version
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -160,13 +161,15 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     """Stamped in every cache ``meta``, checkpoint and receipt; the cache
     key is its ``implementation_sha256`` (rehashed on every call).
 
-    ``version`` is the observation encoder version the public slice carries.
-    v1's payload is FROZEN -- ``ai.cwv_policy.local_encoder_identity`` is an
-    independent replica of this recipe and archived CWV checkpoints are
-    accepted against it -- so only a later version extends the payload.
-    """
+    ``version`` is the PUBLIC-HEAD encoder version the tensors carry; it is
+    part of the hashed payload, so two otherwise identical builds at two
+    encoder versions cannot share a cache file."""
     version = check_version(version)
     sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
+    # independent replica of this recipe and archived CWV checkpoints are
+    # checked against it.  Later versions extend the payload, so a v2 build
+    # can never hash equal to a v1 one.
     parts = [IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
     if version != 1:
         parts.append(f"enc_version:{version}")
@@ -176,7 +179,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         "identity_schema": IDENTITY_SCHEMA,
         "afterstate_schema": AFTERSTATE_SCHEMA,
         "enc_version": version,
-        "public_dim": PUBLIC_DIM,
+        "public_dim": public_dim(version),
         "world_shape": [WORLD_RECEIVERS, N_CARDS],
         "perspective_dim": PERSPECTIVE_DIM,
         "history_event_dim": HISTORY_EVENT_DIM,
@@ -188,10 +191,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
 
 
 def encoder_cache_key(version: int = ENC_VERSION) -> str:
-    """The cache-file key of the CWV encoder at ``version``; the version is
-    in the key, so a v1 cache and a v2 cache cannot land on one path."""
-    version = check_version(version)
-    return f"v{version}-{cwv_encoder_identity(version)['implementation_sha256'][:12]}"
+    return f"v{check_version(version)}-{cwv_encoder_identity(version)['implementation_sha256'][:12]}"
 
 
 def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *, history: bool = False,
@@ -288,7 +288,7 @@ def search_means(record: Mapping[str, Any]) -> tuple[list[int], list[float]] | N
     return [i for i, _ in pairs], [m for _, m in pairs]
 
 
-def bridge_record(record: Mapping[str, Any]) -> Row:
+def bridge_record(record: Mapping[str, Any], *, version: int = ENC_VERSION) -> Row:
     """Rebuild, apply the record's action and encode the afterstate (module
     docstring: View / Target).  Raises ``TrainDataError`` whose message
     starts with the skip reason."""
@@ -319,7 +319,7 @@ def bridge_record(record: Mapping[str, Any]) -> Row:
     if action_key(accepted) != action_key(recorded) or (
             action_key(accepted) != action_key(record["action"]) and "engine_play" not in record):
         raise TrainDataError("action_drift: the engine-accepted action differs from the record")
-    tensors = tensors_from_round(successor, seat)
+    tensors = tensors_at(successor, seat, version=version)
     target = signed_level_category(int(outcome["attacker_points"]), root_is_attacker)
     utility = float(outcome["signed_level_utility"])
     mapped = pt0_level(category_signed_level(target))
@@ -340,14 +340,21 @@ def bridge_record(record: Mapping[str, Any]) -> Row:
         successor=successor)
 
 
-def reference_check(record: Mapping[str, Any], row: Row) -> None:
+def reference_check(record: Mapping[str, Any], row: Row, *,
+                    version: int = ENC_VERSION) -> None:
     """Refuse a bridged row that differs from #214's own binding."""
+    version = check_version(version)
     try:
-        example = example_from_trajectory_record(record)
+        example = example_from_trajectory_record(record)     # the frozen v1 binding
     except ValueAfterstateError as exc:
         raise TrainDataError(f"reference: example_from_trajectory_record refused the "
                              f"record: {exc}") from exc
-    if example.input_sha256 != row.input_sha256 or example.target_category != row.target \
+    # #214's binding is v1 and frozen; at v2 the reference is that binding
+    # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
+    # independent rebuild's, and the v2 columns the successor's.
+    expected_sha = (example.input_sha256 if version == 1
+                    else widen(example.tensors, row.successor, row.seat).sha256())
+    if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "
                              "example_from_trajectory_record")
@@ -522,7 +529,8 @@ def _fresh_counts() -> dict:
 def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool = False,
                 private: bool = False, reference_every: int = REFERENCE_EVERY,
                 witness_every: int = WITNESS_EVERY, witness_seed: int = 0,
-                progress: Callable[[dict], None] | None = None) -> tuple[Path, dict]:
+                progress: Callable[[dict], None] | None = None,
+                version: int = ENC_VERSION) -> tuple[Path, dict]:
     """Encode every usable play record of ``shard`` into its cache file.
 
     Every ``reference_every``-th encoded row is re-derived through
@@ -545,7 +553,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
     for record in iter_records(shard):
         counts["records"] += 1
         try:
-            row = bridge_record(record)
+            row = bridge_record(record, version=version)
         except TrainDataError as exc:
             reason = str(exc).split(":", 1)[0]
             if reason not in SKIP_REASONS:
@@ -554,10 +562,12 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
             continue
         index = counts["encoded"]
         if index % reference_every == 0:
-            reference_check(record, row)
+            reference_check(record, row, version=version)
             counts["reference_checked"] += 1
         if index % witness_every == 0:
-            result = world_witness(row.successor, row.seat, rng)
+            result = world_witness(
+                row.successor, row.seat, rng,
+                encoder=lambda r, s: tensors_at(r, s, version=version))
             check_witness(result, label=f"{shard.label} record {counts['records'] - 1}")
             counts["world_witness"]["records"] += 1
             for key in ("trials", "world_changed", "public_changed", "inconclusive"):
@@ -596,7 +606,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
                       "secs": round(time.perf_counter() - started, 1)})
     n = counts["encoded"]
     arrays = {
-        "public": (np.stack(public_rows) if n else np.zeros((0, PUBLIC_DIM), np.float32)),
+        "public": (np.stack(public_rows) if n
+                   else np.zeros((0, public_dim(version)), np.float32)),
         "world": (np.stack(world_rows) if n
                   else np.zeros((0, WORLD_RECEIVERS, N_CARDS), np.uint8)),
         "perspective": np.asarray(scalars["perspective"], dtype=np.uint8),
@@ -627,7 +638,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
     nbytes = int(sum(int(a.nbytes) for a in arrays.values()))
     meta = {
         "schema": CACHE_SCHEMA,
-        "encoder": cwv_encoder_identity(),
+        "encoder": cwv_encoder_identity(version),
         "shard": {"label": shard.label, "sha256": shard.sha256, "records": shard.records,
                   "cluster": shard.cluster, "store": shard.store},
         "counts": counts,
@@ -641,7 +652,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         "sees_hidden_hands": SEES_HIDDEN_HANDS,
         "view": VIEW,
     }
-    path = cache_path(cache_dir, shard.sha256, history=history)
+    path = cache_path(cache_dir, shard.sha256, history=history, version=version)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     with open(tmp, "wb") as fh:
@@ -676,12 +687,25 @@ def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
     return dict(meta)
 
 
+def check_public_width(arrays: Mapping[str, np.ndarray], meta: Mapping[str, Any], *,
+                       path: str | os.PathLike) -> None:
+    """Refuse cache rows that are not the width the cache's DECLARED encoder
+    version implies (a v2 cache of 532-wide rows is not a v2 cache)."""
+    version = check_version(((meta.get("encoder") or {}).get("enc_version", ENC_VERSION)))
+    public = arrays.get("public")
+    width = int(public.shape[1]) if isinstance(public, np.ndarray) and public.ndim == 2 else None
+    if width != public_dim(version):
+        raise TrainDataError(f"{path}: cache rows are {width} wide, encoder v{version} "
+                             f"rows are {public_dim(version)}")
+
+
 def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
                history: bool | None = None) -> CwvBlock:
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
     names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in names}
+    check_public_width(arrays, meta, path=path)
     return CwvBlock(arrays, meta, str(path))
 
 
@@ -699,6 +723,7 @@ def decode_arrays(task: tuple[str, str | None, bool | None]
     names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in names}
+    check_public_width(arrays, meta, path=path)
     return arrays, meta
 
 
@@ -713,17 +738,18 @@ def _valid_meta(path: Path, shard_sha256: str, history: bool) -> dict | None:
 
 
 def _build_cache_task(task: tuple) -> dict:
-    shard, cache_dir, history, private, witness_seed = task
+    shard, cache_dir, history, private, witness_seed, version = task
     started = time.perf_counter()
     _path, counts = build_cache(shard, cache_dir, history=history, private=private,
-                                witness_seed=witness_seed)
+                                witness_seed=witness_seed, version=version)
     return {"sha256": shard.sha256, "label": shard.label, "records": counts["records"],
             "encoded": counts["encoded"], "secs": round(time.perf_counter() - started, 3)}
 
 
 def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                  history: bool = False, witness_seed: int = 0, workers: int | None = None,
-                 progress: Callable[[str], None] | None = None) -> list[dict]:
+                 progress: Callable[[str], None] | None = None,
+                 version: int = ENC_VERSION) -> list[dict]:
     """Build the caches of ``jobs`` (``(shard, private)`` pairs), ``workers``
     at a time in spawned processes (one shard per task); byte-identical to
     the in-process build."""
@@ -738,6 +764,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
         for shard, private in jobs:
             started = time.perf_counter()
             _path, counts = build_cache(shard, cache_dir, history=history, private=private,
+                                        version=version,
                                         witness_seed=witness_seed)
             results.append({"sha256": shard.sha256, "label": shard.label,
                             "records": counts["records"], "encoded": counts["encoded"],
@@ -745,7 +772,8 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
             say(f"cwv cache {shard.label}: built encoded={counts['encoded']} "
                 f"secs={results[-1]['secs']}")
         return results
-    tasks = [(shard, str(cache_dir), bool(history), bool(private), int(witness_seed))
+    tasks = [(shard, str(cache_dir), bool(history), bool(private), int(witness_seed),
+              int(version))
              for shard, private in jobs]
     say(f"cwv cache: building {len(tasks)} shard(s) with {min(workers, len(tasks))} workers")
     ctx = multiprocessing.get_context("spawn")
@@ -761,18 +789,21 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
 
 def ensure_caches(shards: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                   history: bool = False, witness_seed: int = 0, workers: int | None = None,
-                  progress: Callable[[str], None] | None = None) -> list[tuple[dict, bool]]:
+                  progress: Callable[[str], None] | None = None,
+                  version: int = ENC_VERSION) -> list[tuple[dict, bool]]:
     """``[(meta, rebuilt), ...]`` in the order of ``shards``."""
-    metas = [_valid_meta(cache_path(cache_dir, s.sha256, history=history), s.sha256, history)
+    version = check_version(version)
+    metas = [_valid_meta(cache_path(cache_dir, s.sha256, history=history, version=version),
+                         s.sha256, history)
              for s, _p in shards]
     pending = [(s, p) for (s, p), m in zip(shards, metas) if m is None]
     if pending:
         build_caches(pending, cache_dir, history=history, witness_seed=witness_seed,
-                     workers=workers, progress=progress)
+                     workers=workers, progress=progress, version=version)
     out: list[tuple[dict, bool]] = []
     for (shard, _private), meta in zip(shards, metas):
         if meta is None:
-            path = cache_path(cache_dir, shard.sha256, history=history)
+            path = cache_path(cache_dir, shard.sha256, history=history, version=version)
             meta = check_meta(read_meta(path), path=path, shard_sha256=shard.sha256,
                               history=history)
             out.append((meta, True))
@@ -993,7 +1024,10 @@ def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
     rows = np.asarray(rows, dtype=np.int64)
     b = len(rows)
     out: dict[str, np.ndarray] = {
-        "public": _anon_zeros((b, PUBLIC_DIM), np.float32),
+        # every block in a batch shares one encoder version (``check_meta``)
+        "public": _anon_zeros(
+            (b, int(blocks[0].public.shape[1]) if len(blocks) else PUBLIC_DIM),
+            np.float32),
         "world": _anon_zeros((b, WORLD_RECEIVERS, N_CARDS), np.uint8),
     }
     for name, dtype in _SCALAR_DTYPES.items():
@@ -1146,6 +1180,7 @@ def _merge_counts(total: dict, counts: Mapping) -> None:
 
 
 def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int | None,
+                   version: int = ENC_VERSION,
                    history: bool, witness_seed: int,
                    progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
@@ -1157,7 +1192,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
     if not jobs:
         raise TrainDataError("no shard to train on")
     built = ensure_caches(jobs, cache_dir, history=history, witness_seed=witness_seed,
-                          workers=cache_workers, progress=progress)
+                          workers=cache_workers, progress=progress, version=version)
     entries: list[tuple[ShardRef, str]] = []
     keep: list = []
     counts: dict = {"shards": 0, "cache_rebuilt": 0, "cache_reused": 0}
@@ -1170,7 +1205,8 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
             _merge_counts(counts, {"records": meta["counts"]})
-            path = str(cache_path(cache_dir, shard.sha256, history=history))
+            path = str(cache_path(cache_dir, shard.sha256, history=history,
+                                  version=version))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
                                 "cache": path, "records": int(meta["counts"]["encoded"]),
                                 "nbytes": int(meta["nbytes"]), "history": bool(history),

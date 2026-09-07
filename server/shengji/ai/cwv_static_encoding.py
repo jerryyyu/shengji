@@ -21,6 +21,7 @@ from ..rl.encode import (
 )
 from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
                                   encode_obs)
+from ..rl.value_afterstate_v2 import tensors_from_round as tensors_from_round_v2
 from ..rl.douzero_micro import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
     WORLD_RECEIVERS,
@@ -363,10 +364,6 @@ def _fused_static_tensors(rnd, seat: int,
         return None
 
 
-class CWVStaticEncodingError(ValueError):
-    """A complete-world static request cannot be served as specified."""
-
-
 def tensors_from_round_static(rnd, root_seat: int, *,
                               version: int = ENC_VERSION) -> ValueAfterstateTensors:
     """Return MLP model inputs without unused Memory/history work.
@@ -378,18 +375,10 @@ def tensors_from_round_static(rnd, root_seat: int, *,
     root_seat = _seat(root_seat, "root seat")
     version = check_version(version)
     if version != ENC_VERSION:
-        # The complete-world public tensor is ``ValueAfterstateTensors``, and
-        # ``rl/value_afterstate.py`` is frozen in this branch: its file digest
-        # is the key ``ai.cwv_policy.verify_checkpoint_identity`` accepts
-        # archived complete-world checkpoints on, so PUBLIC_DIM cannot grow
-        # here without orphaning them.  Refuse loudly rather than hand back a
-        # v1-width tensor to a v2 caller.
-        raise CWVStaticEncodingError(
-            f"complete-world static tensors are encoder v1 only; version "
-            f"{version} was requested. The observation itself is available at "
-            f"any version through encode_obs_static(..., version=...); the "
-            f"complete-world lane needs rl/value_afterstate.py to widen, which "
-            f"would orphan archived CWV checkpoints.")
+        # Only v1 has a static fast path; a later version goes to that
+        # version's REFERENCE builder (``value_afterstate_v2``), never to the
+        # fused builder, which writes the v1 layout.
+        return tensors_from_round_v2(rnd, root_seat, version=version)
     fused = _fused_static_tensors(rnd, root_seat, version)
     if fused is not None:
         return fused
@@ -421,5 +410,5 @@ def tensors_from_round_static(rnd, root_seat: int, *,
 __all__ = [
     "STATIC_ENCODING_SCHEMA", "STATIC_ENCODING_SOURCE_SHA256",
     "static_encoding_identity", "encode_obs_static",
-    "tensors_from_round_static", "CWVStaticEncodingError",
+    "tensors_from_round_static",
 ]

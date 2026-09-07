@@ -279,13 +279,12 @@ def test_a_fresh_training_run_can_select_the_encoder_version():
             train_v0.build_config(data=["d"], encoder_version=bad)
 
     c1 = train_cwv.build_config(data=["d"])
-    assert c1["encoder_version"] == 1
-    # The complete-world trainer records the flag but cannot yet widen: its
-    # public tensor is rl/value_afterstate.py's, and THAT file's digest is
-    # what ai/cwv_policy accepts archived CWV checkpoints on.  The refusal
-    # is explicit rather than a silent v1 run.
-    with pytest.raises(train_cwv.TrainError, match="value_afterstate"):
-        train_cwv.build_config(data=["d"], encoder_version=2)
+    c2 = train_cwv.build_config(data=["d"], encoder_version=2)
+    assert (c1["encoder_version"], c1["public_dim"]) == (1, 532)
+    assert (c2["encoder_version"], c2["public_dim"]) == (2, 561)
+    # the v1 model_config is field-for-field what the pre-change trainer wrote
+    assert "public_dim" not in c1["model_config"] and "enc_version" not in c1["model_config"]
+    assert c2["model_config"]["public_dim"] == 561 and c2["model_config"]["enc_version"] == 2
     for bad in (0, 3, "2", None):
         with pytest.raises(train_cwv.TrainError):
             train_cwv.build_config(data=["d"], encoder_version=bad)
@@ -395,11 +394,11 @@ def test_v2_does_not_take_the_fused_fast_path():
 
     static._fused_static_tensors = spy
     try:
-        with pytest.raises(static.CWVStaticEncodingError, match="encoder v1 only"):
-            static.tensors_from_round_static(rnd, seat, version=2)
+        out = static.tensors_from_round_static(rnd, seat, version=2)
     finally:
         static._fused_static_tensors = real
     assert calls == [], "the fused path must not be entered for a v2 request"
+    assert out.public.shape == (561,), "v2 is served by the v2 reference builder"
 
 
 def test_the_fused_builder_itself_refuses_to_serve_a_v2_request():
@@ -425,18 +424,18 @@ def test_the_v2_observation_is_560_wide_through_the_reference_encoder():
     assert wide[:531] == fast_v1
 
 
-def test_complete_world_static_tensors_refuse_v2_instead_of_silently_narrowing():
-    """The complete-world tensor is ``rl/value_afterstate.py``'s, and that
-    file is frozen here (archived CWV checkpoints are accepted on the
-    nine-file digest it belongs to).  A v2 caller must get a refusal, never
-    a 531-wide tensor."""
+def test_complete_world_static_tensors_at_v2_are_561_wide_never_narrowed():
+    """``rl/value_afterstate.py`` is frozen, so v2 tensors come from the
+    subclass in ``value_afterstate_v2`` one level up; a v2 caller gets 561
+    columns whose v1 slice is the v1 tensor, never a 532-wide answer."""
     from shengji.ai import cwv_static_encoding as static
 
     rnd, seat = _played_state()
     v1 = static.tensors_from_round_static(rnd, seat)
-    assert v1.public.shape == (532,)
-    with pytest.raises(static.CWVStaticEncodingError, match="encoder v1 only"):
-        static.tensors_from_round_static(rnd, seat, version=2)
+    v2 = static.tensors_from_round_static(rnd, seat, version=2)
+    assert v1.public.shape == (532,) and v2.public.shape == (561,)
+    assert v2.public[:531].tobytes() == v1.public[:531].tobytes()
+    assert v2.public[560] == v1.public[531]
 
 
 # ------------------------------------- the packing table covers BOTH widths

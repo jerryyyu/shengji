@@ -34,7 +34,9 @@ import torch
 from ..harvest.rebuild import RebuildError, state_for_record
 from ..harvest.schema import SchemaError, validate_record
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
-from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM, encode_obs
+from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM
+from ..rl.encode_versions import ENC_VERSION, encode_obs, obs_dim
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at
 from ..rl.value_afterstate import (
     PERSPECTIVE_DIM,
     PUBLIC_DIM,
@@ -120,7 +122,10 @@ def public_values(model: ValuePriorNet, obs: np.ndarray, device: torch.device | 
     """The public head's value (PT0 signed level for the acting seat's team)
     per observation row (the prior head gets one masked dummy candidate)."""
     obs = np.asarray(obs, dtype=np.float32)
-    if obs.ndim != 2 or obs.shape[1] != OBS_DIM:
+    # The width the MODEL declares, not a global: a v1 head keeps refusing
+    # anything but 531 columns even where a v2 head accepts 560.
+    want = int(model.arch["obs_dim"])
+    if obs.ndim != 2 or obs.shape[1] != want:
         raise EvalError("public head observations must be [n, OBS_DIM]")
     model.eval()
     out = []
@@ -231,12 +236,12 @@ class ShardResult:
 
 
 def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
-                     history: bool = False) -> dict:
+                     history: bool = False, version: int = ENC_VERSION) -> dict:
     """Apply every candidate in ``rnd`` (the TRUE world) and encode the
     reached states from ``seat``'s perspective; terminal successors carry
     their exact value instead of tensors (the nets never see them)."""
     k = len(candidates)
-    public = np.zeros((k, PUBLIC_DIM), dtype=np.float32)
+    public = np.zeros((k, public_dim(version)), dtype=np.float32)
     world = np.zeros((k, WORLD_RECEIVERS, N_CARDS), dtype=np.uint8)
     perspective = np.zeros(k, dtype=np.uint8)
     terminal = np.zeros(k, dtype=bool)
@@ -261,7 +266,7 @@ def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
                 hist_cards.append(np.zeros((0, N_CARDS), np.uint8))
                 hist_meta.append(np.zeros((0, HISTORY_META_DIM), np.uint8))
             continue
-        tensors = tensors_from_round(successor, seat)
+        tensors = tensors_at(successor, seat, version=version)
         public[i] = tensors.public
         world[i] = np.rint(tensors.world * 2.0).astype(np.uint8)
         if history:
@@ -285,7 +290,7 @@ def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
 
 def _candidate_task(task: tuple) -> ShardResult:
     """Pool worker: rebuild the selected records of one shard."""
-    shard, selected, want_search, per_shard_limit, history = task
+    shard, selected, want_search, per_shard_limit, history, version = task
     keep = None if selected is None else set(selected)
     refs: list[str] = []
     keys: list[str] = []
@@ -309,21 +314,21 @@ def _candidate_task(task: tuple) -> ShardResult:
             continue
         refs.append(str(record["source_ref"]))
         keys.append(key)
-        obs.append(np.asarray(encode_obs(rnd, seat), dtype=np.float32))
+        obs.append(np.asarray(encode_obs(rnd, seat, version=version), dtype=np.float32))
         means = search_means(record)
         if not want_search or means is None or len(search) >= per_shard_limit:
             continue
         indices, values = means
         try:
             scored = score_candidates(rnd, seat, [record["ballot"][i] for i in indices],
-                                      history=history)
+                                      history=history, version=version)
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
         scored["source_ref"] = str(record["source_ref"])
         scored["deal_key"] = key
         search.append(scored)
-    decision = np.stack(obs) if obs else np.zeros((0, OBS_DIM), np.float32)
+    decision = np.stack(obs) if obs else np.zeros((0, obs_dim(version)), np.float32)
     return ShardResult(label=shard.label, source_ref=refs, deal_key=keys,
                        decision_obs=decision, search=search)
 
@@ -344,7 +349,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                    public_head: ValuePriorNet | None, prior: StratifiedPrior | None,
                    device: torch.device | str, workers: int, rank_limit: int | None,
                    history: bool, want_search: bool = True,
-                   progress: Callable[[str], None] | None = None) -> dict:
+                   progress: Callable[[str], None] | None = None,
+                   version: int = ENC_VERSION) -> dict:
     """Run the workers over ``shard_keys`` (``(shard, selected deal keys or
     None)``) and score what they return.
 
@@ -359,7 +365,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
         per_shard = max(1, math.ceil(int(rank_limit) / max(1, len(shard_keys))))
     for shard, keys in shard_keys:
         tasks.append((shard, None if keys is None else list(keys), bool(want_search),
-                      per_shard if per_shard is not None else 1 << 30, bool(history)))
+                      per_shard if per_shard is not None else 1 << 30, bool(history),
+                      int(version)))
     started = time.perf_counter()
     decision_values: dict[str, float] = {}
     decision_keys: dict[str, str] = {}
@@ -391,7 +398,10 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                                                                         terminal)]), scores)
                 agreement["cwv"].append(candidate_agreement(scores, entry["means"]))
             if public_head is not None:
-                values = public_values(public_head, entry["public"][:, :OBS_DIM], device)
+                # Slice to the width the HEAD declares; a head of another
+                # encoder version fails loudly in ``public_values``.
+                head_dim = int(public_head.arch["obs_dim"])
+                values = public_values(public_head, entry["public"][:, :head_dim], device)
                 values = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), values)
@@ -666,7 +676,8 @@ class CandidateSet:
             return np.zeros((0, *shape), dtype=dtype)
 
         out = cls(
-            public=cat("public", np.float32, (PUBLIC_DIM,)),
+            public=cat("public", np.float32,
+                       (int(np.shape(entries[0]["public"])[1]) if entries else PUBLIC_DIM,)),
             world=cat("world", np.uint8, (WORLD_RECEIVERS, N_CARDS)),
             perspective=cat("perspective", np.uint8, ()),
             terminal=cat("terminal", bool, ()),
@@ -691,7 +702,7 @@ class CandidateSet:
 def _candidate_set_task(task: tuple) -> list[dict]:
     """Pool worker: the first ``limit`` search records of one shard among
     the selected deals, every candidate applied in the TRUE world."""
-    shard, selected, limit, history = task
+    shard, selected, limit, history, version = task
     keep = None if selected is None else set(selected)
     entries: list[dict] = []
     for record in iter_records(shard):
@@ -718,7 +729,7 @@ def _candidate_set_task(task: tuple) -> list[dict]:
         indices, values = means
         try:
             scored = score_candidates(rnd, seat, [record["ballot"][i] for i in indices],
-                                      history=history)
+                                      history=history, version=version)
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
@@ -739,13 +750,15 @@ def _pool_map(fn: Callable, tasks: Sequence[tuple], *, workers: int) -> Iterator
 
 
 def candidate_set_digest(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
-                         per_shard_limit: int, history: bool) -> str:
+                         per_shard_limit: int, history: bool,
+                         version: int = ENC_VERSION) -> str:
     """Identity of a candidate set: encoder, flavour, per-shard cap and the
     (shard, selected deals) list in order."""
     h = hashlib.sha256()
     h.update(json.dumps({
         "schema": CANDIDATE_SET_SCHEMA,
-        "encoder": cwv_encoder_identity()["implementation_sha256"],
+        "encoder": cwv_encoder_identity(version)["implementation_sha256"],
+        "enc_version": int(version),
         "history": bool(history), "per_shard_limit": int(per_shard_limit),
         "shards": [[shard.sha256, None if keys is None else sorted(keys)]
                    for shard, keys in shard_keys],
@@ -755,14 +768,15 @@ def candidate_set_digest(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
 
 def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                         per_shard_limit: int, history: bool, workers: int,
-                        label: str = "", progress: Callable[[str], None] | None = None
-                        ) -> CandidateSet:
+                        label: str = "", progress: Callable[[str], None] | None = None,
+                        version: int = ENC_VERSION) -> CandidateSet:
     """Rebuild the first ``per_shard_limit`` search records of every
     ``(shard, deal keys)`` (``None`` = every deal) into one ``CandidateSet``
     (shard order = the input order, so the set is a function of its
     digest)."""
     started = time.perf_counter()
-    tasks = [(shard, None if keys is None else list(keys), int(per_shard_limit), bool(history))
+    tasks = [(shard, None if keys is None else list(keys), int(per_shard_limit),
+              bool(history), int(version))
              for shard, keys in shard_keys]
     by_shard: dict[str, list[dict]] = {}
     labels = [shard.sha256 for shard, _keys in shard_keys]
@@ -780,8 +794,9 @@ def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], 
     for entries in sorted(by_shard.values(), key=lambda es: es[0]["source_ref"]):
         ordered.extend(entries)
     meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": candidate_set_digest(
-                shard_keys, per_shard_limit=per_shard_limit, history=history),
-            "encoder": cwv_encoder_identity(), "history": bool(history),
+                shard_keys, per_shard_limit=per_shard_limit, history=history,
+                version=version),
+            "encoder": cwv_encoder_identity(version), "history": bool(history),
             "per_shard_limit": int(per_shard_limit), "shards": len(labels),
             "search_means": SEARCH_MEANS_SCALE, "rank_scale": RANK_SCALE,
             "secs": round(time.perf_counter() - started, 3), "label": label}
@@ -794,9 +809,11 @@ def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], 
 def ensure_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
                          cache_dir: str | os.PathLike | None, *, per_shard_limit: int,
                          history: bool, workers: int, label: str = "",
-                         progress: Callable[[str], None] | None = None) -> CandidateSet:
+                         progress: Callable[[str], None] | None = None,
+                         version: int = ENC_VERSION) -> CandidateSet:
     """``build_candidate_set`` memoised in ``cache_dir`` by digest."""
-    digest = candidate_set_digest(shard_keys, per_shard_limit=per_shard_limit, history=history)
+    digest = candidate_set_digest(shard_keys, per_shard_limit=per_shard_limit,
+                                  history=history, version=version)
     path = (None if cache_dir is None
             else Path(cache_dir) / f"candidates-{digest[:24]}{'.cwvh' if history else ''}.npz")
     if path is not None and path.is_file():
@@ -811,7 +828,8 @@ def ensure_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
                          f"records / {cached.candidates} candidates from {path.name}")
             return cached
     built = build_candidate_set(shard_keys, per_shard_limit=per_shard_limit, history=history,
-                                workers=workers, label=label, progress=progress)
+                                workers=workers, label=label, progress=progress,
+                                version=version)
     if path is not None:
         built.save(path)
         built.meta["saved_to"] = str(path)
@@ -1250,7 +1268,8 @@ def load_labeled_holdout(path: str | os.PathLike) -> LabeledHoldout:
 
 
 def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: bool,
-                              limit: int | None = None) -> tuple[list[dict], dict]:
+                              limit: int | None = None,
+                              version: int = ENC_VERSION) -> tuple[list[dict], dict]:
     """``score_candidates`` entries for every rank-eligible labelled row
     (the labels' ballot applied in the record's TRUE world, encoded once),
     in file order; no outcome is needed.  Returns ``(entries, counts)``."""
@@ -1278,7 +1297,8 @@ def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: boo
         indices, values = means
         ballot = row["search_labels"]["ballot"]
         try:
-            scored = score_candidates(rnd, seat, [ballot[i] for i in indices], history=history)
+            scored = score_candidates(rnd, seat, [ballot[i] for i in indices],
+                                      history=history, version=version)
         except ValueAfterstateError:
             counts["action_failed"] += 1
             continue
@@ -1292,18 +1312,20 @@ def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: boo
 
 
 def holdout_candidate_set(holdout: LabeledHoldout, *, history: bool, limit: int | None = None,
-                          label: str = "") -> CandidateSet:
+                          label: str = "", version: int = ENC_VERSION) -> CandidateSet:
     """The holdout's ``CandidateSet`` (``rank_metrics`` input): the same
     arrays, scale and metric definitions as the self-play candidate sets,
     with the production labels as the search means."""
     started = time.perf_counter()
-    entries, counts = holdout_candidate_entries(holdout.rows, history=history, limit=limit)
+    entries, counts = holdout_candidate_entries(holdout.rows, history=history, limit=limit,
+                                               version=version)
     digest = hashlib.sha256(json.dumps({
         "schema": CANDIDATE_SET_SCHEMA, "holdout": holdout.sha256,
-        "encoder": cwv_encoder_identity()["implementation_sha256"],
+        "encoder": cwv_encoder_identity(version)["implementation_sha256"],
+        "enc_version": int(version),
         "history": bool(history), "limit": limit}, sort_keys=True).encode("ascii")).hexdigest()
     meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": digest,
-            "encoder": cwv_encoder_identity(), "history": bool(history),
+            "encoder": cwv_encoder_identity(version), "history": bool(history),
             "per_shard_limit": None if limit is None else int(limit), "shards": 1,
             "search_means": SEARCH_MEANS_SCALE + " -- here: production labels "
                                                  "(harvest_labels, search_labels.means)",

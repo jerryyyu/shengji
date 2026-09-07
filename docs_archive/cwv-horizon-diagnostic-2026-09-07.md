@@ -159,11 +159,64 @@ CE/MAE with better action ranking or final gameplay.
 
 The audit found a horizon distribution difference and verified the actual
 consumer, but no load-bearing selector arithmetic defect in the traced cases.
-First reconcile Claude's already-running ACDEF-v2 gameplay result. If another
-mechanism test is warranted, compare point versus level-utility selection
-on common rollout matrices with separate nomination/report/reference folds;
-do not simultaneously relax the confidence gate or increase model capacity.
-That is a policy experiment, not a correctness repair or deployment approval.
+The next mechanism test compared point versus level-utility selection on
+common rollout matrices, without relaxing the confidence gate or increasing
+model capacity. Its result is below. First reconcile Claude's already-running
+ACDEF-v2 and queued LR1e-4 gameplay comparisons before another large experiment.
+
+## Selector objective ablation (completed)
+
+The model ranks expected signed level utility, while production MC scores raw
+attacker points. To isolate that mismatch we froze the four finished-trick
+models' shortlists on all 52 FIT roots. Each root gets one common N30 selection
+and R300 report matrix, obtained from the actual native heuristic rollout.
+Both objectives then consume those values through the **registered production
+MCBot.decide_play** implementation, not an independently rewritten selector.
+The independent 1,024-world reference from the prior full-panel run is reused;
+it never selects the challenger or supplies the confidence statistic.
+
+The point control reproduced all 208 saved model-position controls, including
+no-search roots, candidate order, selected/challenger indices, means, paired
+SE, report seed/gap/statistic and work counts. The alternative uses
+`40 * attacker_level_utility(points)`: the model's uncapped utility, not the
+legacy `LEVEL_OBJECTIVE` option's three-level cap plus `.2 * points` term.
+The point-shy rule and its numeric epsilon of 2 stay unchanged (equivalent to
+.05 utility units in the level arm); report alpha, critical value and minimum
+gain are unchanged. This specifies an objective intervention, not a claim that
+the units of every threshold are inherently interchangeable.
+
+| Model | Point-based final reference gain | Level-based final reference gain | Level minus point, exploratory paired 95% interval |
+|---|---:|---:|---:|
+| ACD v1 | +.04435 | +.04569 | +.00134 [-.00219, +.00692] |
+| ACD v2 | +.03367 | +.03501 | +.00134 [-.00219, +.00692] |
+| ACD v2 LR1e-4 | +.03930 | +.04064 | +.00134 [-.00219, +.00692] |
+| ACDEF v1 | +.04435 | +.04569 | +.00134 [-.00219, +.00692] |
+
+Each model changes six submitted moves, with the same per-root reference
+effect. The effect is small, inconclusive, and leaves relative model gaps
+unchanged. This does **not** establish that objective mismatch explains model
+scaling or that the level variant beats the existing policy in gameplay.
+
+A useful case is root `06528b83`: point selection nominates SA and the report
+keeps incumbent SQ. Level selection nominates H10 and its report lower bound
+clears zero. H10 is +.16602 reference utility versus SQ on the saved independent
+worlds. Other changed decisions lose value, including root `0e6731df`
+(-.04199), so the example must not substitute for the full-panel result.
+
+The complete run used 71,940 fresh native candidate-world continuations,
+reused the same matrices for both objectives and all four models, and took
+16.09 seconds on one nice-10 CPU worker. Replayed MC records' work counters
+denote logical matrix lookups; they are **not** additional fresh rollouts.
+No neural inference, training, new games, validation outcomes or live jobs
+were involved. Source tests exercise objective-induced decision reversal in
+both team perspectives, positive-mean/negative-LCB refusal, high kitty-point
+utility without clipping, no-search roots, control mismatches, FIT admission
+and deal-weighted summaries. 31 focused native tests passed.
+
+Evidence: `~/shengji-archive/2026-09-07/cwv-selector-objective.HBuGwT/run/`.
+Reusable CLI: `server/scripts/cwv_selector_objective_audit.py --help`.
+Per-root atomic outputs preserve completed work and bind the saved decisions
+and reference artifact. No default, registry entry or production source changes.
 
 ## Scope, cost and reproducibility
 

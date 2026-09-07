@@ -1,9 +1,80 @@
-# Fused static W32 inputs — correctness checked, timing pending
+# Fused static W32 inputs — measured wide-follow speedup
 
 Research-only decision-preserving engineering for [#248](https://github.com/jerryyyu/shengji/issues/248).
 Base: `0ba7f709020b455d62f74954dc54154b0cd52d6d` (merged #286).
 No production default, checkpoint, training encoder, search budget or live
-worker changes. **No speedup or gameplay-strength claim yet.**
+worker changes. **1.3324× measured decision speedup on two saved huge follows;
+the seven-state small/lead panel is neutral. No whole-game or strength claim.**
+
+## Completed isolated Strength A/B
+
+Executed source `e1f93c274f1bcca686df8f1b285e97d34758d05d`, actual ABC
+checkpoint, compiled Linux engine, Python 3.14.4, one inference thread. Claude
+paused F2 at a retained-shard boundary; the unit and research processes were
+independently verified inactive before launch. One counterbalanced paired pass
+covered every planned state. No retries, new games, provider calls or outcome
+selection. The only arm change was fused static input construction; prepared
+lead validation and the existing caches were enabled in both arms.
+
+All **9/9 pairs (18 decisions, including one forced pair)** preserve ordered
+score hashes, batches, shortlist, report, work, input states and RNG. Both huge
+follows have zero successor/tensor hits and together process **3,509,024 ranking
+rows per arm**. This is the full W32/N30/R300 consumer, not a tensor microbenchmark.
+
+| Panel / state | Legal actions | Baseline seconds | Fused seconds | Baseline / fused |
+|---|---:|---:|---:|---:|
+| Prior panel 0, wide lead | 6,958 | 6.95645 | 6.92460 | 1.0046× |
+| Prior panel 1 | 104 | 0.47278 | 0.50709 | 0.9323× |
+| Prior panel 2 | 3 | 0.33649 | 0.32636 | 1.0310× |
+| Prior panel 3 | 34 | 0.26047 | 0.26646 | 0.9775× |
+| Prior panel 4, forced | 1 | 0.00039 | 0.00031 | 1.2425× |
+| Prior panel 5 | 8 | 0.11213 | 0.10349 | 1.0835× |
+| Prior panel 6 | 4 | 0.10255 | 0.09368 | 1.0946× |
+| Recovered follow 0 | 64,897 | 325.84335 | 246.79641 | 1.3203× |
+| Recovered follow 1 | 44,760 | 196.90544 | 145.54143 | 1.3529× |
+| **Prior seven-state sum** | — | **8.24125** | **8.22199** | **1.0023×** |
+| **Two huge-follow sum** | — | **522.74879** | **392.33783** | **1.3324×** |
+
+The large-follow sum uses about **25.0% less wall**. Small states are mixed:
+the 104-action case is 34 ms / 7.3% slower in this single paired pass. These are
+fixed diagnostic states, not frequency-weighted gameplay; one pair per state
+does not establish timing precision. Do not call this regression-free, multiply
+it by #286's different-host result, or extrapolate it to a whole-game speedup.
+The forced case does not exercise neural encoding. CPU and wall closely agree
+on both large states; this is isolated single-decision latency, not all-core
+throughput. Better whole-game scheduling remains a separate measurement.
+
+The supervisor finished successfully in **939.07 seconds (15m39s)**, sampled
+peak process-group RSS **604,577,792 bytes (~576.6 MiB)**. Both stages exited 0;
+neither the per-decision nor outer wall/memory limit fired. Unit
+`cwv-fused-static-ab-20260906.service` and its children exited; Strength was
+released immediately to Claude. No live F2 or Mini source adopted this change.
+
+Remote root: `shengji-cloud:/root/cwv-fused-static-20260906.CsN7aR/`.
+Complete local retained evidence:
+`~/shengji-archive/2026-09-06/fused-static-strength-final.FKTnEm/`.
+It contains both panels, 18 raw rows, configs/summaries, launch/stage/exit
+receipts, log, launcher, exact source archive, native artifact, checkpoint and
+private input snapshots. `readout.py` checks the retained rows and transfer
+bindings without any model/engine replay. No additional reconstruction run.
+
+- Prior-panel summary SHA: `ab6caf1673109d143df05fb706ae4c82697c98cf81ae2789d72003db57bad658`.
+- Huge-follow summary SHA: `56abd3d2f92d9d77902953d8ab11e1f90730ca6140d0ef4b99f08a8e658fed06`.
+- Terminal receipt SHA: `af03fe8bf2577387cc2828c867f756ba8d96ef837cf338701aae8fecde5e587d`.
+- Readout SHA: `11d1e6be7ddcf352818c5d2742598db1fd9b4c02087eb961c61fa13f85159b30`.
+- Exact tracked-source archive SHA: `d7cc3608bc21993c421ae0ab185259b02e355d347649ea60435d9c0630c56183`.
+- Executed Linux native SHA: `6a2bd3522b4c2448467c024dbf66d6642f535865af1119d1a8f011bbc2e509fd`.
+
+The archive identifies exact tracked runtime rather than pretending the remote
+extraction is a Git checkout. `_fast.pyx` was unchanged against the retained
+Linux build source; the probe records/asserts actual native activation. Both
+arms use fixed common probe world seeds; these are not asserted to be the
+original archived gameplay's sampler streams. This result-only document update
+does not change the executed source.
+
+**Next: one consolidated external source+measurement review for merge.** Keep
+the research path opt-in and production/checkpoint/training identities intact;
+no new capacity, gameplay or timing run is a prerequisite to that review.
 
 ## Why this target
 
@@ -61,8 +132,9 @@ long public histories would not address the recovered trick-2 bottleneck.
   2-world wide-follow prefixes and one complete small-state W32/N30/R300
   decision are bit-identical. This is **not full wide-follow W32 coverage**.
 
-An independent source reviewer found no blocking defect. External review and
-an isolated actual-consumer wall A/B are still required before merge.
+An independent source reviewer found no blocking defect. The isolated full
+consumer A/B above is complete; external source+measurement review remains
+required before merge.
 
 The private diagnostic initially compared a sorted snapshot serialization
 against an older fixture's unsorted hand lists. The check was corrected to
@@ -84,7 +156,7 @@ lists. The encoder/source was unchanged by that diagnostic repair.
 - Compiled artifact SHA:
   `6e812718892ec31885f188ca664e69c84213219d88dd295afd8db862068807e7`.
 
-## Next measurement — do not compete with live scored jobs
+## Measurement procedure used — do not compete with live scored jobs
 
 Use the existing probe, not a new gameplay run:
 
@@ -106,6 +178,6 @@ restart. Repeat counterbalanced pairs only if the measured cost fits the
 available window. Report individual states and fixed-panel aggregate
 separately, including regressions; do not call either whole-game speedup.
 
-Mini currently has Claude's scored ACD screen/training plus Luna collection;
-both clouds are generating data. No isolated timing run was launched beside
-them. No frozen/live worker adopts this source mid-run.
+For this measurement Strength was explicitly released by its owner; it was
+not run beside F2. Mini's training/Luna collection and Perf's generation were
+untouched. No frozen/live worker adopts this source mid-run.

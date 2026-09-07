@@ -279,6 +279,30 @@
       ],
       "created_at": "2026-09-07T00:33:00Z",
       "note": "A+C+D W32 13-rank screen on 520 fresh deals; same recipe and cluster-modulo rank cycle as screen-cwv-k4-ranks13-20260906 so the two pool"
+    },
+    {
+      "name": "run-G",
+      "purpose": "trajectory",
+      "seed0": 75260904,
+      "clusters": 16000,
+      "span": [
+        75260904,
+        75276904
+      ],
+      "created_at": "2026-09-07T05:45:00Z",
+      "note": "Run E recipe (N90/R900 teacher, rank-diverse sampled), perf, queued behind Run E"
+    },
+    {
+      "name": "run-H",
+      "purpose": "trajectory",
+      "seed0": 85260904,
+      "clusters": 16000,
+      "span": [
+        85260904,
+        85276904
+      ],
+      "created_at": "2026-09-07T05:45:00Z",
+      "note": "Run E recipe, cloud, queued behind Run F2"
     }
   ]
 }

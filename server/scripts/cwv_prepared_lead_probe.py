@@ -5,7 +5,8 @@ The historical default compares prepared lead validation. ``--optimization
 fused-static`` compares fused tensor construction with the prior static path;
 ``v2-static`` compares canonical widening of the fast v1 MLP base with the v2
 full-history reference builder. Prepared lead validation stays enabled in both
-arms. Patches are restricted
+arms. ``stable-v2-encoder`` compares stable dispatch with the historical fresh
+wrapper per batch; only the named tensor-cache counters may differ. Patches are restricted
 to this single-thread diagnostic process, never live workers or engine globals.
 Keep every scoring row, batch, shortlist, report, action, work count and RNG
 state identical. Timings on a contended host are diagnostic, not speed claims.
@@ -13,6 +14,7 @@ state identical. Timings on a contended host are diagnostic, not speed claims.
 from __future__ import annotations
 
 import argparse
+import copy
 from contextlib import nullcontext
 from dataclasses import asdict
 from functools import partial
@@ -21,6 +23,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import resource
 import signal
 import time
 from unittest.mock import patch
@@ -67,7 +70,24 @@ def _optimization_context(optimization, enabled):
                     else original(rnd, seat, version=version))
 
         return patch.object(cwv_policy, "tensors_from_round_static", full_history)
+    if optimization == "stable-v2-encoder":
+        return (nullcontext() if enabled else patch.object(
+            cwv_policy, "_versioned_encoder",
+            lambda builder, version: partial(builder, version=version)))
     raise ValueError("unknown inference optimization")
+
+
+def _comparison_semantic(semantic, optimization):
+    """Preserve scores/work/RNG and all counters except the intended cache delta."""
+    if optimization != "stable-v2-encoder":
+        return semantic
+    result = copy.deepcopy(semantic)
+    shortlist = result.get("shortlist") or {}
+    for reuse in (result.get("reuse"), shortlist.get("successor_reuse")):
+        if reuse is not None:
+            for key in ("tensor_hits", "tensor_completions", "peak_tensor_entries"):
+                reuse.pop(key, None)
+    return result
 
 
 def main(argv=None):
@@ -78,7 +98,8 @@ def main(argv=None):
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decision-seconds", type=int, default=60)
     parser.add_argument("--seed0", type=int, default=89260904)
-    parser.add_argument("--optimization", choices=("prepared-lead", "fused-static", "v2-static"),
+    parser.add_argument("--optimization", choices=("prepared-lead", "fused-static", "v2-static",
+                                                   "stable-v2-encoder"),
                         default="prepared-lead")
     args = parser.parse_args(argv)
     if min(args.repetitions, args.decision_seconds) < 1:
@@ -90,15 +111,15 @@ def main(argv=None):
         parser.error("states-json must contain a nonempty ordered snapshot list")
     evaluator = CompleteWorldEvaluator(str(args.checkpoint.resolve()), threads=1,
                                        max_batch=128, encoding="mlp-static")
-    if args.optimization == "v2-static" and (
+    if args.optimization in ("v2-static", "stable-v2-encoder") and (
             evaluator.enc_version != 2 or evaluator.effective_encoding != "mlp-static"):
-        parser.error("v2-static requires a v2 MLP checkpoint")
+        parser.error(f"{args.optimization} requires a v2 MLP checkpoint")
     native_active = bool(fast.HAVE_FAST and Round.play is fast._fast.round_play)
     if os.environ.get("SHENGJI_FAST") == "1" and not native_active:
         raise RuntimeError("compiled play route requested but not active")
     recipe = CWVShortlistConfig(worlds=32)
     arm_key = {"prepared-lead": "prepared", "fused-static": "fused",
-               "v2-static": "v2_static"}[args.optimization]
+               "v2-static": "v2_static", "stable-v2-encoder": "stable_encoder"}[args.optimization]
     config = {
         "schema": "cwv-inference-probe-v2", "seed0": args.seed0,
         "optimization": args.optimization, "arm_key": arm_key,
@@ -152,6 +173,7 @@ def main(argv=None):
                         row = {
                             "state": index, "repetition": repetition, arm_key: enabled,
                             "error": error, "wall_seconds": wall_elapsed, "cpu_seconds": cpu_elapsed,
+                            "process_peak_rss_native_units": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                             "semantic": {
                                 "input_sha256": before,
                                 "input_unchanged": before == _digest(_state_snapshot(rnd)),
@@ -175,7 +197,8 @@ def main(argv=None):
                         "state", "repetition", arm_key, "error", "wall_seconds")}), flush=True)
                     if row["error"] is not None:
                         raise RuntimeError("saved failed diagnostic; no automatic repeat: " + row["error"])
-                if pair[0]["semantic"] != pair[1]["semantic"] or not pair[0]["semantic"]["input_unchanged"]:
+                compared = [_comparison_semantic(row["semantic"], args.optimization) for row in pair]
+                if compared[0] != compared[1] or not compared[0]["input_unchanged"]:
                     raise ValueError(f"actual W32 consumer parity failed at state {index}, repetition {repetition}")
     finally:
         signal.alarm(0)

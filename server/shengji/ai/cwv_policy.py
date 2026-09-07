@@ -79,7 +79,7 @@ import json
 import math
 import os
 import time
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -108,6 +108,18 @@ from .memory import Memory
 
 
 CWV_DECISION_SCHEMA = "cwv-decision-v1"
+
+
+@lru_cache(maxsize=8)
+def _versioned_encoder(builder, version):
+    """Stable dispatch identity for cross-batch tensor reuse.
+
+    Only the builder/version are retained, never models, rounds or tensors.
+    A replaced builder gets a distinct key, preserving diagnostic overrides.
+    """
+    return partial(builder, version=version)
+
+
 #: The training build's identity schema (``shengji.train.cwv_data``); the
 #: recipe below reproduces it byte for byte until the branches merge.
 AFTERSTATE_IDENTITY_SCHEMA = "shengji-cwv-encoder-identity-v1"
@@ -446,8 +458,8 @@ class CompleteWorldEvaluator:
                     else tensors_from_round)
         version = self.enc_version
         if self.effective_encoding == "mlp-static":
-            return lambda rnd, seat: tensors_from_round_static(rnd, seat, version=version)
-        return lambda rnd, seat: tensors_from_round_v2(rnd, seat, version=version)
+            return _versioned_encoder(tensors_from_round_static, version)
+        return _versioned_encoder(tensors_from_round_v2, version)
 
     @property
     def effective_encoding(self) -> str:

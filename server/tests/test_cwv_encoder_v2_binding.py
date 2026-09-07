@@ -170,3 +170,48 @@ def test_training_prepares_the_luna_holdout_at_the_configured_version():
     calls = re.findall(r"prepare_stores\(\[eval_luna\],.*?\)\n", source, re.S)
     assert len(calls) == 1, "expected exactly one luna preparation call in train()"
     assert "version=enc_version" in calls[0], calls[0]
+
+
+# ------------------------------------------------ part 4: the public head is served at ITS version
+
+def _public_head(tmp_path, version):
+    cfg = train_v0.build_config(data=["never-opened"], hidden=8, encoder_version=version)
+    population = train_v0.fit_population(
+        {"deal:a": "train", "deal:b": "val", "deal:c": "test"}, stores=[])
+    path = tmp_path / f"public-v{version}.pt"
+    train_v0.save_checkpoint(path, ValuePriorNet(cfg["arch"]), config=cfg, epoch=1, selection={},
+                             baselines={}, calibration=None, split={}, population=population)
+    from shengji.train.cwv_eval import load_public_head
+    return load_public_head(str(path), "cpu")[0]
+
+
+def test_a_v1_public_head_is_served_the_v1_slice_of_v2_rows(tmp_path):
+    """The live failure: a v2 run's candidate pass fed a v1 head 560 columns."""
+    from shengji.train import cwv_eval
+    from shengji.rl.encode_versions import encode_obs
+
+    head = _public_head(tmp_path, 1)
+    rnd, seat = _played_state()
+    v1 = np.asarray([encode_obs(rnd, seat, version=1)], dtype=np.float32)
+    v2 = np.asarray([encode_obs(rnd, seat, version=2)], dtype=np.float32)
+    assert cwv_eval.public_head_version(head) == 1
+    narrow = cwv_eval.public_values(head, v1, "cpu")
+    wide = cwv_eval.public_values(head, v2, "cpu")            # served, not refused
+    assert wide.shape == (1,) and np.isfinite(wide[0])
+    assert wide.tolist() == narrow.tolist(), "the v1 slice of the v2 row IS the v1 row"
+    with pytest.raises(cwv_eval.EvalError):
+        cwv_eval.public_values(head, np.zeros((1, 533), np.float32), "cpu")   # no such version
+
+
+def test_a_public_head_newer_than_the_run_is_refused_before_training(tmp_path):
+    from shengji.train import cwv_eval
+    from shengji.rl.encode_versions import encode_obs
+
+    head2 = _public_head(tmp_path, 2)
+    assert cwv_eval.check_public_head_servable(head2, 2) == 2
+    with pytest.raises(cwv_eval.EvalError, match="encoder v2 but this run encodes at v1"):
+        cwv_eval.check_public_head_servable(head2, 1)
+    rnd, seat = _played_state()
+    with pytest.raises(cwv_eval.EvalError):
+        cwv_eval.public_values(head2, np.asarray([encode_obs(rnd, seat, version=1)], np.float32))
+    assert cwv_eval.check_public_head_servable(_public_head(tmp_path, 1), 2) == 1

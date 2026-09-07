@@ -169,6 +169,7 @@ from .cwv_eval import (
     holdout_candidate_set,
     holdout_deal_keys,
     load_labeled_holdout,
+    check_public_head_servable,
     load_public_head,
     materialize_holdout_records,
     paired_agreement,
@@ -1416,10 +1417,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     if public_head is not None:
         try:
             public_model, public_info = load_public_head(public_head, dev)
+            # Refuse a head the run's rows cannot serve HERE, before an epoch
+            # is spent; a head at or below the run's version is served the
+            # slice of its own width in the candidate pass.
+            head_version = check_public_head_servable(public_model, enc_version)
         except EvalError as exc:
             raise TrainError(str(exc)) from exc
         say(f"public head: {public_info['schema']} epoch={public_info['epoch']} "
-            f"population={'persisted' if public_info['has_population'] else 'not persisted'}")
+            f"population={'persisted' if public_info['has_population'] else 'not persisted'} "
+            f"encoder=v{head_version} (run encodes v{enc_version}"
+            f"{'' if head_version == enc_version else f'; served the v{head_version} slice'})")
 
     model_cfg = ValueModelConfig.from_payload(dict(config["model_config"]))
     # The public width is the encoder version's, and it is recorded in the
@@ -1817,8 +1824,10 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     if public_head is not None:
         try:
             public_model, public_info = load_public_head(public_head, dev)
+            head_version = check_public_head_servable(public_model, enc_version)
         except EvalError as exc:
             raise TrainError(str(exc)) from exc
+        say(f"public head: encoder v{head_version} (checkpoint encodes v{enc_version})")
     note = _public_head_note(public_info, config=config, split=metadata.get("split") or {})
     prior = StratifiedPrior.from_dict(baselines["stratified_prior"])
     final: dict = {}

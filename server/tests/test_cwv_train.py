@@ -44,6 +44,7 @@ from shengji.rl.value_afterstate import (  # noqa: E402
 from shengji.rl.value_checkpoint import load_checkpoint  # noqa: E402
 from shengji.rl.value_inference import predict_round, predict_tensors  # noqa: E402
 from shengji.train import cwv_data, cwv_eval, train_cwv, train_v0  # noqa: E402
+from shengji.train.model import ValuePriorNet  # noqa: E402
 from shengji.train.data import TrainDataError, discover_store  # noqa: E402
 
 SEED0 = 4_100_000
@@ -489,3 +490,44 @@ def test_encoder_v1_net_from_the_same_code_path_is_provenance_identical(store_di
     assert evaluator.enc_version == 1
     assert set(widths) == {532}
     assert any(fused), "#288's fused path must still serve the v1 default"
+
+
+# 8 --------------------- part 4: a v2 run with a v1 public head finishes its candidate pass
+
+def test_encoder_v2_run_with_a_v1_public_head_completes_and_writes_its_receipt(
+        store_dir, tmp_path):
+    """The live failure: the post-training candidate pass fed the v1 public
+    head 560-wide rows and refused, leaving no receipt.  The head is served
+    the v1 slice of its own width instead."""
+    public = train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
+                            epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
+                            cache_workers=1, **THIRDS)
+    assert public["config"]["encoder_version"] == 1
+    lines: list[str] = []
+    receipt = train_cwv.train(
+        data=[str(store_dir)], out=tmp_path / "v2", arch="mlp", device="cpu", epochs=1,
+        seed=7, batch_size=64, n_boot=10, hidden=32, log=lines.append, cache_workers=1,
+        eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2,
+        public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
+    assert (tmp_path / "v2" / "receipt.json").is_file()
+    assert (tmp_path / "v2" / "metrics.json").is_file()
+    assert receipt["config"]["encoder_version"] == 2
+    assert any("encoder=v1 (run encodes v2; served the v1 slice)" in line for line in lines), lines
+    public_block = receipt["final"]["test"].get("public_head") or receipt["final"]["test"]
+    assert public_block, "the public-head comparison ran"
+
+
+def test_a_public_head_the_run_cannot_serve_is_refused_before_training(store_dir, tmp_path):
+    cfg = train_v0.build_config(data=["never-opened"], hidden=8, encoder_version=2)
+    population = train_v0.fit_population(
+        {"deal:a": "train", "deal:b": "val", "deal:c": "test"}, stores=[])
+    head = tmp_path / "public-v2.pt"
+    train_v0.save_checkpoint(head, ValuePriorNet(cfg["arch"]), config=cfg, epoch=1, selection={},
+                             baselines={}, calibration=None, split={}, population=population)
+    lines: list[str] = []
+    with pytest.raises(train_cwv.TrainError, match="encoder v2 but this run encodes at v1"):
+        train_cwv.train(data=[str(store_dir)], out=tmp_path / "v1", arch="mlp", device="cpu",
+                        epochs=3, seed=7, batch_size=64, n_boot=10, hidden=32, log=lines.append,
+                        cache_workers=1, eval_workers=1, public_head=str(head), **THIRDS)
+    assert not any(line.startswith("epoch ") for line in lines), "refused before any epoch"
+    assert not (tmp_path / "v1" / "best.pt").exists()

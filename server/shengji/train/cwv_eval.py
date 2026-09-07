@@ -35,7 +35,8 @@ from ..harvest.rebuild import RebuildError, state_for_record
 from ..harvest.schema import SchemaError, validate_record
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM
-from ..rl.encode_versions import ENC_VERSION, encode_obs, obs_dim
+from ..rl.encode_versions import (ENC_VERSION, check_version, encode_obs, encoder_version_for,
+                                  obs_dim)
 from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at
 from ..rl.value_afterstate import (
     PERSPECTIVE_DIM,
@@ -116,17 +117,49 @@ def load_public_head(path: str, device: torch.device | str = "cpu") -> tuple[Val
     return model, info
 
 
+def public_head_version(model: ValuePriorNet) -> int:
+    """The observation encoder version a public head was trained on (its
+    ``arch['obs_dim']`` states it)."""
+    return encoder_version_for(model.arch)
+
+
+def check_public_head_servable(model: ValuePriorNet, run_version: int, *,
+                               label: str = "public head") -> int:
+    """The head's version, or ``EvalError`` when rows at ``run_version``
+    cannot serve it.  A head at or below the run's version is served the
+    prefix of its own width (every later version is a strict extension of
+    the earlier ones: ``encode_obs(..., version=n)[:OBS_DIM_BY_VERSION[m]]``
+    is the v``m`` vector for m <= n).  A head NEWER than the rows cannot be
+    served, and that is refused up front rather than after training."""
+    head_version = public_head_version(model)
+    if head_version > check_version(run_version):
+        raise EvalError(f"{label} is encoder v{head_version} but this run encodes at "
+                        f"v{run_version}; a v{run_version} row cannot serve a v{head_version} "
+                        "head. Use a head at or below the run's encoder version.")
+    return head_version
+
+
+def serve_public_rows(model: ValuePriorNet, obs: np.ndarray) -> np.ndarray:
+    """``obs`` [n, width] at any encoder version >= the head's, narrowed to
+    the head's own width (the prefix IS that version's vector)."""
+    try:
+        rows_version = encoder_version_for(int(obs.shape[1]))
+    except ValueError as exc:                       # a width no encoder version produces
+        raise EvalError(f"public head observations must be [n, OBS_DIM]: {exc}") from None
+    check_public_head_servable(model, rows_version)
+    return obs[:, :int(model.arch["obs_dim"])]
+
+
 @torch.no_grad()
 def public_values(model: ValuePriorNet, obs: np.ndarray, device: torch.device | str = "cpu",
                   *, batch_size: int = 4096) -> np.ndarray:
     """The public head's value (PT0 signed level for the acting seat's team)
     per observation row (the prior head gets one masked dummy candidate)."""
     obs = np.asarray(obs, dtype=np.float32)
-    # The width the MODEL declares, not a global: a v1 head keeps refusing
-    # anything but 531 columns even where a v2 head accepts 560.
-    want = int(model.arch["obs_dim"])
-    if obs.ndim != 2 or obs.shape[1] != want:
+    if obs.ndim != 2:
         raise EvalError("public head observations must be [n, OBS_DIM]")
+    obs = serve_public_rows(model, obs)
+    want = int(model.arch["obs_dim"])
     model.eval()
     out = []
     act_dim = int(model.arch["act_dim"])

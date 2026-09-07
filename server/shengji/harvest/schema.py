@@ -173,10 +173,14 @@ def _validate_provenance(value: Any) -> None:
         elif k == "coordinate":
             # ELEMENTS, not just the outer length (Codex, PR #293 review): a bare
             # length check let a nested dict, a nested list and bool-as-int through
-            # finalize_record and on into downstream wave grouping.  All 7,752
-            # records of the 2026-09-06 tranches use exactly (str, int, int) --
-            # rank, mirror, cycle -- so that is what is pinned; a future emitter
-            # with another shape must widen this deliberately.
+            # finalize_record and on into downstream wave grouping.  The contract
+            # admitted here is DELIBERATELY wider than what is observed: 1 to 4
+            # elements, each a string or a non-boolean integer.  Every one of the
+            # 7,752 records of the 2026-09-06 tranches happens to use exactly
+            # (str, int, int) -- rank, mirror, cycle -- but pinning that exact
+            # triple would refuse a legitimate future coordinate shape, so only
+            # the element TYPES are constrained.  Nested containers are refused
+            # because they are what actually reached the grouping code.
             if not (isinstance(v, list) and 1 <= len(v) <= 4):
                 raise SchemaError("provenance.coordinate must be a list of 1 to 4 elements")
             for element in v:

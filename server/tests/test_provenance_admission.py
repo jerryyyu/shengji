@@ -8,8 +8,12 @@ inside a unit test, which is not what that data is for.  Both were Codex's call
 (PR #293) and both were right.  Everything here is a literal, built on the
 existing portable fixture.
 
-Every negative case below FAILED to be caught by the first validator, so each is
-a regression guard rather than a restatement of the implementation.
+The demonstrated original hole was the COORDINATE family: nested dict, nested
+list and bool-as-int passed ``finalize_record`` before the element check existed.
+The other negative cases -- unknown key, malformed digest, wrong value type,
+non-object -- were caught by the first validator and are here as regression
+guards against a future edit, not as escapes.  An earlier version of this
+docstring claimed all of them had escaped; Codex corrected it.
 """
 from __future__ import annotations
 

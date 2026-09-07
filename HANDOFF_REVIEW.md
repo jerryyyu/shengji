@@ -12044,3 +12044,36 @@ THE RUN DID NOT SEAL. After early stop, the post-training candidate pass refused
 MINING, on the interim checkpoint (best.pt carried epoch 6 when copied; epoch-04.pt agrees within 0.5 points everywhere), trainer TEST split, Run D shards, 9,693 decisions / 131,053 candidates and a 48,458-decision all-ply population: **near-tie sign agreement is NOT fixed and is NOT fixable from features** — 49.9% -> 50.6% on pairs the search separates by under half a point, because 100% of those pairs sit below the search's own 1.7-SE resolution rule, so the label is the search's noise. The columns help exactly where the search is confident: search-resolved pairs 57.5% -> 61.8% (61.1% -> 66.8% all-ply), and the >= 20-point bin 72.5% -> 83.6% (75.5% -> 91.7%). Top-1 30.3% -> 31.7%; rank regret 0.136 -> 0.128. Both directions reported: 1,163 decisions fixed, 1,024 regressed. What v2 did NOT fix: leads (64% of remaining costly misses, cost unchanged), following behind a winning partner (v2 feeds a safe partner LESS than a beatable one, the reverse of the search), and pairs/tractors. Three columns proposed with the evidence behind each: incumbent_security (can each later seat still beat the incumbent), suit_master_holder (who holds the top remaining card per suit; "opponent holds the master" is the largest asymmetric descriptor in the 451 still-wrong leads), next_leader (the 4th-seat afterstate has every trick-local column zero and rnd.turn nowhere in the vector — the only strictly-unrepresentable gap). The spec's own guess, partner-vs-opponent trump counts, shows no signal and is dropped.
 
 Also tonight: Codex's HOLD on #291 (three version-binding defects) repaired and independently falsified; Runs G and H registered (d9a641a8) and armed behind E and F2; the v1 hyperparameter sweep cancelled at Jerry's direction in favour of a v2 sweep.
+
+## 2026-09-07 — Claude: the v2 encoder wins offline by the largest margin of any checkpoint and DOES NOT win in search
+
+This is the night's result and it points the other way from every offline number that preceded it.
+
+OFFLINE, v2 (best epoch 7) against the sealed v1 A+C+D, same data, seed, selector and holdouts, encoder the only difference:
+
+| | v1 | v2 |
+| --- | --- | --- |
+| val_ce | 0.6594 | **0.6227** |
+| val_rank_regret | 0.133 | 0.128 |
+| holdout rank_regret roomlog / luna / highn / pt1 | 0.0946 / 0.1020 / 0.1269 / 0.0312 | **0.0829 / 0.1020 / 0.1151 / 0.0264** |
+| holdout rank_top1 | 0.410 / 0.403 / 0.324 / 0.579 | **0.434 / 0.424 / 0.348 / 0.587** |
+
+v2 is better or equal on every offline metric we have, on four independent holdouts, by margins larger than the sweep's seed-to-seed spread.
+
+IN SEARCH, W32/K4 on the SAME 260 opened 13-rank deals the v1 arm ran, per_round, reconstructed from the sealed shards (my reconstruction reproduces the summary mean exactly, +0.051923):
+
+| checkpoint | vs production | wall |
+| --- | --- | --- |
+| A+B+C | +0.0615 [-0.0058, +0.1346] | 4.75x |
+| A+C+D v1 | +0.1019 [+0.0385, +0.1712] | 4.64x |
+| **A+C+D v2** | **+0.0519 [-0.0173, +0.1231]** | 4.72x |
+
+PAIRED on the identical 260 deals: **v2 minus v1 = -0.0500 [-0.1231, +0.0250]**, unresolved but pointing NEGATIVE; v2 minus A+B+C = -0.0096 [-0.0846, +0.0635]. So the checkpoint with the best offline metrics in the programme scores the WORST of the three A+C+D-era arms against production, and its interval crosses zero where v1's did not.
+
+WHAT THIS IS AND IS NOT. It is not evidence that the features hurt: at n=260 the paired contrast resolves only effects larger than about +/-0.069, and -0.050 sits inside that. It IS a direct falsification of the inference we were all drawing at 02:00, that a 0.037 val_ce gap and better holdouts on four sets would carry into search. The standing rule — select per consumer IN SEARCH on the same seeds, never on offline numbers — has now been vindicated twice: first by the rank-regret-selected retrain, now by the largest offline margin we have ever seen failing to appear in the consumer.
+
+WHY, most likely, and it was measured BEFORE the screen rather than after: the mining pass showed the 29 columns move sign agreement on pairs the search RESOLVES (57.5% -> 61.8%, and 72.5% -> 83.6% on the >= 20-point bin) and move nothing on near-ties (49.9% -> 50.6%), because 100% of near-tie pairs sit below the search's own 1.7-SE resolution rule. The shortlist's finalists are decided on a median 1.3-1.9 point margin. So v2 improves exactly the decisions the shortlist has already settled and leaves untouched the ones it actually uses. Better on the metric, not better on the job.
+
+WHAT FOLLOWS: 780 deals resolve to about +/-0.040 and the 520-deal window is already sealed for v1, so the honest next step is the v2 arm on that window, pooling to 780 — not another offline comparison. The three proposed columns (incumbent_security, suit_master_holder, next_leader) all target LEADS, which mining showed is 64% of what v2 still gets wrong and where the shortlist's own margins are widest; that is a better-aimed hypothesis than v2 was, and it is still a hypothesis.
+
+Also overnight: #291 merged at 9cd18309 (Codex source PASS at 7ff480f1 after three HOLD findings plus a fourth found by the live run, all repaired and independently falsified). The v2 hyperparameter sweep completed 8 configs; dropout-0.2 is the best at val_ce 0.6175 against the 0.6227 control, and on tonight's evidence that ranking should not be trusted to predict search either. Run E sealed 16,000 clusters at 08:19 ET; Run G aborted on a systemd PATH defect (uv not on the unit's PATH) with its fast-engine guard firing correctly and no output written, relaunched 13:58 ET with an absolute interpreter path; Run H is at 3,780/16,000 on cloud.

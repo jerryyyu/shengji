@@ -12151,3 +12151,35 @@ That trap is closed at the registry boundary rather than inside any factory: `re
 COST, AND WHY IT IS NOT AN ESTIMATE. Four-round smoke on a contended box, fast engine, one worker: shortlist 3.81 dec/s versus production 8.44 dec/s, i.e. ~2.2x production per decision, scaling cleanly to 2 workers (which also reproduced the 1-worker digests byte for byte, proving env registration reaches spawned workers). Naive extrapolation to 8,000 rounds is ~44 core-hours. That number is a FLOOR, not an estimate, and should not be planned against: the smoke used a throwaway 32-wide MLP, while the dominant term is `worlds x exhaustive legal actions` forward rows (32 x mean 229 legal ~ 7.3k rows per decision, 2.26M rows for four rounds) and that term scales directly with the size of the value net. A production-size checkpoint multiplies it. Re-time four rounds against the real checkpoint before committing a box.
 
 NOT DONE, DELIBERATELY: no checkpoint chosen, no generation run launched, no PR opened. The smoke used a disposable dev checkpoint built in scratch purely so the wiring had a file to hash; it is not a strength claim and nothing in the repo references it. Which checkpoint teaches is Jerry's call and depends on screens still running.
+
+## 2026-09-07 — Claude: the 520-window 2x2 is complete and it reverses the 260-window ordering exactly as predicted
+
+All four cells are now sealed on the clean 520-deal window (seed0 91261190, 13 ranks, 1,040 rounds each, `complete: true`), and all four ran the same W32 recipe (32 worlds, incumbent+4, N30 selection, R300 report, batch 128, successor reuse, SHENGJI_FAST=1). Deal identity across arms verified cluster by cluster on (seed, trump_rank, trump_suit, banker): **0 mismatches over 520 clusters**, so every contrast below is paired on identical deals.
+
+ARM VERSUS INCUMBENT, per_round convention (per_cluster_sum is twice each figure):
+
+| arm | ckpt8 | per_round | wall x production | win rate |
+| --- | --- | --- | --- | --- |
+| ACD v1 | 528dbbe0 | +0.0481 [+0.0029, +0.0942] | 3.79 | 0.5173 |
+| ACDEF v1 | 528b3a7a | +0.0875 [+0.0442, +0.1317] | **2.73** | 0.5385 |
+| ACD v2 | 633663cd | +0.0990 [+0.0529, +0.1471] | 4.39 | 0.5365 |
+| ACDEF v2 | 3cd27716 | **+0.1260** [+0.0798, +0.1721] | 4.37 | 0.5413 |
+
+PAIRED CROSS-ARM CONTRASTS on the same 520 deals, 4,000 bootstrap replicates over clusters:
+
+| contrast | per_round | 95% |
+| --- | --- | --- |
+| ACDEF v2 - ACD v1 | **+0.0779** | [+0.0240, +0.1298] — excludes zero |
+| ACD v2 - ACD v1 | +0.0510 | [-0.0067, +0.1087] |
+| ACDEF v1 - ACD v1 | +0.0394 | [-0.0106, +0.0885] |
+| ACDEF v2 - ACDEF v1 | +0.0385 | [-0.0106, +0.0885] |
+| ACDEF v2 - ACD v2 | +0.0269 | [-0.0298, +0.0808] |
+| ACD v2 - ACDEF v1 | +0.0115 | [-0.0663, +0.0423] |
+
+WHAT THIS SETTLES AND WHAT IT DOES NOT. Exactly ONE contrast excludes zero, and it is the corner-to-corner one: more data AND the v2 encoder together beat the ACD v1 baseline by +0.0779 per round. Neither factor alone separates at n=520 — the E/F data adds about +0.04 and the v2 encoder about +0.04, and each interval covers zero on its own. So the honest statement is: the two factors are individually unresolved at this sample size and jointly resolvable. It is NOT established that v2 beats v1 at fixed data, nor that E/F beats ACD at fixed encoder.
+
+SELECTION CONTAMINATION CONFIRMED. On the 260 window (the SELECTION population, on which ACD v1 was chosen) the cells fell in exactly the order of how far each departs from the selected checkpoint: ACD v1 +0.1019 > ACD v2 +0.0519 > ACDEF v1 +0.0462 > ACDEF v2 +0.0288. On the clean 520 window that ordering is precisely inverted. This is what selection on the measurement population looks like, and it is why the 260 numbers must not be quoted as strength.
+
+COST CAVEAT, and it cuts against the headline. These are not equal-work comparisons; the summary schema says so itself (`equal_work_strength_claim: false`, `claim: exploratory DEV paired screen`). ACDEF v2 spends **4.37x** production decision wall and is recorded `over_target`; ACDEF v1 spends **2.73x** and is the only arm `within_target`. Per unit of compute ACDEF v1 is the better buy, and the +0.0385 gap between them does not exclude zero. Anyone choosing a checkpoint to generate data with should weigh the 1.6x cost difference against an unresolved gap.
+
+DEFECT FOUND IN THE SUMMARY WRITER, reported to Codex: every one of these four summaries carries `arm_description: "mc-s0-report-lcb on both sides (identity control)"` while `arm: "learned"`. The description string is not tracking the arm. A future reader could discard a real result as a control, or read a control as a result. The `config.checkpoint_sha256` is authoritative and was used here; the description was ignored.

@@ -1,6 +1,6 @@
 # PT-Luna paired gameplay: first eight-deal tranche
 
-Completed all **8 independent deals / 16 mirrored rounds** at source
+Completed all **8 distinct seeded deals / 16 mirrored rounds** at source
 `6056dae5b76b700365e6980bd0ddcb0080be3279` (PR #280), with no failed or unknown-usage
 calls. This is real batch4-versus-compact1 gameplay, not another capacity probe.
 Both teams used the same full-information Luna medium policy, compact prompt,
@@ -44,8 +44,29 @@ All 16 trajectories, including losses, are retained with source/root hashes,
 agent assignments and `play-only` continuation metadata. Four deals are tagged
 fit and four validation; keep both mirrors together. Coverage is one deal at
 each rank 2–9, with root trump D 3, H 2, S 1 and NT 2. This does not represent
-all thirteen ranks or every trump suit. There are **eight independent deals**,
+all thirteen ranks or every trump suit. There are **eight distinct seeded deals**,
 not 946 independent labels or sixteen independent paired observations.
+
+### Shared-response dependence — readout caveat added before opening the remaining 44
+
+The eight first-tranche deals shared one fixed collector wave. Batch calls never
+cross a wave, but responses can couple games within it; independent deal seeds
+do not prove independent teacher errors. The original paired-deal means and
+bootstrap intervals above are retained, **not** recast as wave-adjusted intervals.
+The illustrative deal-level power arithmetic below has the same limitation.
+
+The prepared readout additionally reports roster-bound wave membership and an
+equal-deal-weighted leave-one-wave-out range. This is a descriptive sensitivity
+check, not a confidence interval, new pass gate or reason to discard trajectories.
+One observed wave has no such range. The unchanged remaining 44 run has six
+planned waves (8+8+8+8+8+4); the exploratory 52-deal pool has seven. That is still
+too few, and too structured by roster order, to assume reliable wave-level
+population inference. Missing pairs remain explicit and never shift later games
+into a different wave. No current-tranche outcomes were opened for this amendment.
+All original fields except interpretation match the saved first-tranche readout
+exactly (the new sensitivity field is additive). The 62 focused readout/harvest
+tests pass, including unequal groups, missing mirrors, original roster order,
+separate tranche wave identities and unavailable historical wave metadata.
 
 The original complete run, provider calls and progress records remain at
 `~/.shengji-runs/luna-quality-games-tranche1-20260906.yNwAwr/` on Mini. A complete

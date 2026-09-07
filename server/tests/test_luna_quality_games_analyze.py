@@ -42,7 +42,7 @@ def _run(tmp_path, *, mirrors=(0, 1), coordinates=(("2", 0, 0), ("2", 1, 1))):
         "agent_assignment": {
             "mirror0": {"team0": "batch4", "team1": "compact1"},
             "mirror1": {"team0": "compact1", "team1": "batch4"}},
-        "root_split_roster": roster}})
+        "wave_size": 8, "root_split_roster": roster}})
     for c in coordinates:
         for mirror in mirrors:
             _write_game(tmp_path, c, mirror, 0 if mirror == 0 else 120)
@@ -195,6 +195,60 @@ def test_full_52_deal_pool_keeps_26_fit_and_26_validation_roots(tmp_path):
     assert result["complete_pair_splits"] == {"fit": 26, "validation": 26}
     assert set(result["complete_pair_ranks"].values()) == {4}
     assert [run["readout"]["complete_pairs"] for run in result["runs"]] == [8, 44]
+    wave = result["wave_dependence_sensitivity"]
+    assert wave["planned_waves"] == wave["waves_with_complete_pairs"] == 7
+    assert [block["planned_deals"] for block in wave["blocks"]] == [8] * 6 + [4]
+    assert len({block["run_config_sha256"] for block in wave["blocks"]}) == 2
+    assert [block["wave_index"] for block in wave["blocks"]] == [0, 0, 1, 2, 3, 4, 5]
+
+
+def test_single_wave_has_no_sensitivity_range_and_original_deal_ci_is_unchanged(tmp_path):
+    _run(tmp_path)
+    result = readout.analyze(tmp_path)
+    wave = result["wave_dependence_sensitivity"]
+    assert wave["planned_waves"] == wave["waves_with_complete_pairs"] == 1
+    assert wave["blocks"][0]["complete_pairs"] == 2
+    assert wave["leave_one_wave_out_ranges"] == {
+        "batch4_signed_levels_per_game": None, "batch4_game_win_rate": None}
+    assert result["batch4_signed_levels_per_game"]["interval95"] == [-2, 2]
+
+
+def test_wave_sensitivity_uses_published_order_and_size_not_survivors(tmp_path, monkeypatch):
+    # Deliberately not sorted. Remove the first member of wave zero: regrouping
+    # only survivors would move the negative deal out of its original wave.
+    coordinates = (("4", 0, 0), ("3", 0, 0), ("2", 1, 1), ("5", 0, 0), ("6", 0, 0))
+    _run(tmp_path, coordinates=coordinates)
+    path = tmp_path / "config.json"
+    config = collector._load_json(path)
+    config["inputs"]["wave_size"] = 2
+    path.write_bytes(collector.canonical_json_bytes(config))
+    (tmp_path / collector._game_name(coordinates[0], 1, "terminal")).unlink()
+    monkeypatch.setattr(collector, "WAVE_SIZE", 99)
+    result = readout.analyze(tmp_path)
+    wave = result["wave_dependence_sensitivity"]
+    assert wave["planned_waves"] == wave["waves_with_complete_pairs"] == 3
+    assert [b["planned_coordinates"] for b in wave["blocks"]] == [
+        [list(c) for c in coordinates[:2]], [list(c) for c in coordinates[2:4]],
+        [list(coordinates[4])]]
+    assert [b["complete_pairs"] for b in wave["blocks"]] == [1, 2, 1]
+    assert [b["signed_levels_sum"] for b in wave["blocks"]] == [2, 0, 2]
+    assert result["batch4_signed_levels_per_game"]["mean"] == 1
+    assert wave["leave_one_wave_out_ranges"] == {
+        "batch4_signed_levels_per_game": [2 / 3, 2],
+        "batch4_game_win_rate": [2 / 3, 1]}
+    assert "not confidence intervals" in wave["interpretation"]
+
+
+@pytest.mark.parametrize("recorded", [None, True, 0, -1, "8"])
+def test_unknown_wave_size_does_not_invent_precision_or_block_old_readout(tmp_path, recorded):
+    _run(tmp_path)
+    path = tmp_path / "config.json"
+    config = collector._load_json(path)
+    config["inputs"]["wave_size"] = recorded
+    path.write_bytes(collector.canonical_json_bytes(config))
+    result = readout.analyze(tmp_path)
+    assert result["wave_dependence_sensitivity"]["available"] is False
+    assert result["batch4_signed_levels_per_game"]["mean"] == 0
 
 
 @pytest.mark.parametrize("field,value", [

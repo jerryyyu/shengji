@@ -38,6 +38,57 @@ def _pair_summary(pairs: list[dict]) -> dict:
             "losses": sum(p["mean_signed_levels"] < 0 for p in pairs)}}
 
 
+def _wave_sensitivity(configs: list[dict], readouts: list[dict]) -> dict:
+    """Describe shared-response dependence without changing the original CI.
+
+    The collector partitions the published roster *before* playing or losing
+    any games. Both mirrors stay within that wave. Use the recorded size/order,
+    not today's collector constant or the surviving complete-pair order.
+    """
+    blocks = []
+    for config, readout in zip(configs, readouts):
+        inputs = config["inputs"]
+        size = inputs.get("wave_size")
+        if type(size) is not int or size < 1:
+            return {"available": False,
+                    "reason": "recorded positive wave size unavailable; no grouping inferred"}
+        config_sha = collector._sha(config)
+        roster = inputs["root_split_roster"]
+        pairs = {tuple(pair["coordinate"]): pair for pair in readout["pairs"]}
+        for start in range(0, len(roster), size):
+            roots = roster[start:start + size]
+            members = [pairs[tuple(root["coordinate"])] for root in roots
+                       if tuple(root["coordinate"]) in pairs]
+            blocks.append({
+                "run_config_sha256": config_sha, "wave_index": start // size,
+                "planned_coordinates": [root["coordinate"] for root in roots],
+                "planned_deals": len(roots), "complete_pairs": len(members),
+                "signed_levels_sum": sum(p["mean_signed_levels"] for p in members),
+                "win_fraction_sum": sum(p["batch4_win_fraction"] for p in members)})
+    observed = [block for block in blocks if block["complete_pairs"]]
+    total = sum(block["complete_pairs"] for block in observed)
+    ranges = {}
+    for source, name in (("signed_levels_sum", "batch4_signed_levels_per_game"),
+                         ("win_fraction_sum", "batch4_game_win_rate")):
+        numerator = sum(block[source] for block in observed)
+        # Deleting an unequal-size wave must not turn into an average of wave
+        # means. Every retained complete deal still has equal weight.
+        estimates = [(numerator - block[source]) / (total - block["complete_pairs"])
+                     for block in observed] if len(observed) >= 2 else []
+        ranges[name] = [min(estimates), max(estimates)] if estimates else None
+    return {
+        "available": True, "unit": "run-config-and-collector-wave",
+        "planned_waves": len(blocks), "waves_with_complete_pairs": len(observed),
+        "blocks": blocks, "leave_one_wave_out_ranges": ranges,
+        "interpretation": (
+            "Shared batch responses can couple games inside a wave. Original deal-bootstrap "
+            "intervals are unchanged and are not adjusted for this dependence. These equal-deal "
+            "weighted leave-one-wave-out ranges are descriptive sensitivity checks, not confidence "
+            "intervals or a new gate. Few non-random roster waves do not establish independence or "
+            "equivalence. Fewer than two observed waves yields no range. Missing pairs stay excluded; "
+            "partial-wave results can be completion-biased.")}
+
+
 def analyze(out: Path) -> dict:
     out = Path(out)
     config = collector._load_json(out / "config.json")
@@ -125,6 +176,7 @@ def analyze(out: Path) -> dict:
         "completed_games": completed_games,
         "missing_games": missing, "pairs": pairs,
         **_pair_summary(pairs),
+        "wave_dependence_sensitivity": _wave_sensitivity([config], [{"pairs": pairs}]),
         "cost_receipt": accounting_path.name if accounting_path else None,
         "reported_or_reserved_tokens": accounting.get("charged_tokens"),
         "per_arm_costs_and_failures": accounting.get("pilot_arms"),
@@ -133,6 +185,7 @@ def analyze(out: Path) -> dict:
             "Signed levels are from batch4's perspective per game, not twice "
             "the zero-sum payoff. Bootstrap resamples complete deals with both "
             "mirrors together; incomplete pairs are excluded, not imputed. "
+            "Shared-response wave dependence is reported separately, not corrected in that interval. "
             "Partial-panel intervals can be completion-biased. Non-significance "
             "does not establish equivalence. No MC or rollout-enabled comparison; "
             "no deployment or data-promotion authority. Trajectories not replayed.")}
@@ -211,6 +264,7 @@ def analyze_many(runs: list[Path]) -> dict:
         "completed_games": sum(row["completed_games"] for row in readouts),
         "missing_games": [game_row for row in readouts for game_row in row["missing_games"]],
         "pairs": pairs, **_pair_summary(pairs),
+        "wave_dependence_sensitivity": _wave_sensitivity(configs, readouts),
         "per_arm_costs_and_failures": costs,
         "cost_accounting_complete": costs is not None and all(v is not None for v in tokens),
         "reported_or_reserved_tokens": sum(tokens) if all(v is not None for v in tokens) else None,

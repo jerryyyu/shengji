@@ -162,6 +162,12 @@ SOURCE_FILES = {
     "pt1": "pt1.private.jsonl",
     "room-log": "room-log.jsonl",
     "highn": "highn.jsonl",
+    # The 2026-09-06 paired batch4-vs-compact1 gameplay tranches, harvested as raw
+    # full-information play-only decisions (shengji-decision-record-v1, action_values
+    # null until labelled here).  A SEPARATE name from luna-rpc on purpose: the two are
+    # different collections and a holdout that silently pooled them would misattribute
+    # its own provenance.
+    "luna-quality": "luna-quality.private.jsonl",
 }
 SOURCES = tuple(SOURCE_FILES)
 #: ``human`` is contained in ``room-log`` (audit): not labelled by default

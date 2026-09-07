@@ -88,7 +88,7 @@ import json
 from typing import Any, Mapping
 
 SCHEMA = "shengji-decision-record-v1"
-SOURCES = ("luna-rpc", "room-log", "highn", "pt1", "human", "trajectory")
+SOURCES = ("luna-rpc", "room-log", "highn", "pt1", "human", "trajectory", "luna-quality")
 DECISION_KINDS = ("play", "bury")
 ROLES = ("banker-team", "attacker-team")
 
@@ -100,7 +100,7 @@ FIELDS = (
     "legal_actions", "legal_actions_complete", "legal_actions_count",
     "ballot", "production_ballot", "allocation", "preference", "action_values",
     "action", "engine_play", "outcome", "authority", "exploration", "widening",
-    "state_private", "hidden_hands", "record_sha256",
+    "state_private", "hidden_hands", "record_sha256", "provenance",
 )
 PRIVATE_ONLY_FIELDS = ("hidden_hands", "public_record_sha256")
 REQUIRED = (
@@ -137,6 +137,61 @@ def _is_action_list(value: Any) -> bool:
     return isinstance(value, list) and all(_is_card_list(a) for a in value)
 
 
+def _validate_provenance(value: Any) -> None:
+    """``provenance`` is OPTIONAL and strictly shaped.
+
+    It records which collector produced a row -- the config and caller hashes a
+    wave-dependence analysis needs to group rows by collector wave.  It is
+    admitted rather than stripped (Codex, 2026-09-07) precisely because
+    stripping it destroys the grouping that the gameplay readout's own
+    sensitivity check depends on.  Admitted does not mean unchecked: an
+    unconstrained free-form dict inside a fail-closed schema is a hole, so the
+    keys and value types are pinned here and anything else is refused.
+    """
+    if not isinstance(value, Mapping):
+        raise SchemaError("provenance must be an object")
+    # DERIVED from all 7,752 records of the 2026-09-06 gameplay tranches, not
+    # invented: every key below is present in 7752/7752 with the type asserted
+    # here.  The wider set (caller/panel/row digests, wave, run_root) is admitted
+    # too because the collector emits them elsewhere; anything else is refused,
+    # so a new emitter must widen this list deliberately rather than by accident.
+    allowed = {"config_sha256", "caller_sha256", "panel_manifest_sha256",
+               "root_sha256", "row_sha256", "run_root", "wave", "coordinate",
+               "arm", "mirror", "split", "continuation",
+               "effort", "model", "teacher_arm", "tools"}
+    unknown = sorted(k for k in value if k not in allowed)
+    if unknown:
+        raise SchemaError(f"provenance has unknown keys: {unknown}")
+    for k, v in value.items():
+        if k.endswith("_sha256"):
+            if not (isinstance(v, str) and len(v) == 64
+                    and all(c in "0123456789abcdef" for c in v)):
+                raise SchemaError(f"provenance.{k} must be a 64-char lowercase hex digest")
+        elif k in ("wave", "mirror"):
+            if not isinstance(v, int) or isinstance(v, bool):
+                raise SchemaError(f"provenance.{k} must be an integer")
+        elif k == "coordinate":
+            # ELEMENTS, not just the outer length (Codex, PR #293 review): a bare
+            # length check let a nested dict, a nested list and bool-as-int through
+            # finalize_record and on into downstream wave grouping.  The contract
+            # admitted here is DELIBERATELY wider than what is observed: 1 to 4
+            # elements, each a string or a non-boolean integer.  Every one of the
+            # 7,752 records of the 2026-09-06 tranches happens to use exactly
+            # (str, int, int) -- rank, mirror, cycle -- but pinning that exact
+            # triple would refuse a legitimate future coordinate shape, so only
+            # the element TYPES are constrained.  Nested containers are refused
+            # because they are what actually reached the grouping code.
+            if not (isinstance(v, list) and 1 <= len(v) <= 4):
+                raise SchemaError("provenance.coordinate must be a list of 1 to 4 elements")
+            for element in v:
+                if isinstance(element, bool) or not isinstance(element, (str, int)):
+                    raise SchemaError(
+                        "provenance.coordinate elements must be strings or "
+                        "non-boolean integers, not nested containers")
+        elif not (v is None or isinstance(v, str)):
+            raise SchemaError(f"provenance.{k} must be a string or null")
+
+
 def validate_record(record: Mapping[str, Any]) -> None:
     """Fail closed on a malformed record (types and cross-field rules)."""
     missing = [k for k in REQUIRED if k not in record]
@@ -148,6 +203,8 @@ def validate_record(record: Mapping[str, Any]) -> None:
         raise SchemaError(f"unknown fields: {unknown}")
     if record["schema"] != SCHEMA:
         raise SchemaError(f"schema must be {SCHEMA!r}")
+    if "provenance" in record:
+        _validate_provenance(record["provenance"])
     if record["source"] not in SOURCES:
         raise SchemaError(f"unknown source {record['source']!r}")
     if not isinstance(record["source_ref"], str) or not record["source_ref"]:

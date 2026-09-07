@@ -1,30 +1,46 @@
 """Permanent witnesses for the optional ``provenance`` block (PR #293).
 
-Codex's review asked for these: the PR shipped the validator with interactive
-falsification only, and an interactive check leaves nothing behind to stop a
-later edit reopening the hole.  Every negative case here FAILED to be caught by
-the first version of the validator, so each one is a real regression guard
-rather than a restatement of the implementation.
+PORTABLE BY CONSTRUCTION.  The first version of this file read the staged
+private VALIDATION split by absolute path and skipped when it was absent, so on
+CI fourteen of fifteen tests skipped and the suite still went green -- coverage
+that existed only on one laptop.  It also read a scientific validation split
+inside a unit test, which is not what that data is for.  Both were Codex's call
+(PR #293) and both were right.  Everything here is a literal, built on the
+existing portable fixture.
+
+Every negative case below FAILED to be caught by the first validator, so each is
+a regression guard rather than a restatement of the implementation.
 """
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 import pytest
 
 from shengji.harvest.schema import (FIELDS, REQUIRED, SchemaError,
                                     finalize_record, validate_record)
+from tests.test_harvest_schema import _fields
 
-RECORDS = Path("/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/harvest-out/"
-               "luna-quality/validation/luna-quality.private.jsonl")
+#: the shape every one of the 2026-09-06 tranche records uses: rank, mirror, cycle
+VALID_PROVENANCE = {
+    "config_sha256": "0" * 64,
+    "root_sha256": "a1b2c3d4" * 8,
+    "coordinate": ["2", 0, 1],
+    "mirror": 0,
+    "split": "validation",
+    "continuation": "mixed-batch4-vs-compact1-play-only",
+    "effort": "high",
+    "model": "gpt-5.6-luna",
+    "teacher_arm": "batch4",
+    "tools": "play-only",
+}
 
 
-def _base():
-    if not RECORDS.exists():
-        pytest.skip("staged luna-quality records not present on this host")
-    record = json.loads(RECORDS.read_text().splitlines()[0])
-    return {k: v for k, v in record.items() if k != "record_sha256"}, record["provenance"]
+def _record(**provenance_over):
+    """A finalized record carrying provenance; ``finalize_record`` recomputes
+    ``record_sha256``, which is why the malformed cases below reach the
+    provenance check at all -- calling ``validate_record`` on a hand-mutated
+    record refuses on hash drift first and MASKS whether the check fired."""
+    fields = _fields(provenance={**VALID_PROVENANCE, **provenance_over})
+    return finalize_record(fields)
 
 
 def test_provenance_is_optional_not_required():
@@ -32,14 +48,11 @@ def test_provenance_is_optional_not_required():
 
 
 def test_a_record_without_provenance_still_validates():
-    fields, _ = _base()
-    fields.pop("provenance", None)
-    validate_record(finalize_record(fields))
+    validate_record(finalize_record(_fields()))
 
 
-def test_the_real_records_are_admitted():
-    fields, _ = _base()
-    validate_record(finalize_record(fields))
+def test_a_well_formed_provenance_block_is_admitted():
+    validate_record(_record())
 
 
 @pytest.mark.parametrize("coordinate", [
@@ -49,15 +62,9 @@ def test_the_real_records_are_admitted():
     [],                                  # empty
     [1, 2, 3, 4, 5],                     # too long
 ])
-def test_malformed_coordinates_are_refused_through_finalize_record(coordinate):
-    """Through finalize_record, not validate_record: mutating provenance changes
-    record_sha256, so a direct validate_record call refuses on hash drift and
-    MASKS whether the coordinate check fired at all.  That masking is how the
-    hole survived my own falsification pass."""
-    fields, provenance = _base()
-    fields["provenance"] = {**provenance, "coordinate": coordinate}
+def test_malformed_coordinates_are_refused(coordinate):
     with pytest.raises(SchemaError, match="coordinate"):
-        validate_record(finalize_record(fields))
+        validate_record(_record(coordinate=coordinate))
 
 
 @pytest.mark.parametrize("patch,fragment", [
@@ -69,14 +76,19 @@ def test_malformed_coordinates_are_refused_through_finalize_record(coordinate):
     ({"model": {"a": 1}}, "string or null"),
 ])
 def test_malformed_provenance_values_are_refused(patch, fragment):
-    fields, provenance = _base()
-    fields["provenance"] = {**provenance, **patch}
     with pytest.raises(SchemaError, match=fragment):
-        validate_record(finalize_record(fields))
+        validate_record(_record(**patch))
 
 
 def test_provenance_must_be_an_object():
-    fields, _ = _base()
-    fields["provenance"] = "a string"
+    fields = _fields(provenance="a string")
     with pytest.raises(SchemaError, match="must be an object"):
         validate_record(finalize_record(fields))
+
+
+def test_the_source_is_admitted_but_not_a_default():
+    from shengji.harvest.schema import SOURCES
+    from shengji.train.harvest_labels import DEFAULT_SOURCES, SOURCE_FILES
+    assert "luna-quality" in SOURCES
+    assert SOURCE_FILES["luna-quality"].endswith(".private.jsonl")
+    assert "luna-quality" not in DEFAULT_SOURCES

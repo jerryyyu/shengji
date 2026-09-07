@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Fixed-state W32 A/B of prepared lead validation; no new games or labels.
+"""Fixed-state W32 A/B of inference optimizations; no new games or labels.
 
-The factory patch is restricted to this single-thread diagnostic process. The
-shipping cache uses explicit instance plumbing, never a patched engine global.
+The historical default compares prepared lead validation. ``--optimization
+fused-static`` compares fused tensor construction with the prior static path,
+keeping prepared lead validation enabled in both arms. Patches are restricted
+to this single-thread diagnostic process, never live workers or engine globals.
 Keep every scoring row, batch, shortlist, report, action, work count and RNG
 state identical. Timings on a contended host are diagnostic, not speed claims.
 """
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 from dataclasses import asdict
 from functools import partial
 import hashlib
@@ -21,6 +24,7 @@ import time
 from unittest.mock import patch
 
 from scripts.cwv_shortlist_cost import ScoreTrace
+from shengji.ai import cwv_static_encoding
 from shengji.ai.cwv_policy import CompleteWorldEvaluator, file_sha256
 from shengji.ai.cwv_successor_reuse import WorldSuccessorCache
 from shengji.engine import fast
@@ -35,8 +39,22 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
+class InferenceProbeDeadline(BaseException):
+    """Bypass encoder fallback catches; the probe still seals the failure."""
+
+
 def _expired(_signum, _frame):
-    raise TimeoutError("per-decision prepared-lead diagnostic deadline")
+    raise InferenceProbeDeadline("per-decision inference diagnostic deadline")
+
+
+def _optimization_context(optimization, enabled):
+    if optimization == "prepared-lead":
+        return patch.object(cwv_shortlist, "WorldSuccessorCache",
+                            partial(WorldSuccessorCache, prepare_leads=enabled))
+    if optimization == "fused-static":
+        return (nullcontext() if enabled else patch.object(
+            cwv_static_encoding, "_fused_static_tensors", lambda *_: None))
+    raise ValueError("unknown inference optimization")
 
 
 def main(argv=None):
@@ -47,6 +65,8 @@ def main(argv=None):
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decision-seconds", type=int, default=60)
     parser.add_argument("--seed0", type=int, default=89260904)
+    parser.add_argument("--optimization", choices=("prepared-lead", "fused-static"),
+                        default="prepared-lead")
     args = parser.parse_args(argv)
     if min(args.repetitions, args.decision_seconds) < 1:
         parser.error("positive repetitions and per-decision deadline required")
@@ -61,8 +81,10 @@ def main(argv=None):
     if os.environ.get("SHENGJI_FAST") == "1" and not native_active:
         raise RuntimeError("compiled play route requested but not active")
     recipe = CWVShortlistConfig(worlds=32)
+    arm_key = "prepared" if args.optimization == "prepared-lead" else "fused"
     config = {
-        "schema": "cwv-prepared-lead-probe-v1", "seed0": args.seed0,
+        "schema": "cwv-inference-probe-v2", "seed0": args.seed0,
+        "optimization": args.optimization, "arm_key": arm_key,
         "states_sha256": file_sha256(args.states_json), "states": len(snapshots),
         "checkpoint_sha256": evaluator.checkpoint_sha256,
         "repetitions": args.repetitions, "decision_seconds": args.decision_seconds,
@@ -83,11 +105,11 @@ def main(argv=None):
             for index, snapshot in enumerate(snapshots):
                 pair = []
                 order = (False, True) if (index + repetition) % 2 == 0 else (True, False)
-                for prepared in order:
-                    path = args.out / f"r{repetition:02}-state-{index:04}-{int(prepared)}.json"
+                for enabled in order:
+                    path = args.out / f"r{repetition:02}-state-{index:04}-{int(enabled)}.json"
                     if path.exists():
                         row = json.loads(path.read_bytes())
-                        if (row["state"], row["repetition"], row["prepared"]) != (index, repetition, prepared):
+                        if (row["state"], row["repetition"], row[arm_key]) != (index, repetition, enabled):
                             raise ValueError("saved diagnostic row identity drift")
                     else:
                         rnd = _round_from_snapshot(snapshot)
@@ -95,14 +117,13 @@ def main(argv=None):
                         trace = ScoreTrace(evaluator)
                         bot = CWVShortlistBot(trace, seed=args.seed0 + index,
                                              config=recipe, reuse_successors=True)
-                        factory = partial(WorldSuccessorCache, prepare_leads=prepared)
                         start, cpu = time.perf_counter(), time.process_time()
                         error = None
                         signal.alarm(args.decision_seconds)
                         try:
-                            with patch.object(cwv_shortlist, "WorldSuccessorCache", factory):
+                            with _optimization_context(args.optimization, enabled):
                                 played = bot.decide_play(rnd, rnd.turn)
-                        except Exception as exc:
+                        except (Exception, InferenceProbeDeadline) as exc:
                             error = f"{type(exc).__name__}: {exc}"
                             played = None
                         finally:
@@ -112,7 +133,7 @@ def main(argv=None):
                         record = bot.last_decision_record
                         detail = getattr(bot, "last_shortlist", None)
                         row = {
-                            "state": index, "repetition": repetition, "prepared": prepared,
+                            "state": index, "repetition": repetition, arm_key: enabled,
                             "error": error, "wall_seconds": wall_elapsed, "cpu_seconds": cpu_elapsed,
                             "semantic": {
                                 "input_sha256": before,
@@ -134,7 +155,7 @@ def main(argv=None):
                     rows.append(row)
                     pair.append(row)
                     print(json.dumps({k: row[k] for k in (
-                        "state", "repetition", "prepared", "error", "wall_seconds")}), flush=True)
+                        "state", "repetition", arm_key, "error", "wall_seconds")}), flush=True)
                     if row["error"] is not None:
                         raise RuntimeError("saved failed diagnostic; no automatic repeat: " + row["error"])
                 if pair[0]["semantic"] != pair[1]["semantic"] or not pair[0]["semantic"]["input_unchanged"]:
@@ -142,8 +163,8 @@ def main(argv=None):
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous_handler)
-    totals = {str(prepared): sum(row["wall_seconds"] for row in rows if row["prepared"] == prepared)
-              for prepared in (False, True)}
+    totals = {str(enabled): sum(row["wall_seconds"] for row in rows if row[arm_key] == enabled)
+              for enabled in (False, True)}
     result = {"pairs_identical": len(rows) // 2, "wall_seconds": totals,
               "observed_wall_ratio": totals["False"] / totals["True"],
               "qualification": "Fixed-state consumer A/B, not gameplay; host isolation must be documented separately."}

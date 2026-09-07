@@ -3,6 +3,12 @@
 Status: development evidence; no policy/default change or deployment.
 Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
+Latest readout: five completed checkpoints now share the 52-root FIT probe.
+No tested horizon, diversity or selector-objective intervention establishes a
+gain. Keep finished-trick W32 with its existing MC-LCB selector; do not select
+a replacement model from tuning CE alone. ACDEF-v2's completed 260-deal screen
+is inconclusive and its separate 520-deal comparison remains in progress.
+
 ## Finding and test
 
 The ordinary CWV training and candidate-evaluation bridge encodes the state
@@ -217,6 +223,96 @@ Evidence: `~/shengji-archive/2026-09-07/cwv-selector-objective.HBuGwT/run/`.
 Reusable CLI: `server/scripts/cwv_selector_objective_audit.py --help`.
 Per-root atomic outputs preserve completed work and bind the saved decisions
 and reference artifact. No default, registry entry or production source changes.
+
+## Completed ACDEF-v2 model and gameplay reconciliation
+
+ACDEF-v2 checkpoint `3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`
+selected epoch 5 at validation CE .6218207448. It uses 96,000 distinct deals,
+not 120,000; 76,800 fit / 9,600 validation / 9,600 test. Its completed receipt
+now includes the post-training evaluation. The separate LR1e-4 ACDEF trainer
+was still live and no evolving checkpoint was read for this audit.
+
+We independently paired the completed **initial 260-deal** screens by seed,
+rank, suit, banker, mirror and team/seat assignment. Both role mirrors stay
+inside the deal bootstrap. This is the reused DEV/selection panel, not another
+fresh confirmation. Numbers are whole signed levels per played round, unlike
+the half-integer model utility used in the sampled-world diagnostics.
+
+| Initial 260-deal screen | Mean utility vs production | ACDEF-v2 minus this model, paired 95% interval |
+|---|---:|---:|
+| ACD v1 | +.10192 | -.07308 [-.14615, .00000] |
+| ACD v2 | +.05192 | -.02308 [-.09808, +.05000] |
+| ACDEF v1 | +.04615 | -.01731 [-.10000, +.06346] |
+| ACDEF v2 | +.02885 | reference |
+
+ACDEF-v2's own 10,000-resample interval is [-.04038, +.09808]. The original
+summary uses 1,000 resamples/a different seed and prints [-.04038, +.10385].
+This is bootstrap resolution, not conflicting observed means. No comparison
+here establishes an improvement or a general v2 regression. Earlier ACD-v2
+already changed ordering on its separately reported 520-deal panel.
+
+The ACDEF-v1/v2 screens bind identical recorded source maps; the older ACD
+screens include source/performance revisions. Recorded decision-wall ratios
+are 4.64x / 4.72x / 3.10x / 4.74x production respectively, with different host
+contention. These are not equal-wall comparisons; the `3x` directory label is
+a target, not measured cost. Do not silently pool the 260 and 520 panels.
+
+### Same-state extension, without repeating old inference
+
+The new completed model alone was scored at both horizons on the same 52 FIT
+roots and shared W32/MC streams. This took 55.15 seconds on one nice-10 CPU
+worker. We retained all earlier model decisions and 1,024-world return columns.
+Only ten newly nominated action columns needed additional reference rollouts:
+10,240 candidate-world continuations, 2.00 seconds. Reconstructed world hashes
+matched the retained reference before adding a column. Every old final-value
+metric remained exactly unchanged; no models or actions were reselected using
+the reference values.
+
+| New model/horizon | Final reference gain over incumbent | Diagnostic contrast |
+|---|---:|---|
+| ACDEF-v2 finished | +.03930 | same final moves as ACD-v2 LR1e-4 on all 52 roots |
+| ACDEF-v2 immediate | +.03580 | immediate minus finished -.00350, interval [-.01050, .00000] |
+
+Finished ACDEF-v2 changes 8 retained sets versus the best-CE LR1e-4 model but
+**zero final moves**; versus ACD-v1 it changes 11 retained sets and 2 submitted
+moves. Its final reference value is -.00505 below ACD-v1 and +.00564 above
+baseline ACD-v2 here. These sparse, 24-deal FIT contrasts are not gameplay
+strength; their bootstrap intervals condition on finite reference worlds.
+The exact final tie between models with different data, CE and nominations
+further shows why offline loss cannot choose the playing policy by itself.
+
+Evidence: `~/shengji-archive/2026-09-07/cwv-acdef-v2-extension.n0c9TT/` contains
+the same-state run, `compare_gameplay.py`, `gameplay-260.json`,
+`extend_reference.py`, and the atomic `reference-1024/` extension.
+
+## v1/v2 target-to-consumer correctness check
+
+A separate bounded reader traced the actual code at `1fc72cc7`; primary review
+also inspected the consumer and ran its three v1/v2 routing witnesses (all pass).
+No load-bearing sign, seat, unit, bin-support or version-dispatch defect was found:
+
+- `cwv_data.py` rebuilds the acting seat, checks its team role, applies the
+  recorded action and labels its outcome with `signed_level_category` from
+  that same seat's perspective. The stored utility is cross-checked against
+  the category's mapped value.
+- `CompleteWorldEvaluator.score_many` feeds the root-seat perspective to the
+  versioned encoder. Softmax probabilities and exact terminal distributions
+  both use the identical `category_signed_level` support.
+- A disposable no-model serving probe returned +.5 / -.5 for the same 80-point
+  outcome from attacker / defender perspectives. Mapping checks through 4,120
+  points retain +101.5 / -101.5 rather than clipping or reversing the utility.
+- Existing actual-consumer tests verify 561-wide v2 routing and exclusion of
+  the v1-only fused encoder; the v1 fused path stays 532-wide. All three ran
+  successfully in the compiled test environment, without training or data reads.
+
+One unused helper, `cwv_data.tensors_rows`, always constructs v1 tensors.
+There are no callers in the inspected tree; neither training nor inference
+uses it. This is deferred compatibility debt, not an explanation for these
+results, and does not justify altering live runs or retraining.
+
+The audit does not certify arbitrary custom checkpoints or all engine terminal
+accounting. More importantly, correct signs and widths do not make a learned
+value function accurate under a different continuation policy.
 
 ## Scope, cost and reproducibility
 

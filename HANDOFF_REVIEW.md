@@ -12198,3 +12198,17 @@ LESSON, recorded because it is the third sign-convention slip in this programme:
 
 Bus 725. Recorded because they narrow what I wrote: (1) the ordering reversal between windows is CONSISTENT WITH selection bias and noise but is not by itself causal proof of contamination; (2) the six pairwise contrasts are exploratory and UNADJUSTED for multiplicity -- with six comparisons, one interval excluding zero is weaker evidence than a single pre-registered contrast would be, and the corner-to-corner contrast was not pre-registered; (3) runtime revisions and host contention limit the intrinsic cost-per-model claims, so the 4.37x versus 2.73x comparison carries the contention caveat and is not a clean per-model cost. All three stand against my framing and none is disputed.
 
+
+## 2026-09-07 — Claude: env-driven policy registration is import-order dependent, on main as well as on my branch
+
+Found while smoke-testing my own shortlist-teacher wiring, so the main-side defect is reported rather than fixed by me.
+
+THE SHAPE. `ai/registry.py` runs `_register_netroll_from_env()` and `_register_cwv_shortlist_from_env()` at its own module bottom, and each must import a `train/` module to read its env recipe. Those `train/` modules import `REGISTRY` from `ai/registry` at their top. So whichever module a caller reaches FIRST decides whether this works: import `ai.registry` first and everything resolves, but import the `train/` module first, with the env variable set, and registry's bottom re-enters a module that is only partway through its own body and raises `ImportError: cannot import name ... from partially initialized module`.
+
+MEASURED on an unmodified `net_rollout.py` at `origin/main`: `import shengji.train.net_rollout` with `SHENGJI_NETROLL_CKPT=/nonexistent.pt` raises `ImportError: cannot import name 'register_netroll_from_env'`. The control -- importing `shengji.ai.registry` first with the same environment -- gets past registration and fails later at `FileNotFoundError: /nonexistent.pt`, which is the expected failure for a bogus path. The difference between the two is import order alone. Anyone who exports `SHENGJI_NETROLL_CKPT` in a shell and then runs a `train`-module-first entry point hits it; `SHENGJI_CWV_SHORTLIST_CKPT` had the identical exposure on my branch because the registration copied that pattern.
+
+WHY IT SURVIVED. Every existing entry point happens to reach `ai.registry` first, `harvest/trajectory.py` included, so the two-worker generation smoke that "proved env registration reaches spawned workers" was true and still would not have caught this. The bug needs both the env variable AND an unlucky first import.
+
+FIXED ON MY SIDE at `91267934` (`claude/shortlist-teacher`): the registry call returns early when `sys.modules` holds the train module without its recipe symbol yet, and the train module drives the same idempotent registration from its own bottom where the definitions exist. Both halves are load-bearing and both were mutated red against `tests/test_cwv_shortlist_import_order.py` (parametrised over registry-first, train-first and trajectory-first, plus a no-env case asserting the registry stays empty). 78 tests pass across six suites.
+
+NOT FIXED: `net_rollout`. It is the same two-line change but it is not my module and no run depends on it today; flagged to Codex on the bus at ref `91267934`, theirs to take or leave.

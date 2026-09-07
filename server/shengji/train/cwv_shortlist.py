@@ -367,3 +367,14 @@ def shortlist_env_recipe(environ=None) -> tuple[str, list[int], dict] | None:
         not in ("0", "false", "no", ""),
     }
     return checkpoint, (worlds or [SHORTLIST_WORLDS]), recipe
+
+
+# ``registry`` registers the env-driven shortlist policy at ITS import, but when
+# this module is the one imported first it is only partway through its own body
+# at that moment and the helper below does not exist yet.  Registration is
+# idempotent (``REGISTRY.update``), so drive it again from here, where every
+# definition is in place.  Together the two call sites make the registration
+# independent of which module a caller reaches first.
+from ..ai.registry import _register_cwv_shortlist_from_env as _register_from_env
+
+_register_from_env()

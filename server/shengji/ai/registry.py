@@ -843,7 +843,16 @@ def _register_cwv_shortlist_from_env() -> None:
     import, so a spawned trajectory worker resolves the same name the parent
     did (`train.cwv_shortlist.shortlist_env_recipe`)."""
     import os
+    import sys
     if not os.environ.get("SHENGJI_CWV_SHORTLIST_CKPT"):
+        return
+    module = sys.modules.get("shengji.train.cwv_shortlist")
+    if module is not None and not hasattr(module, "shortlist_env_recipe"):
+        # That module is PARTWAY through its own import: it reached its
+        # ``from ..ai.registry import REGISTRY`` line, which is what is running
+        # us now, so its own definitions do not exist yet.  Registering here
+        # would raise ImportError.  It calls this function again from its
+        # module bottom, where the symbol does exist, so do nothing.
         return
     from ..train.cwv_shortlist import shortlist_env_recipe
     checkpoint, worlds, recipe = shortlist_env_recipe()

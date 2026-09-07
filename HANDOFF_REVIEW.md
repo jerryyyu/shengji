@@ -12122,3 +12122,22 @@ WHAT SURVIVES: v2's search numbers are real measurements of a real checkpoint --
 WHAT THIS KILLS: all three mining-proposed columns -- incumbent_security, suit_master_holder, next_leader -- are trick-local and would be equally invisible to W32. Building them as specified would repeat the mistake at greater cost. Any future encoder work must first state which afterstate construction its target consumer uses.
 
 OPEN QUESTION, NOT A CONCLUSION: whether the trick-local information is worth having at all. Two designs are compatible with this finding -- encode BEFORE the trick is finished (a consumer change, not an encoder change), or accept that a leaf-after-trick evaluator cannot use trick-local state and drop that block. Codex owns an isolated immediate-vs-finished-trick diagnostic under Jerry's scaling-audit goal (bus 692-694, 52 FIT positions, saved checkpoints, no new gameplay) which is the right experiment to settle it, and my live ACDEF jobs are untouched by it.
+
+## 2026-09-07 — Codex's horizon diagnostic: encoding BEFORE the trick finishes does not help, so the trick-local block is closed rather than relocated
+
+Following the finding that W32 evaluates its leaf with `finish_trick=True` and therefore sees all 16 v2 trick-local columns as boundary constants, the obvious next move was to change the CONSUMER: encode the immediate afterstate so those columns vary. Codex ran that as an isolated diagnostic (52 FIT roots over 24 deals, saved ACD v1 and v2 checkpoints, W32 ranking against independent reference worlds, 59.2s on one core, no new gameplay and no holdout opened). Archive `2026-09-07/cwv-horizon-shared-fit.NNogWA`, `complete: true`.
+
+MEASURED, final lift versus the incumbent, equal deal weight:
+
+| arm | finished trick (today) | immediate afterstate |
+| --- | --- | --- |
+| v1 | **+0.0498** | +0.0314 |
+| v2 | +0.0348 | +0.0402 |
+
+Delta from switching to immediate: **v1 −0.0183, v2 +0.0054 with an interval spanning zero.** And per-world value MAE is WORSE under immediate for both encoders (v1 0.817 vs 0.783, v2 0.811 vs 0.789), as is reference action-mean MAE. So the change that would make v2's trick columns visible makes the v1 model measurably worse and does nothing detectable for v2, while degrading value prediction for both. Codex's own words: no blanket horizon fix supported.
+
+WHAT THIS SETTLES. The finished-trick convention is not an oversight to be corrected; it is the better of the two on this evidence. That closes the trick-local lane rather than relocating it: the block cannot help the W32 shortlist as designed, and the consumer should not be changed to make it help. Encoder v2's 16 trick-local columns are dead weight for this consumer, its useful content is the 13 non-trick columns (points regime, hand shape) minus the dead `band3`, and the three columns my mining pass proposed -- all trick-local -- are dropped rather than deferred.
+
+A future encoder for the shortlist should describe the state AFTER the trick resolves: who leads next, what the completed trick cost, how the hands now stand. That is a different design from the one we built, and it follows from the consumer rather than from a decision-quality intuition formed on the wrong distribution.
+
+CAVEATS, Codex's and mine. This is a development diagnostic against a finite sampled-world union reference, not a strength measurement, and 52 roots over 24 deals is small. It does not say the trick information is worthless in principle -- only that it cannot reach this consumer and that moving the consumer to reach it costs more than it returns. The best concrete v2 miss they identified, root `01422afe`, omits SK and SQ under finished and retains them under immediate; a single example, named for follow-up rather than as evidence.

@@ -197,7 +197,9 @@ exploratory DEV screen with no promotion or deployment authority. The
 [authoritative readout](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557759351)
 records the result and archive identity.
 
-### Double-shortlist and adaptive allocation
+<a id="double-shortlist-and-adaptive-allocation"></a>
+
+### Completed allocation and depth screens
 
 The one-extra-trick screen completed on 26 broader-rank deals. Learned inner
 ranking versus flat W32 scored −0.09615 levels/round (95% CI
@@ -208,12 +210,40 @@ separate matches, not additive effects or a direct learned-versus-uniform
 contrast. Full artifacts and cost attribution are in
 [the scaling ledger](https://github.com/jerryyyu/shengji/issues/248).
 
-Further unchanged-recipe/all-world depth escalation is parked. The next
-distinct mechanism is [adaptive root allocation (#278)](https://github.com/jerryyyu/shengji/pull/278):
-redistribute selection rollouts among surviving W32 finalists, retaining the
-independent R300 report. It is opt-in research, not evidence of improved
-strength or a production-default change. Flat optimized W32/K4 remains the
-supported experimental reference.
+The subsequent direct matches against flat ABC W32 also completed, each on
+the same 260 opened broader-rank deals / 520 mirrored rounds:
+
+| Treatment vs flat W32 | Signed levels/round [95% deal interval] | Decision wall / flat |
+|---|---:|---:|
+| Adaptive root allocation | +0.00577 [−0.05774, +0.07308] | 0.9666× |
+| Selective one-extra-trick guidance | −0.00577 [−0.06736, +0.05769] | 1.5892× |
+
+Neither establishes a strength improvement or equivalence. Both treatments
+actually ran: adaptive pruning occurred on 50.39% of contested decisions;
+selective guidance triggered on 59.18% and used 2.0227× continuation rollouts.
+The timing ratios compare different policy trajectories, **not isolated
+engineering speedups**. Do not add these effects to W32-versus-production
+results or treat the reused populations as independent confirmations.
+
+Both screens covered 40 rounds at every rank and actual suits C 92 / D 124 /
+H 126 / S 128 / NT 50. Full recipes, intervention counters and retained evidence:
+[adaptive readout](https://github.com/jerryyyu/shengji/blob/268be9c214a8f985bdefe17fbff2455de40701cc/server/runs/cwv_adaptive_root_20260906.md),
+[selective-depth readout](https://github.com/jerryyyu/shengji/blob/994049e8d9646e97babf1cd39df164e7c76b6cb2/server/runs/cwv_selective_depth_20260906.md).
+Keep flat optimized W32/K4/N30/R300. Further unchanged-recipe/all-world depth
+escalation and threshold sweeps are parked; these finite negative/inconclusive
+screens do not prove that every adaptive or deeper search will fail.
+
+### Further decision-preserving engineering
+
+The later fused static-input A/B in [#288](https://github.com/jerryyyu/shengji/pull/288)
+reduced total decision time on two saved zero-reuse follows from 522.75 to
+392.34 seconds combined (**1.3324× faster / 25% less wall**), preserving
+scores, decisions, work and RNG in all nine tested pairs. The seven-state
+small/lead panel was neutral overall; one small state was 7.3% slower in the
+single paired pass. This is **not a whole-game, regression-free or strength
+claim**, and its ratio must not be multiplied into earlier different-host
+measurements. [Exact source and retained measurement](https://github.com/jerryyyu/shengji/blob/cd65cb99f84d80d9f6880bc4dcf9b2b57c66aa8c/server/runs/cwv_fused_static_20260906.md).
+This result does not authorize changing a live run or production defaults.
 
 ## Search and heuristic behavior that survives
 

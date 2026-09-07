@@ -101,7 +101,8 @@ from .data import (CACHE_WORKERS_CAP, DEAL_KEY_SCHEMA, PRIVACY_TRIALS, Block, Bl
                    default_cache_workers, default_resident_bytes, discover_store,
                    encoder_identity, ensure_caches, first_deals, physical_memory_bytes,
                    split_counts, split_deals, split_mask, SplitSelector)
-from ..rl.encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
+from ..rl.encode_versions import (ENC_VERSION, OBS_DIM_BY_VERSION, check_version,
+                                  encoder_version_for)
 from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
                     ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
                     trunk_for)
@@ -946,7 +947,8 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
                                        witness_seed=seed, progress=say, cache_workers=workers,
                                        residency=residency, witness_every=witness_every,
-                                       allow_sampled_witness=allow_sampled_privacy_witness)
+                                       allow_sampled_witness=allow_sampled_privacy_witness,
+                                       version=enc_version)
         refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         luna_population = population_report(luna_prepared.block_store.keys(), population)
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
@@ -1197,9 +1199,12 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     metric_kw = dict(n_boot=n_boot, seed=int(config["seed"]), calibration=calibration,
                      prior_target=config["prior_target"], prior_weight=config["prior_weight"])
     residency = Residency(budget)
+    # Evaluation rows must be the LOADED checkpoint's encoder version, which
+    # its arch states (``encoder_version_for``), for --data and --eval-luna alike.
+    enc_version = encoder_version_for(payload["arch"])
     prepare_kw = dict(witness_seed=int(config["seed"]), progress=say, cache_workers=workers,
                       residency=residency, witness_every=witness_every,
-                      allow_sampled_witness=allow_sampled_privacy_witness)
+                      allow_sampled_witness=allow_sampled_privacy_witness, version=enc_version)
     final: dict = {}
     data_receipt = []
     counts: dict = {}

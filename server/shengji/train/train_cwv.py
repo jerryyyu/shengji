@@ -383,6 +383,32 @@ def save_cwv_checkpoint(path: Path, model: ValueNetwork, *, metadata: Mapping[st
     return save_value_checkpoint(path, model, metadata=meta)
 
 
+def bind_encoder_version(metadata: Mapping[str, Any], config: ValueModelConfig, *,
+                         path: str | os.PathLike | None = None) -> int:
+    """The encoder version a checkpoint's identity is validated at, BOUND to
+    ``config.enc_version`` (what inference encodes with).  Raises
+    ``TrainError`` naming both when they disagree; a missing declaration
+    is v1 only when the model config is v1."""
+    label = f"{path}: " if path is not None else ""
+    actual = int(config.enc_version)
+    enc = metadata.get("encoder")
+    value = enc.get("enc_version") if isinstance(enc, Mapping) else None
+    if value is None:
+        if actual != ENC_VERSION:
+            raise TrainError(f"{label}checkpoint metadata declares no encoder version but "
+                             f"the model config is encoder v{actual}; refusing")
+        return ENC_VERSION
+    try:
+        declared = check_version(value)
+    except ValueError as exc:
+        raise TrainError(f"{label}checkpoint declares an unknown encoder version {value!r}") from exc
+    if declared != actual:
+        raise TrainError(f"{label}checkpoint metadata declares encoder v{declared} but the "
+                         f"model config is encoder v{actual}; the identity would be "
+                         "validated at one version and the net encoded at another; refusing")
+    return declared
+
+
 def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "cpu"
                         ) -> tuple[ValueNetwork, dict, AuxPointsHead | None]:
     """Through #214's ``load_checkpoint``; the metadata must name the
@@ -404,9 +430,13 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     if metadata.get("sees_hidden_hands") is not True:
         raise TrainError(f"{path}: checkpoint does not declare sees_hidden_hands")
     enc = metadata.get("encoder") or {}
-    # The checkpoint names its own encoder version; only the implementation
-    # digest of THAT version has to match this build.
-    want = cwv_encoder_identity(check_version(enc.get("enc_version", ENC_VERSION)))
+    # The identity is validated at the version the checkpoint DECLARES, but
+    # inference encodes at the version the MODEL CONFIG carries.  Bind them:
+    # a declared version that is not the model's is refused, and a missing
+    # declaration means v1 only when the model itself is v1 (archived
+    # checkpoints predate the field).
+    declared = bind_encoder_version(metadata, model.config, path=path)
+    want = cwv_encoder_identity(declared)
     if enc.get("implementation_sha256") != want["implementation_sha256"]:
         raise TrainError(f"{path}: checkpoint encoder "
                          f"{str(enc.get('implementation_sha256', ''))[:12]} differs from this "

@@ -188,6 +188,30 @@ def declared_encoder_version(metadata: Mapping[str, Any]) -> int:
             f"checkpoint declares an unknown encoder version {value!r}") from None
 
 
+def bind_encoder_version(metadata: Mapping[str, Any], model: Any, *,
+                         path: str | os.PathLike[str] | None = None) -> int:
+    """Refuse a checkpoint whose DECLARED encoder version (what the identity
+    gate validates) is not the MODEL's (what inference encodes with).  A
+    missing declaration is v1 only when the model config is v1."""
+    label = f"{path}: " if path is not None else ""
+    actual = int(getattr(getattr(model, "config", None), "enc_version", 1))
+    encoder = metadata.get("encoder")
+    value = encoder.get("enc_version") if isinstance(encoder, Mapping) else None
+    if value is None:
+        if actual != 1:
+            raise CWVCheckpointMismatch(
+                f"{label}checkpoint metadata declares no encoder version but the model "
+                f"config is encoder v{actual}; refusing")
+        return 1
+    declared = declared_encoder_version(metadata)
+    if declared != actual:
+        raise CWVCheckpointMismatch(
+            f"{label}checkpoint metadata declares encoder v{declared} but the model config "
+            f"is encoder v{actual}; the identity would be validated at one version and the "
+            "net encoded at another; refusing")
+    return declared
+
+
 def afterstate_encoder_identity(version: int = 1) -> dict[str, Any]:
     """Rehash the afterstate encoder's executable closure on every call.
 
@@ -280,6 +304,7 @@ def _cached_checkpoint(path: str, mtime_ns: int, size: int):
     del mtime_ns, size            # part of the key: a replaced file reloads
     from ..rl.value_checkpoint import load_checkpoint
     model, metadata = load_checkpoint(path, map_location="cpu")
+    bind_encoder_version(metadata, model, path=path)
     verify_checkpoint_identity(metadata, path=path)
     for parameter in model.parameters():
         parameter.requires_grad_(False)

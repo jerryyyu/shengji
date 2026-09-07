@@ -278,6 +278,8 @@
         91261710
       ],
       "created_at": "2026-09-07T00:33:00Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "0ba7f709020b455d62f74954dc54154b0cd52d6d",
       "note": "A+C+D W32 13-rank screen on 520 fresh deals; same recipe and cluster-modulo rank cycle as screen-cwv-k4-ranks13-20260906 so the two pool"
     },
     {
@@ -290,6 +292,8 @@
         75276904
       ],
       "created_at": "2026-09-07T05:45:00Z",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "be56f456ba8cc89468ae2b08b8e5f166ceac8a14",
       "note": "Run E recipe (N90/R900 teacher, rank-diverse sampled), perf, queued behind Run E"
     },
     {
@@ -302,7 +306,23 @@
         85276904
       ],
       "created_at": "2026-09-07T05:45:00Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "e5fb03ab2487d61123f7b3e945a421018f54feaa",
       "note": "Run E recipe, cloud, queued behind Run F2"
+    },
+    {
+      "name": "traj-s91000201-ad94fd9b7e6e",
+      "purpose": "trajectory",
+      "seed0": 91000201,
+      "clusters": 1,
+      "span": [
+        91000201,
+        91000202
+      ],
+      "created_at": "2026-09-07T19:42:39-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "912679340aafd0a0fe05d762035636da0cda19e8",
+      "note": "trajectory mc-s0-report-lcb rounds=2 out=/private/tmp/tj_a"
     }
   ]
 }

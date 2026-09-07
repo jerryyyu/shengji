@@ -283,6 +283,23 @@ def reopen_shard(path, config, cluster):
     return shard
 
 
+def _arm_description(config):
+    """Describe the configured arm, including production's actual dose."""
+    arm = config["arm"]
+    if arm == "learned":
+        return "flat exhaustive learned root shortlist"
+    if arm == "uniform":
+        return "flat exhaustive uniform root shortlist"
+    if arm == "production":
+        multiplier = int(config["production_multiplier"])
+        return (f"production at N={BASELINE_SELECT_WORLDS * multiplier} "
+                f"selection worlds, R={BASELINE_REPORT_WORLDS * multiplier} "
+                "report worlds")
+    if arm == "identity":
+        return "production identity control"
+    raise ValueError(f"unsupported CWV shortlist arm: {arm!r}")
+
+
 def summary_for(shards, config):
     base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
@@ -301,6 +318,7 @@ def summary_for(shards, config):
     result.update({
         "schema": "cwv-shortlist-summary-v1", "config": config,
         "arm": config["arm"],
+        "arm_description": _arm_description(config),
         "rank": (RANK if "trump_ranks" not in config
                  else config["trump_ranks"][0] if len(config["trump_ranks"]) == 1 else None),
         "claim": "exploratory DEV paired screen; no equal-work or strength claim",

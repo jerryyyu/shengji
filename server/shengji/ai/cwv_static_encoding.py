@@ -221,6 +221,130 @@ def _history_is_valid(rnd) -> bool:
         return False
 
 
+def _fused_static_tensors(rnd, seat: int) -> ValueAfterstateTensors | None:
+    """Build and check ordinary engine inputs in one card traversal.
+
+    No trust flag or cross-call cache is involved. The same traversal that
+    constructs played/hand planes counts the entire physical population and
+    validates every card/event. Unsupported or invalid states return to the
+    established path, preserving its exception type, message and ordering.
+    Half-copy increments are exactly representable, as in the training encoder.
+    """
+    try:
+        if (type(rnd) is not Round or type(seat) is not int or not 0 <= seat < 4
+                or rnd.phase != "play" or type(rnd.ordering) is not Ordering
+                or type(rnd.history) is not list or type(rnd.hands) is not list
+                or len(rnd.hands) != 4 or type(rnd.buried) is not list
+                or type(rnd.banker) is not int or not 0 <= rnd.banker < 4
+                or type(rnd.attacker_points) is not int
+                or type(rnd.trump_is_nt) is not bool or rnd.trump_rank not in RANKS
+                or type(rnd.trick) is not Trick or type(rnd.trick.plays) is not list
+                or len(rnd.trick.plays) > 3):
+            return None
+        declaration = rnd.declaration
+        if declaration is not None:
+            if (type(declaration) is not dict
+                    or type(declaration.get("seat")) is not int
+                    or not 0 <= declaration["seat"] < 4
+                    or type(declaration.get("cards")) is not list
+                    or not declaration["cards"]
+                    or any(type(card) is not str or card not in CARD_INDEX
+                           for card in declaration["cards"])):
+                return None
+
+        physical = [0] * N_CARDS
+        world = [[0.0] * N_CARDS for _ in range(WORLD_RECEIVERS)]
+        for relative in range(WORLD_RECEIVERS):
+            cards = (rnd.hands[(seat + relative) % 4] if relative < 4 else rnd.buried)
+            if type(cards) is not list:
+                return None
+            plane = world[relative]
+            for card in cards:
+                if type(card) is not str:
+                    return None
+                index = CARD_INDEX[card]
+                plane[index] += 0.5
+                physical[index] += 1
+
+        played = [[0.0] * N_CARDS for _ in range(4)]
+        played_total = [0.0] * N_CARDS
+        trick_planes = [[0.0] * N_CARDS for _ in range(3)]
+        voids = [set() for _ in range(4)]
+        event_count = 0
+        for trick_index, trick in enumerate([*rnd.history, rnd.trick]):
+            current = trick_index == len(rnd.history)
+            if (type(trick) is not Trick or type(trick.plays) is not list
+                    or (not current and len(trick.plays) != 4)):
+                return None
+            lead_suit = None
+            for position, play in enumerate(trick.plays):
+                if (type(play) is not TrickPlay or type(play.cards) is not list
+                        or not play.cards or type(play.seat) is not int
+                        or not 0 <= play.seat < 4):
+                    return None
+                event_count += 1
+                plane = played[play.seat]
+                off_suit = False
+                for card in play.cards:
+                    if type(card) is not str:
+                        return None
+                    index = CARD_INDEX[card]
+                    suit = rnd.ordering.eff_suit(card)
+                    if lead_suit is None:
+                        lead_suit = suit
+                    if position and suit != lead_suit:
+                        off_suit = True
+                    plane[index] += 0.5
+                    played_total[index] += 0.5
+                    physical[index] += 1
+                    if current:
+                        trick_planes[position][index] += 0.5
+                if off_suit:
+                    voids[play.seat].add(lead_suit)
+        if (not 1 <= event_count <= HISTORY_MAX_EVENTS
+                or any(count != 2 for count in physical)):
+            return None
+
+        obs = list(world[0])
+        for relative in range(4):
+            obs.extend(played[(seat + relative) % 4])
+        for plane in trick_planes:
+            obs.extend(plane)
+        obs.extend(max(0.0, 1.0 - seen - own)
+                   for seen, own in zip(played_total, world[0]))
+        suit_onehot = [0.0] * 5
+        if rnd.trump_is_nt:
+            suit_onehot[4] = 1.0
+        elif rnd.trump_suit in SUITS:
+            suit_onehot[SUITS.index(rnd.trump_suit)] = 1.0
+        obs.extend(suit_onehot)
+        rank_onehot = [0.0] * 13
+        rank_onehot[RANKS.index(rnd.trump_rank)] = 1.0
+        obs.extend(rank_onehot)
+        banker_rel = [0.0] * 4
+        banker_rel[(rnd.banker - seat) % 4] = 1.0
+        obs.extend(banker_rel)
+        root_is_attacker = rnd.is_attacker(seat)
+        obs.extend((min(rnd.attacker_points, 200) / 200.0,
+                    sum(len(hand) for hand in rnd.hands) / 100.0,
+                    float(root_is_attacker)))
+        for relative in range(4):
+            for suit in [*SUITS, TRUMP]:
+                obs.append(float(suit in voids[(seat + relative) % 4]))
+        if len(obs) != OBS_DIM:
+            return None
+        result = ValueAfterstateTensors(
+            np.asarray([*obs, 0.0], dtype=np.float32),
+            np.zeros((1, HISTORY_EVENT_DIM), dtype=np.float32),
+            np.asarray(world, dtype=np.float32),
+            np.asarray([float(root_is_attacker), float(not root_is_attacker)],
+                       dtype=np.float32))
+        result.validate()
+        return result
+    except Exception:
+        return None
+
+
 def tensors_from_round_static(rnd, root_seat: int) -> ValueAfterstateTensors:
     """Return MLP model inputs without unused Memory/history work.
 
@@ -229,6 +353,9 @@ def tensors_from_round_static(rnd, root_seat: int) -> ValueAfterstateTensors:
     history is the same input produced by ``cwv_policy._stack(history_free)``.
     """
     root_seat = _seat(root_seat, "root seat")
+    fused = _fused_static_tensors(rnd, root_seat)
+    if fused is not None:
+        return fused
     _validate_complete_round(rnd)
     try:
         public = np.asarray(

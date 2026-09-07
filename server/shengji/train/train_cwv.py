@@ -258,7 +258,7 @@ del _k
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "val_fraction": 0.1, "test_fraction": 0.1, "hidden": 512, "dropout": 0.1,
-    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "decode_workers": 0,
+    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "decode_workers": 6,
     "seq_kind": "transformer",
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
@@ -2032,8 +2032,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="shards per shuffle window (also bounded by --resident-bytes)")
     t.add_argument("--decode-workers", type=int, default=DEFAULTS["decode_workers"],
                    help="decode a window's shards in this many worker processes "
-                        "(0 = in this process, the default; the batch sequence is "
-                        "identical either way)")
+                        "(default 6, measured 2026-09-07 on the A+C+D store: epoch "
+                        "316.2s at 0 vs 243.7s at 6 with val_ce identical; 0 = in "
+                        "this process; the batch sequence is identical either way)")
     t.add_argument("--seq-kind", choices=SEQ_KINDS, default=DEFAULTS["seq_kind"])
     t.add_argument("--seq-width", type=int, default=DEFAULTS["seq_width"])
     t.add_argument("--seq-layers", type=int, default=DEFAULTS["seq_layers"])

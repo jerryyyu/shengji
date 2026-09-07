@@ -12077,3 +12077,25 @@ WHY, most likely, and it was measured BEFORE the screen rather than after: the m
 WHAT FOLLOWS: 780 deals resolve to about +/-0.040 and the 520-deal window is already sealed for v1, so the honest next step is the v2 arm on that window, pooling to 780 — not another offline comparison. The three proposed columns (incumbent_security, suit_master_holder, next_leader) all target LEADS, which mining showed is 64% of what v2 still gets wrong and where the shortlist's own margins are widest; that is a better-aimed hypothesis than v2 was, and it is still a hypothesis.
 
 Also overnight: #291 merged at 9cd18309 (Codex source PASS at 7ff480f1 after three HOLD findings plus a fourth found by the live run, all repaired and independently falsified). The v2 hyperparameter sweep completed 8 configs; dropout-0.2 is the best at val_ce 0.6175 against the 0.6227 control, and on tonight's evidence that ranking should not be trusted to predict search either. Run E sealed 16,000 clusters at 08:19 ET; Run G aborted on a systemd PATH defect (uv not on the unit's PATH) with its fast-engine guard firing correctly and no output written, relaunched 13:58 ET with an absolute interpreter path; Run H is at 3,780/16,000 on cloud.
+
+## 2026-09-07 — Claude: the v2 search deficit did not replicate; it reversed sign, and the two windows RESOLVE as different
+
+Last night's entry reported v2 minus v1 = -0.0500 [-0.1231, +0.0250] on the 260-deal 13-rank window and said the largest offline margin in the programme had failed to appear in search. The 520-deal window, pre-specified before it ran (I stated the 780-deal target and the +/-0.040 half-width at 10:07 ET, before launching), says the opposite.
+
+PAIRED, v2 minus v1, per_round, identical deals in each window:
+
+| window | seed0 | n | paired contrast |
+| --- | --- | --- | --- |
+| 260 | 91260904 | 260 | -0.0500 [-0.1212, +0.0231] |
+| 520 | 91261190 | 520 | **+0.0510 [-0.0058, +0.1067]** |
+| pooled | disjoint | 780 | +0.0173 [-0.0263, +0.0635] |
+
+AND THE WINDOWS RESOLVE AS DIFFERENT: 520-contrast minus 260-contrast = **+0.1010 [+0.0087, +0.1933]**, excluding zero. So pooling them into a single 780-deal number is NOT clean — it averages two populations that a direct test says disagree. I am quoting the pooled figure only as a summary, not as the estimate. That is the mirror image of the 2026-09-06 pooling I was corrected on: there the heterogeneity contrast crossed zero and I over-claimed that as licence; here it excludes zero and the licence is genuinely absent.
+
+Against production, pooled over the same 780: v2 +0.0833 [+0.0429, +0.1237] and v1 +0.0660 [+0.0282, +0.1038], both excluding zero, and on the 520 window alone v2 is +0.0990 [+0.0538, +0.1462] against v1's +0.0481 [+0.0019, +0.0913].
+
+WHAT IS ESTABLISHED: **the -0.0500 was not a real deficit.** It did not replicate on a fresh disjoint population of twice the size and the sign flipped. What is NOT established is that v2 is better: the paired contrast still crosses zero, and resolving an effect the size of the pooled +0.0173 would need about 5,300 deals at the measured per-deal SD of 0.643. The checkpoint choice remains unresolved, which is now the fourth consecutive checkpoint comparison to land there.
+
+TWO CANDIDATE EXPLANATIONS FOR THE WINDOW DISAGREEMENT, stated separately from the measurement. (a) Chance: this is one heterogeneity test among many run this week and a 95% interval excludes zero one time in twenty by construction. (b) A tree difference: both v1 arms ran on slw2, which predates #286 and #288; the v2 260 arm ran on encv2w at 76984b3f and the v2 520 arm on slw3 at 2e9c48e2, which carries both. The byte-exact replay of the 260 arms (2026-09-07 confusion analysis) showed #286 did NOT change play on that window, which weakens (b) but does not cover the 520 window. The populations themselves are balanced identically -- 20 and 40 clusters at every one of the 13 ranks -- and differ in difficulty (production mean utility -0.1019 vs -0.0481), which is a property of the deals, not of the arms.
+
+FEATURE IMPLEMENTATION VERIFIED, independently, before this result was known: all 29 v2 columns reproduce a recomputation from the game state using the engine's own beats, decompose, total_points and Memory -- 15,312 assertions over 528 positions, zero mismatches, plus the v1-prefix and v2-suffix properties. One dead column found: pts_band[3] (attacker points >= 120) is constant zero across the sample, so v2 carries 28 informative columns and one the net can only learn to ignore. My first verification pass reported 112 mismatches and was WRONG -- I had written a point-card parser assuming rank-first codes when the format is suit-first (S5, D10); the encoder was right and my check was broken.

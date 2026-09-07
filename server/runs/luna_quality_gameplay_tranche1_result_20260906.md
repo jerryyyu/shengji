@@ -54,6 +54,39 @@ The original complete run, provider calls and progress records remain at
 No winning-game filtering, label transplantation or automatic data promotion.
 These exposed validation deals must not be relabeled as fresh confirmation.
 
+### Native harvest reuse
+
+The flat gameplay files can now enter the existing decision-record/replay
+pipeline without fabricating historical `attempts/*` manifests:
+
+```sh
+python -B -m scripts.harvest luna-quality --run /path/to/completed-run \
+  --split fit --out /path/to/new-fit-export
+```
+
+Repeat with `--split validation` and a separate output directory; repeat `--run`
+for disjoint tranches. Source, acting batch arm, mixed play-only continuation,
+model/effort, coordinate/mirror and original fit/validation labels are carried
+in required provenance. This is **not** historical rollout-enabled Luna data.
+The importer is excluded from `harvest all` and refuses output overwrite.
+Provenance is administrative metadata, not a model feature. Do not pass these
+validation files to fitting: the trainer's random deal split does not enforce
+the source's holdout labels. Importability is not automatic training admission.
+
+The real first-tranche diagnostic export retained **596 fit + 556 validation
+records**, including all 16 rounds and all losing seats: 946 model decisions
+plus 206 forced single-candidate decisions. Hidden hands, the synthetic deck
+and burial stay in the mode-0600 private output. Missing/partial games receive
+no invented terminal target; their raw trajectories remain at source, and a
+completed mirror is not discarded when its partner is incomplete.
+
+Diagnostic exports and the legacy byte-parity check are retained under
+`~/shengji-archive/2026-09-06/luna-gameplay-harvest-check.TXWLnX/`.
+They were generated from the implementation worktree (the sidecar's Git head
+is its parent), not a frozen producer. The actual exporter/replay path took
+under two seconds for both splits; this is a functional check, not an isolated
+performance claim. No training or current-tranche outcome read was performed.
+
 ## Pricing the next tranche, not launching it
 
 The first-tranche allowance does not authorize the remaining 44 deals. At this
@@ -71,7 +104,14 @@ on the first favorable repeated interval or choose favorable replacement roots.
 The completed tranche establishes usable full-game collection and meaningful
 token savings, **not completion of the larger quality experiment**.
 
-## Prepared continuation — not authorized or launched
+## Continuation plan — subsequently authorized and launched
+
+The proposal below is retained as its pre-launch rationale. Jerry's additional
+45M-token / 18-hour approval is recorded in
+[PR #280](https://github.com/jerryyyu/shengji/pull/280#issuecomment-5562959834),
+and the unchanged 44-deal collector launched on Mini on September 6 at 19:32 EDT.
+Its result remains pending; neither the first-tranche result nor the exports
+above substitute for the larger comparison.
 
 `runs/luna_quality_gameplay_remaining44_20260906.json` contains exactly the
 original manifest's unused coordinates, in manifest order. The existing panel

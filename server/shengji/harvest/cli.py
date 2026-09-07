@@ -120,6 +120,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name in (*SOURCES, "all"):
         add_common(sub.add_parser(name))
+    quality = sub.add_parser("luna-quality", help="explicit flat gameplay export; excluded from all")
+    quality.add_argument("--run", type=Path, action="append", required=True)
+    quality.add_argument("--split", choices=("fit", "validation"), required=True)
+    quality.add_argument("--out", type=Path, required=True)
+    quality.add_argument("--cap", type=int, default=DEFAULT_CAP)
     sub.add_parser("ballot-gap").add_argument("--out", required=True, type=Path)
     capture = sub.add_parser("ballot-capture")
     capture.add_argument("--out", required=True, type=Path, help="output directory")
@@ -139,6 +144,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     args = build_parser().parse_args(argv)
+    if args.command == "luna-quality":
+        from .luna_quality import extract_quality_games
+        from .manifest import write_source
+        if args.out.exists() and any(args.out.iterdir()):
+            raise SystemExit("luna-quality output must be new or empty; source artifacts are never overwritten")
+        cap = None if args.cap == 0 else args.cap
+        result = extract_quality_games(args.run, split=args.split, cap=cap)
+        sidecar = write_source(args.out, result, cap=cap)
+        _log(f"luna-quality {args.split}: {sidecar['counts']} -> {args.out}")
+        return 0
     if args.command == "manifest":
         run_manifest(args.dir)
         return 0

@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterable, Iterator, Sequence
 
 from ..engine.round import Round
 from .common import (LUNA_ROOTS, ExtractResult, InputRegistry, action_key,
@@ -66,6 +66,17 @@ class LunaGame:
     @property
     def events(self) -> list[dict]:
         return self.trajectory["events"]
+
+    @property
+    def trajectory_ref(self) -> str:
+        return f"{self.ref}/trajectory.json"
+
+    @property
+    def authority(self) -> dict:
+        return dict(self.attempt_meta.get("authority") or {})
+
+    def decision_labels(self, event: dict) -> dict:
+        return {"policy": POLICY if len(event["legal_ballot"]) > 1 else FORCED_POLICY}
 
 
 def iter_games(roots: Sequence[Path] = LUNA_ROOTS,
@@ -147,9 +158,25 @@ def extract_luna(roots: Sequence[Path] = LUNA_ROOTS, *, cap: int | None = 256,
                  registry: InputRegistry | None = None,
                  limit: int | None = None) -> ExtractResult:
     registry = registry or InputRegistry()
-    result = ExtractResult("luna-rpc")
+    result = extract_games(iter_games(roots, registry), source="luna-rpc",
+                           cap=cap, registry=registry, limit=limit)
+    result.notes.append("policy id 'gpt-5.6-luna' is the spec's label; the "
+                        "artifact carries only model_process_id hashes")
+    result.notes.append("deck is synthetic (hands recorded, deal order not) "
+                        "and lives only in the private split")
+    return result
+
+
+def extract_games(game_sources: Iterable, *, source: str, cap: int | None,
+                  registry: InputRegistry, limit: int | None = None) -> ExtractResult:
+    """Shared engine replay; adapters supply honest source/decision labels.
+
+    A source supplies trajectory, terminal, ref, trajectory_ref, events,
+    authority, and decision_labels(event). It need not invent attempt files.
+    """
+    result = ExtractResult(source)
     games = decisions = forced = failed_throws = 0
-    for game in iter_games(roots, registry):
+    for game in game_sources:
         if limit is not None and games >= limit:
             break
         games += 1
@@ -161,7 +188,7 @@ def extract_luna(roots: Sequence[Path] = LUNA_ROOTS, *, cap: int | None = 256,
         if terminal["signed_level_utility"] != signed_level_utility(
                 final_points, banker_seat=banker, perspective_seat=0):
             raise LunaFormatError(f"{game.ref}: terminal utility convention drift")
-        authority = dict(game.attempt_meta.get("authority") or {})
+        authority = game.authority
         prefix: list[dict] = []
         for event in game.events:
             index = event["index"]
@@ -181,9 +208,9 @@ def extract_luna(roots: Sequence[Path] = LUNA_ROOTS, *, cap: int | None = 256,
                                     must_include=ballot + [action])
             hidden = hands_snapshot(rnd)
             record = finalize_record({
-                "source": "luna-rpc",
-                "source_ref": f"{game.ref}/trajectory.json#event-{index}",
-                "policy": POLICY if len(ballot) > 1 else FORCED_POLICY,
+                "source": source,
+                "source_ref": f"{game.trajectory_ref}#event-{index}",
+                **game.decision_labels(event),
                 "deck": deck,
                 "setup": setup,
                 "plays_prefix": [dict(p) for p in prefix],
@@ -227,10 +254,6 @@ def extract_luna(roots: Sequence[Path] = LUNA_ROOTS, *, cap: int | None = 256,
                      "failed_throws": failed_throws,
                      "private_records": len(result.private)}
     result.inputs = registry.rows()
-    result.notes.append("policy id 'gpt-5.6-luna' is the spec's label; the "
-                        "artifact carries only model_process_id hashes")
-    result.notes.append("deck is synthetic (hands recorded, deal order not) "
-                        "and lives only in the private split")
     return result
 
 

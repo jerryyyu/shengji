@@ -39,8 +39,12 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
+class InferenceProbeDeadline(BaseException):
+    """Bypass encoder fallback catches; the probe still seals the failure."""
+
+
 def _expired(_signum, _frame):
-    raise TimeoutError("per-decision inference diagnostic deadline")
+    raise InferenceProbeDeadline("per-decision inference diagnostic deadline")
 
 
 def _optimization_context(optimization, enabled):
@@ -119,7 +123,7 @@ def main(argv=None):
                         try:
                             with _optimization_context(args.optimization, enabled):
                                 played = bot.decide_play(rnd, rnd.turn)
-                        except Exception as exc:
+                        except (Exception, InferenceProbeDeadline) as exc:
                             error = f"{type(exc).__name__}: {exc}"
                             played = None
                         finally:

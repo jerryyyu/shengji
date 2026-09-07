@@ -55,6 +55,8 @@ long public histories would not address the recovered trick-2 bottleneck.
   its process-local patch after errors, publishes actual consumer parity and
   reopens completed rows without replay. Prepared-lead remains the default;
   fused-static keeps prepared-lead enabled in both arms.
+  Its deadline also bypasses broad encoder fallback catches; a consumer-level
+  witness proves expiry is recorded and reopening cannot silently retry it.
 - Actual saved ABC checkpoint/native-engine comparison: two 128-action ×
   2-world wide-follow prefixes and one complete small-state W32/N30/R300
   decision are bit-identical. This is **not full wide-follow W32 coverage**.

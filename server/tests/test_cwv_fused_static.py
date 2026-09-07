@@ -15,7 +15,7 @@ from shengji.engine.cards import Ordering
 from shengji.rl.value_afterstate import ValueAfterstateError, tensors_from_round
 from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 from shengji.train.cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
-from shengji.luna.game import _state_snapshot
+from shengji.luna.game import _round_from_snapshot, _state_snapshot
 from tests.test_cwv_static_public import _state_after
 from tests.test_world_shortlist import round_signature
 
@@ -186,3 +186,23 @@ def test_probe_publishes_actual_consumer_parity_and_reopens_without_replay(
 
     monkeypatch.setattr(probe.CWVShortlistBot, "decide_play", forbid_replay)
     assert probe.main(args) == 0
+
+    # A deadline must survive encoder fallback catches and be retained as a
+    # failed row, not silently retried when the diagnostic is reopened.
+    # Reopen the already-created fixture: do not drive a game with the tripwire.
+    rnd = _round_from_snapshot(json.loads(states.read_text())[0])
+    monkeypatch.setattr(Ordering, "eff_suit", lambda *_: probe._expired(None, None))
+    with pytest.raises(probe.InferenceProbeDeadline):
+        static._fused_static_tensors(rnd, rnd.turn)
+    monkeypatch.setattr(probe.CWVShortlistBot, "decide_play",
+                        lambda *_: probe._expired(None, None))
+    failed_output = tmp_path / "failed"
+    failed_args = [str(failed_output) if arg == str(output) else arg for arg in args]
+    message = "saved failed diagnostic; no automatic repeat: InferenceProbeDeadline: per-decision inference diagnostic deadline"
+    with pytest.raises(RuntimeError, match=f"^{message}$"):
+        probe.main(failed_args)
+    failed_row = json.loads((failed_output / "r00-state-0000-0.json").read_text())
+    assert failed_row["error"] == "InferenceProbeDeadline: per-decision inference diagnostic deadline"
+    monkeypatch.setattr(probe.CWVShortlistBot, "decide_play", forbid_replay)
+    with pytest.raises(RuntimeError, match=f"^{message}$"):
+        probe.main(failed_args)

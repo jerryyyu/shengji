@@ -12099,3 +12099,26 @@ WHAT IS ESTABLISHED: **the -0.0500 was not a real deficit.** It did not replicat
 TWO CANDIDATE EXPLANATIONS FOR THE WINDOW DISAGREEMENT, stated separately from the measurement. (a) Chance: this is one heterogeneity test among many run this week and a 95% interval excludes zero one time in twenty by construction. (b) A tree difference: both v1 arms ran on slw2, which predates #286 and #288; the v2 260 arm ran on encv2w at 76984b3f and the v2 520 arm on slw3 at 2e9c48e2, which carries both. The byte-exact replay of the 260 arms (2026-09-07 confusion analysis) showed #286 did NOT change play on that window, which weakens (b) but does not cover the 520 window. The populations themselves are balanced identically -- 20 and 40 clusters at every one of the 13 ranks -- and differ in difficulty (production mean utility -0.1019 vs -0.0481), which is a property of the deals, not of the arms.
 
 FEATURE IMPLEMENTATION VERIFIED, independently, before this result was known: all 29 v2 columns reproduce a recomputation from the game state using the engine's own beats, decompose, total_points and Memory -- 15,312 assertions over 528 positions, zero mismatches, plus the v1-prefix and v2-suffix properties. One dead column found: pts_band[3] (attacker points >= 120) is constant zero across the sample, so v2 carries 28 informative columns and one the net can only learn to ignore. My first verification pass reported 112 mismatches and was WRONG -- I had written a point-card parser assuming rank-first codes when the format is suit-first (S5, D10); the encoder was right and my check was broken.
+
+## 2026-09-07 — Claude: the W32 consumer FINISHES the trick, so 16 of encoder v2's 29 columns are boundary constants where it is used
+
+Codex found this (bus 691) and I verified it against the consumer before accepting it. It is the largest measurement error of the week and it is mine.
+
+`train/cwv_shortlist.py:98` calls `afterstate(rnd, seat, hands, buried, action, finish_trick=True)` -- the heuristic plays the current trick to completion, then the net evaluates the leaf. That is the #229 convention and it has always been the shortlist's behaviour. MEASURED on 710 real afterstates from the same fixtures I used before:
+
+| afterstate construction | constant trick-local columns |
+| --- | --- |
+| `finish_trick=False` (immediate) | 1 of 16 |
+| **`finish_trick=True` (what W32 does)** | **16 of 16** |
+
+So in the consumer that produced every strength number we have, the entire v2 trick-local block -- winner's relative seat, is-my-partner-winning, points on the table, lead effective suit, position in trick, lead width -- is identically constant. With the already-known dead `band3`, encoder v2 supplies **12 informative columns to the shortlist, not 29**.
+
+THIS RESOLVES THE WEEK'S CENTRAL PUZZLE. v2 wins every offline metric because offline evaluation encodes the IMMEDIATE afterstate, where those columns vary. It does not win in search because the search never sees them vary. The columns are correctly implemented -- I verified all 29 against independent recomputation, twice -- and were measured on a state distribution the consumer does not use.
+
+THE ERROR IS EXACTLY THE ONE ON MY OWN LESSONS LIST: "before measuring a model output, grep the consumer for the head being measured." I grepped for the HEAD and never for the STATE CONSTRUCTION. Everything downstream inherited it: the mining pass (2026-09-07), the published confusion analysis, and both of my own verification passes all used the default `finish_trick=False`. Codex's earlier afterstate correction (bus 686) was the same defect one step upstream and I corrected only the half they named.
+
+WHAT SURVIVES: v2's search numbers are real measurements of a real checkpoint -- +0.0990 [+0.0529, +0.1462] on the clean 520 window -- but whatever produced them came from the 13 non-trick columns (points regime, hand shape), not from the trick block that was the entire design motivation. The offline/search transfer failure is now explained by construction rather than attributed to noise.
+
+WHAT THIS KILLS: all three mining-proposed columns -- incumbent_security, suit_master_holder, next_leader -- are trick-local and would be equally invisible to W32. Building them as specified would repeat the mistake at greater cost. Any future encoder work must first state which afterstate construction its target consumer uses.
+
+OPEN QUESTION, NOT A CONCLUSION: whether the trick-local information is worth having at all. Two designs are compatible with this finding -- encode BEFORE the trick is finished (a consumer change, not an encoder change), or accept that a leaf-after-trick evaluator cannot use trick-local state and drop that block. Codex owns an isolated immediate-vs-finished-trick diagnostic under Jerry's scaling-audit goal (bus 692-694, 52 FIT positions, saved checkpoints, no new gameplay) which is the right experiment to settle it, and my live ACDEF jobs are untouched by it.

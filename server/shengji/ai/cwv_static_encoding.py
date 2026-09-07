@@ -374,6 +374,8 @@ def tensors_from_round_static(rnd, root_seat: int, *,
     Public/world/perspective construction deliberately follows the operation
     order and float32 casts in ``tensors_from_round``.  The one-row zero
     history is the same input produced by ``cwv_policy._stack(history_free)``.
+    MLP-only, including version 2: direct callers must not feed this history
+    to a sequential model. Tensor validation does not enforce that restriction.
     """
     root_seat = _seat(root_seat, "root seat")
     version = check_version(version)

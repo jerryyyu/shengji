@@ -18,6 +18,15 @@ remains v1-only; a bare v1 tensor is still refused by a v2 model. Reference and
 non-MLP routes retain full history. Frozen encoders, checkpoint identities,
 training data and models are untouched.
 
+The equivalence argument is structural: reference v2 is
+`widen(reference_v1(rnd, seat), rnd, seat)`; static v2 is
+`widen(static_v1(rnd, seat), rnd, seat)`. Canonical `widen` derives all 29
+extra columns from the round, not the base tensor's history. Static v2 thus
+**inherits the existing fused-v1 public/world/perspective parity guarantee**;
+it does not establish a separate guarantee for that base. The existing v1
+all-seat/depth/trump witness uses one deal seed (41). The new v2 parity tests
+add three deal seeds, but neither finite fixture family proves all states.
+
 ## Actual-consumer measurement
 
 The existing `cwv_prepared_lead_probe.py` supports `--optimization v2-static`.
@@ -33,6 +42,10 @@ repetitions. This is 104 paired decisions, not 104 independent games. No Luna
 validation, new games, newly selected positions or changing checkpoint was
 used. All score digests, batching, shortlisted actions, final actions, report
 statistics, work counts, input state and RNG states matched exactly.
+Because this consumer finishes the trick before scoring, its 16 trick-local
+columns are boundary constants. This measurement cannot by itself rule out
+mid-trick feature corruption; the canonical-widen argument above and separate
+tensor parity witnesses support that claim.
 
 | Total over the 104 decisions per arm | Prior v2 route | Static widening |
 |---|---:|---:|
@@ -65,6 +78,13 @@ evaluator width refusal, actual LCB consumer outputs and non-MLP preservation.
 The updated old routing test permits a fused **v1 base before widening**, not
 a fused v1 row delivered as v2. Reference-context restoration is exercised at
 the actual benchmark entry point.
+
+The exported static builder is **MLP-only**, including v2. Its one-row zero
+history passes structural tensor validation but is not a faithful history for
+a sequential model. `CompleteWorldEvaluator.effective_encoding` keeps those
+models on the reference route; direct callers must honor the same restriction.
+Claude's independent source PASS at `eeb107ce` confirmed this composition and
+requested these caveats; it did not rerun the benchmark or test suite.
 
 Completed diagnostic arms reopen without replay; failures preserve completed
 artifacts. No existing run should adopt this source halfway through. After

@@ -621,8 +621,12 @@ class CompleteWorldPointsLeaf:
         """``(value, points_raw, banked)``: the head's raw prediction floored
         at the clone's banked attacker points (:func:`clamp_at_banked`)."""
         t0 = perf_counter()
-        # a head that predates the attribute (duck-typed fakes included) is v1
-        inputs = cwv_leaf_inputs(clone, seat, version=getattr(self.head, "enc_version", 1))
+        # v1 keeps the HISTORICAL two-argument call (a head that predates the
+        # attribute is v1; so is anything that wraps or replaces
+        # ``cwv_leaf_inputs``); only a later version passes its width along.
+        version = int(getattr(self.head, "enc_version", 1))
+        inputs = (cwv_leaf_inputs(clone, seat) if version == 1
+                  else cwv_leaf_inputs(clone, seat, version=version))
         t1 = perf_counter()
         raw = self.head.final_attacker_points(inputs)
         self.forward_secs += perf_counter() - t1

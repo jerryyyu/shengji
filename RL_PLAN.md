@@ -75,7 +75,8 @@ when a candidate beats the champion on a tier ii paired screen.
 4. **Improve cost without silently changing policy.** Profile zero-reuse wide
    follows and bypass useless cache bookkeeping where equivalence is proven;
    schedule known expensive replay pairs earlier and show straggler-aware ETA.
-   Ranking still takes 73% of W32 decision wall. Two-stage candidate pruning,
+   Ranking took 73% of decision wall in the original optimized screen.
+   Two-stage candidate pruning,
    selective work allocation and deeper search are separate policy experiments,
    not part of the bit-identical optimization. The existing ballot-rooted PUCT
    ladder is closed; any future shortlist-rooted depth test is distinct.
@@ -88,13 +89,20 @@ when a candidate beats the champion on a tier ii paired screen.
    Jerry's double-shortlist and unlearned-depth ablation have completed on
    26 broader-rank deals: neither established improvement over flat W32, and
    learned inner ranking cost 116.242× its flat opponent's decision wall.
-   Park all-world escalation. Next is opt-in adaptive root allocation among
-   the existing finalists, with fresh independent root MC-LCB verification;
-   selective depth remains a later single-mechanism experiment. Per-world
+   Adaptive root allocation then completed at +0.00577 [−0.05774,+0.07308]
+   levels/round versus flat; selective one-extra-trick guidance completed at
+   −0.00577 [−0.06736,+0.05769], costing 1.5892× decision wall and 2.0227×
+   continuation rollouts. Both treatments were active; neither established
+   improvement on the 260 opened broader-rank deals. Keep flat W32, with no
+   automatic threshold, all-world or further-depth escalation. Per-world
    privileged continuations are simulations, not executable hidden-information
    policies. [#248](https://github.com/jerryyyu/shengji/issues/248) owns the
-   completed contrasts and [#278](https://github.com/jerryyyu/shengji/pull/278)
-   the adaptive source/run packet.
+   completed contrasts; [AI_POLICIES](AI_POLICIES.md#completed-allocation-and-depth-screens)
+   summarizes the results and source pointers.
+   The separate [#288](https://github.com/jerryyyu/shengji/pull/288) fixed-state
+   engineering A/B found 1.3324× speedup on two huge zero-reuse follows and a
+   neutral small panel. Preserve its exact comparisons; do not call it a
+   whole-game gain or retrofit it into a running experiment.
    More compute is allowed for strength experiments; equal cost is an optional
    later diagnostic, not a launch gate.
 5. **Improve the model against its actual consumer.** Train on independently

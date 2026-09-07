@@ -20,7 +20,7 @@ only confirmed strength gain and the parent every challenger must beat.
 **New experimental milestone: model-guided W32 shortlist.** A value model
 ranks *every legal action* across 32 sampled hidden worlds, then production's
 full Monte Carlo search checks four alternatives plus its heuristic incumbent.
-On 256 paired deals / 512 mirrored rounds, the A+B+C model scored **+0.139
+On 256 paired rank-2 deals / 512 mirrored rounds, the A+B+C model scored **+0.139
 signed levels per round** versus production (95% interval **[+0.064, +0.217]**).
 Decision-preserving engineering made it **2.85× faster**, lowering measured
 decision cost from **10.61× to 3.53× production**. This is a positive DEV
@@ -28,9 +28,11 @@ screen, **not deployed or independently confirmed**; superiority over
 production given comparable extra compute remains unresolved.
 
 See the [MC vs W32 diagram and results](AI_POLICIES.md#experimental-w32-shortlist)
-and [improvement plan](RL_PLAN.md#current-decision-tree). Extra ranking worlds
-and doubled final rollouts have not demonstrated an additional gain; next is
-testing which alternatives reach search, separately from further speedups.
+and [improvement plan](RL_PLAN.md#current-decision-tree). The same A+B+C
+checkpoint's separate 13-rank check was inconclusive. Wider shortlists, extra ranking worlds, doubled final
+rollouts, adaptive allocation and the tested extra-depth recipes did not
+establish an improvement over flat W32. Keep it as the experimental reference;
+test better models separately from decision-preserving engineering.
 
 ![Full-legal W32 shortlist pipeline](docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
 

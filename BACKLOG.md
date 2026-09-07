@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-06 (depth readout, adaptive allocation and teacher bridge)**. This file is the prioritized
+Last reconciled: **2026-09-06 (completed scaling screens, fused-input A/B and teacher continuation)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -27,9 +27,10 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
 | **COMPLETE** | **W32 engineering integration — Codex** | A+B+C W32: +0.1387 levels/round [+0.0645,+0.2168] on 256 opened rank-2 deals. Optimized replay preserves all saved traces and cuts decision wall 2.849× (10.61× → 3.53× production). #249 (`270bd3b9`) → #252 (`0a0d70d1`) → #254 (`0d355c4c`) merged after source PASS and CI; #251 holds the completed scaling readout. | Keep the optimization opt-in and record the measured result; no gameplay rerun is needed to integrate unchanged semantics. | No deployment or production-default change. |
-| **P0** | **Shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | Keep optimized K4/W32 as reference. K8, W64 and doubled final search did not establish improvement. Broad-rank flat screen: +0.06154 [−0.00577,+0.13462], inconclusive. Both 26-deal double-shortlist depth arms completed with no resolved gain and high cost; all-world escalation parked. | [#278](https://github.com/jerryyyu/shengji/pull/278) tests adaptive root allocation against flat W32 on 260 opened broader-rank deals, preserving independent root MC-LCB. Selective depth remains a separate later mechanism. | Strength handoff from Claude's F2 completed at 815 retained clusters; 16 workers and resumable pairs. No live-recipe changes, automatic sweep or promotion. Strength first; equal cost is optional. |
+| **COMPLETE / PARKED** | **Tested shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | Keep optimized K4/W32. K8, W64, doubled final search and both 26-deal double-shortlist arms did not establish improvement. Adaptive root allocation completed at +0.00577 [−0.05774,+0.07308] versus flat; selective depth at −0.00577 [−0.06736,+0.05769] and 1.5892× wall, each on 260 opened broader-rank deals. | No additional unchanged-recipe arm queued. Use retained evidence or a separately tested better checkpoint to motivate any new mechanism. [Results](AI_POLICIES.md#completed-allocation-and-depth-screens). | No equivalence, universal depth-failure or fresh-confirmation claim. Retain all artifacts; no automatic world/threshold/depth sweep. |
+| **P1** | **W32 engineering closeout — Codex** | #286 prepared-lead optimization merged. [#288](https://github.com/jerryyyu/shengji/pull/288) fused-input full-consumer A/B completed: identical outputs on nine pairs, 1.3324× speedup on two huge zero-reuse follows, neutral small panel with mixed individual timings. | One consolidated source+measurement review for #288 merge; no further capacity or reconstruction run. | Do not extrapolate to whole-game speedup, multiply different-host ratios or change live workers/production defaults. |
 | **P1** | **Model/data and PUCT — Claude** | A+B+C complete-world MLP is the measured W32 checkpoint. A dated peer report says Run D sealed 03:27 ET, Run E launched on Perf, and A+C+D was syncing to Mini at 03:28; this is not live status. D64 remains a small prediction diagnostic, not this consumer's certificate. The existing ballot-rooted PUCT ladder is closed. | Test new checkpoint quality in the actual full-legal shortlist; keep model changes separate from K/W/N/R changes. Future shortlist-rooted depth is a distinct experiment. | No claim that within-ballot metrics, more rows or tree depth imply stronger play. Keep independent deal counts and continuation identities explicit. |
-| **P1** | **PT-Luna efficiency and quality — Codex** | Fresh snapshot comparison complete (207 matched positions). Historical bridge [#275](https://github.com/jerryyyu/shengji/pull/275) complete: 26 opened deals / 170 positions, 217 calls, zero failures, 2.424M tokens; batch4 2.77× cheaper. Older teacher choices better under primary continuation only; batching quality remains inconclusive. | [#280](https://github.com/jerryyyu/shengji/pull/280): eight predetermined deals / 16 mirrored full games, batch4 versus compact1 with identical interface. Measure actual gameplay cost, completion and deal-level variance, then price the remaining 44 panel deals. | Source PASS and named 9M-token / five-hour approval recorded. No automatic 104-game continuation or equivalence claim. Retain all losses/partials, fit-validation provenance and actual teacher/continuation labels. |
+| **P0** | **PT-Luna efficiency and quality — Codex** | Historical teacher bridge [#275](https://github.com/jerryyyu/shengji/pull/275) complete and distinct from gameplay. [#280](https://github.com/jerryyyu/shengji/pull/280) first eight deals / 16 mirrored rounds complete: +0.125 [−0.25,+0.50] batch4 levels/round, 2.324× reported-token efficiency, quality inconclusive. The fixed remaining 44 deals have separate 45M-token / 18-hour approval. | Finish that continuation, publish the fresh 44-deal readout and explicitly exploratory 52-deal pool, then native fit/validation harvest including losses. Prepared readout reports shared-wave dependence without changing the original paired-deal estimates. | No automatic extra tranche, historic-teacher equivalence, subscription-quota saving or data promotion. Preserve original provenance and continuation labels. Current process status belongs in HANDOFF_ACTIVE, not this queue. |
 | **P2** | **Fresh strength confirmation** | RLCB remains the only confirmed/deployed gain. W32 is a positive DEV screen, not a replacement for it. | Freeze one selected consumer and compare against literal production plus a useful work/behavior control on fresh mirrored deals. | Separate candidate selection from confirmation; old T4 widening is not the new W32 experiment. |
 | **CLOSED** | **BELIEF R4 / R5** | R4 terminal `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). R5 closed. | Reopens only if a separate oracle-belief probe shows a gain worth pursuing. | No belief compute otherwise. |
 | **COMPLETE** | **Original PT-Luna isolated collection** | Five attempts, one complete 32-game dataset retained; failed predecessors remain engineering evidence. | Reuse within its data contract. New bounded efficiency experiments are tracked separately above. | No retrospective upgrade of predecessor quality or independence. |
@@ -43,12 +44,15 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 3. Retain the completed rank-diverse comparison at `bc89b557` and its
    inconclusive broader-rank estimate. Its actual allocation
    `[91260904,91261164)` is committed; PR259 documents the larger reserved range.
-   Double-shortlist has since completed without a supported gain. Run the
-   separately reviewed adaptive root-allocation contrast after the clean F2
-   handoff, preserving both jobs' artifacts. Neither all-world depth, W128
-   nor more uniform rollout work follows automatically.
-4. Improve teacher efficiency only alongside a quality check against the
-   original planning harness. Scale a declared data recipe, not a cost proxy.
+   Double-shortlist, adaptive root allocation and selective depth have since
+   completed without a supported gain. Preserve their results; neither
+   all-world depth, W128 nor more uniform rollout work follows automatically.
+   Finish #288 engineering integration after its consolidated merge review.
+4. Finish the already-authorized 44-deal Luna continuation and reusable harvest.
+   Report its direct batching contrast separately from the completed historic
+   teacher bridge. Shared responses can couple deals within collector waves;
+   descriptive sensitivity ranges are not confidence intervals or a new gate.
+   Scale a declared data recipe, not a cost proxy.
 5. Confirm a selected policy on fresh deals with measured work controls.
 
 ## Entry criteria for new scientific lanes

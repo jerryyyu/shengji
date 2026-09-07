@@ -8,8 +8,11 @@ No tested horizon, diversity or selector-objective intervention establishes a
 gain. Cross-fitted reference substitutions show limited, model-dependent
 nomination and selection headroom, not a deployable improvement. Keep
 finished-trick W32 with its existing MC-LCB selector; do not select
-a replacement model from tuning CE alone. ACDEF-v2's completed 260-deal screen
-is inconclusive and its separate 520-deal comparison remains in progress.
+a replacement model from tuning CE alone. The separate **520-deal comparison
+is now complete**: ACDEF-v2 has the highest measured mean and separates from
+the older ACD-v1 reference, but not from ACDEF-v1 or ACD-v2, in exploratory
+paired intervals. It is the leading strength candidate; ACDEF-v1 is the
+lower-measured-cost comparator. This is not an equal-work or deployment claim.
 
 ## Finding and test
 
@@ -158,7 +161,7 @@ cases, not population strength. The separate full-panel corroboration above
 uses a different fresh stream and all roots. Neither diagnostic opens the
 26 preserved Luna validation deals.
 
-## Best-supported recipe and next decision
+## Mechanism decision from the FIT diagnostics
 
 Keep optimized finished-trick W32, incumbent-plus-four, and unchanged MC-LCB
 as the comparison baseline. Do not promote immediate scoring, diversity, or
@@ -169,8 +172,8 @@ The audit found a horizon distribution difference and verified the actual
 consumer, but no load-bearing selector arithmetic defect in the traced cases.
 The next mechanism test compared point versus level-utility selection on
 common rollout matrices, without relaxing the confidence gate or increasing
-model capacity. Its result is below. First reconcile Claude's already-running
-ACDEF-v2 and queued LR1e-4 gameplay comparisons before another large experiment.
+model capacity. Its result is below. The ACDEF-v2 gameplay reconciliation is
+now complete below; the separate LR1e-4 comparisons remain unresolved.
 
 ## Selector objective ablation (completed)
 
@@ -358,6 +361,123 @@ with both original artifact hashes preserved. Fifteen new focused tests pass;
 31 pass including existing objective replay/control tests. A same-world
 choose-and-judge mutant is killed by the explicit disjoint-fold witness.
 Independent bounded methods/source review passed.
+
+## Completed fresh 520-deal panel and current recommendation
+
+All four default-learning-rate screens are complete: 520 identical seeded
+deals, 13 ranks and both role mirrors (1,040 played rounds per arm), seed0
+91261190. This is fresh relative to the initial 260 selection panel, **not**
+a new confirmatory population immune to subsequent reuse. We reopened only
+completed artifacts and independently matched seed, rank, suit, banker,
+mirror and team/seat identity for every arm. Each deal remains one bootstrap
+unit. Initial and fresh panels are reported separately, never pooled.
+
+| Saved MLP checkpoint | Mean signed levels/round vs production | Recorded decision wall / production |
+|---|---:|---:|
+| ACD v1 (`528dbbe0`) | +.04808 | 3.79x |
+| ACD v2 (`633663cd`) | +.09904 | 4.39x |
+| ACDEF v1 (`528b3a7a`) | +.08750 | 2.73x |
+| ACDEF v2 (`3cd27716`) | **+.12596** | 4.37x |
+
+All arms use finished-trick W32, incumbent plus four alternatives, N30
+selection and an independent R300 production MC-LCB report. These are whole
+signed levels per played round, **not wins per round** or the half-integer
+utility used by the sampled-world FIT diagnostics. All four original
+arm-versus-production 95% intervals are positive on this panel.
+
+| Paired model contrast | Mean levels/round | Exploratory paired 95% interval |
+|---|---:|---:|
+| ACDEF v2 minus ACD v1 | +.07788 | [+.02596, +.13173] |
+| ACD v2 minus ACD v1 | +.05096 | [-.00673, +.10673] |
+| ACDEF v1 minus ACD v1 | +.03942 | [-.01058, +.08846] |
+| ACDEF v2 minus ACDEF v1 | +.03846 | [-.01154, +.08942] |
+| ACDEF v2 minus ACD v2 | +.02692 | [-.02788, +.08365] |
+| ACD v2 minus ACDEF v1 | +.01154 | [-.04327, +.06635] |
+
+10,000 paired deal resamples, seed 20260907, no multiplicity adjustment.
+Small endpoint differences from Claude's 4,000-resample ledger or the
+original 1,000-resample summaries do not change the observed means. The
+corner-to-corner comparison is the only one of these six whose unadjusted
+interval excludes zero. This is evidence worth following, not proof that
+both individual factors work, an interaction exists, or this checkpoint is
+best among all possible checkpoints. The initial ordering reverses on this
+panel; that is consistent with selection bias and sampling noise, not by
+itself proof of which caused the reversal.
+
+### What changed, and what did not
+
+- **Data:** ACD has 72,000 distinct deals and 10,559,236 rows; ACDEF has
+  96,000 deals and 14,077,520 rows (+33%, not 120,000 deals). E/F2 also use
+  N90/R900 continuations rather than N30/R300, so this is a data-volume **and
+  source/continuation-mixture** change, not an isolated IID scaling factor.
+  The common bridge uses engine afterstates and terminal level distributions;
+  different continuation labels must retain their source provenance.
+- **Model:** these are saved MLPs, not a GRU/transformer architecture comparison.
+  Encoder v2 adds 29 public columns; its lower validation CE does not by itself
+  select the best playing model. The lower-learning-rate sweep and live
+  ACDEF-v2 LR1e-4 trainer are not silently treated as completed gameplay arms.
+- **Runtime:** recorded policy/selector blobs (`cwv_shortlist`, `mcbot`,
+  `teacher_v1`) match across these screens. Other revisions add v2 routing,
+  fused static inputs and prepared-lead reuse. Native binary hashes differ,
+  and the old receipts do not bind every native source; the audit does not
+  certify whole-run binary equivalence. Host contention also differed.
+  Consequently the measured wall ratios are useful observations, not a
+  controlled intrinsic cost ranking or proof of an equal-cost strength gain.
+- **Reporting defect:** all four summaries incorrectly inherit
+  `arm_description: identity control` from the shared summarizer despite
+  `arm: learned`. Checkpoint/config and recorded outcomes identify the real
+  arms. Keep these original artifacts unchanged; fix future summary writers
+  and attach this correction rather than replaying games to repair a label.
+
+### Best-supported next recipe
+
+For the next **experimental strength candidate**, use completed ACDEF-v2
+checkpoint `3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`
+with the existing finished-trick W32/K4/N30/R300 recipe. Retain ACDEF-v1 as the
+lower-observed-cost comparator and ACD-v1 as the named historical reference.
+This prioritizes the highest fresh-panel mean without pretending it reliably
+beats every alternative, changing production, or silently selecting on CE.
+
+Keep the horizon, effective-action diversity and selector objective unchanged:
+the focused interventions did not establish gains. The mixed cross-fitted
+headroom does not justify a universal claim that either network prediction,
+shortlist coverage or MC selection alone is the bottleneck. In particular,
+making reference rankings available does not necessarily change the final
+action; improving selection under a much richer reference is not a cheap
+deployable improvement.
+
+PR #294 provides a separate decision-preserving v2 MLP optimization: reuse the
+static v1 base and canonical v2 widening instead of constructing history the
+MLP discards. Its independent source review passed. On the real saved
+ACDEF-v2 model, 104 paired fixed-state decisions had exact semantic parity
+and 1.137x throughput (12.1% less wall) on a contended Mini. That is not a
+whole-game or strength result. Adopt only in a **new** named consumer after
+integration, never into a running screen; no retraining is needed. See
+[the performance report](https://github.com/jerryyyu/shengji/blob/61fcc714aff0108938ad3e99aaa9b0b12671d8ef/docs_archive/cwv-v2-static-widen-2026-09-07.md)
+in that PR.
+
+Next, finish/reconcile Claude's already-started lower-learning-rate work before
+starting a larger training sweep. If a new gameplay comparison is warranted,
+use the same optimized source and actual measured work for all candidates,
+preserve a fresh validation population, and report uncertainty alongside
+cost. No additional large experiment or deployment is authorized by this note.
+
+### Reusable evidence and remaining scope
+
+`~/shengji-archive/2026-09-07/cwv-gameplay-precision.DE3xDH/` contains:
+
+- `completed-fresh-520.json` and `remaining-fresh-520.json`: all six contrasts,
+  matched checkpoint/summary/ordered-shard hashes and reproducible scripts;
+- `precision.json`: the earlier completed panels, descriptive paired standard
+  errors and detectable-effect scale (not a new sample-size authorization);
+- `runtime-source-diffs.json`: mapping of recorded runtime hashes to Git blobs;
+- `v2-static-consumer/`: the separate resumable fixed-state performance probe.
+
+None of this opens Luna's 26 held-out validation deals or relabels selected
+FIT probes as fresh validation. The scoped correctness checks and ablations
+are complete; pending lower-learning-rate gameplay and any new independent
+confirmation remain explicitly outstanding. Failed or inconclusive mechanism
+tests, old source revisions and all original screen outputs remain preserved.
 
 Evidence: `~/shengji-archive/2026-09-07/cwv-stage-substitution.0y4n8c/`:
 `run/`, `analyze_selection_gaps.py`, and `selection-gap-stages.json`.

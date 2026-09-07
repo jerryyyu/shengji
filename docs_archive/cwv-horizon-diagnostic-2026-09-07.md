@@ -5,7 +5,9 @@ Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
 Latest readout: five completed checkpoints now share the 52-root FIT probe.
 No tested horizon, diversity or selector-objective intervention establishes a
-gain. Keep finished-trick W32 with its existing MC-LCB selector; do not select
+gain. Cross-fitted reference substitutions show limited, model-dependent
+nomination and selection headroom, not a deployable improvement. Keep
+finished-trick W32 with its existing MC-LCB selector; do not select
 a replacement model from tuning CE alone. ACDEF-v2's completed 260-deal screen
 is inconclusive and its separate 520-deal comparison remains in progress.
 
@@ -284,6 +286,85 @@ further shows why offline loss cannot choose the playing policy by itself.
 Evidence: `~/shengji-archive/2026-09-07/cwv-acdef-v2-extension.n0c9TT/` contains
 the same-state run, `compare_gameplay.py`, `gameplay-260.json`,
 `extend_reference.py`, and the atomic `reference-1024/` extension.
+
+## Direct nomination-versus-selection substitution
+
+To avoid inferring a selector bottleneck from repeated final-choice ties, we
+reused the original four finished-model shortlists and all saved N30/R300
+point matrices. The candidate menu is exactly the **union of those four
+shortlists**, not an exhaustive legal oracle. Each root's 1,024 reference
+worlds is split jointly across actions into even and odd rows. One half
+supplies reference ranking/direct choices; the opposite half judges them.
+The halves swap roles, are averaged within root, then roots within deal.
+This removes direct same-draw argmax evaluation; the previously inspected
+FIT data do not become an untouched validation set.
+
+The four cells are:
+
+1. Existing model shortlist + actual MC-LCB (reproduced control).
+2. Reference-ranked incumbent-plus-four from the fixed union + actual MC-LCB.
+3. Existing model shortlist + highest reference mean inside it.
+4. Reference-ranked shortlist + highest reference mean inside it.
+
+Reference ranking uses canonical action-index ties and preserves the incumbent.
+Direct selection uses ballot-order ties, incumbent first. Actual MC cells use
+unchanged raw-point utility, point-shy rule, N30 selection and R300 report.
+The direct-reference selector changes precision, objective and confidence rule
+together; it is a diagnostic signal substitution, **not a same-cost policy or
+an instruction to remove the report gate**.
+
+| Finished model | Model + MC | Reference nominations + MC | Model + reference selection | Both reference substitutions |
+|---|---:|---:|---:|---:|
+| ACD v1 | +.04435 | +.04435 | +.04989 | +.05265 |
+| ACD v2 | +.03367 | +.04435 | +.04163 | +.05265 |
+| ACD v2 LR1e-4 | +.03930 | +.04435 | +.04824 | +.05265 |
+| ACDEF v1 | +.04435 | +.04435 | +.05243 | +.05265 |
+
+Values are model-unit reference gains over the incumbent, not full-game
+strength. Independent units remain **24 deals**, not 104 fold-cases, 52 roots,
+four models or four independent confirmations. Main paired intervals:
+
+- Reference nomination alone is exactly zero in reference utility for v1
+  and ACDEF-v1; it adds +.01068 for baseline v2 and +.00505 for LR1e-4,
+  both with intervals touching zero. Some submitted moves still differ even
+  where their reference returns tie.
+- Reference selection within the existing shortlist adds +.00554 for v1,
+  interval [-.00119, +.01293]; +.00796 for v2 [.00028, +.01741]; +.00893
+  for LR1e-4 [.00080, +.01878]; and +.00808 for ACDEF-v1 [.00039, +.01759].
+- Both substitutions add +.00830 for v1 [-.00016, +.01834] and +.01899 for
+  v2 [.00331, +.03826]. These 10k deal-bootstrap intervals are exploratory,
+  conditional on finite reference draws and not multiplicity-adjusted.
+
+Thus the observed gap is **model-dependent and spans both stages**. Baseline
+v2 loses some value through nomination on this menu. The existing v1 choices
+are harder to improve merely by better nominations, while all models have
+some point-estimate headroom from more informative final selection. This does
+not establish that MC is the universal bottleneck, that the network has enough
+accuracy, or that a proposed cheaper selector would realize the reference gain.
+
+The reference-selection gap was also decomposed over **all** fold-cases,
+including losses and ties, not selected winners. For v1, +.00248 of the
+equal-deal gap comes from a different N30 nominee and +.00306 from preferring
+the challenger that the report rejected. For v2 those contributions are
++.00170 and +.00626. These classifications locate differences under the
+reference substitution; they do not label the corresponding MC decision a
+bug or prove that increasing one sample budget is sufficient.
+
+All 208 model-MC records were reproduced before accepting counterfactuals.
+The control's two-fold average exactly recovers its earlier 1,024-world value.
+Zero new neural evaluations, native rollouts or games were needed; summed case
+processing was 3.57 seconds. A two-root partial output was resumed to all 52,
+with both original artifact hashes preserved. Fifteen new focused tests pass;
+31 pass including existing objective replay/control tests. A same-world
+choose-and-judge mutant is killed by the explicit disjoint-fold witness.
+Independent bounded methods/source review passed.
+
+Evidence: `~/shengji-archive/2026-09-07/cwv-stage-substitution.0y4n8c/`:
+`run/`, `analyze_selection_gaps.py`, and `selection-gap-stages.json`.
+Reusable CLI: `server/scripts/cwv_stage_substitution_audit.py --help`.
+No new training scale is justified solely by these conditional diagnostics;
+read the already-running paired gameplay comparisons before selecting a
+checkpoint or spending a larger run on a particular mechanism.
 
 ## v1/v2 target-to-consumer correctness check
 

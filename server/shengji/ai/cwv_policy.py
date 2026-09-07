@@ -436,9 +436,10 @@ class CompleteWorldEvaluator:
     @property
     def encoder(self):
         """The tensor builder for this net's encoder version.  v1 keeps the
-        historical choice (the fused static path or the reference); v2 goes
-        to the v2 reference builder -- never the fused path, which writes
-        the v1 layout only."""
+        historical choice (the fused static path or the reference); v2's
+        static adapter widens the v1 MLP base with canonical v2 columns.
+        The reference path retains its full history. A bare fused v1 row
+        must never be served to a v2 net."""
         if self.enc_version == 1:
             return (tensors_from_round_static
                     if self.effective_encoding == "mlp-static"

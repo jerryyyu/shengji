@@ -171,8 +171,19 @@ def _validate_provenance(value: Any) -> None:
             if not isinstance(v, int) or isinstance(v, bool):
                 raise SchemaError(f"provenance.{k} must be an integer")
         elif k == "coordinate":
+            # ELEMENTS, not just the outer length (Codex, PR #293 review): a bare
+            # length check let a nested dict, a nested list and bool-as-int through
+            # finalize_record and on into downstream wave grouping.  All 7,752
+            # records of the 2026-09-06 tranches use exactly (str, int, int) --
+            # rank, mirror, cycle -- so that is what is pinned; a future emitter
+            # with another shape must widen this deliberately.
             if not (isinstance(v, list) and 1 <= len(v) <= 4):
-                raise SchemaError("provenance.coordinate must be a short list")
+                raise SchemaError("provenance.coordinate must be a list of 1 to 4 elements")
+            for element in v:
+                if isinstance(element, bool) or not isinstance(element, (str, int)):
+                    raise SchemaError(
+                        "provenance.coordinate elements must be strings or "
+                        "non-boolean integers, not nested containers")
         elif not (v is None or isinstance(v, str)):
             raise SchemaError(f"provenance.{k} must be a string or null")
 

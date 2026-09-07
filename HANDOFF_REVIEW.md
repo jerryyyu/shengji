@@ -12026,3 +12026,21 @@ MEASURED: all nine frozen files hash identical to origin/main; the archived v1 C
 LIVE: runACD-enc2 training from this head since 01:13 ET, same data, seed, selector and holdouts as the from-scratch A+C+D arm, so the encoder is the only difference. The v2 cache rebuild measured ~26 min for 72,000 shards at 8 workers — the cost that was "unknown" in every earlier ETA. The screen that follows is single-arm on the sealed 260-deal 13-rank window, paired against the sealed v1 result, which cross-tree parity (40/40, 0 mismatches) licenses. At n=260 the paired contrast resolves effects larger than about ±0.069 per round; Jerry chose that size knowing it will catch a regression and will not confirm a modest gain.
 
 Also merged tonight on Codex PASS: #290, decode_workers default 0 -> 6 (1.30x measured on the full store, val_ce agreeing at printed precision).
+
+## 2026-09-07 — Claude: the v2 encoder trains to val_ce 0.6227 against v1's 0.6594, fixes the confident decisions and not the near-ties, and its screen is running
+
+MEASURED, offline, on the trainer's own validation split — search remains the arbiter and none of this is strength evidence:
+
+| | v1 A+C+D (sealed, best epoch 8) | v2 A+C+D (best epoch 7, early stop at 10) |
+| --- | --- | --- |
+| val_ce | 0.6594 | **0.6227** |
+| val_rank_regret | 0.133 | 0.119 |
+| epoch wall | 449-563 s | 227 s |
+
+Same data, seed, selector and holdouts; the encoder is the only difference. The 0.037 gap is larger than the sweep's seed-to-seed spread (~0.02) and larger than the A+B+C -> A+C+D data step. Rank regret moved less than CE did, and rank regret is closer to what the shortlist asks of the net.
+
+THE RUN DID NOT SEAL. After early stop, the post-training candidate pass refused (`public head observations must be [n, OBS_DIM]`): the v1 public-head comparison was fed 560-wide rows. Same class as Codex's F1 on #291, one consumer further along; a narrow fix is in progress. best.pt is final (epoch 7, stamped enc_version 2 / public_dim 561) and the 260-deal paired screen and the v2 sweep were launched on it directly, with the missing receipt named in the launch record. The chains that waited on receipt.json were retired because it will not appear for this run.
+
+MINING, on the interim checkpoint (best.pt carried epoch 6 when copied; epoch-04.pt agrees within 0.5 points everywhere), trainer TEST split, Run D shards, 9,693 decisions / 131,053 candidates and a 48,458-decision all-ply population: **near-tie sign agreement is NOT fixed and is NOT fixable from features** — 49.9% -> 50.6% on pairs the search separates by under half a point, because 100% of those pairs sit below the search's own 1.7-SE resolution rule, so the label is the search's noise. The columns help exactly where the search is confident: search-resolved pairs 57.5% -> 61.8% (61.1% -> 66.8% all-ply), and the >= 20-point bin 72.5% -> 83.6% (75.5% -> 91.7%). Top-1 30.3% -> 31.7%; rank regret 0.136 -> 0.128. Both directions reported: 1,163 decisions fixed, 1,024 regressed. What v2 did NOT fix: leads (64% of remaining costly misses, cost unchanged), following behind a winning partner (v2 feeds a safe partner LESS than a beatable one, the reverse of the search), and pairs/tractors. Three columns proposed with the evidence behind each: incumbent_security (can each later seat still beat the incumbent), suit_master_holder (who holds the top remaining card per suit; "opponent holds the master" is the largest asymmetric descriptor in the 451 still-wrong leads), next_leader (the 4th-seat afterstate has every trick-local column zero and rnd.turn nowhere in the vector — the only strictly-unrepresentable gap). The spec's own guess, partner-vs-opponent trump counts, shows no signal and is dropped.
+
+Also tonight: Codex's HOLD on #291 (three version-binding defects) repaired and independently falsified; Runs G and H registered (d9a641a8) and armed behind E and F2; the v1 hyperparameter sweep cancelled at Jerry's direction in favour of a v2 sweep.

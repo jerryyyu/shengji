@@ -25,7 +25,7 @@ model's half-integer signed-level units. They are not win rates, full-game
 strength, perfect play, or the value of a move in the one recorded true world.
 Aggregation weights source deals equally after averaging their selected roots.
 
-## Horizon result
+## Initial horizon result (64 reference worlds)
 
 | Model | Immediate minus finished final reference value | Exploratory paired 95% interval |
 |---|---:|---:|
@@ -65,7 +65,7 @@ Predicting zero advantage has MAE .09473; many alternatives are tied/similar.
 This control illustrates why small average prediction improvements need not
 fix the important ranking errors. It does not establish that value is useless.
 
-## Concrete miss and next ablation
+## Concrete miss and diversity ablation
 
 At saved root `01422afe`, v2 finished excludes SK+SQ and chooses HK; v2 immediate
 keeps SK+SQ and MC chooses it. v1 behaves in the opposite direction. A post-hoc
@@ -77,11 +77,93 @@ not a claim that the alternative would win that recorded game.
 An additional lead-only census found that v1 finished's 55 retained submitted
 actions represent only 45 distinct accepted-card vectors across W32; 5 of 13
 lead roots contain duplicates. Different throws can consume shortlist slots
-while producing the same sampled outcomes. The next bounded research ablation
-is to test effective-action diversity at the cutoff. Equality across 32 worlds
+while producing the same sampled outcomes. A completed bounded research ablation
+tested effective-action diversity at the cutoff. Equality across 32 worlds
 is not equivalence in all worlds; such a change is a policy experiment, not a
 decision-preserving speedup. Preserve the incumbent and do not deduplicate
 merely because scalar model values happen to match.
+
+The diversity implementation preserves the incumbent, K, N30/R300, and the
+baseline ordering of any retained set. It prefers distinct **complete ordered
+W32 accepted-card vectors**, then backfills duplicates if needed. It neither
+deduplicates equal scalar predictions nor assumes one-world equality is enough.
+It is opt-in diagnostic code, not a new registered/default policy.
+
+Across the same 52 roots, four saved models changed 4–6 retained sets each.
+Effective classes across all roots increased from 163–166 to 175, at a total
+signature-construction cost of .94 seconds. The full comparison took 79.89
+seconds. Three models changed one submitted move from C6+C6+CQ to CQ; these
+had identical reference returns. **Every model's final reference-value delta
+was zero.** No strength or speedup claim follows from extra class coverage.
+
+## Fresh 1,024-world corroboration
+
+The original 64-world reference can misidentify the best retained move.
+We therefore fixed every already-selected action and re-evaluated **all 52
+roots**, both horizons and diversity arms, against one new shared 1,024-world
+stream per root. No new model inference, games, validation opening, action
+reselection, or fit-population selection was involved. This took 50.01 seconds.
+
+| Fixed recipe | Final reference gain over incumbent | Immediate minus finished | Exploratory paired 95% interval for horizon difference |
+|---|---:|---:|---:|
+| ACD v1, finished | +.04435 | -.01864 | [-.03823, -.00244] |
+| ACD v2, finished | +.03367 | -.00338 | [-.02006, +.01341] |
+| ACD v2 LR1e-4, finished | +.03930 | -.00831 | [-.02285, +.00142] |
+| ACDEF v1, finished | +.04435 | -.01301 | [-.03006, +.00106] |
+
+These remain **FIT diagnostics**, not an independent gameplay comparison.
+Intervals bootstrap source deals, condition on finite reference draws, and
+are not multiplicity-adjusted. The small positive v2 immediate-horizon point
+estimate from the original reference changes sign. None supports switching
+the baseline horizon. Diversity again has exactly zero final-value effect.
+
+The initial coverage improvements for v1 and ACDEF-v1 disappear on the new
+reference; v2 retains a small coverage improvement without a final-choice
+gain. Consequently, calling the final selector the primary bottleneck solely
+from the original coverage/selection-regret decomposition would overclaim.
+
+## Why MC did not choose some newly admitted options
+
+For all three roots where the original diversity result improved retained
+reference value, we replayed the exact N30 selection and R300 report streams.
+The independent full-rollout reference **reproduced the actual per-candidate
+selection means and the optimized report consumer's gap/SE** to 1e-12.
+This checks the consumer wiring, not just a helper's self-consistency.
+
+- Rank 4, root `00a09e5b`: D10 and D10+D9 appeared +.09375 better than DJ in
+  the 64-world readout. A fresh post-hoc 1,024-world case stream put them at
+  -.02344 and -.00781. All tested diverse ballots' fresh best was DJ.
+  The report gate was not demonstrably suppressing a real improvement.
+- Rank 10, root `04ba4ee9`: D10+D8 went from +.17188 to -.06934 vs CQ;
+  the approximate paired 95% interval was [-.12530, -.01337]. SQ's apparent
+  +.21875 shrank to +.02246, interval [-.03097, +.07589].
+- Rank Q, root `027c6f02`: BJ+S6 retained a +.07422 level-utility gap over CA,
+  interval [.01029, .13815]. N30 instead sent BJ+S4 to the report fold.
+  Both alternatives have similar fresh **point** gains (+.659 vs +.693),
+  despite different level gains (+.074 vs +.004). Production selects by raw
+  points with its point-shy tie-break, while the model ranks expected level
+  utility. Objective choice and sampling precision are separable hypotheses;
+  this one outcome-selected example does not establish a policy improvement.
+
+Those case intervals describe sampled-world uncertainty for post-hoc FIT
+cases, not population strength. The separate full-panel corroboration above
+uses a different fresh stream and all roots. Neither diagnostic opens the
+26 preserved Luna validation deals.
+
+## Best-supported recipe and next decision
+
+Keep optimized finished-trick W32, incumbent-plus-four, and unchanged MC-LCB
+as the comparison baseline. Do not promote immediate scoring, diversity, or
+the best-CE checkpoint based on these probes. Do not equate better absolute
+CE/MAE with better action ranking or final gameplay.
+
+The audit found a horizon distribution difference and verified the actual
+consumer, but no load-bearing selector arithmetic defect in the traced cases.
+First reconcile Claude's already-running ACDEF-v2 gameplay result. If another
+mechanism test is warranted, compare point versus level-utility selection
+on common rollout matrices with separate nomination/report/reference folds;
+do not simultaneously relax the confidence gate or increase model capacity.
+That is a policy experiment, not a correctness repair or deployment approval.
 
 ## Scope, cost and reproducibility
 
@@ -94,10 +176,19 @@ merely because scalar model values happen to match.
   repeated sampled worlds, fourth-seat/terminal controls, fit-only selection,
   retained provenance and completed-peer recovery after a failure.
 - Existing live jobs and source trees were not modified.
+- Diversity delta: 31 native focused tests passed, including a forced CLI-to-MC
+  wiring change at equal K/N/R, failed-throw acceptance, full-vector equality,
+  incumbent aliases, and stable backfill ordering. No production file changed.
 - Private evidence root on Mini:
   `~/shengji-archive/2026-09-07/cwv-horizon-shared-fit.NNogWA/`:
   `panel.json`, `run/`, `expanded-models/`, `advantage-analysis.json`,
   `analyze_advantages.py`, `lead-equivalence-census.json`, and the case extension.
+- Diversity/corroboration evidence on Mini:
+  `~/shengji-archive/2026-09-07/cwv-effective-diversity.Jn3Qq9/`:
+  `run/`, `trace_selection.py`, `selection-trace/`, `corroborate_panel.py`, and
+  `full-panel-1024/`. Per-case/root outputs retain sampled-world hashes, raw
+  point/level return matrices, fixed choices and source bindings; completed
+  peers survive a later failure. Raw teacher positions remain private.
 - CLI: `server/scripts/cwv_horizon_audit.py prepare --help` and `run --help`.
   Run with the native extension built, `SHENGJI_FAST=1`,
   `SHENGJI_REQUIRE_VOIDS=1`, and one BLAS/Torch thread per process.

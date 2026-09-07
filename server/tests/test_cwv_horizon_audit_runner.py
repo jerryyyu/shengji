@@ -173,6 +173,53 @@ def test_fourth_seat_and_terminal_are_identical_horizon_controls():
     assert checked_terminal and checked_live
 
 
+def test_diversity_is_wired_through_final_mc_at_fixed_cardinality(runner, monkeypatch):
+    from shengji.train import cwv_action_diversity_audit as diversity
+    rnd = play_state()
+    actions = make_bot("mc-s0-report-lcb", seed=0)._candidates(rnd, rnd.turn)
+    assert len(actions) >= 6
+    monkeypatch.setattr(runner, "enumerate_legal", lambda *a, **k:
+                        SimpleNamespace(actions=actions, count=len(actions)))
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))] * 2
+    monkeypatch.setattr(runner, "sample_worlds", lambda *a, **k: (worlds, 2))
+    signatures = [(("same",), ("same",))] * 2 + [
+        ((str(i),), (str(i),)) for i in range(2, len(actions))]
+    seen_worlds = []
+
+    def signatures_at(root, seat, acts, supplied):
+        seen_worlds.append(supplied)
+        assert acts == actions
+        return signatures
+
+    monkeypatch.setattr(diversity, "accepted_action_signatures", signatures_at)
+
+    def matrix(root, seat, acts, supplied, evaluators, **kw):
+        assert kw["finish_trick"] is True
+        return {"model": np.tile(np.arange(len(acts), 0, -1), (2, 1))}
+
+    monkeypatch.setattr(core, "score_horizon_matrix", matrix)
+    runner._EVALUATORS = {"model": object()}
+    entry = dict(id="b" * 64, deal_key="deal", rank="2", position=0, ply=0,
+                 snapshot=_state_snapshot(rnd))
+    config = dict(seed=1, ranking_worlds=2, reference_worlds=2, batch_size=8,
+                  alternatives=4, selection_worlds=1, report_worlds=30,
+                  horizons=["finished"], diversity=True)
+    row = runner.run_state(entry, config)
+    assert seen_worlds == [worlds]
+    assert set(row["arms"]) == {"model/finished", "model/finished/diverse"}
+    plain, diverse = [row["arms"][key] for key in ("model/finished", "model/finished/diverse")]
+    assert plain["shortlist_indices"] == [0, 1, 2, 3, 4]
+    assert diverse["shortlist_indices"] == [0, 2, 3, 4, 5]
+    assert plain["effective_classes_kept"] == 4
+    assert diverse["effective_classes_kept"] == 5
+    for arm in (plain, diverse):
+        assert arm["final_mc_record"]["work"]["selection_rollouts"] == 5
+        # The report fold compares incumbent and challenger, not all K moves.
+        assert arm["final_mc_record"]["work"]["report_rollouts"] == 2 * 30
+        assert arm["played"] in [actions[i] for i in arm["shortlist_indices"]]
+    assert plain["reference_world_value_mae"] == diverse["reference_world_value_mae"]
+
+
 def metric_row(runner, entry, config, value=1):
     metrics = ("reference_world_value_mae", "reference_action_mean_mae",
                "union_restricted_coverage_regret", "selection_regret_inside_retained",

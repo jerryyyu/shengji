@@ -143,18 +143,41 @@ def run_state(entry, config):
                                            rnd, seat, config["reference_worlds"])
     if len(ranking) != config["ranking_worlds"] or len(references) != config["reference_worlds"]:
         raise ValueError("shared world population underfilled")
+    horizons = config.get("horizons", ["immediate", "finished"])
+    if not horizons or len(set(horizons)) != len(horizons) or set(horizons) - {"immediate", "finished"}:
+        raise ValueError("invalid horizon selection")
+    signatures = None
+    signature_seconds = 0.0
+    if config.get("diversity", False):
+        from shengji.train.cwv_action_diversity_audit import (
+            accepted_action_signatures, diverse_topk_with_incumbent)
+        before_signatures = time.perf_counter()
+        signatures = accepted_action_signatures(rnd, seat, actions, ranking)
+        signature_seconds = time.perf_counter() - before_signatures
     arms = {}
     union = {key_index[tuple(sorted(a))] for a in ballot}
-    for horizon, finished in (("immediate", False), ("finished", True)):
+    for horizon in horizons:
+        finished = horizon == "finished"
         print(f"state {entry['id'][:8]} {horizon}: {len(actions)} legal x {len(ranking)} worlds", flush=True)
         matrices = score_horizon_matrix(rnd, seat, actions, ranking, _EVALUATORS,
                                        finish_trick=finished, batch_size=config["batch_size"])
         for name, matrix in matrices.items():
             means = matrix.mean(axis=0)
             selected = topk_with_incumbent(actions, means, incumbent, config["alternatives"])
-            arms[f"{name}/{horizon}"] = {"shortlist_indices": list(selected),
-                                        "ranking_values": means[list(selected)].tolist()}
-            union.update(selected)
+            variants = [("", selected)]
+            if signatures is not None:
+                diverse = diverse_topk_with_incumbent(
+                    actions, means, incumbent, signatures, config["alternatives"])
+                if len(diverse) != len(selected) or diverse[0] != selected[0]:
+                    raise ValueError("diversity changed cardinality/incumbent")
+                variants.append(("/diverse", diverse))
+            for suffix, selected in variants:
+                arms[f"{name}/{horizon}{suffix}"] = {
+                    "shortlist_indices": list(selected),
+                    "ranking_values": means[list(selected)].tolist(),
+                    "effective_classes_kept": (None if signatures is None else
+                                               len({signatures[i] for i in selected}))}
+                union.update(selected)
         del matrices
     union_indices = sorted(union)
     union_actions = [actions[i] for i in union_indices]
@@ -163,29 +186,31 @@ def run_state(entry, config):
     levels = ref["levels"]
     ref_mean = levels.mean(axis=0)
     incumbent_offset = union_lookup[key_index[tuple(sorted(incumbent))]]
-    for horizon, finished in (("immediate", False), ("finished", True)):
+    for horizon in horizons:
+        finished = horizon == "finished"
         matrices = score_horizon_matrix(rnd, seat, union_actions, references, _EVALUATORS,
                                        finish_trick=finished, batch_size=config["batch_size"])
         for name, matrix in matrices.items():
-            arm = arms[f"{name}/{horizon}"]
-            selected = arm["shortlist_indices"]
-            result = run_fixed_ballot(rnd, seat, [actions[i] for i in selected], seed=seed,
-                                     selection_worlds=config["selection_worlds"],
-                                     report_worlds=config["report_worlds"])
-            picked = key_index[tuple(sorted(result["played"]))]
-            if picked not in selected:
-                raise ValueError("final MC pick outside retained shortlist")
-            offsets = [union_lookup[i] for i in selected]
-            chosen_value = float(ref_mean[union_lookup[picked]])
-            retained_value = float(ref_mean[offsets].max())
-            arm.update({"played": result["played"], "final_mc_record": result["record"],
-                        "reference_value_final": chosen_value,
-                        "reference_value_best_retained": retained_value,
-                        "final_lift_vs_incumbent": chosen_value - float(ref_mean[incumbent_offset]),
-                        "union_restricted_coverage_regret": float(ref_mean.max()) - retained_value,
-                        "selection_regret_inside_retained": retained_value - chosen_value,
-                        "reference_world_value_mae": float(np.abs(matrix - levels).mean()),
-                        "reference_action_mean_mae": float(np.abs(matrix.mean(axis=0) - ref_mean).mean())})
+            for suffix in (["", "/diverse"] if signatures is not None else [""]):
+                arm = arms[f"{name}/{horizon}{suffix}"]
+                selected = arm["shortlist_indices"]
+                result = run_fixed_ballot(rnd, seat, [actions[i] for i in selected], seed=seed,
+                                         selection_worlds=config["selection_worlds"],
+                                         report_worlds=config["report_worlds"])
+                picked = key_index[tuple(sorted(result["played"]))]
+                if picked not in selected:
+                    raise ValueError("final MC pick outside retained shortlist")
+                offsets = [union_lookup[i] for i in selected]
+                chosen_value = float(ref_mean[union_lookup[picked]])
+                retained_value = float(ref_mean[offsets].max())
+                arm.update({"played": result["played"], "final_mc_record": result["record"],
+                            "reference_value_final": chosen_value,
+                            "reference_value_best_retained": retained_value,
+                            "final_lift_vs_incumbent": chosen_value - float(ref_mean[incumbent_offset]),
+                            "union_restricted_coverage_regret": float(ref_mean.max()) - retained_value,
+                            "selection_regret_inside_retained": retained_value - chosen_value,
+                            "reference_world_value_mae": float(np.abs(matrix - levels).mean()),
+                            "reference_action_mean_mae": float(np.abs(matrix.mean(axis=0) - ref_mean).mean())})
     return {"schema": "cwv-horizon-state-v1", "config_sha256": digest(config),
             "state_id": entry["id"], "deal_key": entry["deal_key"], "rank": entry["rank"],
             "position": entry["position"], "ply": entry["ply"], "legal_count": len(actions),
@@ -194,6 +219,8 @@ def run_state(entry, config):
             "actions": actions, "incumbent": incumbent, "arms": arms,
             "ranking_worlds_sha256": digest(ranking), "reference_worlds_sha256": digest(references),
             "ranking_attempts": attempts, "reference_attempts": ref_attempts,
+            "effective_signatures_sha256": None if signatures is None else digest(signatures),
+            "effective_signatures_wall_seconds": signature_seconds,
             "reference": {"scope": "union-restricted, not full-legal oracle regret",
                           "policy": "production heuristic full continuation in sampled worlds",
                           "units": "category_signed_level (model half-integer units), before averaging",
@@ -238,6 +265,8 @@ def run_panel(args):
               "ranking_worlds": args.ranking_worlds, "reference_worlds": args.reference_worlds,
               "selection_worlds": args.selection_worlds, "report_worlds": args.report_worlds,
               "alternatives": args.alternatives, "batch_size": args.batch_size,
+              "horizons": getattr(args, "horizon", None) or ["immediate", "finished"],
+              "diversity": getattr(args, "diversity", False),
               "source": execution_source_identity(Path(__file__).resolve().parents[1] / "shengji"),
               "script_sha256": file_hash(__file__)}
     # Normalize tuple/list representation before comparing with reopened JSON.
@@ -320,6 +349,10 @@ def main(argv=None):
                           ("alternatives", 4), ("batch-size", 128), ("workers", 1)):
         run.add_argument(f"--{name}", type=int, default=default)
     run.add_argument("--max-new-states", type=int, help="stop after useful partial work; resume same output later")
+    run.add_argument("--horizon", choices=["immediate", "finished"], action="append",
+                     help="evaluate only named horizons; default is both")
+    run.add_argument("--diversity", action="store_true",
+                     help="also compare fixed-size effective-action-diverse shortlists")
     args = parser.parse_args(argv)
     if args.command == "prepare":
         panel = prepare_panel(args.records, args.out, seed=args.seed)

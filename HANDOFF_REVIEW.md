@@ -11996,3 +11996,23 @@ FOURTH, MINE, NOT CODEX'S, AND THE ONE THAT ACTUALLY CHANGES A CONCLUSION. Repor
 Unpaired, A+C+D and the warm arm exclude zero against production and A+B+C does not, which reads as an ordering. It is not one: those are three separate tests against a common opponent, and the direct comparisons do not separate any pair. WHAT IS RESOLVED IS THE DESIGN, NOT THE CHECKPOINT. We cannot choose a net by screening at n=260, and the warm-start question in particular is not answered — its point estimate is lower and the contrast is unresolved, so "warm start failed" is not supported either.
 
 FIFTH. I relayed Codex's uncertainty diagnostic to Jerry as "posterior spread is not the uncertainty signal, candidate count is". Codex's own caveat, which I had not read carefully enough before relaying: the AUCs came from true-world model output against a finite-search proxy, NOT the W32 sampled-world posterior, and candidate count is confounded. The entropy null is worth having; "candidate count is the signal" is not established and no allocation rule follows from it. Before relaying another agent's numbers, read their stated scope, not just their headline.
+
+## 2026-09-07 — Claude: three training speedups measured on the real store, and the optimized screen tree reproduces sealed decisions exactly
+
+MEASURED, one epoch each on the full A+C+D store (72,000 shards, 32.9 GB decoded against a 6.87 GB budget, so it streams), seed 1, identical data and holdouts:
+
+| tree | decode workers | epoch | val_ce |
+| --- | --- | --- | --- |
+| sweep worktree, #271 only | 0 | 449.3 s (sealed run, epoch 1) | 0.7169 |
+| main at 0ba7f709, #271+#277+#279 | 0 | 316.2 s | 0.7169 |
+| main at 0ba7f709 | 6 | **243.7 s** | 0.7169 |
+
+So #277 alone is 1.42x (I had estimated ~1.16x), #279 at six workers a further 1.30x, and 1.84x off the epoch in total since the sweep started. `val_ce` is identical to four decimals across all three, which is the parity that licenses turning the parallel loader on: the batch sequence is a function of the rng alone and the loader does not perturb it. The restarted sweep reads these two numbers at launch and runs `--decode-workers 6`; it would have refused to start had the two arms disagreed. The candidate pass after the epoch (~35-40 min, CPU-bound, eval_workers=8) is unaffected by any of this and now dominates a run's wall.
+
+SCREEN CALIBRATION, 40 clusters of the sealed 260-deal 13-rank window re-run on the tree containing #286 and #288: **0 utility mismatches and 0 history-hash mismatches against the sealed shards.** The optimized tree makes the same decisions as the tree that produced every sealed 13-rank result, so those results are reusable as the v1 arm of a paired comparison and the coming v2 screen is single-arm. That is a measured property now, not #288's stated 9/9.
+
+WHAT DID NOT MATERIALISE: the optimized screen is not faster per deal. 7.9 s/cluster at five workers on a quiet box, against 8.2 s/cluster for the sealed 520-deal run on a contended one. #286 and #288 target the widest follows, and the calibration's 2.39x decision-wall multiplier from a 4-cluster smoke earlier tonight was not a wall-clock projection and I should not have hinted it was one. 780 deals is ~1.7 h single-arm.
+
+PROCESS. Every launcher now pins its tree to a named ref, refreshes it when drifted and idle, refuses when drifted and busy, and runs a BEHAVIOURAL preflight (compiled engine bound; #288's fused path TAKEN on a real round, not merely importable; #277/#279 entry points present). Each preflight was shown failing on the stale tree and on a good tree with the optimization disabled before it was trusted. The screen guard caught real drift within an hour of being written, on a docs-only merge; I am keeping it that strict, because "does this diff look like it matters" is the judgement that let the previous worktree fall ten commits behind.
+
+ALSO TONIGHT, on the encoder: part 1 of the additive v2 (branch claude/encode-v2-additive, not pushed) is reviewed with byte-identity and both fused-path version gates independently falsified. Part 1's conclusion that train_cwv cannot produce v2 nets was over-scoped: the frozen digest is exactly CWV_SOURCE_PATHS, and the files that pin the SHORTLIST's width — rl/value_model.py, rl/value_checkpoint.py, ai/cwv_policy.py — are not in it. Part 2 is in progress on that basis.

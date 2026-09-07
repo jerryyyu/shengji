@@ -3,7 +3,9 @@
 Status: development evidence; no policy/default change or deployment.
 Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
-Latest readout: five completed checkpoints now share the 52-root FIT probe.
+Latest readout: six saved checkpoints now share the 52-root FIT probe; the
+sixth is the finalized selected epoch of a run whose post-training reports
+are unfinished, explicitly identified below.
 No tested horizon, diversity or selector-objective intervention establishes a
 gain. Cross-fitted reference substitutions show limited, model-dependent
 nomination and selection headroom, not a deployable improvement. Keep
@@ -456,8 +458,10 @@ integration, never into a running screen; no retraining is needed. See
 [the performance report](https://github.com/jerryyyu/shengji/blob/61fcc714aff0108938ad3e99aaa9b0b12671d8ef/docs_archive/cwv-v2-static-widen-2026-09-07.md)
 in that PR.
 
-Next, finish/reconcile Claude's already-started lower-learning-rate work before
-starting a larger training sweep. If a new gameplay comparison is warranted,
+The ACD lower-learning-rate gameplay result below is now complete; the
+selected ACDEF lower-LR model's final reporting is still in progress. Claude
+is running the user-requested controlled width ladder, not a broad recipe
+grid. If a new gameplay comparison is warranted,
 use the same optimized source and actual measured work for all candidates,
 preserve a fresh validation population, and report uncertainty alongside
 cost. No additional large experiment or deployment is authorized by this note.
@@ -475,16 +479,160 @@ cost. No additional large experiment or deployment is authorized by this note.
 
 None of this opens Luna's 26 held-out validation deals or relabels selected
 FIT probes as fresh validation. The scoped correctness checks and ablations
-are complete; pending lower-learning-rate gameplay and any new independent
-confirmation remain explicitly outstanding. Failed or inconclusive mechanism
+are complete; final ACDEF lower-LR reporting, the new width ladder and any
+independent confirmation remain outstanding. Failed or inconclusive mechanism
 tests, old source revisions and all original screen outputs remain preserved.
 
-Evidence: `~/shengji-archive/2026-09-07/cwv-stage-substitution.0y4n8c/`:
+The separate cross-fitted substitution evidence is in
+`~/shengji-archive/2026-09-07/cwv-stage-substitution.0y4n8c/`:
 `run/`, `analyze_selection_gaps.py`, and `selection-gap-stages.json`.
 Reusable CLI: `server/scripts/cwv_stage_substitution_audit.py --help`.
-No new training scale is justified solely by these conditional diagnostics;
-read the already-running paired gameplay comparisons before selecting a
-checkpoint or spending a larger run on a particular mechanism.
+Conditional diagnostics alone do not justify training scale or a new selector.
+
+## Lower-LR ACDEF-v2: selected epoch audited before reports finish
+
+The ACDEF-v2 LR1e-4 trainer early-stopped at epoch 10, selecting epoch 7 by
+its existing validation-CE rule (rounded CE .6106). Its epoch checkpoint is
+immutable after the training loop; the `best.pt` alias is later rewritten
+with expanded report metadata. We verified epoch 7 and the current alias were
+byte-identical, then bound the diagnostic to **epoch-07.pt** SHA256
+`38b013318c9d6373eee995bc737fed31250420e56a347ace64aa71a41d22d1fc`.
+The final report and eventual best-file parameter reconciliation remain due.
+No model was selected from the unfinished test report or gameplay outcomes.
+
+Only this checkpoint was added to the same 52 FIT roots / 24 deals, both
+horizons and shared W32/N30/R300 streams. One nice-19 CPU worker completed
+the states in 52.13 summed seconds. Seven new nomination columns needed
+7,168 extra native continuations (2.17 seconds); all earlier fixed-action
+reference values were retained exactly. No training, new games or Luna
+validation opening was needed, and existing live jobs stayed unchanged.
+
+| Selected lower-LR checkpoint result | Reference value / contrast |
+|---|---:|
+| Finished-trick gain over incumbent | +.04435 |
+| Immediate gain over incumbent | +.03100 |
+| Immediate minus finished, deal-bootstrap 95% | -.01335 [-.03021,+.00071] |
+| Finished minus default-LR ACDEF-v2, deal-bootstrap 95% | +.00505 [0,+.01514] |
+
+Versus default-LR ACDEF-v2, 10/52 retained sets change but only one final
+submitted move changes. All of the gain comes from one of the 24 deals;
+the other 23 effects are zero. At root `027c6f02`, the lower-LR shortlist
+includes BJ and MC chooses it rather than CA, a +.24219 within-root reference
+gap. This post-hoc example is not a whole-game or population strength claim.
+The lower-LR finished reference gain equals ACD-v1/ACDEF-v1 on this panel.
+
+These are model half-integer utility units on finite sampled worlds, not
+whole-game levels. The 10k source-deal intervals are conditional on those
+worlds and unadjusted. Separate nomination unions can have different coverage
+regrets; the cross-run comparison uses fixed-action values on identical
+original reference draws, not incomparable union-relative regret scores.
+No horizon or model-selection recommendation changes from this FIT probe.
+
+Evidence: `~/shengji-archive/2026-09-07/cwv-acdef-lr-fit.9eI2wm/` retains the
+input/producer explanation, per-state run, reference extension, all 52 paired
+choice records and reproducible scripts. The first invocation from a newer
+scratch tree refused at import because its native engine was absent, before
+opening inputs or producing run data. The successful run reused the existing
+native `20605956` audit tree after checking its relevant producer code was
+unchanged at `8231df45`; no engine rebuild or completed-work replay followed.
+
+The now-completed 520-deal lower-LR gameplay screen uses **ACD**, not this
+ACDEF checkpoint; its result is recorded below. The ACDEF post-training
+report is still pending. This FIT diagnostic does not substitute for either.
+
+## Optimized W32 cost attribution and model-size follow-up
+
+A single bounded cProfile pass at PR #294 head `b8424cd1` reused all 52 FIT
+roots and the completed ACDEF-v2 model. Every ordered score, shortlist,
+submitted move, report, work count and RNG record matched the prior
+unprofiled optimized consumer. The run took 22.124 profile wall seconds,
+21.812 CPU seconds and 348.67 MiB peak process RSS. These are instrumentation-
+and contention-affected attribution measurements, not new speedup evidence.
+The existing 104-pair unprofiled 1.137x A/B remains the performance result.
+
+Root candidate construction/ranking costs 10.224 cumulative profile seconds;
+the independent R300 report fold costs 9.992. They are disjoint direct
+children of the decision path. Nested costs include tensor construction
+(5.165), all selection/report rollouts (6.508), world sampling (4.774),
+probability evaluation including stacking/softmax (1.218), and the network
+forward itself (0.805). Do not sum nested components into an end-to-end total.
+
+Three concrete follow-ups were identified; the first now has a focused A/B:
+
+- v2's encoder property constructs a fresh lambda per access, but the tensor
+  cache keys on encoder identity. Stabilize the versioned callable to restore
+  cross-batch reuse. Counters show 9,534 finished-leaf constructions versus
+  15,233 tensor constructions. The subsequent 104-pair A/B restored one
+  tensor construction per finished leaf on this panel (30,466 → 19,068),
+  preserving scores/batches/actions/work/RNG. Summed wall 23.8771 → 21.3826s,
+  CPU 22.8157 → 20.4879s: about 10% lower cost on the contended Mini,
+  not an isolated-host or whole-game guarantee. The bounded cache may still
+  evict entries on other populations. Fix is on [PR #296](https://github.com/jerryyyu/shengji/pull/296);
+  no live consumer has changed. Evidence: `cwv-stable-encoder.1WNpF3/ab/`.
+- The v2 added columns build full `Memory` 15,233 times (1.852 profile
+  seconds) solely to read unseen trumps. A lightweight static equivalent
+  should preserve `own_kitty=False` and exact float32 features without
+  changing frozen encoder identities.
+- 112,768 requested rows need only 15,233 actual tensor constructions under
+  reuse. Explore bounded model-output reuse for immutable duplicate leaves;
+  bind the model and perspective and test exact output parity under different
+  batch shapes before adopting it. This reuse is across candidate actions
+  reduced to the same accepted move within one world, not a collapse of
+  distinct hidden worlds. Existing input caching does not eliminate repeated
+  forwards.
+
+Batch utilization is already high: 864/895 batches are full 128-row batches,
+98.44% filled row capacity overall. Larger-batch or cross-process scheduling
+is therefore not the first demonstrated bottleneck. The 13 leads/39 follows
+are diagnostic strata, not natural-frequency prevalence estimates.
+
+The existing MLP is only 610,764 parameters (`--hidden 512`, trunk 512→256).
+Suggested first size comparison: `--hidden 1024` (1,483,468 parameters) and
+`2048` (4,015,308), keeping ACDEF data, encoder v2, split, seed, batch,
+dropout, auxiliary objective and validation selection fixed. Start at LR
+1e-4 and compare with the existing matching 512-wide fit, using 3e-4 only as
+a targeted optimization follow-up. These counts exclude the auxiliary head.
+Evaluate validation ranking, W32 cost and matched gameplay as well as CE;
+test/Luna holdouts must not choose hyperparameters. This is a proposal, not
+evidence that larger networks improve strength or preserve current latency.
+
+Full per-state profiles, preserved semantic comparisons and reproducible
+driver: `~/shengji-archive/2026-09-07/cwv-w32-profile.WIMsEZ/`.
+The model-size proposal is posted in PR #292 comment `5576541381` and sent
+to Claude. No existing screen adopts new inference code midway through.
+
+## Completed lower-learning-rate gameplay follow-up
+
+The already-running ACD-v2 LR1e-4 screen completed all 520 deals / 1,040
+mirrored rounds. Checkpoint `4dc21822` gives +.0971154 whole signed levels
+per round versus production, compared with +.0990385 for default-LR ACD-v2
+and +.1259615 for default-LR ACDEF-v2. The last remains the highest observed
+mean, not a proven winner over every other model.
+
+Paired 10,000-deal-bootstrap contrasts, seed20260907, unadjusted exploratory
+intervals (same fresh520 panel, no pooling with the initial panel):
+
+| Lower-LR ACD-v2 minus | Mean levels/round | 95% interval |
+|---|---:|---|
+| Default-LR ACD-v2 | -.001923 | [-.052885, +.050000] |
+| Default-LR ACDEF-v2 | -.028846 | [-.078846, +.021154] |
+| ACD-v1 | +.049038 | [-.003846, +.101947] |
+| ACDEF-v1 | +.009615 | [-.042308, +.062500] |
+
+Better validation CE has not established better W32 gameplay. These intervals
+also do not establish equivalence: small gains remain unresolved. Lower LR
+is therefore a training candidate, not a strength-backed default replacement.
+Observed decision wall was 4.397x production under the existing pinned
+consumer; this is not a controlled same-wall comparison across model runs.
+Recomputed completed summaries, deal/mirror identities and ordered shard
+bindings are in `cwv-gameplay-precision.DE3xDH/lower-lr-fresh-520.json`, with
+`compare_lr_completed.py`; no new games or holdout reads were needed.
+
+Claude's user-requested size ladder is now H256 → H1024 → H2048 on ACDEF,
+holding the existing H512 lower-LR fit fixed. All use seed1, LR1e-4 and
+the same 10-epoch budget. Report still-improving-at-cap models as budget
+limited. Select on the fixed validation rule and assess nomination, gameplay
+and cost separately; do not tune from repeated test/Luna-holdout readouts.
 
 ## v1/v2 target-to-consumer correctness check
 
@@ -502,8 +650,9 @@ No load-bearing sign, seat, unit, bin-support or version-dispatch defect was fou
 - A disposable no-model serving probe returned +.5 / -.5 for the same 80-point
   outcome from attacker / defender perspectives. Mapping checks through 4,120
   points retain +101.5 / -101.5 rather than clipping or reversing the utility.
-- Existing actual-consumer tests verify 561-wide v2 routing and exclusion of
-  the v1-only fused encoder; the v1 fused path stays 532-wide. All three ran
+- Existing actual-consumer tests verify 561-wide v2 routing and refusal of
+  bare v1 rows; #294 legally uses the 532-wide fused base followed by canonical
+  v2 widening. The original three routing tests ran
   successfully in the compiled test environment, without training or data reads.
 
 One unused helper, `cwv_data.tensors_rows`, always constructs v1 tensors.

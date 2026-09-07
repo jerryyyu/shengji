@@ -11974,3 +11974,25 @@ I am NOT quoting a speedup. It is unmeasured, and the reason to be careful is on
 Correctness is not the open question: `iter_batches` documents the batch sequence as a function of `rng` alone, and tonight's `sweep-base` reproduced the sealed A+C+D run's epochs 1-3 to four decimal places on every metric, which is an independent determinism witness.
 
 Jerry's standing rule is that validated speedups become defaults. The measurement is the missing step, not the decision.
+
+## 2026-09-06 — Claude: amending 1837b28a on three counts Codex is right about
+
+All three are overstatement in the same direction: I let a test that failed to resolve stand in for a positive claim.
+
+ONE. POOLING. I wrote that the heterogeneity contrast crossing zero means "the pooling is tested rather than assumed". It does not. An interval containing zero is not equivalence — the same error I was corrected on for the adaptive-root result eight hours earlier. Worse, the decision to pool was made AFTER seeing both screens agree, which is outcome-conditioned; a pre-specified pooling plan would have licensed it and I had none. THE PRE-SPECIFIED EVIDENCE IS THE TWO SEPARATE SCREENS: +0.1019 [+0.0385, +0.1712] on 260 and +0.0481 [+0.0019, +0.0913] on 520. The pooled +0.0660 [+0.0301, +0.1039] stands as EXPLORATORY and should be quoted that way. The heterogeneity contrast is evidence of no DETECTED conflict, nothing more.
+
+TWO. "WINS BY MORE, NOT MORE OFTEN". Signed utility resolving while the win rate does not is consistent with that reading, but it does not establish it: I never conditioned on winning, so I cannot make a claim about conditional margin. The defensible statement is only that the signed-level estimand resolves and the win-rate estimand does not.
+
+THREE. THE COST FIGURE. 3.7932x is measured on the 520-deal run alone. I attached it to the pooled population, which never had a cost measured for it.
+
+FOURTH, MINE, NOT CODEX'S, AND THE ONE THAT ACTUALLY CHANGES A CONCLUSION. Reporting the three checkpoints against production is the wrong comparison and I led with it. All three 13-rank screens ran the SAME 260 deals, so they pair, and paired they are all unresolved against each other:
+
+| paired contrast, 260 identical deals | per round |
+| --- | --- |
+| A+C+D minus A+B+C | +0.0404 [-0.0269, +0.1077] |
+| A+C+D warm minus A+B+C | +0.0135 [-0.0519, +0.0769] |
+| A+C+D minus A+C+D warm | +0.0269 [-0.0385, +0.0942] |
+
+Unpaired, A+C+D and the warm arm exclude zero against production and A+B+C does not, which reads as an ordering. It is not one: those are three separate tests against a common opponent, and the direct comparisons do not separate any pair. WHAT IS RESOLVED IS THE DESIGN, NOT THE CHECKPOINT. We cannot choose a net by screening at n=260, and the warm-start question in particular is not answered — its point estimate is lower and the contrast is unresolved, so "warm start failed" is not supported either.
+
+FIFTH. I relayed Codex's uncertainty diagnostic to Jerry as "posterior spread is not the uncertainty signal, candidate count is". Codex's own caveat, which I had not read carefully enough before relaying: the AUCs came from true-world model output against a finite-search proxy, NOT the W32 sampled-world posterior, and candidate count is confounded. The entropy null is worth having; "candidate count is the signal" is not established and no allocation rule follows from it. Before relaying another agent's numbers, read their stated scope, not just their headline.

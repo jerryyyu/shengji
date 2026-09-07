@@ -33,8 +33,11 @@ Record mapping (``shengji-decision-record-v1``, ``source: "trajectory"``)
   (computed on a separate, unmodified instance of the base class when
   overrides are active) -- and is present whenever the ballot may differ
   from it: on every decision that reached a ballot in a ``--knob`` or
-  ``--widen`` run, and on the decisions exploration widened otherwise.
-  This is load-bearing: the ballot-gap and prior analyses read
+  ``--widen`` run, on every decision of a policy whose own ballot is not
+  production's (``PRODUCTION_BALLOT_POLICY`` -- the CWV shortlist, which
+  searches a shortlist over the exhaustive legal set; the named production
+  policy is then the probe), and on the decisions exploration widened
+  otherwise.  This is load-bearing: the ballot-gap and prior analyses read
   ``production_ballot`` as "what production would have considered", so it
   is never the overridden class's list.
 * ``legal_actions`` is the BOUNDED listing of ``harvest.legal`` (cap 256 by
@@ -730,6 +733,12 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
                 "would be shadowed")
         data_cls = knobs_class(type(bot), overrides)
         probe = make_bot(config["policy"], seed=seed)
+    elif getattr(bot, "PRODUCTION_BALLOT_POLICY", None):
+        # a policy whose own candidate generator is not production's (the CWV
+        # shortlist searches a shortlist over the exhaustive legal set): its
+        # ballot differs from production's on nearly every decision, so the
+        # named production policy is probed and stamped as production_ballot
+        probe = make_bot(bot.PRODUCTION_BALLOT_POLICY, seed=seed)
     bot.__class__ = trajectory_class(data_cls)
     bot._trajectory_init(explore_rng, production_probe=probe)
     bot.EXPLORE_RATE = float(config["explore_rate"])

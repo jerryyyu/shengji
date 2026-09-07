@@ -43,6 +43,13 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
     # Only this candidate bypass changes; allocation, rollouts, report and
     # final point-shy tie-breaking are inherited from literal production.
     TRACTOR_LOCK = False
+    #: The searched ballot is a shortlist over the EXHAUSTIVE legal set, so it
+    #: differs from production's list on (nearly) every decision.  A harvest
+    #: (``harvest/trajectory.py``) therefore attaches an unmodified instance of
+    #: this policy as its ``production_probe`` and stamps ``production_ballot``
+    #: on every record: the ballot-gap and prior analyses read that field as
+    #: "what production would have considered".
+    PRODUCTION_BALLOT_POLICY = "mc-s0-report-lcb"
 
     def __init__(self, evaluator, *, seed=0, config=None, reuse_successors=False):
         super().__init__(seed)
@@ -199,3 +206,164 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
                     key: value - detail["cheap_sampler_delta"][key]
                     for key, value in total.items()}
         return played
+
+
+# ------------------------------------------------------- registry entry point
+#
+# `cwv_shortlist_screen.make_side` builds this bot directly; so do the probes
+# and the cost script.  Nothing registered it, so `registry.make_bot` -- and
+# therefore `harvest/trajectory.py --policy` -- could not reach it.  The
+# construction below is that screen's, verbatim: checkpoint -> evaluator ->
+# `CWVShortlistBot(evaluator, **kwargs)` -> `REPORT_FOLD_WORLDS`.
+#
+# DO NOT reach for `registry.register_cwv_policies` here.  It registers
+# `mc-cwv-<ckpt8>-w32`, which resolves to the ONE-PLY bot `CWVOnePly_w32`: a
+# different design that LOSES on the scorecard (-0.11 to -0.14).  Generating
+# expert-iteration data with it would look healthy for sixteen hours and be
+# worse than production.  Hence the distinct `mc-shortlist-` prefix and the
+# type refusal in `_require_shortlist`.
+
+#: the screened W32 recipe (`cwv_shortlist_screen`'s learned arm)
+SHORTLIST_WORLDS = 32
+SHORTLIST_ALTERNATIVES = 4
+SHORTLIST_SELECTION_WORLDS = 30
+SHORTLIST_REPORT_WORLDS = 300
+SHORTLIST_BATCH_SIZE = 128
+SHORTLIST_ENCODING = "mlp-static"
+SHORTLIST_REUSE_SUCCESSORS = True
+
+#: env registration, in the style of `SHENGJI_CWV_*` / `SHENGJI_NETROLL_*`
+SHORTLIST_ENV_CKPT = "SHENGJI_CWV_SHORTLIST_CKPT"
+
+
+class ShortlistPolicyError(RuntimeError):
+    """A shortlist policy name did not build the shortlist bot."""
+
+
+def shortlist_policy_name(ckpt8: str, worlds: int = SHORTLIST_WORLDS) -> str:
+    """``mc-shortlist-<ckpt8>-w<W>``.
+
+    Deliberately unlike `cwv_policy.policy_name`'s ``mc-cwv-<ckpt8>-w<W>``:
+    the two designs must never be confused by eye in a run receipt.
+    """
+    return f"mc-shortlist-{ckpt8}-w{int(worlds)}"
+
+
+def _build_shortlist(evaluator, *, seed, config, reuse_successors):
+    """The one construction site, so the guard below has something to guard."""
+    return CWVShortlistBot(evaluator, seed=seed, config=config,
+                           reuse_successors=reuse_successors)
+
+
+def _require_shortlist(bot, name: str):
+    """REFUSE anything that is not the shortlist bot (the one-ply trap)."""
+    if not isinstance(bot, CWVShortlistBot):
+        raise ShortlistPolicyError(
+            f"policy {name!r} built {type(bot).__name__}, not CWVShortlistBot. "
+            "The one-ply CWV bot (mc-cwv-<ckpt8>-w32 / CWVOnePly_w32) is a "
+            "different design that loses on the scorecard; refusing to "
+            "generate data with it under a shortlist name.")
+    return bot
+
+
+def make_shortlist_bot(checkpoint, *, seed=None,
+                       worlds: int = SHORTLIST_WORLDS,
+                       alternatives: int = SHORTLIST_ALTERNATIVES,
+                       selection_worlds: int = SHORTLIST_SELECTION_WORLDS,
+                       report_worlds: int = SHORTLIST_REPORT_WORLDS,
+                       batch_size: int = SHORTLIST_BATCH_SIZE,
+                       encoding: str = SHORTLIST_ENCODING,
+                       reuse_successors: bool = SHORTLIST_REUSE_SUCCESSORS,
+                       threads: int | None = 1,
+                       name: str | None = None) -> "CWVShortlistBot":
+    """`cwv_shortlist_screen.make_side`'s learned arm, built by checkpoint.
+
+    The evaluator picks the tensor builder for the CHECKPOINT's own
+    ``enc_version`` and applies the static adapter only while the net really
+    is an MLP (`CompleteWorldEvaluator.encoder` / ``effective_encoding``), so
+    ``encoding='mlp-static'`` is a request, never an override of the
+    checkpoint's identity.
+    """
+    from ..ai.cwv_policy import shared_evaluator
+
+    evaluator = shared_evaluator(checkpoint, threads=threads,
+                                 max_batch=int(batch_size), encoding=encoding)
+    config = CWVShortlistConfig(worlds=int(worlds),
+                                selection_worlds=int(selection_worlds),
+                                alternatives=int(alternatives),
+                                batch_size=int(batch_size), uniform=False)
+    bot = _build_shortlist(evaluator, seed=seed, config=config,
+                           reuse_successors=bool(reuse_successors))
+    _require_shortlist(bot, name or shortlist_policy_name(
+        evaluator.ckpt8 or "unknown", worlds))
+    bot.REPORT_FOLD_WORLDS = int(report_worlds)
+    bot.cwv_checkpoint_sha256 = evaluator.checkpoint_sha256
+    bot.cwv_ckpt8 = evaluator.ckpt8
+    bot.cwv_enc_version = evaluator.enc_version
+    bot.cwv_encoding = evaluator.effective_encoding
+    return bot
+
+
+def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
+                               **recipe) -> dict:
+    """``{name: factory}`` for every W, named by the VALUE checkpoint.
+
+    Same identity rule as `cwv_registry_entries`: the checkpoint IS the
+    policy, so every name embeds ``<ckpt8>`` and a bare ``mc-shortlist``
+    never exists.  The checkpoint is hashed here (the name must be stable)
+    and LOADED lazily, once per process, on the first `make_bot`.
+    """
+    from ..ai.cwv_policy import checkpoint_id
+
+    ckpt8 = checkpoint_id(checkpoint)
+    entries = {}
+
+    def factory(name: str, w: int):
+        def make(**kw):
+            return make_shortlist_bot(checkpoint, seed=kw.get("seed"),
+                                      worlds=w, name=name, **recipe)
+        return make
+
+    for w in sorted({int(w) for w in worlds}):
+        if w < 1:
+            raise ValueError("shortlist worlds must be positive")
+        name = shortlist_policy_name(ckpt8, w)
+        entries[name] = factory(name, w)
+    return entries
+
+
+def shortlist_env_recipe(environ=None) -> tuple[str, list[int], dict] | None:
+    """``(checkpoint, worlds, recipe)`` described by ``SHENGJI_CWV_SHORTLIST_*``.
+
+    SHENGJI_CWV_SHORTLIST_CKPT              checkpoint path (required)
+    SHENGJI_CWV_SHORTLIST_WORLDS            comma list of W (default 32)
+    SHENGJI_CWV_SHORTLIST_ALTERNATIVES      default 4
+    SHENGJI_CWV_SHORTLIST_SELECTION_WORLDS  default 30
+    SHENGJI_CWV_SHORTLIST_REPORT_WORLDS     default 300
+    SHENGJI_CWV_SHORTLIST_BATCH_SIZE        default 128
+    SHENGJI_CWV_SHORTLIST_ENCODING          default mlp-static
+    SHENGJI_CWV_SHORTLIST_REUSE_SUCCESSORS  1/0, default 1
+    """
+    import os as _os
+
+    env = _os.environ if environ is None else environ
+    checkpoint = env.get(SHORTLIST_ENV_CKPT)
+    if not checkpoint:
+        return None
+    worlds = [int(part) for part
+              in env.get("SHENGJI_CWV_SHORTLIST_WORLDS",
+                         str(SHORTLIST_WORLDS)).split(",") if part]
+    recipe = {
+        "alternatives": int(env.get("SHENGJI_CWV_SHORTLIST_ALTERNATIVES",
+                                    SHORTLIST_ALTERNATIVES)),
+        "selection_worlds": int(env.get("SHENGJI_CWV_SHORTLIST_SELECTION_WORLDS",
+                                        SHORTLIST_SELECTION_WORLDS)),
+        "report_worlds": int(env.get("SHENGJI_CWV_SHORTLIST_REPORT_WORLDS",
+                                     SHORTLIST_REPORT_WORLDS)),
+        "batch_size": int(env.get("SHENGJI_CWV_SHORTLIST_BATCH_SIZE",
+                                  SHORTLIST_BATCH_SIZE)),
+        "encoding": env.get("SHENGJI_CWV_SHORTLIST_ENCODING", SHORTLIST_ENCODING),
+        "reuse_successors": env.get("SHENGJI_CWV_SHORTLIST_REUSE_SUCCESSORS", "1")
+        not in ("0", "false", "no", ""),
+    }
+    return checkpoint, (worlds or [SHORTLIST_WORLDS]), recipe

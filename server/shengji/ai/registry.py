@@ -716,6 +716,46 @@ def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
     return sorted(entries)
 
 
+def _guarded_shortlist_factory(name: str, factory):
+    """Wrap a shortlist factory so ``make_bot`` REFUSES anything else.
+
+    The one-ply trap, made unreachable: `register_cwv_policies` looks like the
+    way to register the W32 complete-world-value arm, but the bot it registers
+    under ``mc-cwv-<ckpt8>-w32`` is ``CWVOnePly_w32`` -- a different design
+    that LOSES on the scorecard.  A generator wired to it would run for hours
+    producing data from a policy worse than production, with every progress
+    counter healthy.  So the type is checked at the registry boundary, on
+    whatever the factory returns, and a mismatch raises.
+    """
+    from ..train.cwv_shortlist import _require_shortlist
+
+    def make(**kw):
+        return _require_shortlist(factory(**kw), name)
+    return make
+
+
+def register_cwv_shortlist_policies(checkpoint: str, worlds=(32,),
+                                    **recipe) -> list[str]:
+    """The DEV shortlist bot (`train.cwv_shortlist.CWVShortlistBot`) as
+    registry policies, so ``make_bot`` -- and therefore
+    ``harvest/trajectory.py --policy`` -- can reach it.
+
+    Names are ``mc-shortlist-<ckpt8>-w<W>``: distinct by eye from the one-ply
+    ``mc-cwv-<ckpt8>-w<W>`` entries of `register_cwv_policies`, which are NOT
+    this policy.  The default recipe is the screened one (worlds 32,
+    alternatives 4, selection_worlds 30, report_worlds 300, encoding
+    mlp-static, reuse_successors on); ``recipe`` overrides it.  Returns the
+    registered names.
+    """
+    from ..train.cwv_shortlist import shortlist_registry_entries
+
+    entries = shortlist_registry_entries(checkpoint, worlds, **recipe)
+    guarded = {name: _guarded_shortlist_factory(name, factory)
+               for name, factory in entries.items()}
+    REGISTRY.update(guarded)
+    return sorted(guarded)
+
+
 def scaled_policy_name(base_policy: str, multiplier: float) -> str:
     return f"{base_policy}-x{float(multiplier):g}"
 
@@ -796,6 +836,20 @@ def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[s
     return sorted(entries)
 
 
+def _register_cwv_shortlist_from_env() -> None:
+    """``SHENGJI_CWV_SHORTLIST_CKPT`` (+ the ``_WORLDS``/``_ALTERNATIVES``/
+    ``_SELECTION_WORLDS``/``_REPORT_WORLDS``/``_BATCH_SIZE``/``_ENCODING``/
+    ``_REUSE_SUCCESSORS`` knobs) registers ``mc-shortlist-<ckpt8>-w<W>`` at
+    import, so a spawned trajectory worker resolves the same name the parent
+    did (`train.cwv_shortlist.shortlist_env_recipe`)."""
+    import os
+    if not os.environ.get("SHENGJI_CWV_SHORTLIST_CKPT"):
+        return
+    from ..train.cwv_shortlist import shortlist_env_recipe
+    checkpoint, worlds, recipe = shortlist_env_recipe()
+    register_cwv_shortlist_policies(checkpoint, worlds, **recipe)
+
+
 def _register_netroll_from_env() -> None:
     """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
     the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
@@ -808,3 +862,4 @@ def _register_netroll_from_env() -> None:
 
 
 _register_netroll_from_env()
+_register_cwv_shortlist_from_env()

@@ -113,3 +113,12 @@ def test_decode_arrays_refuses_a_wrong_hash(store_and_selector):
     assert arrays and meta
     with pytest.raises(Exception):
         cwv_data.decode_arrays((path, "0" * 64, history))
+
+
+def test_the_trainer_defaults_to_six_decode_workers():
+    """A regression tripwire, not evidence: the value is justified by the measured
+    A/B of 2026-09-07 (epoch 316.2s at 0 workers vs 243.7s at 6, val_ce 0.7169 in
+    both). It exists so the default cannot quietly revert to 0 without failing a
+    test, which is how every training run before it went without the speedup."""
+    from shengji.train.train_cwv import DEFAULTS
+    assert DEFAULTS["decode_workers"] == 6

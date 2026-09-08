@@ -233,6 +233,18 @@ Keep flat optimized W32/K4/N30/R300. Further unchanged-recipe/all-world depth
 escalation and threshold sweeps are parked; these finite negative/inconclusive
 screens do not prove that every adaptive or deeper search will fail.
 
+### Points-leaf gameplay diagnostic
+
+The separate [W32 points-leaf screen](https://github.com/jerryyyu/shengji/blob/d2d08f2569e75fbbbcc3076c4630877f63d4aa21/server/runs/w32_points_leaf_gameplay_20260908.md)
+(#302) completed 52 reused broader-rank deals / 104 mirrored rounds per arm.
+Against each checkpoint's retained flat W32 on those same deals, one-trick
+points leaves scored **−0.1250 [−0.3462, +0.0865]** for default LR and
+**+0.0288 [−0.2212, +0.2788]** for lower LR; the checkpoint×consumer interaction
+was +0.1538 [−0.0962, +0.4135] levels/round. Neither demonstrates an improvement.
+Auxiliary outcome MAE was 12.328 versus 11.746 points, but absolute outcome
+error is not paired-action error and does not determine gameplay power.
+Keep flat W32; this inconclusive screen does not close learned leaves as a class.
+
 ### Further decision-preserving engineering
 
 The later fused static-input A/B in [#288](https://github.com/jerryyyu/shengji/pull/288)

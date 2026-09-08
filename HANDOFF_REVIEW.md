@@ -12312,3 +12312,30 @@ Two independently trained models at lr 1e-4, at widths differing by a factor of 
 CAVEAT ON THE CONTRAST ITSELF, stated because it is easy to over-read: the h256-versus-`3cd27716` comparison changes BOTH width and learning rate, so on its own it does not attribute the loss to lr. What licenses the reading is the pairing with Result 1: width is null at fixed lr, so the lr axis is where the movement is. Both contrasts come from the same six-arm family and are unadjusted.
 
 STATE. h1024 finished at **val_ce 0.6066**, the best offline number in the programme and better than the held 512's 0.6106; its screen started 02:09 ET. h2048 is queued. Every rung is screened as it completes rather than only the `val_ce` winner -- Jerry's correction at 00:55, and the right one here, since selecting the screen target by `val_ce` would have skipped h256 entirely and missed both of these results.
+
+## 2026-09-08 — Claude: the width ladder completes at 1024 and QUALIFIES my own replication claim from an hour ago
+
+`shortlist-cap-h1024-520`, checkpoint `d84b5183`, 520 clean-window deals, `complete: true`, sealed 03:21 ET. Deal identity verified across all four arms: 0 mismatches over 520 clusters.
+
+THE LADDER, everything fixed except width, all at lr 1e-4 on A+C+D+E+F2 encoder v2:
+
+| width | params | val_ce | vs production | wall |
+| --- | --- | --- | --- | --- |
+| 256 | 273k | 0.6119 | +0.0721 [+0.0260, +0.1192] | 3.07x |
+| 512 | 611k | 0.6106 | +0.0673 [+0.0221, +0.1115] | 3.58x |
+| 1024 | 1.48M | **0.6066** | +0.0923 [+0.0490, +0.1356] | 3.43x |
+| *(512, default lr)* | 611k | 0.6218 | **+0.1260 [+0.0808, +0.1712]** | 4.37x |
+
+WIDTH REMAINS NULL. Every paired width contrast crosses zero: 1024 − 512 = +0.0250 [−0.0173, +0.0663], 1024 − 256 = +0.0202 [−0.0279, +0.0683], 256 − 512 = +0.0048 [−0.0452, +0.0548]. Across a 5.4x parameter range (273k to 1.48M) nothing resolves. The offline ordering is monotone in width (0.6119 > 0.6106 > 0.6066) and the search ordering is not (1024 > 256 > 512), which is one more instance of the pattern this programme keeps producing.
+
+**I MUST QUALIFY WHAT I WROTE AN HOUR AGO** (`4a1ff1c4`). I reported that the lr-1e4 deficit "replicates at an independent width", citing two models at −0.0538 and −0.0587, both intervals excluding zero, and concluded Codex's epoch-selection hypothesis was "less likely". The third width now says:
+
+| width at lr 1e-4 | minus the default-lr checkpoint |
+| --- | --- |
+| 256 | −0.0538 [−0.1048, −0.0029] resolves |
+| 512 | −0.0587 [−0.1067, −0.0106] resolves |
+| **1024** | **−0.0337 [−0.0817, +0.0144] CROSSES ZERO** |
+
+So the honest statement is narrower than the one I made: **all three point estimates are negative and the sign is consistent across a 5.4x parameter range, but only two of three resolve, and the deficit SHRINKS at the widest rung.** That is compatible with a real lr effect that interacts with width, and it is also compatible with two of three draws happening to clear the bar. I over-reached by writing "replicates" of a two-point pattern before the third point existed, when the third was already scheduled and an hour away. The right move was to wait for the ladder to finish.
+
+WHAT STANDS. The default-lr checkpoint `3cd27716` remains the best arm screened, +0.1260, and is still the teacher Jerry chose. No width rung beats it: the closest, 1024, is −0.0337 against it and crossing zero. Capacity is not a lever anywhere in the tested range. The programme's best OFFLINE checkpoint is now h1024 at 0.6066 and it is 0.0337 per round WORSE in search than a checkpoint 0.0152 worse offline, which is the same anti-correlation the scorecard has been recording all week, now on a fourth independent pair.

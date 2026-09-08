@@ -450,7 +450,13 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     # checkpoints predate the field).
     declared = bind_encoder_version(metadata, model.config, path=path)
     want = cwv_encoder_identity(declared)
-    if enc.get("implementation_sha256") != want["implementation_sha256"]:
+    from ..ai.cwv_encoder_compat import history_import_move_identity
+    from .cwv_data import CWV_SOURCE_PATHS
+    accepted = {want["implementation_sha256"]}
+    legacy = history_import_move_identity(want, CWV_SOURCE_PATHS)
+    if legacy is not None:
+        accepted.add(legacy)
+    if enc.get("implementation_sha256") not in accepted:
         raise TrainError(f"{path}: checkpoint encoder "
                          f"{str(enc.get('implementation_sha256', ''))[:12]} differs from this "
                          f"build's {want['implementation_sha256'][:12]}")

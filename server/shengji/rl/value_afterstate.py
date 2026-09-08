@@ -25,7 +25,7 @@ from ..teacher_v1 import attacker_level_utility
 from ..harvest.common import action_key
 from ..harvest.rebuild import state_for_record
 from ..harvest.schema import validate_record
-from .douzero_micro import HISTORY_EVENT_DIM, encode_public_history
+from .public_history import HISTORY_EVENT_DIM, encode_public_history
 from .encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
 
 

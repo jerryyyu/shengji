@@ -137,6 +137,7 @@ AFTERSTATE_SOURCE_PATHS = {
     "value_afterstate": _SHENGJI / "rl" / "value_afterstate.py",
     "encode": _SHENGJI / "rl" / "encode.py",
     "douzero_micro": _SHENGJI / "rl" / "douzero_micro.py",
+    "public_history": _SHENGJI / "rl" / "public_history.py",
     "memory": _SHENGJI / "ai" / "memory.py",
     "cards": _SHENGJI / "engine" / "cards.py",
     "combos": _SHENGJI / "engine" / "combos.py",
@@ -299,6 +300,14 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     for sha in declared:
         if sha in accepted:
             return sha
+    # One explicit compatibility migration: the public-history helper moved
+    # out of the Torch training module without changing model inputs. Keep
+    # actual new source hashes in new checkpoints; accept a legacy full
+    # identity only while the extracted computation is still identical.
+    from .cwv_encoder_compat import history_import_move_identity
+    legacy = history_import_move_identity(current, AFTERSTATE_SOURCE_PATHS)
+    if legacy is not None and legacy in declared:
+        return legacy
     drifted = sorted(
         name for name, sha in _declared_sources(metadata).items()
         if name in current["source_sha256s"] and current["source_sha256s"][name] != sha)
@@ -1272,6 +1281,12 @@ def shared_evaluator(checkpoint: str | os.PathLike[str], *, threads: int | None 
     resolved = Path(checkpoint).resolve()
     if not resolved.is_file():
         raise CWVError(f"checkpoint not found: {resolved}")
+    if resolved.suffix.lower() == ".npz":
+        from .cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+        # Share immutable weights, not per-room accounting. Torch defaults and
+        # cached evaluator semantics remain unchanged for research callers.
+        return NumpyCompleteWorldEvaluator(resolved, threads=threads,
+                                           max_batch=int(max_batch), encoding=encoding)
     stat = resolved.stat()
     return _shared_evaluator(str(resolved), stat.st_mtime_ns, stat.st_size,
                              threads, int(max_batch), encoding)

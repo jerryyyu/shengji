@@ -146,6 +146,7 @@ CWV_SOURCE_PATHS = {
     "value_afterstate": _SHENGJI / "rl" / "value_afterstate.py",
     "encode": _SHENGJI / "rl" / "encode.py",
     "douzero_micro": _SHENGJI / "rl" / "douzero_micro.py",
+    "public_history": _SHENGJI / "rl" / "public_history.py",
     "memory": _SHENGJI / "ai" / "memory.py",
     "cards": _SHENGJI / "engine" / "cards.py",
     "combos": _SHENGJI / "engine" / "combos.py",

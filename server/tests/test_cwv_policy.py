@@ -260,12 +260,14 @@ def predict_tensors_reference(model, row):
 def test_encoder_identity_is_the_training_builds_recipe():
     import hashlib
     from shengji.rl.value_afterstate import AFTERSTATE_SCHEMA
+    from shengji.train.cwv_data import CWV_SOURCE_PATHS
 
     identity = afterstate_encoder_identity()
     assert identity["identity_schema"] == "shengji-cwv-encoder-identity-v1"
     assert set(identity["source_sha256s"]) == {
         "value_afterstate", "encode", "douzero_micro", "memory", "cards",
-        "combos", "round", "rebuild", "teacher_v1"}
+        "combos", "round", "rebuild", "teacher_v1", "public_history"}
+    assert cwv_policy.AFTERSTATE_SOURCE_PATHS == CWV_SOURCE_PATHS
     payload = "|".join(
         ["shengji-cwv-encoder-identity-v1", AFTERSTATE_SCHEMA]
         + [f"{name}:{sha}" for name, sha in sorted(identity["source_sha256s"].items())])

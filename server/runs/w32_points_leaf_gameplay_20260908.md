@@ -41,6 +41,59 @@ the 52-deal uncertainty and changed-decision examples; this small screen may
 remain inconclusive. It cannot establish a new offline metric or close the
 value-learning direction. No automatic larger sweep follows its outcome.
 
+### Interpretation before results
+
+This is a diagnostic with an unfavorable prior: earlier tested leaf/depth
+recipes did not beat the supported flat shortlist, and the saved-state T1
+points-leaf comparison in PR #292 was negative against its heuristic
+continuation reference. Changing the consumer is not evidence of improvement.
+
+Selected-epoch validation points MAE/bias, from each checkpoint's training
+`receipt.json`: default epoch 5 **12.328 / +0.769** points; lower-LR epoch 7
+**11.746 / -0.672**. These are errors against observed continuation outcomes,
+not errors in estimating a conditional expectation or paired action gaps.
+
+For scale only, the retained 520-deal flat-W32 records give the following
+planning proxies at 52 independent deals. Each deal averages both mirrors;
+units are whole signed levels per played round.
+
+| Retained flat-W32 contrast | Deal sample SD | Approx. 95% half-width at 52 | Approx. 80%-power detectable effect |
+|---|---:|---:|---:|
+| Default vs production | 0.5340 | 0.1451 | 0.2073 |
+| Lower LR vs production | 0.5243 | 0.1425 | 0.2036 |
+| Lower LR minus default | 0.5578 | 0.1516 | 0.2166 |
+
+Formulas: `1.96 * SD / sqrt(52)` and `2.80 * SD / sqrt(52)` (normal
+approximation, two-sided 5% test, roughly 80% power). Source:
+`cwv-gameplay-precision.DE3xDH/{completed-fresh-520,acdef-lower-lr-fresh-520}.json`
+and their retained paired records. **The new leaf and leaf-minus-flat
+variances are unknown.** These are not promised confidence widths or a
+powered test for the old 0.0587 checkpoint gap. The small screen can expose
+a large failure or promising large gain cheaply; modest effects need an
+explicit follow-up decision rather than a declaration of no effect.
+
+Absolute outcome error is not action-difference error. For two actions on the
+same world, the relevant error is `e(a) - e(b)`; shared errors can cancel,
+while action-dependent systematic errors need not average away over worlds.
+Neither row-level MAE nor its ratio to MC finalist margins determines the
+gameplay screen's power. Fresh report worlds quantify sampling variation,
+not learned-model bias. The existing MC-LCB is deliberately unchanged here;
+its sampling SE is not a guarantee that learned leaves are calibrated.
+
+A negative result with useful precision counts against this exact
+checkpoint/T1/points-head recipe. An interval spanning useful gains and losses
+is inconclusive. Neither result closes learned leaves as a design class, and
+small MAE improvements do not justify scaling this arm on their own.
+
+Archived flat-W32 gameplay predates merged encoding/reuse optimizations.
+The supporting parity artifact is
+`~/shengji-archive/2026-09-07/cwv-pricing-path.9bKPfR/adoption-comparison.json`
+(PR #296 comment 5577422990; integration landed via #297). Complete serialized
+rows matched for shortlist and production on **four rounds/two deals**, with
+two timing repetitions per policy/source, plus prior focused score/RNG tests.
+That supports the intended decision-preserving change; it is not a fresh
+520-deal parity replay or a hardware-matched timing comparison.
+
 ## Execution and recovery
 
 - Separate clean checkout on Strength after Run H exits; verify the actual
@@ -67,6 +120,7 @@ immutable checkpoint/output paths:
 ```sh
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 \
+PYTHONPATH="$PWD" \
 python -P -B -m shengji.train.cwv_shortlist_screen \
   --arm learned --checkpoint CHECKPOINT --worlds 32 --alternatives 4 \
   --selection-worlds 30 --report-worlds 300 --batch-size 128 \
@@ -76,9 +130,22 @@ python -P -B -m shengji.train.cwv_shortlist_screen \
   --seed0 91261190 --clusters 52 --workers 8 --out NEW_OUTPUT
 ```
 
-The process must run under the existing bounded launcher/dependency wait;
-the CLI command itself does not enforce the two-hour operational allowance.
+The CLI does not enforce the operational allowance. After verifying the
+existing owner is finished, launch each arm as a separate systemd transient
+service with `RuntimeMaxSec=7200`, `KillMode=control-group` and
+`TimeoutStopSec=60`. Both run concurrently, eight workers each. Record the
+unit names, immutable commands, source and output paths. Expiry may interrupt
+an unfinished pair but must retain completed atomic shards. This uses the
+host's existing process supervisor, not another scientific admission protocol.
 It never grants permission to stop another job or touch deployment.
+
+Prepared Strength source: `/root/cwv-points-leaf-8d7ed763`, runtime
+`/root/cwv-dev/server/.venv/bin/python` (Python 3.14.4, Torch 2.14.0+cpu).
+`PYTHONPATH` must point at the prepared source, not the runtime's old editable
+checkout. Both copied checkpoint SHA256s match the table. The native extension
+is reused only after checking identical tracked `_fast.pyx` and `setup.py`
+between its build source and this source. Thirteen screen-wiring tests pass
+on that actual Linux runtime in 1.34 seconds; no full games were launched.
 
 ## Source validation already completed
 

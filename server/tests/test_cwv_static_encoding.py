@@ -114,7 +114,12 @@ def test_hidden_world_twin_changes_world_input_and_score_on_identical_batch():
     assert reference_scores[0] != reference_scores[1]
 
 
-def _same_refusal(rnd, monkeypatch=None, expected=(ValueAfterstateError, DouZeroMicroError)):
+def _same_refusal(rnd, monkeypatch=None, expected=None):
+    if expected is None:
+        # The value encoder now owns a Torch-free history error. Both static
+        # and reference paths must still refuse with the exact same type/text.
+        from shengji.rl.public_history import PublicHistoryError
+        expected = (ValueAfterstateError, PublicHistoryError)
     if monkeypatch is not None:
         # Keep malformed-history checks independent of encode_obs indexing.
         valid_obs = lambda _rnd, _seat: [0.0] * OBS_DIM

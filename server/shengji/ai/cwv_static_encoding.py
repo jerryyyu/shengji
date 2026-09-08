@@ -27,7 +27,7 @@ from ..rl.value_afterstate_v2 import (
     tensors_from_round as tensors_from_round_v2,
     widen as widen_v2,
 )
-from ..rl.douzero_micro import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
+from ..rl.public_history import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
     WORLD_RECEIVERS,
     ValueAfterstateTensors,

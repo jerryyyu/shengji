@@ -739,7 +739,28 @@ async def _paced_bot_step(room: Room, seat: int, *,
     if snapshot is None:
         return None
     compute_started = time.perf_counter()
-    decision = await _compute_bot_turn_off_loop(snapshot)
+    model_serving = getattr(getattr(snapshot.bot_copy, "evaluator", None),
+                            "backend", None) == "numpy"
+    if model_serving:
+        from .model_serving import run_model_search
+        def emit(kind, **fields):
+            room.log_event("model_search", seat=seat, mode=mode,
+                           policy=getattr(snapshot.bot_copy, "policy_name", "W32"),
+                           event=kind, **fields)
+        try:
+            decision = await run_model_search(
+                lambda: _compute_bot_turn_off_loop(snapshot), emit)
+        except Exception:
+            # No silent policy downgrade or commit of a partially advanced
+            # snapshot. Leave the live state/RNG intact and make the failure
+            # visible; an operator can roll back or a human claim the seat.
+            async with room.lock:
+                if room.round is snapshot.round_token:
+                    room.round.message = "Model search failed; claim this seat or contact the host."
+                    await broadcast(room)
+            raise
+    else:
+        decision = await _compute_bot_turn_off_loop(snapshot)
     compute_seconds = time.perf_counter() - compute_started
     pacing_seconds = max(
         0.0, minimum_turn_seconds - (time.perf_counter() - turn_started))

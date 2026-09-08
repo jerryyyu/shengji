@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .douzero_micro import HISTORY_EVENT_DIM
+from .public_history import HISTORY_EVENT_DIM
 from .encode import N_CARDS
 from .encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version, encode_obs_v2_columns
 from .value_afterstate import (

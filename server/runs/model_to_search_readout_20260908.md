@@ -9,7 +9,7 @@ mechanics, prediction, gameplay and engineering cost separate.
 | --- | --- |
 | Selected model on Fly | PR313 qualified compact package `fd6bb411` against the selected Torch checkpoint. PR316 records the authorized all-user switch. Live health/config rechecked: selected W32, release20 image `b8f48f41`, shared 1 CPU /512MiB, one model worker, BLAS1; MC-LCB rollback preserved. |
 | Policy head outside PUCT | PR317 completed value-plus-prior nominations versus value-only W32, with a width-only control. No demonstrated gain; keep the existing value-only shortlist. This tests the available old run-C public prior, not every possible future prior. |
-| Better continuations | PR302 completed selected-model T1 points-leaf gameplay comparisons without a demonstrated gain. PR319 completed selected-model current-trick play guidance in the report fold: favorable but inconclusive at 13 deals, with a no-learning control. Keep flat W32 in production. |
+| Better continuations | PR302 completed selected-model T1 points-leaf gameplay comparisons without a demonstrated gain. PR319's fixed 52-deal follow-up reversed its favorable 13-deal pilot: learned report guidance lost to flat W32 at higher cost. Do not scale this recipe; keep flat W32 in production. |
 | Shared serving/generation optimization | PR313 removed unnecessary training exposure metadata from compact inference artifacts; exact learned arrays retained. Actual trajectory-runner backend A/B supports Torch for cloud throughput and compact NumPy for Fly memory, not a blanket NumPy speed claim. Existing shared static encoding, successor reuse and immutable weight sharing remain enabled. |
 | Isolated v3 feature | PR318 implemented the next-actor cursor with legacy compatibility, then trained matched v2/v3 models on 768 baseline-fit deals. The ablation did not show a useful ranking benefit; no broad retrain or production replacement. |
 
@@ -73,6 +73,48 @@ learned-versus-prior win or a mechanism. A fixed larger DEV comparison is a
 reasonable next question; do not keep extending until an interval excludes
 zero, and do not treat reused DEV deals as independent confirmation.
 
+### Fixed 52-deal follow-up: completed, negative
+
+The follow-up was specified before launch in PR319 comment5592442666:
+52 deals /104 mirrored rounds per arm, seeds `[91261203,91261255)`, four
+complete cycles of 13 ranks. These are already-opened DEV deals, disjoint
+from this recipe's pilot, not untouched confirmation data. The new52 are
+the primary readout; the pilot is not pooled into them. Source `dcc05a2f`,
+model, policy and runtime config match the pilot except count and seed start.
+
+| Direct comparison vs flat W32 | Signed levels/round | 95% deal-bootstrap interval | Decision wall ratio |
+| --- | ---: | --- | ---: |
+| Learned report guidance | -0.14423 | [-0.26923,-0.02885] | 2.511x |
+| Stratified-prior guidance | 0.00000 | [-0.13462,+0.12524] | 1.366x |
+
+This is adverse exploratory gameplay evidence for the tested learned-guidance
+recipe, not just an efficiency failure. It reverses the pilot's direction.
+Neither subtracting the two comparisons nor inspecting the control establishes
+a direct learned-versus-prior win/loss or identifies the cause. In particular,
+this does not prove that every learned continuation is bad or that the model's
+one-step prediction quality declined. No estimator-accuracy improvement is
+claimed from gameplay payoffs or sampling standard errors.
+
+Both arms completed with no failed or missing pairs. Learned/control job walls
+were 1,155.955/849.889 seconds; CPU 6,706.466/4,641.199 seconds; peak memory
+3.4/3.3GiB. Six workers per arm ran concurrently on Perf; no extra jobs were
+launched on the freed workers or on Strength. Decision wall ratios compare
+against **flat W32**, not production MC. Cost differences from the pilot are
+measured on a different deal population and must not be treated as a code change.
+
+The learned arm made 2,331,574 guided simulated choices, evaluated 15,103,622
+rows in 120,264 forwards, and used zero selection-stage net plays. Its total
+rollout ratio was 0.99972. Control made 2,346,019 guided choices with no model
+forwards, also with zero selection-stage net plays. Saved summaries, exact
+population, unchanged recipes and recorded guidance counts were checked from
+the retained rows in under a second; no games were rerun for verification.
+
+Decision: stop this experiment at its fixed population. Do not deploy, optimize
+at scale, or extend this arm until significance changes. The best-supported
+recipe remains selected-model value-only W32 plus the existing heuristic MC
+continuation. A future policy change needs a new, specific failure diagnosis,
+not simply more worlds, a larger model or another repeat of this screen.
+
 Completion after the retained first pair took 578.765s learned and 513.350s
 prior with six workers each, peak memory 3.6/3.5GiB. Include the initial
 104.194/68.265s when budgeting all execution. The largest pair took
@@ -130,6 +172,8 @@ the intended empty-trick stratum justifies expanding this feature now.
   width control in `prior-union-screen/value6-v4/`.
 - Cursor models/caches/readouts: `~/shengji-archive/2026-09-08/v3-fit768-82ttx4dj/`.
 - Report guidance: `~/shengji-archive/2026-09-08/w32-report-continuation/`;
-  live output `/opt/w32-report-continuation.fEneW0/` on Perf.
+  retained output `/opt/w32-report-continuation.fEneW0/` on Perf. Pilot and
+  `learned-follow52` / `prior-follow52` remain separate; `readout_follow52.py`
+  produces `readout-follow52.json` without gameplay.
 
 No production authority is implied for any experimental policy or v3 model.

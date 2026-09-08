@@ -104,9 +104,33 @@ mechanistic evidence on restricted FIT nominations, not a gameplay result.
   separate fixed-state optimization merged at `5b385e82`; no live source swap.
 - #299: correct W32 teacher registration/recipe/production-ballot capture
   merged at `d23c084d`; generating better training data is enabled, not proven.
-- H256 and H1024 fits and their 520-deal gameplay screens completed. H1024's
-  separate final report is still running under Claude's ownership; it is not
-  a prerequisite for reading its finished fixed-checkpoint gameplay screen.
-  Preserve the remaining sweep; do not duplicate training or holdout reports.
+- H256 and H1024 fits and their 520-deal gameplay screens completed. Claude
+  owns the remaining sweep/reporting; those reports are not prerequisites
+  for reading these finished fixed-checkpoint screens. Verify live process
+  state before any new scheduling; do not duplicate training or reports.
 - Preserve live jobs, all trajectories and held-out deals. No production
   deployment. Detailed results remain evidence, not additional review gates.
+
+## Audit closeout
+
+The model-to-search audit and its focused consumer comparison are complete;
+this does not mean model scaling is solved or that a stronger policy was found.
+
+- **Reconciliation:** the evidence ledger binds v1/v2, ACD/ACDEF, learning-rate
+  and completed width screens to checkpoints, data manifests and paired deals.
+- **Mechanism:** saved-world coverage/selection decomposition, cutoff examples,
+  residual action-gap analysis and both leaf viewpoints distinguish the tested
+  failure modes. The finite heuristic reference is not an optimal-action label.
+- **Engineering:** actual-consumer parity/cost receipts cover the integrated
+  encoding/reuse optimizations; #299 repairs teacher recipe binding, and merged
+  #301 preserves versioned inference. Opt-in #302 tests the aligned leaf path
+  in selection and report, including no-truncation identity. No production change.
+- **Focused comparison:** both #302 arms completed with all 52 paired deals,
+  retained shards and successful process exits. Reviewed source was unchanged;
+  the final commits only publish results. No duplicate game reconstruction.
+- **Handoff:** #292 and #302 publish the supported default and uncertainty;
+  Claude has the result pointers. New metric validation, training objectives
+  and stronger search are next research decisions, not silently queued runs.
+
+Fly serving feasibility (#300), historical BELIEF cleanup (#217) and older
+Luna PR integration are separate workstreams, not completed by this audit.

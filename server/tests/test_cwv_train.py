@@ -310,9 +310,15 @@ def test_ranking_agreement_metric(records):
 
 def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     luna_path, _rows = luna
+    # The public head is built at the SAME version the cwv run defaults to, so this
+    # smoke exercises the default path end to end. Cross-version heads have their own
+    # tests: a NEWER head than the run is refused up front, and a head at or below the
+    # run's version is served the prefix of its own width. Real v2 runs do use the v1
+    # runAB-points head successfully; the mismatch here was the fixture, not the path.
     public = train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
                             epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
-                            cache_workers=1, **THIRDS)
+                            cache_workers=1,
+                            encoder_version=train_cwv.DEFAULTS["encoder_version"], **THIRDS)
     assert public["final"]["test"]["held_out"] is True
     kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), arch="mlp", device="cpu",
               epochs=2, seed=7, batch_size=64, n_boot=20, hidden=32, log=None,
@@ -324,8 +330,10 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
         assert key in receipt, key
     assert receipt["schema"] == train_cwv.RECEIPT_SCHEMA and receipt["command"] == "train"
     assert receipt["sees_hidden_hands"] is True and receipt["privacy"]["sees_hidden_hands"]
-    assert receipt["encoder"]["implementation_sha256"] == \
-        cwv_data.cwv_encoder_identity()["implementation_sha256"]
+    # Against the identity for the version this run ACTUALLY used, not a pinned v1:
+    # the invariant is that the receipt records the encoder it encoded with.
+    assert receipt["encoder"]["implementation_sha256"] == cwv_data.cwv_encoder_identity(
+        receipt["config"]["encoder_version"])["implementation_sha256"]
     split = receipt["split"]
     assert (split["train_deals"], split["val_deals"], split["test_deals"]) == (1, 1, 1)
     assert receipt["population"]["counts"] == {"train": 1, "val": 1, "test": 1}
@@ -362,9 +370,14 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     # training-side forward on the cached row
     cache_dir = out / "cache"
     store = discover_store(store_dir)
-    block = cwv_data.load_block(cwv_data.cache_path(cache_dir, store.shards[0].sha256))
+    # Both take version=ENC_VERSION (the FROZEN constant 1) by default, not the
+    # run's version. Pass the run's own so the cache read and the bridged row
+    # match what training actually wrote.
+    enc_v = receipt["config"]["encoder_version"]
+    block = cwv_data.load_block(
+        cwv_data.cache_path(cache_dir, store.shards[0].sha256, version=enc_v))
     record = next(r for r in _records(store_dir) if r["source_ref"] == block.source_ref[5])
-    row = cwv_data.bridge_record(record)
+    row = cwv_data.bridge_record(record, version=enc_v)
     assert row.input_sha256 == block.input_sha256[5].decode()
     prediction = predict_round(loaded, row.successor, row.seat)
     batch = cwv_data.tensors_of(cwv_data.collate(block, np.asarray([5])), "cpu")
@@ -479,7 +492,9 @@ def test_encoder_v1_net_from_the_same_code_path_is_provenance_identical(store_di
     kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64,
               n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=32,
               val_rank_records=50, **THIRDS)
-    receipt = train_cwv.train(out=tmp_path / "v1", **kw)
+    # v1 is now explicit: the training default became 2 on 2026-09-08 and this
+    # test is specifically about the v1 net's provenance.
+    receipt = train_cwv.train(out=tmp_path / "v1", encoder_version=1, **kw)
     assert receipt["config"]["encoder_version"] == 1
     # the stored model_config is field-for-field what the pre-change trainer wrote
     assert set(receipt["config"]["model_config"]) == {
@@ -532,8 +547,12 @@ def test_a_public_head_the_run_cannot_serve_is_refused_before_training(store_dir
                              baselines={}, calibration=None, split={}, population=population)
     lines: list[str] = []
     with pytest.raises(train_cwv.TrainError, match="encoder v2 but this run encodes at v1"):
+        # encoder_version=1 is explicit so the v2 public head still MISMATCHES the
+        # run. Without it the run defaults to v2, the versions agree and nothing is
+        # refused -- the test would pass vacuously rather than exercise the refusal.
         train_cwv.train(data=[str(store_dir)], out=tmp_path / "v1", arch="mlp", device="cpu",
                         epochs=3, seed=7, batch_size=64, n_boot=10, hidden=32, log=lines.append,
-                        cache_workers=1, eval_workers=1, public_head=str(head), **THIRDS)
+                        cache_workers=1, eval_workers=1, public_head=str(head),
+                        encoder_version=1, **THIRDS)
     assert not any(line.startswith("epoch ") for line in lines), "refused before any epoch"
     assert not (tmp_path / "v1" / "best.pt").exists()

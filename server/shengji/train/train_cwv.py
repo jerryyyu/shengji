@@ -256,6 +256,16 @@ for _k in RANK_KS:
         f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
         f"MEAN points -- an MC-ranking proxy, not E[U])")
 del _k
+#: New trainings default to encoder v2. Jerry, 2026-09-08, with cost explicitly
+#: set aside. This is a DECISION UNDER UNCERTAINTY, not a demonstrated win: the
+#: v2 encoder's own effect crosses zero at both data sizes (+0.0510 [-0.006,
+#: +0.109] at 72k, +0.0385 [-0.012, +0.089] at 96k). What is true is that every
+#: point estimate favours it and A+C+D+E+F2 v2 is the best arm screened, on the
+#: clean 520 window (+0.1260) and pooled over 780 deals (+0.0936). Existing v1
+#: checkpoints are unaffected: the evaluator dispatches on each checkpoint's own
+#: declared ``enc_version``, so this changes what NEW runs train, nothing else.
+ENC_VERSION_DEFAULT_FOR_TRAINING = 2
+
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "val_fraction": 0.1, "test_fraction": 0.1, "hidden": 512, "dropout": 0.1,
@@ -264,10 +274,12 @@ DEFAULTS = {
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
-    # A fresh run has no checkpoint to read a version from; this is the only
-    # way to ask for the v2 public encoder.  It stays 1 so an unchanged
-    # command line keeps producing v1 (531 + 1) checkpoints.
-    "encoder_version": ENC_VERSION,
+    # A fresh run has no checkpoint to read a version from, so this is where the
+    # version is chosen.  It became 2 on 2026-09-08, so an unchanged command line
+    # now produces v2 (560 + 1) checkpoints; pass --encoder-version 1 for the
+    # historical width.  Existing checkpoints are unaffected either way: the
+    # evaluator dispatches on each checkpoint's own declared ``enc_version``.
+    "encoder_version": ENC_VERSION_DEFAULT_FOR_TRAINING,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "argv", "started", "wall_secs", "device", "versions", "git",

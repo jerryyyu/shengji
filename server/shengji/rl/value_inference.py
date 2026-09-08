@@ -74,13 +74,38 @@ def predict_tensors(model: ValueNetwork,
     return tuple(_prediction(row) for row in probabilities)
 
 
+def model_enc_version(model) -> int:
+    """The encoder version the LOADED net declares; one without the field is v1.
+
+    Identical rule to ``CompleteWorldEvaluator.enc_version``. Kept here so the
+    single-round and action-scoring APIs cannot drift apart from each other.
+    """
+    return int(getattr(getattr(model, "config", None), "enc_version", 1))
+
+
+def tensors_for_model(model, rnd: Round, root_seat: int):
+    """Encode ``rnd`` at the MODEL's own version.
+
+    Both public inference entry points go through here. Calling the frozen v1
+    builder unconditionally fed 532-wide rows to a 561-wide net as soon as v2
+    checkpoints existed; fixing only one entry point left its sibling broken,
+    which is exactly what happened once (Codex, bus 795/796), so the dispatch
+    lives in one place used by both.
+    """
+    version = model_enc_version(model)
+    if version == 1:
+        return tensors_from_round(rnd, root_seat)
+    from .value_afterstate_v2 import tensors_from_round as _tensors_at_version
+    return _tensors_at_version(rnd, root_seat, version=version)
+
+
 def predict_round(model: ValueNetwork, rnd: Round, root_seat: int, *,
                   device: torch.device | str = "cpu") -> ValuePrediction:
     """Value a complete leaf; terminal states bypass the model exactly."""
     if type(rnd) is Round and rnd.phase == "round_end":
         return _prediction(terminal_distribution(rnd, root_seat))
     return predict_tensors(
-        model, [tensors_from_round(rnd, root_seat)], device=device)[0]
+        model, [tensors_for_model(model, rnd, root_seat)], device=device)[0]
 
 
 def score_actions(model: ValueNetwork, rnd: Round, root_seat: int,
@@ -107,7 +132,7 @@ def score_actions(model: ValueNetwork, rnd: Round, root_seat: int,
     if pending_indices:
         pending = predict_tensors(
             model,
-            [tensors_from_round(successors[index], root_seat)
+            [tensors_for_model(model, successors[index], root_seat)
              for index in pending_indices], device=device)
         for index, prediction in zip(pending_indices, pending, strict=True):
             predictions[index] = prediction

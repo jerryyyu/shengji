@@ -265,7 +265,8 @@ def test_a_fresh_training_run_can_select_the_encoder_version():
     from shengji.train import train_cwv, train_v0
 
     assert train_v0.DEFAULTS["encoder_version"] == 1
-    assert train_cwv.DEFAULTS["encoder_version"] == 1
+    # train_cwv defaults to v2 as of 2026-09-08; train_v0 is untouched and stays v1.
+    assert train_cwv.DEFAULTS["encoder_version"] == 2
 
     v1 = train_v0.build_config(data=["d"])
     v2 = train_v0.build_config(data=["d"], encoder_version=2)
@@ -278,7 +279,11 @@ def test_a_fresh_training_run_can_select_the_encoder_version():
         with pytest.raises(train_v0.TrainError):
             train_v0.build_config(data=["d"], encoder_version=bad)
 
-    c1 = train_cwv.build_config(data=["d"])
+    # Explicit v1: the point of this test is that a version can be SELECTED, and
+    # since 2026-09-08 the unspecified default is v2, asserted just below.
+    c1 = train_cwv.build_config(data=["d"], encoder_version=1)
+    c_default = train_cwv.build_config(data=["d"])
+    assert (c_default["encoder_version"], c_default["public_dim"]) == (2, 561)
     c2 = train_cwv.build_config(data=["d"], encoder_version=2)
     assert (c1["encoder_version"], c1["public_dim"]) == (1, 532)
     assert (c2["encoder_version"], c2["public_dim"]) == (2, 561)
@@ -297,7 +302,8 @@ def test_the_cli_of_both_trainers_exposes_encoder_version():
     for module in (train_v0, train_cwv):
         parser = module.build_parser()
         default = parser.parse_args(["train", "--data", "d", "--out", "o"])
-        assert default.encoder_version == 1
+        # train_cwv defaults to v2 as of 2026-09-08; train_v0 is untouched.
+        assert default.encoder_version == (2 if module is train_cwv else 1)
         chosen = parser.parse_args(
             ["train", "--data", "d", "--out", "o", "--encoder-version", "2"])
         assert chosen.encoder_version == 2

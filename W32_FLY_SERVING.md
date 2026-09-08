@@ -16,8 +16,9 @@ PYTHONPATH=server python server/scripts/export_cwv_numpy.py SOURCE.pt MODEL.npz
 
 The export refuses overwrites and publishes atomically. It stores float32
 weights, encoder/config metadata and the original checkpoint SHA. A potentially
-large training-population manifest is retained in the original checkpoint,
-referenced by SHA in the export instead of copied into every room.
+large training-population or exposure manifest is retained in the original
+checkpoint, referenced by SHA and canonical byte count in the export instead
+of copied into every room.
 
 Serving uses NumPy, not Torch. The real registry dispatches `.npz` checkpoints
 to the existing W32 consumer: W32/K4/N30/R300, static MLP encoding and successor
@@ -30,6 +31,74 @@ identities cover the new file. A narrow compatibility rule admits old **full**
 encoder identities only when the history computation/constants/dependencies
 still match and reversing that one import recreates the original closure.
 Other source drift is refused; source-move acceptance is not a general bypass.
+
+## Selected v2 package — qualified, not deployed
+
+Jerry selected **A+C+D+E+F2 v2 `3cd27716`** as the next opt-in package.
+It is the gameplay-supported all-rank teacher, not a new CE winner. Its
+520-deal all-rank result and ABC's older 256-deal rank-2 result are different
+populations: they do **not** establish a head-to-head improvement over the
+currently served ABC model.
+
+The source is Mini's
+`~/.claude/jobs/68f9c8bd/tmp/train-out/cwv/runACDEF-v2/best.pt`:
+
+| Binding | SHA-256 |
+|---|---|
+| Original checkpoint file | `3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600` |
+| Logical model state | `79ea14f2c0d1ff6807e615038552669f8627a1e23bd199cc01966545a3d749fb` |
+| Compact NumPy package | `fd6bb4114eb1f2ff049a77989cbd99eb35b949eef944dd72de448ff25b4fabd9` |
+
+All six learned arrays are unchanged by export. Model shape is
+833 → 512 → 256 → 204 (public input 561, encoder v2). Removing the unused
+exposure ledger reduced the exported package from **6,497,395 to 2,284,341
+bytes**; the source checkpoint and full ledger remain intact. This changes
+package identity, not the learned parameters or search recipe.
+
+Qualification used the **existing release-20 image** below, offline on Perf
+with no network, one CPU and 512 MB. Three fixed saved states (indices 0/2/6,
+6,958/3/4 legal actions) completed without Torch. The compact package matched
+the source Torch checkpoint's final moves, report folds and final RNG on all
+three. Compact decision walls were **29.697 / 0.403 / 0.151 seconds**, maximum
+process RSS **98,168,832 bytes**, and snapshot-copy wall **0.00086–0.00617 s**.
+The ledger-carrying package reached 127,963,136 bytes RSS in a separate process.
+These are small engineering observations, **not** universal numeric parity,
+a gameplay screen, a controlled throughput A/B, or new public Fly latency.
+Torch used Mini/native Python 3.14; NumPy used Linux/native Python 3.12, so the
+comparison supports these outputs, not a backend speed ranking.
+
+### Explicit v2 dependency check (#307 remains open)
+
+The legacy checkpoint identity omits the two v2 implementation files. Do not
+silently widen that loader's acceptance or claim this qualification fixes it.
+For this specific rollout, the compensating binding is the **immutable image
+digest plus the exact package SHA**, with these image source hashes checked:
+
+| Image source | SHA-256 |
+|---|---|
+| `rl/encode_versions.py` | `214806d52794f737826bda7d310dcdcdf497dca7a1d3c08c470e754e516a18f3` |
+| `rl/value_afterstate_v2.py` | `566432ee53860d925667e9ab93fab1a3fd32cab6ff71af2f5da18186fe2d52dd` |
+
+The training commit is `fda20f64feb1a2b16faddf83c8778f2933cd52ca`.
+Its v2 arithmetic versus serving's extraction/import moves produced identical
+public/history/world/perspective tensors on **52 already-opened FIT roots ×
+4 seats**, after one legal action. This check shares the already-admitted v1
+builder; it is not proof of an arbitrary historical runtime's equivalence.
+A different serving image needs a new dependency qualification: the legacy
+identity alone is insufficient. No archived checkpoint or training run changed.
+
+Reproducible scripts and raw engineering receipts are private at
+`~/shengji-archive/2026-09-08/w32-selected-serving.zXBQED/` (weights, encoder
+qualification, Mini Torch and Linux NumPy logs). Two attempted host-side Linux
+Torch probes stopped during setup (ABI mismatch, then Torch absent); neither
+reached a decision, and neither is counted as a successful measurement.
+
+**Remaining switch conditions:** consolidated export/package review, retain
+the ABC package for rollback, verify the deployed image and uploaded package,
+and observe a fresh zero-room quiet window before changing only
+`SHENGJI_W32_TEST_CKPT`. Do not restart an occupied service. Ordinary rooms
+remain MC-LCB; no resize, global switch, or live Run I mutation is authorized
+by this qualification.
 
 ## Public Fly check — release 20
 

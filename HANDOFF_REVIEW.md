@@ -12597,3 +12597,59 @@ Nothing in the measured record changed; these are label and transcription repair
 had still been asserting the three claims the files already fixed, and the description is what a
 reviewer reads first.
 — Claude (session `68f9c8bd`)
+
+## 2026-09-08 15:32 ET — Claude: ACDEFGH v2 is RESOLVED WORSE than ACDEF v2. The data step did not pay, and the confound I pre-registered now cuts against me
+
+`SCREEN_DONE 15:32 ET`, rc=0, **520/520 clusters, `complete: true`**, arm identity verified by
+`state_sha256 171c098957fdc17e` (epoch 6) rather than by the file hash — see the note at the end,
+because the file hash moved for a benign reason and would have raised a false swap alarm.
+
+| arm | clusters | `val_ce` | vs production, 520 clean window | wall |
+| --- | --- | --- | --- | --- |
+| **ACDEF v2 `3cd27716`** | 96,000 | 0.6218 | **+0.1260 [+0.0808, +0.1721]** | 4.37x |
+| **ACDEFGH v2 `fd2e5335`** | 128,000 | 0.6231 | +0.0702 [+0.0240, +0.1163] | 3.02x |
+| **paired, identical deals** | | | **−0.0558 [−0.1058, −0.0077]** | |
+
+**The paired interval excludes zero.** Adding runs G and H — 32,000 clusters, a +33% data step —
+made the model measurably worse in the only consumer that has ever discriminated. Deal identity
+verified: 520 shared clusters, zero non-shared, paired on `(seed, trump_rank, trump_suit, banker)`.
+The contrast tool refuses rather than intersecting if the deal sets differ; it did not fire.
+
+**THE CONFOUND I REGISTERED AT 11:55 NOW CUTS AGAINST ME, AND IT STILL APPLIES.** Entry `833d682e`,
+written before the number existed, said: *"if ACDEFGH beats ACDEF, more data and shifted ballot
+mixture are confounded and this screen cannot separate them."* It did not beat it. **The identical
+confound applies to the loss.** The added 32,000 clusters are 50/50 E-ballot / F2-ballot against a
+base mix of 8.3/33.3/33.3/16.7/8.3, pushing E's ballot 16.7% -> 25% and F2's 8.3% -> 18.75%. So this
+is NOT evidence that more teacher data hurts. It is evidence that **this particular 128k mixture is
+worse than this particular 96k mixture**, with generator-mix and quantity moving together. Anyone
+citing this as "data scaling is negative" is over-reading it exactly as I would have over-read a win.
+
+**OFFLINE PREDICTED THE WRONG SIGN AGAIN, on the metric the consumer actually reads.** ACDEFGH had
+BETTER `rank_regret` (0.1017 vs 0.1081) — not `val_ce`, but the ranking metric the shortlist
+consumes — and lost by an interval excluding zero. `val_ce` was near-identical (0.6231 vs 0.6218)
+and also predicted nothing. This is the fourth independent pair in which an offline improvement
+failed to appear in search, and the first in which the *search-facing* offline metric pointed the
+wrong way. `rank_regret` is a better metric than `val_ce` on the argument that it measures what the
+consumer reads; that argument survives this, but its predictive record is now 0-for-1.
+
+**WHAT DOES NOT CHANGE.** `3cd27716` remains the best arm ever screened and the selected teacher.
+The shortlist design still beats production with every checkpoint tried. Nothing is promoted.
+
+**THE COST COLUMN IS NOT A CLEAN COMPARISON.** 3.02x against 4.37x looks like ACDEFGH is much
+cheaper, and I am not claiming that. The two screens ran on different days across merged
+optimizations (#294/#297/#298 landed between them) and on a differently loaded Mini. That gap
+compares runs, not models.
+
+**INSTRUMENT NOTE, recorded because it nearly cost a false alarm.** I pre-verified at 12:58 that the
+screen would load `best.pt` at file sha8 `c40b2e00`. At 14:34 the trainer rewrote `best.pt` to stamp
+in `headline` and `inference_benchmark`, moving the file hash to `fd2e5335` with the weights
+untouched. **The file hash is not the identity; `state_sha256` is.** Had I only compared file
+hashes at screen time I would have reported a possible checkpoint swap on a clean run. The chain
+logs the file hash, so the check has to be done on the weights.
+
+The paired-contrast tool used here was validated before this result existed, reproducing five
+published figures to four decimals, including the `/4` vs `/2` divisor distinction (arm-vs-baseline
+are two sides of the same games and double-count; arm-vs-arm do not). It independently reproduced
+this screen's own headline: +0.0702 [+0.0240, +0.1163] against the sealed summary's
++0.0702 [+0.0231, +0.1125].
+— Claude (session `68f9c8bd`)

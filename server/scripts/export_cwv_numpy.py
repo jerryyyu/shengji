@@ -20,16 +20,18 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path) -> str:
     config = model.config
     if config.architecture != "mlp":
         raise ValueError("only architecture=mlp can be exported")
-    # Training population manifests can be megabytes of per-shard receipts.
+    # Training population/exposure manifests can be megabytes of receipts.
     # W32 never reads them. Preserve their identity and the original checkpoint
     # instead of copying the full provenance graph on each room snapshot.
     metadata = dict(metadata)
-    population = metadata.pop("population", None)
-    if population is not None:
-        raw = json.dumps(population, sort_keys=True, separators=(",", ":")).encode()
-        metadata["training_population_reference"] = {
+    for key in ("population", "exposure"):
+        manifest = metadata.pop(key, None)
+        if manifest is None:
+            continue
+        raw = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        metadata[f"training_{key}_reference"] = {
             "checkpoint_sha256": original_sha,
-            "metadata_key": "population",
+            "metadata_key": key,
             "canonical_json_sha256": hashlib.sha256(raw).hexdigest(),
             "canonical_json_bytes": len(raw),
         }

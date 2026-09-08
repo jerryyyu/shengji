@@ -724,6 +724,11 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     overrides = dict(config.get("knobs") or {})
     data_cls = type(bot)
     probe = None
+    # A policy that declares PRODUCTION_BALLOT_POLICY does not have production's
+    # ballot, so probing an unmodified instance of ITSELF -- which is the right
+    # probe for a production policy under --knob -- would stamp its own ballot as
+    # production_ballot. The declared policy therefore wins in BOTH branches.
+    declared = getattr(bot, "PRODUCTION_BALLOT_POLICY", None)
     if overrides:
         shadowed = [name for name in overrides if name in vars(bot)]
         if shadowed:
@@ -732,8 +737,8 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
                 f"{config['policy']!r} sets it per instance; a class override "
                 "would be shadowed")
         data_cls = knobs_class(type(bot), overrides)
-        probe = make_bot(config["policy"], seed=seed)
-    elif getattr(bot, "PRODUCTION_BALLOT_POLICY", None):
+        probe = make_bot(declared or config["policy"], seed=seed)
+    elif declared:
         # a policy whose own candidate generator is not production's (the CWV
         # shortlist searches a shortlist over the exhaustive legal set): its
         # ballot differs from production's on nearly every decision, so the

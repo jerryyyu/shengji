@@ -388,8 +388,19 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
 
     def factory(name: str, w: int):
         def make(**kw):
-            return make_shortlist_bot(checkpoint, seed=kw.get("seed"),
-                                      worlds=w, name=name, **recipe)
+            bot = make_shortlist_bot(checkpoint, seed=kw.get("seed"),
+                                     worlds=w, name=name, **recipe)
+            # The name embeds the ckpt8 hashed HERE, at registration; the model
+            # is loaded lazily on the first make_bot. If the file at this path
+            # was replaced in between, the old name would serve new weights and
+            # a resume would continue a run under a different teacher, silently.
+            if bot.cwv_ckpt8 != ckpt8:
+                raise ShortlistPolicyError(
+                    f"policy {name!r} was registered against checkpoint {ckpt8} "
+                    f"but {checkpoint!r} now hashes to {bot.cwv_ckpt8}. The file "
+                    "was replaced after registration; refusing to generate data "
+                    "under a name that no longer describes the teacher.")
+            return bot
         return make
 
     for w in sorted({int(w) for w in worlds}):

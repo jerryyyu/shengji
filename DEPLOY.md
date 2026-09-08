@@ -22,11 +22,18 @@ clients hold WebSockets to it. That drives every deployment rule below.
 
 ## Current production and rollback boundary
 
-Read-only check on September 8: Fly release **19**, one 512 MB / shared-CPU-1x
-machine `48e7e35a9597e8`, runs
+On September 8, Fly release **20** deployed the reviewed opt-in W32 room gate
+from PR #310, image
+`registry.fly.io/shengji@sha256:b8f48f41149d8a27225e7a44260b72b03475dbdf99ba7398c56167682afd19e5`.
+The single 512 MB / shared-CPU-1x machine `48e7e35a9597e8` and its volume are
+unchanged. Ordinary rooms still use `mc-s0-report-lcb`; experimental W32 rooms
+require a creator access code and remain excluded from ordinary training logs.
+See `W32_FLY_SERVING.md` for measured latency and test status.
+
+The pre-deploy **release 19** rollback image is
 `registry.fly.io/shengji:deployment-01M0P8VNX2C49XMVHFWFNNAPC2`, manifest
 `sha256:38c40bb675b2a330e845168ed3f63089279cff764bdcb7fea4908578721045dc`.
-This is the rollback image for the pending gated-W32 deployment; retain its
+This is the rollback image for the gated-W32 deployment; retain its
 machine configuration and volume. Health must report
 `{"bot":"mc-s0-report-lcb","fast":true}`. The earlier release-18 boundary
 below is historical, not the current release number.

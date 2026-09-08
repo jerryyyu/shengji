@@ -82,16 +82,18 @@ host based only on this table.
 **Current integration.** #256 is superseded, not waiting for rebase/merge:
 main already supplies the guarded `.pt`/`.npz` registry consumer with full
 recipe-hashed names. The older branch must remain archived, not replace it.
-[#310](https://github.com/jerryyyu/shengji/pull/310) adds a creator-authenticated,
-default-off per-room W32 test gate. Its actual image and complete socket rounds
-have been tested; deployment remains pending consolidated source/image review
-and a fresh quiet-window check. MC-LCB remains the global default. The scoped
-goal authorizes designated test rooms, not an active-game interruption or resize.
+[#310](https://github.com/jerryyyu/shengji/pull/310) is merged and deployed as
+Fly release 20 after source PASS, green CI and a fresh zero-room check.
+W32 requires a creator access code; MC-LCB remains the global default. The
+public designated round completed in 604.808 seconds with no worker error.
+Move median/p95/max were 5.358/27.763/122.273 seconds: restrict access and
+investigate the long tail before broader availability. No resize or extra
+replica. [Exact rollout, measurements and rollback](W32_FLY_SERVING.md).
 
 **Remaining-stack disposition:** [#196](https://github.com/jerryyyu/shengji/issues/196#issuecomment-5589313523)
 records Claude's live-dependency check and close-only plan. Preserve exact
-source refs and results before closure; #302's leaf result is now summarized
-in `AI_POLICIES.md`. Keep #158 as an explicit equal-information research
+source refs and results before closure; #302 is closed after its leaf result
+landed in `AI_POLICIES.md` through #311. Keep #158 as an explicit equal-information research
 decision, and #307 as unresolved encoder-identity work. #272/#284/#287 still
 have unimplemented default-change requests; do not close them as stale.
 No artifacts or branches are being deleted. #200's destruction plan is

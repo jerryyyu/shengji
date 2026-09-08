@@ -12465,3 +12465,47 @@ CORRECTED PROJECTION. Mean cluster wall 1376.7/16 = **86.0 s**, and 2,296 decisi
 THIS IS THE THIRD REVISION OF THIS NUMBER IN SIX HOURS and the record should show the whole path rather than only the answer: 44 core-hours (toy net), 207 (legacy pre-#294 path), 10.45x retracted (load collapse), 167 CPU-hours / 10.4 h (2-cluster sample, ideal-scaling assumption), 19-20 h (the tail error above), and now **~96 CPU-hours / ~6 h for 4,000 clusters**. Two separate causes: a 2-cluster sample of a heavy-tailed cost, and a single-wave scaling test. Both were sample-size errors of the same species, and I had ledgered that exact species two days earlier from Codex's toy-versus-real finding.
 
 REMAINING UNCERTAINTY, stated rather than buried. The 0.5996 s/decision comes from 16 clusters, 8x more than the pricing run but still small for a cost whose per-decision driver ranges over three orders of magnitude (legal actions: median 8, p90 2,656, p99 20,758). The +2.6% work growth from 4 to 16 workers is real mild contention and does not license extrapolation past 16. And the tail returns at the END of any run, though amortised over ~250 waves it is negligible. Nobody should treat ~6 h as precise; it is the right order, which the previous figures were not.
+
+## 2026-09-08 11:40 ET — Claude (execution role): TWO checks that could not fail held the ACDEFGH chain after Run G completed
+
+Run G finished on shengji-perf at **11:20:07 ET**: 16,000/16,000 clusters, manifest verified,
+`incomplete_work: 0`, 2,345,604 decision records over 32,000 rounds, `run_id traj-s75260904-d534775fa58c`,
+seed0 75260904, `git_dirty: false`. The armed chain did not fire. Two independent defects, both mine,
+both the same shape — **a check whose failing branch was unreachable**.
+
+**1. `pgrep -f` self-match.** The gate was
+`ssh perf '... && ! pgrep -f "harvest.trajectory" >/dev/null'`. The remote `bash -c` executing that
+command carries the pattern in its own argv, so `pgrep` matched *itself*: I confirmed the hit resolves
+to PID 705293 and `ps -p` shows it is the check's own shell. The liveness clause was therefore FALSE by
+construction and the `until` loop would have spun forever, regardless of Run G. Fixed to
+`[h]arvest[.]trajectory`. Proved the repaired form discriminates rather than assuming it: rc=1 on perf
+where no harvester is live, rc=0 with a real PID (1502223) on cloud where Run I's workers are.
+This is the **third** time a self-matching process/text search has produced a false reading in this
+programme; the first two were a maintenance report that counted its own `grep` and a job census that
+did the same. The standing rule is now: any `pgrep -f` / `grep` whose pattern can appear in the
+searching process's own command line must bracket a character.
+
+**2. `ls glob | wc -l` past ARG_MAX, counting 0 as a real answer.** Step 2 verified local shard counts
+with `ls $DIR/shards/*.jsonl | wc -l`. At 16,000 paths this exceeds macOS ARG_MAX: `ls` fails with
+`argument list too long` **to stderr**, `wc -l` still succeeds and prints `0`, and the script reads that
+0 as a measurement. runH (16,000 clusters, present and complete on disk) counted as 0, so the chain
+would have aborted with `ABORT runH has 0 shards, expected 16000` the instant defect 1 was fixed.
+Fixed to `find -name "*.jsonl" -type f`. Verified against both regimes: runA (8,000 clusters) counts
+8,000 by glob *and* by find; runH counts 0 by glob and 16,000 by find. Local corpus confirmed
+A 8,000 + C 32,000 + D 32,000 + E 16,000 + F2 8,000 = 96,000, and +G +H = 128,000 as designed.
+
+Pattern-swept the whole job tree for both shapes; these were the only two sites. Chain relaunched
+11:36 ET, gate fired immediately, G syncing from perf.
+
+**The reading.** Neither bug would have surfaced as an error. The first fails silent-and-forever; the
+second fails silent-and-wrong-then-aborts on a true condition. Both were written into a waiter whose
+whole purpose is to be trusted while unattended, and both survived because I proved the *success*
+branch and never the *failure* branch. My own standing instruction already says to prove every new
+check can fail, including checks in my own specs — I applied it to specs I hand to subagents and not
+to the waiter I wrote myself. Applied to both repairs here before relaunching.
+
+Fleet at 11:36 ET: perf FREE (load 0.00, G complete). Cloud Run I 717/16,000 `.jsonl` written (~4.5%),
+2 workers, load 16.03/16 cores. Mini idle at load 1.51/10 cores pending the chain's training stage.
+Note for anyone reading shard counts: each cluster writes a `.json` **and** a `.jsonl`, so
+`ls shards | wc -l` reports exactly double the cluster count — count `.jsonl` only.
+— Claude (session `68f9c8bd`)

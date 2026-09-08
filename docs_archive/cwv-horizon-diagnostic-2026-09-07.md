@@ -3,20 +3,23 @@
 Status: development evidence; no policy/default change or deployment.
 Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
-Latest readout (22:45 EDT): **default ACDEF-v2 `3cd27716` remains the leading
+Latest readout (23:20 EDT): **default ACDEF-v2 `3cd27716` remains the leading
 experimental W32 checkpoint**. Its lower-LR counterpart has better validation
 CE but loses their completed 520-deal paired comparison by .05865 whole signed
 levels/round, exploratory 95% interval [-.10577, -.01154]. This is evidence
 against promoting that checkpoint on CE alone, not proof that CE is generally
 adverse or that the within-run epoch selector is broken.
 
-Seven checkpoints share the existing 52-root FIT probe, including preserved
+Seven checkpoints share the original 52-root FIT probe, including preserved
 H256 epoch10. Only 16 roots exercise the shortlist cutoff; the H256/H512 ties
-are not equivalence evidence. A completed input-only census prepares a
-cutoff-focused panel with 36 new roots and 16 reusable ones, without any new
-predictions. No tested horizon, diversity or selector-objective intervention
-establishes a gain. Keep finished-trick W32/K4/N30/R300 and its MC-LCB selector;
-the report-veto diagnostic remains a hypothesis, not a policy recommendation.
+are not equivalence evidence. The default/lower-LR pair now also completes a
+52-root cutoff-focused panel: 36 new roots and 16 reused without recompute.
+They change 27 retained sets but only three submitted moves. Lower LR's final
+reference delta is -.00361, interval [-.02016, +.00931]: unresolved, with a
+concrete nomination failure and a concrete improvement both retained below.
+No tested horizon, diversity or selector-objective intervention establishes a
+gain. Keep finished-trick W32/K4/N30/R300 and its MC-LCB selector; the report-veto
+diagnostic remains a hypothesis, not a policy recommendation.
 
 The #294/#296 engineering stack has exact natural-trajectory parity and
 25.7% less observed shortlist wall in a small contended-host window. PR #298
@@ -953,17 +956,110 @@ Submitted-action counts are not distinct effective actions in sampled worlds.
 Selection controls exclude smaller ballots and ignore outcome/model-score
 fields. This does not create more independent games or open validation data.
 
-The prepared panel is conditional on cutoff eligibility, not representative
-natural-frequency or fresh gameplay evidence. No new-model comparison has
-run on it yet. For the selected width follow-up, reuse compatible scores,
-choices and reference values at the 16 overlapping roots, then evaluate only
-missing roots/columns on common per-root worlds and candidate unions. Do not
-replay completed work merely because the parent panel hash changed or pool
-overlapping panels as independent evidence.
+The panel is conditional on cutoff eligibility, not representative
+natural-frequency or fresh gameplay evidence. The completed two-model run
+below reuses compatible scores, choices and reference values at the 16
+overlapping roots and evaluates only 36 missing roots. A future width follow-up
+must similarly evaluate only missing roots/columns on common per-root worlds
+and candidate unions. Do not replay completed work merely because the parent
+panel hash changed or pool overlapping panels as independent evidence.
 
 Evidence: `cwv-cutoff-census.pKF8V6/{census.py,rows.jsonl,summary.json,prepare_panel.py,panel.json}`;
 panel SHA256 `048672b5df256dceaf788af9bde45e405c2cb0ac936c894ba443c758cbf81e33`.
 All 26 Luna validation deals remain unopened by this audit.
+
+### Completed cutoff-focused default / lower-LR comparison
+
+Both frozen models use W32/K4/N30/R300, finished-trick leaves and 1,024 shared
+reference worlds per root. Lower LR uses immutable selected epoch7 `38b01331`,
+whose parameter tensors/configuration were already reconciled exactly with
+the gameplay alias `8d92dd6e`. There are 52 roots from 26 source deals, all with
+at least six legal submitted actions. No further width/outcome filter is used.
+
+| Checkpoint | Union coverage regret | MC selection regret | Final reference gain over incumbent |
+|---|---:|---:|---:|
+| Default `3cd27716` | .003080 | .018567 | +.071352 |
+| Lower LR `38b01331` | .008126 | .017127 | +.067746 |
+
+Lower LR minus default final value is **-.003606**, exploratory paired-deal
+95% interval **[-.020157, +.009315]**. This uses equal deal weighting after
+averaging selected roots, 10,000 bootstrap draws, seed20260907. The small
+negative point estimate agrees with gameplay ordering but does not resolve
+the mechanism of the 520-deal loss. Reference utilities are model half-integer
+signed levels under native heuristic continuations, not gameplay whole levels,
+optimal play, or realized values in the one recorded hidden world.
+
+Coverage is relative to the common union of the two shortlists, including
+their shared incumbent, not the exhaustive legal set. The generic new-root
+runner saves additional production-ballot reference columns; those columns
+are excluded here to match the old roots' union scope. Each root uses the
+same worlds for both models; old/new roots retain their respective RNG domains.
+These domains sample the same distribution and are not comparison arms.
+
+**27/52 retained sets change, but only 3/52 submitted moves change.** Another
+16 cases have the same retained set in a different order; none changes the
+submitted move. All changed moves, not only favorable examples, are recorded:
+
+| State prefix | Legal actions | Default → lower-LR submitted action | Lower-LR reference delta | Trace |
+|---|---:|---|---:|---|
+| `135415ba` (new) | 5,016 | H10/ HK/ S10/ SJ → H10/ H7/ HK/ S10 | -.174805 | Lower LR spends trump H7 in all four alternatives; default retains it. Both chosen moves pass the report gate. |
+| `0d60e643` (new) | 7 | D7 → D6 | +.000977 | Near tie under the reference; both report gaps are 4.4 points. |
+| `027c6f02` (reused) | 66 | CA → BJ | +.242188 | Lower LR includes the useful BJ single omitted by default; the existing report gate then accepts it. |
+
+At rank7 state `135415ba`, default/lower-LR report LCBs are +8.014 / +4.985
+points. Coverage regret worsens by .177734 while selection regret improves
+by .002930, summing exactly to the -.174805 final delta. This particular loss
+comes from the retained action family, not vetoing the better retained move.
+It does not establish a general rule never to spend that trump. The favorable
+BJ case is the previously identified old-panel example, not fresh confirmation.
+
+For the 36 new roots only, lower LR's per-world prediction MAE and action-mean
+MAE are worse by .01898 and .02384 respectively; both paired-deal intervals
+include zero. Old 64-world prediction errors use another union and are not
+pooled with these values. Do not treat a narrow FIT metric as a demonstrated
+offline replacement for gameplay; the original panel's ordering already failed
+to predict this pair's gameplay ordering.
+
+Execution completed 52/52 with 16 roots reused without inference/rollouts.
+The 36 new roots cost 249.40 summed state-wall seconds on one nice19 CPU worker;
+peak RSS was 405,848,064 bytes. A 600-second invocation deadline was not reached.
+This uses the existing native audit producer `20605956` before #294/#296 and
+is not a speed benchmark of the optimized consumer. Live training was preserved.
+Read-only adapter witnesses reject changed retained reference values and prove
+an extra out-of-union column cannot alter coverage; per-root arithmetic checks
+bind final delta to the sum of coverage/selection deltas.
+
+Evidence: `cwv-cutoff-pair.Ap2jCh/{README.md,run_pair.py,analyze_pair.py,run/,analysis.json}`;
+configuration SHA256 `8f71bc45f17cac01b287ea0136d674da0452426d7d382e064642d20f94ad8a41`.
+Atomic outputs preserve all positions and the three changed decisions.
+
+### Offline selection: useful proxies, not a new proven promotion metric
+
+The completed default/lower-LR receipts show CE .621821 → .610583 while recorded
+validation top-four regret worsens .0380903 → .0384375. This is consistent with
+their gameplay ordering, but the small regret difference has no demonstrated
+precision or predictive validity. Those stored-ballot metrics rank true-world
+afterstates using U(E[points]); they do not rank all legal actions across W32
+worlds, include production's incumbent, or estimate E[U] from per-world returns.
+The earlier epoch audit also found default's CE-selected epoch already minimizes
+its recorded top-four regret. Simply changing the selector is not an established
+repair.
+
+Keep CE for outcome-distribution fit and training diagnostics. For search-facing
+nomination, report actual retained-set coverage regret; for final policy use,
+report the MC-selected move's reference regret. Pairwise advantage error helps
+separate state-value calibration from ordering useful alternatives, with a
+zero-advantage control to expose gains driven by nearly tied actions. Evaluate
+on common states/worlds, preserve the incumbent, match the deployed horizon,
+and state the candidate-union/continuation scope. Report cutoff-eligible and
+natural-frequency populations separately, clustered by independent source deal.
+
+Use the completed screens only to nominate a simple candidate proxy, not to fit
+a flexible composite and claim validation on the same reused results. Check its
+ordering on a future frozen checkpoint and fresh gameplay before replacing
+gameplay screening. Differing recipes' own validation populations are not a
+common benchmark. The two-model cutoff diagnostic does not supply enough
+independent checkpoints or games to settle that metric choice.
 
 ## Incremental unused-Memory optimization
 

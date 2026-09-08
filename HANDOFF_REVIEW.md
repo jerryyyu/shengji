@@ -12416,3 +12416,32 @@ WHAT SURVIVES AND WHAT DOES NOT:
 - **Any absolute wall projection from the 1-worker rate is void.** At 16 workers and 8.16 dec/s the honest projection for 4,000 deal-clusters is roughly **19-20 hours wall**, and for a Run-H-sized 16,000 clusters roughly **four times that**. The 167 CPU-hours figure was itself computed from the 2-cluster rate and should be treated as provisional to the same degree.
 
 THE LESSON, and it is one already in this ledger in another form: this programme has repeatedly been bitten by measuring a heavy-tailed quantity on a small sample -- Codex's toy-versus-real comparison failed for exactly this reason (1,226 versus 44,429 follow actions), and I recorded that finding two days ago and then made the same error myself with n=2. A cost measurement for the shortlist needs a deal sample large enough to cover the tail, not four rounds.
+
+## 2026-09-08 — Claude: the width ladder is COMPLETE. Width is null across 14.7x of parameters; the lr result firms back up
+
+All four rungs trained and screened, `ALL_CAPACITY_SCREENS_DONE` 06:40 ET. Every arm holds A+C+D+E+F2, encoder v2, lr 1e-4, 20-epoch budget, seed and selector fixed, with width the only variable. Deal identity verified across all five arms: **0 mismatches over 520 clusters**.
+
+| width | params | val_ce | vs production, 520 clean deals | wall |
+| --- | --- | --- | --- | --- |
+| 256 | 272,716 | 0.6119 | +0.0721 [+0.0269, +0.1192] | 3.07x |
+| 512 | 611,000 | 0.6106 | +0.0673 [+0.0231, +0.1125] | 3.58x |
+| **1024** | 1,483,000 | **0.6066** | **+0.0923 [+0.0490, +0.1375]** | 3.43x |
+| 2048 | 4,015,000 | 0.6083 | +0.0500 [+0.0038, +0.0962] | 4.97x |
+| *512 at default lr* | 611,000 | 0.6218 | **+0.1260 [+0.0798, +0.1712]** | 4.37x |
+
+**WIDTH IS NULL. All six paired width contrasts cross zero**, across a **14.7x parameter range** (273k to 4.0M): 2048−1024 = −0.0423 [−0.0865, +0.0019], 1024−512 = +0.0250 [−0.0163, +0.0683], 512−256 = −0.0048 [−0.0548, +0.0442], and the rest likewise. Per Codex's narrowing (bus 808) this is *no resolved gain*, NOT proof capacity cannot help: the widest interval admits a true effect up to +0.068. What it does say is that four points spanning 14.7x of capacity produced nothing this instrument can see.
+
+**2048 IS THE CLEAN LOSER AND IT IS INSTRUCTIVE.** It is second-best offline (0.6083, better than both 256 and 512) and **worst in search** (+0.0500), while costing the most (4.97x wall). More parameters, better validation loss, worse play, higher price. That is the programme's central pattern in a single row.
+
+**THE lr-1e4 RESULT FIRMS BACK UP, having weakened three hours ago.** At `2b6c0344` I qualified my replication claim because the third rung (1024) crossed zero. The fourth rung is now in, and against the default-lr checkpoint on the same deals:
+
+| width at lr 1e-4 | minus default-lr |
+| --- | --- |
+| 256 | −0.0538 [−0.1048, −0.0038] **resolves worse** |
+| 512 | −0.0587 [−0.1058, −0.0106] **resolves worse** |
+| 1024 | −0.0337 [−0.0827, +0.0163] crosses zero |
+| 2048 | −0.0760 [−0.1240, −0.0269] **resolves worse** |
+
+**Four independently trained models at lr 1e-4; all four point estimates negative; three of four resolve.** The one that does not is the middle of the range, not an edge, so it does not read as a trend boundary. This is stronger than the two-point claim I over-reached on at 04:30 and stronger than the qualification I issued at 03:30 -- and it is still subject to Codex's standing caveat (bus 805) that these share deals, seeds and baseline, so it is replication across ARCHITECTURES, not across populations. A fresh seed window remains the untaken test.
+
+WHAT THIS SETTLES FOR THE PROGRAMME. Capacity is not the lever, anywhere in 273k-4.0M. The default-lr checkpoint `3cd27716` remains the best arm ever screened at +0.1260 and remains Jerry's teacher choice; no width rung approaches it. The cheapest rung (256, 3.07x) matches the 512 rung it replaces, so if a cheaper consumer is ever wanted, halving the net costs nothing measurable.

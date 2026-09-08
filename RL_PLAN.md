@@ -244,18 +244,37 @@ probability, never silently promoted to a deduction.
 
 ## R4 and R5
 
-### R4: terminal — `NO_PRIMARY_POLICY_SIGNAL`
+### R4: closed — offline control failure, then no DEV policy signal
 
-R4 is closed (ledger 2026-08-31). Offline, the preserved synthetic-primary
-cohort reduced held-out count Brier by 21.40% versus REF-C, but the
-permuted-label control also improved materially and failed on demand — a
-predictive channel, not behavioral belief learning. On the opened-DEV
+R4 is closed (ledger 2026-08-31). Its original one-shot synthetic test was
+opened and scored: the preserved synthetic-primary cohort reduced count
+Brier by 21.40% versus REF-C, but the permuted-label control also improved
+materially and failed on demand — a predictive channel, not established
+behavioral belief learning. The outer run refused with
+`REFUSE_INCOMPLETE_OR_INTEGRITY` (`recomputed-resource-cap-exceeded`);
+that refusal does not erase the retained inner result. Separately, #179's DEV
 consumer diagnostic (104 rounds, identical ballot/work/RNG), belief weighting
 was operationally indistinguishable from the production sampler: ESS 97–99.5%
 of maximum, final-action flips 1/104 (control 0/104), paired true-world value
-difference exactly zero for both primary−production and primary−control. The
-sealed R4 test population was never opened and stays sealed. R4 checkpoints
-are preserved as diagnostics only.
+difference exactly zero for both primary−production and primary−control,
+with terminal `NO_PRIMARY_POLICY_SIGNAL`. Its `r4_test_opened=false` means
+that diagnostic did not reopen the original test, not that the original
+offline run never scored it. R4 checkpoints remain diagnostics only. The
+original synthetic test population is spent: it cannot be reused as a fresh
+held-out confirmation surface. Any later confirmatory work needs a new,
+disjoint population; retained test results remain available as diagnostics.
+
+Preservation and source retirement are tracked in [issue #217's disposition
+table](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5587369543)
+and [independent review](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5587402153).
+All 18 exact PR heads have permanent archive tags; close-only retirement is
+reviewed, with closures pending. The Mini backup at
+`~/shengji-archive/belief-retirement-2026-09-08/archive.DEOqfr` contains
+172 verified files (351,121,574 bytes), including 32 checkpoints and retained
+results/manifests; all 172 source/destination hashes matched. This is a
+minimal preservation set, **not a full dataset backup**: large capture,
+reference and cache artifacts remain upstream on Perf Cloud under
+`/opt/belief-*`. Do not delete those artifacts or archive tags.
 
 ### R5: closed unless an oracle-belief probe justifies reopening
 

@@ -44,68 +44,83 @@ def test_a_checkpoint_with_no_declared_version_is_v1():
     assert ev.enc_version == 1
 
 
-def test_predict_round_encodes_at_the_models_own_version():
-    """The legacy single-round API must follow the checkpoint, not the frozen v1.
+# ---- the version dispatch must hold through BOTH public inference entry points.
+# Fixing predict_round alone left score_actions feeding 532-wide rows to a
+# 561-wide net (Codex, bus 795/796), so both are witnessed here and the shared
+# helper is asserted to be the single source of the rule.
 
-    ``predict_round`` called the frozen v1 builder unconditionally, so once v2
-    checkpoints existed it fed 532-wide rows to a 561-wide net. Codex found this
-    while reviewing the default flip (bus 792).
-    """
-    import numpy as np
-    from shengji.rl import value_inference
+import pytest
 
-    seen = {}
 
+def _model(version):
     class Cfg:
-        enc_version = 2
+        enc_version = version
 
     class Model:
         config = Cfg()
-
-    def fake_v1(rnd, seat):
-        seen["called"] = 1
-        return "v1-tensors"
-
-    def fake_v2(rnd, seat, *, version):
-        seen["called"] = version
-        return "v2-tensors"
-
-    import shengji.rl.value_afterstate_v2 as v2mod
-    orig_v1 = value_inference.tensors_from_round
-    orig_v2 = v2mod.tensors_from_round
-    orig_pt = value_inference.predict_tensors
-    value_inference.tensors_from_round = fake_v1
-    v2mod.tensors_from_round = fake_v2
-    value_inference.predict_tensors = lambda m, t, device="cpu": [t[0]]
-    try:
-        got = value_inference.predict_round(Model(), object(), 0)
-    finally:
-        value_inference.tensors_from_round = orig_v1
-        v2mod.tensors_from_round = orig_v2
-        value_inference.predict_tensors = orig_pt
-    assert seen["called"] == 2, "a v2 model must not be encoded by the v1 builder"
-    assert got == "v2-tensors"
+    return Model()
 
 
-def test_predict_round_still_uses_v1_for_a_v1_model():
+@pytest.mark.parametrize("version", [1, 2])
+def test_the_shared_helper_encodes_at_the_models_own_version(version, monkeypatch):
     from shengji.rl import value_inference
+    import shengji.rl.value_afterstate_v2 as v2mod
 
     seen = {}
 
-    class Model:
-        config = type("C", (), {"enc_version": 1})()
+    def v1(r, s):
+        seen["v"] = 1
+        return "v1"
 
-    def fake_v1(rnd, seat):
-        seen["called"] = 1
-        return "v1-tensors"
+    def v2(r, s, *, version):
+        seen["v"] = version
+        return "v2"
 
-    orig_v1 = value_inference.tensors_from_round
-    orig_pt = value_inference.predict_tensors
-    value_inference.tensors_from_round = fake_v1
-    value_inference.predict_tensors = lambda m, t, device="cpu": [t[0]]
-    try:
-        assert value_inference.predict_round(Model(), object(), 0) == "v1-tensors"
-    finally:
-        value_inference.tensors_from_round = orig_v1
-        value_inference.predict_tensors = orig_pt
-    assert seen["called"] == 1
+    monkeypatch.setattr(value_inference, "tensors_from_round", v1)
+    monkeypatch.setattr(v2mod, "tensors_from_round", v2)
+    got = value_inference.tensors_for_model(_model(version), object(), 0)
+    assert seen["v"] == version
+    assert got == ("v1" if version == 1 else "v2")
+
+
+def test_a_model_with_no_declared_version_is_v1():
+    from shengji.rl import value_inference
+
+    class Bare:
+        config = object()
+    assert value_inference.model_enc_version(Bare()) == 1
+    assert value_inference.model_enc_version(object()) == 1
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_predict_round_routes_through_the_shared_helper(version, monkeypatch):
+    from shengji.rl import value_inference
+
+    calls = []
+    monkeypatch.setattr(value_inference, "tensors_for_model",
+                        lambda m, r, s: calls.append(value_inference.model_enc_version(m)) or "T")
+    monkeypatch.setattr(value_inference, "predict_tensors",
+                        lambda m, t, device="cpu": list(t))
+    assert value_inference.predict_round(_model(version), object(), 0) == "T"
+    assert calls == [version]
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_score_actions_routes_through_the_shared_helper(version, monkeypatch):
+    """The sibling API. This is the one that stayed broken after the first fix."""
+    from shengji.rl import value_inference
+
+    calls = []
+
+    class Succ:
+        phase = "play"
+
+    monkeypatch.setattr(value_inference, "apply_action",
+                        lambda rnd, seat, action: (Succ(), tuple(action)))
+    monkeypatch.setattr(value_inference, "tensors_for_model",
+                        lambda m, r, s: calls.append(value_inference.model_enc_version(m)) or "T")
+    monkeypatch.setattr(value_inference, "predict_tensors",
+                        lambda m, t, device="cpu": [object() for _ in t])
+    value_inference.score_actions(_model(version), object(), 0, [["S5"]])
+    assert calls == [version], "score_actions must encode at the model's version too"
+

@@ -24,7 +24,7 @@ diagnostic remains a hypothesis, not a policy recommendation.
 The #294/#296 engineering stack has exact natural-trajectory parity and
 25.7% less observed shortlist wall in a small contended-host window. PR #298
 separately proposes another 2.44% fixed-state reduction; it is not yet merged.
-The teacher-collection fixes in PR #299 now pass source review. Neither
+The teacher-collection fixes in PR #299 are now merged at `d23c084d`. Neither
 better-teacher data nor model-width scaling has a completed learning result
 yet. ACDEF-v1 remains the lower-measured-cost comparator. No deployment or
 controlled equal-wall strength claim follows from these results.
@@ -514,9 +514,11 @@ registration now refuses, and using a supported knob no longer records a
 second shortlist bot's ballot as production's. Re-review passed 27 focused
 tests plus the actual compiled collector on the original FIT witness: its
 recorded production ballot exactly matches independently constructed MC-LCB.
-The replacement guard compares 8-hex checkpoint IDs, not full digests; full-SHA
-binding is nonblocking hardening, not an already-proven collision guarantee.
-No collection was launched by the review. These source fixes do not change
+The reviewed `6efef18f` replacement guard compared 8-hex checkpoint IDs. The
+subsequent `ffd986ef` hardening now compares the full loaded checkpoint digest
+to the digest captured at registration; that delta and the actual merge
+`d23c084d` were independently inspected. No collection was launched by this
+review. These source fixes do not change
 the earlier fixed-recipe optimization evidence or demonstrate training gains.
 
 Keep the horizon, effective-action diversity and selector objective unchanged:
@@ -1060,6 +1062,59 @@ ordering on a future frozen checkpoint and fresh gameplay before replacing
 gameplay screening. Differing recipes' own validation populations are not a
 common benchmark. The two-model cutoff diagnostic does not supply enough
 independent checkpoints or games to settle that metric choice.
+
+### Six-checkpoint proxy check, with no new inference
+
+The existing width-reference cache provides one fixed action union on all
+52 original FIT roots/24 deals. Recompute coverage, selection and final regret
+from the saved action means and fixed choices for all six checkpoints with
+completed 520-deal gameplay. Bind each diagnostic checkpoint to its gameplay
+identity; the lower-LR epoch/final alias uses the retained exact tensor
+reconciliation. No new outcomes, checkpoints or policy choices are selected.
+
+| Checkpoint | FIT coverage regret | FIT selection regret | FIT final regret | Gameplay vs production |
+|---|---:|---:|---:|---:|
+| ACD v1 | .003764 | .009399 | .013163 | +.04808 |
+| ACD v2 | .012573 | .011271 | .023844 | +.09904 |
+| ACD v2 LR1e-4 | .005086 | .013123 | .018209 | +.09712 |
+| ACDEF v1 | .001709 | .011454 | .013163 | +.08750 |
+| Default ACDEF v2 | .005005 | .013204 | .018209 | +.12596 |
+| ACDEF v2 LR1e-4 | .001953 | .011210 | .013163 | +.06731 |
+
+Lower FIT regret is better; higher gameplay is better. Their units differ
+(model half-level reference versus whole gameplay levels): compare orderings,
+not absolute magnitudes. The reference union includes previously nominated
+immediate/diverse actions; it is fixed across all rows/models and not exhaustive.
+Every reconstructed metric agrees with the previously published reference
+summary. The table reuses completed readouts rather than rescoring gameplay.
+
+**This small panel does not reliably rank the screened checkpoints either.**
+ACD v1, ACDEF v1 and ACDEF-v2 lower LR have identical final reference values
+at all 52 roots, yet different gameplay means. Default ACDEF v2 and ACD-v2
+lower LR tie in aggregate final regret despite different gameplay means.
+This does not establish those gameplay gaps as significant; it falsifies the
+claim that these diagnostic point estimates reproduce the observed ordering.
+
+The original panel has only 16 roots where K4 plus incumbent excludes any
+legal action, and the reference follows a fixed heuristic rather than each
+model's ongoing W32 policy. The newer two-model cutoff panel improves action
+coverage but still uses the same small pool of Luna source deals. Those are
+reasons to improve the diagnostic population/continuation match, not proof
+of which mismatch explains each loss. Do not fit a correlation/composite to
+six dependent checkpoints and call it a validated selection metric.
+
+Next use input-only selected states from the already-planned W32 trajectory
+collection, distributed across more independent FIT deals; preserve the
+generator/checkpoint and continuation identity. No additional bulk collection
+or screen replay is requested for this. Keep the old panels for mechanism
+debugging and reuse their frozen cells for width comparisons. A future
+prediction of gameplay ordering needs a prospectively held checkpoint/deal
+comparison, not another retrospective metric chosen for these six numbers.
+
+Evidence: `cwv-epoch-selection.67bjlx/{compare_search_proxies.py,search-proxy-comparison.json}`.
+The read-only script checks metric decomposition, selected-action membership,
+per-deal aggregation, model identity and all 52 saved result rows. It reads
+60 small existing evidence files, with no engine/model import or new rollout.
 
 ## Incremental unused-Memory optimization
 

@@ -12353,3 +12353,29 @@ RUN H COMPLETE, verified rather than taken from the wrapper's log line. Codex fl
 That is 32,000 mirrored rounds of production-policy teacher data, the second of the two runs Jerry chose to keep on 2026-09-07. Run G continues on Perf at 11,111/16,000 (69.4%).
 
 COMPUTE HANDOVER. Under Jerry's standing rule that data generation yields to strength work, Codex took the freed Cloud box at 03:59 ET for the PR #302 points-leaf gameplay comparison (reviewed head `8d7ed763`, 2x8 workers, 52 deals per checkpoint, 7,200s operational bound, shards retained). They verified Run H's actual rc and idle host before launching rather than trusting the wrapper. My shortlist-teacher generation remains queued behind them and still needs Jerry's explicit go.
+
+## 2026-09-08 — Claude: the shortlist teacher price, finally measured on the box that would run it
+
+Every previous figure for this was wrong or unusable, so here is the one that is neither, with the earlier attempts named so the record shows the correction rather than only the answer.
+
+MEASURED on shengji-cloud, 16-core Linux, the host generation would actually use, at 08:14-08:26 UTC on an idle box (load 0.16). Tree cloned at current main `5ab631bb` and verified to carry the runner, #294 and #296; fast engine built there; checkpoint copied and hash-verified end to end as `3cd27716` on both sides; policy resolved through the code rather than a hardcoded name, `mc-shortlist-3cd27716-w32-r55d379a3`, and asserted to be a `CWVShortlistBot` before timing. Counterbalanced A,B,B,A, one worker, scratch seed registry refreshed per arm.
+
+| arm | sec/decision | reps | spread |
+| --- | --- | --- | --- |
+| shortlist W32 | **1.2303** | 1.2212, 1.2394 | 1.5% |
+| production MC-LCB | **0.1787** | 0.1782, 0.1791 | 0.5% |
+
+**RATIO 6.89x. 8,000 rounds at 61 decisions/round = 167 core-hours = 10.4 hours wall on 16 cores.**
+
+Both arms are tight, which is what makes this usable: the Mini attempts failed precisely because one arm moved 51% while the other held still. Nothing here needed discounting.
+
+THE CORRECTION TRAIL, because I quoted four different numbers to Jerry in a day:
+- **44 core-hours**: the original extrapolation, from a subagent's smoke against a throwaway 32-wide MLP. Wrong; the net was not the real one and the deals were not comparable.
+- **11.49x / 207 core-hours**: real checkpoint, but on a tree predating #294, so v2 took the full-history reference builder while reporting `mlp-static`. Codex caught that; it measures the legacy path, not the achievable one.
+- **10.45x**: merged main on the Mini, RETRACTED — the shortlist arm's two reps were 0.8060 and 1.2197 while production's were 0.0962 and 0.0977, so the box load collapsed mid-measurement and counterbalancing did not cancel it.
+- **8.30x**: optimized tree on the Mini. Sound, but on a 10-core M4 under an MPS training job, which is not where generation runs.
+- **6.89x on cloud**: the operative number.
+
+WHY THE RATIO FELL FROM 8.30x TO 6.89x, stated as INFERENCE not measurement: production is slower per decision on this host than on the Mini (0.1787 against 0.1367) while the shortlist is comparable (1.2303 against 1.1354). So the Linux box appears slower per core than the M4 for the production path, which compresses the ratio. The ratio is what transfers between hosts, not either absolute; I am not claiming the shortlist got faster.
+
+WHAT THIS DOES NOT SETTLE. It is a 4-round, 2-cluster smoke at one worker. It says nothing about multi-worker scaling, which is what an 8- or 16-worker generation run would actually experience, and nothing about whether shortlist-generated data trains a better model -- the only reason to spend the 167 hours. Generation remains unlaunched and still requires Jerry's explicit go.

@@ -1,10 +1,10 @@
 # PT-Luna batching: direct paired gameplay
 
 Source-only follow-up to #261/#262, using the existing Luna game, compact
-provider transport, and turn validator. No provider call or token grant is
-implied by this document. Jerry approved the 6M-token/three-hour ceiling for
-the earlier snapshot diagnostic on September 6; it is not a budget estimate
-for this larger gameplay comparison, which still needs sizing.
+provider transport, and turn validator. The September 6 tranche amendment
+below is the next proposed execution: complete mirrored games, not another
+snapshot or capacity test. It does not turn the earlier snapshot budgets into
+an unlimited gameplay budget. No provider call is launched by this document.
 
 ## What this measures
 
@@ -44,10 +44,12 @@ validation-only; all descendants inherit their root's split. Source capture
 status cannot be used to select easy or winning roots when a valid bound root
 is available.
 
-There are **52 independent deals and 104 correlated mirrored games**, not
-104 independent observations. This is a fixed comparison roster, not an
-assertion that 52 deals can prove equivalence. In particular, failure to find
-a difference is not evidence that batching preserves strength.
+The larger comparison roster has **52 independent deals and 104 correlated
+mirrored games**, not 104 independent observations. The explicitly named first
+tranche selects eight roots before gameplay. Completing its 16 games must not
+be reported as completing the larger roster. Neither eight nor 52 deals is
+automatically sufficient to prove equivalence; failure to find a difference
+is not evidence that batching preserves strength.
 
 The scheduler operates on fixed waves of **eight** independent coordinates.
 Since two arms share these games, using just four live games would tend to
@@ -61,15 +63,100 @@ mirrors, while the provider arm stays bound to agent identity. One provider
 process is active at a time, as in the measured batching pilot. Scheduling
 order is fixed in the run inputs, not adjusted in response to wins or losses.
 
-Before any launch, record the explicit token/wall ceiling and forecast the
-whole 104-game workload from observed raw-token usage and wall cost. Report
-uncertainty and the minimum detectable paired difference using deal-level
-variance from the available matched data. The prior four-deal pilot is not
-adequate evidence to claim precision. If the proposed budget cannot cover
-the roster, resolve that **before** calls; do not silently shrink the roster
-or promise a powered answer from an affordable subset.
+Before each tranche, record its exact roster and token/wall ceiling. Report
+uncertainty using complete deals, not decisions as independent observations.
+The old snapshot variance is not a full-game power estimate. Use actual
+paired-game variance and cost to price the remaining experiment; do not require
+a conclusive early strength result before collecting more games. An unaffordable
+roster is resolved before calls, not silently shrunk after seeing outcomes.
 
 ## Existing path, recovery and data
+
+### September 6 amendment: start with actual complete paired games
+
+The full-game collector is already merged in #270. The only new execution
+surface is an explicit coordinate selector after verifying the original full
+panel. The selected roster is bound before calls. No provider, scheduler,
+model, prompt, tool, retry or decision-rule rewrite is part of this amendment.
+
+First tranche: these eight `(rank, banker, replicate)` coordinates, selected
+for coverage before observing gameplay outcomes:
+
+```json
+[["2",0,0],["3",1,1],["4",0,0],["5",1,1],["6",0,0],["7",1,1],["8",0,0],["9",1,1]]
+```
+
+This gives eight independent deals, 16 full games with swapped teams, four
+fit and four validation roots, and one full eight-coordinate scheduling wave.
+Both teams are genuine play-only Luna throughout every game. The first tranche
+does not cover all ranks or guarantee no-trump coverage. Actual suits/NT and
+completed pairs are reported. Subsequent tranches take the unselected source
+coordinates in their verified original order, without replacement or choosing
+roots based on wins. Source snapshot comparisons are already opened; this is
+a DEV gameplay experiment, not fresh confirmatory evidence.
+
+Planning forecast: about **7.0M raw tokens and 3.5 hours** for the 16 games,
+scaling the completed fresh diagnostic's per-decision rates and the prior
+63.3 decisions/game. This is not a full-game measurement. The first-tranche
+admission limits are **9M reported/reserved tokens, 18,000 seconds total,
+120 seconds per provider call**, one provider at a time on Mini. The longer
+call allowance applies equally to both arms; the earlier diagnostic had one
+90-second compact timeout. It is not a promise that refusals disappear or
+that provider billing is bounded exactly by reservations.
+
+This work does not use the MPS training device. Use the pinned known-good
+Codex binary and a virtualenv installed in the executing checkout. Wait for
+the current historical comparison's provider process to finish; its readout
+uses a separate short CPU task. No additional provider-based rehearsal or
+capacity census precedes these actual games. One consolidated review covers
+the selector, its real-consumer tests and this exact first-tranche plan.
+
+The committed selector is `runs/luna_quality_gameplay_tranche1_20260906.json`.
+The existing private source panel is
+`/Users/jerryyu/.shengji-runs/luna-quality-panel-20260906.sl6QAC`, manifest SHA256
+`6c7f553a670bbc91a2f23a14f27ee0aa287a9e27017b6f16cf8c4d35eff0dcb3`.
+From the reviewed checkout's `server/`, after its own `uv sync --frozen` and
+native extension build, the single launch command is:
+
+```sh
+SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 \
+.venv/bin/python -u -B -m scripts.luna_quality_games \
+  --panel-root /Users/jerryyu/.shengji-runs/luna-quality-panel-20260906.sl6QAC \
+  --coordinates-file runs/luna_quality_gameplay_tranche1_20260906.json \
+  --out NEW_PRIVATE_GAMEPLAY_ROOT \
+  --codex-binary /Users/jerryyu/.local/share/codex-0.149.0/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex \
+  --tokens 9000000 --wall-seconds 18000 --call-seconds 120
+```
+
+`NEW_PRIVATE_GAMEPLAY_ROOT` is a fresh private directory recorded at launch;
+it never aliases the current historical run. The CLI executable SHA256 is
+`f4a74117b8142cda581c95ff753abf4508b5636d89682c1ed77e4a9249af8963`.
+Record the actual source/runtime identity and command there. This is DEV, not
+an additional immutable-freeze or capacity-review step.
+
+Each tranche has its own output root/configuration. Same-roster recovery replays
+saved accepted responses without new provider calls and retains the original
+budget/deadline. A larger or different roster is **not** a resume: it gets a new
+run root over previously unused coordinates. Combine completed game receipts
+and provenance across tranches, never transplant/relabel call files. A partial
+tranche stays partial; no failed deal is replaced and no timeout discards the
+other completed games. Terminal aggregation remains a small-receipt readout,
+not a second gameplay replay.
+
+The first tranche's deliverables are full trajectories, actual whole-game
+token/wall cost and completion rate, and a descriptive paired strength estimate
+with its uncertainty. It need not establish equivalence or a winner to be useful.
+Price the remaining 44 deals from that evidence and use the observed deal-level
+variance to state the precision we can afford. Do not repeatedly open nominal
+95% intervals until one is positive and call that confirmation. All completed
+tranches, ties, losses, failures and partial trajectories remain in the ledger;
+any later confirmatory claim needs a separate fixed analysis plan.
+
+This amendment is an explicit staged launch, not a claim that the larger
+teacher-quality objective is finished after eight deals. Jerry has requested
+and authorized bounded Luna experimentation/token spending; a review verifies
+this plan and source, it does not manufacture user authority or authorize an
+automatic 45.4M-token continuation.
 
 Provider outputs pass through the existing compact parser and `TurnDriver`;
 the scheduler never directly turns model prose into an engine action. Every
@@ -135,11 +222,12 @@ allocation inside one batch is an accounting split, not measured per-position
 usage. Incomplete mirrored pairs cannot enter a complete-pair strength claim.
 Report partial evidence as partial, including possible completion bias.
 
-Before execution: finish source and real-engine/recovery witnesses, one
-consolidated source review, and an explicit affordable launch budget. After
-this batching comparison: the separately named rollout-enabled teacher
-bridge and any larger confirmation. No production deployment or automatic
-data/model promotion follows from either source approval or a DEV result.
+The base collector and its engine/recovery witnesses are merged in #270.
+Before the first tranche: one consolidated selector/source + named-run review,
+using the budget above. The separate historical-teacher bridge is already
+running under #275; it is not a requirement that its difference be statistically
+conclusive before actual gameplay can proceed. No production deployment or
+automatic data/model promotion follows from source approval or a DEV result.
 
 ## Cost evidence, not a launch estimate
 
@@ -179,3 +267,19 @@ allowance and expected complete-pair count in this packet before its one
 consolidated launch review, not after burning a gameplay budget. A completed
 schedule containing refusals has a distinct status and is not a complete
 104-game panel or evidence of equivalence.
+
+## Validation for the tranche amendment
+
+The focused gameplay, tranche and small-receipt readout suite passes **28 tests**
+in pure Python and compiled-engine mode. The new CLI witness verifies the full
+52-root source panel, selects the committed eight coordinates, runs all 16 real
+engine games through a fake provider, and reaches the saved per-game receipts
+and eight-pair readout. It checks four-slot batching, mirrored assignments,
+split/roster provenance and explicit `complete-tranche` rather than full-panel
+completion. This is wiring evidence, not teacher quality or provider throughput.
+
+Invalid/duplicate/unknown selectors refuse before provider construction; a JSON
+`null` cannot accidentally select the whole panel. Changing the actual bound
+roster refuses in the existing `Pilot.configure` path. Removing a declared
+complete tranche's terminal receipt fails the real readout. The existing
+provider/refusal/partial-evidence recovery witnesses remain in the same suite.

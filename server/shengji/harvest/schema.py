@@ -60,6 +60,10 @@ preference            self-play generator records only: the preregistered
                       ``trajectory`` ``allocation`` (kind ``search-work``) is
                       the search's fixed-design work split, NOT a preference;
                       see ``trajectory.py`` for the exact definition.
+provenance            luna-quality records: original config/root identity,
+                      fit/validation membership, mirror, acting teacher arm,
+                      and the mixed play-only continuation. These are source
+                      labels, NOT historical-teacher or training eligibility.
 
 Conventions
 -----------
@@ -137,6 +141,30 @@ def _is_action_list(value: Any) -> bool:
     return isinstance(value, list) and all(_is_card_list(a) for a in value)
 
 
+def _quality_provenance_valid(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+            "config_sha256", "root_sha256", "coordinate", "mirror", "split",
+            "model", "effort", "tools", "continuation", "teacher_arm"}:
+        return False
+    for key in ("config_sha256", "root_sha256"):
+        digest = value[key]
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(c not in "0123456789abcdef" for c in digest)):
+            return False
+    coordinate = value["coordinate"]
+    if (not isinstance(coordinate, list) or len(coordinate) != 3
+            or coordinate[0] not in ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
+            or type(coordinate[1]) is not int or coordinate[1] not in (0, 1)
+            or type(coordinate[2]) is not int or coordinate[2] not in (0, 1)):
+        return False
+    return (type(value["mirror"]) is int and value["mirror"] in (0, 1)
+            and value["split"] in ("fit", "validation")
+            and value["teacher_arm"] in ("batch4", "compact1")
+            and all(isinstance(value[key], str) and value[key] for key in ("model", "effort"))
+            and value["tools"] == "disabled"
+            and value["continuation"] == "mixed-batch4-vs-compact1-play-only")
+
+
 def _validate_provenance(value: Any) -> None:
     """``provenance`` is OPTIONAL and strictly shaped.
 
@@ -203,7 +231,10 @@ def validate_record(record: Mapping[str, Any]) -> None:
         raise SchemaError(f"unknown fields: {unknown}")
     if record["schema"] != SCHEMA:
         raise SchemaError(f"schema must be {SCHEMA!r}")
-    if "provenance" in record:
+    if record["source"] == "luna-quality":
+        if not _quality_provenance_valid(record.get("provenance")):
+            raise SchemaError("luna-quality requires complete typed provenance")
+    elif "provenance" in record:
         _validate_provenance(record["provenance"])
     if record["source"] not in SOURCES:
         raise SchemaError(f"unknown source {record['source']!r}")

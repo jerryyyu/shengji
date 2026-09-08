@@ -12445,3 +12445,23 @@ All four rungs trained and screened, `ALL_CAPACITY_SCREENS_DONE` 06:40 ET. Every
 **Four independently trained models at lr 1e-4; all four point estimates negative; three of four resolve.** The one that does not is the middle of the range, not an edge, so it does not read as a trend boundary. This is stronger than the two-point claim I over-reached on at 04:30 and stronger than the qualification I issued at 03:30 -- and it is still subject to Codex's standing caveat (bus 805) that these share deals, seeds and baseline, so it is replication across ARCHITECTURES, not across populations. A fresh seed window remains the untaken test.
 
 WHAT THIS SETTLES FOR THE PROGRAMME. Capacity is not the lever, anywhere in 273k-4.0M. The default-lr checkpoint `3cd27716` remains the best arm ever screened at +0.1260 and remains Jerry's teacher choice; no width rung approaches it. The cheapest rung (256, 3.07x) matches the 512 rung it replaces, so if a cheaper consumer is ever wanted, halving the net costs nothing measurable.
+
+## 2026-09-08 — Claude: my "poor scaling" reading was wrong; it was a one-wave tail. Third revision of this number.
+
+Codex (bus 814) said the receipts show a scheduling tail rather than poor sustained scaling. **Verified independently from `runtime.json`'s `per_cluster` block, and their figures reproduce exactly:**
+
+| workers | sum of per-cluster wall | longest cluster | job wall | mean in flight | idle worker-time |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 1341.9 s | 276.0 s | 389.0 s | 3.47 / 4 | 13.8% |
+| 8 | 1357.4 s | 280.5 s | 322.4 s | 4.24 / 8 | 47.4% |
+| 16 | 1376.7 s | 276.1 s | 278.8 s | **4.99 / 16** | **69.1%** |
+
+**Total WORK is essentially constant across worker counts: +2.6% from 4 to 16.** Per-cluster cost does not degrade with parallelism. What collapsed was occupancy, and for a trivial reason I should have seen when I designed the run: **16 clusters on 16 workers is a single wave**, so the job is bounded by its longest cluster (276 s) and 69% of worker-time is idle waiting for it. I measured a tail, called it a scaling limit, and told Jerry to budget for it.
+
+CORRECTED PROJECTION. Mean cluster wall 1376.7/16 = **86.0 s**, and 2,296 decisions over 16 clusters = 143.5 per cluster, i.e. **0.5996 s/decision**. With many waves so the tail amortises:
+- **4,000 deal-clusters: ~96 CPU-hours, ~6.0 h wall on 16 workers.**
+- **16,000 clusters (Run G/H scale): ~382 CPU-hours, ~24 h wall.**
+
+THIS IS THE THIRD REVISION OF THIS NUMBER IN SIX HOURS and the record should show the whole path rather than only the answer: 44 core-hours (toy net), 207 (legacy pre-#294 path), 10.45x retracted (load collapse), 167 CPU-hours / 10.4 h (2-cluster sample, ideal-scaling assumption), 19-20 h (the tail error above), and now **~96 CPU-hours / ~6 h for 4,000 clusters**. Two separate causes: a 2-cluster sample of a heavy-tailed cost, and a single-wave scaling test. Both were sample-size errors of the same species, and I had ledgered that exact species two days earlier from Codex's toy-versus-real finding.
+
+REMAINING UNCERTAINTY, stated rather than buried. The 0.5996 s/decision comes from 16 clusters, 8x more than the pricing run but still small for a cost whose per-decision driver ranges over three orders of magnitude (legal actions: median 8, p90 2,656, p99 20,758). The +2.6% work growth from 4 to 16 workers is real mild contention and does not license extrapolation past 16. And the tail returns at the END of any run, though amortised over ~250 waves it is negligible. Nobody should treat ~6 h as precise; it is the right order, which the previous figures were not.

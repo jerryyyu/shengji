@@ -710,6 +710,11 @@ class MCValueLeafSearch(REGISTRY[VLEAF_BASE_POLICY]):
     def __init__(self, leaf, *, seed: int | None = None, leaf_tricks: int = 1,
                  leaf_stage: str = "all"):
         super().__init__(seed)
+        self._configure_leaf(leaf, leaf_tricks, leaf_stage)
+
+    def _configure_leaf(self, leaf, leaf_tricks: int = 1,
+                        leaf_stage: str = "all") -> None:
+        """Install and validate the leaf-specific search configuration."""
         # The registry names cover SUPPORTED_LEAF_TRICKS; the class accepts any
         # horizon so a horizon beyond the round is the identity witness.
         if type(leaf_tricks) is not int or leaf_tricks < 0:

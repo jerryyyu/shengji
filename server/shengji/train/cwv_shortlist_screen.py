@@ -15,6 +15,8 @@ from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_leaf_shortlist import CWVPointsLeafShortlistBot
+from .leaf_policy import CompleteWorldPointsLeaf, load_cwv_points_head, POINTS_CLAMP
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -92,6 +94,11 @@ class CwvTimedPolicy(TimedPolicy):
 
     def decide_play(self, rnd, seat):
         before = len(self.decisions)
+        leaf_before = dict(getattr(self.bot, "leaf_counts", {}))
+        stage_before = dict(getattr(self.bot, "stage_counts", {}))
+        leaf_secs = float(getattr(self.bot, "leaf_secs", 0.0))
+        raw_leaf = getattr(self.bot, "raw_points_leaf", None)
+        clamp_before = dict(getattr(raw_leaf, "clamp_counts", {}))
         try:
             return super().decide_play(rnd, seat)
         finally:
@@ -111,6 +118,16 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            if leaf_before and len(self.decisions) > before:
+                self.decisions[-1]["cwv_points_leaf"] = {
+                    "tricks": self.bot.LEAF_TRICKS, "view": self.bot.leaf_view,
+                    "stage": self.bot.leaf_stage,
+                    "counts": {k: self.bot.leaf_counts[k] - v for k, v in leaf_before.items()},
+                    "stage_counts": {k: self.bot.stage_counts[k] - v for k, v in stage_before.items()},
+                    "wall_seconds": self.bot.leaf_secs - leaf_secs,
+                    "clamp_counts": {k: raw_leaf.clamp_counts[k] - v
+                                     for k, v in clamp_before.items()},
+                }
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -122,8 +139,31 @@ def _encoding(config: dict) -> str:
     return config.get("encoding", "reference")
 
 
+def _points_leaf_recipe(config):
+    leaf = config.get("points_leaf")
+    if leaf is None:
+        return None
+    if (config["arm"] != "learned" or config.get("double_shortlist") is not None
+            or type(leaf) is not dict or set(leaf) != {"schema", "tricks", "view", "stage", "clamp"}
+            or leaf["schema"] != "cwv-shortlist-points-leaf-v1"
+            or type(leaf["tricks"]) is not int or leaf["tricks"] < 0
+            or leaf["view"] not in ("mover", "last_actor")
+            or leaf["stage"] != "all" or leaf["clamp"] != POINTS_CLAMP):
+        raise ValueError("invalid shortlist points-leaf recipe")
+    return leaf
+
+
+def _points_leaf_head(checkpoint, checkpoint_sha, evaluator):
+    head = load_cwv_points_head(checkpoint)
+    if (head.metadata.get("checkpoint_sha256") != checkpoint_sha
+            or head.enc_version != evaluator.enc_version):
+        raise ValueError("points leaf differs from ranking checkpoint or encoder")
+    return head
+
+
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
+    leaf_recipe = _points_leaf_recipe(config)
     flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
     if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
@@ -148,7 +188,12 @@ def make_side(config: dict, side: str, seed: int):
     inner = config.get("double_shortlist") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
-    if inner is not None:
+    if leaf_recipe is not None and side == "arm":
+        head = _points_leaf_head(config["checkpoint"], config["checkpoint_sha256"], evaluator)
+        bot = CWVPointsLeafShortlistBot(
+            evaluator, CompleteWorldPointsLeaf(head), **kwargs,
+            leaf_tricks=leaf_recipe["tricks"], leaf_view=leaf_recipe["view"])
+    elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
@@ -186,6 +231,21 @@ def work_counters(bots):
         out["inner_continuation_rollouts"] = int(out.get("double_inner_full_rollouts", 0))
         out["outer_continuation_rollouts"] = (
             out["total_rollouts"] - out["inner_continuation_rollouts"])
+    if any(hasattr(bot, "leaf_counts") for bot in bots):
+        for name in ("leaf_calls", "predicted_leaves", "terminal_leaves", "exact_leaves", "leaf_plies"):
+            out["points_leaf_" + name] = int(sum(
+                getattr(bot, "leaf_counts", {}).get(name, 0) for bot in bots))
+        for name in ("selection_net_calls", "report_net_calls"):
+            out["points_leaf_" + name] = int(sum(
+                getattr(bot, "stage_counts", {}).get(name, 0) for bot in bots))
+        out["points_leaf_seconds"] = float(sum(getattr(bot, "leaf_secs", 0.0) for bot in bots))
+        # Match leaf_screen's convention: total_rollouts counts scored search
+        # leaves, but a model prediction is not a completed continuation.
+        out["rollout_invocations"] = int(out["rollouts"])
+        out["continuation_rollouts"] = int(out["rollouts"] - out["points_leaf_predicted_leaves"])
+        out["round_end_continuations"] = out["points_leaf_terminal_leaves"]
+        out["exact_shortcuts"] = out["points_leaf_exact_leaves"]
+        out["search_accepted_worlds"] = out.pop("full_rollout_accepted_worlds")
     return out
 
 
@@ -208,7 +268,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "points_leaf"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -345,6 +405,20 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Inner finalist continuations count separately and are included exactly once "
             "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+    if "points_leaf" in config:
+        leaf = _points_leaf_recipe(config)
+        result["claim"] = "exploratory paired DEV strength estimate; not confirmation or deployment"
+        result["arm_description"] = (
+            f"exhaustive learned root shortlist; T{leaf['tricks']} complete-world points leaf "
+            f"from {leaf['view']}, then unchanged root MC-LCB")
+        result["baseline_description"] = config.get("baseline", "production")
+        result["work_caveat"] = (
+            "Sampled-world and rollout-invocation counts are not full-round continuations: "
+            "points_leaf_predicted_leaves/terminal_leaves/exact_leaves disclose the horizon. "
+            "total_rollouts/rollout_invocations count scored leaves; continuation_rollouts "
+            "excludes model predictions and includes exact shortcuts. "
+            "Decision CPU/wall and ranking work are separate; no cost overrun censors outcomes. "
+            "Predicted leaves see sampled worlds, never the true hidden deal.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -387,6 +461,10 @@ def main(argv=None):
                         help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
+    parser.add_argument("--points-leaf-tricks", type=int,
+                        help="DEV: replace full rollouts by same-checkpoint points leaves after T resolved tricks")
+    parser.add_argument("--points-leaf-view", choices=("mover", "last_actor"),
+                        help="points-leaf viewpoint; default last_actor matches training afterstates")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -417,6 +495,11 @@ def main(argv=None):
         parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
         parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
+    if args.points_leaf_tricks is not None:
+        if args.arm != "learned" or args.inner_mode is not None or args.points_leaf_tricks < 0:
+            parser.error("--points-leaf-tricks requires learned, nonnegative T and no --inner-mode")
+    elif args.points_leaf_view is not None:
+        parser.error("--points-leaf-view requires --points-leaf-tricks")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -432,6 +515,9 @@ def main(argv=None):
             encoding=args.encoding)
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
+        if args.points_leaf_tricks is not None:
+            # Fail on a missing/incompatible auxiliary head before workers start.
+            _points_leaf_head(checkpoint, checkpoint_sha, evaluator)
     shortlist = CWVShortlistConfig(
         worlds=args.worlds, selection_worlds=args.selection_worlds,
         alternatives=args.alternatives, batch_size=args.batch_size,
@@ -470,6 +556,13 @@ def main(argv=None):
             config["double_shortlist"]["reuse_successors"] = True
     if args.baseline != "production":
         config["baseline"] = args.baseline
+    if args.points_leaf_tricks is not None:
+        config["points_leaf"] = {
+            "schema": "cwv-shortlist-points-leaf-v1",
+            "tricks": args.points_leaf_tricks,
+            "view": args.points_leaf_view or "last_actor",
+            "stage": "all", "clamp": POINTS_CLAMP,
+        }
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)

@@ -146,6 +146,12 @@ AFTERSTATE_SOURCE_PATHS = {
     "teacher_v1": _SHENGJI / "teacher_v1.py",
 }
 
+AFTERSTATE_V3_SOURCE_PATHS = {
+    "encode_versions": _SHENGJI / "rl" / "encode_versions.py",
+    "value_afterstate_v2": _SHENGJI / "rl" / "value_afterstate_v2.py",
+    "legal": _SHENGJI / "engine" / "legal.py",
+}
+
 
 class CWVError(RuntimeError):
     """A checkpoint, evaluator batch, prior table or decision drifted."""
@@ -173,8 +179,10 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     (``train.cwv_data.cwv_encoder_identity``), so the same nine frozen
     files hash to a DIFFERENT identity per version."""
     version = check_version(version)
-    sources = {name: file_sha256(path)
-               for name, path in AFTERSTATE_SOURCE_PATHS.items()}
+    paths = dict(AFTERSTATE_SOURCE_PATHS)
+    if version >= 3:
+        paths.update(AFTERSTATE_V3_SOURCE_PATHS)
+    sources = {name: file_sha256(path) for name, path in paths.items()}
     parts = [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
     if version != 1:
         parts.append(f"enc_version:{version}")

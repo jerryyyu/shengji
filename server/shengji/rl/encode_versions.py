@@ -35,14 +35,18 @@ from . import encode as _v1
 from .encode import ENC_VERSION, N_CARDS, OBS_DIM, OBS_SCHEMA  # noqa: F401  (re-export)
 
 #: the highest version ``encode_obs`` can emit
-ENC_VERSION_MAX = 2
+ENC_VERSION_MAX = 3
 OBS_SCHEMA_BY_VERSION = {
     1: OBS_SCHEMA,
     2: "rl-observation-v2-trick-state",
+    3: "rl-observation-v3-relative-cursor",
 }
 #: v2 appends 16 trick-local, 5 points-regime and 8 hand-shape columns
 _OBS_EXTRA_V2 = 16 + 5 + 8                                   # = 29
-OBS_DIM_BY_VERSION = {1: OBS_DIM, 2: OBS_DIM + _OBS_EXTRA_V2}  # 531, 560
+# v3 appends four relative next-to-act columns to v2.
+_OBS_EXTRA_V3 = 4
+OBS_DIM_BY_VERSION = {1: OBS_DIM, 2: OBS_DIM + _OBS_EXTRA_V2,
+                      3: OBS_DIM + _OBS_EXTRA_V2 + _OBS_EXTRA_V3}  # 531, 560, 564
 
 
 def check_version(version: object) -> int:
@@ -119,6 +123,33 @@ def encode_obs_v2_columns(rnd: Round, seat: int) -> list[float]:
     return _v2_columns_from_unseen(rnd, seat, mem.unseen)
 
 
+def cursor_columns(rnd: Round, root_seat: int) -> list[float]:
+    """Return v3's relative next-to-act one-hot cursor.
+
+    A live play state must carry an actual engine seat.  Terminal states have
+    no next actor and intentionally emit four zeroes; their ``turn`` is
+    therefore not inspected.
+    """
+    if rnd.phase == "round_end":
+        return [0.0] * _OBS_EXTRA_V3
+    if rnd.phase != "play":
+        raise ValueError("v3 cursor requires a play or round_end state")
+    if isinstance(rnd.turn, bool) or not isinstance(rnd.turn, int) \
+            or not 0 <= rnd.turn < 4:
+        raise ValueError("v3 live-play turn must be an integer seat")
+    if isinstance(root_seat, bool) or not isinstance(root_seat, int) \
+            or not 0 <= root_seat < 4:
+        raise ValueError("v3 cursor root seat must be an integer seat")
+    result = [0.0] * _OBS_EXTRA_V3
+    result[(rnd.turn - root_seat) % 4] = 1.0
+    return result
+
+
+def encode_obs_v3_columns(rnd: Round, root_seat: int) -> list[float]:
+    """The four cursor columns encoder v3 appends to the v2 vector."""
+    return cursor_columns(rnd, root_seat)
+
+
 def _v2_columns_from_unseen(rnd: Round, seat: int,
                             unseen: Counter[str]) -> list[float]:
     """Shared feature arithmetic after public unseen counts are available.
@@ -186,6 +217,8 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
     assert len(obs) == OBS_DIM
     if version >= 2:
         obs += encode_obs_v2_columns(rnd, seat)
+    if version >= 3:
+        obs += encode_obs_v3_columns(rnd, seat)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 
@@ -207,5 +240,5 @@ __all__ = [
     "ENC_VERSION", "ENC_VERSION_MAX", "OBS_DIM", "OBS_DIM_BY_VERSION",
     "OBS_SCHEMA", "OBS_SCHEMA_BY_VERSION", "check_version", "encode_obs",
     "encode_obs_v2_columns", "encoder_version_for", "obs_dim", "obs_schema",
-    "trick_state", "call_encode",
+    "encode_obs_v3_columns", "cursor_columns", "trick_state", "call_encode",
 ]

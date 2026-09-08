@@ -155,6 +155,15 @@ CWV_SOURCE_PATHS = {
     "teacher_v1": _SHENGJI / "teacher_v1.py",
 }
 
+# New v3 checkpoints bind the versioned feature builders as well. Do not
+# silently rewrite archived v1/v2 identities: their narrower closure remains
+# a documented compatibility limitation, not a license to change their math.
+CWV_V3_SOURCE_PATHS = {
+    "encode_versions": _SHENGJI / "rl" / "encode_versions.py",
+    "value_afterstate_v2": _SHENGJI / "rl" / "value_afterstate_v2.py",
+    "legal": _SHENGJI / "engine" / "legal.py",
+}
+
 
 # ---------------------------------------------------------------- identity
 
@@ -166,7 +175,10 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     part of the hashed payload, so two otherwise identical builds at two
     encoder versions cannot share a cache file."""
     version = check_version(version)
-    sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    paths = dict(CWV_SOURCE_PATHS)
+    if version >= 3:
+        paths.update(CWV_V3_SOURCE_PATHS)
+    sources = {name: sha256_file(path) for name, path in paths.items()}
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build
@@ -353,8 +365,13 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     # #214's binding is v1 and frozen; at v2 the reference is that binding
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
-    expected_sha = (example.input_sha256 if version == 1
-                    else widen(example.tensors, row.successor, row.seat).sha256())
+    if version == 1:
+        expected_sha = example.input_sha256
+    elif version == 2:
+        expected_sha = widen(example.tensors, row.successor, row.seat).sha256()
+    else:
+        from ..rl.value_afterstate_v2 import widen_v3
+        expected_sha = widen_v3(example.tensors, row.successor, row.seat).sha256()
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "

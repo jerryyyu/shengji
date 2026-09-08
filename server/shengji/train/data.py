@@ -767,7 +767,9 @@ OBS_SEGMENTS_V2_EXTRA = [["winner_rel", 4, "bits2"], ["partner_winning", 1, "bit
                          ["suit_lengths", 5, "f32"], ["unseen_trump", 1, "f32"],
                          ["pairs_held", 1, "f32"], ["hand_size", 1, "f32"]]
 OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
-                           2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA}
+                           2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA,
+                           3: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA
+                              + [["next_actor_rel", 4, "bits2"]]}
 #: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
 OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],

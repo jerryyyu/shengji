@@ -21,11 +21,13 @@ from ..rl.encode import (
     CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP, _counts,
 )
 from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
-                                  encode_obs, _v2_columns_from_unseen)
+                                  cursor_columns, encode_obs,
+                                  _v2_columns_from_unseen)
 from ..rl.value_afterstate_v2 import (
     _widen_columns,
     tensors_from_round as tensors_from_round_v2,
     widen as widen_v2,
+    widen_v3,
 )
 from ..rl.public_history import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
@@ -95,12 +97,14 @@ def _static_obs_eligible(rnd, seat: int) -> bool:
                     or not all(_standard_play(play) for play in trick.plays):
                 return False
         if rnd.trick is None:
-            return False
-        if type(rnd.trick) is not Trick or type(rnd.trick.plays) is not list \
-                or len(rnd.trick.plays) > 3:
-            return False
-        if not all(_standard_play(play) for play in rnd.trick.plays):
-            return False
+            if rnd.phase != "round_end":
+                return False
+        else:
+            if type(rnd.trick) is not Trick or type(rnd.trick.plays) is not list \
+                    or len(rnd.trick.plays) > 3:
+                return False
+            if not all(_standard_play(play) for play in rnd.trick.plays):
+                return False
         declaration = rnd.declaration
         if declaration is not None:
             if type(declaration) is not dict \
@@ -127,12 +131,28 @@ def encode_obs_static(rnd: Round, seat: int, *,
     reconstructed.  Unsupported shapes delegate to the original encoder so
     its historical refusal type and message remain authoritative.
 
-    Only encoder v1 has a static fast path; any later version delegates to
-    ``encode_obs`` outright, which is correct by construction rather than by
-    a second hand-written copy of the layout.
+    Versions v2 and v3 reuse this v1 arithmetic, then append their canonical
+    columns. This keeps the MLP adapter history-free while ensuring its
+    versioned rows have exactly the reference layout.
     """
-    if check_version(version) != 1 or not _static_obs_eligible(rnd, seat):
+    version = check_version(version)
+    if not _static_obs_eligible(rnd, seat):
         return call_encode(encode_obs, rnd, seat, version)
+    if version > 1:
+        try:
+            base = encode_obs_static(rnd, seat, version=1)
+            if len(base) != OBS_DIM:
+                return call_encode(encode_obs, rnd, seat, version)
+            offset = 8 * N_CARDS
+            unseen = Counter({card: int(2 * base[offset + index])
+                              for card, index in CARD_INDEX.items()
+                              if base[offset + index] > 0})
+            columns = _v2_columns_from_unseen(rnd, seat, unseen)
+            if version == 3:
+                columns += cursor_columns(rnd, seat)
+            return base + columns
+        except Exception:
+            return call_encode(encode_obs, rnd, seat, version)
     try:
         ordering = rnd.ordering
         played_by = [[] for _ in range(4)]
@@ -383,6 +403,17 @@ def _widen_v2_static(base, rnd, root_seat):
     return _widen_columns(base, _v2_columns_from_unseen(rnd, root_seat, unseen))
 
 
+def _widen_v3_static(base, rnd, root_seat):
+    """Reuse the validated v1 public unseen plane and append v3's cursor."""
+    offset = 8 * N_CARDS
+    unseen = Counter({card: int(2 * base.public[offset + index])
+                      for card, index in CARD_INDEX.items()
+                      if base.public[offset + index] > 0})
+    columns = _v2_columns_from_unseen(rnd, root_seat, unseen)
+    columns += cursor_columns(rnd, root_seat)
+    return _widen_columns(base, columns, version=3)
+
+
 def tensors_from_round_static(rnd, root_seat: int, *,
                               version: int = ENC_VERSION) -> ValueAfterstateTensors:
     """Return MLP model inputs without unused Memory/history work.
@@ -395,18 +426,21 @@ def tensors_from_round_static(rnd, root_seat: int, *,
     """
     root_seat = _seat(root_seat, "root seat")
     version = check_version(version)
-    if version == 2:
+    if version in (2, 3):
         # Compose the already-exact v1 MLP inputs with the canonical v2
-        # columns. Never hand a bare v1 tensor to a v2 net. History is still
+        # columns (and v3 cursor). Never hand a bare v1 tensor to a versioned
+        # net. History is still
         # the MLP's one-row zero input; sequential models use the reference
         # builder through CompleteWorldEvaluator.effective_encoding.
         base = _fused_static_tensors(rnd, root_seat)
         if base is not None:
-            return _widen_v2_static(base, rnd, root_seat)
+            return (_widen_v2_static(base, rnd, root_seat)
+                    if version == 2 else _widen_v3_static(base, rnd, root_seat))
         # Unsupported/invalid shapes retain the previous reference widening
         # and its Memory construction/refusal behavior.
         base = tensors_from_round_static(rnd, root_seat, version=1)
-        return widen_v2(base, rnd, root_seat)
+        return (widen_v2(base, rnd, root_seat)
+                if version == 2 else widen_v3(base, rnd, root_seat))
     if version != ENC_VERSION:
         # Any future version retains its reference route until explicitly
         # supported here. The fused builder itself remains v1-only.

@@ -259,7 +259,10 @@ of maximum, final-action flips 1/104 (control 0/104), paired true-world value
 difference exactly zero for both primary−production and primary−control,
 with terminal `NO_PRIMARY_POLICY_SIGNAL`. Its `r4_test_opened=false` means
 that diagnostic did not reopen the original test, not that the original
-offline run never scored it. R4 checkpoints remain diagnostics only.
+offline run never scored it. R4 checkpoints remain diagnostics only. The
+original synthetic test population is spent: it cannot be reused as a fresh
+held-out confirmation surface. Any later confirmatory work needs a new,
+disjoint population; retained test results remain available as diagnostics.
 
 Preservation and source retirement are tracked in [issue #217's disposition
 table](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5587369543)

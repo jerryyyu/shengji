@@ -77,8 +77,13 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
 def widen(v1: ValueAfterstateTensors, rnd, root_seat: int) -> ValueAfterstateTensorsV2:
     """The v2 tensors of the state ``v1`` was built from: v1's public
     observation, the 29 v2 columns, then v1's trailing terminal flag."""
+    return _widen_columns(v1, encode_obs_v2_columns(rnd, root_seat))
+
+
+def _widen_columns(v1: ValueAfterstateTensors, columns) -> ValueAfterstateTensorsV2:
+    """Common tensor assembly for reference and validated static features."""
     obs_dim = OBS_DIM_BY_VERSION[1]
-    extra = np.asarray(encode_obs_v2_columns(rnd, root_seat), dtype=np.float32)
+    extra = np.asarray(columns, dtype=np.float32)
     public = np.concatenate((v1.public[:obs_dim], extra, v1.public[obs_dim:]))
     out = ValueAfterstateTensorsV2(public, v1.history, v1.world, v1.perspective)
     out.validate()

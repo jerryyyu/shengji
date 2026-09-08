@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import operator
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -20,8 +21,9 @@ from ..rl.encode import (
     CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP, _counts,
 )
 from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
-                                  encode_obs)
+                                  encode_obs, _v2_columns_from_unseen)
 from ..rl.value_afterstate_v2 import (
+    _widen_columns,
     tensors_from_round as tensors_from_round_v2,
     widen as widen_v2,
 )
@@ -367,6 +369,20 @@ def _fused_static_tensors(rnd, seat: int,
         return None
 
 
+def _widen_v2_static(base, rnd, root_seat):
+    """Reuse the fused v1 public unseen plane, including the banker's kitty.
+
+    This is called only after the fused builder validates the complete state.
+    Its half-copy plane is exactly Memory(own_kitty=False).unseen: no new
+    deductions, hidden-hand inspection, cross-state cache or feature layout.
+    """
+    offset = 8 * N_CARDS  # own hand, four played-by, three current-trick planes
+    unseen = Counter({card: int(2 * base.public[offset + index])
+                      for card, index in CARD_INDEX.items()
+                      if base.public[offset + index] > 0})
+    return _widen_columns(base, _v2_columns_from_unseen(rnd, root_seat, unseen))
+
+
 def tensors_from_round_static(rnd, root_seat: int, *,
                               version: int = ENC_VERSION) -> ValueAfterstateTensors:
     """Return MLP model inputs without unused Memory/history work.
@@ -384,6 +400,11 @@ def tensors_from_round_static(rnd, root_seat: int, *,
         # columns. Never hand a bare v1 tensor to a v2 net. History is still
         # the MLP's one-row zero input; sequential models use the reference
         # builder through CompleteWorldEvaluator.effective_encoding.
+        base = _fused_static_tensors(rnd, root_seat)
+        if base is not None:
+            return _widen_v2_static(base, rnd, root_seat)
+        # Unsupported/invalid shapes retain the previous reference widening
+        # and its Memory construction/refusal behavior.
         base = tensors_from_round_static(rnd, root_seat, version=1)
         return widen_v2(base, rnd, root_seat)
     if version != ENC_VERSION:

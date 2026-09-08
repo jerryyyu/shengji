@@ -380,9 +380,10 @@ def test_v1_still_takes_the_fused_fast_path():
     assert out.public.shape == (532,)
 
 
-def test_v2_does_not_take_the_fused_fast_path():
-    """Asserted directly, not inferred from a width."""
+def test_v2_fuses_only_its_v1_base_then_keeps_all_canonical_v2_columns():
+    """#294 permits v1 fusion plus widening, never a bare v1 result."""
     from shengji.ai import cwv_static_encoding as static
+    from shengji.rl.value_afterstate_v2 import tensors_from_round
 
     rnd, seat = _played_state()
     calls = []
@@ -397,8 +398,12 @@ def test_v2_does_not_take_the_fused_fast_path():
         out = static.tensors_from_round_static(rnd, seat, version=2)
     finally:
         static._fused_static_tensors = real
-    assert calls == [], "the fused path must not be entered for a v2 request"
-    assert out.public.shape == (561,), "v2 is served by the v2 reference builder"
+    assert calls == [1], "fusion must build only the v1 base, never pretend to encode v2"
+    reference = tensors_from_round(rnd, seat, version=2)
+    assert out.public.shape == (561,)
+    np.testing.assert_array_equal(out.public, reference.public)
+    np.testing.assert_array_equal(out.world, reference.world)
+    np.testing.assert_array_equal(out.perspective, reference.perspective)
 
 
 def test_the_fused_builder_itself_refuses_to_serve_a_v2_request():

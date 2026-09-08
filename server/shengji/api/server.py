@@ -25,6 +25,7 @@ from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
+from .model_serving import run_model_search
 
 
 def _fast_active() -> bool:
@@ -742,7 +743,6 @@ async def _paced_bot_step(room: Room, seat: int, *,
     model_serving = getattr(getattr(snapshot.bot_copy, "evaluator", None),
                             "backend", None) == "numpy"
     if model_serving:
-        from .model_serving import run_model_search
         def emit(kind, **fields):
             room.log_event("model_search", seat=seat, mode=mode,
                            policy=getattr(snapshot.bot_copy, "policy_name", "W32"),

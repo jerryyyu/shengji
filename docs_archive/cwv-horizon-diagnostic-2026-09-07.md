@@ -16,6 +16,7 @@ are preserved separately; this page is the current decision summary.
 | Our small original FIT panel also fails to rank six checkpoints in gameplay order. | Keep it for debugging; do not simply replace CE with its regret score. Use more independent positions reached by W32. |
 | Matched residual probe: the models remove 37.5–38.7% of across-world state-value variance, but only 1.2–1.4% of action-gap variance. Fixed correction does not clearly improve choices. | Overall position knowledge is not the same as knowing which move is better. Do not implement this correction as a new search policy yet. |
 | Current-model T1 points-leaf substitution loses against the fixed heuristic-rollout reference. Training-view alignment changes decisions but does not resolve that loss. | Not a gameplay test or a closure of learned leaves: training uses realized MC-trajectory outcomes, not this heuristic continuation. |
+| Actual T1 gameplay now completes on the fixed 52 DEV deals/model: leaf-minus-flat default −.1250 [−.3462, +.0865], lower-LR +.0288 [−.2212, +.2788]. | Neither model establishes an improvement. The screen is inconclusive, not equivalence or a confirmed leaf loss. Keep default flat W32; no automatic larger leaf run. |
 | Changing horizon, effective-action diversity or selector utility did not establish a gain. | Do not rerun a broad grid of these mechanisms or weaken MC-LCB globally. |
 
 The v2/data combination improved the observed gameplay mean over older ACD-v1
@@ -35,17 +36,28 @@ The [completed H1024 comparison](https://github.com/jerryyyu/shengji/pull/292#is
 reuses the same paired deals, with fixed-checkpoint metadata and saved-result
 hashes at `~/shengji-archive/2026-09-08/cwv-h1024-comparison.Zjb0te/`.
 
-## Next: test where model and MC complement each other
+## Consumer test completed; next research decision
 
 Jerry explicitly added this workstream: determine whether another consumer can
 use the models better, including one focused revisit of an existing search
 method or one narrow hybrid. No new model training is required for that test.
 
-**Ready, awaiting the existing Strength job's completion:** [PR302](https://github.com/jerryyyu/shengji/pull/302)
-implements the fixed default/lower-LR pair with a T1 last-actor points leaf,
-52 matched already-opened DEV deals per model, reusing flat-W32 baselines.
-Source `8d7ed763` passed review; no additional model arm or review campaign.
-This small comparison can detect large effects, not settle every subtle gap.
+**Completed:** [PR302 result](https://github.com/jerryyyu/shengji/pull/302#issuecomment-5581589663)
+tests the fixed default/lower-LR pair with a T1 last-actor points leaf,
+52 matched already-opened DEV deals/model, reusing the same flat-W32 prefix.
+Both arms finished in about 6½ minutes on 16-core Strength, with all artifacts
+retained. No retry, timeout, new training or duplicate game reconstruction.
+The model-gap interaction is +.1538 [−.0962, +.4135], not a resolved rescue.
+It changes both ranker and leaf across checkpoints, not only the leaf head.
+
+The treatment was active: 31/52 default and 36/52 lower-LR banker openings
+changed moves despite identical nominations, legal-set hashes and ranking
+world seeds. A saved same-challenger example flips a report gap from −6.35 to
++1.07 points while its sampling SE falls from 1.50 to .50. The unchanged LCB
+then approves the challenger. Smaller sampled-world SE does not cover model
+bias or prove which move is better. Later diverged trajectories are not
+treated as matched states. Full readout and examples:
+`~/shengji-archive/2026-09-08/w32-leaf-comparison.IiULAI/RESULTS.md`.
 
 1. **Measure the division of work first.** On common saved positions/worlds,
    compare model-nominated moves, MC-selected moves and an independent rollout
@@ -67,8 +79,10 @@ This small comparison can detect large effects, not settle every subtle gap.
 3. **Compare consumers, not just models.** Use the same frozen default/lower-LR
    checkpoint pair in W32 and one alternate consumer. Coordinate with Claude
    before revisiting a prior PUCT/leaf configuration, and reuse completed W32
-   baselines where compatible. The next decision is a bounded actual-gameplay
-   comparison, not another grid against the same heuristic proxy. ACDEF labels
+   baselines where compatible. The bounded actual-gameplay comparison is now
+   complete and does not establish a replacement. Before scaling it, choose
+   explicitly between greater precision and independent W32-reached diagnostic
+   states/action-comparison labels; do not auto-launch another horizon grid. ACDEF labels
    come from MC trajectories with differing ballots/work budgets; the diagnostic
    reference finishes via heuristic play. Keep that policy difference explicit
    rather than labeling all disagreement prediction error. Report quality and

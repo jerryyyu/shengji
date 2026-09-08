@@ -61,7 +61,7 @@ ever differ.
 | learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. No learned checkpoint is production-authorized. |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
-| `CWVShortlistBot` (DEV harness class, no global policy name) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. | A+B+C W32/K4 and K8 are exploratory screens; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
+| `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | A+B+C W32/K4 and K8 are exploratory screens; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
 
 Example local selection:
 
@@ -117,6 +117,10 @@ distribution, not the auxiliary points output. At runtime all hidden inputs
 are replaced by sampled compatible hands/burial. Terminal leaves use exact
 engine outcomes. A training architecture preference does not change the
 identity of this measured checkpoint.
+
+![Full-legal W32 shortlist pipeline](docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
+
+[Open the standalone W32 pipeline explainer](docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
 
 ### Measured result and scaling
 
@@ -192,6 +196,54 @@ different policy, so this is not a pure timing A/B. This remains an
 exploratory DEV screen with no promotion or deployment authority. The
 [authoritative readout](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557759351)
 records the result and archive identity.
+
+<a id="double-shortlist-and-adaptive-allocation"></a>
+
+### Completed allocation and depth screens
+
+The one-extra-trick screen completed on 26 broader-rank deals. Learned inner
+ranking versus flat W32 scored −0.09615 levels/round (95% CI
+[−0.34615,+0.15385]); uniform inner continuation scored −0.07692
+[−0.25000,+0.09663]. Both are inconclusive. Their measured decision-wall
+ratios were 116.242× and 7.627× their respective flat opponents. These are
+separate matches, not additive effects or a direct learned-versus-uniform
+contrast. Full artifacts and cost attribution are in
+[the scaling ledger](https://github.com/jerryyyu/shengji/issues/248).
+
+The subsequent direct matches against flat ABC W32 also completed, each on
+the same 260 opened broader-rank deals / 520 mirrored rounds:
+
+| Treatment vs flat W32 | Signed levels/round [95% deal interval] | Decision wall / flat |
+|---|---:|---:|
+| Adaptive root allocation | +0.00577 [−0.05774, +0.07308] | 0.9666× |
+| Selective one-extra-trick guidance | −0.00577 [−0.06736, +0.05769] | 1.5892× |
+
+Neither establishes a strength improvement or equivalence. Both treatments
+actually ran: adaptive pruning occurred on 50.39% of contested decisions;
+selective guidance triggered on 59.18% and used 2.0227× continuation rollouts.
+The timing ratios compare different policy trajectories, **not isolated
+engineering speedups**. Do not add these effects to W32-versus-production
+results or treat the reused populations as independent confirmations.
+
+Both screens covered 40 rounds at every rank and actual suits C 92 / D 124 /
+H 126 / S 128 / NT 50. Full recipes, intervention counters and retained evidence:
+[adaptive readout](https://github.com/jerryyyu/shengji/blob/268be9c214a8f985bdefe17fbff2455de40701cc/server/runs/cwv_adaptive_root_20260906.md),
+[selective-depth readout](https://github.com/jerryyyu/shengji/blob/994049e8d9646e97babf1cd39df164e7c76b6cb2/server/runs/cwv_selective_depth_20260906.md).
+Keep flat optimized W32/K4/N30/R300. Further unchanged-recipe/all-world depth
+escalation and threshold sweeps are parked; these finite negative/inconclusive
+screens do not prove that every adaptive or deeper search will fail.
+
+### Further decision-preserving engineering
+
+The later fused static-input A/B in [#288](https://github.com/jerryyyu/shengji/pull/288)
+reduced total decision time on two saved zero-reuse follows from 522.75 to
+392.34 seconds combined (**1.3324× faster / 25% less wall**), preserving
+scores, decisions, work and RNG in all nine tested pairs. The seven-state
+small/lead panel was neutral overall; one small state was 7.3% slower in the
+single paired pass. This is **not a whole-game, regression-free or strength
+claim**, and its ratio must not be multiplied into earlier different-host
+measurements. [Exact source and retained measurement](https://github.com/jerryyyu/shengji/blob/cd65cb99f84d80d9f6880bc4dcf9b2b57c66aa8c/server/runs/cwv_fused_static_20260906.md).
+This result does not authorize changing a live run or production defaults.
 
 ## Search and heuristic behavior that survives
 

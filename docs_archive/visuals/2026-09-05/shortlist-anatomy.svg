@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420" role="img" aria-labelledby="pipeline-title pipeline-desc">
+  <title id="pipeline-title">Full-legal W32 shortlist pipeline</title>
+  <desc id="pipeline-desc">Every legal action is evaluated on 32 shared sampled worlds, four model alternatives and the heuristic incumbent are passed to inherited N30 selection, then a fresh R300 paired report decides whether to play the challenger or retain the incumbent.</desc>
+  <style>
+    :root { --panel:#fff; --ink:#1e2833; --muted:#65727f; --rule:#d5dae0;
+      --net:#117a75; --net-soft:#d6ecea; --prod:#a8741c; --prod-soft:#f3e7cc;
+      --world:#3b4f63; --world-soft:#dfe5ec; }
+    @media (prefers-color-scheme: dark) { :root { --panel:#1d242c; --ink:#e6ebf0;
+      --muted:#98a4b0; --rule:#323c47; --net:#4fc1b9; --net-soft:#173f3d;
+      --prod:#e0b25a; --prod-soft:#3f321a; --world:#aab8c8; --world-soft:#2b3642; } }
+    svg { display:block; background:var(--panel) }
+    text { fill:var(--ink); font:12px system-ui,sans-serif }
+    .mono { font:11px ui-monospace,SFMono-Regular,Menlo,monospace }
+    .muted { fill:var(--muted) }
+    .head { fill:var(--muted); font-size:11px; letter-spacing:.06em }
+  </style>
+  <rect width="1000" height="420" fill="var(--panel)"/>
+  <defs>
+    <marker id="arrow-net" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--net)"/></marker>
+    <marker id="arrow-prod" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--prod)"/></marker>
+  </defs>
+  <text x="18" y="20" class="head">EVERY LEGAL ACTION</text>
+  <text x="285" y="20" class="head" text-anchor="middle">32 SHARED RANKING WORLDS</text>
+  <text x="505" y="20" class="head" text-anchor="middle">SHORTLIST</text>
+  <text x="730" y="20" class="head" text-anchor="middle">INHERITED MC-LCB</text>
+  <text x="946" y="20" class="head" text-anchor="middle">PLAY</text>
+  <g fill="var(--panel)" stroke="var(--muted)" stroke-width="1.3">
+    <rect x="18" y="42" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="58" width="84" height="9" rx="2"/><rect x="18" y="74" width="84" height="9" rx="2"/>
+    <rect x="18" y="90" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="106" width="84" height="9" rx="2"/><rect x="18" y="122" width="84" height="9" rx="2"/>
+    <rect x="18" y="138" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="154" width="84" height="9" rx="2"/><rect x="18" y="170" width="84" height="9" rx="2"/>
+    <rect x="18" y="186" width="84" height="9" rx="2" fill="var(--net-soft)" stroke="var(--net)"/><rect x="18" y="202" width="84" height="9" rx="2"/><rect x="18" y="218" width="84" height="9" rx="2"/>
+    <rect x="18" y="234" width="84" height="9" rx="2"/><rect x="18" y="250" width="84" height="9" rx="2"/><rect x="18" y="266" width="84" height="9" rx="2"/><rect x="18" y="282" width="84" height="9" rx="2"/>
+  </g>
+  <path d="M104,158 C150,158 178,90 238,90 M104,158 C150,158 178,142 238,142 M104,158 C150,158 178,194 238,194 M104,158 C150,158 178,246 238,246" fill="none" stroke="var(--rule)" stroke-width="1.4"/>
+  <g fill="var(--world-soft)" stroke="var(--world)" stroke-width="1.5"><rect x="240" y="77" width="90" height="26" rx="3"/><rect x="240" y="129" width="90" height="26" rx="3"/><rect x="240" y="181" width="90" height="26" rx="3"/><rect x="240" y="233" width="90" height="26" rx="3"/></g>
+  <text x="285" y="94" class="mono" text-anchor="middle">world 1</text><text x="285" y="146" class="mono" text-anchor="middle">world 2</text><text x="285" y="198" class="mono" text-anchor="middle">world 3</text><text x="285" y="250" class="mono" text-anchor="middle">world 32</text>
+  <text x="285" y="284" class="muted" text-anchor="middle">each action sees the same 32</text>
+  <path d="M332,168 L380,168" fill="none" stroke="var(--net)" stroke-width="1.5" marker-end="url(#arrow-net)"/><path d="M400,150 L418,168 L400,186 L382,168 Z" fill="var(--net)"/>
+  <text x="400" y="302" class="muted" text-anchor="middle">engine applies action</text><text x="400" y="317" class="muted" text-anchor="middle">heuristic finishes trick; model ranks</text>
+  <path d="M420,168 C435,168 445,88 460,88 M420,168 C435,168 445,126 460,126 M420,168 C435,168 445,164 460,164 M420,168 C435,168 445,202 460,202 M420,168 C435,168 445,240 460,240" fill="none" stroke="var(--net)" stroke-width="1.4"/>
+  <g stroke-width="1.5"><rect x="462" y="77" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="115" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="153" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="191" width="86" height="22" rx="3" fill="var(--net-soft)" stroke="var(--net)"/><rect x="462" y="229" width="86" height="22" rx="3" fill="var(--prod-soft)" stroke="var(--prod)"/></g>
+  <text x="505" y="92" class="mono" text-anchor="middle">model 1</text><text x="505" y="130" class="mono" text-anchor="middle">model 2</text><text x="505" y="168" class="mono" text-anchor="middle">model 3</text><text x="505" y="206" class="mono" text-anchor="middle">model 4</text><text x="505" y="244" class="mono" text-anchor="middle">incumbent</text>
+  <text x="505" y="278" class="muted" text-anchor="middle">four alternatives + incumbent</text>
+  <path d="M550,168 L638,168" fill="none" stroke="var(--prod)" stroke-width="1.5" marker-end="url(#arrow-prod)"/><rect x="640" y="68" width="180" height="200" rx="5" fill="var(--prod-soft)" stroke="var(--prod)" stroke-width="1.5"/>
+  <text x="730" y="100" text-anchor="middle">N30 selection worlds</text><text x="730" y="124" text-anchor="middle">full heuristic playouts</text><text x="730" y="148" text-anchor="middle">paired candidate means</text><text x="730" y="172" text-anchor="middle">nominate one challenger</text><path d="M730,184 L730,215" fill="none" stroke="var(--prod)" stroke-width="1.4" marker-end="url(#arrow-prod)"/><text x="730" y="242" text-anchor="middle">fresh R300 report fold</text><text x="730" y="258" class="muted" text-anchor="middle">challenger + incumbent</text>
+  <path d="M822,168 L916,168" fill="none" stroke="var(--prod)" stroke-width="1.5" marker-end="url(#arrow-prod)"/><circle cx="930" cy="168" r="11" fill="var(--ink)"/><text x="930" y="204" class="muted" text-anchor="middle">chosen play</text>
+  <text x="18" y="340" class="head">DECISION BOUNDARY</text><text x="18" y="362">Report completes and paired LCB ≥ 0?</text><text x="18" y="386" class="muted">yes → play the challenger · no → retain the heuristic incumbent</text><text x="610" y="362" class="muted">Ranking and verification are separate stages.</text><text x="610" y="386" class="muted">This root screen is not recursive PUCT.</text>
+</svg>

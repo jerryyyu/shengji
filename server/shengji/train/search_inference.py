@@ -17,7 +17,8 @@ from typing import Any
 
 import torch
 
-from ..rl.encode import ACT_DIM, OBS_DIM, encode_action, encode_obs
+from ..rl.encode import ACT_DIM, OBS_DIM, encode_action
+from ..rl.encode_versions import call_encode, encode_obs, encoder_version_for
 from .data import encoder_identity
 from .model import MODEL_SCHEMA, ValuePriorNet
 
@@ -69,6 +70,9 @@ class SearchHeads:
         if type(batch_size) is not int or batch_size <= 0:
             raise ValueError("batch_size must be a positive integer")
         self.model = model
+        # Encode for THIS model, not for the process default: the arch the
+        # net was built with states its own observation width.
+        self.enc_version = encoder_version_for(int(model.arch["obs_dim"]))
         self.batch_size = batch_size
         self.device = torch.device(device)
         self.model.to(self.device)
@@ -119,7 +123,15 @@ class SearchHeads:
             raise ValueError("checkpoint arch dimensions are malformed")
         obs_dim = arch["obs_dim"]
         act_dim = arch["act_dim"]
-        if obs_dim != OBS_DIM or act_dim != ACT_DIM:
+        # The checkpoint states its own input width; that width selects the
+        # encoder version rather than being compared to a global, so a v1
+        # checkpoint keeps loading after a wider version exists.
+        try:
+            enc_version = encoder_version_for(obs_dim)
+        except ValueError:
+            raise ValueError(
+                "checkpoint arch dimensions differ from the current encoder") from None
+        if act_dim != ACT_DIM:
             raise ValueError("checkpoint arch dimensions differ from the current encoder")
         state = payload.get("model_state")
         if not isinstance(state, Mapping):
@@ -134,6 +146,7 @@ class SearchHeads:
             raise ValueError("v3 checkpoint has no persisted population")
         metadata = {
             "checkpoint_sha256": digest,
+            "enc_version": enc_version,
             "schema": schema,
             "model_schema": payload["model_schema"],
             "epoch": payload.get("epoch"),
@@ -160,7 +173,8 @@ class SearchHeads:
         self._check_actions(rnd, actions)
         started = perf_counter()
         try:
-            obs = torch.tensor([encode_obs(rnd, seat)], dtype=torch.float32, device=self.device)
+            obs = torch.tensor([call_encode(encode_obs, rnd, seat, self.enc_version)],
+                               dtype=torch.float32, device=self.device)
             with torch.inference_mode():
                 emb = self.model.trunk(obs)
                 self.counters["model_calls"] += 1
@@ -214,7 +228,7 @@ class SearchHeads:
                 rnd, seat = _as_state(state)
                 if getattr(rnd, "ordering", None) is None:
                     raise ValueError("round must have finalized ordering")
-                rows.append(encode_obs(rnd, seat))
+                rows.append(call_encode(encode_obs, rnd, seat, self.enc_version))
             with torch.inference_mode():
                 outputs: list[torch.Tensor] = []
                 for start in range(0, len(rows), self.batch_size):

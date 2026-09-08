@@ -75,7 +75,8 @@ when a candidate beats the champion on a tier ii paired screen.
 4. **Improve cost without silently changing policy.** Profile zero-reuse wide
    follows and bypass useless cache bookkeeping where equivalence is proven;
    schedule known expensive replay pairs earlier and show straggler-aware ETA.
-   Ranking still takes 73% of W32 decision wall. Two-stage candidate pruning,
+   Ranking took 73% of decision wall in the original optimized screen.
+   Two-stage candidate pruning,
    selective work allocation and deeper search are separate policy experiments,
    not part of the bit-identical optimization. The existing ballot-rooted PUCT
    ladder is closed; any future shortlist-rooted depth test is distinct.
@@ -85,10 +86,23 @@ when a candidate beats the champion on a tier ii paired screen.
    took about 80% of decision wall, with 59.16% of ranking cost in the most
    expensive 1% of decisions. Do not ascribe differences from rank-2 solely
    to rank, because deals changed too.
-   Next test Jerry's double-shortlist: keep the root five, rank inner legal
-   actions for one extra trick, preserve root MC-LCB verification and compare
-   with an equally deep unlearned continuation. Label per-world privileged
-   continuations as simulations, not executable hidden-information policies.
+   Jerry's double-shortlist and unlearned-depth ablation have completed on
+   26 broader-rank deals: neither established improvement over flat W32, and
+   learned inner ranking cost 116.242× its flat opponent's decision wall.
+   Adaptive root allocation then completed at +0.00577 [−0.05774,+0.07308]
+   levels/round versus flat; selective one-extra-trick guidance completed at
+   −0.00577 [−0.06736,+0.05769], costing 1.5892× decision wall and 2.0227×
+   continuation rollouts. Both treatments were active; neither established
+   improvement on the 260 opened broader-rank deals. Keep flat W32, with no
+   automatic threshold, all-world or further-depth escalation. Per-world
+   privileged continuations are simulations, not executable hidden-information
+   policies. [#248](https://github.com/jerryyyu/shengji/issues/248) owns the
+   completed contrasts; [AI_POLICIES](AI_POLICIES.md#completed-allocation-and-depth-screens)
+   summarizes the results and source pointers.
+   The separate [#288](https://github.com/jerryyyu/shengji/pull/288) fixed-state
+   engineering A/B found 1.3324× speedup on two huge zero-reuse follows and a
+   neutral small panel. Preserve its exact comparisons; do not call it a
+   whole-game gain or retrofit it into a running experiment.
    More compute is allowed for strength experiments; equal cost is an optional
    later diagnostic, not a launch gate.
 5. **Improve the model against its actual consumer.** Train on independently
@@ -345,9 +359,15 @@ The newer token-efficiency investigation found **2.70× completed rounds per
 token and 2.08× rounds per wall time** for a four-decision batch on four
 matched starting rounds. A 16-game cost extension completed with no failures.
 Those are engineering/cost observations, not strength or quality equivalence
-to the historical tool-using planner. Before a larger collection, compare the
-compact/batched play-only recipe with the rollout-enabled teacher on a fresh
-quality bridge. Only batch current decisions from distinct deals; do not put
+to the historical tool-using planner. The subsequent historical bridge is
+complete: 170 saved positions from 26 opened deals, 217 calls, zero failures,
+2.424M reported tokens. Batch4 used 2.77× fewer tokens than compact1, with
+inconclusive quality differences. The older teacher's choices scored better
+under the primary fixed continuation, but not conclusively under the
+sensitivity continuation. This combines reasoning, memory, prompt and tool
+differences; it is neither a causal tools-only effect nor actual paired
+gameplay. [Full bridge readout](https://github.com/jerryyyu/shengji/blob/86cba190/server/runs/luna_historical_quality_result_20260906.md).
+Only batch current decisions from distinct deals; do not put
 mirrored/future turns from one deal into the same request. Host-side routing
 is not a semantic privacy guarantee inside a shared model context.
 
@@ -356,12 +376,16 @@ selection, and label the continuation actually played. If one value estimand
 is intended, apply the same named engine continuation to relabel states;
 mixed teacher outcomes are not interchangeable targets. Sol can first supply
 a bounded compatibility/cost sample, followed by a declared sampling recipe.
-Neither this plan nor the W32 result launches scaled collection. PT52 private
-panel `sl6QAC` is complete (52/208; 26 fit / 26 validation; 13 ranks × 4;
-NT4; no LLM calls). Its caller in PR261 has source/design PASS at `59668ff3`;
-the proposed provider ceiling remains separate. Compact1
-versus batch4 and a separate free-tool bridge remain planned; the old quality
-evidence is inconclusive. Details:
+Neither this plan nor the W32 result launches unlimited collection. PT52
+private panel `sl6QAC` has 52 roots / 208 captured positions, 26 fit / 26
+validation, 13 ranks × 4 and four no-trump roots. The subsequent fresh
+snapshot comparison completed with 207 matched positions; it does not prove
+whole-game equivalence. [PR #280](https://github.com/jerryyyu/shengji/pull/280)
+now binds the first eight roots / 16 mirrored full games, compact1 versus
+batch4, under Jerry's recorded 9M-token / five-hour ceiling. The remaining
+44 deals are not automatically authorised; price them from actual game cost,
+completion and deal-level variance. Preserve all teacher/interface and
+continuation labels. Earlier cost-design details:
 [teacher efficiency investigation](https://github.com/jerryyyu/shengji/blob/724d811676363a13e164d6d8d7ceca16745b7c2f/TEACHER_TOKEN_EFFICIENCY.md).
 
 ## Search and teacher strategy

@@ -190,7 +190,7 @@ def test_loader_encoder_round_trip(store_dir, records, luna, tmp_path):
         block, rebuilt = data.ensure_cache(shard, cache, witness_seed=1)
         assert rebuilt
         path = data.cache_path(cache, shard.sha256)
-        assert path.name == f"{shard.sha256}.{encode.ENCODER_IMPLEMENTATION_SHA256[:12]}.npz"
+        assert path.name == f"{shard.sha256}.v1-{encode.ENCODER_IMPLEMENTATION_SHA256[:12]}.npz"
         meta = block.meta
         assert meta["schema"] == data.CACHE_SCHEMA
         assert meta["encoder"]["implementation_sha256"] == encode.ENCODER_IMPLEMENTATION_SHA256
@@ -856,7 +856,7 @@ def test_parallel_cache_build_is_byte_identical_to_sequential(store_dir, luna, t
         a = data.cache_path(tmp_path / "w1", shard.sha256)
         b = data.cache_path(tmp_path / "w3", shard.sha256)
         # the cache key (file name) and the shard-hash binding are unchanged
-        assert a.name == b.name == f"{shard.sha256}.{encode.ENCODER_IMPLEMENTATION_SHA256[:12]}.npz"
+        assert a.name == b.name == f"{shard.sha256}.v1-{encode.ENCODER_IMPLEMENTATION_SHA256[:12]}.npz"
         assert a.read_bytes() == b.read_bytes(), shard.label
         assert ((b.stat().st_mode & 0o077) == 0) == private
         block = data.load_block(b, shard_sha256=shard.sha256, witness_every=1)

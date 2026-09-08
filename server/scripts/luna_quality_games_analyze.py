@@ -225,10 +225,15 @@ def _pool_inputs(runs: list[Path]) -> list[dict]:
 
 def _pooled_costs(readouts: list[dict]) -> dict | None:
     costs = [row["per_arm_costs_and_failures"] for row in readouts]
-    if any(not cost or set(cost) != set(collector.ARMS) for cost in costs):
+    if any(not cost or not set(collector.ARMS).issubset(cost) for cost in costs):
         return None  # Missing accounting is not zero cost or zero failures.
+    arms = set(costs[0])
+    if any(set(cost) != arms for cost in costs):
+        return None
+    # The shared pilot reporter also emits unused baseline/batch2 rows. Keep
+    # every reported arm (including any unexpected work), not just game arms.
     result = {}
-    for arm in collector.ARMS:
+    for arm in sorted(arms):
         rows = [cost[arm] for cost in costs]
         total = {k: sum(row[k] for row in rows) for k in (
             "calls", "accepted_decisions", "failed_calls", "unknown_usage_calls")}

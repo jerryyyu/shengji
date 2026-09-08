@@ -174,6 +174,34 @@ def test_pool_preserves_incomplete_pairs_and_missing_accounting(tmp_path):
     assert result["cost_accounting_complete"] is False
 
 
+def test_pool_accepts_actual_pilot_arm_population_without_hiding_costs(tmp_path):
+    first, second = tmp_path / "first", tmp_path / "second"
+    for path, coordinate in ((first, ("2", 0, 0)), (second, ("3", 0, 0))):
+        _tranche(path, (coordinate,))
+        progress_path = path / "progress-00000001-test.json"
+        progress = collector._load_json(progress_path)
+        empty = {"calls": 0, "accepted_decisions": 0, "failed_calls": 0,
+                 "unknown_usage_calls": 0,
+                 "usage": dict.fromkeys(progress["pilot_arms"]["batch4"]["usage"], 0),
+                 "reported_tokens_per_accepted_decision": None,
+                 "serial_decisions_per_minute": None}
+        progress["pilot_arms"].update(baseline=copy.deepcopy(empty), batch2=empty)
+        progress_path.write_bytes(collector.canonical_json_bytes(progress))
+    result = readout.analyze_many([first, second])
+    assert result["cost_accounting_complete"] is True
+    assert result["per_arm_costs_and_failures"]["batch4"]["usage"]["total_tokens"] == 200
+    assert result["per_arm_costs_and_failures"]["baseline"]["calls"] == 0
+    assert result["per_arm_costs_and_failures"]["baseline"]["reported_tokens_per_accepted_decision"] is None
+    # Non-game work must remain visible rather than be silently discarded.
+    progress["pilot_arms"]["baseline"]["failed_calls"] = 1
+    progress["pilot_arms"]["baseline"]["calls"] = 1
+    progress_path.write_bytes(collector.canonical_json_bytes(progress))
+    assert readout.analyze_many([first, second])["per_arm_costs_and_failures"]["baseline"]["failed_calls"] == 1
+    del progress["pilot_arms"]["compact1"]
+    progress_path.write_bytes(collector.canonical_json_bytes(progress))
+    assert readout.analyze_many([first, second])["cost_accounting_complete"] is False
+
+
 def test_pool_rejects_overlap_even_when_no_pair_is_complete(tmp_path):
     first, second = tmp_path / "first", tmp_path / "second"
     for path in (first, second):

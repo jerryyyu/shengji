@@ -1,4 +1,59 @@
-# PT-Luna paired gameplay: first eight-deal tranche
+# PT-Luna paired gameplay: completed 52-deal comparison
+
+## Final readout — September 8
+
+Both tranches finished: **52 deals / 104 mirrored rounds**, no missing games,
+failed provider calls or unknown-usage calls. No repeat provider run is needed.
+
+| Batch4 minus compact1 | Deals | Mean signed levels/round | 95% deal-bootstrap interval |
+|---|---:|---:|---:|
+| First tranche | 8 | +0.1250 | [−0.2500, +0.5000] |
+| Remaining tranche | 44 | −0.1477 | [−0.3523, +0.0568] |
+| Exploratory pool | 52 | −0.1058 | [−0.2885, +0.0769] |
+
+The pooled result has 11 positive, 24 tied and 17 negative paired deals. It
+does **not** establish equal quality: the point estimate favors compact1, and
+the interval admits a meaningful batching penalty. The pool includes previously
+opened deals, so it is not a fresh confirmation. Seven shared-response waves
+also limit the independent-deal interpretation; the descriptive leave-one-wave-out
+mean range is [−0.1591, −0.0341], not a replacement confidence interval.
+
+| Arm | Accepted decisions | Calls | Reported tokens | Tokens/decision | Serial provider decisions/min |
+|---|---:|---:|---:|---:|---:|
+| Compact1 | 3,215 | 3,215 | 33,465,736 | 10,409.25 | 4.862 |
+| Batch4 | 3,196 | 1,173 | 14,631,842 | 4,578.17 | 8.265 |
+
+Batch4 uses **2.27× fewer reported tokens/decision** and provides **1.70× serial
+provider throughput** on these realized trajectories. Total reported tokens:
+48,097,578. These are not subscription-quota or isolated-hardware savings.
+The stronger historical rollout-enabled teacher remains a separate comparison
+([#275 result](luna_historical_quality_result_20260906.md)); neither gameplay arm
+here used tools or played production MC.
+
+The completed native exports contain **3,900 fit + 3,852 validation records**,
+26 disjoint deals / 52 rounds per split, including 1,341 forced decisions and
+all losing games. Retain them as explicitly labeled mixed batch4-versus-compact1,
+full-information, play-only data—not stronger-teacher data or automatically
+approved training input. Do not use the validation split for fitting or call its
+already-inspected outcomes fresh confirmation.
+
+Raw evidence, private exports and original readout are preserved on Mini at
+`~/shengji-archive/2026-09-06/luna-gameplay-final-auto.9vAZeP/`.
+The September 8 read-only aggregation is at
+`~/shengji-archive/2026-09-08/luna-final-accounting.Lqco2o/readout.json`
+(SHA256 `ed934d91c6b0cc64b9121da98a0e05be7c378b31f07c9b5d04b1b9fb2ca8b47f`).
+It fixes only pooled accounting: the shared pilot logger emitted empty baseline
+and batch2 arms, which the old two-arm-only aggregator treated as incomplete.
+All reported arms now remain visible; nonzero unexpected work is not discarded.
+The original result is unchanged on disk; gameplay results did not change.
+
+Integration preserves main's optional typed provenance for existing sources and
+adds mandatory complete provenance for this importer. Portable regression tests
+exercise both paths and pooling with the actual four-arm receipt shape. No
+provider calls, model training or additional trajectory replay were used for
+this final readout correction.
+
+## Historical first-tranche readout and continuation rationale
 
 Completed all **8 distinct seeded deals / 16 mirrored rounds** at source
 `6056dae5b76b700365e6980bd0ddcb0080be3279` (PR #280), with no failed or unknown-usage
@@ -131,8 +186,9 @@ The proposal below is retained as its pre-launch rationale. Jerry's additional
 45M-token / 18-hour approval is recorded in
 [PR #280](https://github.com/jerryyyu/shengji/pull/280#issuecomment-5562959834),
 and the unchanged 44-deal collector launched on Mini on September 6 at 19:32 EDT.
-Its result remains pending; neither the first-tranche result nor the exports
-above substitute for the larger comparison.
+It subsequently completed; the final readout above supersedes the pending status.
+The first-tranche results below are retained as historical evidence, not current
+instructions to launch or request another budget.
 
 `runs/luna_quality_gameplay_remaining44_20260906.json` contains exactly the
 original manifest's unused coordinates, in manifest order. The existing panel

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from .encode import ACT_DIM, OBS_DIM
+from .encode_versions import encoder_version_for
 
 try:
     import torch
@@ -18,10 +19,12 @@ if torch is not None:
     class QNet(nn.Module):
         """MLP over concat(obs, action) -> scalar score (~0.6M params)."""
 
-        def __init__(self, hidden: int = 512):
+        def __init__(self, hidden: int = 512, obs_dim: int = OBS_DIM):
             super().__init__()
+            self.obs_dim = int(obs_dim)
+            self.enc_version = encoder_version_for(self.obs_dim)
             self.net = nn.Sequential(
-                nn.Linear(OBS_DIM + ACT_DIM, hidden), nn.ReLU(),
+                nn.Linear(self.obs_dim + ACT_DIM, hidden), nn.ReLU(),
                 nn.Linear(hidden, hidden), nn.ReLU(),
                 nn.Linear(hidden, 256), nn.ReLU(),
                 nn.Linear(256, 1),
@@ -49,10 +52,12 @@ if torch is not None:
         candidates — value-scale learning cannot crush action ranking.
         (Recipe v2 architecture; also used by the distillation trainer.)"""
 
-        def __init__(self, hidden: int = 512):
+        def __init__(self, hidden: int = 512, obs_dim: int = OBS_DIM):
             super().__init__()
+            self.obs_dim = int(obs_dim)
+            self.enc_version = encoder_version_for(self.obs_dim)
             self.trunk = nn.Sequential(
-                nn.Linear(OBS_DIM, hidden), nn.ReLU(),
+                nn.Linear(self.obs_dim, hidden), nn.ReLU(),
                 nn.Linear(hidden, 256), nn.ReLU(),
             )
             self.v_head = nn.Linear(256, 1)
@@ -100,10 +105,12 @@ if torch is not None:
         output cannot serve both: measured twice (gate 32% value-pinned,
         30% with CE temperature)."""
 
-        def __init__(self, hidden: int = 512):
+        def __init__(self, hidden: int = 512, obs_dim: int = OBS_DIM):
             super().__init__()
+            self.obs_dim = int(obs_dim)
+            self.enc_version = encoder_version_for(self.obs_dim)
             self.trunk = nn.Sequential(
-                nn.Linear(OBS_DIM, hidden), nn.ReLU(),
+                nn.Linear(self.obs_dim, hidden), nn.ReLU(),
                 nn.Linear(hidden, 256), nn.ReLU(),
             )
             self.q_head = nn.Sequential(
@@ -141,16 +148,23 @@ if torch is not None:
 
 def load_any_net(path: str):
     """Load a checkpoint as whichever architecture saved it (QNet /
-    QNetDueling / PolicyValueNet) — all expose score_candidates."""
+    QNetDueling / PolicyValueNet) — all expose score_candidates.
+
+    The checkpoint's own first weight states its input width, and so which
+    encoder version its caller must encode with (``net.enc_version``): a
+    531-wide archived net keeps getting v1 observations after the encoder
+    grows a v2."""
     if torch is None:
         raise RuntimeError("needs torch: uv sync --group rl")
     state = torch.load(path, map_location="cpu")
+    first = "trunk.0.weight" if "trunk.0.weight" in state else "net.0.weight"
+    obs_dim = int(state[first].shape[1]) - (ACT_DIM if first == "net.0.weight" else 0)
     if any(k.startswith("p_head") for k in state):
-        net = PolicyValueNet()
+        net = PolicyValueNet(obs_dim=obs_dim)
     elif any(k.startswith("trunk") for k in state):
-        net = QNetDueling()
+        net = QNetDueling(obs_dim=obs_dim)
     else:
-        net = QNet()
+        net = QNet(obs_dim=obs_dim)
     net.load_state_dict(state)
     net.eval()
     return net

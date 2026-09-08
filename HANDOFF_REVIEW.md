@@ -11898,3 +11898,570 @@ FINAL RESULT, deal-clustered bootstrap, 10,000 replicates, 52 independent deals,
 READING: batching four deals into one prompt shows no measurable action-quality cost against one call per decision, on a fixed-continuation proxy. Codex report 2.98x reported-token efficiency alongside it. That combination is the point of the lane: if it holds, teacher collection gets ~3x cheaper for no measured quality loss.
 CAUTIONS I would attach to any use of it. (a) The sensitivity measure FLIPPED SIGN between the snapshot and the final readout, -0.0128 to +0.0048, which is what noise at this interval width does and is a reason to treat neither as directional. (b) 52 deals is the independent unit; the fourth ordinal added positions WITHIN existing deals, so it narrowed the primary interval without adding independent clusters. (c) Codex are explicit that this is fixed-continuation action quality, not equivalence and not whole-game strength, and their own document says paired gameplay remains required. A null on a proxy is not a licence to batch.
 MY PROCESS, since this episode cost two ledger entries: I read a scorer-complete snapshot as a run-complete result, then could not verify termination independently because my own process check matched MY training job (its argv contains an --eval-holdout luna path). The reliable move was the one I eventually made — ask the owner and wait for a producer-absent statement with a result hash. Recorded so the next "run-ended" pointer gets the same treatment.
+
+## 2026-09-06 — Claude: the network is never told who is winning the trick, measured on 390 decisions; plus three training speedups, a generation engine miss, and three intervals I overstated
+
+MEASURED, and the most useful thing I found today. Rebuilding every following decision in a 480-decision Run D sample (held out: A+B+C trained on A, B, C) and computing who actually held the trick at the moment of play, points played into the trick: with the PARTNER winning, search 5.85 and model 5.56; with an OPPONENT winning, search 1.86 and model **3.61**. Both feed points when their own side holds the trick; only the search stops when it does not, and the model hands an opponent 1.75 points more per decision. Its discrimination between the two situations is half the search's, +1.96 against +3.99. Top trumps are not merely weaker but INVERTED: search spends jokers 0.023 when an opponent leads against 0.016 when the partner does; the model 0.015 against 0.024.
+WHY, verified in source: `encode_obs` (rl/encode.py, OBS_DIM 531) has no current-trick-winner feature, no partner-is-winning flag and no points-on-the-table feature. Its three trick planes are indexed by PLAY ORDER, not by seat, so the net cannot attribute plays to seats without cross-referencing a second block, and to know its partner is winning it must learn the whole comparison rule from count planes. `Round` keeps a running incumbent only inside a trusted rollout. PR #283 adds 29 features (16 trick-local, 5 points-regime including the 80-point kink v1 never stated, 8 hand shape), bumps ENC_VERSION to 2 at width 560. The cache key already contains the encoder source digest, so caches invalidate automatically and NO new self-play is needed; existing checkpoints are not loadable at the new width, so it trains from scratch. NOT a fix for the near-tie noise floor, which is a separate problem.
+ALSO MEASURED, and it reframes what the model lane should optimise (#276): of 60,620 Run D decisions with a complete report fold, the fold RESOLVES 49.7% of them, and those carry 89.8% of the total value at stake; the unresolved half carries 10.2% (20.3% inflating every unresolved gap by a full se, 28.4% by two). INFERRED, separately: the coin-flip on near-ties may therefore be close to harmless, and the loss is being bought on confident high-value decisions where sign agreement is 0.65-0.68. That inference has NOT been tested by an experiment that could refute it; the falsifier is stated in the issue.
+TRAINING PERFORMANCE, all merged: #271 split_mask rebuilt and rehashed the split key array once per block per epoch (measured 32.90 ms -> 0.062 ms per block at 57,600 keys); #277 run_eval decoded the whole store to reach one split when a shard holds exactly one deal (600/600 measured) so 90% can be declined from recorded keys; #279 optional parallel decode, default off, 1.51x at four workers and worse beyond. Epoch 3,653s -> 449s -> ~361s -> ~323s, about 11x. Codex HELD #279 correctly on two findings: live decoded bytes exceeded the residency budget because a pool receives payloads before admission, and MY PARITY TEST SUBMITTED ZERO TASKS because the fixture store was fully resident, so both streams it compared were serial. Both repaired and both guards checked against the code they catch.
+GENERATION: trajectory runs were pure Python. `runF.sh` set no SHENGJI_FAST and its tree had no built extension while every other launcher and tree on that host had both. Measured on the exact Run F recipe, 230.79s against 50.33s, 4.59x, shards BYTE-IDENTICAL. Run F is frozen at 179 clusters (I first reported 358, which was the file count: two files per cluster). Run F2 relaunched on a fresh registered window under the compiled engine, and #273 now prints the engine before anything is dealt.
+THREE INTERVALS I OVERSTATED TODAY, all caught by Codex, all accepted. (1) I claimed zero-sum deals cut effective n and inflate a CI, with numbers; simulated it and they TIGHTEN it (0.0688 -> 0.0440 at half zeros), the real effect being that dilution shrinks the numerator faster. (2) I called the adaptive result "a genuine no effect at equal work"; an interval of [-0.05774, +0.07308] is not equivalence and licenses only a bound on that allocator and recipe. (3) I said the engine "already computes who is winning and the encoder throws it away"; it computes it only inside trusted rollouts. Pattern: I reach for a mechanism before checking it. Simulate or grep first, then write.
+ONE NEAR MISS worth recording because nothing caught it but me: I reported the A+C+D screen as stuck and was preparing to kill its waiter, having assumed the wall clock without reading it. It was 16:44, not 17:35, and the waiter had fired on time. Read the clock before computing an elapsed time, especially before a destructive act.
+
+## 2026-09-06 — Claude: A+C+D is the first checkpoint to clear zero OUTSIDE rank 2; and the "advantage roughly halves outside rank 2" claim compared two different units
+
+MEASURED. A+C+D (from-scratch, ckpt 528dbbe0) on the SAME 260 deals and seed window 91260904 that the A+B+C rank-diverse screen used, same 13-rank cluster cycle, optimised tree 11625ba0: **+0.2038 per cluster [+0.0730, +0.3386]**, per round +0.1019 [+0.0385, +0.1712], win rate 0.5385 [0.5077, 0.5692], decision wall 4.636x, 66 positive / 34 negative / 160 zero clusters. The archived A+B+C run on that population is +0.1231 [-0.0231, +0.2615]. So the checkpoint carrying rank-diverse training data (Run D; Runs A and C are entirely rank 2) is the FIRST to clear zero outside rank 2, where its predecessor did not.
+PAIRED CONTRAST, because both screens used identical deals: A+C+D minus A+B+C is **+0.0808 [-0.0538, +0.2192]** per cluster over 10,000 deal-bootstrap replicates. NOT RESOLVED. Pairing bought less than expected because the two checkpoints score IDENTICALLY on 171 of the 260 deals. So "A+C+D beats production outside rank 2" is supported; "A+C+D beats A+B+C" is not.
+CORRECTION TO THE STANDING SCORECARD, which I have been repeating all day and which is in the program-state paragraph. It reads: rank-2 +0.1387 [+0.0645,+0.2168], 13 ranks +0.0615 [-0.0058,+0.1346], "roughly half and crossing zero". Those are TWO DIFFERENT UNITS taken from the same summary schema: `per_cluster_sum` and `per_round`, and a cluster is two rounds. Like for like per cluster it is +0.1387 against **+0.1231**, an 11% drop, not a halving. What survives, and is the part that matters: the 13-rank interval CROSSES ZERO at -0.0231 while the rank-2 interval does not. The correct statement is that the advantage was never DEMONSTRATED outside rank 2, not that it halved there.
+HOW IT HAPPENED: `arm_signed_level_utility` carries both conventions side by side and I quoted whichever appeared in the note I was reading. Rule for anyone quoting these summaries: name the convention with the number, every time. I have quoted the per-cluster figure throughout this entry.
+RANK-2 RESULT for the same checkpoint, for completeness: +0.1445 [+0.0039, +0.2773], reproducing A+B+C's +0.1387 rather than improving on it, at the same 3.5x wall. So the extra data shows up outside rank 2 and not at it, which is where Runs A and C already had coverage.
+ALSO TODAY, from Codex and acked: selective extra-trick depth is -0.00577 [-0.06736, +0.05769] at 1.5892x wall with the gate firing on 59.18% of contested decisions, so a real intervention with no gain rather than an underpowered one; keep flat. And the bounded Luna gameplay tranche finished inside its ceiling at 7.045M of 9M tokens, batch4 +0.125 [-0.25, +0.50] on 8 deals (inconclusive) at 2.324x token efficiency per decision; the remaining 44 deals would need roughly 38.75M more and have no ceiling.
+PROCESS, mine: I opened PR #283 (encoder v2) having run only my own new test file and the training suites. CI and then the adjacent suites found five failures, and one is not a fixable pin: `test_v11_anchor` loads the registered bot `rl-override-v11pair`, a real archived v1 checkpoint, which cannot run at 560-wide inputs. There is no version dispatch anywhere; `ENC_VERSION` is a single global and the cache refuses a different one. So a v2 that REPLACES v1 breaks every archived checkpoint and the registry bots built on them, and the PR is the wrong shape rather than merely incomplete. It should be additive. I described this in the PR as "existing checkpoints are not loadable, so it trains from scratch", which understated it.
+
+## 2026-09-06 — Claude: RETRACTING fd4df46d. The original scorecard was right, my correction was wrong, and A+C+D is WORSE than A+B+C at rank 2
+
+In fd4df46d I claimed the "advantage roughly halves outside rank 2" line compared a per-cluster figure with a per-round one, and that like-for-like it was an 11% drop. Codex challenged it. I read the archived file rather than assuming a second time, and they are right.
+
+MEASURED, from `2026-09-05/cwv-shortlist-abc-rerun/learned-3x/summary.json` (identical values in `2026-09-06/cwv-shortlist-scaling/w32-paired/`): the +0.1387 [+0.0645, +0.2168] headline is `per_round`. Its `per_cluster_sum` is +0.2773 [+0.1444, +0.4141]. So the scorecard was already stating a per-round number, the 13-rank +0.0615 is also per round, and **the original "roughly halves" claim was correct**. My 11% figure came from comparing the archived per-cluster value against a per-round one, which is the exact error I accused the scorecard of.
+
+THE TABLE, every number PER ROUND, which is the convention the headline uses:
+
+| checkpoint | population | per round |
+| --- | --- | --- |
+| A+B+C | 256, rank 2 | +0.138672 [+0.0645, +0.2168] |
+| A+B+C | 260, 13 ranks | +0.061538 [-0.0058, +0.1346] |
+| A+C+D | 256, rank 2 | +0.072266 [+0.0057, +0.1445] |
+| A+C+D | 260, 13 ranks | +0.101923 [+0.0385, +0.1712] |
+
+WHICH CHANGES THE RESULT I REPORTED. I said A+C+D "reproduces A+B+C rather than improving on it" at rank 2. It does not: **+0.0723 against +0.1387 is roughly half**. And outside rank 2 the order reverses: +0.1019 against +0.0615. So the rank-diverse training data appears to help where it has coverage and cost something where Runs A and C already had it. That crossover is the actual finding and it is more interesting than what I first reported, but it is FOUR SEPARATE UNPAIRED SCREENS and no cross-population contrast has been computed, so read it as a pattern to test rather than a result.
+WHAT SURVIVES UNCHANGED: the 13-rank PAIRED contrast on identical deals, A+C+D minus A+B+C = +0.0808 per cluster [-0.0538, +0.2192], i.e. +0.0404 per round [-0.0269, +0.1096]. Unresolved. And A+C+D's 13-rank interval excludes zero where A+B+C's does not.
+PROCESS. This is the second time in one evening I have quoted these summaries in the wrong unit, and the second correction Codex has had to make on it. The schema carries `per_round` and `per_cluster_sum` side by side and I twice inferred which one a note meant instead of opening the file. The rule, now with two failures behind it: NAME THE CONVENTION WITH EVERY NUMBER, and read the summary rather than the prose quoting it. Also, when I "correct" a standing claim, verify the claim's own source first; I corrected a line that was right, using the mistake I was accusing it of.
+Codex is also right that a cross-population significance statement is not a difference test, and that the #285 gate-firing rate is coverage rather than power.
+
+## 2026-09-06 — Claude: the shortlist clears zero across ALL 13 trump ranks on 780 deals, so the rank-2-only caveat retires
+
+The scorecard has carried the qualifier that "every strength number we have is rank-2 only". That is no longer true. A+C+D W32 now has two disjoint 13-rank populations, both excluding zero, and pooling them gives the first broad-rank result in the programme that resolves.
+
+MEASURED, all figures `per_round` (the headline convention; `per_cluster_sum` is exactly twice each), checkpoint 528dbbe0, arm `learned` vs production, W32/K4, selection 30 worlds/candidate, R300 report fold:
+
+| population | seed window | n | per round |
+| --- | --- | --- | --- |
+| 13 ranks | 91260904 + 260 | 260 | +0.1019 [+0.0385, +0.1712] |
+| 13 ranks | 91261190 + 520 | 520 | +0.0481 [+0.0019, +0.0913] |
+| **pooled** | both, disjoint | **780** | **+0.0660 [+0.0301, +0.1039]** |
+
+The pooled figure is computed from the raw per-cluster values in the sealed shards, not from the two intervals: for each cluster, the mirrored pair's `arm_utility - baseline_utility` summed over both records and divided by four, bootstrapped at 1,000 replicates. The reconstruction reproduces each sealed summary's own `per_round` mean exactly (+0.101923 and +0.048077), which is what licenses the pooling arithmetic.
+
+POOLING IS LEGITIMATE, tested rather than assumed: the 520-deal population minus the 260-deal population is -0.0538 [-0.1308, +0.0289], crossing zero, so the two are consistent and the difference between the point estimates is noise. Had that excluded zero I would have reported them separately.
+
+WHAT THIS COSTS: 3.7932x production decision wall on the 520-deal run. That is the number to argue about now, not whether the gain exists outside rank 2.
+
+WHAT DOES NOT RESOLVE: the win rate, 0.5173 [0.4971, 0.5404], still spans 50%. That is expected rather than contradictory — signed level utility is the finer instrument and the win rate discards magnitude — but it means the honest headline is "wins by more when it wins", not "wins more often".
+
+WHAT I AM NOT CLAIMING. This is a DEV screen against production, not a deployment case, and nothing about the deployed policy changes. The matched-compute question is untouched: the last paired margin over production-x10 was +0.0332 [-0.0724, +0.1368], unresolved, and a 3.79x arm still has to answer it.
+
+ALSO CORRECTED, mine: earlier this evening I described the 13-rank number as "+0.0404 [-0.0269, +0.1096], not individually resolved". That is the PAIRED CONTRAST of A+C+D against A+B+C on identical deals, which is a different estimand from the arm-vs-production utility above. Both statements are true; quoting the contrast where the utility was being discussed made the arm look unresolved outside rank 2 when its own screens excluded zero. Name the estimand as well as the convention.
+
+## 2026-09-06 — Claude: PR #279 shipped a decode speedup that no training run uses, because its default is off
+
+`iter_batches(decode_workers=)` merged at 19:39 ET with `DEFAULTS["decode_workers"] = 0`. Every training run since is therefore paying the old cost, and the running 9-config sweep is on a worktree 11 commits behind main that does not contain the flag at all.
+
+The runs are NOT cache-resident, which is the precondition for the speedup mattering: the training log states `residency: 72000 shard(s) decode to 32,865,863,472 bytes; budget 6,871,947,673 (streams through the LRU)`. That is 4.8x oversubscribed, so roughly 26 GB is re-decoded single-threaded every epoch.
+
+I am NOT quoting a speedup. It is unmeasured, and the reason to be careful is on the record: Codex previously caught my #279 parity test submitting zero tasks because its fixture was fully resident. A worktree at `origin/main` is staged for a `--decode-workers 0 vs 6` A/B at `--epochs 1` on identical data and seed, which needs a quiet box to mean anything; both cloud hosts are at 100% on generation and the Mini is contended.
+
+Correctness is not the open question: `iter_batches` documents the batch sequence as a function of `rng` alone, and tonight's `sweep-base` reproduced the sealed A+C+D run's epochs 1-3 to four decimal places on every metric, which is an independent determinism witness.
+
+Jerry's standing rule is that validated speedups become defaults. The measurement is the missing step, not the decision.
+
+## 2026-09-06 — Claude: amending 1837b28a on three counts Codex is right about
+
+All three are overstatement in the same direction: I let a test that failed to resolve stand in for a positive claim.
+
+ONE. POOLING. I wrote that the heterogeneity contrast crossing zero means "the pooling is tested rather than assumed". It does not. An interval containing zero is not equivalence — the same error I was corrected on for the adaptive-root result eight hours earlier. Worse, the decision to pool was made AFTER seeing both screens agree, which is outcome-conditioned; a pre-specified pooling plan would have licensed it and I had none. THE PRE-SPECIFIED EVIDENCE IS THE TWO SEPARATE SCREENS: +0.1019 [+0.0385, +0.1712] on 260 and +0.0481 [+0.0019, +0.0913] on 520. The pooled +0.0660 [+0.0301, +0.1039] stands as EXPLORATORY and should be quoted that way. The heterogeneity contrast is evidence of no DETECTED conflict, nothing more.
+
+TWO. "WINS BY MORE, NOT MORE OFTEN". Signed utility resolving while the win rate does not is consistent with that reading, but it does not establish it: I never conditioned on winning, so I cannot make a claim about conditional margin. The defensible statement is only that the signed-level estimand resolves and the win-rate estimand does not.
+
+THREE. THE COST FIGURE. 3.7932x is measured on the 520-deal run alone. I attached it to the pooled population, which never had a cost measured for it.
+
+FOURTH, MINE, NOT CODEX'S, AND THE ONE THAT ACTUALLY CHANGES A CONCLUSION. Reporting the three checkpoints against production is the wrong comparison and I led with it. All three 13-rank screens ran the SAME 260 deals, so they pair, and paired they are all unresolved against each other:
+
+| paired contrast, 260 identical deals | per round |
+| --- | --- |
+| A+C+D minus A+B+C | +0.0404 [-0.0269, +0.1077] |
+| A+C+D warm minus A+B+C | +0.0135 [-0.0519, +0.0769] |
+| A+C+D minus A+C+D warm | +0.0269 [-0.0385, +0.0942] |
+
+Unpaired, A+C+D and the warm arm exclude zero against production and A+B+C does not, which reads as an ordering. It is not one: those are three separate tests against a common opponent, and the direct comparisons do not separate any pair. WHAT IS RESOLVED IS THE DESIGN, NOT THE CHECKPOINT. We cannot choose a net by screening at n=260, and the warm-start question in particular is not answered — its point estimate is lower and the contrast is unresolved, so "warm start failed" is not supported either.
+
+FIFTH. I relayed Codex's uncertainty diagnostic to Jerry as "posterior spread is not the uncertainty signal, candidate count is". Codex's own caveat, which I had not read carefully enough before relaying: the AUCs came from true-world model output against a finite-search proxy, NOT the W32 sampled-world posterior, and candidate count is confounded. The entropy null is worth having; "candidate count is the signal" is not established and no allocation rule follows from it. Before relaying another agent's numbers, read their stated scope, not just their headline.
+
+## 2026-09-07 — Claude: three training speedups measured on the real store, and the optimized screen tree reproduces sealed decisions exactly
+
+MEASURED, one epoch each on the full A+C+D store (72,000 shards, 32.9 GB decoded against a 6.87 GB budget, so it streams), seed 1, identical data and holdouts:
+
+| tree | decode workers | epoch | val_ce |
+| --- | --- | --- | --- |
+| sweep worktree, #271 only | 0 | 449.3 s (sealed run, epoch 1) | 0.7169 |
+| main at 0ba7f709, #271+#277+#279 | 0 | 316.2 s | 0.7169 |
+| main at 0ba7f709 | 6 | **243.7 s** | 0.7169 |
+
+So #277 alone is 1.42x (I had estimated ~1.16x), #279 at six workers a further 1.30x, and 1.84x off the epoch in total since the sweep started. `val_ce` agrees at the four decimals the trainer prints across all three, and `train_ce` agrees likewise. Codex is right that this is agreement at printed precision, not whole-store byte identity; the byte-level claim that the batch sequence is a function of the rng alone rests on #279's parity test, which these runs corroborate rather than establish. The restarted sweep reads these two numbers at launch and runs `--decode-workers 6`; it would have refused to start had the two arms disagreed. The candidate pass after the epoch (~35-40 min, CPU-bound, eval_workers=8) is unaffected by any of this and now dominates a run's wall.
+
+SCREEN CALIBRATION, 40 clusters of the sealed 260-deal 13-rank window re-run on the tree containing #286 and #288: **0 utility mismatches and 0 history-hash mismatches against the sealed shards.** The optimized tree makes the same decisions as the tree that produced every sealed 13-rank result, so those results are reusable as the v1 arm of a paired comparison and the coming v2 screen is single-arm. That is a measured property now, not #288's stated 9/9.
+
+WHAT DID NOT MATERIALISE: the optimized screen is not faster per deal. 7.9 s/cluster at five workers on a quiet box, against 8.2 s/cluster for the sealed 520-deal run on a contended one. #286 and #288 target the widest follows, and the calibration's 2.39x decision-wall multiplier from a 4-cluster smoke earlier tonight was not a wall-clock projection and I should not have hinted it was one. 780 deals is ~1.7 h single-arm.
+
+PROCESS. Every launcher now pins its tree to a named ref, refreshes it when drifted and idle, refuses when drifted and busy, and runs a BEHAVIOURAL preflight (compiled engine bound; #288's fused path TAKEN on a real round, not merely importable; #277/#279 entry points present). Each preflight was shown failing on the stale tree and on a good tree with the optimization disabled before it was trusted. The screen guard caught real drift within an hour of being written, on a docs-only merge; I am keeping it that strict, because "does this diff look like it matters" is the judgement that let the previous worktree fall ten commits behind.
+
+ALSO TONIGHT, on the encoder: part 1 of the additive v2 (branch claude/encode-v2-additive, not pushed) is reviewed with byte-identity and both fused-path version gates independently falsified. Part 1's conclusion that train_cwv cannot produce v2 nets was over-scoped: the frozen digest is exactly CWV_SOURCE_PATHS, and the files that pin the SHORTLIST's width — rl/value_model.py, rl/value_checkpoint.py, ai/cwv_policy.py — are not in it. Part 2 is in progress on that basis.
+
+## 2026-09-07 — Claude: encoder v2 is additive at both levels, the shortlist loads either version, and a v2 net is training
+
+PR #291 at 76984b3f. The 2026-09-06 entry said train_cwv could not produce v2 nets because value_afterstate.py's width sits inside the frozen checkpoint digest. The premise was right and the conclusion over-reached: the digest closure is exactly CWV_SOURCE_PATHS, and the files that pin the SHORTLIST's width — rl/value_model.py, rl/value_checkpoint.py, ai/cwv_policy.py — are not in it. So the same additive move was applied one level up: ValueModelConfig carries public_dim/enc_version with v1 defaults (archived configs rebuild unchanged, field for field), verify_checkpoint_identity dispatches on the version the checkpoint DECLARES, a v2 tensor subclass pins 561 in a new module, and the fused static path is gated on version rather than on a length check against a constant that does not move.
+
+MEASURED: all nine frozen files hash identical to origin/main; the archived v1 CWV checkpoint scores a real shortlist decision with ordered score bytes a915399c… identical across this tree and main under both encodings (agent's measurement, 1,258 rows); a v2 net trained by train_cwv loads through load_cwv_checkpoint, verifies AS v2, and scores a real CWVShortlistBot decision at 561 wide. Falsified independently by me on a separate worktree: identity gate forced to v1 (2 red), forced to v2 (2 red), width refusal disabled (1 red), v2 width minus one (1 red); part 1's byte-identity and fused gates earlier. Two of my first mutants stayed green because they missed their targets, not because the tests could not see the defect; I say so because "stayed green once" is exactly the observation that gets misread as coverage.
+
+LIVE: runACD-enc2 training from this head since 01:13 ET, same data, seed, selector and holdouts as the from-scratch A+C+D arm, so the encoder is the only difference. The v2 cache rebuild measured ~26 min for 72,000 shards at 8 workers — the cost that was "unknown" in every earlier ETA. The screen that follows is single-arm on the sealed 260-deal 13-rank window, paired against the sealed v1 result, which cross-tree parity (40/40, 0 mismatches) licenses. At n=260 the paired contrast resolves effects larger than about ±0.069 per round; Jerry chose that size knowing it will catch a regression and will not confirm a modest gain.
+
+Also merged tonight on Codex PASS: #290, decode_workers default 0 -> 6 (1.30x measured on the full store, val_ce agreeing at printed precision).
+
+## 2026-09-07 — Claude: the v2 encoder trains to val_ce 0.6227 against v1's 0.6594, fixes the confident decisions and not the near-ties, and its screen is running
+
+MEASURED, offline, on the trainer's own validation split — search remains the arbiter and none of this is strength evidence:
+
+| | v1 A+C+D (sealed, best epoch 8) | v2 A+C+D (best epoch 7, early stop at 10) |
+| --- | --- | --- |
+| val_ce | 0.6594 | **0.6227** |
+| val_rank_regret | 0.133 | 0.119 |
+| epoch wall | 449-563 s | 227 s |
+
+Same data, seed, selector and holdouts; the encoder is the only difference. The 0.037 gap is larger than the sweep's seed-to-seed spread (~0.02) and larger than the A+B+C -> A+C+D data step. Rank regret moved less than CE did, and rank regret is closer to what the shortlist asks of the net.
+
+THE RUN DID NOT SEAL. After early stop, the post-training candidate pass refused (`public head observations must be [n, OBS_DIM]`): the v1 public-head comparison was fed 560-wide rows. Same class as Codex's F1 on #291, one consumer further along; a narrow fix is in progress. best.pt is final (epoch 7, stamped enc_version 2 / public_dim 561) and the 260-deal paired screen and the v2 sweep were launched on it directly, with the missing receipt named in the launch record. The chains that waited on receipt.json were retired because it will not appear for this run.
+
+MINING, on the interim checkpoint (best.pt carried epoch 6 when copied; epoch-04.pt agrees within 0.5 points everywhere), trainer TEST split, Run D shards, 9,693 decisions / 131,053 candidates and a 48,458-decision all-ply population: **near-tie sign agreement is NOT fixed and is NOT fixable from features** — 49.9% -> 50.6% on pairs the search separates by under half a point, because 100% of those pairs sit below the search's own 1.7-SE resolution rule, so the label is the search's noise. The columns help exactly where the search is confident: search-resolved pairs 57.5% -> 61.8% (61.1% -> 66.8% all-ply), and the >= 20-point bin 72.5% -> 83.6% (75.5% -> 91.7%). Top-1 30.3% -> 31.7%; rank regret 0.136 -> 0.128. Both directions reported: 1,163 decisions fixed, 1,024 regressed. What v2 did NOT fix: leads (64% of remaining costly misses, cost unchanged), following behind a winning partner (v2 feeds a safe partner LESS than a beatable one, the reverse of the search), and pairs/tractors. Three columns proposed with the evidence behind each: incumbent_security (can each later seat still beat the incumbent), suit_master_holder (who holds the top remaining card per suit; "opponent holds the master" is the largest asymmetric descriptor in the 451 still-wrong leads), next_leader (the 4th-seat afterstate has every trick-local column zero and rnd.turn nowhere in the vector — the only strictly-unrepresentable gap). The spec's own guess, partner-vs-opponent trump counts, shows no signal and is dropped.
+
+Also tonight: Codex's HOLD on #291 (three version-binding defects) repaired and independently falsified; Runs G and H registered (d9a641a8) and armed behind E and F2; the v1 hyperparameter sweep cancelled at Jerry's direction in favour of a v2 sweep.
+
+## 2026-09-07 — Claude: the v2 encoder wins offline by the largest margin of any checkpoint and DOES NOT win in search
+
+This is the night's result and it points the other way from every offline number that preceded it.
+
+OFFLINE, v2 (best epoch 7) against the sealed v1 A+C+D, same data, seed, selector and holdouts, encoder the only difference:
+
+| | v1 | v2 |
+| --- | --- | --- |
+| val_ce | 0.6594 | **0.6227** |
+| val_rank_regret | 0.133 | 0.128 |
+| holdout rank_regret roomlog / luna / highn / pt1 | 0.0946 / 0.1020 / 0.1269 / 0.0312 | **0.0829 / 0.1020 / 0.1151 / 0.0264** |
+| holdout rank_top1 | 0.410 / 0.403 / 0.324 / 0.579 | **0.434 / 0.424 / 0.348 / 0.587** |
+
+v2 is better or equal on every offline metric we have, on four independent holdouts, by margins larger than the sweep's seed-to-seed spread.
+
+IN SEARCH, W32/K4 on the SAME 260 opened 13-rank deals the v1 arm ran, per_round, reconstructed from the sealed shards (my reconstruction reproduces the summary mean exactly, +0.051923):
+
+| checkpoint | vs production | wall |
+| --- | --- | --- |
+| A+B+C | +0.0615 [-0.0058, +0.1346] | 4.75x |
+| A+C+D v1 | +0.1019 [+0.0385, +0.1712] | 4.64x |
+| **A+C+D v2** | **+0.0519 [-0.0173, +0.1231]** | 4.72x |
+
+PAIRED on the identical 260 deals: **v2 minus v1 = -0.0500 [-0.1231, +0.0250]**, unresolved but pointing NEGATIVE; v2 minus A+B+C = -0.0096 [-0.0846, +0.0635]. So the checkpoint with the best offline metrics in the programme scores the WORST of the three A+C+D-era arms against production, and its interval crosses zero where v1's did not.
+
+WHAT THIS IS AND IS NOT. It is not evidence that the features hurt: at n=260 the paired contrast resolves only effects larger than about +/-0.069, and -0.050 sits inside that. It IS a direct falsification of the inference we were all drawing at 02:00, that a 0.037 val_ce gap and better holdouts on four sets would carry into search. The standing rule — select per consumer IN SEARCH on the same seeds, never on offline numbers — has now been vindicated twice: first by the rank-regret-selected retrain, now by the largest offline margin we have ever seen failing to appear in the consumer.
+
+WHY, most likely, and it was measured BEFORE the screen rather than after: the mining pass showed the 29 columns move sign agreement on pairs the search RESOLVES (57.5% -> 61.8%, and 72.5% -> 83.6% on the >= 20-point bin) and move nothing on near-ties (49.9% -> 50.6%), because 100% of near-tie pairs sit below the search's own 1.7-SE resolution rule. The shortlist's finalists are decided on a median 1.3-1.9 point margin. So v2 improves exactly the decisions the shortlist has already settled and leaves untouched the ones it actually uses. Better on the metric, not better on the job.
+
+WHAT FOLLOWS: 780 deals resolve to about +/-0.040 and the 520-deal window is already sealed for v1, so the honest next step is the v2 arm on that window, pooling to 780 — not another offline comparison. The three proposed columns (incumbent_security, suit_master_holder, next_leader) all target LEADS, which mining showed is 64% of what v2 still gets wrong and where the shortlist's own margins are widest; that is a better-aimed hypothesis than v2 was, and it is still a hypothesis.
+
+Also overnight: #291 merged at 9cd18309 (Codex source PASS at 7ff480f1 after three HOLD findings plus a fourth found by the live run, all repaired and independently falsified). The v2 hyperparameter sweep completed 8 configs; dropout-0.2 is the best at val_ce 0.6175 against the 0.6227 control, and on tonight's evidence that ranking should not be trusted to predict search either. Run E sealed 16,000 clusters at 08:19 ET; Run G aborted on a systemd PATH defect (uv not on the unit's PATH) with its fast-engine guard firing correctly and no output written, relaunched 13:58 ET with an absolute interpreter path; Run H is at 3,780/16,000 on cloud.
+
+## 2026-09-07 — Claude: the v2 search deficit did not replicate; it reversed sign, and the two windows RESOLVE as different
+
+Last night's entry reported v2 minus v1 = -0.0500 [-0.1231, +0.0250] on the 260-deal 13-rank window and said the largest offline margin in the programme had failed to appear in search. The 520-deal window, pre-specified before it ran (I stated the 780-deal target and the +/-0.040 half-width at 10:07 ET, before launching), says the opposite.
+
+PAIRED, v2 minus v1, per_round, identical deals in each window:
+
+| window | seed0 | n | paired contrast |
+| --- | --- | --- | --- |
+| 260 | 91260904 | 260 | -0.0500 [-0.1212, +0.0231] |
+| 520 | 91261190 | 520 | **+0.0510 [-0.0058, +0.1067]** |
+| pooled | disjoint | 780 | +0.0173 [-0.0263, +0.0635] |
+
+AND THE WINDOWS RESOLVE AS DIFFERENT: 520-contrast minus 260-contrast = **+0.1010 [+0.0087, +0.1933]**, excluding zero. So pooling them into a single 780-deal number is NOT clean — it averages two populations that a direct test says disagree. I am quoting the pooled figure only as a summary, not as the estimate. That is the mirror image of the 2026-09-06 pooling I was corrected on: there the heterogeneity contrast crossed zero and I over-claimed that as licence; here it excludes zero and the licence is genuinely absent.
+
+Against production, pooled over the same 780: v2 +0.0833 [+0.0429, +0.1237] and v1 +0.0660 [+0.0282, +0.1038], both excluding zero, and on the 520 window alone v2 is +0.0990 [+0.0538, +0.1462] against v1's +0.0481 [+0.0019, +0.0913].
+
+WHAT IS ESTABLISHED: **the -0.0500 was not a real deficit.** It did not replicate on a fresh disjoint population of twice the size and the sign flipped. What is NOT established is that v2 is better: the paired contrast still crosses zero, and resolving an effect the size of the pooled +0.0173 would need about 5,300 deals at the measured per-deal SD of 0.643. The checkpoint choice remains unresolved, which is now the fourth consecutive checkpoint comparison to land there.
+
+TWO CANDIDATE EXPLANATIONS FOR THE WINDOW DISAGREEMENT, stated separately from the measurement. (a) Chance: this is one heterogeneity test among many run this week and a 95% interval excludes zero one time in twenty by construction. (b) A tree difference: both v1 arms ran on slw2, which predates #286 and #288; the v2 260 arm ran on encv2w at 76984b3f and the v2 520 arm on slw3 at 2e9c48e2, which carries both. The byte-exact replay of the 260 arms (2026-09-07 confusion analysis) showed #286 did NOT change play on that window, which weakens (b) but does not cover the 520 window. The populations themselves are balanced identically -- 20 and 40 clusters at every one of the 13 ranks -- and differ in difficulty (production mean utility -0.1019 vs -0.0481), which is a property of the deals, not of the arms.
+
+FEATURE IMPLEMENTATION VERIFIED, independently, before this result was known: all 29 v2 columns reproduce a recomputation from the game state using the engine's own beats, decompose, total_points and Memory -- 15,312 assertions over 528 positions, zero mismatches, plus the v1-prefix and v2-suffix properties. One dead column found: pts_band[3] (attacker points >= 120) is constant zero across the sample, so v2 carries 28 informative columns and one the net can only learn to ignore. My first verification pass reported 112 mismatches and was WRONG -- I had written a point-card parser assuming rank-first codes when the format is suit-first (S5, D10); the encoder was right and my check was broken.
+
+## 2026-09-07 — Claude: the W32 consumer FINISHES the trick, so 16 of encoder v2's 29 columns are boundary constants where it is used
+
+Codex found this (bus 691) and I verified it against the consumer before accepting it. It is the largest measurement error of the week and it is mine.
+
+`train/cwv_shortlist.py:98` calls `afterstate(rnd, seat, hands, buried, action, finish_trick=True)` -- the heuristic plays the current trick to completion, then the net evaluates the leaf. That is the #229 convention and it has always been the shortlist's behaviour. MEASURED on 710 real afterstates from the same fixtures I used before:
+
+| afterstate construction | constant trick-local columns |
+| --- | --- |
+| `finish_trick=False` (immediate) | 1 of 16 |
+| **`finish_trick=True` (what W32 does)** | **16 of 16** |
+
+So in the consumer that produced every strength number we have, the entire v2 trick-local block -- winner's relative seat, is-my-partner-winning, points on the table, lead effective suit, position in trick, lead width -- is identically constant. With the already-known dead `band3`, encoder v2 supplies **12 informative columns to the shortlist, not 29**.
+
+THIS RESOLVES THE WEEK'S CENTRAL PUZZLE. v2 wins every offline metric because offline evaluation encodes the IMMEDIATE afterstate, where those columns vary. It does not win in search because the search never sees them vary. The columns are correctly implemented -- I verified all 29 against independent recomputation, twice -- and were measured on a state distribution the consumer does not use.
+
+THE ERROR IS EXACTLY THE ONE ON MY OWN LESSONS LIST: "before measuring a model output, grep the consumer for the head being measured." I grepped for the HEAD and never for the STATE CONSTRUCTION. Everything downstream inherited it: the mining pass (2026-09-07), the published confusion analysis, and both of my own verification passes all used the default `finish_trick=False`. Codex's earlier afterstate correction (bus 686) was the same defect one step upstream and I corrected only the half they named.
+
+WHAT SURVIVES: v2's search numbers are real measurements of a real checkpoint -- +0.0990 [+0.0529, +0.1462] on the clean 520 window -- but whatever produced them came from the 13 non-trick columns (points regime, hand shape), not from the trick block that was the entire design motivation. The offline/search transfer failure is now explained by construction rather than attributed to noise.
+
+WHAT THIS KILLS: all three mining-proposed columns -- incumbent_security, suit_master_holder, next_leader -- are trick-local and would be equally invisible to W32. Building them as specified would repeat the mistake at greater cost. Any future encoder work must first state which afterstate construction its target consumer uses.
+
+OPEN QUESTION, NOT A CONCLUSION: whether the trick-local information is worth having at all. Two designs are compatible with this finding -- encode BEFORE the trick is finished (a consumer change, not an encoder change), or accept that a leaf-after-trick evaluator cannot use trick-local state and drop that block. Codex owns an isolated immediate-vs-finished-trick diagnostic under Jerry's scaling-audit goal (bus 692-694, 52 FIT positions, saved checkpoints, no new gameplay) which is the right experiment to settle it, and my live ACDEF jobs are untouched by it.
+
+## 2026-09-07 — Codex's horizon diagnostic: encoding BEFORE the trick finishes does not help, so the trick-local block is closed rather than relocated
+
+Following the finding that W32 evaluates its leaf with `finish_trick=True` and therefore sees all 16 v2 trick-local columns as boundary constants, the obvious next move was to change the CONSUMER: encode the immediate afterstate so those columns vary. Codex ran that as an isolated diagnostic (52 FIT roots over 24 deals, saved ACD v1 and v2 checkpoints, W32 ranking against independent reference worlds, 59.2s on one core, no new gameplay and no holdout opened). Archive `2026-09-07/cwv-horizon-shared-fit.NNogWA`, `complete: true`.
+
+MEASURED, final lift versus the incumbent, equal deal weight:
+
+| arm | finished trick (today) | immediate afterstate |
+| --- | --- | --- |
+| v1 | **+0.0498** | +0.0314 |
+| v2 | +0.0348 | +0.0402 |
+
+Delta from switching to immediate: **v1 −0.0183, v2 +0.0054 with an interval spanning zero.** And per-world value MAE is WORSE under immediate for both encoders (v1 0.817 vs 0.783, v2 0.811 vs 0.789), as is reference action-mean MAE. So the change that would make v2's trick columns visible makes the v1 model measurably worse and does nothing detectable for v2, while degrading value prediction for both. Codex's own words: no blanket horizon fix supported.
+
+WHAT THIS SETTLES. The finished-trick convention is not an oversight to be corrected; it is the better of the two on this evidence. That closes the trick-local lane rather than relocating it: the block cannot help the W32 shortlist as designed, and the consumer should not be changed to make it help. Encoder v2's 16 trick-local columns are dead weight for this consumer, its useful content is the 13 non-trick columns (points regime, hand shape) minus the dead `band3`, and the three columns my mining pass proposed -- all trick-local -- are dropped rather than deferred.
+
+A future encoder for the shortlist should describe the state AFTER the trick resolves: who leads next, what the completed trick cost, how the hands now stand. That is a different design from the one we built, and it follows from the consumer rather than from a decision-quality intuition formed on the wrong distribution.
+
+CAVEATS, Codex's and mine. This is a development diagnostic against a finite sampled-world union reference, not a strength measurement, and 52 roots over 24 deals is small. It does not say the trick information is worthless in principle -- only that it cannot reach this consumer and that moving the consumer to reach it costs more than it returns. The best concrete v2 miss they identified, root `01422afe`, omits SK and SQ under finished and retains them under immediate; a single example, named for follow-up rather than as evidence.
+
+## 2026-09-07 — Claude: the W32 shortlist can now generate training data, and its cost is not yet known
+
+Branch `claude/shortlist-teacher`, commit `9429bfac`, pushed, no PR. `trajectory.py --policy mc-shortlist-<ckpt8>-w<W>` now resolves to `CWVShortlistBot` — until now that bot had no registry entry at all and was only constructible in-process at `cwv_shortlist_screen.py:162`, while `register_cwv_policies(ckpt, [32])` registered `mc-cwv-<sha>-w32` which `make_bot` resolves to `CWVOnePly_w32`, the LOSING one-ply design. Generating data with the shortlist by reaching for the obvious registered name would have silently produced one-ply data.
+
+That trap is closed at the registry boundary rather than inside any factory: `register_cwv_shortlist_policies` wraps every factory in a guard that type-checks whatever the factory returns, so both a one-ply builder under a shortlist name and a foreign factory registered under a shortlist name raise `ShortlistPolicyError`. Both mutants RED, restored GREEN. `production_ballot` is stamped on shortlist records via an opt-in `PRODUCTION_BALLOT_POLICY` marker, so the shortlist's ballot can always be compared against what production would have played (they differed on 74/156 decisions in one smoke cluster). The default `mc-s0-report-lcb` path is byte-identical before and after; only the manifest's source-identity stamps move. 97 tests across 7 suites.
+
+COST, AND WHY IT IS NOT AN ESTIMATE. Four-round smoke on a contended box, fast engine, one worker: shortlist 3.81 dec/s versus production 8.44 dec/s, i.e. ~2.2x production per decision, scaling cleanly to 2 workers (which also reproduced the 1-worker digests byte for byte, proving env registration reaches spawned workers). Naive extrapolation to 8,000 rounds is ~44 core-hours. That number is a FLOOR, not an estimate, and should not be planned against: the smoke used a throwaway 32-wide MLP, while the dominant term is `worlds x exhaustive legal actions` forward rows (32 x mean 229 legal ~ 7.3k rows per decision, 2.26M rows for four rounds) and that term scales directly with the size of the value net. A production-size checkpoint multiplies it. Re-time four rounds against the real checkpoint before committing a box.
+
+NOT DONE, DELIBERATELY: no checkpoint chosen, no generation run launched, no PR opened. The smoke used a disposable dev checkpoint built in scratch purely so the wiring had a file to hash; it is not a strength claim and nothing in the repo references it. Which checkpoint teaches is Jerry's call and depends on screens still running.
+
+## 2026-09-07 — Claude: the 520-window 2x2 is complete and it reverses the 260-window ordering exactly as predicted
+
+All four cells are now sealed on the clean 520-deal window (seed0 91261190, 13 ranks, 1,040 rounds each, `complete: true`), and all four ran the same W32 recipe (32 worlds, incumbent+4, N30 selection, R300 report, batch 128, successor reuse, SHENGJI_FAST=1). Deal identity across arms verified cluster by cluster on (seed, trump_rank, trump_suit, banker): **0 mismatches over 520 clusters**, so every contrast below is paired on identical deals.
+
+ARM VERSUS INCUMBENT, per_round convention (per_cluster_sum is twice each figure):
+
+| arm | ckpt8 | per_round | wall x production | win rate |
+| --- | --- | --- | --- | --- |
+| ACD v1 | 528dbbe0 | +0.0481 [+0.0029, +0.0942] | 3.79 | 0.5173 |
+| ACDEF v1 | 528b3a7a | +0.0875 [+0.0442, +0.1317] | **2.73** | 0.5385 |
+| ACD v2 | 633663cd | +0.0990 [+0.0529, +0.1471] | 4.39 | 0.5365 |
+| ACDEF v2 | 3cd27716 | **+0.1260** [+0.0798, +0.1721] | 4.37 | 0.5413 |
+
+PAIRED CROSS-ARM CONTRASTS on the same 520 deals, 4,000 bootstrap replicates over clusters:
+
+| contrast | per_round | 95% |
+| --- | --- | --- |
+| ACDEF v2 - ACD v1 | **+0.0779** | [+0.0240, +0.1298] — excludes zero |
+| ACD v2 - ACD v1 | +0.0510 | [-0.0067, +0.1087] |
+| ACDEF v1 - ACD v1 | +0.0394 | [-0.0106, +0.0885] |
+| ACDEF v2 - ACDEF v1 | +0.0385 | [-0.0106, +0.0885] |
+| ACDEF v2 - ACD v2 | +0.0269 | [-0.0298, +0.0808] |
+| ACD v2 - ACDEF v1 | +0.0115 | [-0.0433, +0.0654] |
+
+WHAT THIS SETTLES AND WHAT IT DOES NOT. Exactly ONE contrast excludes zero, and it is the corner-to-corner one: more data AND the v2 encoder together beat the ACD v1 baseline by +0.0779 per round. Neither factor alone separates at n=520 — the E/F data adds about +0.04 and the v2 encoder about +0.04, and each interval covers zero on its own. So the honest statement is: the two factors are individually unresolved at this sample size and jointly resolvable. It is NOT established that v2 beats v1 at fixed data, nor that E/F beats ACD at fixed encoder.
+
+SELECTION CONTAMINATION CONFIRMED. On the 260 window (the SELECTION population, on which ACD v1 was chosen) the cells fell in exactly the order of how far each departs from the selected checkpoint: ACD v1 +0.1019 > ACD v2 +0.0519 > ACDEF v1 +0.0462 > ACDEF v2 +0.0288. On the clean 520 window that ordering is precisely inverted. This is what selection on the measurement population looks like, and it is why the 260 numbers must not be quoted as strength.
+
+COST CAVEAT, and it cuts against the headline. These are not equal-work comparisons; the summary schema says so itself (`equal_work_strength_claim: false`, `claim: exploratory DEV paired screen`). ACDEF v2 spends **4.37x** production decision wall and is recorded `over_target`; ACDEF v1 spends **2.73x** and is the only arm `within_target`. Per unit of compute ACDEF v1 is the better buy, and the +0.0385 gap between them does not exclude zero. Anyone choosing a checkpoint to generate data with should weigh the 1.6x cost difference against an unresolved gap.
+
+DEFECT FOUND IN THE SUMMARY WRITER, reported to Codex: every one of these four summaries carries `arm_description: "mc-s0-report-lcb on both sides (identity control)"` while `arm: "learned"`. The description string is not tracking the arm. A future reader could discard a real result as a control, or read a control as a result. The `config.checkpoint_sha256` is authoritative and was used here; the description was ignored.
+
+## 2026-09-07 — Claude: correction to the 520-window contrast table above
+
+Codex caught a transcription error in the entry I ledgered at 653267d6 (bus 725, independently recomputed by them at 727). The row `ACD v2 - ACDEF v1` carried mean `+0.0115` against the interval `[-0.0663, +0.0423]`, which does not contain its own mean: I negated the bounds of the reversed contrast without swapping them. The correct figures are `ACD v2 - ACDEF v1 = +0.0115 [-0.0433, +0.0654]`, equivalently `ACDEF v1 - ACD v2 = -0.0115 [-0.0654, +0.0433]`. Codex's independent recomputation `+0.01154 [-0.04327, +0.06635]` agrees. The table above is corrected in place.
+
+Nothing else moves: this contrast crosses zero either way, it was never the resolving one, and every other row was checked against the source recomputation and is correct. The published artifact carried the correct orientation already (it states the contrast as `ACDEF v1 - ACD v2`), so no external number was wrong.
+
+CORRECTION TO THIS ENTRY, from Codex (bus 731), verified and accepted. My first version of the lesson below claimed "a mean outside its own interval is the cheap tripwire that caught this one". That is FALSE and I have replaced it: the erroneous interval `[-0.0663, +0.0423]` DOES contain its stated mean `+0.0115`, so no containment check would have fired. Codex caught the error by noticing reversed-direction centering and recomputing, not by a containment test. A false tripwire is worse than none -- anyone trusting it would have concluded the row was fine -- so it is struck rather than softened. The one cheap signal that WAS present is gross asymmetry: a bootstrap interval this near-symmetric sat 0.0778 below its mean and 0.0308 above, a 2.5x imbalance, where the correct interval is 0.0538/0.0548. Asymmetry is a hint, not a test; Codex's rule -- bind the signed contrast to the same paired array and never transform an interval -- is the actual fix.
+
+LESSON, recorded because it is the third sign-convention slip in this programme: when a contrast is written in the opposite order from the script that produced it, do not transform the interval at all -- re-run the bootstrap on the signed paired array in the order the table is written. Transforming is what failed here: I applied the interval negation `[-hi, -lo]` (correct for flipping a contrast) while leaving the mean at its original sign, so the row carried the mean of one direction against the interval of the other.
+
+## 2026-09-07 — Codex's caveats on the 520-window readout, accepted
+
+Bus 725. Recorded because they narrow what I wrote: (1) the ordering reversal between windows is CONSISTENT WITH selection bias and noise but is not by itself causal proof of contamination; (2) the six pairwise contrasts are exploratory and UNADJUSTED for multiplicity -- with six comparisons, one interval excluding zero is weaker evidence than a single pre-registered contrast would be, and the corner-to-corner contrast was not pre-registered; (3) runtime revisions and host contention limit the intrinsic cost-per-model claims, so the 4.37x versus 2.73x comparison carries the contention caveat and is not a clean per-model cost. All three stand against my framing and none is disputed.
+
+
+## 2026-09-07 — Claude: env-driven policy registration is import-order dependent, on main as well as on my branch
+
+Found while smoke-testing my own shortlist-teacher wiring, so the main-side defect is reported rather than fixed by me.
+
+THE SHAPE. `ai/registry.py` runs `_register_netroll_from_env()` and `_register_cwv_shortlist_from_env()` at its own module bottom, and each must import a `train/` module to read its env recipe. Those `train/` modules import `REGISTRY` from `ai/registry` at their top. So whichever module a caller reaches FIRST decides whether this works: import `ai.registry` first and everything resolves, but import the `train/` module first, with the env variable set, and registry's bottom re-enters a module that is only partway through its own body and raises `ImportError: cannot import name ... from partially initialized module`.
+
+MEASURED on an unmodified `net_rollout.py` at `origin/main`: `import shengji.train.net_rollout` with `SHENGJI_NETROLL_CKPT=/nonexistent.pt` raises `ImportError: cannot import name 'register_netroll_from_env'`. The control -- importing `shengji.ai.registry` first with the same environment -- gets past registration and fails later at `FileNotFoundError: /nonexistent.pt`, which is the expected failure for a bogus path. The difference between the two is import order alone. Anyone who exports `SHENGJI_NETROLL_CKPT` in a shell and then runs a `train`-module-first entry point hits it; `SHENGJI_CWV_SHORTLIST_CKPT` had the identical exposure on my branch because the registration copied that pattern.
+
+WHY IT SURVIVED. Every existing entry point happens to reach `ai.registry` first, `harvest/trajectory.py` included, so the two-worker generation smoke that "proved env registration reaches spawned workers" was true and still would not have caught this. The bug needs both the env variable AND an unlucky first import.
+
+FIXED ON MY SIDE at `91267934` (`claude/shortlist-teacher`): the registry call returns early when `sys.modules` holds the train module without its recipe symbol yet, and the train module drives the same idempotent registration from its own bottom where the definitions exist. Both halves are load-bearing and both were mutated red against `tests/test_cwv_shortlist_import_order.py` (parametrised over registry-first, train-first and trajectory-first, plus a no-env case asserting the registry stays empty). 78 tests pass across six suites.
+
+NOT FIXED: `net_rollout`. It is the same two-line change but it is not my module and no run depends on it today; flagged to Codex on the bus at ref `91267934`, theirs to take or leave.
+
+## 2026-09-07 — Claude: my "the teacher price is a floor because cost scales with net size" reasoning was wrong
+
+I told Jerry twice, and wrote into both the ledger (e3ee233b) and the execution queue, that the shortlist-as-teacher cost measured with a throwaway 32-wide MLP (~2.2x production per decision, ~44 core-hours for 8,000 rounds) must be treated as a FLOOR rather than an estimate, because "the dominant term is `worlds x exhaustive legal actions` forward rows and that term scales directly with the size of the value net". The premise is not supported.
+
+Codex profiled optimized v2 W32 on the 52 FIT roots with a real checkpoint (`2026-09-07/cwv-w32-profile.WIMsEZ`, one nice-19 process, no new games): of 22.12 profile seconds, ranking is 10.22 and the report fold 9.99, while **net forward is 0.805 seconds -- about 3.6 percent**. I asked directly whether that 0.805 was exclusive self-time with encode and batch assembly hiding under ranking, which would have preserved my claim, or inclusive. Codex answered (bus 744): **inclusive of all 895 forwards.** So the forward pass is a small minority of W32 cost and net size cannot multiply the total the way I said.
+
+WHAT THIS CHANGES. The toy-net ratio is much closer to the real ratio than I claimed, and the teacher is probably cheaper than I have been telling Jerry. It also weakens my own stated rationale for the hidden-256 rung of the capacity ladder, which I justified partly as a cost probe for the teacher: if forward is 3.6 percent, a narrower net saves little there.
+
+WHAT IT DOES NOT ESTABLISH, in Codex's words and accepted: this is "not proof bigger nets are free" -- it is a profile, with profiling bias, on FIT-root scope. And it does not touch the OTHER half of the cost story, that ranking enumerates all legal actions across 32 worlds; that work is real regardless of net size. The empirical 4-round A/B of the real ACDEF v2 checkpoint against production, counterbalanced A,B,B,A, still runs when the current screen seals and is what will actually settle the ratio. I am correcting the REASONING now rather than waiting, because it is the reasoning, not the number, that I gave Jerry as the blocker.
+
+RELATED FINDING, Codex's, recorded because it is actionable: 112,768 scored rows resolve to 9,534 leaves and 15,233 encodes, and a **fresh v2 encoder lambda is constructed on each batch, which defeats the identity-cache reuse**. That is the `encoder` property in `cwv_policy.py` returning `lambda rnd, seat: tensors_from_round_static(...)` -- a new object every access. Codex is probing a stable identity. Reuse there is within-world across accepted actions, not a collapse across worlds.
+
+CODEX'S TWO CORRECTIONS TO THE CAPACITY LADDER, accepted (bus 743): the command caps epochs at 10, not the 20 I described loosely, so **any large rung still improving at the cap must be marked budget-limited, not a size null** -- that is the exact shape of the confounded 512-to-1024 result this ladder exists to undo, and I will check the epoch trace before reporting any rung. And rung selection stays on `val_ce` from the tuning split; test and Luna holdout metrics are readouts, not selectors.
+
+ONE DEFECT IN MY OWN SWEEP SCRIPT, flagged by Codex and NOT yet fixed: `run()` does `rm -rf "$out"` on a partial rung directory before re-running, so a rung killed mid-flight loses its epoch snapshots on restart. I am deliberately NOT editing the script while it is executing -- bash reads a script incrementally as it runs, and editing a running script can corrupt the remaining control flow. It will move partials aside instead of deleting them before any restart.
+
+## 2026-09-07 — Claude: three seed windows I registered were malformed and blocked every local trajectory run
+
+Found by running my own teacher-pricing A/B, which failed on all four arms with zero decisions. The guard reported INCOMPLETE rather than computing a ratio from empty runs, which is the only reason this surfaced as a defect instead of a number.
+
+`harvest/trajectory.py` refuses to start when any entry in `server/runs/seed_windows.json` lacks `host` or `git_head`. Three of the twenty-two entries lacked both, and **all three are mine**: `screen-cwv-acd-ranks13-big-20260906` (the 520-deal clean window every checkpoint comparison on this page uses), `run-G` and `run-H`. The standing rule is that a run registers its OWN window at launch; I registered these with name, purpose, seed0, span, clusters and note, and omitted the two provenance fields the validator requires.
+
+CONSEQUENCE, and it is larger than a pricing smoke: no `trajectory.py` run could start on the Mini at current main. That is the data-generation path itself, so shortlist-as-teacher generation would have hit this on its first invocation. Runs G and H are unaffected because they execute from their own remote trees, whose checkouts predate the entry.
+
+REPAIRED with verified values, not invented ones: host from `hostname` on each machine and `git_head` from the actual tree each run executes out of -- `Jerrys-Mac-mini.local` / `0ba7f709` (main at the window's recorded `created_at`, 2026-09-07T00:33Z) for the screen window; `ubuntu-32gb-hel1-2` / `be56f456` (`/root/traj-gen-e`) for run-G; `ubuntu-32gb-hel1-1` / `e5fb03ab` (`/root/traj-gen-f2`) for run-H. Fields inserted after `created_at` to match the well-formed siblings; the diff is 6 insertions and 0 deletions, so no entry was reformatted or rewritten.
+
+WITNESSED red then green on the real consumer, not on a copy of the check: `trajectory.py --policy mc-s0-report-lcb --rounds 2 --seed 91000201` against the stw tree's unrepaired registry gives `REFUSING: ... lacks ['host', 'git_head']`; the same command with `SHENGJI_SEED_WINDOWS` pointed at the repaired file completes, 136 decisions, shard `sha256=2cc53de49f96c400530f41fe40868c1c538c11c023f846a507e9bb04774dcd3b`. That digest independently matches the one recorded as the unchanged-default witness when the shortlist teacher was built, which is a second confirmation that the repair moves nothing but the registry.
+
+LESSON. The validator is right and my registrations were wrong. A window registered without provenance is worse than an unregistered one: it passes review by existing, and fails at the point of use. Any future registration should be written by the launcher rather than by hand.
+
+## 2026-09-07 — Claude: my own verification polluted the canonical seed-window registry, and I pushed it
+
+Immediately after repairing the three malformed windows above, I witnessed the fix by running `trajectory.py` against the repaired file with `SHENGJI_SEED_WINDOWS` pointed at it. That run did exactly what the discipline requires of it: **it registered its own window**. I then committed with `git add -A` and pushed, so `3ff96fc2` carried not only the intended 6 insertions but a fourteen-line junk entry, `traj-s91000201-ad94fd9b7e6e`, a 1-cluster trajectory window whose `note` records `out=/private/tmp/tj_a` -- a directory I deleted in the same command that created it.
+
+I found it only because the next run of the pricing A/B refused with `overlaps 1 registered window(s)`, naming my own test. The registry's overlap guard caught what my `git diff --stat` check did not: I verified the ledger file for lost lines and read the count on the JSON as "6 insertions" from the pre-test diff, then committed after running the test without re-reading it.
+
+REMOVED in this commit. The entry is provably junk -- it points at a deleted temp directory, its run retained no data, and it was created by a verification rather than by an experiment -- so this is a repair, not a deletion of evidence. The three repaired entries stand.
+
+TWO LESSONS, the second more useful than the first. (1) `git add -A` after running anything that writes into the tree is how unrelated state reaches a commit; diff the file being committed at commit time, not before the intervening work. (2) The real defect is in the design of my smoke test, not the commit: **a throwaway run must not register into the canonical registry at all.** Any window it creates is noise that will collide with a future real run, exactly as it did here within four minutes. Smoke and pricing runs now point `SHENGJI_SEED_WINDOWS` at a scratch copy, which is how the shortlist-teacher build did it originally and is the pattern I should have followed.
+
+## 2026-09-07 — Claude: the BEST offline checkpoint in the programme is RESOLVED WORSE in search
+
+Sealed 22:28 ET. `shortlist-acdef-v2-lr1e4-520`, checkpoint `8d92dd6e`, 520 clean-window deals (seed0 91261190), 1,040 rounds, `complete: true`, W32/K4/N30/R300. Deal identity verified against the comparison arms on (seed, trump_rank, trump_suit, banker): 0 mismatches over 520 clusters.
+
+A+C+D+E+F2 v2 trained at lr 1e-4 reaches `val_ce` **0.6106**, the lowest in the programme, against 0.6218 for the same mixture at the default lr -- an improvement of 0.0112, about 37x the 0.0003 noise floor established by a second control seed. In search, paired on identical deals:
+
+**A+C+D+E+F2 v2 lr-1e4 minus A+C+D+E+F2 v2 = −0.0587 per round [−0.1067, −0.0106]. THE INTERVAL EXCLUDES ZERO.**
+
+Against production the two are +0.0673 [+0.0221, +0.1115] and +0.1260 [+0.0798, +0.1721]; the better-offline checkpoint delivers a little over half the search value of the one it beats offline.
+
+WHY THIS IS DIFFERENT FROM THE TWO NULLS EARLIER TODAY. The sweep's lr-1e4 and dropout-0.2 arms each improved `val_ce` and moved search by nothing (−0.0019 and −0.0067, both crossing zero). Those support "offline does not predict search". This one supports the stronger claim that **offline can actively mislead**: the same optimiser change that produced the programme's best `val_ce` produced a resolved loss in the consumer. This is only the second interval in the whole programme to exclude zero in the negative direction; the first was K8.
+
+ON MULTIPLICITY, because I have been careless about it before and Codex has corrected me on it once today. This contrast was NOT fished out of a family. "Does the best-cross-entropy checkpoint win in search?" has been the standing question of the model lane for weeks, Codex asked it directly in their FIT diagnostic and answered "no final win" on 52 roots, and this screen was queued specifically to test it on 520 deals. It is a confirmatory test of a pre-stated hypothesis and should be read as stronger than the six unadjusted 2x2 contrasts, not weaker. It is still one screen on one window and wants a replication before it is treated as settled.
+
+WHAT IT CHANGES. It confirms rather than disturbs the teacher checkpoint Jerry chose: A+C+D+E+F2 v2 `3cd27716` remains the best arm on the clean window and the lr-1e4 variant is now positively ruled out as an alternative, which had been an open question because of its offline lead. It also means `--select-metric val_ce` is not merely uninformative for this consumer but adversarial to it, and no future checkpoint should be promoted on it. The already-recorded rule -- select per consumer IN SEARCH, never on offline numbers -- now has an interval behind it rather than an intuition.
+
+CAVEATS. Not equal work: this arm ran 3.58x production decision wall against 4.37x for the comparison arm, and it is recorded `over_target`, so it is the CHEAPER arm that lost, which if anything sharpens the finding rather than explaining it away. Exploratory DEV screen, `equal_work_strength_claim: false`. Per-round convention throughout; `per_cluster_sum` is twice each figure. This screen is also the first to run on the post-#294/#296 consumer while the comparison arms are pre-#294, which is admissible only because Codex's adoption parity PASS showed full raw rows identical per policy across all eight arms of the old/new A/B.
+
+## 2026-09-07 — Codex's narrowing of the "best offline checkpoint loses" result, accepted
+
+Bus 768. They independently recomputed the contrast from the two sealed artifacts and got **−0.05865 levels per round, paired 10k bootstrap seed 20260907, CI [−0.10577, −0.01154]**, against my −0.0587 [−0.1067, −0.0106] at 6k replicates. Two independent recomputations from the sealed shards agree to four decimals on the mean and to three on both bounds.
+
+They then narrowed the reading, and the narrowing is right on two counts I had blurred:
+
+1. **This is not independent confirmation.** It is one exploratory DEV screen on one window, recomputed twice from the same artifacts. Recomputation is not replication; a second window would be. My entry called for "a replication before it is treated as settled" but then wrote as though the point were established, and the two do not sit together.
+
+2. **It does not prove cross-entropy is universally adversarial, and EPOCH SELECTION IS A SEPARATE QUESTION.** This is the sharper half. The lr-1e4 checkpoint's *epoch* was also chosen by `val_ce` (best epoch 7 of an early-stopped 20). So the result is consistent with at least two different stories: the lr change itself producing a worse search model, or `val_ce` picking the wrong *epoch* within an otherwise fine run. Nothing here separates them, and I wrote "select-metric val_ce is adversarial" as though it did. What is measured is that THIS checkpoint, selected THIS way, loses by an interval excluding zero. The mechanism is not measured.
+
+I am striking "adversarial" as an overreach. The defensible statement is the one already in the ledger from 2026-09-06 and now carrying an interval rather than an intuition: **select per consumer IN SEARCH, never on offline numbers.** That was always the operational rule and it does not need the stronger claim.
+
+One more of theirs, recorded because it cuts against my framing rather than for it: the wall-clock difference between the arms (3.58x versus 4.37x) includes the decision-preserving optimizations that landed between the two runs, so it is not a clean per-model cost comparison and should not be read as "the cheaper model lost". The budgets (W32/K4/N30/R300) were identical, which is what makes the OUTCOME comparison sound; the cost columns are not comparable across that boundary.
+
+## 2026-09-08 — Jerry's standing priority rule: training data yields to strength experiments
+
+Asked at 00:45 ET to choose between Codex's W32-nomination/points-leaf gameplay comparison and my shortlist-teacher generation run for the first free box, Jerry ruled: **"lets do codex's first - i think its OK for our training data to fallback / yield to strength experiments."**
+
+Recorded as a STANDING rule rather than a single allocation, because that is how it was framed. When a strength experiment and a data-generation run contend for the same compute, **the strength experiment wins and the data run reschedules.** Codex has been told to take the box and inform me rather than negotiate.
+
+WHY IT IS THE RIGHT CALL ON THE CURRENT EVIDENCE, stated so the rule is not merely obeyed: the programme's bottleneck is that we cannot tell good checkpoints from bad ones. The 520-deal paired screen is the ONLY instrument that has discriminated anything -- offline `val_ce` failed twice today as a predictor and once produced a resolved LOSS, and Codex's 52-root FIT union gives 52/52 identical final values for three models a screen separates. More teacher data does not help until we can measure whether it helped. Strength work buys measurement; data buys volume we cannot yet evaluate.
+
+IMMEDIATE EFFECT. Cloud frees ~03:32 ET (run H, 13,711/16,000 at 677 clusters/h) and is Codex's. Perf frees ~10:32 ET (run G, 9,229/16,000 at 634/h). The shortlist generation run, merged today at `d23c084d` and still awaiting Jerry's explicit go, queues behind both.
+
+WHAT THE RULE DOES NOT COVER, so it is not over-applied: a checkpoint SCREEN is strength work, not data generation, so my armed capacity-rung screen on the Mini is not subordinated by this. I have offered Codex the Mini window anyway if they want it, since on this ruling their comparison has the stronger claim to contended cycles.
+
+## 2026-09-08 — Claude: capacity is null at half the parameters, and the lr-1e4 loss REPLICATES at a second width
+
+Two results from the capacity ladder's first screened rung, sealed 02:07 ET. `shortlist-cap-h256-520`, checkpoint `752427c3`, 520 clean-window deals (seed0 91261190), `complete: true`, W32/K4/N30/R300. Deal identity verified against both comparison arms on (seed, trump_rank, trump_suit, banker): 0 mismatches over 520 clusters.
+
+The ladder holds everything fixed except width: A+C+D+E+F2, encoder v2, lr 1e-4, 20-epoch budget, seed, selector. h256 is **272,716 parameters against the held 512 rung's 611k**, and it early-stopped properly (best at epoch 14 of 20).
+
+**RESULT 1, capacity is null at half the parameters.** Paired on identical deals against the held 512 rung: **+0.0048 [−0.0452, +0.0548]**. Against production the two are +0.0721 [+0.0250, +0.1202] and +0.0673 [+0.0221, +0.1115]. Offline they are 0.6119 and 0.6106. So **45% of the parameters buys the same search result and the same validation loss**, and it is CHEAPER in the consumer: 3.07x production decision wall against 3.58x. That is one rung, not a curve, and an interval containing zero is not equivalence -- but nothing here supports capacity as a lever at this end of the range, and the cheaper net is the better buy on cost alone.
+
+**RESULT 2, and this is the one that matters more: the lr-1e4 loss replicates at an independent width.** Yesterday A+C+D+E+F2 v2 at lr 1e-4 (`8d92dd6e`, 512 wide) came in at −0.0587 [−0.1067, −0.0106] against the same mixture at the default lr, an interval excluding zero, and I recorded that it "wants one replication before it is treated as settled". This is that replication: h256, a DIFFERENT model at a different width trained at the same lr 1e-4, scores **−0.0538 [−0.1048, −0.0029]** against the same default-lr checkpoint `3cd27716`. Same direction, near-identical magnitude, interval also excluding zero, on the same 520 deals.
+
+Two independently trained models at lr 1e-4, at widths differing by a factor of 2.24, both resolved worse in search than the default-lr checkpoint. That is much harder to explain as an epoch-selection fluke than a single run was, which was Codex's principal narrowing of the original result (bus 768). It does not eliminate the epoch hypothesis -- both runs still chose their epoch by `val_ce` -- but a shared epoch-selection accident across two different architectures is a weaker story than a shared lr effect.
+
+CAVEAT ON THE CONTRAST ITSELF, stated because it is easy to over-read: the h256-versus-`3cd27716` comparison changes BOTH width and learning rate, so on its own it does not attribute the loss to lr. What licenses the reading is the pairing with Result 1: width is null at fixed lr, so the lr axis is where the movement is. Both contrasts come from the same six-arm family and are unadjusted.
+
+STATE. h1024 finished at **val_ce 0.6066**, the best offline number in the programme and better than the held 512's 0.6106; its screen started 02:09 ET. h2048 is queued. Every rung is screened as it completes rather than only the `val_ce` winner -- Jerry's correction at 00:55, and the right one here, since selecting the screen target by `val_ce` would have skipped h256 entirely and missed both of these results.
+
+## 2026-09-08 — Claude: the width ladder completes at 1024 and QUALIFIES my own replication claim from an hour ago
+
+`shortlist-cap-h1024-520`, checkpoint `d84b5183`, 520 clean-window deals, `complete: true`, sealed 03:21 ET. Deal identity verified across all four arms: 0 mismatches over 520 clusters.
+
+THE LADDER, everything fixed except width, all at lr 1e-4 on A+C+D+E+F2 encoder v2:
+
+| width | params | val_ce | vs production | wall |
+| --- | --- | --- | --- | --- |
+| 256 | 273k | 0.6119 | +0.0721 [+0.0260, +0.1192] | 3.07x |
+| 512 | 611k | 0.6106 | +0.0673 [+0.0221, +0.1115] | 3.58x |
+| 1024 | 1.48M | **0.6066** | +0.0923 [+0.0490, +0.1356] | 3.43x |
+| *(512, default lr)* | 611k | 0.6218 | **+0.1260 [+0.0808, +0.1712]** | 4.37x |
+
+WIDTH REMAINS NULL. Every paired width contrast crosses zero: 1024 − 512 = +0.0250 [−0.0173, +0.0663], 1024 − 256 = +0.0202 [−0.0279, +0.0683], 256 − 512 = +0.0048 [−0.0452, +0.0548]. Across a 5.4x parameter range (273k to 1.48M) nothing resolves. The offline ordering is monotone in width (0.6119 > 0.6106 > 0.6066) and the search ordering is not (1024 > 256 > 512), which is one more instance of the pattern this programme keeps producing.
+
+**I MUST QUALIFY WHAT I WROTE AN HOUR AGO** (`4a1ff1c4`). I reported that the lr-1e4 deficit "replicates at an independent width", citing two models at −0.0538 and −0.0587, both intervals excluding zero, and concluded Codex's epoch-selection hypothesis was "less likely". The third width now says:
+
+| width at lr 1e-4 | minus the default-lr checkpoint |
+| --- | --- |
+| 256 | −0.0538 [−0.1048, −0.0029] resolves |
+| 512 | −0.0587 [−0.1067, −0.0106] resolves |
+| **1024** | **−0.0337 [−0.0817, +0.0144] CROSSES ZERO** |
+
+So the honest statement is narrower than the one I made: **all three point estimates are negative and the sign is consistent across a 5.4x parameter range, but only two of three resolve, and the deficit SHRINKS at the widest rung.** That is compatible with a real lr effect that interacts with width, and it is also compatible with two of three draws happening to clear the bar. I over-reached by writing "replicates" of a two-point pattern before the third point existed, when the third was already scheduled and an hour away. The right move was to wait for the ladder to finish.
+
+WHAT STANDS. The default-lr checkpoint `3cd27716` remains the best arm screened, +0.1260, and is still the teacher Jerry chose. No width rung beats it: the closest, 1024, is −0.0337 against it and crossing zero. Capacity is not a lever anywhere in the tested range. The programme's best OFFLINE checkpoint is now h1024 at 0.6066 and it is 0.0337 per round WORSE in search than a checkpoint 0.0152 worse offline, which is the same anti-correlation the scorecard has been recording all week, now on a fourth independent pair.
+
+## 2026-09-08 — Codex's two narrowings of the capacity ladder, accepted; and Run H is complete
+
+TWO METHODOLOGICAL CORRECTIONS FROM CODEX (bus 805, 808), both accepted, both narrowing claims I made:
+
+1. **"Same deals / shared baseline / seed is not independent population replication."** My entry at `4a1ff1c4` called the second width an "independent" replication of the lr-1e4 deficit. It is a different MODEL, but it is the same 520 deals, the same baseline arm and the same seeds. That is a replication across architectures, not across populations, and the two are not interchangeable: shared-deal contrasts inherit whatever is idiosyncratic to that window. The stronger test is a fresh seed window, which nothing in the width ladder provides. I had already withdrawn the word "replicates" at `2b6c0344` for a different reason (the third rung crossing zero); this is a second, independent reason the original wording was wrong.
+
+2. **"No resolved width gain is not proof capacity cannot help."** My phrasing "capacity is not a lever in the tested range" over-reads a null. The 1024-minus-512 interval is +0.0250 [−0.0173, +0.0663] — **it admits a true gain as large as +0.065**, which would be a substantial effect if real. The defensible statement is that no width contrast resolves at n=520 and the screens cannot separate effects of this size, not that the effect is absent. An interval containing zero is not equivalence, which is a rule already in this ledger and which I did not apply to my own result.
+
+RUN H COMPLETE, verified rather than taken from the wrapper's log line. Codex flagged (bus 804) that the Run H wrapper always echoes DONE regardless of outcome, so I checked the artifacts: process exited rc=0 at 07:57:33Z, **16,000 of 16,000 shard files present**, manifest 5,962,079 bytes recording `clusters: 16000`, `rounds: 32000`, `seed0: 85260904`, with `identity`, `seed_window` and `counts` blocks. The host is now idle of my work.
+
+That is 32,000 mirrored rounds of production-policy teacher data, the second of the two runs Jerry chose to keep on 2026-09-07. Run G continues on Perf at 11,111/16,000 (69.4%).
+
+COMPUTE HANDOVER. Under Jerry's standing rule that data generation yields to strength work, Codex took the freed Cloud box at 03:59 ET for the PR #302 points-leaf gameplay comparison (reviewed head `8d7ed763`, 2x8 workers, 52 deals per checkpoint, 7,200s operational bound, shards retained). They verified Run H's actual rc and idle host before launching rather than trusting the wrapper. My shortlist-teacher generation remains queued behind them and still needs Jerry's explicit go.
+
+## 2026-09-08 — Claude: the shortlist teacher price, finally measured on the box that would run it
+
+Every previous figure for this was wrong or unusable, so here is the one that is neither, with the earlier attempts named so the record shows the correction rather than only the answer.
+
+MEASURED on shengji-cloud, 16-core Linux, the host generation would actually use, at 08:14-08:26 UTC on an idle box (load 0.16). Tree cloned at current main `5ab631bb` and verified to carry the runner, #294 and #296; fast engine built there; checkpoint copied and hash-verified end to end as `3cd27716` on both sides; policy resolved through the code rather than a hardcoded name, `mc-shortlist-3cd27716-w32-r55d379a3`, and asserted to be a `CWVShortlistBot` before timing. Counterbalanced A,B,B,A, one worker, scratch seed registry refreshed per arm.
+
+| arm | sec/decision | reps | spread |
+| --- | --- | --- | --- |
+| shortlist W32 | **1.2303** | 1.2212, 1.2394 | 1.5% |
+| production MC-LCB | **0.1787** | 0.1782, 0.1791 | 0.5% |
+
+**RATIO 6.89x. 8,000 rounds at 61 decisions/round = 167 core-hours = 10.4 hours wall on 16 cores.**
+
+Both arms are tight, which is what makes this usable: the Mini attempts failed precisely because one arm moved 51% while the other held still. Nothing here needed discounting.
+
+THE CORRECTION TRAIL, because I quoted four different numbers to Jerry in a day:
+- **44 core-hours**: the original extrapolation, from a subagent's smoke against a throwaway 32-wide MLP. Wrong; the net was not the real one and the deals were not comparable.
+- **11.49x / 207 core-hours**: real checkpoint, but on a tree predating #294, so v2 took the full-history reference builder while reporting `mlp-static`. Codex caught that; it measures the legacy path, not the achievable one.
+- **10.45x**: merged main on the Mini, RETRACTED — the shortlist arm's two reps were 0.8060 and 1.2197 while production's were 0.0962 and 0.0977, so the box load collapsed mid-measurement and counterbalancing did not cancel it.
+- **8.30x**: optimized tree on the Mini. Sound, but on a 10-core M4 under an MPS training job, which is not where generation runs.
+- **6.89x on cloud**: the operative number.
+
+WHY THE RATIO FELL FROM 8.30x TO 6.89x, stated as INFERENCE not measurement: production is slower per decision on this host than on the Mini (0.1787 against 0.1367) while the shortlist is comparable (1.2303 against 1.1354). So the Linux box appears slower per core than the M4 for the production path, which compresses the ratio. The ratio is what transfers between hosts, not either absolute; I am not claiming the shortlist got faster.
+
+WHAT THIS DOES NOT SETTLE. It is a 4-round, 2-cluster smoke at one worker. It says nothing about multi-worker scaling, which is what an 8- or 16-worker generation run would actually experience, and nothing about whether shortlist-generated data trains a better model -- the only reason to spend the 167 hours. Generation remains unlaunched and still requires Jerry's explicit go.
+
+## 2026-09-08 — Codex corrects my own framing of the teacher price; three fixes
+
+Bus 813. All three land, and the first is a direct contradiction of something I wrote in the same entry.
+
+**1. "The ratio is NOT generally portable across hosts; your measurements show this."** Correct, and it contradicts my own sentence. At `d316c1cc` I wrote "the ratio is what transfers between hosts, not either absolute" -- and then, four lines earlier, gave 8.30x on the Mini and 6.89x on Cloud for the same two policies. A quantity that moves 20% between two hosts is not portable, and I used the portability claim to justify treating the Mini numbers as informative about Cloud. **STRUCK.** What is portable is nothing; each host needs its own measurement, which is exactly why the Cloud number was worth taking and why the Mini figures should not be cited for a Cloud run.
+
+**2. Played rounds versus mirrored deals, now stated from the artifacts rather than assumed.** The sealed pricing manifests record `clusters: 2, rounds: 4` for a `--rounds 4` invocation, with 244 shortlist rows across 2 shard files. So a **cluster is one deal played in both mirrors and counts as 2 rounds**, and my "61 decisions per round" is per PLAYED round, i.e. ~122 decisions per deal-cluster. Therefore **"8,000 rounds" means 4,000 deal-clusters**, and any future comparison to Runs G/H must convert: those are 16,000 CLUSTERS = 32,000 rounds, so a like-for-like shortlist run at Run H's size would be 32,000 rounds, four times the 8,000 I costed, i.e. roughly **667 CPU-hours** rather than 167. I costed a run a quarter the size of the ones we have been doing, without saying so.
+
+**3. "10.42h assumes ideal 16-worker scaling."** Also correct, and I flagged the gap without closing it. A scaling measurement is running on the idle Cloud box now: fixed workload of 32 rounds / 16 clusters at 4, 8 and 16 workers, so the comparison is wall-clock for the SAME work rather than throughput on different work. The 167 CPU-hours figure is unaffected -- it is per-decision cost times decisions -- but the 10.4 hours wall depends entirely on scaling efficiency and should not be quoted until the curve exists.
+
+RECEIPTS, as requested: `shengji-cloud:/root/teacher-price/` holds `price.status`, per-arm logs `shortlist-{1,2}.log` and `production-{1,2}.log`, and the four run roots with shards and manifests retained. Scaling artifacts will land beside them as `scale.status` and `scale-w{4,8,16}`.
+
+THE CORRECTED HEADLINE. Per-decision on the generation host: shortlist 1.2303 s, production 0.1787 s, ratio 6.89x on that host only. **167 CPU-hours per 4,000 deal-clusters**; wall time unknown until the scaling curve lands.
+
+## 2026-09-08 — Claude: the scaling curve is poor, and it exposes that my price was measured on 2 deals
+
+MEASURED on the idle Cloud box, fixed workload of 32 rounds / 16 clusters at each width, same deals across all three arms so the comparison is wall-clock for identical work:
+
+| workers | wall | dec/s | efficiency vs 4 workers |
+| --- | --- | --- | --- |
+| 4 | 391.6 s | 5.86 | 100% |
+| 8 | 325.1 s | 7.06 | 60% |
+| 16 | 281.4 s | 8.16 | **35%** |
+
+**Quadrupling the workers buys 1.39x throughput.** Codex's caution at bus 813 -- that my 10.4 h assumed ideal 16-worker scaling -- was right, and the reality is worse than a mild discount: past 4 workers this barely scales at all. Anyone planning a generation run should budget 16 workers at roughly 8 dec/s, not 16x a single worker.
+
+**AND THE CURVE EXPOSED A BIGGER PROBLEM WITH MY OWN PRICE.** The 1-worker pricing run measured 0.814 dec/s; the 4-worker scaling run measured 5.903 dec/s, which is **7.25x on 4 workers** and therefore impossible as parallel speedup. I checked the obvious explanation first and it is not startup cost: `trajectory.py`'s own reported wall (299.738 s, 46.887 s) matches my wrapper's (302.4 s, 48.5 s) to within a second, so there is no large fixed overhead being double-counted.
+
+The actual cause is **deal composition**. The pricing run used seed 91004401 and **2 clusters**; the scaling run used seed 91007701 and 16. The shortlist's cost is dominated by the exhaustive legal-action count, which this programme has already measured as wildly skewed -- median 8, p90 2,656, p99 20,758 actions per decision. Two clusters is a sample of a heavy-tailed quantity, and the two runs simply drew different deals: 2,296 decisions over 16 clusters is 143.5 per cluster against the pricing run's 122.
+
+WHAT SURVIVES AND WHAT DOES NOT:
+- **The scaling curve stands.** All three arms ran the same 16 clusters, so deal composition is controlled by construction.
+- **The 6.89x ratio is weaker than I presented it.** Both arms did run the same 2 clusters, so it is a PAIRED ratio and deal composition cancels within it -- that is what saves it from being meaningless. But n=2 clusters for a quantity with this tail is a thin basis, and I quoted it as "the operative number" without saying so.
+- **Any absolute wall projection from the 1-worker rate is void.** At 16 workers and 8.16 dec/s the honest projection for 4,000 deal-clusters is roughly **19-20 hours wall**, and for a Run-H-sized 16,000 clusters roughly **four times that**. The 167 CPU-hours figure was itself computed from the 2-cluster rate and should be treated as provisional to the same degree.
+
+THE LESSON, and it is one already in this ledger in another form: this programme has repeatedly been bitten by measuring a heavy-tailed quantity on a small sample -- Codex's toy-versus-real comparison failed for exactly this reason (1,226 versus 44,429 follow actions), and I recorded that finding two days ago and then made the same error myself with n=2. A cost measurement for the shortlist needs a deal sample large enough to cover the tail, not four rounds.
+
+## 2026-09-08 — Claude: the width ladder is COMPLETE. Width is null across 14.7x of parameters; the lr result firms back up
+
+All four rungs trained and screened, `ALL_CAPACITY_SCREENS_DONE` 06:40 ET. Every arm holds A+C+D+E+F2, encoder v2, lr 1e-4, 20-epoch budget, seed and selector fixed, with width the only variable. Deal identity verified across all five arms: **0 mismatches over 520 clusters**.
+
+| width | params | val_ce | vs production, 520 clean deals | wall |
+| --- | --- | --- | --- | --- |
+| 256 | 272,716 | 0.6119 | +0.0721 [+0.0269, +0.1192] | 3.07x |
+| 512 | 611,000 | 0.6106 | +0.0673 [+0.0231, +0.1125] | 3.58x |
+| **1024** | 1,483,000 | **0.6066** | **+0.0923 [+0.0490, +0.1375]** | 3.43x |
+| 2048 | 4,015,000 | 0.6083 | +0.0500 [+0.0038, +0.0962] | 4.97x |
+| *512 at default lr* | 611,000 | 0.6218 | **+0.1260 [+0.0798, +0.1712]** | 4.37x |
+
+**WIDTH IS NULL. All six paired width contrasts cross zero**, across a **14.7x parameter range** (273k to 4.0M): 2048−1024 = −0.0423 [−0.0865, +0.0019], 1024−512 = +0.0250 [−0.0163, +0.0683], 512−256 = −0.0048 [−0.0548, +0.0442], and the rest likewise. Per Codex's narrowing (bus 808) this is *no resolved gain*, NOT proof capacity cannot help: the widest interval admits a true effect up to +0.068. What it does say is that four points spanning 14.7x of capacity produced nothing this instrument can see.
+
+**2048 IS THE CLEAN LOSER AND IT IS INSTRUCTIVE.** It is second-best offline (0.6083, better than both 256 and 512) and **worst in search** (+0.0500), while costing the most (4.97x wall). More parameters, better validation loss, worse play, higher price. That is the programme's central pattern in a single row.
+
+**THE lr-1e4 RESULT FIRMS BACK UP, having weakened three hours ago.** At `2b6c0344` I qualified my replication claim because the third rung (1024) crossed zero. The fourth rung is now in, and against the default-lr checkpoint on the same deals:
+
+| width at lr 1e-4 | minus default-lr |
+| --- | --- |
+| 256 | −0.0538 [−0.1048, −0.0038] **resolves worse** |
+| 512 | −0.0587 [−0.1058, −0.0106] **resolves worse** |
+| 1024 | −0.0337 [−0.0827, +0.0163] crosses zero |
+| 2048 | −0.0760 [−0.1240, −0.0269] **resolves worse** |
+
+**Four independently trained models at lr 1e-4; all four point estimates negative; three of four resolve.** The one that does not is the middle of the range, not an edge, so it does not read as a trend boundary. This is stronger than the two-point claim I over-reached on at 04:30 and stronger than the qualification I issued at 03:30 -- and it is still subject to Codex's standing caveat (bus 805) that these share deals, seeds and baseline, so it is replication across ARCHITECTURES, not across populations. A fresh seed window remains the untaken test.
+
+WHAT THIS SETTLES FOR THE PROGRAMME. Capacity is not the lever, anywhere in 273k-4.0M. The default-lr checkpoint `3cd27716` remains the best arm ever screened at +0.1260 and remains Jerry's teacher choice; no width rung approaches it. The cheapest rung (256, 3.07x) matches the 512 rung it replaces, so if a cheaper consumer is ever wanted, halving the net costs nothing measurable.
+
+## 2026-09-08 — Claude: my "poor scaling" reading was wrong; it was a one-wave tail. Third revision of this number.
+
+Codex (bus 814) said the receipts show a scheduling tail rather than poor sustained scaling. **Verified independently from `runtime.json`'s `per_cluster` block, and their figures reproduce exactly:**
+
+| workers | sum of per-cluster wall | longest cluster | job wall | mean in flight | idle worker-time |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 1341.9 s | 276.0 s | 389.0 s | 3.47 / 4 | 13.8% |
+| 8 | 1357.4 s | 280.5 s | 322.4 s | 4.24 / 8 | 47.4% |
+| 16 | 1376.7 s | 276.1 s | 278.8 s | **4.99 / 16** | **69.1%** |
+
+**Total WORK is essentially constant across worker counts: +2.6% from 4 to 16.** Per-cluster cost does not degrade with parallelism. What collapsed was occupancy, and for a trivial reason I should have seen when I designed the run: **16 clusters on 16 workers is a single wave**, so the job is bounded by its longest cluster (276 s) and 69% of worker-time is idle waiting for it. I measured a tail, called it a scaling limit, and told Jerry to budget for it.
+
+CORRECTED PROJECTION. Mean cluster wall 1376.7/16 = **86.0 s**, and 2,296 decisions over 16 clusters = 143.5 per cluster, i.e. **0.5996 s/decision**. With many waves so the tail amortises:
+- **4,000 deal-clusters: ~96 CPU-hours, ~6.0 h wall on 16 workers.**
+- **16,000 clusters (Run G/H scale): ~382 CPU-hours, ~24 h wall.**
+
+THIS IS THE THIRD REVISION OF THIS NUMBER IN SIX HOURS and the record should show the whole path rather than only the answer: 44 core-hours (toy net), 207 (legacy pre-#294 path), 10.45x retracted (load collapse), 167 CPU-hours / 10.4 h (2-cluster sample, ideal-scaling assumption), 19-20 h (the tail error above), and now **~96 CPU-hours / ~6 h for 4,000 clusters**. Two separate causes: a 2-cluster sample of a heavy-tailed cost, and a single-wave scaling test. Both were sample-size errors of the same species, and I had ledgered that exact species two days earlier from Codex's toy-versus-real finding.
+
+REMAINING UNCERTAINTY, stated rather than buried. The 0.5996 s/decision comes from 16 clusters, 8x more than the pricing run but still small for a cost whose per-decision driver ranges over three orders of magnitude (legal actions: median 8, p90 2,656, p99 20,758). The +2.6% work growth from 4 to 16 workers is real mild contention and does not license extrapolation past 16. And the tail returns at the END of any run, though amortised over ~250 waves it is negligible. Nobody should treat ~6 h as precise; it is the right order, which the previous figures were not.

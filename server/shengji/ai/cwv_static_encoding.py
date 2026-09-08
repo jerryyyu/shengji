@@ -21,7 +21,10 @@ from ..rl.encode import (
 )
 from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
                                   encode_obs)
-from ..rl.value_afterstate_v2 import tensors_from_round as tensors_from_round_v2
+from ..rl.value_afterstate_v2 import (
+    tensors_from_round as tensors_from_round_v2,
+    widen as widen_v2,
+)
 from ..rl.douzero_micro import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
     WORLD_RECEIVERS,
@@ -371,13 +374,21 @@ def tensors_from_round_static(rnd, root_seat: int, *,
     Public/world/perspective construction deliberately follows the operation
     order and float32 casts in ``tensors_from_round``.  The one-row zero
     history is the same input produced by ``cwv_policy._stack(history_free)``.
+    MLP-only, including version 2: direct callers must not feed this history
+    to a sequential model. Tensor validation does not enforce that restriction.
     """
     root_seat = _seat(root_seat, "root seat")
     version = check_version(version)
+    if version == 2:
+        # Compose the already-exact v1 MLP inputs with the canonical v2
+        # columns. Never hand a bare v1 tensor to a v2 net. History is still
+        # the MLP's one-row zero input; sequential models use the reference
+        # builder through CompleteWorldEvaluator.effective_encoding.
+        base = tensors_from_round_static(rnd, root_seat, version=1)
+        return widen_v2(base, rnd, root_seat)
     if version != ENC_VERSION:
-        # Only v1 has a static fast path; a later version goes to that
-        # version's REFERENCE builder (``value_afterstate_v2``), never to the
-        # fused builder, which writes the v1 layout.
+        # Any future version retains its reference route until explicitly
+        # supported here. The fused builder itself remains v1-only.
         return tensors_from_round_v2(rnd, root_seat, version=version)
     fused = _fused_static_tensors(rnd, root_seat, version)
     if fused is not None:

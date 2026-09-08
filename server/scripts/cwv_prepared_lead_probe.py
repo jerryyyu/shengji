@@ -2,8 +2,10 @@
 """Fixed-state W32 A/B of inference optimizations; no new games or labels.
 
 The historical default compares prepared lead validation. ``--optimization
-fused-static`` compares fused tensor construction with the prior static path,
-keeping prepared lead validation enabled in both arms. Patches are restricted
+fused-static`` compares fused tensor construction with the prior static path;
+``v2-static`` compares canonical widening of the fast v1 MLP base with the v2
+full-history reference builder. Prepared lead validation stays enabled in both
+arms. Patches are restricted
 to this single-thread diagnostic process, never live workers or engine globals.
 Keep every scoring row, batch, shortlist, report, action, work count and RNG
 state identical. Timings on a contended host are diagnostic, not speed claims.
@@ -24,12 +26,13 @@ import time
 from unittest.mock import patch
 
 from scripts.cwv_shortlist_cost import ScoreTrace
-from shengji.ai import cwv_static_encoding
+from shengji.ai import cwv_policy, cwv_static_encoding
 from shengji.ai.cwv_policy import CompleteWorldEvaluator, file_sha256
 from shengji.ai.cwv_successor_reuse import WorldSuccessorCache
 from shengji.engine import fast
 from shengji.engine.round import Round
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
+from shengji.rl.value_afterstate_v2 import tensors_from_round as reference_v2
 from shengji.train import cwv_shortlist
 from shengji.train.cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from shengji.train.search_screen import _publish, bind_output_config, execution_source_identity
@@ -54,6 +57,16 @@ def _optimization_context(optimization, enabled):
     if optimization == "fused-static":
         return (nullcontext() if enabled else patch.object(
             cwv_static_encoding, "_fused_static_tensors", lambda *_: None))
+    if optimization == "v2-static":
+        if enabled:
+            return nullcontext()
+        original = cwv_policy.tensors_from_round_static
+
+        def full_history(rnd, seat, *, version=1):
+            return (reference_v2(rnd, seat, version=2) if version == 2
+                    else original(rnd, seat, version=version))
+
+        return patch.object(cwv_policy, "tensors_from_round_static", full_history)
     raise ValueError("unknown inference optimization")
 
 
@@ -65,7 +78,7 @@ def main(argv=None):
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decision-seconds", type=int, default=60)
     parser.add_argument("--seed0", type=int, default=89260904)
-    parser.add_argument("--optimization", choices=("prepared-lead", "fused-static"),
+    parser.add_argument("--optimization", choices=("prepared-lead", "fused-static", "v2-static"),
                         default="prepared-lead")
     args = parser.parse_args(argv)
     if min(args.repetitions, args.decision_seconds) < 1:
@@ -77,11 +90,15 @@ def main(argv=None):
         parser.error("states-json must contain a nonempty ordered snapshot list")
     evaluator = CompleteWorldEvaluator(str(args.checkpoint.resolve()), threads=1,
                                        max_batch=128, encoding="mlp-static")
+    if args.optimization == "v2-static" and (
+            evaluator.enc_version != 2 or evaluator.effective_encoding != "mlp-static"):
+        parser.error("v2-static requires a v2 MLP checkpoint")
     native_active = bool(fast.HAVE_FAST and Round.play is fast._fast.round_play)
     if os.environ.get("SHENGJI_FAST") == "1" and not native_active:
         raise RuntimeError("compiled play route requested but not active")
     recipe = CWVShortlistConfig(worlds=32)
-    arm_key = "prepared" if args.optimization == "prepared-lead" else "fused"
+    arm_key = {"prepared-lead": "prepared", "fused-static": "fused",
+               "v2-static": "v2_static"}[args.optimization]
     config = {
         "schema": "cwv-inference-probe-v2", "seed0": args.seed0,
         "optimization": args.optimization, "arm_key": arm_key,

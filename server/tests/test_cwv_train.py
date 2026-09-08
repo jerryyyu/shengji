@@ -399,8 +399,8 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
 
 def _shortlist_decision(checkpoint, *, encoding):
     """A real CWVShortlistBot decision on a real round with the checkpoint,
-    recording the public width of every row the net scored and whether the
-    fused static builder served any of them."""
+    recording the public width of every row the net scored and the versions
+    actually returned by the fused base builder, before any widening."""
     from shengji.ai import cwv_static_encoding as static
     from shengji.ai.cwv_policy import CompleteWorldEvaluator
     from shengji.train.cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
@@ -413,12 +413,13 @@ def _shortlist_decision(checkpoint, *, encoding):
             widths.extend(int(row.public.shape[0]) for row in rows)
             return super().probabilities(rows)
 
-    fused: list[bool] = []
+    fused: list[int] = []
     real = static._fused_static_tensors
 
     def spy(r, s, version=1):
         out = real(r, s, version)
-        fused.append(out is not None)
+        if out is not None:
+            fused.append(version)
         return out
 
     evaluator = Recorded(checkpoint, encoding=encoding)
@@ -463,7 +464,12 @@ def test_encoder_v2_net_trains_loads_verifies_and_scores_a_real_shortlist_decisi
         evaluator, widths, fused = _shortlist_decision(checkpoint, encoding=encoding)
         assert evaluator.enc_version == 2
         assert widths and set(widths) == {561}, widths
-        assert not any(fused), "the fused v1 builder must never serve a v2 net"
+        # Static v2 reuses a fused v1 BASE, then canonically widens it. The
+        # consumer widths above must stay v2; no bare v1 row may reach the net.
+        if encoding == "reference":
+            assert fused == [], "reference encoding must not use the fused base"
+        else:
+            assert set(fused) == {1}, "static v2 must widen a fused v1 base"
 
 
 def test_encoder_v1_net_from_the_same_code_path_is_provenance_identical(store_dir, tmp_path):
@@ -489,7 +495,7 @@ def test_encoder_v1_net_from_the_same_code_path_is_provenance_identical(store_di
     evaluator, widths, fused = _shortlist_decision(checkpoint, encoding="mlp-static")
     assert evaluator.enc_version == 1
     assert set(widths) == {532}
-    assert any(fused), "#288's fused path must still serve the v1 default"
+    assert set(fused) == {1}, "#288's fused path must still serve the v1 default"
 
 
 # 8 --------------------- part 4: a v2 run with a v1 public head finishes its candidate pass

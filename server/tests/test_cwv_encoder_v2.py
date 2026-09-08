@@ -190,7 +190,7 @@ def _spy_evaluator(version: int, encoding: str):
 
 
 @pytest.mark.parametrize("encoding", ["reference", "mlp-static"])
-def test_a_v2_net_is_fed_561_wide_rows_and_never_the_fused_path(encoding):
+def test_a_v2_net_is_fed_561_wide_rows_not_bare_fused_v1_rows(encoding):
     rnd, seat = _played_state()
     evaluator, seen = _spy_evaluator(2, encoding)
     assert evaluator.enc_version == 2
@@ -203,7 +203,9 @@ def test_a_v2_net_is_fed_561_wide_rows_and_never_the_fused_path(encoding):
         static._fused_static_tensors = real
     assert values.shape == (1,) and np.isfinite(values[0])
     assert seen == [561]
-    assert calls == [], "the fused builder writes the v1 layout; v2 must never enter it"
+    # Static v2 may reuse the v1 base only before canonical widening. The
+    # reference route still does not fuse, and no caller invokes fusion as v2.
+    assert calls == ([1] if encoding == "mlp-static" else [])
 
 
 def test_a_v1_net_is_still_fed_532_wide_rows_through_the_fused_path():

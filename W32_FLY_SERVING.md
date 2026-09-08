@@ -40,6 +40,12 @@ Fresh health showed zero rooms before the restart. The same single
 `48e7e35a9597e8` machine, 512 MB/shared CPU, and existing volume were retained.
 The release-19 rollback digest in `DEPLOY.md` remains available.
 
+The served package `171893bd` was exported from checkpoint `3f00500c`
+(A+B+C MLP, encoder v1), not the later selected teacher `3cd27716`
+(A+C+D+E+F2, encoder v2). Full source/export SHAs appear below. These latency
+measurements belong to the ABC package; neither newer-checkpoint latency nor
+its all-rank strength result transfers automatically to this engineering test.
+
 The public socket smoke completed one designated W32 round (`OPMA`) in
 **604.808 seconds**, including normal deal/pacing and 22 human-seat actions.
 It covered lobby, deal, declaration, burial, play, round end and explicit leave.
@@ -51,6 +57,7 @@ play a public test game, avoiding ordinary training-log contamination.
 |---|---:|
 | Bot play turns | 63 |
 | Compute median / nearest-rank p95 / maximum | 5.358 / 27.763 / 122.273 s |
+| Sum of logged bot play-computation wall / round wall | 570.259 / 604.808 s (94.3%) |
 | Ordinary-lobby socket queries during W32 play | 20, all successful |
 | Query mean / maximum, including network | 91.3 / 155.8 ms |
 | Server process high-water RSS | 99,592 KiB |
@@ -58,9 +65,11 @@ play a public test game, avoiding ordinary training-log contamination.
 
 **This is usable as a restricted engineering test, not a polished public mode.**
 The UI's approximately-30-second wide-move warning is not a cap: a live move
-took over two minutes. The service stayed responsive, but moves queue behind
-one another. Keep access codes restricted and investigate latency tails before
-wider availability. No strength or broad reliability claim follows from one round.
+took over two minutes, and 33 of 63 bot turns took more than five seconds.
+The service stayed responsive, but typical search cost consumes most of a round,
+and searches in different test rooms queue behind one another. Keep access codes
+restricted and improve typical as well as worst-case latency before wider
+availability. No strength or broad reliability claim follows from one round.
 No resize or additional replicas were introduced.
 
 All 401 retained records carry `training_excluded: true` and policy

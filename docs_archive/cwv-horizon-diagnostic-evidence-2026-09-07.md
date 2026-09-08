@@ -1200,3 +1200,64 @@ v1 was +.05096 levels/round, interval [-.00673, +.10673], hence inconclusive.
 Nor does it close trick-local features for consumers that actually score
 within-trick states. Finish the already-running size comparison; do not add
 another broad training sweep in response to these small FIT diagnostics.
+# September 8 follow-up: value knowledge versus action-gap knowledge
+
+This section was appended after the original 1,202-line evidence record was
+preserved. The new small experiment does not revise those original results.
+
+Artifact: `~/shengji-archive/2026-09-07/cwv-residual-fit.lvZHuj/`:
+`run_residual.py`, `run/config.json`, 36 retained per-root prediction matrices,
+`run/summary.json`, `analyze.py`, `analysis.json`. Config SHA
+`0b2626ec1392d13164245b89384e68a8484dfb128c124ec67989d12770defe4c`.
+
+The 36 roots / 22 independent source deals are precisely the prior cutoff
+panel's non-reused roots with complete per-world returns. The older 16 retain
+only means and were not secretly reconstructed. Input/hash selection, no new
+deal or outcome selection. Default `3cd27716` and immutable lower-LR epoch7
+`38b01331` (already tensor-reconciled to gameplay `8d92dd6e`) only. Every
+regenerated 1024-world matrix matches its saved world hash and both prior MAE
+statistics per model/root. Rollout entry points are tripwired to refuse; zero
+new full rollouts, no training or held-out deal opening. Model prediction
+matrices are now retained, rather than discarded after computing an MAE.
+
+Fixed coefficient one: estimate each action's advantage over the incumbent
+as its model mean over 384 cheap worlds plus mean rollout-minus-model
+advantage over 32 or 128 separate paired worlds. Another 512 worlds supply
+the reference. All three sets are disjoint per permutation; 16 permutations
+reuse the same finite world population and are not independent observations.
+Each model keeps its own original five-move shortlist, incumbent first, with
+argmax selection. This does not implement production's points objective or
+its MC-LCB gate; returns are model half-integer signed-level units.
+
+| Diagnostic | Default ACDEF-v2 | Lower-LR ACDEF-v2 |
+|---|---:|---:|
+| State-value residual variance / raw variance | .6247 [.5633, .7019] | .6131 [.5499, .6942] |
+| Action-gap residual variance / raw variance | .9881 [.9807, .9961] | .9856 [.9763, .9948] |
+| 32-rollout corrected-minus-plain choice regret | +.001197 [-.000250, .002864] | -.000244 [-.003000, .002533] |
+| 128-rollout corrected-minus-plain choice regret | -.000331 [-.001706, .001002] | -.000972 [-.003294, .000857] |
+
+Equal deal weight after within-deal averaging; 10k paired-deal bootstrap,
+seed20260907, unadjusted exploratory intervals conditional on sampled worlds.
+Lower-LR's 32-rollout gap MSE improves .021894→.021106 (difference -.000787,
+interval [-.001713, -.000053]), but choice regret is unresolved. Do not turn
+that one MSE result into a strength claim. Adding finite cheap-mean variance
+gives estimated total estimator-variance ratios .9944/.9900 at 32 corrections
+and 1.0133/1.0031 at 128, before charging for model evaluations.
+
+Interpretation: models capture substantial common state/world quality, but
+most of that signal cancels when comparing actions in the same world. The
+paired MC estimator already cancels common world difficulty. This is not
+proof that model capability is absent or that all hybrids fail; it does not
+justify implementing this particular fixed-coefficient correction yet. Do
+not fit new coefficients or selection rules on these results and present
+them as independently validated. Revisit one existing leaf consumer with
+the frozen current model pair; do not repeat a broad historical grid.
+
+Work: 130.39s summed model scoring + 3.47s world reconstruction, on one nice
+single-threaded CPU alongside Claude's live Mini training/reporting; peak
+RSS 473,251,840 bytes. Not an isolated end-to-end performance comparison.
+Nine pure tests cover constant offset cancellation, adverse prediction
+(fourfold variance increase), exact raw-MC equivalence for a constant model,
+disjoint sample wiring, exact selection values and input refusal. Original
+same-sample correction/understated-SE defect documented in `leaf_policy.py`
+is not revived: no residual SE is substituted into a production LCB.

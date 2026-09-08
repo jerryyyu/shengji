@@ -274,9 +274,11 @@ DEFAULTS = {
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
-    # A fresh run has no checkpoint to read a version from; this is the only
-    # way to ask for the v2 public encoder.  It stays 1 so an unchanged
-    # command line keeps producing v1 (531 + 1) checkpoints.
+    # A fresh run has no checkpoint to read a version from, so this is where the
+    # version is chosen.  It became 2 on 2026-09-08, so an unchanged command line
+    # now produces v2 (560 + 1) checkpoints; pass --encoder-version 1 for the
+    # historical width.  Existing checkpoints are unaffected either way: the
+    # evaluator dispatches on each checkpoint's own declared ``enc_version``.
     "encoder_version": ENC_VERSION_DEFAULT_FOR_TRAINING,
 }
 REQUIRED_RECEIPT_FIELDS = (

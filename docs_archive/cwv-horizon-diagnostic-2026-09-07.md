@@ -3,27 +3,28 @@
 Status: development evidence; no policy/default change or deployment.
 Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
-Latest readout: seven saved checkpoints now share the 52-root FIT probe,
-including the preserved ten-epoch H256 snapshot. Its final decisions have the
-same reference values as H512 lower LR here, despite eight changed shortlists.
-Only 16 roots have more than 5 legal moves: this is not evidence of equivalence.
-The completed H512 run's final alias has exactly the audited epoch's model
-parameters, so no diagnostic replay was necessary.
-No tested horizon, diversity or selector-objective intervention establishes a
-gain. Cross-fitted reference substitutions show limited, model-dependent
-nomination and selection headroom, not a deployable improvement. Keep
-finished-trick W32 with its existing MC-LCB selector; do not select
-a replacement model from tuning CE alone. The separate **520-deal comparison
-is now complete**: ACDEF-v2 has the highest measured mean and separates from
-the older ACD-v1 reference, but not from ACDEF-v1 or ACD-v2, in exploratory
-paired intervals. It is the leading strength candidate; ACDEF-v1 is the
-lower-measured-cost comparator. This is not an equal-work or deployment claim.
-The #294/#296 engineering stack now also has a completed natural-game parity
-check: exact trajectory bytes, with 25.7% less observed shortlist wall in a
-small contended-host window. The completed dropout follow-up does not change
-the leading candidate. A report-veto diagnostic finds a small, model-dependent
-source of lost nomination gains; it does not justify changing the gate. The
-width ladder remains unresolved.
+Latest readout (22:45 EDT): **default ACDEF-v2 `3cd27716` remains the leading
+experimental W32 checkpoint**. Its lower-LR counterpart has better validation
+CE but loses their completed 520-deal paired comparison by .05865 whole signed
+levels/round, exploratory 95% interval [-.10577, -.01154]. This is evidence
+against promoting that checkpoint on CE alone, not proof that CE is generally
+adverse or that the within-run epoch selector is broken.
+
+Seven checkpoints share the existing 52-root FIT probe, including preserved
+H256 epoch10. Only 16 roots exercise the shortlist cutoff; the H256/H512 ties
+are not equivalence evidence. A completed input-only census prepares a
+cutoff-focused panel with 36 new roots and 16 reusable ones, without any new
+predictions. No tested horizon, diversity or selector-objective intervention
+establishes a gain. Keep finished-trick W32/K4/N30/R300 and its MC-LCB selector;
+the report-veto diagnostic remains a hypothesis, not a policy recommendation.
+
+The #294/#296 engineering stack has exact natural-trajectory parity and
+25.7% less observed shortlist wall in a small contended-host window. PR #298
+separately proposes another 2.44% fixed-state reduction; it is not yet merged.
+The teacher-collection fixes in PR #299 now pass source review. Neither
+better-teacher data nor model-width scaling has a completed learning result
+yet. ACDEF-v1 remains the lower-measured-cost comparator. No deployment or
+controlled equal-wall strength claim follows from these results.
 
 ## Finding and test
 
@@ -184,8 +185,9 @@ consumer, but no load-bearing selector arithmetic defect in the traced cases.
 The next mechanism test compared point versus level-utility selection on
 common rollout matrices, without relaxing the confidence gate or increasing
 model capacity. Its result is below. The ACDEF-v2 gameplay reconciliation is
-now complete below. ACD's lower-LR gameplay comparison is also complete and
-inconclusive; ACDEF's lower-LR model has no completed gameplay comparison.
+now complete below. ACD's lower-LR gameplay comparison is inconclusive;
+ACDEF's subsequently completed lower-LR comparison favors its default model
+(see "Completed lower-LR ACDEF gameplay comparison").
 
 ## Selector objective ablation (completed)
 
@@ -427,8 +429,8 @@ itself proof of which caused the reversal.
   different continuation labels must retain their source provenance.
 - **Model:** these are saved MLPs, not a GRU/transformer architecture comparison.
   Encoder v2 adds 29 public columns; its lower validation CE does not by itself
-  select the best playing model. Completed training is not silently treated
-  as completed gameplay: only the ACD lower-LR screen has played this panel.
+  select the best playing model. Both ACD and ACDEF lower-LR screens have now
+  completed; their separate follow-ups below preserve the model identities.
 - **Runtime:** recorded policy/selector blobs (`cwv_shortlist`, `mcbot`,
   `teacher_v1`) match across these screens. Other revisions add v2 routing,
   fused static inputs and prepared-lead reuse. Native binary hashes differ,
@@ -500,11 +502,19 @@ parity, which remains PASS. See
 and `cwv-pricing-path.9bKPfR/shortlist-recipe-identity.json`.
 Claude repaired the registered route at `9c7cc30b`: the policy name binds a
 digest of the resolved recipe. Independent actual-`_open_run` verification
-confirms an unchanged recipe resumes and K4→K8 refuses. One narrow regression
-remains in this exact head's direct unnamed `make_shortlist_bot` call: the
-fallback naming call omits its now-required recipe argument. The registered
-collection path supplies a name and works. This does not invalidate the
-fixed-recipe timing/parity evidence or reopen the optimization review.
+confirms an unchanged recipe resumes and K4→K8 refuses. The direct unnamed
+factory regression was subsequently repaired at `01f844be`.
+
+[PR #299 now passes source review at `6efef18f`](https://github.com/jerryyyu/shengji/pull/299#pullrequestreview-5136761462).
+It also closes two later reproduced failures: replacing a checkpoint after
+registration now refuses, and using a supported knob no longer records a
+second shortlist bot's ballot as production's. Re-review passed 27 focused
+tests plus the actual compiled collector on the original FIT witness: its
+recorded production ballot exactly matches independently constructed MC-LCB.
+The replacement guard compares 8-hex checkpoint IDs, not full digests; full-SHA
+binding is nonblocking hardening, not an already-proven collision guarantee.
+No collection was launched by the review. These source fixes do not change
+the earlier fixed-recipe optimization evidence or demonstrate training gains.
 
 Keep the horizon, effective-action diversity and selector objective unchanged:
 the focused interventions did not establish gains. The mixed cross-fitted
@@ -524,9 +534,9 @@ integration, never into a running screen; no retraining is needed. See
 [the performance report](https://github.com/jerryyyu/shengji/blob/61fcc714aff0108938ad3e99aaa9b0b12671d8ef/docs_archive/cwv-v2-static-widen-2026-09-07.md)
 in that PR.
 
-The ACD lower-learning-rate gameplay result below is now complete, as is the
-selected ACDEF lower-LR model's final reporting and parameter reconciliation. Claude
-is running the user-requested controlled width ladder, not a broad recipe
+Both lower-learning-rate gameplay results below are now complete, as is the
+selected ACDEF lower-LR model's final reporting and parameter reconciliation.
+Claude is running the user-requested controlled width ladder, not a broad recipe
 grid. If a new gameplay comparison is warranted,
 use the same optimized source and actual measured work for all candidates,
 preserve a fresh validation population, and report uncertainty alongside
@@ -607,9 +617,10 @@ opening inputs or producing run data. The successful run reused the existing
 native `20605956` audit tree after checking its relevant producer code was
 unchanged at `8231df45`; no engine rebuild or completed-work replay followed.
 
-The now-completed 520-deal lower-LR gameplay screen uses **ACD**, not this
-ACDEF checkpoint; its result is recorded below. The completed ACDEF report
-does not substitute for an ACDEF lower-LR gameplay comparison.
+The ACD and ACDEF lower-LR models now each have a completed 520-deal gameplay
+comparison, separately recorded below. The selected ACDEF weights are the
+same as this retained FIT diagnostic; the gameplay comparison does not require
+replaying those model predictions.
 
 ## Optimized W32 cost attribution and model-size follow-up
 
@@ -874,6 +885,106 @@ pairing, original summary/ordered-shard bindings and 10,000 paired bootstrap
 resamples are retained in `cwv-gameplay-precision.DE3xDH/dropout-fresh-520.json`
 with `compare_dropout_completed.py`. Only completed summaries were admitted
 before outcome reads. No games were rerun.
+
+## Completed lower-LR ACDEF gameplay comparison
+
+The ACDEF-v2 LR1e-4 model `8d92dd6e` completed all 520 deals / 1,040 mirrored
+rounds at seed0 91261190. Both completed configurations were checked before
+reading their outcomes; seed, rank, suit, banker and mirrored team/role
+identities match exactly. Only this model and the default comparator were
+re-read, retaining the default's previously verified summary/shard hashes.
+
+| ACDEF-v2 checkpoint | Tuning CE (rounded) | Whole signed levels/round vs production |
+|---|---:|---:|
+| Default LR, `3cd27716` | .6218 | +.125962 |
+| LR1e-4, `8d92dd6e` | .6106 | +.067308 |
+
+**Lower LR minus default: -.058654, exploratory paired 95% interval
+[-.105769, -.011538].** Across 520 deal-level contrasts, 68 favor lower LR,
+108 favor default and 344 tie. Lower LR itself still beats production on
+this window: +.067308 [.022115, .110601]. These are signed levels, not win
+rates. Both mirror rounds stay together in 10,000 bootstrap resamples,
+seed20260907. Minor interval-endpoint differences from Claude's ledger use
+different resampling settings, not different observed scores.
+
+This focused comparison answers a previously stated question, but the
+population is the reused exploratory DEV window. It is not independent
+confirmation after model selection. It supports retaining the default
+checkpoint and shows why lower validation CE cannot suffice for promotion.
+One checkpoint pair does **not** establish that CE is generally adversarial,
+that lowering LR is always harmful, or that validation-based epoch selection
+is defective. The earlier two-seed CE difference is not a calibrated universal
+noise floor.
+
+It also bounds what the FIT proxy tells us. The earlier 52-root probe slightly
+favored lower LR in final reference value, entirely on one deal; the gameplay
+ordering goes the other way. FIT states with fixed heuristic continuations
+are useful for tracing mechanisms, not a substitute for policy evaluation on
+the distribution of states a policy actually reaches. The gameplay contrast
+does not by itself distinguish prediction, cutoff coverage and final selection.
+
+Both arms use W32/K4/N30/R300. The lower-LR screen uses the reviewed optimized
+consumer and costs 3.576x production decision wall, versus 4.375x for the
+default's older consumer. Those are unequal observed wall times, not a lower
+world/rollout budget for the losing arm. Prior decision-parity evidence permits
+using the comparison; the speed difference does not independently strengthen
+the scientific quality finding. Preserve the original receipts and compare
+future models on the same optimized source.
+
+Evidence: `cwv-gameplay-precision.DE3xDH/acdef-lower-lr-fresh-520.json` and
+`compare_acdef_lr_completed.py`, with exact model, summary, ordered-shard,
+analysis-script and statistics-source hashes. No new simulation or model
+inference was performed for this readout.
+
+## Improve diagnostic coverage without another broad sweep
+
+An input-only census of the same 3,900 Luna FIT decisions / 26 source deals
+found 1,686 positions with at least six legal submitted actions, 662 forced
+positions and zero unknown counts. Eligible counts by current trick position
+are 843 lead, 298 first follow, 268 second follow and 277 last follow. The
+census reproduced all 52 old panel action counts and took 1.287 seconds;
+it used engine reconstruction/legality, no predictions or new world draws.
+
+Applying the original input-only hash rule within rank/trick-position strata,
+now requiring at least six legal actions, produces 52 cutoff-focused roots
+over 26 deals: **16 identical old roots and 36 new roots**. There is no
+upper-width filter: 10,287 submitted actions total, maximum 5,016 at one root.
+Submitted-action counts are not distinct effective actions in sampled worlds.
+Selection controls exclude smaller ballots and ignore outcome/model-score
+fields. This does not create more independent games or open validation data.
+
+The prepared panel is conditional on cutoff eligibility, not representative
+natural-frequency or fresh gameplay evidence. No new-model comparison has
+run on it yet. For the selected width follow-up, reuse compatible scores,
+choices and reference values at the 16 overlapping roots, then evaluate only
+missing roots/columns on common per-root worlds and candidate unions. Do not
+replay completed work merely because the parent panel hash changed or pool
+overlapping panels as independent evidence.
+
+Evidence: `cwv-cutoff-census.pKF8V6/{census.py,rows.jsonl,summary.json,prepare_panel.py,panel.json}`;
+panel SHA256 `048672b5df256dceaf788af9bde45e405c2cb0ac936c894ba443c758cbf81e33`.
+All 26 Luna validation deals remain unopened by this audit.
+
+## Incremental unused-Memory optimization
+
+[PR #298](https://github.com/jerryyyu/shengji/pull/298), head `5bdbda69`,
+reuses validated v1 public unseen counts while applying the same canonical
+v2 feature arithmetic. It avoids rebuilding unused Memory deductions in the
+fused MLP path; banker kitty semantics and fallback refusals are unchanged.
+The nine checkpoint-bound encoder source files are untouched.
+
+The actual W32 consumer completed 104 matched decision pairs (52 FIT roots,
+two counterbalanced repetitions), with all scores, decisions, work counters
+and RNG state exact. Wall fell 17.7555→17.3220 seconds (**2.44%**), CPU
+17.4443→17.0849 seconds (**2.06%**). Both repetitions improved wall. This is
+one contended Mini process, not whole-game or isolated production throughput;
+the cumulative 360.39 MiB RSS is not a paired memory reduction. Do not add
+this percentage to the earlier natural-game percentage from another workload.
+
+130 focused tests pass in both pure and compiled modes, including actual
+evaluator wiring, private-kitty and fallback witnesses. Source-matched receipts
+and analysis are in `cwv-v2-unseen.pgTPWO/`. Review is pending; no running
+consumer was replaced and no new benchmark is required just for publication.
 
 ## v1/v2 target-to-consumer correctness check
 

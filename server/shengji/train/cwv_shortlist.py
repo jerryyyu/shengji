@@ -347,8 +347,23 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                                 batch_size=int(batch_size), uniform=False)
     bot = _build_shortlist(evaluator, seed=seed, config=config,
                            reuse_successors=bool(reuse_successors))
-    _require_shortlist(bot, name or shortlist_policy_name(
-        evaluator.ckpt8 or "unknown", worlds))
+    # Name from THIS call's own resolved arguments, so a direct caller who is
+    # not going through the registry still gets an identity that describes the
+    # bot actually built. Passing only checkpoint and width here is what broke
+    # the no-name path when the recipe became required.
+    resolved_name = name or shortlist_policy_name(
+        evaluator.ckpt8 or "unknown", worlds,
+        recipe=resolved_recipe(alternatives=alternatives,
+                               selection_worlds=selection_worlds,
+                               report_worlds=report_worlds,
+                               batch_size=batch_size,
+                               encoding=encoding,
+                               reuse_successors=reuse_successors))
+    _require_shortlist(bot, resolved_name)
+    # Stamp the identity here rather than only in the registry wrapper: a bot
+    # built directly would otherwise generate records carrying no policy name
+    # at all, which is the same hole as an unbound recipe one level down.
+    bot.policy_name = resolved_name
     bot.REPORT_FOLD_WORLDS = int(report_worlds)
     bot.cwv_checkpoint_sha256 = evaluator.checkpoint_sha256
     bot.cwv_ckpt8 = evaluator.ckpt8

@@ -34,6 +34,7 @@ from shengji.train.cwv_shortlist import (
     CWVShortlistBot,
     ShortlistPolicyError,
     shortlist_env_recipe,
+    make_shortlist_bot,
     resolved_recipe,
     shortlist_policy_name,
     shortlist_registry_entries,
@@ -194,3 +195,32 @@ def test_the_default_policy_keeps_no_production_probe():
     bot = trajectory.make_trajectory_bot(config, seed=3,
                                          explore_rng=random.Random(0))
     assert bot.production_probe is None
+
+
+# --------------------------------- the DIRECT factory, with no name supplied
+
+def test_make_shortlist_bot_derives_its_own_name_when_none_is_given(checkpoint):
+    """`make_shortlist_bot` is reachable without a name, and must stay so.
+
+    Binding the recipe into `shortlist_policy_name` broke exactly this path: the
+    internal call still passed only checkpoint and width, so a direct caller got
+    ``TypeError: missing 1 required keyword-only argument: 'recipe'``. Codex
+    found it (bus 759). The derived name must also EQUAL the registry name for
+    the same recipe, or the two entry points would disagree about identity.
+    """
+    bot = make_shortlist_bot(checkpoint, seed=11)
+    assert type(bot) is CWVShortlistBot
+    assert bot.seed == 11
+    expected = shortlist_policy_name(cwv_policy.checkpoint_id(checkpoint), 32,
+                                     recipe=resolved_recipe())
+    assert bot.policy_name == expected
+
+
+def test_the_derived_name_tracks_a_non_default_recipe(checkpoint):
+    """A direct caller who changes a knob must not get the default identity."""
+    default = make_shortlist_bot(checkpoint, seed=11)
+    k8 = make_shortlist_bot(checkpoint, seed=11, alternatives=8)
+    assert k8.shortlist_config.alternatives == 8
+    assert k8.policy_name != default.policy_name, (
+        "K8 built under the K4 identity; a resume would accept the wrong search")
+

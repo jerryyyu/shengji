@@ -1,6 +1,6 @@
 # Model + search: findings and next experiment
 
-Status: development evidence, September 7, 2026. No deployment.
+Status: development evidence, updated September 8, 2026. No deployment.
 [Detailed results and artifact pointers](cwv-horizon-diagnostic-evidence-2026-09-07.md)
 are preserved separately; this page is the current decision summary.
 
@@ -13,12 +13,18 @@ are preserved separately; this page is the current decision summary.
 | On 52 cutoff-focused roots, these models change 27 retained sets but only three final moves. One loss excludes a useful action family; another case favors lower LR. | Diagnose nomination separately from MC selection. There is no single demonstrated bottleneck or universal gate repair. |
 | Our small original FIT panel also fails to rank six checkpoints in gameplay order. | Keep it for debugging; do not simply replace CE with its regret score. Use more independent positions reached by W32. |
 | Matched residual probe: the models remove 37.5–38.7% of across-world state-value variance, but only 1.2–1.4% of action-gap variance. Fixed correction does not clearly improve choices. | Overall position knowledge is not the same as knowing which move is better. Do not implement this correction as a new search policy yet. |
+| Current-model T1 points-leaf substitution loses against the fixed heuristic-rollout reference. Training-view alignment changes decisions but does not resolve that loss. | Not a gameplay test or a closure of learned leaves: training uses realized MC-trajectory outcomes, not this heuristic continuation. |
 | Changing horizon, effective-action diversity or selector utility did not establish a gain. | Do not rerun a broad grid of these mechanisms or weaken MC-LCB globally. |
 
 The v2/data combination improved the observed gameplay mean over older ACD-v1
 by .078 levels/round (exploratory interval [.026, .132]). There is real progress,
 but neither ingredient independently separates, and better distribution fit
 does not guarantee better action judgments.
+
+**Keep CE for outcome-distribution training; do not select the search model on
+CE alone.** Action-gap error and shortlist regret/coverage are candidate offline
+metrics, not validated replacements. Test whether they predict gameplay order
+on independent W32 development deals before adding an action-comparison loss.
 
 ## Next: test where model and MC complement each other
 
@@ -38,21 +44,26 @@ method or one narrow hybrid. No new model training is required for that test.
    correction with independent cheap/correction/reference samples. Action-gap
    noise barely falls, and choice-regret intervals include zero at both doses.
    Do not scale this correction or fit a new coefficient to rescue this panel.
-   Next compare one existing value-at-leaf configuration with these checkpoints;
-   Claude's inventory reports their earlier leaf/PUCT closures used older nets.
-   Check the actual leaf adapter and run a bounded comparison, not a depth grid.
+   The existing T1 points-leaf probe is also complete: 52 FIT roots / 26 deals,
+   unchanged five-move ballots and N30/R300 samples. Leaf-minus-full-MC reference
+   value is -.0469/-.0291 for default/lower-LR. Encoding the last actor, as in
+   training, gives -.0459/-.0249; neither is a demonstrated rescue. All use the
+   same finite heuristic continuation reference, not actual played outcomes.
 3. **Compare consumers, not just models.** Use the same frozen default/lower-LR
    checkpoint pair in W32 and one alternate consumer. Coordinate with Claude
    before revisiting a prior PUCT/leaf configuration, and reuse completed W32
-   baselines where compatible. Begin with a small mechanistic comparison; only
-   a promising result advances to paired gameplay against W32 and production.
-   Report quality and measured cost separately; extra compute is allowed.
+   baselines where compatible. The next decision is a bounded actual-gameplay
+   comparison, not another grid against the same heuristic proxy. ACDEF labels
+   come from MC trajectories with differing ballots/work budgets; the diagnostic
+   reference finishes via heuristic play. Keep that policy difference explicit
+   rather than labeling all disagreement prediction error. Report quality and
+   measured cost separately; extra compute is allowed.
 
 The correction idea is related to learned control variates. [AIVAT](https://ojs.aaai.org/index.php/AAAI/article/view/11481)
 uses heuristic values to reduce variance in **agent evaluation**; it is not
 evidence that this proposed search policy will work. Any adaptation must check
-  sampling/utility consistency, avoid fitting corrections on their own test
-  returns, preserve information boundaries, and validate the resulting MC gate.
+sampling/utility consistency, avoid fitting corrections on their own test
+returns, preserve information boundaries, and validate the resulting MC gate.
 
 The completed residual probe does not implement or change an MC-LCB gate.
 It uses signed-level utility, not production's attacker-point score. It is
@@ -65,7 +76,7 @@ mechanistic evidence on restricted FIT nominations, not a gameplay result.
 - #299: correct W32 teacher registration/recipe/production-ballot capture
   merged at `d23c084d`; generating better training data is enabled, not proven.
 - H256 replacement fit stopped after epoch17 and selected immutable epoch14;
-  its reporting process remains live. Reuse fixed checkpoints and cached
-  references; do not repeat training or holdout reports for diagnostics.
+  training/reporting and its gameplay screen remain Claude-owned. Reuse fixed
+  checkpoints and cached references; do not repeat training or holdout reports.
 - Preserve live jobs, all trajectories and held-out deals. No production
   deployment. Detailed results remain evidence, not additional review gates.

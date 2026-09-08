@@ -1261,3 +1261,90 @@ Nine pure tests cover constant offset cancellation, adverse prediction
 disjoint sample wiring, exact selection values and input refusal. Original
 same-sample correction/understated-SE defect documented in `leaf_policy.py`
 is not revived: no residual SE is substituted into a production LCB.
+
+## September 8: current checkpoints in the existing points-leaf consumer
+
+The alternate-consumer probe is complete, not pending. Reused the cutoff
+panel's 52 FIT roots / 26 deals, model-specific five-move W32 nominations
+(incumbent first), default `3cd27716` and lower-LR epoch7 `38b01331`, and the
+saved independent reference values. Fixed N30/R300 samples and seeds. Only
+full continuation was replaced by the existing T1 auxiliary-points leaf in
+both selection and report stages; no reranking, new model or new reference
+population. T1 finishes the current trick, not one additional full trick.
+
+| Leaf viewpoint | Default leaf-minus-MC reference value | Lower-LR leaf-minus-MC reference value |
+|---|---:|---:|
+| Existing next-mover encoding | -.04687 [-.08054, -.01641] | -.02914 [-.05695, -.00632] |
+| Training-aligned last-actor encoding | -.04587 [-.07762, -.01822] | -.02492 [-.05054, -.00387] |
+| Last-actor minus next-mover, paired | +.00100 [-.02403, .02629] | +.00422 [-.00709, .01666] |
+
+Units are model half-integer signed-level reference utility, **not** wins or
+observed whole-game levels. Equal deal weight, within-deal averaging, 10k
+paired-deal bootstrap seed20260907; exploratory intervals conditional on
+these finite reference samples. Mover-view changes 32/52 and 30/52 baseline
+decisions. Changing viewpoint changes 21/52 and 15/52 decisions, but gives no
+resolved improvement. It does not establish a production fix.
+
+The viewpoint discrepancy is real in source: `cwv_data.bridge_record` and
+`value_afterstate.example_from_trajectory_record` encode the successor from
+the seat that just acted. `MCValueLeafSearch._leaf_value` passes `clone.turn`
+instead. The diagnostic wrapper recovers the last actor from the current or
+last completed trick. This is a global final-attacker-points head; **no sign
+flip** is applied. The ideal target is viewpoint-invariant, but learned
+features need not be. Both viewpoints share the existing banked-point clamp.
+
+**Continuation-policy limitation, not a newly discovered source bug.** The
+ACDEF source manifests and the earlier data table in this record identify
+actual MC games with differing ballot/work settings. `harvest/trajectory.py`
+binds `outcome_for(result.attacker_points, ...)` to the engine's final result;
+`cwv_data.bridge_record` uses that outcome for both category and points labels,
+not the stored search means. The independent cutoff/reference pipeline instead
+uses native heuristic continuation. Accordingly, a loss here measures failure
+to preserve choices valued by that heuristic reference. It is not proof that
+the leaf's predicted outcome under its training-policy mixture is wrong, nor
+that it loses actual gameplay. The same limitation applies to the residual
+probe above. Per-record continuation labels are not universally populated;
+source manifests carry the provenance. Keep this distinction in any new
+offline-metric evaluation; do not tune a proxy to reproduce old gameplay ranks.
+
+Concrete failure in both mover-view models: root
+`0ac1b8ee2dadc14d0cbdbda2a76ae5d575fe912fe09839bdaac23d1416da12a3`
+(rank5, two plays already in the trick, 21 legal actions). Full MC chooses
+`CK,HQ`; the leaf falls back to incumbent `H7,HQ`. Both actions were retained.
+Reference value drops .999023→.255859. Full MC's report challenges with
+`CK,HQ`; the leaf's report challenges with `C4,HQ`, so their report gaps are
+**not** estimates of the same contrast. This is an evaluation/selection
+example, not missing shortlist coverage or evidence of an SE arithmetic bug.
+
+Validation: all 52 roots preserve ballot order, per-candidate dose, sampled
+world records, RNG state and report seed. A no-truncation canary reproduces
+the real full-MC choice and report fields. Four-seat encoder rows match v2
+training tensors exactly; NumPy/Torch aux-points errors are below .000021
+points. Seven new helper tests plus nine residual tests pass in both pure
+and native modes (16 each), exercising the consumer, both leaf stages, inside-
+and after-trick viewpoints, unchanged root, no-truncation identity and exact
+refusal on changed RNG state. Production registry/defaults are untouched.
+
+Artifacts on Mini (runner, config, canary, 52 rows, summary and analyses):
+
+- `~/shengji-archive/2026-09-07/cwv-leaf-fit.ZGAUah/`, config
+  `be6018c54caef38f9c1447beb10478fca32a917e5878c1cec402fec9037dbdf5`.
+- `~/shengji-archive/2026-09-07/cwv-leaf-lastactor.he7WlF/`, config
+  `b8096f4ed105c198548586cb05fee7f8294a414ebb9c6879b8fd717c44517470`;
+  `view-comparison.json` contains the paired viewpoint contrast.
+
+Each model/view uses 39,000 predicted leaves, zero exact/terminal leaves.
+Summed leaf-search walls: mover 9.03/8.92s, last-actor 8.97/8.97s; peak RSS
+494/489MB. One nice, single-threaded CPU, no live-job edits. These are not
+isolated full-game speedup numbers. Two canaries reran full-MC searches; no
+reference returns, training or held-out games were regenerated. Initial
+`cwv-leaf-fit.lTUe4r` smoke stopped before publishing a root because JSON
+lists were compared with live RNG tuples; it remains preserved. Logical JSON
+normalization fixed that comparison, with a real changed-state refusal test.
+
+Next: retain the default W32 baseline and CE training. Coordinate one bounded
+gameplay comparison with a fixed alternate consumer and the same checkpoint
+pair; do not gate that scientific question solely on agreement with heuristic
+continuation, and do not expand to a depth/model grid. Independently collected
+W32 FIT roots should validate candidate action-gap/coverage metrics before
+those metrics choose checkpoints or motivate a new training loss.

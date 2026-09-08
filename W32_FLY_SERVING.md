@@ -1,9 +1,10 @@
-# Opt-in W32 serving
+# W32 serving
 
 Implementation and engineering measurements for [#300](https://github.com/jerryyyu/shengji/issues/300).
-**Deployed September 8 as Fly release 20, for code-authorized test rooms only.**
-Ordinary rooms remain `mc-s0-report-lcb`; the VM size and
-Docker entry point are unchanged. Serving this backend does not
+**Production default since September 8, 19:53 UTC, explicitly authorized by Jerry.**
+Ordinary rooms use `mc-shortlist-fd6bb411-w32-r55d379a3` without an access code.
+This was an environment-only update on the existing release-20 image; VM size,
+volume and Docker entry point are unchanged. Serving this backend does not
 inherit a new strength claim from the Torch checkpoint.
 
 ## What runs
@@ -32,13 +33,13 @@ encoder identities only when the history computation/constants/dependencies
 still match and reversing that one import recreates the original closure.
 Other source drift is refused; source-move acceptance is not a general bypass.
 
-## Selected v2 package — qualified, not deployed
+## Selected v2 package — deployed
 
-Jerry selected **A+C+D+E+F2 v2 `3cd27716`** as the next opt-in package.
+Jerry selected **A+C+D+E+F2 v2 `3cd27716`** for the production default.
 It is the gameplay-supported all-rank teacher, not a new CE winner. Its
 520-deal all-rank result and ABC's older 256-deal rank-2 result are different
 populations: they do **not** establish a head-to-head improvement over the
-currently served ABC model.
+previously served ABC model.
 
 The source is Mini's
 `~/.claude/jobs/68f9c8bd/tmp/train-out/cwv/runACDEF-v2/best.pt`:
@@ -93,14 +94,17 @@ qualification, Mini Torch and Linux NumPy logs). Two attempted host-side Linux
 Torch probes stopped during setup (ABI mismatch, then Torch absent); neither
 reached a decision, and neither is counted as a successful measurement.
 
-**Remaining switch conditions:** consolidated export/package review, retain
-the ABC package for rollback, verify the deployed image and uploaded package,
-and observe a fresh zero-room quiet window before changing only
-`SHENGJI_W32_TEST_CKPT`. Do not restart an occupied service. Ordinary rooms
-remain MC-LCB; no resize, global switch, or live Run I mutation is authorized
-by this qualification.
+**Switch completed:** PR #313 passed review and CI and merged at `049b1e7e`.
+The exact image, package and v2 source hashes were checked on Fly, and health
+showed zero rooms before the environment-only update. Both the global and
+test-room checkpoint paths now select `/data/models/w32-fd6bb411.npz`; the old
+ABC package remains available. Post-update health passed and a normal `Room`
+constructor loaded the exact package, encoder v2 and NumPy backend without
+Torch. Machine resources, image, volume and live Run I were unchanged.
+Before/after machine receipts are in the private qualification directory above.
+Rollback is the same image with `SHENGJI_BOT=mc-s0-report-lcb`.
 
-## Public Fly check — release 20
+## Historical ABC public Fly check — release 20
 
 PR #310 passed source review at `a1080700` and all five CI checks before the
 September 8 deployment. The tested registry image is
@@ -152,21 +156,22 @@ automatic removal, not an operator restart.
 
 ## Configuration and rollback
 
-For designated test rooms, set these **before Python starts**:
+For the current global default, set these **before Python starts**:
 
 ```sh
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 export SHENGJI_FAST=1
-export SHENGJI_BOT=mc-s0-report-lcb
-export SHENGJI_W32_TEST_ROOMS=1
-export SHENGJI_W32_TEST_CKPT=/data/models/MODEL.npz
+export SHENGJI_BOT=mc-shortlist-fd6bb411-w32-r55d379a3
+export SHENGJI_CWV_SHORTLIST_CKPT=/data/models/w32-fd6bb411.npz
 export SHENGJI_MODEL_SEARCH_CONCURRENCY=1
 ```
 
+Optional excluded engineering rooms additionally use `SHENGJI_W32_TEST_ROOMS=1`
+and `SHENGJI_W32_TEST_CKPT=/data/models/w32-fd6bb411.npz`.
 Supply `SHENGJI_W32_TEST_ACCESS_KEY` separately through the deployment secret
 store: a randomly generated 32–128 character code, never committed or placed
-in a URL. `fly.toml` defaults test-room availability to `0`. Do not set the
-global `SHENGJI_CWV_SHORTLIST_*` variables or change `SHENGJI_BOT` for this rollout.
+in a URL. `fly.toml` defaults this separate test-room availability to `0`;
+it does not restrict ordinary rooms' W32 default.
 
 Visit `/?test_shortlist=1` to reveal the test controls, check the initially
 unchecked W32 option, and enter the access code. The URL reveals controls,

@@ -13,11 +13,10 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly explicitly pins the confirmed production champion
-  `mc-s0-report-lcb` (N=30 selection plus an R=300 disjoint report check).
-  `mc-strong` is the policy rollback; `smart` and `heuristic` are cheaper
-  difficulty choices, not strength-equivalent replacements. W32 is limited to
-  explicitly gated test rooms; it is not the global default. See
+  Fly explicitly pins W32 `mc-shortlist-fd6bb411-w32-r55d379a3`, using the
+  A+C+D+E+F2 v2 model with N=30 selection and R=300 report checking.
+  `mc-s0-report-lcb` is the immediate policy rollback; `smart` and `heuristic`
+  are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
 ## Current production and rollback boundary
@@ -26,8 +25,13 @@ On September 8, Fly release **20** deployed the reviewed opt-in W32 room gate
 from PR #310, image
 `registry.fly.io/shengji@sha256:b8f48f41149d8a27225e7a44260b72b03475dbdf99ba7398c56167682afd19e5`.
 The single 512 MB / shared-CPU-1x machine `48e7e35a9597e8` and its volume are
-unchanged. Ordinary rooms still use `mc-s0-report-lcb`; experimental W32 rooms
-require a creator access code and remain excluded from ordinary training logs.
+unchanged. At **19:53 UTC September 8**, after Jerry explicitly authorized
+all-user rollout and health showed zero rooms, an environment-only update on
+this same image made W32 the ordinary-room default. No access code is needed.
+The loaded NumPy package was verified as `fd6bb411` (source `3cd27716`, encoder
+v2), with no Torch import; public health passed with the exact W32 policy.
+Explicit engineering rooms still require a creator access code and remain
+excluded from ordinary training logs.
 See `W32_FLY_SERVING.md` for measured latency and test status.
 
 The pre-deploy **release 19** rollback image is
@@ -44,7 +48,13 @@ only if the live room, round, phase, turn and controller still match. Claims,
 reconnects and X-ray therefore remain responsive; a stale search is discarded
 with its cloned RNG/counters.
 
-There are two independent rollback decisions:
+For the current rollout, **policy rollback is `SHENGJI_BOT=mc-s0-report-lcb`**
+on the same image; retain both model packages and the volume. The global model
+registration can remain present when MC-LCB is selected. A normal-room
+constructor and health were checked, not a many-room concurrency benchmark;
+one model-search worker bounds CPU use but concurrent players can queue.
+
+Historical release-18 rollback decisions (not the current W32 rollback):
 
 1. **Release/runtime rollback:** Fly release 17 / image
    `latency-cd6789e`. Use this for a release-18 availability or kitty-X-ray

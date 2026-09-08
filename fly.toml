@@ -10,17 +10,20 @@ primary_region = 'ewr'
   dockerfile = 'Dockerfile'
 
 [env]
-  # Manual strength-first deployment (2026-08-07): report-LCB replicated its
-  # gain over mc-strong in S0a and S0b. This is not a terminal S0 promotion;
-  # fresh collision-free confirmation remains required for the formal claim.
-  # Roll back this exact setting to 'mc-strong' if production health regresses.
-  SHENGJI_BOT = 'mc-s0-report-lcb'
+  # Jerry authorized the all-user W32 default on 2026-09-08. Package fd6bb411
+  # is the reviewed compact export of ACDEF v2 3cd27716 (PR #313).
+  # Preserve the volume package; policy rollback is SHENGJI_BOT=mc-s0-report-lcb.
+  SHENGJI_BOT = 'mc-shortlist-fd6bb411-w32-r55d379a3'
+  SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/w32-fd6bb411.npz'
+  OPENBLAS_NUM_THREADS = '1'
+  OMP_NUM_THREADS = '1'
+  SHENGJI_MODEL_SEARCH_CONCURRENCY = '1'
   # Compiled engine, built in the fastbuild stage. fast.py falls back to pure
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
-  # Only designated creator-authenticated rooms may opt into W32. Availability
-  # is off by default; enabling it never changes SHENGJI_BOT or existing rooms.
+  # Optional creator-authenticated engineering rooms use separate excluded
+  # logs; ordinary rooms already use W32 without an access code.
   SHENGJI_W32_TEST_ROOMS = '0'
 
 [mounts]

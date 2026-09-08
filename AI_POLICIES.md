@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-06 (K8 screen)**. This file defines the current callable-policy
+Last reconciled: **2026-09-08 (W32 production default)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -20,18 +20,26 @@ dated status blocks here.
 Production explicitly sets:
 
 ```toml
-SHENGJI_BOT = "mc-s0-report-lcb"
+SHENGJI_BOT = "mc-shortlist-fd6bb411-w32-r55d379a3"
+SHENGJI_CWV_SHORTLIST_CKPT = "/data/models/w32-fd6bb411.npz"
 SHENGJI_FAST = "1"
 ```
 
 The server source fallback is `mc` when `SHENGJI_BOT` is absent. The named
-production rollback is `mc-strong`; changing the default, rollback, N/R work,
+production rollback is `mc-s0-report-lcb`; changing the default, rollback, N/R work,
 ballot, sampler, continuation, or confidence rule is a new policy and needs
 fresh evidence.
 
+Jerry authorized the all-user W32 switch September 8; it deployed at 19:53 UTC
+on the existing Fly image after a zero-room check. Package `fd6bb411` exports
+the gameplay-supported A+C+D+E+F2 v2 checkpoint `3cd27716`. See
+[serving qualification and rollback](W32_FLY_SERVING.md). Historical screens
+below compare against the then-production MC-LCB, not against today's default;
+their original research-only authority does not negate this later explicit rollout.
+
 ### `mc-s0-report-lcb`
 
-The live champion uses two independent search stages:
+The former live champion, now the rollback/reference policy, uses two independent search stages:
 
 1. the complete `mc-strong` N=30 ballot/search nominates one challenger to the
    heuristic incumbent; and
@@ -58,7 +66,7 @@ ever differ.
 | `mc`, `mc-lite`, `mc-strong`, `mc-vstrong` | Determinized Monte Carlo at named work levels. `mc` is the source fallback; `mc-strong` is N=30 and the production rollback. | Supported. A legal sampler is not a calibrated belief model. |
 | `mc-s0-*`, nulls, prefix policies | Frozen search/report experiments and matched controls. | Experiment/reproduction only unless `fly.toml` names one. |
 | structured-bury, exact-endgame, point-banking, pair/throw and ballot variants | Mechanism-specific experimental constructors. Some intentionally remain outside the global registry to preserve evidence identity. | No production authority. |
-| learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. No learned checkpoint is production-authorized. |
+| learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only, except the exact W32 package named in the production contract above. |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
 | `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | A+B+C W32/K4 and K8 are exploratory screens; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
@@ -383,7 +391,8 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- `mc-strong` remains the immediate rollback for production health regressions.
+- `mc-s0-report-lcb` is the immediate W32 policy rollback. For runtime
+  regressions, use the separately identified image rollback in `DEPLOY.md`.
 
 ## Durable pointers
 

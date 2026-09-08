@@ -56,6 +56,9 @@ the runtime image. The compiled engine must be built for that image's Python.
 Across rooms, NumPy searches queue behind a shared per-event-loop admission
 limit (default 1, configurable 1–8). A queued cancellation does not start work;
 running cancellation drains the isolated worker before releasing its slot.
+The limit is validated and bound when the server imports, before rooms are
+accepted; changing it requires a restart. Cancellation takes precedence over
+a secondary worker failure so enclosing timeouts retain their semantics.
 `model_search` log events expose queued/running/completed/error/cancelled and
 10-second heartbeats, with no hidden cards or exception messages. Errors leave
 the live game/RNG untouched and display a generic room error; they never
@@ -100,6 +103,43 @@ Private measurement inputs/package: `/opt/w32-serving-measure.OtpaS5` on Perf;
 Mini export directory `/private/tmp/w32-numpy-serving-measure.FiRNhL`.
 Reproducer: `server/scripts/benchmark_cwv_serving.py`; the 180-second limit is
 only for the diagnostic process, not a timeout that abandons server workers.
+
+### Concurrent rooms and real WebSockets
+
+A separate, uncontended Perf probe used the repaired serving source
+`fa58c36638940c76b355fd88a034acf966b1bc8f`, the same package/states and locked
+Python 3.12 runtime. It bound Uvicorn only to an ephemeral `127.0.0.1` port;
+real WebSocket clients queried rooms while the actual W32 worker searched.
+Two rooms shared immutable weights, private RNG and turn snapshots. Both
+normal turns committed through the real engine. A changed seat owner refused
+the stale prepared turn; an injected worker failure produced the generic
+room error and left the live RNG unchanged.
+
+| Measurement | Result |
+|---|---:|
+| Wide turn / ordinary turn after admission | 30.87 s / 0.38 s |
+| Real WebSocket room queries during searches | 579 |
+| Mean / maximum WebSocket response | 1.80 ms / 62.88 ms |
+| Peak process RSS | 119.0 MB |
+| Unit CPU / wall | 33.04 s / 33.27 s |
+| Maximum simultaneously running searches | 1 |
+
+The process exited successfully under the same 512 MB / one-CPU bounds;
+Torch was absent. Queued and running heartbeats appeared at 10, 20 and 30
+seconds. **One search slot means head-of-line waiting:** the ordinary room
+waited about 31 seconds for the wide room. Responsive sockets do not imply
+short move latency. The cap bounds active CPU work, not an unlimited number
+of room snapshots; larger room counts and higher concurrency need their own
+memory/load check before configuration changes.
+
+Reproducer: `server/scripts/benchmark_cwv_rooms.py MODEL.npz STATES.json`.
+Private Linux root `/opt/w32-room-measure.6gYdNn`; systemd unit
+`w32-room-measure-20260908.service`. Retained journal on Mini:
+`~/shengji-archive/2026-09-08/w32-fly-serving/room-probe-journal.txt`.
+This is a production-dependency Linux process, **not the built Docker image**
+or a public Fly deployment. It exercises actual room search/commit and socket
+queries, not a full human lobby-to-round session. No Docker runtime was
+available on the measured host; the intended-image check remains below.
 
 Before deployment: review the complete source, test concurrent/stale/error
 rooms in the intended image, approve acceptable wide-action latency, and obtain

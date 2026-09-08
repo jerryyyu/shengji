@@ -121,6 +121,14 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             "peak_tensor_entries": tensor_cache.peak_entries})
         return sums / len(worlds)
 
+    def _choose_alternatives(self, rnd, seat, actions, means, base):
+        """Choose value-ranked alternatives from the exhaustive ballot."""
+        del rnd, seat
+        keys = [tuple(sorted(action)) for action in actions]
+        alternatives = [i for i in range(len(actions)) if i != base]
+        return sorted(alternatives, key=lambda i: (-means[i], keys[i]))[
+            :self.shortlist_config.alternatives]
+
     def _candidates(self, rnd, seat):
         started = time.perf_counter()
         self.last_successor_reuse = None
@@ -160,8 +168,7 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
                 raise ValueError("CWV shortlist cheap world population underfilled")
             self.shortlist_counts["cheap_worlds"] += len(worlds)
             means = self._means(rnd, seat, actions, worlds)
-            chosen = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[
-                :self.shortlist_config.alternatives]
+            chosen = self._choose_alternatives(rnd, seat, actions, means, base)
         selected = [base, *chosen]
         production_keys = {tuple(sorted(a)) for a in production}
         kept = [actions[i] for i in selected]

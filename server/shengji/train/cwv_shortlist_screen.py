@@ -11,6 +11,7 @@ from pathlib import Path
 import platform
 
 from ..ai.cwv_policy import shared_evaluator
+from ..ai.cwv_puct import shared_prior_head
 from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
@@ -146,9 +147,22 @@ def make_side(config: dict, side: str, seed: int):
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     inner = config.get("double_shortlist") if side == "arm" else None
-    kwargs = dict(seed=seed, config=_shortlist_config(config),
+    side_config = dict(config["shortlist"])
+    if flat_baseline and "baseline_alternatives" in config:
+        side_config["alternatives"] = config["baseline_alternatives"]
+    kwargs = dict(seed=seed, config=CWVShortlistConfig(**side_config),
                   reuse_successors=config.get("reuse_successors", False))
-    if inner is not None:
+    prior_union = config.get("prior_union") if side == "arm" else None
+    if prior_union is not None:
+        if inner is not None or arm != "learned":
+            raise ValueError("prior union requires a flat learned arm")
+        from .cwv_prior_union import CWVPriorUnionBot
+        prior = shared_prior_head(prior_union["checkpoint"])
+        if prior.checkpoint_sha256 != prior_union["checkpoint_sha256"]:
+            raise ValueError("prior checkpoint changed between configuration and worker")
+        bot = CWVPriorUnionBot(evaluator, prior, **kwargs,
+                              prior_alternatives=prior_union["alternatives"])
+    elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
@@ -208,7 +222,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "baseline_alternatives", "prior_union"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -342,9 +356,10 @@ def summary_for(shards, config):
             "inner shortlist continuation, then terminal heuristic values and root MC-LCB"
             if "double_shortlist" in config else "flat exhaustive learned root shortlist")
         result["baseline_description"] = config.get("baseline", "production")
-        result["work_caveat"] += (
-            " Inner finalist continuations count separately and are included exactly once "
-            "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+        if "double_shortlist" in config:
+            result["work_caveat"] += (
+                " Inner finalist continuations count separately and are included exactly once "
+                "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -360,6 +375,35 @@ def summary_for(shards, config):
             by_suit[suit] += 1
         result["trump_ranks"] = list(config["trump_ranks"])
         result["coverage"] = {"by_rank": by_rank, "by_trump_suit": by_suit}
+    if "prior_union" in config:
+        result["arm_description"] = (
+            f"incumbent + {config['shortlist']['alternatives']} value alternatives + "
+            f"{config['prior_union']['alternatives']} distinct public-prior alternatives; "
+            "unchanged MC selection/report")
+        attribution = dict.fromkeys(("decisions_with_prior", "prior_candidates_added",
+                                     "prior_challengers", "prior_played"), 0)
+        for shard in shards:
+            for trace in shard.get("decision_traces", []):
+                if trace["side"] != "arm":
+                    continue
+                for row in trace["decisions"]:
+                    detail = row.get("cwv_shortlist", {})
+                    prior = detail.get("prior_union")
+                    if prior is None:
+                        continue
+                    by_index = dict(zip(detail["shortlist_indices"], detail["shortlist"], strict=True))
+                    added = {tuple(sorted(by_index[i])) for i in prior["added_prior_indices"]}
+                    if len(added) != prior["added_prior_count"]:
+                        raise ValueError("prior proposal attribution drift")
+                    attribution["decisions_with_prior"] += 1
+                    attribution["prior_candidates_added"] += len(added)
+                    attribution["prior_challengers"] += int(tuple(sorted(row.get("challenger") or [])) in added)
+                    attribution["prior_played"] += int(tuple(sorted(row.get("played") or [])) in added)
+        result["prior_attribution"] = attribution
+    if config.get("baseline") == "flat-shortlist" and "baseline_alternatives" in config:
+        result["baseline_description"] = (
+            "flat exhaustive value shortlist; incumbent + "
+            f"{config.get('baseline_alternatives', config['shortlist']['alternatives'])} alternatives")
     return result
 
 
@@ -387,8 +431,15 @@ def main(argv=None):
                         help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
+    parser.add_argument("--baseline-alternatives", type=int,
+                        help="flat baseline width, independent of the arm's value width")
+    parser.add_argument("--prior-checkpoint",
+                        help="DEV: add distinct full-legal public-prior proposals to the value shortlist")
+    parser.add_argument("--prior-alternatives", type=int, default=2)
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--max-new-clusters", type=int,
+                        help="execution-only slice; keep the full population/config and resume remaining pairs later")
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--trump-ranks",
@@ -396,6 +447,8 @@ def main(argv=None):
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
+    if args.max_new_clusters is not None and args.max_new_clusters < 1:
+        parser.error("--max-new-clusters must be positive")
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
             or args.report_worlds < 30):
@@ -417,6 +470,14 @@ def main(argv=None):
         parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
         parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
+    if args.baseline_alternatives is not None and (
+            args.baseline != "flat-shortlist" or args.baseline_alternatives < 1):
+        parser.error("--baseline-alternatives requires flat-shortlist and a positive width")
+    if args.prior_checkpoint is not None and (
+            args.arm != "learned" or args.inner_mode is not None or args.prior_alternatives < 1):
+        parser.error("--prior-checkpoint requires flat learned arm and positive prior alternatives")
+    if args.prior_checkpoint is None and args.prior_alternatives != 2:
+        parser.error("--prior-alternatives requires --prior-checkpoint")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -470,6 +531,17 @@ def main(argv=None):
             config["double_shortlist"]["reuse_successors"] = True
     if args.baseline != "production":
         config["baseline"] = args.baseline
+    if args.baseline_alternatives is not None:
+        config["baseline_alternatives"] = args.baseline_alternatives
+    if args.prior_checkpoint is not None:
+        prior_path = str(Path(args.prior_checkpoint).resolve())
+        prior = shared_prior_head(prior_path)
+        config["prior_union"] = {
+            "checkpoint": prior_path, "checkpoint_sha256": prior.checkpoint_sha256,
+            "alternatives": args.prior_alternatives,
+            "selection": "top-prior-excluding-incumbent-and-value-shortlist-v1",
+            "information": "actor-visible root observation and full legal actions",
+        }
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)
@@ -486,6 +558,10 @@ def main(argv=None):
     if cost_order is not None:
         costs = cost_order["cluster_wall_secs"]
         pending.sort(key=lambda cluster: (-costs[str(cluster)], cluster))
+    if args.max_new_clusters is not None:
+        pending = pending[:args.max_new_clusters]
+        print(f"execution slice: at most {len(pending)} new pairs; "
+              f"{len(shards)}/{args.clusters} full-population pairs already complete", flush=True)
     try:
         _run_pending(config, pending, shards, output=args.out, workers=args.workers,
                      task_fn=run_cluster)

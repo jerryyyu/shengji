@@ -267,8 +267,9 @@ disjoint population; retained test results remain available as diagnostics.
 Preservation and source retirement are tracked in [issue #217's disposition
 table](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5587369543)
 and [independent review](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5587402153).
-All 18 exact PR heads have permanent archive tags; close-only retirement is
-reviewed, with closures pending. The Mini backup at
+All 18 exact PR heads have permanent archive tags; reviewed close-only
+retirement is [complete](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5588118823).
+No branches, tags or artifacts were deleted. The Mini backup at
 `~/shengji-archive/belief-retirement-2026-09-08/archive.DEOqfr` contains
 172 verified files (351,121,574 bytes), including 32 checkpoints and retained
 results/manifests; all 172 source/destination hashes matched. This is a
@@ -399,12 +400,21 @@ Neither this plan nor the W32 result launches unlimited collection. PT52
 private panel `sl6QAC` has 52 roots / 208 captured positions, 26 fit / 26
 validation, 13 ranks × 4 and four no-trump roots. The subsequent fresh
 snapshot comparison completed with 207 matched positions; it does not prove
-whole-game equivalence. [PR #280](https://github.com/jerryyyu/shengji/pull/280)
-now binds the first eight roots / 16 mirrored full games, compact1 versus
-batch4, under Jerry's recorded 9M-token / five-hour ceiling. The remaining
-44 deals are not automatically authorised; price them from actual game cost,
-completion and deal-level variance. Preserve all teacher/interface and
-continuation labels. Earlier cost-design details:
+whole-game equivalence. The subsequent full-game comparison is now complete
+and merged in [#280](https://github.com/jerryyyu/shengji/pull/280): 52 deals /
+104 mirrored rounds. The separately authorized remaining 44 deals scored
+−0.1477 [−0.3523,+0.0568] batch4−compact1 levels/round; the exploratory pool
+scored −0.1058 [−0.2885,+0.0769], alongside 2.27× fewer reported tokens per
+decision and 1.70× serial provider throughput. Equal quality is not
+established; seven shared-response waves limit deal-bootstrap inference.
+The two play-only arms are not the historical rollout-enabled teacher or
+production MC. Native exports retain 3,900 fit + 3,852 validation records
+from disjoint 26-deal splits, including losses and forced decisions. Preserve
+their teacher/interface and mixed continuation labels; opened validation is
+not fitting data or fresh confirmation. #246/#275/#280 are merged, and #247
+is closed as superseded with its exact source archived. No provider rerun is
+needed. [Completed readout](server/runs/luna_quality_gameplay_tranche1_result_20260906.md).
+Earlier cost-design details:
 [teacher efficiency investigation](https://github.com/jerryyyu/shengji/blob/724d811676363a13e164d6d8d7ceca16745b7c2f/TEACHER_TOKEN_EFFICIENCY.md).
 
 ## Search and teacher strategy

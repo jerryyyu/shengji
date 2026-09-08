@@ -79,11 +79,23 @@ host based only on this table.
 
 ## Review asks
 
-**Outstanding.** Only one review ask is live: **#256** (Mini-playable full W32,
-no default changed) has Codex source PASS at `8aed350f`, but it currently
-**conflicts with main** and its `server` check is cancelled, so it cannot merge
-as it stands — it needs a refresh onto current main and green CI before Jerry's
-timing gate applies. Nothing else is waiting on a review from either agent.
+**Current integration.** #256 is superseded, not waiting for rebase/merge:
+main already supplies the guarded `.pt`/`.npz` registry consumer with full
+recipe-hashed names. The older branch must remain archived, not replace it.
+[#310](https://github.com/jerryyyu/shengji/pull/310) adds a creator-authenticated,
+default-off per-room W32 test gate. Its actual image and complete socket rounds
+have been tested; deployment remains pending consolidated source/image review
+and a fresh quiet-window check. MC-LCB remains the global default. The scoped
+goal authorizes designated test rooms, not an active-game interruption or resize.
+
+**Remaining-stack disposition:** [#196](https://github.com/jerryyyu/shengji/issues/196#issuecomment-5589313523)
+records Claude's live-dependency check and close-only plan. Preserve exact
+source refs and results before closure; #302's leaf result is now summarized
+in `AI_POLICIES.md`. Keep #158 as an explicit equal-information research
+decision, and #307 as unresolved encoder-identity work. #272/#284/#287 still
+have unimplemented default-change requests; do not close them as stale.
+No artifacts or branches are being deleted. #200's destruction plan is
+withdrawn while Strength is actively generating Run I, not a host shutdown queue.
 
 **Finished, retained as markers only — do not act on these.** #255 (`c0b8fdfe`)
 and PR260 (`9b059ff4`) merged after green CI. Claude [passed #257's source/run

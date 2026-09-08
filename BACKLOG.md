@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-06 (completed scaling screens, fused-input A/B and teacher continuation)**. This file is the prioritized
+Last reconciled: **2026-09-08 (integration cleanup and gated W32 serving)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -26,6 +26,7 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
+| **P0** | **Gated W32 serving — Codex, #300 / #310** | NumPy serving is on main. Per-room access gate and actual-container socket checks are prepared; two complete test rounds passed. | One consolidated source/image review, then quiet-window deployment and a designated public test room. | Keep MC-LCB default; no active-game disruption, global switch or VM resize. |
 | **COMPLETE** | **W32 engineering integration — Codex** | A+B+C W32: +0.1387 levels/round [+0.0645,+0.2168] on 256 opened rank-2 deals. Optimized replay preserves all saved traces and cuts decision wall 2.849× (10.61× → 3.53× production). #249 (`270bd3b9`) → #252 (`0a0d70d1`) → #254 (`0d355c4c`) merged after source PASS and CI; #251 holds the completed scaling readout. | Keep the optimization opt-in and record the measured result; no gameplay rerun is needed to integrate unchanged semantics. | No deployment or production-default change. |
 | **COMPLETE / PARKED** | **Tested shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | Keep optimized K4/W32. K8, W64, doubled final search and both 26-deal double-shortlist arms did not establish improvement. Adaptive root allocation completed at +0.00577 [−0.05774,+0.07308] versus flat; selective depth at −0.00577 [−0.06736,+0.05769] and 1.5892× wall, each on 260 opened broader-rank deals. | No additional unchanged-recipe arm queued. Use retained evidence or a separately tested better checkpoint to motivate any new mechanism. [Results](AI_POLICIES.md#completed-allocation-and-depth-screens). | No equivalence, universal depth-failure or fresh-confirmation claim. Retain all artifacts; no automatic world/threshold/depth sweep. |
 | **P1** | **W32 engineering closeout — Codex** | #286 prepared-lead optimization merged. [#288](https://github.com/jerryyyu/shengji/pull/288) fused-input full-consumer A/B completed: identical outputs on nine pairs, 1.3324× speedup on two huge zero-reuse follows, neutral small panel with mixed individual timings. | One consolidated source+measurement review for #288 merge; no further capacity or reconstruction run. | Do not extrapolate to whole-game speedup, multiply different-host ratios or change live workers/production defaults. |
@@ -38,6 +39,10 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 ## Immediate sequence
 
+0. Finish the reviewed close/archive disposition in #196 and gated serving
+   in #300/#310. #256's older playable-registry implementation is superseded
+   by main, not a merge prerequisite. Preserve unique source and outcomes;
+   #272/#284/#287 default changes and #307 identity repair remain real work.
 1. Retain the sealed K8 readout, keep K4, and do not escalate to K16.
 2. Runs A through H are complete and local; run I is generating the first
    shortlist-produced teacher data. Data generation yields to strength

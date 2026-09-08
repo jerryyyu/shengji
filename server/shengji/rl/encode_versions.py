@@ -116,6 +116,19 @@ def encode_obs_v2_columns(rnd: Round, seat: int) -> list[float]:
     # ``encode.py`` needs no edit; ``own_kitty=False`` is v1's historical
     # setting and the v2 columns must see the same unseen set.
     mem = Memory(rnd, seat, own_kitty=False)
+    return _v2_columns_from_unseen(rnd, seat, mem.unseen)
+
+
+def _v2_columns_from_unseen(rnd: Round, seat: int,
+                            unseen: Counter[str]) -> list[float]:
+    """Shared feature arithmetic after public unseen counts are available.
+
+    The reference entry point obtains them from Memory. The inference-only
+    static adapter can reuse its validated v1 observation's half-copy plane.
+    Neither caller changes the 29 feature definitions or private-kitty rule.
+    """
+    o = rnd.ordering
+    assert o is not None
     obs: list[float] = []
 
     # --- the trick in progress (16) -----------------------------------
@@ -152,7 +165,7 @@ def encode_obs_v2_columns(rnd: Round, seat: int) -> list[float]:
     eff = [o.eff_suit(c) for c in hand]
     for name in list(SUITS) + [TRUMP]:
         obs.append(eff.count(name) / 27.0)
-    obs.append(sum(1 for c in mem.unseen.elements()
+    obs.append(sum(1 for c in unseen.elements()
                    if o.eff_suit(c) == TRUMP) / 27.0)
     counts = Counter(hand)
     obs.append(sum(1 for v in counts.values() if v >= 2) / 13.0)

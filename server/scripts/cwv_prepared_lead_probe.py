@@ -6,8 +6,11 @@ fused-static`` compares fused tensor construction with the prior static path;
 ``v2-static`` compares canonical widening of the fast v1 MLP base with the v2
 full-history reference builder. Prepared lead validation stays enabled in both
 arms. ``stable-v2-encoder`` compares stable dispatch with the historical fresh
-wrapper per batch; only the named tensor-cache counters may differ. Patches are restricted
-to this single-thread diagnostic process, never live workers or engine globals.
+wrapper per batch; only the named tensor-cache counters may differ.
+``v2-unseen`` compares reuse of validated public counts with a full Memory
+rebuild for the same v2 columns; all tensor-cache counters must also match.
+Patches are restricted to this single-thread diagnostic process, never live
+workers or engine globals.
 Keep every scoring row, batch, shortlist, report, action, work count and RNG
 state identical. Timings on a contended host are diagnostic, not speed claims.
 """
@@ -74,6 +77,9 @@ def _optimization_context(optimization, enabled):
         return (nullcontext() if enabled else patch.object(
             cwv_policy, "_versioned_encoder",
             lambda builder, version: partial(builder, version=version)))
+    if optimization == "v2-unseen":
+        return (nullcontext() if enabled else patch.object(
+            cwv_static_encoding, "_widen_v2_static", cwv_static_encoding.widen_v2))
     raise ValueError("unknown inference optimization")
 
 
@@ -99,7 +105,7 @@ def main(argv=None):
     parser.add_argument("--decision-seconds", type=int, default=60)
     parser.add_argument("--seed0", type=int, default=89260904)
     parser.add_argument("--optimization", choices=("prepared-lead", "fused-static", "v2-static",
-                                                   "stable-v2-encoder"),
+                                                   "stable-v2-encoder", "v2-unseen"),
                         default="prepared-lead")
     args = parser.parse_args(argv)
     if min(args.repetitions, args.decision_seconds) < 1:
@@ -111,7 +117,7 @@ def main(argv=None):
         parser.error("states-json must contain a nonempty ordered snapshot list")
     evaluator = CompleteWorldEvaluator(str(args.checkpoint.resolve()), threads=1,
                                        max_batch=128, encoding="mlp-static")
-    if args.optimization in ("v2-static", "stable-v2-encoder") and (
+    if args.optimization in ("v2-static", "stable-v2-encoder", "v2-unseen") and (
             evaluator.enc_version != 2 or evaluator.effective_encoding != "mlp-static"):
         parser.error(f"{args.optimization} requires a v2 MLP checkpoint")
     native_active = bool(fast.HAVE_FAST and Round.play is fast._fast.round_play)
@@ -119,7 +125,8 @@ def main(argv=None):
         raise RuntimeError("compiled play route requested but not active")
     recipe = CWVShortlistConfig(worlds=32)
     arm_key = {"prepared-lead": "prepared", "fused-static": "fused",
-               "v2-static": "v2_static", "stable-v2-encoder": "stable_encoder"}[args.optimization]
+               "v2-static": "v2_static", "stable-v2-encoder": "stable_encoder",
+               "v2-unseen": "v2_unseen"}[args.optimization]
     config = {
         "schema": "cwv-inference-probe-v2", "seed0": args.seed0,
         "optimization": args.optimization, "arm_key": arm_key,

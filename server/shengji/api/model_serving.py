@@ -42,6 +42,18 @@ async def _send(emit: Callable[..., Any], kind: str, **fields: Any) -> None:
         await result
 
 
+async def run_debug_search(compute: Callable[[], Awaitable[Any]]) -> Any:
+    """Debug shares gameplay's permits but never queues behind a busy search.
+
+    There is no yielding operation between the availability check and the
+    synchronous-emitter admission path below. Snapshotting occurs only after
+    admission, so rejected requests allocate neither bot copies nor workers.
+    """
+    if _semaphore().locked():
+        return {"error": "search busy; retry Xray after the current decision"}
+    return await run_model_search(compute, lambda *args, **kwargs: None)
+
+
 async def run_model_search(compute: Callable[[], Awaitable[Any]], emit: Callable[..., Any], *,
                            heartbeat_interval: float = 10.0) -> Any:
     """Run one admitted search, preserving cancellation until worker drain.

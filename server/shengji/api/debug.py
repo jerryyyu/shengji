@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import os
+import time
 
 
 _BURY_WORK_FIELDS = (
@@ -158,37 +159,24 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
                              and mem.ruff_risk(s, opps)],
         "candidates": None,
         "bury": None,
+        "analysis": None,
     }
     if rnd.phase == "bury" and rnd.turn == seat:
         out["bury"] = _bury_xray(rnd, seat, isolated_bot)
     elif rnd.phase == "play" and rnd.turn == seat:
         # The snapshot starts at the live bot's exact RNG position.  The pick
         # and displayed values come from the same isolated evaluation.
+        from .debug_play import play_analysis
+        started = time.perf_counter()
         pick = isolated_bot.decide_play(rnd, seat)
-        if getattr(isolated_bot, "last_eval", None) is not None:
-            cands, means = isolated_bot.last_eval
-            # last_eval is acting-team perspective; report attacker points.
-            sign = 1.0 if rnd.is_attacker(seat) else -1.0
-            vals = [[sign * m] for m in means]
-        else:                          # TRACTOR_LOCK / forced play: no search
-            cands, vals = [pick], [[]]
-
-        def stats(values: list[float]) -> tuple[float, float]:
-            n = max(len(values), 1)
-            mean = sum(values) / n
-            var = sum((x - mean) ** 2 for x in values) / max(n - 1, 1)
-            return mean, (var / n) ** 0.5
-
-        out["candidates"] = sorted(
-            [{"play": candidate,
-              "attackers_avg": round(stats(vals[index])[0], 1),
-              "se": round(stats(vals[index])[1], 1),
-              "heuristic_pick": index == 0,
-              "bot_plays": sorted(candidate) == sorted(pick)}
-             for index, candidate in enumerate(cands)],
-            key=lambda item: item["attackers_avg"],
-            reverse=bool(out["is_attacker"]),
-        )
+        out["candidates"], out["analysis"] = play_analysis(
+            isolated_bot, pick, is_attacker=out["is_attacker"],
+            elapsed=time.perf_counter() - started)
+        out["analysis"]["snapshot"] = {
+            "trick_number": len(rnd.history) + 1,
+            "plays_in_trick": len(rnd.trick.plays),
+            "acting_seat": seat,
+        }
     return out
 
 
@@ -217,12 +205,19 @@ async def _xray_off_loop(rnd, seat: int, isolated_bot) -> dict:
 
 async def _xray_room(room, seat: int, fallback_bot) -> dict:
     """Snapshot one room under its lock, then search after releasing it."""
-    async with room.lock:
-        if room.round is None or room.round.ordering is None:
-            return {"error": "no active round"}
-        source_bot = getattr(room, "bot", None) or fallback_bot
-        rnd_copy, bot_copy = _snapshot_xray(room.round, source_bot)
-    return await _xray_off_loop(rnd_copy, seat, bot_copy)
+    from .model_serving import run_debug_search
+
+    async def compute():
+        async with room.lock:
+            if room.round is None or room.round.ordering is None:
+                return {"error": "no active round"}
+            if type(seat) is not int or not 0 <= seat < 4:
+                return {"error": "invalid seat"}
+            source_bot = getattr(room, "bot", None) or fallback_bot
+            rnd_copy, bot_copy = _snapshot_xray(room.round, source_bot)
+        return await _xray_off_loop(rnd_copy, seat, bot_copy)
+
+    return await run_debug_search(compute)
 
 
 def register_debug(app, rooms) -> None:

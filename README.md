@@ -172,11 +172,26 @@ suphx and belief lanes were removed on 2026-09-05 (tag
 - `scripts/xray.py` / the in-game X-ray (press `x`; needs
   `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any
   position, including the banker's chosen kitty bury and any available
-  bury-search candidates/work account.
+  bury-search candidates/work account. The in-game panel also separates W32
+  model nominations (acting-team signed levels), MC selection estimates
+  (attacker points), and the paired report-gap decision (acting-team points).
+  It labels the checkpoint, recipe, search work and measured times. Missing
+  uncertainty is shown as unavailable, not zero.
 - `scripts/fetch_fly_logs.sh` — stage, validate, refresh and hash prod logs.
 - `python -m shengji.rl.human_shards` — build a fresh replay-audited,
   provenance-bound human play/bury corpus; raw human choices remain proposal
   data until counterfactually validated.
+
+For the in-game panel, set `localStorage.setItem("shengji.debug", "<token>")`
+in browser devtools using the server's `SHENGJI_DEBUG_TOKEN`, then press `x`
+on your play turn. It evaluates an **isolated snapshot**, not a historical
+bot decision or a continuously updating view; reopen it for a new position.
+The report gap is challenger minus incumbent, so a positive mean does not
+guarantee an override: with W32's LCB rule, the displayed decision statistic
+(a lower bound) must clear the gain threshold.
+Xray uses the same model-worker limit as gameplay and returns a busy message
+instead of queuing extra searches. It does not change the live bot RNG, reveal
+sampled hidden hands, or establish that the bot planned a later sequence.
 
 
 ## Project docs

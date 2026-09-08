@@ -343,6 +343,16 @@ class PublicPriorHead:
         result = []
         for row, (_o, cand_rows) in enumerate(rows):
             p = probs[row, :len(cand_rows)]
+            # Exhaustive ballots can exceed 80k moves. Float32 softmax's
+            # reduction then drifts beyond 1e-5 even for entirely finite
+            # logits (observed sum 1.0000169465 on 82,956 legal moves).
+            # Preserve every previously accepted probability byte; only
+            # recompute a finite, out-of-tolerance row in float64. Keep the
+            # full padded row so this cannot hide probability on padding.
+            if np.all(np.isfinite(p)) and abs(float(p.sum()) - 1.0) > 1e-5:
+                with torch.inference_mode():
+                    p = torch.softmax(logits[row].double(), dim=0).cpu().numpy()[
+                        :len(cand_rows)]
             if not np.all(np.isfinite(p)) or abs(float(p.sum()) - 1.0) > 1e-5:
                 raise CWVError("prior head probability drift")
             result.append(p)

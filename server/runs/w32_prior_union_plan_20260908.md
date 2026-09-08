@@ -60,3 +60,26 @@ Report the actual extra-prior counts, prior-challenger/played counts and final
 report outcomes alongside gameplay utility and cost. Proposal agreement with
 W32 is not ground-truth move quality. Do not prune based on #314: C top16 kept
 the best value alternative on only **11/19 actually pruned FIT roots**.
+# September 8 execution repair: wide prior normalization
+
+Original head `4f2bf24d7e053a2b5249c26b220d6b7a6bd4be62` completed
+V6/V4 at26/26; both union arms retained21/26 before cluster6 refused.
+One isolated replay captured82,956 finite logits, finite observation/action
+inputs, and float32 softmax sum1.000016946507323 (threshold1e-5). Float64
+sum was0.9999999999999988. This is numerical reduction drift, not a missing
+legal action, invalid observation, or evidence of poor prior quality.
+
+Repair: retain the original probabilities byte-for-byte if the old check
+accepts them; recompute only finite out-of-tolerance rows in float64, over
+the full padded row. The unchanged final check still refuses nonfinite
+outputs and probability mass on padding. Tests cover both old accepted
+bytes and an82,956-action17–20ppm reduction-error witness.
+
+Recovery must preserve the original directories/configs/failure records.
+Use a separate repaired output with explicit source-transition provenance:
+map each imported complete pair's hash to its original config/source and
+label newly generated pairs with the repaired source. No deal is dropped;
+finish all five missing clusters in each union arm. Recipe, model bytes,
+seeds, MC work and prior proposal rule stay fixed. Do not describe mixed
+provenance as a single-source execution or rerun already completed pairs
+merely to erase the failure. The width-only arm needs no rerun.

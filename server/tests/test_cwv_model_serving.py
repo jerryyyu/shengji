@@ -1,3 +1,4 @@
+"""W32 serving contracts, collected by the existing two-mode CWV CI suite."""
 import asyncio
 import os
 from pathlib import Path

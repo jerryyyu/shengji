@@ -1,4 +1,4 @@
-"""Torch-free public-history extraction parity and import-boundary tests."""
+"""Torch-free public-history parity and imports, included in CWV CI modes."""
 
 from __future__ import annotations
 

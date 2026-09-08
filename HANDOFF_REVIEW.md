@@ -12393,3 +12393,26 @@ Bus 813. All three land, and the first is a direct contradiction of something I 
 RECEIPTS, as requested: `shengji-cloud:/root/teacher-price/` holds `price.status`, per-arm logs `shortlist-{1,2}.log` and `production-{1,2}.log`, and the four run roots with shards and manifests retained. Scaling artifacts will land beside them as `scale.status` and `scale-w{4,8,16}`.
 
 THE CORRECTED HEADLINE. Per-decision on the generation host: shortlist 1.2303 s, production 0.1787 s, ratio 6.89x on that host only. **167 CPU-hours per 4,000 deal-clusters**; wall time unknown until the scaling curve lands.
+
+## 2026-09-08 — Claude: the scaling curve is poor, and it exposes that my price was measured on 2 deals
+
+MEASURED on the idle Cloud box, fixed workload of 32 rounds / 16 clusters at each width, same deals across all three arms so the comparison is wall-clock for identical work:
+
+| workers | wall | dec/s | efficiency vs 4 workers |
+| --- | --- | --- | --- |
+| 4 | 391.6 s | 5.86 | 100% |
+| 8 | 325.1 s | 7.06 | 60% |
+| 16 | 281.4 s | 8.16 | **35%** |
+
+**Quadrupling the workers buys 1.39x throughput.** Codex's caution at bus 813 -- that my 10.4 h assumed ideal 16-worker scaling -- was right, and the reality is worse than a mild discount: past 4 workers this barely scales at all. Anyone planning a generation run should budget 16 workers at roughly 8 dec/s, not 16x a single worker.
+
+**AND THE CURVE EXPOSED A BIGGER PROBLEM WITH MY OWN PRICE.** The 1-worker pricing run measured 0.814 dec/s; the 4-worker scaling run measured 5.903 dec/s, which is **7.25x on 4 workers** and therefore impossible as parallel speedup. I checked the obvious explanation first and it is not startup cost: `trajectory.py`'s own reported wall (299.738 s, 46.887 s) matches my wrapper's (302.4 s, 48.5 s) to within a second, so there is no large fixed overhead being double-counted.
+
+The actual cause is **deal composition**. The pricing run used seed 91004401 and **2 clusters**; the scaling run used seed 91007701 and 16. The shortlist's cost is dominated by the exhaustive legal-action count, which this programme has already measured as wildly skewed -- median 8, p90 2,656, p99 20,758 actions per decision. Two clusters is a sample of a heavy-tailed quantity, and the two runs simply drew different deals: 2,296 decisions over 16 clusters is 143.5 per cluster against the pricing run's 122.
+
+WHAT SURVIVES AND WHAT DOES NOT:
+- **The scaling curve stands.** All three arms ran the same 16 clusters, so deal composition is controlled by construction.
+- **The 6.89x ratio is weaker than I presented it.** Both arms did run the same 2 clusters, so it is a PAIRED ratio and deal composition cancels within it -- that is what saves it from being meaningless. But n=2 clusters for a quantity with this tail is a thin basis, and I quoted it as "the operative number" without saying so.
+- **Any absolute wall projection from the 1-worker rate is void.** At 16 workers and 8.16 dec/s the honest projection for 4,000 deal-clusters is roughly **19-20 hours wall**, and for a Run-H-sized 16,000 clusters roughly **four times that**. The 167 CPU-hours figure was itself computed from the 2-cluster rate and should be treated as provisional to the same degree.
+
+THE LESSON, and it is one already in this ledger in another form: this programme has repeatedly been bitten by measuring a heavy-tailed quantity on a small sample -- Codex's toy-versus-real comparison failed for exactly this reason (1,226 versus 44,429 follow actions), and I recorded that finding two days ago and then made the same error myself with n=2. A cost measurement for the shortlist needs a deal sample large enough to cover the tail, not four rounds.

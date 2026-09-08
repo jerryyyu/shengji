@@ -95,7 +95,10 @@ in `AI_POLICIES.md`. Keep #158 as an explicit equal-information research
 decision, and #307 as unresolved encoder-identity work. #272/#284/#287 still
 have unimplemented default-change requests; do not close them as stale.
 No artifacts or branches are being deleted. #200's destruction plan is
-withdrawn while Strength is actively generating Run I, not a host shutdown queue.
+withdrawn: it targets `shengji-cloud` (`ubuntu-32gb-hel1-1`), the host generating
+Run I. `shengji-perf` (`ubuntu-32gb-hel1-2`) is a different machine; its idleness
+is not evidence about the targeted host. Run completion alone grants no
+decommissioning or artifact-deletion authority.
 
 **Finished, retained as markers only — do not act on these.** #255 (`c0b8fdfe`)
 and PR260 (`9b059ff4`) merged after green CI. Claude [passed #257's source/run

@@ -10,11 +10,12 @@ import os
 from pathlib import Path
 import platform
 
-from ..ai.cwv_policy import shared_evaluator
+from ..ai.cwv_policy import shared_evaluator, prior_evaluator_for
 from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_report_continuation import CWVReportContinuationBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -111,6 +112,10 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            record = getattr(self.bot, "last_decision_record", None)
+            guidance = None if record is None else record.get("cwv_report_continuation")
+            if guidance is not None and len(self.decisions) > before:
+                self.decisions[-1]["cwv_report_continuation"] = copy.deepcopy(guidance)
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -146,9 +151,22 @@ def make_side(config: dict, side: str, seed: int):
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     inner = config.get("double_shortlist") if side == "arm" else None
+    guidance = config.get("report_continuation") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
-    if inner is not None:
+    if guidance is not None:
+        if (inner is not None or config.get("baseline") != "flat-shortlist"
+                or guidance.get("schema") != "cwv-report-continuation-v1"
+                or guidance.get("stage") != "report"
+                or guidance.get("inner_ballot") != "production"
+                or guidance.get("terminal") != "heuristic"):
+            raise ValueError("unsupported report-continuation recipe")
+        continuation = (prior_evaluator_for(config["checkpoint"])
+                        if guidance["guidance"] == "prior" else evaluator)
+        bot = CWVReportContinuationBot(
+            evaluator, **kwargs, continuation_evaluator=continuation,
+            guidance=guidance["guidance"], tricks=guidance["tricks"])
+    elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
@@ -172,6 +190,9 @@ def work_counters(bots):
             out[name] = out.get(name, 0) + int(value)
         for key, value in getattr(bot, "double_shortlist_counts", {}).items():
             name = "double_" + key
+            out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, "netroll_counts", {}).items():
+            name = "report_guidance_" + key
             out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
@@ -208,7 +229,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "report_continuation"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -345,6 +366,16 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Inner finalist continuations count separately and are included exactly once "
             "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+    if "report_continuation" in config:
+        result["arm_description"] = (
+            "unchanged full-legal W32 root and heuristic selection; "
+            f"{config['report_continuation']['guidance']} current-trick guidance "
+            "in the fresh-world report fold, then heuristic terminal continuation")
+        result["work_caveat"] = (
+            "Decision wall/CPU and model evaluations are measured separately. "
+            "Report guidance counts describe existing finalist continuations; "
+            "do not add them a second time to total_rollouts. Sampling SE does not "
+            "measure continuation/model bias. No equal-work claim.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -387,8 +418,12 @@ def main(argv=None):
                         help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
                         default="production")
+    parser.add_argument("--report-continuation", choices=("learned", "prior", "heuristic"),
+                        help="DEV: guide only the fresh-world report fold's current trick")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--max-new-clusters", type=int,
+                        help="execution-only slice; retain the full population/config for resume")
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--trump-ranks",
@@ -396,6 +431,8 @@ def main(argv=None):
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
+    if args.max_new_clusters is not None and args.max_new_clusters < 1:
+        parser.error("--max-new-clusters must be positive")
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
             or args.report_worlds < 30):
@@ -417,6 +454,10 @@ def main(argv=None):
         parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline == "flat-shortlist" and args.arm != "learned":
         parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
+    if args.report_continuation is not None and (
+            args.arm != "learned" or args.inner_mode is not None
+            or args.baseline != "flat-shortlist"):
+        parser.error("--report-continuation requires learned root, flat-shortlist baseline and no --inner-mode")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -456,6 +497,15 @@ def main(argv=None):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    if args.report_continuation is not None:
+        # Refuse a missing control table before starting worker processes.
+        if args.report_continuation == "prior":
+            prior_evaluator_for(checkpoint)
+        config["report_continuation"] = {
+            "schema": "cwv-report-continuation-v1", "guidance": args.report_continuation,
+            "tricks": 1, "stage": "report", "inner_ballot": "production",
+            "terminal": "heuristic",
+        }
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:
@@ -486,6 +536,10 @@ def main(argv=None):
     if cost_order is not None:
         costs = cost_order["cluster_wall_secs"]
         pending.sort(key=lambda cluster: (-costs[str(cluster)], cluster))
+    if args.max_new_clusters is not None:
+        pending = pending[:args.max_new_clusters]
+        print(f"execution slice: at most {len(pending)} new pairs; "
+              f"{len(shards)}/{args.clusters} full-population pairs already complete", flush=True)
     try:
         _run_pending(config, pending, shards, output=args.out, workers=args.workers,
                      task_fn=run_cluster)

@@ -12709,7 +12709,7 @@ recursive W32. Baseline is flat W32, required at both the CLI and the worker bou
 | arm, vs flat W32 | 13-deal pilot | **fixed 52, DISJOINT deals** | wall |
 | --- | --- | --- | --- |
 | learned guidance | +0.15385 [−0.03846, +0.38462] | **−0.14423 [−0.26923, −0.02885]** | 1.87x → 2.51x |
-| stratified-prior control | −0.03846 [−0.30769, +0.23077] | **0.0**, crosses zero | 1.14x |
+| stratified-prior control | −0.03846 [−0.30769, +0.23077] | **0.00000** [−0.13462, +0.12524] | 1.14x → 1.37x |
 
 **THE FINDING SEPARATES TWO THINGS EVERY EARLIER NULL LEFT FUSED.** Net rollouts (#238) put the net's
 plays in the first trick and returned −0.00586 [−0.07031, +0.05859] with a no-learning control at
@@ -12740,3 +12740,20 @@ establish it, and today's resolved negative is evidence against it. (4) I sized 
 25 deals", which is the 50% power boundary, not a resolving size; with the direct per-deal SD of
 0.4274 the figures are 30 deals for 50% power and **61 for 80%**, and Codex's 52 sits near 74%.
 — Claude (session `68f9c8bd`)
+
+**CORRECTION AND ADDENDUM, 19:40 ET.** Two fixes to my own table above. The prior control's follow-up
+interval is [−0.13462, +0.12524] (I had only its point estimate), and the wall column now shows both
+samples for both arms rather than the pilot's figure alone. From Codex's completed writeup at
+`3110925a`: seeds `[91261203, 91261255)`, four complete cycles of 13 ranks, no failed or missing
+pairs; learned/control job walls 1,155.955/849.889 s and CPU 6,706.466/4,641.199 s; the learned arm
+made 2,331,574 guided choices over 15,103,622 rows in 120,264 forwards with **zero selection-stage
+net plays**, total rollout ratio 0.99972. Their writeup carries both corrections I raised — that the
+wall ratios are against **flat W32, not production MC**, and that the pilot-to-follow-up cost change
+is a different deal population rather than a code change.
+
+**AND THE PRS ARE DRAFTS.** #317, #318 and #319 are all `isDraft=true` with 5/5 CI green and my PASS
+on each. I attempted to merge them under the standing merge-on-PASS authorization and GitHub refused:
+*"Pull Request is still a draft"*. That guard is correct and I should have checked the flag first — a
+draft is the author's explicit "not proposing this yet", and marking one ready to merge it would
+override that signal rather than act on it. They stay unmerged until Codex or Jerry moves them, which
+is precisely why ledgering the #319 result here was the right call rather than waiting for the merge.

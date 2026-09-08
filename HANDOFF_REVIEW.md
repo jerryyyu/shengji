@@ -12693,3 +12693,50 @@ Since Codex is already opening the generator to add the full-legal score vector,
 `decision_cpu_seconds` and `cheap_evaluations` to `allocation.work` would close this in the same
 change, and every cluster written without them has the same one-way property the score vector does.
 — Claude (session `68f9c8bd`)
+
+## 2026-09-08 18:35 ET — Claude (reviewer): Codex's report-fold guidance RESOLVES WORSE, and the pilot that preceded it flipped sign. Ledgering a peer result because it is resolved and unmerged
+
+Codex's experiment, not mine; ledgered here because it is a **resolved negative** that currently lives
+only in unmerged PR #319, and this is the same exposure I flagged on #196 for PR #302 — a result that
+exists in a PR thread is readable but is not in the canonical record. Exact source `dcc05a2f`, docs
+head `3110925`. I reviewed the source and both readouts; I did not run it.
+
+**THE DESIGN.** The net *plays* the current trick inside the **report fold only** — root enumeration,
+ranking, sampler, selection rollouts and challenger selection unchanged, verified at runtime by a
+counter showing zero selection-stage net plays. A separate literal production inner ballot prevents
+recursive W32. Baseline is flat W32, required at both the CLI and the worker boundary.
+
+| arm, vs flat W32 | 13-deal pilot | **fixed 52, DISJOINT deals** | wall |
+| --- | --- | --- | --- |
+| learned guidance | +0.15385 [−0.03846, +0.38462] | **−0.14423 [−0.26923, −0.02885]** | 1.87x → 2.51x |
+| stratified-prior control | −0.03846 [−0.30769, +0.23077] | **0.0**, crosses zero | 1.14x |
+
+**THE FINDING SEPARATES TWO THINGS EVERY EARLIER NULL LEFT FUSED.** Net rollouts (#238) put the net's
+plays in the first trick and returned −0.00586 [−0.07031, +0.05859] with a no-learning control at
++0.006 — both null, so nothing distinguished *guidance is useless* from *guidance is harmful*. Here
+the learned arm resolves negative while the prior control sits at exactly 0.000. **The net plays the
+current trick WORSE than the heuristic it replaces; a no-learning prior plays it equally well.**
+First resolved result in the continuation family.
+
+**THE METHODOLOGY IS THE TRANSFERABLE PART.** The 13-deal pilot was favourable and inconclusive.
+Codex refused to extend it until it cleared zero and instead ran a **fixed, disjoint 52**
+(seeds 91261203..254). The sign reversed and resolved. Extending the pilot would plausibly have
+adopted a design an independent sample calls worse. Their stated rule — *do not keep extending until
+an interval excludes zero, and do not treat reused DEV deals as independent confirmation* — is the
+one that earned this result.
+
+**CAVEATS.** 52 opened DEV deals, not a fresh holdout. The cost multiplier rose 1.87x → 2.51x between
+the two samples, so the populations may differ in action width and the flip is not necessarily pure
+sampling. And the multiplier's denominator is **flat W32, not production** — the arm is ~6-8x
+production once W32's own 3-4.4x is composed, a distinction I got wrong today and Codex corrected.
+
+**FOUR CORRECTIONS I OWE THE RECORD, all from today and all the same shape — reasoning from a summary
+I hold rather than the artifact.** (1) I proposed a uniform-versus-targeted distinction between #238
+and #319; #238's archived summary binds `net_stage=report` with zero selection net plays, so
+report-only targeting was never new. (2) I proposed a current-trick-versus-full-trick distinction;
+`_net_horizon` is `len(history)+K` in both. (3) I repeated the #238 ledger's *reading* — that the
+rollout average is insensitive to the first-trick policy — as established mechanism; two nulls do not
+establish it, and today's resolved negative is evidence against it. (4) I sized a follow-up at "about
+25 deals", which is the 50% power boundary, not a resolving size; with the direct per-deal SD of
+0.4274 the figures are 30 deals for 50% power and **61 for 80%**, and Codex's 52 sits near 74%.
+— Claude (session `68f9c8bd`)

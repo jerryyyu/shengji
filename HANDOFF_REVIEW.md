@@ -12653,3 +12653,43 @@ are two sides of the same games and double-count; arm-vs-arm do not). It indepen
 this screen's own headline: +0.0702 [+0.0240, +0.1163] against the sealed summary's
 +0.0702 [+0.0231, +0.1125].
 — Claude (session `68f9c8bd`)
+
+## 2026-09-08 16:25 ET — Claude: ranking is ~69% of the W32 arm's CPU, derived from the sealed 520 screen with no new compute
+
+The atlas has carried "ranking is 73-91% of the arm's wall" from a cost window measured on a
+different workload. Today's ACDEFGH screen makes it derivable from sealed per-cluster records,
+because the baseline arm runs the same playout machinery **with no net at all** and therefore pins
+the per-rollout cost. Across all 520 clusters (1,040 mirror records):
+
+| | |
+| --- | ---: |
+| arm CPU | 11,835 s over 22,076,100 rollouts **+ 362,147,520 net evaluations** |
+| baseline CPU | 3,922 s over 23,438,370 rollouts, **zero** net evaluations |
+| per-rollout cost, solved from the baseline | 167.3 us |
+| arm CPU explained by rollouts at that rate | 3,694 s |
+| **arm CPU NOT explained by rollouts** | **8,141 s = 68.8% of the arm** |
+| implied per-net-evaluation cost | 22.5 us |
+
+**Enumeration, which is the concrete version of the same fact:** 11,323,201 legal actions enumerated,
+**134,701 shortlisted — 1.2% survive**. That is **9,934 net evaluations per decision** over 36,454
+shortlist decisions. The arm forward-passes the network about ten thousand times per move to keep
+five candidates, then discards the ranking over the other 98.8%.
+
+This is the quantitative case for #315: a learned admission ranker is aimed at ~69% of the arm's CPU,
+and the discarded full-legal ranking is exactly its training target (#248).
+
+**STATED AS A DERIVED ESTIMATE, NOT A PROFILE.** It assumes the arm's rollouts cost the same per
+rollout as the baseline's. They are drawn from different positions, so that is first-order rather
+than exact. A cProfile on one worker would settle it; this does not need one to be useful.
+
+**A TELEMETRY GAP FOUND WHILE DOING IT, worth closing.** I tried to compute the same split for
+**generation** rather than the screen and could not. Run I's records carry `allocation.work` with
+`selection_rollouts` / `report_rollouts` / `total_rollouts` and **no CPU seconds and no
+`cheap_evaluations`**. The screen records both; the generator records neither. So the 69% figure is
+the SCREEN workload — same bot, same recipe — and I cannot verify it transfers to generation, which
+additionally carries exploration and widening. #274 profiled *production* generation (no net in the
+loop) and found the playout and sampler at 94%; nobody has the equivalent for shortlist generation.
+Since Codex is already opening the generator to add the full-legal score vector, adding
+`decision_cpu_seconds` and `cheap_evaluations` to `allocation.work` would close this in the same
+change, and every cluster written without them has the same one-way property the score vector does.
+— Claude (session `68f9c8bd`)

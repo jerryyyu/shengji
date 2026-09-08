@@ -10,6 +10,7 @@ are preserved separately; this page is the current decision summary.
 |---|---|
 | Default ACDEF-v2 `3cd27716` is the leading W32 candidate: +.126 whole signed levels/round vs production on the reused 520-deal DEV window. | Keep it as the baseline, finished-trick W32/K4/N30/R300 with MC-LCB. This is not a win rate or fresh confirmation. |
 | Lower LR improves CE (.6218→.6106), but loses to that default by .0587 levels/round; paired interval [-.1058, -.0115]. | Do not promote a checkpoint on CE alone. This does not prove the newer model is better at choosing actions but search wastes it. |
+| Smaller H256, LR1e-4 (`752427c3`, CE .61189), finishes at +.0721 vs production. Versus default: -.0538 [-.1048, -.0029]; versus same-LR H512: +.0048 [-.0433, .0529]. | Default remains the baseline. No resolved size effect at the same LR; the default comparison also changes LR and selected epoch. These are reused-DEV, unadjusted exploratory intervals, not independent confirmation. |
 | On 52 cutoff-focused roots, these models change 27 retained sets but only three final moves. One loss excludes a useful action family; another case favors lower LR. | Diagnose nomination separately from MC selection. There is no single demonstrated bottleneck or universal gate repair. |
 | Our small original FIT panel also fails to rank six checkpoints in gameplay order. | Keep it for debugging; do not simply replace CE with its regret score. Use more independent positions reached by W32. |
 | Matched residual probe: the models remove 37.5–38.7% of across-world state-value variance, but only 1.2–1.4% of action-gap variance. Fixed correction does not clearly improve choices. | Overall position knowledge is not the same as knowing which move is better. Do not implement this correction as a new search policy yet. |
@@ -26,11 +27,21 @@ CE alone.** Action-gap error and shortlist regret/coverage are candidate offline
 metrics, not validated replacements. Test whether they predict gameplay order
 on independent W32 development deals before adding an action-comparison loss.
 
+The [completed H256 comparison](https://github.com/jerryyyu/shengji/pull/292#issuecomment-5580129433)
+reuses all 520 matched deals; reproducible readout and artifact hashes are at
+`~/shengji-archive/2026-09-08/cwv-h256-comparison.aSIiDM/`.
+
 ## Next: test where model and MC complement each other
 
 Jerry explicitly added this workstream: determine whether another consumer can
 use the models better, including one focused revisit of an existing search
 method or one narrow hybrid. No new model training is required for that test.
+
+**Ready, awaiting the existing Strength job's completion:** [PR302](https://github.com/jerryyyu/shengji/pull/302)
+implements the fixed default/lower-LR pair with a T1 last-actor points leaf,
+52 matched already-opened DEV deals per model, reusing flat-W32 baselines.
+Source `8d7ed763` passed review; no additional model arm or review campaign.
+This small comparison can detect large effects, not settle every subtle gap.
 
 1. **Measure the division of work first.** On common saved positions/worlds,
    compare model-nominated moves, MC-selected moves and an independent rollout
@@ -71,12 +82,12 @@ mechanistic evidence on restricted FIT nominations, not a gameplay result.
 
 ## Engineering and dependencies
 
-- #294/#296: decision-preserving optimizations already integrated. #298: a
-  separate 2.44% fixed-state gain, awaiting review; no live source swap.
+- #294/#296: decision-preserving optimizations already integrated. #298's
+  separate fixed-state optimization merged at `5b385e82`; no live source swap.
 - #299: correct W32 teacher registration/recipe/production-ballot capture
   merged at `d23c084d`; generating better training data is enabled, not proven.
-- H256 replacement fit stopped after epoch17 and selected immutable epoch14;
-  training/reporting and its gameplay screen remain Claude-owned. Reuse fixed
-  checkpoints and cached references; do not repeat training or holdout reports.
+- H256 fit and its 520-deal gameplay screen completed; H1024 is still training
+  under Claude's ownership. Do not select an unfinished sweep's mutable best
+  checkpoint or repeat completed training/holdout reports.
 - Preserve live jobs, all trajectories and held-out deals. No production
   deployment. Detailed results remain evidence, not additional review gates.

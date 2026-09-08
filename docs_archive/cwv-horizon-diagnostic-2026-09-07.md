@@ -11,6 +11,7 @@ are preserved separately; this page is the current decision summary.
 | Default ACDEF-v2 `3cd27716` is the leading W32 candidate: +.126 whole signed levels/round vs production on the reused 520-deal DEV window. | Keep it as the baseline, finished-trick W32/K4/N30/R300 with MC-LCB. This is not a win rate or fresh confirmation. |
 | Lower LR improves CE (.6218→.6106), but loses to that default by .0587 levels/round; paired interval [-.1058, -.0115]. | Do not promote a checkpoint on CE alone. This does not prove the newer model is better at choosing actions but search wastes it. |
 | Smaller H256, LR1e-4 (`752427c3`, CE .61189), finishes at +.0721 vs production. Versus default: -.0538 [-.1048, -.0029]; versus same-LR H512: +.0048 [-.0433, .0529]. | Default remains the baseline. No resolved size effect at the same LR; the default comparison also changes LR and selected epoch. These are reused-DEV, unadjusted exploratory intervals, not independent confirmation. |
+| Larger H1024, LR1e-4 (`d84b5183`, CE .60661), finishes at +.0923 vs production. Versus default: -.0337 [-.0817, +.0144]; versus same-LR H512: +.0250 [-.0173, +.0654]. | Best CE so far, but no resolved gameplay improvement over default or the smaller low-LR models. Keep the default; do not call the size trend a proven null or promote from CE alone. |
 | On 52 cutoff-focused roots, these models change 27 retained sets but only three final moves. One loss excludes a useful action family; another case favors lower LR. | Diagnose nomination separately from MC selection. There is no single demonstrated bottleneck or universal gate repair. |
 | Our small original FIT panel also fails to rank six checkpoints in gameplay order. | Keep it for debugging; do not simply replace CE with its regret score. Use more independent positions reached by W32. |
 | Matched residual probe: the models remove 37.5–38.7% of across-world state-value variance, but only 1.2–1.4% of action-gap variance. Fixed correction does not clearly improve choices. | Overall position knowledge is not the same as knowing which move is better. Do not implement this correction as a new search policy yet. |
@@ -30,6 +31,9 @@ on independent W32 development deals before adding an action-comparison loss.
 The [completed H256 comparison](https://github.com/jerryyyu/shengji/pull/292#issuecomment-5580129433)
 reuses all 520 matched deals; reproducible readout and artifact hashes are at
 `~/shengji-archive/2026-09-08/cwv-h256-comparison.aSIiDM/`.
+The [completed H1024 comparison](https://github.com/jerryyyu/shengji/pull/292#issuecomment-5581028216)
+reuses the same paired deals, with fixed-checkpoint metadata and saved-result
+hashes at `~/shengji-archive/2026-09-08/cwv-h1024-comparison.Zjb0te/`.
 
 ## Next: test where model and MC complement each other
 
@@ -86,8 +90,9 @@ mechanistic evidence on restricted FIT nominations, not a gameplay result.
   separate fixed-state optimization merged at `5b385e82`; no live source swap.
 - #299: correct W32 teacher registration/recipe/production-ballot capture
   merged at `d23c084d`; generating better training data is enabled, not proven.
-- H256 fit and its 520-deal gameplay screen completed; H1024 is still training
-  under Claude's ownership. Do not select an unfinished sweep's mutable best
-  checkpoint or repeat completed training/holdout reports.
+- H256 and H1024 fits and their 520-deal gameplay screens completed. H1024's
+  separate final report is still running under Claude's ownership; it is not
+  a prerequisite for reading its finished fixed-checkpoint gameplay screen.
+  Preserve the remaining sweep; do not duplicate training or holdout reports.
 - Preserve live jobs, all trajectories and held-out deals. No production
   deployment. Detailed results remain evidence, not additional review gates.

@@ -3,9 +3,12 @@
 Status: development evidence; no policy/default change or deployment.
 Diagnostic source: `f2306753476f1e7e768ce9032b328925c6f699c4` (PR #292).
 
-Latest readout: six saved checkpoints now share the 52-root FIT probe. The
-sixth run's post-training reports are complete; its final alias has exactly
-the audited epoch's model parameters, so no diagnostic replay was necessary.
+Latest readout: seven saved checkpoints now share the 52-root FIT probe,
+including the preserved ten-epoch H256 snapshot. Its final decisions have the
+same reference values as H512 lower LR here, despite eight changed shortlists.
+Only 16 roots have more than 5 legal moves: this is not evidence of equivalence.
+The completed H512 run's final alias has exactly the audited epoch's model
+parameters, so no diagnostic replay was necessary.
 No tested horizon, diversity or selector-objective intervention establishes a
 gain. Cross-fitted reference substitutions show limited, model-dependent
 nomination and selection headroom, not a deployable improvement. Keep
@@ -18,7 +21,9 @@ lower-measured-cost comparator. This is not an equal-work or deployment claim.
 The #294/#296 engineering stack now also has a completed natural-game parity
 check: exact trajectory bytes, with 25.7% less observed shortlist wall in a
 small contended-host window. The completed dropout follow-up does not change
-the leading candidate. The width ladder remains unresolved.
+the leading candidate. A report-veto diagnostic finds a small, model-dependent
+source of lost nomination gains; it does not justify changing the gate. The
+width ladder remains unresolved.
 
 ## Finding and test
 
@@ -483,8 +488,8 @@ Existing PT-Luna/Sol fit data can remain a separately labeled candidate source;
 their playing strength does not establish the right bulk mixture or sample
 weight. This recommendation does not launch collection or authorize a scale.
 
-Before scaling the new teacher collector, fix the specific recipe-binding gap
-in the integrated `a80af5da` source: changing the resolved shortlist K4 to K8
+The integrated `a80af5da` source had a specific recipe-binding gap:
+changing the resolved shortlist K4 to K8
 leaves trajectory config, code identity and run ID unchanged, and the actual
 resume gate accepts the change. A no-game witness reproduced this on a
 disposable run slot. Bind the resolved teacher recipe into config/run identity
@@ -493,6 +498,13 @@ fixed-recipe outputs. The finding is separate from #294/#296 optimization
 parity, which remains PASS. See
 [the collection review](https://github.com/jerryyyu/shengji/pull/292#issuecomment-5577508273)
 and `cwv-pricing-path.9bKPfR/shortlist-recipe-identity.json`.
+Claude repaired the registered route at `9c7cc30b`: the policy name binds a
+digest of the resolved recipe. Independent actual-`_open_run` verification
+confirms an unchanged recipe resumes and K4→K8 refuses. One narrow regression
+remains in this exact head's direct unnamed `make_shortlist_bot` call: the
+fallback naming call omits its now-required recipe argument. The registered
+collection path supplies a name and works. This does not invalidate the
+fixed-recipe timing/parity evidence or reopen the optimization review.
 
 Keep the horizon, effective-action diversity and selector objective unchanged:
 the focused interventions did not establish gains. The mixed cross-fitted
@@ -707,6 +719,12 @@ Adoption parity PASS and exact source/receipt evidence are posted in
 `cwv-pricing-path.9bKPfR/adoption-comparison.json` and its script retain the
 comparison. Use the stack in future consumers; do not swap live screen code.
 
+Integration is now complete on main: #294 merged at `28565ccd`; #296 first
+merged into its old stacked base rather than main, so #297 cherry-picked its
+identical four-file patch onto main without reverting #295. #297 is merged
+at `4bf63d91`. The reviewed patch identity and existing parity carry forward;
+no duplicate benchmark was required.
+
 ## Saved validation curves: CE versus ranking selection
 
 Four completed receipts' recorded CE-selected epochs exactly match the
@@ -759,11 +777,79 @@ Recomputed completed summaries, deal/mirror identities and ordered shard
 bindings are in `cwv-gameplay-precision.DE3xDH/lower-lr-fresh-520.json`, with
 `compare_lr_completed.py`; no new games or holdout reads were needed.
 
-Claude's user-requested size ladder is now H256 → H1024 → H2048 on ACDEF,
-holding the existing H512 lower-LR fit fixed. All use seed1, LR1e-4 and
-the same 10-epoch budget. Report still-improving-at-cap models as budget
-limited. Select on the fixed validation rule and assess nomination, gameplay
-and cost separately; do not tune from repeated test/Luna-holdout readouts.
+Claude's user-requested size ladder is H256 → H1024 → H2048 on ACDEF,
+holding the existing H512 lower-LR fit fixed, seed1 and LR1e-4. It originally
+used a ten-epoch budget. H256 reached that budget while still improving;
+Claude preserved that snapshot and restarted H256 with twenty epochs.
+Distinguish the ten-epoch snapshot below from the new fit and disclose actual
+epoch budgets/stopping when comparing widths. Select on the fixed validation
+rule and assess nomination, gameplay and cost separately; do not tune from
+repeated test/Luna-holdout readouts.
+
+## H256 snapshot and the report-veto bottleneck
+
+The preserved H256 e10 checkpoint `596d5125` has validation CE .6163904
+versus .6105834 for H512 lower LR. H256 is budget-limited, not converged.
+Its immutable checkpoint now lives under
+`train-out/cwv/cap-h256.budget-limited-10ep/checkpoints/epoch-10.pt`;
+the original `cap-h256` name belongs to the replacement twenty-epoch run.
+The relocation preserves the exact checkpoint SHA. Do not replay or silently
+substitute the newer model through the old diagnostic's recorded pathname.
+
+Finished-trick W32/K4/N30/R300 is unchanged. The new probe took 21.382 seconds
+summed root wall on the earlier diagnostic producer, **not** the optimized
+runtime. Only one newly nominated reference action needed 1,024 continuations;
+the reference extension took .277 seconds summed wall. Previously scored actions were reused and
+their values remained exact. On the common reference union:
+
+| Model | Coverage regret | MC selection regret | Final gain over incumbent |
+|---|---:|---:|---:|
+| H256 v2 LR1e-4 e10 | .003764 | .009399 | +.044349 |
+| H512 v2 LR1e-4 e7 | .001953 | .011210 | +.044349 |
+| H512 v2 default LR | .005005 | .013204 | +.039303 |
+
+H256 changes 8/52 retained sets versus H512 lower LR but only one submitted
+move; both submitted alternatives have identical reference returns. Of 52
+roots, 36 already retain all legal actions, including 11 forced roots; only 16
+exercise the shortlist cutoff. Zero final-reference difference is not a
+population equivalence result or a measurement of inference-cost savings.
+
+At root `04ba4ee9`, H512 nominates SQ while H256 misses it. On the retained
+1,024 independent worlds, SQ is worth -.123047 versus CQ at -.209961, a
+.086914 difference in expected signed levels. The H512 selection fold also
+prefers SQ, but its report has mean gain 1.6167 points, paired SE 1.1033, and
+LCB `1.6167 - 1.7*1.1033 = -.2590`: the report veto falls back to CQ.
+H256 submits C6+C6+CQ, which is forced to CQ in all 32 ranking worlds and has
+the same 1,024-world level returns as CQ. This is a concrete nomination gain
+absorbed by the report gate, not proof that the gate is wrong generally.
+
+One post-hoc counterfactual checks that mechanism across all seven models:
+accept the already-evaluated candidate if its complete report mean is positive
+despite its failed LCB, leaving every other decision unchanged. Existing MC
+records and independent reference values suffice; no model calls, new worlds,
+holdout reads or gameplay are involved. Selected results:
+
+| Model | Changed roots | Reference lift over its actual decisions | Exploratory paired 95% interval |
+|---|---:|---:|---|
+| Default ACDEF v2 | 4 | +.005208 | [+.000041, +.013489] |
+| H512 ACDEF v2 LR1e-4 | 2 | +.001892 | [0, +.005595] |
+| H256 ACDEF v2 LR1e-4 | 1 | +.000081 | [0, +.000244] |
+| Default ACD v2 | 3 | +.002950 | [-.001058, +.009908] |
+
+The default ACD-v2 changes include one worse reference decision. These are
+post-hoc, unadjusted 24-deal bootstrap intervals conditional on finite sampled
+worlds, not independent confirmation across seven models or strength evidence.
+The positive ACDEF-v2 result rests on four deals and measures no downstream
+trajectory changes. Keep the existing report gate. This is a candidate for a
+single targeted follow-up, not justification for a report-threshold sweep.
+
+Evidence: `cwv-width-fit.O4FkQA/h256/{run,reference-1024}`, README admission
+and relocation record, `extend_reference.py`, `test_identity_extension.py`,
+and `analyze_report_veto.py` / `report-veto.json`. The identity control gives
+zero new reference calls, identical choices and exact zero contrasts on all 52
+retained H512 roots. The merge guards refuse changed retained values/choices;
+the counterfactual's controls distinguish positive, nonpositive and incomplete
+reports and leave already-approved decisions unchanged.
 
 ## Completed dropout follow-up
 
@@ -850,4 +936,5 @@ value function accurate under a different continuation policy.
 This does not overturn the fresh 520-deal gameplay comparison: ACD-v2 minus
 v1 was +.05096 levels/round, interval [-.00673, +.10673], hence inconclusive.
 Nor does it close trick-local features for consumers that actually score
-within-trick states. No new broad training sweep is the next action.
+within-trick states. Finish the already-running size comparison; do not add
+another broad training sweep in response to these small FIT diagnostics.

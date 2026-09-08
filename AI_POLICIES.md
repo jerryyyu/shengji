@@ -312,6 +312,13 @@ implementation review. A failed learning control blocks causal
 interpretation even when the primary score improves. Neither result authorizes
 a registered policy, whole-game strength claim, or deployment.
 
+The 21.40% Brier result came from R4's original scored synthetic test, not
+an unopened population. The later #179 `NO_PRIMARY_POLICY_SIGNAL` result
+came from a separate 104-round DEV diagnostic; it did not reopen that test.
+The original run's outer resource/integrity refusal and failed label control
+remain part of the conclusion. See [RL_PLAN.md](RL_PLAN.md#r4-and-r5) for
+the retained artifact inventory and reviewed close-only PR disposition.
+
 ## Evaluation and identity rules
 
 Every decision-bearing policy comparison binds:

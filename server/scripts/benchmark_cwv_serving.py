@@ -56,11 +56,14 @@ def main():
         bot = make_bot(names[0], seed=89260904 + index)
         rnd = _round_from_snapshot(states[index])
         before = digest(_state_snapshot(rnd))
+        clone_started = time.perf_counter()
         clone = copy.deepcopy(bot)
+        snapshot_wall_seconds = time.perf_counter() - clone_started
         wall, cpu = time.perf_counter(), time.process_time()
         played = clone.decide_play(rnd, rnd.turn)
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         row = {"kind": "decision", "index": index, "played": played,
+               "snapshot_wall_seconds": snapshot_wall_seconds,
                "wall_seconds": time.perf_counter() - wall,
                "cpu_seconds": time.process_time() - cpu,
                "peak_rss_bytes": peak if sys.platform == "darwin" else peak * 1024,

@@ -164,25 +164,40 @@ def test_export_is_nonoverwriting_and_cleans_failed_temp(tmp_path, monkeypatch):
     monkeypatch.setattr(export_cwv_numpy.np, "savez_compressed", original)
 
 
-def test_export_keeps_population_provenance_without_room_copy_bloat(tmp_path):
+@pytest.mark.parametrize("keys", [("population",), ("exposure",), ("population", "exposure")])
+def test_export_keeps_training_provenance_without_room_copy_bloat(tmp_path, keys):
+    import hashlib
     from shengji.ai.cwv_policy import local_encoder_identity
     from shengji.rl.value_checkpoint import save_checkpoint, load_checkpoint
+    from shengji.ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
     from scripts.export_cwv_numpy import export_cwv_numpy
     _package, model = _actual_export(tmp_path)
     population = {"shards": [{"path": f"source-{i}", "sha": "a" * 64} for i in range(500)]}
     source = tmp_path / "population.pt"
     save_checkpoint(source, model, metadata={"encoder": local_encoder_identity(),
-                                            "population": population})
+                                            **{key: population for key in keys}})
+    source_bytes = source.read_bytes()
     target = tmp_path / "population.npz"
     original_sha = export_cwv_numpy(source, target)
     exported = load_numpy_checkpoint(target)
-    assert "population" not in exported.metadata
-    reference = exported.metadata["training_population_reference"]
-    assert reference["checkpoint_sha256"] == original_sha
-    assert reference["metadata_key"] == "population"
-    assert len(reference["canonical_json_sha256"]) == 64
-    assert reference["canonical_json_bytes"] > 10000
-    assert load_checkpoint(source)[1]["population"] == population
+    expected = json.dumps(population, sort_keys=True, separators=(",", ":")).encode()
+    assert source.read_bytes() == source_bytes
+    assert original_sha == hashlib.sha256(source_bytes).hexdigest()
+    # Exercise the actual evaluator/snapshot path, not just the exporter helper.
+    evaluator = NumpyCompleteWorldEvaluator(target)
+    snapshot = copy.deepcopy(evaluator)
+    for key in keys:
+        reference = {"checkpoint_sha256": original_sha, "metadata_key": key,
+                     "canonical_json_sha256": hashlib.sha256(expected).hexdigest(),
+                     "canonical_json_bytes": len(expected)}
+        for metadata in (exported.metadata, evaluator.metadata, snapshot.metadata,
+                         snapshot.model.metadata):
+            assert key not in metadata
+            assert metadata[f"training_{key}_reference"] == reference
+        assert load_checkpoint(source)[1][key] == population
+    baseline = load_numpy_checkpoint(_package)
+    for name in baseline._weights:
+        np.testing.assert_array_equal(exported._weights[name], baseline._weights[name])
 
 
 def test_immutability_metadata_and_empty_batch(tmp_path):

@@ -77,9 +77,10 @@ one teacher wins. These opened historical roots must not become fresh audit
 data. Any use for fitting needs explicit teacher/interface and continuation
 labels and separation from held-out descendants of the same deals.
 
-The next gameplay experiment is PR #280's named eight-deal / 16-mirror-game
-tranche, compact1 versus batch4 with the same interface. It measures actual
-full-game cost, completion and paired outcomes; it does not settle the
-historical-teacher gap by itself. Price the remaining 44 panel deals from
-actual game cost and deal-level variance. Do not promote the cheap teacher
-or automatically scale the full roster from this snapshot result.
+September 8 closeout: [PR #280](https://github.com/jerryyyu/shengji/pull/280)
+subsequently completed both gameplay tranches (52 deals / 104 mirrored rounds).
+The pooled batch4-minus-compact1 result is −0.1058 levels/round with a
+deal-bootstrap interval [−0.2885, +0.0769]; reported-token efficiency is 2.27×.
+This is still not equal-quality evidence or a historical-teacher comparison.
+Retain the completed source/results and explicit teacher labels; no repeat
+provider run or new tranche is needed to integrate this work.

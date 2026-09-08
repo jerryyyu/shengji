@@ -164,9 +164,11 @@ from ..harvest.schema import SCHEMA, SchemaError, record_sha256, validate_record
 from ..harvest.trajectory import (MANIFEST_SCHEMA as TRAJECTORY_MANIFEST_SCHEMA,
                                   SHARD_SCHEMA, TrajectoryError,
                                   preference_from_record)
-from ..rl.encode import (ACT_DIM, CARD_INDEX, ENC_VERSION, ENCODER_IMPLEMENTATION_SHA256,
-                         ENCODER_SOURCE_SHA256S, N_CARDS, OBS_DIM, OBS_SCHEMA,
-                         encode_action, encode_obs)
+from ..rl.encode import (ACT_DIM, CARD_INDEX, ENCODER_IMPLEMENTATION_SHA256,
+                         ENCODER_SOURCE_SHA256S, N_CARDS, OBS_DIM, encode_action)
+from ..rl.encode_versions import (ENC_VERSION, OBS_DIM_BY_VERSION,
+                                  OBS_SCHEMA_BY_VERSION, check_version, encode_obs,
+                                  encoder_version_for)
 from ..rl.encoder_identity import encoder_contract
 
 #: v3: + deal_key column, nbytes / witness_every / witness_sampled in meta;
@@ -206,21 +208,28 @@ class PrivacyError(TrainDataError):
 
 # --------------------------------------------------------------- identity
 
-def encoder_identity() -> dict:
+def encoder_identity(version: int = ENC_VERSION) -> dict:
     """Stamped in every cache ``meta`` and every receipt."""
+    version = check_version(version)
     return {
-        "enc_version": ENC_VERSION,
-        "obs_schema": OBS_SCHEMA,
-        "obs_dim": OBS_DIM,
+        "enc_version": version,
+        "obs_schema": OBS_SCHEMA_BY_VERSION[version],
+        "obs_dim": OBS_DIM_BY_VERSION[version],
         "act_dim": ACT_DIM,
         "implementation_sha256": ENCODER_IMPLEMENTATION_SHA256,
         "source_sha256s": dict(ENCODER_SOURCE_SHA256S),
-        "transitive": encoder_contract(),
+        "transitive": encoder_contract(version),
     }
 
 
-def encoder_cache_key() -> str:
-    return ENCODER_IMPLEMENTATION_SHA256[:12]
+def encoder_cache_key(version: int = ENC_VERSION) -> str:
+    """The cache-file key of encoder ``version``.
+
+    The version is part of the key, not merely of the ``meta``: v1 and v2
+    caches of the same shard differ in every observation row and must never
+    land on the same path.
+    """
+    return f"v{check_version(version)}-{ENCODER_IMPLEMENTATION_SHA256[:12]}"
 
 
 def deal_key(deck: Sequence[str]) -> str:
@@ -603,18 +612,28 @@ def phase_of(ply: int | None) -> int:
 
 # ----------------------------------------------------------------- privacy
 
+def encode_obs_at(rnd, seat: int, version: int = ENC_VERSION) -> list[float]:
+    """``encode_obs`` for ``version``; v1 is the historical two-argument call,
+    so anything that wraps or replaces ``encode_obs`` still sees it."""
+    return encode_obs(rnd, seat) if version == ENC_VERSION \
+        else encode_obs(rnd, seat, version=version)
+
+
 def privacy_witness(rnd, seat: int, ballot: Sequence[Sequence[str]] | None,
                     rng: random.Random, *, trials: int = PRIVACY_TRIALS,
                     base_obs: bytes | None = None,
-                    base_cand: Sequence[bytes] | None = None) -> int:
+                    base_cand: Sequence[bytes] | None = None,
+                    version: int = ENC_VERSION) -> int:
     """Permute the hidden cards among the NON-acting seats (each hand keeps
     its size; the kitty joins the pool unless the actor is the banker) and
     require byte-identical state and candidate encodings.  ``base_obs`` /
     ``base_cand`` are the encodings of the unpermuted state when the caller
     already has them (``encode_record``), else they are computed here.
     Returns the number of permutations checked; raises ``PrivacyError``."""
+    version = check_version(version)
     if base_obs is None:
-        base_obs = np.asarray(encode_obs(rnd, seat), dtype=np.float32).tobytes()
+        base_obs = np.asarray(encode_obs_at(rnd, seat, version),
+                              dtype=np.float32).tobytes()
     if base_cand is None:
         base_cand = [np.asarray(encode_action(list(c), rnd), dtype=np.float32).tobytes()
                      for c in (ballot or [])]
@@ -637,7 +656,8 @@ def privacy_witness(rnd, seat: int, ballot: Sequence[Sequence[str]] | None,
                 i += n
             if kitty:
                 rnd.buried = list(pool[i:])
-            obs = np.asarray(encode_obs(rnd, seat), dtype=np.float32).tobytes()
+            obs = np.asarray(encode_obs_at(rnd, seat, version),
+                             dtype=np.float32).tobytes()
             act = [np.asarray(encode_action(list(c), rnd), dtype=np.float32).tobytes()
                    for c in (ballot or [])]
             checked += 1
@@ -676,7 +696,8 @@ class Sample:
 
 def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
                   *, witness_rng: random.Random | None = None,
-                  search_counts: dict[str, int] | None = None) -> Sample:
+                  search_counts: dict[str, int] | None = None,
+                  version: int = ENC_VERSION) -> Sample:
     """Rebuild, encode and target one record (raises on a bad record).
     With ``witness_rng`` the privacy witness runs on THIS row against the
     encoding that is returned."""
@@ -695,12 +716,13 @@ def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
         raise TrainDataError(f"rebuilt state has turn {rnd.turn}, record seat {seat}")
     ballot = record.get("ballot") or []
     key = deal_key(list(rnd.deck))
-    obs = np.asarray(encode_obs(rnd, seat), dtype=np.float32)
+    version = check_version(version)
+    obs = np.asarray(encode_obs_at(rnd, seat, version), dtype=np.float32)
     cand = (np.asarray([encode_action(list(c), rnd) for c in ballot], dtype=np.float32)
             if ballot else np.zeros((0, ACT_DIM), dtype=np.float32))
     if witness_rng is not None:
         privacy_witness(rnd, seat, ballot, witness_rng, base_obs=obs.tobytes(),
-                        base_cand=[row.tobytes() for row in cand])
+                        base_cand=[row.tobytes() for row in cand], version=version)
     softmax, played = prior_targets(record, pref_counts)
     search_mean = search_mean_target(
         record, played, search_counts if search_counts is not None
@@ -731,16 +753,41 @@ _BIT_SHIFTS = np.asarray([0, 2, 4, 6], dtype=np.uint8)
 #: ``[name, width, kind]`` (JSON-native: stamped in the cache meta); the
 #: order and widths are the encoder's, pinned by ``FeatureLayout`` against
 #: OBS_DIM / ACT_DIM.  ``f32`` marks the columns no dyadic kind holds.
-OBS_SEGMENTS = [["card_planes", N_CARDS * 9, "bits2"], ["trump_suit", 5, "bits2"],
-                ["trump_rank", 13, "bits2"], ["banker_rel", 4, "bits2"],
-                ["attacker_points", 1, "f32"], ["cards_remaining", 1, "f32"],
-                ["is_attacker", 1, "bits2"], ["voids", 20, "bits2"]]
+OBS_SEGMENTS_V1 = [["card_planes", N_CARDS * 9, "bits2"], ["trump_suit", 5, "bits2"],
+                   ["trump_rank", 13, "bits2"], ["banker_rel", 4, "bits2"],
+                   ["attacker_points", 1, "f32"], ["cards_remaining", 1, "f32"],
+                   ["is_attacker", 1, "bits2"], ["voids", 20, "bits2"]]
+#: encoder v2 APPENDS the trick in progress, the points regime and hand shape.
+#: Kinds follow what each column can hold EXACTLY: indicators pack as bits2,
+#: anything scaled by a non-power-of-two denominator stays f32.
+OBS_SEGMENTS_V2_EXTRA = [["winner_rel", 4, "bits2"], ["partner_winning", 1, "bits2"],
+                         ["trick_points", 1, "f32"], ["lead_suit", 5, "bits2"],
+                         ["trick_position", 4, "bits2"], ["lead_len", 1, "f32"],
+                         ["points_to_threshold", 1, "f32"], ["points_band", 4, "bits2"],
+                         ["suit_lengths", 5, "f32"], ["unseen_trump", 1, "f32"],
+                         ["pairs_held", 1, "f32"], ["hand_size", 1, "f32"]]
+OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
+                           2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA}
+#: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
+OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],
                  ["max_pair_run", 1, "u8"], ["all_trump", 1, "bits2"], ["points", 1, "f32"],
                  ["n_components", 1, "u8"]]
 #: the packed layout: part of the cache format key (``check_meta``)
-PACKING = {"version": 1, "bits2_scale": BITS2_SCALE, "u8_scale": U8_SCALE,
-           "obs": OBS_SEGMENTS, "cand": CAND_SEGMENTS}
+PACKING_BY_VERSION = {
+    version: {"version": 1, "bits2_scale": BITS2_SCALE, "u8_scale": U8_SCALE,
+              "obs": segments, "cand": CAND_SEGMENTS}
+    for version, segments in OBS_SEGMENTS_BY_VERSION.items()}
+PACKING = PACKING_BY_VERSION[ENC_VERSION]
+
+
+def packing_for(version: int = ENC_VERSION) -> dict:
+    """The packed layout of encoder ``version`` (part of the cache format key).
+
+    v1 answers with the ``PACKING`` global itself, so anything that reads or
+    replaces that name keeps working exactly as before."""
+    version = check_version(version)
+    return PACKING if version == ENC_VERSION else PACKING_BY_VERSION[version]
 
 
 class FeatureLayout:
@@ -850,24 +897,40 @@ class FeatureLayout:
         return out
 
 
-OBS_LAYOUT = FeatureLayout("obs", OBS_SEGMENTS, OBS_DIM)
+#: one layout per encoder version, each CONSTRUCTED HERE: ``FeatureLayout``
+#: refuses a table that does not exactly cover its width, so an incomplete
+#: v2 table is an import-time failure, not a silently truncated cache.
+OBS_LAYOUT_BY_VERSION = {
+    version: FeatureLayout("obs", segments, OBS_DIM_BY_VERSION[version])
+    for version, segments in OBS_SEGMENTS_BY_VERSION.items()}
+OBS_LAYOUT = OBS_LAYOUT_BY_VERSION[ENC_VERSION]
 CAND_LAYOUT = FeatureLayout("cand", CAND_SEGMENTS, ACT_DIM)
 
 
+def obs_layout_for(version: int = ENC_VERSION) -> FeatureLayout:
+    """The observation packing layout of encoder ``version``; v1 answers with
+    the ``OBS_LAYOUT`` global itself."""
+    version = check_version(version)
+    return OBS_LAYOUT if version == ENC_VERSION else OBS_LAYOUT_BY_VERSION[version]
+
+
 def pack_features(obs: np.ndarray, cand: np.ndarray) -> dict[str, np.ndarray]:
-    """The packed cache members of float32 ``obs`` [n, OBS_DIM] and ``cand``
-    [m, ACT_DIM] (``Block.PACKED``); every row's round trip is verified."""
-    o = OBS_LAYOUT.pack(obs)
+    """The packed cache members of float32 ``obs`` [n, obs width] and ``cand``
+    [m, ACT_DIM] (``Block.PACKED``); every row's round trip is verified.
+    The observation layout follows the WIDTH of ``obs``: the vector states
+    which encoder produced it."""
+    o = obs_layout_for(encoder_version_for(int(np.shape(obs)[1]))).pack(obs)
     c = CAND_LAYOUT.pack(cand)
     return {"obs_bits": o["bits"], "obs_f32": o["f32"], "cand_bits": c["bits"],
             "cand_u8": c["u8"], "cand_f32": c["f32"]}
 
 
-def float32_nbytes(rows: int, cand_rows: int) -> int:
+def float32_nbytes(rows: int, cand_rows: int, *, version: int = ENC_VERSION) -> int:
     """What the observation / candidate features of ``rows`` records with
     ``cand_rows`` candidates take unpacked (the pre-v4 resident size of
     those arrays)."""
-    return int(rows) * OBS_DIM * 4 + int(cand_rows) * ACT_DIM * 4
+    return int(rows) * OBS_DIM_BY_VERSION[check_version(version)] * 4 \
+        + int(cand_rows) * ACT_DIM * 4
 
 
 # ------------------------------------------------------------------- blocks
@@ -896,6 +959,12 @@ class Block:
             setattr(self, name, arrays[name])
         self.meta = meta
         self.path = path
+        # A cache states its own encoder version; unpack it with THAT
+        # layout, never with whatever the process default happens to be.
+        self.enc_version = check_version(
+            ((meta or {}).get("encoder") or {}).get("enc_version", ENC_VERSION))
+        self.obs_layout = obs_layout_for(self.enc_version)
+        self.obs_dim = OBS_DIM_BY_VERSION[self.enc_version]
         self.n = int(self.obs_bits.shape[0])
         self.nbytes = int(sum(int(arrays[name].nbytes) for name in self.ARRAYS))
 
@@ -905,8 +974,8 @@ class Block:
 
     @property
     def obs(self) -> np.ndarray:
-        """Every observation unpacked, float32 [n, OBS_DIM] (a full copy)."""
-        return OBS_LAYOUT.unpack(self.obs_bits, None, self.obs_f32)
+        """Every observation unpacked, float32 [n, obs width] (a full copy)."""
+        return self.obs_layout.unpack(self.obs_bits, None, self.obs_f32)
 
     @property
     def cand_feats(self) -> np.ndarray:
@@ -914,8 +983,8 @@ class Block:
         return CAND_LAYOUT.unpack(self.cand_bits, self.cand_u8, self.cand_f32)
 
     def obs_rows(self, idx: np.ndarray) -> np.ndarray:
-        """Observations ``idx`` unpacked, float32 [len(idx), OBS_DIM]."""
-        return OBS_LAYOUT.unpack(self.obs_bits[idx], None, self.obs_f32[idx])
+        """Observations ``idx`` unpacked, float32 [len(idx), obs width]."""
+        return self.obs_layout.unpack(self.obs_bits[idx], None, self.obs_f32[idx])
 
     def cand_rows(self, src: np.ndarray) -> np.ndarray:
         """Candidates ``src`` (indices into the ragged candidate arrays)
@@ -1224,14 +1293,15 @@ def filtered_nbytes(headers: Mapping[str, tuple[tuple[int, ...], np.dtype]], *, 
 
 
 def load_block_rows(path: str | os.PathLike, keep_idx: np.ndarray, *,
-                    shard_sha256: str | None = None, witness_every: int | None = None) -> Block:
+                    shard_sha256: str | None = None, witness_every: int | None = None,
+                    version: int = ENC_VERSION) -> Block:
     """The rows ``keep_idx`` (ascending) of a cache file as a block, every
     array decoded straight into its final anonymous mmap through
     ``_read_member_rows``: nothing of the other rows is ever materialised,
     so the block's footprint is its own ``nbytes`` (``filtered_nbytes``)
     plus one ``_READ_CHUNK`` / staging buffer."""
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
-                      witness_every=witness_every)
+                      witness_every=witness_every, version=version)
     keep_idx = np.unique(np.asarray(keep_idx, dtype=np.int64))
     with zipfile.ZipFile(path) as zf:
         widths, cand_ranges = _candidate_ranges(zf, keep_idx)
@@ -1250,8 +1320,9 @@ def load_block_rows(path: str | os.PathLike, keep_idx: np.ndarray, *,
     return Block(arrays, meta, str(path))
 
 
-def cache_path(cache_dir: str | os.PathLike, shard_sha256: str) -> Path:
-    return Path(cache_dir) / f"{shard_sha256}.{encoder_cache_key()}.npz"
+def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *,
+               version: int = ENC_VERSION) -> Path:
+    return Path(cache_dir) / f"{shard_sha256}.{encoder_cache_key(version)}.npz"
 
 
 def _fresh_counts() -> dict:
@@ -1282,7 +1353,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
                 allow_sampled_witness: bool = False,
                 validate_every: int = 500,
                 progress: Callable[[dict], None] | None = None,
-                private: bool = False) -> tuple[Path, dict]:
+                private: bool = False,
+                version: int = ENC_VERSION) -> tuple[Path, dict]:
     """Encode every usable record of ``shard`` into its cache file.
 
     The privacy witness runs on EVERY encoded record (``witness_every=1``,
@@ -1295,6 +1367,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
     ``ensure_caches`` may build it in another process).
     """
     witness_every = check_witness_every(witness_every, allow_sampled_witness)
+    version = check_version(version)
     counts = _fresh_counts()
     counts["privacy_witness"]["every"] = witness_every
     rng = random.Random(f"{witness_seed}|{shard.sha256}")
@@ -1330,7 +1403,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         try:
             sample = encode_record(record, counts["preference"],
                                    witness_rng=rng if witness else None,
-                                   search_counts=counts["search_mean"])
+                                   search_counts=counts["search_mean"],
+                                   version=version)
         except PrivacyError:
             raise
         except TrainDataError as exc:
@@ -1375,7 +1449,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
     # the float32 encodings exist only here, in the builder: the cache (and
     # the resident block) hold the packed, round-trip-verified form
     packed = pack_features(
-        np.stack(obs_rows) if n else np.zeros((0, OBS_DIM), np.float32),
+        np.stack(obs_rows) if n else np.zeros((0, OBS_DIM_BY_VERSION[version]), np.float32),
         np.concatenate(cand_rows) if n else np.zeros((0, ACT_DIM), np.float32))
     arrays = {
         **packed,
@@ -1400,8 +1474,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
     packed_nbytes = int(sum(int(arrays[name].nbytes) for name in Block.PACKED))
     meta = {
         "schema": CACHE_SCHEMA,
-        "encoder": encoder_identity(),
-        "packing": PACKING,
+        "encoder": encoder_identity(version),
+        "packing": PACKING_BY_VERSION[version],
         "shard": {"label": shard.label, "sha256": shard.sha256, "records": shard.records,
                   "cluster": shard.cluster, "store": shard.store},
         "counts": counts,
@@ -1412,9 +1486,10 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         "deals": int(len(set(scalars["deal_key"]))),
         "nbytes": nbytes,
         "features": {"packed_nbytes": packed_nbytes,
-                     "float32_nbytes": float32_nbytes(n, int(offsets[-1]))},
+                     "float32_nbytes": float32_nbytes(n, int(offsets[-1]),
+                                                      version=version)},
     }
-    path = cache_path(cache_dir, shard.sha256)
+    path = cache_path(cache_dir, shard.sha256, version=version)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")   # unique per builder
     with open(tmp, "wb") as fh:
@@ -1427,17 +1502,19 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
 
 
 def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
-               shard_sha256: str | None = None, witness_every: int | None = None) -> dict:
+               shard_sha256: str | None = None, witness_every: int | None = None,
+               version: int = ENC_VERSION) -> dict:
     """Refuse a cache ``meta`` of another schema / packing layout / encoder
     / shard, or one whose privacy witness was sparser than ``witness_every``
     requires."""
     if meta.get("schema") != CACHE_SCHEMA:
         raise TrainDataError(f"{path}: cache schema {meta.get('schema')!r}")
-    if meta.get("packing") != PACKING:
+    version = check_version(version)
+    if meta.get("packing") != packing_for(version):
         raise TrainDataError(f"{path}: cache packed with another feature layout")
     enc = meta.get("encoder") or {}
     if (enc.get("implementation_sha256") != ENCODER_IMPLEMENTATION_SHA256
-            or enc.get("enc_version") != ENC_VERSION):
+            or enc.get("enc_version") != version):
         raise TrainDataError(f"{path}: cache built by another encoder")
     if shard_sha256 is not None and meta["shard"]["sha256"] != shard_sha256:
         raise TrainDataError(f"{path}: cache derived from another shard")
@@ -1461,12 +1538,12 @@ def read_column(path: str | os.PathLike, name: str) -> np.ndarray:
 
 
 def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
-               witness_every: int | None = None) -> Block:
+               witness_every: int | None = None, version: int = ENC_VERSION) -> Block:
     """Load a cache file; refuses a wrong schema / encoder / shard hash and,
     with ``witness_every``, a cache witnessed more sparsely than that.
     Every array lands in its own anonymous mmap (``_read_member``)."""
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
-                      witness_every=witness_every)
+                      witness_every=witness_every, version=version)
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in Block.ARRAYS}
     return Block(arrays, meta, str(path))
@@ -1475,18 +1552,22 @@ def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
 def ensure_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
                  witness_seed: int = 0, witness_every: int = 1,
                  allow_sampled_witness: bool = False, private: bool = False,
-                 progress: Callable[[dict], None] | None = None) -> tuple[Block, bool]:
+                 progress: Callable[[dict], None] | None = None,
+                 version: int = ENC_VERSION) -> tuple[Block, bool]:
     """``(block, rebuilt)``: the cache is regenerated when missing, when its
-    keys (shard hash, encoder hash) do not match, or when its privacy
-    witness was sparser than ``witness_every``."""
+    keys (shard hash, ENCODER VERSION, encoder hash) do not match, or when
+    its privacy witness was sparser than ``witness_every``."""
     witness_every = check_witness_every(witness_every, allow_sampled_witness)
-    path = cache_path(cache_dir, shard.sha256)
-    if _valid_meta(path, shard.sha256, witness_every) is not None:
-        return load_block(path, shard_sha256=shard.sha256, witness_every=witness_every), False
+    version = check_version(version)
+    path = cache_path(cache_dir, shard.sha256, version=version)
+    if _valid_meta(path, shard.sha256, witness_every, version=version) is not None:
+        return load_block(path, shard_sha256=shard.sha256, witness_every=witness_every,
+                          version=version), False
     build_cache(shard, cache_dir, witness_seed=witness_seed, witness_every=witness_every,
                 allow_sampled_witness=allow_sampled_witness, private=private,
-                progress=progress)
-    return load_block(path, shard_sha256=shard.sha256, witness_every=witness_every), True
+                progress=progress, version=version)
+    return load_block(path, shard_sha256=shard.sha256, witness_every=witness_every,
+                      version=version), True
 
 
 # ---------------------------------------------------------- parallel build
@@ -1496,14 +1577,16 @@ def default_cache_workers() -> int:
     return max(1, min(CACHE_WORKERS_CAP, os.cpu_count() or 1))
 
 
-def _valid_meta(path: Path, shard_sha256: str, witness_every: int) -> dict | None:
+def _valid_meta(path: Path, shard_sha256: str, witness_every: int, *,
+                version: int = ENC_VERSION) -> dict | None:
     """The ``meta`` of the valid cache at ``path`` or None (missing / stale /
-    other encoder / other shard / sparser privacy witness)."""
+    other encoder VERSION / other encoder / other shard / sparser privacy
+    witness)."""
     if not Path(path).is_file():
         return None
     try:
         return check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
-                          witness_every=witness_every)
+                          witness_every=witness_every, version=version)
     except (TrainDataError, OSError, ValueError, KeyError):
         return None
 
@@ -1511,11 +1594,12 @@ def _valid_meta(path: Path, shard_sha256: str, witness_every: int) -> dict | Non
 def _build_cache_task(task: tuple) -> dict:
     """Pool worker: build one shard's cache (module-level so ``spawn`` can
     import it); the return value carries counts only."""
-    shard, cache_dir, witness_seed, witness_every, allow_sampled, private = task
+    shard, cache_dir, witness_seed, witness_every, allow_sampled, private, version = task
     started = time.perf_counter()
     _path, counts = build_cache(shard, cache_dir, witness_seed=witness_seed,
                                 witness_every=witness_every,
-                                allow_sampled_witness=allow_sampled, private=private)
+                                allow_sampled_witness=allow_sampled, private=private,
+                                version=version)
     return {"sha256": shard.sha256, "label": shard.label, "records": counts["records"],
             "encoded": counts["encoded"], "secs": round(time.perf_counter() - started, 3)}
 
@@ -1523,7 +1607,8 @@ def _build_cache_task(task: tuple) -> dict:
 def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                  witness_seed: int = 0, witness_every: int = 1,
                  allow_sampled_witness: bool = False, workers: int | None = None,
-                 progress: Callable[[str], None] | None = None) -> list[dict]:
+                 progress: Callable[[str], None] | None = None,
+                 version: int = ENC_VERSION) -> list[dict]:
     """Build the caches of ``jobs`` (``(shard, private)`` pairs; a shard
     listed twice is built once).  ``workers`` (default
     ``default_cache_workers()``) shards are encoded at a time in a pool of
@@ -1532,6 +1617,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
     files are byte-identical.  Returns one summary per shard built (the pool
     reports in completion order; the parent later loads in store order)."""
     witness_every = check_witness_every(witness_every, allow_sampled_witness)
+    version = check_version(version)
     unique: dict[str, tuple[ShardRef, bool]] = {}
     for shard, private in jobs:
         unique.setdefault(shard.sha256, (shard, private))
@@ -1550,7 +1636,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
             _path, counts = build_cache(shard, cache_dir, witness_seed=witness_seed,
                                         witness_every=witness_every,
                                         allow_sampled_witness=allow_sampled_witness,
-                                        private=private, progress=note)
+                                        private=private, progress=note, version=version)
             results.append({"sha256": shard.sha256, "label": shard.label,
                             "records": counts["records"], "encoded": counts["encoded"],
                             "secs": round(time.perf_counter() - started, 3)})
@@ -1558,7 +1644,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
                 f"secs={results[-1]['secs']}")
         return results
     tasks = [(shard, str(cache_dir), int(witness_seed), int(witness_every),
-              bool(allow_sampled_witness), bool(private))
+              bool(allow_sampled_witness), bool(private), int(version))
              for shard, private in jobs]
     say(f"cache: building {len(tasks)} shard(s) with {min(workers, len(tasks))} workers")
     ctx = multiprocessing.get_context("spawn")
@@ -1573,27 +1659,32 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
 def ensure_caches(shards: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                   witness_seed: int = 0, witness_every: int = 1,
                   allow_sampled_witness: bool = False, workers: int | None = None,
-                  progress: Callable[[str], None] | None = None
+                  progress: Callable[[str], None] | None = None,
+                  version: int = ENC_VERSION
                   ) -> list[tuple[dict, bool]]:
     """``[(meta, rebuilt), ...]`` in the order of ``shards`` (``(shard,
     private)`` pairs): the caches that are missing or whose keys (shard
-    hash, encoder hash, privacy witness density) do not match are built
-    first, ``workers`` at a time (``build_caches``), then every cache's
-    ``meta`` is read (nothing is decoded: residency is the store's job)."""
+    hash, ENCODER VERSION, encoder hash, privacy witness density) do not
+    match are built first, ``workers`` at a time (``build_caches``), then
+    every cache's ``meta`` is read (nothing is decoded: residency is the
+    store's job).  A v2 run therefore never reads a v1 cache: the path
+    differs (``encoder_cache_key``) and the meta check refuses it."""
     witness_every = check_witness_every(witness_every, allow_sampled_witness)
-    metas = [_valid_meta(cache_path(cache_dir, s.sha256), s.sha256, witness_every)
+    version = check_version(version)
+    metas = [_valid_meta(cache_path(cache_dir, s.sha256, version=version), s.sha256,
+                         witness_every, version=version)
              for s, _p in shards]
     pending = [(s, p) for (s, p), m in zip(shards, metas) if m is None]
     if pending:
         build_caches(pending, cache_dir, witness_seed=witness_seed,
                      witness_every=witness_every, allow_sampled_witness=allow_sampled_witness,
-                     workers=workers, progress=progress)
+                     workers=workers, progress=progress, version=version)
     out: list[tuple[dict, bool]] = []
     for (shard, _private), meta in zip(shards, metas):
         if meta is None:
-            path = cache_path(cache_dir, shard.sha256)
+            path = cache_path(cache_dir, shard.sha256, version=version)
             meta = check_meta(read_meta(path), path=path, shard_sha256=shard.sha256,
-                              witness_every=witness_every)
+                              witness_every=witness_every, version=version)
             out.append((meta, True))
         else:
             out.append((meta, False))
@@ -1679,6 +1770,17 @@ class SplitSelector:
     def __call__(self, block: Block) -> np.ndarray:
         return keys_mask(block.deal_key, self._keys)
 
+    def selects_any(self, deal_keys: Sequence[str]) -> bool:
+        """Whether any of ``deal_keys`` is in this part.
+
+        Answered from the store's recorded keys, so a caller can skip a
+        block without decoding it. A shard whose keys are all in another
+        part cannot contribute a row here.
+        """
+        if not self._keys.size:
+            return False
+        return bool(keys_mask(np.asarray(list(deal_keys), dtype=str), self._keys).any())
+
 
 def split_mask(block: Block, assignment: Mapping[str, str], part: str) -> np.ndarray:
     """Rows of ``block`` whose ``deal_key`` is assigned to ``part``."""
@@ -1717,7 +1819,8 @@ def gather(blocks: Sequence[Block], which: np.ndarray, rows: np.ndarray
         parts.append((blocks[j], pos, sel))
     kmax = max(int(widths.max()) if b else 0, 1)
     out: dict[str, np.ndarray] = {
-        "obs": _anon_zeros((b, OBS_DIM), np.float32),
+        # every block in a batch shares one encoder version (``check_meta``)
+        "obs": _anon_zeros((b, blocks[0].obs_dim if len(blocks) else OBS_DIM), np.float32),
         "cand": _anon_zeros((b, kmax, ACT_DIM), np.float32),
         "mask": _anon_zeros((b, kmax), bool),
         "target": _anon_zeros((b, kmax), np.float32),
@@ -1838,7 +1941,7 @@ class BlockStore:
     def __init__(self, entries: Sequence[tuple[ShardRef, str]], *,
                  residency: Residency | None = None, resident_bytes: int | None = None,
                  keep: Sequence[Collection[str] | None] | None = None,
-                 witness_every: int = 1):
+                 witness_every: int = 1, version: int = ENC_VERSION):
         self.entries = [(shard, str(path)) for shard, path in entries]
         self.residency = residency if residency is not None else Residency(resident_bytes)
         keep_list = list(keep) if keep is not None else [None] * len(self.entries)
@@ -1846,9 +1949,11 @@ class BlockStore:
             raise TrainDataError("keep must have one entry per shard")
         self.keep = [None if k is None else frozenset(str(x) for x in k) for k in keep_list]
         self.witness_every = int(witness_every)
+        #: the encoder version EVERY block of this store must declare
+        self.enc_version = check_version(version)
         self.id = next(_STORE_IDS)
         self.metas = [check_meta(read_meta(path), path=path, shard_sha256=shard.sha256,
-                                 witness_every=self.witness_every)
+                                 witness_every=self.witness_every, version=self.enc_version)
                       for shard, path in self.entries]
         self._keys: list[np.ndarray] = []
         self.keep_idx: list[np.ndarray | None] = []
@@ -1894,10 +1999,12 @@ class BlockStore:
         pins = {self._key(j) for j in pinned}
         self.residency.make_room(self.sizes[i], label=shard.label, pinned=pins)
         if self.keep_idx[i] is None:
-            block = load_block(path, shard_sha256=shard.sha256, witness_every=self.witness_every)
+            block = load_block(path, shard_sha256=shard.sha256,
+                               witness_every=self.witness_every, version=self.enc_version)
         else:
             block = load_block_rows(path, self.keep_idx[i], shard_sha256=shard.sha256,
-                                    witness_every=self.witness_every)
+                                    witness_every=self.witness_every,
+                                    version=self.enc_version)
         if block.nbytes != self.sizes[i]:
             raise TrainDataError(f"{shard.label}: decoded to {block.nbytes} bytes, "
                                  f"{self.sizes[i]} were reserved")

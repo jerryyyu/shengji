@@ -32,9 +32,10 @@ from ..engine.round import KITTY_SIZE, Round
 from .actions import enumerate_actions
 from .bc_generate import round_value
 from .dataset import Decision, TrajectoryWriter
-from .encode import (ENC_VERSION, ENCODER_IMPLEMENTATION_SHA256,
-                     ENCODER_SOURCE_SHA256S, OBS_SCHEMA, encode_action,
-                     encode_obs)
+from .encode import (ENCODER_IMPLEMENTATION_SHA256, ENCODER_SOURCE_SHA256S,
+                     encode_action)
+from .encode_versions import (ENC_VERSION, OBS_SCHEMA_BY_VERSION, check_version,
+                              encode_obs)
 from .replay_log import EXCLUDE_PLAYERS, group_rounds, rebuild_round
 
 CORPUS_SCHEMA = "human-decision-corpus-v1"
@@ -160,13 +161,18 @@ def _refuse_evaluation_round(events: list[dict], reference: str) -> None:
 
 def build_corpus(patterns: list[str], out_dir: str,
                  *, source_manifest: str | None = None,
-                 run_id: str | None = None) -> dict:
+                 run_id: str | None = None,
+                 version: int = ENC_VERSION) -> dict:
     """Build one fresh corpus and return its published manifest.
+
+    ``version`` names the encoder layout the shards are written in; it is
+    stamped in the manifest so a consumer never has to guess.
 
     Publication is atomic: ``out_dir`` must not exist, work happens in a
     sibling ``.partial`` directory, and any exception removes that new partial.
     Source logs are read-only.
     """
+    version = check_version(version)
     sources, local_excluded = _expand_paths(patterns)
     if not sources:
         raise HumanCorpusError("no source JSONL files")
@@ -201,7 +207,7 @@ def build_corpus(patterns: list[str], out_dir: str,
     play_records: list[dict] = []
     bury_records: list[dict] = []
     player_counts: Counter[str] = Counter()
-    writer = TrajectoryWriter(str(partial))
+    writer = TrajectoryWriter(str(partial), enc_version=version)
 
     def reject(reason: str, reference: str, exc: BaseException | None = None) -> None:
         key = reason if exc is None else f"{reason}:{_error_key(exc)}"
@@ -336,7 +342,7 @@ def build_corpus(patterns: list[str], out_dir: str,
                                 surface = "lead" if not rnd.trick.plays else "follow"
                                 player = _player_id(names[seat])
                                 pending_decisions.append(Decision(
-                                    obs=encode_obs(rnd, seat),
+                                    obs=encode_obs(rnd, seat, version=version),
                                     actions=[encode_action(action, rnd)
                                              for action in actions],
                                     chosen=chosen,
@@ -430,8 +436,8 @@ def build_corpus(patterns: list[str], out_dir: str,
             "non_snapshot_sources_excluded": non_snapshot_sources,
             "sources": source_rows,
             "encoder": {
-                "version": ENC_VERSION,
-                "schema": OBS_SCHEMA,
+                "version": version,
+                "schema": OBS_SCHEMA_BY_VERSION[version],
                 "implementation_sha256": ENCODER_IMPLEMENTATION_SHA256,
                 "source_sha256s": ENCODER_SOURCE_SHA256S,
             },

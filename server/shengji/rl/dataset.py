@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .encode import ACT_DIM, ENC_VERSION, OBS_DIM
+from .encode import ACT_DIM
+from .encode_versions import (ENC_VERSION, OBS_DIM_BY_VERSION,
+                              check_version)
 
 
 @dataclass
@@ -31,6 +33,9 @@ class TrajectoryWriter:
     # decisions live in RAM until flush — 50k meant ~8.5h of work at
     # risk per gen worker (Jerry, 2026-08-03: durability > file count).
     # ~10k = ~100min flush cadence; loaders glob shards, count is free.
+    #: the encoder version whose vectors this writer stores (stamped in
+    #: every shard); the default stays v1, matching ``encode_obs``.
+    enc_version: int = ENC_VERSION
     _buf: list[Decision] = field(default_factory=list)
     _shard: int = 0
 
@@ -52,7 +57,8 @@ class TrajectoryWriter:
         import numpy as np
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
         n = len(self._buf)
-        obs = np.zeros((n, OBS_DIM), dtype=np.float32)
+        version = check_version(self.enc_version)
+        obs = np.zeros((n, OBS_DIM_BY_VERSION[version]), dtype=np.float32)
         chosen = np.zeros(n, dtype=np.int32)
         rets = np.zeros(n, dtype=np.float32)
         offsets = np.zeros(n + 1, dtype=np.int64)
@@ -76,6 +82,6 @@ class TrajectoryWriter:
                             chosen=chosen, returns=rets,
                             action_values=np.asarray(flat_values, dtype=np.float32),
                             has_values=has_values,
-                            enc_version=np.int32(ENC_VERSION))
+                            enc_version=np.int32(version))
         self._buf.clear()
         self._shard += 1

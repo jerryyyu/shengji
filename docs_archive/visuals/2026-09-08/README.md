@@ -32,9 +32,15 @@ Two further things the diagram predates and does not show:
 
 - **The width ladder is complete with no resolved gain** across 273k–4.0M
   parameters. Every paired width contrast crosses zero, which is not equivalence.
-- **`val_ce` ranks finished checkpoints backwards.** The best offline checkpoint
-  in the programme, h1024 at 0.6066, is −0.0337 [−0.0827, +0.0163] in search
-  against `3cd27716`, whose `val_ce` is the worst of the five screened.
+  Likewise K8 losing shows that 4 is not on a rising curve; it does not locate an
+  optimum below 4, which nobody has yet screened.
+- **Lower offline CE has not reliably selected stronger search checkpoints in
+  these screens.** The best offline checkpoint in the programme, h1024 at 0.6066,
+  is −0.0337 [−0.0827, +0.0163] in search against `3cd27716`, whose `val_ce` is
+  the worst of the five screened — but that contrast crosses zero, so it is
+  inconclusive rather than a resolved deficit, and the four lower-LR models share
+  deals, seeds and baseline rather than being independent replications. Nothing
+  here shows CE is negatively predictive in general.
 
 Anything in the band should be read as "what was known on 2026-09-08", with
 `HANDOFF_REVIEW.md` as the authority for the current numbers.

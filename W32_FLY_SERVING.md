@@ -1,7 +1,8 @@
 # Opt-in W32 serving
 
 Implementation and engineering measurements for [#300](https://github.com/jerryyyu/shengji/issues/300).
-**Not deployed.** Production remains `mc-s0-report-lcb`; the VM size and
+**Deployed September 8 as Fly release 20, for code-authorized test rooms only.**
+Ordinary rooms remain `mc-s0-report-lcb`; the VM size and
 Docker entry point are unchanged. Serving this backend does not
 inherit a new strength claim from the Torch checkpoint.
 
@@ -29,6 +30,47 @@ identities cover the new file. A narrow compatibility rule admits old **full**
 encoder identities only when the history computation/constants/dependencies
 still match and reversing that one import recreates the original closure.
 Other source drift is refused; source-move acceptance is not a general bypass.
+
+## Public Fly check — release 20
+
+PR #310 passed source review at `a1080700` and all five CI checks before the
+September 8 deployment. The tested registry image is
+`sha256:b8f48f41149d8a27225e7a44260b72b03475dbdf99ba7398c56167682afd19e5`.
+Fresh health showed zero rooms before the restart. The same single
+`48e7e35a9597e8` machine, 512 MB/shared CPU, and existing volume were retained.
+The release-19 rollback digest in `DEPLOY.md` remains available.
+
+The public socket smoke completed one designated W32 round (`OPMA`) in
+**604.808 seconds**, including normal deal/pacing and 22 human-seat actions.
+It covered lobby, deal, declaration, burial, play, round end and explicit leave.
+Invalid access-code refusal, the two-test-room cap, and ordinary-versus-W32
+room markers passed. The concurrent ordinary lobby was queried but did not
+play a public test game, avoiding ordinary training-log contamination.
+
+| Live Fly measurement | Result |
+|---|---:|
+| Bot play turns | 63 |
+| Compute median / nearest-rank p95 / maximum | 5.358 / 27.763 / 122.273 s |
+| Ordinary-lobby socket queries during W32 play | 20, all successful |
+| Query mean / maximum, including network | 91.3 / 155.8 ms |
+| Server process high-water RSS | 99,592 KiB |
+| Model worker errors / stale discards | 0 / 0 |
+
+**This is usable as a restricted engineering test, not a polished public mode.**
+The UI's approximately-30-second wide-move warning is not a cap: a live move
+took over two minutes. The service stayed responsive, but moves queue behind
+one another. Keep access codes restricted and investigate latency tails before
+wider availability. No strength or broad reliability claim follows from one round.
+No resize or additional replicas were introduced.
+
+All 401 retained records carry `training_excluded: true` and policy
+`mc-shortlist-171893bd-w32-r55d379a3`. The 709,314-byte log remains on Fly at
+`/data/shortlist-tests/OPMA.jsonl`, with a private copy at
+`~/shengji-archive/2026-09-08/w32-fly-serving/fly20-OPMA.jsonl`, SHA-256
+`8012f7090746fbeef16313d50e23e0d3357444855b32c084cb8ab8fefcc1f017`.
+No private cards or access code are committed. Explicit leave closes the clients;
+the disconnected game room uses the existing five-minute reclaim grace before
+automatic removal, not an operator restart.
 
 ## Configuration and rollback
 
@@ -195,9 +237,8 @@ than being described as a first-attempt pass.
 
 Private Perf root `/opt/w32-fly-image.IvOawR`; units
 `w32-fly-image-rooms-20260908` and `w32-fly-image-e2e-ready-20260908`.
-The public Fly deployment and post-deploy test are still pending. Bind the
-registry digest of this tested image before deploying it; do not rebuild it
-during deployment. For a public designated-room check, the script requires
+Release 20 uses the registry digest of this tested image, without a rebuild.
+For a public designated-room check, the script requires
 `--allow-remote --url wss://shengji.fly.dev/ws`; omit `--ordinary-round` to
 avoid putting synthetic gameplay into ordinary human logs. Supply the access
 code via the environment, never an argument or committed file.

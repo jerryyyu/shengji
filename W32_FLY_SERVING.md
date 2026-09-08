@@ -1,8 +1,8 @@
 # Opt-in W32 serving
 
 Implementation and engineering measurements for [#300](https://github.com/jerryyyu/shengji/issues/300).
-**Not deployed.** Production remains `mc-s0-report-lcb`; `fly.toml`, its VM
-size and the Docker entry point are unchanged. Serving this backend does not
+**Not deployed.** Production remains `mc-s0-report-lcb`; the VM size and
+Docker entry point are unchanged. Serving this backend does not
 inherit a new strength claim from the Torch checkpoint.
 
 ## What runs
@@ -32,26 +32,38 @@ Other source drift is refused; source-move acceptance is not a general bypass.
 
 ## Configuration and rollback
 
-For an isolated server first, set these **before Python starts**:
+For designated test rooms, set these **before Python starts**:
 
 ```sh
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 export SHENGJI_FAST=1
-export SHENGJI_CWV_SHORTLIST_CKPT=/data/models/MODEL.npz
-export SHENGJI_CWV_SHORTLIST_WORLDS=32
+export SHENGJI_BOT=mc-s0-report-lcb
+export SHENGJI_W32_TEST_ROOMS=1
+export SHENGJI_W32_TEST_CKPT=/data/models/MODEL.npz
 export SHENGJI_MODEL_SEARCH_CONCURRENCY=1
 ```
 
-Obtain the exact registered name, rather than constructing a guessed hash:
+Supply `SHENGJI_W32_TEST_ACCESS_KEY` separately through the deployment secret
+store: a randomly generated 32–128 character code, never committed or placed
+in a URL. `fly.toml` defaults test-room availability to `0`. Do not set the
+global `SHENGJI_CWV_SHORTLIST_*` variables or change `SHENGJI_BOT` for this rollout.
 
-```sh
-python -c 'import os; from shengji.ai.registry import register_cwv_shortlist_policies; print(register_cwv_shortlist_policies(os.environ["SHENGJI_CWV_SHORTLIST_CKPT"], [32]))'
-```
+Visit `/?test_shortlist=1` to reveal the test controls, check the initially
+unchecked W32 option, and enter the access code. The URL reveals controls,
+not authority. Only the create-room request can select W32; joining or claiming
+an existing room cannot change its policy. Invalid codes, missing packages,
+disabled availability, and the two-test-room limit refuse creation with a
+generic error; none silently creates a fallback room. Ordinary creation
+remains unchanged. Test lobbies and games display an experimental badge.
 
-Set `SHENGJI_BOT` to that name only in the explicitly approved deployment.
-Mount the immutable package at the configured path; keep the source checkpoint
-and previous package. No Torch installation or model retraining is needed in
-the runtime image. The compiled engine must be built for that image's Python.
+Test logs go to `/data/shortlist-tests`, outside `/data/logs`, with
+`experimental_policy`, the actual recipe identity and `training_excluded`
+markers. Keep these engineering trajectories out of ordinary human training
+data. The access code is not persisted by the UI or written to room logs.
+
+Mount the immutable compact package at the configured path; keep the source
+checkpoint and previous package. No Torch installation or model retraining is
+needed in the runtime image. The compiled engine must be built for that image's Python.
 
 Across rooms, NumPy searches queue behind a shared per-event-loop admission
 limit (default 1, configurable 1–8). A queued cancellation does not start work;
@@ -64,11 +76,13 @@ a secondary worker failure so enclosing timeouts retain their semantics.
 the live game/RNG untouched and display a generic room error; they never
 silently switch to another policy. Existing stale-turn ownership checks remain.
 
-Rollback means selecting `SHENGJI_BOT=mc-s0-report-lcb` and removing the
-`SHENGJI_CWV_SHORTLIST_*` opt-in variables for the next server start. Keep the
-package for diagnosis. Game rooms are in-memory: drain active rooms and notify
-players before any restart. Neither this document nor its PR authorizes a
-production restart, deployment or VM resize.
+To disable further test-room creation on the next start, set
+`SHENGJI_W32_TEST_ROOMS=0`; keep `SHENGJI_BOT=mc-s0-report-lcb`. For a runtime
+regression, restore the recorded pre-deploy image and configuration, not just
+the flag. Keep the package for diagnosis. Rooms are in-memory: inspect fresh
+`/healthz` occupancy and wait for a quiet window before any planned restart.
+Jerry's scoped goal authorizes this gated deployment/test, not interruption of
+active games, a global policy switch or a VM resize. Coordinate timing with Claude.
 
 ## Measurements — September 8, 2026
 
@@ -141,7 +155,9 @@ or a public Fly deployment. It exercises actual room search/commit and socket
 queries, not a full human lobby-to-round session. No Docker runtime was
 available on the measured host; the intended-image check remains below.
 
-Before deployment: review the complete source, test concurrent/stale/error
-rooms in the intended image, approve acceptable wide-action latency, and obtain
-Jerry's explicit deployment approval. No further teacher/provider run is
-required for this engineering change.
+Before deployment: review the complete source and test concurrent/stale/error
+rooms in the intended image. Record that exact image, the pre-deploy image and
+configuration, and the fresh zero-room check. Then test lobby → game → completed
+round through real sockets in a designated test room, alongside an ordinary
+room. Keep observed usability/cost separate from strength claims. No further
+teacher/provider run is required for this engineering change.

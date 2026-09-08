@@ -103,6 +103,9 @@ export default function Hud({ state }: { state: GameState }) {
             {copied ? "Link copied" : state.room}
           </button>
           <span className="chip phase-chip">{PHASE_LABEL[state.phase]}</span>
+          {state.experimental_policy === "w32" ? (
+            <span className="chip experimental-marker">Experimental W32</span>
+          ) : null}
         </div>
 
         <div className="hud-group">

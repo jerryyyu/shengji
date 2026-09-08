@@ -16,15 +16,22 @@ clients hold WebSockets to it. That drives every deployment rule below.
   Fly explicitly pins the confirmed production champion
   `mc-s0-report-lcb` (N=30 selection plus an R=300 disjoint report check).
   `mc-strong` is the policy rollback; `smart` and `heuristic` are cheaper
-  difficulty choices, not strength-equivalent replacements. No learned policy
-  is currently authorized for production. See `AI_POLICIES.md`.
+  difficulty choices, not strength-equivalent replacements. W32 is limited to
+  explicitly gated test rooms; it is not the global default. See
+  `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
 ## Current production and rollback boundary
 
-Fly release 18 runs image `kitty-xray-b5a35ae`. Health must report
-`{"bot":"mc-s0-report-lcb","fast":true}`. Release 18 preserves release 17's
-decision runtime and adds the independently reviewed kitty X-ray only; it does
-not change the policy. That runtime moves an isolated bot/round snapshot into
+Read-only check on September 8: Fly release **19**, one 512 MB / shared-CPU-1x
+machine `48e7e35a9597e8`, runs
+`registry.fly.io/shengji:deployment-01M0P8VNX2C49XMVHFWFNNAPC2`, manifest
+`sha256:38c40bb675b2a330e845168ed3f63089279cff764bdcb7fea4908578721045dc`.
+This is the rollback image for the pending gated-W32 deployment; retain its
+machine configuration and volume. Health must report
+`{"bot":"mc-s0-report-lcb","fast":true}`. The earlier release-18 boundary
+below is historical, not the current release number.
+
+The decision runtime moves an isolated bot/round snapshot into
 a worker, overlaps the existing 0.7-second pacing floor, and commits the action
 only if the live room, round, phase, turn and controller still match. Claims,
 reconnects and X-ray therefore remain responsive; a stale search is discarded

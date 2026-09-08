@@ -2,6 +2,7 @@ import type { RoomSeats, ServerMsg } from "../protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
+import { createRoomPayload } from "../testPolicy";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -18,6 +19,13 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [name, setName] = useState(getSavedName());
+  // The query gate is captured at mount. clearInvite() removes the URL query
+  // after an action, but must not make an already-open test control disappear.
+  const [testControlsVisible] = useState(
+    () => new URLSearchParams(window.location.search).get("test_shortlist") === "1",
+  );
+  const [w32Selected, setW32Selected] = useState(false);
+  const [testAccessKey, setTestAccessKey] = useState("");
   const [roomCode, setRoomCode] = useState(
     () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
   );
@@ -78,23 +86,28 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   }), [name, joinSeat]);
 
   const ready = status === "open" && name.trim().length > 0;
+  const testReady = !w32Selected || testAccessKey.trim().length > 0;
 
   const create = () => {
-    if (!ready) return;
+    if (!ready || !testReady) return;
     const trimmed = name.trim();
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
+    if (!payload) return;
     saveName(trimmed);
     clearInvite();
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
-    conn.send({ type: "create_room", name: trimmed });
+    conn.send(payload);
   };
 
   const playBots = () => {
-    if (status !== "open") return;
+    if (status !== "open" || !testReady) return;
     const trimmed = name.trim() || "Player";
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
+    if (!payload) return;
     saveName(trimmed);
     clearSavedRoom();
     onArmAutoFill();
-    conn.send({ type: "create_room", name: trimmed });
+    conn.send(payload);
   };
 
 
@@ -199,11 +212,38 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           />
         </label>
 
-        <button className="btn gold big" disabled={status !== "open"} onClick={playBots}>
+        {testControlsVisible ? (
+          <div className="experimental-controls">
+            <label>
+              <input
+                type="checkbox"
+                checked={w32Selected}
+                onChange={(e) => setW32Selected(e.target.checked)}
+              />{" "}
+              experimental W32
+            </label>
+            {w32Selected ? (
+              <label className="field">
+                <input
+                  type="password"
+                  value={testAccessKey}
+                  placeholder="Access code"
+                  autoComplete="new-password"
+                  onChange={(e) => setTestAccessKey(e.target.value)}
+                />
+                <span className="field-label">
+                  Experimental wide moves may take ~30s; another test room can queue behind them.
+                </span>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
+        <button className="btn gold big" disabled={!testReady || status !== "open"} onClick={playBots}>
           Play vs bots
         </button>
 
-        <button className="btn primary big" disabled={!ready} onClick={create}>
+        <button className="btn primary big" disabled={!ready || !testReady} onClick={create}>
           Create room
         </button>
 

@@ -19,6 +19,9 @@ primary_region = 'ewr'
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
+  # Only designated creator-authenticated rooms may opt into W32. Availability
+  # is off by default; enabling it never changes SHENGJI_BOT or existing rooms.
+  SHENGJI_W32_TEST_ROOMS = '0'
 
 [mounts]
   source = 'shengji_data'

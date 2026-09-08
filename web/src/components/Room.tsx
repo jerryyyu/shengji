@@ -30,6 +30,9 @@ export default function Room({ room }: { room: RoomMsg }) {
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>
         </button>
+        {room.experimental_policy === "w32" ? (
+          <span className="chip experimental-marker">Experimental W32</span>
+        ) : null}
 
         <div className="seat-list">
           {[0, 1, 2, 3].map((seat) => {

@@ -26,6 +26,7 @@ from ..engine import combos
 from ..engine.round import Round, actual_play_after
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
+from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
 
 
 def _fast_active() -> bool:
@@ -112,12 +113,21 @@ class Room:
     # subsequent play to create an apparently complete but selectively logged
     # HUMAN-C1 block.
     evaluation_invalidated: bool = False
+    # Fixed at creation, never set from join/action messages. Not HUMAN-C1.
+    experimental_policy: str | None = None
 
     def __post_init__(self) -> None:
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:
             self.log_dir = Path(self.log_dir)
+        if self.experimental_policy is not None:
+            if self.experimental_policy != "w32" or self.evaluation is not None:
+                raise ValueError("invalid experimental room context")
+            test_root, ordinary_root = self.log_dir.resolve(), LOG_DIR.resolve()
+            if (test_root == ordinary_root or test_root.is_relative_to(ordinary_root)
+                    or ordinary_root.is_relative_to(test_root)):
+                raise ValueError("test rooms require a disjoint log root")
         if self.evaluation is not None:
             evaluation_root = self.log_dir.resolve()
             training_root = LOG_DIR.resolve()
@@ -149,6 +159,10 @@ class Room:
             rec = {"t": round(time.time(), 3), "room": self.code,
                    "round": self.game.round_no if self.game else 0,
                    "e": kind, **data}
+            if self.experimental_policy is not None:
+                rec["experimental_policy"] = self.experimental_policy
+                rec["policy"] = self.bot.policy_name
+                rec["training_excluded"] = True
             if self.evaluation is not None:
                 if kind == "chat":
                     rec = {
@@ -337,6 +351,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     result = game.result
     return {
         "type": "state",
+        **({"experimental_policy": room.experimental_policy}
+           if room.experimental_policy else {}),
         "room": room.code,
         "you": seat,
         # The round-end tally lives here too: in-game broadcasts send ONLY
@@ -399,6 +415,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
 def room_json(room: Room, seat: int) -> dict:
     return {
         "type": "room", "room": room.code, "you": seat, "host": room.host,
+        **({"experimental_policy": room.experimental_policy}
+           if room.experimental_policy else {}),
         "ready": sorted(room.ready),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
@@ -1144,7 +1162,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
             t = msg.get("type")
             if room is None or me is None:
                 if t == "create_room":
-                    room = Room(code=new_code())
+                    try:
+                        options = SHORTLIST_TEST_ROOMS.room_options(msg, rooms, LOG_DIR)
+                    except TestRoomUnavailable as error:
+                        await send(ws, {"type": "error", "code": "test_room_unavailable",
+                                        "message": str(error)})
+                        continue
+                    room = Room(code=new_code(), **options)
                     rooms[room.code] = room
                     # Through _attach like every other path: hand-rolling the
                     # queue/writer here skipped the generation bump AND the

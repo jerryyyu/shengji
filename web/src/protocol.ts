@@ -12,7 +12,13 @@ export type Phase = "deal" | "declare" | "bury" | "play" | "round_end" | "game_o
 // ---------- Client -> Server ----------
 
 export type ClientMsg =
-  | { type: "create_room"; name: string }
+  | {
+      type: "create_room";
+      name: string;
+      /** Experimental W32 is available only through the guarded lobby UI. */
+      test_policy?: "w32";
+      test_access_key?: string;
+    }
   | { type: "add_bot" }
   | { type: "remove_bot" }
   | { type: "start_game" }
@@ -49,6 +55,8 @@ export interface RoomMsg {
   you: number;
   host: number;
   players: RoomPlayer[];
+  /** Present only for rooms explicitly created with the W32 test policy. */
+  experimental_policy?: "w32";
 }
 
 export interface StatePlayer {
@@ -120,6 +128,8 @@ export interface GameState {
   type: "state";
   room: string;
   you: number;
+  /** Present only for rooms explicitly created with the W32 test policy. */
+  experimental_policy?: "w32";
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -172,6 +182,7 @@ export type ErrorCode =
   | "choose_seat"
   | "seat_unavailable"
   | "seat_reserved"
+  | "test_room_unavailable"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

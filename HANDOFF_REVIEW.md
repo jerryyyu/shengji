@@ -12509,3 +12509,49 @@ Fleet at 11:36 ET: perf FREE (load 0.00, G complete). Cloud Run I 717/16,000 `.j
 Note for anyone reading shard counts: each cluster writes a `.json` **and** a `.jsonl`, so
 `ls shards | wc -l` reports exactly double the cluster count — count `.jsonl` only.
 — Claude (session `68f9c8bd`)
+
+## 2026-09-08 11:55 ET — Claude (execution role): PRE-REGISTERING the confound in ACDEFGH, before its screen exists
+
+ACDEFGH v2 started training on Mini at 11:48 ET (128,000 clusters, 20 epochs, lr 3e-4, encoder v2
+explicit, `--select-metric val_ce`). I audited the generator identity of all seven corpora **before**
+any result lands, because the caveat below is the kind that is easy to rationalize away afterwards.
+
+| run | clusters | seed0 | git | dirty | source tree | ballot |
+|---|---|---|---|---|---|---|
+| A | 8,000 | 20260905 | fa09b650 | false | *absent from manifest* | `bdd5dc550f2d` |
+| C | 32,000 | 30260904 | 6442ad2a | false | 793efdcd | `103194f9d414` |
+| D | 32,000 | 40260904 | 0e4e3a6c | false | 6ed55119 | `ef4a7567aa49` |
+| E | 16,000 | 45260904 | be56f456 | false | ce85f352 | `8d776c5a5668` |
+| F2 | 8,000 | 65260904 | e5fb03ab | **true** | 69e015ba | `b02a39ea130a` |
+| **G** | 16,000 | 75260904 | be56f456 | false | ce85f352 | `8d776c5a5668` |
+| **H** | 16,000 | 85260904 | e5fb03ab | **true** | 69e015ba | `b02a39ea130a` |
+
+**What is reassuring.** Policy (`mc-s0-report-lcb`), registered work (N30/R300, LCB report rule) and
+`legal_sha256_16` (`3724811f…`, the rules engine) are IDENTICAL across all seven, and
+`incomplete_work` is 0 in every manifest. G and H introduce **no new generator**: G is byte-identical
+in tree and ballot to E, H to F2. The +33% step adds no configuration that ACDEF did not already carry.
+
+**What is the actual confound, and it is not "more data".** The corpus was already heterogeneous —
+five distinct ballots, two distinct `mcbot_sha256_16`, four distinct trajectory modules — and that
+heterogeneity is already baked into `3cd27716`, so it is not new. What IS new is that the added 32,000
+clusters are **not drawn in the base's proportions**. They are 50% E-ballot / 50% F2-ballot, against a
+base mix of 8.3/33.3/33.3/16.7/8.3. E's ballot goes 16.7% → 25% of the corpus and F2's goes
+8.3% → 18.75%, while C's and D's are diluted. So:
+
+> **If ACDEFGH beats ACDEF on the 520 window, "more data" and "shifted ballot mix" are confounded and
+> this screen cannot separate them.** A positive result is evidence for the *combination*, exactly as
+> ACDEF v2 − ACD v1 was evidence for data-and-encoder together and neither factor alone.
+
+Registering that now so the reading is fixed before the number is. The honest disentangling experiment
+is a 96,000-cluster corpus resampled to the ACDEFGH ballot proportions, or a 128,000 corpus built to
+ACDEF's proportions; neither is queued and neither is worth a box today.
+
+**Second item, smaller, for the record rather than for action.** F2 and H — 24,000 of 128,000 clusters,
+**18.75% of the corpus** — were generated from a working tree with uncommitted changes
+(`git_dirty: true`, git `e5fb03ab`, content `69e015ba`). The content digest makes them
+self-consistent and reproducible *given that tree*, but the corpus behind any ACDEFGH checkpoint is
+**not reconstructible from git alone**. Run A's manifest predates `source_tree_sha256` entirely and
+carries no content pin at all. No claim about this corpus should describe it as git-reproducible.
+
+Perf is clean as of 11:49 ET and released to Codex for their quiet W32 serving timing.
+— Claude (session `68f9c8bd`)

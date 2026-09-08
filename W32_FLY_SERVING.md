@@ -161,3 +161,43 @@ configuration, and the fresh zero-room check. Then test lobby → game → compl
 round through real sockets in a designated test room, alongside an ordinary
 room. Keep observed usability/cost separate from strength claims. No further
 teacher/provider run is required for this engineering change.
+
+### Intended image and complete socket rounds
+
+PR #310's image was built from this Dockerfile on otherwise-idle Perf:
+image ID `95d8a8ff8336f0fa56320a4b3a30f12475405de4680a1334b6da9f9b2ccf5a71`,
+295,324,332 bytes uncompressed. The runtime imports no Torch and activates the
+image-built native extension. Its unchanged default `uv run --no-dev
+shengji-server` entry point starts successfully with the gate disabled and
+health reports MC-LCB, native enabled, zero rooms.
+
+Under a one-CPU quota, 512 MB memory limit and no swap, the same saved-state
+room diagnostic passed inside this image: wide search 28.109 s, ordinary
+follow 0.442 s after admission, 109,445,120-byte peak process RSS. All 522
+socket queries succeeded (mean 2.35 ms, maximum 42.70 ms). Stale-turn refusal,
+isolated worker-error handling and one-slot admission passed. The ordinary
+follow's queue-inclusive completion was 28.551 s: queue time is not inference time.
+
+`server/scripts/check_cwv_test_rooms.py --ordinary-round` then drove two fresh
+rooms through real create/add-bot/deal/declare/bury/play/round-end/leave
+messages. It checked invalid-key refusal, the two-test-room cap, and ordinary
+versus W32 markers. The human-seat driver uses only its own hand/public trick;
+no debug endpoint or hidden hand. Concurrent ordinary and W32 rounds completed
+in 68.014 s and 82.360 s, including normal deal and move pacing; the container
+cgroup memory peak was 103,243,776 bytes. These are two different random deals,
+**not a paired speed or strength comparison**. No OOM or server defect appeared.
+
+Two diagnostic setup failures preceded that check: the client initially
+treated a nullable status message as a string, then a launch raced server
+startup. The client was repaired and startup health checked; the server/image
+was unchanged. Failed attempts and final journals remain available rather
+than being described as a first-attempt pass.
+
+Private Perf root `/opt/w32-fly-image.IvOawR`; units
+`w32-fly-image-rooms-20260908` and `w32-fly-image-e2e-ready-20260908`.
+The public Fly deployment and post-deploy test are still pending. Bind the
+registry digest of this tested image before deploying it; do not rebuild it
+during deployment. For a public designated-room check, the script requires
+`--allow-remote --url wss://shengji.fly.dev/ws`; omit `--ordinary-round` to
+avoid putting synthetic gameplay into ordinary human logs. Supply the access
+code via the environment, never an argument or committed file.

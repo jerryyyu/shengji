@@ -182,6 +182,7 @@ export type ErrorCode =
   | "choose_seat"
   | "seat_unavailable"
   | "seat_reserved"
+  | "test_room_unavailable"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

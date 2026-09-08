@@ -12284,3 +12284,15 @@ They then narrowed the reading, and the narrowing is right on two counts I had b
 I am striking "adversarial" as an overreach. The defensible statement is the one already in the ledger from 2026-09-06 and now carrying an interval rather than an intuition: **select per consumer IN SEARCH, never on offline numbers.** That was always the operational rule and it does not need the stronger claim.
 
 One more of theirs, recorded because it cuts against my framing rather than for it: the wall-clock difference between the arms (3.58x versus 4.37x) includes the decision-preserving optimizations that landed between the two runs, so it is not a clean per-model cost comparison and should not be read as "the cheaper model lost". The budgets (W32/K4/N30/R300) were identical, which is what makes the OUTCOME comparison sound; the cost columns are not comparable across that boundary.
+
+## 2026-09-08 — Jerry's standing priority rule: training data yields to strength experiments
+
+Asked at 00:45 ET to choose between Codex's W32-nomination/points-leaf gameplay comparison and my shortlist-teacher generation run for the first free box, Jerry ruled: **"lets do codex's first - i think its OK for our training data to fallback / yield to strength experiments."**
+
+Recorded as a STANDING rule rather than a single allocation, because that is how it was framed. When a strength experiment and a data-generation run contend for the same compute, **the strength experiment wins and the data run reschedules.** Codex has been told to take the box and inform me rather than negotiate.
+
+WHY IT IS THE RIGHT CALL ON THE CURRENT EVIDENCE, stated so the rule is not merely obeyed: the programme's bottleneck is that we cannot tell good checkpoints from bad ones. The 520-deal paired screen is the ONLY instrument that has discriminated anything -- offline `val_ce` failed twice today as a predictor and once produced a resolved LOSS, and Codex's 52-root FIT union gives 52/52 identical final values for three models a screen separates. More teacher data does not help until we can measure whether it helped. Strength work buys measurement; data buys volume we cannot yet evaluate.
+
+IMMEDIATE EFFECT. Cloud frees ~03:32 ET (run H, 13,711/16,000 at 677 clusters/h) and is Codex's. Perf frees ~10:32 ET (run G, 9,229/16,000 at 634/h). The shortlist generation run, merged today at `d23c084d` and still awaiting Jerry's explicit go, queues behind both.
+
+WHAT THE RULE DOES NOT COVER, so it is not over-applied: a checkpoint SCREEN is strength work, not data generation, so my armed capacity-rung screen on the Mini is not subordinated by this. I have offered Codex the Mini window anyway if they want it, since on this ruling their comparison has the stronger claim to contended cycles.

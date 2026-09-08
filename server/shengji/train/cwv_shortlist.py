@@ -381,9 +381,10 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
     never exists.  The checkpoint is hashed here (the name must be stable)
     and LOADED lazily, once per process, on the first `make_bot`.
     """
-    from ..ai.cwv_policy import checkpoint_id
+    from ..ai.cwv_policy import checkpoint_id, file_sha256
 
     ckpt8 = checkpoint_id(checkpoint)
+    full_sha = file_sha256(checkpoint)
     entries = {}
 
     def factory(name: str, w: int):
@@ -394,10 +395,15 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
             # is loaded lazily on the first make_bot. If the file at this path
             # was replaced in between, the old name would serve new weights and
             # a resume would continue a run under a different teacher, silently.
-            if bot.cwv_ckpt8 != ckpt8:
+            # Compare the FULL sha256, not the eight-char ckpt8 in the name.
+            # ckpt8 is 32 bits: fine as a human-readable label, too weak to be
+            # the only thing standing between a swapped file and a corpus that
+            # claims the wrong teacher. Codex's hardening note on PR299.
+            if bot.cwv_checkpoint_sha256 != full_sha:
                 raise ShortlistPolicyError(
-                    f"policy {name!r} was registered against checkpoint {ckpt8} "
-                    f"but {checkpoint!r} now hashes to {bot.cwv_ckpt8}. The file "
+                    f"policy {name!r} was registered against checkpoint "
+                    f"{full_sha} ({ckpt8}) but {checkpoint!r} now hashes to "
+                    f"{bot.cwv_checkpoint_sha256} ({bot.cwv_ckpt8}). The file "
                     "was replaced after registration; refusing to generate data "
                     "under a name that no longer describes the teacher.")
             return bot

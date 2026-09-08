@@ -163,5 +163,19 @@ records and RNG matched ordinary W32 exactly. T1 preserved the nominations
 and root state and invoked the intended head. These probes are wiring
 evidence, not whole-game strength or an isolated performance benchmark.
 
-No whole-game leaf result exists yet. Do not promote this arm from unit or
-saved-state evidence alone.
+## Completed result — September 8, 2026
+
+Both fixed arms completed all 52 deals without retries or timeout in 396.8s
+and 382.6s, concurrently on 16-core Strength. The raw bundles are preserved
+on Strength and Mini. [Full readout and examples](https://github.com/jerryyyu/shengji/pull/302#issuecomment-5581589663).
+
+Paired leaf-minus-flat: default **−.1250 [−.3462, +.0865]**, lower-LR
+**+.0288 [−.2212, +.2788]** whole signed levels/round. The checkpoint/consumer
+interaction is **+.1538 [−.0962, +.4135]**. These are the same fixed 52 deals,
+not differences from full-520 baseline means. Ten thousand paired-deal
+bootstrap resamples, seed20260907; reused-DEV exploratory intervals.
+
+Neither leaf arm demonstrates an improvement. Keep default flat W32; this
+small screen is inconclusive, not proof of equivalence or a general closure
+of learned leaves. No automatic expansion or production change. Source and
+the preregistered comparison above were unchanged during execution.

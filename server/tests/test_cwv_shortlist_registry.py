@@ -34,6 +34,7 @@ from shengji.train.cwv_shortlist import (
     CWVShortlistBot,
     ShortlistPolicyError,
     shortlist_env_recipe,
+    resolved_recipe,
     shortlist_policy_name,
     shortlist_registry_entries,
 )
@@ -72,8 +73,12 @@ def registered(checkpoint):
 def test_registered_name_builds_the_shortlist_bot_with_the_screened_recipe(
         checkpoint, registered):
     ckpt8 = cwv_policy.checkpoint_id(checkpoint)
-    assert registered == [f"mc-shortlist-{ckpt8}-w32"]
-    assert shortlist_policy_name(ckpt8) == f"mc-shortlist-{ckpt8}-w32"
+    name = shortlist_policy_name(ckpt8, recipe=resolved_recipe())
+    # The registered name IS the canonical one for the screened recipe: tying the
+    # two together means a change to either side has to move both.
+    assert registered == [name]
+    # The recipe digest suffix is what stops K4 and K8 sharing one identity.
+    assert name.startswith(f"mc-shortlist-{ckpt8}-w32-r") and len(name.rsplit("-r", 1)[1]) == 8
     # never confusable with the one-ply entry of register_cwv_policies
     assert cwv_policy.policy_name(ckpt8, 32) not in registered
 
@@ -116,7 +121,7 @@ def test_a_foreign_factory_under_a_shortlist_name_is_refused(checkpoint,
     The registry boundary, not the builder, is what refuses here.
     """
     ckpt8 = cwv_policy.checkpoint_id(checkpoint)
-    one_ply = {shortlist_policy_name(ckpt8): (
+    one_ply = {shortlist_policy_name(ckpt8, recipe=resolved_recipe()): (
         lambda **kw: make_cwv_bot(checkpoint, worlds=32, seed=kw.get("seed")))}
     monkeypatch.setattr(cwv_shortlist, "shortlist_registry_entries",
                         lambda *a, **k: one_ply)
@@ -134,7 +139,7 @@ def test_registering_the_one_ply_arm_gives_a_different_name_and_class(checkpoint
     ckpt8 = cwv_policy.checkpoint_id(checkpoint)
     names = register_cwv_policies(checkpoint, [32])
     try:
-        assert shortlist_policy_name(ckpt8) not in names
+        assert shortlist_policy_name(ckpt8, recipe=resolved_recipe()) not in names
         bot = make_bot(f"mc-cwv-{ckpt8}-w32", seed=11)
         assert isinstance(bot, CWVOnePlyBot)
         assert not isinstance(bot, CWVShortlistBot)

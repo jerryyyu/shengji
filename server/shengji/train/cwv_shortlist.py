@@ -240,13 +240,66 @@ class ShortlistPolicyError(RuntimeError):
     """A shortlist policy name did not build the shortlist bot."""
 
 
-def shortlist_policy_name(ckpt8: str, worlds: int = SHORTLIST_WORLDS) -> str:
-    """``mc-shortlist-<ckpt8>-w<W>``.
+#: Every knob that changes what the shortlist bot DOES. The policy name binds
+#: all of them, because the name is what a run receipt, a seed window and a
+#: resume key on: if two recipes could share a name, a resume would accept data
+#: generated under a different search than the one it is continuing.
+RECIPE_FIELDS = ("alternatives", "selection_worlds", "report_worlds",
+                 "batch_size", "encoding", "reuse_successors")
+
+
+def resolved_recipe(**recipe) -> dict:
+    """The recipe with every field present and normalised, or a refusal.
+
+    Refusing an unknown field is the point: a knob added to the bot without
+    being added to ``RECIPE_FIELDS`` would otherwise change behaviour while
+    leaving the identity untouched, which is exactly the hole this closes.
+    """
+    unknown = set(recipe) - set(RECIPE_FIELDS)
+    if unknown:
+        raise ValueError(
+            f"recipe fields {sorted(unknown)} are not in RECIPE_FIELDS; add them "
+            "there so the policy name binds them, or they will not reach the identity")
+    defaults = {"alternatives": SHORTLIST_ALTERNATIVES,
+                "selection_worlds": SHORTLIST_SELECTION_WORLDS,
+                "report_worlds": SHORTLIST_REPORT_WORLDS,
+                "batch_size": SHORTLIST_BATCH_SIZE,
+                "encoding": SHORTLIST_ENCODING,
+                "reuse_successors": SHORTLIST_REUSE_SUCCESSORS}
+    out = {}
+    for field in RECIPE_FIELDS:
+        value = recipe.get(field, defaults[field])
+        if field == "encoding":
+            out[field] = str(value)
+        elif field == "reuse_successors":
+            out[field] = bool(value)
+        else:
+            out[field] = int(value)
+    return out
+
+
+def recipe_digest(worlds: int, recipe: dict) -> str:
+    """Eight hex chars over the RESOLVED recipe and width, order-independent."""
+    payload = json.dumps({"worlds": int(worlds), **resolved_recipe(**recipe)},
+                         sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+
+def shortlist_policy_name(ckpt8: str, worlds: int = SHORTLIST_WORLDS, *,
+                          recipe: dict) -> str:
+    """``mc-shortlist-<ckpt8>-w<W>-r<recipe8>``.
 
     Deliberately unlike `cwv_policy.policy_name`'s ``mc-cwv-<ckpt8>-w<W>``:
     the two designs must never be confused by eye in a run receipt.
+
+    ``recipe`` is REQUIRED and keyword-only on purpose. An earlier version of
+    this function took the checkpoint and width alone, so K4 and K8 resolved to
+    one name while building genuinely different bots -- a resume accepted the
+    wrong search silently. Making the argument impossible to omit is what stops
+    that returning.
     """
-    return f"mc-shortlist-{ckpt8}-w{int(worlds)}"
+    return (f"mc-shortlist-{ckpt8}-w{int(worlds)}"
+            f"-r{recipe_digest(worlds, recipe)}")
 
 
 def _build_shortlist(evaluator, *, seed, config, reuse_successors):
@@ -327,7 +380,7 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
     for w in sorted({int(w) for w in worlds}):
         if w < 1:
             raise ValueError("shortlist worlds must be positive")
-        name = shortlist_policy_name(ckpt8, w)
+        name = shortlist_policy_name(ckpt8, w, recipe=recipe)
         entries[name] = factory(name, w)
     return entries
 

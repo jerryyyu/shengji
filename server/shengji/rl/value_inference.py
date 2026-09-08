@@ -79,8 +79,17 @@ def predict_round(model: ValueNetwork, rnd: Round, root_seat: int, *,
     """Value a complete leaf; terminal states bypass the model exactly."""
     if type(rnd) is Round and rnd.phase == "round_end":
         return _prediction(terminal_distribution(rnd, root_seat))
-    return predict_tensors(
-        model, [tensors_from_round(rnd, root_seat)], device=device)[0]
+    # Encode at the MODEL's own declared version, the same rule
+    # ``CompleteWorldEvaluator.encoder`` uses. Calling the frozen v1 builder
+    # unconditionally fed 532-wide rows to a 561-wide net once v2 checkpoints
+    # existed; a model with no declared version is v1, as it always was.
+    version = int(getattr(getattr(model, "config", None), "enc_version", 1))
+    if version == 1:
+        tensors = tensors_from_round(rnd, root_seat)
+    else:
+        from .value_afterstate_v2 import tensors_from_round as _tensors_at_version
+        tensors = _tensors_at_version(rnd, root_seat, version=version)
+    return predict_tensors(model, [tensors], device=device)[0]
 
 
 def score_actions(model: ValueNetwork, rnd: Round, root_seat: int,

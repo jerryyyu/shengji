@@ -42,3 +42,70 @@ def test_a_checkpoint_with_no_declared_version_is_v1():
     ev = CompleteWorldEvaluator.__new__(CompleteWorldEvaluator)
     ev.model = Model()
     assert ev.enc_version == 1
+
+
+def test_predict_round_encodes_at_the_models_own_version():
+    """The legacy single-round API must follow the checkpoint, not the frozen v1.
+
+    ``predict_round`` called the frozen v1 builder unconditionally, so once v2
+    checkpoints existed it fed 532-wide rows to a 561-wide net. Codex found this
+    while reviewing the default flip (bus 792).
+    """
+    import numpy as np
+    from shengji.rl import value_inference
+
+    seen = {}
+
+    class Cfg:
+        enc_version = 2
+
+    class Model:
+        config = Cfg()
+
+    def fake_v1(rnd, seat):
+        seen["called"] = 1
+        return "v1-tensors"
+
+    def fake_v2(rnd, seat, *, version):
+        seen["called"] = version
+        return "v2-tensors"
+
+    import shengji.rl.value_afterstate_v2 as v2mod
+    orig_v1 = value_inference.tensors_from_round
+    orig_v2 = v2mod.tensors_from_round
+    orig_pt = value_inference.predict_tensors
+    value_inference.tensors_from_round = fake_v1
+    v2mod.tensors_from_round = fake_v2
+    value_inference.predict_tensors = lambda m, t, device="cpu": [t[0]]
+    try:
+        got = value_inference.predict_round(Model(), object(), 0)
+    finally:
+        value_inference.tensors_from_round = orig_v1
+        v2mod.tensors_from_round = orig_v2
+        value_inference.predict_tensors = orig_pt
+    assert seen["called"] == 2, "a v2 model must not be encoded by the v1 builder"
+    assert got == "v2-tensors"
+
+
+def test_predict_round_still_uses_v1_for_a_v1_model():
+    from shengji.rl import value_inference
+
+    seen = {}
+
+    class Model:
+        config = type("C", (), {"enc_version": 1})()
+
+    def fake_v1(rnd, seat):
+        seen["called"] = 1
+        return "v1-tensors"
+
+    orig_v1 = value_inference.tensors_from_round
+    orig_pt = value_inference.predict_tensors
+    value_inference.tensors_from_round = fake_v1
+    value_inference.predict_tensors = lambda m, t, device="cpu": [t[0]]
+    try:
+        assert value_inference.predict_round(Model(), object(), 0) == "v1-tensors"
+    finally:
+        value_inference.tensors_from_round = orig_v1
+        value_inference.predict_tensors = orig_pt
+    assert seen["called"] == 1

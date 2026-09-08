@@ -370,9 +370,14 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     # training-side forward on the cached row
     cache_dir = out / "cache"
     store = discover_store(store_dir)
-    block = cwv_data.load_block(cwv_data.cache_path(cache_dir, store.shards[0].sha256))
+    # Both take version=ENC_VERSION (the FROZEN constant 1) by default, not the
+    # run's version. Pass the run's own so the cache read and the bridged row
+    # match what training actually wrote.
+    enc_v = receipt["config"]["encoder_version"]
+    block = cwv_data.load_block(
+        cwv_data.cache_path(cache_dir, store.shards[0].sha256, version=enc_v))
     record = next(r for r in _records(store_dir) if r["source_ref"] == block.source_ref[5])
-    row = cwv_data.bridge_record(record)
+    row = cwv_data.bridge_record(record, version=enc_v)
     assert row.input_sha256 == block.input_sha256[5].decode()
     prediction = predict_round(loaded, row.successor, row.seat)
     batch = cwv_data.tensors_of(cwv_data.collate(block, np.asarray([5])), "cpu")

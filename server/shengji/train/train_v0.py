@@ -100,7 +100,9 @@ from .data import (CACHE_WORKERS_CAP, DEAL_KEY_SCHEMA, PRIVACY_TRIALS, Block, Bl
                    Residency, Store, TrainDataError, cache_path, check_witness_every, collate,
                    default_cache_workers, default_resident_bytes, discover_store,
                    encoder_identity, ensure_caches, first_deals, physical_memory_bytes,
-                   split_counts, split_deals, split_mask)
+                   split_counts, split_deals, split_mask, SplitSelector)
+from ..rl.encode_versions import (ENC_VERSION, OBS_DIM_BY_VERSION, check_version,
+                                  encoder_version_for)
 from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
                     ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
                     trunk_for)
@@ -116,6 +118,10 @@ DEFAULTS = {
     "test_fraction": 0.1, "huber_delta": 1.0, "aux_points": False, "aux_weight": 0.1,
     "aux_search_mean": 0.0, "hidden": DEFAULT_HIDDEN, "n_boot": 1000, "window": 64,
     "limit_clusters": None,
+    # A fresh run has no checkpoint to read a version from, so this is the
+    # ONLY place a v2 model can be asked for.  It stays 1 so an unchanged
+    # command line keeps producing 531-wide v1 checkpoints.
+    "encoder_version": ENC_VERSION,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "git", "encoder", "data", "config", "config_sha256", "seeds",
@@ -199,7 +205,8 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
                    witness_seed: int, progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
                    resident_bytes: int | None = None, witness_every: int = 1,
-                   allow_sampled_witness: bool = False) -> Prepared:
+                   allow_sampled_witness: bool = False,
+                   version: int = ENC_VERSION) -> Prepared:
     """Discover, verify, encode (cache; the missing shards ``cache_workers``
     at a time, default ``data.default_cache_workers()``; the privacy
     witness on every ``witness_every``-th row, 1 = every row) and index
@@ -207,6 +214,7 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
     ``Residency(resident_bytes)``).  Nothing is decoded here: ``counts``
     come from the cache metas and the deal-key columns."""
     witness_every = check_witness_every(witness_every, allow_sampled_witness)
+    version = check_version(version)
     stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
     jobs = [(shard, store.private) for store in stores for shard in store.shards]
     if not jobs:
@@ -214,7 +222,7 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
     built = ensure_caches(jobs, cache_dir, witness_seed=witness_seed,
                           witness_every=witness_every,
                           allow_sampled_witness=allow_sampled_witness,
-                          workers=cache_workers, progress=progress)
+                          workers=cache_workers, progress=progress, version=version)
     entries: list[tuple] = []
     keep: list = []
     counts: dict = {"shards": 0, "cache_rebuilt": 0, "cache_reused": 0}
@@ -227,7 +235,7 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
             _merge_counts(counts, {"records": meta["counts"]})
-            path = str(cache_path(cache_dir, shard.sha256))
+            path = str(cache_path(cache_dir, shard.sha256, version=version))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
                                 "cache": path, "records": int(meta["counts"]["encoded"]),
                                 "nbytes": int(meta["nbytes"]),
@@ -252,7 +260,8 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
                         kept.setdefault(key, None)
             for i in range(first, len(entries)):
                 keep[i] = set(kept)
-    block_store = BlockStore(entries, residency=residency, resident_bytes=resident_bytes,
+    block_store = BlockStore(entries, version=version,
+                             residency=residency, resident_bytes=resident_bytes,
                              keep=keep, witness_every=witness_every)
     rows = block_store.rows()
     counts["records_total"] = int(sum(rows))
@@ -674,7 +683,7 @@ def save_checkpoint(path: Path, model: ValuePriorNet, *, config: dict, epoch: in
         "arch": model.arch,
         "model_state": {k: v.detach().cpu() for k, v in model.state_dict().items()},
         "config": config,
-        "encoder": encoder_identity(),
+        "encoder": encoder_identity(int(config.get("encoder_version", ENC_VERSION))),
         "epoch": epoch,
         "selection": selection,
         "baselines": baselines,
@@ -693,7 +702,9 @@ def load_checkpoint(path: str | os.PathLike, device: torch.device) -> tuple[Valu
     if payload.get("schema") != CHECKPOINT_SCHEMA:
         raise TrainError(f"{path}: not a {CHECKPOINT_SCHEMA} checkpoint")
     enc = payload.get("encoder") or {}
-    ident = encoder_identity()
+    # The checkpoint names its own encoder VERSION; only the implementation
+    # digest has to match this build.
+    ident = encoder_identity(check_version(enc.get("enc_version", ENC_VERSION)))
     if enc.get("implementation_sha256") != ident["implementation_sha256"]:
         raise TrainError(f"{path}: checkpoint encoder {enc.get('implementation_sha256', '')[:12]} "
                          f"differs from the current encoder {ident['implementation_sha256'][:12]}")
@@ -788,7 +799,8 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
                  aux_weight: float = DEFAULTS["aux_weight"],
                  aux_search_mean: float = DEFAULTS["aux_search_mean"],
                  hidden: int = DEFAULTS["hidden"], n_boot: int = DEFAULTS["n_boot"],
-                 window: int = DEFAULTS["window"]) -> dict:
+                 window: int = DEFAULTS["window"],
+                 encoder_version: int = DEFAULTS["encoder_version"]) -> dict:
     """The run configuration that ``config_sha256`` hashes: everything that
     determines the trained model and its metrics (validated, fail closed);
     execution details (device, cache workers, residency budget, output
@@ -809,8 +821,16 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
         trunk = trunk_for(hidden)
     except (TypeError, ValueError) as exc:
         raise TrainError(f"--hidden: {exc}") from exc
+    try:
+        encoder_version = check_version(encoder_version)
+    except ValueError as exc:
+        raise TrainError(f"--encoder-version: {exc}") from None
+    # The width the checkpoint will DECLARE.  Inference dispatch reads it
+    # back out of ``arch`` (``encode.encoder_version_for``), so nothing
+    # downstream has to be told which encoder produced this net.
     arch = {**DEFAULT_ARCH, "trunk": trunk, "aux_points": bool(aux_points),
-            "aux_search_mean": float(aux_search_mean) > 0}
+            "aux_search_mean": float(aux_search_mean) > 0,
+            "obs_dim": OBS_DIM_BY_VERSION[encoder_version]}
     return {
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
         "eval_luna": None if eval_luna is None else str(Path(eval_luna).resolve()),
@@ -823,10 +843,12 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
         "aux_weight": float(aux_weight) if aux_points else 0.0,
         "aux_search_mean": float(aux_search_mean), "hidden": int(hidden),
         "n_boot": int(n_boot), "window": int(window), "optimizer": "AdamW", "arch": arch,
+        "encoder_version": int(encoder_version),
         "split_method": "three-way by deal_key: rank of sha256(seed|deal_key); "
                         "top test_fraction -> test, next val_fraction -> val, rest train",
-        "encoder_implementation_sha256": encoder_identity()["implementation_sha256"],
-        "enc_version": encoder_identity()["enc_version"],
+        "encoder_implementation_sha256":
+            encoder_identity(encoder_version)["implementation_sha256"],
+        "enc_version": encoder_identity(encoder_version)["enc_version"],
     }
 
 
@@ -842,7 +864,9 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
           aux_weight: float = DEFAULTS["aux_weight"],
           aux_search_mean: float = DEFAULTS["aux_search_mean"],
           hidden: int = DEFAULTS["hidden"], n_boot: int = DEFAULTS["n_boot"],
-          window: int = DEFAULTS["window"], cache_dir: str | None = None,
+          window: int = DEFAULTS["window"],
+          encoder_version: int = DEFAULTS["encoder_version"],
+          cache_dir: str | None = None,
           cache_workers: int | None = None, resident_bytes: int | None = None,
           privacy_witness_every: int = 1, allow_sampled_privacy_witness: bool = False,
           argv: list[str] | None = None,
@@ -854,8 +878,9 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         weight_decay=weight_decay, batch_size=batch_size, patience=patience,
         val_fraction=val_fraction, test_fraction=test_fraction, huber_delta=huber_delta,
         aux_points=aux_points, aux_weight=aux_weight, aux_search_mean=aux_search_mean,
-        hidden=hidden, n_boot=n_boot, window=window)
+        hidden=hidden, n_boot=n_boot, window=window, encoder_version=encoder_version)
     arch = config["arch"]
+    enc_version = int(config["encoder_version"])
     search_weight = float(config["aux_search_mean"])
     try:
         witness_every = check_witness_every(privacy_witness_every, allow_sampled_privacy_witness)
@@ -872,6 +897,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     seeds = seed_everything(seed, dev)
     say = log or (lambda _s: None)
     say(f"train: device={dev.type} seed={seed} prior_target={prior_target} "
+        f"encoder_version={enc_version} obs_dim={arch['obs_dim']} "
         f"epochs<={epochs} batch={batch_size} hidden={config['hidden']} "
         f"aux_search_mean={search_weight} cache_workers={workers} "
         f"privacy_witness_every={witness_every} resident_bytes={budget}")
@@ -880,13 +906,14 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters,
                               witness_seed=seed, progress=say, cache_workers=workers,
                               residency=residency, witness_every=witness_every,
-                              allow_sampled_witness=allow_sampled_privacy_witness)
+                              allow_sampled_witness=allow_sampled_privacy_witness,
+                              version=enc_version)
     store = prepared.block_store
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
     assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
                              test_fraction=test_fraction)
-    masks = {part: (lambda b, p=part: split_mask(b, assignment, p)) for part in ("train", "val", "test")}
+    masks = {part: SplitSelector(assignment, part) for part in ("train", "val", "test")}
     n_rows = {part: 0 for part in masks}
     for block in store.iter_blocks():
         for part, fn in masks.items():
@@ -920,7 +947,8 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
                                        witness_seed=seed, progress=say, cache_workers=workers,
                                        residency=residency, witness_every=witness_every,
-                                       allow_sampled_witness=allow_sampled_privacy_witness)
+                                       allow_sampled_witness=allow_sampled_privacy_witness,
+                                       version=enc_version)
         refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         luna_population = population_report(luna_prepared.block_store.keys(), population)
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
@@ -1054,7 +1082,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         "device": dev.type,
         "versions": versions(),
         "git": git_identity(),
-        "encoder": encoder_identity(),
+        "encoder": encoder_identity(enc_version),
         "config": config,
         "config_sha256": config_sha256(config),
         "seeds": seeds,
@@ -1171,9 +1199,12 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     metric_kw = dict(n_boot=n_boot, seed=int(config["seed"]), calibration=calibration,
                      prior_target=config["prior_target"], prior_weight=config["prior_weight"])
     residency = Residency(budget)
+    # Evaluation rows must be the LOADED checkpoint's encoder version, which
+    # its arch states (``encoder_version_for``), for --data and --eval-luna alike.
+    enc_version = encoder_version_for(payload["arch"])
     prepare_kw = dict(witness_seed=int(config["seed"]), progress=say, cache_workers=workers,
                       residency=residency, witness_every=witness_every,
-                      allow_sampled_witness=allow_sampled_privacy_witness)
+                      allow_sampled_witness=allow_sampled_privacy_witness, version=enc_version)
     final: dict = {}
     data_receipt = []
     counts: dict = {}
@@ -1254,7 +1285,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
         "device": dev.type,
         "versions": versions(),
         "git": git_identity(),
-        "encoder": encoder_identity(),
+        "encoder": encoder_identity(int(config.get("encoder_version", ENC_VERSION))),
         "checkpoint": {"path": str(Path(checkpoint).resolve()), "epoch": payload.get("epoch"),
                        "config_sha256": config_sha256(config)},
         "config": config,
@@ -1351,6 +1382,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "(action_values.means[played_index]); 0 = off")
     t.add_argument("--hidden", type=int, default=DEFAULTS["hidden"],
                    help="trunk widths [N, N // 2]")
+    t.add_argument("--encoder-version", type=int, choices=sorted(OBS_DIM_BY_VERSION),
+                   default=DEFAULTS["encoder_version"],
+                   help="observation encoder layout to TRAIN on (1 = 531 columns, "
+                        "2 = 531 + 29 trick/points/hand columns); the checkpoint's "
+                        "arch['obs_dim'] records it and inference follows")
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
                    help="shards per shuffle window (also bounded by --resident-bytes)")
@@ -1390,7 +1426,8 @@ def main(argv: list[str] | None = None) -> int:
                   test_fraction=args.test_fraction, huber_delta=args.huber_delta,
                   aux_points=args.aux_points, aux_weight=args.aux_weight,
                   aux_search_mean=args.aux_search_mean, hidden=args.hidden,
-                  n_boot=args.n_boot, window=args.window, **exec_kw)
+                  n_boot=args.n_boot, window=args.window,
+                  encoder_version=args.encoder_version, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

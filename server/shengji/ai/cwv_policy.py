@@ -24,8 +24,10 @@ Everything a checkpoint needs is consumed through the merged #214 API only:
 ``value_checkpoint.load_checkpoint``, ``value_afterstate.tensors_from_round``
 and ``terminal_distribution``, ``value_metrics.category_signed_level``.  This
 module owns batching (stack tensors, one forward per call), the encoder
-identity gate, the no-learning stratified-prior control and the registry
-factories.  It never edits or bypasses ``shengji/rl/value_*.py``.
+identity gate, the opt-in MLP static-input adapter, the no-learning
+stratified-prior control and the registry factories. The adapter preserves
+reference refusal behavior while omitting history rows the MLP discards;
+it never changes the checkpoint-bound training encoder.
 
 Stable consumer API (kept minimal for other arms -- e.g. a hybrid that
 shortlists candidates on many cheap worlds with this evaluator and then hands
@@ -77,7 +79,7 @@ import json
 import math
 import os
 import time
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -85,7 +87,10 @@ import numpy as np
 
 from ..engine.combos import decompose
 from ..engine.round import Round, Trick, TrickPlay
+from ..rl.encode_versions import check_version
+from ..rl.value_afterstate_v2 import tensors_from_round as tensors_from_round_v2
 from ..rl.value_afterstate import (
+    PUBLIC_DIM,
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
     ValueAfterstateTensors,
@@ -94,11 +99,27 @@ from ..rl.value_afterstate import (
     tensors_from_round,
     terminal_distribution,
 )
+from .cwv_static_encoding import (
+    static_encoding_identity,
+    tensors_from_round_static,
+)
 from .mcbot import MCBot, _ballot_identity, _runtime_identity
 from .memory import Memory
 
 
 CWV_DECISION_SCHEMA = "cwv-decision-v1"
+
+
+@lru_cache(maxsize=8)
+def _versioned_encoder(builder, version):
+    """Stable dispatch identity for cross-batch tensor reuse.
+
+    Only the builder/version are retained, never models, rounds or tensors.
+    A replaced builder gets a distinct key, preserving diagnostic overrides.
+    """
+    return partial(builder, version=version)
+
+
 #: The training build's identity schema (``shengji.train.cwv_data``); the
 #: recipe below reproduces it byte for byte until the branches merge.
 AFTERSTATE_IDENTITY_SCHEMA = "shengji-cwv-encoder-identity-v1"
@@ -143,22 +164,67 @@ def file_sha256(path: str | os.PathLike[str]) -> str:
     return digest.hexdigest()
 
 
-def local_encoder_identity() -> dict[str, Any]:
-    """This module's replica of the training build's identity recipe."""
+def local_encoder_identity(version: int = 1) -> dict[str, Any]:
+    """This module's replica of the training build's identity recipe.
+
+    v1 is the historical payload, byte for byte; a later encoder version
+    appends ``enc_version:<n>`` to the payload before the source digests
+    (``train.cwv_data.cwv_encoder_identity``), so the same nine frozen
+    files hash to a DIFFERENT identity per version."""
+    version = check_version(version)
     sources = {name: file_sha256(path)
                for name, path in AFTERSTATE_SOURCE_PATHS.items()}
+    parts = [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
+    if version != 1:
+        parts.append(f"enc_version:{version}")
     payload = "|".join(
-        [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
-        + [f"{name}:{digest}" for name, digest in sorted(sources.items())])
+        parts + [f"{name}:{digest}" for name, digest in sorted(sources.items())])
     return {
         "identity_schema": AFTERSTATE_IDENTITY_SCHEMA,
         "afterstate_schema": AFTERSTATE_SCHEMA,
+        "enc_version": version,
         "implementation_sha256": hashlib.sha256(payload.encode("ascii")).hexdigest(),
         "source_sha256s": sources,
     }
 
 
-def afterstate_encoder_identity() -> dict[str, Any]:
+def declared_encoder_version(metadata: Mapping[str, Any]) -> int:
+    """The encoder version a checkpoint DECLARES (``metadata['encoder']
+    ['enc_version']``; archived checkpoints predate the field and are v1)."""
+    encoder = metadata.get("encoder")
+    value = encoder.get("enc_version", 1) if isinstance(encoder, Mapping) else 1
+    try:
+        return check_version(value)
+    except ValueError:
+        raise CWVCheckpointMismatch(
+            f"checkpoint declares an unknown encoder version {value!r}") from None
+
+
+def bind_encoder_version(metadata: Mapping[str, Any], model: Any, *,
+                         path: str | os.PathLike[str] | None = None) -> int:
+    """Refuse a checkpoint whose DECLARED encoder version (what the identity
+    gate validates) is not the MODEL's (what inference encodes with).  A
+    missing declaration is v1 only when the model config is v1."""
+    label = f"{path}: " if path is not None else ""
+    actual = int(getattr(getattr(model, "config", None), "enc_version", 1))
+    encoder = metadata.get("encoder")
+    value = encoder.get("enc_version") if isinstance(encoder, Mapping) else None
+    if value is None:
+        if actual != 1:
+            raise CWVCheckpointMismatch(
+                f"{label}checkpoint metadata declares no encoder version but the model "
+                f"config is encoder v{actual}; refusing")
+        return 1
+    declared = declared_encoder_version(metadata)
+    if declared != actual:
+        raise CWVCheckpointMismatch(
+            f"{label}checkpoint metadata declares encoder v{declared} but the model config "
+            f"is encoder v{actual}; the identity would be validated at one version and the "
+            "net encoded at another; refusing")
+    return declared
+
+
+def afterstate_encoder_identity(version: int = 1) -> dict[str, Any]:
     """Rehash the afterstate encoder's executable closure on every call.
 
     Once the training build is merged its ``cwv_encoder_identity`` is the
@@ -168,8 +234,8 @@ def afterstate_encoder_identity() -> dict[str, Any]:
     try:
         from ..train.cwv_data import cwv_encoder_identity
     except ImportError:
-        return local_encoder_identity()
-    identity = dict(cwv_encoder_identity())
+        return local_encoder_identity(version)
+    identity = dict(cwv_encoder_identity(version))
     if identity.get("identity_schema") != AFTERSTATE_IDENTITY_SCHEMA \
             or not isinstance(identity.get("implementation_sha256"), str) \
             or not isinstance(identity.get("source_sha256s"), Mapping):
@@ -210,11 +276,19 @@ def declared_encoder_shas(metadata: Mapping[str, Any]) -> list[str]:
 def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
                                path: str | os.PathLike[str] | None = None,
                                identity: Mapping[str, Any] | None = None) -> str:
-    """Refuse a foreign checkpoint or an encoder mismatch; return the match."""
+    """Refuse a foreign checkpoint or an encoder mismatch; return the match.
+
+    Dispatch is on the version the checkpoint DECLARES.  v1 (every archived
+    checkpoint) is checked against exactly the set it always was -- the v1
+    implementation sha or the value_afterstate.py digest.  A later version
+    is checked against that version's implementation sha only, so a v1
+    checkpoint is never accepted as v2 nor a v2 one as v1."""
+    version = declared_encoder_version(metadata)
     current = dict(identity if identity is not None
-                   else afterstate_encoder_identity())
-    accepted = {current["implementation_sha256"],
-                current["source_sha256s"]["value_afterstate"]}
+                   else afterstate_encoder_identity(version))
+    accepted = {current["implementation_sha256"]}
+    if version == 1:
+        accepted.add(current["source_sha256s"]["value_afterstate"])
     declared = declared_encoder_shas(metadata)
     label = f"{path}: " if path is not None else ""
     if not declared:
@@ -242,6 +316,7 @@ def _cached_checkpoint(path: str, mtime_ns: int, size: int):
     del mtime_ns, size            # part of the key: a replaced file reloads
     from ..rl.value_checkpoint import load_checkpoint
     model, metadata = load_checkpoint(path, map_location="cpu")
+    bind_encoder_version(metadata, model, path=path)
     verify_checkpoint_identity(metadata, path=path)
     for parameter in model.parameters():
         parameter.requires_grad_(False)
@@ -319,8 +394,12 @@ class CompleteWorldEvaluator:
     def __init__(self, checkpoint: str | os.PathLike[str] | None, *,
                  device: str = "cpu", threads: int | None = 1,
                  max_batch: int = 4096, model=None,
-                 metadata: Mapping[str, Any] | None = None):
+                 metadata: Mapping[str, Any] | None = None,
+                 encoding: str = "reference"):
         import torch
+
+        if encoding not in ("reference", "mlp-static"):
+            raise CWVError("encoding must be 'reference' or 'mlp-static'")
 
         if model is None:
             if checkpoint is None:
@@ -337,6 +416,7 @@ class CompleteWorldEvaluator:
             self.model = model.to(device)
         if hasattr(self.model, "eval"):
             self.model.eval()
+        self.encoding = encoding
         self.device = device
         if threads:
             torch.set_num_threads(int(threads))
@@ -359,18 +439,58 @@ class CompleteWorldEvaluator:
     def ckpt8(self) -> str | None:
         return None if self.checkpoint_sha256 is None else self.checkpoint_sha256[:8]
 
+    @property
+    def enc_version(self) -> int:
+        """The observation encoder version the LOADED net was trained on
+        (``ValueModelConfig.enc_version``; a net without one is v1)."""
+        return int(getattr(getattr(self.model, "config", None), "enc_version", 1))
+
+    @property
+    def encoder(self):
+        """The tensor builder for this net's encoder version.  v1 keeps the
+        historical choice (the fused static path or the reference); v2's
+        static adapter widens the v1 MLP base with canonical v2 columns.
+        The reference path retains its full history. A bare fused v1 row
+        must never be served to a v2 net."""
+        if self.enc_version == 1:
+            return (tensors_from_round_static
+                    if self.effective_encoding == "mlp-static"
+                    else tensors_from_round)
+        version = self.enc_version
+        if self.effective_encoding == "mlp-static":
+            return _versioned_encoder(tensors_from_round_static, version)
+        return _versioned_encoder(tensors_from_round_v2, version)
+
+    @property
+    def effective_encoding(self) -> str:
+        """Apply the static adapter only while the model is actually an MLP."""
+        return ("mlp-static" if self.encoding == "mlp-static" and
+                getattr(getattr(self.model, "config", None), "architecture", None)
+                == "mlp" else "reference")
+
     def identity(self) -> dict[str, Any]:
+        adapter = (static_encoding_identity()
+                   if self.effective_encoding == "mlp-static" else None)
         return {"kind": "complete_world_value", "backend": self.backend,
                 "checkpoint": self.checkpoint_path,
                 "checkpoint_sha256": self.checkpoint_sha256,
                 "ckpt8": self.ckpt8, "device": self.device,
-                "threads": self.threads, "max_batch": self.max_batch}
+                "threads": self.threads, "max_batch": self.max_batch,
+                "encoding": self.encoding,
+                "effective_encoding": self.effective_encoding,
+                "adapter": adapter}
 
-    def score(self, positions: Sequence[Round], root_seat: int) -> np.ndarray:
+    def score(self, positions: Sequence[Round], root_seat: int, *,
+              tensor_cache=None) -> np.ndarray:
         """Every position from ONE seat's team perspective (one batch)."""
-        return self.score_many(positions, [int(root_seat)] * len(positions))
+        seats = [int(root_seat)] * len(positions)
+        # Preserve the existing override contract when reuse is not requested.
+        if tensor_cache is None:
+            return self.score_many(positions, seats)
+        return self.score_many(positions, seats, tensor_cache=tensor_cache)
 
-    def score_many(self, positions: Sequence[Round], seats: Sequence[int]) -> np.ndarray:
+    def score_many(self, positions: Sequence[Round], seats: Sequence[int], *,
+                   tensor_cache=None) -> np.ndarray:
         """Row ``i`` from ``seats[i]``'s TEAM perspective, still one batch.
 
         The perspective is a per-row input tensor, so positions whose moving
@@ -386,12 +506,14 @@ class CompleteWorldEvaluator:
         values = np.empty(n, dtype=np.float64)
         rows: list[ValueAfterstateTensors] = []
         pending: list[int] = []
+        encoder = self.encoder
         for index, (rnd, root_seat) in enumerate(zip(positions, seats)):
             if rnd.phase == "round_end":
                 values[index] = float(
                     terminal_distribution(rnd, root_seat) @ self.support)
             else:
-                rows.append(tensors_from_round(rnd, root_seat))
+                rows.append(encoder(rnd, root_seat) if tensor_cache is None else
+                            tensor_cache.encode(rnd, encoder, root_seat))
                 pending.append(index)
         if rows:
             values[pending] = self.probabilities(rows) @ self.support
@@ -408,6 +530,14 @@ class CompleteWorldEvaluator:
         import torch
 
         out = np.empty((len(rows), OUTCOME_CLASSES), dtype=np.float64)
+        # The rows must be the width THIS net reads.  Checked here, before
+        # the net, so a mis-routed encoder version is a named refusal rather
+        # than a matmul error (or, worse, a silently v1-shaped tensor).
+        want = int(getattr(getattr(self.model, "config", None), "public_dim", PUBLIC_DIM))
+        widths = {int(row.public.shape[0]) for row in rows}
+        if widths != {want}:
+            raise CWVError(f"public tensor width {sorted(widths)} != the net's "
+                           f"{want} (encoder v{self.enc_version})")
         history_free = getattr(getattr(self.model, "config", None),
                                "architecture", None) == "mlp"
         with torch.inference_mode():
@@ -697,7 +827,8 @@ def finish_current_trick(clone: Round, policy=None) -> None:
 
 def afterstate(rnd: Round, seat: int, hands: Sequence[Sequence[str]],
                buried: Sequence[str], candidate: Sequence[str], *,
-               finish_trick: bool = False, policy=None) -> Round:
+               finish_trick: bool = False, policy=None,
+               _lead_validation=None) -> Round:
     """Clone exactly as ``MCBot._rollout`` does, play ``candidate``, stop."""
     clone: Round = copy.copy(rnd)
     clone.hands = [list(hand) for hand in hands]
@@ -711,7 +842,25 @@ def afterstate(rnd: Round, seat: int, hands: Sequence[Sequence[str]],
     clone.message = None
     clone._trusted_rollout = True
     clone._determinized_world = True
-    clone.play(seat, list(candidate))
+    if _lead_validation is not None:
+        from ..engine.legal import PreparedLeadValidation
+        if type(_lead_validation) is not PreparedLeadValidation:
+            raise CWVError("afterstate requires an exact prepared lead context")
+    if _lead_validation is not None and not clone.trick.plays:
+        # Keep the engine and its checkpoint-bound source identity unchanged.
+        # A failed throw reduces to a single component, whose ordinary play
+        # validation is cheap. Standing throws deliberately validate again.
+        clone._require(seat, "play")
+        others = [clone.hands[s] for s in range(4) if s != seat]
+        accepted, message = _lead_validation.validate(
+            list(candidate), clone.hands[seat], others, clone.ordering)
+        clone.play(seat, accepted)
+        # The accepted component stands on its own, so preserve the original
+        # submitted throw's penalty message. A lead cannot resolve the trick.
+        if message is not None:
+            clone.message = message
+    else:
+        clone.play(seat, list(candidate))
     if finish_trick:
         finish_current_trick(clone, policy)
     return clone
@@ -1110,20 +1259,22 @@ def _bot_class(worlds: int, finish_trick: bool, lcb: float,
 
 @lru_cache(maxsize=8)
 def _shared_evaluator(path: str, mtime_ns: int, size: int, threads: int | None,
-                      max_batch: int) -> CompleteWorldEvaluator:
+                      max_batch: int, encoding: str) -> CompleteWorldEvaluator:
     del mtime_ns, size
-    return CompleteWorldEvaluator(path, threads=threads, max_batch=max_batch)
+    return CompleteWorldEvaluator(path, threads=threads, max_batch=max_batch,
+                                   encoding=encoding)
 
 
 def shared_evaluator(checkpoint: str | os.PathLike[str], *, threads: int | None = 1,
-                     max_batch: int = 4096) -> CompleteWorldEvaluator:
-    """One evaluator per (checkpoint file, threads) per process."""
+                     max_batch: int = 4096,
+                     encoding: str = "reference") -> CompleteWorldEvaluator:
+    """One evaluator per (checkpoint file, threads, encoding) per process."""
     resolved = Path(checkpoint).resolve()
     if not resolved.is_file():
         raise CWVError(f"checkpoint not found: {resolved}")
     stat = resolved.stat()
     return _shared_evaluator(str(resolved), stat.st_mtime_ns, stat.st_size,
-                             threads, int(max_batch))
+                             threads, int(max_batch), encoding)
 
 
 def make_cwv_bot(checkpoint: str | os.PathLike[str], *, worlds: int,

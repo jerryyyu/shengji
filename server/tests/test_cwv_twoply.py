@@ -491,7 +491,7 @@ def test_terminal_reached_mid_ply_is_exact_and_never_touches_the_net():
 
 # ------------------------------------------ 6. registry + calibration
 
-def test_registry_names_and_calibration_binding_include_plies(checkpoint, tmp_path):
+def test_registry_names_and_calibration_binding_include_plies(checkpoint, tmp_path, monkeypatch):
     sha8 = cwv_policy.checkpoint_id(checkpoint)
     assert policy_name(sha8, 7, plies=1) == f"mc-cwv2-{sha8}-w7"
     assert policy_name(sha8, 7, plies=2) == f"mc-cwv2-{sha8}-w7-p2"
@@ -529,12 +529,34 @@ def test_registry_names_and_calibration_binding_include_plies(checkpoint, tmp_pa
         "--base-policy", "mc-lite", "--deals", "1", "--grid", "2,3",
         "--subset-stride", "12", "--max-iterations", "1", "--budgets", "1x,3x",
         "--no-production-ladder", "--plies", "1"])
+    # This is a registry/encoder/plies-binding test, not a timing benchmark.
+    # Keep the real engine states, factory calls, and forward passes, but give
+    # the ladder a known positive cost curve. On shared CI hardware W=3 can
+    # otherwise happen to time faster than W=2 and fail before binding checks.
+    real_production = duel.measure_production
+    real_bot = duel.measure_bot
+    measured_worlds = []
+
+    def production_with_test_cost(*args, **kwargs):
+        result = real_production(*args, **kwargs)
+        assert result["_subset"] and result["subset_size"] > 0
+        return {**result, "subset_mean_wall": 0.03}
+
+    def bot_with_test_cost(*args, **kwargs):
+        result = real_bot(*args, **kwargs)
+        assert result["decisions"] > 0 and result["forwards_per_decision"] >= 1
+        measured_worlds.append(result["worlds"])
+        return {**result, "mean_wall": 0.01 + 0.01 * result["worlds"]}
+
+    monkeypatch.setattr(duel, "measure_production", production_with_test_cost)
+    monkeypatch.setattr(duel, "measure_bot", bot_with_test_cost)
     try:
         calibration = duel.calibrate(args)
     finally:
         for name in list(REGISTRY):
             if name.startswith("mc-cwv"):
                 REGISTRY.pop(name)
+    assert measured_worlds == [2, 3]
     binding = calibration["binding"]
     assert binding["plies"] == 1 and calibration["bot"] == "two-ply"
     assert calibration["arm_policy_at_1x"].startswith(f"mc-cwv2-{sha8}-w")

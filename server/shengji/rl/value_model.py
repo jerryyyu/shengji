@@ -30,9 +30,17 @@ from .value_afterstate import (
     WORLD_RECEIVERS,
 )
 from .encode import N_CARDS
+from .encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
 
 
 MLP_INPUT_DIM = PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+#: the two ADDITIVE config fields: absent from every archived payload, in
+#: which case they take the v1 defaults and the rebuilt net is byte-identical
+_WIDTH_FIELDS = ("public_dim", "enc_version")
+
+
+def mlp_input_dim(public_dim: int = PUBLIC_DIM) -> int:
+    return int(public_dim) + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
 
 
 class ValueModelError(ValueError):
@@ -49,8 +57,21 @@ class ValueModelConfig:
     dropout: float = 0.0
     max_history: int = HISTORY_MAX_EVENTS
     outcome_classes: int = OUTCOME_CLASSES
+    #: the public tensor width this net reads and the observation encoder
+    #: version it implies.  Defaults are v1; ``payload()`` omits them at the
+    #: defaults so a v1 checkpoint's stored config is what it always was.
+    public_dim: int = PUBLIC_DIM
+    enc_version: int = ENC_VERSION
 
     def validate(self) -> None:
+        try:
+            enc_version = check_version(self.enc_version)
+        except ValueError as exc:
+            raise ValueModelError("model configuration drift") from exc
+        if type(self.public_dim) is not int \
+                or self.public_dim != OBS_DIM_BY_VERSION[enc_version] + 1:
+            raise ValueModelError("model configuration drift: public_dim does not "
+                                  "match the encoder version")
         integer_fields = (
             self.width, self.history_layers, self.attention_heads,
             self.feedforward_width, self.max_history, self.outcome_classes)
@@ -72,11 +93,18 @@ class ValueModelConfig:
 
     def payload(self) -> dict[str, object]:
         self.validate()
-        return asdict(self)
+        out = asdict(self)
+        if self.enc_version == ENC_VERSION and self.public_dim == PUBLIC_DIM:
+            # v1 payloads are unchanged: archived checkpoints compare their
+            # stored config against this, field for field
+            for name in _WIDTH_FIELDS:
+                del out[name]
+        return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
-        if type(value) is not dict or set(value) != set(asdict(cls())):
+        base = set(asdict(cls())) - set(_WIDTH_FIELDS)
+        if type(value) is not dict or set(value) not in (base, base | set(_WIDTH_FIELDS)):
             raise ValueModelError("model configuration schema drift")
         try:
             config = cls(**value)
@@ -106,14 +134,15 @@ class ValueNetwork(nn.Module):
             self.history_position = None
             self.history_encoder = None
             self.trunk = nn.Sequential(
-                nn.Linear(MLP_INPUT_DIM, config.feedforward_width), nn.GELU(),
+                nn.Linear(mlp_input_dim(config.public_dim), config.feedforward_width),
+                nn.GELU(),
                 nn.Dropout(config.dropout),
                 nn.Linear(config.feedforward_width, width), nn.GELU(),
                 nn.Dropout(config.dropout))
             self.head = nn.Linear(width, OUTCOME_CLASSES)
             return
         self.public_encoder = nn.Sequential(
-            nn.Linear(PUBLIC_DIM, width), nn.ReLU(), nn.LayerNorm(width))
+            nn.Linear(config.public_dim, width), nn.ReLU(), nn.LayerNorm(width))
         self.world_encoder = nn.Sequential(
             nn.Linear(WORLD_RECEIVERS * N_CARDS, width), nn.ReLU(),
             nn.LayerNorm(width))
@@ -168,7 +197,7 @@ class ValueNetwork(nn.Module):
                 history_mask: torch.Tensor, world: torch.Tensor,
                 perspective: torch.Tensor) -> torch.Tensor:
         batch = public.shape[0]
-        if public.shape != (batch, PUBLIC_DIM) \
+        if public.shape != (batch, self.config.public_dim) \
                 or history.ndim != 3 or history.shape[0] != batch \
                 or history.shape[2] != HISTORY_EVENT_DIM \
                 or history.shape[1] > self.config.max_history \

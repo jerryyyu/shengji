@@ -288,16 +288,24 @@ class PublicPriorHead:
                 "prior_target": config.get("prior_target"),
                 "schema": self.metadata.get("schema")}
 
-    @staticmethod
-    def encode(rnd: Round, seat: int, ballot: Sequence[Sequence[str]]
+    @property
+    def enc_version(self) -> int:
+        """The encoder version the LOADED prior head was trained on."""
+        from ..rl.encode_versions import ENC_VERSION
+        version = getattr(self.model, "enc_version", None)
+        return ENC_VERSION if version is None else int(version)
+
+    def encode(self, rnd: Round, seat: int, ballot: Sequence[Sequence[str]]
                ) -> tuple[np.ndarray, np.ndarray]:
         """``(obs, cand)`` rows of one request, encoded NOW (the world clone
         keeps moving; nothing of it is retained)."""
-        from ..rl.encode import ACT_DIM, encode_action, encode_obs
+        from ..rl.encode import ACT_DIM, encode_action
+        from ..rl.encode_versions import call_encode, encode_obs
 
         if not ballot:
             raise CWVError("prior head received an empty ballot")
-        obs = np.asarray(encode_obs(rnd, seat), dtype=np.float32)
+        obs = np.asarray(call_encode(encode_obs, rnd, seat, self.enc_version),
+                         dtype=np.float32)
         cand = np.asarray([encode_action(list(play), rnd) for play in ballot],
                           dtype=np.float32).reshape(len(ballot), ACT_DIM)
         return obs, cand

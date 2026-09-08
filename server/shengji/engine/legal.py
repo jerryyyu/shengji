@@ -13,7 +13,7 @@ Follow rules implemented (standard digital-tractor rule set):
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, OrderedDict
 
 from .cards import Ordering, TRUMP
 from .combos import Decomposition, decompose, decompose_matching, has_tractor, pair_count
@@ -82,6 +82,115 @@ def validate_lead(play: list[str], hand: list[str], other_hands: list[list[str]]
         return _throw_penalty(min(beatable,
                                   key=lambda c: (c.pair_len, c.top)))
     return play, None
+
+
+class PreparedLeadValidation:
+    """Prepared facts for validating leads in one determinized world.
+
+    The context is deliberately bound to the exact ``Ordering`` instance and
+    snapshots of the participating hands.  A caller that presents any other
+    state is sent through :func:`validate_lead`, which keeps this optimization
+    decision-preserving even when a rollout is copied or mutated incorrectly.
+    Facts are keyed by effective suit and component pair length; that is the
+    only information about a component used by the opponent scan in the
+    ordinary validator.
+    """
+
+    _MAX_FACTS = 64
+
+    def __init__(self, hand: list[str], other_hands: list[list[str]],
+                 ordering: Ordering):
+        self._hand_snapshot = list(hand)
+        self._other_hands_snapshot = [list(other) for other in other_hands]
+        self._ordering = ordering
+        self._ordering_binding = (ordering.trump_suit, ordering.trump_rank)
+        self._suit_cards: dict[str, list[list[str]]] = {}
+        self._max_top: OrderedDict[tuple[str, int], float] = OrderedDict()
+        self.calls = 0
+        self.hits = 0
+        self.misses = 0
+        self.fallbacks = 0
+
+    @property
+    def counters(self) -> dict[str, int]:
+        """Counters for this context only (never the world-cache counters)."""
+        return {
+            "calls": self.calls,
+            "hits": self.hits,
+            "misses": self.misses,
+            "fallbacks": self.fallbacks,
+        }
+
+    def _bound(self, hand: list[str], other_hands: list[list[str]],
+               ordering: Ordering) -> bool:
+        return (ordering is self._ordering
+                and (ordering.trump_suit, ordering.trump_rank)
+                == self._ordering_binding
+                and hand == self._hand_snapshot
+                and other_hands == self._other_hands_snapshot)
+
+    def _opponent_suits(self, eff: str) -> list[list[str]]:
+        suited = self._suit_cards.get(eff)
+        if suited is None:
+            suited = [suit_cards(other, eff, self._ordering)
+                      for other in self._other_hands_snapshot]
+            self._suit_cards[eff] = suited
+        return suited
+
+    def _highest_beatable(self, eff: str, pair_len: int) -> float:
+        key = (eff, pair_len)
+        cached = self._max_top.get(key)
+        if cached is not None:
+            self.hits += 1
+            self._max_top.move_to_end(key)
+            return cached
+
+        self.misses += 1
+        suited = self._opponent_suits(eff)
+        if pair_len == 0:
+            tops = [self._ordering.level(card)
+                    for cards in suited for card in cards]
+        elif pair_len == 1:
+            tops = [self._ordering.level(card)
+                    for cards in suited
+                    for card, count in Counter(cards).items()
+                    if count >= 2]
+        else:
+            from .combos import find_tractor_runs
+            tops = [self._ordering.level(run[-1])
+                    for cards in suited
+                    for run in find_tractor_runs(cards, self._ordering,
+                                                 pair_len)]
+        top = max(tops, default=float("-inf"))
+        self._max_top[key] = top
+        self._max_top.move_to_end(key)
+        if len(self._max_top) > self._MAX_FACTS:
+            self._max_top.popitem(last=False)
+        return top
+
+    def validate(self, play: list[str], hand: list[str],
+                 other_hands: list[list[str]], ordering: Ordering
+                 ) -> tuple[list[str], str | None]:
+        """Validate using prepared opponent facts when the binding matches."""
+        if not self._bound(hand, other_hands, ordering):
+            self.fallbacks += 1
+            return validate_lead(play, hand, other_hands, ordering)
+
+        self.calls += 1
+        check_in_hand(hand, play)
+        eff = uniform_suit(play, ordering)
+        if eff is None:
+            raise IllegalPlay("A lead must be a single suit (throws included).")
+        dec = decompose(play, ordering)
+        if len(dec.components) == 1:
+            return play, None
+        beatable = [component for component in dec.components
+                    if self._highest_beatable(eff, component.pair_len)
+                    > component.top]
+        if beatable:
+            return _throw_penalty(min(beatable,
+                                      key=lambda c: (c.pair_len, c.top)))
+        return play, None
 
 
 def _throw_penalty(comp) -> tuple[list[str], str]:

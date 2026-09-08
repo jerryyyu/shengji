@@ -1,5 +1,6 @@
 """Pure wiring and receipt tests for the exhaustive shortlist screen."""
 import copy
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +20,16 @@ def cfg(arm="uniform", **overrides):
     }
     value.update(overrides)
     return value
+
+
+def identity_summary(*args, **kwargs):
+    """Shape returned by duel.summarize before summary_for adds screen metadata."""
+    return {
+        "arm": "none",
+        "arm_description": "mc-s0-report-lcb on both sides (identity control)",
+        "outcome_sentinel": {"utility": 7},
+        "work_totals": {"arm": {}, "baseline": {}},
+    }
 
 
 def test_baseline_dose_is_fixed_when_production_arm_is_scaled():
@@ -73,12 +84,40 @@ def test_reopen_binds_recipe_and_rank(tmp_path):
         S.reopen_shard(path, changed, 0)
 
 
+def test_cli_binds_k8_into_uniform_worker_and_persisted_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    seen = []
+
+    def no_work(config, pending, shards, **kwargs):
+        seen.append((config, pending, shards))
+
+    monkeypatch.setattr(S, "_run_pending", no_work)
+    out = tmp_path / "screen"
+    assert S.main(["--arm", "uniform", "--alternatives", "8",
+                   "--clusters", "1", "--workers", "1", "--seed0", "17",
+                   "--out", str(out)]) == 0
+
+    assert seen and seen[0][1] == [0]
+    config = seen[0][0]
+    assert config["shortlist"]["alternatives"] == 8
+    assert config["shortlist"]["uniform"] is True
+    persisted = json.loads((out / "config.json").read_text())
+    assert persisted["shortlist"]["alternatives"] == 8
+    worker_bot = S.make_side(persisted, "arm", seed=17)
+    assert worker_bot.shortlist_config.alternatives == 8
+    assert worker_bot.N_DETERMINIZATIONS == 30
+    assert worker_bot.REPORT_FOLD_WORLDS == 300
+
+
 def test_summary_flags_wall_target_without_censoring_completion(monkeypatch):
     captured = {}
 
     def summarize(records, base, **kwargs):
         captured["records"] = records
-        return {"work_totals": {
+        return {"arm": "none",
+                "arm_description": "mc-s0-report-lcb on both sides (identity control)",
+                "outcome_sentinel": {"utility": 7},
+                "work_totals": {
             "arm": {"decision_cpu_seconds": 4, "decision_wall_seconds": 4},
             "baseline": {"decision_cpu_seconds": 2, "decision_wall_seconds": 2},
         }}
@@ -92,3 +131,59 @@ def test_summary_flags_wall_target_without_censoring_completion(monkeypatch):
     assert result["arm_over_baseline_decision_wall"] == 2
     assert result["decision_wall_target_status"] == "over_target"
     assert result["equal_work_strength_claim"] is False
+    assert result["arm"] == "uniform"
+    assert result["outcome_sentinel"] == {"utility": 7}
+
+
+@pytest.mark.parametrize(
+    ("arm", "expected"),
+    [
+        ("learned", "flat exhaustive learned root shortlist"),
+        ("uniform", "flat exhaustive uniform root shortlist"),
+        ("identity", "production identity control"),
+        ("production", "production at N=30 selection worlds, R=300 report worlds"),
+    ],
+)
+def test_summary_describes_plain_arm_from_config(monkeypatch, arm, expected):
+    monkeypatch.setattr(S.duel, "summarize", identity_summary)
+    config = cfg(arm)
+    result = S.summary_for([{"records": ["sentinel"]}], config)
+    assert result["arm"] == arm
+    assert result["arm_description"] == expected
+    assert result["outcome_sentinel"] == {"utility": 7}
+    if arm == "learned":
+        assert "identity control" not in result["arm_description"]
+
+
+def test_summary_describes_scaled_production_from_actual_dose(monkeypatch):
+    monkeypatch.setattr(S.duel, "summarize", identity_summary)
+    result = S.summary_for([{"records": ["sentinel"]}],
+                           cfg("production", production_multiplier=3))
+    assert result["arm"] == "production"
+    assert result["arm_description"] == \
+        "production at N=90 selection worlds, R=900 report worlds"
+    assert result["outcome_sentinel"] == {"utility": 7}
+
+
+@pytest.mark.parametrize("overrides", [
+    {"double_shortlist": {"mode": "learned"}},
+    {"baseline": "flat-shortlist"},
+])
+def test_summary_preserves_variant_descriptions(monkeypatch, overrides):
+    monkeypatch.setattr(S.duel, "summarize", identity_summary)
+    result = S.summary_for([{"records": ["sentinel"]}], cfg("learned", **overrides))
+    if "double_shortlist" in overrides:
+        assert result["arm_description"] == (
+            "exhaustive learned root shortlist; bounded per-world perfect-information "
+            "inner shortlist continuation, then terminal heuristic values and root MC-LCB")
+        assert result["baseline_description"] == "production"
+    else:
+        assert result["arm_description"] == "flat exhaustive learned root shortlist"
+        assert result["baseline_description"] == "flat-shortlist"
+    assert result["outcome_sentinel"] == {"utility": 7}
+
+
+def test_summary_overwrites_identity_description_from_real_duel_summary():
+    result = S.summary_for([{"records": []}], cfg("learned"))
+    assert result["arm"] == "learned"
+    assert result["arm_description"] == "flat exhaustive learned root shortlist"

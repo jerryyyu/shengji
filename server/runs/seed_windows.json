@@ -1,6 +1,6 @@
 {
   "schema": "shengji-seed-windows-v1",
-  "_comment": "Append-only ledger of deal-seed windows [seed0, seed0 + clusters). Every trajectory / screen / calibration run registers its window on start and refuses an overlap (shengji/seeds.py; scripts/seed_windows.py list|check). Never edit or delete an entry; add a new one.",
+  "_comment": "Append-only ledger of deal-seed windows [seed0, seed0 + clusters). Every trajectory / screen / calibration run registers its window on start and refuses an overlap (shengji/seeds.py; scripts/seed_windows.py list|check). Never edit or delete an entry; add a new one.  RESERVED RANGE, no entry yet: [91260904, 91280904) is set aside for the RANK-DIVERSE strength screens (Jerry, 2026-09-06: measure strength outside rank 2). Those screens cycle the trump rank BY CLUSTER (ranks[cluster % len(ranks)]), so a run needs ONE CONTIGUOUS block and the ranks interleave inside it; do not carve this range per rank. The run registers its own window here on start, with its own name and its actual cluster count -- pre-registering a differently sized placeholder does NOT work, because reuse/resume matches on name AND seed0 AND clusters, so a 260-cluster run cannot claim a 1040-cluster reservation. Rank 2 keeps screen-90260904, which every existing shortlist result uses.",
   "windows": [
     {
       "name": "run-A",
@@ -211,6 +211,118 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": "14de6145e318726dca74b744688410ce43d5f804",
       "note": "leaf Mini screen: INTENTIONAL REPLICATE of screen-70260904 (same deals by design). registered retroactively 2026-09-05 (backfill of windows dealt before the registry existed)"
+    },
+    {
+      "name": "screen-cwv-k4-ranks13-20260906",
+      "purpose": "screen",
+      "seed0": 91260904,
+      "clusters": 260,
+      "span": [
+        91260904,
+        91261164
+      ],
+      "created_at": "2026-09-06T07:40:00Z",
+      "host": "shengji-cloud",
+      "git_head": "ce68f6eda0768614ccc25267580521172e5bf96e",
+      "note": "PR258 first fresh mixed-rank K4/ABC/W32 vs production screen; fixed cluster-modulo rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A, 20 clusters per rank and two mirrors. Allocated before launch under PR259 documented range; source-reviewed head recorded here, executing head recorded in launch/readout. No per-rank strength claim."
+    },
+    {
+      "name": "screen-cwv-double-ranks13-20260906",
+      "purpose": "screen",
+      "seed0": 91261164,
+      "clusters": 26,
+      "span": [
+        91261164,
+        91261190
+      ],
+      "created_at": "2026-09-06T10:53:00Z",
+      "host": "shengji-cloud",
+      "git_head": "87552e9649627de002201d5a9c480c15beb57e18",
+      "note": "Reserved before dealing: three intentional matched arms on the SAME 26 clusters, learned-inner vs flat W32, uniform-inner vs flat W32, and flat W32 vs production. ABC checkpoint, K4+incumbent, rank cycle 2,3,4,5,6,7,8,9,10,J,Q,K,A repeated twice, two mirrors. Source reviewed under PR264/265/266. Guidance 4/30 of selection/report worlds, one extra trick, per-world privileged simulation only. Not 78 independent deals; no cost-matched or production claim. See cwv_double_ranks13_dev_20260906.md."
+    },
+    {
+      "name": "traj-s55260904-d5b9f32e2daa",
+      "purpose": "trajectory",
+      "seed0": 55260904,
+      "clusters": 8000,
+      "span": [
+        55260904,
+        55268904
+      ],
+      "created_at": "2026-09-06T08:16:48+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "9b059ff4ba40ba9a85810020f2e8340a0d856e4c",
+      "note": "Run F teacher trajectories: Run E recipe (N90/R900 3x worlds, explore 0.1/k2, wide-ballot knobs, --widen union, --round-mix sampled, rank/banker diverse), 16,000 rounds, out /root/traj-out/runF on shengji-cloud. REGISTERED BY THE RUN ITSELF at launch 2026-09-06 08:16Z, but only in that host's working copy; committed here so the canonical registry reflects a window that is really dealt. Currently PAUSED at 179/8000 clusters with shards preserved, host handed to Codex; resumes under the same name."
+    },
+    {
+      "name": "traj-s65260904-95a09f059125",
+      "purpose": "trajectory",
+      "seed0": 65260904,
+      "clusters": 8000,
+      "span": [
+        65260904,
+        65268904
+      ],
+      "created_at": "2026-09-06T18:26:41+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "e5fb03ab2487d61123f7b3e945a421018f54feaa",
+      "note": "Run F2: Run E recipe (N90/R900) under the compiled engine, replacing the pure-Python Run F remainder (issue #272). registered by the run itself on start 2026-09-06 18:26:41 UTC"
+    },
+    {
+      "name": "screen-cwv-acd-ranks13-big-20260906",
+      "purpose": "screen",
+      "seed0": 91261190,
+      "clusters": 520,
+      "span": [
+        91261190,
+        91261710
+      ],
+      "created_at": "2026-09-07T00:33:00Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "0ba7f709020b455d62f74954dc54154b0cd52d6d",
+      "note": "A+C+D W32 13-rank screen on 520 fresh deals; same recipe and cluster-modulo rank cycle as screen-cwv-k4-ranks13-20260906 so the two pool"
+    },
+    {
+      "name": "run-G",
+      "purpose": "trajectory",
+      "seed0": 75260904,
+      "clusters": 16000,
+      "span": [
+        75260904,
+        75276904
+      ],
+      "created_at": "2026-09-07T05:45:00Z",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "be56f456ba8cc89468ae2b08b8e5f166ceac8a14",
+      "note": "Run E recipe (N90/R900 teacher, rank-diverse sampled), perf, queued behind Run E"
+    },
+    {
+      "name": "run-H",
+      "purpose": "trajectory",
+      "seed0": 85260904,
+      "clusters": 16000,
+      "span": [
+        85260904,
+        85276904
+      ],
+      "created_at": "2026-09-07T05:45:00Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "e5fb03ab2487d61123f7b3e945a421018f54feaa",
+      "note": "Run E recipe, cloud, queued behind Run F2"
+    },
+    {
+      "name": "run-I",
+      "purpose": "trajectory",
+      "seed0": 95260904,
+      "clusters": 16000,
+      "span": [
+        95260904,
+        95276904
+      ],
+      "created_at": "2026-09-08T14:30:00Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "5ab631bb74bfde14d17f0beb47ef2ecdd540ad27",
+      "note": "Run I: the first teacher dataset generated by the W32 SHORTLIST rather than production. Policy mc-shortlist-3cd27716-w32-r55d379a3, checkpoint ACDEF v2 3cd27716. Same 16,000-cluster scale as runs G and H so it is a drop-in comparable substitute. Registered on the host as traj-s95260904-83969a2ba9a1; recorded here because a window registered only on a remote host is invisible to the repo."
     }
   ]
 }

@@ -3,7 +3,8 @@
     train_cwv.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         --arch mlp|seq [--device mps|cpu] [--limit-clusters N] [--aux-points]
         [--seed N] [--public-head CKPT] [--epochs 20] [--batch-size 1024]
-        [--select-metric val_ce|val_rank_regret|val_points_mae] [--val-rank-records N]
+        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae]
+        [--val-rank-records N]
         [--init CKPT [--init-lr-scale F] [--init-exclude-exposed]] ...
     train_cwv.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
         [--split test|novel|val|train|all] [--public-head CKPT]
@@ -60,13 +61,35 @@ against the search's means, on the level scale the search consumes),
 head, what the vleaf leaf consumes) next to CE / MAE.  ``--select-metric``
 picks which one drives early stopping and ``best.pt``: ``val_ce`` (the
 default, byte-identical to the historical runs), ``val_rank_regret`` (the
-recommendation for the ranking consumers: one-ply / shortlist / netroll /
-PUCT) or ``val_points_mae`` (the recommendation for the leaf).  ``--init``
+recommendation for the TOP-1 consumers: one-ply and the PUCT prior, which
+play or prior the net's single pick), ``val_rank_regret_at_4`` (the
+recommendation for the SHORTLIST, which keeps 4 net-ranked alternatives
+plus production's incumbent and hands that SET to the unchanged MC-LCB
+search) or ``val_points_mae`` (the recommendation for the leaf).  The same
+function also reports ``rank_recall_at_k`` (the chance a search argmax is
+inside the net's top k).  ``--init``
 warm-starts trunk and heads from a checkpoint of the same architecture and
 feature layout (refused otherwise); the receipt's ``consumer`` block names
-which search designs consume which head on which positions.  ``rank_regret``
-is the level-bracket transform of the search's MEAN points, U(E[points]),
-an MC-ranking proxy -- not E[U].
+which search designs consume which head on which positions, and which of
+them read the top-1 shape and which the top-k shape.  ``rank_regret`` and
+``rank_regret_at_k`` alike are the level-bracket transform of the search's
+MEAN points, U(E[points]), an MC-ranking proxy -- not E[U].
+
+Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
+--------------------------------------------------------------------
+A file written by ``scripts/label_harvest.py`` (``train.harvest_labels``:
+off-distribution harvest positions -- human, Luna, PT1, room-log, highn --
+labelled with production's own search) is a search-facing holdout.  The
+final test pass of ``train`` and ``evaluate`` call the SAME
+``cwv_eval.search_facing_metrics`` on it and report the block under
+``search_facing.holdouts.<name>`` (and ``receipt["holdouts"]``): rank
+regret / top-1 from the labels' ballot and means (every candidate applied
+in the record's true world), CE / value MAE / reliability and the points
+head from the record's outcome.  What a source cannot support is SKIPPED
+and reported null with the reason (``cwv_eval.HOLDOUT_SUPPORT``): PT1 and
+highn rows carry no outcome, so only their ranking is scored; a holdout
+sharing a deal with the fit/selection population or the cumulative
+exposure is refused, exactly as ``--eval-luna``.
 
 Cumulative exposure (warm start)
 --------------------------------
@@ -104,7 +127,9 @@ import torch
 from torch import nn
 
 from ..rl.douzero_micro import HISTORY_MAX_EVENTS
+from ..rl.encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
 from ..rl.value_afterstate import OUTCOME_CLASSES, ValueAfterstateTensors
+from ..rl.value_afterstate_v2 import public_dim
 from ..rl.value_checkpoint import (
     ValueCheckpointError,
     file_sha256,
@@ -132,6 +157,8 @@ from .cwv_data import (
 )
 from .cwv_eval import (
     CONSUMERS,
+    DEFAULT_RANK_KS as RANK_KS,
+    HOLDOUT_SUPPORT,
     EvalError,
     SCORERS,
     CandidateSet,
@@ -139,7 +166,12 @@ from .cwv_eval import (
     candidate_pass,
     candidate_tensors,
     ensure_candidate_set,
+    holdout_candidate_set,
+    holdout_deal_keys,
+    load_labeled_holdout,
+    check_public_head_servable,
     load_public_head,
+    materialize_holdout_records,
     paired_agreement,
     search_facing_metrics,
     summarize_agreement,
@@ -155,6 +187,7 @@ from .data import (
     split_counts,
     split_deals,
     split_mask,
+    SplitSelector,
 )
 from .train_v0 import (
     EVAL_SPLITS,
@@ -201,13 +234,52 @@ SELECT_METRICS = {
                                      "points (cwv_eval.points_metrics; the vleaf leaf's "
                                      "quantity)"),
 }
+#: the TOP-K ranking metrics: the quantity the SHORTLIST consumes.
+#: ``cwv_shortlist`` keeps ``alternatives`` net-ranked actions plus
+#: production's incumbent and hands that SET to the unchanged MC-LCB
+#: search, so a top-k SHAPE is the right offline shape for it rather than
+#: a top-1 argmax.  These metrics are only a BALLOT-SCOPED PROXY for that
+#: shape: they rank the decision's stored ballot candidates and union no
+#: incumbent, whereas the shortlist enumerates every legal action.
+#: Measured 2026-09-06: the proxy did NOT reproduce the sealed shortlist
+#: checkpoint contrast, so the in-search screen remains the selector of
+#: record.  ``val_rank_regret_at_1`` is ``val_rank_regret`` by
+#: construction (cwv_eval asserts the identity).
+for _k in RANK_KS:
+    SELECT_METRICS[f"val_rank_regret_at_{_k}"] = (
+        f"rank_regret_at_{_k}",
+        f"validation rank regret AT k={_k} of the level head: level of the search's best "
+        f"candidate minus the expected level of the search's best candidate INSIDE the net's "
+        f"top-{_k} (uniform tie-breaking), per decision, averaged "
+        f"(cwv_eval.rank_metrics; a BALLOT-SCOPED PROXY for a top-k consumer, NOT the "
+        f"shortlist's own quantity: ballot candidates only, no incumbent union, no exhaustive "
+        f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
+        f"MEAN points -- an MC-ranking proxy, not E[U])")
+del _k
+#: New trainings default to encoder v2. Jerry, 2026-09-08, with cost explicitly
+#: set aside. This is a DECISION UNDER UNCERTAINTY, not a demonstrated win: the
+#: v2 encoder's own effect crosses zero at both data sizes (+0.0510 [-0.006,
+#: +0.109] at 72k, +0.0385 [-0.012, +0.089] at 96k). What is true is that every
+#: point estimate favours it and A+C+D+E+F2 v2 is the best arm screened, on the
+#: clean 520 window (+0.1260) and pooled over 780 deals (+0.0936). Existing v1
+#: checkpoints are unaffected: the evaluator dispatches on each checkpoint's own
+#: declared ``enc_version``, so this changes what NEW runs train, nothing else.
+ENC_VERSION_DEFAULT_FOR_TRAINING = 2
+
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "val_fraction": 0.1, "test_fraction": 0.1, "hidden": 512, "dropout": 0.1,
-    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "seq_kind": "transformer",
+    "aux_weight": 0.1, "n_boot": 1000, "window": 64, "decode_workers": 6,
+    "seq_kind": "transformer",
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
+    # A fresh run has no checkpoint to read a version from, so this is where the
+    # version is chosen.  It became 2 on 2026-09-08, so an unchanged command line
+    # now produces v2 (560 + 1) checkpoints; pass --encoder-version 1 for the
+    # historical width.  Existing checkpoints are unaffected either way: the
+    # evaluator dispatches on each checkpoint's own declared ``enc_version``.
+    "encoder_version": ENC_VERSION_DEFAULT_FOR_TRAINING,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "argv", "started", "wall_secs", "device", "versions", "git",
@@ -236,24 +308,33 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                  dropout: float = DEFAULTS["dropout"], seq_kind: str = DEFAULTS["seq_kind"],
                  seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
                  seq_heads: int = DEFAULTS["seq_heads"],
-                 seq_feedforward: int = DEFAULTS["seq_feedforward"]) -> ValueModelConfig:
+                 seq_feedforward: int = DEFAULTS["seq_feedforward"],
+                 encoder_version: int = DEFAULTS["encoder_version"]) -> ValueModelConfig:
     """The #214 model configuration behind ``--arch``: ``mlp`` maps
     ``--hidden H`` onto a ``[H, H // 2]`` trunk (``feedforward_width=H``,
     ``width=H // 2``); ``seq`` is #214's history model."""
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
     try:
+        encoder_version = check_version(encoder_version)
+    except ValueError as exc:
+        raise TrainError(f"--encoder-version: {exc}") from None
+    # The net's public width follows the encoder version and is RECORDED in
+    # the config (omitted from the payload at the v1 defaults, so a v1
+    # checkpoint's stored config is what the pre-change trainer wrote).
+    width_fields = dict(public_dim=public_dim(encoder_version), enc_version=encoder_version)
+    try:
         if arch == "mlp":
             return ValueModelConfig(
                 architecture="mlp", width=int(hidden) // 2, history_layers=1,
                 attention_heads=1, feedforward_width=int(hidden), dropout=float(dropout),
-                max_history=HISTORY_MAX_EVENTS)
+                max_history=HISTORY_MAX_EVENTS, **width_fields)
         if seq_kind not in SEQ_KINDS:
             raise TrainError(f"--seq-kind must be one of {SEQ_KINDS}")
         return ValueModelConfig(
             architecture=seq_kind, width=int(seq_width), history_layers=int(seq_layers),
             attention_heads=int(seq_heads), feedforward_width=int(seq_feedforward),
-            dropout=float(dropout), max_history=HISTORY_MAX_EVENTS)
+            dropout=float(dropout), max_history=HISTORY_MAX_EVENTS, **width_fields)
     except ValueError as exc:
         raise TrainError(f"model configuration: {exc}") from exc
 
@@ -315,6 +396,32 @@ def save_cwv_checkpoint(path: Path, model: ValueNetwork, *, metadata: Mapping[st
     return save_value_checkpoint(path, model, metadata=meta)
 
 
+def bind_encoder_version(metadata: Mapping[str, Any], config: ValueModelConfig, *,
+                         path: str | os.PathLike | None = None) -> int:
+    """The encoder version a checkpoint's identity is validated at, BOUND to
+    ``config.enc_version`` (what inference encodes with).  Raises
+    ``TrainError`` naming both when they disagree; a missing declaration
+    is v1 only when the model config is v1."""
+    label = f"{path}: " if path is not None else ""
+    actual = int(config.enc_version)
+    enc = metadata.get("encoder")
+    value = enc.get("enc_version") if isinstance(enc, Mapping) else None
+    if value is None:
+        if actual != ENC_VERSION:
+            raise TrainError(f"{label}checkpoint metadata declares no encoder version but "
+                             f"the model config is encoder v{actual}; refusing")
+        return ENC_VERSION
+    try:
+        declared = check_version(value)
+    except ValueError as exc:
+        raise TrainError(f"{label}checkpoint declares an unknown encoder version {value!r}") from exc
+    if declared != actual:
+        raise TrainError(f"{label}checkpoint metadata declares encoder v{declared} but the "
+                         f"model config is encoder v{actual}; the identity would be "
+                         "validated at one version and the net encoded at another; refusing")
+    return declared
+
+
 def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "cpu"
                         ) -> tuple[ValueNetwork, dict, AuxPointsHead | None]:
     """Through #214's ``load_checkpoint``; the metadata must name the
@@ -336,10 +443,17 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     if metadata.get("sees_hidden_hands") is not True:
         raise TrainError(f"{path}: checkpoint does not declare sees_hidden_hands")
     enc = metadata.get("encoder") or {}
-    if enc.get("implementation_sha256") != cwv_encoder_identity()["implementation_sha256"]:
+    # The identity is validated at the version the checkpoint DECLARES, but
+    # inference encodes at the version the MODEL CONFIG carries.  Bind them:
+    # a declared version that is not the model's is refused, and a missing
+    # declaration means v1 only when the model itself is v1 (archived
+    # checkpoints predate the field).
+    declared = bind_encoder_version(metadata, model.config, path=path)
+    want = cwv_encoder_identity(declared)
+    if enc.get("implementation_sha256") != want["implementation_sha256"]:
         raise TrainError(f"{path}: checkpoint encoder "
                          f"{str(enc.get('implementation_sha256', ''))[:12]} differs from this "
-                         f"build's {cwv_encoder_identity()['implementation_sha256'][:12]}")
+                         f"build's {want['implementation_sha256'][:12]}")
     aux = None
     if metadata.get("aux_points_head"):
         aux = AuxPointsHead.from_payload(metadata["aux_points_head"]).to(device)
@@ -367,7 +481,11 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
             "target_level", "utility", "ply", "role_attacker", "points_so_far",
             "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
     out: dict[str, list] = {k: [] for k in keys}
-    for block in store.iter_blocks():
+    # A shard holds one deal and the split is by deal, so a selector that can
+    # answer from recorded keys lets us decline most shards without decoding.
+    selects_any = getattr(mask_fn, "selects_any", None)
+    skip = (lambda deal_keys: not selects_any(deal_keys)) if selects_any else None
+    for block in store.iter_blocks(skip=skip):
         sel = np.flatnonzero(mask_fn(block))
         if not sel.size:
             continue
@@ -590,7 +708,8 @@ def rng_guard():
 
 def candidate_set_for(store: CwvBlockStore, keys: set[str], cache: Path | None, *,
                       n_records: int, history: bool, workers: int, label: str,
-                      progress: Callable[[str], None] | None) -> CandidateSet | None:
+                      progress: Callable[[str], None] | None,
+                      version: int = ENC_VERSION) -> CandidateSet | None:
     """The split's memoised ``CandidateSet`` (None when ``n_records`` is 0)."""
     if n_records <= 0:
         return None
@@ -598,7 +717,8 @@ def candidate_set_for(store: CwvBlockStore, keys: set[str], cache: Path | None, 
     with rng_guard():
         return ensure_candidate_set(
             shard_keys, cache, per_shard_limit=per_shard_cap(n_records, len(shard_keys)),
-            history=history, workers=workers, label=label, progress=progress)
+            history=history, workers=workers, label=label, progress=progress,
+            version=version)
 
 
 def rank_levels(model: ValueNetwork, cands: CandidateSet, device: torch.device, *,
@@ -620,6 +740,144 @@ def search_facing(model: ValueNetwork, ev: Mapping[str, np.ndarray],
     block = search_facing_metrics(ev, levels=levels, cands=cands)
     block["rank_secs"] = round(time.perf_counter() - t0, 3)
     return block
+
+
+def parse_holdouts(specs: Sequence[str] | None) -> dict[str, str]:
+    """``--eval-holdout NAME=PATH`` (repeatable) -> ``{name: path}``; names
+    are unique identifiers, paths must exist."""
+    out: dict[str, str] = {}
+    for spec in specs or ():
+        name, sep, path = str(spec).partition("=")
+        name = name.strip()
+        if not sep or not name or not path.strip():
+            raise TrainError(f"--eval-holdout {spec!r}: expected NAME=PATH")
+        if not name.replace("-", "_").replace(".", "_").isidentifier():
+            raise TrainError(f"--eval-holdout {spec!r}: NAME must be an identifier-like label")
+        if name in out:
+            raise TrainError(f"--eval-holdout {spec!r}: duplicate holdout name {name!r}")
+        resolved = Path(path.strip()).expanduser()
+        if not resolved.is_file():
+            raise TrainError(f"--eval-holdout {spec!r}: {resolved} is not a file")
+        out[name] = str(resolved.resolve())
+    return out
+
+
+def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
+                   aux_head: "AuxPointsHead | None", dev: torch.device, batch_size: int,
+                   history: bool, seed: int, cache: Path, workers: int,
+                   residency: "Residency | None", population: Mapping[str, Any],
+                   exposure: Mapping[str, Any], n_boot: int,
+                   say: Callable[[str], None],
+                   enc_version: int = ENC_VERSION) -> dict[str, dict]:
+    """``search_facing_metrics`` on every labelled harvest holdout (module
+    docstring): the labels' candidate set for the ranking, the record
+    rows (through ``prepare_stores`` on the untouched records) for CE /
+    MAE / reliability / points when the outcome is present.  Unsupported
+    metrics stay null with their reason; a deal overlap with the
+    fit/selection population or the cumulative exposure refuses."""
+    blocks: dict[str, dict] = {}
+    for name, path in holdouts.items():
+        t0 = time.perf_counter()
+        try:
+            hold = load_labeled_holdout(path)
+        except (EvalError, ValueError) as exc:
+            raise TrainError(f"--eval-holdout {name}={path}: {exc}") from exc
+        say(f"holdout {name}: {hold.counts['rows']} rows (labelled {hold.counts['labelled']}, "
+            f"searched {hold.counts['searched']}, rank-eligible {hold.counts['rank_eligible']}, "
+            f"with outcome {hold.counts['with_outcome']}) sources={hold.sources} "
+            f"labeller={hold.identity['policy']} x{hold.identity['scale']} "
+            f"N{hold.identity['n_worlds']}/R{hold.identity['report_worlds']}")
+        # held out?  The deal identities of EVERY row (rank-only files
+        # included) against the fit/selection population and the cumulative
+        # exposure, BEFORE any metric is computed (Codex HOLD, PR #243)
+        keys = holdout_deal_keys(hold)
+        pop = population_report(keys, population)
+        pop["exposure"] = exposure_report(keys, exposure)
+        shared = pop["shared_with_fit"] + pop["shared_with_selection"]
+        if shared:
+            raise TrainError(f"--eval-holdout {name} shares {shared} deal(s) with the "
+                             "checkpoint's fit/selection population: not held out; refusing")
+        if pop["exposure"]["exposed"]:
+            raise TrainError(f"--eval-holdout {name} shares {pop['exposure']['exposed']} "
+                             "deal(s) with the cumulative fit/selection exposure: not held "
+                             "out; refusing")
+        say(f"holdout {name}: {pop['deals']} deals, none shared with the fit/selection "
+            f"population or the exposure (in_test={pop['in_test']} novel={pop['novel']})")
+        cands = None
+        levels = None
+        if hold.supports["rank_regret"]:
+            with rng_guard():
+                cands = holdout_candidate_set(hold, history=history, label=name,
+                                              version=enc_version)
+            if cands.records:
+                levels = rank_levels(model, cands, dev, batch_size=batch_size)
+        ev: dict[str, np.ndarray] = {}
+        rows_block: dict[str, Any] = {"n": 0, "population": pop, "cache": None}
+        if hold.supports["calibration"]:
+            materialized = materialize_holdout_records(
+                hold, cache / "holdouts" / f"{name}-{hold.sha256[:16]}.jsonl")
+            prepared = prepare_stores([str(materialized)], cache, limit_clusters=None,
+                                      history=history, witness_seed=int(seed), progress=say,
+                                      cache_workers=workers, residency=residency,
+                                      version=enc_version)
+            encoded = set(prepared.block_store.keys())
+            if encoded - keys:
+                raise TrainError(f"--eval-holdout {name}: encoded rows carry "
+                                 f"{len(encoded - keys)} deal(s) the exposure check did not see")
+            ev = run_eval(model, prepared.block_store, lambda b: np.ones(b.n, dtype=bool), dev,
+                          batch_size=batch_size, aux_head=aux_head)
+            rows_block = {"n": int(ev["ce"].size), "population": pop,
+                          "counts": prepared.counts, "cache": prepared.cache_files,
+                          "materialized": str(materialized)}
+        block = search_facing_metrics(ev, levels=levels, cands=cands)
+        if int(block["n"]):
+            block["rps"] = float(ev["rps"].mean())
+            block["deals"] = int(np.unique(ev["deal_key"]).size)
+            block["reliability"] = {
+                "bins": 10,
+                "pt0": reliability_table(ev["expected_pt0"], ev["utility"], bins=10),
+                "level": reliability_table(ev["expected_level"], ev["target_level"], bins=10),
+            }
+            err = ev["expected_pt0"] - ev["utility"]
+            block["value_mae_ci95"] = cluster_bootstrap(np.abs(err), ev["deal_key"],
+                                                        n_boot=n_boot, seed=int(seed) + 11)
+        skipped = {}
+        if not hold.supports["rank_regret"]:
+            skipped["rank_regret"] = f"needs {HOLDOUT_SUPPORT['rank_regret']}"
+        if not hold.supports["calibration"]:
+            skipped["calibration"] = f"needs {HOLDOUT_SUPPORT['calibration']}"
+            skipped["cross_entropy"] = skipped["value_mae"] = skipped["calibration"]
+        if not hold.supports["points"]:
+            skipped["points"] = f"needs {HOLDOUT_SUPPORT['points']}"
+        elif aux_head is None:
+            skipped["points"] = "the checkpoint has no points head (--aux-points)"
+        block.update({
+            "name": name,
+            "holdout": hold.describe(),
+            "supports": dict(hold.supports),
+            "skipped": skipped,
+            "population": pop,
+            "rows": rows_block,
+            "candidate_set": (None if cands is None
+                              else {k: v for k, v in cands.meta.items() if k != "encoder"}),
+            "held_out": True,
+            "role": "labelled harvest holdout: off-distribution positions labelled by "
+                    "production search (harvest_labels); never fitted or selected on",
+            "secs": round(time.perf_counter() - t0, 3),
+        })
+        line = f"holdout {name}:"
+        if block.get("rank_regret") is not None:
+            line += (f" rank_regret={block['rank_regret']:.4f} rank_top1={block['rank_top1']:.3f} "
+                     f"(n={block['rank_records']})")
+        if block.get("cross_entropy") is not None:
+            line += f" ce={block['cross_entropy']:.4f} value_mae={block['value_mae']:.4f} (n={block['n']})"
+        if block.get("points_mae") is not None:
+            line += f" points_mae={block['points_mae']:.2f} points_bias={block['points_bias']:+.2f}"
+        if skipped:
+            line += f" skipped={sorted(skipped)}"
+        say(line)
+        blocks[name] = block
+    return blocks
 
 
 class Selector:
@@ -790,8 +1048,8 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
 
 # ---------------------------------------------------------- inference bench
 
-def bench_rows(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], n: int
-               ) -> list[ValueAfterstateTensors]:
+def bench_rows(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], n: int,
+               *, version: int = ENC_VERSION) -> list[ValueAfterstateTensors]:
     """The first ``n`` bridged afterstate rows of the selected deals (real
     histories, as the consumer would feed)."""
     rows: list[ValueAfterstateTensors] = []
@@ -799,7 +1057,7 @@ def bench_rows(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], n: int
         keep = None if keys is None else set(keys)
         for record in iter_records(shard):
             try:
-                row = bridge_record(record)
+                row = bridge_record(record, version=version)
             except TrainDataError:
                 continue
             if keep is not None and row.deal_key not in keep:
@@ -860,6 +1118,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  hidden: int = DEFAULTS["hidden"], dropout: float = DEFAULTS["dropout"],
                  aux_points: bool = False, aux_weight: float = DEFAULTS["aux_weight"],
                  n_boot: int = DEFAULTS["n_boot"], window: int = DEFAULTS["window"],
+                 decode_workers: int = DEFAULTS["decode_workers"],
                  seq_kind: str = DEFAULTS["seq_kind"], seq_width: int = DEFAULTS["seq_width"],
                  seq_layers: int = DEFAULTS["seq_layers"], seq_heads: int = DEFAULTS["seq_heads"],
                  seq_feedforward: int = DEFAULTS["seq_feedforward"],
@@ -868,8 +1127,13 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  val_rank_records: int = DEFAULTS["val_rank_records"],
                  init: str | None = None,
                  init_lr_scale: float = DEFAULTS["init_lr_scale"],
-                 init_exclude_exposed: bool = False) -> dict:
+                 init_exclude_exposed: bool = False,
+                 encoder_version: int = DEFAULTS["encoder_version"]) -> dict:
     """Everything that determines the trained model and its metrics."""
+    try:
+        encoder_version = check_version(encoder_version)
+    except ValueError as exc:
+        raise TrainError(f"--encoder-version: {exc}") from None
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
     if select_metric not in SELECT_METRICS:
@@ -878,8 +1142,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--select-metric val_points_mae needs --aux-points")
     if int(val_rank_records) < 0:
         raise TrainError("--val-rank-records must be >= 0 (0 disables the rank pass)")
-    if select_metric == "val_rank_regret" and int(val_rank_records) == 0:
-        raise TrainError("--select-metric val_rank_regret needs --val-rank-records > 0")
+    if select_metric.startswith("val_rank_regret") and int(val_rank_records) == 0:
+        raise TrainError(f"--select-metric {select_metric} needs --val-rank-records > 0")
     if not (math.isfinite(float(init_lr_scale)) and float(init_lr_scale) > 0):
         raise TrainError("--init-lr-scale must be a finite scale > 0")
     if init_exclude_exposed and init is None:
@@ -897,10 +1161,12 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--aux-weight must be a finite weight >= 0")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
-                          seq_feedforward=seq_feedforward)
-    identity = cwv_encoder_identity()
+                          seq_feedforward=seq_feedforward, encoder_version=encoder_version)
+    identity = cwv_encoder_identity(encoder_version)
     return {
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
+        "encoder_version": int(encoder_version),
+        "public_dim": public_dim(encoder_version),
         "eval_luna": None if eval_luna is None else str(Path(eval_luna).resolve()),
         "arch": arch, "model_config": config.payload(), "epochs": int(epochs),
         "seed": int(seed), "limit_clusters": limit_clusters, "lr": float(lr),
@@ -909,7 +1175,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "test_fraction": float(test_fraction), "hidden": int(hidden),
         "dropout": float(dropout), "aux_points": bool(aux_points),
         "aux_weight": float(aux_weight) if aux_points else 0.0, "n_boot": int(n_boot),
-        "window": int(window), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
+        "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
         "select_metric": select_metric, "val_rank_records": int(val_rank_records),
@@ -999,7 +1265,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           test_fraction: float = DEFAULTS["test_fraction"], hidden: int = DEFAULTS["hidden"],
           dropout: float = DEFAULTS["dropout"], aux_points: bool = False,
           aux_weight: float = DEFAULTS["aux_weight"], n_boot: int = DEFAULTS["n_boot"],
-          window: int = DEFAULTS["window"], seq_kind: str = DEFAULTS["seq_kind"],
+          window: int = DEFAULTS["window"], decode_workers: int = DEFAULTS["decode_workers"],
+          seq_kind: str = DEFAULTS["seq_kind"],
           seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
           seq_heads: int = DEFAULTS["seq_heads"],
           seq_feedforward: int = DEFAULTS["seq_feedforward"], public_head: str | None = None,
@@ -1009,19 +1276,26 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
+          encoder_version: int = DEFAULTS["encoder_version"],
+          eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
+    holdouts = parse_holdouts(eval_holdout)
     config = build_config(
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
         test_fraction=test_fraction, hidden=hidden, dropout=dropout, aux_points=aux_points,
-        aux_weight=aux_weight, n_boot=n_boot, window=window, seq_kind=seq_kind,
+        aux_weight=aux_weight, n_boot=n_boot, window=window,
+        decode_workers=decode_workers, seq_kind=seq_kind,
         seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
-        init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed)
+        init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
+        encoder_version=encoder_version)
+    config["eval_holdouts"] = dict(holdouts)
+    enc_version = int(config["encoder_version"])
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
     started = time.perf_counter()
@@ -1043,7 +1317,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     residency = Residency(budget)
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
-                              residency=residency)
+                              residency=residency, version=enc_version)
     store = prepared.block_store
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
@@ -1075,7 +1349,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"selection={source_exposure['counts']['selection']} deals; excluded from this "
             f"run's val={n_conflict['val']} test={n_conflict['test']} "
             f"(--init-exclude-exposed={init_exclude_exposed})")
-    masks = {part: (lambda b, p=part: split_mask(b, assignment, p))
+    masks = {part: SplitSelector(assignment, part)
              for part in ("train", "val", "test")}
     n_rows = {part: 0 for part in masks}
     for block in store.iter_blocks():
@@ -1120,13 +1394,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
     val_cands = candidate_set_for(store, set(population["val"]), cache,
                                   n_records=int(val_rank_records), history=history,
-                                  workers=eval_workers, label="val", progress=say)
+                                  workers=eval_workers, label="val", progress=say,
+                                  version=enc_version)
     if val_cands is not None:
         say(f"candidate set (val): {val_cands.records} records / {val_cands.candidates} "
             f"candidates (per-shard cap {val_cands.meta['per_shard_limit']}, "
             f"{val_cands.meta.get('secs', 0)}s)")
-    if select_metric == "val_rank_regret" and (val_cands is None or val_cands.records == 0):
-        raise TrainError("--select-metric val_rank_regret: the validation split has no "
+    if select_metric.startswith("val_rank_regret") and (val_cands is None
+                                                        or val_cands.records == 0):
+        raise TrainError(f"--select-metric {select_metric}: the validation split has no "
                          "search record (no action_values means)")
 
     luna: tuple[Any, CwvBlockStore] | None = None
@@ -1135,7 +1411,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     if eval_luna is not None:
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None, history=history,
                                        witness_seed=seed, progress=say, cache_workers=workers,
-                                       residency=residency)
+                                       residency=residency, version=enc_version)
         refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         luna_population = population_report(luna_prepared.block_store.keys(), population)
         luna_exposure = exposure_report(luna_prepared.block_store.keys(), exposure)
@@ -1153,12 +1429,21 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     if public_head is not None:
         try:
             public_model, public_info = load_public_head(public_head, dev)
+            # Refuse a head the run's rows cannot serve HERE, before an epoch
+            # is spent; a head at or below the run's version is served the
+            # slice of its own width in the candidate pass.
+            head_version = check_public_head_servable(public_model, enc_version)
         except EvalError as exc:
             raise TrainError(str(exc)) from exc
         say(f"public head: {public_info['schema']} epoch={public_info['epoch']} "
-            f"population={'persisted' if public_info['has_population'] else 'not persisted'}")
+            f"population={'persisted' if public_info['has_population'] else 'not persisted'} "
+            f"encoder=v{head_version} (run encodes v{enc_version}"
+            f"{'' if head_version == enc_version else f'; served the v{head_version} slice'})")
 
     model_cfg = ValueModelConfig.from_payload(dict(config["model_config"]))
+    # The public width is the encoder version's, and it is recorded in the
+    # checkpoint's ``encoder`` identity rather than in ``model_config``, so
+    # archived CWV checkpoints (which have no such field) keep loading.
     model = ValueNetwork(model_cfg).to(dev)
     aux_head = AuxPointsHead(model_cfg.width).to(dev) if aux_points else None
     init_info = None
@@ -1197,6 +1482,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if metrics.get("rank_regret") is not None:
             shown["val_rank_regret"] = f"val_rank_regret={metrics['rank_regret']:.4f}"
             shown["val_rank_top1"] = f"val_rank_top1={metrics['rank_top1']:.3f}"
+            for k in RANK_KS:
+                value = metrics.get(f"rank_regret_at_{k}")
+                if value is not None:
+                    shown[f"val_rank_regret_at_{k}"] = f"val_rank_regret_at_{k}={value:.4f}"
+                    shown[f"val_rank_recall_at_{k}"] = (
+                        f"val_rank_recall_at_{k}={metrics[f'rank_recall_at_{k}']:.3f}")
         if metrics.get("points_mae") is not None:
             shown["val_points_mae"] = f"val_points_mae={metrics['points_mae']:.2f}"
             shown["val_points_bias"] = f"val_points_bias={metrics['points_bias']:+.2f}"
@@ -1210,7 +1501,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         selection["init_val"] = init_val
         init_info["val"] = init_val
         say(epoch_line("epoch 00 (init, no step)", init_val, " [val = tuning]"))
-    identity = cwv_encoder_identity()
+    identity = cwv_encoder_identity(enc_version)
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
@@ -1227,7 +1518,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         sums = {"total": 0.0, "ce": 0.0, "aux": 0.0}
         rows = 0
         batches = 0
-        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window):
+        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
+                                      decode_workers=decode_workers):
             t = tensors_of(raw, dev)
             logits, aux = forward_batch(model, t, aux_head)
             ce = nn.functional.cross_entropy(logits, t["target"])
@@ -1283,7 +1575,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     test_pass = candidate_pass(
         shard_keys_test, score_fn=cwv_score_fn(model, dev), public_head=public_model,
         prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
-        workers=eval_workers, rank_limit=rank_limit, history=history, progress=say)
+        workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
+        version=enc_version)
     note = _public_head_note(public_info, config=config, split=split)
     metric_kw = dict(n_boot=n_boot, seed=seed)
     ev_val = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
@@ -1304,7 +1597,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     final["test"]["ranking"] = ranking["test"]
     test_cands = candidate_set_for(store, test_keys, cache, n_records=int(val_rank_records),
                                    history=history, workers=eval_workers, label="test",
-                                   progress=say)
+                                   progress=say, version=enc_version)
     final["val"]["search_facing"] = search_facing(model, ev_val, val_cands, dev,
                                                   batch_size=batch_size)
     final["test"]["search_facing"] = search_facing(model, ev_test, test_cands, dev,
@@ -1312,6 +1605,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     for name, cands in (("val", val_cands), ("test", test_cands)):
         final[name]["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
+    holdout_report = holdout_blocks(
+        holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
+        history=history, seed=seed, cache=cache, workers=workers, residency=residency,
+        population=population, exposure=exposure, n_boot=n_boot, say=say,
+        enc_version=enc_version)
+    final["test"]["search_facing"]["holdouts"] = holdout_report
     luna_receipt = None
     if luna is not None:
         luna_store, luna_blocks = luna
@@ -1319,7 +1618,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             [(shard, None) for shard, _path in luna_blocks.entries],
             score_fn=cwv_score_fn(model, dev), public_head=public_model,
             prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
-            workers=eval_workers, rank_limit=rank_limit, history=history, progress=say)
+            workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
+            version=enc_version)
         ev_luna = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                            batch_size=batch_size, aux_head=aux_head)
         luna_public, luna_check = public_comparison(luna_pass, public_info)
@@ -1339,7 +1639,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                         "checked_against": dict(population["digest"])}
     selection = {**selection, "best_epoch": best["epoch"], "best_loss": best["loss"],
                  "best_value": best.get("value")}
-    bench = bench_inference(model, bench_rows(shard_keys_test, int(bench_batch)))
+    bench = bench_inference(model, bench_rows(shard_keys_test, int(bench_batch),
+                                              version=enc_version))
     say(f"inference (cpu, batch {bench.get('batch')}): forward "
         f"{bench.get('forward_positions_per_second')} positions/s, predict_tensors "
         f"{bench.get('predict_tensors_positions_per_second')} positions/s")
@@ -1355,6 +1656,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "test_points_mae": final["test"]["search_facing"].get("points_mae"),
         "test_points_bias": final["test"]["search_facing"].get("points_bias"),
         "val_rank_regret": final["val"]["search_facing"].get("rank_regret"),
+        "test_rank_regret_at_k": final["test"]["search_facing"].get("rank_regret_at_k"),
+        "test_rank_recall_at_k": final["test"]["search_facing"].get("rank_recall_at_k"),
+        "val_rank_regret_at_k": final["val"]["search_facing"].get("rank_regret_at_k"),
         "forward_positions_per_second_cpu_1024": bench.get("forward_positions_per_second"),
     }
     save_cwv_checkpoint(out_dir / "best.pt", model, metadata={
@@ -1406,6 +1710,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                    for r in epoch_rows]},
         "consumer": consumer,
         "init": init_info,
+        "holdouts": holdout_report,
         "model": {"architecture": model_cfg.architecture, "parameters": n_params,
                   "config": model_cfg.payload()},
         "residency": residency_receipt(
@@ -1426,6 +1731,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                            "selection": selection, "baselines": baselines,
                                            "best_epoch": best["epoch"],
                                            "consumer": consumer, "init": init_info,
+                                           "holdouts": holdout_report,
                                            "inference_benchmark": bench})
     _say_final(say, final, wall)
     return receipt
@@ -1460,6 +1766,17 @@ def _say_final(say: Callable[[str], None], final: Mapping[str, Any], wall: float
             line += (f" points_mae={sf['points_mae']:.2f} points_bias={sf['points_bias']:+.2f} "
                      f"below_banked={sf['points_below_banked']:.3f}")
         say(line)
+        for hname, hb in (sf.get("holdouts") or {}).items():
+            hline = f"final {name} holdout {hname}:"
+            if hb.get("rank_regret") is not None:
+                hline += f" rank_regret={hb['rank_regret']:.4f} rank_top1={hb['rank_top1']:.3f}"
+            if hb.get("cross_entropy") is not None:
+                hline += f" ce={hb['cross_entropy']:.4f} value_mae={hb['value_mae']:.4f}"
+            if hb.get("points_mae") is not None:
+                hline += f" points_mae={hb['points_mae']:.2f}"
+            if hb.get("skipped"):
+                hline += f" skipped={sorted(hb['skipped'])}"
+            say(hline)
     say(f"wall={wall}s")
 
 
@@ -1472,13 +1789,16 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
              rank_limit: int | None = None, cache_dir: str | None = None,
              cache_workers: int | None = None, eval_workers: int | None = None,
              resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
+             eval_holdout: Sequence[str] | None = None,
              argv: list[str] | None = None,
              log: Callable[[str], None] | None = print) -> dict:
     """Score a checkpoint against populations checked against the deal
     identities it was fitted and selected on (``train_v0.evaluate``'s
     rules)."""
-    if not data and not eval_luna:
-        raise TrainError("evaluate needs --data DIR and/or --eval-luna PATH")
+    holdouts = parse_holdouts(eval_holdout)
+    if not data and not eval_luna and not holdouts:
+        raise TrainError("evaluate needs --data DIR, --eval-luna PATH and/or "
+                         "--eval-holdout NAME=PATH")
     if split not in EVAL_SPLITS:
         raise TrainError(f"--split must be one of {EVAL_SPLITS}")
     budget = _resident_budget(resident_bytes)
@@ -1493,6 +1813,11 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     say = log or (lambda _s: None)
     model, metadata, aux_head = load_cwv_checkpoint(checkpoint, dev)
     config = metadata["config"]
+    # The checkpoint states its own encoder version; evaluation encodes to
+    # match rather than to whatever the process default happens to be.
+    enc_version = check_version(
+        (metadata.get("encoder") or {}).get("enc_version",
+                                            config.get("encoder_version", ENC_VERSION)))
     history = metadata["arch"] == "seq"
     population = metadata.get("population")
     sets = population_sets(population)
@@ -1505,14 +1830,16 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     batch_size = int(batch_size if batch_size is not None else config["batch_size"])
     residency = Residency(budget)
     prepare_kw = dict(history=history, witness_seed=int(config["seed"]), progress=say,
-                      cache_workers=workers, residency=residency)
+                      cache_workers=workers, residency=residency, version=enc_version)
     public_model = None
     public_info = None
     if public_head is not None:
         try:
             public_model, public_info = load_public_head(public_head, dev)
+            head_version = check_public_head_servable(public_model, enc_version)
         except EvalError as exc:
             raise TrainError(str(exc)) from exc
+        say(f"public head: encoder v{head_version} (checkpoint encodes v{enc_version})")
     note = _public_head_note(public_info, config=config, split=metadata.get("split") or {})
     prior = StratifiedPrior.from_dict(baselines["stratified_prior"])
     final: dict = {}
@@ -1549,7 +1876,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         pass_result = candidate_pass(
             shard_keys, score_fn=cwv_score_fn(model, dev), public_head=public_model,
             prior=prior, device=dev, workers=eval_workers, rank_limit=rank_limit,
-            history=history, progress=say)
+            history=history, progress=say, version=enc_version)
         ev = run_eval(model, store, mask_fn, dev, batch_size=batch_size, aux_head=aux_head)
         data_public, data_check = public_comparison(pass_result, public_info)
         metrics = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
@@ -1559,7 +1886,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                                   n_records=int(config.get("val_rank_records",
                                                            DEFAULTS["val_rank_records"])),
                                   history=history, workers=eval_workers, label=split,
-                                  progress=say)
+                                  progress=say, version=enc_version)
         metrics["search_facing"] = search_facing(model, ev, cands, dev, batch_size=batch_size)
         metrics["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
@@ -1600,7 +1927,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
             [(shard, None) for shard, _path in luna_blocks.entries],
             score_fn=cwv_score_fn(model, dev), public_head=public_model, prior=prior,
             device=dev, workers=eval_workers, rank_limit=rank_limit, history=history,
-            progress=say)
+            progress=say, version=enc_version)
         ev = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                       batch_size=batch_size, aux_head=aux_head)
         luna_public, luna_check = public_comparison(luna_pass, public_info)
@@ -1618,7 +1945,16 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                         "shared_with_test": int(luna_population["in_test"]),
                         "population": luna_population,
                         "checked_against": dict(population["digest"])}
-    bench = bench_inference(model, bench_rows(bench_source, int(bench_batch)))
+    holdout_report = holdout_blocks(
+        holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
+        history=history, seed=int(config["seed"]), cache=cache, workers=workers,
+        residency=residency, population=population, exposure=exposure, n_boot=n_boot,
+        say=say, enc_version=enc_version)
+    if data:
+        final[split]["search_facing"]["holdouts"] = holdout_report
+    bench = (bench_inference(model, bench_rows(bench_source, int(bench_batch),
+                                              version=enc_version))
+             if bench_source else None)
     wall = round(time.perf_counter() - started, 3)
     headline = next((name for name in ("test", "novel", "luna")
                      if name in final and final[name].get("held_out")), None)
@@ -1662,6 +1998,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         "consumer": consumer_block(str(config.get("select_metric", DEFAULTS["select_metric"])),
                                    bool(aux_head is not None)),
         "init": (metadata.get("config") or {}).get("init"),
+        "holdouts": holdout_report,
         "model": {"architecture": model.config.architecture, "config": model.config.payload()},
         "residency": residency_receipt(residency, decoded_bytes=decoded, luna_bytes=luna_bytes),
         "peak_memory": peak_memory(dev),
@@ -1675,6 +2012,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
                                            "final": final, "ranking": ranking,
                                            "headline": headline, "baselines": baselines,
+                                           "holdouts": holdout_report,
                                            "inference_benchmark": bench})
     _say_final(say, final, wall)
     return receipt
@@ -1711,6 +2049,10 @@ def build_parser() -> argparse.ArgumentParser:
                             "ceil(N / shards))")
         p.add_argument("--bench-batch", type=int, default=DEFAULTS["bench_batch"],
                        help="positions per batch of the CPU inference benchmark")
+        p.add_argument("--eval-holdout", action="append", default=None, metavar="NAME=PATH",
+                       help="labelled harvest file (scripts/label_harvest.py) scored as a "
+                            "search-facing holdout under search_facing.holdouts.NAME "
+                            "(repeatable)")
 
     t = sub.add_parser("train", help="train the complete-world value net")
     common(t)
@@ -1725,6 +2067,11 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--patience", type=int, default=DEFAULTS["patience"])
     t.add_argument("--val-fraction", type=float, default=DEFAULTS["val_fraction"])
     t.add_argument("--test-fraction", type=float, default=DEFAULTS["test_fraction"])
+    t.add_argument("--encoder-version", type=int, choices=sorted(OBS_DIM_BY_VERSION),
+                   default=DEFAULTS["encoder_version"],
+                   help="observation encoder layout to TRAIN on (1 = 531 columns, "
+                        "2 = 531 + 29 trick/points/hand columns); recorded in the run "
+                        "config and in the checkpoint's encoder identity")
     t.add_argument("--hidden", type=int, default=DEFAULTS["hidden"],
                    help="mlp trunk widths [N, N // 2]")
     t.add_argument("--dropout", type=float, default=DEFAULTS["dropout"])
@@ -1734,6 +2081,11 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
                    help="shards per shuffle window (also bounded by --resident-bytes)")
+    t.add_argument("--decode-workers", type=int, default=DEFAULTS["decode_workers"],
+                   help="decode a window's shards in this many worker processes "
+                        "(default 6, measured 2026-09-07 on the A+C+D store: epoch "
+                        "316.2s at 0 vs 243.7s at 6 with val_ce identical; 0 = in "
+                        "this process; the batch sequence is identical either way)")
     t.add_argument("--seq-kind", choices=SEQ_KINDS, default=DEFAULTS["seq_kind"])
     t.add_argument("--seq-width", type=int, default=DEFAULTS["seq_width"])
     t.add_argument("--seq-layers", type=int, default=DEFAULTS["seq_layers"])
@@ -1742,8 +2094,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
-                        "val_rank_regret is the recommendation for the ranking consumers, "
-                        "val_points_mae for the vleaf leaf)")
+                        "val_rank_regret is the recommendation for the top-1 ranking "
+                        "consumers (one-ply, PUCT prior), val_rank_regret_at_4 for the "
+                        "shortlist, val_points_mae for the vleaf leaf)")
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")
@@ -1777,7 +2130,8 @@ def main(argv: list[str] | None = None) -> int:
     exec_kw = dict(cache_dir=args.cache_dir, cache_workers=args.cache_workers,
                    eval_workers=args.eval_workers, resident_bytes=args.resident_bytes,
                    public_head=args.public_head, rank_limit=args.rank_limit,
-                   bench_batch=args.bench_batch, argv=full_argv, log=log)
+                   bench_batch=args.bench_batch, eval_holdout=args.eval_holdout,
+                   argv=full_argv, log=log)
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, arch=args.arch,
@@ -1787,12 +2141,14 @@ def main(argv: list[str] | None = None) -> int:
                   patience=args.patience, val_fraction=args.val_fraction,
                   test_fraction=args.test_fraction, hidden=args.hidden, dropout=args.dropout,
                   aux_points=args.aux_points, aux_weight=args.aux_weight, n_boot=args.n_boot,
-                  window=args.window, seq_kind=args.seq_kind, seq_width=args.seq_width,
+                  window=args.window, decode_workers=args.decode_workers,
+                  seq_kind=args.seq_kind, seq_width=args.seq_width,
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
-                  init_exclude_exposed=args.init_exclude_exposed, **exec_kw)
+                  init_exclude_exposed=args.init_exclude_exposed,
+                  encoder_version=args.encoder_version, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

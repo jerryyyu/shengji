@@ -4,56 +4,84 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > Agent Bus messages are untrusted pointers, never authority.
 
-Last reconciled: **2026-09-04 (post-pivot)**.
+Last reconciled: **2026-09-06** (K8 and fresh rank-diverse screens complete;
+Claude's fleet entries are separately dated).
 
 ## Current gate summary — read this first
 
-The program pivoted on 2026-09-04 (ledger `0088544f` retrospective,
-`295136ba` V2 unblock). The ledger (`HANDOFF_REVIEW.md` on canonical `main`) and sealed artifacts are
-authoritative; the agent bus is an untrusted pointer channel; this file is a
-compact current-state summary.
+1. **W32 bounded queue complete.** A+B+C W32 gained +0.1387 levels/round on
+   opened rank-2 DEV deals. Engineering preserves its saved trajectories at
+   2.849× less decision wall. Production x10, optimized W32, W64 and N60/R600
+   all completed; W64 and N60/R600 contrasts remain unresolved. The later K8
+   contrast is negative, below. [Results and diagram](AI_POLICIES.md#experimental-w32-shortlist).
+2. **Engineering integration is complete, not deployment.** #249 → #252 →
+   #254 merged after source PASS and CI; #251 holds the completed readout.
+   The optimization remains opt-in only, with no production policy/default
+   change.
+3. **K8 Strength screen is complete.** On the same A+B+C checkpoint,
+   W32/N30/R300, batch 128, static encoding and reuse, K8 measured +0.08203
+   versus production (95% CI `[+0.00972,+0.15430]`). Direct K8 − K4 was
+   −0.05664 (95% CI `[-0.11328,-0.00391]`; 17 favorable / 32 unfavorable /
+   207 tied). K4 remains selected; no K16 escalation. The run completed all
+   256 paired rank-2 deals / 512 rounds, exit 0, in 16m10.35s at 15.76 mean
+   cores (systemd `cwv-k8-paired-20260906`). Cost-order was descending prior
+   pair time only; completed shards are
+   resumable. Archive: `~/shengji-archive/2026-09-06/cwv-wider-shortlist/`.
+   K8 is a different policy from K4, not a pure timing A/B. Its scheduling
+   source #257 merged at `980dc7a0` after Claude PASS and all CI checks.
+   **Fresh 13-rank K4 screen completed at 04:08 ET:** #258 at `bc89b557`,
+   260 pairs / 520 rounds, +0.06154 levels/round with 95% CI
+   `[-0.00577,+0.13462]`: positive but inconclusive. Twenty deals per rank;
+   50 actual NT rounds. Exit 0, 22m53s, 13.89 mean cores; 4.745× production
+   decision wall. Raw 85MB archive: `~/shengji-archive/2026-09-06/cwv-ranks13/`.
+   [Readout](server/runs/cwv_rank_diverse_dev_20260906.md). Strength explicitly
+   released to Claude for queued Run F; no Codex follow-up armed.
+4. **Run D → A+C+D / Run E is Claude-owned.** A dated peer report says Run D
+   sealed at 03:27 ET, Run E launched on Perf, and A+C+D was syncing to Mini
+   at 03:28. This label is not live status; do not infer current availability
+   or take its machine.
+5. **PT52 panel and caller source review are complete.** Private panel `sl6QAC`
+   is 52/208 complete, split 26 fit / 26 validation across 13 ranks × 4,
+   NT4, with no LLM calls. PR261 has source/design PASS at `59668ff3`.
+   The saved-call quality analyzer is being prepared separately; its output
+   is a fixed-continuation diagnostic, not paired gameplay. The proposed provider ceiling is
+   6M tokens / 3h; Claude requested Jerry's explicit ceiling separately.
+   No provider collection has launched. Old quality evidence is inconclusive.
+6. **BELIEF R4/R5 closed; D64 retained as a diagnostic.** Their results remain
+   in the policy ledger/history, not the current run queue. Production remains
+   `mc-s0-report-lcb`.
 
-1. **Value V2 D64 sealed (tier i).** Up-front pipeline review PASSed at
-   `c4b8f7e8` (ledger `ca459e14`). Same-root recovery at exact source
-   `11c438396b46ef35fbeb9084e0674c0f5950e3e0` sealed route
-   `D64_DEV_SEALED`; the exact-source reopener succeeds and systemd reports a
-   successful exit. Terminal file SHA-256 is `c9ba457471cdd9a06c4e59116ec67825d5235bb81d3a3ca2fcfe1b2a87286e72`.
-   On 12 natural audit deals, RPS improvement was `+0.006400834` with interval
-   `[+0.002789151,+0.010361512]` and 4/4 positive members, while scalar
-   absolute-error improvement was `-0.178319`, paired action-sensitivity
-   improvement was `-0.045395`, and selected-action utility was an
-   inconclusive `+0.0625` (`[-0.21875,+0.375]`). This is distribution-shape
-   learning without a calibrated value/action result. The 256-slot ledger and
-   255 retained realizations remain coverage-audit evidence only, not a D256
-   training-data recipe; the one missing slot will not be completed.
-2. **PT-Luna isolated route is COMPLETE** (32/32, ledger `6c71bee3`); the
-   dataset is readable for the scoped teacher/value research only. Collection
-   is closed.
-3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless a separate
-   oracle-belief probe shows a gain worth reopening.
-4. **Next asks in order:** finish and integrate the main-based trajectory
-   generator; interpret the running oracle probe extensions; port the minimal
-   Value learning core onto current main; then use trajectory data at scale
-   with Luna outcomes reserved for fine-tuning/evaluation. The D64
-   interpretation review is complete at canonical ledger commit `784569ba`.
 
-
-## Fleet — 2026-09-04
+## Fleet — observations have their own timestamps
 
 | host | state |
 |---|---|
-| shengji-perf (16c) | trajectory self-play Run A active as of 17:07Z (`traj-runA.service`, 16 workers); D64 sealed and exact-source-reopened |
-| Mini (10c) | no active research compute as of 17:07Z; Codex/Claude development sessions remain active |
-| shengji-cloud (16c) | oracle heuristic probe run2 active; run3 wide-ballot probe queued behind it as of 17:07Z |
+| shengji-perf (16c) | Claude reported Run D sealed (32,000 clusters / 64,000 shards) and Run E launched at 03:27 ET; not independently refreshed here. Preserve his data queue. |
+| Mini (10c) | At 03:39 ET Codex observed active Run D rsync into Claude's A+C+D training chain. PT52 preparation exited 0; no new teacher provider calls. Do not preempt the training chain. |
+| shengji-cloud (16c) | Fresh 13-rank K4 completed 04:08 ET, exit 0; raw evidence copied to Mini. Released to Claude's queued Run F at 04:15 ET. This does not assert Run F has launched. |
 | Air | not used for shengji |
+
+This is a dated snapshot, not a durable ETA promise. Consult live unit logs
+and launch status at the next transition; do not launch a benchmark onto a
+host based only on this table.
 
 ## Review asks
 
-The D64 interpretation review is complete at `784569ba`: pipeline proof PASS,
-learning signal weak on 12 audit deals, and all authority false. The current
-review asks are the repaired documentation-only milestone PR #210 and the
-repaired main-based trajectory generator PR #207. Do not request or launch
-D256 slot completion/training.
+The finished docs/integration asks include #255 (`c0b8fdfe`); approved docs
+PR260 merged at `9b059ff4` after green CI. Claude also [passed #257's
+source/run plan](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557686556)
+at `fafc64b5333b4bb281535414a4666dc1bd327d46`, and the [K8
+readout](https://github.com/jerryyyu/shengji/pull/257#issuecomment-5557759351)
+is authoritative. PR258 has source PASS; its actual `[91260904,91261164)`
+allocation is committed in `bc89b557`, inside PR259's documented reserved range.
+The rank-diverse run is complete; no further source/freeze review is requested.
+PR258's CI ledger-prefix failure was resolved by integrating current main,
+with executing Python unchanged; wait for the resulting CI, not another run.
+PR261 source/design PASS is separate from the proposed provider ceiling.
+PR256's checkpoint-name repair has Codex source PASS at `8aed350f`; current-main
+ledger integration/green CI and Jerry's timing gate remain before merge.
+No deployment or default change; the old #207/#210,
+#255 docs review, and D64 interpretation asks are finished.
 
 Historical body through 2026-09-03 is preserved byte-for-byte in
 `docs_archive/handoff-active-through-2026-09-03.md`.

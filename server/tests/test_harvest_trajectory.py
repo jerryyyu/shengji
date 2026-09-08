@@ -1637,3 +1637,23 @@ def test_resume_refuses_a_different_round_mix(sampled_run, clean4, tmp_path):
     assert json.loads((plain_copy / "runtime.json").read_text())["clusters"]["reused"] == [0, 1]
     assert resumed["shards"] == clean4["shards"]
     assert resumed["manifest_bytes"] == clean4["manifest_bytes"]
+
+
+def test_runtime_receipt_records_the_engine_that_ran_the_search(monkeypatch):
+    """A generation run is ~99% search, so which engine ran it is the run's
+    cost story. manifest.json has carried it as a code-identity key all
+    along, but nobody reads the identity block while a 16-hour run is in
+    flight -- Run F generated 358 clusters on pure Python before anyone
+    noticed, at 4.6x the cost of the validated-identical fast path.
+    """
+    from shengji.harvest import trajectory
+
+    receipt = {"requested": 1, "reused": 0, "generated": [0], "failed": [],
+               "timing": {}}
+    for resolved in (True, False):
+        monkeypatch.setattr(
+            trajectory, "environment_identity",
+            lambda resolved=resolved: {"raw": {}, "resolved": {"fast_engine": resolved}})
+        out = trajectory.runtime_receipt(argv=["trajectory"], workers=1, resume=False,
+                                         merge=False, wall_secs=1.0, receipt=receipt)
+        assert out["fast_engine"] is resolved

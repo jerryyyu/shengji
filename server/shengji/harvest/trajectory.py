@@ -33,8 +33,11 @@ Record mapping (``shengji-decision-record-v1``, ``source: "trajectory"``)
   (computed on a separate, unmodified instance of the base class when
   overrides are active) -- and is present whenever the ballot may differ
   from it: on every decision that reached a ballot in a ``--knob`` or
-  ``--widen`` run, and on the decisions exploration widened otherwise.
-  This is load-bearing: the ballot-gap and prior analyses read
+  ``--widen`` run, on every decision of a policy whose own ballot is not
+  production's (``PRODUCTION_BALLOT_POLICY`` -- the CWV shortlist, which
+  searches a shortlist over the exhaustive legal set; the named production
+  policy is then the probe), and on the decisions exploration widened
+  otherwise.  This is load-bearing: the ballot-gap and prior analyses read
   ``production_ballot`` as "what production would have considered", so it
   is never the overridden class's list.
 * ``legal_actions`` is the BOUNDED listing of ``harvest.legal`` (cap 256 by
@@ -721,6 +724,11 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     overrides = dict(config.get("knobs") or {})
     data_cls = type(bot)
     probe = None
+    # A policy that declares PRODUCTION_BALLOT_POLICY does not have production's
+    # ballot, so probing an unmodified instance of ITSELF -- which is the right
+    # probe for a production policy under --knob -- would stamp its own ballot as
+    # production_ballot. The declared policy therefore wins in BOTH branches.
+    declared = getattr(bot, "PRODUCTION_BALLOT_POLICY", None)
     if overrides:
         shadowed = [name for name in overrides if name in vars(bot)]
         if shadowed:
@@ -729,7 +737,13 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
                 f"{config['policy']!r} sets it per instance; a class override "
                 "would be shadowed")
         data_cls = knobs_class(type(bot), overrides)
-        probe = make_bot(config["policy"], seed=seed)
+        probe = make_bot(declared or config["policy"], seed=seed)
+    elif declared:
+        # a policy whose own candidate generator is not production's (the CWV
+        # shortlist searches a shortlist over the exhaustive legal set): its
+        # ballot differs from production's on nearly every decision, so the
+        # named production policy is probed and stamped as production_ballot
+        probe = make_bot(bot.PRODUCTION_BALLOT_POLICY, seed=seed)
     bot.__class__ = trajectory_class(data_cls)
     bot._trajectory_init(explore_rng, production_probe=probe)
     bot.EXPLORE_RATE = float(config["explore_rate"])
@@ -1868,6 +1882,11 @@ def runtime_receipt(*, argv, workers: int, resume: bool, merge: bool,
                 resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss),
         },
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        # generation is ~99% search, so the engine that ran it is the run's
+        # cost story. manifest.json already carries it as a code-identity
+        # key; it is repeated here, and printed, because the identity block
+        # is not what anyone reads while a 16-hour run is in flight.
+        "fast_engine": bool(environment_identity()["resolved"]["fast_engine"]),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -2084,6 +2103,12 @@ def main(argv: list[str] | None = None) -> int:
               f"decisions={event['decisions']} total={event['total_decisions']}",
               flush=True)
 
+    # before anything is dealt, and flushed: a 16-hour run must not have to
+    # finish before it says which engine it is spending those hours in
+    _engine_on = environment_identity()["resolved"]["fast_engine"]
+    print(f"{SOURCE}: fast_engine={'on' if _engine_on else 'OFF'} "
+          f"workers={args.workers} rounds={args.rounds}", flush=True)
+
     try:
         manifest = generate(
             rounds=args.rounds, seed0=args.seed, out_dir=args.out,
@@ -2109,7 +2134,8 @@ def main(argv: list[str] | None = None) -> int:
           f"widened={counts['widen_decisions']} widen_added={counts['widen_added']} "
           f"short={counts['short_searches']} wall={wall}s "
           f"decisions/s={round(counts['decisions'] / wall, 3) if wall else None} "
-          f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f}",
+          f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f} "
+          f"fast_engine={'on' if runtime.get('fast_engine') else 'OFF'}",
           flush=True)
     for shard in manifest["shards"]:
         print(f"  {shard['path']}: records={shard['records']} sha256={shard['sha256']}",

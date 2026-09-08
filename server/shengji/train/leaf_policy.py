@@ -89,7 +89,9 @@ import numpy as np
 from ..ai.registry import (REGISTRY, VLEAF_BASE_POLICY, VLEAF_LEAF_MODELS, VLEAF_LEAF_STAGES,
                            VLEAF_LEAF_TRICKS, vleaf_checkpoint_sha256, vleaf_policy_suffix)
 from ..engine.round import Round, Trick, TrickPlay
-from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
+from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM
+from ..rl.encode_versions import (OBS_DIM_BY_VERSION, call_encode, check_version,
+                                  encode_obs, encoder_version_for)
 from ..rl.value_afterstate import PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS, tensors_from_round
 from .baselines import N_STRATA, POINT_BINS, ROLES, StratifiedPrior
 from .data import PLAYS_PER_ROUND, check_meta, part_keys, read_column, read_meta, split_deals
@@ -281,6 +283,14 @@ class PointsHead:
         wt, bias = self.output
         return x @ wt + bias
 
+    @property
+    def enc_version(self) -> int:
+        """The encoder version this HEAD's own input width names.
+
+        A points head reads the raw observation; a complete-world head reads
+        a wider row and never answers here (``LeafError``)."""
+        return encoder_version_for(self.obs_dim)
+
     def final_attacker_points(self, obs) -> float:
         self.calls += 1
         value = float(self.forward(obs)[1]) * POINTS_SCALE
@@ -316,7 +326,8 @@ class CompleteWorldPointsHead:
 
     def __init__(self, hidden: Sequence[tuple[np.ndarray, np.ndarray]],
                  output: tuple[np.ndarray, np.ndarray], *,
-                 metadata: Mapping[str, Any] | None = None):
+                 metadata: Mapping[str, Any] | None = None,
+                 enc_version: int = 1):
         if not hidden:
             raise LeafError("complete-world points head needs at least one hidden layer")
         self.hidden = [(np.ascontiguousarray(w.T, dtype=np.float64),
@@ -328,6 +339,9 @@ class CompleteWorldPointsHead:
             raise LeafError("complete-world points head must emit exactly one output")
         self.input_dim = int(self.hidden[0][0].shape[0])
         width = self.input_dim
+        #: the observation encoder version the trunk was trained on: the
+        #: leaf builds its row at THIS width (``cwv_leaf_inputs``)
+        self.enc_version = int(enc_version)
         for wt, bias in self.hidden:
             if wt.shape[0] != width or bias.shape != (wt.shape[1],):
                 raise LeafError("complete-world points head layers do not chain")
@@ -377,7 +391,8 @@ class CompleteWorldPointsHead:
         meta["points_head"] = {"source": "metadata.aux_points_head on the mlp trunk",
                                "target": "final attacker points / 100", "scale": POINTS_SCALE,
                                "model_config": dict(config.payload())}
-        return cls(hidden, output, metadata=meta)
+        return cls(hidden, output, metadata=meta,
+                   enc_version=int(getattr(model.config, "enc_version", 1)))
 
     @classmethod
     def from_checkpoint(cls, path: str | os.PathLike) -> "CompleteWorldPointsHead":
@@ -424,16 +439,24 @@ def cwv_reference_inputs(clone: Round, seat: int) -> np.ndarray:
     return np.concatenate((t.public, t.world.reshape(-1), t.perspective))
 
 
-def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
+def cwv_leaf_inputs(clone: Round, seat: int, *, version: int = 1) -> np.ndarray:
     """:func:`cwv_reference_inputs`, byte for byte (tested on real states),
     without the two costs the leaf never uses: the public-history tensor (the
     ``mlp`` trunk reads none) and the deck-conservation check (the
     determinizer already validated the clone's world).  ~50 us instead of
     ~120 us per leaf, next to a ~30 us forward."""
-    x = np.zeros(MLP_INPUT_DIM, dtype=np.float32)
-    x[:OBS_DIM] = encode_obs(clone, seat)
-    x[OBS_DIM] = float(clone.phase == "round_end")
-    world = x[PUBLIC_DIM:PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS].reshape(WORLD_RECEIVERS, N_CARDS)
+    # The complete-world lane is encoder v1 only: its public tensor comes
+    # from ``rl.value_afterstate``, whose file digest is the key archived
+    # CWV checkpoints are accepted on (``ai.cwv_policy``).
+    # v1 is the historical row, byte for byte; a later version widens the
+    # public slice to that version's observation (the trunk it feeds was
+    # sized from the same ``OBS_DIM_BY_VERSION`` entry).
+    obs_dim = OBS_DIM if version == 1 else OBS_DIM_BY_VERSION[check_version(version)]
+    public_dim = obs_dim + 1
+    x = np.zeros(public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM, dtype=np.float32)
+    x[:obs_dim] = call_encode(encode_obs, clone, seat, version)
+    x[obs_dim] = float(clone.phase == "round_end")
+    world = x[public_dim:public_dim + WORLD_RECEIVERS * N_CARDS].reshape(WORLD_RECEIVERS, N_CARDS)
     hands = clone.hands
     for relative in range(4):
         row = world[relative]
@@ -443,8 +466,8 @@ def cwv_leaf_inputs(clone: Round, seat: int) -> np.ndarray:
     for card in clone.buried:
         row[CARD_INDEX[card]] += 0.5
     attacker = clone.is_attacker(seat)
-    x[PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS] = float(attacker)
-    x[PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + 1] = float(not attacker)
+    x[public_dim + WORLD_RECEIVERS * N_CARDS] = float(attacker)
+    x[public_dim + WORLD_RECEIVERS * N_CARDS + 1] = float(not attacker)
     return x
 
 
@@ -563,7 +586,8 @@ class LearnedPointsLeaf:
         self.head = head
 
     def final_attacker_points(self, clone: Round, seat: int) -> float:
-        return self.head.final_attacker_points(encode_obs(clone, seat))
+        return self.head.final_attacker_points(
+            call_encode(encode_obs, clone, seat, self.head.enc_version))
 
     def describe(self) -> dict:
         meta = self.head.metadata
@@ -597,7 +621,12 @@ class CompleteWorldPointsLeaf:
         """``(value, points_raw, banked)``: the head's raw prediction floored
         at the clone's banked attacker points (:func:`clamp_at_banked`)."""
         t0 = perf_counter()
-        inputs = cwv_leaf_inputs(clone, seat)
+        # v1 keeps the HISTORICAL two-argument call (a head that predates the
+        # attribute is v1; so is anything that wraps or replaces
+        # ``cwv_leaf_inputs``); only a later version passes its width along.
+        version = int(getattr(self.head, "enc_version", 1))
+        inputs = (cwv_leaf_inputs(clone, seat) if version == 1
+                  else cwv_leaf_inputs(clone, seat, version=version))
         t1 = perf_counter()
         raw = self.head.final_attacker_points(inputs)
         self.forward_secs += perf_counter() - t1

@@ -44,6 +44,7 @@ from shengji.rl.value_afterstate import (  # noqa: E402
 from shengji.rl.value_checkpoint import load_checkpoint  # noqa: E402
 from shengji.rl.value_inference import predict_round, predict_tensors  # noqa: E402
 from shengji.train import cwv_data, cwv_eval, train_cwv, train_v0  # noqa: E402
+from shengji.train.model import ValuePriorNet  # noqa: E402
 from shengji.train.data import TrainDataError, discover_store  # noqa: E402
 
 SEED0 = 4_100_000
@@ -309,9 +310,15 @@ def test_ranking_agreement_metric(records):
 
 def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     luna_path, _rows = luna
+    # The public head is built at the SAME version the cwv run defaults to, so this
+    # smoke exercises the default path end to end. Cross-version heads have their own
+    # tests: a NEWER head than the run is refused up front, and a head at or below the
+    # run's version is served the prefix of its own width. Real v2 runs do use the v1
+    # runAB-points head successfully; the mismatch here was the fixture, not the path.
     public = train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
                             epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
-                            cache_workers=1, **THIRDS)
+                            cache_workers=1,
+                            encoder_version=train_cwv.DEFAULTS["encoder_version"], **THIRDS)
     assert public["final"]["test"]["held_out"] is True
     kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), arch="mlp", device="cpu",
               epochs=2, seed=7, batch_size=64, n_boot=20, hidden=32, log=None,
@@ -323,8 +330,10 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
         assert key in receipt, key
     assert receipt["schema"] == train_cwv.RECEIPT_SCHEMA and receipt["command"] == "train"
     assert receipt["sees_hidden_hands"] is True and receipt["privacy"]["sees_hidden_hands"]
-    assert receipt["encoder"]["implementation_sha256"] == \
-        cwv_data.cwv_encoder_identity()["implementation_sha256"]
+    # Against the identity for the version this run ACTUALLY used, not a pinned v1:
+    # the invariant is that the receipt records the encoder it encoded with.
+    assert receipt["encoder"]["implementation_sha256"] == cwv_data.cwv_encoder_identity(
+        receipt["config"]["encoder_version"])["implementation_sha256"]
     split = receipt["split"]
     assert (split["train_deals"], split["val_deals"], split["test_deals"]) == (1, 1, 1)
     assert receipt["population"]["counts"] == {"train": 1, "val": 1, "test": 1}
@@ -361,9 +370,14 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     # training-side forward on the cached row
     cache_dir = out / "cache"
     store = discover_store(store_dir)
-    block = cwv_data.load_block(cwv_data.cache_path(cache_dir, store.shards[0].sha256))
+    # Both take version=ENC_VERSION (the FROZEN constant 1) by default, not the
+    # run's version. Pass the run's own so the cache read and the bridged row
+    # match what training actually wrote.
+    enc_v = receipt["config"]["encoder_version"]
+    block = cwv_data.load_block(
+        cwv_data.cache_path(cache_dir, store.shards[0].sha256, version=enc_v))
     record = next(r for r in _records(store_dir) if r["source_ref"] == block.source_ref[5])
-    row = cwv_data.bridge_record(record)
+    row = cwv_data.bridge_record(record, version=enc_v)
     assert row.input_sha256 == block.input_sha256[5].decode()
     prediction = predict_round(loaded, row.successor, row.seat)
     batch = cwv_data.tensors_of(cwv_data.collate(block, np.asarray([5])), "cpu")
@@ -392,3 +406,153 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     # the seq architecture cannot carry the aux head; the config refuses
     with pytest.raises(train_v0.TrainError, match="aux-points"):
         train_cwv.build_config(data=[str(store_dir)], arch="seq", aux_points=True)
+
+
+# 7 ------------------------------------- encoder v2 end to end (spec part 2, A and B)
+
+def _shortlist_decision(checkpoint, *, encoding):
+    """A real CWVShortlistBot decision on a real round with the checkpoint,
+    recording the public width of every row the net scored and the versions
+    actually returned by the fused base builder, before any widening."""
+    from shengji.ai import cwv_static_encoding as static
+    from shengji.ai.cwv_policy import CompleteWorldEvaluator
+    from shengji.train.cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
+    from tests.test_world_shortlist import play_state
+
+    widths: list[int] = []
+
+    class Recorded(CompleteWorldEvaluator):
+        def probabilities(self, rows):
+            widths.extend(int(row.public.shape[0]) for row in rows)
+            return super().probabilities(rows)
+
+    fused: list[int] = []
+    real = static._fused_static_tensors
+
+    def spy(r, s, version=1):
+        out = real(r, s, version)
+        if out is not None:
+            fused.append(version)
+        return out
+
+    evaluator = Recorded(checkpoint, encoding=encoding)
+    bot = CWVShortlistBot(evaluator, seed=71,
+                          config=CWVShortlistConfig(worlds=2, selection_worlds=2,
+                                                    alternatives=3, batch_size=17))
+    state = play_state()
+    static._fused_static_tensors = spy
+    try:
+        candidates = bot._candidates(state, state.turn)
+    finally:
+        static._fused_static_tensors = real
+    assert candidates and evaluator.model_rows > 0
+    return evaluator, widths, fused
+
+
+def test_encoder_v2_net_trains_loads_verifies_and_scores_a_real_shortlist_decision(
+        store_dir, tmp_path):
+    """Acceptance A of spec part 2."""
+    from shengji.ai.cwv_policy import load_cwv_checkpoint, verify_checkpoint_identity
+
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64,
+              n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=32,
+              val_rank_records=50, **THIRDS)
+    receipt = train_cwv.train(out=tmp_path / "v2", encoder_version=2, **kw)
+    assert receipt["config"]["encoder_version"] == 2
+    assert receipt["config"]["model_config"]["public_dim"] == 561
+    assert receipt["encoder"]["enc_version"] == 2
+    assert receipt["encoder"]["implementation_sha256"] == \
+        cwv_data.cwv_encoder_identity(2)["implementation_sha256"]
+    assert receipt["encoder"]["implementation_sha256"] != \
+        cwv_data.cwv_encoder_identity(1)["implementation_sha256"]
+    cache = next((tmp_path / "v2" / "cache").glob("*.cwv-v2-*.npz"))
+    assert np.load(cache)["public"].shape[1] == 561
+
+    checkpoint = tmp_path / "v2" / "best.pt"
+    model, metadata, _sha = load_cwv_checkpoint(checkpoint)
+    assert model.config.public_dim == 561 and model.config.enc_version == 2
+    assert verify_checkpoint_identity(metadata) == \
+        cwv_data.cwv_encoder_identity(2)["implementation_sha256"]
+    for encoding in ("reference", "mlp-static"):
+        evaluator, widths, fused = _shortlist_decision(checkpoint, encoding=encoding)
+        assert evaluator.enc_version == 2
+        assert widths and set(widths) == {561}, widths
+        # Static v2 reuses a fused v1 BASE, then canonically widens it. The
+        # consumer widths above must stay v2; no bare v1 row may reach the net.
+        if encoding == "reference":
+            assert fused == [], "reference encoding must not use the fused base"
+        else:
+            assert set(fused) == {1}, "static v2 must widen a fused v1 base"
+
+
+def test_encoder_v1_net_from_the_same_code_path_is_provenance_identical(store_dir, tmp_path):
+    """Acceptance B of spec part 2."""
+    from shengji.ai.cwv_policy import load_cwv_checkpoint, verify_checkpoint_identity
+
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64,
+              n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=32,
+              val_rank_records=50, **THIRDS)
+    # v1 is now explicit: the training default became 2 on 2026-09-08 and this
+    # test is specifically about the v1 net's provenance.
+    receipt = train_cwv.train(out=tmp_path / "v1", encoder_version=1, **kw)
+    assert receipt["config"]["encoder_version"] == 1
+    # the stored model_config is field-for-field what the pre-change trainer wrote
+    assert set(receipt["config"]["model_config"]) == {
+        "architecture", "width", "history_layers", "attention_heads", "feedforward_width",
+        "dropout", "max_history", "outcome_classes"}
+    assert receipt["encoder"]["implementation_sha256"] == \
+        cwv_data.cwv_encoder_identity()["implementation_sha256"]
+    checkpoint = tmp_path / "v1" / "best.pt"
+    model, metadata, _sha = load_cwv_checkpoint(checkpoint)
+    assert model.config.public_dim == 532 and "public_dim" not in metadata["model_config"]
+    assert verify_checkpoint_identity(metadata) == \
+        cwv_data.cwv_encoder_identity(1)["implementation_sha256"]
+    evaluator, widths, fused = _shortlist_decision(checkpoint, encoding="mlp-static")
+    assert evaluator.enc_version == 1
+    assert set(widths) == {532}
+    assert set(fused) == {1}, "#288's fused path must still serve the v1 default"
+
+
+# 8 --------------------- part 4: a v2 run with a v1 public head finishes its candidate pass
+
+def test_encoder_v2_run_with_a_v1_public_head_completes_and_writes_its_receipt(
+        store_dir, tmp_path):
+    """The live failure: the post-training candidate pass fed the v1 public
+    head 560-wide rows and refused, leaving no receipt.  The head is served
+    the v1 slice of its own width instead."""
+    public = train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
+                            epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
+                            cache_workers=1, **THIRDS)
+    assert public["config"]["encoder_version"] == 1
+    lines: list[str] = []
+    receipt = train_cwv.train(
+        data=[str(store_dir)], out=tmp_path / "v2", arch="mlp", device="cpu", epochs=1,
+        seed=7, batch_size=64, n_boot=10, hidden=32, log=lines.append, cache_workers=1,
+        eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2,
+        public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
+    assert (tmp_path / "v2" / "receipt.json").is_file()
+    assert (tmp_path / "v2" / "metrics.json").is_file()
+    assert receipt["config"]["encoder_version"] == 2
+    assert any("encoder=v1 (run encodes v2; served the v1 slice)" in line for line in lines), lines
+    public_block = receipt["final"]["test"].get("public_head") or receipt["final"]["test"]
+    assert public_block, "the public-head comparison ran"
+
+
+def test_a_public_head_the_run_cannot_serve_is_refused_before_training(store_dir, tmp_path):
+    cfg = train_v0.build_config(data=["never-opened"], hidden=8, encoder_version=2)
+    population = train_v0.fit_population(
+        {"deal:a": "train", "deal:b": "val", "deal:c": "test"}, stores=[])
+    head = tmp_path / "public-v2.pt"
+    train_v0.save_checkpoint(head, ValuePriorNet(cfg["arch"]), config=cfg, epoch=1, selection={},
+                             baselines={}, calibration=None, split={}, population=population)
+    lines: list[str] = []
+    with pytest.raises(train_cwv.TrainError, match="encoder v2 but this run encodes at v1"):
+        # encoder_version=1 is explicit so the v2 public head still MISMATCHES the
+        # run. Without it the run defaults to v2, the versions agree and nothing is
+        # refused -- the test would pass vacuously rather than exercise the refusal.
+        train_cwv.train(data=[str(store_dir)], out=tmp_path / "v1", arch="mlp", device="cpu",
+                        epochs=3, seed=7, batch_size=64, n_boot=10, hidden=32, log=lines.append,
+                        cache_workers=1, eval_workers=1, public_head=str(head),
+                        encoder_version=1, **THIRDS)
+    assert not any(line.startswith("epoch ") for line in lines), "refused before any epoch"
+    assert not (tmp_path / "v1" / "best.pt").exists()

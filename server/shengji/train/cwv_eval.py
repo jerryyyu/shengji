@@ -32,8 +32,12 @@ import numpy as np
 import torch
 
 from ..harvest.rebuild import RebuildError, state_for_record
+from ..harvest.schema import SchemaError, validate_record
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
-from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM, encode_obs
+from ..rl.encode import ENCODER_IMPLEMENTATION_SHA256, N_CARDS, OBS_DIM
+from ..rl.encode_versions import (ENC_VERSION, check_version, encode_obs, encoder_version_for,
+                                  obs_dim)
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at
 from ..rl.value_afterstate import (
     PERSPECTIVE_DIM,
     PUBLIC_DIM,
@@ -113,14 +117,49 @@ def load_public_head(path: str, device: torch.device | str = "cpu") -> tuple[Val
     return model, info
 
 
+def public_head_version(model: ValuePriorNet) -> int:
+    """The observation encoder version a public head was trained on (its
+    ``arch['obs_dim']`` states it)."""
+    return encoder_version_for(model.arch)
+
+
+def check_public_head_servable(model: ValuePriorNet, run_version: int, *,
+                               label: str = "public head") -> int:
+    """The head's version, or ``EvalError`` when rows at ``run_version``
+    cannot serve it.  A head at or below the run's version is served the
+    prefix of its own width (every later version is a strict extension of
+    the earlier ones: ``encode_obs(..., version=n)[:OBS_DIM_BY_VERSION[m]]``
+    is the v``m`` vector for m <= n).  A head NEWER than the rows cannot be
+    served, and that is refused up front rather than after training."""
+    head_version = public_head_version(model)
+    if head_version > check_version(run_version):
+        raise EvalError(f"{label} is encoder v{head_version} but this run encodes at "
+                        f"v{run_version}; a v{run_version} row cannot serve a v{head_version} "
+                        "head. Use a head at or below the run's encoder version.")
+    return head_version
+
+
+def serve_public_rows(model: ValuePriorNet, obs: np.ndarray) -> np.ndarray:
+    """``obs`` [n, width] at any encoder version >= the head's, narrowed to
+    the head's own width (the prefix IS that version's vector)."""
+    try:
+        rows_version = encoder_version_for(int(obs.shape[1]))
+    except ValueError as exc:                       # a width no encoder version produces
+        raise EvalError(f"public head observations must be [n, OBS_DIM]: {exc}") from None
+    check_public_head_servable(model, rows_version)
+    return obs[:, :int(model.arch["obs_dim"])]
+
+
 @torch.no_grad()
 def public_values(model: ValuePriorNet, obs: np.ndarray, device: torch.device | str = "cpu",
                   *, batch_size: int = 4096) -> np.ndarray:
     """The public head's value (PT0 signed level for the acting seat's team)
     per observation row (the prior head gets one masked dummy candidate)."""
     obs = np.asarray(obs, dtype=np.float32)
-    if obs.ndim != 2 or obs.shape[1] != OBS_DIM:
+    if obs.ndim != 2:
         raise EvalError("public head observations must be [n, OBS_DIM]")
+    obs = serve_public_rows(model, obs)
+    want = int(model.arch["obs_dim"])
     model.eval()
     out = []
     act_dim = int(model.arch["act_dim"])
@@ -230,12 +269,12 @@ class ShardResult:
 
 
 def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
-                     history: bool = False) -> dict:
+                     history: bool = False, version: int = ENC_VERSION) -> dict:
     """Apply every candidate in ``rnd`` (the TRUE world) and encode the
     reached states from ``seat``'s perspective; terminal successors carry
     their exact value instead of tensors (the nets never see them)."""
     k = len(candidates)
-    public = np.zeros((k, PUBLIC_DIM), dtype=np.float32)
+    public = np.zeros((k, public_dim(version)), dtype=np.float32)
     world = np.zeros((k, WORLD_RECEIVERS, N_CARDS), dtype=np.uint8)
     perspective = np.zeros(k, dtype=np.uint8)
     terminal = np.zeros(k, dtype=bool)
@@ -260,7 +299,7 @@ def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
                 hist_cards.append(np.zeros((0, N_CARDS), np.uint8))
                 hist_meta.append(np.zeros((0, HISTORY_META_DIM), np.uint8))
             continue
-        tensors = tensors_from_round(successor, seat)
+        tensors = tensors_at(successor, seat, version=version)
         public[i] = tensors.public
         world[i] = np.rint(tensors.world * 2.0).astype(np.uint8)
         if history:
@@ -284,7 +323,7 @@ def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
 
 def _candidate_task(task: tuple) -> ShardResult:
     """Pool worker: rebuild the selected records of one shard."""
-    shard, selected, want_search, per_shard_limit, history = task
+    shard, selected, want_search, per_shard_limit, history, version = task
     keep = None if selected is None else set(selected)
     refs: list[str] = []
     keys: list[str] = []
@@ -308,21 +347,21 @@ def _candidate_task(task: tuple) -> ShardResult:
             continue
         refs.append(str(record["source_ref"]))
         keys.append(key)
-        obs.append(np.asarray(encode_obs(rnd, seat), dtype=np.float32))
+        obs.append(np.asarray(encode_obs(rnd, seat, version=version), dtype=np.float32))
         means = search_means(record)
         if not want_search or means is None or len(search) >= per_shard_limit:
             continue
         indices, values = means
         try:
             scored = score_candidates(rnd, seat, [record["ballot"][i] for i in indices],
-                                      history=history)
+                                      history=history, version=version)
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
         scored["source_ref"] = str(record["source_ref"])
         scored["deal_key"] = key
         search.append(scored)
-    decision = np.stack(obs) if obs else np.zeros((0, OBS_DIM), np.float32)
+    decision = np.stack(obs) if obs else np.zeros((0, obs_dim(version)), np.float32)
     return ShardResult(label=shard.label, source_ref=refs, deal_key=keys,
                        decision_obs=decision, search=search)
 
@@ -343,7 +382,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                    public_head: ValuePriorNet | None, prior: StratifiedPrior | None,
                    device: torch.device | str, workers: int, rank_limit: int | None,
                    history: bool, want_search: bool = True,
-                   progress: Callable[[str], None] | None = None) -> dict:
+                   progress: Callable[[str], None] | None = None,
+                   version: int = ENC_VERSION) -> dict:
     """Run the workers over ``shard_keys`` (``(shard, selected deal keys or
     None)``) and score what they return.
 
@@ -358,7 +398,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
         per_shard = max(1, math.ceil(int(rank_limit) / max(1, len(shard_keys))))
     for shard, keys in shard_keys:
         tasks.append((shard, None if keys is None else list(keys), bool(want_search),
-                      per_shard if per_shard is not None else 1 << 30, bool(history)))
+                      per_shard if per_shard is not None else 1 << 30, bool(history),
+                      int(version)))
     started = time.perf_counter()
     decision_values: dict[str, float] = {}
     decision_keys: dict[str, str] = {}
@@ -390,7 +431,10 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                                                                         terminal)]), scores)
                 agreement["cwv"].append(candidate_agreement(scores, entry["means"]))
             if public_head is not None:
-                values = public_values(public_head, entry["public"][:, :OBS_DIM], device)
+                # Slice to the width the HEAD declares; a head of another
+                # encoder version fails loudly in ``public_values``.
+                head_dim = int(public_head.arch["obs_dim"])
+                values = public_values(public_head, entry["public"][:, :head_dim], device)
                 values = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), values)
@@ -472,6 +516,37 @@ RANK_REGRET_DEFINITION = (
     "(level_of_search_mean) of the search's MEAN points per candidate, an MC-ranking proxy "
     "-- NOT E[U] (the mean of per-world levels, which the records do not carry); "
     "rank_regret_points is the untransformed mean-points regret")
+#: the k of the top-k ranking metrics.  ``cwv_shortlist`` keeps
+#: ``alternatives = 4`` net-ranked actions plus production's incumbent and
+#: hands that SET to the unchanged MC-LCB search, so the SHAPE the shortlist
+#: consumes is a top-k set rather than a top-1 pick; k = 4 mirrors the
+#: measured design and 1 / 2 / 8 bracket it.  These metrics are a
+#: BALLOT-SCOPED PROXY for that shape, NOT the shortlist's own quantity:
+#: they rank the decision's stored ballot candidates (mean ~7.5 actions),
+#: whereas the shortlist ranks EVERY LEGAL action (mean ~1,371, max ~5e5)
+#: and unions production's incumbent, which a CandidateSet does not retain.
+#: Measured 2026-09-06: the A+B+C over A+B advantage VANISHES at k = 4 on
+#: all four labelled holdouts, so this proxy did not reproduce the sealed
+#: shortlist result; do not read it as the shortlist's offline predictor.
+DEFAULT_RANK_KS = (1, 2, 4, 8)
+RANK_AT_K_DEFINITION = (
+    "rank_regret_at_k = U(E[points])_best - E[U(E[points])_best-among-the-net's-top-k]: the "
+    "SAME level-bracket transform, terminal handling and RANK_SCALE as rank_regret, with the "
+    "candidate set widened from the net's argmax to its top k.  The top-k set is the first k "
+    "of the candidates ordered by net level, ties broken UNIFORMLY at random (the same rule "
+    "rank_regret uses for k = 1), and the metric is the EXPECTATION over that tie-break, so "
+    "rank_regret_at_1 == rank_regret exactly.  k >= the decision's candidate count gives 0.  "
+    "Like rank_regret these are U(E[points]) -- the bracket transform of the search's MEAN "
+    "points, an MC-ranking proxy, NOT E[U]. "
+    "SCOPE: these rank the decision's STORED BALLOT candidates only, and union no incumbent, "
+    "so they are a BALLOT-SCOPED PROXY for a top-k consumer rather than an exhaustive "
+    "full-legal-action quantity; see CONSUMERS for which designs that proxy does and does "
+    "not stand in for. "
+    "rank_recall_at_k = P(a search argmax is inside the net's top-k) under the same uniform "
+    "tie-break, where the search's argmax set is every candidate whose MEAN equals the "
+    "record's best mean (the tie rule rank_top1 already uses); rank_recall_at_1 == rank_top1. "
+    "rank_regret_at_k is non-increasing in k and rank_recall_at_k non-decreasing, because a "
+    "single uniform ordering couples the top-k sets (top-k subset of top-(k+1)).")
 #: which search designs consume which head, and on which positions
 CONSUMERS = {
     "level_head": {
@@ -483,8 +558,36 @@ CONSUMERS = {
                      "scores the TRUE world), ranked among the decision's candidates",
         "metrics": ["rank_regret (level scale; U(E[points]), an MC-ranking proxy, not E[U])",
                     "rank_regret_points", "rank_top1",
+                    "rank_regret_at_k / rank_recall_at_k (same scale and same U(E[points]) "
+                    "MC-ranking-proxy caveat, top-k instead of top-1)",
                     "cross_entropy", "value_mae (PT0)", "value_level_mae"],
         "recommended_select_metric": "val_rank_regret",
+        #: WHICH consumer reads WHICH shape of the ranking.  A design that
+        #: hands the search a SET of net-ranked actions is measured by the
+        #: top-k metrics; a design that plays or priors the net's single
+        #: pick is measured by the top-1 ones.
+        "top_k_consumers": ["shortlist (train.cwv_shortlist): keeps alternatives = 4 "
+                            "net-ranked actions PLUS production's incumbent and hands that "
+                            "SET to the unchanged MC-LCB search.  rank_regret_at_4 / "
+                            "rank_recall_at_4 share its SHAPE but are a BALLOT-SCOPED PROXY, "
+                            "not its quantity: ballot-only (no exhaustive legal enumeration) "
+                            "and no incumbent union.  Measured 2026-09-06: the proxy does NOT "
+                            "reproduce the sealed shortlist checkpoint contrast",
+                            "netroll (train.net_rollout) when it shortlists"],
+        "top_1_consumers": ["one-ply (ai.cwv_policy CompleteWorldEvaluator): plays the net's "
+                            "argmax -- rank_regret / rank_top1",
+                            "PUCT prior / leaf (ai.cwv_puct): the prior's mass is dominated "
+                            "by the net's top pick -- rank_regret / rank_top1"],
+        "rank_ks": list(DEFAULT_RANK_KS),
+        "recommended_select_metric_topk": "val_rank_regret_at_4",
+        #: the top-k metrics share the SHAPE of a top-k consumer but are
+        #: ballot-scoped and union no incumbent, so they are a proxy, not
+        #: the consumer's own quantity.  Measured 2026-09-06: the proxy did
+        #: not reproduce the sealed shortlist checkpoint contrast.
+        "select_metric_scope": ("ballot-scoped proxy: ranks the stored ballot candidates "
+                                "(mean ~7.5 actions), unions no incumbent, and does not "
+                                "enumerate the full legal action set (mean ~1,371); the "
+                                "in-search screen remains the selector of record"),
     },
     "points_head": {
         "quantity": "final attacker points (aux head on the mlp trunk, target points / 100)",
@@ -606,7 +709,8 @@ class CandidateSet:
             return np.zeros((0, *shape), dtype=dtype)
 
         out = cls(
-            public=cat("public", np.float32, (PUBLIC_DIM,)),
+            public=cat("public", np.float32,
+                       (int(np.shape(entries[0]["public"])[1]) if entries else PUBLIC_DIM,)),
             world=cat("world", np.uint8, (WORLD_RECEIVERS, N_CARDS)),
             perspective=cat("perspective", np.uint8, ()),
             terminal=cat("terminal", bool, ()),
@@ -631,7 +735,7 @@ class CandidateSet:
 def _candidate_set_task(task: tuple) -> list[dict]:
     """Pool worker: the first ``limit`` search records of one shard among
     the selected deals, every candidate applied in the TRUE world."""
-    shard, selected, limit, history = task
+    shard, selected, limit, history, version = task
     keep = None if selected is None else set(selected)
     entries: list[dict] = []
     for record in iter_records(shard):
@@ -658,7 +762,7 @@ def _candidate_set_task(task: tuple) -> list[dict]:
         indices, values = means
         try:
             scored = score_candidates(rnd, seat, [record["ballot"][i] for i in indices],
-                                      history=history)
+                                      history=history, version=version)
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
@@ -679,13 +783,15 @@ def _pool_map(fn: Callable, tasks: Sequence[tuple], *, workers: int) -> Iterator
 
 
 def candidate_set_digest(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
-                         per_shard_limit: int, history: bool) -> str:
+                         per_shard_limit: int, history: bool,
+                         version: int = ENC_VERSION) -> str:
     """Identity of a candidate set: encoder, flavour, per-shard cap and the
     (shard, selected deals) list in order."""
     h = hashlib.sha256()
     h.update(json.dumps({
         "schema": CANDIDATE_SET_SCHEMA,
-        "encoder": cwv_encoder_identity()["implementation_sha256"],
+        "encoder": cwv_encoder_identity(version)["implementation_sha256"],
+        "enc_version": int(version),
         "history": bool(history), "per_shard_limit": int(per_shard_limit),
         "shards": [[shard.sha256, None if keys is None else sorted(keys)]
                    for shard, keys in shard_keys],
@@ -695,14 +801,15 @@ def candidate_set_digest(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
 
 def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                         per_shard_limit: int, history: bool, workers: int,
-                        label: str = "", progress: Callable[[str], None] | None = None
-                        ) -> CandidateSet:
+                        label: str = "", progress: Callable[[str], None] | None = None,
+                        version: int = ENC_VERSION) -> CandidateSet:
     """Rebuild the first ``per_shard_limit`` search records of every
     ``(shard, deal keys)`` (``None`` = every deal) into one ``CandidateSet``
     (shard order = the input order, so the set is a function of its
     digest)."""
     started = time.perf_counter()
-    tasks = [(shard, None if keys is None else list(keys), int(per_shard_limit), bool(history))
+    tasks = [(shard, None if keys is None else list(keys), int(per_shard_limit),
+              bool(history), int(version))
              for shard, keys in shard_keys]
     by_shard: dict[str, list[dict]] = {}
     labels = [shard.sha256 for shard, _keys in shard_keys]
@@ -720,8 +827,9 @@ def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], 
     for entries in sorted(by_shard.values(), key=lambda es: es[0]["source_ref"]):
         ordered.extend(entries)
     meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": candidate_set_digest(
-                shard_keys, per_shard_limit=per_shard_limit, history=history),
-            "encoder": cwv_encoder_identity(), "history": bool(history),
+                shard_keys, per_shard_limit=per_shard_limit, history=history,
+                version=version),
+            "encoder": cwv_encoder_identity(version), "history": bool(history),
             "per_shard_limit": int(per_shard_limit), "shards": len(labels),
             "search_means": SEARCH_MEANS_SCALE, "rank_scale": RANK_SCALE,
             "secs": round(time.perf_counter() - started, 3), "label": label}
@@ -734,9 +842,11 @@ def build_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], 
 def ensure_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
                          cache_dir: str | os.PathLike | None, *, per_shard_limit: int,
                          history: bool, workers: int, label: str = "",
-                         progress: Callable[[str], None] | None = None) -> CandidateSet:
+                         progress: Callable[[str], None] | None = None,
+                         version: int = ENC_VERSION) -> CandidateSet:
     """``build_candidate_set`` memoised in ``cache_dir`` by digest."""
-    digest = candidate_set_digest(shard_keys, per_shard_limit=per_shard_limit, history=history)
+    digest = candidate_set_digest(shard_keys, per_shard_limit=per_shard_limit,
+                                  history=history, version=version)
     path = (None if cache_dir is None
             else Path(cache_dir) / f"candidates-{digest[:24]}{'.cwvh' if history else ''}.npz")
     if path is not None and path.is_file():
@@ -751,7 +861,8 @@ def ensure_candidate_set(shard_keys: Sequence[tuple[Any, Sequence[str] | None]],
                          f"records / {cached.candidates} candidates from {path.name}")
             return cached
     built = build_candidate_set(shard_keys, per_shard_limit=per_shard_limit, history=history,
-                                workers=workers, label=label, progress=progress)
+                                workers=workers, label=label, progress=progress,
+                                version=version)
     if path is not None:
         built.save(path)
         built.meta["saved_to"] = str(path)
@@ -778,13 +889,88 @@ def candidate_levels(forward: Callable[[Mapping[str, torch.Tensor]], torch.Tenso
     return levels
 
 
-def _no_rank() -> dict:
-    return {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
-            "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
-            "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION}
+def _rank_ks(ks: Sequence[int] | None) -> tuple[int, ...]:
+    """The validated, de-duplicated, ascending k of the top-k metrics."""
+    values = DEFAULT_RANK_KS if ks is None else tuple(ks)
+    out = []
+    for k in values:
+        if isinstance(k, bool) or not isinstance(k, (int, np.integer)) or int(k) < 1:
+            raise EvalError(f"rank_metrics: every k must be a positive integer, got {k!r}")
+        if int(k) not in out:
+            out.append(int(k))
+    if not out:
+        raise EvalError("rank_metrics: at least one k is required")
+    return tuple(sorted(out))
 
 
-def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
+def _no_rank(ks: Sequence[int] | None = None) -> dict:
+    out = {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
+           "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
+           "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
+           "rank_at_k_definition": RANK_AT_K_DEFINITION}
+    ks = _rank_ks(ks)
+    out["rank_ks"] = list(ks)
+    out["rank_regret_at_k"] = {str(k): None for k in ks}
+    out["rank_recall_at_k"] = {str(k): None for k in ks}
+    for k in ks:
+        out[f"rank_regret_at_{k}"] = None
+        out[f"rank_recall_at_{k}"] = None
+    return out
+
+
+def _score_groups(scores: np.ndarray) -> list[np.ndarray]:
+    """The candidate rows grouped by equal net score, best group first."""
+    return [np.flatnonzero(scores == value) for value in np.unique(scores)[::-1]]
+
+
+def _top_k_split(groups: Sequence[np.ndarray], k: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """The net's top-``k`` under uniform tie-breaking, as
+    ``(certain, boundary, slots)``: ``certain`` are the rows in EVERY top-k
+    set, ``boundary`` the tied rows of which a uniform ``slots``-subset
+    completes it (``slots == 0`` -> the set is exactly ``certain``)."""
+    certain: list[int] = []
+    for group in groups:                             # distinct scores, best first
+        if len(certain) + group.size <= k:
+            certain.extend(group.tolist())
+            if len(certain) == k:
+                break
+        else:
+            return np.asarray(certain, dtype=np.int64), group, k - len(certain)
+    return np.asarray(certain, dtype=np.int64), np.zeros(0, dtype=np.int64), 0
+
+
+def _expected_subset_max(values: np.ndarray, slots: int) -> float:
+    """``E[max]`` of a uniformly random ``slots``-subset of ``values``.
+    ``slots == 1`` is the plain mean -- the SAME expression ``rank_regret``
+    uses for a tie among the scorer's maxima, so k = 1 is bit-identical."""
+    g = int(values.size)
+    if slots >= g:
+        return float(values.max())
+    if slots == 1:
+        return float(values.mean())
+    ordered = np.sort(values)                        # ascending
+    total = float(math.comb(g, slots))
+    weights = np.asarray([math.comb(j, slots) - math.comb(j - 1, slots)
+                          for j in range(1, g + 1)], dtype=np.float64)
+    return float((ordered * weights).sum() / total)
+
+
+def _subset_hit_probability(hit: np.ndarray, slots: int) -> float:
+    """``P(at least one True)`` in a uniformly random ``slots``-subset of the
+    boolean ``hit``; ``slots == 1`` is the plain mean (``rank_top1``)."""
+    g = int(hit.size)
+    if slots >= g:
+        return 1.0 if bool(hit.any()) else 0.0
+    if slots == 1:
+        return float(hit.mean())
+    misses = int((~hit).sum())
+    if misses < slots:
+        return 1.0
+    return float(1.0 - math.comb(misses, slots) / math.comb(g, slots))
+
+
+def rank_metrics(levels: np.ndarray, cands: CandidateSet, *,
+                 ks: Sequence[int] | None = None) -> dict:
     """Per-decision candidate ranking against the search, averaged over the
     set's records (each with >= 2 candidates and finite search means):
 
@@ -796,13 +982,25 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
     * ``rank_regret_points``: the same on the search's own scale;
     * ``rank_top1``: probability the scorer's top pick is a search argmax;
     * ``rank_regret_max``: the mean spread (best minus worst mean level) --
-      the regret of an inverted ranking."""
+      the regret of an inverted ranking;
+    * ``rank_regret_at_k`` / ``rank_recall_at_k`` for every k in ``ks``
+      (default ``DEFAULT_RANK_KS``), also flat as ``rank_regret_at_<k>`` /
+      ``rank_recall_at_<k>`` so ``train_cwv.SELECT_METRICS`` can read them:
+      the SAME level scale, level-bracket transform, terminal handling and
+      U(E[points]) MC-ranking-proxy caveat as ``rank_regret``, with the
+      scorer's single argmax widened to its top k
+      (``RANK_AT_K_DEFINITION``).  ``rank_regret_at_1 == rank_regret`` and
+      ``rank_recall_at_1 == rank_top1`` exactly.  These are the shape the
+      SHORTLIST consumes (``cwv_shortlist``, 4 net-ranked alternatives
+      handed as a SET to the unchanged MC-LCB search); the top-1 pair is
+      the shape one-ply and the PUCT prior consume."""
     levels = np.asarray(levels, dtype=np.float64)
+    ks = _rank_ks(ks)
     if levels.shape != (cands.candidates,):
         raise EvalError("candidate levels are misaligned with the candidate set")
     n = cands.records
     if n == 0:
-        return _no_rank()
+        return _no_rank(ks)
     if not np.all(np.isfinite(levels)):
         raise EvalError("candidate levels must be finite")
     mean_level = cands.means_level()
@@ -810,6 +1008,8 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
     regret_pts = np.empty(n)
     top1 = np.empty(n)
     spread = np.empty(n)
+    regret_k = {k: np.empty(n) for k in ks}
+    recall_k = {k: np.empty(n) for k in ks}
     for r in range(n):
         lo, hi = int(cands.offsets[r]), int(cands.offsets[r + 1])
         s = levels[lo:hi]
@@ -820,12 +1020,38 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet) -> dict:
         regret_pts[r] = m.max() - m[top].mean()
         top1[r] = float((m == m.max())[top].mean())
         spread[r] = ml.max() - ml.min()
-    return {
+        best = float(ml.max())
+        is_argmax = m == m.max()                      # the search's tied argmax set
+        groups = _score_groups(s)
+        for k in ks:
+            certain, boundary, slots = _top_k_split(groups, k)
+            floor = float(ml[certain].max()) if certain.size else -math.inf
+            if slots == 0:
+                reached = floor
+                hit = 1.0 if bool(is_argmax[certain].any()) else 0.0
+            else:
+                edge = ml[boundary]
+                reached = _expected_subset_max(
+                    edge if floor == -math.inf else np.maximum(edge, floor), slots)
+                if certain.size and bool(is_argmax[certain].any()):
+                    hit = 1.0
+                else:
+                    hit = _subset_hit_probability(is_argmax[boundary], slots)
+            regret_k[k][r] = best - reached
+            recall_k[k][r] = hit
+    out = {
         "rank_records": int(n), "rank_candidates": int(cands.candidates),
         "rank_regret": float(regret.mean()), "rank_regret_points": float(regret_pts.mean()),
         "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),
         "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
+        "rank_at_k_definition": RANK_AT_K_DEFINITION, "rank_ks": list(ks),
+        "rank_regret_at_k": {str(k): float(regret_k[k].mean()) for k in ks},
+        "rank_recall_at_k": {str(k): float(recall_k[k].mean()) for k in ks},
     }
+    for k in ks:
+        out[f"rank_regret_at_{k}"] = out["rank_regret_at_k"][str(k)]
+        out[f"rank_recall_at_{k}"] = out["rank_recall_at_k"][str(k)]
+    return out
 
 
 def points_metrics(aux_pred: np.ndarray, attacker_points: np.ndarray,
@@ -872,12 +1098,315 @@ def search_facing_metrics(ev: Mapping[str, np.ndarray], *, levels: np.ndarray | 
     return block
 
 
+# ------------------------------------------------- labelled harvest holdouts
+
+HOLDOUT_LABELS_SCHEMA = "shengji-harvest-labels-v1"
+HOLDOUT_STRIP_KEYS = ("search_labels", "label_refusal", "deal_key", "state_key", "work_key",
+                      "key_version", "migrated_from")
+#: what each search-facing metric of a holdout needs, and why a holdout
+#: without it is SKIPPED (reported null), never approximated
+HOLDOUT_SUPPORT = {
+    "rank_regret": "search_labels with >= 2 finite production means (label_harvest)",
+    "calibration": "outcome (attacker_points + signed_level_utility) on the record",
+    "points": "outcome.attacker_points on the record (the aux points head)",
+}
+
+
+@dataclass
+class LabeledHoldout:
+    """A labelled harvest file (``harvest_labels``): the rows (deduplicated
+    by ``record_sha256``, first occurrence wins), what they support and the
+    labeller's identity."""
+
+    path: str
+    sha256: str
+    rows: list[dict]
+    counts: dict
+    supports: dict
+    identity: dict
+    sources: dict
+    policies: dict
+    private: bool
+
+    def describe(self) -> dict:
+        return {"path": self.path, "sha256": self.sha256, "private": self.private,
+                "counts": dict(self.counts), "supports": dict(self.supports),
+                "identity": dict(self.identity), "sources": dict(self.sources),
+                "policies": dict(self.policies), "support_needs": dict(HOLDOUT_SUPPORT)}
+
+
+def holdout_deal_keys(holdout: "LabeledHoldout") -> set[str]:
+    """The deal identity (``train.data.deal_key`` over the record's deck) of
+    EVERY row of the holdout, labelled or not: the exposure check must see
+    the whole file, not only the rows a metric branch consumes."""
+    keys: set[str] = set()
+    for row in holdout.rows:
+        deck = row.get("deck")
+        if isinstance(deck, list):
+            keys.add(deal_key(list(deck)))
+    return keys
+
+
+def holdout_record(row: Mapping[str, Any]) -> dict:
+    """The untouched harvest record inside a labelled row (its
+    ``record_sha256`` is valid again once the label keys are gone)."""
+    return {k: v for k, v in row.items() if k not in HOLDOUT_STRIP_KEYS}
+
+
+def holdout_search_means(row: Mapping[str, Any]) -> tuple[list[int], list[float]] | None:
+    """``(ballot indices, means)`` of a row's production labels (the
+    ``search_labels`` ballot, acting-team perspective, points scale), or
+    None without at least two finite means."""
+    labels = row.get("search_labels")
+    if not isinstance(labels, dict) or not labels.get("searched") or labels.get("forced"):
+        return None
+    ballot = labels.get("ballot")
+    means = labels.get("means")
+    eligible = labels.get("eligible_indices")
+    if not isinstance(ballot, list) or not isinstance(means, list) \
+            or not isinstance(eligible, list) or len(means) != len(ballot):
+        return None
+    pairs = []
+    for index in eligible:
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(ballot):
+            continue
+        mean = means[index]
+        if isinstance(mean, bool) or not isinstance(mean, (int, float)) or not math.isfinite(mean):
+            continue
+        pairs.append((int(index), float(mean)))
+    if len(pairs) < 2:
+        return None
+    return [i for i, _ in pairs], [m for _, m in pairs]
+
+
+def _has_outcome(record: Mapping[str, Any]) -> bool:
+    outcome = record.get("outcome")
+    return (isinstance(outcome, dict) and isinstance(outcome.get("attacker_points"), int)
+            and not isinstance(outcome.get("attacker_points"), bool)
+            and outcome.get("signed_level_utility") is not None)
+
+
+def load_labeled_holdout(path: str | os.PathLike) -> LabeledHoldout:
+    """Read a labelled harvest file (a merged ``<source>.labels[.private]
+    .jsonl`` or one shard) and say what it supports.  Refuses a file whose
+    rows are not labelled rows, and one that mixes labeller identities
+    (policy / scale / work) -- its metrics would not be one quantity."""
+    path = Path(path)
+    if not path.is_file():
+        raise EvalError(f"{path}: not a file")
+    digest = hashlib.sha256()
+    rows: list[dict] = []
+    seen: set[str] = set()
+    counts: dict[str, Any] = {"lines": 0, "rows": 0, "duplicates": 0, "labelled": 0,
+                              "searched": 0, "unsearched": {}, "refused": {},
+                              "rank_eligible": 0, "with_outcome": 0,
+                              "rank_eligible_with_outcome": 0, "played_off_ballot": 0,
+                              "forced": 0, "duplicate_state": 0, "failed_throw_prefix": 0,
+                              "deals": 0}
+    identities: dict[tuple, int] = {}
+    code_shas: dict[str, int] = {}
+    deals: set[str] = set()
+    sources: dict[str, int] = {}
+    policies: dict[str, int] = {}
+    with open(path, "rb") as fh:
+        for raw in fh:
+            digest.update(raw)
+            line = raw.strip()
+            if not line:
+                continue
+            counts["lines"] += 1
+            row = json.loads(line)
+            if not isinstance(row, dict) or "search_labels" not in row \
+                    or "label_refusal" not in row or not row.get("record_sha256"):
+                raise EvalError(f"{path}: line {counts['lines']} is not a labelled harvest row "
+                                "(search_labels / label_refusal / record_sha256 missing)")
+            sha = str(row["record_sha256"])
+            if sha in seen:
+                counts["duplicates"] += 1
+                continue
+            # the record inside the row must still be the harvest record it
+            # claims to be (hash, fields, cross-field rules): validated at
+            # consumption, exactly as the labeller validated it at ingestion
+            try:
+                validate_record(holdout_record(row))
+            except SchemaError as exc:
+                raise EvalError(f"{path}: line {counts['lines']} ({sha[:12]}): the labelled "
+                                f"row's record is not a valid decision record: {exc}") from exc
+            seen.add(sha)
+            rows.append(row)
+            counts["rows"] += 1
+            sources[str(row.get("source"))] = sources.get(str(row.get("source")), 0) + 1
+            policies[str(row.get("policy"))] = policies.get(str(row.get("policy")), 0) + 1
+            has_outcome = _has_outcome(row)
+            counts["with_outcome"] += int(has_outcome)
+            if row.get("deal_key"):
+                deals.add(str(row["deal_key"]))
+            labels = row["search_labels"]
+            if labels is None:
+                reason = (row.get("label_refusal") or {}).get("reason", "?")
+                counts["refused"][reason] = counts["refused"].get(reason, 0) + 1
+                counts["duplicate_state"] += int(reason == "duplicate_state")
+                continue
+            if labels.get("schema") != HOLDOUT_LABELS_SCHEMA:
+                raise EvalError(f"{path}: search_labels schema {labels.get('schema')!r} is not "
+                                f"{HOLDOUT_LABELS_SCHEMA!r}")
+            counts["labelled"] += 1
+            ident = (str(labels.get("policy")), int(labels.get("scale", 1)),
+                     int(labels.get("n_worlds", 0)), int(labels.get("report_worlds", 0)),
+                     str(labels.get("report_rule")),
+                     None if labels.get("work_override") is None
+                     else tuple(labels["work_override"]))
+            identities[ident] = identities.get(ident, 0) + 1
+            code = str(labels.get("code_sha"))
+            code_shas[code] = code_shas.get(code, 0) + 1
+            if labels.get("searched"):
+                counts["searched"] += 1
+            else:
+                reason = str(labels.get("reason"))
+                counts["unsearched"][reason] = counts["unsearched"].get(reason, 0) + 1
+            if not labels.get("played_in_ballot", True):
+                counts["played_off_ballot"] += 1
+            counts["forced"] += int(bool(labels.get("forced")))
+            counts["failed_throw_prefix"] += int(bool(labels.get("failed_throw_prefix")))
+            eligible = holdout_search_means(row) is not None
+            counts["rank_eligible"] += int(eligible)
+            counts["rank_eligible_with_outcome"] += int(eligible and has_outcome)
+    if len(identities) > 1:
+        raise EvalError(f"{path}: mixed labeller identities {sorted(identities)}: one holdout "
+                        "must be one labeller (policy, scale, work)")
+    ident = next(iter(identities)) if identities else None
+    identity = {
+        "policy": None if ident is None else ident[0],
+        "scale": None if ident is None else ident[1],
+        "n_worlds": None if ident is None else ident[2],
+        "report_worlds": None if ident is None else ident[3],
+        "report_rule": None if ident is None else ident[4],
+        "work_override": None if ident is None else ident[5],
+        "code_shas": dict(sorted(code_shas.items())),
+        "labels_schema": HOLDOUT_LABELS_SCHEMA,
+    }
+    counts["unsearched"] = dict(sorted(counts["unsearched"].items()))
+    counts["refused"] = dict(sorted(counts["refused"].items()))
+    counts["deals"] = len(deals)
+    supports = {
+        "rank_regret": counts["rank_eligible"] > 0,
+        "calibration": counts["with_outcome"] > 0,
+        "points": counts["with_outcome"] > 0,
+    }
+    return LabeledHoldout(path=str(path.resolve()), sha256=digest.hexdigest(), rows=rows,
+                          counts=counts, supports=supports, identity=identity,
+                          sources=dict(sorted(sources.items())),
+                          policies=dict(sorted(policies.items())),
+                          private=not (path.stat().st_mode & 0o044))
+
+
+def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: bool,
+                              limit: int | None = None,
+                              version: int = ENC_VERSION) -> tuple[list[dict], dict]:
+    """``score_candidates`` entries for every rank-eligible labelled row
+    (the labels' ballot applied in the record's TRUE world, encoded once),
+    in file order; no outcome is needed.  Returns ``(entries, counts)``."""
+    entries: list[dict] = []
+    counts = {"rows": 0, "rank_eligible": 0, "encoded": 0, "rebuild_failed": 0,
+              "turn_mismatch": 0, "action_failed": 0}
+    for row in rows:
+        counts["rows"] += 1
+        means = holdout_search_means(row)
+        if means is None:
+            continue
+        counts["rank_eligible"] += 1
+        if limit is not None and len(entries) >= int(limit):
+            continue
+        record = holdout_record(row)
+        seat = int(record["seat"])
+        try:
+            rnd = state_for_record(record)
+        except (RebuildError, ValueError, KeyError, AssertionError, TypeError):
+            counts["rebuild_failed"] += 1
+            continue
+        if rnd.phase != "play" or rnd.turn != seat:
+            counts["turn_mismatch"] += 1
+            continue
+        indices, values = means
+        ballot = row["search_labels"]["ballot"]
+        try:
+            scored = score_candidates(rnd, seat, [ballot[i] for i in indices],
+                                      history=history, version=version)
+        except ValueAfterstateError:
+            counts["action_failed"] += 1
+            continue
+        scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["source_ref"] = str(record["source_ref"])
+        scored["deal_key"] = deal_key(list(record["deck"])) if isinstance(record.get("deck"), list) \
+            else f"ref:{record['source_ref']}"
+        entries.append(scored)
+        counts["encoded"] += 1
+    return entries, counts
+
+
+def holdout_candidate_set(holdout: LabeledHoldout, *, history: bool, limit: int | None = None,
+                          label: str = "", version: int = ENC_VERSION) -> CandidateSet:
+    """The holdout's ``CandidateSet`` (``rank_metrics`` input): the same
+    arrays, scale and metric definitions as the self-play candidate sets,
+    with the production labels as the search means."""
+    started = time.perf_counter()
+    entries, counts = holdout_candidate_entries(holdout.rows, history=history, limit=limit,
+                                               version=version)
+    digest = hashlib.sha256(json.dumps({
+        "schema": CANDIDATE_SET_SCHEMA, "holdout": holdout.sha256,
+        "encoder": cwv_encoder_identity(version)["implementation_sha256"],
+        "enc_version": int(version),
+        "history": bool(history), "limit": limit}, sort_keys=True).encode("ascii")).hexdigest()
+    meta = {"schema": CANDIDATE_SET_SCHEMA, "digest": digest,
+            "encoder": cwv_encoder_identity(version), "history": bool(history),
+            "per_shard_limit": None if limit is None else int(limit), "shards": 1,
+            "search_means": SEARCH_MEANS_SCALE + " -- here: production labels "
+                                                 "(harvest_labels, search_labels.means)",
+            "rank_scale": RANK_SCALE, "label": label, "holdout": holdout.path,
+            "holdout_sha256": holdout.sha256, "counts": counts,
+            "secs": round(time.perf_counter() - started, 3)}
+    out = CandidateSet.concatenate(entries, meta, history=history)
+    out.meta["records"] = out.records
+    out.meta["candidates"] = out.candidates
+    return out
+
+
+def materialize_holdout_records(holdout: LabeledHoldout, out_path: str | os.PathLike) -> Path:
+    """Write the holdout's untouched harvest records (label keys stripped,
+    every ``record_sha256`` valid) as one canonical JSONL so the row-level
+    pipeline (``cwv_data.prepare_stores`` -> ``bridge_record``) reads them
+    unchanged; 0600 when the holdout is private.  Returns the path."""
+    from ..harvest.schema import encode_line
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(f"{out_path.name}.{os.getpid()}.tmp")
+    mode = 0o600 if holdout.private else 0o644
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "wb") as fh:
+        os.fchmod(fh.fileno(), mode)
+        for row in holdout.rows:
+            record = holdout_record(row)
+            try:
+                validate_record(record)
+            except SchemaError as exc:
+                raise EvalError(f"{holdout.path}: {row.get('record_sha256', '')[:12]}: "
+                                f"refusing to materialize an invalid record: {exc}") from exc
+            fh.write(encode_line(record).encode("ascii"))
+    os.replace(tmp, out_path)
+    return out_path
+
+
 __all__ = [
-    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "EvalError", "RANK_REGRET_DEFINITION",
+    "CANDIDATE_SET_SCHEMA", "CONSUMERS", "CandidateSet", "DEFAULT_RANK_KS", "EvalError",
+    "RANK_AT_K_DEFINITION", "RANK_REGRET_DEFINITION",
     "RANK_SCALE",
+    "HOLDOUT_LABELS_SCHEMA", "HOLDOUT_SUPPORT", "LabeledHoldout",
     "SCORERS", "SEARCH_MEANS_SCALE", "ShardResult", "build_candidate_set",
     "candidate_agreement", "candidate_levels", "candidate_pass", "candidate_set_digest",
-    "candidate_tensors", "ensure_candidate_set", "iter_shard_results",
+    "candidate_tensors", "ensure_candidate_set", "holdout_candidate_entries",
+    "holdout_candidate_set", "holdout_deal_keys", "holdout_record", "holdout_search_means",
+    "iter_shard_results",
+    "load_labeled_holdout", "materialize_holdout_records",
     "level_of_search_mean", "load_public_head", "paired_agreement", "points_metrics",
     "public_values", "rank_metrics", "score_candidates", "search_facing_metrics",
     "spearman", "summarize_agreement",

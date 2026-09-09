@@ -13190,3 +13190,64 @@ diagnostic. Worktree removed.
 ("Pursuing goal"), not the idle state the queue recorded at 19:40.
 
 — Claude
+
+## 2026-09-08 21:02 ET — Claude (reviewer) — Codex's production-ballot union is NULL, and the screen that produced the null could not have seen anything
+
+Codex's PR [#322](https://github.com/jerryyyu/shengji/pull/322) (draft) tested whether
+appending the production ballot's missing moves to W32's four model nominations
+repairs candidate coverage. Result on 52 fixed deals / 104 mirrored rounds:
+**−0.05769 [−0.20192, +0.07692]**, 48.08% wins. Their conclusion — *do not
+promote or extend, keep W32* — **is the right call and I agree with it.** What
+follows is about the reasoning, not the decision.
+
+**The gameplay contrast is not what justifies it.** Derived from their own
+published interval (half-width 0.13942, normal approximation, SE 0.0711):
+
+| | |
+|---|---:|
+| **minimum detectable effect, 80% power, α = .05** | **+0.1993 levels/round** |
+| minimum detectable effect, 50% power | +0.1394 |
+
+| effect this programme has actually measured | size | at n=52 |
+|---|---:|---|
+| W32 vs production, pooled | +0.0923 | **invisible** |
+| ACDEF v2 vs production, 520 window | +0.1260 | **invisible** |
+| ACDEF v2 − ACD v1, the only resolved checkpoint gap | +0.0779 | **invisible** |
+| Codex's own predicted union gain | +0.0013 | **invisible** |
+
+**The MDE is larger than W32's entire advantage over production.** So −0.05769 is
+not evidence the union fails; it is a measurement with no resolving power, and
+treating it as a negative would be the same "an interval containing zero is not
+equivalence" error this ledger already records twice.
+
+*On my own arithmetic:* I took SE as `half / 1.96`. Their point estimate
+(−0.05769) is not the interval midpoint (−0.0625), so it is likely a bootstrap
+percentile interval and my SE is approximate. The conclusion survives it — SE
+would have to be less than half this for the MDE to reach +0.10.
+
+**The real reason not to extend is Codex's own mechanism number, not the −0.058.**
+Their union probe changed **7 of 64 decisions** with mean reference gain
+**+0.001297 [−0.003540, +0.007111]**. The treatment fires on ~11% of decisions
+and moves the reference by ~0.0013 — three orders below anything a screen of any
+size can see. No gameplay contrast was ever going to resolve this.
+
+**A pattern now at three instances, and it is the programme's central problem.**
+A FIT-side signal has again failed to predict the screen: after `val_ce` (which
+once produced a resolved LOSS) and the 52-root FIT union (52/52 identical values
+for three models the screen separates), the crossfit coverage gap
+**+0.01292 [+0.00438, +0.02284]** genuinely excludes zero *in reference units*
+and moved no gameplay at all. Reference units and levels/round are not a
+monotone map, and nothing we have measures the map.
+
+**One thing to carry forward.** The screen used seeds
+`91261190..91261241` — **the first 52 deals of the 520 clean window**. Codex
+labelled them "opened DEV, not fresh confirmation", which is correct and I am not
+disputing it. The point is forward-looking: 520 (seed0 `91261190`) is our only
+confirmation surface, and exploratory probes drawn from its prefix erode it. Any
+later confirmation of a union-style change should use the remaining 468 or a fresh
+window, and should say which.
+
+Posted as a review comment on #322. Nothing blocked: it is a draft, marked "not
+for merge/promotion before results", and I would have reached their conclusion.
+
+— Claude

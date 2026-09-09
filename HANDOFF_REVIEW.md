@@ -13932,3 +13932,85 @@ typical decision is 1.1% labelled.
 16.19/16c, ~13:15 ET (drifted later again from 11:58). Tip is mine.
 
 — Claude
+
+## 2026-09-09 05:40 ET — Claude — CORRECTING last tick's divergence numbers: my comparator was order-sensitive. And the corrected data confirms a sharp prediction.
+
+### The bug, found by looking at rows instead of trusting a rate
+
+I extended the divergence work to ask **where** the teachers diverge as a function
+of legal-set width, with a prediction stated before running: at width ≤ 5 the
+shortlist's candidate set *is* the whole legal set, and `cwv_shortlist` draws its
+cheap-ranking worlds from a child seed precisely so that *"cheap ranking cannot
+consume production selection/report RNG"*. So divergence at small widths should be
+**near zero**, and if it were not, the RNG-isolation guarantee would be broken.
+
+The first run said **width 1: 524 decisions, 50 diverged, 9.5%**. With one legal
+action, that is impossible. So I looked at the rows:
+
+```
+I action=S5+SQ          legal=['S5+SQ']   ballot=['S5+SQ']
+J action=SQ+S5          legal=['S5+SQ']   ballot=['SQ+S5']
+I action=H6+H7+H7        J action=H7+H7+H6
+I action=S10+S9          J action=S9+S10
+I action=S4+S5+S7+SQ     J action=S4+S7+SQ+S5
+```
+
+**Identical plays, different card order.** My comparator used list equality on
+`action`. The engine is fine; my measurement was not.
+
+### What that costs: last tick's headline figures were wrong
+
+| | reported at 03:40 | **corrected** |
+|---|---:|---:|
+| rounds that ever diverge | 100.0% | **100.0%** (unchanged) |
+| rounds diverging at ply 0 | **26.9%** | **14.6%** |
+| mean decisions to first disagreement | **7.16** | **11.50** |
+| median first divergent ply | 4 | **8** |
+| decisions on the common prefix | 5,727 | 9,197 |
+
+**About half of what I called divergence was card ordering.** The pre-registered
+*reading* is unchanged — MATERIAL DIFFERENCE — but the numbers I gave Jerry and
+Codex were inflated and these are the right ones.
+
+**A judgement call I am flagging rather than burying.** The pre-registration said
+that if `plays_prefix` identity ever failed, the measurement is void and I would
+say so *rather than patch it*. It did fail — in 365 of 800 rounds — for exactly
+the same order-sensitivity reason, because `plays_prefix` records card order too.
+I fixed the comparator (compare `(seat, sorted(cards))`) and re-ran. **Fixing a
+buggy comparator is not the same as loosening a substantive guard**, and the guard
+still fires on a genuine prefix mismatch; but the sequence is on the record so a
+reader can judge that for themselves.
+
+### The prediction, on corrected data: CONFIRMED, and sharply
+
+| legal-set width | decisions | diverged | rate |
+|---|---:|---:|---:|
+| 1 | 524 | 0 | **0.0%** |
+| 2–5 | 1,915 | 19 | 1.0% |
+| 6–17 | 1,231 | 57 | 4.6% |
+| 18–100 | 143 | 29 | 20.3% |
+| 101–1,000 | 735 | 128 | 17.4% |
+| >1,000 | 1,179 | 202 | 17.1% |
+| **≤5** | **2,439** | **19** | **0.78%** |
+| **>5** | **3,288** | **416** | **12.65%** |
+
+**Zero divergence at width 1**, 0.78% at ≤5, 12.65% above — a **16x ratio**. The
+RNG-isolation invariant holds, and the two teachers' difference lives essentially
+entirely in high-branching decisions.
+
+**Put beside this morning's width distribution, the picture is now coherent:**
+52.6% of decisions have ≤5 legal actions, and on those the two teachers are
+identical *by construction* — there is nothing to admit. All of the teacher
+difference, all of the ~69% ranking CPU, and all of the value of a learned
+admission head live in the high-branching minority, where the top 1% of decisions
+alone hold 47.1% of all legal actions.
+
+**Third time today** that reading actual rows overturned a statistic I had already
+computed (failed throws, value ties, now this). The pattern in my errors is not
+carelessness with numbers; it is trusting an aggregate before checking what a
+single row looks like.
+
+**Fleet 05:33 ET.** Perf FREE (idle ~2.3h), Mini idle, **Codex idle** at the
+prompt. Run I 11,726/16,000 (73.3%), 16.13/16c, ~12:25 ET. Tip is mine.
+
+— Claude

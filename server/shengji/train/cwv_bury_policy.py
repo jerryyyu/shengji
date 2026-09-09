@@ -1,12 +1,16 @@
-"""Bounded DEV-only bury arms layered on the unchanged W32 play policy.
+"""Bounded opt-in bury arms layered on the unchanged W32 play policy.
 
-The wrapper is deliberately not registered.  It changes only ``decide_bury``;
-all ordinary play/search behaviour comes from :class:`CWVShortlistBot`.
+The wrapper changes only ``decide_bury``; all ordinary play/search behaviour
+comes from :class:`CWVShortlistBot`. Registration requires an explicit call or
+SHENGJI_CWV_BURY_ARM. No production default or existing policy is replaced.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
@@ -24,6 +28,25 @@ SELECTION_WORLDS = 32
 SHORTLIST_ALTERNATIVES = 4
 _SEED_NAMESPACE = "cwv-bury-policy-v1"
 _ARMS = frozenset(("heuristic", "mc", "hybrid"))
+
+
+@dataclass(frozen=True)
+class CWVBuryConfig:
+    """Bounded DEV controls for candidate sourcing and bury evaluation."""
+
+    max_candidates: int = 32
+    model_worlds: int = MODEL_WORLDS
+    selection_worlds: int = SELECTION_WORLDS
+    alternatives: int = SHORTLIST_ALTERNATIVES
+
+    def __post_init__(self):
+        for name in ("max_candidates", "model_worlds", "selection_worlds",
+                     "alternatives"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.alternatives >= self.max_candidates:
+            raise ValueError("alternatives must be less than max_candidates")
 
 
 class BuryPolicyError(BuryValueError):
@@ -53,7 +76,7 @@ class CWVBuryBot(CWVShortlistBot):
     """
 
     def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
-                 reuse_successors=True):
+                 reuse_successors=True, bury_config=None):
         if arm not in _ARMS:
             raise BuryPolicyError(f"unknown bury arm {arm!r}")
         if config is None:
@@ -63,14 +86,20 @@ class CWVBuryBot(CWVShortlistBot):
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors)
         self.bury_arm = arm
+        self.bury_config = (CWVBuryConfig() if bury_config is None
+                            else bury_config)
+        if not isinstance(self.bury_config, CWVBuryConfig):
+            raise TypeError("bury_config must be a CWVBuryConfig")
         # Explicitly document the invariant even if a future parent changes a
         # class default: this wrapper must never enter MCBot's bury search.
         if self.MC_BURY:
             raise BuryPolicyError("CWV bury wrapper requires MC_BURY == False")
 
     def _source_bot(self):
-        return make_bot("mc-s0-report-lcb",
-                        seed=_seed("candidate-source", self.seed))
+        bot = make_bot("mc-s0-report-lcb",
+                       seed=_seed("candidate-source", self.seed))
+        bot.BURY_MAX_CANDIDATES = self.bury_config.max_candidates
+        return bot
 
     def _bury_candidates(self, rnd, incumbent):
         candidates = [list(candidate)
@@ -112,6 +141,8 @@ class CWVBuryBot(CWVShortlistBot):
         mc_counter_before = None
         mc_counter_after = None
         mc_rollouts = 0
+        model_means = None
+        mc_evidence = None
 
         if self.bury_arm == "heuristic":
             picked = 0
@@ -124,16 +155,17 @@ class CWVBuryBot(CWVShortlistBot):
                 model_started = time.perf_counter()
                 model_counter_before = self._counter(model_bot)
                 model_worlds, model_attempts = _worlds(
-                    model_bot, rnd, seat, MODEL_WORLDS, "model")
+                    model_bot, rnd, seat, self.bury_config.model_worlds, "model")
                 model_values = score_bury_candidates(
                     rnd, candidates, model_worlds, self.evaluator,
                     first_trick_policy=model_bot.rollout_policy)
                 if not np.isfinite(model_values).all():
                     raise BuryPolicyError("model bury values must be finite")
                 means = np.mean(model_values, axis=0)
+                model_means = means.tolist()
                 order = sorted(range(len(candidates)),
                                key=lambda i: (-float(means[i]), i))
-                finalists = [i for i in order if i != 0][:SHORTLIST_ALTERNATIVES]
+                finalists = [i for i in order if i != 0][:self.bury_config.alternatives]
                 # Keep the original candidate-index order for the MC helper:
                 # its tie rule is index based, and local subset columns must
                 # preserve that rule after mapping back to global indices.
@@ -146,7 +178,7 @@ class CWVBuryBot(CWVShortlistBot):
             rollout_started = time.perf_counter()
             mc_counter_before = self._counter(mc_bot)
             shared_worlds, mc_attempts = _worlds(
-                mc_bot, rnd, seat, SELECTION_WORLDS, "MC")
+                mc_bot, rnd, seat, self.bury_config.selection_worlds, "MC")
             local_candidates = (candidates if self.bury_arm == "mc"
                                 else [candidates[i] for i in shortlist])
             _utility, points = rollout_bury_values(
@@ -154,6 +186,20 @@ class CWVBuryBot(CWVShortlistBot):
             mc_rollouts = len(local_candidates) * len(shared_worlds)
             local_pick = pick_mc(points, mc_bot, range(len(local_candidates)))
             picked = local_pick if self.bury_arm == "mc" else shortlist[local_pick]
+            # Retain precisely the chooser's MC objective, NOT the model's
+            # signed-level prediction or scores for unsearched candidates.
+            mc_means = np.asarray([
+                [-mc_bot._score(float(p)) for p in row] for row in points
+            ]).mean(axis=0).tolist()
+            mc_evidence = {
+                "candidate_indices": (list(range(len(candidates)))
+                                      if self.bury_arm == "mc" else list(shortlist)),
+                "mean_banker_values": mc_means,
+                "worlds_per_candidate": len(shared_worlds),
+                "objective": "negative-mcbot-score",
+                "level_objective": bool(mc_bot.LEVEL_OBJECTIVE),
+                "incumbent_margin": float(mc_bot.MARGIN),
+            }
             rollout_seconds = time.perf_counter() - rollout_started
             mc_counter_after = self._counter(mc_bot)
 
@@ -161,15 +207,21 @@ class CWVBuryBot(CWVShortlistBot):
         self.last_bury_record = {
             "schema": "cwv-bury-policy-v1",
             "arm": self.bury_arm,
+            "bury_config": asdict(self.bury_config),
             "candidates": [list(candidate) for candidate in candidates],
             "shortlist": list(shortlist),
             "picked_index": int(picked),
-            "model_worlds": MODEL_WORLDS if self.bury_arm == "hybrid" else 0,
-            "selection_worlds": (SELECTION_WORLDS
+            "model_means": model_means,
+            "mc_evidence": mc_evidence,
+            "model_worlds": (self.bury_config.model_worlds
+                              if self.bury_arm == "hybrid" else 0),
+            "selection_worlds": (self.bury_config.selection_worlds
                                  if self.bury_arm != "heuristic" else 0),
             "world_counts": {
-                "model": MODEL_WORLDS if self.bury_arm == "hybrid" else 0,
-                "selection": SELECTION_WORLDS if self.bury_arm != "heuristic" else 0,
+                "model": (self.bury_config.model_worlds
+                           if self.bury_arm == "hybrid" else 0),
+                "selection": (self.bury_config.selection_worlds
+                               if self.bury_arm != "heuristic" else 0),
                 "model_attempts": model_attempts,
                 "selection_attempts": mc_attempts,
             },
@@ -177,7 +229,8 @@ class CWVBuryBot(CWVShortlistBot):
             "model_seconds": model_seconds,
             "rollout_seconds": rollout_seconds,
             "mc_rollouts": mc_rollouts,
-            "model_positions": len(candidates) * MODEL_WORLDS if self.bury_arm == "hybrid" else 0,
+            "model_positions": (len(candidates) * self.bury_config.model_worlds
+                                if self.bury_arm == "hybrid" else 0),
             "counters": {
                 "wrapper": self._counter(self),
                 "model_before": model_counter_before,
@@ -189,14 +242,147 @@ class CWVBuryBot(CWVShortlistBot):
         return list(candidates[picked])
 
 
+def trajectory_bury_record(raw: dict) -> dict:
+    """Map new DEV evidence to the existing MC-bury data-writer contract.
+
+    The training ballot is only the MC-scored subset (or the single heuristic
+    action). The full proposal pool and its model rankings remain separate
+    metadata. Old screen records without MC evidence cannot be relabeled from
+    the final pick: they remain valid gameplay evidence, not value targets.
+    """
+    if raw.get("schema") != "cwv-bury-policy-v1" or "mc_evidence" not in raw:
+        raise BuryPolicyError("bury trajectory requires retained MC evidence; old screen records are not value labels")
+    pool = raw["candidates"]
+    picked = raw["picked_index"]
+    evidence = raw["mc_evidence"]
+    if raw["arm"] == "heuristic":
+        if evidence is not None or picked != 0 or len(pool) != 1:
+            raise BuryPolicyError("heuristic bury evidence is inconsistent")
+        indices, means, n = [0], [None], 0
+        winner = None
+    else:
+        if not isinstance(evidence, dict):
+            raise BuryPolicyError("searched bury is missing MC evidence")
+        indices = evidence["candidate_indices"]
+        means = evidence["mean_banker_values"]
+        n = evidence["worlds_per_candidate"]
+        if (not indices or indices[0] != 0
+                or any(type(i) is not int or not 0 <= i < len(pool) for i in indices)
+                or len(set(indices)) != len(indices) or picked not in indices
+                or len(means) != len(indices) or not np.isfinite(means).all()
+                or type(n) is not int or n < 1
+                or n != raw["selection_worlds"]
+                or len(indices) * n != raw["mc_rollouts"]
+                or evidence["objective"] != "negative-mcbot-score"):
+            raise BuryPolicyError("bury MC evidence is not aligned with its scored candidates")
+        winner = max(range(len(means)), key=lambda i: (means[i], -indices[i]))
+    return {
+        "candidates": [{"cards": list(pool[i]), "mean_banker_value": mean}
+                       for i, mean in zip(indices, means)],
+        "n_by_candidate": [n] * len(indices),
+        "played_index": indices.index(picked),
+        "raw_winner_index": winner,
+        "reason": "heuristic" if evidence is None else "MC-with-incumbent-margin",
+        "candidate_count": len(indices),
+        "bury_search": {
+            "schema": "cwv-bury-search-evidence-v1",
+            "arm": raw["arm"], "config": raw["bury_config"],
+            "candidate_pool": pool, "ballot_pool_indices": indices,
+            "model_means": raw["model_means"],
+            "model_worlds": raw["model_worlds"],
+            "mc_objective": None if evidence is None else evidence["objective"],
+            "level_objective": None if evidence is None else evidence["level_objective"],
+            "incumbent_margin": None if evidence is None else evidence["incumbent_margin"],
+            "model_values_are_mc_targets": False,
+        },
+    }
+
+
 def make_cwv_bury_bot(evaluator, W32config: CWVShortlistConfig | None = None,
-                      seed=0, arm="heuristic") -> CWVBuryBot:
-    """Build one DEV bury arm around the supplied, unchanged W32 config."""
+                      seed=0, arm="heuristic", bury_config=None) -> CWVBuryBot:
+    """Build one unregistered DEV arm around the supplied W32 config."""
     return CWVBuryBot(evaluator, seed=seed, config=W32config, arm=arm,
-                      reuse_successors=True)
+                      reuse_successors=True, bury_config=bury_config)
+
+
+def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
+                          bury_config=None, **play_recipe) -> dict:
+    """Explicit opt-in factories; no production default or policy is replaced.
+
+    Reuse the existing shortlist factory's lazy checkpoint loading/full-SHA
+    check. Bind the additional bury settings and full SHA in the name, and
+    retain the complete identity for data manifests rather than just a label.
+    """
+    from ..ai.cwv_policy import file_sha256
+    from .cwv_shortlist import shortlist_registry_entries
+
+    if arm not in _ARMS:
+        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    config = CWVBuryConfig() if bury_config is None else bury_config
+    if type(config) is not CWVBuryConfig:
+        raise TypeError("bury_config must be a CWVBuryConfig")
+    checkpoint_sha = file_sha256(checkpoint)
+    base_entries = shortlist_registry_entries(checkpoint, worlds, **play_recipe)
+    entries = {}
+
+    def wrap(base_factory, identity, name):
+        def factory(**kwargs):
+            base = base_factory(**kwargs)
+            if base.cwv_checkpoint_sha256 != identity["checkpoint_sha256"]:
+                raise BuryPolicyError("bury checkpoint changed after registration")
+            bot = CWVBuryBot(base.evaluator, seed=base.seed,
+                             config=base.shortlist_config, arm=arm,
+                             reuse_successors=base.reuse_successors, bury_config=config)
+            bot.REPORT_FOLD_WORLDS = base.REPORT_FOLD_WORLDS
+            for key in ("cwv_checkpoint_sha256", "cwv_ckpt8", "cwv_enc_version", "cwv_encoding"):
+                setattr(bot, key, getattr(base, key))
+            bot.policy_name = name
+            bot.bury_recipe_identity = {**identity, "config": dict(identity["config"])}
+            return bot
+        return factory
+
+    for play_name, base_factory in base_entries.items():
+        identity = {"schema": "cwv-bury-recipe-v1", "play_policy": play_name,
+                    "checkpoint_sha256": checkpoint_sha, "arm": arm,
+                    "config": asdict(config), "fallback": "raise"}
+        encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+        name = f"{play_name}-bury-{arm}-{hashlib.sha256(encoded).hexdigest()[:12]}"
+        entries[name] = wrap(base_factory, identity, name)
+    return entries
+
+
+def bury_env_recipe(environ=None):
+    """Add a bury arm to the existing SHORTLIST environment recipe, opt-in.
+
+    SHENGJI_CWV_BURY_ARM: heuristic/mc/hybrid. When absent nothing is added.
+    Optional MAX_CANDIDATES/MODEL_WORLDS/SELECTION_WORLDS/ALTERNATIVES use the
+    same SHENGJI_CWV_BURY_ prefix. SHORTLIST_* settings still govern only play.
+    """
+    import os
+    from .cwv_shortlist import shortlist_env_recipe
+
+    env = os.environ if environ is None else environ
+    arm = env.get("SHENGJI_CWV_BURY_ARM")
+    if not arm:
+        return None
+    if arm not in _ARMS:
+        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    play = shortlist_env_recipe(env)
+    if play is None:
+        raise BuryPolicyError("bury registration requires SHENGJI_CWV_SHORTLIST_CKPT")
+    values = asdict(CWVBuryConfig())
+    for key in values:
+        values[key] = int(env.get("SHENGJI_CWV_BURY_" + key.upper(), values[key]))
+    return (*play, arm, CWVBuryConfig(**values))
 
 
 __all__ = [
-    "BuryPolicyError", "CWVBuryBot", "MODEL_WORLDS", "SELECTION_WORLDS",
-    "SHORTLIST_ALTERNATIVES", "make_cwv_bury_bot",
+    "BuryPolicyError", "CWVBuryConfig", "CWVBuryBot", "MODEL_WORLDS",
+    "SELECTION_WORLDS", "SHORTLIST_ALTERNATIVES", "make_cwv_bury_bot",
+    "bury_registry_entries", "bury_env_recipe",
 ]
+
+# Like cwv_shortlist, support both registry-first and this-module-first imports.
+from ..ai.registry import _register_cwv_bury_from_env
+
+_register_cwv_bury_from_env()

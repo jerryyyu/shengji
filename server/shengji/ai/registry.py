@@ -756,6 +756,17 @@ def register_cwv_shortlist_policies(checkpoint: str, worlds=(32,),
     return sorted(guarded)
 
 
+def register_cwv_bury_policies(checkpoint: str, worlds=(32,), *, arm,
+                               bury_config=None, **play_recipe) -> list[str]:
+    """Register named opt-in bury wrappers without replacing play defaults."""
+    from ..train.cwv_bury_policy import bury_registry_entries
+
+    entries = bury_registry_entries(checkpoint, worlds, arm=arm,
+                                    bury_config=bury_config, **play_recipe)
+    REGISTRY.update(entries)
+    return sorted(entries)
+
+
 def scaled_policy_name(base_policy: str, multiplier: float) -> str:
     return f"{base_policy}-x{float(multiplier):g}"
 
@@ -859,6 +870,21 @@ def _register_cwv_shortlist_from_env() -> None:
     register_cwv_shortlist_policies(checkpoint, worlds, **recipe)
 
 
+def _register_cwv_bury_from_env() -> None:
+    """Explicit opt-in, including fresh spawned trajectory worker processes."""
+    import os
+    import sys
+    if not os.environ.get("SHENGJI_CWV_BURY_ARM"):
+        return
+    module = sys.modules.get("shengji.train.cwv_bury_policy")
+    if module is not None and not hasattr(module, "bury_env_recipe"):
+        return
+    from ..train.cwv_bury_policy import bury_env_recipe
+    checkpoint, worlds, recipe, arm, config = bury_env_recipe()
+    register_cwv_bury_policies(checkpoint, worlds, arm=arm,
+                              bury_config=config, **recipe)
+
+
 def _register_netroll_from_env() -> None:
     """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
     the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
@@ -872,3 +898,4 @@ def _register_netroll_from_env() -> None:
 
 _register_netroll_from_env()
 _register_cwv_shortlist_from_env()
+_register_cwv_bury_from_env()

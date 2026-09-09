@@ -13251,3 +13251,1299 @@ Posted as a review comment on #322. Nothing blocked: it is a draft, marked "not
 for merge/promotion before results", and I would have reached their conclusion.
 
 — Claude
+
+## 2026-09-08 21:52 ET — Claude — the 520 screen is DETERMINISTIC. "Instrument noise" was a category error, not an open unknown.
+
+The queue and my program state have carried, for days, *"instrument noise is
+still UNMEASURED; requires the identical matchup replayed with fresh RNG; the
+±0.05 at n=520 figure remains an assumption."*
+
+**That experiment cannot be run, because there is no fresh RNG to supply.**
+`cwv_shortlist_screen.make_side` seeds every bot with `seed = config["seed0"] +
+cluster`, and `shared_evaluator` is constructed with `threads=1`. The screen is a
+pure function of (arm, baseline, seed0, clusters). There is no knob that changes
+the search without changing the deals.
+
+So I ran the answerable question instead: **is it deterministic in practice?**
+The learned arm runs a float32 net under batching, which is where nondeterminism
+would hide — and I have form here, having wrongly declared a float32 mechanism
+dead this morning by testing only to the p99.
+
+**Two byte-identical invocations**, `3cd27716`, w32 recipe (worlds 32, selection
+30, alternatives 4, report 300), baseline production, 4 clusters, seed0
+`91261190`, nice 19, both `rc=0`:
+
+| | |
+|---|---:|
+| leaf fields compared | **28,733** |
+| differ, timing | 336 |
+| **differ, substantive** | **0** |
+| headline `arm_signed_level_utility` | **0.3750000000 both**, ci95 [0.0, 0.75] both |
+
+**I checked my own instrument two ways before believing it.** The 336 excluded
+fields are named `arm_search_secs`, `baseline_search_secs`,
+`decision_cpu_seconds`, `decision_wall_seconds`, `shortlist_wall_seconds`,
+`wall_seconds`, `wall_secs` — every one a wall or CPU measure, so the exclusion
+filter is not hiding substance. And perturbing a single `arm_utility` in one
+record made the comparator report exactly that field (`/records/0/arm_utility`,
+A=−1 vs B=0) and flip to NONDETERMINISTIC; restoring it flipped back.
+
+### What this changes
+
+**Retire "instrument noise" as an open item.** There is no run-to-run variance to
+measure. **All** uncertainty in a screen result is deal-sampling variance, which
+the bootstrap interval already captures. The assumed ±0.05 was not an
+under-measured quantity; it was a quantity that does not exist. Every published
+interval is doing the whole job, and none of them needs widening for a replay
+term.
+
+**Scope, stated honestly.** Four clusters, one arm, one machine, macOS. The
+*mechanism* — all randomness flowing from `seed0 + cluster`, evaluator pinned to
+one thread — is not scale-dependent, which is why I believe it generalizes. But
+four clusters is what was tested.
+
+**The sharper question is now running**, because it is the one that could still
+bite: does `--workers` or `--batch-size` change the answer? The tensor cache
+comment notes that "the original forward batches can straddle world boundaries",
+so a different batch composition could change float summation order. We have run
+screens at different worker counts. If they are not comparable, that matters more
+than any noise term. Testing workers=1 and batch-size=64 against the same four
+clusters now.
+
+— Claude
+
+## 2026-09-08 22:00 ET — Claude — and the screen is INVARIANT to workers and batch size, so screens run at different settings are comparable
+
+Following the determinism result above, the question that could actually have
+bitten us: we have run screens at different `--workers` and `--batch-size`, and
+`cwv_shortlist._means` accumulates per-action sums across forward batches with
+`np.add.at`, whose summation order depends on batch composition. The tensor-cache
+comment says outright that "the original forward batches can straddle world
+boundaries". If that changed the ranking, cross-screen comparisons in this ledger
+would not be sound.
+
+Same four clusters, same checkpoint, same recipe, all `rc=0`:
+
+| comparison | leaf fields | substantive differences | headline |
+|---|---:|---:|---|
+| identical args, run A vs run B | 28,733 | **0** | 0.3750000000 both |
+| **workers 2 vs workers 1** | 28,733 | **0** | 0.3750000000 both |
+| **batch 128 vs batch 64** | 28,733 | 475, and see below | 0.3750000000 both |
+
+**The 475 are not what they look like, and I checked rather than reporting the
+count.** They are exactly three field names:
+
+| name | count | A | B |
+|---|---:|---|---|
+| `batch_size` | 276 | 128 | 64 |
+| `cheap_batches` | 191 | 112 | 223 |
+| `cwv_cheap_batches` | 8 | 99 | 185 |
+
+The recorded config echo, and the count of forward batches issued — which is
+*mechanically* doubled by halving the batch. **Zero outcome-bearing fields
+differ**: no `arm_utility`, `baseline_utility`, `action`, `ballot`, `means`,
+`preference`, `signed_level_utility`, `level_change`, `attacker_points` or
+`record_sha256`. Reporting "475 substantive differences" without classifying them
+would have been a false alarm of exactly the kind this ledger keeps recording.
+
+### What is now established, and what is not
+
+**Established:** the screen is a deterministic function of (arm, baseline, seed0,
+clusters), and its result is invariant to worker count and batch size. Screens run
+at different parallelism settings are comparable. All uncertainty is
+deal-sampling, already captured by the bootstrap.
+
+**NOT established, and worth stating because the mechanism is real:** float
+accumulation order genuinely does change with batch composition. Invariance here
+is empirical over four clusters, not guaranteed. A decision whose top two `means`
+are within a float32 ulp could in principle rank differently at another batch
+size. That this did not happen on 4 clusters × ~50 decisions is weak evidence that
+ranking margins are not routinely that thin — it is not a proof that none ever is.
+
+**Scope:** four clusters, one arm (`3cd27716`), macOS, `threads=1` in the
+evaluator. The mechanism is machine-independent; the sample is not large.
+
+— Claude
+
+## 2026-09-08 22:38 ET — Claude — closing my own float32 caveat with a number, and finding that 10.4% of shortlist rankings are EXACT TIES
+
+At 22:00 I left a caveat qualitative: *"a decision whose top two `means` sit
+within a float32 ulp could rank differently at another batch size."* Leaving it
+there was the lazy option, so I measured it from records I already had — 4
+clusters, 218 decisions carrying a ranked shortlist, 704 adjacent `shortlist_means`
+pairs. No new compute.
+
+**The first cut was misleading and I nearly published it.** Raw adjacent gaps have
+`min = 0.000e+00` and `p10 = 0.000e+00`, and 10.8% sit within 10x the float error
+budget. Reported like that it reads as a serious hazard. It is not, because those
+are **exact ties**, and `_candidates` breaks ties deterministically:
+
+```python
+chosen = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[:K]
+```
+
+`keys[i]` is the sorted card tuple — a deterministic secondary key. An exact tie
+cannot be flipped by float noise; it is resolved by card identity.
+
+**Separating the two populations gives the real answer:**
+
+| | |
+|---|---:|
+| adjacent pairs | 704 |
+| **exact ties (deterministically broken)** | **73 (10.4%)** |
+| nonzero gaps | 631 |
+| smallest nonzero gap | 2.939e-06 |
+| p01 / p05 / median of nonzero gaps | 7.58e-05 / 6.26e-04 / 2.18e-02 |
+| float32 error budget (32 worlds, \|v\|~1) | ~3.8e-06 |
+| **nonzero gaps BELOW that budget** | **1 (0.16%)** |
+| nonzero gaps below 10x the budget | 3 (0.48%) |
+| smallest nonzero *edge* gap (rank 4 vs 5) | 1.301e-05, ~3.4x budget |
+
+**So the caveat closes at ~0.16%**: roughly one adjacent ranking comparison in six
+hundred is close enough that a float32 forward difference could flip it. And the
+batch-64-vs-128 run flipped **none** — consistent with a rate that low. The
+exposure is real, bounded, and small; it is not a reason to distrust any published
+screen.
+
+### The incidental finding is the more interesting one
+
+**10.4% of adjacent shortlist comparisons are EXACT ties** — the net assigns two
+candidate actions bit-identical values across all 32 worlds. In those cases the
+ranking is decided entirely by card ordering, not by the model. That is a
+model-capability observation, not a bug, and it belongs with #315: it is the same
+story as "good at predicting state, not policy", the 52/52 identical FIT values
+for three models the screen separates, and Codex's excluded-best actions ranked
+34/1440/19. **A ranker that cannot separate one adjacent pair in ten is doing less
+work than its 9,934 net evaluations per decision suggest.**
+
+**Scope:** 4 clusters, one checkpoint (`3cd27716`), the w32 recipe. The tie rate
+is worth re-measuring at screen scale before anyone leans on it; I am recording it
+as an observation with its n attached, not as a programme fact.
+
+— Claude
+
+## 2026-09-08 22:50 ET — Claude — RETRACTION: the ties are not model incapability, they are throw reduction. And the real finding is better: 8.1% of shortlist slots are duplicates.
+
+Codex replied to `02a22010` with the right caution:
+
+> "Before treating ties as model incapability, separate identical
+> successor/tensor inputs from genuinely different states with equal outputs."
+
+**They are correct and I withdraw the incapability framing.** I looked at the 73
+tied pairs instead of reasoning about them, and the structure is unambiguous:
+
+| | |
+|---|---:|
+| tied pairs sharing **no** card | **0 (0.0%)** |
+| tied pairs sharing at least one card | **73 (100%)** |
+
+Every tied pair is a **throw and its own extension**:
+`SJ` / `SJ+SQ` / `SJ+SQ+SQ`; `BJ+C5` / `BJ+C5+C8`; `BJ+CA` / `BJ+CA+H2` / `CA`;
+`C10+C3+C3+C9` / `+CJ` / `+CJ+CJ` / `+CQ`. Action lengths differ by one within a
+family, which on a lead means these are throw nominations, not follows.
+
+And we established six hours ago, in the retraction at `9d9c9817`, that
+`validate_lead` **always** runs on a lead and `_throw_penalty` reduces a failed
+throw to the beaten component. So every member of such a family **reduces to the
+same played cards and therefore the same afterstate** — identical encoder input,
+identical value, necessarily. That is the encoder being correct, not the model
+being blind.
+
+**The shape of my error, and it is the same mechanism twice.** Throw reduction has
+now caught me from both directions in one evening: first I claimed failed throws
+mean the search evaluates an unplayable action (wrong — evaluation reduces too),
+now I claimed value ties mean the ranker cannot separate (wrong — reduction makes
+them the same state). Both times I read a summary statistic and inferred a
+mechanism rather than looking at the rows. Codex caught both.
+
+### What replaces it is more useful, and it is actionable
+
+If nominal actions collapse onto one real play, then **the shortlist is spending
+its five slots on duplicates**:
+
+| | |
+|---|---:|
+| decisions with a ranked shortlist | 218 |
+| **decisions where >=2 of the 5 selected share a value** | **40 (18.3%)** |
+| shortlist slots total | 922 |
+| **slots duplicating an earlier value** | **75 (8.1%)** |
+
+Two of the five selected are the same play in almost one decision in five, and
+sometimes three are — `BJ+CA`, `BJ+CA+H2`, `CA` all at 0.302844; `SJ`, `SJ+SQ`,
+`SJ+SQ+SQ` all at −0.380538.
+
+**This is not only wasted compute, it is missing coverage.** A duplicated slot is
+an alternative that never reached the 300-world report stage. The recipe nominates
+incumbent + 4 alternatives; at 8.1% duplication the *effective* K is about 4.6,
+and on the 18.3% of decisions that duplicate, materially fewer. **Codex's crossfit
+coverage gap of +0.01292 [+0.00438, +0.02284] — which genuinely excludes zero —
+now has an identified partial cause that costs nothing to fix**: dedup candidates
+by their reduced play before ranking, rather than appending production-ballot
+moves on top (PR #322, null at −0.05769).
+
+**Scope, attached as before:** 4 clusters, 218 decisions, `3cd27716`, w32 recipe.
+The reduction argument is structural and I am confident in it; I have **not**
+replayed the afterstates to prove tensor identity, and that is the check that
+would settle it outright.
+
+— Claude
+
+## 2026-09-08 22:56 ET — Claude (reviewer) — Codex's bury comparison: agree, and the rollout count is the only contention-proof number in it
+
+PR [#323](https://github.com/jerryyyu/shengji/pull/323) (draft), 256 deals / 768
+rounds on Mini. Hybrid vs heuristic **+0.0469 [−0.0430, +0.1367]**, hybrid vs MC
+**+0.0039 [−0.0859, +0.0898]**, MC vs heuristic **+0.0430 [−0.0469, +0.1367]**.
+Hybrid uses **81.1% fewer bury rollouts**, observed 0.20s vs 0.30s. Codex's call —
+*keep heuristic, no extension, no deployment, "neither equivalence nor superiority
+proven"* — **is right and I agree with all of it.**
+
+**A contention disclosure that is mine, not theirs.** My determinism screen held
+2 of Mini's 10 cores at nice 19 from ~21:35 to ~22:05 ET; their 55.1-minute run
+started ~21:43, so roughly half of it overlapped me. Consequences, split by what
+survives:
+
+| quantity | contention-proof? | why |
+|---|---|---|
+| **81.1% fewer bury rollouts** | **yes** | a count, not a time |
+| 0.20s / 0.30s **ratio** | effectively yes | the three arms interleave per deal, so contention lands on them almost equally |
+| 0.20s / 0.30s **absolute** | **no** | inflated by an unknown amount for part of the run |
+
+Lead with the rollout count. One re-timed triplet on a quiet box fixes the wall
+figures; Mini is clear of my processes now. **I caused this and flagged it to them
+before they published rather than after.**
+
+**Quantifying "inconclusive", from their own intervals:**
+
+| contrast | point | SE | MDE at 80% power |
+|---|---:|---:|---:|
+| hybrid vs heuristic | +0.0469 | 0.0458 | **+0.1284** |
+| hybrid vs MC | +0.0039 | 0.0448 | **+0.1256** |
+| MC vs heuristic | +0.0430 | 0.0468 | **+0.1312** |
+
+W32's entire advantage over production is +0.0923; the only resolved checkpoint
+gap is +0.0779. **Both sit below this screen's detection threshold at n=256.** So
+the strength axis would need roughly 4x the deals to say anything, and the cost
+axis — where they have a resolved result — is the right place to decide. This is
+the second Codex screen tonight whose null is a power limit rather than a finding
+(#322 at n=52 had MDE +0.1993), and in both cases they labelled it correctly
+without being asked.
+
+**An independent corroboration worth recording.** Their report notes *"all 492
+same-bury pairs have identical follow-on transcripts/outcomes."* That is the same
+property I measured at `793696be` from a completely different direction — the
+screen is a deterministic function of (arm, baseline, seed0, clusters). Two
+independent demonstrations, and it means their same-bury pairing is doing real
+work rather than concealing variance.
+
+Posted to #323. Draft, no merge sought, no changes requested.
+
+— Claude
+
+## 2026-09-08 23:38 ET — Claude — the retraction holds up: 94.5% of tied shortlist pairs NEST, and the other 5.5% share a core
+
+At 22:50 I retracted the "ties mean the ranker cannot separate" claim and replaced
+it with throw reduction, but I explicitly left the proof open: *"I have not
+replayed the afterstates to prove tensor identity, and that is the check that
+would settle it outright."* Rather than leave my own retraction resting on four
+hand-picked examples, I tested its structural prediction on all 73 tied pairs.
+
+**The prediction.** If tied values come from reduction collapsing a family of
+nominations onto one played action, then tied members should **nest** — the
+reduced play is a sub-multiset of every extension that reduces to it. (Multisets,
+not sets: the deck is doubled, so `SJ+SQ+SQ` is a real distinct nomination.)
+
+| relation between tied pairs | count | share |
+|---|---:|---:|
+| A is a sub-multiset of B | 50 | 68.5% |
+| B is a sub-multiset of A | 19 | 26.0% |
+| **nesting, either direction** | **69** | **94.5%** |
+| overlap but neither nests | 4 | 5.5% |
+| disjoint | **0** | **0.0%** |
+
+**And the four exceptions are consistent too, not counterexamples.** They are:
+
+```
+C3+C3+CJ+CJ+S2   vs   C3+C3+CQ+CQ+S2     shared core  C3+C3+S2
+D2+H2+SA+SQ      vs   D2+H2+SK+SQ        shared core  D2+H2+SQ
+```
+
+Two throws differing in one component, sharing a core that is itself a plausible
+reduction target. If both reduce to the shared core, they tie *without* either
+nesting inside the other — exactly what reduction predicts for siblings rather
+than ancestors. **Zero of 73 tied pairs are disjoint**, which is what a "the model
+gives equal values to genuinely unrelated states" story would have to produce.
+
+So Codex's caution was right, my retraction was right, and it now rests on all 73
+pairs rather than on the ones I happened to print. **The outright proof — replaying
+both afterstates and comparing encoder tensors — is still not done**; this is
+strong structural evidence, not that.
+
+**What this leaves standing, unchanged:** 18.3% of decisions have two or more of
+the five selected sharing a value and 8.1% of all shortlist slots duplicate an
+earlier one, so effective K is about 4.6 rather than 5 — a wasted slot is an
+alternative that never reached the 300-world report stage. Dedup by reduced play
+before ranking remains the cheap fix, and it remains an identified partial cause
+of Codex's coverage gap.
+
+**Codex went idle at 23:33 ET** ("Goal achieved, 1h 25m") after closing out the
+bury comparison. Fresh idle, not the stale state this queue recorded earlier.
+
+— Claude
+
+## 2026-09-09 00:40 ET — Claude — PRE-REGISTRATION: replication of ACDEF v2 − ACD v1. NOT AUTHORIZED, NOT LAUNCHED.
+
+Written now, before any result exists and before Jerry has said yes, because a
+pre-registration written at launch time is worth less than one written while the
+outcome is still entirely unknown. If this never runs, this entry stands as a
+design that was committed and not executed.
+
+**Why this experiment.** `ACDEF v2 − ACD v1 = +0.0779 [+0.0240, +0.1298]` is the
+**only** checkpoint-vs-checkpoint contrast the programme has ever resolved, and it
+currently carries the status LEADING CANDIDATE AWAITING CONFIRMATION with Codex's
+accepted caveats: six unadjusted comparisons, winner not pre-registered, would not
+survive a family adjustment. Everything downstream — that data-and-encoder
+together is the axis that matters — rests on it.
+
+### The design, committed in advance
+
+| | |
+|---|---|
+| arms | ACDEF v2 `3cd27716` and ACD v1 `528dbbe0` |
+| baseline | production `mc-s0-report-lcb`, unchanged |
+| population | **fresh** 520-deal window, **seed0 92260904**, verified disjoint from all 23 registered windows |
+| recipe | w32: worlds 32, selection 30, alternatives 4, report 300 |
+| statistic | each arm vs production on the same deals, then the paired arm-minus-arm difference at the **/2** divisor (arm-vs-arm; `/4` is for arm-vs-baseline and would double the headline) |
+| comparisons | **one**, pre-stated, so no multiplicity adjustment applies |
+| direction | **positive** — this replicates a positive finding |
+
+### The decision rule, committed in advance
+
+- **Interval excludes zero, positive** → CONFIRMED. The gap moves from leading
+  candidate to established, and it becomes the programme's first replicated
+  checkpoint result.
+- **Interval crosses zero** → it does **NOT** replicate, and the status is
+  downgraded — *regardless of how much the new interval overlaps the old one*. A
+  difference between significant and non-significant is not itself significant,
+  and overlap is not agreement.
+- **Interval excludes zero, negative** → the original was a false positive and must
+  be withdrawn from the program state.
+
+### Power, so nobody has to ask afterwards
+
+Implied SE from the published interval is **0.02699**. At a fresh n=520:
+
+| | |
+|---|---:|
+| power against the original effect (+0.0779) | **82.3%** |
+| power against half of it (+0.039) | 30.3% |
+| MDE at 80% power | +0.0756 |
+
+So this design can resolve the effect as originally measured, and cannot resolve a
+substantially smaller one. **If it comes back null, "underpowered" is not available
+as an excuse — that is the point of writing this down now.** It is also, after
+tonight, the only proposal on the board whose MDE sits *below* the effects this
+programme actually cares about (compare #322 at n=52, MDE +0.1993; #323 at n=256,
+MDE +0.126 to +0.131).
+
+### What will NOT happen
+
+No peeking at partial results; no early stopping; no changing the window, arms or
+statistic after any number is seen; no additional arms folded in afterwards. The
+screen is deterministic (`793696be`), so there is no re-roll to be tempted by.
+
+### Status
+
+**Awaiting Jerry's go.** Perf frees at ~03:00 ET when Run J seals and Run I does
+not land until ~11:25, so there is an ~8-hour window. Estimated cost ~1h per arm
+at 16 workers, ~2h total. Nothing is launched.
+
+— Claude
+
+## 2026-09-09 01:40 ET — Claude — #324 merged: the full-legal score vector is on main. Verified the merge did not change what I reviewed, and armed an end-to-end smoke.
+
+Codex shipped the capture within about fifteen minutes of Jerry asking me what it
+would take. **Merged at `95092e63`.** The blocker on the only untried strategy that
+targets ~69% of the arm's CPU is gone.
+
+**The red CI on that PR was mine, not theirs.** All four failing jobs died in
+`conftest.py` at `review_ledger_guard.py:20` — *"PR head review ledger is shorter
+than base"* — because their branch sat at `d81dfd58` and I had pushed `99eb9f04`
+to main since. Nothing in their change was broken. The guard is correct and I
+would not weaken it (it exists because a `checkout --theirs` once dropped 731
+ledger lines), but **every open PR goes red the moment I push a ledger entry, and
+I push several an hour.** That friction is mine; I offered to batch pushes.
+
+**I verified the rebase did not change the reviewed code, rather than accepting
+the commit message that said so.** `670ddc1b` is titled "Merge current review
+ledger without changing reviewed score-capture code"; that claim checks out:
+
+| file | reviewed `6805247d` | merged `origin/main` | |
+|---|---|---|---|
+| `shortlist_scores.py` | `509fe5a8d3f6a6c0` | `509fe5a8d3f6a6c0` | SAME |
+| `cwv_shortlist.py` | `55f0244f43a1d89c` | `55f0244f43a1d89c` | SAME |
+| `trajectory.py` | `0e95704f2aba41eb` | `0e95704f2aba41eb` | SAME |
+| `test_shortlist_score_capture.py` | `93aa29a62f72fbad` | `93aa29a62f72fbad` | SAME |
+| `test_cwv_shortlist.py` | `09a22d8065248a9a` | `09a22d8065248a9a` | SAME |
+
+The merge commit touches `HANDOFF_REVIEW.md` and nothing else (+69 lines, my
+pre-registration). **My PASS covers exactly what landed.**
+
+### What I checked in the review, and what I did NOT
+
+Verified: it captures the **full** vector (`means` over `enumerate_legal(cap=None)`,
+with `_validate` enforcing `legal_actions_count == len(actions)` so a truncation
+raises at publish); **no added inference and no RNG consumption** (the block only
+reads values already computed); **capture off is byte-identical** (the config key
+is set only when true, so `run_id` is unchanged for every existing recipe).
+
+Corrected in the review: I had told Codex a differing `fast_module_sha256_16`
+"would refuse a later **merge**" of Runs I and J. `CODE_IDENTITY_KEYS` is consulted
+only in the **resume** path (`trajectory.py:1999`). It gates resume, not combining
+corpora, and whether the training loader applies its own check I have **not**
+verified.
+
+Also fed back a measurement they did not have: they store the action list
+explicitly rather than aligning positionally against the record's `legal_actions`,
+which looks like duplication and is the right call — **I measured
+`legal_actions_complete` on Run I at 89.9%**, so the record's list is incomplete
+on about one decision in ten and positional alignment would have silently
+mis-mapped those rows.
+
+### Nobody has run it on real data, so that is armed
+
+Unit tests pass and the code reads correctly. That is not the same as working.
+`/root/smoke_capture.sh` is armed on perf as unit `capture-smoke`: it waits for
+Run J's seal, **requires `VERIFY_RC=0` from it before starting**, then harvests 4
+real clusters with `--capture-full-legal-scores` on a **scratch registry** and a
+scratch out dir, and runs `verify_capture.py`.
+
+The verifier's checks: one sidecar per shard; row count equals play-record count;
+every row binds `source_ref` **and** `record_sha256`; `len(means) == len(actions)
+== legal_actions_count`; the record's ballot is a subset of the captured actions;
+all means finite; `checkpoint_sha256` equals the checkpoint actually used; and the
+captured width exceeds the ballot width, which is the entire point of the feature.
+
+**Proven to fail:** run against Run J (no capture) it reports 0 sidecars and no
+scored vector and exits 1. **Honest weakness:** the per-row checks are vacuously
+OK on empty input; the two gates that fired are what make a vacuous overall pass
+impossible.
+
+**And a small self-catch worth recording:** I hand-wrote the checkpoint SHA into
+the smoke script and got it wrong. Computing it on the box gave
+`3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`, not what I
+typed. Never hand-write a hash; a wrong one would have failed the check for a
+reason that had nothing to do with the feature.
+
+**Fleet 01:33 ET.** Run J 12,387/16,000 (77.4%), 16.00/16c, seal unit armed and
+waiting, ~03:15 ET. Run I 9,246/16,000 (57.8%), 16.05/16c, ~12:10 ET. Mini 8.97,
+Codex working.
+
+— Claude
+
+## 2026-09-09 02:38 ET — Claude — PRE-REGISTERING the Run I − Run J divergence measurement, before Run J seals and before I look
+
+Run J seals in about 35 minutes. Before that, the question worth committing to in
+advance: **can the I/J experiment resolve anything at all?**
+
+The whole design holds the deals fixed and varies only the teacher. If the two
+teachers overwhelmingly make the *same* moves on the *same* states, then the two
+corpora are near-duplicates, no trained-arm difference should be expected, and a
+null result would be a property of the design rather than a finding about
+shortlist-generated data. I have spent tonight telling Codex that a null from an
+underpowered instrument is not a finding (#322 at MDE +0.1993, #323 at +0.126).
+The same standard has to apply to my own experiment, and it has to be applied
+**before** the number exists.
+
+### The measurement, committed now
+
+**Unit:** one (cluster, mirror) round. **Population:** clusters complete in both
+runs at measurement time — Run J will be all 16,000; Run I is whatever it has
+sealed, and the count will be reported, not chosen.
+
+**Procedure:** order each round's play records by ply in both runs. Walk forward.
+`plays_prefix` must be identical until the first ply where the recorded `action`
+differs; that identity is a correctness check that must hold by construction, and
+if it ever fails the measurement is void and I will say so rather than patch it.
+Record the first divergent ply, or none.
+
+**Reported:** (a) share of rounds that ever diverge; (b) distribution of the
+divergence ply; (c) agreement rate over all decisions on the common prefix.
+
+### Reading, committed now
+
+| observed | reading |
+|---|---|
+| **<5% of rounds ever diverge** | the corpora are near-duplicates; **the I/J training comparison is underpowered by construction** and I will say so before any arm is trained, not after a null |
+| **>25% of rounds diverge** | a substantial behavioural difference; the experiment has material to work with |
+| between | reported as measured; **no verdict from this measure alone** |
+
+**What this measurement CANNOT do**, stated so nobody stretches it later: it says
+nothing about which corpus is *better*. It bounds how *different* they are. A high
+divergence rate is not evidence that shortlist data trains a better net, and a low
+one is not evidence that it trains a worse one.
+
+### Why it is being written and not run right now
+
+Run J is unsealed and Run I is live. Reading actions is not reading the
+experiment's outcome — the outcome is trained-arm strength on the 520 screen — but
+the standing rule is to not open partial runs before a seal, and a measurement
+designed after a peek is worth less than one designed before. So the design lands
+now and the number lands next tick, on a sealed Run J.
+
+**Fleet 02:33 ET.** Run J 14,572/16,000 (91.1%), 16.09/16c, ~03:12 ET. Run I
+9,893/16,000 (61.8%), 16.17/16c, ~11:58 ET. Seal unit and the chained capture
+smoke both armed and waiting. Tip is mine; no sibling entries.
+
+— Claude
+
+## 2026-09-09 03:40 ET — Claude — RUN J IS SEALED, and the pre-registered divergence measurement says the I/J experiment can resolve something
+
+### Run J sealed clean
+
+All twelve checks passed, `VERIFY_RC=0`:
+
+```
+rc == 0                                    OK -- rc=0 end 2026-09-09T07:13:23Z
+shard count == 16000                       OK -- found 16000
+policy is the production teacher           OK -- mc-s0-report-lcb
+policy_class is MCS0ReportLCB              OK -- MCS0ReportLCB
+seed0 matches Run I                        OK -- 95260904
+no knobs / explore_rate 0.1                OK
+seed_window.conflicts records Run I        OK -- ['traj-s95260904-83969a2ba9a1']
+spot-checked deals match the I/J binding   OK
+no live Run J worker                       OK
+```
+
+**The matched production-teacher control exists.** 16,000 clusters, Run I's exact
+deals, the deliberate seed overlap recorded rather than hidden, ~11h 24m wall.
+
+### The divergence measurement, run exactly as pre-registered at `b32e7803`
+
+400 matched clusters, 800 rounds. **No void** — `plays_prefix` identity held
+before divergence in every round, so the walk is valid.
+
+| | |
+|---|---:|
+| rounds that ever diverge | **800 / 800 = 100.0%** |
+| rounds diverging at the very first decision (ply 0) | **215 / 800 = 26.9%** |
+| decisions on the common prefix | 5,727 |
+| mean decisions to first disagreement | **7.16** |
+| first divergent ply | min 0, p25 0, **median 4**, p75 9, max 52 |
+
+**PRE-REGISTERED READING: MATERIAL DIFFERENCE (>25% diverge).** The I/J comparison
+is *not* underpowered by construction. The two teachers build genuinely different
+corpora from identical deals.
+
+**A statistic I am NOT going to quote the easy way.** The raw common-prefix
+agreement is 86.03% (4,927 of 5,727). That figure is an **artifact of the stopping
+rule**: the walk terminates at the first disagreement, so every round contributes
+exactly one, and 1 − 800/5727 = 86.03% by construction. It is not "the teachers
+agree 86% of the time". The honest statements are **mean 7.16 decisions to the
+first disagreement** and **26.9% of rounds disagree immediately**. Reporting 86%
+as an agreement rate would have been a real error and I nearly did it.
+
+**And 100% divergence is weaker than it looks**, so I am labelling it too: once
+two policies differ at any ply the rest of the round is a different game, so
+"ever diverges" is a low bar. The load-bearing numbers are the 26.9% and the 7.16.
+
+**What this does NOT say:** nothing about which corpus is better. It bounds how
+different they are. That was stated in the pre-registration and it still holds.
+
+### Operational finding worth carrying: perf had no torch at all
+
+The chained capture smoke failed — `ModuleNotFoundError: No module named 'torch'`
+in `/root/traj-gen-g`. The abort chain worked exactly as designed (harvest rc≠0 →
+`ABORT harvest failed` → exit 5), which is the payoff for checking exit codes
+rather than file existence.
+
+Checking every venv on the box: **none of `traj-gen`, `-c`, `-d`, `-e`, `-f`, `-g`
+had torch.** Runs G, H and J never needed it because production MC carries no net.
+**So perf could not have run any learned arm today** — including the
+pre-registered replication, which needs two checkpoints. Now installed
+(`torch 2.14.0+cpu`) and the smoke is relaunched as `capture-smoke2`.
+
+**Fleet 03:33 ET.** Perf FREE (Run J done, load 0.00, 113G). Run I
+10,542/16,000 (65.9%), 16.13/16c, ~11:58 ET. Tip is mine; no sibling entries.
+
+— Claude
+
+## 2026-09-09 04:35 ET — Claude — the full-legal capture WORKS on real data; and a correction: "321 legal actions per decision" is a mean whose median is 5
+
+### The capture is verified end to end
+
+`capture-smoke2` on perf, 4 real clusters, `harvest rc=0`, all nine checks OK:
+
+| check | result |
+|---|---|
+| one sidecar per shard | 4 vs 4 |
+| row count == play-record count | **444 rows vs 444 plays** |
+| every row binds `source_ref` + `record_sha256` | 0 bad |
+| `len(means) == len(actions) == legal_actions_count` | 0 bad |
+| record ballot ⊆ captured actions | 0 bad |
+| all means finite | 0 bad |
+| `checkpoint_sha256` matches the checkpoint used | 0 bad |
+| **captured actions per decision > ballot** | **514.08 vs 4.47** |
+
+**Label coverage goes from 0.9% to 100%.** The feature does what it claims, on
+real clusters, not only in unit tests.
+
+**Measured cost, which corrects my own estimate.** Sidecars are 287 KB per
+cluster, 0.58x the shard bytes, projecting to **4.7 GB** at 16,000 clusters. I
+told Jerry ~2.8 GB; the real figure is ~68% higher. Still trivial against 113 GB
+free on perf and 400 GB on cloud, but the number I gave was wrong and this is the
+measured one.
+
+### The correction that matters more
+
+I have been quoting **"321 legal actions per decision"** as though it described a
+typical decision. It is the **mean of a violently heavy-tailed distribution**.
+Measured over 16,148 play decisions in Run I:
+
+| | |
+|---|---:|
+| mean (the number I kept quoting) | **321.15** |
+| p10 / p25 | 1 / 2 |
+| **median** | **5** |
+| p75 / p90 | 17 / 261 |
+| p99 / max | 6,945 / **55,318** |
+| **decisions with ≤5 legal actions** | **52.6%** |
+| **share of all legal actions held by the top 1% of decisions** | **47.1%** |
+
+**On more than half of all decisions the legal set is 5 actions or fewer — the
+"shortlist" of five IS the whole legal set, and there is nothing to shortlist.**
+The ranking work, the ~69% of arm CPU, and the entire value of a learned admission
+head live in a small, identifiable minority of high-branching decisions. The top
+1% alone holds nearly half of all legal actions.
+
+This sharpens rather than weakens the case for #315, and it changes what to build:
+the policy head's target is not "every decision" but the high-branching tail. It
+also explains an older finding rather than sitting beside it — the shortlist sees
+beyond the ballot on 42.4% of decisions and *its win is concentrated there*, which
+is exactly the complement of the 52.6% where there is nothing to see.
+
+**How I got it wrong:** I computed a mean over a distribution I had already been
+warned about — "measure heavy-tailed costs on enough deals" is in my own standing
+lessons, and I applied it to wall-clock costs while quoting a mean action count as
+typical. The 1.1%-coverage figure I gave Jerry is a ratio of totals and is
+therefore also tail-dominated; it is correct as stated but it does **not** mean a
+typical decision is 1.1% labelled.
+
+**Fleet 04:33 ET.** Perf FREE and now torch-capable. Run I 11,108/16,000 (69.4%),
+16.19/16c, ~13:15 ET (drifted later again from 11:58). Tip is mine.
+
+— Claude
+
+## 2026-09-09 05:40 ET — Claude — CORRECTING last tick's divergence numbers: my comparator was order-sensitive. And the corrected data confirms a sharp prediction.
+
+### The bug, found by looking at rows instead of trusting a rate
+
+I extended the divergence work to ask **where** the teachers diverge as a function
+of legal-set width, with a prediction stated before running: at width ≤ 5 the
+shortlist's candidate set *is* the whole legal set, and `cwv_shortlist` draws its
+cheap-ranking worlds from a child seed precisely so that *"cheap ranking cannot
+consume production selection/report RNG"*. So divergence at small widths should be
+**near zero**, and if it were not, the RNG-isolation guarantee would be broken.
+
+The first run said **width 1: 524 decisions, 50 diverged, 9.5%**. With one legal
+action, that is impossible. So I looked at the rows:
+
+```
+I action=S5+SQ          legal=['S5+SQ']   ballot=['S5+SQ']
+J action=SQ+S5          legal=['S5+SQ']   ballot=['SQ+S5']
+I action=H6+H7+H7        J action=H7+H7+H6
+I action=S10+S9          J action=S9+S10
+I action=S4+S5+S7+SQ     J action=S4+S7+SQ+S5
+```
+
+**Identical plays, different card order.** My comparator used list equality on
+`action`. The engine is fine; my measurement was not.
+
+### What that costs: last tick's headline figures were wrong
+
+| | reported at 03:40 | **corrected** |
+|---|---:|---:|
+| rounds that ever diverge | 100.0% | **100.0%** (unchanged) |
+| rounds diverging at ply 0 | **26.9%** | **14.6%** |
+| mean decisions to first disagreement | **7.16** | **11.50** |
+| median first divergent ply | 4 | **8** |
+| decisions on the common prefix | 5,727 | 9,197 |
+
+**About half of what I called divergence was card ordering.** The pre-registered
+*reading* is unchanged — MATERIAL DIFFERENCE — but the numbers I gave Jerry and
+Codex were inflated and these are the right ones.
+
+**A judgement call I am flagging rather than burying.** The pre-registration said
+that if `plays_prefix` identity ever failed, the measurement is void and I would
+say so *rather than patch it*. It did fail — in 365 of 800 rounds — for exactly
+the same order-sensitivity reason, because `plays_prefix` records card order too.
+I fixed the comparator (compare `(seat, sorted(cards))`) and re-ran. **Fixing a
+buggy comparator is not the same as loosening a substantive guard**, and the guard
+still fires on a genuine prefix mismatch; but the sequence is on the record so a
+reader can judge that for themselves.
+
+### The prediction, on corrected data: CONFIRMED, and sharply
+
+| legal-set width | decisions | diverged | rate |
+|---|---:|---:|---:|
+| 1 | 524 | 0 | **0.0%** |
+| 2–5 | 1,915 | 19 | 1.0% |
+| 6–17 | 1,231 | 57 | 4.6% |
+| 18–100 | 143 | 29 | 20.3% |
+| 101–1,000 | 735 | 128 | 17.4% |
+| >1,000 | 1,179 | 202 | 17.1% |
+| **≤5** | **2,439** | **19** | **0.78%** |
+| **>5** | **3,288** | **416** | **12.65%** |
+
+**Zero divergence at width 1**, 0.78% at ≤5, 12.65% above — a **16x ratio**. The
+RNG-isolation invariant holds, and the two teachers' difference lives essentially
+entirely in high-branching decisions.
+
+**Put beside this morning's width distribution, the picture is now coherent:**
+52.6% of decisions have ≤5 legal actions, and on those the two teachers are
+identical *by construction* — there is nothing to admit. All of the teacher
+difference, all of the ~69% ranking CPU, and all of the value of a learned
+admission head live in the high-branching minority, where the top 1% of decisions
+alone hold 47.1% of all legal actions.
+
+**Third time today** that reading actual rows overturned a statistic I had already
+computed (failed throws, value ties, now this). The pattern in my errors is not
+carelessness with numbers; it is trusting an aggregate before checking what a
+single row looks like.
+
+**Fleet 05:33 ET.** Perf FREE (idle ~2.3h), Mini idle, **Codex idle** at the
+prompt. Run I 11,726/16,000 (73.3%), 16.13/16c, ~12:25 ET. Tip is mine.
+
+— Claude
+
+## 2026-09-09 06:38 ET — Claude — 84.5% of the I/J rows are genuinely different data; but my prediction about the labels was wrong
+
+Divergence measures *behaviour*. Training sees *labels*. So on the 400 matched
+clusters: where the two teachers play the same move on the same state, do they
+still write different training targets?
+
+**I predicted yes** — the shortlist reports over a ballot it chose from the full
+legal set while production reports over its heuristic ballot, so I expected the
+value targets to differ on most shared states. **That prediction is wrong.**
+
+| | |
+|---|---:|
+| play decisions, Run I | 54,332 |
+| play decisions, Run J | 58,452 (**+7.6%** on identical deals) |
+| shared states where both play the same action | **8,397 = 15.5% of Run I rows** |
+| — with an identical **ballot set** | 4,100 (48.8%) |
+| — mean ballot size, I vs J | **4.13 vs 6.43** |
+| — **played-action value target EXACTLY equal** | **7,233 / 7,318 = 98.8%** |
+| — \|diff\| p50 / p90 / max | 0.0000 / 0.0000 / 23.67 |
+
+### What this establishes
+
+**1. The corpora are mostly different data, which is good for the experiment.**
+Only 15.5% of Run I's rows sit on a state where Run J also played the same move.
+The other 84.5% are post-divergence states that exist in one corpus and not the
+other. The I/J training comparison has plenty of material — consistent with the
+corrected divergence result and independent of it.
+
+**2. The report stage is teacher-independent, and that is a third confirmation of
+the RNG-isolation design.** Given the same state, the same played action and the
+same seed, both teachers compute the *same* value — 98.8% bit-equal. The shortlist
+changes which candidates reach the report; it does not change what the report says
+about a candidate. That is what `cwv_shortlist` claims and it now has direct
+evidence on 7,318 real states, alongside the width≤5 zero-divergence result and
+Codex's 492 identical same-bury pairs.
+
+**3. Where the labels DO differ is in the ballot, not the value.** Only 48.8% of
+shared states have the same candidate set, and production's ballot is *larger* on
+average (6.43 vs 4.13) because the shortlist caps at incumbent+4. So on half the
+shared states the two corpora label a different SET of actions while agreeing on
+the value of the one that was played.
+
+**Not explained, and I am not going to pretend otherwise:** 1.2% of shared states
+have unequal played-action values, with a maximum absolute difference of 23.67 —
+which is large. My working guess is the report fold's finalist selection differing
+when the ballots differ, but I have not checked it, and a guess is not a finding.
+
+**My prediction was wrong in a specific and useful way.** I assumed a different
+ballot implies a different label for the played action. It does not: the ballot
+determines *which* actions get labelled, not *what* their labels are. That
+distinction matters for anyone designing the training mix off these corpora.
+
+**Fleet 06:33 ET.** Perf idle ~3.3h, torch-capable. Mini idle. **Codex idle at the
+prompt for roughly two hours.** Run I 12,359/16,000 (77.2%), 16.14/16c, ~12:15 ET.
+Tip is mine; no sibling entries.
+
+— Claude
+
+## 2026-09-09 07:38 ET — Claude — my finalist hypothesis for the 1.2% value gap is REFUTED. Bounding it and handing the open question to Codex.
+
+Last tick I left an open item honestly rather than glossing it: 85 of 7,318
+shared states have unequal played-action value targets, max \|diff\| 23.67, with
+the note *"my working guess is the report fold's finalist selection differing when
+the ballots differ, but I have not checked it, and a guess is not a finding."*
+
+**Checked. The guess is wrong, and structurally so.**
+
+`allocation.report_worlds` credits the 300-world report fold to exactly two
+finalists; every other candidate carries only a 30-world selection estimate. If
+the played action were a finalist in one run and not the other, its mean would be
+over 330 worlds versus 30. Testing `report_worlds[played_index] > 0` in both runs
+across all 7,318 states:
+
+| | count |
+|---|---:|
+| DIFFER, finalist in both | **85** |
+| EQUAL, finalist in both | **7,233** |
+| **either case with mismatched finalist status** | **0** |
+
+**The played action is a finalist in both runs, always** — which on reflection is
+forced: the report fold runs on the top two and the played action is one of them.
+The hypothesis was not merely unsupported, it was impossible, and I could have
+seen that from the mechanism before proposing it.
+
+### What is established, and what is still open
+
+**Established.** The gap is 85/7,318 = **1.2%**. 77 of the 85 have different
+ballots. In every case both runs report `worlds=300, attempts=300`, all candidate
+indices are eligible, and neither run explored. The differing means sit on visibly
+different scales — e.g. Run I `[-66.3, -75.3, -75.3, -75.3, -75.3]` against Run J
+`[-83.3, -86.0, -86.2, -86.5, -83.8, ...]` — a separation of order 10-17, which is
+far too large for float noise and consistent with **different sampled worlds**.
+
+**Open, and I am not going to guess a third time.** Roughly 3,673 shared states
+also have different ballots and nonetheless produce *identical* values. So a
+different ballot does not by itself change the sampled worlds. What distinguishes
+the 77 is unidentified. The selection budget is `30 x n_candidates`
+(`selection_worlds: [30, 30, 30]`, `selection_budget: 90` on a 3-candidate
+decision), so a larger ballot does draw more selection worlds — but if that alone
+perturbed the stream, all different-ballot states would differ, and they do not.
+
+**Handed to Codex** with the refutation, since they own the sampler and can answer
+in minutes what would cost me another two rounds of guessing.
+
+**This does not disturb yesterday's conclusion.** The report stage is
+teacher-independent on 98.8% of shared states; the exception is now bounded at
+1.2%, characterised, and attributed to world sampling rather than to the
+teacher-dependent parts of the pipeline.
+
+**Fleet 07:33 ET.** Perf idle ~4.3h, torch-capable. Mini idle. **Codex idle ~3h.**
+Run I 12,980/16,000 (81.1%), 16.07/16c, ~12:25 ET. Tip is mine.
+
+— Claude
+
+## 2026-09-09 07:50 ET — Claude — Codex corrects my budget model; my "different sampled worlds" attribution is withdrawn
+
+Codex answered the 1.2% question with two corrections to my reading, both of which
+undercut what I wrote an hour ago.
+
+**1. I misread the selection budget.** I read `selection_worlds: [30, 30, 30]` /
+`selection_budget: 90` as "a larger ballot samples more worlds". Codex:
+
+> "sample N=30 common worlds, then evaluate K candidates each. 30*K is rollout
+> budget, NOT 30*K sampled worlds. Report resets to its child seed. Larger current
+> ballot alone cannot shift this report stream."
+
+**Thirty common worlds regardless of K.** So ballot size does not change world
+sampling, and my inference — *"a separation of order 10-17 is consistent with
+different sampled worlds"* — **has no support and is withdrawn.** That is the
+second hypothesis I have offered on this question and the second one refuted.
+
+**2. The stored means are not what I treated them as.** Codex, on
+`trajectory.py:1038-1064`:
+
+> "stored preference mean is selection baseline + pooled challenger GAP; baseline
+> is not replaced by a 330-world absolute mean. Worlds credited to finalists do not
+> imply absolute target provenance."
+
+So the value I have been differencing is a **composite** — a selection baseline
+plus a pooled gap — not an absolute mean over a world count. Comparing two
+composites and reasoning about their scale as if they were absolute estimates was
+the wrong operation. This also means my *earlier* finalist hypothesis was wrong for
+a second, independent reason beyond the one I found myself.
+
+**What I did about it.** Codex asked for "exact executed heads and a few differing
+raw record pairs". Ten complete pairs are written to `/tmp/ij-value-pairs.json`
+(also in my scratchpad), carrying both runs' full records — `preference` with
+`refined_indices`, `paired_se`, `softmax`, `tau`; `allocation` with
+`raw_winner_index`, `report_candidate_index`, `reason`; both run ids and the shared
+`git_head 5ab631bb`. First four:
+
+| cluster | ply | \|diff\| | ballot I / J | refined I / J |
+|---|---:|---:|---|---|
+| 000008 m0 | 4 | 17.000 | 5 / 11 | [3] / [7] |
+| 000055 m0 | 4 | 14.333 | 5 / 14 | [3] / [3] |
+| 000055 m1 | 4 | 1.667 | 5 / 14 | [1] / [10] |
+| 000061 m0 | 4 | 2.500 | 5 / 12 | [3] / [2] |
+
+**A bug in my own dumper, caught by a count that did not match.** The first version
+emitted 2 pairs where the earlier scripts had found 85, because I left an
+unconditional `break` at the end of the ply loop and only examined the first shared
+decision of each round. Fixed before shipping the file. The reason I caught it is
+that I had a prior count to check against — which is an argument for computing the
+aggregate first and the sample second, not the other way round.
+
+**Status: the mechanism is unidentified and both of my hypotheses are dead.** The
+phenomenon remains bounded at 85/7,318 = 1.2% and nothing depends on it. It is
+Codex's lane now and they have the data they asked for.
+
+— Claude
+
+## 2026-09-09 08:40 ET — Claude — Run I's seal check is written and armed, proven to fail, before Run I finishes
+
+Run I lands in about four hours, most likely between ticks. Run J's seal check
+paid for itself — it caught nothing, which is exactly what a check that was armed
+in advance should be able to say. Run I gets the same treatment, and the
+assertions are written **before** its output exists so they cannot be shaped by it.
+
+Armed on cloud as unit `runI-seal`: waits for `traj-runI` to exit, sleeps 20s for
+the last shard and the manifest, then runs `verify_runI.py` and records
+`VERIFY_RC`.
+
+**Proven to fail: ten of eleven checks fire against the incomplete run, exit 1.**
+Status-file `rc`, manifest presence, shard count (13,617 of 16,000), policy,
+policy_class, seed0, knobs, `explore_rate`, spot-checked deal keys, and
+no-live-worker. Clusters 0, 1 and 7,999 already **pass** the deal-key check against
+the I/J binding, so it discriminates on real data rather than only failing.
+
+**The mirror-image assertion is the interesting one.** Run J's check requires
+`seed_window.conflicts` to *contain* Run I's window, because Run J deliberately
+overlapped. Run I's check requires **no conflicts at all**, because Run I
+registered first and ran without `--allow-seed-overlap`. If the two runs were ever
+confused for one another, exactly one of those two checks would fail.
+
+**One honest weakness, same as Run J's.** That conflicts check currently reads OK
+against the incomplete run — vacuously, because an absent manifest yields an empty
+dict. It is gated behind "manifest.json exists", so a vacuous overall pass is
+impossible, but the individual line is not meaningful until the manifest is there.
+
+**And a self-inflicted mess worth recording.** I first built this file by
+`sed`-chaining the Run J version, and the chain reordered a rename ahead of a patch
+that expected the old text, producing a `NameError` at run time. It failed loudly
+rather than silently, which is the only good thing about it. I rewrote the file
+cleanly instead of patching the mangled one — patching a file you have already
+corrupted is how a subtle version survives.
+
+**Fleet 08:33 ET.** Run I 13,605/16,000 (85.0%), 16.09/16c, ~12:25 ET. Perf idle
+~5.3h and torch-capable. Mini idle. **Codex idle ~4h.** Tip is mine.
+
+— Claude
+
+## 2026-09-09 08:52 ET — Claude — Codex identified the 1.2% mechanism: TRACTOR_LOCK. Verified at 100%, and it was in my own ledger nine hours ago.
+
+Codex:
+
+> "Ten pairs checked: all played index 0; differences already in raw selection
+> means, so my composite-target caveat does NOT explain these ten. All actors led
+> opening tractors. Shortlist `TRACTOR_LOCK=False` vs MC `=True` means identical
+> opening cards can consume different prior RNG."
+
+**Verified rather than accepted**, across all 7,318 shared states — does a Run J
+tractor lock occur *earlier in the same round* than the compared decision?
+
+| | count |
+|---|---:|
+| **DIFFER**, prior Run J lock, no Run I lock | **85** |
+| EQUAL, prior Run J lock, no Run I lock | 379 |
+| EQUAL, no prior lock in either | 6,854 |
+| any case with a prior **Run I** lock | **0** |
+
+**100% of differing values (85/85) are preceded by a Run J tractor lock that Run I
+did not have**, against 5.2% of equal values. Run I never locks at all — exactly
+what `search_policy.TRACTOR_LOCK = False` predicts. A prior lock is **necessary**
+for the value to differ; it is not sufficient, which is why 379 locked-prefix
+states still agree.
+
+**The mechanism, stated plainly.** Production tractor-locks an opening tractor
+lead: it returns the move without searching, so it consumes no selection or report
+RNG. The shortlist does not lock, so it searches and does consume it. From that
+point the two RNG streams differ for the rest of the round, and later shared
+decisions draw different worlds — producing different raw selection means at states
+where both teachers still play the same card.
+
+**This was in my own ledger nine hours ago and I did not connect it.** At 00:34 ET
+I found the `tractor_lock` asymmetry myself, measured it at 0.32% of decisions,
+decided deliberately to leave it unmatched, and wrote it up. Then I spent three
+hypotheses on the value gap — finalist selection, different sampled worlds, and
+an unspecified sampler difference — without once returning to it. I also noticed
+and reported that *"every one of the first four differing cases is at ply 4, which
+may or may not mean something"*, which is precisely the fingerprint of an opening
+lead locked at ply 0, and handed that observation over without pursuing it.
+
+**And I under-described its scope.** I recorded `tractor_lock` as "0.32% of
+decisions become point-mass records with no action values." That is true and it is
+not the whole effect: the lock also perturbs the RNG stream for the remainder of
+the round, so it reaches **5.2%** of later shared decisions and is the sole
+mechanism behind every value disagreement we found. The decision to leave it
+unmatched still stands — forcing it needs a `--knob` that would make Run J
+unmixable with A–H — but the entry describing its consequences was too narrow.
+
+**Consequence for reading the I/J comparison:** `tractor_lock` is a genuine teacher
+property (production really does lock), so it belongs in the list of ways the two
+teachers differ. It should not be confused with the shortlist's *admission*
+behaviour, which is the thing the experiment is about.
+
+**Closed.** Credit to Codex for the mechanism; they also withdrew their own
+composite-target explanation when the ten pairs did not support it.
+
+— Claude
+
+## 2026-09-09 09:30 ET — Claude — daily maintenance: HELD at step 3 (Codex-owned tree). Steps 1-2 done, step 0 done.
+
+**FIRST CHECK: `/Users/jerryyu/Projects/shengji` is on `codex/aug12-strength-status` with 17 dirty files.** Codex-owned. So steps **3 (doc sync), 4 (smoke + audit_sourcing) and 5 (deletion) are HELD** and only the read-only steps ran. No writes to that tree.
+
+### (1) Every shengji job, all hosts
+
+| host | job | state | CPU | disk |
+|---|---|---|---|---|
+| **cloud** | Run I (`traj-runI`) | **14,089/16,000 = 88.1%**, running | 16.12/16c | 32%, 396G free |
+| cloud | `runI-seal` | armed, waiting on the unit | — | — |
+| **perf** | Run J | **16,000/16,000 SEALED**, no live worker | 0.00/16c | 81%, 112G free |
+| **Mini** | **none** | — | 0.91/10c | — |
+| prod | `shengji` 48e7e35a9597e8 ewr v21 | started, 1/1 checks passing | — | — |
+
+**The Mini count is the finding.** `pgrep -f "[s]hengji"` returned **8**, and the true number of shengji compute jobs is **zero**. Printing `ps -o args=` per pid: two were *this very command's* own zsh wrappers, two agent-bus watchers, one claude daemon, one launchctl keep-alive shim, and pid 96175 — Jerry's dev server, which the routine says to leave alone. The routine warns that this exact count has been false before; bracketing the pattern prevents the literal self-match but **not** matching your own wrapper shell. The rule that works is: never report a count without printing the arguments.
+
+### (2) Fly logs, read-only
+
+Nothing but `/healthz` 200s at 30-second intervals for the whole tail. No errors, no real traffic — as expected for an app whose only client is its own health check.
+
+### (0) Prompt audit — the STATE block was 97 commits stale, and wrong on the two biggest facts
+
+Both crons recreated (hourly `80067502`, daily `3d18e966`; the 2026-09-15 expiry is reset to 2026-09-16). Corrections carried in:
+
+| the prompt said | reality |
+|---|---|
+| "Production MC-LCB remains the only deployed policy; **NOTHING promoted**" | **W32 has been the all-user production default since 16:00 ET 2026-09-08** on Jerry's explicit authorization |
+| "Shortlist teacher generation ... **NOT launched** — needs Jerry's explicit go" | **Run I launched 2026-09-08 and is 88% complete**; Run J, its matched control, is sealed |
+| "Runs G and H: keep; **G on perf**" | G finished long ago; perf now holds sealed Run J, which the prompt never mentions |
+| tip `7a20b146` | `558f309b`, **97 commits later** |
+| "image deployed 2026-08-23" | machine v21, last updated **2026-09-09T01:12Z** |
+| "Codex has read Goal achieved since ~04:00 ET 09-08" | they worked in bursts all night; idle now |
+| perf "78% disk, 128G free" / cloud "30%, 404G" | 81%/112G and 32%/396G |
+
+A prompt that tells the operator nothing is deployed, on a day when a policy *is* deployed to all users, is the failure mode worth fixing fastest — so that correction leads both new STATE blocks. Also added: the missing-checkpoint blocker, the torch-absence on perf, and the multiset/self-match lessons.
+
+### Held, and why
+
+Steps 3-5 all mutate or run suites inside the Codex-owned tree. Cloud additionally has a **live run**, which independently blocks step 5 deletion under the routine's own rule. Nothing was deleted, synced or smoke-tested. They resume on a day when the tree is on `main` and clean.
+
+— Claude
+
+## 2026-09-09 09:35 ET — Claude — ACD v1 retrain LAUNCHED on Jerry's authorization. It is not a replication and I am not going to let it be called one.
+
+Jerry, in session: **"I'm ok to retrain."** Launched on perf as unit
+`acd-v1-retrain`, `/root/acd-v1-retrain`.
+
+**What it is.** A fresh net on the A+C+D corpora, which all survive on perf intact:
+runA 8,000 / runC 32,000 / runD 32,000 shards, every one with a manifest, verified
+by the launcher before a single record was read. The launcher **refuses** on a short
+corpus — training on a truncated corpus is the exact failure the Run D rsync guard
+caught once, and it must not be possible to do silently.
+
+**What it is NOT.** It cannot be `528dbbe0`. That checkpoint is gone and a retrain
+produces a different net. **So the pre-registered replication at `99eb9f04` is dead
+and this does not revive it.** What this can support is a different and in one
+respect stronger question — *does the ACDEF v2 − ACD v1 gap survive retraining the
+baseline arm from scratch, on a fresh deal window?* — but a null from it is
+ambiguous in a way the original design was not: deal sample, training seed, or
+recipe reconstruction, and it cannot separate them. That has to be said before the
+number exists, not after.
+
+### The recipe, reconstructed and stated
+
+Trainer defaults plus `--arch mlp --aux-points --encoder-version 1 --select-metric
+val_ce`: lr 3e-4, weight decay 1e-4, batch 1024, hidden 512, dropout 0.1, patience
+3, epochs 20, seed 1.
+
+**Two things make me believe the reconstruction.** A 200-cluster probe built a model
+with **595,916 parameters**, and the ledger records the sibling A+B+C run as a
+"596k-parameter MLP" — the architecture reproduces exactly. And `val_ce` is what the
+ledger says the A+C+D selector was flipped to before it fired (`5348e481`), after
+the rank-regret selector was measured worse in the shortlist.
+
+**The one choice I could not verify, stated rather than guessed in silently:**
+`--public-head`. The A+B+C entry says a public head was used as the prior input;
+there is **no such statement for A+C+D**, and the receipt died with the checkpoint.
+I omitted it. If the original used one, this net differs from `528dbbe0` by more
+than training noise, and the omission is in the launcher's own header so a later
+reader finds it.
+
+### Price, measured rather than estimated
+
+A 200-cluster, 1-epoch probe on perf CPU: **62.9s wall**, of which the epoch itself
+was 2.0s — the cost is cache and candidate-set construction, not gradient steps.
+Scaling to 72,000 clusters: roughly **6h of one-time cache and candidate work plus
+~12 min per epoch**, so **~8h** at a realistic 7-10 epochs before `patience 3` stops
+it. **This is a 360x extrapolation from a small probe** and my own standing lesson
+says a small sample of a heavy-tailed cost has burned this project three times; the
+cost here is data-volume driven rather than search driven so it should be better
+behaved, but ~8h is an order, not a promise.
+
+perf: 16 cores, CPU only (torch 2.14.0+cpu, installed there yesterday — it had none),
+112G free against an expected cache of order 33 GB.
+
+### What has to happen after it
+
+The retrained net is only half of anything. It then needs a **fresh-window screen
+against ACDEF v2**, and that screen wants its own pre-registration with the
+ambiguity above written into the reading rules. I will not reuse `99eb9f04`'s
+decision rule for a different experiment.
+
+— Claude
+
+## 2026-09-09 09:55 ET — Claude — RETRACTION: nothing was missing. All four 2x2 checkpoints were in my own job directory the whole time.
+
+At 09:20 I reported to Jerry, wrote into the daily-maintenance entry, and pushed
+into **both recurring cron prompts** the claim that **"half the published
+520-window 2x2 no longer exists on disk"**. Jerry then authorised a retrain on that
+basis and I launched it.
+
+**It was false.** Jerry asked one question — *"Was the checkpoint on mini?"* — and
+the answer is yes, in `/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/`,
+which is **my own job scratch directory, where I trained it**. Hashing all 271
+`.pt` files there:
+
+| arm | ckpt8 | path |
+|---|---|---|
+| ACD v1 | `528dbbe0` | `runACD-mlp-points/best.pt` |
+| ACDEF v1 | `528b3a7a` | `runACDEF-v1/best.pt` |
+| ACD v2 | `633663cd` | `runACD-enc2/best.pt` |
+| ACDEF v2 | `3cd27716` | `runACDEF-v2/best.pt` |
+| lr-1e4 | `8d92dd6e` | `runACDEF-v2-lr1e4/best.pt` |
+
+**Nothing is lost. Nothing ever was.**
+
+**How the search failed while feeling exhaustive.** I hashed rather than
+name-matched. I covered both servers to depth 5, and Mini's `~/shengji-archive` and
+`~/Projects/shengji` to depth 6. I searched `/Users/jerryyu`, `/tmp` and
+`/private/tmp` **by filename** — and the file is called `best.pt`. The one place I
+never hashed is `/Users/jerryyu/.claude`, which is where my own work lives. **The
+rigour of the method is what made the false negative convincing**: because I had
+hashed instead of trusting names, I treated the negative as decisive rather than as
+a statement about coverage. A search is only as good as its roots, and I never
+listed my roots.
+
+**Cost:** the retrain ran about four minutes before Jerry's question stopped it.
+Unit stopped, no trainers alive, scratch removed, perf freed. The real cost was
+Jerry authorising work on a false premise — and the false premise reaching two
+recurring prompts, where it would have misled every future tick.
+
+**Corrected everywhere it landed:** this entry; the hourly cron (recreated as
+`d15b9022`, now carrying the checkpoint inventory and "search your own working
+directory FIRST" as a standing lesson); the daily cron next.
+
+**Consequence, and it is the good one:** the pre-registered replication at
+`99eb9f04` is **not** dead and needed no substitution or retraining. It is running
+on perf now with both original checkpoints, SHAs verified before launch.
+
+— Claude
+
+## 2026-09-09 10:05 ET — Claude — PROPOSED pre-registration for the I/J experiment. NOT AUTHORIZED, NOT LAUNCHED.
+
+Written now, before Run I seals and before any arm is trained, so the design cannot
+be shaped by a number. Jerry has asked for the training to run on Mini's GPU; the
+recipe below is a proposal awaiting his approval, not a plan of record.
+
+### The question
+
+Does a corpus generated by the **W32 shortlist teacher** train a better net than one
+generated by the **production teacher**, with the deals held fixed? Every earlier
+data comparison confounded teacher with deals; Run I and Run J do not.
+
+### Training, identical in every respect but the corpus
+
+| | |
+|---|---|
+| arm A | `--data /root/traj-out/runI` (W32 shortlist teacher, `3cd27716`) |
+| arm B | `--data /root/traj-out/runJ` (production `mc-s0-report-lcb`) |
+| start | **from scratch**, not warm-started — a shared ancestor would share exposure and muddy exactly what we are trying to isolate |
+| encoder | **v2**, the current training default, identical for both |
+| recipe | trainer defaults: lr 3e-4, weight decay 1e-4, hidden 512, dropout 0.1, batch 1024, patience 3, epochs 20, seed 1, `--arch mlp --aux-points` |
+| selector | `--select-metric val_ce` — the training loss and early-stop signal ONLY. It has failed twice as a chooser between finished checkpoints and must never be used as one here |
+| split | seed **7**, authorized by Jerry, bound at `5982e9f9`; identical for both arms by construction because the corpora share deal keys |
+| device | **mps** on the Mini. The A+C+D receipt records `device=mps`, 10,388s for 72,000 clusters; I/J is 32,000, so ~1.5h per arm against ~8h on perf CPU |
+
+### Screening, and the number that decides it
+
+Each trained arm plays production `mc-s0-report-lcb` on the **same fresh 520-deal
+window, seed0 93260904** (verified disjoint from all registered windows; note the
+replication is consuming 92260904 right now), 13 trump ranks, reuse-successors,
+batch 128, W32. Then the **paired arm-minus-arm difference at the `/2` divisor**.
+One comparison, stated in advance, so no multiplicity adjustment applies.
+
+**Decision rule, fixed now:** interval excludes zero → the generator matters, and in
+which direction; interval crosses zero → **not resolvable at this n**, which is
+*not* the same as "shortlist data does not help".
+
+### The honest power statement, which is weaker than for the replication
+
+We have **no prior** for the size of a generator effect, so I cannot quote a power
+figure — only what the instrument can see. At n=520 paired, SE ~0.027:
+
+| | |
+|---|---:|
+| MDE at 80% power | **+0.0756** |
+| MDE at 50% power | +0.0529 |
+| power against +0.0500 | 46% |
+| power against +0.0300 | 20% |
+
+**If the generator effect is smaller than about +0.076, this design will not resolve
+it.** That has to be said now, because after a null it would read as an excuse. If
+Jerry wants sensitivity below that, the answer is more deals, not a different
+statistic.
+
+### Confounds that are real, known, and cannot be removed
+
+Recorded so the result is not over-read as "the effect of shortlist admission":
+
+- **`tractor_lock` differs by teacher class** (`MCBot` True, `search_policy` False).
+  It makes 0.32% of decisions point-mass records AND perturbs the RNG for the rest
+  of the round, and it is the sole mechanism behind every value-target disagreement
+  we found. It is a genuine production property, not a bug.
+- **Same deals is not same rows.** Run J has 7.6% more play decisions on identical
+  deals (58,452 vs 54,332 over 400 clusters). Whoever sets the training mix must say
+  whether they matched deals or rows; they cannot match both.
+- **Production's ballot is larger** on shared states (6.43 vs 4.13), so the corpora
+  label different SETS of actions even where they agree on the played action's value.
+
+So the result is "the difference between these two teachers", which includes
+admission breadth, tractor-locking, and row-count asymmetry together.
+
+### Status
+
+**Awaiting Jerry.** Run I seals ~12:25 ET; Codex frees Mini ~12:40 ET; perf frees
+~10:51 ET when the replication finishes. Nothing is launched and no corpus has been
+moved — pulling 20 GB while perf is running the replication would contend its wall
+column, which is the same mistake I made on Codex's bury screen last night.
+
+— Claude
+
+## 2026-09-09 10:20 ET — Claude — bus backlog cleared, and a defect Codex found in their own bury path before shipping it
+
+**Bus.** The live-update monitor had been re-firing on the same stale pointers for
+hours because I peeked on every notification with a fresh consumer alias and never
+acked. Acked sequences **910-963, 53 messages**, `pending_count: 0`, actionable set
+now **0**. Peeking is not consuming; a fresh alias every time means the real
+consumer never advances.
+
+**A small correction to the routine's own snippet**, folded into the next cron
+recreation rather than triggering a third one this hour: the daily prompt says
+`inbox --peek --batch --json -> ack --batch TOKEN`, but `ack` also requires `--to`
+and `--consumer`. `--batch` alone exits with a usage error.
+
+**Codex's bury audit, worth recording because it is a peer catching their own
+defect before recommending a ship.** From their shipping audit: the actual saved
+hybrid bury record **crashes `trajectory._bury_fields`** (candidate lists where
+dicts are expected), so it needs a record adapter, recipe identity and full-legal
+capture compatibility before any data or production use. And the detail that
+matters most if anyone is tempted to move early: **"serving currently
+error-surfaces, no heuristic fallback"** — a bad bury record would surface an error
+to a player rather than degrade to the heuristic. Their DEV run is unaffected and
+they are resolving it before making a ship recommendation. No action needed from
+me; recorded so the constraint is not lost if the strength number later looks
+attractive.
+
+**Fleet 09:50 ET.** perf: replication arm 1 at 204/520 (39.2%), 4.27 s/pair, both
+arms projected complete ~10:48 ET. cloud: Run I 14,341/16,000 (89.6%), seal armed.
+Mini: Codex bury scaling, ~3h projected from 09:37, 8 workers ~98% each. The I/J
+pre-registration at `e6250f24` is proposed and unlaunched, awaiting Jerry.
+
+— Claude

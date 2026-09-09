@@ -10,6 +10,7 @@ import numpy as np
 from shengji.engine.game import Game
 from shengji.train.cwv_bury_policy import (
     BuryPolicyError,
+    CWVBuryConfig,
     CWVBuryBot,
     make_cwv_bury_bot,
 )
@@ -55,6 +56,102 @@ class _Helper:
 
     def _score(self, points):
         return float(points)
+
+
+def test_bury_config_is_frozen_and_rejects_non_exact_positive_ints():
+    config = CWVBuryConfig()
+    assert config.max_candidates == 32
+    with np.testing.assert_raises(AttributeError):
+        config.max_candidates = 64
+    for field in ("max_candidates", "model_worlds", "selection_worlds", "alternatives"):
+        for value in (True, 0, -1, 1.0):
+            with np.testing.assert_raises(ValueError):
+                CWVBuryConfig(**{field: value})
+    with np.testing.assert_raises(ValueError):
+        CWVBuryConfig(max_candidates=8, alternatives=8)
+
+
+def test_candidate_source_receives_configured_cap(monkeypatch):
+    rnd = _bury_state(13)
+    incumbent = list(SmartBot().decide_bury(rnd, rnd.banker))
+    candidates = [incumbent] + [list(rnd.hands[rnd.banker][i:i + 8])
+                                for i in (8, 16, 24)]
+    seen = {}
+
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.make_bot",
+                        lambda _name, *, seed: _Helper(seed))
+
+    def source(_rnd, bot):
+        seen["cap"] = bot.BURY_MAX_CANDIDATES
+        return copy.deepcopy(candidates)
+
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.bury_candidates", source)
+    bot = make_cwv_bury_bot(
+        _Evaluator(), seed=17, arm="mc",
+        bury_config=CWVBuryConfig(max_candidates=64))
+    assert bot._bury_candidates(rnd, incumbent) == candidates
+    assert seen["cap"] == 64
+
+
+def test_scaled_config_reaches_world_and_rollout_consumers(monkeypatch):
+    rnd = _bury_state(14)
+    incumbent = list(SmartBot().decide_bury(rnd, rnd.banker))
+    candidates = [incumbent] + [list(rnd.hands[rnd.banker][i:i + 8])
+                                for i in (8, 16, 24, 1, 2, 3, 4, 5, 6, 7)]
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.bury_candidates",
+                        lambda _rnd, _bot: copy.deepcopy(candidates))
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.make_bot",
+                        lambda _name, *, seed: _Helper(seed))
+    sampled = []
+
+    def worlds(bot, _rnd, _seat, count):
+        world_list = [(bot.seed, index) for index in range(count)]
+        sampled.append((bot.seed, count, world_list))
+        return world_list, count
+
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.sample_worlds", worlds)
+    seen = {}
+
+    def score(_rnd, local, sampled_worlds, _evaluator, **_kwargs):
+        seen["model"] = len(sampled_worlds)
+        return np.repeat(np.arange(len(local), dtype=float)[None, :],
+                         len(sampled_worlds), axis=0)
+
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.score_bury_candidates", score)
+
+    def rollout(_rnd, local, sampled_worlds, _bot):
+        seen["selection"] = len(sampled_worlds)
+        shape = (len(sampled_worlds), len(local))
+        return np.zeros(shape), np.zeros(shape, dtype=np.int64)
+
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.rollout_bury_values", rollout)
+    baseline = make_cwv_bury_bot(_Evaluator(), seed=19, arm="hybrid",
+                                 bury_config=CWVBuryConfig())
+    baseline.decide_bury(rnd, rnd.banker)
+    baseline_samples = sampled[:2]
+    config = CWVBuryConfig(max_candidates=64, model_worlds=64,
+                           selection_worlds=128, alternatives=8)
+    bot = make_cwv_bury_bot(_Evaluator(), seed=19, arm="hybrid",
+                            bury_config=config)
+    bot.decide_bury(rnd, rnd.banker)
+    scaled_samples = sampled[2:]
+    record = bot.last_bury_record
+    assert seen == {"model": 64, "selection": 128}
+    assert len(record["shortlist"]) == 9
+    assert record["model_positions"] == len(candidates) * 64
+    assert record["mc_rollouts"] == 9 * 128
+    assert record["world_counts"] == {
+        "model": 64, "selection": 128,
+        "model_attempts": 64, "selection_attempts": 128,
+    }
+    assert record["bury_config"] == {
+        "max_candidates": 64, "model_worlds": 64,
+        "selection_worlds": 128, "alternatives": 8,
+    }
+    assert scaled_samples[0][0] != scaled_samples[1][0]
+    assert baseline_samples[0][0] == scaled_samples[0][0]
+    assert baseline_samples[1][0] == scaled_samples[1][0]
+    assert baseline_samples[1][2] == scaled_samples[1][2][:32]
 
 
 def test_arms_keep_config_and_heuristic_incumbent(monkeypatch):

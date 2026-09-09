@@ -159,3 +159,46 @@ evidence unchanged; do not reinterpret the original stopping decision.
 Halving the initial uncertainty is an approximate precision target, not a
 guarantee of a positive finding or sufficient power for small effects. The
 pooled analysis is explicitly exploratory because the initial outcomes were seen.
+
+## Data-writer integration (September 9, separate from the live screen)
+
+The old DEV bury record could not pass the real trajectory writer: it held a
+list of candidate card lists where the writer required scored dictionaries.
+New decisions retain the MC means already computed by the chooser. The adapter
+exports only MC-scored candidates as the training ballot, with their actual
+world counts and local played index. It preserves the complete proposal pool
+and model rankings as separate `action_values.bury_search` metadata. Model
+signed-level predictions are not substituted for MC's negative-score targets;
+unsearched candidates receive no invented targets. Heuristic records have one
+action, zero search worlds and a null mean. No new standard errors are claimed.
+
+This is tested through real generated rounds, schema validation, atomic shard
+publication/reopen and engine reconstruction of the bury state, not just an
+adapter fixture. The factory and evaluator are test-supplied at reduced doses;
+these tests do not establish a shipping factory, model accuracy or latency.
+The live 512-deal experiment remains on its original source and is untouched.
+Its older records are valid gameplay evidence, but cannot be retroactively
+turned into MC value labels whose means were never saved.
+
+The integration now also provides explicit `register_cwv_bury_policies`
+factories and an opt-in `SHENGJI_CWV_BURY_ARM` environment setting. It reuses
+the existing `SHENGJI_CWV_SHORTLIST_*` play recipe and checkpoint loader;
+`SHENGJI_CWV_BURY_MAX_CANDIDATES`, `_MODEL_WORLDS`, `_SELECTION_WORLDS` and
+`_ALTERNATIVES` control bury only. Both sets of parameters and the full model
+SHA enter the named recipe and data manifest. The factory shares the immutable
+evaluator, retains the exact play configuration/report budget, and uses the
+original play RNG seed. No unqualified `mc-bury` name or default substitution.
+
+The known bury wrapper supports full-legal play-score capture; unrelated
+shortlist subclasses remain refused. A real tiny checkpoint, fresh subprocess
+and spawned trajectory worker produce and reopen a complete round pair with
+both evidence surfaces. Bury helper compute is reported separately in work
+counters and runtime timing, without advancing or mislabeling play counters.
+Thirty-eight focused integration/registry/capture tests pass in native mode.
+These are contract tests, not new strength or target-host performance claims.
+
+Still required before shipping: review, a bounded serving fallback and target-
+host latency checks, plus the selected recipe's representative-rank/no-trump
+evidence. The current recipe explicitly fails on search errors (`fallback:
+raise`); it must not be described as production-fallback-ready. No production
+default changes here.

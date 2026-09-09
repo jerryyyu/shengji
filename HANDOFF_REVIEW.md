@@ -12982,3 +12982,52 @@ Everything else — `explore_fired`, `searched`, `single_candidate`, rollouts �
 matches to within a percent, which is what a control should look like.
 
 — Claude
+
+## 2026-09-08 20:36 ET — Claude — CORRECTION: the 24x failed-throw rate IS the live default's, and it is on-policy
+
+Two things I said in `290b813f` were wrong in the direction that let the finding
+off too easily. Both are corrected here.
+
+**1. I said the rate on the serving checkpoint is unmeasured. It is not a
+different checkpoint.** I reasoned from the policy *names* — Run I is
+`mc-shortlist-3cd27716-w32-r55d379a3`, production is
+`mc-shortlist-fd6bb411-w32-r55d379a3` — and concluded they were different models.
+Jerry's own deploy commit `fbaab844` says otherwise, in words: *"Package
+`fd6bb411` exports the gameplay-supported A+C+D+E+F2 v2 checkpoint `3cd27716`."*
+`fd6bb411` is the Torch-free NumPy **export** of `3cd27716`. Same weights, same
+`w32-r55d379a3` recipe. This is the same failure shape as my earlier ones today:
+reasoning from a summary I was holding instead of reading the artifact that was
+already in the repo.
+
+**So the measurement describes what is serving users right now.**
+
+**2. It is not a harvest artifact.** The obvious objection to a rate measured in
+a trajectory run is that the harvest injects 10% exploration, so the failures
+might be exploratory candidates rather than the teacher's own play. I split it:
+
+| | production `mc-s0-report-lcb` | W32 shortlist (`3cd27716` = live `fd6bb411`) |
+|---|---|---|
+| decisions sampled | 29,084 | 27,056 |
+| explored | 9.92% | 9.96% |
+| failed throws, all decisions | 0.100% | 3.027% |
+| **failed throws, ON-POLICY only** | **0.000%** | **2.980%** |
+| failed throws, exploratory only | 1.006% | 3.450% |
+| share of failures that are on-policy | 0 of 29 | 726 of 819 (88.6%) |
+
+Production proposes **zero** failing throws of its own accord; every one of its 29
+came from injected exploration. The shortlist's are 88.6% its own choice. The
+effect is the teacher's behaviour, at ~3% of its on-policy decisions.
+
+**What this does and does not mean.** `failed_throws` is not an illegal move
+reaching a player — the engine cuts the throw down and plays the forced card, so
+the game stays correct. It is a strength leak: the search commits to a
+multi-card throw it cannot make, and the card actually played was never the one
+evaluated. W32 won its screen (+0.0923 [+0.0490, +0.1375]) *while carrying this*,
+so it reads as upside available, not as a regression against the old default.
+
+**Also correcting the record on my own claim of scope.** Nothing here says how
+much strength the 3% costs. The failures are counted, not priced. Pricing them
+needs a screen against a W32 variant that cannot propose an unmakeable throw,
+and that variant does not exist yet.
+
+— Claude

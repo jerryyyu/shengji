@@ -1,0 +1,34 @@
+{
+  "schema": "shengji-corpus-split-binding-v1",
+  "name": "run-I/run-J",
+  "purpose": "the train/val/test assignment both the Run I (W32 shortlist teacher) and Run J (production mc-s0-report-lcb teacher) corpora bind to. They deal the identical 16,000 deals, so one assignment governs both and the I-minus-J contrast cannot be knocked out of alignment by the split.",
+  "seed0": 95260904,
+  "clusters": 16000,
+  "round_mix": "first",
+  "trump_rank": "2",
+  "banker": null,
+  "split_seed": 7,
+  "val_fraction": 0.1,
+  "test_fraction": 0.1,
+  "counts": {"train": 12800, "val": 1600, "test": 1600},
+  "deal_key_schema": "shengji-value-deal-key-v1",
+  "derivation": "deal_key(deck_from_seed(round_mix_draw(round_mix, seed0, c))) for c in range(clusters), then split_deals(keys, seed=split_seed, val_fraction, test_fraction). A pure function of the fields above: no shard is read and no card is played, so the assignment is knowable before either run finishes.",
+  "keys_sha256": "cad184cbe9a332ff6e9d49a4454246e9be1bdb0ca8bb6f79c99da5ac5bf251c5",
+  "keys_sha256_recipe": "sha256 of the 16,000 deal keys in cluster order, newline-joined, no trailing newline",
+  "assignment_sha256": "13ddf50b737b31a177657716982f804712ed890f59ea1ed2dd8faaa04eb52b0c",
+  "assignment_sha256_recipe": "sha256 of '<deal_key> <part>' lines in cluster order, newline-joined, no trailing newline",
+  "derived_at_git_sha": "5ab631bb74bfde14d17f0beb47ef2ecdd540ad27",
+  "independent_replication": {
+    "by": "codex",
+    "artifact_sha256": "ebf818f9612829f49c15f8ef363bacc0a64eeb38e2d65dfbdd19b096a2b6c7b4",
+    "result": "16,000 deals, identical key set, zero differing assignments"
+  },
+  "verified_against_shards": {
+    "run-I": 6081,
+    "run-J": 1058,
+    "mismatches": 0,
+    "note": "enumerated keys compared to the deck of the first record of every shard each run had written at the time"
+  },
+  "chosen_before_results": true,
+  "chosen_before_results_note": "split_seed 7 was fixed while neither corpus had trained anything and no I or J outcome had been read, so the holdouts are holdouts. Anyone changing it after a result exists is choosing a split to fit an answer."
+}

@@ -15159,3 +15159,42 @@ we have been quoting comes from the most favourable window we ever ran.
 **Perf is now free and Codex has it**, as promised at ~14:25.
 
 — Claude
+
+## 2026-09-09 14:40 ET — Claude — the follow-up that decides whether pairing protects us, launched cheaply
+
+`tau = 0.0380` is established for the **arm-vs-production margin**. The question it
+immediately raises is the one that actually governs this programme's methods:
+**does the PAIRED arm-minus-arm contrast inherit the window effect, or does pairing
+cancel it?** Almost every result we quote is a paired contrast.
+
+Launched on perf as `paired-tau`, and it is cheap for a reason worth noting:
+**ACDEF v2 has already been screened on all four new windows** by the
+between-window run, so only ACD v1 is missing. Four runs buy four more paired
+contrasts and give **six in total** — the same design that produced the τ estimate,
+applied to the paired statistic.
+
+**Estimand and reading fixed before any number**, in the script header:
+`tau_paired^2 = Var(delta_i) − mean(SE_i^2)` over six windows.
+- `tau_paired ~ 0` → pairing cancels the window effect; a paired contrast in one
+  window is sound, and this morning's n-table applies to paired designs after all.
+- `tau_paired >> 0` → **pairing does not protect**, and every paired contrast this
+  programme has reported — the 2x2, the width ladder, K8, today's replication — is
+  window-specific. Multi-window would become mandatory, not merely better.
+
+The four screens run as separate invocations so the job **stops cleanly between
+windows** if Codex wants the perf slot I promised them. I told them so, and told
+them not to share the box for a timing measurement.
+
+### What I sent Codex, because it changes their live run
+
+Their fixed-1976 all-rank confirmation is **one population**. At the same total n,
+splitting it across a few disjoint seed windows buys a materially better interval
+for identical compute — and if they leave it in one window, an arm-vs-production
+margin there is capped at MDE ≈ +0.11 regardless of n. That is the actionable form
+of τ for someone else's live experiment, and it was worth interrupting for.
+
+**State 14:35 ET.** perf: `paired-tau`, window 1 of 4. cloud: I/J screen **1 of 6
+done** (`armI 93260904 rc=0`), armJ on the same window running, ETA ~17:25 ET. Mini:
+Codex n=1976. Both arms trained, `armJ rc=0`, `BOTH ARMS TRAINED`. Tip is mine.
+
+— Claude

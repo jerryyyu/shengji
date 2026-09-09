@@ -50,6 +50,31 @@ def test_worker_refuses_changed_checkpoint_before_policy_construction(monkeypatc
         S.make_side(config, "arm", 1)
 
 
+def test_production_union_cli_affects_only_treatment_and_binds_receipt(tmp_path, monkeypatch):
+    from shengji.train.cwv_production_union import CWVProductionUnionBot
+    from shengji.train.cwv_shortlist import CWVShortlistBot
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    evaluator = SimpleNamespace(checkpoint_sha256="a" * 64,
+                                identity=lambda: {"checkpoint_sha256": "a" * 64})
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **kw: evaluator)
+    seen = []
+    monkeypatch.setattr(S, "_run_pending", lambda config, *a, **kw: seen.append(config))
+    out = tmp_path / "union"
+    S.main(["--arm", "learned", "--checkpoint", "fixture.pt", "--production-union",
+            "--baseline", "flat-shortlist", "--worlds", "32", "--seed0", "17",
+            "--out", str(out)])
+    config = json.loads((out / "config.json").read_text())
+    assert config == seen[0] and config["production_union"] is True
+    assert S._recipe(config)["production_union"] is True
+    arm, base = S.make_side(config, "arm", 7), S.make_side(config, "baseline", 7)
+    assert type(arm) is CWVProductionUnionBot and type(base) is CWVShortlistBot
+    assert arm.evaluator is base.evaluator
+    assert arm.shortlist_config == base.shortlist_config
+    assert arm.N_DETERMINIZATIONS == base.N_DETERMINIZATIONS == 30
+    assert arm.REPORT_FOLD_WORLDS == base.REPORT_FOLD_WORLDS == 300
+    assert "production_union" not in S._recipe(cfg())
+
+
 def test_forced_shortlist_is_traced_even_without_inherited_record():
     class Bot:
         last_decision_record = None

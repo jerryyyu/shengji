@@ -146,6 +146,9 @@ def make_side(config: dict, side: str, seed: int):
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     inner = config.get("double_shortlist") if side == "arm" else None
+    union = config.get("production_union", False) and side == "arm"
+    if union and (inner is not None or arm != "learned"):
+        raise ValueError("production union requires flat learned shortlist")
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
     if inner is not None:
@@ -158,6 +161,9 @@ def make_side(config: dict, side: str, seed: int):
                                    inner_batch_size=inner["batch_size"],
                                    inner_reuse_successors=inner.get(
                                        "reuse_successors", False))
+    elif union:
+        from .cwv_production_union import CWVProductionUnionBot
+        bot = CWVProductionUnionBot(evaluator, **kwargs)
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
@@ -208,7 +214,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "production_union"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -360,6 +366,8 @@ def summary_for(shards, config):
             by_suit[suit] += 1
         result["trump_ranks"] = list(config["trump_ranks"])
         result["coverage"] = {"by_rank": by_rank, "by_trump_suit": by_suit}
+    if config.get("production_union"):
+        result["arm_description"] = "unchanged model top-K nominations union production ballot; full MC-LCB"
     return result
 
 
@@ -378,6 +386,8 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--production-union", action="store_true",
+                        help="DEV: preserve production nominations alongside model shortlist")
     parser.add_argument("--inner-mode", choices=("learned", "uniform", "heuristic"),
                         help="DEV: one extra trick of per-world shortlist continuation; learned root only")
     parser.add_argument("--inner-worlds", type=int, default=4,
@@ -408,6 +418,8 @@ def main(argv=None):
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
         parser.error("--reuse-successors is only valid for learned")
+    if args.production_union and (args.arm != "learned" or args.inner_mode is not None):
+        parser.error("--production-union requires flat learned shortlist")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -456,6 +468,8 @@ def main(argv=None):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    if args.production_union:
+        config["production_union"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:

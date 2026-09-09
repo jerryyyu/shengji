@@ -13658,3 +13658,84 @@ not land until ~11:25, so there is an ~8-hour window. Estimated cost ~1h per arm
 at 16 workers, ~2h total. Nothing is launched.
 
 — Claude
+
+## 2026-09-09 01:40 ET — Claude — #324 merged: the full-legal score vector is on main. Verified the merge did not change what I reviewed, and armed an end-to-end smoke.
+
+Codex shipped the capture within about fifteen minutes of Jerry asking me what it
+would take. **Merged at `95092e63`.** The blocker on the only untried strategy that
+targets ~69% of the arm's CPU is gone.
+
+**The red CI on that PR was mine, not theirs.** All four failing jobs died in
+`conftest.py` at `review_ledger_guard.py:20` — *"PR head review ledger is shorter
+than base"* — because their branch sat at `d81dfd58` and I had pushed `99eb9f04`
+to main since. Nothing in their change was broken. The guard is correct and I
+would not weaken it (it exists because a `checkout --theirs` once dropped 731
+ledger lines), but **every open PR goes red the moment I push a ledger entry, and
+I push several an hour.** That friction is mine; I offered to batch pushes.
+
+**I verified the rebase did not change the reviewed code, rather than accepting
+the commit message that said so.** `670ddc1b` is titled "Merge current review
+ledger without changing reviewed score-capture code"; that claim checks out:
+
+| file | reviewed `6805247d` | merged `origin/main` | |
+|---|---|---|---|
+| `shortlist_scores.py` | `509fe5a8d3f6a6c0` | `509fe5a8d3f6a6c0` | SAME |
+| `cwv_shortlist.py` | `55f0244f43a1d89c` | `55f0244f43a1d89c` | SAME |
+| `trajectory.py` | `0e95704f2aba41eb` | `0e95704f2aba41eb` | SAME |
+| `test_shortlist_score_capture.py` | `93aa29a62f72fbad` | `93aa29a62f72fbad` | SAME |
+| `test_cwv_shortlist.py` | `09a22d8065248a9a` | `09a22d8065248a9a` | SAME |
+
+The merge commit touches `HANDOFF_REVIEW.md` and nothing else (+69 lines, my
+pre-registration). **My PASS covers exactly what landed.**
+
+### What I checked in the review, and what I did NOT
+
+Verified: it captures the **full** vector (`means` over `enumerate_legal(cap=None)`,
+with `_validate` enforcing `legal_actions_count == len(actions)` so a truncation
+raises at publish); **no added inference and no RNG consumption** (the block only
+reads values already computed); **capture off is byte-identical** (the config key
+is set only when true, so `run_id` is unchanged for every existing recipe).
+
+Corrected in the review: I had told Codex a differing `fast_module_sha256_16`
+"would refuse a later **merge**" of Runs I and J. `CODE_IDENTITY_KEYS` is consulted
+only in the **resume** path (`trajectory.py:1999`). It gates resume, not combining
+corpora, and whether the training loader applies its own check I have **not**
+verified.
+
+Also fed back a measurement they did not have: they store the action list
+explicitly rather than aligning positionally against the record's `legal_actions`,
+which looks like duplication and is the right call — **I measured
+`legal_actions_complete` on Run I at 89.9%**, so the record's list is incomplete
+on about one decision in ten and positional alignment would have silently
+mis-mapped those rows.
+
+### Nobody has run it on real data, so that is armed
+
+Unit tests pass and the code reads correctly. That is not the same as working.
+`/root/smoke_capture.sh` is armed on perf as unit `capture-smoke`: it waits for
+Run J's seal, **requires `VERIFY_RC=0` from it before starting**, then harvests 4
+real clusters with `--capture-full-legal-scores` on a **scratch registry** and a
+scratch out dir, and runs `verify_capture.py`.
+
+The verifier's checks: one sidecar per shard; row count equals play-record count;
+every row binds `source_ref` **and** `record_sha256`; `len(means) == len(actions)
+== legal_actions_count`; the record's ballot is a subset of the captured actions;
+all means finite; `checkpoint_sha256` equals the checkpoint actually used; and the
+captured width exceeds the ballot width, which is the entire point of the feature.
+
+**Proven to fail:** run against Run J (no capture) it reports 0 sidecars and no
+scored vector and exits 1. **Honest weakness:** the per-row checks are vacuously
+OK on empty input; the two gates that fired are what make a vacuous overall pass
+impossible.
+
+**And a small self-catch worth recording:** I hand-wrote the checkpoint SHA into
+the smoke script and got it wrong. Computing it on the box gave
+`3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`, not what I
+typed. Never hand-write a hash; a wrong one would have failed the check for a
+reason that had nothing to do with the feature.
+
+**Fleet 01:33 ET.** Run J 12,387/16,000 (77.4%), 16.00/16c, seal unit armed and
+waiting, ~03:15 ET. Run I 9,246/16,000 (57.8%), 16.05/16c, ~12:10 ET. Mini 8.97,
+Codex working.
+
+— Claude

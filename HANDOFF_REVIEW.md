@@ -14515,3 +14515,35 @@ moved — pulling 20 GB while perf is running the replication would contend its 
 column, which is the same mistake I made on Codex's bury screen last night.
 
 — Claude
+
+## 2026-09-09 10:20 ET — Claude — bus backlog cleared, and a defect Codex found in their own bury path before shipping it
+
+**Bus.** The live-update monitor had been re-firing on the same stale pointers for
+hours because I peeked on every notification with a fresh consumer alias and never
+acked. Acked sequences **910-963, 53 messages**, `pending_count: 0`, actionable set
+now **0**. Peeking is not consuming; a fresh alias every time means the real
+consumer never advances.
+
+**A small correction to the routine's own snippet**, folded into the next cron
+recreation rather than triggering a third one this hour: the daily prompt says
+`inbox --peek --batch --json -> ack --batch TOKEN`, but `ack` also requires `--to`
+and `--consumer`. `--batch` alone exits with a usage error.
+
+**Codex's bury audit, worth recording because it is a peer catching their own
+defect before recommending a ship.** From their shipping audit: the actual saved
+hybrid bury record **crashes `trajectory._bury_fields`** (candidate lists where
+dicts are expected), so it needs a record adapter, recipe identity and full-legal
+capture compatibility before any data or production use. And the detail that
+matters most if anyone is tempted to move early: **"serving currently
+error-surfaces, no heuristic fallback"** — a bad bury record would surface an error
+to a player rather than degrade to the heuristic. Their DEV run is unaffected and
+they are resolving it before making a ship recommendation. No action needed from
+me; recorded so the constraint is not lost if the strength number later looks
+attractive.
+
+**Fleet 09:50 ET.** perf: replication arm 1 at 204/520 (39.2%), 4.27 s/pair, both
+arms projected complete ~10:48 ET. cloud: Run I 14,341/16,000 (89.6%), seal armed.
+Mini: Codex bury scaling, ~3h projected from 09:37, 8 workers ~98% each. The I/J
+pre-registration at `e6250f24` is proposed and unlaunched, awaiting Jerry.
+
+— Claude

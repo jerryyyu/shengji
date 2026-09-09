@@ -14580,3 +14580,70 @@ arms complete ~10:44. cloud: Run I 14,825/16,000 (92.7%), 16.24/16c, seal armed,
 sibling entries; no drift.
 
 — Claude
+
+## 2026-09-09 10:50 ET — Claude — THE ONLY RESOLVED CHECKPOINT CONTRAST DOES NOT REPLICATE
+
+Pre-registered at `99eb9f04` before any number existed. Both arms `rc=0`; both
+checkpoint SHAs verified before launch; fresh 520-deal window seed0 `92260904`,
+13 trump ranks, reuse-successors, batch 128, W32; deal identity verified by the
+instrument itself (520 shared clusters, **0 only-A, 0 only-B**).
+
+| | per_round | 95% |
+|---|---:|---|
+| ACDEF v2 `3cd27716` vs production | +0.0519 | [+0.0087, +0.0952] |
+| ACD v1 `528dbbe0` vs production | +0.0413 | [−0.0087, +0.0913] |
+| **PAIRED ACDEF v2 − ACD v1** | **+0.0106** | **[−0.0423, +0.0635]** |
+
+**The pre-registered reading is unambiguous: the interval crosses zero, so the
+contrast DOES NOT REPLICATE, and it is downgraded regardless of how much it
+overlaps the original.** Original: +0.0779 [+0.0240, +0.1298].
+
+**And this is not "same effect, less precision".** The replication's SE is 0.02699
+— identical to the original's, exactly as designed — and the new **point estimate
++0.0106 sits BELOW the original interval's lower bound of +0.0240**. The estimate
+itself moved out of the original CI. Pre-registered power against +0.0779 was
+**82.3%**, and we did not detect it.
+
+### What this costs the program state
+
+**Remove "ONE checkpoint contrast has ever resolved" from every summary.** The
+programme now has **zero** replicated checkpoint-vs-checkpoint results. The 2x2's
+corner-to-corner gap was the single piece of evidence that data-and-encoder
+*together* is the axis that matters, and it does not survive a fresh deal sample.
+
+**Codex called this in advance and should be credited.** Their caveat at the time,
+which I accepted and published: *"six UNADJUSTED comparisons, winner NOT
+pre-registered, would not survive a family adjustment."* A winner selected from six
+comparisons is exactly the estimator that regresses on replication, and it
+regressed by a factor of seven.
+
+### What it does NOT say
+
+- **Not** that ACDEF v2 is no better than ACD v1. It says +0.0779 does not
+  replicate and the gap is unresolved at n=520. The MDE here is +0.0756; a true
+  gap of, say, +0.03 would be invisible to this design and to the original.
+- **Not** an indictment of the W32 shortlist. **Both arms still beat production on
+  the fresh window**, ACDEF v2 excluding zero. The design keeps working; it is the
+  *choice between checkpoints* that has no support.
+- **Not** a licence to pool the two runs into a combined estimate. Pooling was not
+  pre-registered and I am not going to invent it after seeing the numbers.
+
+### A second observation, unplanned and worth recording separately
+
+ACDEF v2 vs production is **+0.0519** here against **+0.1260** on the 91261190
+window — same arm, same recipe, same opponent, different deals. Both exclude zero;
+the magnitudes differ by 2.4x. That is consistent with the between-window effect
+already measured at +0.1510, which is **larger than any checkpoint gap it is being
+used to detect**. Any future arm-vs-production number should be read as
+window-specific until replicated. I am flagging this as an observation, not a
+finding: it was not pre-registered and it rests on two windows.
+
+### Method notes
+
+The instrument refuses on any deal-set mismatch and reported 520/520 shared with
+zero one-sided clusters. It also noted the baseline differs on 203/520 clusters —
+expected, since each arm draws production independently — which is why the paired
+arm-minus-arm at the `/2` divisor is the statistic and not a difference of the two
+vs-production margins.
+
+— Claude

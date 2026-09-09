@@ -227,3 +227,105 @@ nor a target-Fly latency guarantee. The probe used a generous30s cooperative
 budget solely to test the successful path, not to select a production budget.
 Artifact: `/Users/jerryyu/shengji-archive/2026-09-09/bury-serving-probe.cNtfgV/`
 (`probe.py`, `result.json`, executed-source delta `source.patch`).
+
+## Fixed 512-deal scaling closeout (September 9)
+
+All six arms completed: 3h10m09s runner wall, 25.27 summed core-hours. The
+original source and per-arm artifacts are preserved at
+`/Users/jerryyu/shengji-archive/2026-09-09/bury-scaling.6T8g9O/`;
+`READOUT.md` and `complete-readout.json` contain all eight contrasts and risks.
+Every utility interval crosses zero. Hybrid minus MC is +0.0156
+[-0.0547,+0.0859]; this proves neither superiority nor equivalence.
+
+Cap64 only adds proposals in 51/512 deals (mean actual pool 26.36 to 26.65),
+changing six hybrid buries at MC32 and seven at MC128. Changed-deal means are
+descriptive, not a replacement for the all-deal deployment estimand. Sparse
+changes and bootstrap intervals cannot rule out unobserved rare effects.
+The nominal doubled cap does not generate 64 distinct proposals.
+
+Hybrid takes 227ms versus MC's 344ms mean bury wall on the busy Mini, with
+81,920 full rollouts plus 431,808 model leaves versus MC's 431,808 full
+rollouts. Do not call this a 5.27x total-work speedup. Cap64 alone is nearly
+cost-neutral at 228ms; MC128 costs about 432ms for hybrid, without supported
+strength gain. No broader scaling grid follows. Retain baseline hybrid as the
+candidate by parsimony, not as a statistically established MC replacement.
+
+Source/consumer PASS at PR323 head146be958 is closed and exact-head CI passed.
+Production still uses heuristic bury; default data-teacher and production
+shipping remain HOLD. All-rank functional Torch/NumPy checks passed 65/65
+rank/suit fixtures, but those engineered roots are not strength evidence.
+
+## One focused all-rank confirmation — plan before new outcomes
+
+Question: does the earlier hybrid-versus-heuristic advantage generalize beyond
+rank2 to an explicitly balanced established-banker population? This is one
+fixed replication, not an extension until significance or a new recipe sweep.
+
+- Exactly **1,040 fresh independent deals**, indices0–1039 in namespace
+  `cwv-bury-allrank-confirm-20260909-v1`. Rank is `RANKS[index % 13]`;
+  initial banker is `(index // 13) % 4`: 80 deals per rank, 20 per rank/seat.
+  Construct the actual engine Round with that rank and known banker, then use
+  unchanged production declaration decisions. Keep all deals: no suit/NT,
+  candidate-count, model-score or outcome filtering. Report natural NT count.
+- This is a balanced research population, **not an estimate of human game
+  frequencies**, nor a complete multi-round match. Known banker models an
+  established game, unlike the earlier opening-deal population. Both changes
+  are population coverage, not changes to the tested decision policy.
+- Three arms only: literal heuristic incumbent; full-pool MC32; baseline
+  hybrid cap32/model32/incumbent+4/MC32. Identical W32 post-bury play and
+  per-seat play seeds across arms. Pin source checkpoint
+  `3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`.
+  No checkpoint selection, candidate generation change or serving fallback.
+- Primary comparison: hybrid minus heuristic signed banker utility. Estimate
+  the equal-weight all-deal mean with 4,000 deterministic paired bootstrap
+  replicates **within each fixed rank/initial-banker stratum**. Publish a
+  two-sided nominal95% interval. A positive lower endpoint supports replication
+  on this population; otherwise record it as unsupported/inconclusive. Never
+  extend the count based on the result. All other contrasts, win rate, points,
+  rank and NT breakdowns are descriptive/secondary, not alternative routes to
+  a primary win. MC comparison is not an equivalence test.
+- The earlier fresh768 hybrid-minus-heuristic CI suggests SE about0.025;
+  scaling unchanged variance to1040 gives SE about0.021 and an approximate
+  two-sided80%-power detectable difference near0.06. New ranks may have higher
+  variance; this is a planning estimate, not guaranteed power. The replication
+  is not sized to resolve the observed approximately0.016 hybrid-minus-MC gap.
+- Publish actual coverage, paired kitty bonus/total attacker points, nonzero
+  and80+ bonus frequencies, maximum bonus, model leaves/full rollouts, and
+  bury-only/whole-round time separately. Kitty bonus is already in total points.
+  Retain losing and fallback/error cases; no fabricated labels from partial MC.
+
+### Execution and recovery
+
+Expected Mini cost from completed real paths: about26 core-hours for3,120
+rounds, approximately3.3h at8 single-threaded workers; plan3–5h for changed
+rank complexity. Use a clean dedicated source tree and the existing atomic
+per-arm/per-deal resume path. Complete one8-deal timing slice under this exact
+fixed population, then reuse it in the full invocation—no throwaway rehearsal
+or outcome-based dose selection. The slice checks legal completion, resources,
+and model/runtime compatibility, not strength. Report percent/ETA on the
+existing runner; report terminal errors and preserve all completed arms.
+
+The DAG is root/declaration → three sequential counterfactual rounds per deal,
+with eight independent deals in parallel → one saved-data summary. No retraining,
+reference regeneration, duplicate full scoring or second expensive verifier.
+If code repairs change semantics, reopen only compatible completed artifacts;
+never combine source-incompatible rounds under one recipe. A resource failure
+does not authorize erasing valid work or silently increasing the population.
+
+### Separate ship decisions
+
+Successful replication supports an **opt-in data-generation recommendation**,
+subject to the already tested real writer, explicit recipe identity and honest
+MC-finalist targets. It does not establish superiority over MC-only or optimal
+labels. A null leaves default generation on heuristic; retain experimental
+access and results rather than claiming a failed pipeline.
+
+Production additionally needs the prepared actual-consumer compact-NumPy Linux
+test at1CPU/512MiB, concurrency1, with cold-load/RSS, serial and queued-burst
+latency, event-loop health, legal forced fallback, commit and logging evidence.
+This bounded measurement is not a production p99 guarantee. Choose a disclosed
+serving budget only after observing that non-strength probe. Any canary must
+remain opt-in, record completion/expiry/error and stale-turn rates, and roll
+back on illegal commit, play-RNG drift, OOM/crash or unacceptable queue delay.
+Rollback disables bury only, retaining the existing W32 play model and logs.
+**Jerry must explicitly approve deployment; no screen result deploys itself.**

@@ -13487,3 +13487,54 @@ replayed the afterstates to prove tensor identity, and that is the check that
 would settle it outright.
 
 — Claude
+
+## 2026-09-08 22:56 ET — Claude (reviewer) — Codex's bury comparison: agree, and the rollout count is the only contention-proof number in it
+
+PR [#323](https://github.com/jerryyyu/shengji/pull/323) (draft), 256 deals / 768
+rounds on Mini. Hybrid vs heuristic **+0.0469 [−0.0430, +0.1367]**, hybrid vs MC
+**+0.0039 [−0.0859, +0.0898]**, MC vs heuristic **+0.0430 [−0.0469, +0.1367]**.
+Hybrid uses **81.1% fewer bury rollouts**, observed 0.20s vs 0.30s. Codex's call —
+*keep heuristic, no extension, no deployment, "neither equivalence nor superiority
+proven"* — **is right and I agree with all of it.**
+
+**A contention disclosure that is mine, not theirs.** My determinism screen held
+2 of Mini's 10 cores at nice 19 from ~21:35 to ~22:05 ET; their 55.1-minute run
+started ~21:43, so roughly half of it overlapped me. Consequences, split by what
+survives:
+
+| quantity | contention-proof? | why |
+|---|---|---|
+| **81.1% fewer bury rollouts** | **yes** | a count, not a time |
+| 0.20s / 0.30s **ratio** | effectively yes | the three arms interleave per deal, so contention lands on them almost equally |
+| 0.20s / 0.30s **absolute** | **no** | inflated by an unknown amount for part of the run |
+
+Lead with the rollout count. One re-timed triplet on a quiet box fixes the wall
+figures; Mini is clear of my processes now. **I caused this and flagged it to them
+before they published rather than after.**
+
+**Quantifying "inconclusive", from their own intervals:**
+
+| contrast | point | SE | MDE at 80% power |
+|---|---:|---:|---:|
+| hybrid vs heuristic | +0.0469 | 0.0458 | **+0.1284** |
+| hybrid vs MC | +0.0039 | 0.0448 | **+0.1256** |
+| MC vs heuristic | +0.0430 | 0.0468 | **+0.1312** |
+
+W32's entire advantage over production is +0.0923; the only resolved checkpoint
+gap is +0.0779. **Both sit below this screen's detection threshold at n=256.** So
+the strength axis would need roughly 4x the deals to say anything, and the cost
+axis — where they have a resolved result — is the right place to decide. This is
+the second Codex screen tonight whose null is a power limit rather than a finding
+(#322 at n=52 had MDE +0.1993), and in both cases they labelled it correctly
+without being asked.
+
+**An independent corroboration worth recording.** Their report notes *"all 492
+same-bury pairs have identical follow-on transcripts/outcomes."* That is the same
+property I measured at `793696be` from a completely different direction — the
+screen is a deterministic function of (arm, baseline, seed0, clusters). Two
+independent demonstrations, and it means their same-bury pairing is doing real
+work rather than concealing variance.
+
+Posted to #323. Draft, no merge sought, no changes requested.
+
+— Claude

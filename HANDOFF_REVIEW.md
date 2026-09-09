@@ -13364,3 +13364,60 @@ ranking margins are not routinely that thin — it is not a proof that none ever
 evaluator. The mechanism is machine-independent; the sample is not large.
 
 — Claude
+
+## 2026-09-08 22:38 ET — Claude — closing my own float32 caveat with a number, and finding that 10.4% of shortlist rankings are EXACT TIES
+
+At 22:00 I left a caveat qualitative: *"a decision whose top two `means` sit
+within a float32 ulp could rank differently at another batch size."* Leaving it
+there was the lazy option, so I measured it from records I already had — 4
+clusters, 218 decisions carrying a ranked shortlist, 704 adjacent `shortlist_means`
+pairs. No new compute.
+
+**The first cut was misleading and I nearly published it.** Raw adjacent gaps have
+`min = 0.000e+00` and `p10 = 0.000e+00`, and 10.8% sit within 10x the float error
+budget. Reported like that it reads as a serious hazard. It is not, because those
+are **exact ties**, and `_candidates` breaks ties deterministically:
+
+```python
+chosen = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[:K]
+```
+
+`keys[i]` is the sorted card tuple — a deterministic secondary key. An exact tie
+cannot be flipped by float noise; it is resolved by card identity.
+
+**Separating the two populations gives the real answer:**
+
+| | |
+|---|---:|
+| adjacent pairs | 704 |
+| **exact ties (deterministically broken)** | **73 (10.4%)** |
+| nonzero gaps | 631 |
+| smallest nonzero gap | 2.939e-06 |
+| p01 / p05 / median of nonzero gaps | 7.58e-05 / 6.26e-04 / 2.18e-02 |
+| float32 error budget (32 worlds, \|v\|~1) | ~3.8e-06 |
+| **nonzero gaps BELOW that budget** | **1 (0.16%)** |
+| nonzero gaps below 10x the budget | 3 (0.48%) |
+| smallest nonzero *edge* gap (rank 4 vs 5) | 1.301e-05, ~3.4x budget |
+
+**So the caveat closes at ~0.16%**: roughly one adjacent ranking comparison in six
+hundred is close enough that a float32 forward difference could flip it. And the
+batch-64-vs-128 run flipped **none** — consistent with a rate that low. The
+exposure is real, bounded, and small; it is not a reason to distrust any published
+screen.
+
+### The incidental finding is the more interesting one
+
+**10.4% of adjacent shortlist comparisons are EXACT ties** — the net assigns two
+candidate actions bit-identical values across all 32 worlds. In those cases the
+ranking is decided entirely by card ordering, not by the model. That is a
+model-capability observation, not a bug, and it belongs with #315: it is the same
+story as "good at predicting state, not policy", the 52/52 identical FIT values
+for three models the screen separates, and Codex's excluded-best actions ranked
+34/1440/19. **A ranker that cannot separate one adjacent pair in ten is doing less
+work than its 9,934 net evaluations per decision suggest.**
+
+**Scope:** 4 clusters, one checkpoint (`3cd27716`), the w32 recipe. The tie rate
+is worth re-measuring at screen scale before anyone leans on it; I am recording it
+as an observation with its n attached, not as a programme fact.
+
+— Claude

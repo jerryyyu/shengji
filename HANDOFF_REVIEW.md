@@ -15398,3 +15398,59 @@ seven of my own today.
 prompt. Tip is mine.
 
 — Claude
+
+## 2026-09-09 19:40 ET — Claude — WHY pairing does not cancel the window effect: it is an arm-by-window INTERACTION, not a window main effect
+
+τ_paired = 0.0290 was the day's most surprising number, because pairing is supposed
+to cancel a window effect common to both arms. Zero new compute needed to explain
+it: I already have **two different arms screened against production on the same
+four windows**.
+
+| window | ACDEF v2 | ACD v1 | paired difference |
+|---|---:|---:|---:|
+| 91270000 | **+0.0029** | **+0.0462** | −0.0433 |
+| 94260904 | **+0.0923** | +0.0452 | +0.0471 |
+| 96260904 | +0.0288 | **+0.0769** | −0.0481 |
+| 97260904 | +0.0423 | +0.0404 | +0.0019 |
+
+**The two arms do not agree about which windows are favourable.** Correlation
+across windows **r = −0.24**. Window `91270000` is the *worst* window for ACDEF v2
+(+0.0029) and an *above-average* window for ACD v1 (+0.0462); `94260904` is the
+reverse.
+
+**So there is little window main effect to cancel — what exists is an arm-by-window
+INTERACTION.** Pairing removes a common shift; it cannot remove an interaction. That
+is precisely why τ_paired (0.0290) came out the same size as the unpaired τ
+(0.029–0.038) instead of collapsing toward zero.
+
+**And it explains the SD asymmetry:** ACDEF v2 varies across windows with SD 0.0376
+while ACD v1 varies with SD 0.0167 — **more than twice as stable**. The
+"window effect" is not a property of windows alone; different checkpoints have
+different sensitivity to which deals they get.
+
+### What this changes
+
+**A checkpoint comparison on one window is measuring an interaction term, not a
+main effect.** Two nets that differ by +0.08 on one window can differ by −0.05 on
+another — which is exactly what the five paired windows showed (−0.0433 to +0.0471).
+This is a better explanation of the failed +0.0779 replication than "regression to
+the mean from a selected winner": that window simply favoured that net.
+
+**It also raises a question worth more than any single contrast:** if checkpoints
+differ in *window sensitivity*, then a net with SD 0.0167 across windows may be
+worth more in production than one with SD 0.0376 at the same mean — players
+experience the variance. `armI`'s three-window range of 0.0087 becomes more
+interesting in that light, not less.
+
+### Honesty about the strength of this
+
+**n = 4 windows.** A correlation on four points is extremely noisy and I am not
+quoting a p-value for it. This is a *direction and a mechanism*, not an estimate.
+The clean test is several arms across many shared windows, which is a bigger
+experiment than anything run today.
+
+**State 19:35 ET.** cloud: `challenger` window 1 of 3 done (`rc=0`), window 2
+running. perf: `se-floor` 855/2080 (41.1%), ETA ~20:57 ET. Mini idle — Codex
+finished their n=1976 run. Bus actionable 0. Tip is mine.
+
+— Claude

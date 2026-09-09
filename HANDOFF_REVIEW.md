@@ -14326,3 +14326,65 @@ A prompt that tells the operator nothing is deployed, on a day when a policy *is
 Steps 3-5 all mutate or run suites inside the Codex-owned tree. Cloud additionally has a **live run**, which independently blocks step 5 deletion under the routine's own rule. Nothing was deleted, synced or smoke-tested. They resume on a day when the tree is on `main` and clean.
 
 — Claude
+
+## 2026-09-09 09:35 ET — Claude — ACD v1 retrain LAUNCHED on Jerry's authorization. It is not a replication and I am not going to let it be called one.
+
+Jerry, in session: **"I'm ok to retrain."** Launched on perf as unit
+`acd-v1-retrain`, `/root/acd-v1-retrain`.
+
+**What it is.** A fresh net on the A+C+D corpora, which all survive on perf intact:
+runA 8,000 / runC 32,000 / runD 32,000 shards, every one with a manifest, verified
+by the launcher before a single record was read. The launcher **refuses** on a short
+corpus — training on a truncated corpus is the exact failure the Run D rsync guard
+caught once, and it must not be possible to do silently.
+
+**What it is NOT.** It cannot be `528dbbe0`. That checkpoint is gone and a retrain
+produces a different net. **So the pre-registered replication at `99eb9f04` is dead
+and this does not revive it.** What this can support is a different and in one
+respect stronger question — *does the ACDEF v2 − ACD v1 gap survive retraining the
+baseline arm from scratch, on a fresh deal window?* — but a null from it is
+ambiguous in a way the original design was not: deal sample, training seed, or
+recipe reconstruction, and it cannot separate them. That has to be said before the
+number exists, not after.
+
+### The recipe, reconstructed and stated
+
+Trainer defaults plus `--arch mlp --aux-points --encoder-version 1 --select-metric
+val_ce`: lr 3e-4, weight decay 1e-4, batch 1024, hidden 512, dropout 0.1, patience
+3, epochs 20, seed 1.
+
+**Two things make me believe the reconstruction.** A 200-cluster probe built a model
+with **595,916 parameters**, and the ledger records the sibling A+B+C run as a
+"596k-parameter MLP" — the architecture reproduces exactly. And `val_ce` is what the
+ledger says the A+C+D selector was flipped to before it fired (`5348e481`), after
+the rank-regret selector was measured worse in the shortlist.
+
+**The one choice I could not verify, stated rather than guessed in silently:**
+`--public-head`. The A+B+C entry says a public head was used as the prior input;
+there is **no such statement for A+C+D**, and the receipt died with the checkpoint.
+I omitted it. If the original used one, this net differs from `528dbbe0` by more
+than training noise, and the omission is in the launcher's own header so a later
+reader finds it.
+
+### Price, measured rather than estimated
+
+A 200-cluster, 1-epoch probe on perf CPU: **62.9s wall**, of which the epoch itself
+was 2.0s — the cost is cache and candidate-set construction, not gradient steps.
+Scaling to 72,000 clusters: roughly **6h of one-time cache and candidate work plus
+~12 min per epoch**, so **~8h** at a realistic 7-10 epochs before `patience 3` stops
+it. **This is a 360x extrapolation from a small probe** and my own standing lesson
+says a small sample of a heavy-tailed cost has burned this project three times; the
+cost here is data-volume driven rather than search driven so it should be better
+behaved, but ~8h is an order, not a promise.
+
+perf: 16 cores, CPU only (torch 2.14.0+cpu, installed there yesterday — it had none),
+112G free against an expected cache of order 33 GB.
+
+### What has to happen after it
+
+The retrained net is only half of anything. It then needs a **fresh-window screen
+against ACDEF v2**, and that screen wants its own pre-registration with the
+ambiguity above written into the reading rules. I will not reuse `99eb9f04`'s
+decision rule for a different experiment.
+
+— Claude

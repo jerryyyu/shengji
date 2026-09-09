@@ -15253,3 +15253,88 @@ pre-registration is one pooled comparison over three windows, and reading the fi
 window alone is peeking at a partial result. Mini: Codex n=1976.
 
 — Claude
+
+## 2026-09-09 17:40 ET — Claude — BOTH RESULTS IN. Pairing does NOT protect against the window effect, and the I/J generator contrast is null.
+
+### 1. tau_paired = 0.0290 — pairing does not cancel the window effect
+
+Five paired windows of the SAME contrast (ACDEF v2 − ACD v1), all `rc=0`:
+
+| window | ACDEF v2 − ACD v1 | SE |
+|---|---:|---:|
+| 91270000 | **−0.0433** | 0.0267 |
+| 94260904 | **+0.0471** | 0.0289 |
+| 96260904 | −0.0481 | 0.0270 |
+| 97260904 | +0.0019 | 0.0265 |
+| 92260904 | +0.0106 | 0.0268 |
+
+`tau_paired^2 = 0.000840`, **`tau_paired = 0.0290`** — essentially the same as the
+arm-vs-production τ (0.029–0.038). **Pairing does not protect.** Cochran Q = 8.22
+on 4 df, **p ≈ 0.083**, I² = 51.3% — so at k=5 the heterogeneity is *suggestive,
+not significant*, and τ_paired is a point estimate rather than an established
+quantity. I am saying that rather than repeating "p=0.003" from the unpaired case.
+
+**And the stronger statement this enables.** Random-effects pooled over five
+windows:
+
+> **ACDEF v2 − ACD v1 = −0.0064 [−0.0412, +0.0285]**, SE 0.0178, MDE₈₀ +0.0498.
+
+The contrast is **centred on zero**, and the original **+0.0779 lies OUTSIDE this
+interval — 4.7 pooled SEs from the estimate.** This morning's replication said the
+result did not replicate. Five windows say it is *inconsistent with* +0.0779. The
+2×2 corner was not a small effect measured imprecisely; on this evidence it was not
+there.
+
+### 2. The I/J generator contrast: NULL, and my prediction held
+
+Six screens, all `rc=0`, three windows × 520, both arms trained identically on
+corpora differing only in teacher.
+
+| window | arm I − arm J |
+|---|---:|
+| 93260904 | −0.0269 |
+| 98260904 | +0.0154 |
+| 99260904 | −0.0346 |
+
+| pooling | estimate | MDE₈₀ |
+|---|---|---:|
+| fixed-effect (as pre-registered) | **−0.0154 [−0.0455, +0.0148]** | +0.0431 |
+| **random-effects (τ_paired = 0.0290)** | **−0.0154 [−0.0601, +0.0294]** | **+0.0640** |
+
+**My prediction at `435e8680`, written before the run: "crosses zero, point
+estimate ~±0.02." Point estimate −0.0154. Held.**
+
+**The random-effects interval is the honest one, and it is a correction to my own
+pre-registration.** I fixed MDE +0.0437 assuming windows add no variance — and
+today I measured that they do. The fixed-effect number understates the uncertainty.
+Both cross zero, so the reading does not change, but the interval I would defend is
+the wider one.
+
+### What this says, and what it does not
+
+**Reading, as fixed in advance:** the interval crosses zero, so **the generator
+effect is not resolvable at MDE +0.064.** That is **NOT** "data quality does not
+matter" — I wrote that distinction down before the number existed precisely so it
+could not be blurred now.
+
+**What is genuinely established:** a W32-shortlist teacher and a production teacher,
+on **identical deals**, produce corpora that train nets differing by less than
+±0.06 per round. The point estimate is *negative* — shortlist data trained the
+slightly worse net — but nowhere near resolution.
+
+**Why this is a reasonable outcome rather than a surprise**, per the mechanism I
+recorded in advance: **the labelling function is identical in both corpora.** On
+shared states the value target is bit-identical 98.8% of the time. The shortlist
+changes *which* actions get labelled, not *what* the labels say. The corpora differ
+by a distributional shift, not by label quality — a much weaker intervention.
+
+**The cost of resolving it properly:** at τ_paired = 0.0290, more clusters in three
+windows cannot help much; the between-window term dominates. Resolving ±0.03 would
+need roughly **9 windows** at n=520 (SE → 0.0132), not more deals in three.
+
+**The bootstrap loop is not closed by this**, but it is not opened either. Two
+16,000-cluster corpora and ~24h of generation bought a null with a negative point
+estimate. Anyone proposing more teacher data should say what effect size they
+expect and how many windows it would take to see it.
+
+— Claude

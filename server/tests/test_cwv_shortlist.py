@@ -38,8 +38,65 @@ def test_real_enumerator_every_action_world_is_scored_in_bounded_batches():
     assert max(len(rows) for rows, _ in evaluator.calls) <= 17
     assert bot.shortlist_counts["cheap_evaluations"] == len(legal.actions) * 2
     assert bot.last_shortlist["legal_count"] == len(legal.actions)
+    assert "full_legal_scores" not in bot.last_shortlist
     assert bot.rng.getstate() == before_rng
     assert round_signature(rnd) == original
+
+
+def test_full_legal_capture_retains_every_aligned_score_without_changing_search(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    rnd = play_state()
+    config = CWVShortlistConfig(worlds=2, selection_worlds=2, batch_size=17)
+    bots = [CWVShortlistBot(Values(), seed=13, config=config,
+                           capture_full_legal_scores=enabled)
+            for enabled in (False, True)]
+    rollout_calls = [[], []]
+    for index, bot in enumerate(bots):
+        bot.REPORT_FOLD_WORLDS = 30
+
+        def rollout(r, s, hands, buried, action, _index=index, **kwargs):
+            rollout_calls[_index].append((tuple(action),
+                tuple((s, tuple(cards)) for s, cards in sorted(hands.items())), tuple(buried)))
+            return float(len(action))
+
+        monkeypatch.setattr(bot, "_rollout", rollout)
+    played = [bot.decide_play(copy.deepcopy(rnd), rnd.turn) for bot in bots]
+    assert played[0] == played[1]
+    assert rollout_calls[0] and rollout_calls[0] == rollout_calls[1]
+    assert bots[0].rng.getstate() == bots[1].rng.getstate()
+    assert bots[0].shortlist_counts == bots[1].shortlist_counts
+    assert [len(states) for states, _ in bots[0].evaluator.calls] == [
+        len(states) for states, _ in bots[1].evaluator.calls]
+    detail = bots[1].last_decision_record["cwv_shortlist"]
+    capture = detail["full_legal_scores"]
+    actions = enumerate_legal(rnd, rnd.turn, cap=None).actions
+    assert capture["schema"] == "cwv-full-legal-scores-v1"
+    assert capture["actions"] == [sorted(a) for a in actions]
+    assert len(actions) > len(detail["shortlist"])
+    # Independently recover world-major evaluator output, including rejected
+    # actions. A selected-only vector or an index permutation fails here.
+    raw = [float(r.attacker_points) for states, _ in bots[1].evaluator.calls for r in states]
+    expected = np.asarray(raw).reshape(2, len(actions)).mean(axis=0).tolist()
+    assert capture["means"] == expected
+    assert [capture["means"][i] for i in detail["shortlist_indices"]] == detail["shortlist_means"]
+    assert capture["worlds"] == 2 and capture["unscored_reason"] is None
+    assert capture["world_seed"] == detail["world_seed"]
+    assert capture["seat"] == rnd.turn
+    assert capture["kind"] == "model-world-mean"
+    assert capture["perspective"] == "acting-team"
+    assert "full_legal_scores" not in bots[0].last_shortlist
+
+
+def test_uniform_capture_does_not_fabricate_model_labels():
+    rnd = play_state()
+    bot = CWVShortlistBot(None, config=CWVShortlistConfig(uniform=True),
+                         capture_full_legal_scores=True)
+    bot._candidates(rnd, rnd.turn)
+    capture = bot.last_shortlist["full_legal_scores"]
+    assert capture["means"] is None
+    assert capture["unscored_reason"] == "uniform"
+    assert capture["worlds"] == 0
+    assert len(capture["actions"]) == bot.last_shortlist["legal_count"]
 
 
 def test_k8_keeps_incumbent_and_exhaustively_scores_all_legal_actions():

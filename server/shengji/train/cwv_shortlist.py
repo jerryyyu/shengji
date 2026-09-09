@@ -51,7 +51,8 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
     #: "what production would have considered".
     PRODUCTION_BALLOT_POLICY = "mc-s0-report-lcb"
 
-    def __init__(self, evaluator, *, seed=0, config=None, reuse_successors=False):
+    def __init__(self, evaluator, *, seed=0, config=None, reuse_successors=False,
+                 capture_full_legal_scores=False):
         super().__init__(seed)
         self.shortlist_config = config or CWVShortlistConfig()
         if type(reuse_successors) is not bool:
@@ -59,6 +60,11 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         if reuse_successors and self.shortlist_config.uniform:
             raise ValueError("successor reuse requires the learned shortlist")
         self.reuse_successors = reuse_successors
+        if type(capture_full_legal_scores) is not bool:
+            raise ValueError("capture_full_legal_scores must be boolean")
+        # Diagnostic retention only: never changes enumeration, forward batches,
+        # ranking, selection/report RNG, or the policy recipe identity.
+        self.capture_full_legal_scores = capture_full_legal_scores
         self.last_successor_reuse = None
         if not self.shortlist_config.uniform and evaluator is None:
             raise ValueError("learned shortlist requires a complete-world evaluator")
@@ -181,6 +187,25 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             "cheap_sampler_delta": self._sampler_delta(sampler_before),
             "counts": {k: self.shortlist_counts[k] - before[k] for k in before},
         }
+        if self.capture_full_legal_scores:
+            self.last_shortlist["full_legal_scores"] = {
+                "schema": "cwv-full-legal-scores-v1",
+                "kind": "model-world-mean",
+                "perspective": "acting-team",
+                "seat": seat,
+                "continuation": "engine-root-then-heuristic-finish-trick",
+                "actions": [list(key) for key in keys],
+                "means": None if means is None else [float(v) for v in means],
+                "unscored_reason": ("forced" if len(actions) == 1 else "uniform")
+                if means is None else None,
+                "world_seed": world_seed,
+                "worlds": 0 if means is None else self.shortlist_config.worlds,
+                "config": asdict(self.shortlist_config),
+                "reuse_successors": self.reuse_successors,
+                "checkpoint_sha256": getattr(self.evaluator, "checkpoint_sha256", None),
+                "enc_version": getattr(self.evaluator, "enc_version", None),
+                "effective_encoding": getattr(self.evaluator, "effective_encoding", None),
+            }
         if self.reuse_successors:
             self.last_shortlist["successor_reuse"] = self.last_successor_reuse
         elapsed = time.perf_counter() - started

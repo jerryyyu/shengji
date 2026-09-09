@@ -13087,3 +13087,77 @@ Two things this leaves genuinely open, neither a defect claim:
   That is an efficiency question and it is cheap to answer.
 
 — Claude
+
+## 2026-09-08 20:52 ET — Claude — Jerry AUTHORIZES split seed 7; and what the full-legal score vector actually is, measured
+
+**Jerry, in this session: "im ok to split test 7".** Split seed 7 is now the
+authorized I/J assignment, not a proposal. PR [#321](https://github.com/jerryyyu/shengji/pull/321)
+binds it (`server/runs/runij_split.json` + a test that re-derives it); Codex's
+frozen 64-root FIT panel stands and does not need refreezing. The property that
+makes it a real holdout is unchanged and is recorded in the binding: the seed was
+fixed before any Run I or Run J outcome had been read.
+
+### The full-legal score vector, from the code and the live corpus
+
+**It is not new work. It is work already being paid for and thrown away.**
+
+`cwv_shortlist._candidates` (lines 124-180) does this on every decision:
+
+```python
+legal   = enumerate_legal(rnd, seat, cap=None, must_include=production)  # ALL of them
+means   = self._means(rnd, seat, actions, worlds)   # "Score EVERY action/world"
+chosen  = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[:K]
+...
+"shortlist_means": [float(means[i]) for i in selected],   # <-- only the KEPT ones survive
+```
+
+The net scores **every legal action**. Then `last_shortlist` retains
+`shortlist_means` for the ~32 selected and the rest of the `means` array is
+discarded. The full-legal score vector is simply: persist all of `means`, not
+just the selected slice. `legal_sha256` — the hash of the full ordered key list —
+is *already* stored, so the vector can be written positionally against an
+ordering that is already pinned.
+
+**Measured on the live corpora** (120 clusters each, play decisions):
+
+| | Run I (W32 shortlist) | Run J (production) |
+|---|---|---|
+| legal actions per decision | **321.15** | 284.82 |
+| ballot entries per decision | 3.82 | 5.13 |
+| actions carrying a score | 3.65 | 4.96 |
+| **share of the legal set with any label** | **1.1%** | 1.7% |
+| decisions fully scored | 36.8% | 52.5% |
+| decisions partially scored | 46.3% | 30.3% |
+| decisions with no scores at all | 16.8% | 17.3% |
+
+**98.9% of the legal action space in Run I carries no label**, and the network
+already computed a value for every one of those actions. This is the same fact as
+ledger `282e5c93` from the other side: 9,934 net evaluations per decision, 1.2%
+of actions surviving, ~69% of the arm's CPU spent producing a ranking that is
+then discarded.
+
+**Why it is one-way.** The vector is a byproduct of search that has already run.
+Recovering it for a written cluster means re-running that cluster's search at
+full cost. Every cluster Run I writes without it is a cluster whose ranking is
+gone.
+
+**CORRECTION to what I told Jerry an hour ago.** I said the gap "now applies to
+both halves of the pair". **It does not.** Run J's teacher is production `MCBot`:
+its `_candidates` is the heuristic ballot, there is no net and therefore no
+`means` array to save. The score vector concerns **Run I only**, and future
+shortlist generation. I extended a claim to the control without checking that the
+mechanism existed there.
+
+**Sizing, so the ask is concrete.** Run I is at ~136 play decisions per cluster,
+so ~2.18M decisions at 16,000 clusters. At 321 legal actions in float32 that is
+**~2.8 GB** added to the corpus. Cloud has 401 GB free. Storage is not the
+obstacle.
+
+**What it is for.** It is the training target for #315 / #248 — a learned
+admission ranker `p(a | public)`. A policy head cannot be trained to rank the
+full legal set from labels that only cover the shortlist, because the actions the
+shortlist *excluded* have no label at all — and Codex's own FIT diagnostic found
+the excluded best actions ranked 34, 1440 and 19 by the model. Those are exactly
+the rows that do not exist in the corpus today.
+
+— Claude

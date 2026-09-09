@@ -284,6 +284,32 @@ identity; ``runtime.json`` carries the wall clock, worker count, peak RSS
 and the reused/generated/failed clusters of this invocation.  A merged
 ``trajectory.jsonl`` (shards concatenated in cluster order, streamed) is
 written ONLY with ``--merge``.
+
+Optional full-legal model labels (``--capture-full-legal-scores``)
+---------------------------------------------------------------
+For a registered learned CWV shortlist policy, this flag retains the model
+means ALREADY computed before admission. It does not change the policy, draw
+extra worlds, or repeat inference. Every play record has a linked row in
+``shards/cluster-NNNNNN.full-legal.jsonl.gz``; the cluster sidecar and run
+manifest bind its path, hash, byte count and row count. The ordinary records
+and their schema remain unchanged (apart from their capture-specific run ID).
+``--merge`` merges ordinary records only; model labels remain sharded.
+
+Rows bind ``source_ref`` and ``record_sha256`` and carry canonical submitted
+actions, aligned float means, checkpoint SHA256, encoder version/adapter,
+world seed/count and shortlist configuration. The labels are acting-team
+model predictions after an engine root action and heuristic trick completion,
+averaged over sampled worlds: NOT actual hidden-world outcomes, MC return
+estimates or MCTS visits. Forced actions have null means and zero evaluated
+worlds; a bypassed candidate stage has null scores. Never fabricate targets
+from either case. No action/world matrix or sampled hidden hands are stored.
+
+The capture flag enters the run ID: use a fresh output namespace; resume
+refuses a capture-setting change and checks missing/corrupt label sidecars.
+Capture stays off by default and is not a Fly/production setting. Read labels
+with ``harvest.shortlist_scores.read_scores`` after verifying the shard.
+Future public-only proposers must reconstruct actor-visible inputs, exclude
+deal seeds/hidden hands, and split by independent deal, not decision row.
 """
 
 from __future__ import annotations
@@ -750,6 +776,8 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     bot.EXPLORE_K = int(config["explore_k"])
     bot.LEGAL_CAP = config["cap"]
     bot.WIDEN = tuple(config.get("widen") or ())
+    if config.get("capture_full_legal_scores"):
+        bot.capture_full_legal_scores = True
     work = config["work"]
     if work["select_worlds"] is not None:
         bot.N_DETERMINIZATIONS = int(work["select_worlds"])
@@ -827,7 +855,8 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                  report_worlds: int | None = None,
                  cap: int | None = DEFAULT_CAP,
                  knobs=None, widen=None,
-                 round_mix: str = DEFAULT_ROUND_MIX) -> dict:
+                 round_mix: str = DEFAULT_ROUND_MIX,
+                 capture_full_legal_scores: bool = False) -> dict:
     """``knobs`` (``--knob NAME=VALUE`` strings or a mapping) and ``widen``
     (``--widen`` variant names) are validated here, so a bad override or an
     unknown variant refuses before any round; they land in ``config.knobs``
@@ -843,6 +872,15 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
                               + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
+    if type(capture_full_legal_scores) is not bool:
+        raise TrajectoryError("capture_full_legal_scores must be boolean")
+    if capture_full_legal_scores:
+        from ..train.cwv_shortlist import CWVShortlistBot
+        if type(probe) is not CWVShortlistBot or probe.shortlist_config.uniform:
+            raise TrajectoryError("full-legal score capture requires a learned shortlist policy")
+        sha = getattr(probe.evaluator, "checkpoint_sha256", None)
+        if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise TrajectoryError("full-legal score capture requires a checkpoint SHA256")
     if not isinstance(probe, MCBot):
         raise TrajectoryError(
             f"policy {policy!r} is not an MCBot search policy: it has no "
@@ -913,6 +951,8 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
             "exact_endgame": bool(probe.EXACT_ENDGAME),
         },
     }
+    if capture_full_legal_scores:
+        config["capture_full_legal_scores"] = True
     config["run_id"] = run_id_for(config)
     return config
 
@@ -938,6 +978,8 @@ def run_id_for(config: dict) -> str:
         payload["widen"] = sorted(config["widen"])
     if config.get("round_mix", DEFAULT_ROUND_MIX) != DEFAULT_ROUND_MIX:
         payload["round_mix"] = config["round_mix"]
+    if config.get("capture_full_legal_scores"):
+        payload["capture_full_legal_scores"] = True
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
     return f"traj-s{config['seed0']}-{digest[:12]}"
 
@@ -1186,6 +1228,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         # only a widening run carries the key (null for a tractor-locked
         # lead); other runs stay byte-identical
         fields["widening"] = widening
+    if getattr(bot, "capture_full_legal_scores", False):
+        # Removed before the ordinary record is finalized. Scores live in an
+        # optional compressed sidecar, not in the legacy training schema.
+        detail = getattr(bot, "last_shortlist", None)
+        fields["_full_legal_scores"] = None if detail is None else detail["full_legal_scores"]
     return fields
 
 
@@ -1335,6 +1382,7 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
         stats["decisions"] += 1
     result = game.finish_round()
     records: list[dict] = []
+    score_rows: list[dict] = []
     for fields in pending:
         outcome = outcome_for(result.attacker_points, banker=banker,
                               seat=fields["seat"], kitty_bonus=result.kitty_points)
@@ -1342,7 +1390,13 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
                 or outcome["level_change"] != result.level_change):
             raise TrajectoryError("outcome differs from the engine's result")
         fields["outcome"] = outcome
-        records.append(finalize_record(fields))
+        scores = fields.pop("_full_legal_scores", None)
+        record = finalize_record(fields)
+        records.append(record)
+        if config.get("capture_full_legal_scores") and fields["decision_kind"] == "play":
+            score_rows.append({"source_ref": record["source_ref"],
+                               "record_sha256": record["record_sha256"],
+                               "scores": scores})
     stats["rounds"] = 1
     stats["plays"] = len(prefix)
     stats["records"] = len(records)
@@ -1357,10 +1411,13 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
         "wall_secs": round(time.perf_counter() - started, 4),
         "search_secs": round(float(work.pop("search_secs", 0.0)), 4),
     }
-    return records, {"counts": dict(stats), "work": work, "timing": timing,
+    result_stats = {"counts": dict(stats), "work": work, "timing": timing,
                      "cluster": cluster, "mirror": mirror, "seed": seed,
                      "trump_rank": rnd.trump_rank, "banker": banker,
                      "attacker_points": int(result.attacker_points)}
+    if config.get("capture_full_legal_scores"):
+        result_stats["full_legal_scores"] = score_rows
+    return records, result_stats
 
 
 def _record_order(record: dict) -> tuple[int, int]:
@@ -1491,6 +1548,11 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
         sidecar["banker"] = drawn_banker
         for entry, st in zip(sidecar["rounds"], stats):
             entry["banker"] = st["banker"]
+    if config.get("capture_full_legal_scores"):
+        from .shortlist_scores import publish_scores
+        sidecar["full_legal_scores"] = publish_scores(
+            out_dir, cluster, records,
+            [row for st in stats for row in st["full_legal_scores"]])
     _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n",
                        mode=0o444)
     return sidecar
@@ -1552,6 +1614,13 @@ def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
                 return None, "banker"
     if n != sidecar.get("records"):
         return None, "record count"
+    if config.get("capture_full_legal_scores"):
+        from .shortlist_scores import verify_scores
+        reason = verify_scores(out_dir, cluster, sidecar.get("full_legal_scores"), jsonl)
+        if reason is not None:
+            return None, reason
+    elif "full_legal_scores" in sidecar:
+        return None, "unexpected full-legal scores"
     return sidecar, "ok"
 
 
@@ -1811,6 +1880,8 @@ def build_run_manifest(config: dict, ident: dict, *, rounds: int,
             "sidecar": f"shards/{side_path.name}",
             "sidecar_sha256": sha256_file(side_path),
         })
+        if config.get("capture_full_legal_scores"):
+            shards[-1]["full_legal_scores"] = side["full_legal_scores"]
     for key in COUNT_KEYS:
         counts.setdefault(key, 0)
     return {
@@ -1954,6 +2025,7 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              cap: int | None = DEFAULT_CAP, merge: bool = False,
              resume: bool = False, knobs=None, widen=None,
              round_mix: str = DEFAULT_ROUND_MIX,
+             capture_full_legal_scores: bool = False,
              progress: Callable[[dict], None] | None = None,
              argv: list[str] | None = None,
              allow_seed_overlap: bool = False,
@@ -1982,7 +2054,8 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
     config = build_config(policy=policy, seed0=seed0, explore_rate=explore_rate,
                           explore_k=explore_k, select_worlds=select_worlds,
                           report_worlds=report_worlds, cap=cap, knobs=knobs,
-                          widen=widen, round_mix=round_mix)
+                          widen=widen, round_mix=round_mix,
+                          capture_full_legal_scores=capture_full_legal_scores)
     out = Path(out_dir)
     ident = identity(config)
     clusters = rounds // 2
@@ -2081,6 +2154,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "cluster); both mirrors share it")
     parser.add_argument("--merge", action="store_true",
                         help="also write trajectory.jsonl (shards concatenated in cluster order)")
+    parser.add_argument("--capture-full-legal-scores", action="store_true",
+                        help="retain every learned shortlist model mean in compressed "
+                             "per-cluster sidecars; no additional search or model evaluations")
     parser.add_argument("--resume", action="store_true",
                         help="continue a run in --out with the same run_id: verified "
                              "shards are kept, missing/invalid ones regenerated")
@@ -2117,6 +2193,7 @@ def main(argv: list[str] | None = None) -> int:
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
             cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
             widen=args.widen, round_mix=args.round_mix, progress=progress,
+            capture_full_legal_scores=args.capture_full_legal_scores,
             argv=sys.argv if argv is None else ["trajectory", *argv],
             allow_seed_overlap=args.allow_seed_overlap)
     except TrajectoryError as exc:

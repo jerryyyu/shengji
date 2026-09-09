@@ -240,6 +240,15 @@ factories) gets one ``decision_kind: "bury"`` record per round, mapped like
 a play record (ballot = the bury candidates, allocation from
 ``n_by_candidate``, means from ``mean_banker_value``, no SEs).
 
+The opt-in DEV CWV bury producer also retains MC means. Its training ballot
+contains only the MC-evaluated candidates; unsearched proposals are NOT given
+zero values or model predictions as targets. ``action_values.bury_search``
+keeps the full candidate pool, the ballot-to-pool indices, model-only rankings
+and the bury configuration separately. The heuristic control has one action,
+zero search worlds and a null mean. Earlier CWV screen records without retained
+MC means remain gameplay evidence and are refused as trajectory value labels.
+This adapter alone does not register or enable a new data/serving policy.
+
 Shards, resume, determinism
 ---------------------------
 The unit of work is one deal cluster (both mirrors).  As each cluster
@@ -1239,6 +1248,9 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
                  banker: int, hand_before: list[str], bury_cards: list[str],
                  raw: dict) -> dict:
+    if raw.get("schema") == "cwv-bury-policy-v1":
+        from ..train.cwv_bury_policy import trajectory_bury_record
+        raw = trajectory_bury_record(raw)
     cands = [list(c["cards"]) for c in raw["candidates"]]
     n_by = [int(n) for n in raw["n_by_candidate"]]
     k = len(cands)
@@ -1287,6 +1299,7 @@ def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
             "eligible_indices": None,
             "raw_winner_index": raw.get("raw_winner_index"),
             "report": None,
+            **({"bury_search": raw["bury_search"]} if "bury_search" in raw else {}),
         },
         "action": list(bury_cards),
         "exploration": None,

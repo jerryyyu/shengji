@@ -12757,3 +12757,71 @@ on each. I attempted to merge them under the standing merge-on-PASS authorizatio
 draft is the author's explicit "not proposing this yet", and marking one ready to merge it would
 override that signal rather than act on it. They stay unmerged until Codex or Jerry moves them, which
 is precisely why ledgering the #319 result here was the right call rather than waiting for the merge.
+
+## 2026-09-08 19:52 ET — Claude — Run J launched: the matched production-teacher control for Run I
+
+Jerry authorised the matched control ("sounds good lets do it"). It is live on
+perf as systemd unit `traj-runJ`, out `/root/traj-out/runJ`, tree
+`/root/traj-gen-f` at `5ab631bb` — Run I's own commit.
+
+**What it is for.** Run I asks whether shortlist-generated teacher data trains a
+better net. On its own it cannot answer that: every earlier corpus (A–H) differs
+from Run I in *both* teacher and deals, so any difference in the trained net is
+unattributable — the exact confound that made today's ACDEFGH loss unreadable as
+a data-scaling statement. Run J removes the deals from the comparison. Same
+32,000 mirrored rounds, same seed window `95260904`, same engine, production
+`mc-s0-report-lcb` instead of the W32 shortlist. `I − J` is then the generator
+effect and nothing else.
+
+**Verified before launch, not assumed.**
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Same deals as Run I | 8-round smoke on this tree at this seed; deal fingerprint = sha256 of `deck` + `setup` + `round_seed`, per cluster, both mirrors | identical to Run I clusters 0–3; re-checked on the **live** run for clusters 0–5, still identical |
+| Same engine as Run I | `identity()` digests against Run I's `run.json` | `source_tree_sha256`, `trajectory_module`, `mcbot`, `registry`, `legal`, `git_sha`, `fast_engine`, `require_voids`, `python` all match |
+| Same *compiled* engine | see below | `.text`, `.rodata`, `.data`, `.data.rel.ro` byte-identical |
+| Different teacher | resolved ballot digest | `a5a2bf06be88` (production) vs `4a0939cb513b` (Run I shortlist) — preflight REFUSES if these are equal |
+| Not a second shortlist run | bot must be `MCS0ReportLCB`, be an `MCBot` subclass, and expose no `cwv`/`shortlist` attribute; shortlist env vars must be unset | passes; the mirror image of Run I's own guard |
+
+**A correction to my own first guard.** I wrote the preflight to demand
+`type(bot).__name__ == "MCBot"` and it refused: production resolves to
+`MCS0ReportLCB`. That is the right class — mro
+`MCS0ReportLCB → MCBot → SmartBot → HeuristicBot` — so the guard was wrong, not
+the run. It now asserts the exact class *and* the base *and* the absence of any
+cwv surface, which is strictly stronger than what I first wrote.
+
+**A digest that looks like a mismatch and is not.** Run J's
+`fast_module_sha256_16` is `139cfedff2673bf6`; Run I's is `1540202a8f66d1d6`.
+`fast_module_sha256_16` is a `CODE_IDENTITY_KEY`, so this would refuse a merge
+between the two corpora. I did not wave it away. Sectionwise comparison of the
+two `.so` files shows every loadable section byte-identical — `.text`,
+`.rodata`, `.data`, `.data.rel.ro` — and exactly one section differing:
+`.note.gnu.build-id`, which hashes the build inputs including the build path
+(`/root/pricetree` vs `/root/traj-gen-f`). Same gcc (Ubuntu 15.2.0), same
+sources (`source_tree_sha256` matches). The machine code is the same; the ELF
+build-id is not. **Anyone merging I and J must expect this key to differ and
+must not read it as an engine change.** The preflight now asserts the sections
+rather than the whole-file digest, so the check that survives is the one that
+means something.
+
+**Seed overlap is deliberate and recorded.** The registry handed to the run is
+cloud's live `seed_windows.json`, which contains Run I as window
+`traj-s95260904-83969a2ba9a1`. `--allow-seed-overlap` is passed. Run J
+registered as `traj-s95260904-9708cc7baa06` at the identical span
+`[95260904, 95276904]`, note `trajectory mc-s0-report-lcb ... out=/root/traj-out/runJ`.
+The default refusal exists because Run B silently re-dealt 7,999 of Run A's
+8,000 deals; here the reuse *is* the design, and it is visible in the registry
+rather than hidden.
+
+**Status.** 36 clusters in the first minute at ~1,598% CPU on 16 cores; on that
+rate ~7.4h, but early clusters are the cheap ones so treat it as a floor, not an
+estimate. Production search is far cheaper per decision than the W32 shortlist's
+~9,934 net evaluations, so J is expected to finish well before I.
+
+**What this still does not settle.** Run J gives a like-for-like corpus, not a
+result. The comparison only becomes a claim after both corpora train arms under
+identical recipes and both arms are screened on the 520-deal clean window
+(seed0 `91261190`), and the ballot-mixture confound pre-registered at 11:55
+applies to this pair exactly as it applied to ACDEFGH.
+
+— Claude

@@ -13251,3 +13251,63 @@ Posted as a review comment on #322. Nothing blocked: it is a draft, marked "not
 for merge/promotion before results", and I would have reached their conclusion.
 
 — Claude
+
+## 2026-09-08 21:52 ET — Claude — the 520 screen is DETERMINISTIC. "Instrument noise" was a category error, not an open unknown.
+
+The queue and my program state have carried, for days, *"instrument noise is
+still UNMEASURED; requires the identical matchup replayed with fresh RNG; the
+±0.05 at n=520 figure remains an assumption."*
+
+**That experiment cannot be run, because there is no fresh RNG to supply.**
+`cwv_shortlist_screen.make_side` seeds every bot with `seed = config["seed0"] +
+cluster`, and `shared_evaluator` is constructed with `threads=1`. The screen is a
+pure function of (arm, baseline, seed0, clusters). There is no knob that changes
+the search without changing the deals.
+
+So I ran the answerable question instead: **is it deterministic in practice?**
+The learned arm runs a float32 net under batching, which is where nondeterminism
+would hide — and I have form here, having wrongly declared a float32 mechanism
+dead this morning by testing only to the p99.
+
+**Two byte-identical invocations**, `3cd27716`, w32 recipe (worlds 32, selection
+30, alternatives 4, report 300), baseline production, 4 clusters, seed0
+`91261190`, nice 19, both `rc=0`:
+
+| | |
+|---|---:|
+| leaf fields compared | **28,733** |
+| differ, timing | 336 |
+| **differ, substantive** | **0** |
+| headline `arm_signed_level_utility` | **0.3750000000 both**, ci95 [0.0, 0.75] both |
+
+**I checked my own instrument two ways before believing it.** The 336 excluded
+fields are named `arm_search_secs`, `baseline_search_secs`,
+`decision_cpu_seconds`, `decision_wall_seconds`, `shortlist_wall_seconds`,
+`wall_seconds`, `wall_secs` — every one a wall or CPU measure, so the exclusion
+filter is not hiding substance. And perturbing a single `arm_utility` in one
+record made the comparator report exactly that field (`/records/0/arm_utility`,
+A=−1 vs B=0) and flip to NONDETERMINISTIC; restoring it flipped back.
+
+### What this changes
+
+**Retire "instrument noise" as an open item.** There is no run-to-run variance to
+measure. **All** uncertainty in a screen result is deal-sampling variance, which
+the bootstrap interval already captures. The assumed ±0.05 was not an
+under-measured quantity; it was a quantity that does not exist. Every published
+interval is doing the whole job, and none of them needs widening for a replay
+term.
+
+**Scope, stated honestly.** Four clusters, one arm, one machine, macOS. The
+*mechanism* — all randomness flowing from `seed0 + cluster`, evaluator pinned to
+one thread — is not scale-dependent, which is why I believe it generalizes. But
+four clusters is what was tested.
+
+**The sharper question is now running**, because it is the one that could still
+bite: does `--workers` or `--batch-size` change the answer? The tensor cache
+comment notes that "the original forward batches can straddle world boundaries",
+so a different batch composition could change float summation order. We have run
+screens at different worker counts. If they are not comparable, that matters more
+than any noise term. Testing workers=1 and batch-size=64 against the same four
+clusters now.
+
+— Claude

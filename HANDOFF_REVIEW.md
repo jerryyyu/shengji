@@ -14713,3 +14713,71 @@ table claims, and the right answer is more windows rather than more deals. **Tha
 is the measurement I would do next.**
 
 — Claude
+
+## 2026-09-09 11:40 ET — Claude — the bootstrap is calibrated WITHIN a window; the risk is entirely BETWEEN windows, and there is now a signal there
+
+At `45be0554` I published an n-table and flagged two assumptions. One is now
+tested, with no new compute, on the 520 clusters already on disk.
+
+### Test 1: is the cluster bootstrap calibrated? YES, to 0.3%
+
+**Prediction stated before running.** Measured SE(520) = 0.02699, so
+SE(260) = SE(520)·√2 = 0.03817, and two *disjoint* halves being independent,
+SD(contrast_A − contrast_B) should be √2·SE(260) = **0.05368**. Over 4,000 random
+disjoint half-splits of the replication's own clusters:
+
+| | |
+|---|---:|
+| bootstrap SE(520) | 0.02684 (published 0.02699) |
+| **predicted** SD of disjoint-half differences | **0.05368** |
+| **observed** SD of disjoint-half differences | **0.05386** |
+| observed / predicted | **1.003** |
+
+**The 1/√n scaling in the n-table holds within a window.** More clusters in one
+window buy exactly what the table claims. That assumption is retired.
+
+### Test 2: are windows exchangeable? Suggestive evidence that they are NOT
+
+The same arm (ACDEF v2), the same opponent, the same recipe, two independent
+windows:
+
+| window | ACDEF v2 vs production | SE |
+|---|---:|---:|
+| 91261190 | +0.1260 | 0.0233 |
+| 92260904 (today) | +0.0519 | 0.0221 |
+| **difference** | **+0.0741** | 0.0321, **z = 2.31, p = 0.021** |
+
+If windows were exchangeable, this gap should sit inside cluster-sampling noise.
+It does not.
+
+**And I am going to hold this to the standard that just cost us a result.** This is
+**n = 2 windows**, **one comparison**, and I computed it **after** looking at the
+data because the replication surprised me. That is a post-hoc unadjusted test — the
+exact shape of the +0.0779 finding that failed to replicate this morning. **I am
+recording it as suggestive and explicitly NOT as established.**
+
+### What it changes if it holds
+
+The n-table prices *more clusters in one window*. If a window-level effect is real
+at this size, then beyond some n the marginal cluster buys almost nothing and the
+binding constraint becomes **how many windows**, not how many deals. A screen at
+n=3,304 in a single window could still be answering a question about that window.
+
+**The cheap decisive test, and perf is free:** run the same arm against production
+on **three or four additional fresh windows** at n=520 each — ~36 min per window —
+and estimate the between-window variance component directly instead of inferring it
+from two points. That is ~2.5h of an idle box and it would settle whether the
+programme's whole measurement strategy should be more deals or more windows.
+
+**I am not launching it without Jerry.** It is a strength experiment on a free box
+and within my standing authority, but it changes what every future screen should
+look like, and after this morning I would rather have the design agreed before the
+number exists than defend it afterwards.
+
+**Fleet 11:36 ET.** perf FREE. cloud Run I 15,437/16,000 (96.5%), 16.07/16c, seal
+armed, ~12:32 ET. Mini load 9.68, Codex. Tip is mine; no sibling entries.
+
+**Drift:** the hourly prompt still says the replication is running. It finished at
+10:45 ET and did not replicate (`ebce1781`).
+
+— Claude

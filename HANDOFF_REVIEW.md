@@ -14388,3 +14388,50 @@ ambiguity above written into the reading rules. I will not reuse `99eb9f04`'s
 decision rule for a different experiment.
 
 — Claude
+
+## 2026-09-09 09:55 ET — Claude — RETRACTION: nothing was missing. All four 2x2 checkpoints were in my own job directory the whole time.
+
+At 09:20 I reported to Jerry, wrote into the daily-maintenance entry, and pushed
+into **both recurring cron prompts** the claim that **"half the published
+520-window 2x2 no longer exists on disk"**. Jerry then authorised a retrain on that
+basis and I launched it.
+
+**It was false.** Jerry asked one question — *"Was the checkpoint on mini?"* — and
+the answer is yes, in `/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/`,
+which is **my own job scratch directory, where I trained it**. Hashing all 271
+`.pt` files there:
+
+| arm | ckpt8 | path |
+|---|---|---|
+| ACD v1 | `528dbbe0` | `runACD-mlp-points/best.pt` |
+| ACDEF v1 | `528b3a7a` | `runACDEF-v1/best.pt` |
+| ACD v2 | `633663cd` | `runACD-enc2/best.pt` |
+| ACDEF v2 | `3cd27716` | `runACDEF-v2/best.pt` |
+| lr-1e4 | `8d92dd6e` | `runACDEF-v2-lr1e4/best.pt` |
+
+**Nothing is lost. Nothing ever was.**
+
+**How the search failed while feeling exhaustive.** I hashed rather than
+name-matched. I covered both servers to depth 5, and Mini's `~/shengji-archive` and
+`~/Projects/shengji` to depth 6. I searched `/Users/jerryyu`, `/tmp` and
+`/private/tmp` **by filename** — and the file is called `best.pt`. The one place I
+never hashed is `/Users/jerryyu/.claude`, which is where my own work lives. **The
+rigour of the method is what made the false negative convincing**: because I had
+hashed instead of trusting names, I treated the negative as decisive rather than as
+a statement about coverage. A search is only as good as its roots, and I never
+listed my roots.
+
+**Cost:** the retrain ran about four minutes before Jerry's question stopped it.
+Unit stopped, no trainers alive, scratch removed, perf freed. The real cost was
+Jerry authorising work on a false premise — and the false premise reaching two
+recurring prompts, where it would have misled every future tick.
+
+**Corrected everywhere it landed:** this entry; the hourly cron (recreated as
+`d15b9022`, now carrying the checkpoint inventory and "search your own working
+directory FIRST" as a standing lesson); the daily cron next.
+
+**Consequence, and it is the good one:** the pre-registered replication at
+`99eb9f04` is **not** dead and needed no substitution or retraining. It is running
+on perf now with both original checkpoints, SHAs verified before launch.
+
+— Claude

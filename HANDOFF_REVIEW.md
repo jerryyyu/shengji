@@ -12921,3 +12921,64 @@ is worth them saying which.
 with a one-root timing probe over train-only roots; no cloud contention.
 
 — Claude
+
+## 2026-09-09 00:34 ET — Claude — the control has already found something: the W32 shortlist teacher fails throws at 24x production's rate
+
+I diffed Run J's `run.json` against Run I's field by field — the thing a control
+is *for* — and then compared the sidecar counts on the **same 1,400 clusters**,
+so this is paired on identical deals, not on whatever each run happens to have
+written.
+
+| per decision | Run J (production `mc-s0-report-lcb`) | Run I (W32 shortlist `3cd27716`) | ratio |
+|---|---|---|---|
+| decisions (1,400 clusters) | 203,912 | 189,756 | 0.93x |
+| **failed_throws** | **0.126%** | **3.079%** | **24.4x** |
+| explore_added | 5.939% | 8.695% | 1.5x |
+| explore_fired | 9.984% | 10.044% | 1.0x |
+| searched | 82.601% | 83.235% | 1.0x |
+| single_candidate | 17.078% | 16.765% | 1.0x |
+| tractor_locked | 0.321% | 0.000% | — |
+| rollouts | 64,287% | 60,862% | 0.9x |
+
+**`failed_throws` is not a name I guessed at.** `trajectory.py:1330` increments it
+when `action_key(played) != action_key(action)` — the bot chose an action and the
+*engine played something else*, stamping `engine_play` on the record. That is a
+proposed throw the rules cut down. The W32 shortlist proposes one on **3.08% of
+decisions**; production proposes one on **0.13%**.
+
+Two consequences, and they point in different directions.
+
+**As data.** Those records carry a search label attached to an action the teacher
+never actually got to play. 3% of Run I's rows have that shape and 0.13% of Run
+J's do. Anyone training on Run I should decide deliberately whether to keep them.
+
+**As strength.** This is a defect in the shortlist *design*, not only in the
+corpus — and W32 won its screen (+0.0923 [+0.0490, +0.1375]) *carrying* it, so
+fixing it is upside rather than a correction. **But I have not shown it applies
+to what is serving users.** Run I runs checkpoint `3cd27716`; production serves
+`fd6bb411` under the same `w32-r55d379a3` recipe. The mechanism is recipe-level
+and very likely shared, the *rate* on the production checkpoint is **unmeasured**,
+and I am not going to assert it from a different checkpoint. That measurement is
+cheap and is the obvious next probe.
+
+**Two confounds I did not choose, now on the record.**
+
+`tractor_lock` differs by teacher *class*: `MCBot.TRACTOR_LOCK = True`,
+`search_policy.TRACTOR_LOCK = False`. So Run J emits point-mass records with no
+action values on tractor-locked leads and Run I searches them. I considered
+forcing them to match with `--knob TRACTOR_LOCK=0` and **decided against it**: that
+would put a non-empty `config.knobs` on the run, make it unmixable with A–H, and
+turn Run J into a third thing rather than the corpus production would have made.
+The asymmetry is **0.32% of decisions** — real, small, and now quantified rather
+than discovered later.
+
+`decisions` differ by 6.9% on identical deals (203,912 vs 189,756). Run I's
+successful multi-card throws consume more cards per decision. **So "same deals"
+does not mean "same rows", and any arm pair claiming matched data quantity has
+to say which it matched.** I implied a cleaner like-for-like in this morning's
+Run J entry than the row counts support; this is the correction.
+
+Everything else — `explore_fired`, `searched`, `single_candidate`, rollouts —
+matches to within a percent, which is what a control should look like.
+
+— Claude

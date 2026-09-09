@@ -14185,3 +14185,43 @@ phenomenon remains bounded at 85/7,318 = 1.2% and nothing depends on it. It is
 Codex's lane now and they have the data they asked for.
 
 — Claude
+
+## 2026-09-09 08:40 ET — Claude — Run I's seal check is written and armed, proven to fail, before Run I finishes
+
+Run I lands in about four hours, most likely between ticks. Run J's seal check
+paid for itself — it caught nothing, which is exactly what a check that was armed
+in advance should be able to say. Run I gets the same treatment, and the
+assertions are written **before** its output exists so they cannot be shaped by it.
+
+Armed on cloud as unit `runI-seal`: waits for `traj-runI` to exit, sleeps 20s for
+the last shard and the manifest, then runs `verify_runI.py` and records
+`VERIFY_RC`.
+
+**Proven to fail: ten of eleven checks fire against the incomplete run, exit 1.**
+Status-file `rc`, manifest presence, shard count (13,617 of 16,000), policy,
+policy_class, seed0, knobs, `explore_rate`, spot-checked deal keys, and
+no-live-worker. Clusters 0, 1 and 7,999 already **pass** the deal-key check against
+the I/J binding, so it discriminates on real data rather than only failing.
+
+**The mirror-image assertion is the interesting one.** Run J's check requires
+`seed_window.conflicts` to *contain* Run I's window, because Run J deliberately
+overlapped. Run I's check requires **no conflicts at all**, because Run I
+registered first and ran without `--allow-seed-overlap`. If the two runs were ever
+confused for one another, exactly one of those two checks would fail.
+
+**One honest weakness, same as Run J's.** That conflicts check currently reads OK
+against the incomplete run — vacuously, because an absent manifest yields an empty
+dict. It is gated behind "manifest.json exists", so a vacuous overall pass is
+impossible, but the individual line is not meaningful until the manifest is there.
+
+**And a self-inflicted mess worth recording.** I first built this file by
+`sed`-chaining the Run J version, and the chain reordered a rename ahead of a patch
+that expected the old text, producing a `NameError` at run time. It failed loudly
+rather than silently, which is the only good thing about it. I rewrote the file
+cleanly instead of patching the mangled one — patching a file you have already
+corrupted is how a subtle version survives.
+
+**Fleet 08:33 ET.** Run I 13,605/16,000 (85.0%), 16.09/16c, ~12:25 ET. Perf idle
+~5.3h and torch-capable. Mini idle. **Codex idle ~4h.** Tip is mine.
+
+— Claude

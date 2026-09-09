@@ -13866,3 +13866,69 @@ pre-registered replication, which needs two checkpoints. Now installed
 10,542/16,000 (65.9%), 16.13/16c, ~11:58 ET. Tip is mine; no sibling entries.
 
 — Claude
+
+## 2026-09-09 04:35 ET — Claude — the full-legal capture WORKS on real data; and a correction: "321 legal actions per decision" is a mean whose median is 5
+
+### The capture is verified end to end
+
+`capture-smoke2` on perf, 4 real clusters, `harvest rc=0`, all nine checks OK:
+
+| check | result |
+|---|---|
+| one sidecar per shard | 4 vs 4 |
+| row count == play-record count | **444 rows vs 444 plays** |
+| every row binds `source_ref` + `record_sha256` | 0 bad |
+| `len(means) == len(actions) == legal_actions_count` | 0 bad |
+| record ballot ⊆ captured actions | 0 bad |
+| all means finite | 0 bad |
+| `checkpoint_sha256` matches the checkpoint used | 0 bad |
+| **captured actions per decision > ballot** | **514.08 vs 4.47** |
+
+**Label coverage goes from 0.9% to 100%.** The feature does what it claims, on
+real clusters, not only in unit tests.
+
+**Measured cost, which corrects my own estimate.** Sidecars are 287 KB per
+cluster, 0.58x the shard bytes, projecting to **4.7 GB** at 16,000 clusters. I
+told Jerry ~2.8 GB; the real figure is ~68% higher. Still trivial against 113 GB
+free on perf and 400 GB on cloud, but the number I gave was wrong and this is the
+measured one.
+
+### The correction that matters more
+
+I have been quoting **"321 legal actions per decision"** as though it described a
+typical decision. It is the **mean of a violently heavy-tailed distribution**.
+Measured over 16,148 play decisions in Run I:
+
+| | |
+|---|---:|
+| mean (the number I kept quoting) | **321.15** |
+| p10 / p25 | 1 / 2 |
+| **median** | **5** |
+| p75 / p90 | 17 / 261 |
+| p99 / max | 6,945 / **55,318** |
+| **decisions with ≤5 legal actions** | **52.6%** |
+| **share of all legal actions held by the top 1% of decisions** | **47.1%** |
+
+**On more than half of all decisions the legal set is 5 actions or fewer — the
+"shortlist" of five IS the whole legal set, and there is nothing to shortlist.**
+The ranking work, the ~69% of arm CPU, and the entire value of a learned admission
+head live in a small, identifiable minority of high-branching decisions. The top
+1% alone holds nearly half of all legal actions.
+
+This sharpens rather than weakens the case for #315, and it changes what to build:
+the policy head's target is not "every decision" but the high-branching tail. It
+also explains an older finding rather than sitting beside it — the shortlist sees
+beyond the ballot on 42.4% of decisions and *its win is concentrated there*, which
+is exactly the complement of the 52.6% where there is nothing to see.
+
+**How I got it wrong:** I computed a mean over a distribution I had already been
+warned about — "measure heavy-tailed costs on enough deals" is in my own standing
+lessons, and I applied it to wall-clock costs while quoting a mean action count as
+typical. The 1.1%-coverage figure I gave Jerry is a ratio of totals and is
+therefore also tail-dominated; it is correct as stated but it does **not** mean a
+typical decision is 1.1% labelled.
+
+**Fleet 04:33 ET.** Perf FREE and now torch-capable. Run I 11,108/16,000 (69.4%),
+16.19/16c, ~13:15 ET (drifted later again from 11:58). Tip is mine.
+
+— Claude

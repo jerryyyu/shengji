@@ -13311,3 +13311,56 @@ than any noise term. Testing workers=1 and batch-size=64 against the same four
 clusters now.
 
 — Claude
+
+## 2026-09-08 22:00 ET — Claude — and the screen is INVARIANT to workers and batch size, so screens run at different settings are comparable
+
+Following the determinism result above, the question that could actually have
+bitten us: we have run screens at different `--workers` and `--batch-size`, and
+`cwv_shortlist._means` accumulates per-action sums across forward batches with
+`np.add.at`, whose summation order depends on batch composition. The tensor-cache
+comment says outright that "the original forward batches can straddle world
+boundaries". If that changed the ranking, cross-screen comparisons in this ledger
+would not be sound.
+
+Same four clusters, same checkpoint, same recipe, all `rc=0`:
+
+| comparison | leaf fields | substantive differences | headline |
+|---|---:|---:|---|
+| identical args, run A vs run B | 28,733 | **0** | 0.3750000000 both |
+| **workers 2 vs workers 1** | 28,733 | **0** | 0.3750000000 both |
+| **batch 128 vs batch 64** | 28,733 | 475, and see below | 0.3750000000 both |
+
+**The 475 are not what they look like, and I checked rather than reporting the
+count.** They are exactly three field names:
+
+| name | count | A | B |
+|---|---:|---|---|
+| `batch_size` | 276 | 128 | 64 |
+| `cheap_batches` | 191 | 112 | 223 |
+| `cwv_cheap_batches` | 8 | 99 | 185 |
+
+The recorded config echo, and the count of forward batches issued — which is
+*mechanically* doubled by halving the batch. **Zero outcome-bearing fields
+differ**: no `arm_utility`, `baseline_utility`, `action`, `ballot`, `means`,
+`preference`, `signed_level_utility`, `level_change`, `attacker_points` or
+`record_sha256`. Reporting "475 substantive differences" without classifying them
+would have been a false alarm of exactly the kind this ledger keeps recording.
+
+### What is now established, and what is not
+
+**Established:** the screen is a deterministic function of (arm, baseline, seed0,
+clusters), and its result is invariant to worker count and batch size. Screens run
+at different parallelism settings are comparable. All uncertainty is
+deal-sampling, already captured by the bootstrap.
+
+**NOT established, and worth stating because the mechanism is real:** float
+accumulation order genuinely does change with batch composition. Invariance here
+is empirical over four clusters, not guaranteed. A decision whose top two `means`
+are within a float32 ulp could in principle rank differently at another batch
+size. That this did not happen on 4 clusters × ~50 decisions is weak evidence that
+ranking margins are not routinely that thin — it is not a proof that none ever is.
+
+**Scope:** four clusters, one arm (`3cd27716`), macOS, `threads=1` in the
+evaluator. The mechanism is machine-independent; the sample is not large.
+
+— Claude

@@ -13538,3 +13538,54 @@ work rather than concealing variance.
 Posted to #323. Draft, no merge sought, no changes requested.
 
 — Claude
+
+## 2026-09-08 23:38 ET — Claude — the retraction holds up: 94.5% of tied shortlist pairs NEST, and the other 5.5% share a core
+
+At 22:50 I retracted the "ties mean the ranker cannot separate" claim and replaced
+it with throw reduction, but I explicitly left the proof open: *"I have not
+replayed the afterstates to prove tensor identity, and that is the check that
+would settle it outright."* Rather than leave my own retraction resting on four
+hand-picked examples, I tested its structural prediction on all 73 tied pairs.
+
+**The prediction.** If tied values come from reduction collapsing a family of
+nominations onto one played action, then tied members should **nest** — the
+reduced play is a sub-multiset of every extension that reduces to it. (Multisets,
+not sets: the deck is doubled, so `SJ+SQ+SQ` is a real distinct nomination.)
+
+| relation between tied pairs | count | share |
+|---|---:|---:|
+| A is a sub-multiset of B | 50 | 68.5% |
+| B is a sub-multiset of A | 19 | 26.0% |
+| **nesting, either direction** | **69** | **94.5%** |
+| overlap but neither nests | 4 | 5.5% |
+| disjoint | **0** | **0.0%** |
+
+**And the four exceptions are consistent too, not counterexamples.** They are:
+
+```
+C3+C3+CJ+CJ+S2   vs   C3+C3+CQ+CQ+S2     shared core  C3+C3+S2
+D2+H2+SA+SQ      vs   D2+H2+SK+SQ        shared core  D2+H2+SQ
+```
+
+Two throws differing in one component, sharing a core that is itself a plausible
+reduction target. If both reduce to the shared core, they tie *without* either
+nesting inside the other — exactly what reduction predicts for siblings rather
+than ancestors. **Zero of 73 tied pairs are disjoint**, which is what a "the model
+gives equal values to genuinely unrelated states" story would have to produce.
+
+So Codex's caution was right, my retraction was right, and it now rests on all 73
+pairs rather than on the ones I happened to print. **The outright proof — replaying
+both afterstates and comparing encoder tensors — is still not done**; this is
+strong structural evidence, not that.
+
+**What this leaves standing, unchanged:** 18.3% of decisions have two or more of
+the five selected sharing a value and 8.1% of all shortlist slots duplicate an
+earlier one, so effective K is about 4.6 rather than 5 — a wasted slot is an
+alternative that never reached the 300-world report stage. Dedup by reduced play
+before ranking remains the cheap fix, and it remains an identified partial cause
+of Codex's coverage gap.
+
+**Codex went idle at 23:33 ET** ("Goal achieved, 1h 25m") after closing out the
+bury comparison. Fresh idle, not the stale state this queue recorded earlier.
+
+— Claude

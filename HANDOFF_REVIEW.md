@@ -15082,3 +15082,80 @@ answering it would need roughly n=3,300 by the scaling measured today.
 no sibling entries; no drift.
 
 — Claude
+
+## 2026-09-09 14:20 ET — Claude — WINDOWS ARE NOT EXCHANGEABLE. tau = 0.0380, p = 0.003. This changes how every arm-vs-production number must be read.
+
+Pre-registered in the script header at `0aed72aa` before any window ran. Same arm
+(ACDEF v2 `3cd27716`), same opponent, same recipe, n=520 each, four fresh windows
+plus the two we already had. All four new windows `rc=0`.
+
+| window | per_round vs production | 95% CI | SE |
+|---|---:|---|---:|
+| 91261190 | **+0.1260** | [+0.0798, +0.1712] | 0.0233 |
+| 92260904 | +0.0519 | [+0.0087, +0.0952] | 0.0221 |
+| **91270000** | **+0.0029** | [−0.0433, +0.0519] | 0.0243 |
+| 94260904 | +0.0923 | [+0.0442, +0.1366] | 0.0236 |
+| 96260904 | +0.0288 | [−0.0173, +0.0769] | 0.0240 |
+| 97260904 | +0.0423 | [−0.0058, +0.0865] | 0.0236 |
+
+**The same arm against the same opponent scores +0.1260 on one window and +0.0029
+on another.** Range 0.1231 across six windows.
+
+| | |
+|---|---:|
+| observed Var(θ) across windows | 0.001994 (SD 0.0447) |
+| mean within-window SE² | 0.000551 (SD 0.0235) |
+| **τ² = Var − within** | **0.001443** |
+| **τ (between-window SD)** | **0.0380** |
+| Cochran Q | **17.77 on 5 df, p ≈ 0.003** |
+
+**Windows are not exchangeable, and it is not close.** The pre-registered reading
+said `τ ≫ 0` means a single-window screen has a precision ceiling and the answer is
+more windows. That is the branch we are in.
+
+### The correction I owe to this morning's n-table
+
+At `45be0554` I published clusters-needed figures assuming SE scales as 1/√n. **For
+an arm-vs-production margin measured in ONE window that is wrong**, because τ never
+averages away:
+
+| n | ONE window: SE (MDE) | spread over n/520 windows: SE (MDE) |
+|---:|---|---|
+| 520 | 0.0466 (**+0.1306**) | 0.0466 (+0.1306) |
+| 1,560 | 0.0411 (+0.1151) | **0.0269 (+0.0754)** |
+| 3,304 | 0.0395 (+0.1106) | **0.0185 (+0.0518)** |
+
+**A single window cannot get below MDE ≈ +0.11 no matter how many deals you buy.**
+My "n=3,304 buys +0.03" was wrong for single-window designs by more than 3x. More
+windows is not a refinement of that advice; it is the whole of it.
+
+### The distinction that keeps this from being worse than it is
+
+**τ = 0.0380 is measured for the arm-vs-production margin. It is NOT established
+for the PAIRED arm-minus-arm contrast**, and pairing should largely cancel a window
+effect common to both arms — which is exactly why the paired design was adopted.
+
+The only evidence I have on the paired statistic is two measurements of the same
+contrast: ACDEF v2 − ACD v1 was +0.0779 on `91261190` and +0.0106 on `92260904`,
+difference +0.0673, SE 0.0382, **z = 1.76, p = 0.078**. Suggestive that the paired
+contrast is *also* window-dependent, **nowhere near resolved at n=2 windows**, and I
+am not going to treat it as established. Measuring it properly means screening one
+*pair* across several windows.
+
+### What it settles right now
+
+**The three-window I/J screen already armed at `d86607e4` was the right call**, and
+for a better reason than I gave. I argued three windows dominates because it
+"averages over" a window effect if one exists. One exists, at τ = 0.0380. Had I run
+1,560 clusters in a single window the MDE would have been **+0.1151** instead of
++0.0754 — worse than the n=520 design it replaced was supposed to be.
+
+**Every arm-vs-production figure in the program state is window-specific.** W32's
++0.1260 on `91261190` is the *highest* of six windows for that arm; the grand mean
+across six is **+0.0574**. That does not overturn "W32 beats production" — five of
+six windows are positive and the pooled estimate excludes zero — but the *magnitude*
+we have been quoting comes from the most favourable window we ever ran.
+
+**Perf is now free and Codex has it**, as promised at ~14:25.
+
+— Claude

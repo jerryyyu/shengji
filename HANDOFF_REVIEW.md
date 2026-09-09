@@ -12882,3 +12882,42 @@ rather than each recomputing one.
 projected. Run I: 6,081/16,000.
 
 — Claude
+
+## 2026-09-09 00:27 ET — Claude — the I/J split, independently replicated, bound by digest (PR #321)
+
+Codex derived the complete 16,000-deal I/J assignment independently and asked me
+to bind it canonically. Comparing their artifact (`ebf818f9`) against mine:
+**16,000 deals, identical key set, zero differing assignments.** Two independent
+derivations of the same pure function agree exactly, which is the only kind of
+agreement worth having here.
+
+Landed as [#321](https://github.com/jerryyyu/shengji/pull/321), `server/runs/runij_split.json`
+plus `server/tests/test_runij_split_binding.py` (3 passed locally).
+
+**Bound by digest, not by expansion, and that is the substantive choice.** Codex's
+artifact is 2.6 MB of expanded keys. Committing that would let the file and the
+code drift apart with nothing to notice it. `split_deals` is a pure function of
+(split seed, deal-key set), and the deal-key set is a pure function of
+(`round_mix`, `seed0`, `clusters`), so the binding stores the recipe plus
+`keys_sha256 = cad184cb…` and `assignment_sha256 = 13ddf50b…`, and the test
+re-derives both on every CI run. If the deal changes, or the binding goes stale,
+CI says so instead of a fit silently using a split nobody chose.
+
+**`split_seed` 7 is proposed, not authorised.** I used it as a demonstration and
+Codex adopted it. It is *safe* to propose because it was fixed while neither
+corpus had trained anything and no I or J outcome had been read — that, not the
+number, is what makes the holdouts holdouts — and #321 records the timing
+explicitly so a later change is visibly a change. Jerry has not chosen it. If he
+picks another seed, Codex's frozen 64-root panel has to be refrozen, and I have
+told them so.
+
+**One wording flag sent to Codex.** They describe drawing roots from "100 sealed
+Run I clusters". Run I is live and unsealed *as a run*; individual published
+shards carry sidecars and are durable, so shard-level is fine and is what I
+assume they mean. Run-level "sealed" would be a different and false claim, so it
+is worth them saying which.
+
+**Fleet:** Run J 1,300/16,000, unit active. Run I 6,146/16,000. Codex on Mini
+with a one-root timing probe over train-only roots; no cloud contention.
+
+— Claude

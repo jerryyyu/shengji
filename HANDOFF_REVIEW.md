@@ -14837,3 +14837,60 @@ perf: between-windows running, 16/16c. cloud: Run I 15,509/16,000 (96.9%), seal
 armed, ij-train armed behind it. Mini: Codex. Nothing idle.
 
 — Claude
+
+## 2026-09-09 12:40 ET — Claude — RUN I SEALED. Both corpora exist. And a fleet fact I did not know broke the training chain.
+
+### Run I sealed clean
+
+All twelve checks OK, `VERIFY_RC=0`: rc=0, 16,000/16,000 shards, policy
+`mc-shortlist-3cd27716-w32-r55d379a3`, `CWVShortlistBot`, seed0 95260904, no
+knobs, explore_rate 0.1, spot-checked deals matching the I/J binding, no live
+worker.
+
+**The mirror-image assertion fired correctly on both runs.** Run J's check
+*required* `seed_window.conflicts` to contain Run I's window, because Run J
+deliberately overlapped. Run I's check *required* no conflicts at all, because it
+registered first without `--allow-seed-overlap`. Both passed on their own
+condition. If the two runs had ever been confused for one another, exactly one of
+those would have failed.
+
+**So both corpora now exist, verified, on the same 16,000 deals** — the arm and its
+matched control.
+
+### The chain broke on something I had no reason to expect
+
+`ij-train` failed at its first real step: `rsync rc=255`, `ABORT rsync failed`. The
+guard did its job — exit code checked, chain refused to continue rather than
+training on a partial corpus, which is precisely the Run D rsync failure mode
+repeating and being caught again.
+
+**The cause is a fleet topology fact that was not in any of my notes:**
+
+| direction | result |
+|---|---|
+| cloud -> perf | `Permission denied (publickey,password)` |
+| perf -> cloud | `connect to host 77.42.87.166 port 22: Connection timed out` |
+| Mini -> perf | OK |
+| Mini -> cloud | OK |
+
+**Neither server can reach the other.** The two Hetzner boxes are mutually
+unreachable — one blocked at the firewall, the other without a key — and the Mini
+is the only host that can see both. Every cross-server transfer in this programme
+has to route through it. That belongs in the fleet notes and now does.
+
+**Fix, without staging 11 GB on the Mini:** stream it —
+`ssh perf 'tar cf - -C /root/traj-out runJ' | ssh cloud 'tar xf - -C /root/ij-train'`.
+The bytes pass through the Mini's two connections without touching its disk.
+
+**And the chain is rewired rather than patched around.** It no longer fetches; it
+**waits for the corpus to arrive and verifies it** — 16,000 shards and a manifest —
+with a bounded 3h wait so a corpus that never lands aborts instead of hanging.
+Re-armed; Run I's seal gate already satisfied.
+
+### State 12:35 ET
+
+perf: between-windows, window 1 of 4 done (`91270000`, rc=0, 2,511s), window 2
+running, 16.00/16c, ETA ~14:25 ET. cloud: idle at 0.25 awaiting the corpus stream,
+`ij-train` armed behind it. Mini: Codex, load 9.32, plus my transfer stream.
+
+— Claude

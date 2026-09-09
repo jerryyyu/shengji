@@ -14647,3 +14647,69 @@ arm-minus-arm at the `/2` divisor is the statistic and not a difference of the t
 vs-production margins.
 
 — Claude
+
+## 2026-09-09 11:00 ET — Claude — what n=520 can actually see, and the compute price of seeing less
+
+The replication removed our only resolved checkpoint result. The obvious follow-up
+is not another checkpoint comparison — it is: **what effect sizes is this
+instrument capable of resolving, and what would it cost to resolve smaller ones?**
+
+**The SE is measured, not assumed, and it is stable.** The paired arm-minus-arm
+contrast has SE **0.02699** at n=520 in the original 2x2 *and* SE **0.02699** in
+today's independent replication on a different window with different checkpoints.
+Two independent estimates agreeing to five decimals is the strongest statement yet
+that the screen is a well-behaved instrument. **MDE at n=520 is +0.0756.**
+
+| target effect (per_round) | clusters for 80% power | wall, perf 16 workers, two arms |
+|---:|---:|---:|
+| +0.1260 | 187 | 0.4 h |
+| +0.0779 | 490 | 1.1 h |
+| +0.0600 | 826 | 1.9 h |
+| +0.0500 | 1,189 | 2.7 h |
+| +0.0400 | 1,858 | 4.3 h |
+| **+0.0300** | **3,304** | **7.6 h** |
+| +0.0200 | 7,433 | 17.2 h |
+
+(Wall extrapolated from today's measured 36 min per 520-cluster arm. Cluster cost
+is not heavy-tailed the way generation is, but treat these as orders.)
+
+### What this says about the whole programme
+
+**Every effect we have chased, except the original 2x2 corner, sits below the
+n=520 detection line.** The width ladder, the sweep winners, the encoder-alone
+factor, the data-alone factor, K8, the report-fold union — all were run at n where
+a real +0.03 to +0.05 improvement would have been invisible. Their nulls were
+**never evidence of no effect**; they were evidence that we were not looking hard
+enough to tell. That is a different and much less pessimistic reading of the
+scorecard than "nothing works".
+
+**And it reframes the one result that did resolve.** +0.0779 needed n=490 for 80%
+power and it was run at 520 — nominally adequate. But it was the winner of six
+comparisons, so the *reported* effect was inflated by selection, and today's
+replication put the honest estimate at +0.0106. A design that is exactly powered
+for its own inflated point estimate is underpowered for the truth.
+
+### The practical consequence for I/J
+
+The I/J pre-registration at `e6250f24` proposes n=520, MDE +0.0756. **If the
+generator effect is the size of a typical checkpoint effect — +0.03 to +0.05 — a
+520-deal screen will not see it, and we will have spent two 16,000-cluster corpora
+and ~24h of generation to produce an unreadable null.** n=1,189 buys +0.05 at 2.7h;
+n=3,304 buys +0.03 at 7.6h. Perf is free and this is cheap compute against the cost
+of the corpora already spent.
+
+**This is a recommendation to Jerry, not a decision I am taking:** raise the I/J
+screen to at least n=1,200, and pre-register that size before the arms are trained
+rather than extending after seeing a null. Extending a screen after a null is the
+same error as choosing a split seed after seeing results.
+
+**Stated as an estimate, not a measurement:** the n column assumes SE scales as
+1/sqrt(clusters), which holds for the cluster bootstrap this instrument uses, and
+assumes the between-window variance does not dominate. The second assumption is
+NOT verified — I have two windows for one arm (+0.1260 and +0.0519) and cannot
+estimate between-window variance from two points. If window effects are large
+relative to within-window sampling, more clusters in ONE window buy less than this
+table claims, and the right answer is more windows rather than more deals. **That
+is the measurement I would do next.**
+
+— Claude

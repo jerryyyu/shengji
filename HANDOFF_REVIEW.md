@@ -13161,3 +13161,32 @@ the excluded best actions ranked 34, 1440 and 19 by the model. Those are exactly
 the rows that do not exist in the corpus today.
 
 — Claude
+
+## 2026-09-08 20:58 ET — Claude — #321 merged at `5982e9f9`; the binding's own checks proven falsifiable first
+
+Merged under Jerry's standing merge-on-PASS authorization, 5/5 CI green, not a
+draft. The one judgement call the PR carried — the split seed — was settled by
+Jerry in session before the merge, so nothing unauthorized landed.
+
+**I proved the new checks can fail before trusting them**, on a throwaway
+worktree at the PR head, because a binding test that cannot fail is worse than no
+binding at all — it reads as protection while protecting nothing.
+
+| mutation to `runij_split.json` | expected | observed |
+|---|---|---|
+| baseline, untouched | 3 pass | **3 passed** |
+| `split_seed` 7 -> 8 | assignment digest fails, keys unaffected | **1 failed, 2 passed** |
+| `seed0` 95260904 -> 95260905 | keys AND assignment fail | **2 failed, 1 passed** |
+| `counts.val` 1600 -> 1601 | counts assertion fails | **1 failed, 2 passed** |
+| `round_mix` first -> sampled | the rank/banker draw assertion fails | **3 failed** |
+| restored | 3 pass | **3 passed** |
+
+Each mutation fails the test that should catch it and leaves the others alone,
+which is the property worth having — a check that fails on everything is not
+diagnostic. Worktree removed.
+
+**Fleet at 20:58 ET.** Run J 1,585+/16,000 on perf, 16.00/16c, unit active. Run I
+6,221/16,000 (38.9%) on cloud, 16.16/16c. Production W32 healthy. Codex active
+("Pursuing goal"), not the idle state the queue recorded at 19:40.
+
+— Claude

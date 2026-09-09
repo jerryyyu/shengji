@@ -13589,3 +13589,72 @@ of Codex's coverage gap.
 bury comparison. Fresh idle, not the stale state this queue recorded earlier.
 
 — Claude
+
+## 2026-09-09 00:40 ET — Claude — PRE-REGISTRATION: replication of ACDEF v2 − ACD v1. NOT AUTHORIZED, NOT LAUNCHED.
+
+Written now, before any result exists and before Jerry has said yes, because a
+pre-registration written at launch time is worth less than one written while the
+outcome is still entirely unknown. If this never runs, this entry stands as a
+design that was committed and not executed.
+
+**Why this experiment.** `ACDEF v2 − ACD v1 = +0.0779 [+0.0240, +0.1298]` is the
+**only** checkpoint-vs-checkpoint contrast the programme has ever resolved, and it
+currently carries the status LEADING CANDIDATE AWAITING CONFIRMATION with Codex's
+accepted caveats: six unadjusted comparisons, winner not pre-registered, would not
+survive a family adjustment. Everything downstream — that data-and-encoder
+together is the axis that matters — rests on it.
+
+### The design, committed in advance
+
+| | |
+|---|---|
+| arms | ACDEF v2 `3cd27716` and ACD v1 `528dbbe0` |
+| baseline | production `mc-s0-report-lcb`, unchanged |
+| population | **fresh** 520-deal window, **seed0 92260904**, verified disjoint from all 23 registered windows |
+| recipe | w32: worlds 32, selection 30, alternatives 4, report 300 |
+| statistic | each arm vs production on the same deals, then the paired arm-minus-arm difference at the **/2** divisor (arm-vs-arm; `/4` is for arm-vs-baseline and would double the headline) |
+| comparisons | **one**, pre-stated, so no multiplicity adjustment applies |
+| direction | **positive** — this replicates a positive finding |
+
+### The decision rule, committed in advance
+
+- **Interval excludes zero, positive** → CONFIRMED. The gap moves from leading
+  candidate to established, and it becomes the programme's first replicated
+  checkpoint result.
+- **Interval crosses zero** → it does **NOT** replicate, and the status is
+  downgraded — *regardless of how much the new interval overlaps the old one*. A
+  difference between significant and non-significant is not itself significant,
+  and overlap is not agreement.
+- **Interval excludes zero, negative** → the original was a false positive and must
+  be withdrawn from the program state.
+
+### Power, so nobody has to ask afterwards
+
+Implied SE from the published interval is **0.02699**. At a fresh n=520:
+
+| | |
+|---|---:|
+| power against the original effect (+0.0779) | **82.3%** |
+| power against half of it (+0.039) | 30.3% |
+| MDE at 80% power | +0.0756 |
+
+So this design can resolve the effect as originally measured, and cannot resolve a
+substantially smaller one. **If it comes back null, "underpowered" is not available
+as an excuse — that is the point of writing this down now.** It is also, after
+tonight, the only proposal on the board whose MDE sits *below* the effects this
+programme actually cares about (compare #322 at n=52, MDE +0.1993; #323 at n=256,
+MDE +0.126 to +0.131).
+
+### What will NOT happen
+
+No peeking at partial results; no early stopping; no changing the window, arms or
+statistic after any number is seen; no additional arms folded in afterwards. The
+screen is deterministic (`793696be`), so there is no re-roll to be tempted by.
+
+### Status
+
+**Awaiting Jerry's go.** Perf frees at ~03:00 ET when Run J seals and Run I does
+not land until ~11:25, so there is an ~8-hour window. Estimated cost ~1h per arm
+at 16 workers, ~2h total. Nothing is launched.
+
+— Claude

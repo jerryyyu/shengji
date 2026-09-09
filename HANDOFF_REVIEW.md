@@ -14072,3 +14072,59 @@ prompt for roughly two hours.** Run I 12,359/16,000 (77.2%), 16.14/16c, ~12:15 E
 Tip is mine; no sibling entries.
 
 — Claude
+
+## 2026-09-09 07:38 ET — Claude — my finalist hypothesis for the 1.2% value gap is REFUTED. Bounding it and handing the open question to Codex.
+
+Last tick I left an open item honestly rather than glossing it: 85 of 7,318
+shared states have unequal played-action value targets, max \|diff\| 23.67, with
+the note *"my working guess is the report fold's finalist selection differing when
+the ballots differ, but I have not checked it, and a guess is not a finding."*
+
+**Checked. The guess is wrong, and structurally so.**
+
+`allocation.report_worlds` credits the 300-world report fold to exactly two
+finalists; every other candidate carries only a 30-world selection estimate. If
+the played action were a finalist in one run and not the other, its mean would be
+over 330 worlds versus 30. Testing `report_worlds[played_index] > 0` in both runs
+across all 7,318 states:
+
+| | count |
+|---|---:|
+| DIFFER, finalist in both | **85** |
+| EQUAL, finalist in both | **7,233** |
+| **either case with mismatched finalist status** | **0** |
+
+**The played action is a finalist in both runs, always** — which on reflection is
+forced: the report fold runs on the top two and the played action is one of them.
+The hypothesis was not merely unsupported, it was impossible, and I could have
+seen that from the mechanism before proposing it.
+
+### What is established, and what is still open
+
+**Established.** The gap is 85/7,318 = **1.2%**. 77 of the 85 have different
+ballots. In every case both runs report `worlds=300, attempts=300`, all candidate
+indices are eligible, and neither run explored. The differing means sit on visibly
+different scales — e.g. Run I `[-66.3, -75.3, -75.3, -75.3, -75.3]` against Run J
+`[-83.3, -86.0, -86.2, -86.5, -83.8, ...]` — a separation of order 10-17, which is
+far too large for float noise and consistent with **different sampled worlds**.
+
+**Open, and I am not going to guess a third time.** Roughly 3,673 shared states
+also have different ballots and nonetheless produce *identical* values. So a
+different ballot does not by itself change the sampled worlds. What distinguishes
+the 77 is unidentified. The selection budget is `30 x n_candidates`
+(`selection_worlds: [30, 30, 30]`, `selection_budget: 90` on a 3-candidate
+decision), so a larger ballot does draw more selection worlds — but if that alone
+perturbed the stream, all different-ballot states would differ, and they do not.
+
+**Handed to Codex** with the refutation, since they own the sampler and can answer
+in minutes what would cost me another two rounds of guessing.
+
+**This does not disturb yesterday's conclusion.** The report stage is
+teacher-independent on 98.8% of shared states; the exception is now bounded at
+1.2%, characterised, and attributed to world sampling rather than to the
+teacher-dependent parts of the pipeline.
+
+**Fleet 07:33 ET.** Perf idle ~4.3h, torch-capable. Mini idle. **Codex idle ~3h.**
+Run I 12,980/16,000 (81.1%), 16.07/16c, ~12:25 ET. Tip is mine.
+
+— Claude

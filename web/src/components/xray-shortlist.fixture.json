@@ -1,0 +1,240 @@
+{
+  "seat": 2,
+  "hand": [
+    "S5",
+    "S9",
+    "S9",
+    "SA",
+    "SA",
+    "H7",
+    "H7",
+    "H10",
+    "HA",
+    "C8",
+    "C8",
+    "CJ",
+    "CJ",
+    "CA",
+    "CA",
+    "D5",
+    "D8",
+    "D10",
+    "DQ",
+    "DK",
+    "DK",
+    "S2",
+    "D2",
+    "D2",
+    "BJ"
+  ],
+  "is_attacker": false,
+  "voids": {
+    "0": [],
+    "1": [],
+    "3": []
+  },
+  "unseen_trumps": 26,
+  "unseen_by_suit": {
+    "S": [
+      "SK",
+      "SK",
+      "SQ",
+      "SQ",
+      "SJ",
+      "S10",
+      "S10",
+      "S8",
+      "S8",
+      "S7"
+    ],
+    "H": [
+      "HA",
+      "HK",
+      "HK",
+      "HQ",
+      "HJ",
+      "H10",
+      "H9",
+      "H9",
+      "H8",
+      "H8"
+    ],
+    "D": [],
+    "C": [
+      "CK",
+      "CK",
+      "CQ",
+      "CQ",
+      "C10",
+      "C10",
+      "C9",
+      "C7",
+      "C7",
+      "C6"
+    ],
+    "T": [
+      "BJ",
+      "LJ",
+      "LJ",
+      "C2",
+      "C2",
+      "H2",
+      "H2",
+      "S2",
+      "DA",
+      "DA"
+    ]
+  },
+  "boss_cards": [
+    "SA",
+    "HA",
+    "CA",
+    "BJ"
+  ],
+  "ruff_risky_suits": [],
+  "candidates": [
+    {
+      "index": 0,
+      "play": [
+        "SA",
+        "SA"
+      ],
+      "attackers_avg": 2.0,
+      "se": null,
+      "paired_se_vs_incumbent": 0.0,
+      "selection_worlds": 2,
+      "model_score": 0.0,
+      "old_ballot": true,
+      "model_nominated": false,
+      "heuristic_pick": true,
+      "report_finalist": true,
+      "bot_plays": false
+    },
+    {
+      "index": 1,
+      "play": [
+        "S9"
+      ],
+      "attackers_avg": 1.0,
+      "se": null,
+      "paired_se_vs_incumbent": 0.0,
+      "selection_worlds": 2,
+      "model_score": 20.0,
+      "old_ballot": true,
+      "model_nominated": true,
+      "heuristic_pick": false,
+      "report_finalist": true,
+      "bot_plays": true
+    },
+    {
+      "index": 2,
+      "play": [
+        "S9",
+        "SA"
+      ],
+      "attackers_avg": 2.0,
+      "se": null,
+      "paired_se_vs_incumbent": 0.0,
+      "selection_worlds": 2,
+      "model_score": 20.0,
+      "old_ballot": false,
+      "model_nominated": true,
+      "heuristic_pick": false,
+      "report_finalist": false,
+      "bot_plays": false
+    },
+    {
+      "index": 3,
+      "play": [
+        "S9",
+        "SA",
+        "SA"
+      ],
+      "attackers_avg": 3.0,
+      "se": null,
+      "paired_se_vs_incumbent": 0.0,
+      "selection_worlds": 2,
+      "model_score": 20.0,
+      "old_ballot": false,
+      "model_nominated": true,
+      "heuristic_pick": false,
+      "report_finalist": false,
+      "bot_plays": false
+    },
+    {
+      "index": 4,
+      "play": [
+        "S5"
+      ],
+      "attackers_avg": 1.0,
+      "se": null,
+      "paired_se_vs_incumbent": 0.0,
+      "selection_worlds": 2,
+      "model_score": 5.0,
+      "old_ballot": false,
+      "model_nominated": true,
+      "heuristic_pick": false,
+      "report_finalist": false,
+      "bot_plays": false
+    }
+  ],
+  "bury": null,
+  "analysis": {
+    "source": "isolated_current_state_replay",
+    "historical_decision": false,
+    "policy": "CWVShortlistBot",
+    "reason": "report_lcb_override",
+    "model": {
+      "backend": "fixture",
+      "checkpoint_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_checkpoint_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "encoding": "reference",
+      "effective_encoding": null,
+      "max_batch": null,
+      "device": null
+    },
+    "model_score_units": "expected signed levels for acting team",
+    "selection_score_units": "expected final attacker points",
+    "report_gap_units": "acting-team points: challenger minus incumbent",
+    "report": {
+      "gap": 1.0,
+      "se": 0.0,
+      "worlds": 30,
+      "critical": 1.7,
+      "statistic": 1.0,
+      "min_gain": 0.0,
+      "rule": "lcb",
+      "complete": true
+    },
+    "recipe": {
+      "worlds": 1,
+      "alternatives": 4,
+      "selection_worlds": 2,
+      "batch_size": 17,
+      "report_worlds_requested": 30,
+      "report_min_gain": 0.0
+    },
+    "shortlist": {
+      "legal_count": 629,
+      "production_count": 14,
+      "wall_seconds": 0.04443937446922064,
+      "retained_count": 5,
+      "offballot_played": false,
+      "counts": {
+        "cheap_worlds": 1,
+        "cheap_evaluations": 629,
+        "cheap_batches": 37
+      },
+      "reuse": {}
+    },
+    "work": {
+      "selection_rollouts": 10,
+      "report_rollouts": 60,
+      "total_rollouts": 70
+    },
+    "search_seconds": 0.046897999942302704,
+    "evaluation_seconds": 0.0914158746600151,
+    "candidate_count": 5,
+    "candidates_truncated": false
+  }
+}

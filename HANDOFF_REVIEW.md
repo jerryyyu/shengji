@@ -12825,3 +12825,368 @@ identical recipes and both arms are screened on the 520-deal clean window
 applies to this pair exactly as it applied to ACDEFGH.
 
 — Claude
+
+## 2026-09-09 00:20 ET — Claude — Codex asked whether the I/J splits are fixed; they are not, and they must not be computed from a partial Run I
+
+Codex is building an input-only importer over Run I roots and asked, correctly,
+before designating anything: *are I/J splits already fixed?* They are not. There
+is no stored assignment for either run. But the answer is better than "wait".
+
+**The full deal-key set is knowable today, at 6% and 38% written.** Under
+`round_mix: first` — which is what both runs use — `round_mix_draw` returns rank
+`2` with no banker for *every* cluster, and the deck is
+`deck_from_seed(rank, banker, seed0 + cluster)` with `seed0 = 95260904`,
+clusters `0 .. 15999`. Dealing is free; only the search is expensive. Enumerating
+all 16,000 deal keys took **0.7 seconds with no cards played**.
+
+**Cross-checked, not asserted.** The enumerated keys were compared against the
+first record of every shard both runs have actually written:
+
+| corpus | clusters checked | mismatches |
+|---|---|---|
+| Run I (cloud) | 6,081 | **0** |
+| Run J (perf) | 1,058 | **0** |
+| I vs J on overlapping clusters | 1,058 | **0 differing deals** |
+
+**The split is matched by construction.** `split_deals` assigns by the rank of
+`sha256(seed|deal_key)` over the keys present, and `deal_key` is a hash of the
+dealt 108-card order — independent of run id, policy, knobs, mirror and source.
+Run I and Run J have identical decks, so identical keys, so the *same* split seed
+yields a byte-identical `train`/`val`/`test` assignment across both corpora. The
+I−J comparison cannot be knocked out of alignment by the split. Over the complete
+set, `split_deals(seed=7)` gives train 12,800 / val 1,600 / test 1,600.
+
+**Why the partial corpus is the trap.** `split_deals` ranks over the keys
+*present*, so the answer changes as the corpus grows. Measured on 16,000 keys,
+comparing a partial computation against the complete one:
+
+| written | deals whose part flips | of those, called `train` by the partial but `val`/`test` by the complete |
+|---|---|---|
+| 36% | 28 (0.49%) | **18** |
+| 60% | 71 (0.74%) | 0 |
+| 90% | 15 (0.10%) | 0 |
+
+At today's fraction the flips go the dangerous way: 18 deals a partial
+computation would hand out as FIT-usable end up held out. Small, but it is
+precisely the leak Codex was guarding against, and it is avoidable for free.
+
+**What I did not do.** I used split seed 7 as a demonstration. It is not
+authorised and nothing is reserved. The seed must be chosen deliberately and
+ledgered *before* any deal is designated, because choosing it after looking at
+results is how a holdout stops being one. Files `runIJ_deal_keys.json` and
+`runIJ_split_seed7.json` are in my scratchpad; on Codex's word or Jerry's I will
+land them under `server/runs/` so both agents bind the identical assignment
+rather than each recomputing one.
+
+**Run J status:** 1,058/16,000 clusters, unit active, ~42 clusters/min → ~6.3h
+projected. Run I: 6,081/16,000.
+
+— Claude
+
+## 2026-09-09 00:27 ET — Claude — the I/J split, independently replicated, bound by digest (PR #321)
+
+Codex derived the complete 16,000-deal I/J assignment independently and asked me
+to bind it canonically. Comparing their artifact (`ebf818f9`) against mine:
+**16,000 deals, identical key set, zero differing assignments.** Two independent
+derivations of the same pure function agree exactly, which is the only kind of
+agreement worth having here.
+
+Landed as [#321](https://github.com/jerryyyu/shengji/pull/321), `server/runs/runij_split.json`
+plus `server/tests/test_runij_split_binding.py` (3 passed locally).
+
+**Bound by digest, not by expansion, and that is the substantive choice.** Codex's
+artifact is 2.6 MB of expanded keys. Committing that would let the file and the
+code drift apart with nothing to notice it. `split_deals` is a pure function of
+(split seed, deal-key set), and the deal-key set is a pure function of
+(`round_mix`, `seed0`, `clusters`), so the binding stores the recipe plus
+`keys_sha256 = cad184cb…` and `assignment_sha256 = 13ddf50b…`, and the test
+re-derives both on every CI run. If the deal changes, or the binding goes stale,
+CI says so instead of a fit silently using a split nobody chose.
+
+**`split_seed` 7 is proposed, not authorised.** I used it as a demonstration and
+Codex adopted it. It is *safe* to propose because it was fixed while neither
+corpus had trained anything and no I or J outcome had been read — that, not the
+number, is what makes the holdouts holdouts — and #321 records the timing
+explicitly so a later change is visibly a change. Jerry has not chosen it. If he
+picks another seed, Codex's frozen 64-root panel has to be refrozen, and I have
+told them so.
+
+**One wording flag sent to Codex.** They describe drawing roots from "100 sealed
+Run I clusters". Run I is live and unsealed *as a run*; individual published
+shards carry sidecars and are durable, so shard-level is fine and is what I
+assume they mean. Run-level "sealed" would be a different and false claim, so it
+is worth them saying which.
+
+**Fleet:** Run J 1,300/16,000, unit active. Run I 6,146/16,000. Codex on Mini
+with a one-root timing probe over train-only roots; no cloud contention.
+
+— Claude
+
+## 2026-09-09 00:34 ET — Claude — the control has already found something: the W32 shortlist teacher fails throws at 24x production's rate
+
+I diffed Run J's `run.json` against Run I's field by field — the thing a control
+is *for* — and then compared the sidecar counts on the **same 1,400 clusters**,
+so this is paired on identical deals, not on whatever each run happens to have
+written.
+
+| per decision | Run J (production `mc-s0-report-lcb`) | Run I (W32 shortlist `3cd27716`) | ratio |
+|---|---|---|---|
+| decisions (1,400 clusters) | 203,912 | 189,756 | 0.93x |
+| **failed_throws** | **0.126%** | **3.079%** | **24.4x** |
+| explore_added | 5.939% | 8.695% | 1.5x |
+| explore_fired | 9.984% | 10.044% | 1.0x |
+| searched | 82.601% | 83.235% | 1.0x |
+| single_candidate | 17.078% | 16.765% | 1.0x |
+| tractor_locked | 0.321% | 0.000% | — |
+| rollouts | 64,287% | 60,862% | 0.9x |
+
+**`failed_throws` is not a name I guessed at.** `trajectory.py:1330` increments it
+when `action_key(played) != action_key(action)` — the bot chose an action and the
+*engine played something else*, stamping `engine_play` on the record. That is a
+proposed throw the rules cut down. The W32 shortlist proposes one on **3.08% of
+decisions**; production proposes one on **0.13%**.
+
+Two consequences, and they point in different directions.
+
+**As data.** Those records carry a search label attached to an action the teacher
+never actually got to play. 3% of Run I's rows have that shape and 0.13% of Run
+J's do. Anyone training on Run I should decide deliberately whether to keep them.
+
+**As strength.** This is a defect in the shortlist *design*, not only in the
+corpus — and W32 won its screen (+0.0923 [+0.0490, +0.1375]) *carrying* it, so
+fixing it is upside rather than a correction. **But I have not shown it applies
+to what is serving users.** Run I runs checkpoint `3cd27716`; production serves
+`fd6bb411` under the same `w32-r55d379a3` recipe. The mechanism is recipe-level
+and very likely shared, the *rate* on the production checkpoint is **unmeasured**,
+and I am not going to assert it from a different checkpoint. That measurement is
+cheap and is the obvious next probe.
+
+**Two confounds I did not choose, now on the record.**
+
+`tractor_lock` differs by teacher *class*: `MCBot.TRACTOR_LOCK = True`,
+`search_policy.TRACTOR_LOCK = False`. So Run J emits point-mass records with no
+action values on tractor-locked leads and Run I searches them. I considered
+forcing them to match with `--knob TRACTOR_LOCK=0` and **decided against it**: that
+would put a non-empty `config.knobs` on the run, make it unmixable with A–H, and
+turn Run J into a third thing rather than the corpus production would have made.
+The asymmetry is **0.32% of decisions** — real, small, and now quantified rather
+than discovered later.
+
+`decisions` differ by 6.9% on identical deals (203,912 vs 189,756). Run I's
+successful multi-card throws consume more cards per decision. **So "same deals"
+does not mean "same rows", and any arm pair claiming matched data quantity has
+to say which it matched.** I implied a cleaner like-for-like in this morning's
+Run J entry than the row counts support; this is the correction.
+
+Everything else — `explore_fired`, `searched`, `single_candidate`, rollouts —
+matches to within a percent, which is what a control should look like.
+
+— Claude
+
+## 2026-09-08 20:36 ET — Claude — CORRECTION: the 24x failed-throw rate IS the live default's, and it is on-policy
+
+Two things I said in `290b813f` were wrong in the direction that let the finding
+off too easily. Both are corrected here.
+
+**1. I said the rate on the serving checkpoint is unmeasured. It is not a
+different checkpoint.** I reasoned from the policy *names* — Run I is
+`mc-shortlist-3cd27716-w32-r55d379a3`, production is
+`mc-shortlist-fd6bb411-w32-r55d379a3` — and concluded they were different models.
+Jerry's own deploy commit `fbaab844` says otherwise, in words: *"Package
+`fd6bb411` exports the gameplay-supported A+C+D+E+F2 v2 checkpoint `3cd27716`."*
+`fd6bb411` is the Torch-free NumPy **export** of `3cd27716`. Same weights, same
+`w32-r55d379a3` recipe. This is the same failure shape as my earlier ones today:
+reasoning from a summary I was holding instead of reading the artifact that was
+already in the repo.
+
+**So the measurement describes what is serving users right now.**
+
+**2. It is not a harvest artifact.** The obvious objection to a rate measured in
+a trajectory run is that the harvest injects 10% exploration, so the failures
+might be exploratory candidates rather than the teacher's own play. I split it:
+
+| | production `mc-s0-report-lcb` | W32 shortlist (`3cd27716` = live `fd6bb411`) |
+|---|---|---|
+| decisions sampled | 29,084 | 27,056 |
+| explored | 9.92% | 9.96% |
+| failed throws, all decisions | 0.100% | 3.027% |
+| **failed throws, ON-POLICY only** | **0.000%** | **2.980%** |
+| failed throws, exploratory only | 1.006% | 3.450% |
+| share of failures that are on-policy | 0 of 29 | 726 of 819 (88.6%) |
+
+Production proposes **zero** failing throws of its own accord; every one of its 29
+came from injected exploration. The shortlist's are 88.6% its own choice. The
+effect is the teacher's behaviour, at ~3% of its on-policy decisions.
+
+**What this does and does not mean.** `failed_throws` is not an illegal move
+reaching a player — the engine cuts the throw down and plays the forced card, so
+the game stays correct. It is a strength leak: the search commits to a
+multi-card throw it cannot make, and the card actually played was never the one
+evaluated. W32 won its screen (+0.0923 [+0.0490, +0.1375]) *while carrying this*,
+so it reads as upside available, not as a regression against the old default.
+
+**Also correcting the record on my own claim of scope.** Nothing here says how
+much strength the 3% costs. The failures are counted, not priced. Pricing them
+needs a screen against a W32 variant that cannot propose an unmakeable throw,
+and that variant does not exist yet.
+
+— Claude
+
+## 2026-09-08 20:45 ET — Claude — RETRACTION: the failed throws are not a strength leak. Codex is right.
+
+Codex replied to `36e4e6a3` with a caution — *"failed throw is not automatically
+bad label or defect"* — and pointed at the afterstate path. I went and read it
+instead of defending the finding, and **they are correct. I withdraw the strength
+claim.**
+
+**The load-bearing line is `round.py:186`.** `Round.play` does this:
+
+```python
+if not self.trick.plays:                    # a LEAD
+    cards, msg = validate_lead(cards, self.hands[seat], others, self.ordering)
+elif not getattr(self, "_trusted_rollout", False):
+    validate_follow(...)                    # the fast path skips only FOLLOWS
+```
+
+with the comment already in the file: *"validate_lead always runs — throw
+penalties change outcomes."* `validate_lead` is what calls `_throw_penalty` and
+returns the reduced cards. The `_trusted_rollout` fast path skips **follow**
+validation only; it never skips a lead's.
+
+`cwv_shortlist.py:105` calls `afterstate(...)` with no `_lead_validation`, so it
+takes the plain `clone.play(seat, candidate)` branch — which is a lead, so
+`validate_lead` runs, the throw is reduced, and **the leaf the net scores is the
+reduced play**. Evaluation and execution reduce identically. The search is not
+scoring an action that cannot happen.
+
+**So my claim that "the card actually played was never the one the search
+evaluated" was wrong.** It was the whole basis for calling this a defect in the
+live default, and it does not survive reading the code. That framing is
+withdrawn from `290b813f` and `36e4e6a3`, and from the execution queue.
+
+**What survives, stated at its real size.** The 24x rate difference is real and
+paired and on-policy (production 0.000%, W32 2.980%). It says the two teachers
+name throws at very different rates, and that the shortlist frequently selects a
+candidate whose value *is* the value of the forced beaten component. That may be
+correct play. It is a description of how the shortlist chooses, not evidence that
+it chooses badly, and nothing here prices it.
+
+**The shape of my error, again.** I read `failed_throws` at `trajectory.py:1330`
+— which really does mean "the engine played something else" — and stopped there,
+inferring the consequence for the search rather than following the call into
+`afterstate` and `Round.play`. Reading the counter's definition is not reading
+the mechanism. That is the eighth instance today of concluding from the piece of
+the artifact I happened to open.
+
+Two things this leaves genuinely open, neither a defect claim:
+- whether any consumer keys a label to the submitted `action` rather than
+  `engine_play` (Codex says `cwv_data` bridges it and checks `accepted ==
+  engine_play`; that is their lane and they have stated the mechanism);
+- whether distinct ballot candidates that reduce to the *same* forced component
+  are costing duplicate net evaluations inside the 9,934-per-decision ranking.
+  That is an efficiency question and it is cheap to answer.
+
+— Claude
+
+## 2026-09-08 20:52 ET — Claude — Jerry AUTHORIZES split seed 7; and what the full-legal score vector actually is, measured
+
+**Jerry, in this session: "im ok to split test 7".** Split seed 7 is now the
+authorized I/J assignment, not a proposal. PR [#321](https://github.com/jerryyyu/shengji/pull/321)
+binds it (`server/runs/runij_split.json` + a test that re-derives it); Codex's
+frozen 64-root FIT panel stands and does not need refreezing. The property that
+makes it a real holdout is unchanged and is recorded in the binding: the seed was
+fixed before any Run I or Run J outcome had been read.
+
+### The full-legal score vector, from the code and the live corpus
+
+**It is not new work. It is work already being paid for and thrown away.**
+
+`cwv_shortlist._candidates` (lines 124-180) does this on every decision:
+
+```python
+legal   = enumerate_legal(rnd, seat, cap=None, must_include=production)  # ALL of them
+means   = self._means(rnd, seat, actions, worlds)   # "Score EVERY action/world"
+chosen  = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[:K]
+...
+"shortlist_means": [float(means[i]) for i in selected],   # <-- only the KEPT ones survive
+```
+
+The net scores **every legal action**. Then `last_shortlist` retains
+`shortlist_means` for the ~32 selected and the rest of the `means` array is
+discarded. The full-legal score vector is simply: persist all of `means`, not
+just the selected slice. `legal_sha256` — the hash of the full ordered key list —
+is *already* stored, so the vector can be written positionally against an
+ordering that is already pinned.
+
+**Measured on the live corpora** (120 clusters each, play decisions):
+
+| | Run I (W32 shortlist) | Run J (production) |
+|---|---|---|
+| legal actions per decision | **321.15** | 284.82 |
+| ballot entries per decision | 3.82 | 5.13 |
+| actions carrying a score | 3.65 | 4.96 |
+| **share of the legal set with any label** | **1.1%** | 1.7% |
+| decisions fully scored | 36.8% | 52.5% |
+| decisions partially scored | 46.3% | 30.3% |
+| decisions with no scores at all | 16.8% | 17.3% |
+
+**98.9% of the legal action space in Run I carries no label**, and the network
+already computed a value for every one of those actions. This is the same fact as
+ledger `282e5c93` from the other side: 9,934 net evaluations per decision, 1.2%
+of actions surviving, ~69% of the arm's CPU spent producing a ranking that is
+then discarded.
+
+**Why it is one-way.** The vector is a byproduct of search that has already run.
+Recovering it for a written cluster means re-running that cluster's search at
+full cost. Every cluster Run I writes without it is a cluster whose ranking is
+gone.
+
+**CORRECTION to what I told Jerry an hour ago.** I said the gap "now applies to
+both halves of the pair". **It does not.** Run J's teacher is production `MCBot`:
+its `_candidates` is the heuristic ballot, there is no net and therefore no
+`means` array to save. The score vector concerns **Run I only**, and future
+shortlist generation. I extended a claim to the control without checking that the
+mechanism existed there.
+
+**Sizing, so the ask is concrete.** Run I is at ~136 play decisions per cluster,
+so ~2.18M decisions at 16,000 clusters. At 321 legal actions in float32 that is
+**~2.8 GB** added to the corpus. Cloud has 401 GB free. Storage is not the
+obstacle.
+
+**What it is for.** It is the training target for #315 / #248 — a learned
+admission ranker `p(a | public)`. A policy head cannot be trained to rank the
+full legal set from labels that only cover the shortlist, because the actions the
+shortlist *excluded* have no label at all — and Codex's own FIT diagnostic found
+the excluded best actions ranked 34, 1440 and 19 by the model. Those are exactly
+the rows that do not exist in the corpus today.
+
+— Claude
+
+## 2026-09-08 20:58 ET — Claude — #321 merged at `5982e9f9`; the binding's own checks proven falsifiable first
+
+Merged under Jerry's standing merge-on-PASS authorization, 5/5 CI green, not a
+draft. The one judgement call the PR carried — the split seed — was settled by
+Jerry in session before the merge, so nothing unauthorized landed.
+
+**I proved the new checks can fail before trusting them**, on a throwaway
+worktree at the PR head, because a binding test that cannot fail is worse than no
+binding at all — it reads as protection while protecting nothing.
+
+| mutation to `runij_split.json` | expected | observed |
+|---|---|---|
+| baseline, untouched | 3 pass | **3 passed** |
+| `split_seed` 7 -> 8 | assignment digest fails, keys unaffected | **1 failed, 2 passed** |
+| `seed0` 95260904 -> 95260905 | keys AND assignment fail | **2 failed, 1 passed** |
+| `counts.val` 1600 -> 1601 | counts assertion fails | **1 failed, 2 passed** |
+| `round_mix` first -> sampled | the rank/banker draw assertion fails | **3 failed** |
+| restored | 3 pass | **3 passed** |
+
+Each mutation fails the test that should catch it and leaves the others alone,
+which is the property worth having — a check that fails on everything is not
+diagnostic. Worktree removed.
+
+**Fleet at 20:58 ET.** Run J 1,585+/16,000 on perf, 16.00/16c, unit active. Run I
+6,221/16,000 (38.9%) on cloud, 16.16/16c. Production W32 healthy. Codex active
+("Pursuing goal"), not the idle state the queue recorded at 19:40.
+
+— Claude

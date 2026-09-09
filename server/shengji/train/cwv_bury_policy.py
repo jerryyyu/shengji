@@ -1,11 +1,14 @@
-"""Bounded DEV-only bury arms layered on the unchanged W32 play policy.
+"""Bounded opt-in bury arms layered on the unchanged W32 play policy.
 
-The wrapper is deliberately not registered.  It changes only ``decide_bury``;
-all ordinary play/search behaviour comes from :class:`CWVShortlistBot`.
+The wrapper changes only ``decide_bury``; all ordinary play/search behaviour
+comes from :class:`CWVShortlistBot`. Registration requires an explicit call or
+SHENGJI_CWV_BURY_ARM. No production default or existing policy is replaced.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -297,12 +300,89 @@ def trajectory_bury_record(raw: dict) -> dict:
 
 def make_cwv_bury_bot(evaluator, W32config: CWVShortlistConfig | None = None,
                       seed=0, arm="heuristic", bury_config=None) -> CWVBuryBot:
-    """Build one DEV bury arm around the supplied, unchanged W32 config."""
+    """Build one unregistered DEV arm around the supplied W32 config."""
     return CWVBuryBot(evaluator, seed=seed, config=W32config, arm=arm,
                       reuse_successors=True, bury_config=bury_config)
+
+
+def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
+                          bury_config=None, **play_recipe) -> dict:
+    """Explicit opt-in factories; no production default or policy is replaced.
+
+    Reuse the existing shortlist factory's lazy checkpoint loading/full-SHA
+    check. Bind the additional bury settings and full SHA in the name, and
+    retain the complete identity for data manifests rather than just a label.
+    """
+    from ..ai.cwv_policy import file_sha256
+    from .cwv_shortlist import shortlist_registry_entries
+
+    if arm not in _ARMS:
+        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    config = CWVBuryConfig() if bury_config is None else bury_config
+    if type(config) is not CWVBuryConfig:
+        raise TypeError("bury_config must be a CWVBuryConfig")
+    checkpoint_sha = file_sha256(checkpoint)
+    base_entries = shortlist_registry_entries(checkpoint, worlds, **play_recipe)
+    entries = {}
+
+    def wrap(base_factory, identity, name):
+        def factory(**kwargs):
+            base = base_factory(**kwargs)
+            if base.cwv_checkpoint_sha256 != identity["checkpoint_sha256"]:
+                raise BuryPolicyError("bury checkpoint changed after registration")
+            bot = CWVBuryBot(base.evaluator, seed=base.seed,
+                             config=base.shortlist_config, arm=arm,
+                             reuse_successors=base.reuse_successors, bury_config=config)
+            bot.REPORT_FOLD_WORLDS = base.REPORT_FOLD_WORLDS
+            for key in ("cwv_checkpoint_sha256", "cwv_ckpt8", "cwv_enc_version", "cwv_encoding"):
+                setattr(bot, key, getattr(base, key))
+            bot.policy_name = name
+            bot.bury_recipe_identity = {**identity, "config": dict(identity["config"])}
+            return bot
+        return factory
+
+    for play_name, base_factory in base_entries.items():
+        identity = {"schema": "cwv-bury-recipe-v1", "play_policy": play_name,
+                    "checkpoint_sha256": checkpoint_sha, "arm": arm,
+                    "config": asdict(config), "fallback": "raise"}
+        encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+        name = f"{play_name}-bury-{arm}-{hashlib.sha256(encoded).hexdigest()[:12]}"
+        entries[name] = wrap(base_factory, identity, name)
+    return entries
+
+
+def bury_env_recipe(environ=None):
+    """Add a bury arm to the existing SHORTLIST environment recipe, opt-in.
+
+    SHENGJI_CWV_BURY_ARM: heuristic/mc/hybrid. When absent nothing is added.
+    Optional MAX_CANDIDATES/MODEL_WORLDS/SELECTION_WORLDS/ALTERNATIVES use the
+    same SHENGJI_CWV_BURY_ prefix. SHORTLIST_* settings still govern only play.
+    """
+    import os
+    from .cwv_shortlist import shortlist_env_recipe
+
+    env = os.environ if environ is None else environ
+    arm = env.get("SHENGJI_CWV_BURY_ARM")
+    if not arm:
+        return None
+    if arm not in _ARMS:
+        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    play = shortlist_env_recipe(env)
+    if play is None:
+        raise BuryPolicyError("bury registration requires SHENGJI_CWV_SHORTLIST_CKPT")
+    values = asdict(CWVBuryConfig())
+    for key in values:
+        values[key] = int(env.get("SHENGJI_CWV_BURY_" + key.upper(), values[key]))
+    return (*play, arm, CWVBuryConfig(**values))
 
 
 __all__ = [
     "BuryPolicyError", "CWVBuryConfig", "CWVBuryBot", "MODEL_WORLDS",
     "SELECTION_WORLDS", "SHORTLIST_ALTERNATIVES", "make_cwv_bury_bot",
+    "bury_registry_entries", "bury_env_recipe",
 ]
+
+# Like cwv_shortlist, support both registry-first and this-module-first imports.
+from ..ai.registry import _register_cwv_bury_from_env
+
+_register_cwv_bury_from_env()

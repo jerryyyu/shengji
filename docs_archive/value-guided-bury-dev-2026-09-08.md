@@ -1,8 +1,130 @@
 # Value-guided bury: first DEV diagnostic
 
-Production is unchanged. This branch is an unregistered experiment, not a
-deployment candidate. The selected model is the Torch source of the current
+Production is unchanged. The reviewed branch now includes opt-in research,
+data-generation and serving consumers. See the September 9 final recommendation
+below; the earlier sections retain the chronological experiment record.
+The selected model is the Torch source of the current
 Fly model: `3cd277160322b30e9a61d5d83cb7fb6bceac6887ab1e899b98a42f15b259d600`.
+
+## September 9 final recommendation
+
+**Recommend baseline hybrid for opt-in future data generation; recommend a
+monitored production canary only after Jerry accepts the risk/latency tradeoff
+and explicitly approves deployment. HOLD on replacing production for everyone.**
+This is evidence of improvement over heuristic bury, not proof that the hybrid
+is the strongest bury policy or equivalent to MC-only. No additional scaling
+sweep or repeated gameplay verification is needed to interpret these runs.
+
+### Fresh all-rank confirmation completed
+
+All 1,976 fixed deals / 5,928 counterfactual full rounds completed with exit 0
+at source `746e31dce418141c8f0b87d8927acc2ae5d49fd6`. The final invocation took
+20,347 seconds (5h39m07s), reusing the retained eight-deal timing slice. There
+were 152 deals per rank, four known initial banker seats, and 175 natural
+no-trump deals. Suited counts: C434, D440, H466, S461. This is a balanced
+research population, not human-frequency weighting or a multi-round match.
+The once-amended 1,976 count was fixed before new outcomes; it supersedes the
+older 1,040 plan below. Nothing was extended or pooled after the final result.
+
+| Comparison | Banker utility delta, 95% CI | Banker win-rate delta, pp, 95% CI |
+|---|---:|---:|
+| Hybrid minus heuristic (primary utility) | +0.03644 [+0.01164, +0.06024] | +1.62 [+0.56, +2.68] |
+| Hybrid minus MC-only (secondary) | -0.01468 [-0.04200, +0.01215] | -0.66 [-1.87, +0.56] |
+| MC-only minus heuristic (secondary) | +0.05111 [+0.01974, +0.08249] | +2.28 [+0.91, +3.69] |
+
+Utility is signed banker level reward, not wins per round. Intervals reuse the
+predeclared 4,000 paired bootstrap replicates within rank/initial-banker cells.
+MC-only has the larger point estimate, but the direct contrast does not resolve
+the ordering. Hybrid changed 365/1,976 heuristic buries. Across the three
+contrasts, 4,380 overlapping same-bury pairs had zero transcript or outcome
+mismatches; these are not additional independent deals.
+
+**The kitty tradeoff is real, not a clean safety win.** Hybrid reduced total
+attacker points by 0.911 [0.268, 1.536] versus heuristic while increasing their
+kitty bonus by 1.012 [0.668, 1.417]. Kitty bonus is already included in total
+points. Nonzero bonuses were 78 hybrid / 26 heuristic / 109 MC; bonuses of at
+least 80 were 4 / 0 / 7; maxima were 200 / 60 / 120. These sparse tails do not
+bound worst-case risk. A stronger average result can still produce more painful
+lost kitties. Do not choose rank-specific rules from descriptive subgroup means.
+The inference assumes independent deals in the stated population; unrelated
+W32-versus-production window variation does not supply a universal SE floor.
+
+### Why retain baseline hybrid rather than scale it
+
+Recipe: structured pool capped at 32, model ranking on 32 shared sampled
+worlds, literal heuristic incumbent plus four alternatives, then 32 independent
+MC selection worlds and the unchanged incumbent margin. Model leaves follow
+one heuristic trick; full MC uses heuristic continuation. The model is not
+retrained, hidden true opponent hands are not inputs, and post-bury W32 play
+and its RNG remain unchanged.
+
+The completed exploratory six-arm fixed512 screen found no supported strength
+gain from cap64, MC128, or their combination. Cap64 increased mean actual pool
+only 26.36 to 26.65 and changed six buries at MC32. It did not produce 64
+distinct candidates. In the fresh all-rank run, mean pool was 24.28, max32.
+Hybrid mean bury wall was 208.8ms versus MC306.3ms, about 32% lower, on busy
+Mini with fixed arm ordering—not an isolated A/B. Hybrid used 316,160 full
+rollouts plus 1,535,520 model leaves versus MC's 1,535,520 full rollouts.
+Whole-round CPU was 15.18h hybrid versus 15.16h MC: do not advertise the
+bury-only saving as an end-to-end data-generation throughput gain.
+
+### Consumer readiness and rollout boundaries
+
+Source/consumer PASS at `146be958` and population-delta PASS at `746e31dc`
+cover the unchanged implementation. Existing witnesses cover hidden twins and
+poisoned opponent hands, independent play RNG, legal eight-card output,
+incumbent fallback, actual room commit/stale discard/logging, and recipe/model
+identity. The real trajectory writer exports MC-finalist means and counts;
+unsearched proposals are not fabricated training targets. Research failures
+remain fail-stop, separately identified from serving fallback.
+
+The bounded Linux actual-consumer test completed 11/11 requests on one CPU,
+512MiB, concurrency1, native engine and compact NumPy (Torch forbidden).
+Six serial requests took 367–508ms; a four-request burst finished at
+422/802/1,284/1,746ms, with 1,277ms maximum queue wait. Cgroup peak was
+104.9MiB, no OOM, and deliberate expiry committed a legal fallback. This is
+compatibility evidence, not production p99 or mixed play/bury contention.
+The tested 30-second cooperative budget was diagnostic, not a shipping SLA;
+queue wait, loading and in-flight primitives are outside that bound.
+
+- **Data generation: SHIP as opt-in**, with the exact fail-stop recipe and
+  provenance, preserving all usable outcomes, not just wins. Do not silently
+  change existing datasets or declare hybrid labels optimal. MC-only remains
+  a valid comparison; no strength-based reason to scale MC128 or cap64 now.
+- **Production: HOLD default change; canary recommended subject to approval.**
+  Before activation, Jerry must approve deployment and the disclosed kitty-risk
+  tradeoff; record a chosen queue/latency/fallback budget. Resolve the exact
+  registered serving name from the packaged model and that budget. A narrow
+  configuration/fallback smoke is appropriate if the budget changes; do not
+  repeat this strength screen. Monitor completion, expiry, error, stale-turn,
+  queue delay, latency, memory and user-visible kitty incidents. Roll back on
+  illegal commit, hidden-information/play-RNG violation, OOM/crash, or latency/
+  fallback rates exceeding the agreed budget. A tiny canary is not a second
+  strength trial and should not be tuned from its wins/losses.
+- **Bury-only rollback:** restore `SHENGJI_BOT` to
+  `mc-shortlist-fd6bb411-w32-r55d379a3` and remove bury registration/budget
+  overrides together. `SHENGJI_CWV_BURY_ARM=hybrid` registers a policy; it does
+  not select it. Merely removing registration while leaving the bury bot name
+  selected breaks resolution. Preserve W32/model/native settings and logs;
+  coordinate restarts with occupied rooms because existing bots do not change
+  when environment variables change.
+
+### Preserved evidence
+
+- Final confirmation: `/Users/jerryyu/shengji-archive/2026-09-09/bury-allrank.QOpPMY/`
+  (`summary.json`, `READOUT.md`, `descriptive-groups.json`, config, arms, clusters,
+  PLAN, logs, exit). Summary SHA256:
+  `e6b5fb48e1f73c7049ede104b2884f1106cf2a743f2e6b47bcb684f812b36fdf`.
+- Fixed512: `/Users/jerryyu/shengji-archive/2026-09-09/bury-scaling.6T8g9O/READOUT.md`;
+  summary SHA256 `e631357249a2fed4ea93b339910827a86165b989bcd6c9d58676394b31ff54e0`.
+- Linux: `/Users/jerryyu/shengji-archive/2026-09-09/bury-linux-serving.bD7dtk/READOUT.md`;
+  result SHA256 `bff8e1dbdf893b582fcbc3204cbafaaacdd20890d41864dc213d9f71a1a9b903`.
+  [Published consumer receipt](https://github.com/jerryyyu/shengji/pull/323#issuecomment-5606662594).
+- Compact model package SHA256:
+  `fd6bb4114eb1f2ff049a77989cbd99eb35b949eef944dd72de448ff25b4fabd9`.
+
+The final renderer read saved results only; it did not rerun gameplay, model
+scoring or bootstrap. Production remains unchanged.
 
 ## What we learned before gameplay
 

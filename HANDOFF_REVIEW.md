@@ -14284,3 +14284,45 @@ behaviour, which is the thing the experiment is about.
 composite-target explanation when the ten pairs did not support it.
 
 — Claude
+
+## 2026-09-09 09:30 ET — Claude — daily maintenance: HELD at step 3 (Codex-owned tree). Steps 1-2 done, step 0 done.
+
+**FIRST CHECK: `/Users/jerryyu/Projects/shengji` is on `codex/aug12-strength-status` with 17 dirty files.** Codex-owned. So steps **3 (doc sync), 4 (smoke + audit_sourcing) and 5 (deletion) are HELD** and only the read-only steps ran. No writes to that tree.
+
+### (1) Every shengji job, all hosts
+
+| host | job | state | CPU | disk |
+|---|---|---|---|---|
+| **cloud** | Run I (`traj-runI`) | **14,089/16,000 = 88.1%**, running | 16.12/16c | 32%, 396G free |
+| cloud | `runI-seal` | armed, waiting on the unit | — | — |
+| **perf** | Run J | **16,000/16,000 SEALED**, no live worker | 0.00/16c | 81%, 112G free |
+| **Mini** | **none** | — | 0.91/10c | — |
+| prod | `shengji` 48e7e35a9597e8 ewr v21 | started, 1/1 checks passing | — | — |
+
+**The Mini count is the finding.** `pgrep -f "[s]hengji"` returned **8**, and the true number of shengji compute jobs is **zero**. Printing `ps -o args=` per pid: two were *this very command's* own zsh wrappers, two agent-bus watchers, one claude daemon, one launchctl keep-alive shim, and pid 96175 — Jerry's dev server, which the routine says to leave alone. The routine warns that this exact count has been false before; bracketing the pattern prevents the literal self-match but **not** matching your own wrapper shell. The rule that works is: never report a count without printing the arguments.
+
+### (2) Fly logs, read-only
+
+Nothing but `/healthz` 200s at 30-second intervals for the whole tail. No errors, no real traffic — as expected for an app whose only client is its own health check.
+
+### (0) Prompt audit — the STATE block was 97 commits stale, and wrong on the two biggest facts
+
+Both crons recreated (hourly `80067502`, daily `3d18e966`; the 2026-09-15 expiry is reset to 2026-09-16). Corrections carried in:
+
+| the prompt said | reality |
+|---|---|
+| "Production MC-LCB remains the only deployed policy; **NOTHING promoted**" | **W32 has been the all-user production default since 16:00 ET 2026-09-08** on Jerry's explicit authorization |
+| "Shortlist teacher generation ... **NOT launched** — needs Jerry's explicit go" | **Run I launched 2026-09-08 and is 88% complete**; Run J, its matched control, is sealed |
+| "Runs G and H: keep; **G on perf**" | G finished long ago; perf now holds sealed Run J, which the prompt never mentions |
+| tip `7a20b146` | `558f309b`, **97 commits later** |
+| "image deployed 2026-08-23" | machine v21, last updated **2026-09-09T01:12Z** |
+| "Codex has read Goal achieved since ~04:00 ET 09-08" | they worked in bursts all night; idle now |
+| perf "78% disk, 128G free" / cloud "30%, 404G" | 81%/112G and 32%/396G |
+
+A prompt that tells the operator nothing is deployed, on a day when a policy *is* deployed to all users, is the failure mode worth fixing fastest — so that correction leads both new STATE blocks. Also added: the missing-checkpoint blocker, the torch-absence on perf, and the multiset/self-match lessons.
+
+### Held, and why
+
+Steps 3-5 all mutate or run suites inside the Codex-owned tree. Cloud additionally has a **live run**, which independently blocks step 5 deletion under the routine's own rule. Nothing was deleted, synced or smoke-tested. They resume on a day when the tree is on `main` and clean.
+
+— Claude

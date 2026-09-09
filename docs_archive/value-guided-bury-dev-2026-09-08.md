@@ -130,3 +130,32 @@ analysis. No engine/model replay was performed for closeout.
 - `closeout.json` SHA256: `be377adae6f8776db54f76c6c0ddb56c91d3751b4c821b045c2e632f18492c0d`
 - Run source: local `a98599ac309c71d73ed5a3a6baed75346ca7c0cb`, tree-identical
   to PR #323 source head `cf4de21820b33b43ff467eb42d109307ac208fe8`.
+
+## Fixed extension authorized by Jerry — 2026-09-09
+
+After seeing the first result, Jerry requested more samples with pooling and
+set a new goal: **768 fresh deals, 1,024 total**. This is a separate, fixed
+exploratory extension, not a continuation until significance. Keep all original
+evidence unchanged; do not reinterpret the original stopping decision.
+
+- Fresh range: the same natural rank-2 namespace, indices **320–1087**.
+  Original gameplay indices 64–319 and diagnostic indices 0–63 are excluded.
+- Exactly the same checkpoint, three bury recipes, W32 settings, RNG derivation,
+  utility and per-deal pairing. The only runner change parameterizes the starting
+  index and binds it in the existing configuration; default behavior remains 64.
+- Separate output root; successful per-arm artifacts survive interruption. Use
+  eight Mini workers if idle, single-threaded inference per worker. Initial
+  estimate 2–3 hours; monitor completion percentage, ETA and failures, not outcomes
+  to decide whether to continue.
+- Publish original, fresh-only and pooled estimates for all three contrasts.
+  Bootstrap complete paired deals, not worlds, candidates or three arms as
+  independent samples. Pool by deal count, keeping old and fresh identities.
+  Report nominal exploratory 95% intervals, no multiplicity-adjusted claim.
+- Preserve latency and work separately by batch (host contention may differ),
+  plus kitty bonuses and total outcomes; kitty bonus is already in final points.
+- Do not pool the 64-root heuristic-reference diagnostic with gameplay. No
+  recipe tuning, additional samples after this fixed endpoint, merge or deployment.
+
+Halving the initial uncertainty is an approximate precision target, not a
+guarantee of a positive finding or sufficient power for small effects. The
+pooled analysis is explicitly exploratory because the initial outcomes were seen.

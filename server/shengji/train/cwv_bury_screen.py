@@ -35,7 +35,7 @@ def banker_utility(points):
 
 def run_cluster(config, cluster):
     output = Path(config["output"])
-    state_index = START_INDEX + cluster
+    state_index = config.get("start_index", START_INDEX) + cluster
     row = capture_state(state_index)
     evaluator = shared_evaluator(config["checkpoint"], threads=1, max_batch=128, encoding="mlp-static")
     if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
@@ -107,16 +107,20 @@ def main(argv=None):
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--deals", type=int, default=256)
+    parser.add_argument("--start-index", type=int, default=START_INDEX,
+                        help="first natural deal index; use a fresh range for an extension")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--limit", type=int, help="timing slice only; same fixed population on resume")
     args = parser.parse_args(argv)
     if min(args.deals, args.workers) < 1 or (args.limit is not None and args.limit < 1):
         parser.error("positive deals/workers/limit required")
+    if args.start_index < START_INDEX:
+        parser.error("start-index must exclude diagnostic indices 0..63")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         parser.error("SHENGJI_REQUIRE_VOIDS=1 required")
     evaluator = shared_evaluator(args.checkpoint, threads=1, max_batch=128, encoding="mlp-static")
     config = {"schema": "cwv-bury-gameplay-config-v1", "deals": args.deals,
-              "output": str(args.out.resolve()), "start_index": START_INDEX,
+              "output": str(args.out.resolve()), "start_index": args.start_index,
               "checkpoint": str(Path(args.checkpoint).resolve()),
               "checkpoint_sha256": evaluator.checkpoint_sha256,
               "w32": {"worlds": 32, "selection_worlds": 30, "alternatives": 4,

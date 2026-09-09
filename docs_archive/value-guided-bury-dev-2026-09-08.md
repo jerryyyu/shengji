@@ -61,3 +61,72 @@ population. Then use eight safe Mini workers. Save each arm before the next,
 retain successful arms across failures, and aggregate once. No duplicate
 full reconstruction. Broader ranks, gameplay confirmation and deployment are
 outside this first screen.
+
+## Completed fixed gameplay screen
+
+All **256 deals / 768 full-round continuations** completed. The resumed
+six-worker Mini run took 3,304.2 seconds (55.1 minutes), in addition to the
+retained 49.5-second timing deal. Summed round CPU was 5.386 core-hours.
+No population extension, dropped arm, reported failure, short play search or
+void fallback occurred. All 492 arm pairs with the same literal bury also had
+identical subsequent attempted-play transcripts and attacker-point outcomes.
+
+| Paired comparison | Banker utility gain / round | 95% interval | Banker win-rate gain |
+|---|---:|---:|---:|
+| MC − heuristic | +0.0430 | −0.0469 to +0.1367 | +1.56 pp |
+| Hybrid − heuristic | +0.0469 | −0.0430 to +0.1367 | +1.95 pp |
+| Hybrid − MC | +0.0039 | −0.0859 to +0.0898 | +0.39 pp |
+
+All three strength comparisons are **inconclusive**, not equivalence findings.
+The win-rate intervals also cross zero. These are nominal, deal-clustered 95%
+intervals for exploratory comparisons, not a corrected confirmation gate.
+Banker win rates were 57.42% heuristic, 58.98% MC, and 59.38% hybrid. The hybrid
+changed 77 of 256 burials versus heuristic; MC changed 117. Hybrid and MC chose
+different burials on 82 deals.
+
+### Cost and kitty tradeoffs
+
+| Measure | Heuristic | MC | Hybrid |
+|---|---:|---:|---:|
+| Mean bury latency | 0.000060 s | 0.304 s | 0.200 s |
+| p95 bury latency | 0.000069 s | 0.385 s | 0.242 s |
+| Full bury rollouts, total | 0 | 216,288 | 40,960 |
+| Model leaf positions, total | 0 | 0 | 216,288 |
+| Mean kitty bonus conceded to attackers | 0.234 points | 2.188 points | 1.367 points |
+| Rounds with positive attacker kitty bonus | 4 | 18 | 13 |
+
+Model filtering saved **81.1% of bury rollouts**, while adding one-trick model
+evaluations, and its observed bury wall was **34.2% lower than MC-only**. Hybrid
+spent about 0.137 s on its model stage and 0.062 s on bury rollouts. These are
+shared-host measurements, with early overlap from Claude's low-priority
+determinism check—not an isolated performance benchmark. Subsequent play
+rollouts differed because burials changed trajectories; aggregate round costs
+must not be described as a decision-preserving speedup.
+
+Kitty leakage rose in both search arms. The final attacker-point differences
+(which already include kitty bonuses) were −1.78 for MC and −1.95 for hybrid
+versus heuristic, with intervals crossing zero. The increased kitty exposure
+is therefore a real tradeoff in these sampled games, not proof that either arm
+is worse overall or that adding an arbitrary kitty penalty would help.
+
+Coverage: all deals were rank 2; natural declarations produced C=57, D=57,
+H=77, S=50, NT=15. No claim about other ranks, multi-round matches, or humans.
+
+### Decision
+
+**Keep production heuristic bury. Stop this fixed experiment here.** The model
+has some useful ranking signal and reduced the MC shortlist's cost, but this
+screen does not establish a gameplay improvement or non-inferiority to MC.
+Preserve the implementation and data; any future confirmation or new recipe
+needs a separate decision, not an extension until the interval turns positive.
+
+Evidence root:
+`/Users/jerryyu/shengji-archive/2026-09-08/bury-w32-screen.FhhNJZ/`
+contains exact configuration, command/log, 256 three-arm shards, 768 per-arm
+records, `summary.json`, and the read-only `closeout.py`/`closeout.json` cost
+analysis. No engine/model replay was performed for closeout.
+
+- `summary.json` SHA256: `d4b58a980d4898a2330a7005a8f02523ea2a35ed023049845596bdc5d0be9018`
+- `closeout.json` SHA256: `be377adae6f8776db54f76c6c0ddb56c91d3751b4c821b045c2e632f18492c0d`
+- Run source: local `a98599ac309c71d73ed5a3a6baed75346ca7c0cb`, tree-identical
+  to PR #323 source head `cf4de21820b33b43ff467eb42d109307ac208fe8`.

@@ -1,4 +1,7 @@
-"""Consumer-level diagnostics, redaction and shared-worker admission witnesses."""
+"""CWV consumer diagnostics, redaction and shared-worker admission witnesses.
+
+The test_cwv prefix includes these in the real two-engine CI consumer suite.
+"""
 import asyncio
 import copy
 import json

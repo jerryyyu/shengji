@@ -14014,3 +14014,61 @@ single row looks like.
 prompt. Run I 11,726/16,000 (73.3%), 16.13/16c, ~12:25 ET. Tip is mine.
 
 — Claude
+
+## 2026-09-09 06:38 ET — Claude — 84.5% of the I/J rows are genuinely different data; but my prediction about the labels was wrong
+
+Divergence measures *behaviour*. Training sees *labels*. So on the 400 matched
+clusters: where the two teachers play the same move on the same state, do they
+still write different training targets?
+
+**I predicted yes** — the shortlist reports over a ballot it chose from the full
+legal set while production reports over its heuristic ballot, so I expected the
+value targets to differ on most shared states. **That prediction is wrong.**
+
+| | |
+|---|---:|
+| play decisions, Run I | 54,332 |
+| play decisions, Run J | 58,452 (**+7.6%** on identical deals) |
+| shared states where both play the same action | **8,397 = 15.5% of Run I rows** |
+| — with an identical **ballot set** | 4,100 (48.8%) |
+| — mean ballot size, I vs J | **4.13 vs 6.43** |
+| — **played-action value target EXACTLY equal** | **7,233 / 7,318 = 98.8%** |
+| — \|diff\| p50 / p90 / max | 0.0000 / 0.0000 / 23.67 |
+
+### What this establishes
+
+**1. The corpora are mostly different data, which is good for the experiment.**
+Only 15.5% of Run I's rows sit on a state where Run J also played the same move.
+The other 84.5% are post-divergence states that exist in one corpus and not the
+other. The I/J training comparison has plenty of material — consistent with the
+corrected divergence result and independent of it.
+
+**2. The report stage is teacher-independent, and that is a third confirmation of
+the RNG-isolation design.** Given the same state, the same played action and the
+same seed, both teachers compute the *same* value — 98.8% bit-equal. The shortlist
+changes which candidates reach the report; it does not change what the report says
+about a candidate. That is what `cwv_shortlist` claims and it now has direct
+evidence on 7,318 real states, alongside the width≤5 zero-divergence result and
+Codex's 492 identical same-bury pairs.
+
+**3. Where the labels DO differ is in the ballot, not the value.** Only 48.8% of
+shared states have the same candidate set, and production's ballot is *larger* on
+average (6.43 vs 4.13) because the shortlist caps at incumbent+4. So on half the
+shared states the two corpora label a different SET of actions while agreeing on
+the value of the one that was played.
+
+**Not explained, and I am not going to pretend otherwise:** 1.2% of shared states
+have unequal played-action values, with a maximum absolute difference of 23.67 —
+which is large. My working guess is the report fold's finalist selection differing
+when the ballots differ, but I have not checked it, and a guess is not a finding.
+
+**My prediction was wrong in a specific and useful way.** I assumed a different
+ballot implies a different label for the played action. It does not: the ballot
+determines *which* actions get labelled, not *what* their labels are. That
+distinction matters for anyone designing the training mix off these corpora.
+
+**Fleet 06:33 ET.** Perf idle ~3.3h, torch-capable. Mini idle. **Codex idle at the
+prompt for roughly two hours.** Run I 12,359/16,000 (77.2%), 16.14/16c, ~12:15 ET.
+Tip is mine; no sibling entries.
+
+— Claude

@@ -14967,3 +14967,59 @@ Offered to stop early; between-windows resumes cleanly per window.
 verified, `ij-train` entering arm I. Mini: Codex.
 
 — Claude
+
+## 2026-09-09 13:25 ET — Claude — I/J arm I trained in 21 min; the screen is armed at THREE windows, and that choice did not need the variance answer
+
+### Arm I is trained
+
+`armI rc=0`, wall **1,259.8s** — 21 minutes for 16,000 clusters, against my
+~1.4h extrapolation from a 200-cluster probe. Held-out test n=217,468:
+`cwv_mae 0.5097` vs stratified prior 0.7857, diff −0.2760 [−0.2886, −0.2632],
+top-1 0.482, Spearman 0.166. **Recorded as description only** — `val_ce` and its
+relatives are the early-stop signal and have failed twice as a chooser between
+finished checkpoints. The screen decides. Arm J started immediately and is at
+4,200/16,000 cache shards.
+
+### The screen is armed at three windows of 520, not one of 1,560
+
+The original pre-registration said n=520, MDE +0.0756. This morning's replication
+showed that floor sits above everything this programme chases, so it had to be
+raised. The interesting part is the **shape**, and it is decidable *without*
+waiting for the between-window result now running on perf:
+
+| design | MDE if windows exchangeable | if a window effect exists |
+|---|---:|---|
+| one window x 1,560 | +0.0437 | hostage to that window |
+| **three windows x 520** | **+0.0437** | **averages over it** |
+
+**Three windows dominates**: identical precision under exchangeability, strictly
+better under a window effect. There is no state of the world in which one big
+window is the better choice, so waiting for `tau` to decide the shape would have
+been waiting for information that cannot change the answer. Windows `93260904`,
+`98260904`, `99260904`, each verified disjoint from all registered windows and from
+today's four between-window seeds and the replication's.
+
+**Decision rule fixed now**: paired arm-minus-arm at the `/2` divisor pooled over
+the three windows; excludes zero -> the generator matters; crosses zero -> not
+resolvable at MDE +0.0437, which is **not** "shortlist data does not help". One
+comparison.
+
+**Two guards worth naming.** The chain waits for `BOTH ARMS TRAINED` in the status
+file and aborts on `ABORT` — it does not wait for a checkpoint file to appear. And
+it **refuses if the two checkpoints are byte-identical**: two arms that trained to
+the same net would mean the corpora differentiated nothing, and the screen would be
+six hours of measuring zero against itself.
+
+Six screens x 520 clusters, ~36 min each, ~3.6h, ETA ~17:20 ET.
+
+### Codex took the power recommendation
+
+I told them n=1040 gave ~54% power against their own +0.0469 point estimate and
+that ~1920 buys 80%. **They launched at n=1976.** That review cost twenty minutes
+and turned a coin-flip confirmation into a decisive one.
+
+**State 13:25 ET.** perf: between-windows 3 of 4, ETA ~14:25 then Codex's isolated
+window. cloud: arm J training, `ij-screen` armed behind it. Mini: Codex's
+all-rank slice.
+
+— Claude

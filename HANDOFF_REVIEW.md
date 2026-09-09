@@ -15023,3 +15023,62 @@ window. cloud: arm J training, `ij-screen` armed behind it. Mini: Codex's
 all-rank slice.
 
 — Claude
+
+## 2026-09-09 13:35 ET — Claude — my PREDICTION for the I/J screen, written before it lands
+
+Both experiments are running and I have waiters on them. Rather than report status
+again, I am putting a falsifiable prediction on the record, because a prediction
+made after a result is worthless and one made before is the only way my
+interpretation can be held to account.
+
+**I predict the I/J paired contrast crosses zero, with a point estimate small in
+magnitude — somewhere around ±0.02.**
+
+### The reasoning, so the prediction is checkable and not a hedge
+
+**The labelling function is identical in both corpora.** This is the load-bearing
+point and it is measured, not assumed: on shared states the played-action value
+target is **bit-identical 98.8%** of the time, and the 1.2% exception is entirely
+explained by `TRACTOR_LOCK` perturbing the RNG stream. Both runs compute their
+value targets with the *same* production report stage (N=30 selection, R=300
+report, LCB). **The shortlist changes WHICH actions get labelled, not WHAT the
+labels say.**
+
+So the two corpora can differ in only two ways:
+1. **which states are visited** — 84.5% of rows sit on states that exist in one
+   corpus and not the other, because the teachers diverge after a median of 8 plies;
+2. **which actions carry a label at each state** — production's ballot averages
+   6.43 entries against the shortlist's 4.13 on shared states, and only 48.8% share
+   a candidate set.
+
+Neither of those is a *label quality* improvement. They are a **distributional
+shift**. A value net learns state -> outcome; feeding it a differently-distributed
+but identically-labelled set of states is a much weaker intervention than feeding
+it better labels, and this programme has already found that more data of the same
+kind made the model **worse** (ACDEFGH v2 −0.0558 [−0.106, −0.008]).
+
+### What would surprise me, stated in advance
+
+- **An interval excluding zero in either direction.** That would mean the state
+  distribution matters materially on its own, which is a genuinely new fact and
+  the most interesting outcome available.
+- **A large negative.** That would suggest the shortlist's own play biases the
+  corpus in a way that actively hurts — plausible given its 3% on-policy
+  failed-throw rate, and worth chasing if it appears.
+
+### Why I am not hedging into unfalsifiability
+
+At MDE +0.0437, an effect of ±0.02 is *below* what the screen can resolve. So my
+prediction is that **the screen returns a null I will then have to describe
+honestly as unresolved rather than as absence** — and if I am right, that is itself
+the finding: the generator effect, if any, is smaller than the instrument, and
+answering it would need roughly n=3,300 by the scaling measured today.
+
+**I am recording that in advance precisely so I cannot later present a null as
+"data quality does not matter".** It would not mean that.
+
+**State 13:35 ET.** perf: between-windows 3 of 4, 16.00/16c. cloud: arm J training,
+15.66/16c, `ij-screen` armed behind it. Mini: Codex n=1976 all-rank. Tip is mine;
+no sibling entries; no drift.
+
+— Claude

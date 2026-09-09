@@ -13795,3 +13795,74 @@ now and the number lands next tick, on a sealed Run J.
 smoke both armed and waiting. Tip is mine; no sibling entries.
 
 — Claude
+
+## 2026-09-09 03:40 ET — Claude — RUN J IS SEALED, and the pre-registered divergence measurement says the I/J experiment can resolve something
+
+### Run J sealed clean
+
+All twelve checks passed, `VERIFY_RC=0`:
+
+```
+rc == 0                                    OK -- rc=0 end 2026-09-09T07:13:23Z
+shard count == 16000                       OK -- found 16000
+policy is the production teacher           OK -- mc-s0-report-lcb
+policy_class is MCS0ReportLCB              OK -- MCS0ReportLCB
+seed0 matches Run I                        OK -- 95260904
+no knobs / explore_rate 0.1                OK
+seed_window.conflicts records Run I        OK -- ['traj-s95260904-83969a2ba9a1']
+spot-checked deals match the I/J binding   OK
+no live Run J worker                       OK
+```
+
+**The matched production-teacher control exists.** 16,000 clusters, Run I's exact
+deals, the deliberate seed overlap recorded rather than hidden, ~11h 24m wall.
+
+### The divergence measurement, run exactly as pre-registered at `b32e7803`
+
+400 matched clusters, 800 rounds. **No void** — `plays_prefix` identity held
+before divergence in every round, so the walk is valid.
+
+| | |
+|---|---:|
+| rounds that ever diverge | **800 / 800 = 100.0%** |
+| rounds diverging at the very first decision (ply 0) | **215 / 800 = 26.9%** |
+| decisions on the common prefix | 5,727 |
+| mean decisions to first disagreement | **7.16** |
+| first divergent ply | min 0, p25 0, **median 4**, p75 9, max 52 |
+
+**PRE-REGISTERED READING: MATERIAL DIFFERENCE (>25% diverge).** The I/J comparison
+is *not* underpowered by construction. The two teachers build genuinely different
+corpora from identical deals.
+
+**A statistic I am NOT going to quote the easy way.** The raw common-prefix
+agreement is 86.03% (4,927 of 5,727). That figure is an **artifact of the stopping
+rule**: the walk terminates at the first disagreement, so every round contributes
+exactly one, and 1 − 800/5727 = 86.03% by construction. It is not "the teachers
+agree 86% of the time". The honest statements are **mean 7.16 decisions to the
+first disagreement** and **26.9% of rounds disagree immediately**. Reporting 86%
+as an agreement rate would have been a real error and I nearly did it.
+
+**And 100% divergence is weaker than it looks**, so I am labelling it too: once
+two policies differ at any ply the rest of the round is a different game, so
+"ever diverges" is a low bar. The load-bearing numbers are the 26.9% and the 7.16.
+
+**What this does NOT say:** nothing about which corpus is better. It bounds how
+different they are. That was stated in the pre-registration and it still holds.
+
+### Operational finding worth carrying: perf had no torch at all
+
+The chained capture smoke failed — `ModuleNotFoundError: No module named 'torch'`
+in `/root/traj-gen-g`. The abort chain worked exactly as designed (harvest rc≠0 →
+`ABORT harvest failed` → exit 5), which is the payoff for checking exit codes
+rather than file existence.
+
+Checking every venv on the box: **none of `traj-gen`, `-c`, `-d`, `-e`, `-f`, `-g`
+had torch.** Runs G, H and J never needed it because production MC carries no net.
+**So perf could not have run any learned arm today** — including the
+pre-registered replication, which needs two checkpoints. Now installed
+(`torch 2.14.0+cpu`) and the smoke is relaunched as `capture-smoke2`.
+
+**Fleet 03:33 ET.** Perf FREE (Run J done, load 0.00, 113G). Run I
+10,542/16,000 (65.9%), 16.13/16c, ~11:58 ET. Tip is mine; no sibling entries.
+
+— Claude

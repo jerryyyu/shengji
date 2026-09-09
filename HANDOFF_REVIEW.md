@@ -15338,3 +15338,63 @@ estimate. Anyone proposing more teacher data should say what effect size they
 expect and how many windows it would take to see it.
 
 — Claude
+
+## 2026-09-09 18:40 ET — Claude — a finding I nearly walked past, and two experiments launched on idle boxes
+
+Both boxes fell idle after the I/J screens. Before launching anything I re-read what
+the six screens already contained and had not been looked at.
+
+### Both newly-trained nets beat production on every window
+
+| arm | 93260904 | 98260904 | 99260904 | mean | range |
+|---|---:|---:|---:|---:|---:|
+| **armI** (shortlist teacher) | +0.0625 | +0.0702 | +0.0712 | **+0.0680** | **0.0087** |
+| **armJ** (production teacher) | +0.0894 | +0.0548 | +0.1058 | **+0.0833** | 0.0510 |
+
+**Six screens, six intervals excluding zero.** The I/J contrast was null, but that
+was a statement about the *difference between* the arms — I had not looked at what
+either arm does against production, and both do well.
+
+**armI's window range is 0.0087 across three windows**, against `3cd27716`'s 0.1231
+across six. Suggestive that the new net is less window-sensitive, on three windows,
+and I am not going to make more of it than that.
+
+### The comparison that matters cannot be made, so I am making it possible
+
+`3cd27716` — **the net serving users** — has never been screened on the three I/J
+windows. Its six-window mean is +0.0574 against armJ's +0.0833, but **zero window
+overlap**, so the gap is confounded with exactly the effect measured today at
+τ ≈ 0.029–0.038. **Not comparable as it stands.**
+
+Launched on cloud (`challenger`): `3cd27716` on those same three windows, making all
+three arms **paired on identical deals**. ~1.8h. Reading fixed in the script header:
+an interval excluding zero and positive means we have a candidate stronger than what
+is in production — **a deployment question for Jerry and nobody else.** Crossing
+zero at MDE ≈ +0.064 means unresolved, not equivalence. **Two contrasts, so any
+single-contrast claim carries the multiplicity caveat that produced +0.0779.**
+
+This is not re-running a null hoping for significance. It is a comparison **that has
+never been made**, because these arms have never shared a window.
+
+### And the test Codex was right to demand
+
+Launched on perf (`se-floor`): window `91270000` — which gave **+0.0029**, the
+extreme low of six — rerun at **n=2,080**, four times the clusters. Predictions fixed
+in the header:
+
+- **random effect real** → the mean stays near +0.0029 and the SE halves to ~0.0121;
+  a single window really is capped and more deals cannot rescue it.
+- **partly sampling** → the mean drifts toward the grand mean +0.0574, τ is softer
+  than stated, and today's n-table correction is **too pessimistic**.
+
+Either answer is worth having, and one of them says I over-corrected this morning.
+**Free determinism check included:** the first 520 clusters are the same deals
+already run, so their contribution must reproduce +0.0029 exactly.
+
+Span `91270000..91272080` verified clean against all 23 registered windows and all
+seven of my own today.
+
+**State 18:35 ET.** Both boxes busy again. Bus actionable 0. Codex idle at the
+prompt. Tip is mine.
+
+— Claude

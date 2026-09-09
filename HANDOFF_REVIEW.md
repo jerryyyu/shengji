@@ -14781,3 +14781,59 @@ armed, ~12:32 ET. Mini load 9.68, Codex. Tip is mine; no sibling entries.
 10:45 ET and did not replicate (`ebce1781`).
 
 — Claude
+
+## 2026-09-09 11:45 ET — Claude — Jerry: decide and execute rather than idle. Both authorized experiments launched; two chain-breakers caught in the pre-flight.
+
+Jerry authorized all three items and then set a standing expectation: *"I rather
+you make decisions and execute rather than machines stay idle — come back to me
+with proven learnings."* Taken as a change in how I operate: fewer proposals, more
+launches inside my standing authority, and report results rather than designs.
+
+### Launched 1 — between-window variance (perf, `between-windows`)
+
+Same arm ACDEF v2 `3cd27716`, same opponent, same recipe as the two windows we
+already have, **four fresh windows** at n=520: `91270000`, `94260904`, `96260904`,
+`97260904` — each verified disjoint, and `93260904` deliberately left untouched
+because it is reserved for the I/J screen. Checkpoint SHA verified before the first
+deal. ~36 min per window, ~2.4h, ETA ~14:05 ET.
+
+**The estimand and the reading are fixed in the script header, before any number:**
+`tau^2 = Var(theta_i) - mean(SE_i^2)`, floored at zero. `tau ~ 0` means windows are
+exchangeable, the n-table stands, buy more DEALS. `tau >> 0` means a single-window
+screen has a precision ceiling of `sqrt(tau^2)` **no matter how many clusters**, and
+the answer is more WINDOWS. Six estimates total is a crude variance estimate and I
+will say so when I report it.
+
+### Launched 2 — I/J training (cloud, `ij-train`), gated and chained
+
+Waits for `runI-seal` and **requires `VERIFY_RC=0`** — not "the file exists" —
+then rsyncs Run J from perf, re-verifies 16,000 shards and a manifest on *both*
+corpora, then trains both arms. Every step checks its exit code.
+
+**Both arms on the same device (cloud CPU), and that is a deliberate trade.** Mini's
+MPS is ~3x faster but Codex holds it (six workers at ~100%, load 9.91). More
+importantly, splitting the arms across devices would put a device difference inside
+the single comparison the experiment exists to make. Identical treatment beats speed
+here.
+
+### Two chain-breakers the pre-flight caught
+
+**(a) The cloud trainer was too old.** `/root/cwv-dev` sits at `ead2007d` and has
+**neither `--encoder-version` nor `--select-metric`** — both required by the
+approved recipe. The chain would have died on a usage error *at the moment Run I
+sealed*, wasting the window and looking like a data problem. Built `/root/ij-tree`
+at `origin/main`, rebuilt the fast extension, and confirmed all four flags parse
+before re-arming. This is the standing lesson from the Run D rsync failure applied
+successfully for once: **a pre-flight must exercise every step that has never run
+on this host**, and "the script is written" is not evidence any line in it works.
+
+**(b) My own seed-window bookkeeping.** `92260904` is consumed by the replication
+and `93260904` is reserved for the I/J screen; both were excluded from the
+between-window seed list by explicit check rather than memory.
+
+### State
+
+perf: between-windows running, 16/16c. cloud: Run I 15,509/16,000 (96.9%), seal
+armed, ij-train armed behind it. Mini: Codex. Nothing idle.
+
+— Claude

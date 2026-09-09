@@ -880,9 +880,9 @@ def _register_cwv_bury_from_env() -> None:
     if module is not None and not hasattr(module, "bury_env_recipe"):
         return
     from ..train.cwv_bury_policy import bury_env_recipe
-    checkpoint, worlds, recipe, arm, config = bury_env_recipe()
+    checkpoint, worlds, recipe, arm, config, budget = bury_env_recipe()
     register_cwv_bury_policies(checkpoint, worlds, arm=arm,
-                              bury_config=config, **recipe)
+                              bury_config=config, serving_budget_seconds=budget, **recipe)
 
 
 def _register_netroll_from_env() -> None:

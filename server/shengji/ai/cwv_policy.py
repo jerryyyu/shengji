@@ -785,7 +785,7 @@ def prior_evaluator_for(checkpoint: str | os.PathLike[str] | None, *,
 
 # ------------------------------------------------- worlds and afterstates
 
-def sample_worlds(bot: MCBot, rnd: Round, seat: int, n: int, *, mem=None
+def sample_worlds(bot: MCBot, rnd: Round, seat: int, n: int, *, mem=None, check_budget=None
                   ) -> tuple[list[tuple[list[list[str]], list[str]]], int]:
     """``n`` canonicalised complete worlds through production's sampler.
 
@@ -795,6 +795,8 @@ def sample_worlds(bot: MCBot, rnd: Round, seat: int, n: int, *, mem=None
     rollout would have received.  Returns ``(worlds, attempts)``; each world
     is ``(hands, buried)``.  A failed draw is skipped, never fabricated, and
     the attempt cap is production's ``SAMPLE_ATTEMPT_FACTOR``.
+    An optional ``check_budget`` callback can stop between attempts; it never
+    changes the default sampling stream or abandons an in-flight sampler call.
     """
     if mem is None:
         mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
@@ -802,6 +804,8 @@ def sample_worlds(bot: MCBot, rnd: Round, seat: int, n: int, *, mem=None
     attempts = 0
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR
     while len(worlds) < n and attempts < cap:
+        if check_budget is not None:
+            check_budget()
         attempts += 1
         sampled = bot._sample_hands(rnd, seat, mem)
         if sampled is None:
@@ -810,6 +814,8 @@ def sample_worlds(bot: MCBot, rnd: Round, seat: int, n: int, *, mem=None
         worlds.append((
             bot._complete_determinized_hands(rnd, seat, hands, buried=buried),
             sorted(buried)))
+    if check_budget is not None:
+        check_budget()
     return worlds, attempts
 
 

@@ -136,7 +136,7 @@ def _checked_batch_size(evaluator: Any) -> int:
 
 def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
                           worlds: Sequence[Any], evaluator: Any, *,
-                          first_trick_policy=None) -> np.ndarray:
+                          first_trick_policy=None, check_budget=None) -> np.ndarray:
     """Score every world/candidate post-bury position in bounded chunks.
 
     Rows are WORLD-MAJOR: ``values[w, c]`` is world ``w`` with candidate
@@ -156,9 +156,13 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
     def flush() -> None:
         if not positions:
             return
+        if check_budget is not None:
+            check_budget()
         # Pass a stable batch object: clearing our work buffer after the call
         # must not retroactively empty a recorder's reference to the batch.
         scored = np.asarray(evaluator.score(list(positions), banker), dtype=np.float64)
+        if check_budget is not None:
+            check_budget()
         if scored.shape != (len(positions),):
             raise BuryValueError(
                 f"evaluator returned {scored.shape}, expected ({len(positions)},)")
@@ -170,6 +174,8 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
     for world_index, world in enumerate(worlds):
         hands, _buried = world
         for candidate_index, candidate in enumerate(candidates):
+            if check_budget is not None:
+                check_budget()
             position = post_bury_world(rnd, hands, candidate)
             if first_trick_policy is not None:
                 # The frozen afterstate encoder requires at least one play.
@@ -187,7 +193,7 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
 
 
 def rollout_bury_values(rnd: Round, candidates: Sequence[Sequence[str]],
-                        worlds: Sequence[Any], bot: Any
+                        worlds: Sequence[Any], bot: Any, *, check_budget=None
                         ) -> tuple[np.ndarray, np.ndarray]:
     """Roll every world/candidate pair and return model units plus raw points.
 
@@ -209,7 +215,11 @@ def rollout_bury_values(rnd: Round, candidates: Sequence[Sequence[str]],
         _validated_world_hands(rnd, hands, banker)
         sampled = {seat: list(hands[seat]) for seat in range(4) if seat != banker}
         for candidate_index, candidate in enumerate(candidates):
+            if check_budget is not None:
+                check_budget()
             raw = float(bot._rollout_from_bury(rnd, banker, sampled, list(candidate)))
+            if check_budget is not None:
+                check_budget()
             if not np.isfinite(raw) or not raw.is_integer():
                 raise BuryValueError("bury rollout must return integral attacker points")
             attacker_points = int(raw)

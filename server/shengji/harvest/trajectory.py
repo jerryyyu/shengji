@@ -889,6 +889,8 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
                               + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
+    if getattr(probe, "serving_budget_seconds", None) is not None:
+        raise TrajectoryError("serving-fallback bury policies are not scientific data teachers")
     if type(capture_full_legal_scores) is not bool:
         raise TrajectoryError("capture_full_legal_scores must be boolean")
     if capture_full_legal_scores:
@@ -1265,6 +1267,8 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
                  banker: int, hand_before: list[str], bury_cards: list[str],
                  raw: dict) -> dict:
+    if raw.get("schema") == "cwv-bury-fallback-v1":
+        raise TrajectoryError("partial bury fallback is not MC training evidence")
     if raw.get("schema") == "cwv-bury-policy-v1":
         from ..train.cwv_bury_policy import trajectory_bury_record
         raw = trajectory_bury_record(raw)

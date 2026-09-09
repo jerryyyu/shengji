@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -53,14 +55,27 @@ class BuryPolicyError(BuryValueError):
     """The bounded DEV bury policy cannot produce a complete decision."""
 
 
+class BuryBudgetExceeded(BuryPolicyError):
+    """A cooperative serving budget expired at a bounded operation boundary."""
+
+
+def _serving_budget(value):
+    if value is None:
+        return None
+    if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+        raise ValueError("serving_budget_seconds must be finite and positive")
+    return float(value)
+
+
 def _seed(label: str, root_seed: int | None) -> int:
     """Derive a bury-only stream without touching the play bot's RNG."""
     root = 0 if root_seed is None else int(root_seed)
     return derived_seed(f"{_SEED_NAMESPACE}:{label}:{root}", 0)
 
 
-def _worlds(bot: Any, rnd: Any, seat: int, count: int, label: str):
-    worlds, attempts = sample_worlds(bot, rnd, seat, count)
+def _worlds(bot: Any, rnd: Any, seat: int, count: int, label: str, check_budget=None):
+    options = {} if check_budget is None else {"check_budget": check_budget}
+    worlds, attempts = sample_worlds(bot, rnd, seat, count, **options)
     if len(worlds) != count:
         raise BuryPolicyError(
             f"{label} world sample underfilled: {len(worlds)} of {count}")
@@ -76,7 +91,7 @@ class CWVBuryBot(CWVShortlistBot):
     """
 
     def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
-                 reuse_successors=True, bury_config=None):
+                 reuse_successors=True, bury_config=None, serving_budget_seconds=None):
         if arm not in _ARMS:
             raise BuryPolicyError(f"unknown bury arm {arm!r}")
         if config is None:
@@ -86,6 +101,7 @@ class CWVBuryBot(CWVShortlistBot):
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors)
         self.bury_arm = arm
+        self.serving_budget_seconds = _serving_budget(serving_budget_seconds)
         self.bury_config = (CWVBuryConfig() if bury_config is None
                             else bury_config)
         if not isinstance(self.bury_config, CWVBuryConfig):
@@ -122,10 +138,50 @@ class CWVBuryBot(CWVShortlistBot):
         return None if snapshot is None else dict(snapshot())
 
     def decide_bury(self, rnd, seat):
+        if self.serving_budget_seconds is None:
+            return self._decide_bury(rnd, seat)
+        # Only valid banker decisions can fall back. Never hide a bad caller
+        # or return an unchecked action to the engine.
+        if (getattr(rnd, "phase", None) != "bury"
+                or getattr(rnd, "banker", None) != seat or rnd.turn != seat):
+            raise BuryPolicyError("bury policy requires the banker in bury phase")
         started = time.perf_counter()
+        incumbent = list(super().decide_bury(rnd, seat))
+        if len(incumbent) != 8 or Counter(incumbent) - Counter(rnd.hands[seat]):
+            raise BuryPolicyError("heuristic fallback is not a legal eight-card bury")
+        before = self.rng.getstate()
+
+        def check_budget():
+            if time.perf_counter() - started >= self.serving_budget_seconds:
+                raise BuryBudgetExceeded("bury serving budget expired")
+
+        try:
+            return self._decide_bury(rnd, seat, started=started,
+                                     incumbent=incumbent, check_budget=check_budget)
+        except Exception as exc:
+            # Synchronous unwind: no abandoned worker/thread, no partially
+            # scored choice, and no partial evidence mislabeled as MC targets.
+            # BaseException (cancellation/interrupt) is deliberately not caught.
+            self.rng.setstate(before)
+            self.last_bury_record = {
+                "schema": "cwv-bury-fallback-v1", "arm": self.bury_arm,
+                "action": list(incumbent),
+                "reason": "budget" if isinstance(exc, BuryBudgetExceeded) else "search-error",
+                "error_class": type(exc).__name__,
+                "budget_seconds": self.serving_budget_seconds,
+                "elapsed_seconds": time.perf_counter() - started,
+                "work_complete": False,
+            }
+            return incumbent
+
+    def _decide_bury(self, rnd, seat, *, started=None, incumbent=None, check_budget=None):
+        started = time.perf_counter() if started is None else started
         if getattr(rnd, "phase", None) != "bury" or getattr(rnd, "banker", None) != seat:
             raise BuryPolicyError("bury policy requires the banker in bury phase")
-        incumbent = list(super().decide_bury(rnd, seat))
+        incumbent = list(super().decide_bury(rnd, seat)) if incumbent is None else incumbent
+        options = {} if check_budget is None else {"check_budget": check_budget}
+        if check_budget is not None:
+            check_budget()
         # The control arm is exactly the inherited heuristic action.  Do not
         # even construct a ballot for it: the baseline must carry no bury-arm
         # candidate/sampling cost.
@@ -155,10 +211,10 @@ class CWVBuryBot(CWVShortlistBot):
                 model_started = time.perf_counter()
                 model_counter_before = self._counter(model_bot)
                 model_worlds, model_attempts = _worlds(
-                    model_bot, rnd, seat, self.bury_config.model_worlds, "model")
+                    model_bot, rnd, seat, self.bury_config.model_worlds, "model", **options)
                 model_values = score_bury_candidates(
                     rnd, candidates, model_worlds, self.evaluator,
-                    first_trick_policy=model_bot.rollout_policy)
+                    first_trick_policy=model_bot.rollout_policy, **options)
                 if not np.isfinite(model_values).all():
                     raise BuryPolicyError("model bury values must be finite")
                 means = np.mean(model_values, axis=0)
@@ -178,11 +234,11 @@ class CWVBuryBot(CWVShortlistBot):
             rollout_started = time.perf_counter()
             mc_counter_before = self._counter(mc_bot)
             shared_worlds, mc_attempts = _worlds(
-                mc_bot, rnd, seat, self.bury_config.selection_worlds, "MC")
+                mc_bot, rnd, seat, self.bury_config.selection_worlds, "MC", **options)
             local_candidates = (candidates if self.bury_arm == "mc"
                                 else [candidates[i] for i in shortlist])
             _utility, points = rollout_bury_values(
-                rnd, local_candidates, shared_worlds, mc_bot)
+                rnd, local_candidates, shared_worlds, mc_bot, **options)
             mc_rollouts = len(local_candidates) * len(shared_worlds)
             local_pick = pick_mc(points, mc_bot, range(len(local_candidates)))
             picked = local_pick if self.bury_arm == "mc" else shortlist[local_pick]
@@ -203,6 +259,8 @@ class CWVBuryBot(CWVShortlistBot):
             rollout_seconds = time.perf_counter() - rollout_started
             mc_counter_after = self._counter(mc_bot)
 
+        if check_budget is not None:
+            check_budget()
         elapsed = time.perf_counter() - started
         self.last_bury_record = {
             "schema": "cwv-bury-policy-v1",
@@ -277,7 +335,7 @@ def trajectory_bury_record(raw: dict) -> dict:
             raise BuryPolicyError("bury MC evidence is not aligned with its scored candidates")
         winner = max(range(len(means)), key=lambda i: (means[i], -indices[i]))
     return {
-        "candidates": [{"cards": list(pool[i]), "mean_banker_value": mean}
+        "candidates": [{"cards": list(pool[i]), "mean_banker_value": mean, "worlds": n}
                        for i, mean in zip(indices, means)],
         "n_by_candidate": [n] * len(indices),
         "played_index": indices.index(picked),
@@ -306,7 +364,7 @@ def make_cwv_bury_bot(evaluator, W32config: CWVShortlistConfig | None = None,
 
 
 def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
-                          bury_config=None, **play_recipe) -> dict:
+                          bury_config=None, serving_budget_seconds=None, **play_recipe) -> dict:
     """Explicit opt-in factories; no production default or policy is replaced.
 
     Reuse the existing shortlist factory's lazy checkpoint loading/full-SHA
@@ -318,6 +376,7 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
 
     if arm not in _ARMS:
         raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    budget = _serving_budget(serving_budget_seconds)
     config = CWVBuryConfig() if bury_config is None else bury_config
     if type(config) is not CWVBuryConfig:
         raise TypeError("bury_config must be a CWVBuryConfig")
@@ -332,7 +391,8 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
                 raise BuryPolicyError("bury checkpoint changed after registration")
             bot = CWVBuryBot(base.evaluator, seed=base.seed,
                              config=base.shortlist_config, arm=arm,
-                             reuse_successors=base.reuse_successors, bury_config=config)
+                             reuse_successors=base.reuse_successors, bury_config=config,
+                             serving_budget_seconds=budget)
             bot.REPORT_FOLD_WORLDS = base.REPORT_FOLD_WORLDS
             for key in ("cwv_checkpoint_sha256", "cwv_ckpt8", "cwv_enc_version", "cwv_encoding"):
                 setattr(bot, key, getattr(base, key))
@@ -345,6 +405,8 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
         identity = {"schema": "cwv-bury-recipe-v1", "play_policy": play_name,
                     "checkpoint_sha256": checkpoint_sha, "arm": arm,
                     "config": asdict(config), "fallback": "raise"}
+        if budget is not None:
+            identity.update(fallback="heuristic-on-error-or-budget", serving_budget_seconds=budget)
         encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
         name = f"{play_name}-bury-{arm}-{hashlib.sha256(encoded).hexdigest()[:12]}"
         entries[name] = wrap(base_factory, identity, name)
@@ -357,6 +419,8 @@ def bury_env_recipe(environ=None):
     SHENGJI_CWV_BURY_ARM: heuristic/mc/hybrid. When absent nothing is added.
     Optional MAX_CANDIDATES/MODEL_WORLDS/SELECTION_WORLDS/ALTERNATIVES use the
     same SHENGJI_CWV_BURY_ prefix. SHORTLIST_* settings still govern only play.
+    SERVING_BUDGET_SECONDS opts into cooperative expiry + heuristic fallback.
+    This changes the named recipe and is refused by scientific data generation.
     """
     import os
     from .cwv_shortlist import shortlist_env_recipe
@@ -373,7 +437,9 @@ def bury_env_recipe(environ=None):
     values = asdict(CWVBuryConfig())
     for key in values:
         values[key] = int(env.get("SHENGJI_CWV_BURY_" + key.upper(), values[key]))
-    return (*play, arm, CWVBuryConfig(**values))
+    raw_budget = env.get("SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS")
+    budget = None if raw_budget is None else _serving_budget(float(raw_budget))
+    return (*play, arm, CWVBuryConfig(**values), budget)
 
 
 __all__ = [

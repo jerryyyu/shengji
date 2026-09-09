@@ -197,8 +197,33 @@ counters and runtime timing, without advancing or mislabeling play counters.
 Thirty-eight focused integration/registry/capture tests pass in native mode.
 These are contract tests, not new strength or target-host performance claims.
 
-Still required before shipping: review, a bounded serving fallback and target-
-host latency checks, plus the selected recipe's representative-rank/no-trump
-evidence. The current recipe explicitly fails on search errors (`fallback:
-raise`); it must not be described as production-fallback-ready. No production
-default changes here.
+The optional serving recipe now takes `serving_budget_seconds` (environment:
+`SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS`). It cooperatively checks expiry
+between sampling attempts, model batches/candidates and full MC rollouts, then
+unwinds synchronously to the prevalidated heuristic incumbent. Runtime search
+errors use the same fallback; invalid callers/illegal incumbents still refuse.
+No background thread is abandoned, no partial score matrix is published, and
+play RNG is preserved. This is not a hard wall guarantee: queue wait and model
+loading precede search, and an in-flight primitive must return before expiry
+can be observed. Target-host tail latency must therefore be measured.
+
+Serving-fallback recipes have a distinct bound identity and are refused as
+scientific data teachers. The normal data/experiment recipe still fails on
+errors (`fallback: raise`). Timing logs distinguish completed/fallback searches
+and stale discarded turns; X-ray maps MC finalists correctly and reports
+fallback without private error text or invented partial values. Tests reach
+the actual off-loop serving snapshot, commit/discard and log consumers.
+
+Still required before shipping: review, target-host latency/queue-tail checks,
+and the selected recipe's representative-rank/no-trump evidence. No production
+default, running experiment or deployed process changes here.
+
+Serving integration validation:58 focused native bury/serving/X-ray tests pass.
+A small real-checkpoint probe on four previously opened DEV roots used the
+actual off-loop server path. Torch and compact NumPy matched both shortlisted
+candidates and chosen bury on4/4 roots. NumPy compute time was232–291ms and
+Torch179–275ms on the busy Mini; this is neither an isolated speed comparison
+nor a target-Fly latency guarantee. The probe used a generous30s cooperative
+budget solely to test the successful path, not to select a production budget.
+Artifact: `/Users/jerryyu/shengji-archive/2026-09-09/bury-serving-probe.cNtfgV/`
+(`probe.py`, `result.json`, executed-source delta `source.patch`).

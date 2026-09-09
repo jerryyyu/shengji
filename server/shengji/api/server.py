@@ -839,6 +839,18 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
 def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
                     acted: bool) -> None:
     snapshot = prepared.decision.snapshot
+    bury_fields = {}
+    if snapshot.phase == "bury":
+        record = getattr(snapshot.bot_copy, "last_bury_record", None)
+        if isinstance(record, dict) and record.get("schema") in (
+                "cwv-bury-policy-v1", "cwv-bury-fallback-v1"):
+            bury_fields = {
+                "bury_search_status": ("fallback" if record["schema"] == "cwv-bury-fallback-v1"
+                                       else "complete"),
+                "bury_requested_arm": record["arm"],
+                "bury_fallback_reason": record.get("reason"),
+                "bury_error_class": record.get("error_class"),
+            }
     room.log_event(
         "bot_timing", seat=snapshot.seat, phase=snapshot.phase,
         policy=getattr(
@@ -852,6 +864,7 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
         snapshot_isolated=True,
         acted=acted,
         stale_discarded=not acted,
+        **bury_fields,
     )
 
 

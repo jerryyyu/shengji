@@ -53,6 +53,33 @@ def _bury_xray(rnd, seat: int, isolated_bot) -> dict:
         isolated_bot, "policy_name", type(isolated_bot).__name__)
     record = getattr(isolated_bot, "last_bury_record", None)
 
+    if record is not None and record.get("schema") == "cwv-bury-fallback-v1":
+        return {
+            "policy": policy, "mode": record["arm"], "chosen": pick,
+            "reason": record["reason"], "fallback": True,
+            "margin": None, "gap_vs_incumbent": None,
+            "search_secs": record["elapsed_seconds"],
+            # Partial compute is not zero work or complete MC evidence.
+            "work": None, "sampler_delta": None,
+            "candidates": [{"cards": pick, "sources": ["heuristic-fallback"],
+                            "banker_avg": None, "worlds": 0, "incumbent": True,
+                            "raw_winner": False, "bot_buries": True}],
+        }
+    if record is not None and record.get("schema") == "cwv-bury-policy-v1":
+        from ..train.cwv_bury_policy import trajectory_bury_record
+        raw = record
+        record = trajectory_bury_record(raw)
+        record.update(mode=raw["arm"], incumbent_index=0, fallback=False,
+                      search_secs=raw["elapsed_seconds"],
+                      work={"worlds_requested": raw["selection_worlds"],
+                            "worlds_used": raw["selection_worlds"],
+                            "candidate_rollouts": raw["mc_rollouts"], "complete": True})
+        evidence = raw["mc_evidence"]
+        if evidence is not None:
+            means = evidence["mean_banker_values"]
+            record.update(margin=evidence["incumbent_margin"],
+                          gap_vs_incumbent=max(means) - means[0])
+
     if record is None:
         return {
             "policy": policy,

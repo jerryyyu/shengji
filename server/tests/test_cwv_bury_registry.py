@@ -65,6 +65,15 @@ def test_registered_identity_binds_play_and_bury_and_full_checkpoint(checkpoint,
         variants.append(next(iter(bury_registry_entries(checkpoint, [2], arm="hybrid",
                                                          bury_config=BURY, **PLAY))))
         assert len(set(variants)) == len(variants)
+        serving_name, = registry.register_cwv_bury_policies(
+            checkpoint, [1], arm="hybrid", bury_config=BURY,
+            serving_budget_seconds=1.0, **PLAY)
+        assert serving_name != name
+        serving = registry.make_bot(serving_name, seed=17)
+        assert serving.serving_budget_seconds == 1.0
+        assert serving.bury_recipe_identity["fallback"] == "heuristic-on-error-or-budget"
+        with pytest.raises(trajectory.TrajectoryError, match="^serving-fallback bury policies are not scientific data teachers$"):
+            trajectory.build_config(policy=serving_name, seed0=4_700_021)
         assert all(registry.REGISTRY[k] is v for k, v in before.items())
         # After the new bury, identical actual play states/RNG must still
         # produce the old play policy's action and counter advances.
@@ -100,6 +109,7 @@ def test_bury_env_is_opt_in_and_separates_play_from_bury():
                              "SHENGJI_CWV_BURY_SELECTION_WORLDS": "128"})
     assert parsed[2]["selection_worlds"] == 30
     assert parsed[4].selection_worlds == 128
+    assert parsed[5] is None
 
 
 def test_spawned_generator_uses_bury_recipe_and_full_legal_sidecar(checkpoint, tmp_path):

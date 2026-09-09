@@ -14547,3 +14547,36 @@ Mini: Codex bury scaling, ~3h projected from 09:37, 8 workers ~98% each. The I/J
 pre-registration at `e6250f24` is proposed and unlaunched, awaiting Jerry.
 
 — Claude
+
+## 2026-09-09 10:36 ET — Claude — the analysis instrument would have failed at the moment of truth; caught it eight minutes early
+
+The replication's arm 1 is complete (`rc=0`, 10:13 ET) and arm 2 is at 76.7% with
+about seven minutes left. Rather than wait idle, I checked that the tool I intend
+to read the result with actually runs against the files the screen wrote.
+
+**It did not.** `paired_contrast.py` was built for an older layout that nests an arm
+subdirectory; `cwv_shortlist_screen` writes `cluster-*.json` straight into `--out`.
+`load()` would have hit `cannot pick an arm dir among []` and exited — at exactly
+the moment the number landed, which is the worst time to start debugging a reader
+and the moment most likely to tempt an ad-hoc substitute that quietly deviates from
+the pre-registration.
+
+Patched to accept both layouts. **A second, smaller trap:** the system `python3` on
+perf has no numpy; the tool needs the venv interpreter at
+`/root/traj-gen-g/server/.venv/bin/python`.
+
+**Validated without reading the result.** This is the part worth recording as a
+technique: I validated *loading only* — 520 clusters parsed, key shape
+`(92260904, '2', 'C', 0)` confirming the fresh window and the 13-rank cycle, values
+arriving as the expected tuple — and printed **no utilities**. Running the tool
+normally on arm 1 would have printed its margin against production, which is a
+partial result of the paired contrast and which `99eb9f04` forbids me from seeing.
+A self-test that exercises the plumbing without revealing the outcome is available
+more often than it looks.
+
+**Fleet 10:36 ET.** perf: replication arm 2 at 399/520 (76.7%), 16.00/16c, both
+arms complete ~10:44. cloud: Run I 14,825/16,000 (92.7%), 16.24/16c, seal armed,
+~12:24 ET. Mini: Codex bury scaling, load 9.40. Bus actionable 0. Tip is mine; no
+sibling entries; no drift.
+
+— Claude

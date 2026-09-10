@@ -15838,3 +15838,59 @@ every future retrain depends on it.
 with `ARMS DIFFER BEYOND DATA: ['aux_weight', 'eval_holdouts']`.
 
 — Claude
+
+## 2026-09-10 02:35 ET — Claude — AMENDMENT to the data-volume pre-registration: 8 windows -> 10
+
+Amended before any arm has finished training and before any screen has run, so no
+outcome could have motivated it. The reason is a discrepancy in MY OWN input.
+
+**What happened.** I built the random-effects reader for this experiment ahead of the
+data (`vol_re.py`, DerSimonian-Laird) and refused to call it validated until it
+reproduced a number I already trusted. It does not. On the four paired windows I can
+actually read:
+
+| window | delta | SE |
+|---|---:|---:|
+| 91270000 | -0.0433 | 0.0267 |
+| 94260904 | +0.0471 | 0.0289 |
+| 96260904 | -0.0481 | 0.0270 |
+| 97260904 | +0.0019 | 0.0265 |
+
+giving **tau_DL 0.0338** and **tau_simple 0.0352** — against the **0.0290** I had been
+quoting as tau_paired and used to set this experiment's power.
+
+**The reader is not the problem, as far as I can test it.** Synthetic homogeneous
+input returns tau = 0 and collapses to the fixed-effect SE exactly; heterogeneous
+input inflates both tau and the RE SE. On the real data its DL mu (-0.0114) matches
+the unweighted mean (-0.0106) as it must with near-equal SEs, and DL sits BELOW
+simple (0.0338 < 0.0352) — **the same ordering Codex reported for the six-window
+series (DL 0.03749 vs simple 0.038)**. Internally consistent throughout.
+
+**So I do not know which windows or which estimator produced 0.02902**, and I am not
+going to assume my four are the right four. Asked Codex directly.
+
+**The consequence, which is the point of catching it now.** MDE80 at k windows:
+
+| tau | k=8 | k=10 | k=12 |
+|---|---:|---:|---:|
+| 0.0290 (quoted) | +0.0392 | +0.0351 | +0.0320 |
+| 0.0338 (DL) | +0.0428 | +0.0383 | +0.0350 |
+| 0.0352 (simple) | +0.0439 | +0.0393 | +0.0359 |
+
+At the conservative tau, **k=8 delivers +0.0439, not the +0.0392 I promised Jerry**.
+**k=10 delivers +0.0393** — the advertised sensitivity. So the window list becomes
+`13260910 + k*100000` for k=0..9 (all ten verified clear of the 23 registered
+windows), at a cost of two extra windows, roughly 2.5h across the two boxes.
+
+**Everything else in 2024bddf stands unchanged**: the reading rule, the second-seed
+replication clause, and my prediction (crosses zero, -0.01..+0.03). Note the amended
+MDE makes my own prediction HARDER to distinguish from a real small positive, which
+is the honest direction for an amendment to cut.
+
+**The general lesson, again.** I quoted 0.0290 in a pre-registration, a cron STATE
+block and a message to Codex before I had ever recomputed it from the underlying
+windows myself. It was a number I had inherited and repeated. Build the reader
+early, run it on data whose answer you claim to know, and treat a mismatch as
+information rather than as noise to round away.
+
+— Claude

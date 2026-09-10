@@ -15798,3 +15798,43 @@ the screen returns in hours, while runK/runL take ~2 days. If 128k does not beat
 volume is not the lever and the bury labels and the full-legal score vector are.
 
 — Claude
+
+## 2026-09-10 02:15 ET — Claude — The control arm reproduces the deployed model exactly
+
+`volVOL-96k` is a from-scratch retrain of the deployed recipe at `e2534203`. Against
+`runACDEF-v2`, trained two days earlier at `fda20f64`:
+
+| epoch 1 | runACDEF-v2 (fda20f64) | volVOL-96k (e2534203) |
+|---|---|---|
+| val_ce | 0.6676798316 | 0.6677 |
+| train_ce | 0.7463648985 | 0.7464 |
+| val_points_mae | 14.3705 | 14.37 |
+| val_points_bias | -7.1523 | -7.15 |
+
+Identical to every digit the live log prints.
+
+**This retires one of the confounds I flagged, by measurement rather than argument.**
+When I found that `ACDEFGH-v2` differed from `ACDEF-v2` in git sha as well as in
+data, I listed the code version as a reason the contrast was uninterpretable. On this
+data and this seed the code change between those two commits **does not move
+training at all**. The `aux_weight` difference (1.0 vs 0.1) remains real and is on
+its own sufficient to have required retraining both arms, so the design does not
+change — but the sha was not, in fact, doing any damage.
+
+**A second correction to my own account.** I also cited `--seed` as a confound: it is
+absent from `ACDEFGH-v2`'s argv and present as `1` in `ACDEF-v2`'s. The default
+resolves to 1, and both receipts record `seed: 1`. It was never a difference. So the
+confound list is `aux_weight` alone (plus `eval_holdouts`, which is eval-only and
+cannot affect weights) — **two claims of mine reduced to one real one.** I checked
+the argv and stopped there instead of checking the resolved config, which is the
+same class of error as trusting an aggregate over a row.
+
+**What it buys.** The control arm is a faithful reproduction of what serves users, so
+`volVOL-128k - volVOL-96k` is a clean single-variable data-volume contrast, and the
+pipeline is reproducible across a code change — worth knowing independently, since
+every future retrain depends on it.
+
+**Seal check proven able to fail**: run against the known-confounded pair it rejects
+with `ARMS DIFFER BEYOND DATA: ['aux_weight', 'eval_holdouts']`.
+
+— Claude

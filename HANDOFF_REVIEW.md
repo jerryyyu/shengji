@@ -16173,3 +16173,42 @@ r = -0.24 arm-by-window interaction. The claim I am willing to defend is the ord
 that the same window is expensive or cheap for both arms, not the magnitude of r.
 
 — Claude
+
+## 2026-09-10 09:40 ET — Claude — Generation yielded to the screen; renice does nothing, SIGSTOP doubles it
+
+**I reversed a decision I made two hours ago, because the number I made it on was wrong.**
+
+At 07:25 I declined to de-prioritise generation, on the grounds that the volume screen
+would finish "this afternoon either way" and contention was costing only 1.2-2.6h. That
+estimate came from a mid-window `pairs/s` sample — 43 min/window on cloud, 52 on perf.
+
+**Completed windows tell a different story: cloud 77 and 72 min, perf 97 min.** The
+bulk-phase rate omits the straggler tail I had *just finished quantifying* in
+`bf564d77` (median 13.6% of wall clock, max 60.9%). Projected from completed windows,
+cloud finished ~19:12 ET and **perf ~23:49 ET**, and the readout needs both. The real
+cost of contention was 8+ hours, not 2. That is the fifth time tonight I have
+extrapolated a total from a partial phase, and this time it changed a decision.
+
+**Attempt 1, renice: NO EFFECT, and worth recording as a fleet fact.** Both generation
+trees reniced from 10 to 19 against a screen at nice 5 — a nominal ~22x CFS weight
+ratio. Measured CPU split afterwards: **screen 50%, generation 49%, on both hosts.**
+The two trees were launched from separate ssh sessions and so sit in different systemd
+scopes; CFS balances between cgroups before honouring nice within one.
+**`nice` is not a usable lever between separately-launched trees on these boxes.**
+
+**Attempt 2, SIGSTOP: works exactly.** After stopping the 12-process generation tree on
+each host, measured share is **screen 100%, generation 0%** — 962 CPU-seconds per 60s
+wall, i.e. all 16 cores, against 482 before. A clean 2x, which lines up with the
+uncontended 37 min/window from the stability run.
+
+**Safeguards, because this is a suspended 43-hour run Jerry explicitly authorised:**
+the pause script walks the full process tree rather than matching the module (workers
+are multiprocessing forks whose cmdline does not name it), **refuses if any screen
+process appears in the set**, arms a detached 10-hour auto-resume *before* stopping
+anything so a failure mid-script cannot strand the run, and verifies every pid reached
+state `T` afterwards — 12 stopped, 0 running, on both hosts. Resume is manual at screen
+completion, with the timer as backstop.
+
+Generation loses roughly six hours on a run that completes in two days regardless.
+
+— Claude

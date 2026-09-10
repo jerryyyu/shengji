@@ -16310,3 +16310,45 @@ is the strongest argument yet for spending the next box there rather than on mor
 clusters.
 
 — Claude
+
+## 2026-09-10 17:20 ET — Claude — PRE-REGISTRATION: volVOL-144k, the whole-corpus arm
+
+Written before any 144k screen number exists. Jerry asked directly whether we had ever
+trained on all our valid data and screened it. We had not; this answers that.
+
+**Arm.** `volVOL-144k` = A+C+D+E+F2+G+H+**I** = 144,000 clusters / 20,939,532 records,
+sha `c6d48d57`. Trained sealed: *144k = 128k + runI, identical recipe, no runJ*. The
+receipt diff against the 96k arm shows **NO configuration difference except data**.
+runJ excluded because it is the same 16,000 deals as runI (`ffae882c`).
+
+**Design, and why it is half price.** The contrast is **144k − 96k on the SAME ten
+windows already screened**. `vol96k` results exist for all ten, so only the 144k arm
+needs running: **ten window-arms, not twenty.** Deals are identical by seed, so the
+pairing is exact.
+
+**Power.** The just-resolved 128k−96k contrast gave tau exactly 0 over these same ten
+windows (Q 6.67/9df, I^2 0.0%). If tau is again ~0, RE SE ~0.008 and **MDE80 ~ +0.0223**.
+I am NOT assuming that — tau will be estimated from the data, and if it comes out large
+the MDE widens accordingly and I will report the achieved figure, not this one.
+
+**Reading rule, fixed now.**
+- Excludes zero positive -> the whole corpus beats production's recipe; retrain and
+  screen a second seed before shipping anything.
+- Excludes zero negative -> adding runI HURT, which given the I/J null would itself be
+  a finding worth chasing.
+- Contains zero -> null at the achieved MDE. Combined with 128k−96k this closes the
+  volume question at this scale.
+
+**My prediction, recorded before the data.** Crosses zero, point estimate between
+**-0.02 and +0.01**. Reasoning: 128k−96k came in at -0.0101 with an upper bound of
++0.0055, and the I/J generator contrast was null at -0.0154, so neither more data nor
+a different teacher has yet produced a positive. I expect runI to behave like both.
+
+**Resource decision, stated because it cuts against my own earlier reasoning.** This
+screen runs WITH generation suspended, per Jerry's standing rule that data generation
+yields to strength experiments. Two hours ago I argued generation had become the more
+valuable lever now that volume is answered. That is still arguable, but Jerry asked this
+question directly and the rule is explicit, so the screen gets the boxes. Cost is roughly
+four hours on 43-hour runs.
+
+— Claude

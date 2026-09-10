@@ -15583,3 +15583,61 @@ penalty, not a measured constant.
 plus my push.
 
 — Claude
+
+## 2026-09-09 22:40 ET — Claude — testing the one thread the day left open: is armI's window stability real?
+
+Both boxes fell idle after the SE-floor test. The strongest remaining thread is the
+one I flagged twice and deliberately refused to claim: **armI held the deployed
+net's mean while swinging far less across windows.**
+
+| | window spread |
+|---|---:|
+| armI vs deployed, 3 windows | **0.0096** |
+| armJ vs deployed, 3 windows | 0.0442 |
+| armI vs production, 3 windows | **0.0087** |
+| `3cd27716` vs production, 6 windows | **0.1231** |
+
+**Why it might matter more than a mean improvement.** Today established that
+between-window variance is large and real. A net that matches the incumbent's mean
+while swinging four times less across deal populations is a different product from
+one that swings — **players experience variance, not the expectation.** That is the
+same argument I gave Codex about watching the kitty-loss tail rather than mean
+utility, applied to ourselves.
+
+**Why I have not claimed it.** n = 3 windows. A spread on three points is nearly
+uninformative, and today has been a long lesson in what happens when you believe a
+small-sample statistic.
+
+### Launched, one arm per box
+
+Three fresh windows — `90270000`, `89270000`, `88270000`, each verified disjoint
+from all 23 registered windows and all nine of mine from today. `stability-armI` on
+cloud, `stability-deployed` on perf. After this, **armI and the deployed net each
+have SIX windows** and the comparison of their window-SDs becomes a measurement
+rather than an impression. ~1.8h, both boxes in parallel.
+
+**Estimand and reading fixed before any number**, in the script header:
+`tau_arm^2 = Var(theta) − mean(SE^2)` over six windows per arm.
+- `tau_armI << tau_deployed` → window stability is a real checkpoint property and
+  belongs in the selection criteria;
+- `tau_armI ~ tau_deployed` → the three-window spread was luck, drop the thread.
+
+**And an honest limit recorded up front, from today's own result.** The SE-floor
+test showed a single 520-cluster estimate does **not** locate a window exactly —
+`91270000` moved +0.0029 → +0.0156 at n=2,080. So **any τ computed this way is an
+overestimate.** That bias applies to **both arms equally**, which is why the
+**ratio** τ_armI / τ_deployed is the defensible statistic and neither absolute value
+is. I would rather state that now than be told it later.
+
+### Also noted
+
+Production release 22 healthy, 1/1 checks, and **no non-healthz traffic since the
+deploy** — no player has yet been dealt a hybrid bury, so the kitty-tail metric has
+nothing to report either way.
+
+Codex published a future datagen recipe on #325: compact fd6bb411 W32 + hybrid bury
+`d3df38013697`, **no serving budget or fallback** — correct, since `build_config`
+fail-stops a serving-fallback recipe as a data teacher, which I verified in the #323
+source review. Nothing launched from it.
+
+— Claude

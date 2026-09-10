@@ -17,8 +17,9 @@ outcomes, action values and teacher labels never enter the feature vector.
 
 Actor-visible count masks remove impossible classes. Banker declaration means
 banker hand **plus kitty**, not banker hand alone. These necessary marginal
-constraints do **not** construct a joint world. Legal sampler integration and
-gameplay comparison remain unfinished.
+constraints do **not** construct a joint world. An explicit finite-legal-pool
+adapter now reaches W32 ranking, selection and report sampling; the fresh
+gameplay comparison remains unfinished.
 
 Reconstruction reuses `harvest_labels.replay_checked` and the engine. The source
 is existing curated baseline-fit trajectories from A/C/D/E/F2: 768 original
@@ -75,6 +76,77 @@ The training curve already reveals a limit: train loss falls from 0.72844 to
 More epochs alone are not the next step. Do not select another checkpoint
 using these check outcomes.
 
+## Old R4 and calibration readout
+
+The retained actor-only R4 bridge scored the same 194 uncertain positions in
+15.72 seconds, including 13.99 seconds for both cohorts' inference:
+
+| Forecaster | Brier (lower is better) |
+|---|---:|
+| Corrected ordinary sampler | 0.493213 |
+| Small feed-forward model | 0.486675 |
+| Old R4 synthetic-primary | 0.444173 |
+| Old R4 label-permutation control | 0.472431 |
+
+The small model beats ordinary sampling here, **not old R4**. These are matching
+actor states, not an opening of R4's original test. The retained R4 index does
+not expose original-deck identities, so disjointness from R4 training is not
+independently established; do not label its numbers verified unseen-deal
+generalization. The new model's 97 check deals are disjoint from its own fit.
+
+Per-count-class calibration is mixed. Ten-bin ECE for zero/one/two copies is
+0.01772 / 0.05925 / 0.01150 for the small model, versus 0.03848 / 0.05649 /
+0.02831 for raw empirical reference probabilities. These ECE comparisons are
+not corrected for the reference's finite sampling noise. The small model is
+slightly worse on one-copy ECE. Raw Brier differences favor it mainly at later
+positions; initial positions and no-trump positions are nearly neutral. This
+does not isolate history causally: kitty/burial patterns may explain part of
+the later-position gain. Saved error examples and receiver breakdowns are
+needed before attributing the improvement to behavioral inference.
+
+The receiver split materially changes the conclusion:
+
+| Uncertain receiver group | Small model | Corrected ordinary | Old R4 primary |
+|---|---:|---:|---:|
+| Other players' hands (97 deals) | 0.513939 | 0.505248 | 0.468794 |
+| Hidden kitty (72 contributing deals) | 0.208319 | 0.346462 | 0.158324 |
+
+For other hands, small-minus-ordinary error is **+0.008691** (deal bootstrap
+95% **[+0.005002, +0.012357]**): worse, not improved. For kitty it is −0.138143
+([−0.161045, −0.115437]). Banker-known kitty cells are excluded. Each position
+first averages its group's uncertain cells, each deal averages contributing
+positions, then deals receive equal weight. The aggregate win therefore does
+not support a claim of better opponent-hand inference. Keep gameplay bounded;
+do not scale this recipe based on its aggregate Brier alone.
+
+## Approximate sampler and first consumer timing
+
+`simple_belief_sampler` has three explicitly named modes:
+
+- **ordinary:** corrected proposal draws, with strict public-fact validation;
+- **uniform-pool:** sample a fixed legal pool per decision, then draw uniformly
+  with replacement from it;
+- **learned-pool:** the identical pool construction, with bounded least-squares
+  matching to model count marginals, then weighted draws with replacement.
+
+The learned mode caps each weight at 4/N and maintains effective sample size
+at least N/2. It reports fit residuals and non-convergence, rather than calling
+the weights an exact posterior. Ranking, selection and report draws use their
+existing RNG streams but share a finite pool: conditional draw independence
+does not remove shared pool-approximation error. The uniform-pool control is
+therefore essential, not an optional weak baseline. No action values, rollout
+returns or true ownership enter weight fitting.
+
+The real W32 consumer tests cover all three folds, hard facts, hidden twins,
+fresh mutable draw containers, count accounting and refusal of invalid pools.
+One actual full-work W32 decision on Mini took 2.117 seconds: 128 distinct
+proposal worlds, 0.090 seconds total pool preparation, 362 delivered draws
+(32 ranking + 30 selection + 300 report), and 750 selection/report rollouts.
+Small-model inference was 0.011 seconds on this first call. The fit hit its
+500-iteration limit and is explicitly non-converged; its valid ESS-guarded
+weights improved the marginal matching objective. This is a single-position
+cost observation, not a whole-round runtime or strength estimate.
+
 ## Retained evidence and rerun commands
 
 All roots below are under `/Users/jerryyu/shengji-archive/2026-09-10/`:
@@ -83,6 +155,13 @@ All roots below are under `/Users/jerryyu/shengji-archive/2026-09-10/`:
 - `simple-belief-mlp-seed0/`: best/last models, optimizer/RNG state, curves.
 - `simple-belief-check-reference/`: recipe, per-deal predictions, truths,
   reference marginals, sampler attempts/diversity, summary.
+- `simple-belief-check-r4/`: same-state R4 primary/control predictions and timing.
+- `simple-belief-calibration-reference.json`: per-class reliability, phase
+  summaries, and representative saved prediction errors.
+- `simple-belief-receiver-readout-equal-position.json`: receiver split with
+  the primary readout's equal-position, equal-deal weighting. The earlier
+  `simple-belief-receiver-readout.json` pools cells within each deal and is
+  retained as a differently weighted diagnostic, not the primary comparison.
 
 Best checkpoint SHA256:
 `4843d1d9ab8e7272fad7709ae6a4892f8114c1bed2c3af26ccc836c71562eb96`.
@@ -104,11 +183,10 @@ and interrupted checkpoint recovery. No production deployment is authorized.
 
 ## What remains
 
-1. Read calibration and representative errors by phase/rank/receiver from
-   saved predictions; compare the old R4 model on matching actor states.
-2. Wire the new probabilities to an explicitly approximate mixture of legal
-   worlds, retaining hard constraints and measuring diversity/latency. Do not
-   silently treat independent count predictions as a joint posterior.
-3. Run a bounded fresh paired W32 gameplay comparison against ordinary corrected
-   sampling and old R4. Ownership improvement alone is insufficient.
-4. Publish the supported next recipe or stop recommendation before scaling.
+1. Finish receiver/error interpretation and preserve the R4 overlap caveat.
+2. Run a bounded fresh paired W32 gameplay comparison: one common ordinary
+   baseline plus two focal-team mirrors each for uniform-pool, small-model
+   weighting and R4 weighting. Keep declarations, hybrid bury, value checkpoint
+   and rollout policy fixed. Preserve completed arms on interruption.
+3. Report fresh ownership evidence, paired gameplay, cost and diversity together;
+   publish the supported next recipe or stop recommendation before scaling.

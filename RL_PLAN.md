@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-Last reconciled: **2026-09-06 (K8 screen)**. This document owns research architecture,
+Last reconciled: **2026-09-09 (release 21 W32 play / hybrid-bury ship pending)**. This document owns research architecture,
 estimands, and the decision tree. `BACKLOG.md` owns priority; live compute and
 exact review asks are in `HANDOFF_ACTIVE.md`; policy names and deployment state
 are in `AI_POLICIES.md`; immutable receipts and verdicts are in
@@ -13,16 +13,13 @@ Do not append run diaries or duplicate exact packet hashes here.
 
 ## Objective and evidence standard
 
-Build a Shengji policy that is demonstrably stronger than the exact live
-`mc-s0-report-lcb` champion under a correct engine and reproducible evaluator.
-The only confirmed strength gain to date is RLCB itself (`+0.338 ± 0.068`
-signed levels vs `mc-strong`, 2,048 clusters). Earlier component gains often
-failed to improve play; the September 4 retrospective (ledger `0088544f`)
-shifted the emphasis to direct consumer tests and rigor proportional to the
-claim. PT-Sol/Luna and now **A+B+C W32 shortlisting** are positive exploratory
-whole-round results, not new confirmed/deployed policies. W32 is particularly
-useful because it uses sampled worlds available to a real policy, not true
-opponent hands. Its equal-compute advantage is still unresolved.
+Build a Shengji policy that is demonstrably stronger than the current W32 PLAY
+consumer and its confirmed RLCB reference under a correct engine and
+reproducible evaluator. Release 21 is W32 PLAY with HEURISTIC BURY; the hybrid
+bury ship is authorized and integrated but pending deployment. The prior RLCB
+result (`+0.338 ± 0.068` signed levels vs `mc-strong`, 2,048 clusters) remains
+the confirmed strength reference. PT-Sol/Luna and A+B+C W32 are exploratory
+whole-round results; the bury report is the latest bounded policy evidence.
 
 Evidence labels:
 
@@ -52,6 +49,16 @@ when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
+0. **Keep serving boundaries explicit.** PR323 (`ec7f27ad`) integrates the
+   planned `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a` arm
+   with a 2-second cooperative deadline and heuristic fallback, but release 21
+   still uses heuristic bury. The research recipe had no deadline or fallback.
+   On 1,976 deals, hybrid versus heuristic was `+0.03644` utility
+   `[+0.01164,+0.06024]` and `+1.62` pp wins `[+0.56,+2.68]`; hybrid versus
+   MC-only was unresolved, and kitty bonus ≥80 occurred 4 times versus 0 for
+   heuristic. The fixed512 six-arm scaling result was null; no full-round
+   speedup claim follows.
+
 1. **Keep optimized A+B+C W32 as the experimental reference.** It ranks the
    exhaustive legal set on 32 constrained sampled worlds, keeps four
    alternatives plus the heuristic incumbent, and lets production N30/R300
@@ -59,9 +66,9 @@ when a candidate beats the champion on a tier ii paired screen.
    levels/round; exact-trajectory engineering cut decision wall 2.849×, to
    3.53× production. See [the diagram and full comparison](AI_POLICIES.md#experimental-w32-shortlist).
    This is not a claim that an accurate standalone leaf value has been solved.
-2. **Keep the decision-preserving speedup opt-in after integration.** #249 →
-   #252 → #254 are merged after source PASS and CI; no production policy or
-   default changed. No extra gameplay or repeated model reconstruction is
+2. **Keep the decision-preserving speedup available to the live play path.** #249 →
+   #252 → #254 merged after source PASS and CI without changing defaults at
+   the time; the later W32 rollout uses that implementation. No extra gameplay or repeated model reconstruction is
    needed to integrate unchanged semantics.
 3. **Close the four → eight alternative screen.** K8 completed on the same
    A+B+C checkpoint, W32/N30/R300, batch 128, static encoding and reuse, over
@@ -126,7 +133,8 @@ when a candidate beats the champion on a tier ii paired screen.
    diverse trump ranks with an appropriately trained model. Repeated tuning
    on the opened rank-2 deals is not independent confirmation.
 
-Codex owns shortlist engineering/scaling; Claude owns the separate PUCT and
+Codex owns shortlist engineering/scaling and the bounded bury integration;
+Claude owns the separate PUCT and
 model experiments. Share measured findings, not an assumption that shortlist
 automatically becomes PUCT. BELIEF R4/R5 remains closed. D64's retained
 256-slot/255-realization set remains coverage-audit evidence only, not a

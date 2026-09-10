@@ -7,25 +7,32 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-09-06
+## Project state — 2026-09-09
 
-The production bot is **`mc-s0-report-lcb`**: ordinary MC nominates a possible
-override, then the exact pair is rechecked on 300 fresh shared simulations and
-the bot changes its mind only when a conservative lower bound clears its
-threshold (zero, with equality accepted). On
-2,048 paired deals it improved signed level utility by `+0.338 ± 0.068` per
-round against `mc-strong`; a matched extra-work null was flat. It remains the
-only confirmed strength gain and the parent every challenger must beat.
+The current Fly snapshot is **release 21: W32 PLAY with HEURISTIC BURY**.
+The hybrid bury ship is authorized and integrated, but deployment is still
+pending; do not read the live play policy as evidence that hybrid bury is live.
+The prior `mc-s0-report-lcb` result remains the confirmed strength reference and
+rollback parent for challengers.
 
-**New experimental milestone: model-guided W32 shortlist.** A value model
+**Latest bury milestone:** PR [#323](https://github.com/jerryyyu/shengji/pull/323)
+merged at `ec7f27ad`; the final report is
+[docs_archive/value-guided-bury-dev-2026-09-08.md](docs_archive/value-guided-bury-dev-2026-09-08.md).
+On 1,976 fixed deals, hybrid versus heuristic gained `+0.03644`
+utility `[+0.01164,+0.06024]` and `+1.62` percentage points in win rate
+`[+0.56,+2.68]`; hybrid versus MC-only was unresolved. Hybrid also had more
+kitty-risk tail events (kitty bonus at least 80: 4 vs 0 for heuristic).
+
+**Earlier W32 PLAY screen (dated DEV result):** A value model
 ranks *every legal action* across 32 sampled hidden worlds, then production's
 full Monte Carlo search checks four alternatives plus its heuristic incumbent.
 On 256 paired rank-2 deals / 512 mirrored rounds, the A+B+C model scored **+0.139
 signed levels per round** versus production (95% interval **[+0.064, +0.217]**).
 Decision-preserving engineering made it **2.85× faster**, lowering measured
 decision cost from **10.61× to 3.53× production**. This is a positive DEV
-screen, **not deployed or independently confirmed**; superiority over
-production given comparable extra compute remains unresolved.
+screen; its play consumer is now the live W32 path, while the quoted strength
+result remains a dated DEV screen and not independent confirmation. Superiority
+given comparable extra compute remains unresolved.
 
 See the [MC vs W32 diagram and results](AI_POLICIES.md#experimental-w32-shortlist)
 and [improvement plan](RL_PLAN.md#current-decision-tree). The same A+B+C
@@ -122,10 +129,11 @@ and promotion caveats in `AI_POLICIES.md`:
   paired report check described above. `mc-strong` is its policy rollback.
 - **`mc` (source fallback, not production)** — the older N=10 determinized
   search policy.
-- **W32 shortlist (experimental, not registered/deployed)** — the positive
-  A+B+C screen above. The network proposes; full MC rollouts and the report
-  fold still decide. It uses the existing constrained sampler, not BELIEF R4
-  or true opponent hands. [Architecture and evidence](AI_POLICIES.md#experimental-w32-shortlist).
+- **W32 shortlist (live PLAY consumer, heuristic BURY in release 21)** — the
+  network proposes; full MC rollouts and the report fold still decide. The
+  hybrid bury integration is authorized but not yet deployed. It uses the
+  existing constrained sampler, not BELIEF R4 or true opponent hands.
+  [Architecture and evidence](AI_POLICIES.md#experimental-w32-shortlist).
 - **`rl-override-v11pair` (experimental)** — the best learned milestone beat
   SmartBot 57.7%, but the corrected direct-v2 screen lost to current search and
   selected none. Keep it only as a bounded proposal/ranking and teacher

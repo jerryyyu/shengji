@@ -12,9 +12,13 @@ primary_region = 'ewr'
 [env]
   # Jerry authorized the all-user W32 default on 2026-09-08. Package fd6bb411
   # is the reviewed compact export of ACDEF v2 3cd27716 (PR #313).
-  # Preserve the volume package; policy rollback is SHENGJI_BOT=mc-s0-report-lcb.
-  SHENGJI_BOT = 'mc-shortlist-fd6bb411-w32-r55d379a3'
+  # Jerry authorized hybrid bury shipping on September 9. Play is unchanged.
+  # Bury-only rollback: restore the base W32 name and remove both BURY vars.
+  SHENGJI_BOT = 'mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a'
   SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/w32-fd6bb411.npz'
+  SHENGJI_CWV_BURY_ARM = 'hybrid'
+  # Cooperative search time, not a bound on queue wait or in-flight operations.
+  SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS = '2'
   OPENBLAS_NUM_THREADS = '1'
   OMP_NUM_THREADS = '1'
   SHENGJI_MODEL_SEARCH_CONCURRENCY = '1'

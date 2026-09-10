@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-08 (W32 production default)**. This file defines the current callable-policy
+Last reconciled: **2026-09-09 (release 21 W32 PLAY / heuristic BURY)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -17,7 +17,11 @@ dated status blocks here.
 
 ## Production contract
 
-Production explicitly sets:
+The current live Fly snapshot is release 21: **W32 PLAY with HEURISTIC BURY**.
+The play package remains `fd6bb411` / source `3cd27716`; hybrid bury is an
+authorized, integrated change whose deployment is still pending.
+
+The current play selection is:
 
 ```toml
 SHENGJI_BOT = "mc-shortlist-fd6bb411-w32-r55d379a3"
@@ -30,12 +34,23 @@ production rollback is `mc-s0-report-lcb`; changing the default, rollback, N/R w
 ballot, sampler, continuation, or confidence rule is a new policy and needs
 fresh evidence.
 
-Jerry authorized the all-user W32 switch September 8; it deployed at 19:53 UTC
-on the existing Fly image after a zero-room check. Package `fd6bb411` exports
-the gameplay-supported A+C+D+E+F2 v2 checkpoint `3cd27716`. See
-[serving qualification and rollback](W32_FLY_SERVING.md). Historical screens
-below compare against the then-production MC-LCB, not against today's default;
-their original research-only authority does not negate this later explicit rollout.
+Jerry authorized the W32 play switch; release 21 is the current observed
+serving snapshot. See [serving qualification and rollback](W32_FLY_SERVING.md).
+Historical screens below compare against the then-production MC-LCB and retain
+their original dates and scopes.
+
+### Hybrid bury integration — authorized, pending deployment
+
+PR [#323](https://github.com/jerryyyu/shengji/pull/323) merged at `ec7f27ad`.
+The planned policy is
+`mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, using unchanged
+compact package `fd6bb411` / source `3cd27716`, a 2-second cooperative deadline,
+and heuristic fallback. Those deadline/fallback semantics are serving policy;
+the research recipe had no deadline or fallback. In 1,976 fixed deals, hybrid
+versus heuristic measured `+0.03644` utility `[+0.01164,+0.06024]` and `+1.62`
+pp win rate `[+0.56,+2.68]`; hybrid versus MC-only was unresolved. Kitty bonus
+at least 80 occurred 4 times for hybrid versus 0 for heuristic, so the average
+gain does not remove tail-risk. See the [final bury report](docs_archive/value-guided-bury-dev-2026-09-08.md).
 
 ### `mc-s0-report-lcb`
 
@@ -69,7 +84,7 @@ ever differ.
 | learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only, except the exact W32 package named in the production contract above. |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
-| `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | A+B+C W32/K4 and K8 are exploratory screens; optimized implementation is merged but remains opt-in and not production-authorized. See below. |
+| `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | W32 PLAY is live in release 21; its current BURY remains heuristic. The hybrid bury arm is integrated and authorized but pending deployment. See below. |
 
 Example local selection:
 

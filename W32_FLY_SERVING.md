@@ -2,10 +2,50 @@
 
 Implementation and engineering measurements for [#300](https://github.com/jerryyyu/shengji/issues/300).
 **Production default since September 8, 19:53 UTC, explicitly authorized by Jerry.**
-Ordinary rooms use `mc-shortlist-fd6bb411-w32-r55d379a3` without an access code.
-This was an environment-only update on the existing release-20 image; VM size,
-volume and Docker entry point are unchanged. Serving this backend does not
+The initial ordinary-room default was `mc-shortlist-fd6bb411-w32-r55d379a3`,
+without an access code. The September 9 shipping config adds hybrid bury below;
+check live `/healthz` for the deployed policy. The original W32 switch was an
+environment-only update on release20; release21 subsequently added X-ray.
+VM size, volume and Docker entry point remain unchanged. Serving this backend does not
 inherit a new strength claim from the Torch checkpoint.
+
+## Hybrid bury release (September 9)
+
+PR #323 is merged. Jerry authorized shipping the reviewed baseline after the
+1,976-deal all-rank result: hybrid versus heuristic banker utility
+`+0.03644 [0.01164, 0.06024]`, win-rate `+1.62pp [0.56, 2.68]`.
+Hybrid versus MC-only remains unresolved; more worlds/candidates did not show
+a supported gain. Kitty-loss risk increased versus heuristic. These are
+counterfactual single-round results, not human-weighted multi-round matches.
+
+The selected serving name is
+`mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`:
+
+- Same compact fd6bb411 model and W32 play settings.
+- Up to32 structured buries,32 model worlds, heuristic incumbent plus four
+  alternatives,32 independent MC worlds. Only the bury decision changes.
+- `SHENGJI_CWV_BURY_ARM=hybrid` registers the policy;
+  `SHENGJI_BOT` must select the exact name.
+- `SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS=2` enables cooperative expiry and
+  legal heuristic fallback. This is search time, not total queued request time.
+- One off-loop search worker; live room/turn/controller checked before commit.
+- Data-generation recipes omit the serving budget and fail on errors. They
+  record only actual MC-finalist labels with counts and provenance; serving
+  fallbacks are not silently treated as training targets.
+
+The prior Linux1CPU/512MiB actual-consumer probe passed11/11: serial367–508ms,
+four-request burst tail1.75s,cgroup peak104.9MiB,noOOM. That probe used a30s
+diagnostic deadline; the shipping2s configuration receives its own focused
+smoke, not a duplicate strength run. Measurements are not productionp99 or a
+bound on mixed play/bury queueing.
+
+Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` **and removes
+bury registration/budget settings together**. Preserve the model and volume.
+Pre-bury image is release21 at digest
+`4a68a54058d028dd2444270d1f83b51dcc8623c627043e68ea8058594d41f54b`.
+Full W32 play rollback to MC-LCB is a different intervention. See [DEPLOY.md](DEPLOY.md)
+for occupancy, monitoring and rollback rules; see the [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md)
+for source reviews, complete evidence and statistical limitations.
 
 ## What runs
 

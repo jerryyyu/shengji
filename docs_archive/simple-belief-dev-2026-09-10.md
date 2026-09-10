@@ -202,6 +202,21 @@ indices 0/16/32/48; it does not replay the expensive W32 policy. Predictions
 precede privileged label construction, and completed per-deal outputs survive
 interruption. These are small DEV comparisons, not a new R4 one-shot gate.
 
+The repaired two-deal chunk completed in 268.1 seconds for eight remaining
+learned rounds, retaining six original controls. The unchanged recipe then
+continued to all 14 predeclared deals with four workers. Running source is
+local `7e6801b1` / published identical-tree `4b28745a`; later report-only
+additions do not change that executing tree.
+
+`simple_belief_readout` combines the finished 14 gameplay clusters, saved fresh
+ownership predictions and training curves without rerunning inference or games.
+It reports both ordinary-baseline comparisons and learned-vs-uniform-pool
+comparisons; mirrors are averaged before deal-level intervals. Cost, physical
+pool diversity, index-level ESS and fit convergence are separate diagnostics.
+Do not interpret fit-to-model error as ownership accuracy, or sum pool wall and
+inference wall (the former already includes the latter). A missing final cluster
+refuses the final report but never removes the completed shards.
+
 1. Finish receiver/error interpretation and preserve the R4 overlap caveat.
 2. Run a bounded fresh paired W32 gameplay comparison: one common ordinary
    baseline plus two focal-team mirrors each for uniform-pool, small-model

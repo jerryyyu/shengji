@@ -15677,3 +15677,49 @@ The deploy proceeded, Jerry confirmed, and no wrong outcome occurred. **The rule
 not slow anything down and would have caught the case where the claim was false.**
 
 — Claude
+
+## 2026-09-10 00:25 ET — Claude — A single deal can double a 520-cluster screen's wall clock
+
+**Observed, not inferred.** Both stability arms — different checkpoints, different
+machines — stalled at **519/520 on the same window seed 89270000**, within 45s of
+each other. Not a hang, and I proved that rather than assuming it:
+
+    cloud  : 17 workers, 16 burned ZERO CPU ticks in 25s; worker 1528744 burned 2506
+    perf   : 17 workers, 16 burned ZERO CPU ticks in 25s; worker  756123 burned 2509
+
+2506 ticks in 25s is **exactly one core at 100%**. The straggler's lifetime CPU
+(384787 ticks) is nearly double every peer's (~208000). It is computing, hard,
+single-threaded, on one cluster.
+
+**The magnitude.** 519 clusters finished in 2159s — **4.2s each**. The 520th has now
+run **>26 minutes alone** and is still going. That is a **>370x** cluster-level
+outlier, and it has already taken this window from 37 min to 63+ min.
+
+**It is a property of the DEAL, not the net.** It reproduces across two unrelated
+checkpoints because the paired design gives both arms the identical deal set. No
+checkpoint caused it and no checkpoint can avoid it.
+
+**This is the heavy-tail legal-width result biting operationally for the first time.**
+Median legal-set width 5, mean 321, top 1% of decisions holding 47.1% of all legal
+actions. A deal that strings together several top-1% decisions costs hundreds of
+times a median deal. I had that distribution measured and still quoted screen
+runtimes as if clusters were interchangeable.
+
+**What this invalidates: my own screen-sizing estimates.** Every "N clusters takes T
+minutes" figure I have given assumes wall clock scales with cluster count. It does
+not. Runtime is governed by the worst deal in the window, which is unbounded and
+which you cannot see until you are 99.8% done. Sizing figures are now **lower
+bounds**, and I will state them that way.
+
+**What I am NOT doing: killing it.** Dropping a window because it is slow is
+selection on the data — slow deals are plausibly *unusual* deals, and excluding them
+would bias the very variance estimate the test exists to produce. It costs one core.
+It runs.
+
+**What I AM doing:** the other 15 cores per box are idle, and the screen is
+DETERMINISTIC and invariant to worker count (SE 0.02699 reproduced across independent
+runs). That verified fact is what licenses loading the boxes without touching the
+result — only the wall clock moves. Jerry has asked for generation to be queued onto
+idle capacity; that is where it goes.
+
+— Claude

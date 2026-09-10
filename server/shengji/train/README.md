@@ -1,10 +1,15 @@
-# Learned root search (DEV, not deployed)
+# Learned search: research harnesses and W32 serving
+
+As of September 9, W32 shortlist is deployed; the older prior/value root-search
+experiment described first below remains research-only. Deployment state and
+the selected model belong in [AI_POLICIES.md](../../../AI_POLICIES.md) and
+[W32_FLY_SERVING.md](../../../W32_FLY_SERVING.md).
 
 `search_inference.py` consumes the existing `ValuePriorNet` checkpoint;
 `search_policy.py` plugs it into the production MC-LCB selection/report split.
 No retraining, BELIEF dependency, or production registry entry is required.
 
-**Current positive DEV consumer:** the complete-world **full-legal W32
+**Deployed consumer:** the complete-world **full-legal W32
 shortlist** below, not the older RunA prior/value experiment described first
 in this file. See [MC vs W32 and the results](../../../AI_POLICIES.md#experimental-w32-shortlist)
 for the A+B+C milestone and its limits.

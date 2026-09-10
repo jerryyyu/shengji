@@ -9,9 +9,9 @@ UI with Mandarin voice announcements.
 
 ## Project state — 2026-09-09
 
-The current Fly snapshot is **release 21: W32 PLAY with HEURISTIC BURY**.
-The hybrid bury ship is authorized and integrated, but deployment is still
-pending; do not read the live play policy as evidence that hybrid bury is live.
+The current Fly snapshot is **release 22: W32 PLAY with HYBRID BURY**.
+Hybrid bury is deployed with a 2-second cooperative search budget and legal
+heuristic fallback; the existing W32 play model and search are unchanged.
 The prior `mc-s0-report-lcb` result remains the confirmed strength reference and
 rollback parent for challengers.
 
@@ -125,13 +125,13 @@ A policy is anything implementing three methods (`decide_declare`,
 (`curl /healthz` reports the active one). Current evidence, with provenance
 and promotion caveats in `AI_POLICIES.md`:
 
-- **`mc-s0-report-lcb` (production)** — N=30 determinized MC plus the fresh
-  paired report check described above. `mc-strong` is its policy rollback.
+- **`mc-s0-report-lcb` (former production, current play rollback/reference)** —
+  N=30 determinized MC plus the fresh paired report check described above.
 - **`mc` (source fallback, not production)** — the older N=10 determinized
   search policy.
-- **W32 shortlist (live PLAY consumer, heuristic BURY in release 21)** — the
+- **W32 shortlist (live PLAY with hybrid BURY in release 22)** — the
   network proposes; full MC rollouts and the report fold still decide. The
-  hybrid bury integration is authorized but not yet deployed. It uses the
+  hybrid bury integration is live. It uses the
   existing constrained sampler, not BELIEF R4 or true opponent hands.
   [Architecture and evidence](AI_POLICIES.md#experimental-w32-shortlist).
 - **`rl-override-v11pair` (experimental)** — the best learned milestone beat

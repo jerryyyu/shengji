@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-09 (release 21 W32 play / hybrid-bury ship pending)**. This file is the prioritized
+Last reconciled: **2026-09-09 (release 22 W32 play / hybrid bury)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -11,7 +11,8 @@ Git history. Do not append dated progress blocks here.
 
 ## Program objective
 
-Beat the live `mc-s0-report-lcb` champion on fresh mirrored whole games. The
+Beat the live W32 policy on fresh mirrored whole games, retaining
+`mc-s0-report-lcb` as the established comparison and play-rollback reference. The
 2026-08-28..09-03 week (retrospective at ledger `0088544f`) produced five honest
 adjudications and no strength learning because confirmatory-grade machinery was
 applied to exploratory questions and every lane targeted an *input* to a
@@ -22,12 +23,19 @@ information lost, PT-Sol0 with perfect information and a flexible planner won
 full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 `RL_PLAN.md` "Operating modes").
 
+Latest model decision (ledger `b707062b`): on identical deals, armJ minus
+deployed `3cd27716` is `+0.0006 [−0.0302,+0.0314]`, and armI minus deployed
+is `−0.0147 [−0.0458,+0.0164]` (paired fixed-effect readings). Neither supports
+replacement; this is not proof of equivalence. Keep the deployed checkpoint.
+The suggested armI stability advantage remains an exploratory three-window
+observation, not a shipping conclusion.
+
 ## Now — ordered by decision value
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **LIVE / RESTRICTED TEST** | **W32 serving — Codex, #300 / #310** | Fly release 21 is observed as W32 PLAY with HEURISTIC BURY, unchanged 512MB/shared CPU. The prior public W32 round completed in 604.808s; 63 bot play turns, compute median/p95/max 5.358/27.763/122.273s, no worker errors. | Retain [rollout evidence](W32_FLY_SERVING.md); continue monitoring long-tail latency. | Do not infer hybrid bury is live; no active-game interruption, resize or extra replica. |
-| **AUTHORIZED / PENDING DEPLOY** | **Hybrid bury integration — Codex, PR #323** | Merged at `ec7f27ad`; prepared `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, unchanged compact `fd6bb411` / source `3cd27716`, 2s cooperative deadline with heuristic fallback. Current release 21 still uses heuristic bury. | Primary owns deployment and health-source-of-truth confirmation. | Research had no deadline/fallback; hybrid vs heuristic was +0.03644 `[+0.01164,+0.06024]` utility and +1.62 pp `[+0.56,+2.68]` wins on 1,976 deals; hybrid vs MC unresolved and kitty≥80 was 4 vs 0 heuristic. Native actual-consumer smoke 11/11 and focused boundary/registry/config tests 17/17 passed. |
+| **LIVE** | **W32 serving — Codex, #300 / #310** | Fly release 22 is verified as W32 PLAY with HYBRID BURY, unchanged 512MB/shared CPU. The prior public W32 round completed in 604.808s; 63 bot play turns, compute median/p95/max 5.358/27.763/122.273s, no worker errors. | Retain [rollout evidence](W32_FLY_SERVING.md); continue monitoring long-tail latency. | No active-game interruption, resize or extra replica. |
+| **SHIPPED / MONITOR** | **Hybrid bury integration — Codex, PR #323** | Merged at `ec7f27ad`; deployed `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, unchanged compact `fd6bb411` / source `3cd27716`, 2s cooperative deadline with heuristic fallback. Release 22 health and native/no-Torch functional bury passed. | Monitor latency/fallbacks and large-kitty losses with completed-round denominators; no further bury compute queued. | Research had no deadline/fallback; hybrid vs heuristic was +0.03644 `[+0.01164,+0.06024]` utility and +1.62 pp `[+0.56,+2.68]` wins on 1,976 deals; hybrid vs MC unresolved and kitty≥80 was 4 vs 0 heuristic. Native actual-consumer smoke 11/11 and focused boundary/registry/config tests 17/17 passed. |
 | **FUTURE INVESTIGATION** | **Model-to-search follow-up — Codex, coordinated with Claude** | Prior-assisted admission, learned continuations, harvest performance and v3 features remain separate mechanisms; bury completion does not close them. | Use retained model/search diagnostics to justify a specific next comparison, not an automatic sweep. | Preserve existing negative/neutral continuation and depth results; no new run is queued by this update. |
 | **COMPLETE** | **W32 engineering integration — Codex** | A+B+C W32: +0.1387 levels/round [+0.0645,+0.2168] on 256 opened rank-2 deals. Optimized replay preserves all saved traces and cuts decision wall 2.849× (10.61× → 3.53× production). #249 (`270bd3b9`) → #252 (`0a0d70d1`) → #254 (`0d355c4c`) merged after source PASS and CI; #251 holds the completed scaling readout. | Keep the optimization available to the deployed consumer and record the measured result; no gameplay rerun is needed to integrate unchanged semantics. | Integration alone did not authorize deployment; the later W32 rollout did. |
 | **COMPLETE / PARKED** | **Tested shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | Keep optimized K4/W32. K8, W64, doubled final search and both 26-deal double-shortlist arms did not establish improvement. Adaptive root allocation completed at +0.00577 [−0.05774,+0.07308] versus flat; selective depth at −0.00577 [−0.06736,+0.05769] and 1.5892× wall, each on 260 opened broader-rank deals. | No additional unchanged-recipe arm queued. Use retained evidence or a separately tested better checkpoint to motivate any new mechanism. [Results](AI_POLICIES.md#completed-allocation-and-depth-screens). | No equivalence, universal depth-failure or fresh-confirmation claim. Retain all artifacts; no automatic world/threshold/depth sweep. |

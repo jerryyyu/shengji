@@ -5,23 +5,25 @@ research priorities in `BACKLOG.md`, measured claims in `AI_POLICIES.md`.
 Agent Bus is a non-authoritative pointer channel. Historical active text is
 preserved in Git (pre-cleanup main `ec7f27ad`) and the existing dated archives.
 
-Last checked: **September 9, 2026, 20:30 ET**.
+Last checked: **September 9, 2026, 20:52 ET**.
 
-## Shipping now — Codex
+## Shipped — Codex
 
 - Jerry requested shipping hybrid bury and a documentation sweep. PR #323
   merged at `ec7f27ad`; unchanged W32 play uses compact `fd6bb411`, source
   ACDEF v2 `3cd27716`.
-- Live pre-release snapshot: Fly release21, W32 play / heuristic bury,
+- Live release snapshot: Fly release22, W32 play / hybrid bury,
   machine `48e7e35a9597e8`, one shared CPU,512MiB, existing volume, zero rooms.
   Recheck `/healthz` before restart; this is not a standing empty-room claim.
-- Prepared policy:
+- Deployed policy:
   `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`.
   Baseline32/32/32,2-second cooperative search budget, legal heuristic fallback.
   Registration alone does not activate it; `SHENGJI_BOT` selects the exact name.
 - Focused config/serving/boundary/registry tests17/17; native no-Torch actual
   consumer2-second probe11/11. The earlier Linux1CPU/512MiB probe11/11 passed.
-  Shipping image built, not yet deployed; primary owns release verification.
+  PR325 CI passed. Image `b5dc327f…1030c82d` deployed; live health and literal
+  model/encoder SHA checks passed. Isolated functional bury0.803s, legal8,
+  unchanged playRNG, noTorch, nofallback, no synthetic human-log game.
 - Release evidence: `~/shengji-archive/2026-09-09/bury-shipping.VIDnz5/`.
   Bury-only rollback restores base W32 and removes both BURY settings together;
   preserve model/log volume. See `DEPLOY.md` for image/occupancy details.
@@ -53,7 +55,9 @@ fixed/random-effects readings; do not import a universal tau into other lanes.
 
 ## Review queue
 
-PR323 source/population/final ship-boundary review is closed. Only a narrow
-shipping-configuration/docs review is needed for the prepared release delta;
-the exact PR/head will be sent on Agent Bus. No repeated gameplay, capacity
-sweep or old source re-audit is requested. This file is not review authority.
+PR323 source/population reviews and PR325 narrow configuration review are
+complete; PR325 comment5610801548 is config-correctness PASS, not deployment
+authority. Jerry directly requested shipping in Codex. Single-population and
+kitty-tail caveats remain open, not erased by the release. The final docs-only
+delta records actual deployment and historical-status cleanup; no repeated
+gameplay/capacity/source audit is requested. This file is not review authority.

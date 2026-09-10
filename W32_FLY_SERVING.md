@@ -11,6 +11,14 @@ inherit a new strength claim from the Torch checkpoint.
 
 ## Hybrid bury release (September 9)
 
+Deployed as Fly **release22**, image `b5dc327f…1030c82d`, with the exact
+selected policy below. Live health, literal model SHA/path, qualified encoder
+hashes and native/no-Torch execution verified. One isolated functional bury
+completed legally in 0.803s without fallback or play-RNG advance. No synthetic
+ordinary room or human-training log was created. The original machine,
+volume and engineering-room gate were preserved. See DEPLOY.md for the full
+image digest and environment overrides.
+
 PR #323 is merged. Jerry authorized shipping the reviewed baseline after the
 1,976-deal all-rank result: hybrid versus heuristic banker utility
 `+0.03644 [0.01164, 0.06024]`, win-rate `+1.62pp [0.56, 2.68]`.
@@ -35,8 +43,8 @@ The selected serving name is
 
 The prior Linux1CPU/512MiB actual-consumer probe passed11/11: serial367–508ms,
 four-request burst tail1.75s,cgroup peak104.9MiB,noOOM. That probe used a30s
-diagnostic deadline; the shipping2s configuration receives its own focused
-smoke, not a duplicate strength run. Measurements are not productionp99 or a
+diagnostic deadline; the shipping2s configuration passed its own focused
+11-request Mini smoke, not a duplicate strength run. Measurements are not productionp99 or a
 bound on mixed play/bury queueing.
 
 Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` **and removes

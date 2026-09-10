@@ -1,5 +1,10 @@
 # PT-Luna Self-Play — fresh full-round state-source acquisition
 
+Historical design record. Later play-only repairs, implementation and completed
+collections are summarized in AI_POLICIES.md and TEACHER_TOKEN_EFFICIENCY.md.
+The original status below is not today's execution queue; this document does
+not grant permission for a new collection.
+
 Status: simplified repair design only. This packet authorizes no formal Mini
 capacity run, scientific execution, value label, strength claim, gameplay
 change, merge, promotion, retry, or deployment. Jerry separately authorizes

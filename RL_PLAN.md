@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-Last reconciled: **2026-09-09 (release 21 W32 play / hybrid-bury ship pending)**. This document owns research architecture,
+Last reconciled: **2026-09-09 (release 22 W32 play / hybrid bury)**. This document owns research architecture,
 estimands, and the decision tree. `BACKLOG.md` owns priority; live compute and
 exact review asks are in `HANDOFF_ACTIVE.md`; policy names and deployment state
 are in `AI_POLICIES.md`; immutable receipts and verdicts are in
@@ -15,8 +15,8 @@ Do not append run diaries or duplicate exact packet hashes here.
 
 Build a Shengji policy that is demonstrably stronger than the current W32 PLAY
 consumer and its confirmed RLCB reference under a correct engine and
-reproducible evaluator. Release 21 is W32 PLAY with HEURISTIC BURY; the hybrid
-bury ship is authorized and integrated but pending deployment. The prior RLCB
+reproducible evaluator. Release 22 is W32 PLAY with HYBRID BURY and bounded
+heuristic fallback. The prior RLCB
 result (`+0.338 ± 0.068` signed levels vs `mc-strong`, 2,048 clusters) remains
 the confirmed strength reference. PT-Sol/Luna and A+B+C W32 are exploratory
 whole-round results; the bury report is the latest bounded policy evidence.
@@ -50,9 +50,9 @@ when a candidate beats the champion on a tier ii paired screen.
 ## Current decision tree
 
 0. **Keep serving boundaries explicit.** PR323 (`ec7f27ad`) integrates the
-   planned `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a` arm
-   with a 2-second cooperative deadline and heuristic fallback, but release 21
-   still uses heuristic bury. The research recipe had no deadline or fallback.
+   deployed `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a` arm
+   in release 22 with a 2-second cooperative deadline and heuristic fallback.
+   The research recipe had no deadline or fallback.
    On 1,976 deals, hybrid versus heuristic was `+0.03644` utility
    `[+0.01164,+0.06024]` and `+1.62` pp wins `[+0.56,+2.68]`; hybrid versus
    MC-only was unresolved, and kitty bonus ≥80 occurred 4 times versus 0 for

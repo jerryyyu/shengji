@@ -11,6 +11,7 @@ bugs cost hours; correctness bugs cost weeks and are invisible.
 
 ### Human-corpus contamination paths and repair
 
+Historical August 2026 incident record, not a current process inventory.
 Two at once, both silent:
 
 1. **`fetch_fly_logs.sh` wrote to the wrong directory.** It did `mkdir -p logs`
@@ -49,7 +50,7 @@ truth.
 cd server && uv run python -m pytest tests/ -q
 ```
 
-Layers (all must pass; current S0 packet collects **365 tests**, with both the
+Layers (all must pass; the historical S0 packet collected **365 tests**, with both the
 plain and `SHENGJI_FAST=1` routes required):
 1. **Unit tests** — test_engine.py, test_game.py, test_memory.py,
    test_rl.py: rules primitives, game flow, memory inference, RL codec.

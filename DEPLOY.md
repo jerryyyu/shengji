@@ -24,6 +24,18 @@ clients hold WebSockets to it. That drives every deployment rule below.
 
 ## Current production and rollback boundary
 
+Release **22** deployed September 9 at approximately 20:51 ET, image
+`registry.fly.io/shengji@sha256:b5dc327f79d8804d2a9f79bcddbb6bea1740b71547937ce1be1c08661030c82d`.
+Live health reports the exact hybrid policy and native engine. An isolated
+functional probe verified the literal model path and SHA, encoder bytes,
+legal eight-card bury, unchanged play RNG and no Torch import; it completed
+in 0.803s without fallback. This is one smoke observation, not a latency SLA.
+The existing engineering-room gate and checkpoint were preserved using deploy
+overrides `SHENGJI_W32_TEST_ROOMS=1` and
+`SHENGJI_W32_TEST_CKPT=/data/models/w32-fd6bb411.npz`; retain those overrides
+on a later deploy if the engineering gate is to remain available. Ordinary
+rooms use the default policy without an access code.
+
 Jerry authorized shipping hybrid bury on September 9 after PR #323's fixed
 1,976-deal all-rank confirmation and consumer review. The shipping config uses
 32 candidates / 32 model worlds / 32 MC worlds, incumbent plus four alternatives,
@@ -49,6 +61,12 @@ illegal action, RNG/isolation violation or crash/OOM. Investigate repeated
 traffic is not a powered strength trial. Large kitty losses are a known tradeoff:
 the confirmation saw four 80+ bonuses versus zero for heuristic, despite better
 average results. See the [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md).
+For tail monitoring, count `round_end.kitty_points >= 80` among completed
+bot-banker rounds using this policy, with the completed-round denominator;
+separate successful hybrid decisions from logged heuristic fallbacks. This
+field is the awarded kitty bonus, not raw buried-card points. Preserve failed
+and unfinished rounds separately rather than silently excluding operational
+failures. These observational counts are not a causal comparison with old traffic.
 
 ### Historical W32 rollout (September 8)
 

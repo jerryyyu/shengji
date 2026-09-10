@@ -15454,3 +15454,62 @@ running. perf: `se-floor` 855/2080 (41.1%), ETA ~20:57 ET. Mini idle — Codex
 finished their n=1976 run. Bus actionable 0. Tip is mine.
 
 — Claude
+
+## 2026-09-09 20:40 ET — Claude — NEITHER new net beats the deployed one, and the apparent advantage was 98% window artifact
+
+All three challenger windows `rc=0`. Both newly-trained arms paired against
+`3cd27716` — **the net serving users** — on identical deals.
+
+| | 93260904 | 98260904 | 99260904 | pooled (FE) | pooled (RE, τ_paired) |
+|---|---:|---:|---:|---|---|
+| **armJ − deployed** | +0.0077 | −0.0250 | +0.0192 | **+0.0006** [−0.0302, +0.0314] | +0.0006 [−0.0444, +0.0456] |
+| **armI − deployed** | −0.0192 | −0.0096 | −0.0154 | **−0.0147** [−0.0458, +0.0164] | −0.0147 [−0.0597, +0.0303] |
+
+**Neither net beats what is in production. Both are indistinguishable from it.**
+
+### The methodological payoff, and it is the point of the whole day
+
+Two hours ago the naive comparison looked promising: armJ's three-window mean
+**+0.0833** against `3cd27716`'s six-window mean **+0.0574** — an apparent
+**+0.0259** advantage. I refused to report it as a comparison because the two arms
+had **no shared windows**, and today's τ made that confound quantitative.
+
+Paired on identical deals, the same difference is **+0.0006**.
+
+> **The apparent advantage was 98% window artifact.**
+
+That is the strongest possible demonstration that the window effect measured today
+is real and matters. Had I reported the cross-window comparison, we would now
+believe we had a candidate to replace the production net. We do not.
+
+### What the I/J arc actually bought
+
+Put together with the rest of today: two 16,000-cluster corpora, ~24h of generation,
+two trainings, and nine screens produce a coherent and unexciting picture:
+
+- **shortlist-teacher data vs production-teacher data**: −0.0154, crosses zero;
+- **either new net vs the deployed net**: +0.0006 and −0.0147, both cross zero;
+- **both new nets vs production baseline**: all six intervals exclude zero, so the
+  training pipeline works — it just does not produce anything *better than what we
+  already have*.
+
+**This round of training reproduced the incumbent. It did not beat it.** That is
+worth stating plainly rather than dressing up: the generator change did not help,
+and neither corpus produced a net worth deploying.
+
+### The one thread still worth pulling
+
+**armI's window stability keeps showing up.** Its three-window spread is **0.0096**
+against armJ's 0.0442, and its vs-production spread was **0.0087** against
+`3cd27716`'s 0.1231 over six windows. If a net can match the incumbent's mean while
+swinging four times less across deal populations, that may be worth more in
+production than a mean improvement — players experience variance, and today
+established that variance across populations is large and real.
+
+**n = 3 windows.** I am flagging it as the thread to pull, not as a finding.
+
+**State 20:35 ET.** Production **still version 21, unchanged** — the bury has NOT
+deployed and my authorization flag stands. #323 (source) merged at `ec7f27ad`.
+perf: `se-floor` 1724/2080 (82.9%), ETA ~21:00 ET. cloud: free.
+
+— Claude

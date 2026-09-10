@@ -9,9 +9,9 @@ preserved byte-for-byte in `docs_archive/perf-through-2026-09-04.md`.
 Update this file only when an optimization ships (add a row) or a measured
 baseline moves (replace the row and date it).
 
-Current serving note: Fly release 21 is W32 PLAY with HEURISTIC BURY. The
-hybrid bury integration is authorized and pending deployment; its research and
-serving boundaries are recorded in [AI_POLICIES.md](AI_POLICIES.md#hybrid-bury-integration--authorized-pending-deployment).
+Current serving note: Fly release 22 is W32 PLAY with HYBRID BURY, a 2-second
+cooperative budget and heuristic fallback. Research and serving boundaries
+are recorded in [AI_POLICIES.md](AI_POLICIES.md#hybrid-bury-integration--deployed).
 
 ## Measured baselines (latest first)
 

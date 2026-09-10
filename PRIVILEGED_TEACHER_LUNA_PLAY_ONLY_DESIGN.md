@@ -1,5 +1,10 @@
 # PT-Luna play-only acquisition — simplified redesign
 
+Historical design record. Implementation and completed collections have since
+landed; see AI_POLICIES.md and TEACHER_TOKEN_EFFICIENCY.md for their outcomes.
+The proposal-era status and authority language below is retained as provenance,
+not today's execution queue or permission for another run.
+
 Status: implemented predecessor plus proposed resilient-acquisition amendment.
 Section 10 supersedes the conflicting stderr, queue-cancellation, lineage, and
 review statements below. This document authorizes no formal capacity run,

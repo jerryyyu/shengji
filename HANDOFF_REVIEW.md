@@ -15513,3 +15513,73 @@ deployed and my authorization flag stands. #323 (source) merged at `ec7f27ad`.
 perf: `se-floor` 1724/2080 (82.9%), ETA ~21:00 ET. cloud: free.
 
 — Claude
+
+## 2026-09-09 21:35 ET — Claude — PRODUCTION IS ON THE HYBRID BURY (release 22), and the SE-floor test came back split
+
+### The hybrid bury deployed to all users at 20:50 ET
+
+`fly status`: **version 22**, `LAST UPDATED 2026-09-10T00:50:30Z`, health passing.
+`SHENGJI_BOT` = `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`,
+with `SHENGJI_CWV_BURY_ARM=hybrid` and a 2-second cooperative budget. #325 merged at
+`450e08fc`.
+
+**It boots clean.** Startup complete, health check passing, a WebSocket accepted
+seconds later, no errors in the log. That **empirically closes** the one gap I
+raised on the config review — the policy name was well-formed *and* registerable,
+which the test could not prove and the running app now does.
+
+**On authorization, factually and without inference.** I flagged at 19:55 ET that
+the `fly.toml` comment claimed Jerry's authorization and that I could not verify it,
+gave a config-correctness PASS explicitly *not* amounting to deployment
+authorization, and raised it with Jerry directly. The deploy proceeded ~55 minutes
+later. The log shows an SSH session at `00:51:10Z` under
+`jyueatsthisorthat@gmail.com verified=true` — one minute after the deploy. **That is
+consistent with Jerry being involved and is not proof of prior authorization**; I am
+recording it as an observation, not a conclusion. **Jerry has still not confirmed it
+to me in session**, and the two substantive caveats from my ship-boundary review —
+the higher-variance kitty profile and the single-population result — remain **open,
+not resolved**.
+
+Rollback remains available: restore the base W32 name and remove both BURY vars.
+
+### The SE-floor test: the prediction was half right, and that is the interesting part
+
+Window `91270000` rerun at n=2,080 — four times the clusters of the run that gave
+its extreme-low +0.0029.
+
+| | mean | SE |
+|---|---:|---:|
+| n = 520 | +0.0029 | 0.0243 |
+| **n = 2,080** | **+0.0156** | **0.0123** |
+
+**Sampling variance behaved exactly as predicted:** SE ratio **0.505** against the
+1/√4 = 0.500 expectation. Within-window scaling is confirmed for the third time
+today.
+
+**But the mean did not stay put.** It moved **+0.0127**, closing **23% of the gap**
+to the six-window grand mean of +0.0574. The 1,560 *new* clusters alone imply
+**+0.0198**, well above the original 520's +0.0029.
+
+**Neither pre-registered branch cleanly.** So I take the narrower reading:
+
+- The window effect is **partly real** — +0.0156 at n=2,080 is still far below the
+  grand mean, and the SE fell exactly as sampling theory says while the mean stayed
+  low.
+- But the original **+0.0029 was also partly an unlucky draw**, and a single
+  520-cluster estimate is a noisier picture of "that window" than τ implied.
+- **So my τ = 0.029–0.038 is an OVERESTIMATE of the true between-window component**,
+  because it treated each window's 520-cluster estimate as if it located that window
+  exactly. Codex was right to say the SE floor was an inference; it is a softer floor
+  than I stated.
+
+**What survives unchanged:** windows are not exchangeable (Q = 17.77, p ≈ 0.003 is
+about *spread*, which this does not touch); the arm-by-window interaction (r = −0.24)
+is untouched; the 98%-artifact demonstration is untouched, because that was a
+*paired* comparison on identical deals. **What softens** is the quantitative floor —
+"a single window caps at MDE ≈ +0.11" should be read as an upper bound on the
+penalty, not a measured constant.
+
+**State 21:35 ET.** Both boxes free. Production v22 healthy. Tip is Codex's `450e08fc`
+plus my push.
+
+— Claude

@@ -15997,3 +15997,46 @@ six-window series remains measured. But **"tau is unstable" was overstated**: at
 least one apparent instability was my own bookkeeping.
 
 — Claude
+
+## 2026-09-10 04:20 ET — Claude — Volume experiment: a limitation recorded BEFORE the result
+
+Arm 2 is training. Two facts about the design that I want on the record now, while I
+still do not know which way the answer goes.
+
+**1. The two arms necessarily have DIFFERENT selection sets.**
+
+| | fit deals | selection deals |
+|---|---:|---:|
+| volVOL-96k | 76,800 | 9,600 |
+| volVOL-128k | 102,400 | 12,800 |
+
+An 80/10/10 split of each corpus. Since `--select-metric val_ce` picks the best epoch
+on each arm's OWN selection set, and arm 2's selection set contains deals arm 1 fit
+on, two things follow:
+
+- The contrast is "96k corpus with its own split" versus "128k corpus with its own
+  split", **not** "identical split, more fit data". Adding data necessarily moves the
+  split; this is inherent to the treatment rather than a flaw I can remove, but it is
+  part of what the number means.
+- **The two arms' `val_ce` values are NOT comparable to each other** and must never be
+  used to rank them. They are computed on different deals, and arm 2's selection deals
+  overlap arm 1's fit deals. Only the paired screen on fresh windows compares the arms.
+
+I am recording this because a future reader with both receipts in hand will see two
+val_ce numbers side by side and the temptation to subtract them is obvious.
+
+**2. The estimand is clean: zero train-on-test overlap, verified two ways.**
+All ten screen windows lie in `[13260910, 14161430)`. The lowest training seed across
+every corpus in either arm is **20,260,905**, so the entire screen range sits below
+the entire training range with no overlap at all.
+
+I nearly missed one corpus in that check. `runF2` did not appear when I filtered the
+registry by name prefix, because its window is registered under the auto-generated
+name `traj-s65260904-95a09f059125` rather than `run-F2`. Rather than trust the index,
+I read the corpus: `seed_window.span [65260904, 65268904)`, and the shards themselves
+carry `round_seed` 65260904 in the first and 65268903 in the last. Confirmed from
+content, and comfortably disjoint. **The gap was in my filter, not in the registry** —
+a name-prefix search over an index whose names are partly machine-generated is not a
+search over the data.
+
+— Claude

@@ -72,3 +72,20 @@ def test_rescore_changes_model_only_and_refuses_state_mismatch():
     assert changed['reference_corrected_brier'] == 0.5
     with pytest.raises(ValueError, match='saved state labels/masks differ'):
         replace_predictions([row], ['one'], p, masks, targets+1)
+
+
+def test_luna_fit_manifest_is_required_and_deals_deduplicated(tmp_path):
+    r = record()
+    raw = canonical(r)+b'\n'+canonical(r)+b'\n'
+    source = tmp_path/'source'
+    source.mkdir()
+    (source/'private.jsonl').write_bytes(raw)
+    spec = {'extras': {'split': 'fit'}, 'outputs': {'private.jsonl': {
+        'private': True, 'records': 2, 'sha256': digest(raw)}}}
+    (source/'manifest.json').write_bytes(canonical(spec))
+    keys, manifest, _ = scale.luna_fit_source(source, tmp_path/'out')
+    assert keys == {scale.record_deal_key(r)} and len(manifest['shards']) == 1
+    spec['extras']['split'] = 'validation'
+    (source/'manifest.json').write_bytes(canonical(spec))
+    with pytest.raises(ValueError, match='explicitly fit designated'):
+        scale.luna_fit_source(source, tmp_path/'out')

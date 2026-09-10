@@ -200,7 +200,10 @@ def _probability_metrics(logits: torch.Tensor, targets: torch.Tensor,
 
 
 def _count_prior(targets: np.ndarray) -> torch.Tensor:
-    counts = np.stack([(targets == cls).sum(axis=0) for cls in range(3)], axis=-1)
+    counts = np.zeros((4, 54, 3), dtype=np.int64)
+    for start in range(0, len(targets), 8192):
+        chunk = targets[start:start+8192]
+        counts += np.stack([(chunk == cls).sum(axis=0) for cls in range(3)], axis=-1)
     probabilities = counts.astype(np.float32) + 1e-6
     probabilities /= probabilities.sum(axis=-1, keepdims=True)
     return torch.from_numpy(probabilities).reshape(1, 4, 54, 3)
@@ -219,7 +222,7 @@ def _evaluate(model: SimpleBeliefMLP, data: tuple[np.ndarray, ...],
             stop = min(start + batch_size, len(x))
             tx = torch.from_numpy(x[start:stop])
             ta = torch.from_numpy(allowed[start:stop])
-            tt = torch.from_numpy(targets[start:stop])
+            tt = torch.from_numpy(targets[start:stop]).long()
             logits = model(tx)
             n = _uncertain_count(ta)
             if not n:
@@ -290,7 +293,8 @@ def train_simple_belief(cache: str | Path, output: str | Path, *,
                         epochs: int = 20, threads: int = 2,
                         batch_size: int = 256, lr: float = 1e-3,
                         seed: int = 0, width: int = 256,
-                        hidden: int = 128, resume: bool = False) -> dict[str, Any]:
+                        hidden: int = 128, resume: bool = False,
+                        disk_backed: bool = False) -> dict[str, Any]:
     """Train on train/dev only and atomically checkpoint after every epoch."""
     if type(epochs) is not int or epochs < 1:
         raise ValueError("epochs must be positive")
@@ -311,7 +315,11 @@ def train_simple_belief(cache: str | Path, output: str | Path, *,
     if not resume and output.exists() and any(output.iterdir()):
         raise ValueError("output directory is occupied; use --resume")
     # Deliberately load only train and dev in the training path.
-    train = load_split(cache, "train")
+    if disk_backed:
+        from .simple_belief_mmap import load_split_disk
+        train = load_split_disk(cache, "train")
+    else:
+        train = load_split(cache, "train")
     dev = load_split(cache, "dev")
     prior = _count_prior(train[2])
     config = _config(epochs=epochs, threads=threads, batch_size=batch_size,
@@ -368,7 +376,7 @@ def train_simple_belief(cache: str | Path, output: str | Path, *,
             indices = order[start:start + batch_size].numpy()
             tx = torch.from_numpy(train[0][indices])
             ta = torch.from_numpy(train[1][indices])
-            tt = torch.from_numpy(train[2][indices])
+            tt = torch.from_numpy(train[2][indices]).long()
             optimizer.zero_grad(set_to_none=True)
             loss = masked_count_loss(model(tx), tt, ta)
             loss.backward()
@@ -432,11 +440,12 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=256)
     parser.add_argument("--hidden", type=int, default=128)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--disk-backed", action="store_true")
     args = parser.parse_args()
     result = train_simple_belief(
         args.cache, args.output, epochs=args.epochs, threads=args.threads,
         batch_size=args.batch_size, lr=args.lr, seed=args.seed,
-        width=args.width, hidden=args.hidden, resume=args.resume)
+        width=args.width, hidden=args.hidden, resume=args.resume, disk_backed=args.disk_backed)
     print(json.dumps(result, sort_keys=True))
 
 

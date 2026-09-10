@@ -76,7 +76,48 @@ def encode_extra(task):
             'identity': identity, 'rows': count, 'sources': shards}
 
 
-def prepare(checkpoint, old_cache, fresh, output, sizes=(8000, 32000), workers=4):
+def luna_fit_source(root, output):
+    """Admit only the explicitly fit-designated private harvest, never validation."""
+    root, output = Path(root), Path(output)
+    manifest_raw = (root/'manifest.json').read_bytes()
+    manifest = json.loads(manifest_raw)
+    if manifest.get('extras', {}).get('split') != 'fit':
+        raise ValueError('supplement must be explicitly fit designated')
+    choices = [(name, spec) for name, spec in manifest['outputs'].items() if spec.get('private')]
+    if len(choices) != 1:
+        raise ValueError('one private reconstruction file required')
+    name, spec = choices[0]
+    if not (root/name).resolve().is_relative_to(root.resolve()):
+        raise ValueError('supplement path escapes corpus')
+    raw = (root/name).read_bytes()
+    if digest(raw) != spec['sha256']:
+        raise ValueError('supplement bytes changed')
+    records = [json.loads(line) for line in raw.splitlines()]
+    if len(records) != spec['records']:
+        raise ValueError('supplement row count changed')
+    grouped = {}
+    for r in records:
+        if r['decision_kind'] == 'play':
+            grouped.setdefault(record_deal_key(r), []).append(reconstruction_record(r))
+    output.mkdir(parents=True, exist_ok=True)
+    shards = []
+    for key, rows in sorted(grouped.items()):
+        if key is None:
+            raise ValueError('supplement lacks real deck')
+        name = key.removeprefix('deck:')+'.jsonl'
+        payload = b''.join(canonical(r)+b'\n' for r in rows)
+        path = output/name
+        if path.exists() and path.read_bytes() != payload:
+            raise ValueError('supplement reconstruction inputs changed')
+        if not path.exists():
+            path.write_bytes(payload)
+        shards.append({'path': name, 'sha256': digest(payload), 'bytes': len(payload),
+                       'records': len(rows), 'cluster': key})
+    return set(grouped), {'source': 'trajectory', 'shards': shards}, digest(manifest_raw)
+
+
+def prepare(checkpoint, old_cache, fresh, output, sizes=(8000, 32000), workers=4,
+            eligibility_checkpoint=None, luna_fit=None, all_deals=False):
     import torch
     started = time.monotonic()
     output, old_cache = Path(output), Path(old_cache)
@@ -91,14 +132,32 @@ def prepare(checkpoint, old_cache, fresh, output, sizes=(8000, 32000), workers=4
     if fit & heldout:
         raise ValueError('baseline split overlap')
     forbidden = {d['deal_key'] for d in json.loads(Path(fresh).read_bytes())['deals']}
+    eligibility_sha = None
+    if eligibility_checkpoint:
+        eligible_raw = Path(eligibility_checkpoint).read_bytes()
+        newer = torch.load(eligibility_checkpoint, weights_only=False, map_location='cpu')['metadata']
+        new_holdout = set(newer['population']['val']) | set(newer['population']['test'])
+        if set(newer['population']['train']) & new_holdout:
+            raise ValueError('newer value split overlap')
+        heldout |= new_holdout
+        fit = set(newer['population']['train']) - heldout
+        meta = newer
+        eligibility_sha = digest(eligible_raw)
     roots = meta['config']['data']
     manifests = [(str(Path(r)), json.loads((Path(r)/'manifest.json').read_bytes())) for r in roots]
     if any(m['source'] != 'trajectory' for _, m in manifests):
         raise ValueError('only single-round trajectory sources supported')
     signatures = {r: digest((Path(r)/'manifest.json').read_bytes()) for r in roots}
+    if luna_fit:
+        supplement_root = output/'luna-fit-source'
+        keys, manifest, source_sha = luna_fit_source(luna_fit, supplement_root)
+        fit |= keys - heldout
+        manifests.append((str(supplement_root), manifest))
+        signatures[str(Path(luna_fit))] = source_sha
     plan = {'schema': 'belief-scale-plan-v1', 'baseline': digest(raw),
             'old_recipe': digest((old_cache/'recipe.json').read_bytes()),
             'sources': signatures, 'sizes': list(sizes), 'forbidden_fresh': sorted(forbidden),
+            'all_deals': all_deals, 'eligibility_checkpoint_sha256': eligibility_sha,
             'selection': 'retain old train; hash-order additional baseline-fit belief-train deals',
             'fixed_dev': 68, 'fixed_check': 97, 'positions': 16}
     write_once(output/'plan.json', plan)
@@ -116,6 +175,10 @@ def prepare(checkpoint, old_cache, fresh, output, sizes=(8000, 32000), workers=4
                     print(json.dumps({'stage': 'index', 'done': i, 'total': len(tasks),
                                       'seconds': time.monotonic()-started}), flush=True)
         write_once(indexpath, index)
+    if all_deals:
+        protected = {d['deal_key'] for d in old['deals'] if d['split'] != 'train'} | forbidden
+        n = len({k for k in index if k in fit and k not in protected and deal_split(k) == 'train'})
+        sizes = [n]
     selected = {n: choose_keys(index, fit, old, forbidden, n) for n in sizes}
     oldkeys = {d['deal_key'] for d in old['deals']}
     extra = [k for k in selected[max(sizes)] if k not in oldkeys]
@@ -163,6 +226,9 @@ def main():
         p.add_argument('--'+name, required=True)
     p.add_argument('--sizes', type=int, nargs='+', default=[8000, 32000])
     p.add_argument('--workers', type=int, default=4)
+    p.add_argument('--eligibility-checkpoint')
+    p.add_argument('--luna-fit')
+    p.add_argument('--all-deals', action='store_true')
     prepare(**vars(p.parse_args()))
 
 

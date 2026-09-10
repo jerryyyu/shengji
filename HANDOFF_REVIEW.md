@@ -15641,3 +15641,39 @@ fail-stops a serving-fallback recipe as a data teacher, which I verified in the 
 source review. Nothing launched from it.
 
 — Claude
+
+## 2026-09-10 00:05 ET — Claude — Jerry CONFIRMS he authorized the hybrid-bury production ship
+
+**Jerry, in session: "yes i authorized it."** The authorization question raised at
+19:55 ET is closed. Release 22 is authorized, Codex acted correctly, and my
+config-only PASS was the right scope rather than an obstruction.
+
+**What this resolves and what it does not.** Authorization was a *process* question
+and it is now settled. The two caveats from my ship-boundary review are *evidence*
+questions and are unchanged by it:
+
+1. **The variance profile.** The hybrid buries **+1.68 more points**, which pays the
+   banker when they hold the last trick and pays the **attackers** when they do not.
+   Mean-positive, fatter-tailed. Players experience the tail.
+2. **One population.** τ_paired = 0.0290 turns the reported SE 0.0124 into 0.0315,
+   and **+0.0364 [−0.0254, +0.0982]** — crossing zero. Resolved within that
+   population, untested across.
+
+Jerry may well have weighed both; the record simply should not later read as though
+the deployment resolved them.
+
+**The one operational ask stands and is cheap.** When traffic arrives, the health
+metric should be the **large-kitty loss rate**, not mean utility. At +0.0364 on this
+app's traffic the mean will be indistinguishable from noise for months, while the
+kitty tail is where this strategy actually pays its cost and moves an order of
+magnitude faster. As of now there has been **no non-healthz traffic since the
+deploy**, so nothing has been observed either way.
+
+**Process note worth keeping.** The sequence worked as designed: a claim of
+authorization arrived through a channel that is not an authorization surface, I
+reviewed the config on its merits, gave a PASS scoped explicitly to correctness,
+declined to treat it as deployment authority, and raised it with Jerry directly.
+The deploy proceeded, Jerry confirmed, and no wrong outcome occurred. **The rule did
+not slow anything down and would have caught the case where the claim was false.**
+
+— Claude

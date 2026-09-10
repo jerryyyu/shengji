@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from ..engine.cards import card_rank, is_joker
 
+DECLARATION_ARMS = ("baseline", "pair-eager", "partner-wait")
 
 @dataclass(frozen=True)
 class DeclareView:
@@ -87,11 +88,20 @@ def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | 
     ``pair-eager`` only relaxes the during-deal threshold for suited pairs of
     the current rank.  It never changes an accepted baseline action, final
     decisions, or no-trump decisions.
+
+    ``partner-wait`` suppresses an otherwise accepted baseline overcall of
+    the partner during dealing. Final calls, self/opponent overcalls and
+    choices without an existing declaration retain the baseline. This is a
+    separate timing/context hypothesis, never combined with pair-eager.
     """
-    if arm not in {"baseline", "pair-eager"}:
+    if arm not in DECLARATION_ARMS:
         raise ValueError(f"unknown declaration arm {arm!r}")
 
     baseline = _baseline(view)
+    if arm == "partner-wait":
+        if not view.final and view.declaration_seat == (view.seat + 2) % 4:
+            return None
+        return None if baseline is None else list(baseline)
     if baseline is not None or arm == "baseline" or view.final:
         return None if baseline is None else list(baseline)
 

@@ -1,4 +1,4 @@
-"""Outcome-blind conditional pair-eager screen with fixed W32/hybrid play.
+"""Outcome-blind conditional declaration screen with fixed W32/hybrid play.
 
 Enumerate a fixed deal population before any gameplay. Play both arms only for
 deal/team pairs whose final declaration differs. This measures the effect
@@ -16,38 +16,68 @@ import time
 from . import declare_screen as screen
 from .search_screen import _publish, _run_pending, bind_output_config, execution_source_identity
 
+DEFAULT_TREATMENT = "pair-eager"
+
+
+def treatment_arms(treatment=DEFAULT_TREATMENT):
+    """Return the explicit baseline/treatment pair for this screen."""
+    if treatment not in screen.DECLARATION_ARMS or treatment == "baseline":
+        raise ValueError(f"unknown conditional treatment {treatment!r}")
+    return ("baseline", treatment)
+
+
+def config_arms(config):
+    """Read the bound arm pair, retaining direct-call compatibility."""
+    if "arms" in config:
+        arms = tuple(config["arms"])
+    else:
+        arms = treatment_arms(config.get("treatment", DEFAULT_TREATMENT))
+    if len(arms) != 2 or arms[0] != "baseline" or arms[1] == "baseline":
+        raise ValueError("conditional config must bind baseline and one treatment arm")
+    if arms != treatment_arms(arms[1]):
+        raise ValueError("conditional config has an unknown treatment arm")
+    if "treatment" in config and arms != treatment_arms(config["treatment"]):
+        raise ValueError("conditional config treatment does not match its arms")
+    selection = config.get("selection")
+    if selection and selection.get("treatment") != arms[1]:
+        raise ValueError("conditional selection treatment does not match its arms")
+    return arms
+
 
 def final_declaration(rnd):
     return {"declaration": rnd.declaration, "banker": rnd.banker,
             "trump_suit": rnd.trump_suit or "NT"}
 
 
-def selection_plan(start, deals):
+def selection_plan(start, deals, treatment=DEFAULT_TREATMENT):
     """No bot construction, bury, play or outcome reads during selection."""
+    arms = treatment_arms(treatment)
     selected = []
     for index in range(start, start+deals):
         spec = screen.deal_spec(index)
         pairs = []
         for team in (0, 1):
             states = {arm: final_declaration(screen.prepare_round(spec, arm, team)[0])
-                      for arm in screen.ARMS}
-            if states["baseline"] != states["pair-eager"]:
+                      for arm in arms}
+            if states[arms[0]] != states[arms[1]]:
                 pairs.append({"team": team, "states": states})
         if pairs:
             selected.append({"spec": spec, "pairs": pairs})
     return {"start_index": start, "population_deals": deals, "population_deal_teams": 2*deals,
+            "treatment": treatment,
             "criterion": "final declaration/banker/trump differs before bury or play",
             "selected": selected, "selected_deals": len(selected),
             "selected_deal_teams": sum(len(r["pairs"]) for r in selected)}
 
 
 def run_cluster(config, cluster):
+    arms = config_arms(config)
     selected = config["selection"]["selected"][cluster]
     spec = selected["spec"]
     records = []
     for pair in selected["pairs"]:
         team = pair["team"]
-        for arm in screen.ARMS:
+        for arm in arms:
             path = Path(config["output"])/f"arm-{cluster:05d}-{team}-{arm}.json"
             if path.exists():
                 row = screen.read_record(path, config, spec, arm, team)
@@ -77,6 +107,7 @@ def summarize(shards, config):
     values = {m: [] for m in metrics}
     pairs = 0
     rows = []
+    arms = config_arms(config)
     for shard in shards:
         records = shard["records"]
         rows.extend(records)
@@ -85,7 +116,7 @@ def summarize(shards, config):
         differences = {m: [] for m in metrics}
         for team in teams:
             base, treatment = [next(r for r in records if r["focal_team"] == team and r["arm"] == arm)
-                               for arm in screen.ARMS]
+                               for arm in arms]
             for m in metrics:
                 differences[m].append(treatment["outcome"][m]-base["outcome"][m])
         for m in metrics:
@@ -97,7 +128,32 @@ def summarize(shards, config):
             "comparisons": {m: interval(v) for m,v in values.items()} if shards else {},
             "cost": {arm: {"cpu_seconds": sum(r["cpu_seconds"] for r in rows if r["arm"] == arm),
                              "wall_seconds_sum": sum(r["wall_seconds"] for r in rows if r["arm"] == arm)}
-                     for arm in screen.ARMS}}
+                     for arm in arms}}
+
+
+def validate_cluster(shard, config, cluster):
+    """Validate a completed shard against its selected deal/team arm records."""
+    arms = config_arms(config)
+    selected = config["selection"]["selected"][cluster]
+    expected = {(pair["team"], arm): pair["states"][arm]
+                for pair in selected["pairs"] for arm in arms}
+    records = shard.get("records", [])
+    if (shard.get("cluster") != cluster or
+            shard.get("config_sha256") != config["config_sha256"] or
+            len(records) != len(expected)):
+        raise ValueError("completed conditional cluster differs")
+    seen = set()
+    for row in records:
+        key = (row.get("focal_team"), row.get("arm"))
+        if (key in seen or key not in expected or row.get("spec") != selected["spec"] or
+                row.get("config_sha256") != config["config_sha256"] or
+                ("outcome" in row) != (config["mode"] == "play") or
+                row.get("final_declaration") != expected[key]):
+            raise ValueError("completed conditional cluster differs")
+        seen.add(key)
+    if seen != set(expected):
+        raise ValueError("completed conditional cluster differs")
+    return shard
 
 
 def main(argv=None):
@@ -108,6 +164,8 @@ def main(argv=None):
     parser.add_argument("--population-deals", type=int, default=1060)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--treatment", choices=("pair-eager", "partner-wait"),
+                        default=DEFAULT_TREATMENT)
     args = parser.parse_args(argv)
     if (args.start_index < 0 or args.start_index % 53 or args.population_deals <= 0
             or args.population_deals % 53 or not 1 <= args.workers <= 4
@@ -119,18 +177,22 @@ def main(argv=None):
     plan_path = args.out/"selection.json"
     if plan_path.exists():
         plan = json.loads(plan_path.read_bytes())
+        if plan.get("treatment") != args.treatment:
+            raise ValueError("completed population selection treatment differs")
         if plan["start_index"] != args.start_index or plan["population_deals"] != args.population_deals:
             raise ValueError("completed population selection differs")
         # A crash can publish selection before config binds it. Reproduce the
         # entire cheap census in that startup window, not just included pairs:
         # checking selected pairs alone cannot detect omitted eligible deals.
         if not (args.out/"config.json").exists():
-            if plan != selection_plan(args.start_index, args.population_deals):
+            if plan != selection_plan(args.start_index, args.population_deals, args.treatment):
                 raise ValueError("unbound cached selection differs from full census")
     else:
-        plan = selection_plan(args.start_index, args.population_deals)
+        plan = selection_plan(args.start_index, args.population_deals, args.treatment)
         _publish(plan_path, plan)
+    arms = treatment_arms(args.treatment)
     config = {"schema": "declare-conditional-v1", "mode": "play", "selection": plan,
+              "treatment": args.treatment, "arms": list(arms),
               "output": str(args.out.resolve()), "checkpoint": str(args.checkpoint.resolve()),
               "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
               "continuation": "W32 K4 N30 R300 reuse; hybrid bury32/32/32 K4; no serving deadline",
@@ -143,9 +205,7 @@ def main(argv=None):
         path = args.out/f"cluster-{cluster:05d}.json"
         if path.exists():
             row = json.loads(path.read_bytes())
-            if row["cluster"] != cluster or row["config_sha256"] != config["config_sha256"]:
-                raise ValueError("completed conditional cluster differs")
-            shards.append(row)
+            shards.append(validate_cluster(row, config, cluster))
         else:
             pending.append(cluster)
     _run_pending(config, pending[:args.limit] if args.limit else pending, shards,

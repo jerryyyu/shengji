@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -152,3 +153,41 @@ def test_choice_is_always_one_of_captured_options():
                        (("S5",), ("S5", "S5")), "deal", False, None, None)
     action = choose_declaration(view, "pair-eager")
     assert action is None or tuple(action) in view.options
+
+
+def test_partner_wait_only_suppresses_partial_deal_partner_overcall():
+    view = DeclareView(0, "5", ("S5", "S5", "S2", "S3", "S4", "S6"),
+                       (("S5", "S5"),), "deal", False, 1, 2)
+    assert choose_declaration(view) == ["S5", "S5"]
+    assert choose_declaration(view, "partner-wait") is None
+    for owner in (None, 0, 1, 3):
+        assert choose_declaration(replace(view, declaration_seat=owner), "partner-wait") == ["S5", "S5"]
+    assert choose_declaration(replace(view, final=True), "partner-wait") == ["S5", "S5"]
+    assert choose_declaration(replace(view, options=()), "partner-wait") is None
+    assert choose_declaration(replace(view, seat=1, declaration_seat=3), "partner-wait") is None
+
+
+def test_partner_wait_applies_to_nt_timing_without_changing_nt_score():
+    view = DeclareView(0, "5", ("BJ", "BJ", "S5", "H5", "C5"),
+                       (("BJ", "BJ"),), "deal", False, None, 2)
+    assert choose_declaration(view) == ["BJ", "BJ"]
+    assert choose_declaration(view, "partner-wait") is None
+    assert choose_declaration(replace(view, final=True), "partner-wait") == ["BJ", "BJ"]
+
+
+def test_partner_wait_wiring_changes_real_declaration_events():
+    from shengji.train.declare_screen import deal_spec, prepare_round
+    changes = []
+    for index in range(53):
+        for team in (0, 1):
+            rnd, events = prepare_round(deal_spec(index), "partner-wait", team)
+            assert rnd.phase == "bury"
+            for event in events:
+                if event["changed"]:
+                    changes.append(event)
+                    view = event["view"]
+                    assert view["seat"] % 2 == team
+                    assert view["declaration_seat"] == (view["seat"]+2) % 4
+                    assert view["final"] is False
+                    assert event["baseline"] and event["chosen"] is None
+    assert changes, "natural census must actually exercise partner-wait wiring"

@@ -18,7 +18,7 @@ import time
 
 from ..engine.cards import RANKS
 from ..engine.round import Round, actual_play_after
-from .declare_policy import capture_declare_view, choose_declaration
+from .declare_policy import DECLARATION_ARMS, capture_declare_view, choose_declaration
 
 ARMS = ("baseline", "pair-eager")
 NAMESPACE = "declare-pair-eager-dev-20260910-v1"
@@ -38,7 +38,7 @@ def deal_spec(index):
 
 
 def prepare_round(spec, arm, team):
-    if arm not in ARMS or team not in (0, 1):
+    if arm not in DECLARATION_ARMS or team not in (0, 1):
         raise ValueError("unknown declaration arm/team")
     rnd = Round(spec["rank"], spec["initial_banker"], random.Random(spec["seed"]))
     events = []

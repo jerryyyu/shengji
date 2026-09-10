@@ -8,6 +8,11 @@ lane is closed.
 Execution, parallelism, long-run readiness and review discipline live in
 `AGENTS.md`; this file stays limited to scientific choices and claim meaning.
 
+Scope clarification (September 9): the experiment decompositions below are
+reasoning tools, not a mandatory next-run sequence. In particular, they do
+not reopen the retired BELIEF lane. Use BACKLOG.md for active work and
+AI_POLICIES.md for the now-deployed W32 evidence and remaining limitations.
+
 ## 1. Optimize verified whole-game strength
 
 The product metric is paired signed level utility against the named live

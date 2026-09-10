@@ -32,8 +32,9 @@ COPY server/shengji ./shengji
 COPY server/snapshots_v7w/ep02.npz ./snapshots_v7w/ep02.npz
 # Learned override (rl-override-v11pair). Numpy weights, ~2MB, parity with
 # torch asserted from committed fixtures in tests/test_npnet_prod_parity.py.
-# Only used when SHENGJI_BOT names it. Fly currently pins mc-strong; the source
-# fallback remains mc for local launches that omit the environment variable.
+# Only used when SHENGJI_BOT names it. Fly selects the compact W32 policy
+# through fly.toml; the source fallback remains mc for local launches that
+# omit the environment variable. The W32 package lives on the /data volume.
 COPY server/snapshots_v11pair/ep07.npz ./snapshots_v11pair/ep07.npz
 RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
 # The compiled extension, matched to this image's CPython. `fast.py` activates

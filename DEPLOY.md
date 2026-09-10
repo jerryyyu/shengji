@@ -13,13 +13,62 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly explicitly pins W32 `mc-shortlist-fd6bb411-w32-r55d379a3`, using the
+  Fly configuration selects W32 play plus hybrid bury
+  `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, using the
   A+C+D+E+F2 v2 model with N=30 selection and R=300 report checking.
-  `mc-s0-report-lcb` is the immediate policy rollback; `smart` and `heuristic`
+  Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` and removes
+  the two `SHENGJI_CWV_BURY_*` settings. `mc-s0-report-lcb` is the broader W32
+  play-policy rollback; `smart` and `heuristic`
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
 ## Current production and rollback boundary
+
+Release **22** deployed September 9 at approximately 20:51 ET, image
+`registry.fly.io/shengji@sha256:b5dc327f79d8804d2a9f79bcddbb6bea1740b71547937ce1be1c08661030c82d`.
+Live health reports the exact hybrid policy and native engine. An isolated
+functional probe verified the literal model path and SHA, encoder bytes,
+legal eight-card bury, unchanged play RNG and no Torch import; it completed
+in 0.803s without fallback. This is one smoke observation, not a latency SLA.
+The existing engineering-room gate and checkpoint were preserved using deploy
+overrides `SHENGJI_W32_TEST_ROOMS=1` and
+`SHENGJI_W32_TEST_CKPT=/data/models/w32-fd6bb411.npz`; retain those overrides
+on a later deploy if the engineering gate is to remain available. Ordinary
+rooms use the default policy without an access code.
+
+Jerry authorized shipping hybrid bury on September 9 after PR #323's fixed
+1,976-deal all-rank confirmation and consumer review. The shipping config uses
+32 candidates / 32 model worlds / 32 MC worlds, incumbent plus four alternatives,
+and a **2-second cooperative search budget**. Expiry or search error returns
+the legal heuristic incumbent without advancing the play RNG. Queue wait,
+model loading and an in-flight operation are not bounded by that deadline.
+The existing W32 play recipe, compact model, one search worker and 512MiB VM
+remain unchanged. Consult `/healthz` for the live policy; configuration in Git
+is not itself proof of deployment.
+
+Pre-bury rollback release: **21**, image
+`registry.fly.io/shengji@sha256:4a68a54058d028dd2444270d1f83b51dcc8623c627043e68ea8058594d41f54b`.
+Machine `48e7e35a9597e8`, volume `vol_rkgj0xeg8ejy1kw4`, existing model package
+and logs must be preserved. Bury-only policy rollback on the new image restores
+the base W32 name and removes bury registration/budget together; do not select
+an unregistered bury name. Reverting the image also requires restoring its
+compatible environment. Do not interrupt occupied rooms without scoped consent.
+
+Monitor queue/search/request latency separately, fallback reasons, stale-turn
+discards, OOM/crash, legality and kitty-loss incidents. Roll back immediately on
+illegal action, RNG/isolation violation or crash/OOM. Investigate repeated
+2-second expiries or new queue stalls; do not silently raise the budget. Live
+traffic is not a powered strength trial. Large kitty losses are a known tradeoff:
+the confirmation saw four 80+ bonuses versus zero for heuristic, despite better
+average results. See the [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md).
+For tail monitoring, count `round_end.kitty_points >= 80` among completed
+bot-banker rounds using this policy, with the completed-round denominator;
+separate successful hybrid decisions from logged heuristic fallbacks. This
+field is the awarded kitty bonus, not raw buried-card points. Preserve failed
+and unfinished rounds separately rather than silently excluding operational
+failures. These observational counts are not a causal comparison with old traffic.
+
+### Historical W32 rollout (September 8)
 
 On September 8, Fly release **20** deployed the reviewed opt-in W32 room gate
 from PR #310, image
@@ -48,7 +97,7 @@ only if the live room, round, phase, turn and controller still match. Claims,
 reconnects and X-ray therefore remain responsive; a stale search is discarded
 with its cloned RNG/counters.
 
-For the current rollout, **policy rollback is `SHENGJI_BOT=mc-s0-report-lcb`**
+For the original W32 rollout, **policy rollback was `SHENGJI_BOT=mc-s0-report-lcb`**
 on the same image; retain both model packages and the volume. The global model
 registration can remain present when MC-LCB is selected. A normal-room
 constructor and health were checked, not a many-room concurrency benchmark;
@@ -81,8 +130,9 @@ fly volumes create shengji_data --size 1   # ONE volume (see below)
 fly deploy --ha=false                      # ONE machine (see below)
 ```
 
-`fly.toml` already pins an always-on machine (512MB is plenty — the engine
-is tiny) with `auto_stop_machines = "off"` so idle games aren't killed.
+`fly.toml` pins an always-on 512MiB machine with `auto_stop_machines = "off"`
+so idle games aren't killed. Bounded model-serving probes fit this allocation;
+that is not an unrestricted concurrency or worst-case memory guarantee.
 Custom domain: `fly certs add yourdomain.com` + a CNAME.
 
 Two Fly defaults to override (learned the hard way):

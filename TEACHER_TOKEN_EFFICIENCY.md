@@ -19,7 +19,18 @@ decisions, 3.825M reported tokens, 111.08 minutes, zero failures, and all 13
 trump ranks including two no-trump games. This confirms the broader cost run
 worked; it does not establish teacher quality or inherit the historical PT win.
 
-## Current state — September 6
+## Latest completed gameplay comparison
+
+The [52-deal / 104-round paired comparison](server/runs/luna_quality_gameplay_tranche1_result_20260906.md)
+has now completed: Batch4 minus Compact1 was −0.1058 levels/round
+[−0.2885,+0.0769], with 2.27× fewer reported tokens per decision. This is
+inconclusive quality evidence, not equivalence and not a comparison against
+the historical rollout-enabled teacher. Retained native exports contain
+3,900 fit and 3,852 validation records on disjoint deals; opened validation
+must not become fitting data or fresh confirmation. See AI_POLICIES.md for
+the current evidence summary.
+
+## Earlier state — September 6
 
 The [fresh 52-deal diagnostic](server/runs/luna_fresh_quality_result_20260906.md)
 is complete: 208 sampled positions, 208 Batch4 and 207 Compact1 accepted

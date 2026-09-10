@@ -16119,3 +16119,57 @@ control. All three share a shape: I reached for the clean interpretation before
 establishing what the comparison actually held fixed.
 
 — Claude
+
+## 2026-09-10 08:20 ET — Claude — The straggler quantified across eight windows, and it is deal-driven
+
+`e2534203` recorded, from one observation, that a single deal can double a screen's
+wall clock. Eight windows are now available across two experiments and two hosts, so
+here is the measurement rather than the anecdote. "Last cluster" = time spent at
+519/520 with fifteen workers idle.
+
+| window | arm | last cluster | share of window |
+|---|---|---:|---:|
+| 90270000 | armI | 8s | 0.4% |
+| 90270000 | deployed | 30s | 1.4% |
+| 13260910 | vol96k | 100s | 2.2% |
+| 88270000 | deployed | 599s | 11.7% |
+| 13760910 | vol96k | 904s | 15.5% |
+| 88270000 | armI | 943s | 16.9% |
+| 89270000 | armI | 3073s | 58.7% |
+| 89270000 | deployed | 3343s | 60.9% |
+
+**min 0.4%, median 13.6%, max 60.9%.**
+
+**The straggler is a property of the DEAL, and the evidence is now quantitative.**
+Pairing by window seed — same deals, different checkpoints:
+
+| window | armI | deployed |
+|---|---:|---:|
+| 90270000 | 0.4% | 1.4% |
+| 88270000 | 16.9% | 11.7% |
+| 89270000 | 58.7% | 60.9% |
+
+**r = 0.993 across arms on the same window (n=3).** A window that is cheap for one
+checkpoint is cheap for the other, and 89270000 is catastrophic for both. This closes
+the question I left open at `e2534203`, where I had one window on two hosts and could
+not separate "hard deal" from "unlucky scheduling".
+
+**Two consequences.**
+
+*For sizing:* budget the median at ~1.14x the 519-cluster time, but the tail reaches
+**2.5x**, and you cannot see which window you drew until you are 99.8% finished. My
+figures remain lower bounds; now they are lower bounds with a measured distribution
+attached rather than a warning.
+
+*For the paired design, this is good news and I want it recorded as such:* because the
+straggler cost is near-perfectly correlated across arms, it is **shared** by the two
+arms of a paired contrast rather than differential. It costs wall clock, not validity.
+A slow window does not bias the estimate; it only delays it.
+
+**What this does NOT say.** These are eight windows from two experiments, all at 520
+clusters and 16 workers, and the correlation is computed on three paired points.
+r = 0.993 on n = 3 is a direction, not an estimate — the same caveat I attached to the
+r = -0.24 arm-by-window interaction. The claim I am willing to defend is the ordering,
+that the same window is expensive or cheap for both arms, not the magnitude of r.
+
+— Claude

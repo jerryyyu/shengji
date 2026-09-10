@@ -15723,3 +15723,78 @@ result — only the wall clock moves. Jerry has asked for generation to be queue
 idle capacity; that is where it goes.
 
 — Claude
+
+## 2026-09-10 01:05 ET — Claude — PRE-REGISTRATION: does 33% more data buy anything?
+
+Written before any number exists. Jerry asked how much data the best model has and
+how much we have not trained on; the answer exposed a question we have never tested.
+
+**The inventory.** The deployed net `fd6bb411` is the NumPy export of `3cd27716` =
+`runACDEF-v2`, trained on **96,000 clusters** (runA 8,000 + runC 32,000 + runD 32,000
++ runE 16,000 + runF2 8,000) = 192,000 rounds = 14,077,520 records. We hold
+**160,000 usable clusters**, so **64,000 (40%) are not in the production net**:
+runG and runH (16,000 each, in `ACDEFGH-v2`, never deployed) and runI/runJ (16,000
+each, in armI/armJ). runB's 8,000 are UNUSABLE — 7,999 of its 8,000 deals duplicate
+runA, the exact case the seed registry exists to prevent.
+
+**WHY THE OBVIOUS COMPARISON IS WORTHLESS, caught before spending 10 hours on it.**
+`ACDEFGH-v2` (128,000 clusters) versus `ACDEF-v2` (96,000) looks like a ready-made
+data-volume contrast. It is not. The full argv diff:
+
+| | ACDEF-v2 | ACDEFGH-v2 |
+|---|---|---|
+| data | A C D E F2 | **+ G H** |
+| `--seed` | `1` | **absent** |
+| `--aux-weight` | `1.0` | **absent -> 0.1** |
+| git | `fda20f64` | **`154a3083`** |
+
+Three confounds — auxiliary loss weight (10-fold), init seed, and the code itself.
+Its +0.0702 screen is uninterpretable as a data result, and retraining only ONE arm
+would relocate the confound rather than remove it.
+
+**DESIGN.** Retrain BOTH arms under identical code (`e2534203`), identical
+hyperparameters and `--seed 1`, differing only in whether runG and runH are present:
+`volVOL-96k` (A C D E F2) and `volVOL-128k` (A C D E F2 G H). All 128,003 encoder-v2
+cache entries already exist, so this is cache-only. Then a paired screen, both arms
+against production on the SAME deals, **8 fresh windows** x 520 clusters
+(13260910 + k*100000, all verified clear of the 23 registered windows), pooled by
+DerSimonian-Laird random effects, arm-vs-arm divisor /2.
+
+**POWER, stated in advance.** Within-window SE 0.02699 (reproduced independently);
+tau_paired 0.0290 (measured today; pairing does NOT cancel it). Per-window sd
+0.0396, so RE SE = 0.0396/sqrt(k):
+
+| windows | RE SE | MDE80 |
+|---:|---:|---:|
+| 1 | 0.0396 | +0.1110 |
+| 3 | 0.0229 | +0.0641 |
+| **8** | **0.0140** | **+0.0392** |
+| 14 | 0.0106 | +0.0297 |
+
+**8 windows is the knee**: 14 buys only +0.0095 for nearly double the wall clock.
+Note a single window is +0.1110, not the naive +0.0756 — ignoring tau is how the
++0.0779 came to be believed.
+
+**READING RULE, fixed now.**
+- RE interval excludes zero, positive -> volume IS a lever; scaling generation is
+  justified and production should be retrained on everything.
+- RE interval excludes zero, negative -> more data HURT at this scale; investigate
+  mixing/quality before scaling.
+- Interval contains zero -> **NULL AT MDE +0.0392**: 33% more data does not buy
+  >= 0.039 per round. This is NOT "data does not matter" — state the MDE.
+- **A positive result triggers a second-seed replication BEFORE anything ships.**
+  Between-seed variance is UNMEASURED here and is an additional unquantified spread;
+  one seed per arm cannot distinguish a data effect from an init fluke. Today's
+  non-replication is why this clause exists.
+
+**MY PREDICTION, recorded before the data.** The interval will contain zero, with a
+point estimate between **-0.01 and +0.03**. Rationale: the I/J generator contrast was
+null, the only resolved checkpoint contrast did not replicate, and 96k -> 128k is a
+mere +33% in a regime where returns should already be diminishing. If I am wrong and
+it lands above +0.04, that is the strongest argument for scaling we would have.
+
+**Why this outranks more volume right now.** Both checkpoints will exist on disk and
+the screen returns in hours, while runK/runL take ~2 days. If 128k does not beat 96k,
+volume is not the lever and the bury labels and the full-legal score vector are.
+
+— Claude

@@ -15894,3 +15894,56 @@ early, run it on data whose answer you claim to know, and treat a mismatch as
 information rather than as noise to round away.
 
 — Claude
+
+## 2026-09-10 02:40 ET — Claude — STABILITY TEST RESOLVES: the three-window spread was luck
+
+Both arms sealed (`armI` 06:14:48Z cloud, `deployed` 06:10:47Z perf), all three fresh
+windows `rc=0` each. Read against the rule fixed in advance at `d05c621b`.
+
+| window | armI | SE | deployed | SE |
+|---|---:|---:|---:|---:|
+| 90270000 | +0.0702 | 0.0228 | +0.1029 | 0.0226 |
+| 89270000 | +0.0548 | 0.0238 | +0.0577 | 0.0235 |
+| 88270000 | +0.0442 | 0.0238 | +0.0712 | 0.0228 |
+
+**tau_armI = 0.0000 (Q 0.63/2df). tau_deployed = 0.0033 (Q 2.05/2df).** Both Q values
+sit BELOW their degrees of freedom: in both arms the observed spread is fully
+explained by within-window sampling noise. The pre-registered branch is
+`tau_armI ~ tau_deployed -> the three-window spread was luck, drop the thread`.
+**Dropping it.** Window stability does not become a selection criterion.
+
+**The ratio is not the story, and I will not dress it up as one.** The pre-registered
+statistic was tau_armI/tau_deployed, and it computes to 0.000 — which looks
+spectacular and means nothing, because it is zero divided by approximately zero. Both
+numerator and denominator are consistent with zero. Reporting "the ratio is 0.000,
+armI is infinitely more stable" would be the single most misleading true sentence
+available tonight.
+
+**State the MDE, since this is a null.** With k=3 and mean SE 0.0233, rejecting
+homogeneity at p=.05 needs Q > 5.991, so **the smallest tau this design could have
+flagged is 0.0329**. Anything below that was invisible. This is a null from an
+underpowered instrument and is reported as one.
+
+**What actually argues against the hypothesis is simpler than the tau.** armI's
+three-window spread was **0.0087** on the windows that generated the hypothesis and
+**0.0260** on three fresh ones — it TRIPLED. Meanwhile deployed's fresh spread,
+0.0452, sits right where armJ's original 0.0510 was. A checkpoint whose apparent
+tightness evaporates on new windows was never tight; it was a small sample landing
+close together once. **This is the same failure mode as +0.0779**: a striking
+statistic, selected after seeing it, that does not survive fresh deals.
+
+**An uncomfortable corollary I should not bury.** Neither arm shows detectable
+heterogeneity here, yet the six-window series gave Q=17.77/5df, I^2 71.9%. Together
+with tonight's finding that I cannot reproduce tau_paired 0.0290 (I get 0.0338-0.0352
+on the four windows I can read, ledger `6e0a16c2`), the honest summary is that
+**tau is itself poorly estimated at these window counts** — my estimates of it span
+0.000 to 0.038 depending on which windows are in hand. Codex has said repeatedly that
+the floor is conditional rather than measured; on this evidence they are right, and
+my confident quoting of a single tau across three different documents was not
+warranted. Non-exchangeability across the six-window series remains a measured fact;
+**the magnitude of tau does not have a settled value.**
+
+**Boxes freed** — both now carry only runK/runL generation, so the volume screen has
+capacity as soon as the arms train.
+
+— Claude

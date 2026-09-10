@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..engine.cards import card_rank, is_joker
+from ..engine.cards import Ordering, TRUMP, card_rank, card_suit, is_joker
+from ..engine.combos import find_tractor_runs, pair_count
 
-DECLARATION_ARMS = ("baseline", "pair-eager", "partner-wait")
+DECLARATION_ARMS = ("baseline", "pair-eager", "partner-wait", "structure-tie")
 
 @dataclass(frozen=True)
 class DeclareView:
@@ -82,6 +83,17 @@ def _baseline(view: DeclareView) -> tuple[str, ...] | None:
     return best if best_score >= threshold else None
 
 
+def _structure(view: DeclareView, option: tuple[str, ...]) -> tuple[int, int]:
+    """Return (longest tractor in pairs, physical trump pair count)."""
+    ordering = Ordering(card_suit(option[0]), view.trump_rank)
+    trumps = [card for card in view.own_hand
+              if ordering.eff_suit(card) == TRUMP]
+    pairs = pair_count(trumps)
+    longest = next((k for k in range(pairs, 1, -1)
+                    if find_tractor_runs(trumps, ordering, k)), 0)
+    return longest, pairs
+
+
 def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | None:
     """Choose one captured legal declaration under a named research arm.
 
@@ -93,6 +105,10 @@ def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | 
     the partner during dealing. Final calls, self/opponent overcalls and
     choices without an existing declaration retain the baseline. This is a
     separate timing/context hypothesis, never combined with pair-eager.
+
+    ``structure-tie`` only reorders same-strength, same-score suited choices
+    using actor-visible trump structure. It preserves baseline passes, NT,
+    and the engine's option order when structure ties.
     """
     if arm not in DECLARATION_ARMS:
         raise ValueError(f"unknown declaration arm {arm!r}")
@@ -102,6 +118,26 @@ def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | 
         if not view.final and view.declaration_seat == (view.seat + 2) % 4:
             return None
         return None if baseline is None else list(baseline)
+    if arm == "structure-tie":
+        if baseline is None or is_joker(baseline[0]):
+            return None if baseline is None else list(baseline)
+        baseline_score = _score(view, baseline)
+        best = baseline
+        best_structure = _structure(view, baseline)
+        for option in view.options:
+            if (not option or is_joker(option[0])
+                    or card_rank(option[0]) != view.trump_rank
+                    or len(option) != len(baseline)
+                    or _score(view, option) != baseline_score
+                    or any(is_joker(card)
+                           or card_rank(card) != view.trump_rank
+                           or card_suit(card) != card_suit(option[0])
+                           for card in option)):
+                continue
+            structure = _structure(view, option)
+            if structure > best_structure:
+                best, best_structure = option, structure
+        return list(best)
     if baseline is not None or arm == "baseline" or view.final:
         return None if baseline is None else list(baseline)
 

@@ -141,6 +141,62 @@ def test_pair_eager_final_and_unknown_arm():
         choose_declaration(view, "other")
 
 
+def test_structure_tie_prefers_longer_tractor_at_exact_score_and_strength():
+    view = DeclareView(
+        0, "5",
+        ("S5", "S5", "S6", "S6", "S7", "S7", "S9", "S9",
+         "H5", "H5", "H6", "H6", "H7", "H7", "H8", "H8"),
+        (("S5", "S5"), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(view) == ["S5", "S5"]
+    assert choose_declaration(view, "structure-tie") == ["H5", "H5"]
+
+
+def test_structure_tie_uses_physical_pair_count_as_secondary_key():
+    view = DeclareView(
+        0, "5",
+        ("S5", "S5", "S6", "S6", "S7", "S8", "S9", "S10",
+         "H5", "H5", "H6", "H6", "H8", "H8", "H10", "H10"),
+        (("S5", "S5"), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(view) == ["S5", "S5"]
+    assert choose_declaration(view, "structure-tie") == ["H5", "H5"]
+
+
+def test_structure_tie_preserves_pass_nt_final_and_noneligible_choices():
+    passing = DeclareView(0, "5", ("S5", "S2", "S3", "S4"),
+                          (("S5",),), "deal", False, None, None)
+    assert choose_declaration(passing, "structure-tie") is None
+
+    nt = DeclareView(0, "5", ("BJ", "BJ", "S5", "H5", "C5"),
+                     (("BJ", "BJ"), ("S5", "S5")), "deal", False, None, None)
+    assert choose_declaration(nt, "structure-tie") == ["BJ", "BJ"]
+
+    final = DeclareView(0, "5", ("S5", "S5", "S2", "S3"),
+                        (("S5", "S5"),), "declare", True, None, None)
+    assert choose_declaration(final, "structure-tie") == ["S5", "S5"]
+
+    unequal = DeclareView(
+        0, "5", ("S5", "S6", "S7", "S8", "S9", "S10",
+                  "H5", "H5", "H6", "H6", "H7"),
+        (("S5",), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(unequal, "structure-tie") == ["S5"]
+
+    lower_score = DeclareView(
+        0, "5", ("S5", "S5", "H5", "H5", "S6", "S7", "S8", "S9",
+                  "H6", "H6", "H7"),
+        (("S5", "S5"), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(lower_score) == ["S5", "S5"]
+    assert choose_declaration(lower_score, "structure-tie") == ["S5", "S5"]
+
+
+def test_structure_tie_keeps_engine_order_for_equal_structure_and_legal_options():
+    view = DeclareView(
+        0, "5", ("S5", "S5", "H5", "H5", "S6", "H6", "S7", "H7"),
+        (("S5", "S5"), ("H5", "H5"), ("S6", "S6")),
+        "deal", False, None, None)
+    assert choose_declaration(view, "structure-tie") == ["S5", "S5"]
+    assert choose_declaration(view, "structure-tie") in [list(option) for option in view.options]
+
+
 def test_declare_phase_without_final_flag_uses_during_deal_threshold():
     view = DeclareView(0, "5", ("S5", "S5", "S2", "S3"),
                        (("S5",), ("S5", "S5")), "declare", False, None, None)

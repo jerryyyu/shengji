@@ -16252,3 +16252,61 @@ not only against what is already there.** The check I wrote would have caught it
 instantly; I simply never pointed it at the right pair.
 
 — Claude
+
+## 2026-09-10 16:20 ET — Claude — VOLUME EXPERIMENT RESOLVED: 33% more data buys nothing
+
+Pre-registered `2024bddf`, amended to ten windows `6e0a16c2`, read by the rule fixed
+before any number existed. All 20 window-arms sealed at 520 clusters.
+
+| window | delta | SE | | window | delta | SE |
+|---|---:|---:|---|---|---:|---:|
+| 13260910 | -0.0163 | 0.0252 | | 13760910 | -0.0096 | 0.0261 |
+| 13360910 | +0.0231 | 0.0265 | | 13860910 | +0.0029 | 0.0259 |
+| 13460910 | +0.0135 | 0.0257 | | 13960910 | +0.0029 | 0.0240 |
+| 13560910 | -0.0144 | 0.0232 | | 14060910 | -0.0423 | 0.0232 |
+| 13660910 | -0.0096 | 0.0261 | | 14160910 | -0.0452 | 0.0270 |
+
+**volVOL-128k − volVOL-96k = -0.0101 [-0.0257, +0.0055]**, RE SE 0.00796,
+tau 0.0000, Q 6.67/9df, I^2 0.0%. **CROSSES ZERO — null.** Six windows negative, four
+positive. Independently recomputed from the window deltas; DL mu -0.0101 against an
+unweighted mean of -0.0095.
+
+**THE NULL IS MUCH TIGHTER THAN PROMISED, and that is the result.** I pre-registered
+MDE80 +0.0393 assuming tau 0.0352. **tau came out exactly 0**, so the achieved
+**MDE80 is +0.0223**. The upper confidence bound is **+0.0055**. So the finding is not
+merely "we could not detect an effect" — it is:
+
+> **Adding 32,000 clusters to a 96,000-cluster corpus buys at most +0.0055 per round,
+> and the point estimate is NEGATIVE.**
+
+For scale, the hybrid bury we shipped was **+0.0364**. Volume at this scale cannot
+deliver anything close to that. **Data volume is not the lever.**
+
+**My pre-registered prediction, scored honestly.** I said the interval would cross zero
+with a point estimate in [-0.01, +0.03]. It crosses zero, and the point is **-0.0101 —
+0.0001 BELOW my stated floor.** Direction right, point estimate a hair outside the range
+I wrote down. I am not going to round that into a hit.
+
+**AN UNEXPECTED RESULT THAT MATTERS MORE THAN THE HEADLINE.** The six-window
+arm-vs-production series gave Q 17.77/5df, I^2 71.9% — strongly heterogeneous, the
+basis for "windows are not exchangeable". This paired contrast over TEN windows gives
+**Q 6.67/9df, I^2 0.0%** — perfectly homogeneous. The tau I measured for one arm pair
+(0.0338) does not transfer to another. That is the third time today the same lesson has
+landed: **a between-window sd is a property of a specific CONTRAST, not of the window
+population.** Codex told me this when I mislabelled 0.02902; the data has now said it
+independently. Non-exchangeability remains real for arm-vs-production; **it is not a
+universal property of these windows.**
+
+**What this does NOT say.** It does not say data never matters — 96,000 clusters versus
+zero is not this experiment. It says the MARGINAL 32,000 on top of 96,000, from the same
+generators, is worth at most +0.0055. Nor does it settle 144,000: `volVOL-144k` is
+training and adds runI, a corpus from a DIFFERENT teacher, which is a different question
+from more-of-the-same.
+
+**Consequence for what comes next.** The two untested levers are what the net PREDICTS
+(the full-legal score vector, #324, zero compute cost, +28% storage) and the bury labels
+runK/runL are generating. Both change the target rather than the quantity. This result
+is the strongest argument yet for spending the next box there rather than on more
+clusters.
+
+— Claude

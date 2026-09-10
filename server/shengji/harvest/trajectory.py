@@ -240,6 +240,23 @@ factories) gets one ``decision_kind: "bury"`` record per round, mapped like
 a play record (ballot = the bury candidates, allocation from
 ``n_by_candidate``, means from ``mean_banker_value``, no SEs).
 
+The opt-in DEV CWV bury producer also retains MC means. Its training ballot
+contains only the MC-evaluated candidates; unsearched proposals are NOT given
+zero values or model predictions as targets. ``action_values.bury_search``
+keeps the full candidate pool, the ballot-to-pool indices, model-only rankings
+and the bury configuration separately. The heuristic control has one action,
+zero search worlds and a null mean. Earlier CWV screen records without retained
+MC means remain gameplay evidence and are refused as trajectory value labels.
+Opt-in registration uses ``register_cwv_bury_policies`` or ``SHENGJI_CWV_BURY_ARM``
+alongside the existing ``SHENGJI_CWV_SHORTLIST_*`` settings. The named recipe
+binds checkpoint, play recipe and bury configuration; ``config.bury_policy``
+retains the full identity and enters the run ID. ``policy_flags.mc_bury`` means
+MC actually ran in the bury helper, not that the wrapper's inherited MC_BURY
+switch is enabled. Helper work is separate in ``work.bury_mc_rollouts`` /
+``bury_model_positions`` / ``bury_*worlds``; ordinary play counters are not
+advanced by bury. The known wrapper also supports optional full-legal play
+score sidecars. Existing policies and absent-option data bytes are unchanged.
+
 Shards, resume, determinism
 ---------------------------
 The unit of work is one deal cluster (both mirrors).  As each cluster
@@ -872,11 +889,14 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
                               + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
+    if getattr(probe, "serving_budget_seconds", None) is not None:
+        raise TrajectoryError("serving-fallback bury policies are not scientific data teachers")
     if type(capture_full_legal_scores) is not bool:
         raise TrajectoryError("capture_full_legal_scores must be boolean")
     if capture_full_legal_scores:
         from ..train.cwv_shortlist import CWVShortlistBot
-        if type(probe) is not CWVShortlistBot or probe.shortlist_config.uniform:
+        from ..train.cwv_bury_policy import CWVBuryBot
+        if type(probe) not in (CWVShortlistBot, CWVBuryBot) or probe.shortlist_config.uniform:
             raise TrajectoryError("full-legal score capture requires a learned shortlist policy")
         sha = getattr(probe.evaluator, "checkpoint_sha256", None)
         if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
@@ -953,6 +973,12 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
     }
     if capture_full_legal_scores:
         config["capture_full_legal_scores"] = True
+    bury_identity = getattr(probe, "bury_recipe_identity", None)
+    if bury_identity is not None:
+        config["bury_policy"] = json.loads(canonical_json(bury_identity))
+        # MC_BURY is kept False on the wrapper to avoid the inherited bury
+        # search. Its separate helper nevertheless performs real MC work.
+        config["policy_flags"]["mc_bury"] = bury_identity["arm"] != "heuristic"
     config["run_id"] = run_id_for(config)
     return config
 
@@ -980,6 +1006,8 @@ def run_id_for(config: dict) -> str:
         payload["round_mix"] = config["round_mix"]
     if config.get("capture_full_legal_scores"):
         payload["capture_full_legal_scores"] = True
+    if config.get("bury_policy"):
+        payload["bury_policy"] = config["bury_policy"]
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
     return f"traj-s{config['seed0']}-{digest[:12]}"
 
@@ -1239,6 +1267,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
                  banker: int, hand_before: list[str], bury_cards: list[str],
                  raw: dict) -> dict:
+    if raw.get("schema") == "cwv-bury-fallback-v1":
+        raise TrajectoryError("partial bury fallback is not MC training evidence")
+    if raw.get("schema") == "cwv-bury-policy-v1":
+        from ..train.cwv_bury_policy import trajectory_bury_record
+        raw = trajectory_bury_record(raw)
     cands = [list(c["cards"]) for c in raw["candidates"]]
     n_by = [int(n) for n in raw["n_by_candidate"]]
     k = len(cands)
@@ -1287,6 +1320,7 @@ def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
             "eligible_indices": None,
             "raw_winner_index": raw.get("raw_winner_index"),
             "report": None,
+            **({"bury_search": raw["bury_search"]} if "bury_search" in raw else {}),
         },
         "action": list(bury_cards),
         "exploration": None,
@@ -1407,10 +1441,20 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
         stats["search_calls"] += bot.search_calls
         stats["rollouts"] += bot.rollouts
     work = production_counters(bots)
+    if bury_raw is not None and bury_raw.get("schema") == "cwv-bury-policy-v1":
+        # Helpers deliberately leave the play bot's counters untouched. Save
+        # their work separately rather than reporting bury computation as free.
+        work.update({"bury_mc_rollouts": bury_raw["mc_rollouts"],
+                     "bury_model_positions": bury_raw["model_positions"],
+                     "bury_candidates": len(bury_raw["candidates"]),
+                     "bury_model_worlds": bury_raw["model_worlds"],
+                     "bury_selection_worlds": bury_raw["selection_worlds"]})
     timing = {
         "wall_secs": round(time.perf_counter() - started, 4),
         "search_secs": round(float(work.pop("search_secs", 0.0)), 4),
     }
+    if bury_raw is not None and bury_raw.get("schema") == "cwv-bury-policy-v1":
+        timing["bury_wall_secs"] = float(bury_raw["elapsed_seconds"])
     result_stats = {"counts": dict(stats), "work": work, "timing": timing,
                      "cluster": cluster, "mirror": mirror, "seed": seed,
                      "trump_rank": rnd.trump_rank, "banker": banker,
@@ -1672,6 +1716,9 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
             "round_wall_secs": [st["timing"]["wall_secs"] for st in result.stats],
             "search_secs": round(sum(st["timing"]["search_secs"]
                                      for st in result.stats), 4),
+            **({"bury_wall_secs": sum(st["timing"].get("bury_wall_secs", 0.0)
+                                      for st in result.stats)}
+               if any("bury_wall_secs" in st["timing"] for st in result.stats) else {}),
         }
         note(cluster, sidecars[cluster], False)
 

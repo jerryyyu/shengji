@@ -1,7 +1,9 @@
 # Small belief DEV: first fit and sampler comparison
 
-Status: experimental source and an encouraging ownership result, **not a
-gameplay-strength result or production recommendation**. Related issue: #326.
+Status: **bounded DEV study complete; do not promote this recipe**. The small
+model improves kitty prediction but does not demonstrate stronger W32 play.
+Keep production and future data-generation settings unchanged; preserve the
+model, corpus and reusable sampler/evaluation code. Related issue: #326.
 The existing declaration heuristic stays unchanged after the completed #331
 benchmark. This work uses the merged opt-in banker-hand/kitty support repair
 from #327; it does not change any registered bot or serving default.
@@ -9,7 +11,7 @@ from #327; it does not change any registered bot or serving default.
 ## What runs
 
 One 315,400-parameter feed-forward network: 776 inputs → 256 ReLU → 128 ReLU
-→ 4 × 54 × 3 count logits. Receivers are the three seat-relative opponents
+→ 4 × 54 × 3 count logits. Receivers are the three other seat-relative hands
 and kitty; each cell predicts zero, one or two copies. Inputs are own hand,
 public state, final declaration, pooled public play history, and banker-private
 kitty only when the actor is the banker. Original deck, seed, true other hands,
@@ -18,8 +20,8 @@ outcomes, action values and teacher labels never enter the feature vector.
 Actor-visible count masks remove impossible classes. Banker declaration means
 banker hand **plus kitty**, not banker hand alone. These necessary marginal
 constraints do **not** construct a joint world. An explicit finite-legal-pool
-adapter now reaches W32 ranking, selection and report sampling; the fresh
-gameplay comparison remains unfinished.
+adapter reaches W32 ranking, selection and report sampling; the fresh gameplay
+comparison completed all 14 deals / 98 rounds.
 
 Reconstruction reuses `harvest_labels.replay_checked` and the engine. The source
 is existing curated baseline-fit trajectories from A/C/D/E/F2: 768 original
@@ -75,6 +77,15 @@ The training curve already reveals a limit: train loss falls from 0.72844 to
 0.55043, but dev CE worsens from its epoch-7 minimum to 0.70139 at epoch 20.
 More epochs alone are not the next step. Do not select another checkpoint
 using these check outcomes.
+
+| Epoch | Train loss | Dev CE | Dev Brier |
+|---:|---:|---:|---:|
+| 1 | 0.728439 | 0.691597 | 0.455102 |
+| 4 | 0.647556 | 0.662308 | 0.433868 |
+| 7 (selected) | 0.621777 | 0.658575 | 0.431694 |
+| 10 | 0.602586 | 0.664944 | 0.436384 |
+| 15 | 0.574194 | 0.681281 | 0.446626 |
+| 20 | 0.550430 | 0.701390 | 0.458865 |
 
 ## Old R4 and calibration readout
 
@@ -181,7 +192,115 @@ whole-round true-label admissibility, dedup/split/eligibility, cache reuse,
 masked loss and learning, exact finite-MC correction, train/check isolation,
 and interrupted checkpoint recovery. No production deployment is authorized.
 
-## What remains
+## Fresh ownership readout
+
+The full fresh namespace contributes 14 deals / 54 reachable uncertain positions
+at fixed action indices 0/16/32/48. Two of the 56 requested positions were
+unavailable after an early round finish. Six positions are no-trump. Original
+decks are disjoint from all 768 source deals, and no checkpoint was reselected.
+States come only from the common ordinary-W32 baseline, not treatment outcomes.
+
+| Uncertain receiver group | Small model | Corrected ordinary | Old R4 primary | Old R4 permuted control |
+|---|---:|---:|---:|---:|
+| All | 0.447290 | 0.470104 | 0.397387 | 0.442864 |
+| Other three hands | 0.492678 | 0.494393 | 0.438731 | 0.472505 |
+| Kitty | 0.212833 | 0.339447 | 0.170552 | 0.285471 |
+
+With equal positions within each deal and equal deals, the small model's Brier
+improvement over corrected ordinary is **+0.022814 [0.010447, 0.035776]**,
+about 4.85% relative. The other-hands difference is **+0.001714
+[-0.006600, 0.008776]**, not a demonstrated gain. Kitty improvement is
+**+0.126614 [0.079453, 0.172656]**. These are exploratory 14-deal bootstrap
+intervals, not promotion gates. The small model still trails old R4 primary.
+
+Fresh zero/one/two-copy ECE is 0.019253 / 0.049077 / 0.011394, versus
+0.032540 / 0.052751 / 0.025620 for raw 256-world reference probabilities.
+The ECE baseline retains Monte Carlo noise; only Brier is debiased.
+
+An illustrative error: at action 32 of fresh deal
+`2f39d2f43d79c4368946338723bedcadacd88969db257dacea00b68045aefb49`,
+actor 1 predicts one C8 in kitty with probability 0.707 versus ordinary 0.258;
+the actual count is zero. The same position also contains correctly improved
+kitty guesses, so examples cannot stand in for the aggregate score. Conversely,
+at the initial rank-3 state of deal `b3a97bd5…`, the model gives one C5 in
+relative receiver 2 probability 0.457 versus ordinary 0.223, correctly; that
+is an initial-state improvement, not evidence of learning play chronology.
+
+R4 caveats remain explicit: retained training metadata does not establish
+deck-level exclusion, and all 54 fresh actor rows flag incomplete declaration
+history (the final declaration and play history are available, but overwritten
+declarations are not reconstructed by this bridge). This is the retained R4
+adapter comparison, not a claim to reproduce R4's best original input pipeline.
+
+Evidence: `~/shengji-archive/2026-09-10/simple-belief-fresh-ownership/`.
+Five incremental passes reused completed deals; new scoring across all passes
+totaled 15.03 seconds including repeated process startup, without gameplay
+replay or another model training run.
+
+## Final gameplay and cost
+
+Each fresh deal has one common corrected-ordinary W32 baseline and two
+focal-team mirrors for each treatment. Declarations, hybrid bury, value
+checkpoint, ranking/selection/report budgets and rollout policy stay fixed.
+The independent unit is a deal, not a mirror, decision or sampled world.
+
+| Arm versus corrected ordinary W32 | Signed levels / round, 95% interval | Win-rate difference |
+|---|---:|---:|
+| Uniform reuse of 128-world pool | -0.2143 [-0.5714, +0.1071] | -10.71 pp |
+| Small-model weighting | -0.0357 [-0.3214, +0.2857] | -3.57 pp |
+| Old-R4-primary weighting | +0.0714 [-0.2500, +0.3929] | +3.57 pp |
+
+All win-rate intervals also cross zero (small model: [-14.29, +7.14] pp).
+Small-vs-uniform-pool signed-level difference is +0.1786
+[-0.3571, +0.6795]; R4-vs-uniform is +0.2857 [-0.3214, +0.9286]. Thus neither
+learned weighting nor finite-pool reuse has a demonstrated strength advantage.
+These 14-deal intervals are wide: this is not proof of equivalence or evidence
+that every possible learned sampler fails.
+
+| Actual-consumer diagnostic | Ordinary | Uniform pool | Small model | R4 adapter |
+|---|---:|---:|---:|---:|
+| Mean complete-round wall | 66.17 s | 65.83 s | 64.26 s | 68.90 s |
+| Mean focal decision wall | 0.931 s | 0.923 s | 0.937 s | 1.042 s |
+| Mean pool construction + inference + fitting | — | 23.12 ms | 80.25 ms | 184.61 ms |
+| Mean belief-inference wall | — | — | 0.535 ms | 105.42 ms |
+| Mean distinct physical worlds in 128-slot pool | — | 122.40 | 123.07 | 123.11 |
+| Mean distinct pool indices drawn | — | 120.56 | 94.39 | 95.76 |
+| Mean fitted ESS / 128 | — | — | 0.5086 | 0.5048 |
+
+These are descriptive costs on differing trajectories, not paired same-state
+speedup claims. R4 adapter inference includes the retained bridge's two
+eight-member cohorts, although only primary is used for gameplay. The small
+model is cheap; legal-pool construction and fitting cost far more than its
+forward pass. Parent CPU across all 98 rounds totals 6,410.11 seconds; this
+excludes child CPU, for which 85.76 seconds of R4 inference **wall** is reported
+separately and must not be mislabeled CPU.
+
+Only 17/819 small-model fits and 13/826 R4 fits satisfy the solver's convergence
+criterion within 500 iterations. Diversity protection is active (ESS at least
+half the pool), but this is approximate marginal matching. Mean small-model
+matching error drops from 0.07726 to 0.05174 after fitting; that is an error
+against the model, **not against true ownership**. No invalid pool proposals
+or strict-world rejections were recorded in this run; hard constraints remain
+enforced and separately covered by can-fail consumer tests.
+
+The four-worker extension completed in 1,544.5 seconds (25.74 minutes), after
+the repaired first-two-deal chunk's 268.1 seconds. The six original controls
+were reused, not replayed. This excludes the initial failed attempt's elapsed
+time. The combined saved-evidence readout took about 0.5 seconds; there was no
+duplicate full gameplay/inference verification pass.
+
+**Recommendation:** stop scaling this specific small-model/pool recipe. Do not
+change production or future data-generation policies on these results. More
+epochs already worsen dev calibration, other-hand ownership has no fresh gain,
+and neither the small model nor the more accurate R4 adapter shows a supported
+gameplay improvement here. Preserve this as a useful inexpensive benchmark,
+not a failed artifact to delete. If belief is revisited, first distinguish
+other-hand prediction quality from loss introduced by finite-pool projection
+and downstream search; a larger training run alone does not answer those
+questions. The current run does not isolate which of those limitations causes
+the neutral gameplay result.
+
+## Gameplay recovery
 
 The first two-deal gameplay chunk stopped at the small-model probability
 validator, after completing six ordinary/uniform-pool control rounds. The
@@ -204,7 +323,7 @@ interruption. These are small DEV comparisons, not a new R4 one-shot gate.
 
 The repaired two-deal chunk completed in 268.1 seconds for eight remaining
 learned rounds, retaining six original controls. The unchanged recipe then
-continued to all 14 predeclared deals with four workers. Running source is
+continued to all 14 predeclared deals with four workers. Executed source is
 local `7e6801b1` / published identical-tree `4b28745a`; later report-only
 additions do not change that executing tree.
 
@@ -224,10 +343,25 @@ are not called helpful or harmful. This report-only correction changes no score,
 model or game. In the retained receiver schema, `opponents` means all three
 non-actor hands (including the partner); use "other hands" in interpretations.
 
-1. Finish receiver/error interpretation and preserve the R4 overlap caveat.
-2. Run a bounded fresh paired W32 gameplay comparison: one common ordinary
-   baseline plus two focal-team mirrors each for uniform-pool, small-model
-   weighting and R4 weighting. Keep declarations, hybrid bury, value checkpoint
-   and rollout policy fixed. Preserve completed arms on interruption.
-3. Report fresh ownership evidence, paired gameplay, cost and diversity together;
-   publish the supported next recipe or stop recommendation before scaling.
+## Final evidence and preservation
+
+- Source and results: draft PR #332; no production, serving, declaration or
+  data-generation default files changed. The opt-in #327 repair is preserved.
+- Combined report: `~/shengji-archive/2026-09-10/simple-belief-final-readout.json`
+  (131,195 bytes), SHA256
+  `385ea04733f1924cb07fe6a0411ab2e1fb1af59094703960281dadd6bfb2bea4`.
+- Gameplay: `simple-belief-w32-gameplay-float32-repair/summary-14.json`,
+  all 14 cluster shards, 92 newly completed arm shards and six controls retained
+  under their original root. Both the original failure and repair provenance
+  remain available; no result was discarded.
+- Fresh ownership: `simple-belief-fresh-ownership/`, including all model/reference
+  forecasts, reconstructed targets and fixed-position identities.
+- Fit data, best/last checkpoints, all 20 curve points, internal check/reference
+  and R4 readouts remain in the earlier listed Mini archive paths.
+- Validation: 66 focused tests cover the feature boundary, label reconstruction,
+  banker union, physical joint worlds, finite-MC correction, control reuse,
+  actual W32 routing, calibration/report direction, and interrupted recovery.
+
+The requested bounded implementation/evaluation is complete. A future study or
+promotion requires a separately justified recipe; none is launched by this
+closeout.

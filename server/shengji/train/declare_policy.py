@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from ..engine.cards import Ordering, TRUMP, card_rank, card_suit, is_joker
 from ..engine.combos import find_tractor_runs, pair_count
 
-DECLARATION_ARMS = ("baseline", "pair-eager", "partner-wait", "structure-tie")
+DECLARATION_ARMS = ("baseline", "pair-eager", "partner-wait", "structure-tie", "structure-near")
 
 @dataclass(frozen=True)
 class DeclareView:
@@ -109,6 +109,10 @@ def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | 
     ``structure-tie`` only reorders same-strength, same-score suited choices
     using actor-visible trump structure. It preserves baseline passes, NT,
     and the engine's option order when structure ties.
+
+    ``structure-near`` permits at most one score point of trump-length tradeoff
+    for better structure, still requiring the original eligibility threshold
+    and declaration strength. Equal structure prefers the higher original score.
     """
     if arm not in DECLARATION_ARMS:
         raise ValueError(f"unknown declaration arm {arm!r}")
@@ -118,25 +122,27 @@ def choose_declaration(view: DeclareView, arm: str = "baseline") -> list[str] | 
         if not view.final and view.declaration_seat == (view.seat + 2) % 4:
             return None
         return None if baseline is None else list(baseline)
-    if arm == "structure-tie":
+    if arm in ("structure-tie", "structure-near"):
         if baseline is None or is_joker(baseline[0]):
             return None if baseline is None else list(baseline)
         baseline_score = _score(view, baseline)
+        minimum_score = max(6 if view.final else 8,
+                            baseline_score - int(arm == "structure-near"))
         best = baseline
-        best_structure = _structure(view, baseline)
+        best_key = (*_structure(view, baseline), baseline_score)
         for option in view.options:
             if (not option or is_joker(option[0])
                     or card_rank(option[0]) != view.trump_rank
                     or len(option) != len(baseline)
-                    or _score(view, option) != baseline_score
+                    or not minimum_score <= _score(view, option) <= baseline_score
                     or any(is_joker(card)
                            or card_rank(card) != view.trump_rank
                            or card_suit(card) != card_suit(option[0])
                            for card in option)):
                 continue
-            structure = _structure(view, option)
-            if structure > best_structure:
-                best, best_structure = option, structure
+            key = (*_structure(view, option), _score(view, option))
+            if key > best_key:
+                best, best_key = option, key
         return list(best)
     if baseline is not None or arm == "baseline" or view.final:
         return None if baseline is None else list(baseline)

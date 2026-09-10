@@ -197,6 +197,39 @@ def test_structure_tie_keeps_engine_order_for_equal_structure_and_legal_options(
     assert choose_declaration(view, "structure-tie") in [list(option) for option in view.options]
 
 
+def test_structure_near_trades_one_point_but_exact_tie_arm_does_not():
+    view = DeclareView(0, "5", ("S5", "S5", "H5", "H5", "S6", "S7", "S8", "S9",
+                               "H6", "H6", "H7"),
+                       (("S5", "S5"), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(view) == ["S5", "S5"]
+    assert choose_declaration(view, "structure-tie") == ["S5", "S5"]
+    assert choose_declaration(view, "structure-near") == ["H5", "H5"]
+
+
+def test_structure_near_does_not_lower_threshold_or_exceed_one_point_tradeoff():
+    view = DeclareView(0, "5", ("S5", "H5", "S6", "S7", "S8", "S9", "S10", "SJ",
+                               "H6", "H6", "H7", "H7", "H9"),
+                       (("S5",), ("H5",)), "deal", False, None, None)
+    # S scores8, H scores7 with a tractor. H must not bypass the threshold.
+    assert choose_declaration(view, "structure-near") == ["S5"]
+    assert choose_declaration(replace(view, final=True), "structure-near") == ["H5"]
+    # In the final window H remains eligible at6 but now trails S by TWO.
+    two_lower = replace(view, final=True, own_hand=tuple(c for c in view.own_hand if c != "H9"))
+    assert choose_declaration(two_lower, "structure-near") == ["S5"]
+
+
+def test_structure_near_preserves_strength_pass_and_nt():
+    view = DeclareView(0, "5", ("S5", "S6", "S7", "S8", "S9", "S10",
+                               "H5", "H5", "H6", "H6", "H7"),
+                       (("S5",), ("H5", "H5")), "deal", False, None, None)
+    assert choose_declaration(view, "structure-near") == ["S5"]
+    passing = replace(view, own_hand=("S5", "S6"), options=(("S5",),))
+    assert choose_declaration(passing, "structure-near") is None
+    nt = replace(view, own_hand=("BJ", "BJ", "S5", "H5", "C5"),
+                 options=(("BJ", "BJ"), ("S5",)))
+    assert choose_declaration(nt, "structure-near") == ["BJ", "BJ"]
+
+
 def test_declare_phase_without_final_flag_uses_during_deal_threshold():
     view = DeclareView(0, "5", ("S5", "S5", "S2", "S3"),
                        (("S5",), ("S5", "S5")), "declare", False, None, None)

@@ -183,6 +183,25 @@ and interrupted checkpoint recovery. No production deployment is authorized.
 
 ## What remains
 
+The first two-deal gameplay chunk stopped at the small-model probability
+validator, after completing six ordinary/uniform-pool control rounds. The
+observed float32 softmax normalization errors (1.04e-7 and 1.17e-7) exceeded
+the former 1e-7 tolerance; the model outputs were otherwise valid. The repair
+uses four float32 epsilons for float32 predictions and normalizes before fitting.
+A consumer test accepts the observed roundoff and still rejects a 0.001 mass
+error. Models, predictions used in the earlier readouts, and policy settings
+are unchanged.
+
+The successor uses `--reuse-controls-from` to retain those six controls with
+their original config/source/arm hashes. Only ordinary and uniform-pool arms
+can be inherited; changed policy settings or dependencies refuse reuse. The
+known sampler repair is checked to change only its learned-only branch.
+Incomplete learned arms run on the repaired source in a separate output root.
+Fresh ownership assessment replays the saved common baseline at fixed action
+indices 0/16/32/48; it does not replay the expensive W32 policy. Predictions
+precede privileged label construction, and completed per-deal outputs survive
+interruption. These are small DEV comparisons, not a new R4 one-shot gate.
+
 1. Finish receiver/error interpretation and preserve the R4 overlap caveat.
 2. Run a bounded fresh paired W32 gameplay comparison: one common ordinary
    baseline plus two focal-team mirrors each for uniform-pool, small-model

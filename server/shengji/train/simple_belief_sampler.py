@@ -108,9 +108,15 @@ class BeliefPoolMixin:
         weights = np.full(len(pool), 1/len(pool))
         if self.belief_mode == 'learned-pool':
             inference = time.monotonic()
-            p = np.asarray(self.belief_predictor(rnd, seat), dtype=np.float64)
+            raw = np.asarray(self.belief_predictor(rnd, seat))
+            p = raw.astype(np.float64)
+            # Torch returns float32 softmax cells. Summing their three stored
+            # values in float64 can expose ~1.2e-7 rounding, even though the
+            # float32 normalization was valid. Allow only that dtype's rounding
+            # scale, then normalize once in float64 for the mixture optimizer.
+            tolerance = 4*np.finfo(np.float32).eps if raw.dtype == np.float32 else 1e-7
             if p.shape != (4, 54, 3) or not np.isfinite(p).all() or (p < 0).any() \
-                    or not np.allclose(p.sum(axis=-1), 1, atol=1e-7, rtol=0):
+                    or not np.allclose(p.sum(axis=-1), 1, atol=tolerance, rtol=0):
                 raise ValueError('belief predictor count probabilities invalid')
             p = p / p.sum(axis=-1, keepdims=True)
             self.last_belief['inference_seconds'] = time.monotonic()-inference

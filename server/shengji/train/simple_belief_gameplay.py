@@ -7,6 +7,8 @@ heuristic policy; only play-time hidden-world sampling differs between arms.
 from __future__ import annotations
 
 import argparse
+import ast
+import copy
 from dataclasses import asdict
 import hashlib
 import json
@@ -36,6 +38,7 @@ POOL_SIZE = 128
 FIT_ITERATIONS = 500
 SELECT_WORLDS = 30
 REPORT_WORLDS = 300
+CONTROL_ARMS = ("ordinary", "uniform-pool")
 
 
 def seed_for(label: str, index: int) -> int:
@@ -254,6 +257,161 @@ def read_arm(path, config, spec, arm, team):
     return validate_arm(json.loads(path.read_bytes()), config, spec, arm, team)
 
 
+def _config_without_runtime(value):
+    """Policy recipe comparison view for a reused control parent."""
+    if not isinstance(value, dict):
+        return value
+    ignored = {"output", "source", "config_sha256", "reuse_controls",
+               "reuse_control_metadata"}
+    return json.loads(json.dumps({key: inner for key, inner in value.items()
+                                  if key not in ignored}, sort_keys=True))
+
+
+def _validate_control_source(parent, config):
+    """One reviewed recovery: float32 validation changed only a learned branch.
+
+    All pre-existing dependencies outside this runner and the sampler must
+    match. Pin the known parent sampler and prove the remainder of its AST
+    unchanged after removing exactly the learned-only fitting branch. This
+    cannot bless a future change to ordinary/uniform sampling or game rules.
+    """
+    sampler = 'train/simple_belief_sampler.py'
+    runner = 'train/simple_belief_gameplay.py'
+    for path, sha in parent['source'].items():
+        if path not in (sampler, runner) and config['source'].get(path) != sha:
+            raise ValueError('control dependency source differs: '+path)
+    old = _sampler_source_sha(parent)
+    if old == _sampler_source_sha(config):
+        return
+    if old != 'cd2658481334c21ae7eaa737ae89f2c04c407e33419df33984e402a133e151e9':
+        raise ValueError('unknown control parent sampler revision')
+    raw = Path(__file__).with_name('simple_belief_sampler.py').read_bytes()
+    if hashlib.sha256(raw).hexdigest() != _sampler_source_sha(config):
+        raise ValueError('current sampler source changed')
+    tree = ast.parse(raw)
+    removed = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == '_prepare_belief_pool':
+            for i, child in enumerate(node.body):
+                if isinstance(child, ast.If) and ast.unparse(child.test) == "self.belief_mode == 'learned-pool'":
+                    node.body[i] = ast.Pass()
+                    removed += 1
+    signature = hashlib.sha256(ast.dump(tree, include_attributes=False).encode()).hexdigest()
+    if removed != 1 or signature != '5514ff1ea36d0fb2597af2d9cd6d24b1daa686596e56dc131432605b80387713':
+        raise ValueError('ordinary/uniform sampler semantics changed')
+
+
+def _config_hash(config):
+    payload = {key: value for key, value in config.items()
+               if key != "config_sha256"}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _sampler_source_sha(config):
+    source = config.get("source")
+    if not isinstance(source, dict):
+        raise ValueError("control parent source identity is missing")
+    matches = [digest for path, digest in source.items()
+               if str(path).replace("\\", "/").endswith(
+                   "train/simple_belief_sampler.py")]
+    if len(matches) != 1 or not isinstance(matches[0], str):
+        raise ValueError("control parent simple-belief sampler source is unbound")
+    return matches[0]
+
+
+def _load_control_parent(config):
+    reuse = config.get("reuse_controls")
+    if not isinstance(reuse, dict):
+        return None, None
+    parent_path = Path(reuse.get("parent_config", ""))
+    if not parent_path.is_file():
+        raise ValueError("control parent config is missing")
+    raw = parent_path.read_bytes()
+    parent = json.loads(raw)
+    if not isinstance(parent, dict) or hashlib.sha256(raw).hexdigest() != reuse.get("parent_config_sha256"):
+        raise ValueError("control parent config bytes changed")
+    if parent.get("config_sha256") != _config_hash(parent):
+        raise ValueError("control parent config digest differs")
+    if _config_without_runtime(parent) != _config_without_runtime(config):
+        raise ValueError("control parent policy configuration differs")
+    sampler_sha = _sampler_source_sha(parent)
+    if sampler_sha != reuse.get("sampler_source_sha256"):
+        raise ValueError("control parent sampler source binding differs")
+    _validate_control_source(parent, config)
+    return parent, reuse
+
+
+def _source_control(config, spec, arm, team):
+    if arm not in CONTROL_ARMS:
+        return None
+    parent, reuse = _load_control_parent(config)
+    if parent is None:
+        return None
+    key = f"{spec['index']}:{arm}:{team}"
+    source = reuse.get("arms", {}).get(key)
+    if not isinstance(source, dict):
+        return None
+    source_path = Path(source.get("path", ""))
+    raw = source_path.read_bytes()
+    actual_sha = hashlib.sha256(raw).hexdigest()
+    if actual_sha != source.get("sha256"):
+        raise ValueError("reused control arm bytes changed")
+    row = validate_arm(json.loads(raw), parent, spec, arm, team)
+    inherited = copy.deepcopy(row)
+    inherited["inherited_control"] = True
+    inherited["control_provenance"] = {
+        "parent_config": str(Path(reuse["parent_config"]).resolve()),
+        "parent_config_sha256": reuse["parent_config_sha256"],
+        "arm_path": str(source_path.resolve()),
+        "arm_sha256": source["sha256"],
+        "sampler_source_sha256": reuse["sampler_source_sha256"],
+    }
+    return inherited
+
+
+def load_existing_arm(config, spec, arm, team):
+    """Load current-root arm first, then a verified inherited control."""
+    path = Path(config["output"]) / f"arm-{spec['index']:03d}-{arm}-{team}.json"
+    if path.exists():
+        return read_arm(path, config, spec, arm, team)
+    return _source_control(config, spec, arm, team)
+
+
+def _without_control_provenance(row):
+    return {key: value for key, value in row.items()
+            if key != "control_provenance"}
+
+
+def _build_reuse_metadata(old_root, config):
+    """Bind an old root without copying or rewriting any source artifact."""
+    old_root = Path(old_root).resolve()
+    parent_path = old_root / "config.json"
+    raw = parent_path.read_bytes()
+    parent = json.loads(raw)
+    if not isinstance(parent, dict) or parent.get("config_sha256") != _config_hash(parent):
+        raise ValueError("control parent config digest differs")
+    if _config_without_runtime(parent) != _config_without_runtime(config):
+        raise ValueError("control parent policy configuration differs")
+    sampler_sha = _sampler_source_sha(parent)
+    _validate_control_source(parent, config)
+    arms = {}
+    for cluster in range(PLANNED_DEALS):
+        for arm, team in (("ordinary", None), ("uniform-pool", 0),
+                          ("uniform-pool", 1)):
+            path = old_root / f"arm-{cluster:03d}-{arm}-{team}.json"
+            if path.is_file():
+                arms[f"{cluster}:{arm}:{team}"] = {
+                    "path": str(path),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+    return {
+        "parent_config": str(parent_path),
+        "parent_config_sha256": hashlib.sha256(raw).hexdigest(),
+        "sampler_source_sha256": sampler_sha,
+        "arms": arms,
+    }
+
+
 def read_cluster(path, config, cluster):
     shard = json.loads(path.read_bytes())
     if (shard.get("schema") != "simple-belief-gameplay-cluster-v1" or
@@ -264,7 +422,17 @@ def read_cluster(path, config, cluster):
     if not isinstance(records, list) or len(records) != len(schedule()):
         raise ValueError("saved gameplay cluster arm population differs")
     for row, (arm, team) in zip(records, schedule(), strict=True):
-        validate_arm(row, config, spec_for(cluster), arm, team)
+        if row.get("inherited_control"):
+            if arm not in CONTROL_ARMS or not row.get("control_provenance"):
+                raise ValueError("inherited marker is invalid for this arm")
+            inherited = _source_control(config, spec_for(cluster), arm, team)
+            if (inherited is None or row.get("control_provenance") !=
+                    inherited.get("control_provenance") or
+                    _without_control_provenance(inherited) !=
+                    _without_control_provenance(row)):
+                raise ValueError("inherited control row differs from its source")
+        else:
+            validate_arm(row, config, spec_for(cluster), arm, team)
     return shard
 
 
@@ -299,14 +467,15 @@ def run_cluster(config, cluster):
     pending = []
     for arm, team in schedule():
         path = paths[(arm, team)]
-        if path.exists():
-            rows.append(read_arm(path, config, spec, arm, team))
+        existing = load_existing_arm(config, spec, arm, team)
+        if existing is not None:
+            rows.append(existing)
         else:
             pending.append((arm, team))
     if not pending:
         return {"schema": "simple-belief-gameplay-cluster-v1", "cluster": cluster,
                 "config_sha256": config["config_sha256"], "spec": spec,
-                "records": [read_arm(paths[a], config, spec, *a) for a in schedule()]}
+                "records": [load_existing_arm(config, spec, *a) for a in schedule()]}
 
     evaluator = shared_evaluator(config["checkpoint"], threads=1, max_batch=128,
                                  encoding="mlp-static")
@@ -404,6 +573,7 @@ def main(argv=None):
     parser.add_argument("--archive-server", type=Path, required=True)
     parser.add_argument("--training-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--reuse-controls-from", type=Path)
     parser.add_argument("--workers", type=int, choices=(1, 2, 3, 4), default=2)
     parser.add_argument("--limit", type=int, choices=range(1, PLANNED_DEALS + 1), default=PLANNED_DEALS)
     args = parser.parse_args(argv)
@@ -436,6 +606,8 @@ def main(argv=None):
                                       "reuse_successors": True, "pool_worlds": POOL_SIZE,
                                       "fit_iterations": FIT_ITERATIONS},
     }
+    if args.reuse_controls_from is not None:
+        config["reuse_controls"] = _build_reuse_metadata(args.reuse_controls_from, config)
     config = json.loads(json.dumps(config, sort_keys=True))
     config["config_sha256"] = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
     bind_output_config(args.out, config)

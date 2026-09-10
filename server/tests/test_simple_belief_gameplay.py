@@ -17,7 +17,8 @@ def test_schedule_has_one_common_baseline_and_three_mirrored_treatments():
     assert len(set(schedule)) == 7
 
 
-def test_run_cluster_preserves_shared_policy_seeds_and_reuses_sealed_arms(tmp_path, monkeypatch):
+@pytest.mark.parametrize('inherit_controls', [False, True])
+def test_run_cluster_preserves_shared_policy_seeds_and_reuses_sealed_arms(tmp_path, monkeypatch, inherit_controls):
     import hashlib
     from types import SimpleNamespace
     from shengji.train.cwv_bury_policy import CWVBuryConfig
@@ -39,8 +40,13 @@ def test_run_cluster_preserves_shared_policy_seeds_and_reuses_sealed_arms(tmp_pa
         return {**_row(arm, team, 1)['outcome'], 'child_inference_wall_s': 0.}
     monkeypatch.setattr(gameplay, 'play_round', play)
     monkeypatch.setattr(gameplay, '_work_counters', lambda *a: {})
+    if inherit_controls:
+        monkeypatch.setattr(gameplay, '_source_control', lambda config, spec, arm, team:
+                            _row(arm, team, 1) if arm in gameplay.CONTROL_ARMS else None)
     result = gameplay.run_cluster(config, 0)
-    assert len(captured) == 7
+    assert len(captured) == (4 if inherit_controls else 7)
+    if inherit_controls:
+        assert [(arm, team) for arm, team, *_ in captured] == gameplay.schedule()[3:]
     for arm, team, seeds, modes in captured:
         assert seeds == [gameplay.seed_for('play:0', s) for s in range(4)]
         assert modes == [arm if team == s % 2 else 'ordinary' for s in range(4)]
@@ -106,3 +112,63 @@ def test_resume_validation_accepts_exact_arm_and_refuses_drift(tmp_path):
     path.write_text(__import__("json").dumps(changed))
     with pytest.raises(ValueError, match="identity"):
         gameplay.read_arm(path, config, gameplay.spec_for(0), "ordinary", None)
+
+
+def test_control_recovery_binds_original_bytes_and_rejects_policy_drift(tmp_path):
+    import hashlib
+    import json
+    from pathlib import Path
+    old_root, new_root = tmp_path / 'old', tmp_path / 'new'
+    old_root.mkdir()
+    new_root.mkdir()
+    sampler = 'train/simple_belief_sampler.py'
+    source = {sampler: 'cd2658481334c21ae7eaa737ae89f2c04c407e33419df33984e402a133e151e9',
+              'engine/round.py': 'unchanged', 'train/simple_belief_gameplay.py': 'old-runner'}
+    parent = {'source': source, 'output': str(old_root), 'play': {'worlds': 32},
+              'arms': json.loads(json.dumps(gameplay.schedule()))}
+    parent['config_sha256'] = gameplay._config_hash(parent)
+    (old_root / 'config.json').write_text(json.dumps(parent))
+    row = _row('ordinary', None, 1)
+    row['config_sha256'] = parent['config_sha256']
+    arm_path = old_root / 'arm-000-ordinary-None.json'
+    arm_path.write_text(json.dumps(row))
+    config = copy.deepcopy(parent)
+    config['arms'] = gameplay.schedule()  # CLI builds tuples; saved JSON has lists.
+    config['output'] = str(new_root)
+    config['source'][sampler] = hashlib.sha256(
+        Path(gameplay.__file__).with_name('simple_belief_sampler.py').read_bytes()).hexdigest()
+    config['source']['train/simple_belief_gameplay.py'] = 'new-runner'
+    config['reuse_controls'] = gameplay._build_reuse_metadata(old_root, config)
+    config['config_sha256'] = gameplay._config_hash(config)
+    inherited = gameplay.load_existing_arm(config, gameplay.spec_for(0), 'ordinary', None)
+    assert inherited['inherited_control'] is True
+    assert inherited['config_sha256'] == parent['config_sha256']
+    assert inherited['control_provenance']['arm_sha256'] == hashlib.sha256(arm_path.read_bytes()).hexdigest()
+    assert not list(new_root.iterdir())
+    assert gameplay.load_existing_arm(config, gameplay.spec_for(0), 'new-small', 0) is None
+    records = [inherited]
+    for arm, team in gameplay.schedule()[1:]:
+        record = _row(arm, team, 1)
+        record['config_sha256'] = config['config_sha256']
+        records.append(record)
+    shard = {'schema': 'simple-belief-gameplay-cluster-v1', 'cluster': 0,
+             'spec': gameplay.spec_for(0), 'config_sha256': config['config_sha256'],
+             'records': records}
+    cluster_path = new_root / 'cluster-00000.json'
+    cluster_path.write_text(json.dumps(shard))
+    assert gameplay.read_cluster(cluster_path, config, 0) == shard
+    shard['records'][0]['outcome']['team0_signed_levels'] += 1
+    cluster_path.write_text(json.dumps(shard))
+    with pytest.raises(ValueError, match='^inherited control row differs from its source$'):
+        gameplay.read_cluster(cluster_path, config, 0)
+    bad = copy.deepcopy(config)
+    bad['play']['worlds'] = 64
+    with pytest.raises(ValueError, match='^control parent policy configuration differs$'):
+        gameplay._build_reuse_metadata(old_root, bad)
+    bad = copy.deepcopy(config)
+    bad['source']['engine/round.py'] = 'changed'
+    with pytest.raises(ValueError, match='^control dependency source differs: engine/round.py$'):
+        gameplay._build_reuse_metadata(old_root, bad)
+    arm_path.write_text(json.dumps(row) + '\n')
+    with pytest.raises(ValueError, match='^reused control arm bytes changed$'):
+        gameplay.load_existing_arm(config, gameplay.spec_for(0), 'ordinary', None)

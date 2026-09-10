@@ -54,6 +54,26 @@ def test_learned_weights_change_draw_law_not_legal_support():
     assert fit['guarded_fit_model_squared_error'] < fit['uniform_model_squared_error']
 
 
+def test_float32_probability_rounding_reaches_consumer_but_bad_mass_refuses():
+    rnd, _ = declared_round()
+    # Actual first bad baseline-state prediction from the retained model.
+    row = np.asarray([0.42222699522972107, 0.3814769983291626,
+                      0.19629590213298798], dtype=np.float32)
+    assert abs(row.astype(float).sum()-1) > 1e-7
+    cls = belief_bot_class(MCBot)
+    def make(offset):
+        p = np.broadcast_to(row, (4, 54, 3)).copy()
+        p[..., 0] += offset
+        return cls(seed=17, belief_mode='learned-pool', belief_pool_size=4,
+                   belief_fit_iterations=1, belief_predictor=lambda *a: p)
+    bot = make(0)
+    worlds, _ = sample_worlds(bot, rnd, 1, 2)
+    assert len(worlds) == bot.last_belief['delivered'] == 2
+    assert bot.last_belief['fit']['iterations'] == 1
+    with pytest.raises(ValueError, match='^belief predictor count probabilities invalid$'):
+        sample_worlds(make(.001), rnd, 1, 2)
+
+
 @pytest.mark.parametrize('mode', ['ordinary', 'uniform-pool', 'learned-pool'])
 def test_actual_w32_ranking_selection_and_report_receive_sampler(mode, monkeypatch):
     from shengji.train.cwv_bury_policy import CWVBuryBot

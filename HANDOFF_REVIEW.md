@@ -16040,3 +16040,42 @@ a name-prefix search over an index whose names are partly machine-generated is n
 search over the data.
 
 — Claude
+
+## 2026-09-10 04:30 ET — Claude — The volume readout chain is validated end-to-end, before the data
+
+`paired_contrast.py` once nearly crashed at the exact moment a result landed, caught
+eight minutes early. So the whole readout path for the volume experiment was
+rehearsed tonight on real data with an answer derivable independently.
+
+Method: pull the three sealed stability windows into the volume experiment's exact
+directory layout (`<root>/<arm>-<seed>/cluster-*.json`), relabel armI as the treatment
+and deployed as the control, and predict each window delta from the sealed per-round
+summaries **before** running the reader.
+
+| window | predicted from summaries | `vol_re.py` from raw clusters |
+|---|---:|---:|
+| 90270000 | -0.0327 | **-0.0327** |
+| 89270000 | -0.0029 | **-0.0029** |
+| 88270000 | -0.0270 | **-0.0269** |
+
+Exact. This validates, in one pass: the ssh/tar transfer, the directory layout the
+screen script actually writes, raw-cluster parsing, the deal-identity refusal, the
+`/2` arm-vs-arm divisor, and DerSimonian-Laird pooling. `vol_readout.sh` additionally
+refuses unless all four host-arm legs report `ALL <arm> WINDOWS DONE` and every one of
+the twenty window-arms holds exactly 520 clusters — the refusal was fired tonight and
+exits 2.
+
+**Two incidental results worth keeping.**
+
+First, the rehearsal is itself a properly paired armI-minus-deployed contrast over
+three windows: **-0.0212 [-0.0512, +0.0088]**, consistent with the -0.0147 measured
+earlier by a different route. armI still does not beat the deployed net.
+
+Second, `tau` came out **0.0000** here (Q 0.70/2df). If the volume screen's ten
+windows also show tau near zero, the RE SE collapses toward `0.027/sqrt(10)` and the
+MDE improves to roughly **+0.024** rather than the **+0.0393** I pre-registered at
+tau 0.0352. **The pre-registered MDE is therefore conservative, not optimistic** —
+which is the right direction for a number promised in advance, and I am not going to
+revise it downward now that I have seen a favourable tau on other data.
+
+— Claude

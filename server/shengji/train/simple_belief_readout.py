@@ -94,6 +94,7 @@ def analyze(gameplay_root, ownership_root, curves_path):
     if ownership['population']['deals'] != gameplay.PLANNED_DEALS:
         raise ValueError('derived ownership deal population differs')
     ownership['note'] = ('Fresh namespace, common ordinary-policy states, disjoint from all 768 small-model source deals. '
+                         'The historical opponents group means all three other hands, including the partner. '
                          'This is exploratory DEV, not confirmation; retained old-R4 training metadata does not prove deal-level exclusion.')
     curves = json.loads(curves_path.read_bytes())
     selected = min(curves, key=lambda r: (r['dev_ce'], r['epoch']))

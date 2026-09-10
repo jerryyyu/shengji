@@ -59,3 +59,22 @@ def test_reference_identical_gives_zero_paired_brier(tmp_path):
     assert all(group["difference"] == 0.0
                for group in result["paired_raw_brier"]["overall_and_phase"].values()
                if group["positions"])
+    assert result['top_positions'] == {'helpful': [], 'harmful': []}
+
+
+def test_harmful_position_explains_harmful_cells_not_larger_helpful_ones(tmp_path):
+    row = _position(model=[1.,0.,0.], reference=[0.,1.,0.], target=0)
+    # One large improvement (-2), outweighed by six smaller regressions (+.5).
+    for card in range(1,7):
+        row['probabilities'][0][card] = [.5,.5,0.]
+        row['reference_probabilities'][0][card] = [1.,0.,0.]
+        row['uncertain'][0][card] = True
+    _write_input(tmp_path, [row])
+    result = analyze(tmp_path)['top_positions']
+    assert result['helpful'] == []
+    worst = result['harmful'][0]
+    assert worst['difference'] == pytest.approx(1/7)
+    assert worst['explanation_direction'] == 'higher_error'
+    assert len(worst['explanations']) == 3
+    assert all(cell['squared_error_difference'] == .5 and cell['card_index'] != 0
+               and cell['card'] for cell in worst['explanations'])

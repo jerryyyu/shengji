@@ -169,26 +169,32 @@ def _provenance(metric: dict[str, Any]) -> dict[str, Any]:
 
 
 def _top_positions(metrics: list[dict[str, Any]]) -> dict[str, Any]:
-    def explain(metric):
-        explanations = sorted(metric["cells"],
-                              key=lambda c: abs(c[5] - c[6]), reverse=True)[:3]
-        return [{"receiver": c[0], "card_index": c[1],
+    from ..rl.encode import CARD_INDEX
+    card_names = {index: card for card, index in CARD_INDEX.items()}
+
+    def explain(metric, harmful):
+        cells = [c for c in metric['cells'] if (c[5]-c[6] > 0 if harmful else c[5]-c[6] < 0)]
+        explanations = sorted(cells, key=lambda c: c[5]-c[6], reverse=harmful)[:3]
+        return [{"receiver": c[0], "card_index": c[1], 'card': card_names[c[1]],
                  "target": c[2], "model_probability": c[3],
                  "reference_probability": c[4],
                  "truth": [int(c[2] == cls) for cls in range(CLASSES)],
                  "squared_error_difference": c[5] - c[6]}
                 for c in explanations]
 
-    def position(metric):
+    def position(metric, harmful):
         return {**_provenance(metric),
                 "model_raw_brier": metric["model_brier"],
                 "reference_raw_brier": metric["reference_brier"],
                 "difference": metric["model_brier"] - metric["reference_brier"],
-                "explanations": explain(metric)}
+                "explanation_direction": 'higher_error' if harmful else 'lower_error',
+                "explanations": explain(metric, harmful)}
 
     ordered = sorted(metrics, key=lambda m: m["model_brier"] - m["reference_brier"])
-    return {"helpful": [position(m) for m in ordered[:5]],
-            "harmful": [position(m) for m in ordered[-5:][::-1]]}
+    return {"helpful": [position(m, False) for m in ordered
+                         if m['model_brier'] < m['reference_brier']][:5],
+            "harmful": [position(m, True) for m in reversed(ordered)
+                         if m['model_brier'] > m['reference_brier']][:5]}
 
 
 def _paired(metrics: list[dict[str, Any]]) -> dict[str, Any]:

@@ -217,6 +217,13 @@ Do not interpret fit-to-model error as ownership accuracy, or sum pool wall and
 inference wall (the former already includes the latter). A missing final cluster
 refuses the final report but never removes the completed shards.
 
+Representative-error reports select the largest errors in the named direction:
+a harmful position shows card predictions with increased error, not a larger
+helpful kitty prediction that happened in the same position. Net-zero positions
+are not called helpful or harmful. This report-only correction changes no score,
+model or game. In the retained receiver schema, `opponents` means all three
+non-actor hands (including the partner); use "other hands" in interpretations.
+
 1. Finish receiver/error interpretation and preserve the R4 overlap caveat.
 2. Run a bounded fresh paired W32 gameplay comparison: one common ordinary
    baseline plus two focal-team mirrors each for uniform-pool, small-model

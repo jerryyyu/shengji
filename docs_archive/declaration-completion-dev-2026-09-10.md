@@ -73,3 +73,77 @@ actual consumer isolation, future callback order, baseline equivalence,
 selection/report separation, one-intervention wiring and CLI resume. A bounded
 read-only review found no load-bearing defect in the paired runner. Production
 adoption and any stronger-model/greater-world-count successor remain separate.
+
+## Completed paired result: do not adopt this recipe
+
+All 27/27 prespecified pairs finished on Mini in **676.9 seconds (11.3 min)**,
+at remote source `9f1fc54e4b03c410ab5598e32cb646ad40ad6a5b`, byte-identical tree
+`872aac9cbb6297b297f81dad807e44266375fab5` to local `59f7f518`.
+No failures, retries, discarded pairs or follow-on reconstruction campaign.
+
+| Metric | Heuristic | Sampled declaration | Paired difference |
+|---|---:|---:|---:|
+| Focal-team wins | 11/27 | 10/27 | -3.70 percentage points |
+| Signed levels, sum | -7 | -9 | -0.07407 per round |
+| Kitty bonus, sum | 10 | 10 | 0 |
+| Kitty bonus >=80 | 0/27 | 0/27 | 0 |
+
+Four deals (14.8%) had an eligible decision. Three retained the heuristic;
+one changed. The descriptive paired bootstrap intervals were [-0.22222, 0]
+levels/round and [-0.11111, 0] win-rate difference. They are dominated by one
+changed deal: **not proof that sampled declaration search generally loses**,
+and not evidence that more worlds or earlier intervention would succeed.
+
+### The changed decision
+
+Deal index21, rank10, banker seat2, focal attacker seat1. At dealt-card94,
+seat1 held24 cards including BJ and both little jokers. Banker2 had previously
+shown the H10 pair. Two sampled completions gave waiting mean0 versus little-
+joker-pair declaration mean+1, so treatment switched hearts to no-trump.
+
+On the independent actual deal, waiting scored95 attacker points (win,+1),
+while the declaration scored75 (loss,-1). Kitty bonus was zero in both.
+This is one observed selection-to-actual-outcome miss, not proof of a biased
+estimator or a reason to tune specifically to this now-opened deal.
+
+The other eligible cells were index1 (rank3,BJ pair), index5 (rank7,H7 pair),
+and index16 (rank5,H5 pair). Index1 and16 had identical completed pre-bury
+states across root actions in both sampled worlds: future fixed declarations
+erased the timing difference. Index5 favored waiting by one sampled level.
+
+### Cost and learning
+
+- **40 unique full games**: 12 inner selection continuations plus28 actual
+  evaluation games. There were54 actual arm records, but26 exact-state pairs
+  reused the same completed result. Four of16 candidate/world comparisons
+  likewise reused identical states. Never double-count cache-hit CPU records.
+- Unique compute: 2,214.57 CPU-seconds (36.9 CPU-minutes), including594.38
+  CPU-seconds selecting four declarations: about149 seconds per eligible
+  decision. Baseline's27 actual games cost1,584.11 CPU-seconds; treatment play
+  plus selection cost2,160.23, approximately1.36x that measured total.
+- Workers initially used roughly100% CPU each and300–330MB RSS. Median
+  unique actual-game wall was49.3s, maximum129.9s. The last pair took313s
+  including its sequential inner comparisons, leaving a one-worker tail.
+  Average-pair ETA underestimated that tail; it was active computation, not
+  a hang or serial integrity pass.
+- No recorded zero-world or short-search events across the40 games.
+- A one-second stack sample found29/82 samples in NumPy's object ufunc/erf
+  path and11/82 under matrix multiplication. `cwv_numpy._gelu_exact` uses
+  `np.vectorize(math.erf)`. A compiled exact-formula kernel is a future
+  optimization candidate; this sample is not a speedup benchmark. Keep
+  numerical and decision parity checks, and do not change a live run.
+
+**Recommendation for future data generation:** retain the current declaration
+heuristic. Preserve the sampled-completion implementation and all trajectories
+as DEV evidence, but do not ship or scale this two-world, one-intervention
+recipe unchanged. Any successor should first address scarce meaningful
+decision exposure, noisy two-world estimates and expensive full-game scoring.
+Earlier/all-callback search, greater sample counts or a learned continuation
+score would be separately named experiments; none is proved by this screen.
+
+Results: `~/shengji-archive/2026-09-10/declare-completion-paired27/` contains
+`config.json`, all27 `cluster-*.json`, all4 `selection-*.json`,40 unique
+`rollouts/*.json`, `summary.json` and the additive `readout.json`. The readout
+script `~/shengji-archive/2026-09-10/declare-completion-readout.py` only reads
+retained records; it never replays models/games. Statistical sampler profile:
+`/private/tmp/declare-completion-worker417.sample.txt`.

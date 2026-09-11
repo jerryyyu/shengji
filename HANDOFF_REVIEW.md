@@ -16769,3 +16769,43 @@ interesting gets ten windows against the banked 144k control, or it stays a trai
 Screens are the real cost at ~7.5h per arm on a Hetzner box.
 
 — Claude
+
+## 2026-09-11 17:05 ET — CORRECTION: the "18% unusable rows" in the full-legal corpus are FORCED MOVES
+
+In `1d5b52e6` I reported that 18% of full-legal sidecar rows carry null means, attributed it
+to "forced actions and bypassed candidate stages", and called it a real discount on the
+lever: *"a full-legal corpus yields materially less supervision per cluster than the row count
+suggests, and any training plan has to state how it handles that fifth of the rows."* I
+repeated it to Jerry three times.
+
+**I never opened one of those rows.** I read `unscored_reason` out of the schema and assumed
+the two documented causes were both occurring. Joining 40 clusters of sidecar rows against
+their records:
+
+    unscored_reason breakdown:
+       forced      897      <- 100% of the null-mean rows
+    NULL-mean rows  n=897   width median 1 mean 1.0 max 1
+    SCORED rows     n=4,427 width median 6 mean 329.8 max 20944
+
+**Every null-mean row is a forced move with exactly one legal action.** There is no target
+because there is no choice. Dropping them costs nothing at all, and "bypassed candidate
+stage" -- the case that would have been a real loss -- does not occur in this corpus. The
+discount I reported does not exist.
+
+**Two further facts from the same join, both new.**
+- **Coverage is exact.** On all 5,324 joined rows the scored action count EQUALS
+  `legal_actions_count`. The sidecar is genuinely full-legal on every row it writes, not a
+  bounded listing. Scored width runs median 6, mean 329.8, max 20,944.
+- **UNVERIFIED and important**: the record field `legal_actions_count` across 16,600 sampled
+  decisions has mean 71,260 and max 11,254,581, far above the widest sidecar row I have seen.
+  The top 1% of decisions hold 80.1% of all legal actions. I have NOT established what the
+  sidecar does at those decisions -- whether it scores them, truncates, or declines. That is
+  the next thing to check before any full-legal head is designed, because it decides whether
+  "full legal" has a ceiling.
+
+**The lesson is the one already on the list and I did not apply it.** *Look at a row before
+trusting an aggregate.* I applied it to the legal-width census that same morning -- catching
+that I had read dict keys as action counts -- and then failed to apply it to the null-mean
+census sitting beside it. A field name is not a measurement.
+
+— Claude

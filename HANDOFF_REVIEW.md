@@ -16352,3 +16352,51 @@ question directly and the rule is explicit, so the screen gets the boxes. Cost i
 four hours on 43-hour runs.
 
 — Claude
+
+## 2026-09-10 22:40 ET — Claude — PRE-REGISTRATION: is CAPACITY the binding constraint?
+
+Written before the arm is trained. The volume experiment resolved to a null
+(`18c3c5cd`), and Codex correctly warned me not to read that as data saturation. The
+obvious alternative — that the net is too small to use more data — turns out to be
+**untested**, and I found that out by trying to answer it from existing runs and
+discovering they cannot.
+
+**Why the existing capacity sweep cannot answer it.** `cap-h256`, `cap-h1024` and
+`cap-h2048` share the deployed 96,000-cluster corpus AND identical fit/selection digests
+(`355fea28…` / `09d638d4…`), which is what made them look comparable to the deployed
+recipe. They are not: they differ in **encoder implementation sha AND learning rate**
+(`--lr 0.0001` against the deployed `0.0003`). Within the sweep h1024 beats h256 by
+0.0053 val_ce, but **the deployed width 512 was never run under that encoder and lr**, so
+the sweep says nothing about 512 versus 1024 in the recipe that actually ships. And by
+this programme's own rule, val_ce does not predict search strength — the best offline
+checkpoint once resolved WORSE in search at -0.0587.
+
+**Arm.** `volCAP-h1024` = the `volVOL-96k` recipe with **`--hidden 1024` and nothing
+else changed**: same A+C+D+E+F2 corpus, same `--lr 0.0003`, `--aux-weight 1.0`,
+`--seed 1`, encoder v2, `--select-metric val_ce`, 20 epochs. A one-variable capacity
+contrast at the deployed learning rate.
+
+**Design.** Screen `h1024 − 96k` on the **same ten windows**. `vol96k` exists on both
+hosts and locally, so once again only **ten window-arms** are needed. The 96k arm has now
+served as the control for three separate contrasts, which is the whole value of a fixed
+reference.
+
+**Reading rule, fixed now.**
+- Excludes zero positive -> **capacity is the binding constraint**, not data, and the
+  deployed architecture is undersized. That reframes the whole programme.
+- Excludes zero negative -> 1024 is worse at this lr; capacity is not free and the
+  current width is defensible.
+- Contains zero -> null at the achieved MDE. Combined with the volume null, neither more
+  data nor more width moves this net, which points hard at the TARGET (full-legal score
+  vector, bury labels) rather than the model or the corpus.
+
+**My prediction, recorded before training.** Crosses zero, point in **[-0.02, +0.03]**.
+Wider than my volume prediction because this axis is genuinely untested and I have less
+to reason from. Note that 610,764 parameters against 14,077,520 records is a very low
+ratio, which is the argument FOR capacity mattering; against that, every checkpoint
+contrast this programme has run has crossed zero.
+
+**MDE will be reported as ACHIEVED.** The last two contrasts on these ten windows both
+gave tau 0 and RE SE ~0.008; I am not assuming that again.
+
+— Claude

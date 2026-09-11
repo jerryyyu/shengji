@@ -211,14 +211,17 @@ class PrivacyError(TrainDataError):
 def encoder_identity(version: int = ENC_VERSION) -> dict:
     """Stamped in every cache ``meta`` and every receipt."""
     version = check_version(version)
+    transitive = encoder_contract(version)
     return {
         "enc_version": version,
         "obs_schema": OBS_SCHEMA_BY_VERSION[version],
         "obs_dim": OBS_DIM_BY_VERSION[version],
         "act_dim": ACT_DIM,
-        "implementation_sha256": ENCODER_IMPLEMENTATION_SHA256,
-        "source_sha256s": dict(ENCODER_SOURCE_SHA256S),
-        "transitive": encoder_contract(version),
+        "implementation_sha256": (transitive["implementation_sha256"] if version >= 3
+                                  else ENCODER_IMPLEMENTATION_SHA256),
+        "source_sha256s": (transitive["source_sha256s"] if version >= 3
+                          else dict(ENCODER_SOURCE_SHA256S)),
+        "transitive": transitive,
     }
 
 
@@ -229,7 +232,10 @@ def encoder_cache_key(version: int = ENC_VERSION) -> str:
     caches of the same shard differ in every observation row and must never
     land on the same path.
     """
-    return f"v{check_version(version)}-{ENCODER_IMPLEMENTATION_SHA256[:12]}"
+    version = check_version(version)
+    sha = (encoder_identity(version)["implementation_sha256"] if version >= 3
+           else ENCODER_IMPLEMENTATION_SHA256)
+    return f"v{version}-{sha[:12]}"
 
 
 def deal_key(deck: Sequence[str]) -> str:
@@ -768,6 +774,7 @@ OBS_SEGMENTS_V2_EXTRA = [["winner_rel", 4, "bits2"], ["partner_winning", 1, "bit
                          ["pairs_held", 1, "f32"], ["hand_size", 1, "f32"]]
 OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
                            2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA}
+OBS_SEGMENTS_BY_VERSION[3] = OBS_SEGMENTS_BY_VERSION[2] + [["hand_control", 8, "f32"]]
 #: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
 OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],
@@ -1513,7 +1520,9 @@ def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
     if meta.get("packing") != packing_for(version):
         raise TrainDataError(f"{path}: cache packed with another feature layout")
     enc = meta.get("encoder") or {}
-    if (enc.get("implementation_sha256") != ENCODER_IMPLEMENTATION_SHA256
+    expected_sha = (encoder_identity(version)["implementation_sha256"] if version >= 3
+                    else ENCODER_IMPLEMENTATION_SHA256)
+    if (enc.get("implementation_sha256") != expected_sha
             or enc.get("enc_version") != version):
         raise TrainDataError(f"{path}: cache built by another encoder")
     if shard_sha256 is not None and meta["shard"]["sha256"] != shard_sha256:

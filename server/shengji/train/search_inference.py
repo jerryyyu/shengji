@@ -108,14 +108,6 @@ class SearchHeads:
         if payload.get("model_schema") != MODEL_SCHEMA:
             raise ValueError("checkpoint model schema differs from this build")
         enc = payload.get("encoder")
-        current = encoder_identity()
-        transitive = enc.get("transitive") if isinstance(enc, Mapping) else None
-        if not isinstance(enc, Mapping) or enc.get("implementation_sha256") != current["implementation_sha256"]:
-            raise ValueError("checkpoint encoder differs from the current encoder")
-        if (not isinstance(transitive, Mapping)
-                or transitive.get("implementation_sha256")
-                != current["transitive"]["implementation_sha256"]):
-            raise ValueError("checkpoint transitive encoder differs from the current encoder")
         arch = payload.get("arch")
         if not isinstance(arch, Mapping):
             raise ValueError("checkpoint arch is missing or malformed")
@@ -133,6 +125,18 @@ class SearchHeads:
                 "checkpoint arch dimensions differ from the current encoder") from None
         if act_dim != ACT_DIM:
             raise ValueError("checkpoint arch dimensions differ from the current encoder")
+        if not isinstance(enc, Mapping):
+            raise ValueError("checkpoint encoder differs from the current encoder")
+        if enc.get("enc_version", 1) != enc_version:
+            raise ValueError("checkpoint encoder version differs from its input width")
+        current = encoder_identity(enc_version)
+        if enc.get("implementation_sha256") != current["implementation_sha256"]:
+            raise ValueError("checkpoint encoder differs from the current encoder")
+        transitive = enc.get("transitive")
+        if (not isinstance(transitive, Mapping)
+                or transitive.get("implementation_sha256")
+                != current["transitive"]["implementation_sha256"]):
+            raise ValueError("checkpoint transitive encoder differs from the current encoder")
         state = payload.get("model_state")
         if not isinstance(state, Mapping):
             raise ValueError("checkpoint model_state is missing or malformed")

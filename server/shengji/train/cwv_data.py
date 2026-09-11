@@ -88,7 +88,7 @@ from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
 from ..rl.encode_versions import ENC_VERSION, check_version
-from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen, widen_v3
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -167,6 +167,9 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     encoder versions cannot share a cache file."""
     version = check_version(version)
     sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    if version >= 3:
+        for name in ('encode_versions', 'encode_hand_control', 'value_afterstate_v2'):
+            sources[name] = sha256_file(_SHENGJI / 'rl' / (name + '.py'))
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build
@@ -353,8 +356,16 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     # #214's binding is v1 and frozen; at v2 the reference is that binding
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
-    expected_sha = (example.input_sha256 if version == 1
-                    else widen(example.tensors, row.successor, row.seat).sha256())
+    expected = example.tensors
+    if version >= 2:
+        expected = widen(expected, row.successor, row.seat)
+    if version >= 3:
+        from ..ai.memory import Memory
+        from ..rl.encode_hand_control import hand_control_columns
+        expected = widen_v3(expected, hand_control_columns(
+            row.successor, row.seat,
+            Memory(row.successor, row.seat, own_kitty=False).unseen))
+    expected_sha = expected.sha256()
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "

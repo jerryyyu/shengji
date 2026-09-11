@@ -395,6 +395,15 @@ def tensors_from_round_static(rnd, root_seat: int, *,
     """
     root_seat = _seat(root_seat, "root seat")
     version = check_version(version)
+    if version == 3:
+        from ..rl.encode_hand_control import hand_control_columns
+        from ..rl.value_afterstate_v2 import widen_v3
+        base = tensors_from_round_static(rnd, root_seat, version=2)
+        offset = 8 * N_CARDS
+        unseen = Counter({card: int(2 * base.public[offset + index])
+                          for card, index in CARD_INDEX.items()
+                          if base.public[offset + index] > 0})
+        return widen_v3(base, hand_control_columns(rnd, root_seat, unseen))
     if version == 2:
         # Compose the already-exact v1 MLP inputs with the canonical v2
         # columns. Never hand a bare v1 tensor to a v2 net. History is still

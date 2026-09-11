@@ -35,14 +35,16 @@ from . import encode as _v1
 from .encode import ENC_VERSION, N_CARDS, OBS_DIM, OBS_SCHEMA  # noqa: F401  (re-export)
 
 #: the highest version ``encode_obs`` can emit
-ENC_VERSION_MAX = 2
+ENC_VERSION_MAX = 3
 OBS_SCHEMA_BY_VERSION = {
     1: OBS_SCHEMA,
     2: "rl-observation-v2-trick-state",
+    3: "rl-observation-v3-hand-control",
 }
 #: v2 appends 16 trick-local, 5 points-regime and 8 hand-shape columns
 _OBS_EXTRA_V2 = 16 + 5 + 8                                   # = 29
 OBS_DIM_BY_VERSION = {1: OBS_DIM, 2: OBS_DIM + _OBS_EXTRA_V2}  # 531, 560
+OBS_DIM_BY_VERSION[3] = OBS_DIM_BY_VERSION[2] + 8
 
 
 def check_version(version: object) -> int:
@@ -186,6 +188,9 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
     assert len(obs) == OBS_DIM
     if version >= 2:
         obs += encode_obs_v2_columns(rnd, seat)
+    if version >= 3:
+        from .encode_hand_control import hand_control_columns
+        obs += hand_control_columns(rnd, seat, Memory(rnd, seat, own_kitty=False).unseen)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 

@@ -110,7 +110,7 @@ def _actual_export(tmp_path, version=1):
     from shengji.rl.value_model import ValueModelConfig, ValueNetwork
     from shengji.rl.value_checkpoint import save_checkpoint
     from scripts.export_cwv_numpy import export_cwv_numpy
-    dim = {1: 532, 2: 561}[version]
+    dim = {1: 532, 2: 561, 3: 569}[version]
     net = ValueNetwork(ValueModelConfig(architecture="mlp", width=32,
                           feedforward_width=64, public_dim=dim, enc_version=version,
                           attention_heads=1))
@@ -122,7 +122,7 @@ def _actual_export(tmp_path, version=1):
     return package, net
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_actual_export_roundtrip_and_torch_free_load_infer(tmp_path, version):
     package, _net = _actual_export(tmp_path, version)
     model = load_numpy_checkpoint(package)

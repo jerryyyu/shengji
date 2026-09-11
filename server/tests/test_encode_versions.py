@@ -57,7 +57,7 @@ def test_v1_stays_the_default_and_v2_is_declared_beside_it():
     assert OBS_DIM == 531 == OBS_DIM_BY_VERSION[1]
     assert OBS_SCHEMA == OBS_SCHEMA_BY_VERSION[1] == \
         "rl-observation-v1-public-no-private-kitty"
-    assert ENC_VERSION_MAX == 2 and OBS_DIM_BY_VERSION[2] == 560
+    assert ENC_VERSION_MAX == 3 and OBS_DIM_BY_VERSION[2] == 560
     assert obs_dim(1) == 531 and obs_dim(2) == 560
 
 
@@ -72,7 +72,7 @@ def test_a_checkpoint_width_selects_its_encoder_version():
 
 def test_an_unknown_version_is_refused_rather_than_silently_encoded():
     rnd, seat = _self_play_state()
-    for bad in (0, 3, -1, True, 1.0, "1", None):
+    for bad in (0, 4, -1, True, 1.0, "1", None):
         with pytest.raises(ValueError):
             encode_obs(rnd, seat, version=bad)
 
@@ -239,7 +239,7 @@ def test_cache_keys_differ_between_versions_and_are_stable_within_one():
     assert cwv_data.cwv_encoder_identity(1)["implementation_sha256"] \
         == local_encoder_identity()["implementation_sha256"]
 
-    for bad in (0, 3, True, "1", None):
+    for bad in (0, 4, True, "1", None):
         with pytest.raises(ValueError):
             data.encoder_cache_key(bad)
 
@@ -275,7 +275,7 @@ def test_a_fresh_training_run_can_select_the_encoder_version():
     assert v2["arch"]["obs_dim"] == 560 and v2["encoder_version"] == 2
     assert encoder_version_for(v2["arch"]) == 2
     assert v2["enc_version"] == 2
-    for bad in (0, 3, "2", None):
+    for bad in (0, 4, "2", None):
         with pytest.raises(train_v0.TrainError):
             train_v0.build_config(data=["d"], encoder_version=bad)
 
@@ -290,7 +290,7 @@ def test_a_fresh_training_run_can_select_the_encoder_version():
     # the v1 model_config is field-for-field what the pre-change trainer wrote
     assert "public_dim" not in c1["model_config"] and "enc_version" not in c1["model_config"]
     assert c2["model_config"]["public_dim"] == 561 and c2["model_config"]["enc_version"] == 2
-    for bad in (0, 3, "2", None):
+    for bad in (0, 4, "2", None):
         with pytest.raises(train_cwv.TrainError):
             train_cwv.build_config(data=["d"], encoder_version=bad)
 
@@ -309,7 +309,7 @@ def test_the_cli_of_both_trainers_exposes_encoder_version():
         assert chosen.encoder_version == 2
         with pytest.raises(SystemExit):
             parser.parse_args(
-                ["train", "--data", "d", "--out", "o", "--encoder-version", "3"])
+                ["train", "--data", "d", "--out", "o", "--encoder-version", "4"])
 
 
 def test_a_v2_run_writes_its_own_cache_and_cannot_read_a_v1_one(tmp_path):

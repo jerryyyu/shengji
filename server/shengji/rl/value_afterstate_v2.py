@@ -51,7 +51,7 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
 
     def validate(self) -> None:
         expected = (
-            (self.public, (PUBLIC_DIM_V2,), "public"),
+            (self.public, (self.expected_public_dim,), "public"),
             (self.history, (None, HISTORY_EVENT_DIM), "history"),
             (self.world, (WORLD_RECEIVERS, N_CARDS), "world"),
             (self.perspective, (PERSPECTIVE_DIM,), "perspective"),
@@ -72,6 +72,25 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
                 or not bool(np.all((self.perspective == 0.0)
                                    | (self.perspective == 1.0))):
             raise ValueAfterstateError("perspective tensor is not one-hot")
+
+    @property
+    def expected_public_dim(self):
+        return PUBLIC_DIM_V2
+
+
+@dataclass(frozen=True)
+class ValueAfterstateTensorsV3(ValueAfterstateTensorsV2):
+    @property
+    def expected_public_dim(self):
+        return PUBLIC_DIM_BY_VERSION[3]
+
+
+def widen_v3(v2, columns):
+    extra = np.asarray(columns, dtype=np.float32)
+    public = np.concatenate((v2.public[:-1], extra, v2.public[-1:]))
+    out = ValueAfterstateTensorsV3(public, v2.history, v2.world, v2.perspective)
+    out.validate()
+    return out
 
 
 def widen(v1: ValueAfterstateTensors, rnd, root_seat: int) -> ValueAfterstateTensorsV2:
@@ -96,7 +115,15 @@ def tensors_from_round(rnd, root_seat: int, *,
     frozen builder's call; v2 is that result widened."""
     version = check_version(version)
     v1 = _tensors_from_round_v1(rnd, root_seat)
-    return v1 if version == 1 else widen(v1, rnd, root_seat)
+    if version == 1:
+        return v1
+    v2 = widen(v1, rnd, root_seat)
+    if version == 2:
+        return v2
+    from ..ai.memory import Memory
+    from .encode_hand_control import hand_control_columns
+    return widen_v3(v2, hand_control_columns(
+        rnd, root_seat, Memory(rnd, root_seat, own_kitty=False).unseen))
 
 
 __all__ = ["PUBLIC_DIM_V2", "PUBLIC_DIM_BY_VERSION", "ValueAfterstateTensorsV2",

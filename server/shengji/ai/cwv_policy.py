@@ -175,6 +175,9 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     version = check_version(version)
     sources = {name: file_sha256(path)
                for name, path in AFTERSTATE_SOURCE_PATHS.items()}
+    if version >= 3:
+        for name in ('encode_versions', 'encode_hand_control', 'value_afterstate_v2'):
+            sources[name] = file_sha256(_SHENGJI / 'rl' / (name + '.py'))
     parts = [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
     if version != 1:
         parts.append(f"enc_version:{version}")

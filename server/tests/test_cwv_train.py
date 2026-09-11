@@ -308,7 +308,8 @@ def test_ranking_agreement_metric(records):
 
 # 6 --------------------------------------------------------- training smoke
 
-def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
+@pytest.mark.parametrize("encoder_version", [train_cwv.DEFAULTS["encoder_version"], 3])
+def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path, encoder_version):
     luna_path, _rows = luna
     # The public head is built at the SAME version the cwv run defaults to, so this
     # smoke exercises the default path end to end. Cross-version heads have their own
@@ -318,12 +319,16 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
     public = train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
                             epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
                             cache_workers=1,
-                            encoder_version=train_cwv.DEFAULTS["encoder_version"], **THIRDS)
+                            encoder_version=encoder_version, **THIRDS)
     assert public["final"]["test"]["held_out"] is True
+    from shengji.train.search_inference import SearchHeads
+    heads = SearchHeads.from_checkpoint(tmp_path / "public" / "best.pt")
+    assert heads.enc_version == encoder_version
     kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), arch="mlp", device="cpu",
               epochs=2, seed=7, batch_size=64, n_boot=20, hidden=32, log=None,
               cache_workers=1, eval_workers=1, bench_batch=32,
-              public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
+              public_head=str(tmp_path / "public" / "best.pt"),
+              encoder_version=encoder_version, **THIRDS)
     out = tmp_path / "a"
     receipt = train_cwv.train(out=out, **kw)
     for key in train_cwv.REQUIRED_RECEIPT_FIELDS:

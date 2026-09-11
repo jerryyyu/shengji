@@ -83,10 +83,20 @@ def load_public_head(path: str, device: torch.device | str = "cpu") -> tuple[Val
     if not isinstance(schema, str) or not schema.startswith(PUBLIC_CHECKPOINT_PREFIX):
         raise EvalError(f"{path}: not a {PUBLIC_CHECKPOINT_PREFIX}* checkpoint ({schema!r})")
     enc = payload.get("encoder") or {}
-    if enc.get("implementation_sha256") != ENCODER_IMPLEMENTATION_SHA256:
+    from .data import encoder_identity
+    try:
+        version = check_version(enc.get("enc_version", ENC_VERSION))
+        arch_version = encoder_version_for(payload.get("arch"))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise EvalError(f"{path}: public head encoder version is malformed") from exc
+    if version != arch_version:
+        raise EvalError(f"{path}: public head encoder version differs from its input width")
+    expected_sha = (encoder_identity(version)["implementation_sha256"] if version >= 3
+                    else ENCODER_IMPLEMENTATION_SHA256)
+    if enc.get("implementation_sha256") != expected_sha:
         raise EvalError(f"{path}: public head encoder "
                         f"{str(enc.get('implementation_sha256', ''))[:12]} differs from this "
-                        f"build's {ENCODER_IMPLEMENTATION_SHA256[:12]}")
+                        f"build's {expected_sha[:12]}")
     try:
         model = ValuePriorNet(payload["arch"])
         model.load_state_dict(payload["model_state"])

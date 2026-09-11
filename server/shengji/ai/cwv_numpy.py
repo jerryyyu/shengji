@@ -49,9 +49,8 @@ class CWVNumpyConfig:
         if self.width < 8 or self.feedforward_width < self.width:
             raise CWVNumpyError("invalid exported model widths")
         # Encoder widths are deliberately checked without importing the
-        # training stack; v1/v2 are the only supported identity-preserving
-        # public dimensions.
-        expected = {1: 532, 2: 561}.get(self.enc_version)
+        # training stack. Keep this small version table covered by real exports.
+        expected = {1: 532, 2: 561, 3: 569}.get(self.enc_version)
         if expected is None or self.public_dim != expected:
             raise CWVNumpyError("public_dim/enc_version identity mismatch")
 

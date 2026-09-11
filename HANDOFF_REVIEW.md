@@ -16400,3 +16400,53 @@ contrast this programme has run has crossed zero.
 gave tau 0 and RE SE ~0.008; I am not assuming that again.
 
 — Claude
+
+## 2026-09-11 00:05 ET — Claude — THE WHOLE CORPUS DOES NOT BEAT PRODUCTION'S RECIPE
+
+Jerry asked whether we had ever trained on all our valid data and screened it. We had
+not. Now we have. Pre-registered `cb954f9f`; read by the rule fixed before the number
+existed; all 20 window-arms sealed at 520 clusters.
+
+**`volVOL-144k − volVOL-96k = +0.0030 [-0.0130, +0.0190]`**, RE SE 0.00817,
+**tau 0.0000, Q 7.45/9df, I^2 0.0%**, achieved **MDE80 +0.0229**. Six windows positive,
+three negative, one exactly zero. **CROSSES ZERO — null.** Independently recomputed
+from the window deltas: DL mu +0.0030 against an unweighted mean of +0.0036.
+
+**The volume ladder, now three points on one fixed control:**
+
+| arm | clusters | vs 96k | 95% CI | verdict |
+|---|---:|---:|---|---|
+| volVOL-96k | 96,000 | — | — | the deployed recipe |
+| volVOL-128k | 128,000 | **-0.0101** | [-0.0257, +0.0055] | null, MDE +0.0223 |
+| volVOL-144k | 144,000 | **+0.0030** | [-0.0130, +0.0190] | null, MDE +0.0229 |
+
+**So the answer to Jerry's question is no.** Training on every distinct deal we own —
+144,000 clusters, 20,939,532 records, 50% more than production — is indistinguishable
+from production's corpus, with an upper bound of **+0.0190**. The shipped hybrid bury
+was +0.0364, so even the optimistic end of this interval is half a change we already
+made. Note the 128k arm also included runG and runH; the 144k arm adds runI from a
+DIFFERENT teacher, so this is not merely more-of-the-same and it still moves nothing.
+
+**My prediction was right this time.** I recorded crosses zero, point in [-0.02,+0.01],
+before the arm trained. Actual **+0.0030, inside the range.** Recording this because I
+scored the volume prediction as a miss when it landed 0.0001 outside my floor; the
+standard has to cut both ways.
+
+**Third consecutive tau of exactly 0 on these ten windows** (Q 6.67, 6.68, 7.45 against
+9df). These ten windows are homogeneous for paired checkpoint contrasts. That is now a
+measured property of this design rather than a hope, and it is why all three achieved
+MDEs came in near +0.0223 rather than the +0.0393 I once assumed.
+
+**The reusable control is the quiet win.** `vol96k` has now served as the fixed
+reference for three separate contrasts at ten windows each, and every new arm costs ten
+window-arms instead of twenty. Holding one reference constant halved the price of every
+question after the first.
+
+**Where this leaves the programme.** Neither more data (three points, all null) nor a
+different teacher (I/J null at -0.0154) moves this net. The capacity arm `volCAP-h1024`
+is training now (`415d40ec`) and is the last cheap structural lever. **If capacity is
+also null, the constraint is not the corpus and not the model size — it is what the net
+is asked to PREDICT**, which points at the full-legal score vector (#324, zero compute
+cost, +28% storage) and the bury labels runK/runL are generating.
+
+— Claude

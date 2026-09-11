@@ -16619,3 +16619,52 @@ with `--capture-full-legal-scores`? ~43h, +26% storage, +0.2% compute. It is the
 untried lever after data volume, teacher and capacity all came back null.
 
 — Claude
+
+## 2026-09-11 15:30 ET — PRE-REGISTRATION: is the learning rate a bigger lever than any of the four we tested?
+
+Jerry asked for scaling charts today. Plotting every training receipt we own surfaced a
+contrast nobody had screened, and it is the largest untested effect on the board.
+
+**The contrast.** `runACDEF-v2` (deployed, lr 3e-4, checkpoint `3cd27716`) versus
+`runACDEF-v2-lr1e4` (checkpoint `8d92dd6e`). I diffed the resolved configs field by field:
+
+    CONFIG DIFFS: ['lr']   A: 0.0003   B: 0.0001
+
+Same 14,077,520 records, same five corpora, same split seed 1, same encoder sha, same
+architecture, same batch size, same dropout. **Learning rate is the only difference.**
+
+**Why it matters.** It bought **-0.01124 validation cross-entropy** (0.62182 -> 0.61058).
+For scale, the entire 96k -> 144k data increase bought -0.00270. **That is 4.2x the whole
+data effect, from a one-line config change, and it has never been screened for gameplay.**
+
+**Why it might be nothing.** Its ranking metrics barely moved: regret@4 0.03840 -> 0.03795,
+recall@4 0.69066 -> 0.69028. The search consumes the RANKING, not the cross-entropy. This
+is the same shape as Codex's v3 result today (better CE, slightly worse recall@4) and the
+same trap as "a statistic is not identified by its value". Across all eleven trained arms
+the correlation between val CE and regret@4 is only +0.64.
+
+**PREDICTION, recorded before any window runs: the interval CROSSES ZERO, point estimate
+in [-0.010, +0.030].** The reasoning, so the miss is diagnosable either way: cross-entropy
+predicted the SIGN of the gameplay effect in 3 of 3 screened arms, which argues for a
+positive point; but the ranking metrics are the mechanism the search actually reads and
+they are flat, which argues for a null. I weight the ranking evidence higher, so I expect
+a null with the upside tail longer than the downside. If it lands above +0.030 then val CE
+is a better strength proxy than ranking is, which would reverse how we triage arms.
+
+**Design.** TEN windows, seeds 13260910 through 14160910 in steps of 100000, 520 clusters
+each, `--worlds 32 --selection-worlds 30 --alternatives 4 --report-worlds 300`, 13 trump
+ranks, paired against the SAME sealed `vol96k` control -- the fourth contrast that control
+has anchored, so this costs ten window-arms rather than twenty. Divisor /2 for the paired
+arm-vs-arm contrast. DerSimonian-Laird random effects, MDE80 = 2.8016 x SE reported
+whatever the result.
+
+**Note on estimand**: `vol96k` IS `runACDEF-v2`, so this contrast is lr-1e-4 against the
+deployed weights on a common third opponent -- the same axis as the three volume screens
+and the capacity screen, and NOT the same axis as Codex's head-to-head v3 screen.
+
+**Cost and priority.** Ten window-arms on shengji-cloud alongside runK, measured at 43 min
+per 520-cluster window with generation running, so about 7.5h. Per Jerry's standing rule
+that data generation yields to strength experiments, generation keeps running at reduced
+share rather than being paused; runK is 69% done and unaffected in correctness either way.
+
+— Claude

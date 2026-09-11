@@ -16450,3 +16450,57 @@ is asked to PREDICT**, which points at the full-legal score vector (#324, zero c
 cost, +28% storage) and the bury labels runK/runL are generating.
 
 — Claude
+
+## 2026-09-11 10:20 ET — Claude — CAPACITY IS NOT THE LEVER EITHER. And tau reappeared.
+
+Pre-registered `415d40ec`, read by the rule fixed before the number existed. All 20
+window-arms sealed at 520 clusters.
+
+**`volCAP-h1024 − volVOL-96k = -0.0054 [-0.0248, +0.0140]`**, RE SE 0.00990,
+**tau 0.0185, Q 13.86/9df, I^2 35.1%**, achieved **MDE80 +0.0277**. Six windows
+negative, four positive. **CROSSES ZERO — null.** Independently recomputed: DL mu
+-0.0054 against an unweighted mean of -0.0046.
+
+**Doubling the width buys nothing.** Upper bound +0.0140 against a shipped hybrid bury
+of +0.0364. My prediction (crosses zero, point in [-0.02,+0.03]) was **INSIDE**.
+
+**THE FOUR-LEVER PICTURE IS NOW COMPLETE, and every one is null:**
+
+| lever | contrast | result | upper bound |
+|---|---|---:|---:|
+| more data | 128k − 96k | -0.0101 [-0.0257,+0.0055] | +0.0055 |
+| all our data | 144k − 96k | +0.0030 [-0.0130,+0.0190] | +0.0190 |
+| different teacher | armI − armJ | -0.0154 [-0.0601,+0.0294] | +0.0294 |
+| **more capacity** | **h1024 − h512** | **-0.0054 [-0.0248,+0.0140]** | **+0.0140** |
+
+Neither the corpus, nor its source, nor the model's size moves this net. **The
+constraint is what the net is asked to PREDICT.** That is now an inference from four
+pre-registered nulls rather than a hunch, and it is the strongest argument the
+programme has produced for the full-legal score vector and the bury labels.
+
+**THE BONUS FINDING, AND IT CONFIRMS THE LESSON I LEARNED THE HARD WAY.** Across four
+paired contrasts on the SAME ten windows:
+
+| contrast | what varies | tau | Q/9df | I^2 |
+|---|---|---:|---:|---:|
+| 128k − 96k | data | 0.0000 | 6.67 | 0.0% |
+| 144k − 96k | data | 0.0000 | 7.45 | 0.0% |
+| **h1024 − h512** | **architecture** | **0.0185** | **13.86** | **35.1%** |
+
+**Three data contrasts gave tau of exactly zero; the first architecture contrast gave
+tau 0.0185 and I^2 35%.** Same ten windows, same machinery, same control arm. The only
+thing that changed is what the two arms differ in.
+
+The natural reading: **changing the width changes the playing STYLE more than changing
+the data does.** A wider net is a different player, and different deal-sets favour
+different players — the arm-by-window interaction returns. Feeding the same architecture
+more data produces a nearly identical player, so no deal-set prefers one over the other.
+
+This is the cleanest evidence yet for the rule I got wrong on 2026-09-10 and was
+corrected on: **tau is a property of the CONTRAST, not of the deals.** I had treated
+non-exchangeability as a fixed property of our window population. It is not — it appears
+and vanishes depending on how different the two arms actually play. And note the
+practical cost: tau 0.0185 widened this MDE to +0.0277 where the data contrasts got
++0.0223 on identical windows.
+
+— Claude

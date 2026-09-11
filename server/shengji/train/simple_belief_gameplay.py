@@ -49,14 +49,25 @@ def seed_for(label: str, index: int) -> int:
     )
 
 
-def policy_seed(cluster: int, seat: int) -> int:
+def policy_seed(cluster: int, seat: int, config=None) -> int:
     """The paired play stream; treatment labels never alter this seed."""
     if type(cluster) is not int or type(seat) is not int or not 0 <= seat < 4:
         raise ValueError("invalid gameplay policy coordinate")
+    if config and config.get('policy_seed_namespace'):
+        return int.from_bytes(hashlib.sha256(
+            f"{config['policy_seed_namespace']}:play:{cluster}:{seat}".encode()).digest()[:8], 'big')
     return seed_for(f"play:{cluster}", seat)
 
 
-def spec_for(cluster: int) -> dict:
+def spec_for(cluster: int, config=None) -> dict:
+    if config and 'planned_deals' in config:
+        planned = config['planned_deals']
+        if type(cluster) is not int or not 0 <= cluster < len(planned):
+            raise ValueError('deal index outside configured population')
+        spec = planned[cluster]
+        if spec.get('index') != cluster:
+            raise ValueError('configured deal index differs')
+        return dict(spec)
     if type(cluster) is not int or not 0 <= cluster < PLANNED_DEALS:
         raise ValueError("this screen has exactly14 planned deals")
     return {
@@ -67,8 +78,16 @@ def spec_for(cluster: int) -> dict:
     }
 
 
-def schedule() -> list[tuple[str, int | None]]:
+def schedule(config=None) -> list[tuple[str, int | None]]:
     """One common baseline plus two focal-team mirrors for each treatment."""
+    if config and 'arms' in config:
+        result = [tuple(row) for row in config['arms']]
+        treatments = [arm for arm, team in result if team == 0]
+        if (not treatments or len(set(treatments)) != len(treatments)
+                or any(arm not in ARMS for arm in treatments)
+                or result != [('ordinary', None), *((arm, team) for arm in treatments for team in (0, 1))]):
+            raise ValueError('configured treatment mirrors differ')
+        return result
     return [("ordinary", None), *((arm, team) for arm in ARMS for team in (0, 1))]
 
 
@@ -87,14 +106,14 @@ def _normal_declaration(rnd: Round) -> None:
     rnd.finalize_declare()
 
 
-def prepare_round(spec: dict) -> tuple[Round, dict]:
+def prepare_round(spec: dict, config=None) -> tuple[Round, dict]:
     """Create a deterministic dealt/declaration-complete round.
 
     The returned metadata is intentionally small and contains no opponent
     hands.  A fresh ``Round`` is made for every arm, so mirrors share the deal
     and declaration while retaining independent policy RNG streams.
     """
-    expected = spec_for(spec["index"])
+    expected = spec_for(spec["index"], config)
     if spec != expected:
         raise ValueError("round specification differs from its planned deal")
     rnd = Round(spec["rank"], spec["initial_banker"], random.Random(spec["seed"]))
@@ -416,23 +435,23 @@ def read_cluster(path, config, cluster):
     shard = json.loads(path.read_bytes())
     if (shard.get("schema") != "simple-belief-gameplay-cluster-v1" or
             shard.get("config_sha256") != config["config_sha256"] or
-            shard.get("cluster") != cluster or shard.get("spec") != spec_for(cluster)):
+            shard.get("cluster") != cluster or shard.get("spec") != spec_for(cluster, config)):
         raise ValueError("saved gameplay cluster identity differs")
     records = shard.get("records")
-    if not isinstance(records, list) or len(records) != len(schedule()):
+    if not isinstance(records, list) or len(records) != len(schedule(config)):
         raise ValueError("saved gameplay cluster arm population differs")
-    for row, (arm, team) in zip(records, schedule(), strict=True):
+    for row, (arm, team) in zip(records, schedule(config), strict=True):
         if row.get("inherited_control"):
             if arm not in CONTROL_ARMS or not row.get("control_provenance"):
                 raise ValueError("inherited marker is invalid for this arm")
-            inherited = _source_control(config, spec_for(cluster), arm, team)
+            inherited = _source_control(config, spec_for(cluster, config), arm, team)
             if (inherited is None or row.get("control_provenance") !=
                     inherited.get("control_provenance") or
                     _without_control_provenance(inherited) !=
                     _without_control_provenance(row)):
                 raise ValueError("inherited control row differs from its source")
         else:
-            validate_arm(row, config, spec_for(cluster), arm, team)
+            validate_arm(row, config, spec_for(cluster, config), arm, team)
     return shard
 
 
@@ -459,13 +478,13 @@ def _fresh_check(cache_recipe, planned):
 
 
 def run_cluster(config, cluster):
-    spec = spec_for(cluster)
+    spec = spec_for(cluster, config)
     output = Path(config["output"])
     paths = {(arm, team): output / f"arm-{cluster:03d}-{arm}-{team}.json"
-             for arm, team in schedule()}
+             for arm, team in schedule(config)}
     rows = []
     pending = []
-    for arm, team in schedule():
+    for arm, team in schedule(config):
         path = paths[(arm, team)]
         existing = load_existing_arm(config, spec, arm, team)
         if existing is not None:
@@ -475,7 +494,7 @@ def run_cluster(config, cluster):
     if not pending:
         return {"schema": "simple-belief-gameplay-cluster-v1", "cluster": cluster,
                 "config_sha256": config["config_sha256"], "spec": spec,
-                "records": [load_existing_arm(config, spec, *a) for a in schedule()]}
+                "records": [load_existing_arm(config, spec, *a) for a in schedule(config)]}
 
     evaluator = shared_evaluator(config["checkpoint"], threads=1, max_batch=128,
                                  encoding="mlp-static")
@@ -494,14 +513,14 @@ def run_cluster(config, cluster):
     try:
         for arm, team in pending:
             started, cpu = time.perf_counter(), time.process_time()
-            rnd, _ = prepare_round(spec)
+            rnd, _ = prepare_round(spec, config)
             client = client_context
             predictor = small_predictor
             bots = []
             for seat in range(4):
                 mode = arm if arm != "ordinary" and seat % 2 == team else "ordinary"
                 bots.append(_make_bot(mode, evaluator,
-                                      policy_seed(cluster, seat),
+                                      policy_seed(cluster, seat, config),
                                       config, client, predictor))
             outcome = play_round(rnd, bots, cluster, arm, team)
             row = {
@@ -521,7 +540,7 @@ def run_cluster(config, cluster):
             _publish(paths[(arm, team)], row)
             rows.append(row)
             print(json.dumps({"cluster": cluster, "completed_arms": len(rows),
-                              "total_arms": len(schedule()), "last_arm_wall_s": row["wall_s"]}),
+                              "total_arms": len(schedule(config)), "last_arm_wall_s": row["wall_s"]}),
                   flush=True)
     finally:
         if client_context is not None:
@@ -529,21 +548,22 @@ def run_cluster(config, cluster):
     ordered = { (r["arm"], r["focal_team"]): r for r in rows }
     return {"schema": "simple-belief-gameplay-cluster-v1", "cluster": cluster,
             "config_sha256": config["config_sha256"], "spec": spec,
-            "records": [ordered[a] for a in schedule()]}
+            "records": [ordered[a] for a in schedule(config)]}
 
 
-def summarize(shards):
+def summarize(shards, config=None):
     from .cwv_bury_readout import interval
-    deltas = {arm: {"signed_levels": [], "wins": []} for arm in ARMS}
+    treatments = [arm for arm, team in schedule(config) if team == 0]
+    deltas = {arm: {"signed_levels": [], "wins": []} for arm in treatments}
     for shard in shards:
         records = shard.get("records", [])
-        if len(records) != len(schedule()):
+        if len(records) != len(schedule(config)):
             raise ValueError("incomplete arm population before aggregate")
         by_key = {(r["arm"], r["focal_team"]): r for r in records}
-        if set(by_key) != set(schedule()):
+        if set(by_key) != set(schedule(config)):
             raise ValueError("incomplete or duplicate arm population before aggregate")
         baseline = by_key[("ordinary", None)]["outcome"]
-        for arm in ARMS:
+        for arm in treatments:
             values, wins = [], []
             for team in (0, 1):
                 changed = by_key[(arm, team)]["outcome"]["team0_signed_levels"]
@@ -554,15 +574,22 @@ def summarize(shards):
                 wins.append(int(changed > 0) - int(base > 0))
             deltas[arm]["signed_levels"].append(sum(values) / 2)
             deltas[arm]["wins"].append(sum(wins) / 2)
-    return {
+    planned = len(config['planned_deals']) if config and 'planned_deals' in config else PLANNED_DEALS
+    result = {
         "schema": "simple-belief-gameplay-summary-v1",
-        "independent_deals": len(shards), "planned_deals": PLANNED_DEALS,
-        "complete": len(shards) == PLANNED_DEALS,
-        "rounds": len(schedule()) * len(shards),
+        "independent_deals": len(shards), "planned_deals": planned,
+        "complete": len(shards) == planned,
+        "rounds": len(schedule(config)) * len(shards),
         "comparisons": {arm: {metric: interval(values) for metric, values in metrics.items()}
                          for arm, metrics in deltas.items()} if shards else {},
         "scope": "fresh DEV paired W32 gameplay; not confirmation or production authority",
     }
+    if shards and 'new-small' in treatments and 'uniform-pool' in treatments:
+        result['learned_minus_uniform'] = {
+            metric: interval([a-b for a,b in zip(deltas['new-small'][metric],
+                                               deltas['uniform-pool'][metric], strict=True)])
+            for metric in ('signed_levels', 'wins')}
+    return result
 
 
 def main(argv=None):

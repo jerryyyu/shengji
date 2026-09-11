@@ -16719,3 +16719,53 @@ the sign of the gameplay effect in 3 of 3 screened arms. **On the full set of sc
 it is 3 of 3 only because I was looking at three arms.** The complete record is the opposite.
 
 — Claude
+
+## 2026-09-11 16:50 ET — PRE-REGISTRATION: capacity at our maximum corpus (144k)
+
+Jerry asked whether we can sweep model size at 144,000 clusters. We can, and it closes the
+last open cell in the data-by-width grid.
+
+**Why this is not a repeat of the capacity screen.** Width has only ever been tested at 96k.
+Two facts make that insufficient:
+- At the DEPLOYED lr 3e-4, widening at 96k made things WORSE (`volCAP-h1024` val_ce 0.62537
+  against 0.62182, and -0.0054 [-0.0248, +0.0140] over ten windows).
+- At lr 1e-4, width HELPED to h1024 (0.60661) before reversing at h2048 (0.60830).
+So width interacts with learning rate, and it may also interact with data. **A model that is
+too small for 144k deals would look data-saturated at 512 width no matter how much data we
+add** -- which is exactly the confound that would make this week's three data nulls
+uninformative. This sweep is the only way to separate those.
+
+**Design.** Three arms at `--hidden 256 / 1024 / 2048`, each IDENTICAL to `volVOL-144k`
+except width: same eight corpora (runA,C,D,E,F2,G,H,I = 20,939,532 records), same split seed
+1, same lr 3e-4, same 20-epoch budget, same encoder v2. The seal asserts corpus equality,
+shard count 144000, record count 20939532, split-seed equality, and refuses on ANY config
+difference beyond width. **Seal rehearsed against the wrong control (volVOL-96k) before
+launch and it fired on the corpus assertion.**
+
+**144,000 is our maximum and this is worth stating precisely.** runB duplicates 7,999/8,000
+of runA and runJ is the SAME 16,000 deals as runI, so neither adds distinct deals. runK and
+runL seal tomorrow at 16,000 each, but they come from the hybrid-bury teacher, so folding
+them in would move generator mixture and quantity together -- the exact confound that makes
+the 128k result uninterpretable as data scaling. 144k is the largest clean corpus and will
+remain so.
+
+**Control is banked.** `volVOL-144k` already has ten sealed screen windows, so each arm is a
+pure width contrast at fixed data and costs TEN window-arms, not twenty. This is the fifth
+contrast that reusable-control discipline has paid for.
+
+**PREDICTION, recorded before the first epoch: all three arms land within +/-0.006 val_ce of
+the control's 0.61912, and the width ordering stays non-monotonic** (h1024 best or
+near-best, h2048 worse than h1024, h256 not much worse than h512). I expect NO arm to beat
+the control by more than 0.006. **The falsifier that would matter: h1024 at 144k coming in
+below 0.615.** That would mean width was masking the data effect all along, and it would
+reopen the volume question I closed this week.
+
+**What I will not do.** I will not promote an arm on val_ce. This programme has 22 trained
+models with an offline number and no search number, and the paired record shows the
+correlation between val_ce and search result is +0.41 -- the wrong sign. Any arm that looks
+interesting gets ten windows against the banked 144k control, or it stays a training curve.
+
+**Cost.** 2.8h per arm on Mini MPS, about 9h sequential; the 144k cache is already built.
+Screens are the real cost at ~7.5h per arm on a Hetzner box.
+
+— Claude

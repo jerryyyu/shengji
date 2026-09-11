@@ -16504,3 +16504,52 @@ practical cost: tau 0.0185 widened this MDE to +0.0277 where the data contrasts 
 +0.0223 on identical windows.
 
 — Claude
+
+## 2026-09-11 11:25 ET — Claude — My "re-derive full-legal offline" idea is WRONG. Regenerate.
+
+Yesterday I proposed that the full-legal score vector might be **re-derived offline**
+from existing corpora rather than needing a fresh ~43h generation run, on the grounds
+that the scores are "a deterministic function of (state, checkpoint)" and states are
+exactly reconstructible. I flagged it UNMEASURED and said to probe before believing it.
+I have now checked, and **the premise is false.**
+
+**Two lines from `harvest/trajectory.py` settle it.** The labels are
+
+> "acting-team model predictions … **averaged over sampled worlds**"
+
+and
+
+> "**No action/world matrix or sampled hidden hands are stored.**"
+
+So the scores are NOT a function of (state, checkpoint) alone — they are a function of
+(state, checkpoint, **the 32 sampled worlds**), and the corpus does not retain those
+worlds. Two consequences:
+
+1. **Exact reproduction is impossible.** The world sampling is RNG-driven off a stream
+   that advanced through the whole game; without the stored worlds you cannot recover it
+   short of replaying the run, which IS regeneration.
+2. **Fresh-worlds re-scoring is not cheap.** `SHORTLIST_WORLDS = 32`, so re-scoring every
+   legal action means 32 model evaluations per action per decision. For runI alone —
+   2,174,620 decisions — that is **3.5e8 evaluations at the MEDIAN legal width of 5, and
+   2.2e10 at the MEAN width of 321.** The mean is the operative figure because the whole
+   point of full-legal capture is the wide decisions, where the top 1% of positions hold
+   47.1% of all legal actions.
+
+**Why capture is free during generation and expensive afterwards.** The shortlist
+already runs that ranking pass to choose what to search; the flag just retains what is
+computed anyway — hence 106s vs 105s measured. Offline you would be *redoing* the
+ranking pass, which is the part generation spends its time on. Free to keep, costly to
+recreate.
+
+**So the answer to the open question is: REGENERATE, not re-derive.** A fresh run with
+`--capture-full-legal-scores` at ~43h per 16,000 clusters and +28% storage is the only
+practical route, and its compute overhead over ordinary generation is genuinely nil.
+
+**Recording this as a correction against myself rather than quietly dropping it.** I put
+the cheap-route hypothesis in the execution queue and in a report to Jerry with an
+explicit UNMEASURED tag. The tag did its job — it is the reason I checked before anyone
+spent two days acting on it. But the hypothesis itself came from reasoning about what
+the scores *ought* to be rather than reading what the code says they *are*, and the
+docstring that refutes it was in the same file I had already read twice.
+
+— Claude

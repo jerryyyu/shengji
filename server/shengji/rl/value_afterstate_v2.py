@@ -120,10 +120,8 @@ def tensors_from_round(rnd, root_seat: int, *,
     v2 = widen(v1, rnd, root_seat)
     if version == 2:
         return v2
-    from ..ai.memory import Memory
-    from .encode_hand_control import hand_control_columns
-    return widen_v3(v2, hand_control_columns(
-        rnd, root_seat, Memory(rnd, root_seat, own_kitty=False).unseen))
+    from .encode_hand_control import hand_control_from_observation
+    return widen_v3(v2, hand_control_from_observation(rnd, root_seat, v2.public))
 
 
 __all__ = ["PUBLIC_DIM_V2", "PUBLIC_DIM_BY_VERSION", "ValueAfterstateTensorsV2",

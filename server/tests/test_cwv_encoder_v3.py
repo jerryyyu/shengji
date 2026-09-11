@@ -19,8 +19,8 @@ from tests.test_cwv_static_encoding import _state_after
 def test_v3_boss_features_match_memory_queries_not_hidden_world():
     rnd = _state_after(43, 12)
     for seat in range(4):
-        mem = Memory(rnd,seat,own_kitty=False)
-        values = hand_control_columns(rnd,seat,mem.unseen)
+        mem = Memory(rnd,seat,own_kitty=True)
+        values = hand_control_columns(rnd,seat,Memory(rnd,seat,own_kitty=False).unseen)
         counts = Counter(rnd.hands[seat])
         for group in (0,1):
             cards = [c for c in counts if int(rnd.ordering.eff_suit(c)==TRUMP)==group]
@@ -28,7 +28,12 @@ def test_v3_boss_features_match_memory_queries_not_hidden_world():
             assert values[2+group] == sum(1 for c in cards if counts[c]>=2 and mem.pair_is_boss(c))/12
         twin = copy.deepcopy(rnd)
         hidden = [s for s in range(4) if s != seat]
-        twin.hands[hidden[0]][0], twin.buried[0] = twin.buried[0], twin.hands[hidden[0]][0]
+        if seat == rnd.banker:
+            # Its own burial is visible; only other hands may change in a twin.
+            twin.hands[hidden[0]][0], twin.hands[hidden[1]][0] = (
+                twin.hands[hidden[1]][0], twin.hands[hidden[0]][0])
+        else:
+            twin.hands[hidden[0]][0], twin.buried[0] = twin.buried[0], twin.hands[hidden[0]][0]
         assert encode_obs(rnd,seat,version=3) == encode_obs(twin,seat,version=3)
 
 
@@ -37,11 +42,52 @@ def test_v3_feature_values_tractor_and_pair_boss_positive_controls():
     # Fixed NT ordering: ordinary hearts at consecutive levels, trump jokers.
     from shengji.engine.cards import Ordering
     rnd.ordering = Ordering(None,'2')
+    rnd.banker = 3
     rnd.hands[0] = ['H8','H8','H9','H9','BJ','BJ']
     v = hand_control_columns(rnd,0,Counter({'HA':1,'LJ':2}))
     assert v == [0.,2/25,2/12,1/12,2/12,0.,1/6,0.]
     blocked = hand_control_columns(rnd,0,Counter({'HA':2,'LJ':2}))
     assert blocked[2] == 0 and blocked[4] == 2/12
+
+
+def test_v3_banker_known_burial_boss_counts_without_leaking_to_nonbanker():
+    from shengji.engine.cards import Ordering
+    rnd = _state_after(43, 0)
+    rnd.ordering = Ordering(None, '2')
+    rnd.trump_is_nt = True
+    rnd.trump_rank = '2'
+    rnd.banker = 0
+    rnd.hands[0] = ['HK', 'HK']
+    rnd.buried = ['HA', 'HA', 'S3', 'S3', 'S4', 'S4', 'S5', 'S5']
+    public_unseen = Memory(rnd, 0, own_kitty=False).unseen
+    old = encode_obs(rnd, 0, version=2)
+    new = encode_obs(rnd, 0, version=3)
+    assert new[:560] == old
+    assert new[560:564] == [2/25, 0, 1/12, 0]
+    assert not Memory(rnd, 0, own_kitty=False).is_boss('HK')
+    assert Memory(rnd, 0, own_kitty=True).is_boss('HK')
+    # Same hand/unseen, but a non-banker cannot use that burial.
+    rnd.banker = 1
+    assert hand_control_columns(rnd, 0, public_unseen)[:4] == [0, 0, 0, 0]
+    twin = copy.deepcopy(rnd)
+    twin.buried = ['C3'] * 8
+    assert encode_obs(rnd, 0, version=3) == encode_obs(twin, 0, version=3)
+
+
+def test_v3_reuses_encoded_unseen_without_an_extra_memory_walk(monkeypatch):
+    from shengji.rl import encode as v1, encode_versions as versions
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return Memory(*args, **kwargs)
+    monkeypatch.setattr(v1, 'Memory', counted)
+    monkeypatch.setattr(versions, 'Memory', counted)
+    rnd = _state_after(41, 35)
+    encode_obs(rnd, 0, version=2)
+    v2_calls = len(calls)
+    calls.clear()
+    encode_obs(rnd, 0, version=3)
+    assert len(calls) == v2_calls == 2
 
 
 @pytest.mark.parametrize('plies',[1,4,35,70,100])

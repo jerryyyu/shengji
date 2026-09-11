@@ -25,8 +25,10 @@ Recipe and exact split membership are in
 
 Append eight own-hand control features to v2: boss plain/trump card copies,
 boss plain/trump pairs, longest plain/trump tractor, and plain/trump tractor
-component counts. These use the actor's hand and public unseen-card counts;
-banker-private kitty remains excluded. "Boss" means no higher unseen card of
+component counts. These use the actor's hand and public unseen-card counts,
+minus the actor's own known burial **only when the actor is banker**. The new
+block can use this legal private information; the v1/v2 prefix stays unchanged.
+Non-bankers cannot see burial contents. "Boss" means no higher unseen card of
 the effective suit, not a guaranteed trick winner (ruffing still matters).
 
 Keep the production recipe: MLP 512→256, dropout .1, AdamW, learning rate
@@ -76,3 +78,12 @@ as the baseline rather than add a duplicate full v2 training by default.
 Training and v3 gameplay have not started. Production and the independent
 260-deal full-belief gameplay run are unchanged. Next: measure retained-cache
 preparation pace, then prepare the full original population and train.
+
+Claude's source review identified that the original conservative boss counts
+ignored the banker's known burial. Preparation was stopped during source
+discovery before cache generation, and the new block was corrected. A concrete
+buried-ace/held-king fixture checks the banker improvement and non-banker privacy;
+the v3 source identity changes, so the earlier 20 timing-probe cache files cannot
+be consumed by the corrected encoder. They remain archived, not overwritten.
+V3 now also reuses the already-encoded unseen plane instead of constructing a
+third Memory object. Static serving continues to use its existing fused v2 path.

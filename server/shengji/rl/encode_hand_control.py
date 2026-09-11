@@ -2,12 +2,15 @@
 
 Boss means no higher unseen card/pair in the SAME effective suit, not a sure
 trick winner (ruffing, lead/follow structure and team coordination still matter).
-Use the historical public unseen set, including the banker's private kitty.
+Callers supply the historical public unseen set (kitty included). Only this
+new feature block removes the actor's own known burial when it is the banker;
+the v1/v2 prefix remains unchanged. Non-bankers never inspect burial contents.
 """
 from collections import Counter
 
 from ..engine.cards import SUITS, TRUMP
 from ..engine.combos import decompose
+from .encode import CARD_INDEX, N_CARDS
 
 HAND_CONTROL_COLUMNS = (
     'boss_plain_copies', 'boss_trump_copies',
@@ -17,8 +20,23 @@ HAND_CONTROL_COLUMNS = (
 )
 
 
+def hand_control_from_observation(rnd, seat, observation):
+    """Reuse the v1 unseen plane; no extra Memory/history walk for v3."""
+    offset = 8 * N_CARDS
+    unseen = Counter({card: int(2 * observation[offset + index])
+                      for card, index in CARD_INDEX.items()
+                      if observation[offset + index] > 0})
+    return hand_control_columns(rnd, seat, unseen)
+
+
 def hand_control_columns(rnd, seat, unseen):
-    """Same inputs on training and serving; never inspect another hand."""
+    """Same inputs on training and serving; never inspect another hand.
+
+    ``unseen`` must be the v1/v2 public counter, not Memory(own_kitty=True),
+    otherwise the banker's burial would be subtracted twice.
+    """
+    if rnd.banker == seat and rnd.buried:
+        unseen = Counter(unseen) - Counter(rnd.buried)
     ordering = rnd.ordering
     hand = Counter(rnd.hands[seat])
     suits = [*SUITS, TRUMP]

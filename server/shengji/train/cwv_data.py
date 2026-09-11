@@ -360,11 +360,9 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     if version >= 2:
         expected = widen(expected, row.successor, row.seat)
     if version >= 3:
-        from ..ai.memory import Memory
-        from ..rl.encode_hand_control import hand_control_columns
-        expected = widen_v3(expected, hand_control_columns(
-            row.successor, row.seat,
-            Memory(row.successor, row.seat, own_kitty=False).unseen))
+        from ..rl.encode_hand_control import hand_control_from_observation
+        expected = widen_v3(expected, hand_control_from_observation(
+            row.successor, row.seat, expected.public))
     expected_sha = expected.sha256()
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:

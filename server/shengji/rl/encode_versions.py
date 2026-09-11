@@ -189,8 +189,8 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
     if version >= 2:
         obs += encode_obs_v2_columns(rnd, seat)
     if version >= 3:
-        from .encode_hand_control import hand_control_columns
-        obs += hand_control_columns(rnd, seat, Memory(rnd, seat, own_kitty=False).unseen)
+        from .encode_hand_control import hand_control_from_observation
+        obs += hand_control_from_observation(rnd, seat, obs)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 

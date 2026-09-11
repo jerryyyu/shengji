@@ -9,7 +9,7 @@ from shengji.ai.cwv_static_encoding import tensors_from_round_static
 from shengji.ai.memory import Memory
 from shengji.engine.cards import TRUMP
 from shengji.rl.encode_versions import encode_obs, encoder_version_for
-from shengji.rl.encode_hand_control import hand_control_columns
+from shengji.rl.encode_hand_control import hand_control_columns, hand_control_from_observation
 from shengji.rl.value_afterstate_v2 import tensors_from_round
 from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 from shengji.train.cwv_data import cwv_encoder_identity
@@ -21,6 +21,7 @@ def test_v3_boss_features_match_memory_queries_not_hidden_world():
     for seat in range(4):
         mem = Memory(rnd,seat,own_kitty=True)
         values = hand_control_columns(rnd,seat,Memory(rnd,seat,own_kitty=False).unseen)
+        assert hand_control_from_observation(rnd, seat, encode_obs(rnd, seat, version=2)) == values
         counts = Counter(rnd.hands[seat])
         for group in (0,1):
             cards = [c for c in counts if int(rnd.ordering.eff_suit(c)==TRUMP)==group]

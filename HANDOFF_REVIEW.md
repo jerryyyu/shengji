@@ -16809,3 +16809,71 @@ that I had read dict keys as action counts -- and then failed to apply it to the
 census sitting beside it. A field name is not a measurement.
 
 — Claude
+
+## 2026-09-11 17:25 ET — DEPTH HAS NEVER BEEN VARIED, and adding it nearly broke every checkpoint
+
+Jerry asked whether more layers might help rather than only wider ones. Reading
+`shengji/rl/value_model.py` rather than assuming, the mlp trunk is hardcoded:
+
+    Linear(in, feedforward_width)  GELU Dropout
+    Linear(feedforward_width, width) GELU Dropout
+    Linear(width, 204)
+
+**Two hidden layers, no depth parameter, and `--hidden H` sets BOTH widths**
+(`feedforward_width = H`, `width = H/2`; confirmed against parameter counts, h1024 predicts
+1,483,468 exactly). So the whole capacity programme -- h256 through h2048, 273k to 4.0M
+parameters, six screens and tonight's 144k sweep -- has been fattening two layers.
+
+**`f4baeec2` and every "capacity is not the lever" statement must be restated as "WIDTH is
+not the lever, AT DEPTH 2."** That is a materially weaker claim than the one I have been
+making, and I made it four times today.
+
+**Implemented in volw**: `--trunk-layers` and `--trunk-block plain|residual`. The residual
+block is Gorishniy et al. 2021 (arXiv:2106.11959),
+`x + Dropout(Linear(Dropout(ReLU(Linear(BatchNorm(x))))))` -- the tabular ResNet that paper
+finds no competitor consistently outperforms. Our problem is structurally tabular: an
+833-dimension fixed vector to 204 classes.
+
+**THE NEAR MISS, recorded because it is the important part.** My first patch added two
+fields to `ValueModelConfig`. That broke `load_cwv_checkpoint` for **every checkpoint we
+own, including the weights serving production**, because `from_payload` does exact
+set-equality on field names:
+
+    ValueModelError: model configuration schema drift
+    ValueCheckpointError: checkpoint model state drift
+
+The guard caught it on the first load I attempted. Had I patched and launched without
+loading an existing checkpoint first, the failure would have surfaced at the next screen or
+the next deploy, not at the edit. Fixed by mirroring the mechanism the codebase already
+uses for `_WIDTH_FIELDS`: a legacy-shaped trunk omits the new fields from its payload, and
+`from_payload` accepts all four field-set combinations. Re-verified afterwards that
+volVOL-144k, runACDEF-v2 and cap-h2048 load with identical parameter counts AND identical
+trunk module order.
+
+**Falsification done before queueing anything.** Validation added for both new fields and
+proven to refuse `trunk_layers=1`, `trunk_layers=128` and `trunk_block="resnet"`. A depth-8
+residual net learns (toy loss 5.3952 -> 0.0406). A real 40-cluster end-to-end train seals a
+receipt at 608,252 parameters.
+
+**QUEUED: an iso-parameter grid at 144k**, gated on the width sweep finishing (gate proven
+to fire). Three budgets x three depths, matched within 0.94%, budgets chosen so each row
+gains a free depth-2-plain comparison from work already done:
+
+| budget | depth 2 | depth 4 | depth 8 |
+|---|---|---|---|
+| S 0.61M | --hidden 436 | --hidden 330 | --hidden 244 |
+| M 1.48M | --hidden 740 | --hidden 546 | --hidden 398 |
+| L 4.02M | --hidden 1292 | --hidden 938 | --hidden 676 |
+
+Widths solved from the closed form `4Lw^2 + (1040 + 5L)w + 204`. An independent solver that
+CONSTRUCTED every candidate in torch returned identical values in all nine cells, so the
+arithmetic is verified two ways.
+
+**Honest prediction: small effects.** The depth-width scaling literature finds the loss
+landscape flat across aspect ratios ~20-180 and ours is 128, already inside it. A
+deliberately badly-built depth-4 PLAIN arm is included so a depth result cannot be confused
+with an optimisation failure. **The grid's job is to find a SHAPE, not a checkpoint**: it
+adds 10 models to a pile of 21 that already have an offline number and no search number, and
+today's finding is that the offline number does not order them.
+
+— Claude

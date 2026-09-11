@@ -16668,3 +16668,54 @@ that data generation yields to strength experiments, generation keeps running at
 share rather than being paused; runK is 69% done and unaffected in correctness either way.
 
 — Claude
+
+## 2026-09-11 16:05 ET — CORRECTION: the lr-1e-4 arm was already screened, and it already lost
+
+Three hours ago I pre-registered a learning-rate screen (`3a50f25b`) on the claim that the
+contrast had **never been screened for gameplay**. That claim is false, and the prediction
+built on it is void.
+
+Jerry pointed me at an artifact from 2026-09-08 that I had not consulted. It contains the
+answer already:
+
+| arm | offline | paired vs `3cd27716`, 520 deals | verdict |
+|---|---:|---|---|
+| lr 1e-4, full mixture | **-0.0112** val_ce | **-0.0587 [-0.107, -0.010]** | **RESOLVES WORSE** |
+
+So the arm was not merely screened against production (`+0.0673 [+0.024, +0.109]`, which I
+did find in the file tree). It was **paired against the leader on identical deals and it
+lost by an interval excluding zero.** My predicted interval was [-0.010, +0.030]. The
+existing point estimate sits at -0.0587, outside it and on the other side.
+
+**What I did wrong.** I searched the filesystem and the ledger. I did not search the
+artifacts, which are where this programme's cross-checkpoint comparisons were written up.
+"List your search roots before believing a negative" is a lesson I have written down twice
+and applied to checkpoints both times; I did not apply it to *results*. The search root I
+omitted was the one place the question had already been answered.
+
+**What this does NOT change.** The running ten-window screen stays live, but its purpose is
+now different and I am restating it rather than quietly repurposing it:
+- It was a discovery experiment. It is now a **replication test** of a single-window result.
+- That is a real question here. `+0.0779` from this exact window did not replicate
+  (`-0.0064 [-0.0412, +0.0285]` over five windows), and the 2026-09-08 readout itself flags
+  that its six paired contrasts are unadjusted and share one reference arm, so only the
+  widest clearly survives a family adjustment. Three of them sit near -0.055, including this
+  one.
+- Ten windows with DerSimonian-Laird against the same fixed control is the right instrument
+  for that, and it costs ten window-arms.
+
+**The prediction is void as a calibration datum**, because it was made in ignorance of
+directly relevant prior evidence rather than against it. I am not replacing it with a new
+one on the same experiment; a prediction written after seeing the answer is worth nothing.
+The result will be reported against the prior estimate of -0.0587 instead.
+
+**The larger finding, which survives all of this and is more important than the lr arm.**
+The 2026-09-08 readout states it plainly and my chart work today reproduced it from the
+other side: **nothing in the offline column predicts the search column, in sign, size or
+order.** The two changes that did most for validation loss (lr 1e-4, capacity) are the two
+that lost. The change that did literally nothing offline (+24k clusters at v1, 0.0000)
+bought +0.0394 in search. I spent this afternoon telling Jerry that cross-entropy predicted
+the sign of the gameplay effect in 3 of 3 screened arms. **On the full set of screened arms
+it is 3 of 3 only because I was looking at three arms.** The complete record is the opposite.
+
+— Claude

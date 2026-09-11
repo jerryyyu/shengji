@@ -16553,3 +16553,69 @@ the scores *ought* to be rather than reading what the code says they *are*, and 
 docstring that refutes it was in the same file I had already read twice.
 
 — Claude
+
+## 2026-09-11 13:35 ET — Full-legal capture costs 0.2% wall clock and 26% storage, MEASURED on real runs
+
+The cost of `--capture-full-legal-scores` had been resting on a 106s-vs-105s
+microbenchmark. Jerry is being asked to commit ~43 hours of generation on that number,
+which is too thin. Mini fell idle when Codex's v3 screen finished, so I measured it.
+
+**Design.** Four blocks of 100 clusters, hybrid-bury teacher `...-2d939ecb4635` (the
+same policy runK/runL are generating with), 4 workers at nice 10, ABBA:
+
+| block | arm | window | wall clock |
+|---|---|---|---:|
+| b1 | control | W1 66260911 | 1085s |
+| b2 | capture | W1 66260911 | 1090s |
+| b3 | capture | W2 66261011 | 902s |
+| b4 | control | W2 66261011 | 902s |
+
+Each arm-pair runs the **same 100 deals**, so the straggler effect cancels — and it
+needed to: W1 and W2 differ by 20% in wall clock on identical settings, which is deal
+variance alone and would have swamped an unpaired comparison. ABBA cancels linear drift.
+Scratch seed registry (`SHENGJI_SEED_WINDOWS`), disposable output; this is a cost probe,
+not evidence, and its corpus must never be trained on.
+
+**Results.**
+
+| quantity | measurement |
+|---|---:|
+| wall-clock overhead, W1 pair | +0.5% |
+| wall-clock overhead, W2 pair | +0.0% |
+| **mean wall-clock overhead** | **+0.2%** |
+| storage overhead, b2 | +28.3% |
+| storage overhead, b3 | +24.0% |
+| Mini, 4 workers | 9.9s/cluster -> 44.2h per 16,000 |
+
+**The +28% storage estimate is confirmed; the zero-compute claim is confirmed.** The
+43h/16,000 figure also holds: the Hetzner boxes are turning 370-403 clusters/hr at 10
+workers, i.e. ~41h per 16,000.
+
+**What the smoke found that the estimate never covered.** 130 sidecar rows per cluster,
+and **18% of them carry null means** — forced actions and bypassed candidate stages,
+which the docstring warns must never be turned into fabricated targets. So a full-legal
+corpus yields materially less supervision per cluster than the row count suggests, and
+any training plan has to state how it handles that fifth of the rows. Legal width over
+the sidecar is median 4, mean 150, max 3168.
+
+**Two errors of mine in this pilot, both recorded.**
+
+1. **My falsification guard was vacuous.** I wrote a check to prove the seed-overlap
+   refusal fires between blocks 1 and 2. It printed `REFUSAL FIRED` and the pilot
+   proceeded — on a `TypeError`, because I omitted the required `refuse` keyword and my
+   `except Exception` swallowed the signature bug as a refusal. The guard could not
+   distinguish a working registry from a broken call. Re-tested properly afterwards with
+   a positive control that must be ADMITTED and a negative that must be REFUSED naming
+   the overlapping seed: the registry is sound and all four pilot windows registered
+   correctly. The lesson is not "prove the check can fail" — I did write a failure path.
+   It is that **a check must fail for the RIGHT REASON, so catch the specific exception
+   and assert on its content.**
+2. **I trusted an aggregate without opening a row.** My first census reported a legal
+   width of exactly 15 on every row. That is the number of KEYS in the score dict; the
+   width is `len(scores["actions"])`. One row would have shown it, and did.
+
+**Still open for Jerry, now fully costed:** commit a fresh 16,000-cluster generation run
+with `--capture-full-legal-scores`? ~43h, +26% storage, +0.2% compute. It is the only
+untried lever after data volume, teacher and capacity all came back null.
+
+— Claude

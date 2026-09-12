@@ -145,11 +145,20 @@ def test_an_underfilled_report_fold_can_never_override(monkeypatch):
     assert bot.short_search_decisions == 1
 
 
-@pytest.mark.parametrize("gap,overrides", [(2.0, True), (-2.0, False)])
+# gap 0.0 with se 0.0 is the exact tie: identical outcomes on every report world.
+# Issue #339: by default it overrides (0 < 0 is False), which is how a throw predicted
+# to collapse into the incumbent in all 300 worlds got played and cut down for real.
+# REPORT_TIE_KEEPS_INCUMBENT flips that for a screened arm; the default is witnessed.
+@pytest.mark.parametrize("gap,overrides,tie_keeps", [
+    (2.0, True, False), (-2.0, False, False),
+    (0.0, True, False),    # default: a tie still overrides (old behaviour, unchanged)
+    (0.0, False, True),    # knob on: a tie keeps the incumbent
+])
 def test_report_lcb_must_override_a_certain_gain_and_refuse_a_loss(
-        monkeypatch, gap, overrides):
+        monkeypatch, gap, overrides, tie_keeps):
     rnd, seat = incident_state()
     bot = make_bot("mc-s0-report-lcb", seed=238)
+    bot.REPORT_TIE_KEEPS_INCUMBENT = tie_keeps
     monkeypatch.setattr(bot, "_report_fold_gap", fixed_report(gap))
     played = bot.decide_play(rnd, seat)
     rec = bot.last_decision_record

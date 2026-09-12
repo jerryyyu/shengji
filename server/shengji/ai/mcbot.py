@@ -189,6 +189,7 @@ class MCBot(SmartBot):
     REPORT_FOLD_WORLDS = 0        # >0: score a challenger on DISJOINT worlds
     REPORT_RULE = "none"          # one of: none, mean, lcb
     REPORT_MIN_GAIN = 0.0         # distinct from incumbent point MARGIN=5
+    REPORT_TIE_KEEPS_INCUMBENT = False  # #339 L1; True only in a screened arm
     REPORT_ALPHA = 0.05
     # Conservative one-sided Student-t critical for every supported report
     # fold (n >= 30; t_29,0.95 = 1.699). This is a frozen decision heuristic,
@@ -499,7 +500,19 @@ class MCBot(SmartBot):
                 self.short_search_decisions += 1
                 return self._finish_decision(
                     candidates, 0, "report_underfilled", _t0, sampler_before)
-            if statistic < self.REPORT_MIN_GAIN:
+            # Issue #339 layer 1. An exact tie (statistic == min_gain, in practice
+            # gap 0 and se 0: identical outcomes on every report world) passes `<`
+            # and overrides. Measured on runI: 537 of 1,637 failed throws were
+            # exactly that -- a throw predicted to collapse into the incumbent in
+            # all 300 report worlds, played anyway, then cut down for real.
+            # REPORT_TIE_KEEPS_INCUMBENT=True refuses the override on a tie. It
+            # DEFAULTS TO THE OLD BEHAVIOUR: this gate is shared by production and
+            # the W32 shortlist, and CI's golden-digest fixture of the production
+            # class showed the tie case changes decisions there too, so the flip
+            # is a screened policy change, not a default. The screen's arm sets it.
+            below = statistic < self.REPORT_MIN_GAIN or (
+                self.REPORT_TIE_KEEPS_INCUMBENT and statistic <= self.REPORT_MIN_GAIN)
+            if below:
                 return self._finish_decision(
                     candidates, 0, f"report_{self.REPORT_RULE}_below_min_gain",
                     _t0, sampler_before)

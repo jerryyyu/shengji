@@ -37,6 +37,10 @@ MLP_INPUT_DIM = PUBLIC_DIM + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
 #: the two ADDITIVE config fields: absent from every archived payload, in
 #: which case they take the v1 defaults and the rebuilt net is byte-identical
 _WIDTH_FIELDS = ("public_dim", "enc_version")
+#: omitted from a payload whose trunk is the legacy depth-2 plain shape, so
+#: every checkpoint archived before the depth arms existed still loads.
+_TRUNK_FIELDS = ("trunk_layers", "trunk_block")
+_LEGACY_TRUNK = {"trunk_layers": 2, "trunk_block": "plain"}
 
 
 def mlp_input_dim(public_dim: int = PUBLIC_DIM) -> int:
@@ -54,6 +58,8 @@ class ValueModelConfig:
     history_layers: int = 2
     attention_heads: int = 4
     feedforward_width: int = 128
+    trunk_layers: int = 2
+    trunk_block: str = "plain"
     dropout: float = 0.0
     max_history: int = HISTORY_MAX_EVENTS
     outcome_classes: int = OUTCOME_CLASSES
@@ -88,7 +94,11 @@ class ValueModelConfig:
                 or self.feedforward_width < self.width \
                 or not 0.0 <= self.dropout < 1.0 \
                 or self.max_history < 1 \
-                or self.outcome_classes != OUTCOME_CLASSES:
+                or self.outcome_classes != OUTCOME_CLASSES \
+                or type(self.trunk_layers) is not int or self.trunk_layers < 2 \
+                or self.trunk_layers > 64 \
+                or type(self.trunk_block) is not str \
+                or self.trunk_block not in ("plain", "residual"):
             raise ValueModelError("model configuration drift")
 
     def payload(self) -> dict[str, object]:
@@ -99,12 +109,18 @@ class ValueModelConfig:
             # stored config against this, field for field
             for name in _WIDTH_FIELDS:
                 del out[name]
+        if all(getattr(self, k) == v for k, v in _LEGACY_TRUNK.items()):
+            for name in _TRUNK_FIELDS:
+                del out[name]
         return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
-        base = set(asdict(cls())) - set(_WIDTH_FIELDS)
-        if type(value) is not dict or set(value) not in (base, base | set(_WIDTH_FIELDS)):
+        base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS)
+        allowed = {frozenset(base | w | t)
+                   for w in (set(), set(_WIDTH_FIELDS))
+                   for t in (set(), set(_TRUNK_FIELDS))}
+        if type(value) is not dict or frozenset(value) not in allowed:
             raise ValueModelError("model configuration schema drift")
         try:
             config = cls(**value)
@@ -117,6 +133,29 @@ class ValueModelConfig:
                 raise
             raise ValueModelError("model configuration drift") from exc
         return config
+
+
+class ResidualTrunkBlock(nn.Module):
+    """The tabular ResNet block of Gorishniy et al. 2021 (arXiv:2106.11959),
+    which that paper finds no competitor consistently outperforms:
+    ``x + Dropout(Linear(Dropout(ReLU(Linear(BatchNorm(x))))))``.  Depth alone
+    does not train in a plain MLP trunk; the normalisation and the skip are
+    what make the depth arm a test of depth rather than of optimisation."""
+
+    def __init__(self, width: int, feedforward_width: int, dropout: float):
+        super().__init__()
+        self.norm = nn.BatchNorm1d(width)
+        self.up = nn.Linear(width, feedforward_width)
+        self.down = nn.Linear(feedforward_width, width)
+        self.drop_inner = nn.Dropout(dropout)
+        self.drop_outer = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.norm(x)
+        h = torch.relu(self.up(h))
+        h = self.drop_inner(h)
+        h = self.down(h)
+        return x + self.drop_outer(h)
 
 
 class ValueNetwork(nn.Module):
@@ -133,12 +172,37 @@ class ValueNetwork(nn.Module):
             # architectures below are constructed exactly as before.
             self.history_position = None
             self.history_encoder = None
-            self.trunk = nn.Sequential(
-                nn.Linear(mlp_input_dim(config.public_dim), config.feedforward_width),
-                nn.GELU(),
-                nn.Dropout(config.dropout),
-                nn.Linear(config.feedforward_width, width), nn.GELU(),
-                nn.Dropout(config.dropout))
+            din = mlp_input_dim(config.public_dim)
+            if config.trunk_layers == 2 and config.trunk_block == "plain":
+                # UNCHANGED PATH: byte-identical to every model trained so far.
+                self.trunk = nn.Sequential(
+                    nn.Linear(din, config.feedforward_width),
+                    nn.GELU(),
+                    nn.Dropout(config.dropout),
+                    nn.Linear(config.feedforward_width, width), nn.GELU(),
+                    nn.Dropout(config.dropout))
+            elif config.trunk_block == "plain":
+                # naive depth: the same block repeated, no normalisation, no skip.
+                # Expected to degrade past ~4 layers; that is the point of the arm.
+                mods = [nn.Linear(din, config.feedforward_width), nn.GELU(),
+                        nn.Dropout(config.dropout)]
+                for _ in range(config.trunk_layers - 2):
+                    mods += [nn.Linear(config.feedforward_width, config.feedforward_width),
+                             nn.GELU(), nn.Dropout(config.dropout)]
+                mods += [nn.Linear(config.feedforward_width, width), nn.GELU(),
+                         nn.Dropout(config.dropout)]
+                self.trunk = nn.Sequential(*mods)
+            elif config.trunk_block == "residual":
+                # Gorishniy et al. 2021 tabular ResNet block, arXiv:2106.11959:
+                #   block(x) = x + Dropout(Linear(Dropout(ReLU(Linear(BatchNorm(x))))))
+                # stem projects to `width`; every block is width -> ffw -> width.
+                blocks = [ResidualTrunkBlock(width, config.feedforward_width,
+                                             config.dropout)
+                          for _ in range(config.trunk_layers)]
+                self.trunk = nn.Sequential(nn.Linear(din, width), *blocks,
+                                           nn.BatchNorm1d(width), nn.ReLU())
+            else:
+                raise ValueModelError("trunk_block must be plain or residual")
             self.head = nn.Linear(width, OUTCOME_CLASSES)
             return
         self.public_encoder = nn.Sequential(

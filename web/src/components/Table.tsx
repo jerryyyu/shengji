@@ -35,10 +35,42 @@ function useCountdown(seconds: number | null): number | null {
   return left;
 }
 
+const BOT_BANTER = {
+  bury: ["Eight cards have to go…", "A little mystery for the kitty.", "Parting with cards is hard.", "New round, new possibilities."],
+  play: ["Hmm… decisions, decisions.", "One trick at a time.", "Trying to keep a trick up my sleeve.", "Jokers aren’t the only surprises."],
+} as const;
+
+function BotThinking({ phase }: { phase: "bury" | "play" }) {
+  const [line, setLine] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setLine((n) => (n + 1) % BOT_BANTER[phase].length), 3200);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+  return (
+    <>
+      <div className="thinking" role="status" aria-live="polite">
+        {phase === "bury" ? "Choosing 8 cards to bury…" : "Considering the next play…"}
+      </div>
+      <div className="bot-progress" role="progressbar"
+        title="Working — completion percentage is not available."
+        aria-label={phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play"}>
+        <span />
+      </div>
+      {/* Cosmetic copy only; never derive this from cards, scores, or search state.
+          Keep rotation outside the live region so screen readers are not spammed. */}
+      <div className="bot-banter" title="Playful flavor, not model reasoning.">
+        <span className="bot-banter-label">Bot banter: </span>{BOT_BANTER[phase][line]}
+      </div>
+    </>
+  );
+}
+
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
   const pos = seatPos(player.seat, state.you);
   const takeover = useCountdown(player.takeover_in ?? null);
   const onTurn = state.turn === player.seat;
+  const actionPhase = state.phase === "bury" || state.phase === "play";
+  const botControlled = player.is_bot || player.controller === "bot_cover";
   const hasPassed = state.phase === "declare" && state.passed.includes(player.seat);
   const backs = Math.min(player.cards_left, 5);
   return (
@@ -66,8 +98,10 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         </div>
         <span className="card-count">{player.cards_left}</span>
       </div>
-      {onTurn && player.is_bot ? <div className="thinking">thinking…</div> : null}
-      {onTurn && !player.is_bot ? <div className="their-turn">their turn</div> : null}
+      {onTurn && actionPhase && botControlled ? (
+        <BotThinking key={`${state.room}:${state.phase}:${player.cards_left}`} phase={state.phase as "bury" | "play"} />
+      ) : null}
+      {onTurn && actionPhase && !botControlled ? <div className="their-turn">their turn</div> : null}
     </div>
   );
 }

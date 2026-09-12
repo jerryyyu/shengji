@@ -183,9 +183,10 @@ def make_side(config: dict, side: str, seed: int):
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
-    # #339 layer 1: bound per window in config.json, applied to THIS bot only
-    # (a class attribute on MCBot; the baseline bot above never sees it).
-    if config.get("report_tie_keeps_incumbent"):
+    # #339 layer 1: bound per window in config.json, applied to the ARM bot only.
+    # A flat-shortlist baseline also reaches this point; it must stay at the
+    # production default (a class attribute on MCBot, never modified).
+    if side == "arm" and config.get("report_tie_keeps_incumbent"):
         bot.REPORT_TIE_KEEPS_INCUMBENT = True
     return bot
 

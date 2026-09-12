@@ -227,3 +227,19 @@ def test_tie_knob_is_bound_in_config_and_applied_to_the_arm_bot_only(tmp_path, m
     with pytest.raises(SystemExit):
         S.main(["--arm", "uniform", "--report-tie-keeps-incumbent",
                 "--clusters", "1", "--workers", "1", "--seed0", "17", "--out", str(tmp_path / "bad")])
+
+
+def test_tie_knob_never_reaches_a_flat_shortlist_baseline(monkeypatch):
+    """Codex's witness: with --baseline flat-shortlist both sides are shortlist
+    bots built from one config; the knob must still be arm-only."""
+    class Evaluator:
+        checkpoint_sha256 = "a" * 64
+
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **kw: Evaluator())
+    config = cfg(arm="learned", checkpoint="m.pt", checkpoint_sha256="a" * 64,
+                 baseline="flat-shortlist", report_tie_keeps_incumbent=True)
+    got = {side: S.make_side(config, side, seed=17).REPORT_TIE_KEEPS_INCUMBENT
+           for side in ("arm", "baseline")}
+    assert got == {"arm": True, "baseline": False}
+    assert S.make_bot("mc-s0-report-lcb", seed=1).REPORT_TIE_KEEPS_INCUMBENT is False
+    assert type(S.make_side(config, "arm", seed=17)).REPORT_TIE_KEEPS_INCUMBENT is False

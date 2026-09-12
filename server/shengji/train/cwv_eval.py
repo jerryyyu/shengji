@@ -31,6 +31,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 import numpy as np
 import torch
 
+from ..ai.cwv_static_encoding import tensors_from_round_static
 from ..harvest.rebuild import RebuildError, state_for_record
 from ..harvest.schema import SchemaError, validate_record
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
@@ -299,7 +300,8 @@ def score_candidates(rnd, seat: int, candidates: Sequence[Sequence[str]], *,
                 hist_cards.append(np.zeros((0, N_CARDS), np.uint8))
                 hist_meta.append(np.zeros((0, HISTORY_META_DIM), np.uint8))
             continue
-        tensors = tensors_at(successor, seat, version=version)
+        tensors = (tensors_at if history else tensors_from_round_static)(
+            successor, seat, version=version)
         public[i] = tensors.public
         world[i] = np.rint(tensors.world * 2.0).astype(np.uint8)
         if history:

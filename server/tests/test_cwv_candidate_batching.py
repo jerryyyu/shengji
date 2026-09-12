@@ -146,9 +146,24 @@ def test_end_to_end_every_record_scores_the_same_with_and_without_batching(
     monkeypatch.setattr(train_cwv, "cwv_score_many_fn", many_factory)
 
     monkeypatch.setenv("SHENGJI_CWV_BATCHED_CANDIDATES", "0")
+    monkeypatch.setenv("SHENGJI_CWV_LOSS_SYNC_EVERY", "1")
     control = train_cwv.train(out=tmp_path / "per_record", **kw)
+    control_rng = torch.get_rng_state().clone()
     monkeypatch.setenv("SHENGJI_CWV_BATCHED_CANDIDATES", "1")
+    monkeypatch.setenv("SHENGJI_CWV_LOSS_SYNC_EVERY", "32")
     batched = train_cwv.train(out=tmp_path / "batched", **kw)
+    assert torch.equal(control_rng, torch.get_rng_state())
+    # Qualify the combined training/report path at the artifact consumer, not
+    # merely equal rounded losses. No extra training runs are needed here.
+    for name in ("best.pt", "checkpoints/epoch-01.pt"):
+        old, old_meta, old_aux = train_cwv.load_cwv_checkpoint(tmp_path / "per_record" / name)
+        new, new_meta, new_aux = train_cwv.load_cwv_checkpoint(tmp_path / "batched" / name)
+        assert old.config == new.config
+        assert old.state_dict().keys() == new.state_dict().keys()
+        for key, tensor in old.state_dict().items():
+            assert torch.equal(tensor, new.state_dict()[key]), (name, key)
+        assert old_meta["epoch"] == new_meta["epoch"]
+        assert old_aux is None and new_aux is None
     assert control["selection"]["best_loss"] == batched["selection"]["best_loss"]
     rc, rb = control["final"]["test"]["ranking"], batched["final"]["test"]["ranking"]
     assert rc["records"] == rb["records"] > 0 and rc["candidates"] == rb["candidates"]

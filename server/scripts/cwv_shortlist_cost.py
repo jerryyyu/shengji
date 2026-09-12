@@ -104,6 +104,8 @@ def main(argv=None):
     parser.add_argument("--world-grid", default="1,2")
     parser.add_argument("--selection-grid", default="1,30,90")
     parser.add_argument("--alternatives", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=4096,
+                        help="evaluator batch size; use 128 to match scaling screens")
     parser.add_argument("--encoding-grid", default="reference")
     parser.add_argument("--successor-grid", default="off",
                         help="off,on compares repeated work against bounded successor reuse")
@@ -126,7 +128,10 @@ def main(argv=None):
         parser.error("encoding-grid must contain distinct reference and/or mlp-static")
     if min(args.deals, args.stride, args.alternatives, *worlds, *selections) < 1:
         parser.error("positive grids, deals, stride, and alternatives required")
-    evaluators = {e: shared_evaluator(args.checkpoint, threads=1, encoding=e)
+    if args.batch_size < 1:
+        parser.error("positive batch size required")
+    evaluators = {e: shared_evaluator(args.checkpoint, threads=1, encoding=e,
+                                     max_batch=args.batch_size)
                   for e in encodings}
     states_raw = None if args.states_json is None else args.states_json.read_bytes()
     config = {

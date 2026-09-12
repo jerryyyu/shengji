@@ -22,6 +22,9 @@ def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(
     model = ValueNetwork(ValueModelConfig(
         architecture="mlp", width=16, feedforward_width=32,
         history_layers=1, attention_heads=1))
+    forward_batches = []
+    model.register_forward_pre_hook(
+        lambda _module, inputs: forward_batches.append(int(inputs[0].shape[0])))
     monkeypatch.setattr(cost, "shared_evaluator", lambda _path, **kwargs:
                         CompleteWorldEvaluator(None, model=model, **kwargs))
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
@@ -38,12 +41,13 @@ def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(
     args = ["--checkpoint", "fixture", "--out", str(out),
             "--states-json", str(source), "--world-grid", "1",
             "--selection-grid", "1", "--encoding-grid", "reference,mlp-static",
-            "--successor-grid", reuse_grid, "--alternatives", "8"]
+            "--successor-grid", reuse_grid, "--alternatives", "8", "--batch-size", "3"]
     if learned_only:
         args.append("--learned-only")
     assert cost.main(args) == 0
     summary = json.loads((out / "summary.json").read_text())
     assert summary["config"]["alternatives"] == 8
+    assert all(v["max_batch"] == 3 for v in summary["config"]["checkpoint"].values())
     assert json.loads((out / "config.json").read_text())["alternatives"] == 8
     modes = len(reuse_grid.split(","))
     assert summary["encoding_pairs_bit_identical"] == modes
@@ -64,6 +68,7 @@ def test_cost_probe_reuses_states_and_checks_actual_encoding_parity(
     assert all(r["process_peak_rss_bytes"] > 0 for r in rows)
     assert all(r["effective_cpu_cores"] > 0 for r in rows)
     assert all(r["semantic"]["report_fold"] is not None for r in learned)
+    assert forward_batches and max(forward_batches) <= 3
     # Existing completed measurements reopen without any scoring work.
     monkeypatch.setattr(cost.CWVShortlistBot, "decide_play", no_recapture)
     assert cost.main(args) == 0

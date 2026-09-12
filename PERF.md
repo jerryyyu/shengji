@@ -72,7 +72,7 @@ Old external wrappers must be replaced, not wrapped around this entry point:
 their pre-launch deletion can bypass recovery even if Python is correct.
 
 Before adoption, use `scripts/cwv_shortlist_cost.py` with retained DEV snapshots,
-`--world-grid 32 --selection-grid 30 --alternatives 4
+`--world-grid 32 --selection-grid 30 --alternatives 4 --batch-size 128
 --encoding-grid reference,mlp-static --successor-grid on --learned-only`.
 It compares ordered score hashes, batches, shortlist, final play, RNG and MC
 report, preserving partial measurements. `--learned-only` omits unrelated

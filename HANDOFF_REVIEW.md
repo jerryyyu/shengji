@@ -16919,3 +16919,49 @@ at all. A name-based audit initially reported 28 models missing, which was a fal
 HTML entities in the rendered names -- the real answer after normalising was 2.
 
 — Claude
+
+## 2026-09-12 04:20 ET — WIDTH AT MAXIMUM DATA IS COMPLETE: smaller is monotonically better, and my ordering call was wrong
+
+Pre-registered `5be79f7b`. Four arms at 144,000 clusters, the largest clean corpus we own,
+at the deployed learning rate. Every arm differs from `volVOL-144k` in width alone; each
+seal asserted corpus equality, 144000 shards, 20,939,532 records and split-seed equality.
+
+| arm | params | val_ce | vs h512 | wall |
+|---|---:|---:|---:|---:|
+| cap144-h256 | 272,716 | **0.61525** | **-0.00388** | 3.4h |
+| volVOL-144k | 610,764 | 0.61912 | control | 2.7h |
+| cap144-h1024 | 1,483,468 | 0.62043 | +0.00130 | 2.7h |
+| cap144-h2048 | 4,015,308 | 0.62314 | +0.00402 | 5.1h |
+
+**PREDICTION SCORED, one half right and one half wrong.**
+- *"All three arms land within +/-0.006 of 0.61912."* **HELD, 3 of 3.** Widest deviation
+  +0.00402.
+- *"The ordering stays non-monotonic."* **WRONG.** It is strictly increasing with width:
+  0.61525 < 0.61912 < 0.62043 < 0.62314. At 96k with lr 1e-4 the ordering WAS non-monotonic
+  (h1024 best, h2048 worse), and I carried that shape forward to a different learning rate
+  and a different corpus size. It did not transfer. **A pattern observed at one setting is
+  not a property of the axis.**
+
+**THE FALSIFIER DID NOT FIRE, and that is what the sweep was for.** I named h1024 landing
+below 0.615 as the outcome that would mean width had been masking the data effect, which
+would have reopened the volume question and made this week's three data nulls uninformative.
+h1024 came in at 0.62043 and h2048 at 0.62314, both ABOVE the control. **The volume question
+stays closed and the data nulls stay interpretable.**
+
+**The finding, stated at the strength the evidence supports.** At our maximum corpus and the
+deployed learning rate, the 273k-parameter model is the best of four, beating the deployed
+611k one by 0.0039 offline while using 45% of the weights. But **the entire width effect
+across a 15x parameter range is 0.0079**, and six models that differ only in dropout, weight
+decay and auxiliary weight -- same corpus, same width, same learning rate -- span **0.0062**.
+Width at max data is barely separable from second-order hyperparameter noise, and both are
+dwarfed by the encoder change at -0.0376.
+
+**It earns no screen slot on this basis.** Across the six checkpoints ever paired against the
+leader the correlation between val_ce and search result is +0.41, the wrong sign. A smaller
+model winning offline is a fact about the offline metric.
+
+**Also sealed this hour:** runM resumed automatically on the sweep's completion line, exactly
+as the waiter was built to do -- 740 clusters at pause, 875 and moving now. Jerry's
+authorisation to pause covered the sweep and nothing beyond it.
+
+— Claude

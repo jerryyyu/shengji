@@ -16965,3 +16965,57 @@ as the waiter was built to do -- 740 clusters at pause, 875 and moving now. Jerr
 authorisation to pause covered the sweep and nothing beyond it.
 
 — Claude
+
+## 2026-09-12 05:30 ET — THE lr-1e-4 ARM DOES NOT LOSE. A single-window result flipped sign on replication.
+
+Ten windows, DerSimonian-Laird, `8d92dd6e` against the fixed `vol96k` control, divisor /2.
+
+    RANDOM EFFECTS lr1e4 - vol96k over 10 windows
+      +0.0037 [-0.0119, +0.0192]   RE SE 0.00794
+      tau 0.0000   Q 2.94/9df   I2 0.0%
+      MDE80 +0.0222
+      VERDICT: CROSSES ZERO
+
+**Against the single-window paired result of `-0.0587 [-0.107, -0.010]`, which RESOLVED
+WORSE.** Same checkpoint, same control, same estimand. **The sign flipped and the magnitude
+shrank sixteen-fold.**
+
+**This is the clean demonstration I wrongly claimed earlier and had to withdraw.** Four hours
+ago I called the 128k arm "the only one measured both ways" and read a 5.5x shrink off it;
+that was two different checkpoints and I retracted it at `feded4e1`. **This one is the same
+weights on both instruments**, so it carries the weight I mistakenly gave the other.
+
+**It is also the second failure from that exact 520-deal window.** `+0.0779` became
+`-0.0064 [-0.0412, +0.0285]` over five windows. Now `-0.0587` becomes `+0.0037` over ten.
+**One window at seed0 91261190 has now produced a false positive AND a false negative.**
+
+**What this does to the standing conclusions.**
+- The lr-1e-4 arm is NULL, not a loser. The registry said "resolves worse"; that is wrong
+  and both artifacts need correcting.
+- Three other arms sit near `-0.055` on that same single window -- width 256, the 128k arm,
+  and by extension anything read off it. **Their ordering is now unsupported**, which is
+  exactly what the queued screens are for.
+- The claim "no challenger has ever come out above 3cd27716" survives in point estimate
+  (+0.0037 is positive but its interval contains zero), but "six paired arms all resolved
+  negative" must be restated: of the two re-measured properly, one is null and the other is
+  null. **Neither has resolved.**
+
+**My prediction, and an awkward fact about it.** I pre-registered `[-0.010, +0.030]` at
+`3a50f25b`, then VOIDED it at `e7635c3d` when Jerry pointed me at the prior evidence I had
+missed. **The measured +0.0037 is inside that band.** Voiding was still procedurally right --
+a prediction made in ignorance of directly relevant prior evidence is not a calibration
+datum -- but the reasoning behind it was sound and I should record that: I argued the
+ranking metrics were flat (regret@4 0.03840 -> 0.03795) and that the search consumes ranking
+rather than loss, so a null was more likely than the large negative the one-window screen
+showed. That reasoning held.
+
+**OPERATIONAL FAILURE, mine, recorded because it nearly cost the result.** The screen's
+completion line was never written and one rc line was duplicated, because I overwrote
+`/root/lr_screen.sh` at 06:17:30Z **while bash was executing it** -- adding the skip-if-sealed
+guard. Bash reads a script incrementally by byte offset; rewriting it mid-run resumes at the
+wrong place. The data survived (10/10 windows, 520 clusters and a summary each, verified by
+content) but the missing marker would have blocked both the readout guard and the cloud
+screen queue indefinitely. **Never edit a shell script that is currently running.** Write a
+new path and switch, or wait.
+
+— Claude

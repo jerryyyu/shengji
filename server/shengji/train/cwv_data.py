@@ -156,6 +156,21 @@ CWV_SOURCE_PATHS = {
 }
 
 
+def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
+    """The executable closure hashed into the CWV identity for ``version``.
+
+    v1 and v2 keep the frozen ten-file closure (archived caches and
+    checkpoints must keep matching).  v4 adds the files that compute its 75
+    public columns, so editing either one invalidates every v4 cache file
+    and refuses every v4 checkpoint, exactly as the public encoder contract
+    (``rl.encoder_identity.source_paths``) does."""
+    paths = dict(CWV_SOURCE_PATHS)
+    if check_version(version) >= 4:
+        for name in ("encode_versions", "encode_opponent_pairs"):
+            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    return paths
+
+
 # ---------------------------------------------------------------- identity
 
 def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
@@ -166,7 +181,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     part of the hashed payload, so two otherwise identical builds at two
     encoder versions cannot share a cache file."""
     version = check_version(version)
-    sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    sources = {name: sha256_file(path) for name, path in cwv_source_paths(version).items()}
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build
@@ -187,7 +202,8 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         "outcome_classes": OUTCOME_CLASSES,
         "implementation_sha256": hashlib.sha256(payload.encode("ascii")).hexdigest(),
         "source_sha256s": sources,
-        "public_head_encoder_sha256": public_encoder_identity()["implementation_sha256"],
+        "public_head_encoder_sha256": public_encoder_identity(version)["implementation_sha256"],
+        "public_head_encoder_contract_sha256": public_encoder_identity(version)["transitive"]["implementation_sha256"],
     }
 
 

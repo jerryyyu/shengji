@@ -174,3 +174,41 @@ def test_encoder_v4_net_trains_loads_verifies_and_scores_a_real_shortlist_decisi
         assert widths and set(widths) == {636}, (encoding, widths)
         # v4 has no fused static base yet: both encodings take the reference route
         assert fused == [], (encoding, fused)
+
+
+def test_cwv_identity_cache_key_and_checkpoint_check_bind_the_v4_files(monkeypatch):
+    """A changed v4 feature-source hash must change the v4 CWV identity, the
+    cache key and the serving replica, and refuse a checkpoint stamped before
+    the change, while leaving the v2 identity and its cache key untouched."""
+    from shengji.ai import cwv_policy
+    from shengji.train import cwv_data
+
+    v2_before, v4_before = cwv_data.cwv_encoder_identity(2), cwv_data.cwv_encoder_identity(4)
+    assert set(v2_before["source_sha256s"]) == set(cwv_data.CWV_SOURCE_PATHS)
+    assert set(v4_before["source_sha256s"]) == set(cwv_data.CWV_SOURCE_PATHS) | {"encode_versions", "encode_opponent_pairs"}
+    assert v4_before["public_head_encoder_contract_sha256"] == encoder_contract(4)["implementation_sha256"]
+    assert v2_before["public_head_encoder_contract_sha256"] == encoder_contract(2)["implementation_sha256"]
+    assert cwv_policy.local_encoder_identity(4)["implementation_sha256"] == v4_before["implementation_sha256"]
+    assert cwv_policy.local_encoder_identity(2)["implementation_sha256"] == v2_before["implementation_sha256"]
+    key2_before, key4_before = cwv_data.encoder_cache_key(2), cwv_data.encoder_cache_key(4)
+    # A checkpoint stamped at today's v4 identity verifies today.
+    cwv_policy.verify_checkpoint_identity({"encoder": v4_before})
+
+    real = cwv_data.sha256_file
+
+    def edited(path):
+        digest = real(path)
+        return "0" * 64 if str(path).endswith("encode_opponent_pairs.py") else digest
+    monkeypatch.setattr(cwv_data, "sha256_file", edited)
+    monkeypatch.setattr(cwv_policy, "file_sha256", edited)
+
+    v2_after, v4_after = cwv_data.cwv_encoder_identity(2), cwv_data.cwv_encoder_identity(4)
+    assert v2_after["implementation_sha256"] == v2_before["implementation_sha256"]
+    assert cwv_data.encoder_cache_key(2) == key2_before
+    assert v4_after["implementation_sha256"] != v4_before["implementation_sha256"]
+    assert cwv_data.encoder_cache_key(4) != key4_before
+    assert cwv_policy.local_encoder_identity(4)["implementation_sha256"] == v4_after["implementation_sha256"]
+    with pytest.raises(cwv_policy.CWVCheckpointMismatch):
+        cwv_policy.verify_checkpoint_identity({"encoder": v4_before})
+    cwv_policy.verify_checkpoint_identity({"encoder": v4_after})
+    cwv_policy.verify_checkpoint_identity({"encoder": v2_before})

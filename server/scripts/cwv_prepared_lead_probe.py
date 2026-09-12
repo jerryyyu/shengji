@@ -57,6 +57,9 @@ def _expired(_signum, _frame):
 
 
 def _optimization_context(optimization, enabled):
+    if optimization == "preclone-hits":
+        return patch.object(cwv_shortlist, "WorldSuccessorCache",
+                            partial(WorldSuccessorCache, preclone_hits=enabled))
     if optimization == "prepared-lead":
         return patch.object(cwv_shortlist, "WorldSuccessorCache",
                             partial(WorldSuccessorCache, prepare_leads=enabled))
@@ -105,7 +108,7 @@ def main(argv=None):
     parser.add_argument("--decision-seconds", type=int, default=60)
     parser.add_argument("--seed0", type=int, default=89260904)
     parser.add_argument("--optimization", choices=("prepared-lead", "fused-static", "v2-static",
-                                                   "stable-v2-encoder", "v2-unseen"),
+                                                   "stable-v2-encoder", "v2-unseen", "preclone-hits"),
                         default="prepared-lead")
     args = parser.parse_args(argv)
     if min(args.repetitions, args.decision_seconds) < 1:
@@ -126,7 +129,7 @@ def main(argv=None):
     recipe = CWVShortlistConfig(worlds=32)
     arm_key = {"prepared-lead": "prepared", "fused-static": "fused",
                "v2-static": "v2_static", "stable-v2-encoder": "stable_encoder",
-               "v2-unseen": "v2_unseen"}[args.optimization]
+               "v2-unseen": "v2_unseen", "preclone-hits": "preclone_hits"}[args.optimization]
     config = {
         "schema": "cwv-inference-probe-v2", "seed0": args.seed0,
         "optimization": args.optimization, "arm_key": arm_key,

@@ -17,11 +17,14 @@ class WorldSuccessorCache:
 
     def __init__(self, root, seat: int, hands: Sequence[Sequence[str]],
                  buried: Sequence[str], max_entries: int = 128, *,
-                 prepare_leads: bool = True):
+                 prepare_leads: bool = True, preclone_hits: bool = True):
         if type(max_entries) is not int or max_entries < 1:
             raise ValueError("max_entries must be a positive integer")
         if type(prepare_leads) is not bool:
             raise ValueError("prepare_leads must be boolean")
+        if type(preclone_hits) is not bool:
+            raise ValueError("preclone_hits must be boolean")
+        self._preclone_hits = preclone_hits
         self.root = root
         self.seat = seat
         self.hands = [list(hand) for hand in hands]
@@ -69,6 +72,25 @@ class WorldSuccessorCache:
         from ..engine.round import actual_play_after
 
         self.root_actions += 1
+        # On leads the prepared validator can resolve a failed throw without
+        # allocating a world clone. Still validate every submitted action:
+        # a cached component does not make an invalid throw legal. Keep the
+        # ordinary afterstate path on misses and on all follows.
+        if self._preclone_hits and self._lead_validation is not None and self._leaves:
+            from ..engine.round import Round
+            if (type(self.root) is Round and self.root.trick is not None
+                    and not self.root.trick.plays):
+                self.root._require(self.seat, "play")
+                accepted_cards, _message = self._lead_validation.validate(
+                    list(candidate), self.hands[self.seat],
+                    [self.hands[s] for s in range(4) if s != self.seat],
+                    self.root.ordering)
+                accepted_key = tuple(accepted_cards)
+                cached = self._leaves.get(accepted_key)
+                if cached is not None:
+                    self.leaf_hits += 1
+                    self._leaves.move_to_end(accepted_key)
+                    return cached
         kwargs = {}
         if self._lead_validation is not None:
             kwargs["_lead_validation"] = self._lead_validation

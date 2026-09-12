@@ -70,6 +70,8 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
     assert seen == [("1", "0"), ("32", "1"), ("32", "1"), ("1", "0")]
     summary = json.loads((out / "summary.json").read_text())
     assert summary["exact_checkpoint_and_cpu_rng_parity"] is (not mismatch)
+    assert summary["control_repeatable"] is True
+    assert summary["optimized_repeatable"] is (not mismatch)
     assert summary["control_mean_wall"] == 2
     assert summary["optimized_mean_wall"] == 1
 
@@ -130,5 +132,6 @@ def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_p
     assert report["cpu_seconds_including_reaped_children"] > 0
     assert report["parent_peak_rss_bytes"] > 0
     assert len(report["epoch_train_seconds"]) == 1
+    assert report["candidate_report_seconds"] > 0
     assert set(report["checkpoints"]) == {"best.pt", "checkpoints/epoch-01.pt"}
     assert report["checkpoints"]["best.pt"] == runner.checkpoint_fingerprint(out / "train" / "best.pt")

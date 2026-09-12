@@ -78,6 +78,7 @@ def child(config, out):
         "torch_cpu_rng_sha256": rng,
         "checkpoints": {str(p.relative_to(out / "train")): checkpoint_fingerprint(p) for p in checkpoints},
         "epoch_train_seconds": [e["train_secs"] for e in result["epochs"]],
+        "candidate_report_seconds": result["final"]["test"]["ranking"]["secs"],
         "note": "RSS excludes child/GPU peaks; report-score batching is tolerance-equivalent, not bit-exact",
     }
     (out / "measurement.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -136,8 +137,13 @@ def main():
         if cache_inventory(kw["cache_dir"]) != cache_before:
             raise RuntimeError("cache changed during benchmark; retain arm, prewarm cache before a fresh timing run")
     reports = [json.loads((out / f"{i}-{arm}" / "measurement.json").read_text()) for i, arm in enumerate(plan["order"])]
-    equal = all(r["checkpoints"] == reports[0]["checkpoints"] and r["torch_cpu_rng_sha256"] == reports[0]["torch_cpu_rng_sha256"] for r in reports)
+    def same(a, b):
+        return (a["checkpoints"] == b["checkpoints"]
+                and a["torch_cpu_rng_sha256"] == b["torch_cpu_rng_sha256"])
+    equal = all(same(r, reports[0]) for r in reports)
     summary = {"exact_checkpoint_and_cpu_rng_parity": equal, "arms": reports,
+               "control_repeatable": same(reports[0], reports[3]),
+               "optimized_repeatable": same(reports[1], reports[2]),
                "control_mean_wall": (reports[0]["wall_seconds"] + reports[3]["wall_seconds"]) / 2,
                "optimized_mean_wall": (reports[1]["wall_seconds"] + reports[2]["wall_seconds"]) / 2}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

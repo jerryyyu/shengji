@@ -1170,6 +1170,10 @@ class MCBot(SmartBot):
         clone.history = []
         clone.message = None
         clone.bury(seat, list(bury_cards))
+        # Match the ordinary play-rollout fast path for the built-in legal
+        # continuation only. Keep arbitrary/custom policies on full validation.
+        # Lead validation (including failed throws) still runs in Round.play.
+        clone._trusted_rollout = type(self.rollout_policy) is HeuristicBot
         clone._determinized_world = True
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME

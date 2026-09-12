@@ -383,13 +383,20 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                    device: torch.device | str, workers: int, rank_limit: int | None,
                    history: bool, want_search: bool = True,
                    progress: Callable[[str], None] | None = None,
-                   version: int = ENC_VERSION) -> dict:
+                   version: int = ENC_VERSION,
+                   score_many_fn: Callable[[Sequence[dict]], list[np.ndarray]] | None = None
+                   ) -> dict:
     """Run the workers over ``shard_keys`` (``(shard, selected deal keys or
     None)``) and score what they return.
 
     ``score_fn(candidates) -> expected PT0 level per candidate`` is the CWV
     net (None skips it); the public head scores the afterstate's public
-    slice; the prior reads the afterstate's ply, role and points.  Returns
+    slice; the prior reads the afterstate's ply, role and points.  When
+    ``score_many_fn`` is given it scores every search record of one shard in
+    one call (one batched forward instead of one forward per record; issue
+    #342 finding 1) and ``score_fn`` is not called; the per-record results
+    are consumed in the same order, so every downstream row is unchanged.
+    Returns
     the public head's decision-state value per ``source_ref`` and the
     ranking agreement rows per scorer (with the record's deal key)."""
     tasks = []
@@ -418,14 +425,22 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
             values = public_values(public_head, result.decision_obs, device)
             for ref, value in zip(result.source_ref, values.tolist()):
                 decision_values[ref] = float(value)
-        for entry in result.search:
+        batched_scores = None
+        if score_many_fn is not None and result.search:
+            batched_scores = score_many_fn(result.search)
+            if len(batched_scores) != len(result.search):
+                raise ValueError("score_many_fn must return one score array per record")
+        for index, entry in enumerate(result.search):
             k = int(entry["means"].size)
             n_candidates += k
             widths.append(k)
             clusters.append(entry["deal_key"])
             terminal = entry["terminal"]
-            if score_fn is not None:
-                scores = np.asarray(score_fn(entry), dtype=np.float64)
+            if batched_scores is not None or score_fn is not None:
+                scores = np.asarray(batched_scores[index] if batched_scores is not None
+                                    else score_fn(entry), dtype=np.float64)
+                if scores.shape != (k,):
+                    raise ValueError("candidate scores must have one value per candidate")
                 scores = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), scores)

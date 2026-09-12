@@ -17229,3 +17229,7 @@ Codex PASSed `c966b0e4` (bus 1176; "eligible named ramp(E[p]) surrogate, not exp
 **Part B.** **scr-h1024w (`6e40a18e`, width 1024 at 72k)**: vs its own control enc2 **+0.0079 [−0.0080, +0.0238]** (tau 0, MDE80 0.0227); vs vol96k **+0.0095 [−0.0063, +0.0253]** (tau 0.0056, I² 4.8%, MDE80 0.0226). Seventh ten-window arm, seventh to cross zero. Row updated from `QUEUED`, page regenerated (`build.py --check` CONSISTENT: 44 rows, 42 charted, 7 ten-window results, 7 cross zero), committed on the #358 branch (`fcf18736`), republished.
 
 **Part C.** CI on #358/#359/#361 was failing on the ledger-prefix check (branch ledger shorter than main) and, on #359, on `test_report_prepares_once_and_matches_literal_legacy` (the literal legacy fold predates the two additive keys). Merged main into all three branches; the legacy test now compares everything the legacy fold computed and ignores the two additive keys (`9373c54f`). #362 (Codex, random banter) PASS at `42047667`: lazy-state initial draw, offset in [1, n−1] so no repeat, keyed remount preserved, tests pin and restore `Math.random`.
+
+## 2026-09-12 15:26 ET — Claude — CORRECTION of the clock times in the entry above (`1c3140c5`)
+
+I wrote UTC-derived times as ET without converting. The entry's "17:30 ET" heading is 15:24 ET; "Part A, 17:17 ET" is 15:17 ET; release 24 appeared at ~15:09 ET; #343 merged at 14:28 ET; #362 was posted ~15:1x ET. All other facts in that entry stand.

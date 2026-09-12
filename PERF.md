@@ -41,6 +41,52 @@ compare only under like-for-like load.
 
 ### W32 engineering boundary
 
+#### Opt-in static-Torch queue (2026-09-12)
+
+The scaling-screen shell wrappers had omitted `--encoding mlp-static`, so
+those screens used reference encoding despite enabling successor reuse. The
+existing single-screen default remains reference. New jobs can explicitly use
+the versioned queue below; it fixes W32/K4/N30/R300, batch 128, all 13 ranks,
+successor reuse, and the existing `.pt`/Torch backend. It changes no search rule.
+
+```sh
+export SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
+python -m shengji.train.cwv_screen_queue \
+  --checkpoint /path/to/model.pt --checkpoint-sha256 FULL_SHA256 \
+  --out /path/to/FRESH-fast-screen --name candidate \
+  --seeds 13260910 13360910 --clusters 520 --workers 16
+```
+
+Seeds above illustrate the existing repeated DEV population, not a grant to
+reuse them for confirmation. Use the intended population and available host
+budget. Optional `--cost-order-root` and `--cost-order-name` consume completed
+prior windows' timings through the existing seed/rank-checked scheduler.
+
+Rerun the identical command to resume: the queue never deletes windows or
+trusts summary-file presence, and the single-screen path locks its output
+against concurrent writers. Valid pairs are reopened; only missing pairs run.
+Source/config drift still refuses. Do not point this new source or encoding at
+live/reference outputs. Lock files persist harmlessly; OS locks release on exit.
+Old external wrappers must be replaced, not wrapped around this entry point:
+their pre-launch deletion can bypass recovery even if Python is correct.
+
+Before adoption, use `scripts/cwv_shortlist_cost.py` with retained DEV snapshots,
+`--world-grid 32 --selection-grid 30 --alternatives 4 --batch-size 128
+--encoding-grid reference,mlp-static --successor-grid on --learned-only`.
+It compares ordered score hashes, batches, shortlist, final play, RNG and MC
+report, preserving partial measurements. `--learned-only` omits unrelated
+production/uniform timings. Run in a coordinated isolated window. No new
+speedup magnitude is claimed until that actual-checkpoint A/B completes;
+the historical combined static/reuse gain cannot be counted again in full.
+
+The training receipt's cache-membership lookup now uses per-store hash sets,
+preserving cache order and duplicates instead of comparing every cache entry
+against every shard. This affects receipt construction only, not training,
+selection or model math. A real tiny training test checks the emitted receipt
+against the old expression. Full candidate-report batching and early immutable
+model-ready publication remain separate future work.
+
 The fresh [13-rank screen](server/runs/cwv_rank_diverse_dev_20260906.md)
 completed 260 pairs in 22m53s at 13.89 mean cores. Its 4.745× production
 decision cost includes 12,575.60s ranking wall (about 80%). The most expensive

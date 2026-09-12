@@ -1260,6 +1260,25 @@ def public_comparison(pass_result: Mapping[str, Any], info: Mapping[str, Any] | 
     }
 
 
+def cache_files_for_store(cache_files: Sequence[dict], shards: Sequence[Any]) -> list[dict]:
+    """Return a store's cache entries without changing their receipt order.
+
+    ``cache_files`` is accumulated across all data stores.  Build the store's
+    shard index once, then scan the cache entries in their existing order; this
+    keeps duplicate cache entries and avoids duplicate output when a store's
+    shard list repeats a shard.
+    """
+    shard_hashes = {shard.sha256 for shard in shards}
+    return [cache for cache in cache_files if cache["shard_sha256"] in shard_hashes]
+
+
+def _training_data_receipt(prepared: Prepared) -> list[dict]:
+    """Build the training data receipt with per-store cache membership."""
+    return [{**store.describe(),
+             "cache": cache_files_for_store(prepared.cache_files, store.shards)}
+            for store in prepared.stores]
+
+
 # ------------------------------------------------------------------- train
 
 def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None = None,
@@ -1688,10 +1707,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "config": config,
         "config_sha256": config_sha256(config),
         "seeds": seeds,
-        "data": [{**s.describe(), "cache": [c for c in prepared.cache_files
-                                            if any(c["shard_sha256"] == sh.sha256
-                                                   for sh in s.shards)]}
-                 for s in prepared.stores],
+        "data": _training_data_receipt(prepared),
         "luna": luna_receipt,
         "counts": prepared.counts,
         "split": split,

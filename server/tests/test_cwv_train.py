@@ -308,7 +308,7 @@ def test_ranking_agreement_metric(records):
 
 # 6 --------------------------------------------------------- training smoke
 
-def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
+def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path, monkeypatch):
     luna_path, _rows = luna
     # The public head is built at the SAME version the cwv run defaults to, so this
     # smoke exercises the default path end to end. Cross-version heads have their own
@@ -325,7 +325,23 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path):
               cache_workers=1, eval_workers=1, bench_batch=32,
               public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
     out = tmp_path / "a"
+    receipt_data = []
+    original_receipt_data = train_cwv._training_data_receipt
+
+    def indexed_receipt(prepared):
+        expected = [{**s.describe(), "cache": [c for c in prepared.cache_files
+                      if any(c["shard_sha256"] == sh.sha256 for sh in s.shards)]}
+                    for s in prepared.stores]
+        actual = original_receipt_data(prepared)
+        assert json.dumps(actual) == json.dumps(expected)
+        receipt_data.append(actual)
+        return actual
+
+    monkeypatch.setattr(train_cwv, "_training_data_receipt", indexed_receipt)
     receipt = train_cwv.train(out=out, **kw)
+    assert len(receipt_data) == 1, "real training must consume the indexed receipt builder"
+    assert receipt["data"] == receipt_data[0]
+    assert json.loads((out / "receipt.json").read_text())["data"] == receipt_data[0]
     for key in train_cwv.REQUIRED_RECEIPT_FIELDS:
         assert key in receipt, key
     assert receipt["schema"] == train_cwv.RECEIPT_SCHEMA and receipt["command"] == "train"

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import contextmanager
 from dataclasses import asdict
+import fcntl
 import json
 import math
 import os
@@ -25,6 +27,26 @@ BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity")
+
+
+@contextmanager
+def screen_output_lock(output: Path):
+    """One writer per output; the persistent inode also survives stale PID files.
+
+    Do not unlink this file on exit: another process could already be waiting
+    on its inode. Spawned workers return rows to the parent, which is the only
+    publisher. An interrupted parent releases its OS lock without deleting pairs.
+    """
+    output.mkdir(parents=True, exist_ok=True)
+    with (output / ".screen.lock").open("a+") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError(f"screen output is already in use: {output}") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def rank_for(config: dict, cluster: int) -> str:
@@ -423,6 +445,11 @@ def main(argv=None):
             trump_ranks = parse_trump_ranks(args.trump_ranks)
         except Exception as exc:
             parser.error(str(exc))
+    with screen_output_lock(args.out):
+        return _run_screen(args, trump_ranks)
+
+
+def _run_screen(args, trump_ranks):
     checkpoint = str(Path(args.checkpoint).resolve()) if args.checkpoint else None
     checkpoint_sha = None
     checkpoint_recipe = None

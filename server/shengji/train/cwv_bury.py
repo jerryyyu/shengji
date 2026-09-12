@@ -101,7 +101,15 @@ def post_bury_world(rnd: Round, hands: Sequence[Sequence[str]],
     """
     banker = _require_bury_round(rnd)
     canonical_hands = _validated_world_hands(rnd, hands, banker)
+    return _post_bury_validated(rnd, banker, canonical_hands, candidate)
 
+
+def _post_bury_validated(rnd, banker, canonical_hands, candidate):
+    """Private batch helper; callers first validate this world's full population.
+
+    Copy every hand before the engine removes cards, including the banker hand.
+    Neither an earlier candidate nor an evaluator can mutate the template.
+    """
     clone: Round = copy.copy(rnd)
     clone.hands = [list(hand) for hand in canonical_hands]
     clone.buried = []
@@ -173,10 +181,14 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
 
     for world_index, world in enumerate(worlds):
         hands, _buried = world
+        if check_budget is not None:
+            check_budget()
+        canonical = tuple(tuple(hand) for hand in
+                          _validated_world_hands(rnd, hands, banker))
         for candidate_index, candidate in enumerate(candidates):
             if check_budget is not None:
                 check_budget()
-            position = post_bury_world(rnd, hands, candidate)
+            position = _post_bury_validated(rnd, banker, canonical, candidate)
             if first_trick_policy is not None:
                 # The frozen afterstate encoder requires at least one play.
                 # Complete exactly the first trick with the existing rollout

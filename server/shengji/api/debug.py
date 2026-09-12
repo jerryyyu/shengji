@@ -195,6 +195,8 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
     if evaluator is not None:
         from .debug_features import ml_input_features
         out["ml"] = {"inputs": ml_input_features(rnd, seat, evaluator),
+                     "inputs_scope": "root_state_preview; scored inputs are per-candidate "
+                                     "trick-completed afterstates in sampled worlds",
                      "outputs_note": "per-candidate model_score rows in candidates[] "
                                      "and analysis.model are model-output"}
     if rnd.phase == "bury" and rnd.turn == seat:

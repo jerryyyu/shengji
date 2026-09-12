@@ -216,6 +216,9 @@ def test_xray_marks_model_inputs_by_encoder_layout_and_hides_the_world_block(mon
         Counter(rnd.hands[seat])[c] + groups["unseen"]["value"][c] <= 2
         for c in set(groups["unseen"]["value"]) & set(rnd.hands[seat]))
     assert groups["is_attacker"]["value"] == float(rnd.is_attacker(seat))
+    assert ml["scope"] == "root_state_preview"
+    assert "afterstate" in ml["scope_note"]
+    assert out["ml"]["inputs_scope"].startswith("root_state_preview")
     assert ml["world_block"]["rendered"] is False
     assert "hidden" in ml["world_block"]["why"]
     # heuristic fields on the same page are NOT marked as model inputs
@@ -226,3 +229,28 @@ def test_xray_without_an_evaluator_has_no_model_inputs():
     rnd, seat = _lead_state()
     out = debug._xray(rnd, seat, _RecordingBot())
     assert out["ml"] is None
+
+
+
+def test_root_preview_is_not_the_scored_candidate_input(monkeypatch):
+    """Consumer-level witness (Codex, PR #344): the scored input is the candidate's
+    trick-completed afterstate, and it differs from the root preview in the groups
+    that move when a card is played."""
+    from shengji.ai.cwv_policy import afterstate
+    from shengji.api.debug_features import ml_input_features
+
+    class ValuesV2(Values):
+        enc_version = 2
+
+    rnd = play_state()
+    seat = rnd.turn
+    root = ml_input_features(rnd, seat, ValuesV2())
+    candidate = list(rnd.hands[seat][:1])
+    leaf = afterstate(rnd, seat, rnd.hands, rnd.buried, candidate, finish_trick=True)
+    scored = ml_input_features(leaf, seat, ValuesV2())
+    moved = [name for name in root["groups"]
+             if root["groups"][name]["value"] != scored["groups"][name]["value"]]
+    assert "own_hand" in moved and "cards_remaining_frac" in moved
+    assert root["scope"] == scored["scope"] == "root_state_preview"
+    # the preview's own-hand plane still holds the card the candidate played
+    assert candidate[0] in root["groups"]["own_hand"]["value"]

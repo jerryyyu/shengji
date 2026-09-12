@@ -95,7 +95,7 @@ def _v2_groups(at):
 
 
 def ml_input_features(rnd, seat: int, evaluator) -> dict:
-    """The named public input block the evaluator's encoder would consume."""
+    """The evaluator's public input block for the ROOT state, named; a layout preview, not a scored input."""
     version = check_version(getattr(evaluator, "enc_version", None) or ENC_VERSION)
     obs = encode_obs(rnd, seat, version=version)
     groups, at = _v1_groups()
@@ -130,6 +130,17 @@ def ml_input_features(rnd, seat: int, evaluator) -> dict:
                                "value": value}
     return {
         "kind": "model-input",
+        # SCOPE, stated in the response because it is easy to misread (Codex,
+        # PR #344 review): this is the ROOT/CURRENT board encoded once.  The
+        # inputs behind the displayed candidate scores are NOT this vector:
+        # `cwv_shortlist._means` applies each candidate, completes the trick,
+        # and encodes that leaf in each sampled world, so ten of these groups
+        # (own hand, the played-by planes, unseen, cards remaining, suit
+        # lengths, pair count, hand size) differ per candidate and per world.
+        "scope": "root_state_preview",
+        "scope_note": ("encoder layout and the current board's values; NOT the input "
+                       "behind any displayed candidate score, which is the "
+                       "candidate's trick-completed afterstate in each sampled world"),
         "encoder_version": version,
         "public_dim": len(obs) + 1,
         "round_end_flag": float(rnd.phase == "round_end"),

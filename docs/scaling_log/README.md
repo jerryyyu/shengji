@@ -1,0 +1,26 @@
+# Scaling log: one source of truth
+
+The scaling artifact (charts, by-day table, checkpoint registry, and every
+count in its prose) is GENERATED from `models.py`.  Never edit `scaling.html`
+by hand.
+
+| file | role |
+|---|---|
+| `models.py` | the only place a model or a screen result is entered (`M`, one tuple per checkpoint; `TABLE_ONLY` keeps a row off the charts) |
+| `charts.py` | draws the six SVG charts from `M` |
+| `template.html` | the prose, the static corpus table (section 5) and the `{{PLACEHOLDER}}`s |
+| `build.py` | renders `models.py` through the template into `scaling.html`; `--check` verifies |
+| `scaling.html` | the rendered page, committed so the repo carries the current log |
+
+```sh
+cd docs/scaling_log
+python3 build.py                       # render
+python3 build.py --check               # exit 1 if scaling.html != models.py or a row is malformed
+python3 build.py --publish <scratchpad>/scaling.html   # also copy for the artifact publish
+```
+
+Row tuple, in order: name, checkpoint sha (8 hex), trained date (`~` prefix = approximate),
+encoder, width, lr, clusters, records, val_ce, regret@4, vs MC-LCB (one 520-deal window),
+vs W32 leader (paired), ten windows vs vol96k, note.  Screen cells are either a keyword
+(`REF`, `GAP`, `CONTROL`, `QUEUED`, `RUNNING`, `SCREENING`, `CODEX`) or `m [lo, hi]`
+(`RES` suffix = resolves, ` SUPERSEDED` = superseded by a ten-window result).

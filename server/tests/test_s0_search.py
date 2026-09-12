@@ -145,7 +145,10 @@ def test_an_underfilled_report_fold_can_never_override(monkeypatch):
     assert bot.short_search_decisions == 1
 
 
-@pytest.mark.parametrize("gap,overrides", [(2.0, True), (-2.0, False)])
+# gap 0.0 with se 0.0 is the exact tie: identical outcomes on every report world.
+# Issue #339: it used to override (0 < 0 is False), which is how a throw predicted
+# to collapse into the incumbent in all 300 worlds got played and cut down for real.
+@pytest.mark.parametrize("gap,overrides", [(2.0, True), (-2.0, False), (0.0, False)])
 def test_report_lcb_must_override_a_certain_gain_and_refuse_a_loss(
         monkeypatch, gap, overrides):
     rnd, seat = incident_state()

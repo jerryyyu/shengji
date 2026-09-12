@@ -499,7 +499,14 @@ class MCBot(SmartBot):
                 self.short_search_decisions += 1
                 return self._finish_decision(
                     candidates, 0, "report_underfilled", _t0, sampler_before)
-            if statistic < self.REPORT_MIN_GAIN:
+            # A challenger overrides the incumbent only on POSITIVE evidence.
+            # An exact tie (statistic == min_gain, in practice gap 0 and se 0:
+            # identical outcomes on every report world) used to pass `<` and
+            # override. Measured on runI (issue #339): 537 of 1,637 failed throws
+            # were exactly that -- a throw predicted to collapse into the
+            # incumbent in all 300 report worlds, played anyway, then cut down
+            # for real. No evidence of gain keeps the incumbent.
+            if statistic <= self.REPORT_MIN_GAIN:
                 return self._finish_decision(
                     candidates, 0, f"report_{self.REPORT_RULE}_below_min_gain",
                     _t0, sampler_before)

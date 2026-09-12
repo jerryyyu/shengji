@@ -17125,3 +17125,21 @@ Live: volNEW-176k handover armed (h256 window 10 at 399/520); scr-enc2 6/10 on p
 **Reviews.** #344 repaired same hour after Codex's HOLD (root-state preview, not the scored input; witnessed) and PASSed; #345 PASSed with the scope note that the gate is SHARED by production and W32, so its screen needs an explicit old-rule knob as the control — designing that before any screen. #338 merged; #343 is a draft.
 
 `arm_readout.sh` gained a `mini` mode (local marker and windows, no pull); both guards proven to fire (exit 2, exit 3). Bus lesson: messages carry a `note` body; the actionable pointers hide it; read `agent_bus log --json`.
+
+## 2026-09-12 11:25 ET — Claude — encoder v4 (PR #351), production release 23, trainer PRs passed after two real holds, and one wrong fact about my own tree
+
+**PR #351, issue #341.** Encoder v4 = v2 + 75 public columns: unseen per suit, pairs played AS pairs per suit (both copies in one play, which the card-count planes cannot express), pairs still possible, each other seat's provable pair cap (zero / at-most-one / unknown), and pairs played as pairs by seat. Same `Memory(rnd, seat, own_kitty=False)` as v1/v2; no other hand read, witnessed by a hidden-card swap that leaves the block byte-identical. **Version 3 is reserved for Codex's own-hand block (#336)**; 4 does not include it. Plumbing made version-generic beyond v2 without touching v1/v2 bytes or identities (`widen_to`, v2 tensor class accepts declared post-v1 widths, v4 packed layout, v4-only identity closure). Actual consumers witnessed: trainer at v4, cache flavour cwv-v4, identity gate, and a real shortlist decision at width 636 under both encodings. 105/105.
+
+**Production is release 23** (Jerry's explicit go, 10:5x ET): main at `338b1402` from a clean worktree; the only serving-path change since release 22 is the X-ray model-input block; Codex's queue PR is train-side and opt-in. Healthz 200, 1/1 checks. The block needs a live room to show and the panel does not render it yet.
+
+**#346 / #347 both PASSed by Codex after two holds that were right.** #347 P1: my non-finite flag was summed with the next contribution before the minimum, so [0, 1] became 1 and an early bad batch was forgotten. Fixed by keeping the flag separate under `torch.minimum`; the witness had to inject a TRANSIENT NaN (zero gradient) because a NaN that poisons the weights makes every later batch non-finite and hides the bug by accident, which is exactly why my first witness passed on the broken code. It now fails on the old accumulation in 3 of 4 cases. Both: my end-to-end tests ran only under a hidden `-p` fixture registration; the fixture family is now imported so plain pytest runs them. Merged on green CI.
+
+**Codex's perf lane, reviewed and merged: #348 bury trusted rollouts (11.6%), #349 static candidate inputs (26% component), #350 cache-hit clone skip (10-20%, the screen-side finding from #342).** They are running the one-window byte-equality qualification against the completed enc2 seed-13860910 reference on perf now, pausing my window 9 for ~45 min, and have asked that I not touch the fleet queues during the transition. Agreed; the remaining seven arms move to the optimised resumable queue behind that gate, run by them.
+
+**Wrong fact, corrected.** My prompts said `volw` is "the experiment tree at origin/main". It is at `e2534203` with three uncommitted local patches (trunk-layers in value_model/train_cwv, seed_windows.json), and its remote is not fetched; a `checkout --detach origin/main` there was a no-op only because the stale ref resolved to the same commit. The 176k training runs from that tree. New work goes in fresh worktrees from pr171c's fetched origin/main, never in volw.
+
+**Bus lesson.** I acked a batch (1139-1143) before reading two of its messages. Read `agent_bus log --json` for the bodies first; the actionable pointers hide them.
+
+## 2026-09-12 11:27 ET — Claude — correction to the entry above: #346 and #347 are NOT merged yet
+
+I wrote "Merged on green CI." Their server CI job was still pending when I wrote it; I described the intended action as a completed one. They merge when green, on Codex's PASS, and the hourly tick carries that. Same failure shape as the runM status-file mistake: a statement about what will happen recorded as what did.

@@ -6,14 +6,21 @@
                                     exit 1 on any difference or any data inconsistency
 
 models.py is the only place a model or a screen result is entered.  Everything
-else on the page is derived from it: the six charts, the by-day table, the
-checkpoint registry and every count quoted in the prose.  The corpus table
-(section 5) is static in template.html; it changes only when a corpus is
-generated.
+else on the page is derived from it: the six charts (series are named by
+checkpoint identity in SERIES and read their coordinates from the rows), the
+by-day table, the checkpoint registry and every count or headline number in
+the prose.  The corpus table (section 5) is static in template.html; it
+changes only when a corpus is generated.  Two KPI figures come from analyses
+outside this file and are labelled as such in the template: the +0.41
+loss-vs-search correlation and Codex's 50.0% v3 win rate.
 """
 from __future__ import annotations
 
+import contextlib
+import datetime as dt
+import io
 import json
+import math
 import re
 import shutil
 import sys
@@ -24,9 +31,6 @@ MODELS = HERE / "models.py"
 TEMPLATE = HERE / "template.html"
 OUT_DIR = HERE / "out"
 PAGE = HERE / "scaling.html"
-# The rendered page is committed next to its data; --publish PATH also copies it
-# to the scratchpad that the artifact is published from.
-PUBLISHED = PAGE
 WHAT_CHANGED = {
     "09-05": "first corpora, encoder v1",
     "09-06": "more data, still v1",
@@ -39,17 +43,40 @@ WHAT_CHANGED = {
 }
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
          9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+MONTHS = {9: "September", 10: "October", 11: "November", 12: "December"}
 FIELDS = ("n", "ck", "tr", "enc", "w", "lr", "cl", "rec", "ce", "rg", "mc", "w32", "ten", "note")
+KEYWORDS = ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX")
+#: a screen cell: optional RES prefix (a one-window result that resolves), point
+#: estimate and interval, optional " SUPERSEDED" suffix; nothing else
+CELL = re.compile(r"(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
+
+
+def word(n):
+    return WORDS.get(n, str(n))
 
 
 def load():
     g = {}
     exec(open(MODELS).read(), g)
-    rows = [dict(zip(FIELDS, m)) for m in g["M"]]
-    return rows, g["TABLE_ONLY"]
+    return [dict(zip(FIELDS, m)) for m in g["M"]], g["TABLE_ONLY"], g["SERIES"]
 
 
-def check_data(rows, table_only):
+def parse_cell(v):
+    """``(m, lo, hi)`` for a numeric screen cell; None for a keyword; raises on junk."""
+    if v in KEYWORDS:
+        return None
+    m = CELL.fullmatch(v)
+    if not m:
+        raise ValueError(f"screen cell {v!r} is neither a keyword nor 'm [lo, hi]' with a known suffix")
+    mid, lo, hi = (float(m.group(i)) for i in (2, 3, 4))
+    if not all(math.isfinite(x) for x in (mid, lo, hi)):
+        raise ValueError(f"screen cell {v!r} is not finite")
+    if not lo <= mid <= hi:
+        raise ValueError(f"screen cell {v!r}: interval endpoints are not ordered around the point")
+    return mid, lo, hi
+
+
+def check_data(rows, table_only, series):
     """Every row well-formed; refuse to render inconsistent data."""
     errs = []
     seen = set()
@@ -59,32 +86,45 @@ def check_data(rows, table_only):
         seen.add(r["ck"])
         if not re.fullmatch(r"[0-9a-f]{8}|arm[IJ]", r["ck"]):
             errs.append(f"{r['ck']}: not an 8-hex checkpoint prefix")
-        if not re.fullmatch(r"~?2026-\d\d-\d\d", r["tr"]):
-            errs.append(f"{r['ck']}: trained date {r['tr']!r} is not ISO")
+        try:
+            dt.date.fromisoformat(r["tr"].lstrip("~"))
+        except ValueError:
+            errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
         if r["enc"] not in ("v1", "v2", "v3", "v4"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
         if r["ce"] and not re.fullmatch(r"0\.\d{4,5}", r["ce"]):
             errs.append(f"{r['ck']}: val_ce {r['ce']!r}")
         for key in ("mc", "w32", "ten"):
-            v = r[key]
-            if v and v not in ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX") \
-                    and not re.match(r"[+-]\d\.\d{4} \[[+-]\d\.\d{3,4}, [+-]\d\.\d{3,4}\]", v.replace("RES", "").replace(" SUPERSEDED", "")):
-                errs.append(f"{r['ck']}: {key} {v!r} is neither a keyword nor 'm [lo, hi]'")
+            if r[key]:
+                try:
+                    parse_cell(r[key])
+                except ValueError as e:
+                    errs.append(f"{r['ck']}: {key}: {e}")
     for ck in table_only:
         if ck not in seen:
             errs.append(f"TABLE_ONLY {ck} is not a row")
+    for key, cks in series.items():
+        for ck in cks:
+            if ck not in seen:
+                errs.append(f"SERIES[{key!r}] names {ck}, which is not a row")
+            elif ck in table_only:
+                errs.append(f"SERIES[{key!r}] names {ck}, which is table-only")
     return errs
 
 
-def render_charts(rows):
+def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
-    g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR)}
-    import io, contextlib
+    g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
+         "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
     svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6")]
     counts = json.load(open(OUT_DIR / "_counts.json"))
     return svgs, counts
+
+
+def signed(v, nd=4):
+    return ("&minus;" if v < 0 else "+") + f"{abs(v):.{nd}f}"
 
 
 def num_cell(v, bold=False):
@@ -149,21 +189,42 @@ def day_rows(rows, table_only):
     return "\n".join(out)
 
 
-def render():
-    rows, table_only = load()
-    errs = check_data(rows, table_only)
+def long_day(iso):
+    d = dt.date.fromisoformat(iso)
+    return f"{d.day:02d} {MONTHS.get(d.month, d.strftime('%B'))}"
+
+
+def render(rows=None, table_only=None, series=None):
+    """The page as a string plus the derived numbers; raises SystemExit on bad data."""
+    if rows is None:
+        rows, table_only, series = load()
+    errs = check_data(rows, table_only, series)
     if errs:
         print("DATA ERRORS:\n  " + "\n  ".join(errs))
         sys.exit(1)
-    svgs, c = render_charts(rows)
-    n_ten = sum(1 for r in rows if re.match(r"[+-]\d", r["ten"] or ""))
+    svgs, c = render_charts(rows, table_only, series)
     page = open(TEMPLATE).read()
+    n_ten, cross = c["ten_total"], c["ten_cross"]
+    if cross == n_ten:
+        ten_clause = f"all {word(n_ten)} cross zero"
+    else:
+        ten_clause = (f"{word(cross)} cross zero and {word(n_ten - cross)} "
+                      f"{'resolves' if n_ten - cross == 1 else 'resolve'}")
+    paired_clause = (f"all {word(c['paired_one'])} paired arms" if c["paired_exact"] == c["paired_one"]
+                     else f"{c['paired_exact']} of the {c['paired_one']} paired arms")
     subs = {
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
-        "N_TABLE_ONLY": WORDS.get(len(table_only), len(table_only)),
+        "N_TABLE_ONLY": word(len(table_only)),
         "N_LEADER": c["with_leader"], "N_NOLEADER": c["without_leader"],
+        "N_ABOVE_LEADER": c["above_leader"],
         "N_SINCE_BEST": c["since_best"], "N_BEAT_MC": c["beat_mc"],
-        "N_TEN_WORD": WORDS.get(n_ten, n_ten),
+        "N_TEN_WORD": word(n_ten), "TEN_CROSS_CLAUSE": ten_clause,
+        "PAIRED_CLAUSE": paired_clause,
+        "ENC_GAP": signed(c["enc_gap"]), "LAST_DOUBLING": signed(c["last_doubling"]),
+        "N_CELL_WORD": word(c["cell_n"]), "CELL_SPREAD": f"{c['cell_spread']:.4f}",
+        "BEST_DAY_LONG": long_day(c["best_day"]), "BIG_DAY_LONG": long_day(c["big_day"]),
+        "BIG_DROP": signed(-c["big_drop"]),
+        "BIG_CLAUSE": ", more than every day since combined" if c["big_beats_rest"] else "",
         "REGISTRY": registry_rows(rows), "DAYROWS": day_rows(rows, table_only),
     }
     for i, svg in enumerate(svgs, 1):
@@ -174,25 +235,27 @@ def render():
     if left:
         print("UNFILLED placeholders:", left)
         sys.exit(1)
-    return page, rows, c, n_ten
+    c["rows"] = len(rows)
+    return page, c
 
 
 def main():
-    page, rows, c, n_ten = render()
+    page, c = render()
+    summary = (f"{c['rows']} rows, {c['models']} charted, {c['with_ce']} with val_ce, "
+               f"{c['ten_total']} ten-window results ({c['ten_cross']} cross zero)")
     if "--check" in sys.argv:
         pub = open(PAGE).read() if PAGE.exists() else ""
         if pub != page:
             import difflib
-            diff = list(difflib.unified_diff(pub.splitlines(), page.splitlines(), "published", "rendered", lineterm="", n=0))
+            diff = list(difflib.unified_diff(pub.splitlines(), page.splitlines(), "scaling.html", "rendered", lineterm="", n=0))
             print(f"OUT OF DATE: scaling.html differs from models.py in {sum(1 for l in diff if l[:1] in '+-')} lines")
             for l in diff[:20]:
                 print("  " + l[:160])
             sys.exit(1)
-        print(f"CONSISTENT: {len(rows)} rows, {c['models']} charted, {c['with_ce']} with val_ce, "
-              f"{n_ten} ten-window results, scaling.html == models.py")
+        print(f"CONSISTENT: {summary}, scaling.html == models.py")
         return
     open(PAGE, "w").write(page)
-    print(f"rendered {len(rows)} rows, {c['models']} charted, {n_ten} ten-window results -> {PAGE}")
+    print(f"rendered {summary} -> {PAGE}")
     if "--publish" in sys.argv:
         dest = Path(sys.argv[sys.argv.index("--publish") + 1])
         shutil.copyfile(PAGE, dest)

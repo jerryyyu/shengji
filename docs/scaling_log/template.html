@@ -175,11 +175,11 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 </header>
 
 <div class="kpi">
-  <div><b>&minus;0.0036</b><span>last full data doubling</span></div>
-  <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
+  <div><b>{{LAST_DOUBLING}}</b><span>last full data doubling</span></div>
+  <div><b>{{ENC_GAP}}</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
-  <div><b>0 of 12</b><span>models above the leader</span></div>
-  <div><b>25 of 40</b><span>no search number yet</span></div>
+  <div><b>{{N_ABOVE_LEADER}} of {{N_LEADER}}</b><span>models above the leader</span></div>
+  <div><b>{{N_NOLEADER}} of {{N_MODELS}}</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -226,9 +226,9 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div class="figure">{{SVG3}}</div>
   <p class="cap">The gold line runs opposite to the red. At maximum data and the deployed rate,
   smaller is monotonically better: h256 beats the deployed h512 by 0.0039 on 45% of the weights,
-  and h2048 is worst on 14.7&times; the weights. The red bar on the left is six models in one
+  and h2048 is worst on 14.7&times; the weights. The red bar on the left is {{N_CELL_WORD}} models in one
   cell &mdash; 72k, width 512, lr 3e&#8209;4 &mdash; differing only in dropout, weight decay and
-  auxiliary weight, spanning 0.0062. Second-order hyperparameters are worth nearly as much as
+  auxiliary weight, spanning {{CELL_SPREAD}}. Second-order hyperparameters are worth nearly as much as
   every width change at maximum data.</p>
 </section>
 
@@ -238,7 +238,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <p class="cap">The offline ordering does not survive. h1024 is the best offline model here and
   only third against the leader; h2048 is second offline and worst in play. On one window an
   arm&#8217;s margin over the leader is its margin over MC&#8209;LCB minus the leader&#8217;s,
-  exact to four decimals on all six paired arms. The paired screen adds no new point estimate.
+  exact to four decimals on {{PAIRED_CLAUSE}}. The paired screen adds no new point estimate.
   It adds the only interval you can trust, because the two gold margins share one production
   draw and their errors do not add.</p>
 </section>
@@ -255,8 +255,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 {{DAYROWS}}
 </tbody>
   </table></div>
-  <p class="cap">The best validation loss has not moved since 08 September. {{N_SINCE_BEST}} charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
-  The day that mattered was 07 September at &minus;0.0365, more than every day since combined,
+  <p class="cap">The best validation loss has not moved since {{BEST_DAY_LONG}}. {{N_SINCE_BEST}} charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
+  The day that mattered was {{BIG_DAY_LONG}} at {{BIG_DROP}}{{BIG_CLAUSE}},
   and it was the encoder change and the learning-rate sweep, not more data.</p>
 </section>
 
@@ -267,7 +267,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
   those arms got ten windows, the earlier ones got one. The leader itself measures +0.1260 on one
   window and +0.0288 on another from identical weights. Of the {{N_TEN_WORD}} arms measured on ten windows,
-  all {{N_TEN_WORD}} cross zero.</p>
+  {{TEN_CROSS_CLAUSE}}.</p>
 </section>
 
 <section>

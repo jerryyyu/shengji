@@ -178,8 +178,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div><b>&minus;0.0036</b><span>last full data doubling</span></div>
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
-  <div><b>0 of 12</b><span>models above the leader</span></div>
-  <div><b>25 of 40</b><span>no search number yet</span></div>
+  <div><b>0 of 13</b><span>models above the leader</span></div>
+  <div><b>28 of 41</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -776,7 +776,7 @@ encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
 vs MC-LCB  +0.1260 [+0.081, +0.172]
 LEADER, deployed</title></circle>
-<circle cx="284.8" cy="299.1" r="5" class="pt pt2 hit" tabindex="0" data-t="volVOL-96k  (ca58e1e9)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;reproduces the leader; the fixed 10-window control"><title>volVOL-96k  (ca58e1e9)
+<circle cx="284.8" cy="299.1" r="3.6" class="pt ptx hit" tabindex="0" data-t="volVOL-96k  (ca58e1e9)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;reproduces the leader; the fixed 10-window control"><title>volVOL-96k  (ca58e1e9)
 trained 2026-09-10
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
@@ -1261,7 +1261,7 @@ worst screened</title></circle>
   <p class="cap">The offline ordering does not survive. h1024 is the best offline model here and
   only third against the leader; h2048 is second offline and worst in play. On one window an
   arm&#8217;s margin over the leader is its margin over MC&#8209;LCB minus the leader&#8217;s,
-  exact to four decimals on all six paired arms. The paired screen adds no new point estimate.
+  exact to four decimals on 5 of the 6 paired arms. The paired screen adds no new point estimate.
   It adds the only interval you can trust, because the two gold margins share one production
   draw and their errors do not add.</p>
 </section>
@@ -1522,9 +1522,9 @@ trained 2026-09-11
 encoder v2 | width 2048 | lr 3e-4 | 144k clusters
 val_ce 0.62314
 widest arm; worst offline of the four, 14.7x the weights of h256</title></circle>
-<text x="268.4" y="363.7" class="slope s2 am">&#8722;0.0365 in one day</text>
-<line x1="360.1" y1="358.0" x2="668.0" y2="358.0" class="ref"/>
-<text x="668.0" y="350.0" class="reft" text-anchor="end">programme best, unbeaten since 08 Sep</text>
+<text x="268.4" y="363.6" class="slope s2 am">&#8722;0.0365 in one day</text>
+<line x1="360.1" y1="357.9" x2="668.0" y2="357.9" class="ref"/>
+<text x="668.0" y="349.9" class="reft" text-anchor="end">programme best, unbeaten since 08 Sep</text>
 <text x="696" y="44" class="lgh">READING IT</text>
 <circle cx="702" cy="64" r="4.2" class="pt pt1"/><text x="715" y="68" class="lg">one model</text>
 <circle cx="702" cy="86" r="6" class="pt pt2"/><text x="715" y="90" class="lg">the deployed leader</text>

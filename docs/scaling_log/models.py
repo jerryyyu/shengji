@@ -84,3 +84,20 @@ M += [
 ("v2 fit probe 768","5bde6b85","2026-09-08","v2",512,"3e-4","768","112,344","0.86962","0.0427","","","","the matched v2 partner, so the probe above is readable"),
 ]
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
+
+# Chart series by CHECKPOINT IDENTITY: the charts look these rows up and read
+# their measured coordinates from the row, never from a typed number.
+SERIES = {
+    # base recipe (width 512, lr 3e-4) per encoder, one point per corpus size
+    "base_v1": ["bd973b53", "3f00500c", "528dbbe0", "528b3a7a"],
+    "base_v2": ["633663cd", "3cd27716", "fd2e5335", "c6d48d57"],
+    # encoder v1 -> v2 at identical data (96k)
+    "enc_gap": ["528b3a7a", "3cd27716"],
+    # width sweeps, one line each: (label, class) in charts.py
+    "width_lr1e4_96k": ["752427c3", "8d92dd6e", "d84b5183", "b25ea6ef"],
+    "width_3e4_96k": ["3cd27716", "1fc58269"],
+    "width_3e4_72k": ["633663cd", "6e40a18e"],
+    "width_3e4_144k": ["fc73c0f4", "c6d48d57", "34e6fa0f", "e2436f98"],
+    # the 72k / 512 / 3e-4 cell: second-order hyperparameters only
+    "one_cell_72k": ["633663cd", "d1858d5b", "4e6fc12e", "b0f196e4", "eae33f49", "52d3f243"],
+}

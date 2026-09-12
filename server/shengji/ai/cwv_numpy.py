@@ -19,6 +19,11 @@ from types import MappingProxyType
 
 import numpy as np
 
+try:
+    from ._cwv_math import erf_array as _native_erf
+except ImportError:
+    _native_erf = None
+
 
 PACKAGE_SCHEMA = "shengji-cwv-numpy-mlp-v1"
 PACKAGE_MAX_BYTES = 128 * 1024 * 1024
@@ -66,8 +71,11 @@ def _readonly(value: np.ndarray, shape: tuple[int, ...], label: str) -> np.ndarr
 
 def _gelu_exact(x: np.ndarray) -> np.ndarray:
     # torch.nn.GELU() defaults to the exact erf formulation.  np.erf is not
-    # available in all supported NumPy builds, hence the stdlib ufunc.
-    erf = np.vectorize(math.erf, otypes=[np.float64])
+    # available in all supported NumPy builds. The optional native loop uses
+    # libc erf, with the same surrounding NumPy arithmetic; otherwise retain
+    # the stdlib fallback. No approximate GELU or changed matmul precision.
+    erf = (_native_erf if _native_erf is not None
+           else np.vectorize(math.erf, otypes=[np.float64]))
     return (x * (1.0 + erf(x / math.sqrt(2.0))) * 0.5).astype(np.float64)
 
 

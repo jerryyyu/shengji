@@ -43,9 +43,18 @@ def main():
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--seeds", type=int, nargs="+", default=[7, 13, 31])
     p.add_argument("--repeats", type=int, default=3)
+    p.add_argument("--erf-mode", choices=("auto", "reference", "native"), default="auto",
+                   help="NumPy activation diagnostic; non-auto requires an .npz model")
     a = p.parse_args()
     if a.repeats < 1 or a.out.exists():
         p.error("positive repeats and fresh output required")
+    from shengji.ai import cwv_numpy
+    if a.erf_mode != "auto" and a.checkpoint.suffix != ".npz":
+        p.error("erf-mode only applies to NumPy .npz inference")
+    if a.erf_mode == "reference":
+        cwv_numpy._native_erf = None
+    elif a.erf_mode == "native" and cwv_numpy._native_erf is None:
+        p.error("native erf extension is not built")
     if not fast.activate():
         raise RuntimeError("native engine required for serving-path probe")
     evaluator = shared_evaluator(a.checkpoint, threads=1, max_batch=128,
@@ -81,11 +90,13 @@ def main():
     source_files = ("shengji/ai/mcbot.py", "shengji/train/cwv_bury.py",
                     "shengji/train/cwv_bury_policy.py", "shengji/ai/cwv_policy.py",
                     "shengji/ai/cwv_static_encoding.py", "shengji/ai/cwv_numpy.py",
-                    "shengji/engine/_fast.pyx", "scripts/cwv_bury_cost.py")
+                    "shengji/engine/_fast.pyx", "shengji/ai/_cwv_math.pyx",
+                    "scripts/cwv_bury_cost.py")
     source_hashes = {name: hashlib.sha256((server / name).read_bytes()).hexdigest()
                      for name in source_files}
     result = dict(schema="cwv-bury-cost-v1", checkpoint_sha256=checkpoint_sha,
                   source_files_sha256=source_hashes,
+                  erf_mode=a.erf_mode, native_erf=cwv_numpy._native_erf is not None,
                   native=True, serving_deadline=False, platform=platform.platform(),
                   peak_rss_bytes=rss if platform.system() == "Darwin" else rss * 1024,
                   rows=rows)

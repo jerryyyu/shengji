@@ -13,6 +13,7 @@ rl_data/
 # Cython build artifacts (rebuild: cd server && uv run python setup.py build_ext --inplace)
 server/build/
 server/shengji/engine/_fast.c
+server/shengji/ai/_cwv_math.c
 *.so
 logs/local/
 

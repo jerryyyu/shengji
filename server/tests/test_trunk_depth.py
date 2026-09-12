@@ -74,7 +74,8 @@ def test_residual_and_plain_depth_build_the_intended_trunks():
     res = ValueNetwork(_mlp(64, layers=3, block="residual"))
     kinds = [type(m).__name__ for m in res.trunk]
     assert kinds == ["Linear", "ResidualTrunkBlock", "ResidualTrunkBlock", "ResidualTrunkBlock",
-                     "BatchNorm1d", "ReLU"]
+                     "LayerNorm", "ReLU"]
+    assert all(type(m.norm).__name__ == "LayerNorm" for m in res.trunk[1:4])
     plain = ValueNetwork(_mlp(64, layers=4, block="plain"))
     assert [type(m).__name__ for m in plain.trunk].count("Linear") == 4
 
@@ -150,3 +151,35 @@ def test_cli_parses_the_trunk_flags():
     assert args.trunk_layers == 8 and args.trunk_block == "residual"
     with pytest.raises(SystemExit):
         train_cwv.build_parser().parse_args(["train", "--data", "x", "--out", "y", "--trunk-block", "resnet"])
+
+
+def test_residual_trunk_trains_on_a_single_row_batch():
+    """BatchNorm refuses B=1 in training mode; the block store yields such
+    tails, so the residual trunk must accept one."""
+    net = ValueNetwork(_mlp(64, layers=4, block="residual"))
+    net.train()
+    din = mlp_input_dim(net.config.public_dim)
+    out = net.head(net.trunk(torch.randn(1, din)))
+    assert out.shape == (1, OUTCOME_CLASSES)
+    out.sum().backward()
+
+
+def test_real_training_loop_with_a_singleton_tail_batch_completes(store_dir, luna, tmp_path):
+    """Codex's witness: a window remainder of exactly one row reaches the model
+    in training mode through the real loop, not a direct layer call."""
+    luna_path, _ = luna
+    train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu", epochs=1,
+                   seed=7, batch_size=64, n_boot=10, log=None, cache_workers=1,
+                   encoder_version=train_cwv.DEFAULTS["encoder_version"], **THIRDS)
+    kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), arch="mlp", device="cpu",
+              epochs=1, seed=7, n_boot=10, hidden=32, trunk_layers=4, trunk_block="residual",
+              log=None, cache_workers=1, eval_workers=1, bench_batch=32,
+              public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
+    probe = train_cwv.train(out=tmp_path / "probe", batch_size=64, **kw)
+    rows = probe["epochs"][0]["train"]["rows"]
+    assert rows > 2
+    # rows - 1 per batch leaves a trailing batch of exactly one row
+    tail = train_cwv.train(out=tmp_path / "tail", batch_size=rows - 1, **kw)
+    ep = tail["epochs"][0]["train"]
+    assert ep["rows"] == rows and ep["batches"] == 2
+    assert (tmp_path / "tail" / "best.pt").exists()

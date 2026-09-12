@@ -138,13 +138,20 @@ class ValueModelConfig:
 class ResidualTrunkBlock(nn.Module):
     """The tabular ResNet block of Gorishniy et al. 2021 (arXiv:2106.11959),
     which that paper finds no competitor consistently outperforms:
-    ``x + Dropout(Linear(Dropout(ReLU(Linear(BatchNorm(x))))))``.  Depth alone
+    ``x + Dropout(Linear(Dropout(ReLU(Linear(Norm(x))))))``.  Depth alone
     does not train in a plain MLP trunk; the normalisation and the skip are
-    what make the depth arm a test of depth rather than of optimisation."""
+    what make the depth arm a test of depth rather than of optimisation.
+
+    ``Norm`` is LayerNorm, not the paper's default BatchNorm: the block store
+    yields whatever trailing batch a window leaves, including a single row,
+    and BatchNorm refuses a one-row batch in training mode.  LayerNorm is
+    batch-size independent (the paper reports it as an equivalent choice),
+    has the same parameter count, and makes every batch the loop can yield
+    trainable."""
 
     def __init__(self, width: int, feedforward_width: int, dropout: float):
         super().__init__()
-        self.norm = nn.BatchNorm1d(width)
+        self.norm = nn.LayerNorm(width)
         self.up = nn.Linear(width, feedforward_width)
         self.down = nn.Linear(feedforward_width, width)
         self.drop_inner = nn.Dropout(dropout)
@@ -194,13 +201,13 @@ class ValueNetwork(nn.Module):
                 self.trunk = nn.Sequential(*mods)
             elif config.trunk_block == "residual":
                 # Gorishniy et al. 2021 tabular ResNet block, arXiv:2106.11959:
-                #   block(x) = x + Dropout(Linear(Dropout(ReLU(Linear(BatchNorm(x))))))
+                #   block(x) = x + Dropout(Linear(Dropout(ReLU(Linear(LayerNorm(x))))))
                 # stem projects to `width`; every block is width -> ffw -> width.
                 blocks = [ResidualTrunkBlock(width, config.feedforward_width,
                                              config.dropout)
                           for _ in range(config.trunk_layers)]
                 self.trunk = nn.Sequential(nn.Linear(din, width), *blocks,
-                                           nn.BatchNorm1d(width), nn.ReLU())
+                                           nn.LayerNorm(width), nn.ReLU())
             else:
                 raise ValueModelError("trunk_block must be plain or residual")
             self.head = nn.Linear(width, OUTCOME_CLASSES)

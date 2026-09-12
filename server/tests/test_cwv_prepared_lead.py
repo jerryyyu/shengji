@@ -228,8 +228,10 @@ def test_world_cache_wires_root_prepared_context_and_can_disable_it(monkeypatch)
     disabled_leaf = disabled.leaf(["S2"])
     assert type(enabled.lead_validation) is PreparedLeadValidation
     assert captured[0] is enabled.lead_validation
-    assert captured[1] is enabled.lead_validation
-    assert captured[2] is None
+    # The second enabled submission validates but reuses the leaf before
+    # constructing a clone; only the disabled call reaches afterstate again.
+    assert len(captured) == 2
+    assert captured[1] is None
     assert enabled.lead_validation.calls == 2
     assert enabled.lead_validation.hits == 0  # singles need no opponent fact
     assert disabled.lead_validation is None

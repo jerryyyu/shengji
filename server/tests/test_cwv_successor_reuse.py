@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from shengji.ai import cwv_policy
 from shengji.ai.cwv_successor_reuse import TensorInputCache, WorldSuccessorCache
 from shengji.engine.round import actual_play_after
@@ -92,6 +94,46 @@ def test_duplicate_submitted_throws_share_exact_finished_leaf_and_tensors(monkey
     assert len(encoder_calls) == 1
     assert _tensor_bytes(first_tensors) == _tensor_bytes(
         tensors_from_round(expected, seat))
+
+
+def test_lead_cache_hit_skips_clone_but_still_validates_submission(monkeypatch):
+    from shengji.engine.legal import IllegalPlay
+
+    rnd = play_state()
+    seat, world, (first, second, _accepted), _ = _accepted_candidates(rnd)
+    cache = WorldSuccessorCache(rnd, seat, *world)
+    leaf = cache.leaf(first)
+    root_before = copy.deepcopy(rnd)
+
+    def no_clone(*args, **kwargs):
+        raise AssertionError("cache hit constructed an afterstate")
+
+    monkeypatch.setattr(cwv_policy, "afterstate", no_clone)
+    assert cache.leaf(second) is leaf
+    # Too many copies must refuse before any cache reuse or clone.
+    bad = [first[0]] * 3
+    with pytest.raises(IllegalPlay):
+        cache.leaf(bad)
+    assert cache.leaf_hits == 1
+    assert _round_signature(rnd) == _round_signature(root_before)
+    assert rnd.message == root_before.message
+
+
+def test_preclone_hits_match_unprepared_cache_for_full_lead_ballot():
+    rnd = play_state()
+    seat, world = rnd.turn, _world(rnd)
+    fast = WorldSuccessorCache(rnd, seat, *world)
+    reference = WorldSuccessorCache(rnd, seat, *world, preclone_hits=False)
+    actions = enumerate_legal(rnd, seat, cap=None).actions
+    for action in actions:
+        actual, expected = fast.leaf(action), reference.leaf(action)
+        assert _round_signature(actual) == _round_signature(expected)
+        assert actual.attacker_points == expected.attacker_points
+        assert actual.message == expected.message
+        assert _tensor_bytes(tensors_from_round(actual, seat)) == _tensor_bytes(
+            tensors_from_round(expected, seat))
+    assert fast.leaf_hits > 0
+    assert fast.counters == reference.counters
 
 
 def test_world_and_root_instances_have_independent_leaf_namespaces():

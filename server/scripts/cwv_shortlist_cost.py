@@ -109,6 +109,8 @@ def main(argv=None):
                         help="off,on compares repeated work against bounded successor reuse")
     parser.add_argument("--states-json", type=Path,
                         help="reuse a private JSON list of existing Luna engine snapshots; no recapture")
+    parser.add_argument("--learned-only", action="store_true",
+                        help="encoding qualification only: omit production and uniform control work")
     args = parser.parse_args(argv)
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         parser.error("SHENGJI_REQUIRE_VOIDS=1 is required")
@@ -142,6 +144,8 @@ def main(argv=None):
         "state_selection": ("caller-supplied ordered snapshots; no resampling" if states_raw is not None else
                             "one fixed-seed uniform position per stride-sized chronological block; stride1=census"),
     }
+    if args.learned_only:
+        config["learned_only"] = True
     bind_output_config(args.out, config)
     states = []
     if states_raw is not None:
@@ -171,6 +175,8 @@ def main(argv=None):
                  CWVShortlistConfig(selection_worlds=n, alternatives=args.alternatives,
                                     uniform=True), None, False)
                 for n in selections]
+    if args.learned_only:
+        recipes = [recipe for recipe in recipes if recipe[2] is not None]
     rows = []
     for index, (snapshot, seat) in enumerate(states):
         # Counterbalance timing order independently of scores/outcomes.
@@ -204,6 +210,7 @@ def main(argv=None):
                     if k not in ("wall_seconds", "successor_reuse")},
                 "scores_sha256": None if trace is None else trace.digest.hexdigest(),
                 "batch_sizes": None if trace is None else dict(trace.batches),
+                "report_fold": (getattr(bot, "last_decision_record", None) or {}).get("report_fold"),
             }
             # Normalize integer dictionary keys just as publication/reopen does.
             semantic = json.loads(json.dumps(semantic, sort_keys=True))
@@ -232,7 +239,8 @@ def main(argv=None):
     result = {"config": config, "states": len(states), "totals_wall_seconds": totals,
               "encoding_pairs_bit_identical": encoding_parity(rows),
               "successor_pairs_bit_identical": successor_parity(rows),
-              "wall_ratio": {n: t / totals["production"] for n, t in totals.items()},
+              "wall_ratio": ({n: t / totals["production"] for n, t in totals.items()}
+                             if "production" in totals else {}),
               "note": "State-matched timing only; not strength evidence. RSS is process-lifetime high-water, not per-arm memory savings. CPU/wall measures effective cores; each evaluator uses one thread. No equality inferred from N."}
     _publish(args.out / "summary.json", result)
     print(json.dumps(result["wall_ratio"], sort_keys=True), flush=True)

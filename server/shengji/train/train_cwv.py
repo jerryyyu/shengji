@@ -1600,26 +1600,61 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         sums = {"total": 0.0, "ce": 0.0, "aux": 0.0}
         rows = 0
         batches = 0
+        # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
+        # best of 3): a step costs 3.4 ms without host syncs and 7.3 ms with
+        # the four this loop used to force per batch (isfinite + three
+        # .item()), so the syncs were ~35% of the 10.3 ms loop.  Per-batch
+        # sums now accumulate on the device and are pulled to the host every
+        # SHENGJI_CWV_LOSS_SYNC_EVERY batches (default 32; 1 restores the old
+        # per-batch behaviour for the parity gate).  The non-finite check
+        # moves to the same cadence: a NaN is still refused, at most 31
+        # batches later; the model does not survive it either way.  The
+        # selection metric (val_ce from run_eval) is untouched.
+        sync_every = max(1, int(os.environ.get("SHENGJI_CWV_LOSS_SYNC_EVERY", "32")))
+        pending = None          # device-side [total*b, ce*b, aux*b, rows]
+        finite_all = None       # device-side logical AND over the window, kept SEPARATE
+        def flush():
+            nonlocal pending, finite_all, rows
+            if pending is None:
+                return
+            vals = pending.tolist()
+            # The flag is never summed with anything (Codex, PR #347 review: a
+            # summed flag lost an earlier non-finite batch), so one bad batch
+            # anywhere in the window refuses here.
+            if float(finite_all.item()) < 1.0:
+                raise TrainError("training loss is non-finite")
+            sums["total"] += vals[0]; sums["ce"] += vals[1]; sums["aux"] += vals[2]
+            rows += int(vals[3])
+            pending = None
+            finite_all = None
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
                                       decode_workers=decode_workers):
             t = tensors_of(raw, dev)
             logits, aux = forward_batch(model, t, aux_head)
             ce = nn.functional.cross_entropy(logits, t["target"])
             total = ce
+            b = int(t["target"].shape[0])
+            a_loss = None
             if aux is not None and aux_weight > 0:
                 a_loss = nn.functional.huber_loss(aux, t["attacker_points"] / 100.0, delta=1.0)
                 total = total + float(aux_weight) * a_loss
-                sums["aux"] += float(a_loss.item()) * int(t["target"].shape[0])
-            if not bool(torch.isfinite(total)):
+            finite = torch.isfinite(total).to(torch.float32)
+            if sync_every == 1 and not bool(finite):
                 raise TrainError("training loss is non-finite")
             optim.zero_grad(set_to_none=True)
             total.backward()
             optim.step()
-            b = int(t["target"].shape[0])
-            sums["total"] += float(total.item()) * b
-            sums["ce"] += float(ce.item()) * b
-            rows += b
+            contrib = torch.stack((total.detach() * b, ce.detach() * b,
+                                   (a_loss.detach() * b) if a_loss is not None
+                                   else torch.zeros((), device=total.device),
+                                   torch.full((), float(b), device=total.device))
+                                  ).to(torch.float32)
+            finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
+            pending = contrib if pending is None else pending + contrib
             batches += 1
+            if batches % sync_every == 0:
+                flush()
+        flush()
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}

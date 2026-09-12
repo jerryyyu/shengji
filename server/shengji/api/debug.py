@@ -187,7 +187,16 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
         "candidates": None,
         "bury": None,
         "analysis": None,
+        # Learned inputs, named and marked, so they are never read as heuristics.
+        # Only bots that carry a value evaluator have them; MCBot gets None.
+        "ml": None,
     }
+    evaluator = getattr(isolated_bot, "evaluator", None)
+    if evaluator is not None:
+        from .debug_features import ml_input_features
+        out["ml"] = {"inputs": ml_input_features(rnd, seat, evaluator),
+                     "outputs_note": "per-candidate model_score rows in candidates[] "
+                                     "and analysis.model are model-output"}
     if rnd.phase == "bury" and rnd.turn == seat:
         out["bury"] = _bury_xray(rnd, seat, isolated_bot)
     elif rnd.phase == "play" and rnd.turn == seat:

@@ -98,7 +98,11 @@ def test_report_prepares_once_and_matches_literal_legacy():
     expected = _legacy_report(legacy, rnd, seat, Memory(rnd, seat),
                               kwargs["i_attack"], candidates[1], candidates[0],
                               30, 9123)
-    assert got == expected
+    # #339 L2 adds two ADDITIVE keys (throw_fail_worlds, p_fail_sampled) when a
+    # candidate is a throw; the literal legacy fold predates them. Everything
+    # the legacy fold computed must still match exactly.
+    additive = {"throw_fail_worlds", "p_fail_sampled"}
+    assert {k: v for k, v in got.items() if k not in additive} == expected
     assert calls["count"] == got["worlds"] == 30
     assert optimized._sampler_snapshot() == legacy._sampler_snapshot()
     assert optimized.rng.getstate() == legacy.rng.getstate()

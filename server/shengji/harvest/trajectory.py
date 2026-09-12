@@ -1169,7 +1169,9 @@ def action_values_from_record(rec: dict) -> dict:
     if isinstance(fold, dict):
         report = {key: _finite(fold.get(key)) for key in (
             "gap", "se", "worlds", "attempts", "rejected", "complete", "rule",
-            "critical", "statistic", "min_gain", "bound")}
+            "critical", "statistic", "min_gain", "bound",
+            # #339 L2 measurement (absent on older records and non-throw ballots)
+            "throw_fail_worlds", "p_fail_sampled")}
     return {
         "kind": ACTION_VALUES_KIND,
         "perspective": "acting-team",

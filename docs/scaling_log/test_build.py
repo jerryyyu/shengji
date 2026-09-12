@@ -140,3 +140,31 @@ def test_a_series_naming_an_unknown_or_table_only_checkpoint_is_refused(data):
     assert any("table-only" in e for e in build.check_data(rows, table_only, s2))
     s2["base_v2"][-1] = "deadbeef"
     assert any("not a row" in e for e in build.check_data(rows, table_only, s2))
+
+
+def _circles(svg):
+    return [(float(cx), float(cy)) for cx, cy in re.findall(r'<circle cx="([-0-9.]+)" cy="([-0-9.]+)"', svg)]
+
+
+def test_every_plotted_dot_is_inside_its_chart_and_off_scale_models_are_named(data):
+    """Codex's witness on #364: a CE above the axis must be visibly listed, never
+    emitted as an off-canvas circle."""
+    page, c = _render(*data)
+    svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
+    assert len(svgs) == 6
+    for w, h, body in svgs:
+        for cx, cy in _circles(body):
+            assert 0 <= cx <= float(w) and 0 <= cy <= float(h), (cx, cy, w, h)
+    assert c["off_scale"], "the smean-96k row (CE 1.675) is above the 0.74 axis today"
+    for name, ce in c["off_scale"]:
+        assert f"OFF THIS SCALE" in page and f"{name}: CE {ce:.3f}" in page
+        assert f"{name} (CE {ce:.3f}) is above the CE axis" in page
+    # and the on-scale count excludes it
+    assert c["with_ce"] == sum(1 for r in data[0] if r["ce"] and float(r["ce"]) <= 0.74 and r["ck"] not in data[1])
+
+
+def test_removing_the_off_scale_row_removes_the_note(data):
+    rows, table_only, series = data
+    rows2 = [r for r in rows if r["ck"] != "8a6d5260"]
+    page, c = _render(rows2, table_only, series)
+    assert not c["off_scale"] and "OFF THIS SCALE" not in page and "above the CE axis" not in page

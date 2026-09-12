@@ -168,7 +168,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; {{N_REGISTRY}} checkpoints; {{N_MODELS}} on the charts, {{N_CE}} of them with a validation number (the {{N_TABLE_ONLY}} 768-cluster probes are table-only) &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
+  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; {{N_REGISTRY}} checkpoints; {{N_MODELS}} on the charts, {{N_CE}} of them with a validation number on the CE scale (the {{N_TABLE_ONLY}} 768-cluster probes are table-only){{OFFSCALE_CLAUSE}} &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
@@ -200,7 +200,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">1 &middot; Data versus validation cross-entropy</h2>
-  <p class="cap">All {{N_CE}} charted models with a validation number. Lines connect the base recipe only
+  <p class="cap">All {{N_CE}} charted models with a validation number on the CE scale.{{OFFSCALE_CLAUSE}} Lines connect the base recipe only
   (width 512, lr 3e&#8209;4), so vertical scatter at one x is the hyperparameter sweep at that
   corpus size.</p>
   <div class="figure">{{SVG1}}</div>

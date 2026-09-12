@@ -236,6 +236,11 @@ def render(rows=None, table_only=None, series=None):
     span_vs_doubling = ("twice" if 1.75 <= ratio <= 2.25 else ("about equal to" if 0.8 <= ratio <= 1.25 else f"{ratio:.1f}&times;"))
     subs = {
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
+        "OFFSCALE_CLAUSE": ("" if not c["off_scale"] else
+                            " " + ", ".join(f"{n} (CE {v:.3f})" for n, v in c["off_scale"])
+                            + (" is" if len(c["off_scale"]) == 1 else " are")
+                            + " above the CE axis and listed on each chart instead of drawn; "
+                              "the registry carries the full row."),
         "N_TABLE_ONLY": word(len(table_only)),
         "N_LEADER": c["with_leader"], "N_NOLEADER": c["without_leader"],
         "N_ABOVE_LEADER": c["above_leader"], "ABOVE_CLAUSE": above_clause,

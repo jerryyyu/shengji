@@ -6,6 +6,9 @@ import subprocess
 
 import pytest
 
+from tests.test_cwv_train import store_dir, other_dir, records, other_records, luna, blocks  # noqa: F401
+from tests.test_cwv_train import THIRDS, train_v0, train_cwv
+
 
 @pytest.fixture
 def runner():
@@ -102,3 +105,30 @@ def test_existing_output_is_never_reused(runner, args):
     out.mkdir()
     with pytest.raises(FileExistsError):
         runner.main()
+
+
+def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path):
+    """Exercise the actual child entry point on the small engine-generated fixture.
+
+    This is a transport smoke, not a speed measurement or new research data.
+    """
+    train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu",
+                   epochs=1, seed=7, batch_size=64, n_boot=10, log=None,
+                   cache_workers=1, encoder_version=train_cwv.DEFAULTS["encoder_version"],
+                   **THIRDS)
+    config = tmp_path / "recipe.json"
+    config.write_text(json.dumps(dict(data=[str(store_dir)], device="cpu",
+        epochs=1, limit_clusters=32, seed=7, batch_size=64, n_boot=10,
+        hidden=32, cache_workers=1, eval_workers=1, bench_batch=32,
+        cache_dir=str(tmp_path / "cache"), public_head=str(tmp_path / "public" / "best.pt"),
+        **THIRDS)))
+    out = tmp_path / "child"
+    out.mkdir()
+    runner.child(str(config), out)
+    report = json.loads((out / "measurement.json").read_text())
+    assert report["wall_seconds"] > 0
+    assert report["cpu_seconds_including_reaped_children"] > 0
+    assert report["parent_peak_rss_bytes"] > 0
+    assert len(report["epoch_train_seconds"]) == 1
+    assert set(report["checkpoints"]) == {"best.pt", "checkpoints/epoch-01.pt"}
+    assert report["checkpoints"]["best.pt"] == runner.checkpoint_fingerprint(out / "train" / "best.pt")

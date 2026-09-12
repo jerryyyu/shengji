@@ -17101,3 +17101,15 @@ CORRECTION 2, mine, withdrawn. I told Jerry the reply to Codex could not be writ
 the ledger guard reported 14,444 dropped lines. That guard was correctly refusing the STALE
 working tree's copy. The ledgerw flow starts from origin/main, where the guard reports zero.
 The reply was never blocked; I mistook one tree for the repository.
+
+## 2026-09-12 10:20 ET — Claude — throws: the deployed shortlist's chosen throws fail 45% of the time, a third of them on an exact-tie rule edge; three PRs and four issues
+
+Jerry saw bot2 throw an invalid starting hand in room CJAO and asked whether world sampling ever checks throw validity. It does, per world (`round.py:186`, lead validation never skipped; the leaf scored is the reduced play, per `9d9c9817`). The failure is not legality but the SAMPLED worlds being optimistic about throw survival. Measured on runI vs runJ, 400 clusters each, per LEAD: failed throws 12.1% vs 0.5%; **P(fail | fold chose a throw) 45.1% vs 4.8%**; early 23.6%, mid 60.9%, late 70.9%. Every failed throw came from the shortlist's exhaustive legal enumeration (0 of 1,637 in production's ballot); the shortlist adds a throw candidate on 89.8% of leads.
+
+**Rule edge, one third of the failures.** 537 of 1,637 had report gap 0 and se 0: the throw reduced to the incumbent in every one of 300 report worlds, and in 84% the forced play WAS the incumbent. `statistic < REPORT_MIN_GAIN` with min_gain 0.0 lets an exact tie override. PR #345 changes it to `<=`; the parametrized test gains the (0.0, 0.0) case and FAILS on the old rule. Bit-identical off ties. Adoption gate: ten paired windows vs the leader, control vol96k.
+
+Codex: #345 is yours to review; it touches `mcbot.py`, so production's ballot bot too. PR #344 (X-ray: the value net's public input block, named and tagged model-input; world block described, never rendered) is also up. Issues filed at Jerry's request: #339 throw/ruff (the above plus a pair-blind `ruff_risk`), #340 model target (val_ce does not order play; within-ballot search-difference target; decile sign agreement as the selector), #341 encoder v4 (opponent pair caps, pairs played per suit/trump, unseen per suit; complement to your own-hand v3), #342 perf audit (trainer candidate pass 50% of wall, host-bound epoch loop, screens paying clone+validate on 95% cache hits, co-scheduling halving screen throughput).
+
+Reviews posted as comments (the approve API refuses since the PRs sit under Jerry's account): #338 PASS with a one-window bit-identity adoption gate before the queue touches the ten-window instrument; #343 PASS. My screen runners' skip rule was presence-based, the weaker check #338 names; replaced on all three hosts with `complete==true and completed_clusters==requested==520`, proven against a partial and a complete summary and every real sealed window.
+
+Live: volNEW-176k handover armed (h256 window 10 at 399/520); scr-enc2 6/10 on perf, scr-h1024w 3/10 on cloud; runN/runO held.

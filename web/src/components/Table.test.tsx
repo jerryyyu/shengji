@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { GameState, StatePlayer } from "../protocol";
 import Table from "./Table";
 
@@ -56,13 +56,14 @@ function makeState({
   };
 }
 
-function renderTable(state: GameState): { container: HTMLDivElement; unmount: () => void } {
+function renderTable(state: GameState) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => root.render(<Table state={state} />));
   return {
     container,
+    rerender: (next: GameState) => act(() => root.render(<Table state={next} />)),
     unmount: () => {
       act(() => root.unmount());
       container.remove();
@@ -71,6 +72,61 @@ function renderTable(state: GameState): { container: HTMLDivElement; unmount: ()
 }
 
 describe("opponent turn status", () => {
+  it("cycles cosmetic banter, resets for the next decision, and clears its timer", () => {
+    vi.useFakeTimers();
+    const state = makeState({ phase: "play", target: { is_bot: true, controller: "bot" } });
+    const view = renderTable(state);
+    try {
+      const first = view.container.querySelector(".bot-banter")?.textContent;
+      const bar = view.container.querySelector('[role="progressbar"]');
+      expect(bar?.getAttribute("aria-label")).toBe("Bot considering its play");
+      expect(bar?.hasAttribute("aria-valuenow")).toBe(false);
+      expect(first).toContain("Bot banter:");
+      act(() => vi.advanceTimersByTime(3200));
+      expect(view.container.querySelector(".bot-banter")?.textContent).not.toBe(first);
+      expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Considering the next play…");
+      expect(view.container.querySelector('[role="status"] .bot-banter')).toBeNull();
+      // Unrelated server broadcasts must not restart a long-running turn.
+      const second = view.container.querySelector(".bot-banter")?.textContent;
+      view.rerender({ ...state, message: "Someone connected" });
+      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(second);
+      act(() => vi.advanceTimersByTime(3200 * 3));
+      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
+      act(() => vi.advanceTimersByTime(3200));
+      // A same-seat next decision resets even without an intervening off-turn render.
+      view.rerender({ ...state, players: state.players.map((p) => p.seat === 1 ? { ...p, cards_left: 15 } : p) });
+      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
+      view.rerender({ ...state, turn: null });
+      expect(view.container.querySelector(".bot-banter")).toBeNull();
+      expect(view.container.querySelector('[role="progressbar"]')).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+      view.rerender(state);
+      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
+    } finally {
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
+    }
+  });
+  it("rotates bury flavor and resets on phase and room changes", () => {
+    vi.useFakeTimers();
+    const state = makeState({ phase: "bury", target: { controller: "bot_cover" } });
+    const view = renderTable(state);
+    try {
+      const first = view.container.querySelector(".bot-banter")?.textContent;
+      act(() => vi.advanceTimersByTime(3200));
+      expect(view.container.querySelector(".bot-banter")?.textContent).not.toBe(first);
+      view.rerender({ ...state, room: "NEXT" });
+      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
+      view.rerender({ ...state, phase: "play" });
+      expect(view.container.querySelector(".bot-banter")?.textContent).toContain("Hmm…");
+      expect(view.container.querySelector('[role="progressbar"]')?.hasAttribute("aria-valuenow")).toBe(false);
+    } finally {
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
+    }
+  });
   it("describes bot bury and play turns with their action phase", () => {
     for (const [phase, text] of [
       ["bury", "Choosing 8 cards to bury…"],
@@ -82,6 +138,8 @@ describe("opponent turn status", () => {
       }));
       expect(view.container.querySelector(".thinking")?.textContent).toBe(text);
       expect(view.container.querySelector(".thinking")?.getAttribute("role")).toBe("status");
+      expect(view.container.querySelector('[role="progressbar"]')?.getAttribute("aria-label")).toBe(
+        phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play");
       view.unmount();
     }
   });

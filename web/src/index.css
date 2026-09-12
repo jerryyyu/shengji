@@ -825,6 +825,44 @@ button {
   animation: shimmer 1.4s linear infinite;
 }
 
+.bot-banter {
+  max-width: 160px;
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+.bot-banter-label { font-style: italic; }
+
+.bot-progress {
+  width: 112px;
+  max-width: 100%;
+  height: 3px;
+  margin: 5px auto;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #8a93a330;
+}
+
+.bot-progress > span {
+  display: block;
+  width: 36%;
+  height: 100%;
+  border-radius: inherit;
+  background: #a7b4c9;
+  animation: bot-progress-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes bot-progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(280%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking { animation: none; background: none; color: var(--text-dim); }
+  .bot-progress > span { animation: none; transform: translateX(90%); }
+}
+
 @keyframes shimmer {
   from {
     background-position: 200% 0;

@@ -41,9 +41,13 @@ const BOT_BANTER = {
 } as const;
 
 function BotThinking({ phase }: { phase: "bury" | "play" }) {
-  const [line, setLine] = useState(0);
+  const [line, setLine] = useState(() => Math.floor(Math.random() * BOT_BANTER[phase].length));
   useEffect(() => {
-    const timer = window.setInterval(() => setLine((n) => (n + 1) % BOT_BANTER[phase].length), 3200);
+    const timer = window.setInterval(() => {
+      // Pick another cosmetic phrase; never repeat the currently visible line.
+      const offset = 1 + Math.floor(Math.random() * (BOT_BANTER[phase].length - 1));
+      setLine((n) => (n + offset) % BOT_BANTER[phase].length);
+    }, 3200);
     return () => window.clearInterval(timer);
   }, [phase]);
   return (
@@ -56,7 +60,7 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
         aria-label={phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play"}>
         <span />
       </div>
-      {/* Cosmetic copy only; never derive this from cards, scores, or search state.
+      {/* Cosmetic copy only; no card identities, scores, or search reasoning.
           Keep rotation outside the live region so screen readers are not spammed. */}
       <div className="bot-banter" title="Playful flavor, not model reasoning.">
         <span className="bot-banter-label">Bot banter: </span>{BOT_BANTER[phase][line]}

@@ -88,7 +88,7 @@ from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
 from ..rl.encode_versions import ENC_VERSION, check_version
-from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen, widen_to
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -354,7 +354,7 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
     expected_sha = (example.input_sha256 if version == 1
-                    else widen(example.tensors, row.successor, row.seat).sha256())
+                    else widen_to(example.tensors, row.successor, row.seat, version).sha256())
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "

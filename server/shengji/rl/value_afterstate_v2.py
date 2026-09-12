@@ -51,7 +51,8 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
 
     def validate(self) -> None:
         expected = (
-            (self.public, (PUBLIC_DIM_V2,), "public"),
+            # any declared post-v1 width: v2 (561) or v4 (636); v1 has its own class
+            (self.public, (None,), "public"),
             (self.history, (None, HISTORY_EVENT_DIM), "history"),
             (self.world, (WORLD_RECEIVERS, N_CARDS), "world"),
             (self.perspective, (PERSPECTIVE_DIM,), "perspective"),
@@ -63,6 +64,8 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
                            for index, bound in enumerate(shape)) \
                     or not bool(np.all(np.isfinite(value))):
                 raise ValueAfterstateError(f"{label} tensor shape/dtype drift")
+        if self.public.shape[0] not in {dim for v, dim in PUBLIC_DIM_BY_VERSION.items() if v >= 2}:
+            raise ValueAfterstateError("public tensor shape/dtype drift")
         if not 1 <= self.history.shape[0] <= 100:
             raise ValueAfterstateError("history tensor length drift")
         if not bool(np.all((self.world == 0.0) | (self.world == 0.5)
@@ -90,14 +93,27 @@ def _widen_columns(v1: ValueAfterstateTensors, columns) -> ValueAfterstateTensor
     return out
 
 
+def widen_to(v1: ValueAfterstateTensors, rnd, root_seat: int,
+             version: int = ENC_VERSION) -> ValueAfterstateTensors:
+    """``v1`` widened to ``version``: v1 itself, v2 by its frozen ``widen``,
+    later versions by whatever ``encode_obs`` appends beyond the v1 prefix."""
+    version = check_version(version)
+    if version == 1:
+        return v1
+    if version == 2:
+        return widen(v1, rnd, root_seat)
+    from .encode import OBS_DIM
+    from .encode_versions import encode_obs
+    return _widen_columns(v1, encode_obs(rnd, root_seat, version=version)[OBS_DIM:])
+
+
 def tensors_from_round(rnd, root_seat: int, *,
                        version: int = ENC_VERSION) -> ValueAfterstateTensors:
     """``value_afterstate.tensors_from_round`` at ``version``: v1 IS the
     frozen builder's call; v2 is that result widened."""
     version = check_version(version)
-    v1 = _tensors_from_round_v1(rnd, root_seat)
-    return v1 if version == 1 else widen(v1, rnd, root_seat)
+    return widen_to(_tensors_from_round_v1(rnd, root_seat), rnd, root_seat, version)
 
 
-__all__ = ["PUBLIC_DIM_V2", "PUBLIC_DIM_BY_VERSION", "ValueAfterstateTensorsV2",
+__all__ = ["PUBLIC_DIM_V2", "PUBLIC_DIM_BY_VERSION", "ValueAfterstateTensorsV2", "widen_to",
            "public_dim", "tensors_from_round", "widen"]

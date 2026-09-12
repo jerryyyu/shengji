@@ -155,3 +155,25 @@ def test_cost_order_is_forwarded_and_missing_prior_does_not_silently_fallback(ha
     args, _, _, _ = harness
     with pytest.raises(ValueError, match="^cost-order artifact missing cluster"):
         Q.main(args + ["--cost-order-root", "/missing-prior", "--cost-order-name", "control"])
+
+
+def test_queue_passes_the_tie_knob_to_every_window(harness, monkeypatch):
+    args, out, encodings, checkpoint = harness
+    calls = []
+
+    def fake_main(command):
+        calls.append(list(command))
+        output = Path(command[command.index("--out") + 1])
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "summary.json").write_text(json.dumps(
+            {"complete": True, "completed_clusters": 2, "requested_clusters": 2}))
+        return 0
+
+    monkeypatch.setattr(Q.screen, "main", fake_main)
+    assert Q.main(args + ["--report-tie-keeps-incumbent"]) == 0
+    assert len(calls) == 2 and all("--report-tie-keeps-incumbent" in c for c in calls)
+    calls.clear()
+    plain = args[:4] + ["--out", str(out.parent / "plain"), "--name", "plain",
+                        "--seeds", "100", "200", "--clusters", "2", "--workers", "1"]
+    assert Q.main(plain) == 0
+    assert len(calls) == 2 and not any("--report-tie-keeps-incumbent" in c for c in calls)

@@ -74,6 +74,7 @@ function renderTable(state: GameState) {
 describe("opponent turn status", () => {
   it("cycles cosmetic banter, resets for the next decision, and clears its timer", () => {
     vi.useFakeTimers();
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
     const state = makeState({ phase: "play", target: { is_bot: true, controller: "bot" } });
     const view = renderTable(state);
     try {
@@ -93,23 +94,29 @@ describe("opponent turn status", () => {
       act(() => vi.advanceTimersByTime(3200 * 3));
       expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
       act(() => vi.advanceTimersByTime(3200));
-      // A same-seat next decision resets even without an intervening off-turn render.
+      // A new random draw chooses the starting phrase, before its timer fires.
+      random.mockReturnValue(0.99);
       view.rerender({ ...state, players: state.players.map((p) => p.seat === 1 ? { ...p, cards_left: 15 } : p) });
-      expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
+      expect(view.container.querySelector(".bot-banter")?.textContent).toContain("Jokers aren’t the only surprises.");
+      act(() => vi.advanceTimersByTime(3200));
+      expect(view.container.querySelector(".bot-banter")?.textContent).toContain("Trying to keep a trick up my sleeve.");
       view.rerender({ ...state, turn: null });
       expect(view.container.querySelector(".bot-banter")).toBeNull();
       expect(view.container.querySelector('[role="progressbar"]')).toBeNull();
       expect(vi.getTimerCount()).toBe(0);
+      random.mockReturnValue(0);
       view.rerender(state);
       expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
     } finally {
       view.unmount();
+      random.mockRestore();
       expect(vi.getTimerCount()).toBe(0);
       vi.useRealTimers();
     }
   });
   it("rotates bury flavor and resets on phase and room changes", () => {
     vi.useFakeTimers();
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
     const state = makeState({ phase: "bury", target: { controller: "bot_cover" } });
     const view = renderTable(state);
     try {
@@ -123,6 +130,7 @@ describe("opponent turn status", () => {
       expect(view.container.querySelector('[role="progressbar"]')?.hasAttribute("aria-valuenow")).toBe(false);
     } finally {
       view.unmount();
+      random.mockRestore();
       expect(vi.getTimerCount()).toBe(0);
       vi.useRealTimers();
     }

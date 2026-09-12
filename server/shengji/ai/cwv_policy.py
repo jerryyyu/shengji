@@ -147,6 +147,16 @@ AFTERSTATE_SOURCE_PATHS = {
 }
 
 
+def afterstate_source_paths(version: int = 1) -> dict[str, Path]:
+    """Replica of ``cwv_data.cwv_source_paths``: v1/v2 hash the frozen ten
+    files; v4 also binds the two files that compute its public columns."""
+    paths = dict(AFTERSTATE_SOURCE_PATHS)
+    if check_version(version) >= 4:
+        for name in ("encode_versions", "encode_opponent_pairs"):
+            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    return paths
+
+
 class CWVError(RuntimeError):
     """A checkpoint, evaluator batch, prior table or decision drifted."""
 
@@ -174,7 +184,7 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     files hash to a DIFFERENT identity per version."""
     version = check_version(version)
     sources = {name: file_sha256(path)
-               for name, path in AFTERSTATE_SOURCE_PATHS.items()}
+               for name, path in afterstate_source_paths(version).items()}
     parts = [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
     if version != 1:
         parts.append(f"enc_version:{version}")

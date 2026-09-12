@@ -88,7 +88,7 @@ from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
 from ..rl.encode_versions import ENC_VERSION, check_version
-from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen, widen_to
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -156,6 +156,21 @@ CWV_SOURCE_PATHS = {
 }
 
 
+def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
+    """The executable closure hashed into the CWV identity for ``version``.
+
+    v1 and v2 keep the frozen ten-file closure (archived caches and
+    checkpoints must keep matching).  v4 adds the files that compute its 75
+    public columns, so editing either one invalidates every v4 cache file
+    and refuses every v4 checkpoint, exactly as the public encoder contract
+    (``rl.encoder_identity.source_paths``) does."""
+    paths = dict(CWV_SOURCE_PATHS)
+    if check_version(version) >= 4:
+        for name in ("encode_versions", "encode_opponent_pairs"):
+            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    return paths
+
+
 # ---------------------------------------------------------------- identity
 
 def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
@@ -166,7 +181,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     part of the hashed payload, so two otherwise identical builds at two
     encoder versions cannot share a cache file."""
     version = check_version(version)
-    sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    sources = {name: sha256_file(path) for name, path in cwv_source_paths(version).items()}
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build
@@ -187,7 +202,8 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         "outcome_classes": OUTCOME_CLASSES,
         "implementation_sha256": hashlib.sha256(payload.encode("ascii")).hexdigest(),
         "source_sha256s": sources,
-        "public_head_encoder_sha256": public_encoder_identity()["implementation_sha256"],
+        "public_head_encoder_sha256": public_encoder_identity(version)["implementation_sha256"],
+        "public_head_encoder_contract_sha256": public_encoder_identity(version)["transitive"]["implementation_sha256"],
     }
 
 
@@ -354,7 +370,7 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
     expected_sha = (example.input_sha256 if version == 1
-                    else widen(example.tensors, row.successor, row.seat).sha256())
+                    else widen_to(example.tensors, row.successor, row.seat, version).sha256())
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "

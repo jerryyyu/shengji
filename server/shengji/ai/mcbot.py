@@ -40,7 +40,7 @@ from collections import Counter
 
 from ..engine.cards import TRUMP
 from ..engine.combos import decompose
-from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow
+from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow, validate_lead
 from ..engine.round import Round, Trick, TrickPlay
 
 
@@ -755,6 +755,17 @@ class MCBot(SmartBot):
         original_rng = self.rng
         use_prepared = (getattr(self._rollout, "__func__", None)
                         is MCBot._rollout)
+        # Issue #339 layer 2, measurement half. When leading, a multi-card
+        # candidate is a throw that the engine validates against the OTHER
+        # hands (validate_lead): in a sampled world it may collapse to its
+        # forced component. Count, per candidate, the report worlds in which
+        # it fails. This is the sampler's own failure estimate; the realised
+        # rate (45% on the deployed hybrid, runI) calibrates its optimism.
+        # Read-only on the world; no decision reads these counts.
+        leading = rnd.trick is None or not rnd.trick.plays
+        throw_checks = [(cand, i) for i, cand in enumerate((cand_a, cand_b))
+                        if leading and len(cand) > 1]
+        fails = [0, 0]
         try:
             self.rng = random.Random(seed)
             while used < n and attempts < cap:
@@ -763,6 +774,13 @@ class MCBot(SmartBot):
                 if sampled is None:
                     continue
                 hands, buried = sampled
+                if throw_checks:
+                    others = [hands[s] for s in sorted(hands)]
+                    for cand, i in throw_checks:
+                        _, msg = validate_lead(list(cand), rnd.hands[seat], others,
+                                               rnd.ordering)
+                        if msg is not None:
+                            fails[i] += 1
                 exact_session = self._new_exact_world_session(rnd, buried)
                 prepared = (self._prepare_report_world(
                     rnd, seat, hands, buried=buried) if use_prepared else None)
@@ -792,6 +810,12 @@ class MCBot(SmartBot):
             "complete": used == n,
             "seed": seed,
         }
+        if throw_checks:
+            # per-candidate sampled throw-failure rate over the report worlds
+            out["throw_fail_worlds"] = {"challenger": fails[0], "incumbent": fails[1]}
+            out["p_fail_sampled"] = {
+                "challenger": (fails[0] / used if used and len(cand_a) > 1 else None),
+                "incumbent": (fails[1] / used if used and len(cand_b) > 1 else None)}
         if keep_deltas:
             out["deltas"] = deltas
         return out

@@ -652,6 +652,63 @@ def cwv_score_fn(model: ValueNetwork, device: torch.device) -> Callable[[dict], 
     return score
 
 
+def cwv_score_many_fn(model: ValueNetwork, device: torch.device, *,
+                      max_rows: int = 4096
+                      ) -> Callable[[Sequence[dict]], list[np.ndarray]]:
+    """Batched form of :func:`cwv_score_fn`: many search records per forward.
+
+    The old path did one MPS forward per search record (about 8.7 rows each),
+    which the retained cap144-h256 receipt puts at 4,822 s for 1.74M records,
+    half of a training run's wall (issue #342, finding 1).  Rows from
+    consecutive records are concatenated up to ``max_rows`` per forward and
+    split back by record width, so each record receives exactly the values it
+    would have received alone up to floating-point batch-shape effects.
+    History tensors are padded to the chunk's longest event list with the mask
+    extended, which is the same padding the per-record path applies within a
+    record.  Terminal rows are still substituted by the caller.
+    """
+    @torch.no_grad()
+    def score_many(entries: Sequence[dict]) -> list[np.ndarray]:
+        out: list[np.ndarray] = [None] * len(entries)  # type: ignore[list-item]
+        start = 0
+        while start < len(entries):
+            chunk, rows, stop = [], 0, start
+            while stop < len(entries):
+                k = int(entries[stop]["public"].shape[0])
+                if chunk and rows + k > max_rows:
+                    break
+                chunk.append(candidate_tensors(entries[stop], "cpu"))
+                rows += k
+                stop += 1
+            length = max(int(c["history"].shape[1]) for c in chunk)
+            def pad(c):
+                h, m = c["history"], c["history_mask"]
+                if h.shape[1] == length:
+                    return h, m
+                extra = length - h.shape[1]
+                return (torch.cat([h, torch.zeros(h.shape[0], extra, h.shape[2], dtype=h.dtype)], 1),
+                        torch.cat([m, torch.zeros(m.shape[0], extra, dtype=m.dtype)], 1))
+            padded = [pad(c) for c in chunk]
+            t = {
+                "public": torch.cat([c["public"] for c in chunk]).to(device),
+                "world": torch.cat([c["world"] for c in chunk]).to(device),
+                "perspective": torch.cat([c["perspective"] for c in chunk]).to(device),
+                "history": torch.cat([h for h, _ in padded]).to(device),
+                "history_mask": torch.cat([m for _, m in padded]).to(device),
+            }
+            logits, _aux = forward_batch(model, t)
+            prob = torch.softmax(logits.to(torch.float32), dim=1).cpu().numpy().astype(np.float64)
+            _level, pt0 = expected_levels(prob)
+            at = 0
+            for i, c in enumerate(chunk):
+                k = int(c["public"].shape[0])
+                out[start + i] = pt0[at:at + k]
+                at += k
+            start = stop
+        return out
+    return score_many
+
+
 def ranking_block(pass_result: Mapping[str, Any], *, n_boot: int, seed: int) -> dict:
     agreement = pass_result["agreement"]
     clusters = pass_result["clusters"]
@@ -1598,7 +1655,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     shard_keys_test = [(shard, keys) for shard, keys in shard_keys_test if keys]
     say(f"candidate pass (test): {len(shard_keys_test)} shard(s), eval_workers={eval_workers}")
     test_pass = candidate_pass(
-        shard_keys_test, score_fn=cwv_score_fn(model, dev), public_head=public_model,
+        shard_keys_test, score_fn=cwv_score_fn(model, dev),
+        # SHENGJI_CWV_BATCHED_CANDIDATES=0 restores one forward per record, the
+        # control for the numeric/decision parity gate before adoption (#342).
+        score_many_fn=(None if os.environ.get("SHENGJI_CWV_BATCHED_CANDIDATES", "1") == "0"
+                       else cwv_score_many_fn(model, dev)), public_head=public_model,
         prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
         workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
         version=enc_version)

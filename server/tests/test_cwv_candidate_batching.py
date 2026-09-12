@@ -3,6 +3,8 @@
 The batched scorer must hand every record exactly the values the per-record
 scorer would, including across chunk boundaries, and the pass must consume
 them in record order.  Tolerance covers batch-shape float effects only."""
+import os
+
 import numpy as np
 import pytest
 import torch
@@ -99,3 +101,62 @@ def test_batched_scorer_refuses_a_wrong_count(monkeypatch):
         cwv_eval.candidate_pass([("shard", None)], score_fn=None,
                                 score_many_fn=lambda batch: [], public_head=None, prior=None,
                                 device="cpu", workers=1, rank_limit=None, history=False)
+
+
+def test_end_to_end_every_record_scores_the_same_with_and_without_batching(
+        store_dir, luna, tmp_path, monkeypatch):
+    """The real trainer, twice, same seed and fixtures: batched vs one-forward-per-record.
+    The model weights are identical, so every search record must receive the same
+    candidate values up to float batch-shape effects (1e-6).  Rank-based aggregates
+    (Spearman on a 134-record fixture with near-ties) may move at the third decimal
+    and timing always differs, so those are witnessed, not asserted equal."""
+    from shengji.train import cwv_eval, train_cwv
+    from tests.test_cwv_train import THIRDS, train_v0
+
+    luna_path, _rows = luna
+    train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu", epochs=1,
+                   seed=7, batch_size=64, n_boot=10, log=None, cache_workers=1,
+                   encoder_version=train_cwv.DEFAULTS["encoder_version"], **THIRDS)
+    kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), arch="mlp", device="cpu",
+              epochs=1, seed=7, batch_size=64, n_boot=20, hidden=32, log=None,
+              cache_workers=1, eval_workers=1, bench_batch=32,
+              public_head=str(tmp_path / "public" / "best.pt"), **THIRDS)
+    captured = {"0": [], "1": []}
+    real_one, real_many = train_cwv.cwv_score_fn, train_cwv.cwv_score_many_fn
+
+    def one_factory(model, device):
+        score = real_one(model, device)
+        def wrapped(entry):
+            out = score(entry)
+            captured["0"].append(np.array(out, copy=True))
+            return out
+        return wrapped
+
+    def many_factory(model, device, **kw):
+        score = real_many(model, device, **kw)
+        def wrapped(entries):
+            out = score(entries)
+            captured["1"].extend(np.array(o, copy=True) for o in out)
+            return out
+        return wrapped
+    monkeypatch.setattr(train_cwv, "cwv_score_fn", one_factory)
+    monkeypatch.setattr(train_cwv, "cwv_score_many_fn", many_factory)
+
+    monkeypatch.setenv("SHENGJI_CWV_BATCHED_CANDIDATES", "0")
+    control = train_cwv.train(out=tmp_path / "per_record", **kw)
+    monkeypatch.setenv("SHENGJI_CWV_BATCHED_CANDIDATES", "1")
+    batched = train_cwv.train(out=tmp_path / "batched", **kw)
+    assert control["selection"]["best_loss"] == batched["selection"]["best_loss"]
+    rc, rb = control["final"]["test"]["ranking"], batched["final"]["test"]["ranking"]
+    assert rc["records"] == rb["records"] > 0 and rc["candidates"] == rb["candidates"]
+    assert len(captured["0"]) == len(captured["1"]) == rc["records"]
+    worst = 0.0
+    for a, b in zip(captured["0"], captured["1"]):
+        assert a.shape == b.shape
+        worst = max(worst, float(np.max(np.abs(a - b))) if a.size else 0.0)
+    assert worst <= 1e-6, worst
+    # witness, not a gate: rank-based aggregates are allowed to move at near-ties
+    for scorer, block in rc["scorers"].items():
+        for name, value in block.items():
+            if isinstance(value, dict) and "mean" in value:
+                assert abs(value["mean"] - rb["scorers"][scorer][name]["mean"]) <= 0.01, (scorer, name)

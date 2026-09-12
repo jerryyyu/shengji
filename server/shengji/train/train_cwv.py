@@ -1656,7 +1656,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     say(f"candidate pass (test): {len(shard_keys_test)} shard(s), eval_workers={eval_workers}")
     test_pass = candidate_pass(
         shard_keys_test, score_fn=cwv_score_fn(model, dev),
-        score_many_fn=cwv_score_many_fn(model, dev), public_head=public_model,
+        # SHENGJI_CWV_BATCHED_CANDIDATES=0 restores one forward per record, the
+        # control for the numeric/decision parity gate before adoption (#342).
+        score_many_fn=(None if os.environ.get("SHENGJI_CWV_BATCHED_CANDIDATES", "1") == "0"
+                       else cwv_score_many_fn(model, dev)), public_head=public_model,
         prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
         workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
         version=enc_version)

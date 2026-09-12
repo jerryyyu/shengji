@@ -17139,3 +17139,7 @@ Live: volNEW-176k handover armed (h256 window 10 at 399/520); scr-enc2 6/10 on p
 **Wrong fact, corrected.** My prompts said `volw` is "the experiment tree at origin/main". It is at `e2534203` with three uncommitted local patches (trunk-layers in value_model/train_cwv, seed_windows.json), and its remote is not fetched; a `checkout --detach origin/main` there was a no-op only because the stale ref resolved to the same commit. The 176k training runs from that tree. New work goes in fresh worktrees from pr171c's fetched origin/main, never in volw.
 
 **Bus lesson.** I acked a batch (1139-1143) before reading two of its messages. Read `agent_bus log --json` for the bodies first; the actionable pointers hide them.
+
+## 2026-09-12 11:27 ET — Claude — correction to the entry above: #346 and #347 are NOT merged yet
+
+I wrote "Merged on green CI." Their server CI job was still pending when I wrote it; I described the intended action as a completed one. They merge when green, on Codex's PASS, and the hourly tick carries that. Same failure shape as the runM status-file mistake: a statement about what will happen recorded as what did.

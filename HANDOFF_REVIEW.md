@@ -16877,3 +16877,45 @@ adds 10 models to a pile of 21 that already have an offline number and no search
 today's finding is that the offline number does not order them.
 
 — Claude
+
+## 2026-09-12 01:05 ET — CORRECTION: the "5.5x shrink on replication" compared two DIFFERENT checkpoints
+
+Jerry asked me to make sure every model and result was on the checkpoint registry. Auditing
+the page against disk rather than eyeballing it found two models absent, and one of the two
+exposed a claim I have repeated in two artifacts and to Jerry at least twice.
+
+**The claim.** *"The 128k arm is the only one measured both ways: one 520-deal window says
+-0.0558 [-0.106, -0.008] and resolves worse; ten windows say -0.0101 [-0.0257, +0.0055] and
+cross zero. That is a 5.5x shrink on replication."*
+
+**Why it is wrong.** Those are two different checkpoints:
+
+| | ckpt | aux_weight | best epoch | encoder sha |
+|---|---|---:|---:|---|
+| single-window -0.0558 | `fd2e5335` | **0.1** | 6 | c4c6b7c3 |
+| ten-window -0.0101 | `81f0b843` | **1.0** | 3 | a56679bb |
+
+Same 128,000-cluster corpus, same width, same learning rate, identical val_ce to five
+decimal places -- and a **tenfold difference in the auxiliary loss weight**. They are not one
+arm measured twice. The comparison conflates instrument with model, and **the 5.5x figure is
+withdrawn** from both artifacts.
+
+**What survives, on cleaner evidence.** Single-window magnitudes DO overstate; the support
+is a replication of the SAME contrast on the SAME checkpoint: `+0.0779` became
+`-0.0064 [-0.0412, +0.0285]` over five windows. That one is sound. What I no longer have is
+a defensible multiplier, and I had been using 5.5x to argue that the three paired arms near
+-0.055 would all land near -0.010. That inference is withdrawn too.
+
+**How the error happened.** The two checkpoints have IDENTICAL val_ce to five decimals
+(0.62313), which is what made them look like the same model recorded twice. I had even
+noticed that coincidence earlier today and written "curious but not my concern now" instead
+of opening the configs. **A statistic is not identified by its value** is already on my
+lessons list; I applied it to arm-versus-arm contrasts and not to two rows of my own table.
+
+**What the audit also found.** `sweep-base` (`c0cdd4d3`) and `volVOL-128k` (`81f0b843`) were
+missing from the registry entirely; both are now rows. The registry is 41 trained models, 15
+screened, 6 paired against the leader, 5 screened but never paired, 23 with no search number
+at all. A name-based audit initially reported 28 models missing, which was a false alarm from
+HTML entities in the rendered names -- the real answer after normalising was 2.
+
+— Claude

@@ -16,6 +16,10 @@ from shengji.train import cwv_eval
 from shengji.train.train_cwv import cwv_score_fn, cwv_score_many_fn
 from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 
+# the fixture family is module-local to test_cwv_train; importing registers it here
+from tests.test_cwv_train import store_dir,other_dir,records,other_records,luna,blocks  # noqa: F401
+from tests.test_cwv_train import THIRDS, train_v0
+
 
 def _entry(rng, k, public_dim):
     return {
@@ -111,7 +115,6 @@ def test_end_to_end_every_record_scores_the_same_with_and_without_batching(
     (Spearman on a 134-record fixture with near-ties) may move at the third decimal
     and timing always differs, so those are witnessed, not asserted equal."""
     from shengji.train import cwv_eval, train_cwv
-    from tests.test_cwv_train import THIRDS, train_v0
 
     luna_path, _rows = luna
     train_v0.train(data=[str(store_dir)], out=tmp_path / "public", device="cpu", epochs=1,

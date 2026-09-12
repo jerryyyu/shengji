@@ -6,6 +6,7 @@ server/.venv
 # remote Linux build. The container must compile the extension from source.
 server/build
 server/shengji/engine/_fast*.so
+server/shengji/ai/_cwv_math*.so
 **/__pycache__
 **/.pytest_cache
 .DS_Store

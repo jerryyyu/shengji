@@ -168,7 +168,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 44 checkpoints; 42 on the charts, 41 of them with a validation number (the two 768-cluster probes are table-only) &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
+  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 45 checkpoints; 43 on the charts, 42 of them with a validation number (the two 768-cluster probes are table-only) &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
@@ -179,7 +179,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
   <div><b>0 of 14</b><span>models above the leader</span></div>
-  <div><b>28 of 42</b><span>no search number yet</span></div>
+  <div><b>29 of 43</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -200,7 +200,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">1 &middot; Data versus validation cross-entropy</h2>
-  <p class="cap">All 41 charted models with a validation number. Lines connect the base recipe only
+  <p class="cap">All 42 charted models with a validation number. Lines connect the base recipe only
   (width 512, lr 3e&#8209;4), so vertical scatter at one x is the hyperparameter sweep at that
   corpus size.</p>
   <div class="figure"><svg viewBox="0 0 880 470">
@@ -367,6 +367,11 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
+<circle cx="583.2" cy="-1454.4" r="4.4" class="pt pt2 hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
 <circle cx="531.0" cy="337.8" r="4.4" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;SEED-ONLY replicate: the noise floor"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
@@ -461,9 +466,9 @@ val_ce 0.71690
 1 epoch, probe</title></circle>
 <text x="702" y="40" class="lgh">ENCODER</text>
 <circle cx="708" cy="60" r="4.4" class="pt pt1"/><text x="721" y="64" class="lg">v1 &middot; 14 runs</text>
-<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 26 runs</text>
+<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 27 runs</text>
 <circle cx="708" cy="104" r="4.4" class="pt pt5"/><text x="721" y="108" class="lg">v3 &middot; 1 run</text>
-<text x="702" y="140" class="lgs">All 41 models with a</text>
+<text x="702" y="140" class="lgs">All 42 models with a</text>
 <text x="702" y="156" class="lgs">validation number.</text>
 <text x="702" y="172" class="lgs">Click or tab to any dot</text>
 <text x="702" y="188" class="lgs">for its full record.</text>
@@ -915,6 +920,11 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
+<circle cx="284.8" cy="-1256.6" r="3.6" class="pt ptx hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
 <circle cx="284.8" cy="296.2" r="3.6" class="pt ptx hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;SEED-ONLY replicate: the noise floor"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
@@ -1331,7 +1341,7 @@ worst screened</title></circle>
 <text x="563.4" y="397" class="ax am">09-11</text>
 <text x="563.4" y="413" class="axs am">4 models</text>
 <text x="637.1" y="397" class="ax am">09-12</text>
-<text x="637.1" y="413" class="axs am">1 model</text>
+<text x="637.1" y="413" class="axs am">2 models</text>
 <text x="379" y="432" class="axl am">the day the model was trained</text>
 <text x="17" y="203" class="axl am" transform="rotate(-90 17 203)">validation cross-entropy (log)</text>
 <polyline class="ln ln5" points="84.0,252.3 157.8,252.3 157.8,252.3 231.5,252.3 231.5,348.2 305.2,348.2 305.2,357.9 379.0,357.9 379.0,357.9 452.8,357.9 452.8,357.9 526.5,357.9 526.5,357.9 600.2,357.9 600.2,357.9 674.0,357.9"/>
@@ -1552,11 +1562,16 @@ trained 2026-09-11
 encoder v2 | width 2048 | lr 3e-4 | 144k clusters
 val_ce 0.62314
 widest arm; worst offline of the four, 14.7x the weights of h256</title></circle>
-<circle cx="637.1" cy="303.3" r="4.2" class="pt pt1 hit" tabindex="0" data-t="volNEW-176k  (02510c50)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 176k clusters&#10;val_ce 0.62703&#10;144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer"><title>volNEW-176k  (02510c50)
+<circle cx="632.6" cy="303.3" r="4.2" class="pt pt1 hit" tabindex="0" data-t="volNEW-176k  (02510c50)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 176k clusters&#10;val_ce 0.62703&#10;144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer"><title>volNEW-176k  (02510c50)
 trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
+<circle cx="641.6" cy="-1317.9" r="4.2" class="pt pt1 hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
 <text x="268.4" y="363.6" class="slope s2 am">&#8722;0.0365 in one day</text>
 <line x1="360.1" y1="357.9" x2="668.0" y2="357.9" class="ref"/>
 <text x="668.0" y="349.9" class="reft" text-anchor="end">programme best, unbeaten since 08 Sep</text>
@@ -1564,7 +1579,7 @@ val_ce 0.62703
 <circle cx="702" cy="64" r="4.2" class="pt pt1"/><text x="715" y="68" class="lg">one model</text>
 <circle cx="702" cy="86" r="6" class="pt pt2"/><text x="715" y="90" class="lg">the deployed leader</text>
 <line x1="696" y1="106" x2="709" y2="106" class="ln ln5"/><text x="715" y="110" class="lg">best so far</text>
-<text x="696" y="142" class="lgs">11 of the 41 models</text>
+<text x="696" y="142" class="lgs">12 of the 42 models</text>
 <text x="696" y="158" class="lgs">were trained AFTER</text>
 <text x="696" y="174" class="lgs">the best was set.</text>
 <text x="696" y="190" class="lgs">None beat it.</text>
@@ -1579,17 +1594,17 @@ val_ce 0.62703
 <tr><td>09 Sep</td><td class="n">2</td><td class="n">0.65323<br><span class="small">arm J</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>the I/J teacher contrast</td></tr>
 <tr><td>10 Sep</td><td class="n">4</td><td class="n">0.61912<br><span class="small">volVOL-144k</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>the data-volume arms, 96k to 144k</td></tr>
 <tr><td>11 Sep</td><td class="n">4</td><td class="n">0.61525<br><span class="small">cap144-h256</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>the width sweep at maximum data (h256, h1024, h2048) and Codex&#8217;s encoder v3</td></tr>
-<tr><td>12 Sep</td><td class="n">1</td><td class="n">0.62703<br><span class="small">volNEW-176k</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>volNEW-176k and the search-mean arm</td></tr>
+<tr><td>12 Sep</td><td class="n">2</td><td class="n">0.62703<br><span class="small">volNEW-176k</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>volNEW-176k and the search-mean arm</td></tr>
 </tbody>
   </table></div>
-  <p class="cap">The best validation loss has not moved since 08 September. 11 charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
+  <p class="cap">The best validation loss has not moved since 08 September. 12 charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
   The day that mattered was 07 September at &minus;0.0365, more than every day since combined,
   and it was the encoder change and the learning-rate sweep, not more data.</p>
 </section>
 
 <section>
   <h2 class="sec">4 &middot; Effect against the leader, by training day</h2>
-  <p class="cap">The same question on the only measurement that matters. 14 charted models have such a number; 28 do not. Above the line beats the leader.</p>
+  <p class="cap">The same question on the only measurement that matters. 14 charted models have such a number; 29 do not. Above the line beats the leader.</p>
   <div class="figure"><svg viewBox="0 0 880 430">
 <line x1="84" y1="338.0" x2="674" y2="338.0" class="grid"/>
 <text x="73" y="342.0" class="ax ar">-0.12</text>
@@ -1752,7 +1767,7 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
 <text x="696" y="170" class="lgs">asked with a better</text>
 <text x="696" y="186" class="lgs">instrument.</text>
 <text x="696" y="202" class="lgs"></text>
-<text x="696" y="218" class="lgs">28 of 42 models have</text>
+<text x="696" y="218" class="lgs">29 of 43 models have</text>
 <text x="696" y="234" class="lgs">no point here at all.</text>
 </svg></div>
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
@@ -1821,6 +1836,7 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
 <tr class=""><td><b>cap144-h1024</b><br><span class="mono null">34e6fa0f</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">1024</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62043</td><td class="n">&mdash;</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">above the h512 control: the pre-registered falsifier did not fire</td></tr>
 <tr class=""><td><b>cap144-h2048</b><br><span class="mono null">e2436f98</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">2048</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62314</td><td class="n">&mdash;</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">widest arm; worst offline of the four, 14.7x the weights of h256</td></tr>
 <tr class=""><td><b>volNEW-176k</b><br><span class="mono null">02510c50</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">176k</td><td class="n">25,388,708</td><td class="n">0.62703</td><td class="n">0.0348</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</td></tr>
+<tr class=""><td><b>smean-96k</b><br><span class="mono null">8a6d5260</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">1.67515</td><td class="n">0.0353</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</td></tr>
 <tr class=""><td><b>sweep base seed 2</b><br><span class="mono null">d1858d5b</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62300</td><td class="n">0.0400</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">running</td><td class="null">SEED-ONLY replicate: the noise floor</td></tr>
 <tr class=""><td><b>sweep aux weight 0.3</b><br><span class="mono null">52d3f243</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62180</td><td class="n">0.0429</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">queued</td><td class="null"></td></tr>
 <tr class=""><td><b>sweep weight decay 1e-3</b><br><span class="mono null">b0f196e4</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62260</td><td class="n">0.0478</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">queued</td><td class="null"></td></tr>

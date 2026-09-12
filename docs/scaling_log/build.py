@@ -92,7 +92,7 @@ def check_data(rows, table_only, series):
             errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
         if r["enc"] not in ("v1", "v2", "v3", "v4"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
-        if r["ce"] and not re.fullmatch(r"0\.\d{4,5}", r["ce"]):
+        if r["ce"] and not re.fullmatch(r"\d\.\d{4,5}", r["ce"]):  # a soft-target head can sit above 1.0
             errs.append(f"{r['ck']}: val_ce {r['ce']!r}")
         for key in ("mc", "w32", "ten"):
             if r[key]:

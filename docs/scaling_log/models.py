@@ -51,6 +51,8 @@ M = [
  "","","QUEUED","widest arm; worst offline of the four, 14.7x the weights of h256"),
 ("volNEW-176k","02510c50","2026-09-12","v2",512,"3e-4","176k","25,388,708","0.62703","0.0348",
  "","","QUEUED","144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer"),
+("smean-96k","8a6d5260","2026-09-12","v2",512,"3e-4","96k","14,077,520","1.67515","0.0353",
+ "","","QUEUED","#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"),
 ("sweep base seed 2","d1858d5b","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62300","0.0400",
  "","GAP","RUNNING","SEED-ONLY replicate: the noise floor"),
 ("sweep aux weight 0.3","52d3f243","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62180","0.0429",

@@ -49,6 +49,8 @@ M = [
  "","","QUEUED","above the h512 control: the pre-registered falsifier did not fire"),
 ("cap144-h2048","e2436f98","2026-09-11","v2",2048,"3e-4","144k","20,939,532","0.62314","",
  "","","QUEUED","widest arm; worst offline of the four, 14.7x the weights of h256"),
+("volNEW-176k","02510c50","2026-09-12","v2",512,"3e-4","176k","25,388,708","0.62703","0.0348",
+ "","","QUEUED","144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer"),
 ("sweep base seed 2","d1858d5b","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62300","0.0400",
  "","GAP","RUNNING","SEED-ONLY replicate: the noise floor"),
 ("sweep aux weight 0.3","52d3f243","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62180","0.0429",

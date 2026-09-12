@@ -4,7 +4,7 @@ if "M" not in globals():          # build.py may inject M / TABLE_ONLY / SERIES 
 M=[m for m in M if m[1] not in TABLE_ONLY]
 PAR={256:272716,512:610764,1024:1483468,2048:4015308}
 REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
-     "128k":18764912,"144k":20939532}
+     "128k":18764912,"144k":20939532,"176k":25388708}
 R=[]
 for (n,ck,tr,enc,w,lr,cl,rec,ce,rg,mc,w32,ten,note) in M:
     r=int(rec.replace(",","")) if rec and rec[0].isdigit() else REC.get(cl)

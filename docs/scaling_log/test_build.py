@@ -63,7 +63,9 @@ def test_adding_a_model_updates_every_count(data):
     assert c["without_leader"] == c0["without_leader"] + 1 and c["since_best"] == c0["since_best"] + 1
     assert f"{c['rows']} checkpoints; {c['models']} on the charts, {c['with_ce']} of them" in page
     assert f"{c['without_leader']} of {c['models']}</b><span>no search number yet" in page
-    assert re.search(r"<td>12 Sep</td><td class=\"n\">1</td>", page)
+    base, _ = _render(rows, table_only, series)
+    count = lambda p: int((re.search(r"<td>12 Sep</td><td class=\"n\">(\d+)</td>", p) or [None, 0])[1])
+    assert count(page) == count(base) + 1  # the by-day table gained the row on its day
 
 
 def test_a_positive_ten_window_interval_changes_the_headline_and_the_kpi(data):

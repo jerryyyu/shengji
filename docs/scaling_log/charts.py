@@ -354,12 +354,28 @@ _since=[d for d in _ce if d["tr"]>_bst["tr"]]
 _effs=[(d,eff(d)) for d in SCR if eff(d) and eff(d)[3]!="ref"]
 _above=sum(1 for d,(m,lo,hi,inst) in _effs if lo>0)
 _ten=[(d,eff(d)) for d in R if d["ten"] and eff(d) and eff(d)[3]=="ten"]
-_ten_cross=sum(1 for d,(m,lo,hi,inst) in _ten if lo<0<hi)
+_ten_cross=sum(1 for d,(m,lo,hi,inst) in _ten if lo<=0<=hi)   # touching zero is not resolving
 _lead=BYCK["3cd27716"]; _lead_mc=parse(_lead["mc"])[0]
 _paired=[d for d in R if d["mc"] and d["w32"] and d["w32"] not in ("REF","GAP") and d["ck"]!="3cd27716"]
 _paired_exact=sum(1 for d in _paired if abs(parse(d["w32"].replace(" SUPERSEDED",""))[0]-(parse(d["mc"])[0]-_lead_mc))<5e-5)
 _b2=series("base_v2","rec"); LAST_DOUBLING=_b2[-1][1]-[p for p in _b2 if abs(p[0]*2-_b2[-1][0])<0.05*_b2[-1][0]][0][1]
+# result-dependent prose: corpus coverage of leader comparisons, the 144k width line
+_ld_rows=[d for d,e in _effs]
+_sizes_all=sorted({d["cl"] for d in R if d["ce"] is not None}, key=lambda c: REC.get(c, 0))
+_sizes_ld=sorted({d["cl"] for d in _ld_rows}, key=lambda c: REC.get(c, 0))
+_min_ld_rec=min(d["rec"] for d in _ld_rows)
+_w144=[BYCK[c] for c in SERIES["width_3e4_144k"]]; _w144.sort(key=lambda d:d["par"])
+_w144_mono=all(a["ce"]<b["ce"] for a,b in zip(_w144,_w144[1:]))
+_w144_by={d["w"]:d for d in _w144}
+_w144_gap=_w144_by[512]["ce"]-_w144_by[256]["ce"] if 512 in _w144_by and 256 in _w144_by else None
+_w144_worst=max(_w144,key=lambda d:d["ce"]); _w144_best=min(_w144,key=lambda d:d["ce"])
+_w144_span=_w144_worst["ce"]-_w144_best["ce"]
+_lr14=[BYCK[c] for c in SERIES["width_lr1e4_96k"]]; _lr14_best=min(_lr14,key=lambda d:d["ce"])
 open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
+    sizes_all=len(_sizes_all), sizes_with_leader=len(_sizes_ld), min_leader_records=_min_ld_rec,
+    w144_monotone=_w144_mono, w144_gap_256_vs_512=_w144_gap, w144_worst_w=_w144_worst["w"], w144_best_w=_w144_best["w"],
+    w144_worst_over_best_params=_w144_worst["par"]/_w144_best["par"], w144_256_param_frac=PAR[256]/PAR[512],
+    w144_span=_w144_span, w144_n=len(_w144), w144_rec=_w144[0]["rec"], lr14_best_w=_lr14_best["w"],
     models=len(R), with_ce=NCE, beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
     since_best=len(_since), best_day=_bst["tr"], best_ce=_bst["ce"],
     above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross,

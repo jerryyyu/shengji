@@ -76,6 +76,8 @@ def test_a_positive_ten_window_interval_changes_the_headline_and_the_kpi(data):
     assert f"{build.word(c['ten_cross'])} cross zero and one resolves" in page
     assert "all " + build.word(c["ten_total"]) + " cross zero" not in page
     assert f"{c['above_leader']} of {c['with_leader']}</b><span>models above the leader" in page
+    # the whole page, not only the KPI: the section-1b sentence follows the same rows
+    assert "None beats the current one." not in page and "One beats the current one." in page
 
 
 def test_chart_series_follow_checkpoint_identity_not_typed_numbers(data):
@@ -87,6 +89,29 @@ def test_chart_series_follow_checkpoint_identity_not_typed_numbers(data):
     y_of = lambda p: [float(v) for v in re.findall(r'<polyline class="ln ln5" points="([^"]+)"', p)[0].split()[-1].split(",")][1]
     base, _ = _render(rows, table_only, series)
     assert y_of(page) < y_of(base)  # a higher val_ce draws the last point (h2048) higher up the SVG (smaller y)
+    assert "smaller is monotonically better" in page  # still monotone: h2048 only got worse
+
+
+def test_breaking_the_width_ordering_rewrites_the_width_caption(data):
+    rows, table_only, series = data
+    rows2 = copy.deepcopy(rows)
+    next(x for x in rows2 if x["ck"] == "fc73c0f4")["ce"] = "0.63000"  # h256 now the worst at 144k
+    page, c = _render(rows2, table_only, series)
+    assert not c["w144_monotone"]
+    assert "smaller is monotonically better" not in page
+    assert "the ordering is not monotone in width: h512 is best and h256 is worst" in page
+    assert "The gold line runs opposite to the red." not in page
+
+
+def test_a_leader_number_at_a_small_corpus_rewrites_the_coverage_sentence(data):
+    rows, table_only, series = data
+    base, c0 = _render(rows, table_only, series)
+    assert f"nothing below {c0['min_leader_records'] / 1e6:.1f}M records has one" in base
+    rows2 = copy.deepcopy(rows)
+    next(x for x in rows2 if x["ck"] == "bd973b53")["w32"] = "-0.0100 [-0.0300, +0.0100]"  # run A, 8k
+    page, c = _render(rows2, table_only, series)
+    assert c["sizes_with_leader"] == c0["sizes_with_leader"] + 1 and c["min_leader_records"] == 1168124
+    assert "nothing below 1.2M records has one" in page
 
 
 @pytest.mark.parametrize("field,value,msg", [

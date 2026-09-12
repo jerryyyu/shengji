@@ -212,11 +212,36 @@ def render(rows=None, table_only=None, series=None):
                       f"{'resolves' if n_ten - cross == 1 else 'resolve'}")
     paired_clause = (f"all {word(c['paired_one'])} paired arms" if c["paired_exact"] == c["paired_one"]
                      else f"{c['paired_exact']} of the {c['paired_one']} paired arms")
+    above = c["above_leader"]
+    above_clause = ("None beats the current one." if above == 0 else
+                    f"{word(above).capitalize()} {'beats' if above == 1 else 'beat'} the current one.")
+    corpus_clause = (f"Only {word(c['sizes_with_leader'])} of {word(c['sizes_all'])} corpus sizes have any "
+                     f"leader comparison, and nothing below {c['min_leader_records'] / 1e6:.1f}M records has one.")
+    w = c
+    if w["w144_monotone"]:
+        w144_clause = (f"At maximum data and the deployed rate, smaller is monotonically better: "
+                       f"h256 beats the deployed h512 by {w['w144_gap_256_vs_512']:.4f} on "
+                       f"{w['w144_256_param_frac'] * 100:.0f}% of the weights, and h{w['w144_worst_w']} is worst on "
+                       f"{w['w144_worst_over_best_params']:.1f}&times; the weights.")
+    else:
+        w144_clause = (f"At maximum data and the deployed rate the ordering is not monotone in width: "
+                       f"h{w['w144_best_w']} is best and h{w['w144_worst_w']} is worst, "
+                       f"{w['w144_span']:.4f} apart.")
+    # the lr 1e-4 sweep (red) has its best at h1024; "opposite" only if the 144k line falls with width
+    gold_vs_red = ("The gold line runs opposite to the red. " if w["w144_monotone"] and w["lr14_best_w"] > 256 else "")
+    cell_vs_width = ("Second-order hyperparameters are worth nearly as much as every width change at maximum data."
+                     if 0.5 * w["w144_span"] <= w["cell_spread"] <= 1.5 * w["w144_span"] else
+                     f"That spread is {w['cell_spread'] / w['w144_span']:.1f}&times; the whole 144k width sweep.")
+    ratio = abs(w["w144_span"] / w["last_doubling"]) if w["last_doubling"] else float("inf")
+    span_vs_doubling = ("twice" if 1.75 <= ratio <= 2.25 else ("about equal to" if 0.8 <= ratio <= 1.25 else f"{ratio:.1f}&times;"))
     subs = {
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
         "N_TABLE_ONLY": word(len(table_only)),
         "N_LEADER": c["with_leader"], "N_NOLEADER": c["without_leader"],
-        "N_ABOVE_LEADER": c["above_leader"],
+        "N_ABOVE_LEADER": c["above_leader"], "ABOVE_CLAUSE": above_clause,
+        "CORPUS_LEADER_CLAUSE": corpus_clause, "W144_CLAUSE": w144_clause, "GOLD_VS_RED": gold_vs_red,
+        "CELL_VS_WIDTH": cell_vs_width, "SPAN_VS_DOUBLING": span_vs_doubling,
+        "W144_N_WORD": word(c["w144_n"]), "W144_REC": f"{c['w144_rec'] / 1e6:.1f}M", "W144_SPAN": f"{c['w144_span']:.4f}",
         "N_SINCE_BEST": c["since_best"], "N_BEAT_MC": c["beat_mc"],
         "N_TEN_WORD": word(n_ten), "TEN_CROSS_CLAUSE": ten_clause,
         "PAIRED_CLAUSE": paired_clause,

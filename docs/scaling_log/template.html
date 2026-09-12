@@ -204,8 +204,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   (width 512, lr 3e&#8209;4), so vertical scatter at one x is the hyperparameter sweep at that
   corpus size.</p>
   <div class="figure">{{SVG1}}</div>
-  <p class="cap">The four points at 20.9M records are the 144k width sweep, spanning 0.0079 &mdash;
-  twice what the last doubling of data bought. Arm I and arm J near 2M come from separate
+  <p class="cap">The {{W144_N_WORD}} points at {{W144_REC}} records are the 144k width sweep, spanning {{W144_SPAN}} &mdash;
+  {{SPAN_VS_DOUBLING}} what the last doubling of data bought. Arm I and arm J near 2M come from separate
   corpora with different teachers and land on the early curve.</p>
 </section>
 
@@ -214,8 +214,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <p class="cap">Gold is the margin over MC&#8209;LCB, the bot we shipped before the shortlist.
   Red and green below are the same checkpoints against the current leader.</p>
   <div class="figure">{{SVG2}}</div>
-  <p class="cap">{{N_BEAT_MC}} models beat the old bot. None beats the current one. Only three of
-  seven corpus sizes have any leader comparison, and nothing below 14M records has one.</p>
+  <p class="cap">{{N_BEAT_MC}} models beat the old bot. {{ABOVE_CLAUSE}} {{CORPUS_LEADER_CLAUSE}}</p>
 </section>
 
 <section>
@@ -224,12 +223,9 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   lr 1e&#8209;4 sweep, the deployed 3e&#8209;4 at 96k, the 72k corpus, and in gold our maximum
   144k corpus.</p>
   <div class="figure">{{SVG3}}</div>
-  <p class="cap">The gold line runs opposite to the red. At maximum data and the deployed rate,
-  smaller is monotonically better: h256 beats the deployed h512 by 0.0039 on 45% of the weights,
-  and h2048 is worst on 14.7&times; the weights. The red bar on the left is {{N_CELL_WORD}} models in one
+  <p class="cap">{{GOLD_VS_RED}}{{W144_CLAUSE}} The red bar on the left is {{N_CELL_WORD}} models in one
   cell &mdash; 72k, width 512, lr 3e&#8209;4 &mdash; differing only in dropout, weight decay and
-  auxiliary weight, spanning {{CELL_SPREAD}}. Second-order hyperparameters are worth nearly as much as
-  every width change at maximum data.</p>
+  auxiliary weight, spanning {{CELL_SPREAD}}. {{CELL_VS_WIDTH}}</p>
 </section>
 
 <section>

@@ -178,8 +178,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div><b>&minus;0.0036</b><span>last full data doubling</span></div>
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
-  <div><b>0 of 14</b><span>models above the leader</span></div>
-  <div><b>29 of 43</b><span>no search number yet</span></div>
+  <div><b>0 of 15</b><span>models above the leader</span></div>
+  <div><b>28 of 43</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -372,11 +372,12 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 1.67515
 #340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
-<circle cx="531.0" cy="337.8" r="4.4" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;SEED-ONLY replicate: the noise floor"><title>sweep base seed 2  (d1858d5b)
+<circle cx="531.0" cy="337.8" r="4.4" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62300
-SEED-ONLY replicate: the noise floor</title></circle>
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
 <circle cx="531.0" cy="341.3" r="4.4" class="pt pt2 hit" tabindex="0" data-t="sweep aux weight 0.3  (52d3f243)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62180"><title>sweep aux weight 0.3  (52d3f243)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
@@ -682,19 +683,28 @@ val_ce 0.60830
 vs MC-LCB  +0.0500 [+0.004, +0.095]
 vs leader  -0.0760 [-0.125, -0.028]
 worst screened</title></circle>
-<line x1="519.0" y1="252.6" x2="519.0" y2="217.7" class="ci ci2"/>
-<line x1="514.0" y1="252.6" x2="524.0" y2="252.6" class="ci ci2"/>
-<line x1="514.0" y1="217.7" x2="524.0" y2="217.7" class="ci ci2"/>
-<circle cx="519.0" cy="235.1" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep hidden 1024  (6e40a18e)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 1024 | lr 3e-4 | 72k clusters&#10;val_ce 0.62320&#10;ten windows  +0.0095 [-0.0063, +0.0253]&#10;scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"><title>sweep hidden 1024  (6e40a18e)
+<line x1="511.5" y1="252.6" x2="511.5" y2="217.7" class="ci ci2"/>
+<line x1="506.5" y1="252.6" x2="516.5" y2="252.6" class="ci ci2"/>
+<line x1="506.5" y1="217.7" x2="516.5" y2="217.7" class="ci ci2"/>
+<circle cx="511.5" cy="235.1" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep hidden 1024  (6e40a18e)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 1024 | lr 3e-4 | 72k clusters&#10;val_ce 0.62320&#10;ten windows  +0.0095 [-0.0063, +0.0253]&#10;scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"><title>sweep hidden 1024  (6e40a18e)
 trained 2026-09-07 (approx)
 encoder v2 | width 1024 | lr 3e-4 | 72k clusters
 val_ce 0.62320
 ten windows  +0.0095 [-0.0063, +0.0253]
 scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null</title></circle>
-<line x1="534.0" y1="261.2" x2="534.0" y2="226.0" class="ci ci2"/>
-<line x1="529.0" y1="261.2" x2="539.0" y2="261.2" class="ci ci2"/>
-<line x1="529.0" y1="226.0" x2="539.0" y2="226.0" class="ci ci2"/>
-<circle cx="534.0" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
+<line x1="526.5" y1="259.6" x2="526.5" y2="224.0" class="ci ci2"/>
+<line x1="521.5" y1="259.6" x2="531.5" y2="259.6" class="ci ci2"/>
+<line x1="521.5" y1="224.0" x2="531.5" y2="224.0" class="ci ci2"/>
+<circle cx="526.5" cy="241.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
+trained 2026-09-07 (approx)
+encoder v2 | width 512 | lr 3e-4 | 72k clusters
+val_ce 0.62300
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
+<line x1="541.5" y1="261.2" x2="541.5" y2="226.0" class="ci ci2"/>
+<line x1="536.5" y1="261.2" x2="546.5" y2="261.2" class="ci ci2"/>
+<line x1="536.5" y1="226.0" x2="546.5" y2="226.0" class="ci ci2"/>
+<circle cx="541.5" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62270
@@ -925,11 +935,12 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 1.67515
 #340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
-<circle cx="284.8" cy="296.2" r="3.6" class="pt ptx hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;SEED-ONLY replicate: the noise floor"><title>sweep base seed 2  (d1858d5b)
+<circle cx="284.8" cy="296.2" r="3.6" class="pt ptx hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62300
-SEED-ONLY replicate: the noise floor</title></circle>
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
 <circle cx="284.8" cy="299.2" r="3.6" class="pt ptx hit" tabindex="0" data-t="sweep aux weight 0.3  (52d3f243)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62180"><title>sweep aux weight 0.3  (52d3f243)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
@@ -1167,10 +1178,10 @@ val_ce 0.60830
 vs MC-LCB  +0.0500 [+0.004, +0.095]
 vs leader  -0.0760 [-0.125, -0.028]
 worst screened</title></circle>
-<line x1="237.7" y1="258.8" x2="237.7" y2="224.4" class="ci ci2"/>
-<line x1="232.7" y1="258.8" x2="242.7" y2="258.8" class="ci ci2"/>
-<line x1="232.7" y1="224.4" x2="242.7" y2="224.4" class="ci ci2"/>
-<circle cx="237.7" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
+<line x1="230.2" y1="258.8" x2="230.2" y2="224.4" class="ci ci2"/>
+<line x1="225.2" y1="258.8" x2="235.2" y2="258.8" class="ci ci2"/>
+<line x1="225.2" y1="224.4" x2="235.2" y2="224.4" class="ci ci2"/>
+<circle cx="230.2" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
 trained 2026-09-07
 encoder v2 | width 512 | lr 1e-4 | 96k clusters
 val_ce 0.61058
@@ -1178,54 +1189,63 @@ vs MC-LCB  +0.0673 [+0.024, +0.109]
 vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED
 ten windows  +0.0037 [-0.0119, +0.0192]
 one window said resolves worse; ten windows say NULL</title></circle>
-<line x1="252.7" y1="260.0" x2="252.7" y2="224.6" class="ci ci2"/>
-<line x1="247.7" y1="260.0" x2="257.7" y2="260.0" class="ci ci2"/>
-<line x1="247.7" y1="224.6" x2="257.7" y2="224.6" class="ci ci2"/>
-<circle cx="252.7" cy="242.3" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-144k  (c6d48d57)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 144k clusters&#10;val_ce 0.61912&#10;ten windows  +0.0030 [-0.0130, +0.0190]&#10;every distinct deal we own"><title>volVOL-144k  (c6d48d57)
+<line x1="245.2" y1="259.6" x2="245.2" y2="224.0" class="ci ci2"/>
+<line x1="240.2" y1="259.6" x2="250.2" y2="259.6" class="ci ci2"/>
+<line x1="240.2" y1="224.0" x2="250.2" y2="224.0" class="ci ci2"/>
+<circle cx="245.2" cy="241.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
+trained 2026-09-07 (approx)
+encoder v2 | width 512 | lr 3e-4 | 72k clusters
+val_ce 0.62300
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
+<line x1="260.2" y1="260.0" x2="260.2" y2="224.6" class="ci ci2"/>
+<line x1="255.2" y1="260.0" x2="265.2" y2="260.0" class="ci ci2"/>
+<line x1="255.2" y1="224.6" x2="265.2" y2="224.6" class="ci ci2"/>
+<circle cx="260.2" cy="242.3" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-144k  (c6d48d57)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 144k clusters&#10;val_ce 0.61912&#10;ten windows  +0.0030 [-0.0130, +0.0190]&#10;every distinct deal we own"><title>volVOL-144k  (c6d48d57)
 trained 2026-09-10
 encoder v2 | width 512 | lr 3e-4 | 144k clusters
 val_ce 0.61912
 ten windows  +0.0030 [-0.0130, +0.0190]
 every distinct deal we own</title></circle>
-<line x1="267.7" y1="261.2" x2="267.7" y2="226.0" class="ci ci2"/>
-<line x1="262.7" y1="261.2" x2="272.7" y2="261.2" class="ci ci2"/>
-<line x1="262.7" y1="226.0" x2="272.7" y2="226.0" class="ci ci2"/>
-<circle cx="267.7" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
+<line x1="275.2" y1="261.2" x2="275.2" y2="226.0" class="ci ci2"/>
+<line x1="270.2" y1="261.2" x2="280.2" y2="261.2" class="ci ci2"/>
+<line x1="270.2" y1="226.0" x2="280.2" y2="226.0" class="ci ci2"/>
+<circle cx="275.2" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62270
 vs MC-LCB  +0.0990 [+0.054, +0.146]
 ten windows  +0.0018 [-0.0141, +0.0178]
 260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued</title></circle>
-<circle cx="282.7" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
+<circle cx="290.2" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
 trained 2026-09-07
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
 vs MC-LCB  +0.1260 [+0.081, +0.172]
 LEADER, deployed</title></circle>
-<line x1="297.7" y1="274.1" x2="297.7" y2="239.6" class="ci ci2"/>
-<line x1="292.7" y1="274.1" x2="302.7" y2="274.1" class="ci ci2"/>
-<line x1="292.7" y1="239.6" x2="302.7" y2="239.6" class="ci ci2"/>
-<circle cx="297.7" cy="256.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-128k  (81f0b843)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;ten windows  -0.0101 [-0.0257, +0.0055]&#10;aux_weight 1.0 -- NOT the same ckpt as A-H"><title>volVOL-128k  (81f0b843)
+<line x1="305.2" y1="274.1" x2="305.2" y2="239.6" class="ci ci2"/>
+<line x1="300.2" y1="274.1" x2="310.2" y2="274.1" class="ci ci2"/>
+<line x1="300.2" y1="239.6" x2="310.2" y2="239.6" class="ci ci2"/>
+<circle cx="305.2" cy="256.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-128k  (81f0b843)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;ten windows  -0.0101 [-0.0257, +0.0055]&#10;aux_weight 1.0 -- NOT the same ckpt as A-H"><title>volVOL-128k  (81f0b843)
 trained 2026-09-10
 encoder v2 | width 512 | lr 3e-4 | 128k clusters
 val_ce 0.62313
 ten windows  -0.0101 [-0.0257, +0.0055]
 aux_weight 1.0 -- NOT the same ckpt as A-H</title></circle>
-<line x1="312.7" y1="344.1" x2="312.7" y2="232.4" class="ci ci1"/>
-<line x1="307.7" y1="344.1" x2="317.7" y2="344.1" class="ci ci1"/>
-<line x1="307.7" y1="232.4" x2="317.7" y2="232.4" class="ci ci1"/>
-<circle cx="312.7" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
+<line x1="320.2" y1="344.1" x2="320.2" y2="232.4" class="ci ci1"/>
+<line x1="315.2" y1="344.1" x2="325.2" y2="344.1" class="ci ci1"/>
+<line x1="315.2" y1="232.4" x2="325.2" y2="232.4" class="ci ci1"/>
+<circle cx="320.2" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
 trained 2026-09-07
 encoder v1 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.65944
 vs MC-LCB  +0.0875 [+0.042, +0.132]
 vs leader  -0.0385 [-0.089, +0.012]
 260-deal: +0.0462</title></circle>
-<line x1="327.7" y1="362.9" x2="327.7" y2="254.5" class="ci ci1"/>
-<line x1="322.7" y1="362.9" x2="332.7" y2="362.9" class="ci ci1"/>
-<line x1="322.7" y1="254.5" x2="332.7" y2="254.5" class="ci ci1"/>
-<circle cx="327.7" cy="307.4" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2+G+H  (fd2e5335)&#10;trained 2026-09-08&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;vs MC-LCB  +0.0702 [+0.024, +0.116]&#10;vs leader  -0.0558 [-0.106, -0.008]&#10;aux_weight 0.1"><title>A+C+D+E+F2+G+H  (fd2e5335)
+<line x1="335.2" y1="362.9" x2="335.2" y2="254.5" class="ci ci1"/>
+<line x1="330.2" y1="362.9" x2="340.2" y2="362.9" class="ci ci1"/>
+<line x1="330.2" y1="254.5" x2="340.2" y2="254.5" class="ci ci1"/>
+<circle cx="335.2" cy="307.4" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2+G+H  (fd2e5335)&#10;trained 2026-09-08&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;vs MC-LCB  +0.0702 [+0.024, +0.116]&#10;vs leader  -0.0558 [-0.106, -0.008]&#10;aux_weight 0.1"><title>A+C+D+E+F2+G+H  (fd2e5335)
 trained 2026-09-08
 encoder v2 | width 512 | lr 3e-4 | 128k clusters
 val_ce 0.62313
@@ -1456,11 +1476,12 @@ val_ce 0.62270
 vs MC-LCB  +0.0990 [+0.054, +0.146]
 ten windows  +0.0018 [-0.0141, +0.0178]
 260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued</title></circle>
-<circle cx="286.4" cy="313.9" r="4.2" class="pt pt1 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;SEED-ONLY replicate: the noise floor"><title>sweep base seed 2  (d1858d5b)
+<circle cx="286.4" cy="313.9" r="4.2" class="pt pt1 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62300
-SEED-ONLY replicate: the noise floor</title></circle>
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
 <circle cx="295.4" cy="313.4" r="4.2" class="pt pt1 hit" tabindex="0" data-t="sweep hidden 1024  (6e40a18e)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 1024 | lr 3e-4 | 72k clusters&#10;val_ce 0.62320&#10;ten windows  +0.0095 [-0.0063, +0.0253]&#10;scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"><title>sweep hidden 1024  (6e40a18e)
 trained 2026-09-07 (approx)
 encoder v2 | width 1024 | lr 3e-4 | 72k clusters
@@ -1604,7 +1625,7 @@ val_ce 1.67515
 
 <section>
   <h2 class="sec">4 &middot; Effect against the leader, by training day</h2>
-  <p class="cap">The same question on the only measurement that matters. 14 charted models have such a number; 29 do not. Above the line beats the leader.</p>
+  <p class="cap">The same question on the only measurement that matters. 15 charted models have such a number; 28 do not. Above the line beats the leader.</p>
   <div class="figure"><svg viewBox="0 0 880 430">
 <line x1="84" y1="338.0" x2="674" y2="338.0" class="grid"/>
 <text x="73" y="342.0" class="ax ar">-0.12</text>
@@ -1623,7 +1644,7 @@ val_ce 1.67515
 <text x="194.6" y="387" class="ax am">09-06</text>
 <text x="194.6" y="403" class="axs am">none vs leader</text>
 <text x="268.4" y="387" class="ax am">09-07</text>
-<text x="268.4" y="403" class="axs am">6 vs leader</text>
+<text x="268.4" y="403" class="axs am">7 vs leader</text>
 <text x="342.1" y="387" class="ax am">09-08</text>
 <text x="342.1" y="403" class="axs am">3 vs leader</text>
 <text x="415.9" y="387" class="ax am">09-09</text>
@@ -1636,19 +1657,19 @@ val_ce 1.67515
 <text x="637.1" y="403" class="axs am">none vs leader</text>
 <text x="379" y="422" class="axl am">the day the model was trained</text>
 <text x="17" y="198" class="axl am" transform="rotate(-90 17 198)">effect vs the leader</text>
-<line x1="203.4" y1="125.8" x2="203.4" y2="66.8" class="ci ci2"/>
-<line x1="197.4" y1="125.8" x2="209.4" y2="125.8" class="ci ci2"/>
-<line x1="197.4" y1="66.8" x2="209.4" y2="66.8" class="ci ci2"/>
-<circle cx="203.4" cy="96.3" r="5" class="pt pt2 hit" tabindex="0" data-t="sweep hidden 1024  (6e40a18e)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 1024 | lr 3e-4 | 72k clusters&#10;val_ce 0.62320&#10;ten windows  +0.0095 [-0.0063, +0.0253]&#10;scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"><title>sweep hidden 1024  (6e40a18e)
+<line x1="190.4" y1="125.8" x2="190.4" y2="66.8" class="ci ci2"/>
+<line x1="184.4" y1="125.8" x2="196.4" y2="125.8" class="ci ci2"/>
+<line x1="184.4" y1="66.8" x2="196.4" y2="66.8" class="ci ci2"/>
+<circle cx="190.4" cy="96.3" r="5" class="pt pt2 hit" tabindex="0" data-t="sweep hidden 1024  (6e40a18e)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 1024 | lr 3e-4 | 72k clusters&#10;val_ce 0.62320&#10;ten windows  +0.0095 [-0.0063, +0.0253]&#10;scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"><title>sweep hidden 1024  (6e40a18e)
 trained 2026-09-07 (approx)
 encoder v2 | width 1024 | lr 3e-4 | 72k clusters
 val_ce 0.62320
 ten windows  +0.0095 [-0.0063, +0.0253]
 scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null</title></circle>
-<line x1="229.4" y1="136.2" x2="229.4" y2="78.2" class="ci ci2"/>
-<line x1="223.4" y1="136.2" x2="235.4" y2="136.2" class="ci ci2"/>
-<line x1="223.4" y1="78.2" x2="235.4" y2="78.2" class="ci ci2"/>
-<circle cx="229.4" cy="107.1" r="5" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
+<line x1="216.4" y1="136.2" x2="216.4" y2="78.2" class="ci ci2"/>
+<line x1="210.4" y1="136.2" x2="222.4" y2="136.2" class="ci ci2"/>
+<line x1="210.4" y1="78.2" x2="222.4" y2="78.2" class="ci ci2"/>
+<circle cx="216.4" cy="107.1" r="5" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
 trained 2026-09-07
 encoder v2 | width 512 | lr 1e-4 | 96k clusters
 val_ce 0.61058
@@ -1656,37 +1677,46 @@ vs MC-LCB  +0.0673 [+0.024, +0.109]
 vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED
 ten windows  +0.0037 [-0.0119, +0.0192]
 one window said resolves worse; ten windows say NULL</title></circle>
-<line x1="255.4" y1="140.3" x2="255.4" y2="80.8" class="ci ci2"/>
-<line x1="249.4" y1="140.3" x2="261.4" y2="140.3" class="ci ci2"/>
-<line x1="249.4" y1="80.8" x2="261.4" y2="80.8" class="ci ci2"/>
-<circle cx="255.4" cy="110.6" r="5" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
+<line x1="242.4" y1="137.5" x2="242.4" y2="77.4" class="ci ci2"/>
+<line x1="236.4" y1="137.5" x2="248.4" y2="137.5" class="ci ci2"/>
+<line x1="236.4" y1="77.4" x2="248.4" y2="77.4" class="ci ci2"/>
+<circle cx="242.4" cy="107.5" r="5" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
+trained 2026-09-07 (approx)
+encoder v2 | width 512 | lr 3e-4 | 72k clusters
+val_ce 0.62300
+ten windows  +0.0035 [-0.0126, +0.0196]
+SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
+<line x1="268.4" y1="140.3" x2="268.4" y2="80.8" class="ci ci2"/>
+<line x1="262.4" y1="140.3" x2="274.4" y2="140.3" class="ci ci2"/>
+<line x1="262.4" y1="80.8" x2="274.4" y2="80.8" class="ci ci2"/>
+<circle cx="268.4" cy="110.6" r="5" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62270
 vs MC-LCB  +0.0990 [+0.054, +0.146]
 ten windows  +0.0018 [-0.0141, +0.0178]
 260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued</title></circle>
-<circle cx="281.4" cy="114.0" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
+<circle cx="294.4" cy="114.0" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
 trained 2026-09-07
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
 vs MC-LCB  +0.1260 [+0.081, +0.172]
 LEADER, deployed</title></circle>
-<text x="281.4" y="101.0" class="lab am">leader</text>
-<line x1="307.4" y1="280.1" x2="307.4" y2="91.6" class="ci ci1"/>
-<line x1="301.4" y1="280.1" x2="313.4" y2="280.1" class="ci ci1"/>
-<line x1="301.4" y1="91.6" x2="313.4" y2="91.6" class="ci ci1"/>
-<circle cx="307.4" cy="185.9" r="5" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
+<text x="294.4" y="101.0" class="lab am">leader</text>
+<line x1="320.4" y1="280.1" x2="320.4" y2="91.6" class="ci ci1"/>
+<line x1="314.4" y1="280.1" x2="326.4" y2="280.1" class="ci ci1"/>
+<line x1="314.4" y1="91.6" x2="326.4" y2="91.6" class="ci ci1"/>
+<circle cx="320.4" cy="185.9" r="5" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
 trained 2026-09-07
 encoder v1 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.65944
 vs MC-LCB  +0.0875 [+0.042, +0.132]
 vs leader  -0.0385 [-0.089, +0.012]
 260-deal: +0.0462</title></circle>
-<line x1="333.4" y1="310.0" x2="333.4" y2="119.6" class="ci ci1"/>
-<line x1="327.4" y1="310.0" x2="339.4" y2="310.0" class="ci ci1"/>
-<line x1="327.4" y1="119.6" x2="339.4" y2="119.6" class="ci ci1"/>
-<circle cx="333.4" cy="214.4" r="5" class="pt pt3 hit" tabindex="0" data-t="width 256, lr 1e-4  (752427c3)&#10;trained 2026-09-07&#10;encoder v2 | width 256 | lr 1e-4 | 96k clusters&#10;val_ce 0.61189&#10;vs MC-LCB  +0.0721 [+0.026, +0.119]&#10;vs leader  -0.0538 [-0.105, -0.003]"><title>width 256, lr 1e-4  (752427c3)
+<line x1="346.4" y1="310.0" x2="346.4" y2="119.6" class="ci ci1"/>
+<line x1="340.4" y1="310.0" x2="352.4" y2="310.0" class="ci ci1"/>
+<line x1="340.4" y1="119.6" x2="352.4" y2="119.6" class="ci ci1"/>
+<circle cx="346.4" cy="214.4" r="5" class="pt pt3 hit" tabindex="0" data-t="width 256, lr 1e-4  (752427c3)&#10;trained 2026-09-07&#10;encoder v2 | width 256 | lr 1e-4 | 96k clusters&#10;val_ce 0.61189&#10;vs MC-LCB  +0.0721 [+0.026, +0.119]&#10;vs leader  -0.0538 [-0.105, -0.003]"><title>width 256, lr 1e-4  (752427c3)
 trained 2026-09-07
 encoder v2 | width 256 | lr 1e-4 | 96k clusters
 val_ce 0.61189
@@ -1767,13 +1797,13 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
 <text x="696" y="170" class="lgs">asked with a better</text>
 <text x="696" y="186" class="lgs">instrument.</text>
 <text x="696" y="202" class="lgs"></text>
-<text x="696" y="218" class="lgs">29 of 43 models have</text>
+<text x="696" y="218" class="lgs">28 of 43 models have</text>
 <text x="696" y="234" class="lgs">no point here at all.</text>
 </svg></div>
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
   those arms got ten windows, the earlier ones got one. The leader itself measures +0.1260 on one
-  window and +0.0288 on another from identical weights. Of the seven arms measured on ten windows,
-  all seven cross zero.</p>
+  window and +0.0288 on another from identical weights. Of the eight arms measured on ten windows,
+  all eight cross zero.</p>
 </section>
 
 <section>
@@ -1837,7 +1867,7 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
 <tr class=""><td><b>cap144-h2048</b><br><span class="mono null">e2436f98</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">2048</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62314</td><td class="n">&mdash;</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">widest arm; worst offline of the four, 14.7x the weights of h256</td></tr>
 <tr class=""><td><b>volNEW-176k</b><br><span class="mono null">02510c50</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">176k</td><td class="n">25,388,708</td><td class="n">0.62703</td><td class="n">0.0348</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</td></tr>
 <tr class=""><td><b>smean-96k</b><br><span class="mono null">8a6d5260</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">1.67515</td><td class="n">0.0353</td><td class="n null">&mdash;</td><td class="n null">&mdash;</td><td class="n null">queued</td><td class="null">#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</td></tr>
-<tr class=""><td><b>sweep base seed 2</b><br><span class="mono null">d1858d5b</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62300</td><td class="n">0.0400</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">running</td><td class="null">SEED-ONLY replicate: the noise floor</td></tr>
+<tr class=""><td><b>sweep base seed 2</b><br><span class="mono null">d1858d5b</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62300</td><td class="n">0.0400</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n pos"><b>+0.0035 [&#8209;0.0126, +0.0196]</b></td><td class="null">SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</td></tr>
 <tr class=""><td><b>sweep aux weight 0.3</b><br><span class="mono null">52d3f243</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62180</td><td class="n">0.0429</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">queued</td><td class="null"></td></tr>
 <tr class=""><td><b>sweep weight decay 1e-3</b><br><span class="mono null">b0f196e4</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62260</td><td class="n">0.0478</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">queued</td><td class="null"></td></tr>
 <tr class=""><td><b>sweep aux weight 0.1</b><br><span class="mono null">eae33f49</span></td><td class="n null">2026-09-07 <span class="pill">approx</span></td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">72k</td><td class="n">10,559,236</td><td class="n">0.62370</td><td class="n">0.0469</td><td class="n null">&mdash;</td><td class="n null">never paired</td><td class="n null">queued</td><td class="null"></td></tr>

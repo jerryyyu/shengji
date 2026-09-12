@@ -17287,3 +17287,13 @@ I wrote UTC-derived times as ET without converting. The entry's "17:30 ET" headi
 ## 2026-09-12 19:45 ET — Claude — Jerry: "Yes pri 176k model screen" — the Air lane is now phase-ordered: all 176k pairs first, then smean
 
 `air_queue_v3.sh` (lock pid 96302) replaces v2 before v2 started any window: phase 1 runs, for each of the ten seeds, the vol96k control then the vol176k arm (#360); phase 2 runs the smean96k arm (#365) on the same seeds, reusing the controls. Sealed windows are skipped (seed 13260910's control and smean windows stay). The running `vol96k-13360910` window (71%) was not interrupted. At ~58 min per window the 176k pair reaches ten seeds in ~18 h (about 13:30 ET on 09-13), smean ~10 h after that, unless a Hetzner queue reaches #360 first.
+
+## 2026-09-12 20:25 ET — Claude — PR #366 (tie-knob screen plumbing) written and repaired; #364 hold repaired (an off-scale CE was drawn nowhere); v4 path stated
+
+**Jerry, 20:0x ET:** "Help write the implementation. Also what's path for v4 to be trained and tested. Is there any training going on for mini?"
+
+**#366** (`422c4f0e`): `--report-tie-keeps-incumbent` on `cwv_shortlist_screen` and `cwv_screen_queue`; bound in `config.json`; set as an instance attribute on the ARM bot only. Codex HOLD (1204, right): a `--baseline flat-shortlist` baseline is also a shortlist bot from the same config and got the knob; gated on `side == "arm"` with Codex's exact reproduction as the witness ({'arm': True, 'baseline': False}). 26 tests. #357 is now one extra arm (knob on) against the sealed vol96k windows.
+
+**#364** (`ed08f729`): Codex HOLD (1205, right): accepting CE > 1 in the validator left the smean-96k row (1.675) at cy = −1454 in the fixed-scale CE charts, drawn nowhere while the captions claimed every CE-bearing model. Charts now draw on-scale rows (CE ≤ 0.74) and list off-scale models by name and CE in an "OFF THIS SCALE" legend on the data, width and by-day charts; the eyebrow and chart-1 caption say "on the CE scale" and name the exception; the on-scale count excludes it (41); registry row kept. Witnesses: every circle in all six SVGs inside its viewBox; the name present in SVG and prose; removing the row removes the note. 15 tests; page republished.
+
+**v4 path (told Jerry):** train the leader recipe on 96k with `--encoder-version 4` on the Mini after the depth row (first run builds the v4 cache; needs a v4 public head from `train_v0`); ten windows vs vol96k on a Torch lane; NumPy export qualification and Jerry's go only if it resolves positive. **Mini now:** depth row S (S-d4 in its candidate pass, then S-d8, S-d4-plain, S-d2).

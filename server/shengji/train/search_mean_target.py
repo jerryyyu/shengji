@@ -1,15 +1,41 @@
 """Soft level-head targets from the search's own mean (issue #340).
 
-The realised outcome is one draw with ~14 points of per-world spread; the
-search's refined mean for the played action averages 30 to 330 worlds.  Its
-scale is exactly ``40 * U + 0.2 * p`` (``mcbot._score``: level utility ``U``
-in half-integers times 40, plus a fifth of the attacker points), signed for the
-acting team.  Given the realised attacker points ``p`` the level utility is
-recovered as ``U = (sign * mean - 0.2 p) / 40``; the points term is worth at
-most one bracket and carries a fifth of the old target's noise.  ``U`` is
-generally fractional, so the target is a two-point distribution over the
-neighbouring half-integer classes, with the fractional part as the weight.
-Rows without a usable mean keep their one-hot realised target.
+What the sidecar mean IS
+------------------------
+``preference.means[played_index]`` is the search's refined value of the
+played action, signed for the acting team, in the units of ``mcbot._score``
+of the PRODUCER that generated the record.  Every corpus this project has
+generated (run A through run L) ran with ``LEVEL_OBJECTIVE = False``, where
+``_score(p) = p``: the mean is the search's expected ATTACKER POINTS over its
+rollouts (30 to 330 worlds; the report fold refines the played action's
+difference to the incumbent, not its absolute mean).  With
+``LEVEL_OBJECTIVE = True`` the mean would be ``E[40 * clip(bracket) + 0.2 p]``
+which has NO exact inverse to a level utility (the bracket is clipped at 3
+and the expectation does not commute with the step function), so the sidecar
+records the producer's flag and this module refuses such rows.
+
+What the target IS (a named surrogate, not the expected level utility)
+------------------------------------------------------------------
+The realised target is ``attacker_level_utility(p_realised)``, a step function
+of ONE draw of the attacker points.  This module trains instead on the
+**ramp utility of the search's expected points**::
+
+    ramp(p) = p / 40 - 1.5     if p >= 80
+            = p / 40 - 2.5     if 0 < p < 80
+            = -3.5             if p == 0
+
+``ramp`` agrees with ``attacker_level_utility`` at every bracket's lower
+edge (0 -> -3.5, 40 -> -1.5, 80 -> 0.5, 120 -> 1.5, 160 -> 2.5, ...), climbs
+one bracket per 40 points inside a bracket, and keeps the takeover cliff at
+80 (79 -> -0.525, 80 -> 0.5).  It is applied to the
+search's EXPECTED points, so it is ``ramp(E[p])``, not ``E[utility(p)]``: an
+action whose rollouts straddle 80 gets a target between the brackets rather
+than the mixture.  That is the surrogate's known bias; what it buys is the
+search's 30-330-world average instead of one realised draw.  Because ``ramp``
+is generally fractional, the target is a two-point distribution over the
+neighbouring half-integer classes of the head's support, with the fractional
+part as the weight.  Rows without a usable mean keep their one-hot realised
+target; both live in the same signed-level space.
 """
 from __future__ import annotations
 
@@ -19,6 +45,20 @@ from ..rl.value_afterstate import (MAX_SIGNED_LEVEL_UTILITY, MIN_SIGNED_LEVEL_UT
                                    OUTCOME_CLASSES)
 
 TARGET_KINDS = ("realised", "search-mean")
+ESTIMAND = ("ramp utility of the search's expected attacker points, ramp(E[p]); "
+            "a surrogate for, not an estimate of, the expected level utility")
+#: the only producer objective whose search mean is an expected-points mean
+PRODUCER_LEVEL_OBJECTIVE = False
+
+
+def ramp_utility(points: torch.Tensor) -> torch.Tensor:
+    """Continuous ramp agreeing with ``teacher_v1.attacker_level_utility`` at
+    each bracket's lower edge (see the module docstring)."""
+    p = points.to(torch.float32)
+    above = p / 40.0 - 1.5
+    below = p / 40.0 - 2.5
+    out = torch.where(p >= 80.0, above, below)
+    return torch.where(p <= 0.0, torch.full_like(out, -3.5), out)
 
 
 def _category(signed: torch.Tensor) -> torch.Tensor:
@@ -28,17 +68,20 @@ def _category(signed: torch.Tensor) -> torch.Tensor:
     return torch.where(signed < 0, neg, pos).round().to(torch.int64)
 
 
-def soft_targets(mean: torch.Tensor, attacker_points: torch.Tensor,
-                 role_attacker: torch.Tensor, realised: torch.Tensor
+def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torch.Tensor
                  ) -> tuple[torch.Tensor, torch.Tensor]:
-    """``(probs [b, 204], used [b])``: two-point targets where a mean exists and
-    maps inside the support, the one-hot realised target elsewhere."""
+    """``(probs [b, 204], used [b])``: two-point ramp targets where a mean
+    exists and maps inside the support, the one-hot realised target elsewhere.
+
+    ``mean`` is the acting team's signed expected attacker points (the
+    producer's ``LEVEL_OBJECTIVE = False`` score); ``role_attacker`` restores
+    the attacker perspective before the ramp and re-signs the utility."""
     b = realised.shape[0]
     probs = torch.zeros((b, OUTCOME_CLASSES), dtype=torch.float32, device=realised.device)
     probs[torch.arange(b, device=realised.device), realised] = 1.0
     sign = torch.where(role_attacker, 1.0, -1.0).to(torch.float32)
-    utility = (sign * mean.to(torch.float32) - 0.2 * attacker_points.to(torch.float32)) / 40.0
-    signed = sign * utility
+    expected_points = sign * mean.to(torch.float32)
+    signed = sign * ramp_utility(expected_points)
     lo = torch.floor(signed - 0.5) + 0.5
     hi = lo + 1.0
     frac = (signed - lo).clamp(0.0, 1.0)

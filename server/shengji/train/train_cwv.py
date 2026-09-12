@@ -1599,11 +1599,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     if target == "realised":
         target_block = {"kind": "realised"}
     else:
-        from .search_mean_sidecar import manifest_sha256
+        from .search_mean_sidecar import ELIGIBLE_LEVEL_OBJECTIVE, manifest_sha256
+        from .search_mean_target import ESTIMAND
         target_block = {"kind": target, "sidecar_dir": str(search_mean_sidecar),
                         "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
-                        "note": "training stores only; val/test/holdout metrics use the "
-                                "realised outcome"}
+                        "estimand": ESTIMAND,
+                        "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
+                        "note": "surrogate: ramp(E[p]) of the search's expected attacker "
+                                "points, training stores only; the search mean is the "
+                                "selection mean refined by the report fold's relative gap, "
+                                "not a 330-world absolute mean; val/test/holdout metrics "
+                                "use the realised outcome"}
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
@@ -1654,8 +1660,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             logits, aux = forward_batch(model, t, aux_head)
             if target == "search-mean" and "search_mean_played" in t:
                 from .search_mean_target import soft_targets
-                probs, used = soft_targets(t["search_mean_played"], t["attacker_points"],
-                                           t["role_attacker"], t["target"])
+                probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
+                                           t["target"])
                 ce = nn.functional.cross_entropy(logits, probs)
                 sums["search_rows"] = sums.get("search_rows", 0) + int(used.sum().item())
             else:

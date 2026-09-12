@@ -1339,6 +1339,7 @@ def _training_data_receipt(prepared: Prepared) -> list[dict]:
 # ------------------------------------------------------------------- train
 
 def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None = None,
+          target: str = "realised", search_mean_sidecar: str | None = None,
           arch: str = "mlp", device: str | None = None, epochs: int = DEFAULTS["epochs"],
           seed: int = DEFAULTS["seed"], limit_clusters: int | None = None,
           lr: float = DEFAULTS["lr"], weight_decay: float = DEFAULTS["weight_decay"],
@@ -1397,9 +1398,20 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         f"val_rank_records={val_rank_records} init={config['init']}")
 
     residency = Residency(budget)
+    # Issue #340: the level head may train on the search's own mean for the
+    # played action (soft two-point targets) instead of the realised outcome.
+    # Only the TRAINING stores get the sidecar; validation, test and holdouts
+    # keep the realised target so every reported number stays comparable.
+    from .search_mean_target import TARGET_KINDS
+    if target not in TARGET_KINDS:
+        raise TrainError(f"--target must be one of {TARGET_KINDS}")
+    if target == "search-mean":
+        if not search_mean_sidecar or not Path(search_mean_sidecar).is_dir():
+            raise TrainError("--target search-mean needs --search-mean-sidecar DIR")
+    sidecar_dir = str(search_mean_sidecar) if target == "search-mean" else None
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
-                              residency=residency, version=enc_version)
+                              residency=residency, version=enc_version, sidecar_dir=sidecar_dir)
     store = prepared.block_store
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
@@ -1584,9 +1596,24 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         init_info["val"] = init_val
         say(epoch_line("epoch 00 (init, no step)", init_val, " [val = tuning]"))
     identity = cwv_encoder_identity(enc_version)
+    if target == "realised":
+        target_block = {"kind": "realised"}
+    else:
+        from .search_mean_sidecar import ELIGIBLE_LEVEL_OBJECTIVE, manifest_sha256
+        from .search_mean_target import ESTIMAND
+        target_block = {"kind": target, "sidecar_dir": str(search_mean_sidecar),
+                        "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
+                        "estimand": ESTIMAND,
+                        "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
+                        "note": "surrogate: ramp(E[p]) of the search's expected attacker "
+                                "points, training stores only; the search mean is the "
+                                "selection mean refined by the report fold's relative gap, "
+                                "not a 330-world absolute mean; val/test/holdout metrics "
+                                "use the realised outcome"}
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
+        "target": target_block,
         "population": population, "exposure": exposure, "baselines": baselines,
         "git": git_identity(), "receipt_schema": RECEIPT_SCHEMA,
     }
@@ -1631,7 +1658,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                       decode_workers=decode_workers):
             t = tensors_of(raw, dev)
             logits, aux = forward_batch(model, t, aux_head)
-            ce = nn.functional.cross_entropy(logits, t["target"])
+            if target == "search-mean" and "search_mean_played" in t:
+                from .search_mean_target import soft_targets
+                probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
+                                           t["target"])
+                ce = nn.functional.cross_entropy(logits, probs)
+                sums["search_rows"] = sums.get("search_rows", 0) + int(used.sum().item())
+            else:
+                ce = nn.functional.cross_entropy(logits, t["target"])
             total = ce
             b = int(t["target"].shape[0])
             a_loss = None
@@ -1658,6 +1692,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}
+        if target == "search-mean":
+            train_metrics["search_mean_rows"] = int(sums.get("search_rows", 0))
         if aux_head is not None:
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
         train_secs = round(time.perf_counter() - t0, 3)
@@ -1790,6 +1826,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "command": "train",
+        "target": target_block,
         "argv": list(argv) if argv is not None else None,
         "started": started_at,
         "wall_secs": wall,
@@ -2209,6 +2246,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--seq-layers", type=int, default=DEFAULTS["seq_layers"])
     t.add_argument("--seq-heads", type=int, default=DEFAULTS["seq_heads"])
     t.add_argument("--seq-feedforward", type=int, default=DEFAULTS["seq_feedforward"])
+    t.add_argument("--target", choices=("realised", "search-mean"), default="realised",
+                   help="level-head training target: the realised outcome (default) or the "
+                        "search's own mean for the played action as a soft two-class target "
+                        "(issue #340; needs --search-mean-sidecar)")
+    t.add_argument("--search-mean-sidecar", default=None,
+                   help="directory of per-shard sidecars from search_mean_sidecar.build_sidecar")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2263,6 +2306,7 @@ def main(argv: list[str] | None = None) -> int:
                   seq_kind=args.seq_kind, seq_width=args.seq_width,
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
+                  target=args.target, search_mean_sidecar=args.search_mean_sidecar,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

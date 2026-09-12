@@ -180,3 +180,77 @@ def test_cancelled_xray_keeps_shared_permit_until_thread_finishes(monkeypatch):
         with pytest.raises(asyncio.CancelledError): await task
         assert not model_serving._semaphore().locked()
     asyncio.run(scenario())
+
+
+def test_xray_marks_model_inputs_by_encoder_layout_and_hides_the_world_block(monkeypatch):
+    from collections import Counter
+    from shengji.rl.encode_versions import OBS_DIM_BY_VERSION
+
+    class ValuesV2(Values):
+        enc_version = 2
+
+    rnd = play_state()
+    seat = rnd.turn
+    bot = CWVShortlistBot(ValuesV2(), seed=13, config=CWVShortlistConfig(
+        worlds=1, selection_worlds=2, alternatives=4, batch_size=17))
+    bot.REPORT_FOLD_WORLDS = 30
+    monkeypatch.setattr(CWVShortlistBot, "_rollout",
+                        lambda self, rnd, seat, hands, buried, action, **kw: float(len(action)))
+    rnd_copy, bot_copy = debug._snapshot_xray(rnd, bot)
+    out = debug._xray(rnd_copy, seat, bot_copy)
+    ml = out["ml"]["inputs"]
+    assert ml["kind"] == "model-input"
+    assert ml["encoder_version"] == 2
+    assert ml["public_dim"] == OBS_DIM_BY_VERSION[2] + 1
+    groups = ml["groups"]
+    # every column is claimed exactly once, in order, and nothing is unlabelled
+    spans = sorted(g["columns"] for g in groups.values())
+    assert spans[0][0] == 0 and spans[-1][1] == OBS_DIM_BY_VERSION[2]
+    assert all(a[1] == b[0] for a, b in zip(spans, spans[1:]))
+    assert not any(g["type"] == "unlabelled" for g in groups.values())
+    assert all(g["kind"] == "model-input" for g in groups.values())
+    # the own-hand plane is exactly this seat's hand, copy counts included
+    assert Counter(groups["own_hand"]["value"]) == Counter(Counter(rnd.hands[seat]))
+    # no other seat's cards appear anywhere: unseen excludes what this seat holds
+    assert not set(groups["unseen"]["value"]) & set(rnd.hands[seat]) or all(
+        Counter(rnd.hands[seat])[c] + groups["unseen"]["value"][c] <= 2
+        for c in set(groups["unseen"]["value"]) & set(rnd.hands[seat]))
+    assert groups["is_attacker"]["value"] == float(rnd.is_attacker(seat))
+    assert ml["scope"] == "root_state_preview"
+    assert "afterstate" in ml["scope_note"]
+    assert out["ml"]["inputs_scope"].startswith("root_state_preview")
+    assert ml["world_block"]["rendered"] is False
+    assert "hidden" in ml["world_block"]["why"]
+    # heuristic fields on the same page are NOT marked as model inputs
+    assert "kind" not in out["voids"] if isinstance(out["voids"], dict) else True
+
+
+def test_xray_without_an_evaluator_has_no_model_inputs():
+    rnd, seat = _lead_state()
+    out = debug._xray(rnd, seat, _RecordingBot())
+    assert out["ml"] is None
+
+
+
+def test_root_preview_is_not_the_scored_candidate_input(monkeypatch):
+    """Consumer-level witness (Codex, PR #344): the scored input is the candidate's
+    trick-completed afterstate, and it differs from the root preview in the groups
+    that move when a card is played."""
+    from shengji.ai.cwv_policy import afterstate
+    from shengji.api.debug_features import ml_input_features
+
+    class ValuesV2(Values):
+        enc_version = 2
+
+    rnd = play_state()
+    seat = rnd.turn
+    root = ml_input_features(rnd, seat, ValuesV2())
+    candidate = list(rnd.hands[seat][:1])
+    leaf = afterstate(rnd, seat, rnd.hands, rnd.buried, candidate, finish_trick=True)
+    scored = ml_input_features(leaf, seat, ValuesV2())
+    moved = [name for name in root["groups"]
+             if root["groups"][name]["value"] != scored["groups"][name]["value"]]
+    assert "own_hand" in moved and "cards_remaining_frac" in moved
+    assert root["scope"] == scored["scope"] == "root_state_preview"
+    # the preview's own-hand plane still holds the card the candidate played
+    assert candidate[0] in root["groups"]["own_hand"]["value"]

@@ -1611,17 +1611,22 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         # batches later; the model does not survive it either way.  The
         # selection metric (val_ce from run_eval) is untouched.
         sync_every = max(1, int(os.environ.get("SHENGJI_CWV_LOSS_SYNC_EVERY", "32")))
-        pending = None          # device-side [total*b, ce*b, aux*b, rows, finite]
+        pending = None          # device-side [total*b, ce*b, aux*b, rows]
+        finite_all = None       # device-side logical AND over the window, kept SEPARATE
         def flush():
-            nonlocal pending, rows
+            nonlocal pending, finite_all, rows
             if pending is None:
                 return
             vals = pending.tolist()
-            if vals[4] < 1.0:
+            # The flag is never summed with anything (Codex, PR #347 review: a
+            # summed flag lost an earlier non-finite batch), so one bad batch
+            # anywhere in the window refuses here.
+            if float(finite_all.item()) < 1.0:
                 raise TrainError("training loss is non-finite")
             sums["total"] += vals[0]; sums["ce"] += vals[1]; sums["aux"] += vals[2]
             rows += int(vals[3])
             pending = None
+            finite_all = None
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
                                       decode_workers=decode_workers):
             t = tensors_of(raw, dev)
@@ -1642,13 +1647,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             contrib = torch.stack((total.detach() * b, ce.detach() * b,
                                    (a_loss.detach() * b) if a_loss is not None
                                    else torch.zeros((), device=total.device),
-                                   torch.full((), float(b), device=total.device),
-                                   finite)).to(torch.float32)
-            if pending is None:
-                pending = contrib
-            else:
-                pending = pending + contrib
-                pending[4] = torch.minimum(pending[4], contrib[4])
+                                   torch.full((), float(b), device=total.device))
+                                  ).to(torch.float32)
+            finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
+            pending = contrib if pending is None else pending + contrib
             batches += 1
             if batches % sync_every == 0:
                 flush()

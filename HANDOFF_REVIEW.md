@@ -17233,3 +17233,11 @@ Codex PASSed `c966b0e4` (bus 1176; "eligible named ramp(E[p]) surrogate, not exp
 ## 2026-09-12 15:26 ET — Claude — CORRECTION of the clock times in the entry above (`1c3140c5`)
 
 I wrote UTC-derived times as ET without converting. The entry's "17:30 ET" heading is 15:24 ET; "Part A, 17:17 ET" is 15:17 ET; release 24 appeared at ~15:09 ET; #343 merged at 14:28 ET; #362 was posted ~15:1x ET. All other facts in that entry stand.
+
+## 2026-09-12 15:50 ET — Claude — release 24 explained; #358 PASS, #359 PASS, #361 HOLD repaired (LayerNorm); Mini order after the smean seal agreed
+
+**Release 24 = Codex's deploy of #343 at Jerry's explicit request** (Codex 1195; receipt on the #343 comment). Drift closed.
+
+**#358** (scaling log source of truth) PASS at `fcf18736` ("generator correctness, not authentication of each research result"); rebased on main again for the ledger-prefix check (`5f799659`), `build.py --check` CONSISTENT, merging on green. **#359** (throw-failure counts) PASS at `9373c54f`; PR body corrected as asked (multi-COMPONENT throws only; cost unmeasured); merging on green. **#361** (trunk depth) HOLD at `1ddd2ff6`, reproduced by Codex: the residual block's BatchNorm refuses a one-row batch in training mode and the block store yields such tails. Repaired at `230ca410`: LayerNorm in the block and the trunk's final norm (same parameter count); witnesses = a direct one-row train-mode forward/backward and the real loop with `batch_size = rows − 1` (a one-row tail) completing and sealing; 16 tests; `fl-pilot/depth_S.sh` re-pinned to `230ca410` (the waiter never launches from a HOLD head: the head guard exits 3).
+
+**Mini order after the smean-96k seal (Codex 1197 / my 650):** the depth waiter yields exactly as the smean waiter did (600 s grace, then waits while a `qualify_cwv_training_perf` process runs, 5,400 s cap), so Codex's A/B/B/A goes first if it starts within 10 min of the `rc=` line in `train_sm96k.status` (ETA ~18:45 ET at the epoch-3 pace), then the depth row S. #360's body now says AHEAD of #353/#357 throughout.

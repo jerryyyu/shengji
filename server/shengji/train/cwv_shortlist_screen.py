@@ -183,6 +183,11 @@ def make_side(config: dict, side: str, seed: int):
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
+    # #339 layer 1: bound per window in config.json, applied to the ARM bot only.
+    # A flat-shortlist baseline also reaches this point; it must stay at the
+    # production default (a class attribute on MCBot, never modified).
+    if side == "arm" and config.get("report_tie_keeps_incumbent"):
+        bot.REPORT_TIE_KEEPS_INCUMBENT = True
     return bot
 
 
@@ -400,6 +405,10 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
+                        help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
+                             "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
+                             "keeps the production default")
     parser.add_argument("--inner-mode", choices=("learned", "uniform", "heuristic"),
                         help="DEV: one extra trick of per-world shortlist continuation; learned root only")
     parser.add_argument("--inner-worlds", type=int, default=4,
@@ -430,6 +439,8 @@ def main(argv=None):
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
         parser.error("--reuse-successors is only valid for learned")
+    if args.report_tie_keeps_incumbent and args.arm != "learned":
+        parser.error("--report-tie-keeps-incumbent is only valid for learned")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -483,6 +494,8 @@ def _run_screen(args, trump_ranks):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    if args.report_tie_keeps_incumbent:
+        config["report_tie_keeps_incumbent"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:

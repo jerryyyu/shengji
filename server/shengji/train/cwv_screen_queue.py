@@ -33,6 +33,8 @@ def main(argv=None):
                         help="optional completed prior windows, named NAME-SEED")
     parser.add_argument("--cost-order-name",
                         help="prior window prefix; defaults to --name")
+    parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
+                        help="#339 layer 1 arm: pass through to every window (arm side only)")
     args = parser.parse_args(argv)
     if min(args.clusters, args.workers) < 1 or min(args.seeds) < 0:
         parser.error("positive clusters/workers and nonnegative seeds required")
@@ -71,6 +73,8 @@ def main(argv=None):
             if args.cost_order_root is not None:
                 prior = args.cost_order_root / f"{args.cost_order_name or args.name}-{seed}"
                 command += ["--cost-order-from", str(prior)]
+            if args.report_tie_keeps_incumbent:
+                command += ["--report-tie-keeps-incumbent"]
             print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume",
                   flush=True)
             result = screen.main(command)

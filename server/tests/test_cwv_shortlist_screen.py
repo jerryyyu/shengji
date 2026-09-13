@@ -187,3 +187,59 @@ def test_summary_overwrites_identity_description_from_real_duel_summary():
     result = S.summary_for([{"records": []}], cfg("learned"))
     assert result["arm"] == "learned"
     assert result["arm_description"] == "flat exhaustive learned root shortlist"
+
+
+def test_tie_knob_is_bound_in_config_and_applied_to_the_arm_bot_only(tmp_path, monkeypatch):
+    """#339 layer 1 screen (#357): the knob rides in config.json and flips
+    MCBot.REPORT_TIE_KEEPS_INCUMBENT on the ARM's bot; the production baseline
+    built from the same config keeps the default."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    seen = []
+    monkeypatch.setattr(S, "_run_pending", lambda config, pending, shards, **kw: seen.append(config))
+
+    class Evaluator:
+        checkpoint_sha256 = "a" * 64
+
+        def identity(self):
+            return {"backend": "torch"}
+
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **kw: Evaluator())
+    monkeypatch.setattr(S, "execution_source_identity", lambda *_: {"source": "test"})
+    ckpt = tmp_path / "m.pt"
+    ckpt.write_bytes(b"x")
+    out = tmp_path / "knob"
+    assert S.main(["--arm", "learned", "--checkpoint", str(ckpt), "--report-tie-keeps-incumbent",
+                   "--clusters", "1", "--workers", "1", "--seed0", "17", "--out", str(out)]) == 0
+    persisted = json.loads((out / "config.json").read_text())
+    assert persisted["report_tie_keeps_incumbent"] is True
+    arm = S.make_side(persisted, "arm", seed=17)
+    baseline = S.make_side(persisted, "baseline", seed=17)
+    assert arm.REPORT_TIE_KEEPS_INCUMBENT is True
+    assert baseline.REPORT_TIE_KEEPS_INCUMBENT is False
+    assert type(arm).REPORT_TIE_KEEPS_INCUMBENT is False  # instance attribute, never the class
+    # the flag is absent from a default recipe and refused for non-learned arms
+    out2 = tmp_path / "plain"
+    assert S.main(["--arm", "learned", "--checkpoint", str(ckpt),
+                   "--clusters", "1", "--workers", "1", "--seed0", "17", "--out", str(out2)]) == 0
+    plain = json.loads((out2 / "config.json").read_text())
+    assert "report_tie_keeps_incumbent" not in plain
+    assert S.make_side(plain, "arm", seed=17).REPORT_TIE_KEEPS_INCUMBENT is False
+    with pytest.raises(SystemExit):
+        S.main(["--arm", "uniform", "--report-tie-keeps-incumbent",
+                "--clusters", "1", "--workers", "1", "--seed0", "17", "--out", str(tmp_path / "bad")])
+
+
+def test_tie_knob_never_reaches_a_flat_shortlist_baseline(monkeypatch):
+    """Codex's witness: with --baseline flat-shortlist both sides are shortlist
+    bots built from one config; the knob must still be arm-only."""
+    class Evaluator:
+        checkpoint_sha256 = "a" * 64
+
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **kw: Evaluator())
+    config = cfg(arm="learned", checkpoint="m.pt", checkpoint_sha256="a" * 64,
+                 baseline="flat-shortlist", report_tie_keeps_incumbent=True)
+    got = {side: S.make_side(config, side, seed=17).REPORT_TIE_KEEPS_INCUMBENT
+           for side in ("arm", "baseline")}
+    assert got == {"arm": True, "baseline": False}
+    assert S.make_bot("mc-s0-report-lcb", seed=1).REPORT_TIE_KEEPS_INCUMBENT is False
+    assert type(S.make_side(config, "arm", seed=17)).REPORT_TIE_KEEPS_INCUMBENT is False

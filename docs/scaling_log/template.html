@@ -117,7 +117,7 @@ svg .tick{stroke:var(--ink-3);stroke-width:1}
 svg .hit{cursor:pointer}
 svg .hit:hover{stroke:var(--ink);stroke-width:2.5}
 svg .hit:focus{outline:none;stroke:var(--ink);stroke-width:3}
-.detail{margin-top:10px;background:var(--card);border:1px solid var(--rule);
+.detail{position:relative;margin-top:10px;background:var(--card);border:1px solid var(--rule);
   border-left:4px solid var(--jade);padding:14px 18px;font-family:"IBM Plex Mono",monospace;
   font-size:12.5px;line-height:1.75;color:var(--ink-2);white-space:pre-wrap;min-height:3.4em}
 .detail.empty{color:var(--ink-3);border-left-color:var(--rule);font-style:italic}
@@ -161,7 +161,16 @@ footer{border-top:1px solid var(--rule);padding-top:20px;font-size:13px;color:va
 .kpi div{background:var(--card);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
 .kpi b{font-family:"IBM Plex Mono",monospace;font-size:21px;color:var(--ink);font-weight:500}
 .kpi span{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
-.detail{position:sticky;top:10px;z-index:5}
+.detail{position:sticky;top:10px;z-index:5;max-height:42vh;overflow:auto;padding-right:44px}
+.detail.empty{position:static;padding-right:18px}
+.detail-x{position:absolute;top:8px;right:10px;width:28px;height:28px;border:1px solid var(--rule);border-radius:4px;background:var(--card);color:var(--ink-2);font:16px/1 "IBM Plex Sans",sans-serif;cursor:pointer}
+.detail-x:hover,.detail-x:focus-visible{color:var(--ink);border-color:var(--ink-3);outline:none}
+.detail.empty .detail-x{display:none}
+td.note{white-space:normal;min-width:360px;max-width:560px;font-size:12.5px;line-height:1.45}
+th.note{min-width:360px}
+tr.hit{cursor:pointer}
+tr.hit:hover td{background:var(--rule-2)}
+tr.hit:focus-visible{outline:2px solid var(--jade);outline-offset:-2px}
 th[tabindex]{cursor:pointer;user-select:none;position:relative;padding-right:20px}
 th[tabindex]:hover{color:var(--ink)}
 th[tabindex]:focus-visible{outline:2px solid var(--jade);outline-offset:-2px}
@@ -200,7 +209,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   not a confirmation.</p>
 </div>
 
-<div id="detail" class="detail empty">Click or tab to any dot on any chart to see that model&#8217;s full record here.</div>
+<div id="detail" class="detail empty"><span id="detail-text">Click or tab to any dot on any chart, or any highlighted table row, to see that model&#8217;s full record here.</span><button type="button" class="detail-x" id="detail-x" aria-label="Dismiss the model record" title="Dismiss (Esc)">&#215;</button></div>
 
 <section>
   <h2 class="sec">1 &middot; Data versus validation cross-entropy</h2>
@@ -323,7 +332,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   averaged in. Click any column heading to sort (the first number in the cell sorts, so the best instrument wins);
   click again to reverse. The two 768-cluster fit probes sit outside both chart axes and appear here only.</p>
   <div class="tw"><table class="sortable">
-<thead><tr><th>Checkpoint</th><th>Trained</th><th>Enc</th><th class="n">Width</th><th class="n">LR</th><th class="n">Clusters</th><th class="n">Records</th><th class="n">val_ce</th><th class="n">regret@4</th><th class="n">Play vs leader<br>best instrument first</th><th>Note</th></tr></thead>
+<thead><tr><th>Checkpoint</th><th>Trained</th><th>Enc</th><th class="n">Width</th><th class="n">LR</th><th class="n">Clusters</th><th class="n">Records</th><th class="n">val_ce</th><th class="n">regret@4</th><th class="n">Play vs leader<br>best instrument first</th><th class="note">Note</th></tr></thead>
 <tbody>
 {{REGISTRY}}
 </tbody></table></div>
@@ -348,17 +357,27 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 (function(){
   var panel=document.getElementById("detail");
+  var text=document.getElementById("detail-text");
+  var closer=document.getElementById("detail-x");
+  var prompt=text.textContent;
   function show(el){
     var t=el.getAttribute("data-t");
     if(!t) return;
-    panel.textContent=t.replace(/&#10;/g,"\n");
+    text.textContent=t.replace(/&#10;/g,"\n");
     panel.classList.remove("empty");
+    panel.scrollTop=0;
   }
+  function dismiss(){
+    text.textContent=prompt;
+    panel.classList.add("empty");
+  }
+  closer.addEventListener("click",function(e){ e.stopPropagation(); dismiss(); });
   document.addEventListener("click",function(e){
     var el=e.target.closest && e.target.closest(".hit");
     if(el) show(el);
   });
   document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){ if(!panel.classList.contains("empty")) dismiss(); return; }
     if(e.key!=="Enter" && e.key!==" ") return;
     var el=document.activeElement;
     if(el && el.classList && el.classList.contains("hit")){ show(el); e.preventDefault(); }

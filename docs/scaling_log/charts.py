@@ -8,6 +8,7 @@ PAR={256:272716,512:610764,1024:1483468,2048:4015308,
 REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708}
 R=[]
+RECORD=globals().get("RECORD",{})
 for (n,ck,tr,enc,w,lr,cl,rec,ce,rg,mc,w32,ten,note) in M:
     r=int(rec.replace(",","")) if rec and rec[0].isdigit() else REC.get(cl)
     R.append(dict(n=n,ck=ck,tr=tr.lstrip("~"),ap=tr.startswith("~"),enc=enc,w=w,lr=lr,cl=cl,
@@ -26,6 +27,7 @@ def tip(d):
         if d["ten"].startswith("5w "): lines.append("five windows  %s"%d["ten"][3:])
         else: lines.append("ten windows  %s"%d["ten"])
     if d["note"]: lines.append(d["note"])
+    if RECORD.get(d["ck"]): lines.append(""); lines.append(RECORD[d["ck"]])
     return esc("\n".join(lines))
 def dot(cx,cy,r,cls,d):
     return ('<circle cx="%.1f" cy="%.1f" r="%s" class="%s hit" tabindex="0" data-t="%s">'

@@ -302,3 +302,26 @@ def test_every_encoder_generation_has_its_own_chart_class_and_count(data):
     rows0 = [r for r in rows if r["enc"] != "v4"]
     page_no, c_no = _render(rows0, table_only, series)
     assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "and v3 &middot;" in page_no
+
+
+def test_table_notes_are_one_line_and_the_history_is_in_the_record(data):
+    rows, table_only, series = data
+    assert all(len(r["note"]) <= build.NOTE_LIMIT for r in rows)
+    long = [r for r in rows if r["record"]]
+    assert long, "the long histories should have moved into RECORD"
+    page, _ = _render(*data)
+    for r in long:
+        # the full record reaches the chart dot's tooltip AND the table row's data-t
+        assert r["record"][:60].replace("--", "--") in page.replace("&#8722;", "-") or r["record"][:40] in page
+        assert re.search(r'<tr class="[^"]*hit"[^>]*data-t="[^"]*' + re.escape(r["ck"]), page)
+    rows2 = copy.deepcopy(rows)
+    rows2[0]["note"] = "x" * (build.NOTE_LIMIT + 1)
+    with pytest.raises(SystemExit):
+        _render(rows2, table_only, series)
+
+
+def test_the_detail_panel_is_dismissable(data):
+    page, _ = _render(*data)
+    assert 'id="detail-x"' in page and 'aria-label="Dismiss the model record"' in page
+    assert 'e.key==="Escape"' in page and "function dismiss()" in page
+    assert '<th class="note">Note</th>' in page and 'td.note{white-space:normal;min-width:360px' in page

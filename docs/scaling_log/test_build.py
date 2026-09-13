@@ -39,13 +39,13 @@ def test_changing_a_val_ce_moves_the_chart_dot_the_registry_and_the_day_table(da
     before, c0 = _render(rows, table_only, series)
     rows2 = copy.deepcopy(rows)
     r = next(x for x in rows2 if x["ck"] == "c6d48d57")  # volVOL-144k, on the base_v2 line
-    r["ce"] = "0.60100"  # below every on-scale CE today (best 0.60570)
+    r["ce"] = "0.59100"  # below every on-scale CE today (best 0.60570)
     after, c = _render(rows2, table_only, series)
-    assert "0.60100" in _registry_cell(after, "c6d48d57", 7)
-    assert "0.60100" in after.split("{{")[0]  # registry
+    assert "0.59100" in _registry_cell(after, "c6d48d57", 7)
+    assert "0.59100" in after.split("{{")[0]  # registry
     # the day table's running best and the chart's best line both moved
-    assert re.search(r"<td>10 Sep</td><td class=\"n\">\d+</td><td class=\"n\">0.60100", after)
-    assert c["best_ce"] == 0.601 and c["best_day"] == "2026-09-10"
+    assert re.search(r"<td>10 Sep</td><td class=\"n\">\d+</td><td class=\"n\">0.59100", after)
+    assert c["best_ce"] == 0.591 and c["best_day"] == "2026-09-10"
     assert "unbeaten since 10 Sep" in after
     assert f"unbeaten since {c0['best_day'][8:]} Sep" in before
     # chart 1's base_v2 polyline changed (coordinates come from the row)

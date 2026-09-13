@@ -58,7 +58,7 @@ M = [
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
  "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget: programme-best val_ce; five windows 09-13 not large (MDE80 0.0360), not extended"),
 ("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
- "","","SCREENING","the S-d4 cell on all the data: 0.0207 below volNEW-176k (depth 2, same corpus); +0.0007 vs S-d4 at 144k; regret@4 0.0337 best of the programme; five windows on cloud 09-13"),
+ "","","SCREENING","S-d4 cell on all the data: 0.0207 below volNEW-176k (depth 2); +0.0007 vs S-d4 at 144k; regret@4 0.0337 programme best; 5w on cloud 09-13"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",
  "","","","grid S d2 residual, 609,296 params: 0.0098 below plain d2; row S: plain d2 0.61912 > plain d4 0.61516 > res d2 0.60929 > res d4 0.60570"),
 ("grid S-d4-plain (4 plain layers)","e9cd80ba","2026-09-12","v2",340,"3e-4","144k","20,939,532","0.61516","0.0396",

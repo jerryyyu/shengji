@@ -125,6 +125,7 @@ def test_a_leader_number_at_a_small_corpus_rewrites_the_coverage_sentence(data):
     ("ten", "+0.1000 [+0.0500, +0.1500] trailing", "neither a keyword"),
     ("mc", "+0.1 [+0.05, +0.15]", "neither a keyword"),
     ("ck", "notahash", "8-hex"),
+    ("w", 999, "no parameter count"),
 ])
 def test_malformed_rows_are_refused(data, field, value, msg):
     rows, table_only, series = data

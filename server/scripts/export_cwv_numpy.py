@@ -13,13 +13,22 @@ import numpy as np
 from shengji.ai.cwv_numpy import PACKAGE_SCHEMA
 
 
-def export_cwv_numpy(checkpoint: str | Path, output: str | Path) -> str:
+def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
+                     value_head: str | None = None) -> str:
     # Importing the admission path lazily keeps the serving runtime Torch-free.
     from shengji.ai.cwv_policy import load_cwv_checkpoint
     model, metadata, original_sha = load_cwv_checkpoint(checkpoint)
     config = model.config
     if config.architecture != "mlp":
         raise ValueError("only architecture=mlp can be exported")
+    # #373: a package carries ONE head.  Default: the checkpoint's own
+    # value_head; an override must name a head the net has.
+    head = config.value_head if value_head is None else value_head
+    if head not in ("outcome", "search-mean"):
+        raise ValueError("value_head must be 'outcome' or 'search-mean'")
+    if head == "search-mean" and not config.search_head:
+        raise ValueError("this checkpoint has no search-mean head to export")
+    head_key = "head" if head == "outcome" else "search_head"
     # Training population/exposure manifests can be megabytes of receipts.
     # W32 never reads them. Preserve their identity and the original checkpoint
     # instead of copying the full provenance graph on each room snapshot.
@@ -38,7 +47,8 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path) -> str:
     names = {
         "trunk.0.weight": "trunk0_weight", "trunk.0.bias": "trunk0_bias",
         "trunk.3.weight": "trunk1_weight", "trunk.3.bias": "trunk1_bias",
-        "head.weight": "head_weight", "head.bias": "head_bias"}
+        f"{head_key}.weight": "head_weight", f"{head_key}.bias": "head_bias"}
+    metadata["exported_value_head"] = head
     state = model.state_dict()
     weights = {dst: state[src].detach().cpu().numpy().astype(np.float32, copy=True)
                for src, dst in names.items()}
@@ -76,6 +86,7 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path) -> str:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: export_cwv_numpy.py CHECKPOINT OUTPUT.npz")
-    print(export_cwv_numpy(sys.argv[1], sys.argv[2]))
+    if len(sys.argv) not in (3, 4):
+        raise SystemExit("usage: export_cwv_numpy.py CHECKPOINT OUTPUT.npz [outcome|search-mean]")
+    print(export_cwv_numpy(sys.argv[1], sys.argv[2],
+                           value_head=(sys.argv[3] if len(sys.argv) > 3 else None)))

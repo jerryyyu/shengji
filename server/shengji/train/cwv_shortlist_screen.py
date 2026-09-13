@@ -160,11 +160,16 @@ def make_side(config: dict, side: str, seed: int):
 
     evaluator = None
     if arm == "learned":
+        # #373: the value head rides in config.json and binds the ARM's evaluator
+        # only; a flat-shortlist baseline built from the same config keeps the
+        # checkpoint's own head (its evaluator is a separate cache entry).
         evaluator = shared_evaluator(config["checkpoint"], threads=1,
                                      max_batch=config.get(
                                          "batch_size",
                                          config["shortlist"]["batch_size"]),
-                                     encoding=_encoding(config))
+                                     encoding=_encoding(config),
+                                     value_head=(config.get("value_head")
+                                                 if side == "arm" else None))
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     inner = config.get("double_shortlist") if side == "arm" else None
@@ -405,6 +410,9 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
+                        help="#373 two-head checkpoints, ARM side only: which head the "
+                             "arm's evaluator reads (default: the checkpoint's own value_head)")
     parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
@@ -441,6 +449,8 @@ def main(argv=None):
         parser.error("--reuse-successors is only valid for learned")
     if args.report_tie_keeps_incumbent and args.arm != "learned":
         parser.error("--report-tie-keeps-incumbent is only valid for learned")
+    if args.value_head is not None and args.arm != "learned":
+        parser.error("--value-head is only valid for learned")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -467,7 +477,7 @@ def _run_screen(args, trump_ranks):
     if args.arm == "learned":
         evaluator = shared_evaluator(
             checkpoint, threads=1, max_batch=args.batch_size,
-            encoding=args.encoding)
+            encoding=args.encoding, value_head=args.value_head)
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
     shortlist = CWVShortlistConfig(
@@ -496,6 +506,8 @@ def _run_screen(args, trump_ranks):
         config["reuse_successors"] = True
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
+    if args.value_head is not None:
+        config["value_head"] = args.value_head
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:

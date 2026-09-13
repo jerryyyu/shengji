@@ -305,7 +305,7 @@ PRIVACY = {
 # ------------------------------------------------------------------- model
 
 def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
-                 trunk_layers: int = 2, trunk_block: str = "plain",
+                 trunk_layers: int = 2, trunk_block: str = "plain", search_head: bool = False,
                  dropout: float = DEFAULTS["dropout"], seq_kind: str = DEFAULTS["seq_kind"],
                  seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
                  seq_heads: int = DEFAULTS["seq_heads"],
@@ -316,6 +316,8 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
     ``width=H // 2``); ``seq`` is #214's history model."""
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
+    if search_head and arch != "mlp":
+        raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
     try:
         encoder_version = check_version(encoder_version)
     except ValueError as exc:
@@ -329,6 +331,7 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
             return ValueModelConfig(
                 architecture="mlp", width=int(hidden) // 2, history_layers=1,
                 trunk_layers=int(trunk_layers), trunk_block=str(trunk_block),
+                search_head=bool(search_head),
                 attention_heads=1, feedforward_width=int(hidden), dropout=float(dropout),
                 max_history=HISTORY_MAX_EVENTS, **width_fields)
         if seq_kind not in SEQ_KINDS:
@@ -372,18 +375,31 @@ class AuxPointsHead(nn.Module):
 
 
 def forward_batch(model: ValueNetwork, t: Mapping[str, torch.Tensor],
-                  aux_head: AuxPointsHead | None = None
+                  aux_head: AuxPointsHead | None = None, *, head: str | None = None
                   ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """``(logits, aux points / 100 or None)``; the mlp reads its trunk
     directly (the history is a placeholder there), the sequence models run
-    #214's full forward."""
+    #214's full forward.  ``head`` names the mlp head (#373); ``None`` is
+    the net's configured ``value_head``."""
     if model.config.architecture == "mlp":
         features = model.features(t["public"], t["world"], t["perspective"])
-        logits = model.head(features)
+        logits = model.head_logits(features, head)
         aux = aux_head(features) if aux_head is not None else None
         return logits, aux
+    if head not in (None, "outcome"):
+        raise TrainError("the sequence architectures have one head")
     logits = model(t["public"], t["history"], t["history_mask"], t["world"], t["perspective"])
     return logits, None
+
+
+def forward_batch_heads(model: ValueNetwork, t: Mapping[str, torch.Tensor],
+                        aux_head: AuxPointsHead | None = None
+                        ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]:
+    """``(outcome logits, aux, search-mean logits)`` from ONE trunk pass (#373)."""
+    features = model.features(t["public"], t["world"], t["perspective"])
+    return (model.head_logits(features, "outcome"),
+            aux_head(features) if aux_head is not None else None,
+            model.head_logits(features, "search-mean"))
 
 
 # ------------------------------------------------------------- checkpoints
@@ -794,6 +810,23 @@ def rank_levels(model: ValueNetwork, cands: CandidateSet, device: torch.device, 
                             batch_size=batch_size)
 
 
+def search_head_rank(model: ValueNetwork, ev: Mapping[str, np.ndarray],
+                     cands: CandidateSet | None, device: torch.device, *, batch_size: int
+                     ) -> dict:
+    """The ranking block of ``search_facing_metrics`` with candidates scored
+    by the search-mean head (#373): ``rank_*`` keys only, plus its seconds."""
+    t0 = time.perf_counter()
+    if cands is None or cands.records == 0:
+        return {"rank_regret": None, "rank_secs": 0.0}
+    model.eval()
+    levels = candidate_levels(lambda t: forward_batch(model, t, head="search-mean")[0],
+                              cands, device, batch_size=batch_size)
+    block = search_facing_metrics(ev, levels=levels, cands=cands)
+    out = {k: v for k, v in block.items() if k.startswith("rank_")}
+    out["rank_secs"] = round(time.perf_counter() - t0, 3)
+    return out
+
+
 def search_facing(model: ValueNetwork, ev: Mapping[str, np.ndarray],
                   cands: CandidateSet | None, device: torch.device, *, batch_size: int
                   ) -> dict:
@@ -981,12 +1014,19 @@ class Selector:
                 "best_value": None if self.best_epoch is None else self.best_value}
 
 
-def consumer_block(select_metric: str, aux_points: bool) -> dict:
+def consumer_block(select_metric: str, aux_points: bool, search_head: bool = False) -> dict:
     """Which search designs consume which head on which positions, and
     the metric this run selected on (``cwv_eval.CONSUMERS``)."""
     heads = {"level_head": copy.deepcopy(CONSUMERS["level_head"])}
     if aux_points:
         heads["points_head"] = copy.deepcopy(CONSUMERS["points_head"])
+    if search_head:
+        heads["search_mean_head"] = {
+            "quantity": "expected signed level from the search-mean head (#373)",
+            "consumers": "every level_head consumer, when the checkpoint's value_head or "
+                         "the evaluator's value_head override names 'search-mean'",
+            "selection": "never the selection metric; reported alongside as "
+                         "val.search_head.rank_regret"}
     return {"select_metric": select_metric, "heads": heads,
             "rule": "the training validation metric, the held-out eval and what the search "
                     "consumes are the SAME quantity computed by the SAME code "
@@ -1175,6 +1215,7 @@ def bench_inference(model: ValueNetwork, rows: Sequence[ValueAfterstateTensors],
 
 def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str = "mlp",
                  trunk_layers: int = 2, trunk_block: str = "plain",
+                 search_head: bool = False, search_head_weight: float = 1.0,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1225,8 +1266,13 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--aux-points reads the mlp trunk; the seq architecture exposes none")
     if not (float(aux_weight) >= 0 and math.isfinite(float(aux_weight))):
         raise TrainError("--aux-weight must be a finite weight >= 0")
+    if search_head and arch != "mlp":
+        raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
+    if not (float(search_head_weight) > 0 and math.isfinite(float(search_head_weight))):
+        raise TrainError("--search-head-weight must be a finite weight > 0")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
+                          search_head=search_head,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
                           seq_feedforward=seq_feedforward, encoder_version=encoder_version)
     identity = cwv_encoder_identity(encoder_version)
@@ -1242,6 +1288,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "test_fraction": float(test_fraction), "hidden": int(hidden),
         "dropout": float(dropout), "aux_points": bool(aux_points),
         "aux_weight": float(aux_weight) if aux_points else 0.0, "n_boot": int(n_boot),
+        "search_head": bool(search_head),
+        "search_head_weight": float(search_head_weight) if search_head else 0.0,
         "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
@@ -1365,6 +1413,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
           encoder_version: int = DEFAULTS["encoder_version"],
           trunk_layers: int = 2, trunk_block: str = "plain",
+          search_head: bool = False, search_head_weight: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1372,6 +1421,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     holdouts = parse_holdouts(eval_holdout)
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block,
+        search_head=search_head, search_head_weight=search_head_weight,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -1414,7 +1464,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     if target == "search-mean":
         if not search_mean_sidecar or not Path(search_mean_sidecar).is_dir():
             raise TrainError("--target search-mean needs --search-mean-sidecar DIR")
-    sidecar_dir = str(search_mean_sidecar) if target == "search-mean" else None
+    if search_head:
+        # #373: the outcome head keeps the realised target; the second head
+        # takes the search mean.  Swapping the primary target as well would
+        # leave no realised head to compare or to select on.
+        if target != "realised":
+            raise TrainError("--search-head keeps the outcome head on the realised target; "
+                             "it cannot be combined with --target search-mean")
+        if not search_mean_sidecar or not Path(search_mean_sidecar).is_dir():
+            raise TrainError("--search-head needs --search-mean-sidecar DIR")
+    sidecar_dir = (str(search_mean_sidecar)
+                   if (target == "search-mean" or search_head) else None)
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
                               residency=residency, version=enc_version, sidecar_dir=sidecar_dir)
@@ -1566,12 +1626,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     selection = {"split": SELECTION_SPLIT, "criterion": selector.criterion,
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
-    consumer = consumer_block(select_metric, aux_points)
+    consumer = consumer_block(select_metric, aux_points, search_head)
 
     def validate() -> dict:
         ev = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
         metrics = quick_metrics(ev)
         metrics.update(search_facing(model, ev, val_cands, dev, batch_size=batch_size))
+        if search_head:
+            # #373: the same ranking pass through the search-mean head.  Never
+            # the selection metric (the Selector reads top-level keys only).
+            metrics["search_head"] = search_head_rank(model, ev, val_cands, dev,
+                                                      batch_size=batch_size)
         return metrics
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:
@@ -1588,6 +1653,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     shown[f"val_rank_regret_at_{k}"] = f"val_rank_regret_at_{k}={value:.4f}"
                     shown[f"val_rank_recall_at_{k}"] = (
                         f"val_rank_recall_at_{k}={metrics[f'rank_recall_at_{k}']:.3f}")
+        sh = metrics.get("search_head") or {}
+        if sh.get("rank_regret") is not None:
+            shown["val_search_head_rank_regret"] = (
+                f"val_search_head_rank_regret={sh['rank_regret']:.4f}")
         if metrics.get("points_mae") is not None:
             shown["val_points_mae"] = f"val_points_mae={metrics['points_mae']:.2f}"
             shown["val_points_bias"] = f"val_points_bias={metrics['points_bias']:+.2f}"
@@ -1616,10 +1685,24 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                 "selection mean refined by the report fold's relative gap, "
                                 "not a 330-world absolute mean; val/test/holdout metrics "
                                 "use the realised outcome"}
+    search_head_block = None
+    if search_head:
+        from .search_mean_sidecar import ELIGIBLE_LEVEL_OBJECTIVE, manifest_sha256
+        from .search_mean_target import ESTIMAND
+        search_head_block = {
+            "weight": float(search_head_weight), "sidecar_dir": str(search_mean_sidecar),
+            "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
+            "estimand": ESTIMAND, "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
+            "value_head": model_cfg.value_head,
+            "note": "#373: a second 204-class head on the same trunk, trained on the "
+                    "search-mean soft target where a sidecar mean exists (masked "
+                    "elsewhere); the outcome head keeps the realised target and is the "
+                    "selection head; consumers read the checkpoint's value_head unless "
+                    "the evaluator overrides it"}
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
-        "target": target_block,
+        "target": target_block, "search_head": search_head_block,
         "population": population, "exposure": exposure, "baselines": baselines,
         "git": git_identity(), "receipt_schema": RECEIPT_SCHEMA,
     }
@@ -1663,7 +1746,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
                                       decode_workers=decode_workers):
             t = tensors_of(raw, dev)
-            logits, aux = forward_batch(model, t, aux_head)
+            s_logits = None
+            if search_head:
+                logits, aux, s_logits = forward_batch_heads(model, t, aux_head)
+            else:
+                logits, aux = forward_batch(model, t, aux_head)
             if target == "search-mean" and "search_mean_played" in t:
                 from .search_mean_target import soft_targets
                 probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
@@ -1678,6 +1765,22 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             if aux is not None and aux_weight > 0:
                 a_loss = nn.functional.huber_loss(aux, t["attacker_points"] / 100.0, delta=1.0)
                 total = total + float(aux_weight) * a_loss
+            s_loss = None
+            if s_logits is not None and "search_mean_played" in t:
+                # #373: the search-mean head learns ONLY the rows that carry a
+                # sidecar mean inside the support; the others contribute nothing
+                # to it (no realised one-hot leaks into this head).
+                from .search_mean_target import soft_targets
+                s_probs, s_used = soft_targets(t["search_mean_played"], t["role_attacker"],
+                                               t["target"])
+                n_used = int(s_used.sum().item())
+                if n_used:
+                    s_loss = nn.functional.cross_entropy(s_logits[s_used], s_probs[s_used])
+                    total = total + float(search_head_weight) * s_loss
+                sums["search_head_rows"] = sums.get("search_head_rows", 0) + n_used
+                if s_loss is not None:
+                    sums["search_head_ce"] = sums.get("search_head_ce", 0.0) \
+                        + float(s_loss.detach().item()) * n_used
             finite = torch.isfinite(total).to(torch.float32)
             if sync_every == 1 and not bool(finite):
                 raise TrainError("training loss is non-finite")
@@ -1700,6 +1803,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                          "batches": batches}
         if target == "search-mean":
             train_metrics["search_mean_rows"] = int(sums.get("search_rows", 0))
+        if search_head:
+            n_used = int(sums.get("search_head_rows", 0))
+            train_metrics["search_head_rows"] = n_used
+            train_metrics["search_head_cross_entropy"] = (
+                sums.get("search_head_ce", 0.0) / n_used if n_used else None)
         if aux_head is not None:
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
         train_secs = round(time.perf_counter() - t0, 3)
@@ -1832,7 +1940,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "command": "train",
-        "target": target_block,
+        "target": target_block, "search_head": search_head_block,
         "argv": list(argv) if argv is not None else None,
         "started": started_at,
         "wall_secs": wall,
@@ -2263,6 +2371,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "(issue #340; needs --search-mean-sidecar)")
     t.add_argument("--search-mean-sidecar", default=None,
                    help="directory of per-shard sidecars from search_mean_sidecar.build_sidecar")
+    t.add_argument("--search-head", action="store_true",
+                   help="#373: add a second 204-class head on the mlp trunk trained on the "
+                        "search-mean soft target (needs --search-mean-sidecar; the outcome "
+                        "head keeps the realised target and remains the selection head)")
+    t.add_argument("--search-head-weight", type=float, default=1.0,
+                   help="loss weight of the search-mean head (default 1.0)")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2318,6 +2432,7 @@ def main(argv: list[str] | None = None) -> int:
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   target=args.target, search_mean_sidecar=args.search_mean_sidecar,
+                  search_head=args.search_head, search_head_weight=args.search_head_weight,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

@@ -41,6 +41,13 @@ _WIDTH_FIELDS = ("public_dim", "enc_version")
 #: every checkpoint archived before the depth arms existed still loads.
 _TRUNK_FIELDS = ("trunk_layers", "trunk_block")
 _LEGACY_TRUNK = {"trunk_layers": 2, "trunk_block": "plain"}
+#: #373: an optional second 204-class head on the same mlp trunk, trained on
+#: the search-mean soft target, and the name of the head every consumer reads
+#: (``value_head``).  Omitted from the payload at the legacy values so every
+#: checkpoint trained before the option existed keeps its stored config.
+_HEAD_FIELDS = ("search_head", "value_head")
+_LEGACY_HEAD = {"search_head": False, "value_head": "outcome"}
+VALUE_HEADS = ("outcome", "search-mean")
 
 
 def mlp_input_dim(public_dim: int = PUBLIC_DIM) -> int:
@@ -68,6 +75,11 @@ class ValueModelConfig:
     #: defaults so a v1 checkpoint's stored config is what it always was.
     public_dim: int = PUBLIC_DIM
     enc_version: int = ENC_VERSION
+    #: #373 two-head net: ``search_head`` adds ``ValueNetwork.search_head``
+    #: (mlp only); ``value_head`` names the head ``forward`` returns by
+    #: default ("outcome" = the realised-outcome head every model has).
+    search_head: bool = False
+    value_head: str = "outcome"
 
     def validate(self) -> None:
         try:
@@ -100,6 +112,15 @@ class ValueModelConfig:
                 or type(self.trunk_block) is not str \
                 or self.trunk_block not in ("plain", "residual"):
             raise ValueModelError("model configuration drift")
+        if type(self.search_head) is not bool or type(self.value_head) is not str \
+                or self.value_head not in VALUE_HEADS:
+            raise ValueModelError("model configuration drift")
+        if self.search_head and self.architecture != "mlp":
+            raise ValueModelError("model configuration drift: the search-mean head "
+                                  "reads the mlp trunk")
+        if self.value_head == "search-mean" and not self.search_head:
+            raise ValueModelError("model configuration drift: value_head names a "
+                                  "search-mean head this net does not have")
 
     def payload(self) -> dict[str, object]:
         self.validate()
@@ -112,14 +133,18 @@ class ValueModelConfig:
         if all(getattr(self, k) == v for k, v in _LEGACY_TRUNK.items()):
             for name in _TRUNK_FIELDS:
                 del out[name]
+        if all(getattr(self, k) == v for k, v in _LEGACY_HEAD.items()):
+            for name in _HEAD_FIELDS:
+                del out[name]
         return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
-        base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS)
-        allowed = {frozenset(base | w | t)
+        base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS) - set(_HEAD_FIELDS)
+        allowed = {frozenset(base | w | t | h)
                    for w in (set(), set(_WIDTH_FIELDS))
-                   for t in (set(), set(_TRUNK_FIELDS))}
+                   for t in (set(), set(_TRUNK_FIELDS))
+                   for h in (set(), set(_HEAD_FIELDS))}
         if type(value) is not dict or frozenset(value) not in allowed:
             raise ValueModelError("model configuration schema drift")
         try:
@@ -211,6 +236,9 @@ class ValueNetwork(nn.Module):
             else:
                 raise ValueModelError("trunk_block must be plain or residual")
             self.head = nn.Linear(width, OUTCOME_CLASSES)
+            if config.search_head:
+                # #373: the second head, same trunk, search-mean soft target.
+                self.search_head = nn.Linear(width, OUTCOME_CLASSES)
             return
         self.public_encoder = nn.Sequential(
             nn.Linear(config.public_dim, width), nn.ReLU(), nn.LayerNorm(width))
@@ -249,6 +277,21 @@ class ValueNetwork(nn.Module):
         return self.trunk(torch.cat(
             (public, world.flatten(start_dim=1), perspective), dim=1))
 
+    def head_logits(self, features: torch.Tensor, head: str | None = None) -> torch.Tensor:
+        """The named head's 204-class logits over mlp trunk features;
+        ``None`` = the configured ``value_head``.  A head this net does not
+        have is a named refusal, never a silent fallback to the other."""
+        if self.config.architecture != "mlp":
+            raise ValueModelError("head selection is exposed by the mlp architecture only")
+        head = self.config.value_head if head is None else head
+        if head == "outcome":
+            return self.head(features)
+        if head == "search-mean":
+            if not self.config.search_head:
+                raise ValueModelError("this net has no search-mean head")
+            return self.search_head(features)
+        raise ValueModelError(f"unknown value head {head!r}")
+
     def _history_context(self, history: torch.Tensor,
                          history_mask: torch.Tensor) -> torch.Tensor:
         encoded = self.history_input(history)
@@ -266,7 +309,7 @@ class ValueNetwork(nn.Module):
 
     def forward(self, public: torch.Tensor, history: torch.Tensor,
                 history_mask: torch.Tensor, world: torch.Tensor,
-                perspective: torch.Tensor) -> torch.Tensor:
+                perspective: torch.Tensor, head: str | None = None) -> torch.Tensor:
         batch = public.shape[0]
         if public.shape != (batch, self.config.public_dim) \
                 or history.ndim != 3 or history.shape[0] != batch \
@@ -279,7 +322,9 @@ class ValueNetwork(nn.Module):
                 or perspective.shape != (batch, PERSPECTIVE_DIM):
             raise ValueModelError("model batch shape drift")
         if self.config.architecture == "mlp":
-            return self.head(self.features(public, world, perspective))
+            return self.head_logits(self.features(public, world, perspective), head)
+        if head not in (None, "outcome"):
+            raise ValueModelError("the sequence architectures have one head")
         context = torch.cat((
             self.public_encoder(public),
             self._history_context(history, history_mask),

@@ -17337,3 +17337,20 @@ I wrote UTC-derived times as ET without converting. The entry's "17:30 ET" headi
 **Air lane v5** (lock pid 98289): phase 1 sd4 + vol96k per seed (#367), phase 2 vol144k; the 176k and smean phases moved to cloud. The running `sd4-13260910` window (13% at handover) was not interrupted. Windows already sealed on the Air for 176k/smean are retained; the cloud sets are the readouts.
 
 **Jerry asked whether the Mini can screen beside training.** Measured earlier (#342 audit): co-scheduling halves the screen and doubled the Mini's epoch time (656 → 1,250 s) when the h256 screen ran beside a training. Answered with those numbers; not launched.
+
+## 2026-09-12 23:10 ET — Claude — Jerry: "take a pass at perf, I care about optimizing screen most" → a fresh profile of one screen cluster says the shortlist is no longer the big cost; aux03 is the tenth ten-window null
+
+**Profile** (`~/shengji-archive/2026-09-12/screen-profile-one-cluster-mini-contended.txt`): one cluster, both mirrors, the learned W32 arm (leader checkpoint, mlp-static, reuse) vs the production baseline, exactly as `run_cluster` plays it, cProfile on the Mini beside S-d8's candidate pass, so SHARES and CALL COUNTS are the evidence, not walls. Wall 38.2 s; arm decision 23.3 s (shortlist scoring 10.1 s of it), baseline 14.9 s.
+
+| where | cumulative | share | what |
+|---|---|---|---|
+| `_report_fold_gap` (both sides) | 23.0 s | 60% | the 300-world report fold: 74,400 report rollouts of 93,630 |
+| of which `_rollout` | 16.9 s | 44% | `heuristic.decide_play` 4.11M calls 6.9 s (pure Python, per play); `round.play` 1.18M calls 4.7 s |
+| of which `_sample_hands` | 9.5 s | 25% | `_assign` 8.6 s: randomized backtracking (`place` 3.8, `rec` 2.1, `_splits` 2.4, `random.shuffle` 2.1, `_deal_suit` 1.6) |
+| shortlist `_candidates` (arm only) | 10.1 s | 26% | evaluator 5.6 s (static encoding 3.0, `probabilities` 2.0, torch 1.2); successor `leaf` 3.5 s (417k); prepared `legal.validate` 1.95 s + `validate_lead` 0.78 s (1.02M calls) + `_highest_beatable` 0.74 s |
+
+**Reading.** After #338/#349/#350 the shortlist-specific work is about a quarter of a window; three fifths is the MC report fold that BOTH sides run, and that machinery is also the production bot and the data generator. The two hot pure-Python paths are the rollout policy (`HeuristicBot.decide_play`, ~18% + `round.play` 12%) and the hand sampler (`_assign`, ~22%). Compiling either is decision-preserving only with an exactly reproduced RNG call sequence (worlds must stay byte-identical, the gate the queue migration was held to); that is #208's "compiled rollout driver", Codex's lane, and a multi-day engine job, not a tonight PR. The screen-only items left are small: the prepared lead validation to Cython (~5-7%), the evaluator batch cap (~3%), `probabilities` in torch only if float64 is kept (~5%; float32 would move ties). Told Jerry with these numbers and asked which to invest in; nothing launched.
+
+**Part B.** **scr-aux03 (`52d3f243`, aux weight 0.3 at 72k) sealed 10/10 on perf:** vs enc2 **−0.0035 [−0.0191, +0.0122]** (tau 0, MDE80 0.0224); vs vol96k **−0.0020 [−0.0176, +0.0137]**. Tenth ten-window arm, tenth to cross zero. Page: 46 rows, 10 ten-window results, CONSISTENT; rolling docs PR #369; Codex asked (661).
+
+**Fleet, 23:00 ET, and ETAs for EVERY queued window** (Hetzner 28 min/window measured on aux01; Air 58 min): **Mini** S-d8 candidate pass 68% → seals ~23:20; S-d4-plain ~02:10; S-d2 ~05:00; v4-96k ~05:15 → ~09:00 ET. **Air** sd4-13260910 at 77% → the S-d4 pair (17 more windows) ~15:40 ET 09-13; vol144k ×10 → ~01:20 ET 09-14. **perf** (Codex) lr6e4 window 1 at 44% → 10/10 ~03:30 ET. **cloud** (Codex) aux01 7/10 → 10/10 ~00:25 ET; then my lane: vol176k ×10 → ~05:15, smean96k ×10 → ~09:55, tieon ×10 → ~14:35, h256mc ×1 → ~15:05 ET 09-13.

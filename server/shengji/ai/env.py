@@ -64,6 +64,12 @@ class FullGameCutoff(RuntimeError):
 
 def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     """Drive one round to completion with the given 4 policies."""
+    prepare_round(game, policies)
+    return play_prepared_round(game, policies, record=record)
+
+
+def prepare_round(game: Game, policies: list) -> Round:
+    """Run canonical deal/declare/bury once for a shared play-only comparison."""
     rnd = game.start_round()
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()
@@ -77,6 +83,14 @@ def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     rnd.finalize_declare()
     assert rnd.banker is not None
     rnd.bury(rnd.banker, policies[rnd.banker].decide_bury(rnd, rnd.banker))
+    return rnd
+
+
+def play_prepared_round(game: Game, policies: list, record: bool = False) -> RoundLog:
+    """Continue a prepared play state using the same loop as play_round."""
+    rnd = game.round
+    if rnd is None or rnd.phase != "play":
+        raise ValueError("prepared round must be in play phase")
     history = []
     while rnd.phase == "play":
         seat = rnd.turn

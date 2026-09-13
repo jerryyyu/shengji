@@ -902,6 +902,9 @@ def validate_private_evidence(
 class CodexExecPlannerTransport:
     """Make one isolated ChatGPT-authenticated Codex call per decision phase."""
 
+    ALLOWED_MODELS = (MODEL,)
+    ALLOWED_EFFORTS = (REASONING_EFFORT,)
+
     def __init__(self, *, codex_binary: Path | str = "codex",
                  model: str = MODEL,
                  reasoning_effort: str = REASONING_EFFORT,
@@ -916,7 +919,7 @@ class CodexExecPlannerTransport:
             else str(Path(codex_binary))
         if binary is None or not Path(binary).is_file():
             raise CodexTurnTransportError("Codex binary absent")
-        if model != MODEL or reasoning_effort != REASONING_EFFORT:
+        if model not in self.ALLOWED_MODELS or reasoning_effort not in self.ALLOWED_EFFORTS:
             raise CodexTurnTransportError("Codex planner identity drift")
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) \
                 or not 1 <= timeout_seconds <= 1200:

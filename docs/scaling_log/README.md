@@ -24,6 +24,10 @@ Row tuple, in order: name, checkpoint sha (8 hex), trained date (`~` prefix = ap
 encoder, width, lr, clusters, records, val_ce, regret@4, vs MC-LCB (one 520-deal window),
 vs W32 leader (paired), ten windows vs vol96k, note.  Screen cells are either a keyword
 (`REF`, `GAP`, `CONTROL`, `QUEUED`, `RUNNING`, `SCREENING`, `CODEX`) or `m [lo, hi]`
-(`RES` suffix = resolves, ` SUPERSEDED` = superseded by a ten-window result).
+(`RES` suffix = resolves, ` SUPERSEDED` = superseded by a ten-window result). A five-window
+readout goes in the ten-window field with a `5w ` prefix (`5w +0.0105 [-0.0100, +0.0310]`);
+the page renders the three benchmark fields as ONE "Play vs leader" column, best instrument first,
+each measurement badged with its instrument (10w / 5w / 1w paired / 1w MC-LCB / 260p) and the
+caption states each instrument's MDE80 derived from the intervals on the page.
 
 Static by design (labelled in the template, not derived): the corpus table, the +0.41 loss-vs-search correlation and Codex's 50.0% v3 win rate, which come from analyses outside `models.py`.

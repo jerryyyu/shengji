@@ -171,3 +171,66 @@ def test_removing_the_off_scale_row_removes_the_note(data):
     rows2 = [r for r in rows if r["ck"] != "8a6d5260"]
     page, c = _render(rows2, table_only, series)
     assert not c["off_scale"] and "OFF THIS SCALE" not in page and "above the CE axis" not in page
+
+
+def _play_cells(page):
+    """checkpoint prefix -> the consolidated play cell's text (tags stripped)."""
+    out = {}
+    for row in re.findall(r"<tr[^>]*>(?:(?!</tr>).)*</tr>", page, re.S):
+        tds = re.findall(r"<td[^>]*>.*?</td>", row, re.S)
+        if len(tds) == 11:  # the registry has 11 columns after the merge
+            ck = re.search(r'<span class="mono null">([0-9a-f]{8}|arm[IJ])</span>', tds[0])
+            if ck:
+                out[ck.group(1)] = re.sub(r"<[^>]+>", " ", tds[9])
+    return out
+
+
+def test_the_three_play_instruments_render_as_one_badged_column(data):
+    page, c = _render(*data)
+    assert page.count("<th") and "Play vs leader" in page and "vs W32 leader" not in page
+    cells = _play_cells(page)
+    assert len(cells) == c["rows"]
+    # ten windows first (bold), then the superseded one-window pairing, then the MC-LCB number
+    full = cells["8d92dd6e"]  # lr 1e-4, full mixture
+    assert full.index("+0.0037") < full.index("10w") < full.index("0.0587") < full.index("superseded") < full.index("+0.0673")
+    assert "1w paired" in full and "MC" in full
+    assert '<b>+0.0037 [&#8209;0.0119, +0.0192] <span class="pill inst">10w</span></b>' in page
+    # a model with only the one-window pairing shows it first with its own badge
+    w = cells["d84b5183"]  # width 1024, lr 1e-4
+    assert w.index("0.0337") < w.index("1w paired") < w.index("+0.0923") < w.index("MC")
+    assert cells["3cd27716"].strip().startswith("— reference") or "reference" in cells["3cd27716"]
+    assert "the control" in cells["ca58e1e9"] and "codex 260" in cells["5b43322f"]
+    assert "queued" in cells["4dc21822"] and "never paired" not in cells["4dc21822"]  # queued for the leader: not a gap
+    assert "never paired" in cells["528dbbe0"]  # a gap with nothing queued
+    # the caption's MDE80s are derived from the intervals on the page (ten windows: ~0.023)
+    assert 0.020 <= c["mde"]["10w"] <= 0.026 and c["mde"]["1w"] > c["mde"]["10w"]
+    assert f"MDE80 about {c['mde']['10w']:.3f}" in page and "has no readout yet" in page
+
+
+def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
+    rows, table_only, series = data
+    _, c0 = _render(rows, table_only, series)
+    rows2 = copy.deepcopy(rows)
+    next(x for x in rows2 if x["ck"] == "fc73c0f4")["ten"] = "5w +0.0105 [-0.0100, +0.0310]"
+    page, c = _render(rows2, table_only, series)
+    assert c["five_total"] == 1 and c["five_cross"] == 1 and c["ten_total"] == c0["ten_total"] - 1
+    cell = _play_cells(page)["fc73c0f4"]
+    assert "+0.0105" in cell and "5w" in cell and "10w" not in cell
+    assert 'class="pt pt7"' in page and "five windows (wider)" in page  # legend + hollow marker
+    assert 'class="ci ci5"' in page and page.count("svg .ci3{") == 1  # its own interval class; no CSS collision (Codex, #370)
+    assert "a null there means not large" in page and "has no readout yet" not in page
+    assert f"MDE80 about {c['mde']['5w']:.3f}" in page and abs(c["mde"]["5w"] - 0.0205 * build.MDE_PER_HALFWIDTH) < 1e-6
+    base, _ = _render(rows, table_only, series)
+    assert 'class="pt pt7"' not in base and "five windows (wider)" not in base
+
+
+@pytest.mark.parametrize("field,value,msg", [
+    ("w32", "5w +0.1000 [+0.0500, +0.1500]", "belongs only in the ten-window field"),
+    ("ten", "7w +0.1000 [+0.0500, +0.1500]", "neither a keyword"),
+])
+def test_window_prefixes_are_validated(data, field, value, msg):
+    rows, table_only, series = data
+    rows2 = copy.deepcopy(rows)
+    rows2[0][field] = value
+    errs = build.check_data(rows2, table_only, series)
+    assert errs and any(msg in e for e in errs), errs

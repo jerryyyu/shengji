@@ -33,7 +33,7 @@ M = [
 ("A+B+C regret target","bb15e4b2","2026-09-05","v1",512,"3e-4","48k","7,043,156","0.70549","",
  "","GAP","","256-deal: +0.0801; at 1x work -0.0273"),
 ("volVOL-144k","c6d48d57","2026-09-10","v2",512,"3e-4","144k","20,939,532","0.61912","0.0370",
- "","","+0.0030 [-0.0130, +0.0190]","every distinct deal we own"),
+ "","","+0.0030 [-0.0130, +0.0190]","every distinct deal we own; Air five-window replicate 09-13 +0.0156 [-0.0070, +0.0383], null (the ten-window cell stands)"),
 ("volCAP-h1024","1fc58269","2026-09-10","v2",1024,"3e-4","96k","14,077,520","0.62537","0.0401",
  "","","-0.0054 [-0.0248, +0.0140]","width at the deployed LR"),
 # ENCODER v3 -- Codex's line, read from ~/shengji-archive (read-only). Added on Jerry's ask
@@ -56,7 +56,7 @@ M = [
 ("encoder v4, 96k","eedf3139","2026-09-13","v4",512,"3e-4","96k","14,077,520","0.62578","0.0397",
  "","","","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182), best epoch 4/7; five-window screen running on perf 09-13"),
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
- "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget: programme-best val_ce; five windows 09-13 not large (MDE80 0.0360), not extended"),
+ "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]"),
 ("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
  "","","SCREENING","S-d4 cell on all the data: 0.0207 below volNEW-176k (depth 2); +0.0007 vs S-d4 at 144k; regret@4 0.0337 programme best; 5w on cloud 09-13"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",
@@ -122,6 +122,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "c6d48d57":
+        "volVOL-144k: ten windows vs vol96k on the Hetzner queues +0.0030 [-0.0130, +0.0190] (the page cell). Air lane replicate 09-13 (five windows, seeds 13260910..13660910, as S-d4 own-corpus control): +0.0156 [-0.0070, +0.0383], tau 0, Q 1.13/4, MDE80 0.0323 -- crosses zero; the point sits above +0.015 but this is a five-window replicate of an arm already read at ten windows, so the ten-window answer stands and nothing is extended",
     "0c40c591":
         "ARCHITECTURE GRID row S, cell d4 on the 176k corpus (Jerry 09-13 02:2x ET: a depth training with all of our data): volNEW-176k argv verbatim + --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the h512 budget; sealed 09-13 11:39 ET (seal check vs the volNEW-176k receipt: same 176,000 clusters / 25,388,708 records / split seed, config differs only in the depth fields); best epoch 17/20; val_ce 0.60636 is 0.0207 below volNEW-176k (0.62703, depth 2, same corpus) and 0.0007 ABOVE S-d4 at 144k (0.60570): at this parameter budget the extra 32k clusters (runK + runL, hybrid-bury teacher) buy nothing offline; regret@4 0.0337 and recall@4 0.726 are the best of the programme (leader 0.0381 / 0.683); the depth-only twin of Run A (A-d4-2h-176k, two heads, training from 11:49 ET); five windows vs vol96k on the cloud lane v5 from 12:2x ET",
     "ca58e1e9":
@@ -137,7 +139,7 @@ RECORD = {
     "eedf3139":
         "#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it",
     "f88b54cb":
-        "FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play",
+        "OWN-CONTROL READOUT 09-13 13:2x ET (Air, five windows, S-d4 minus volVOL-144k, the same 144k corpus at depth 2): -0.0049 [-0.0299, +0.0201], tau 0.0121, I2 18%, MDE80 0.0357 -- crosses zero; depth 4 residual does not play differently from depth 2 on its own corpus at this precision. EARLIER: FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play",
     "fa657ec8":
         "ARCHITECTURE GRID row S, cell d2: --trunk-layers 2 --trunk-block residual --hidden 436, 609,296 params = the h512 budget; best epoch 9/12; sealed 09-13 04:24 ET; parameter-matched (width 512 -> 436 changes with the block, so not a single-variable ablation): the residual cell at depth 2 sits 0.0098 below depth-2 plain (volVOL-144k 0.61912); depth 4 residual (S-d4 0.60570) a further 0.0036 below; row S complete: plain d2 0.61912 -> plain d4 0.61516 -> residual d2 0.60929 -> residual d4 0.60570; regret@4 0.0374 beats the leader's 0.0381",
     "e9cd80ba":

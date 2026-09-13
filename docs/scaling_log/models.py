@@ -57,6 +57,8 @@ M = [
  "","","","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182), best epoch 4/7; five-window screen running on perf 09-13"),
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
  "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget: programme-best val_ce; five windows 09-13 not large (MDE80 0.0360), not extended"),
+("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
+ "","","SCREENING","S-d4 cell on all the data: 0.0207 below volNEW-176k (depth 2); +0.0007 vs S-d4 at 144k; regret@4 0.0337 programme best; 5w on cloud 09-13"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",
  "","","","grid S d2 residual, 609,296 params: 0.0098 below plain d2; row S: plain d2 0.61912 > plain d4 0.61516 > res d2 0.60929 > res d4 0.60570"),
 ("grid S-d4-plain (4 plain layers)","e9cd80ba","2026-09-12","v2",340,"3e-4","144k","20,939,532","0.61516","0.0396",
@@ -120,6 +122,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "0c40c591":
+        "ARCHITECTURE GRID row S, cell d4 on the 176k corpus (Jerry 09-13 02:2x ET: a depth training with all of our data): volNEW-176k argv verbatim + --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the h512 budget; sealed 09-13 11:39 ET (seal check vs the volNEW-176k receipt: same 176,000 clusters / 25,388,708 records / split seed, config differs only in the depth fields); best epoch 17/20; val_ce 0.60636 is 0.0207 below volNEW-176k (0.62703, depth 2, same corpus) and 0.0007 ABOVE S-d4 at 144k (0.60570): at this parameter budget the extra 32k clusters (runK + runL, hybrid-bury teacher) buy nothing offline; regret@4 0.0337 and recall@4 0.726 are the best of the programme (leader 0.0381 / 0.683); the depth-only twin of Run A (A-d4-2h-176k, two heads, training from 11:49 ET); five windows vs vol96k on the cloud lane v5 from 12:2x ET",
     "ca58e1e9":
         "#339 layer 1, the report-fold tie rule: the SAME weights with --report-tie-keeps-incumbent on the ARM side only vs the production tie rule; five windows sealed 09-13 11:03 ET on the cloud lane (seeds 13260910..13660910): +0.0025 [-0.0081, +0.0131], tau 0, Q 1.47/4, MDE80 0.0151 -- crosses zero, point below the +0.015 extension line so NOT extended; an exact tie is rare and which side we keep does not move play at this precision; layer 3 (the production knob) stays a product decision",
     "633663cd":

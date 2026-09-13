@@ -414,11 +414,13 @@ class CompleteWorldEvaluator:
                  device: str = "cpu", threads: int | None = 1,
                  max_batch: int = 4096, model=None,
                  metadata: Mapping[str, Any] | None = None,
-                 encoding: str = "reference"):
+                 encoding: str = "reference", value_head: str | None = None):
         import torch
 
         if encoding not in ("reference", "mlp-static"):
             raise CWVError("encoding must be 'reference' or 'mlp-static'")
+        if value_head not in (None, "outcome", "search-mean"):
+            raise CWVError("value_head must be 'outcome' or 'search-mean'")
 
         if model is None:
             if checkpoint is None:
@@ -436,6 +438,14 @@ class CompleteWorldEvaluator:
         if hasattr(self.model, "eval"):
             self.model.eval()
         self.encoding = encoding
+        # #373: which head this evaluator reads.  None = the checkpoint's own
+        # value_head; an override must name a head the net has (a refusal
+        # here, never a silent fall-through to the other head).
+        cfg = getattr(self.model, "config", None)
+        configured = str(getattr(cfg, "value_head", "outcome"))
+        if value_head == "search-mean" and not bool(getattr(cfg, "search_head", False)):
+            raise CWVError("value_head 'search-mean': this checkpoint has no search-mean head")
+        self.value_head = configured if value_head is None else value_head
         self.device = device
         if threads:
             torch.set_num_threads(int(threads))
@@ -497,7 +507,11 @@ class CompleteWorldEvaluator:
                 "threads": self.threads, "max_batch": self.max_batch,
                 "encoding": self.encoding,
                 "effective_encoding": self.effective_encoding,
-                "adapter": adapter}
+                "adapter": adapter,
+                # #373: the head this evaluator reads (a numpy package binds the
+                # head it was exported with in its own __init__); the outcome
+                # head keeps the legacy omission
+                **({"value_head": self.value_head} if self.value_head != "outcome" else {})}
 
     def score(self, positions: Sequence[Round], root_seat: int, *,
               tensor_cache=None) -> np.ndarray:
@@ -569,7 +583,11 @@ class CompleteWorldEvaluator:
                         public.to(self.device), history.to(self.device),
                         mask.to(self.device), world.to(self.device),
                         perspective.to(self.device))
-                logits = self.model(public, history, mask, world, perspective)
+                if self.value_head == "outcome":
+                    logits = self.model(public, history, mask, world, perspective)
+                else:
+                    logits = self.model(public, history, mask, world, perspective,
+                                        head=self.value_head)
                 if tuple(logits.shape) != (len(chunk), OUTCOME_CLASSES) \
                         or not bool(torch.all(torch.isfinite(logits))):
                     raise CWVError("model logits drift")
@@ -1284,20 +1302,26 @@ def _bot_class(worlds: int, finish_trick: bool, lcb: float,
 
 @lru_cache(maxsize=8)
 def _shared_evaluator(path: str, mtime_ns: int, size: int, threads: int | None,
-                      max_batch: int, encoding: str) -> CompleteWorldEvaluator:
+                      max_batch: int, encoding: str,
+                      value_head: str | None = None) -> CompleteWorldEvaluator:
     del mtime_ns, size
     return CompleteWorldEvaluator(path, threads=threads, max_batch=max_batch,
-                                   encoding=encoding)
+                                   encoding=encoding, value_head=value_head)
 
 
 def shared_evaluator(checkpoint: str | os.PathLike[str], *, threads: int | None = 1,
                      max_batch: int = 4096,
-                     encoding: str = "reference") -> CompleteWorldEvaluator:
-    """One evaluator per (checkpoint file, threads, encoding) per process."""
+                     encoding: str = "reference",
+                     value_head: str | None = None) -> CompleteWorldEvaluator:
+    """One evaluator per (checkpoint file, threads, encoding, value head) per process."""
     resolved = Path(checkpoint).resolve()
     if not resolved.is_file():
         raise CWVError(f"checkpoint not found: {resolved}")
     if resolved.suffix.lower() == ".npz":
+        if value_head is not None:
+            # a numpy package carries ONE exported head (export_cwv_numpy); the
+            # choice is made at export, not here
+            raise CWVError("value_head cannot be overridden on a numpy package")
         from .cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
         # Share immutable weights, not per-room accounting. Torch defaults and
         # cached evaluator semantics remain unchanged for research callers.
@@ -1305,7 +1329,7 @@ def shared_evaluator(checkpoint: str | os.PathLike[str], *, threads: int | None 
                                            max_batch=int(max_batch), encoding=encoding)
     stat = resolved.stat()
     return _shared_evaluator(str(resolved), stat.st_mtime_ns, stat.st_size,
-                             threads, int(max_batch), encoding)
+                             threads, int(max_batch), encoding, value_head)
 
 
 def make_cwv_bot(checkpoint: str | os.PathLike[str], *, worlds: int,

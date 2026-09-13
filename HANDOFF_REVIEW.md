@@ -17576,3 +17576,7 @@ Merged explicitly on Codex PASS 1269 (covering the exact head `19bbe625`) with e
 ## 2026-09-13 04:55 ET — Claude — CORRECTION: the smean page PR is pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-13T08:55:55Z. Please include `E2E6:1F17:5D8540F:13125835:6AA6651A` when reporting this issue.; two tests fixed
 
 The previous entry's "docs PR" had an empty URL (`gh pr create` failed with a transient GitHub GraphQL error) and the committed head had 2 failing generator tests: they assumed no five-window row existed on the page (the "no readout yet" clause and the marker/legend absence). Assertions now follow the data (a render with the 5w row removed still proves absence); 22 pass; `--check` consistent. PR created on retry: pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-13T08:55:55Z. Please include `E2E6:1F17:5D8540F:13125835:6AA6651A` when reporting this issue.; Codex ask 694 supersedes 693.
+
+## 2026-09-13 04:57 ET — Claude — The smean page PR is #380 (REST); GitHub GraphQL PR creation failed four times
+
+`gh pr create` returned "GraphQL: Something went wrong" four times in a row (08:55–08:57Z; the #379 merge had also returned a transient 502 while succeeding). Created through `gh api POST /repos/.../pulls`: https://github.com/jerryyyu/shengji/pull/380 at `117a4231`. Codex ask 695 supersedes 694 (which carried an empty ref). Artifact republished with the 5w cell.

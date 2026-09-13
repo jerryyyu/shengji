@@ -48,6 +48,15 @@ class NumpyCompleteWorldEvaluator(CompleteWorldEvaluator):
         stat = resolved.stat()
         self.model = _weights(str(resolved), stat.st_mtime_ns, stat.st_size)
         self.metadata = copy.deepcopy(dict(self.model.metadata))
+        # #373: a package carries ONE head, named at export
+        # (export_cwv_numpy -> metadata.exported_value_head).  A package written
+        # before the field existed is the outcome head.  Bound here so
+        # identity() names it (legacy outcome packages keep their omission) and
+        # a package naming a head this schema does not know is refused.
+        head = self.metadata.get("exported_value_head", "outcome")
+        if head not in ("outcome", "search-mean"):
+            raise CWVError(f"numpy package names an unknown exported value head {head!r}")
+        self.value_head = head
         self.checkpoint_path = str(resolved)
         self.checkpoint_sha256 = self.model.package_sha256
         self.encoding, self.device = encoding, "cpu"

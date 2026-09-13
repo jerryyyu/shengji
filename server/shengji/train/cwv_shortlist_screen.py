@@ -17,6 +17,8 @@ from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_bury_policy import CWVBuryBot
+from .cwv_corrected_rollout import CWVCorrectedRolloutBot, CWVCorrectedRolloutBuryBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -144,10 +146,35 @@ def _encoding(config: dict) -> str:
     return config.get("encoding", "reference")
 
 
+def _validate_corrected_config(config, correction):
+    if (config["arm"] != "learned" or config.get("baseline") not in
+            ("flat-shortlist", "levels-shortlist")):
+        raise ValueError("corrected rollout requires learned with a shortlist baseline")
+    if (config.get("baseline") == "levels-shortlist" and
+            correction.get("mode") != "corrected"):
+        raise ValueError("levels-shortlist requires corrected rollout mode")
+    if any(key in config for key in ("double_shortlist", "value_head",
+                                     "report_tie_keeps_incumbent")):
+        raise ValueError("corrected rollout cannot be combined with inner/value-head/tie options")
+    if (correction.get("mode") not in ("corrected", "levels")
+            or type(correction.get("correction_worlds")) is not int
+            or type(correction.get("residual_worlds")) is not int
+            or not 1 <= correction["residual_worlds"] <= correction["correction_worlds"]):
+        raise ValueError("require 1 <= residual worlds <= correction worlds")
+
+
 def make_side(config: dict, side: str, seed: int):
+    if config.get("baseline") == "levels-shortlist" and not config.get("corrected_rollout"):
+        raise ValueError("levels-shortlist requires corrected rollout configuration")
+    correction = (config.get("corrected_rollout") if side == "arm"
+                  or (side == "baseline" and config.get("baseline") == "levels-shortlist")
+                  else None)
+    if correction is not None:
+        _validate_corrected_config(config, correction)
     arm = config["arm"]
-    flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
-    if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
+    shortlist_baseline = (side == "baseline" and
+                          config.get("baseline") in ("flat-shortlist", "levels-shortlist"))
+    if (side == "baseline" and not shortlist_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
         if side == "arm" and arm == "production":
             multiplier = int(config["production_multiplier"])
@@ -186,7 +213,20 @@ def make_side(config: dict, side: str, seed: int):
                                    inner_reuse_successors=inner.get(
                                        "reuse_successors", False))
     else:
-        bot = CWVShortlistBot(evaluator, **kwargs)
+        if correction is None:
+            cls = CWVBuryBot if config.get("hybrid_bury") else CWVShortlistBot
+            if config.get("hybrid_bury"):
+                kwargs["arm"] = "hybrid"
+            bot = cls(evaluator, **kwargs)
+        else:
+            cls = (CWVCorrectedRolloutBuryBot if config.get("hybrid_bury")
+                   else CWVCorrectedRolloutBot)
+            if config.get("hybrid_bury"):
+                kwargs["arm"] = "hybrid"
+            bot = cls(evaluator, **kwargs,
+                      correction_mode=("levels" if side == "baseline" else correction["mode"]),
+                      correction_worlds=correction["correction_worlds"],
+                      residual_worlds=correction["residual_worlds"])
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     # #339 layer 1: bound per window in config.json, applied to the ARM bot only.
     # A flat-shortlist baseline also reaches this point; it must stay at the
@@ -205,13 +245,21 @@ def work_counters(bots):
         for key, value in getattr(bot, "double_shortlist_counts", {}).items():
             name = "double_" + key
             out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, "corrected_rollout_counts", {}).items():
+            name = "correction_" + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))
     # Cheap complete-world evaluations are intentionally separate from the
     # inherited full heuristic continuations; they never inflate rollouts.
-    out["cheap_evaluations"] = int(out.get("cwv_cheap_evaluations", 0))
-    out["full_rollout_accepted_worlds"] = int(out["accepted_worlds"] - out.get("cwv_cheap_worlds", 0))
+    out["cheap_evaluations"] = int(
+        out.get("cwv_cheap_evaluations", 0) + out.get("correction_model_evaluations", 0))
+    correction_sampled = out.get("correction_sampled_worlds", 0)
+    correction_residual = out.get("correction_residual_worlds", 0)
+    out["full_rollout_accepted_worlds"] = int(
+        out["accepted_worlds"] - out.get("cwv_cheap_worlds", 0)
+        - correction_sampled + correction_residual)
     out["continuation_rollouts"] = int(out["rollouts"])
     out["total_rollouts"] = int(out["rollouts"])
     if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
@@ -240,7 +288,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "hybrid_bury", "corrected_rollout"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -377,6 +425,12 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Inner finalist continuations count separately and are included exactly once "
             "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+    if "corrected_rollout" in config:
+        mode = config["corrected_rollout"]["mode"]
+        result["arm_description"] = (
+            "model-corrected shared-world rollout shortlist"
+            if mode == "corrected" else "levels-only shared-world rollout shortlist")
+        result["baseline_description"] = config.get("baseline", "production")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -413,6 +467,12 @@ def main(argv=None):
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
+    parser.add_argument("--corrected-rollout", choices=("corrected", "levels"),
+                        help="ARM only: shared-world model-corrected rollout selection")
+    parser.add_argument("--correction-worlds", type=int, default=64)
+    parser.add_argument("--residual-worlds", type=int, default=16)
+    parser.add_argument("--hybrid-bury", action="store_true",
+                        help="same hybrid bury implementation on both sides")
     parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
@@ -424,7 +484,7 @@ def main(argv=None):
     parser.add_argument("--inner-batch-size", type=int, default=128)
     parser.add_argument("--inner-reuse-successors", action="store_true",
                         help="reuse exact inner successor leaves and evaluator inputs")
-    parser.add_argument("--baseline", choices=("production", "flat-shortlist"),
+    parser.add_argument("--baseline", choices=("production", "flat-shortlist", "levels-shortlist"),
                         default="production")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
@@ -437,7 +497,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
-            or args.report_worlds < 30):
+            or args.report_worlds < 30 or args.correction_worlds < 1
+            or args.residual_worlds < 1):
         parser.error("positive worlds/alternatives/clusters/workers and >=30 report worlds required")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         parser.error("SHENGJI_REQUIRE_VOIDS=1 is required")
@@ -451,6 +512,24 @@ def main(argv=None):
         parser.error("--report-tie-keeps-incumbent is only valid for learned")
     if args.value_head is not None and args.arm != "learned":
         parser.error("--value-head is only valid for learned")
+    if args.corrected_rollout is not None:
+        if args.arm != "learned" or args.baseline not in ("flat-shortlist", "levels-shortlist"):
+            parser.error("--corrected-rollout requires learned with a shortlist baseline")
+        if args.baseline == "levels-shortlist" and args.corrected_rollout != "corrected":
+            parser.error("levels-shortlist requires --corrected-rollout corrected")
+        if (args.inner_mode is not None or args.value_head is not None
+                or args.report_tie_keeps_incumbent):
+            parser.error("--corrected-rollout cannot be combined with inner/value-head/tie options")
+        if min(args.correction_worlds, args.residual_worlds) < 1:
+            parser.error("correction and residual worlds must be positive")
+        if args.residual_worlds > args.correction_worlds:
+            parser.error("residual worlds must be <= correction worlds")
+    if args.baseline == "levels-shortlist" and args.corrected_rollout != "corrected":
+        parser.error("levels-shortlist requires --corrected-rollout corrected")
+    if args.hybrid_bury and (args.arm != "learned" or args.baseline not in
+                             ("flat-shortlist", "levels-shortlist")
+                             or args.inner_mode is not None):
+        parser.error("--hybrid-bury requires learned/shortlist baseline without --inner-mode")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -458,8 +537,8 @@ def main(argv=None):
             parser.error("inner worlds and batch size must be positive")
     if args.inner_reuse_successors and args.inner_mode is None:
         parser.error("--inner-reuse-successors requires --inner-mode")
-    if args.baseline == "flat-shortlist" and args.arm != "learned":
-        parser.error("--baseline flat-shortlist requires the learned checkpoint/root recipe")
+    if args.baseline in ("flat-shortlist", "levels-shortlist") and args.arm != "learned":
+        parser.error("shortlist baseline requires the learned checkpoint/root recipe")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -509,6 +588,14 @@ def _run_screen(args, trump_ranks):
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:
         config["value_head"] = args.value_head
+    if args.corrected_rollout is not None:
+        config["corrected_rollout"] = {
+            "mode": args.corrected_rollout,
+            "correction_worlds": args.correction_worlds,
+            "residual_worlds": args.residual_worlds,
+        }
+    if args.hybrid_bury:
+        config["hybrid_bury"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:

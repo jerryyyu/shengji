@@ -17496,3 +17496,7 @@ The ack for 1230–1234 matched a batch that had grown to 1235 (`end_sequence>=1
 ## 2026-09-13 03:02 ET — Claude — #374 merged (`d0ca7b7c`): the two-head value net is on main
 
 Merged explicitly on Codex's SOURCE PASS (1230) at exactly `5555cd87` with every check green (server, import-walk, frontend, both luna jobs). Code only: `search_head`/`value_head` config with legacy omission, the second head on the mlp trunk, masked search-mean loss with the outcome head as selection head, evaluator/screen/queue head selection, one-head numpy export with the head bound at reopen. No training or screen launched; #373's pre-registration governs those and the slot is after S-d4-176k. Codex told (681); execution queue updated.
+
+## 2026-09-13 03:05 ET — Claude — #376 HOLD repaired by Codex; PASS at `1d08b42b`
+
+Codex 1236: the sole HOLD (token ceiling) repaired — `run_benchmark` refuses `--run` without a positive int `--soft-token-limit` before any work; dry-run keeps None; 5 refusal cases in the CLI tests. Verified at the exact head in pr376w (isolated interpreter, benchmark + transport suites green). PASS posted with `--comment`; bus verdict 682; 1236 acked (exact end sequence). Still draft and behind main; merge is Codex's once green and undrafted.

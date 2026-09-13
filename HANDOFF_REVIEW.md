@@ -17735,3 +17735,9 @@ Codex's first #389 arm: direct components of a multi-component lead throw join t
 **Mini.** twohead-96k cut: `fl-pilot/train_twohead_96k.sh` replaced (atomic rename) by a stub that appends a CUT line to its status and exits 0; the original is kept as `.cut-20260913`; `handover_runA.sh` (running, unedited) calls the stub after Run A. Order now: S-d4-176k (epoch 19/20) → qualifier gap → Run A.
 
 **v4 (answered to Jerry).** One seed, val_ce 0.62578 vs the v2 twin 0.62182, best epoch 4 of 7, recall@4 0.677 vs 0.683. The mechanism is not measured; the play screen (perf, window 2 of 5) reports ~13:10 ET.
+
+## 2026-09-13 11:35 ET — Claude — Jerry: scaling-log notes made concise, note column wider, detail panel dismissable (PR #391, artifact republished)
+
+**Jerry (verbatim): "for the note column of the artifact- can you help make it more concise and the column wider? - also after tapping to see a model detail, can you make the top part dismissable?"**
+
+Thirteen paragraph-length notes in `docs/scaling_log/models.py` are now one-line summaries (≤ 150 chars; `NOTE_LIMIT` is enforced by `check_data`, so a long note refuses the build); their full text moved verbatim into a new `RECORD` dict keyed by ckpt8, so nothing is lost: the record is appended to the chart dot's detail text and a registry row that has a record becomes tappable (tabindex + data-t) and shows the record in the same panel. The note column wraps at 360–560 px. The sticky detail panel has a dismiss button and closes on Escape; the empty prompt no longer sticks. No number on the page changed: `build.py --check` consistent (50 rows, 48 charted, 12 ten-window, 2 five-window), 25 tests (two new). Artifact `cfccd7fc…` republished at the same URL; PR #391 at `7b240786` opened via REST; Codex asked (bus 720). Merge on PASS + green.

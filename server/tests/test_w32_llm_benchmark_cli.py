@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -164,3 +166,122 @@ def test_launcher_runs_real_prepared_engine_mirrors_and_retains_provider_cost(tm
     assert summary["complete_deal_pairs"] == 1
     assert summary["raw_cost_tokens"] == result["budget"]["tokens"] > 0
     assert all(row["events"] and row["calls"] for row in result["mirrors"])
+
+
+def test_continuation_restores_real_root_skips_complete_and_separates_attempt_cost(tmp_path):
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.game import Game
+    from shengji.luna.game import _state_snapshot
+
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint")
+
+    def recipe_reader(_env):
+        return (str(checkpoint), [32], {"encoding": "mlp-static"}, "hybrid",
+                CWVBuryConfig(), 2.0)
+
+    def register(*_args, **_kwargs):
+        return ["registered-baseline"]
+
+    class Transport:
+        def __init__(self, **_kwargs):
+            self.calls = []
+
+        def __call__(self, _packet):
+            self.calls.append({"usage": {"input_tokens": 2, "output_tokens": 1}})
+            return {"cards": ["C2"], "memory": ""}
+
+    prior = tmp_path / "prior"
+    continuation = tmp_path / "continuation"
+    common = dict(
+        checkpoint=str(checkpoint), policy="registered-baseline", seeds=[7],
+        models=["sol"], information=["actor-only"], wall_seconds=30,
+        token_limit=100, register_fn=register, recipe_reader=recipe_reader,
+        game_factory=Game, prepare_fn=prepare_round,
+        baseline_factory=lambda _seat, _seed: HeuristicBot(),
+        transport_factory=Transport, run=True)
+
+    def first_runner(_game, **kwargs):
+        kwargs["planner_factory"](0)({})
+        if kwargs["flip"] == 0:
+            return {"complete": False, "error": "invalid action", "calls": []}
+        return {"complete": True, "signed_levels": 1, "calls": []}
+
+    benchmark.run_benchmark(output=prior, runner=first_runner, **common)
+    prior_bytes = {
+        path.relative_to(prior): path.read_bytes()
+        for path in prior.rglob("*") if path.is_file()
+    }
+    expected_snapshot = benchmark._load_json_file(
+        prior / "root-7.json", label="root")[0]["round"]
+    seen = []
+
+    def retry_runner(game, **kwargs):
+        seen.append((kwargs["flip"], _state_snapshot(game.round)))
+        kwargs["planner_factory"](0)({})
+        return {"complete": True, "signed_levels": 2, "calls": []}
+
+    def forbidden_setup(*_args, **_kwargs):
+        raise AssertionError("continuation must not deal or bury again")
+
+    result = benchmark.run_benchmark(
+        output=continuation, continue_from=prior, runner=retry_runner,
+        token_limit=3, prepare_fn=forbidden_setup,
+        **{key: value for key, value in common.items()
+           if key not in ("token_limit", "prepare_fn")})
+
+    assert seen == [(0, expected_snapshot)]
+    assert result["budget"]["new_tokens"] == 3
+    assert result["budget"]["prior_tokens"] == 6
+    assert result["budget"]["combined_tokens"] == 9
+    assert result["summaries"]["sol-actor-only"]["raw_cost_tokens"] == 9
+    assert result["summaries"]["sol-actor-only"]["paired_signed_levels"] == [1.5]
+    assert result["summaries"]["sol-actor-only"]["prior_failures"][0]["error"] == "invalid action"
+    imported = result["mirrors"][1]
+    assert imported["lineage"]["source_row_sha256"]
+    assert imported["complete"] is True
+    assert prior_bytes == {
+        path.relative_to(prior): path.read_bytes()
+        for path in prior.rglob("*") if path.is_file()
+    }
+
+    with pytest.raises(benchmark.BenchmarkRefusal, match="chained --continue-from"):
+        benchmark.run_benchmark(output=tmp_path / "chained", continue_from=continuation,
+                                runner=retry_runner, **common)
+    assert not (tmp_path / "chained").exists()
+    assert seen == [(0, expected_snapshot)]
+
+    bad_prior = tmp_path / "bad-prior"
+    shutil.copytree(prior, bad_prior)
+    bad_result = json.loads((bad_prior / "result.json").read_text())
+    bad_result["config"]["policy"] = "different-policy"
+    bad_result_path = bad_prior / "result.json"
+    bad_result_path.chmod(0o600)
+    bad_result_path.write_text(json.dumps(bad_result))
+    provider_calls = []
+
+    def should_not_run(*_args, **_kwargs):
+        provider_calls.append(True)
+        raise AssertionError("mismatched continuation reached provider")
+
+    with pytest.raises(benchmark.BenchmarkRefusal, match="prior policy"):
+        benchmark.run_benchmark(
+            output=tmp_path / "refused", continue_from=bad_prior,
+            runner=should_not_run, token_limit=3, **{key: value for key, value in common.items()
+                                                     if key != "token_limit"})
+    assert provider_calls == []
+
+    bad_mirror = tmp_path / "bad-mirror"
+    shutil.copytree(prior, bad_mirror)
+    bad_mirror_path = bad_mirror / "mirror-sol-actor-only-7-0.json"
+    bad_mirror_path.chmod(0o600)
+    bad_mirror_path.write_bytes(b"{}")
+    refused_output = tmp_path / "refused-mirror"
+    with pytest.raises(benchmark.BenchmarkRefusal, match="mirror row"):
+        benchmark.run_benchmark(
+            output=refused_output, continue_from=bad_mirror,
+            runner=should_not_run, token_limit=3, **{key: value for key, value in common.items()
+                                                     if key != "token_limit"})
+    assert not refused_output.exists()
+    assert provider_calls == []

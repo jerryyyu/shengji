@@ -377,3 +377,25 @@ def test_every_row_reaches_every_surface_it_qualifies_for_and_an_omission_fails_
     # a registry row that vanished is reported too
     broken2 = page.replace(f'<span class="mono null">{ck}</span>', "", 1)
     assert (ck, "registry table") in build.coverage_report(broken2, rows, table_only, c)
+
+
+def test_a_one_window_only_row_dropped_from_the_leader_charts_is_reported(data):
+    """Codex HOLD on #393: leader charts also plot numeric one-window pairings."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    ck = "d84b5183"  # width 1024 lr 1e-4: a one-window pairing, no ten-window cell
+    row = next(r for r in rows if r["ck"] == ck)
+    assert not row["ten"] and row["w32"] and build.leader_chart_eligible(row)
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    broken = page
+    for i in (1, 3, 5):
+        assert f"({ck})" in svgs[i]
+        broken = broken.replace(svgs[i], svgs[i].replace(f"({ck})", "(dropped)"), 1)
+    misses = build.coverage_report(broken, rows, table_only, c)
+    assert {w for k, w in misses if k == ck} == {"chart 1b data vs leader", "chart 2b width vs leader", "chart 4 leader effect by day"}
+    # the month label in the day table comes from the date
+    rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
+        "october model", "0badc0d0", "2026-10-02", "v2", 512, "3e-4", "96k", "14,077,520",
+        "0.62000", "", "", "", "", "")))]
+    page2, _ = _render(rows2, table_only, series)
+    assert "<td>02 Oct</td>" in page2

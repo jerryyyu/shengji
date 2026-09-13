@@ -262,7 +262,8 @@ def day_rows(rows, table_only):
         else:
             gained = "&mdash;"
         key = d[5:]
-        out.append(f'<tr><td>{key[3:]} Sep</td><td class="n">{len(day)}</td>'
+        label = dt.date.fromisoformat(d).strftime("%d %b")
+        out.append(f'<tr><td>{label}</td><td class="n">{len(day)}</td>'
                    f'<td class="n">{day[0]["ce"]}<br><span class="small">{day[0]["n"]}</span></td>'
                    f'<td class="n">{run:.5f}</td><td class="n">{gained}</td><td>{WHAT_CHANGED.get(key, "")}</td></tr>')
     return "\n".join(out)
@@ -275,6 +276,19 @@ def long_day(iso):
 
 CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
                "3 by training day", "4 leader effect by day")
+
+
+def leader_chart_eligible(r):
+    """The rows the leader-axis charts (1b, 2b, 4) plot: the leader itself as the
+    reference mark, any numeric ten-/five-window cell, or a numeric one-window
+    pairing (charts.py ``eff``; ``RES``/``SUPERSEDED`` prefixes are still numbers).
+    Codex HOLD on #393: the first version guarded only ten-window rows, so a
+    one-window-only row (d84b5183) could vanish from all three leader charts unseen."""
+    if r["ck"] == "3cd27716":
+        return True
+    if r["ten"] and parse_cell(r["ten"]) is not None:
+        return True
+    return bool(r["w32"]) and r["w32"] not in KEYWORDS
 
 
 def coverage_report(page, rows, table_only, c):
@@ -296,17 +310,17 @@ def coverage_report(page, rows, table_only, c):
         ck, tag = r["ck"], f"({r['ck']})"
         if f'<span class="mono null">{ck}</span>' not in page:
             misses.append((ck, "registry table"))
-        if r["note"] and html.escape(r["note"]).replace(" -- ", " &mdash; ")[:40] not in page:
-            misses.append((ck, "registry note"))
-        if r.get("record") and html.escape(r["record"], quote=True)[:40] not in page:
-            misses.append((ck, "RECORD history in the detail text"))
+        if r["note"] and r["note"].replace(" -- ", " &mdash; ") not in page:
+            misses.append((ck, "registry note (complete text)"))
+        if r.get("record") and html.escape(r["record"], quote=True).replace("\n", "&#10;") not in page:
+            misses.append((ck, "RECORD history in the detail text (complete text)"))
         if ck in table_only:
             continue
         if r["ce"] and r["n"] not in off_scale:
             for name in ("1 data vs CE", "2 width vs CE", "3 by training day"):
                 if tag not in charts[name]:
                     misses.append((ck, f"chart {name}"))
-        if r["ten"] and parse_cell(r["ten"]) is not None:
+        if leader_chart_eligible(r):
             for name in ("1b data vs leader", "2b width vs leader", "4 leader effect by day"):
                 if tag not in charts[name]:
                     misses.append((ck, f"chart {name}"))

@@ -276,7 +276,8 @@ def test_chart_2b_fans_same_parameter_count_models_around_one_tick(data):
         w = re.search(r"width (\d+)", tip).group(1)
         by_width.setdefault(w, set()).add(float(cx))
     assert len(by_width) >= 3 and all(max(xs) - min(xs) <= 7.01 * (len(xs) - 1) for xs in by_width.values()), by_width
-    assert 'am">h512</text>' in h4 and 'am">611k</text>' in h4
+    # the h512 tick label may be shared with a parameter-matched depth cell (e.g. "h330, h512")
+    assert re.search(r'class="axs am">[^<]*\bh512\b[^<]*</text>', h4) and 'am">611k</text>' in h4
     assert 'am">273k</text>' in h4 or "h256" in h4
     assert re.search(r"\d parameter counts</text>", h4)
 

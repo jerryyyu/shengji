@@ -248,7 +248,7 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra, spread=17):
     for xv,items in grp.items():
         for k,(d,(m,lo,hi,inst)) in enumerate(sorted(items,key=lambda z:-z[1][0])):
             off=(k-(len(items)-1)/2)*spread
-            mk=off if spread>=10 else 0          # marker at the true x when only the intervals are fanned
+            mk=off
             if inst=="ref":
                 s.append(dot(X(xv,mk),Y(0),6,"pt pt2",d))
                 s.append('<text x="%.1f" y="%.1f" class="lab am">leader</text>'%(X(xv,mk),Y(0)-13)); continue
@@ -352,7 +352,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra, spread=15):
     for xv,items in g.items():
         for k,d in enumerate(sorted(items,key=lambda z:-parse(z["mc"])[0])):
             off=(k-(len(items)-1)/2)*spread
-            mk=off if spread>=10 else 0          # marker at the true x when only the intervals are fanned
+            mk=off
             m,lo,hi=parse(d["mc"])
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci ci3"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi)))
             for e in (lo,hi):
@@ -366,7 +366,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra, spread=15):
     for xv,items in g2.items():
         for k,(d,(m,lo,hi,inst)) in enumerate(sorted(items,key=lambda z:-z[1][0])):
             off=(k-(len(items)-1)/2)*spread
-            mk=off if spread>=10 else 0
+            mk=off
             if inst=="ref":
                 s.append(dot(X(xv,mk),Y(0),6,"pt pt2",d)); continue
             col,pt=STYLE[inst]
@@ -385,7 +385,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra, spread=15):
     s.append('</svg>'); open(out,"w").write("\n".join(s))
 # section 1b: the axis spans only the corpus sizes that carry a benchmark point (derived),
 # one tick per size with its cluster count; models trained on the same corpus sit at the
-# same x and only the interval lines fan by 3 px so they can be told apart
+# same tick, fanned 7 px (the old 15 px pitch spread them across the axis; 3 px was unreadable)
 _h2_pts=[d for d in R if d["mc"] or (d in SCR and eff(d))]
 _h2_sizes=sorted({d["cl"] for d in _h2_pts}, key=lambda c: REC[c])
 _h2_all=len({d["cl"] for d in R if d["ce"] is not None})
@@ -393,7 +393,7 @@ both(lambda d:d["rec"], REC[_h2_sizes[0]]*0.82, REC[_h2_sizes[-1]]*1.18,
   [(REC[c],"%.1fM"%(REC[c]/1e6),c+" clusters") for c in _h2_sizes],
   "training records (log scale; only sizes with a benchmark point)",OUT+"/h2.svg",
   ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true.","",
-   "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all.","Same corpus = same x;","interval lines fanned","3 px to tell them apart."], spread=3)
+   "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all.","Same corpus = one tick;","points fanned 7 px so","they can be read."], spread=7)
 # section 2b: same rule on the parameter axis; ticks are the parameter counts that carry a
 # point, counts within 2% share one tick (a depth cell sits at its depth-2 twin's budget)
 def _par_ticks(pts):
@@ -407,7 +407,7 @@ _h4_pts=[d for d in R if d["mc"] or (d in SCR and eff(d))]
 _h4_t=_par_ticks(_h4_pts)
 both(lambda d:d["par"], _h4_t[0][0]*0.8, _h4_t[-1][0]*1.25, _h4_t,
   "parameters (log scale; only sizes with a benchmark point)",OUT+"/h4.svg",
-  ["Both benchmarks, same","models, one axis.","","%d parameter counts"%len(_h4_t),"carry a point. Same","count = same x; interval","lines fanned 3 px."], spread=3)
+  ["Both benchmarks, same","models, one axis.","","%d parameter counts"%len(_h4_t),"carry a point. Same","count = one tick; points","fanned 7 px to be read."], spread=7)
 print("dual-benchmark charts built")
 
 # ---------- derived caption numbers and the by-day table ----------

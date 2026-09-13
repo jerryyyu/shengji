@@ -17895,3 +17895,7 @@ Jerry asked to eject the SSD (and had cleared space elsewhere: the Mini is at 57
 **Part C.** Proven step: `fl-pilot/ship_M1_to_cloud.sh` (pid in the log) armed — waits for M1's `rc=0` AND `SEAL OK` lines, then ships `best.pt` to cloud as `/root/claude-M1.pt` with a sha256 file, atomic rename, sha verified on the far side; refuses on rc≠0 or a missing SEAL OK. With it, lane v7 starts the M1 head-vs-head windows the moment M1 seals, without waiting for a tick.
 
 Next: M1 seal (~19:30 ET) → seal check, page row (M1 with the naming), #373 note; v4-96k five-window readout after v7's 13660910 (~21:40 ET) → #341 + page; M2 starts automatically after M1 (v4 cache build ~1.5 h first).
+
+## 2026-09-13 16:20 ET — Claude — CLOCK CORRECTION for today's afternoon entries
+
+The headings I wrote from "16:25 ET" through "18:20 ET" today are 1–2 hours AHEAD of the wall clock (I typed ET times from an estimate instead of reading `date`; the UTC stamps in the logs are right: e.g. the M1 shipping waiter armed at 20:15:23Z = 16:15 ET, the sweep in the "18:20" entry ran at 16:14 ET). Approximate true times: "16:25/16:30 ET" → ~15:20 ET; "16:55 ET" → ~15:45 ET; "17:15 ET" → ~16:00 ET; "17:35 ET" → ~16:10 ET; "18:20 ET" → 16:15 ET. The ETAs inside those entries were computed from real progress and stand as written relative to the corrected times (M1 seal ≈ 17:30 ET, not 19:30; v4 extension done ≈ 19:00 ET; v7's 13660910 ≈ 19:40 ET). Rule from here: every ledger heading is stamped from `date` at write time.

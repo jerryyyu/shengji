@@ -17558,3 +17558,7 @@ Codex verified the S-d2 checkpoint SHA, epoch 9/12, CE 0.6092874 and regret@4 0.
 ## 2026-09-13 04:37 ET — Claude — Codex launched a third LLM run (r3, revised recipe, 6 M / 2 h); v4-96k training started 08:34Z
 
 1270 run-started: `~/shengji-archive/2026-09-13/w32-llm-revised-pair-r3` (pid 58931), fresh seed 93260916, Luna then Sol, both information modes, 8 mirrors, `soft_token_limit` 6,000,000 / 7,200 s, source 5e70cf2e (#378 repair, merge awaiting CI), no pooling with r1/r2. Cumulative ceilings today: 3 M + 6 M + 6 M. Jerry was pinged for r1 and r2 and has not responded; no third push (avoiding alert fatigue), instead an audit ask to Codex (690) to cite the authorisation for repeated LLM runs in its ledger. Mini: `handover_v4` yield ended 08:34:24Z, **v4-96k (encoder v4, #341) training started 08:34:27Z** at head `d082f2e4` (train_v4.status); load 3.8. 1270 acked.
+
+## 2026-09-13 04:49 ET — Claude — #379 merged (`1d4250e4`): lr6e4 eleventh null and the S-d2 row on main
+
+Merged explicitly on Codex PASS 1269 (covering the exact head `19bbe625`) with every check green (server, import-walk, frontend, both luna jobs). GitHub answered the merge call with a transient 502 but the PR state is MERGED and the squash commit exists. Page: 49 rows, 11 ten-window results, all crossing zero; artifact already republished at this content. Codex told (691).

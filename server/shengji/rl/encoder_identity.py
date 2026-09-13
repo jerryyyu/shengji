@@ -34,13 +34,26 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def source_sha256s() -> dict[str, str]:
+def source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
+    """The executable dependency closure of encoder ``version``.
+
+    v1 and v2 keep the frozen four-file closure (their archived identities
+    must keep matching).  v4 adds the files that compute its columns."""
+    paths = dict(SOURCE_PATHS)
+    if check_version(version) >= 4:
+        here = Path(__file__).resolve()
+        paths["encode_versions"] = here.with_name("encode_versions.py")
+        paths["encode_opponent_pairs"] = here.with_name("encode_opponent_pairs.py")
+    return paths
+
+
+def source_sha256s(version: int = ENC_VERSION) -> dict[str, str]:
     """Rehash the exact executable dependency closure on every call."""
-    return {name: sha256_file(path) for name, path in SOURCE_PATHS.items()}
+    return {name: sha256_file(path) for name, path in source_paths(version).items()}
 
 
-def implementation_sha256(sources: dict[str, str]) -> str:
-    if set(sources) != set(SOURCE_PATHS):
+def implementation_sha256(sources: dict[str, str], version: int = ENC_VERSION) -> str:
+    if set(sources) != set(source_paths(version)):
         raise ValueError("encoder source identity has missing or extra files")
     payload = "|".join(
         f"{name}:{digest}" for name, digest in sorted(sources.items())
@@ -55,12 +68,12 @@ def encoder_contract(version: int = ENC_VERSION) -> dict:
     the same sources but different layouts must not compare equal.
     """
     version = check_version(version)
-    sources = source_sha256s()
+    sources = source_sha256s(version)
     return {
         "identity_schema": IDENTITY_SCHEMA,
         "schema": OBS_SCHEMA_BY_VERSION[version],
         "layout_version": version,
-        "implementation_sha256": implementation_sha256(sources),
+        "implementation_sha256": implementation_sha256(sources, version),
         "source_sha256s": sources,
     }
 

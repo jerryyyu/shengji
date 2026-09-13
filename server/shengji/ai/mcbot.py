@@ -40,7 +40,7 @@ from collections import Counter
 
 from ..engine.cards import TRUMP
 from ..engine.combos import decompose
-from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow
+from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow, validate_lead
 from ..engine.round import Round, Trick, TrickPlay
 
 
@@ -190,6 +190,11 @@ class MCBot(SmartBot):
     REPORT_RULE = "none"          # one of: none, mean, lcb
     REPORT_MIN_GAIN = 0.0         # distinct from incumbent point MARGIN=5
     REPORT_TIE_KEEPS_INCUMBENT = False  # #339 L1; True only in a screened arm
+    REPORT_THROW_FAIL_COUNT = True   # #339 L2 measurement: count, per report
+    #                                  world, whether a multi-component throw
+    #                                  candidate would fail validation there.
+    #                                  Read-only on the decision; the record
+    #                                  carries the counts for calibration.
     REPORT_ALPHA = 0.05
     # Conservative one-sided Student-t critical for every supported report
     # fold (n >= 30; t_29,0.95 = 1.699). This is a frozen decision heuristic,
@@ -755,6 +760,20 @@ class MCBot(SmartBot):
         original_rng = self.rng
         use_prepared = (getattr(self._rollout, "__func__", None)
                         is MCBot._rollout)
+        # Issue #339 layer 2, measurement half. When leading, a multi-card
+        # candidate is a throw that the engine validates against the OTHER
+        # hands (validate_lead): in a sampled world it may collapse to its
+        # forced component. Count, per candidate, the report worlds in which
+        # it fails. This is the sampler's own failure estimate; the realised
+        # rate (45% on the deployed hybrid, runI) calibrates its optimism.
+        # Read-only on the world; no decision reads these counts.
+        leading = rnd.trick is None or not rnd.trick.plays
+        # applicability: a multi-COMPONENT lead (a throw). Singles, pairs and
+        # tractors always stand (engine.legal.validate_lead) and are not counted.
+        throw_checks = [(cand, i) for i, cand in enumerate((cand_a, cand_b))
+                        if self.REPORT_THROW_FAIL_COUNT and leading and len(cand) > 1
+                        and len(decompose(list(cand), rnd.ordering).components) > 1]
+        fails = [0, 0]
         try:
             self.rng = random.Random(seed)
             while used < n and attempts < cap:
@@ -763,6 +782,13 @@ class MCBot(SmartBot):
                 if sampled is None:
                     continue
                 hands, buried = sampled
+                if throw_checks:
+                    others = [hands[s] for s in sorted(hands)]
+                    for cand, i in throw_checks:
+                        _, msg = validate_lead(list(cand), rnd.hands[seat], others,
+                                               rnd.ordering)
+                        if msg is not None:
+                            fails[i] += 1
                 exact_session = self._new_exact_world_session(rnd, buried)
                 prepared = (self._prepare_report_world(
                     rnd, seat, hands, buried=buried) if use_prepared else None)
@@ -792,6 +818,16 @@ class MCBot(SmartBot):
             "complete": used == n,
             "seed": seed,
         }
+        if throw_checks:
+            # per-candidate sampled throw-failure rate over the report worlds;
+            # None where the candidate is not a throw (nothing to fail)
+            applicable = {i for _, i in throw_checks}
+            out["throw_fail_worlds"] = {
+                "challenger": fails[0] if 0 in applicable else None,
+                "incumbent": fails[1] if 1 in applicable else None}
+            out["p_fail_sampled"] = {
+                "challenger": (fails[0] / used if used and 0 in applicable else None),
+                "incumbent": (fails[1] / used if used and 1 in applicable else None)}
         if keep_deltas:
             out["deltas"] = deltas
         return out

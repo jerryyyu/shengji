@@ -88,7 +88,7 @@ from ..harvest.schema import SCHEMA
 from ..rl.douzero_micro import HISTORY_EVENT_DIM
 from ..rl.encode import N_CARDS
 from ..rl.encode_versions import ENC_VERSION, check_version
-from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen
+from ..rl.value_afterstate_v2 import public_dim, tensors_from_round as tensors_at, widen, widen_to
 from ..rl.value_afterstate import (
     AFTERSTATE_SCHEMA,
     OUTCOME_CLASSES,
@@ -156,6 +156,21 @@ CWV_SOURCE_PATHS = {
 }
 
 
+def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
+    """The executable closure hashed into the CWV identity for ``version``.
+
+    v1 and v2 keep the frozen ten-file closure (archived caches and
+    checkpoints must keep matching).  v4 adds the files that compute its 75
+    public columns, so editing either one invalidates every v4 cache file
+    and refuses every v4 checkpoint, exactly as the public encoder contract
+    (``rl.encoder_identity.source_paths``) does."""
+    paths = dict(CWV_SOURCE_PATHS)
+    if check_version(version) >= 4:
+        for name in ("encode_versions", "encode_opponent_pairs"):
+            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    return paths
+
+
 # ---------------------------------------------------------------- identity
 
 def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
@@ -166,7 +181,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     part of the hashed payload, so two otherwise identical builds at two
     encoder versions cannot share a cache file."""
     version = check_version(version)
-    sources = {name: sha256_file(path) for name, path in CWV_SOURCE_PATHS.items()}
+    sources = {name: sha256_file(path) for name, path in cwv_source_paths(version).items()}
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build
@@ -187,7 +202,8 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         "outcome_classes": OUTCOME_CLASSES,
         "implementation_sha256": hashlib.sha256(payload.encode("ascii")).hexdigest(),
         "source_sha256s": sources,
-        "public_head_encoder_sha256": public_encoder_identity()["implementation_sha256"],
+        "public_head_encoder_sha256": public_encoder_identity(version)["implementation_sha256"],
+        "public_head_encoder_contract_sha256": public_encoder_identity(version)["transitive"]["implementation_sha256"],
     }
 
 
@@ -354,7 +370,7 @@ def reference_check(record: Mapping[str, Any], row: Row, *,
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
     expected_sha = (example.input_sha256 if version == 1
-                    else widen(example.tensors, row.successor, row.seat).sha256())
+                    else widen_to(example.tensors, row.successor, row.seat, version).sha256())
     if expected_sha != row.input_sha256 or example.target_category != row.target \
             or example.deal_key != row.deal_key:
         raise TrainDataError("reference: the bridged row differs from "
@@ -479,6 +495,9 @@ class CwvBlock:
               "points_so_far", "ply", "role_attacker", "seat", "deal_key", "cluster",
               "source_ref", "record_sha256", "input_sha256", "has_search_means", "n_search")
     HISTORY_ARRAYS = ("history_cards", "history_meta", "history_offsets")
+    #: per-row arrays that a sidecar may attach (issue #340); absent unless
+    #: the store was given a sidecar directory
+    OPTIONAL_ARRAYS = ("search_mean_played",)
     #: per-row arrays (the history members are ragged)
     ROW_ARRAYS = ARRAYS
 
@@ -486,6 +505,9 @@ class CwvBlock:
         self.history = "history_offsets" in arrays
         names = self.ARRAYS + (self.HISTORY_ARRAYS if self.history else ())
         for name in names:
+            setattr(self, name, arrays[name])
+        self.optional = tuple(name for name in self.OPTIONAL_ARRAYS if name in arrays)
+        for name in self.optional:
             setattr(self, name, arrays[name])
         self.meta = meta
         self.path = path
@@ -504,7 +526,7 @@ class CwvBlock:
 
     def subset(self, idx: np.ndarray) -> "CwvBlock":
         idx = np.asarray(idx, dtype=np.int64)
-        arrays = {name: getattr(self, name)[idx] for name in self.ROW_ARRAYS}
+        arrays = {name: getattr(self, name)[idx] for name in self.ROW_ARRAYS + self.optional}
         if self.history:
             lengths = self.history_lengths[idx]
             starts = self.history_offsets[idx]
@@ -701,12 +723,20 @@ def check_public_width(arrays: Mapping[str, np.ndarray], meta: Mapping[str, Any]
 
 
 def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
-               history: bool | None = None) -> CwvBlock:
+               history: bool | None = None, sidecar_dir: str | None = None) -> CwvBlock:
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
     names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in names}
     check_public_width(arrays, meta, path=path)
+    if sidecar_dir is not None:
+        from .search_mean_sidecar import attach_search_means
+        # the store passes the shard's own sha256; the cache meta binds it under
+        # its own key, so do not guess that key here
+        sha = shard_sha256 or meta.get("shard_sha256")
+        if not sha:
+            raise TrainDataError(f"{path}: a sidecar attach needs the shard sha256")
+        attach_search_means(arrays, str(sha), sidecar_dir)
     return CwvBlock(arrays, meta, str(path))
 
 
@@ -824,7 +854,8 @@ class CwvBlockStore:
     def __init__(self, entries: Sequence[tuple[ShardRef, str]], *,
                  residency: Residency | None = None, resident_bytes: int | None = None,
                  keep: Sequence[Collection[str] | None] | None = None,
-                 history: bool = False):
+                 history: bool = False, sidecar_dir: str | None = None):
+        self.sidecar_dir = sidecar_dir
         self.entries = [(shard, str(path)) for shard, path in entries]
         self.residency = residency if residency is not None else Residency(resident_bytes)
         keep_list = list(keep) if keep is not None else [None] * len(self.entries)
@@ -879,9 +910,14 @@ class CwvBlockStore:
         pins = {self._key(j) for j in pinned}
         self.residency.make_room(self.sizes[i], label=shard.label, pinned=pins)
         if decoded is None:
-            block = load_block(path, shard_sha256=shard.sha256, history=self.history)
+            block = load_block(path, shard_sha256=shard.sha256, history=self.history,
+                               sidecar_dir=self.sidecar_dir)
         else:
             arrays, meta = decoded
+            if self.sidecar_dir is not None:
+                from .search_mean_sidecar import attach_search_means
+                arrays = dict(arrays)
+                attach_search_means(arrays, shard.sha256, self.sidecar_dir)
             block = CwvBlock(arrays, meta, str(path))
         if self.keep_idx[i] is not None:
             block = block.subset(self.keep_idx[i])
@@ -1033,6 +1069,10 @@ def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
     }
     for name, dtype in _SCALAR_DTYPES.items():
         out[name] = np.empty(b, dtype=dtype)
+    optional = [name for name in CwvBlock.OPTIONAL_ARRAYS
+                if blocks and all(name in block.optional for block in blocks)]
+    for name in optional:
+        out[name] = np.empty(b, dtype=np.float32)
     strings: dict[str, list] = {name: [None] * b for name in _STRING_COLUMNS}
     history = bool(blocks) and all(block.history for block in blocks)
     parts = []
@@ -1044,6 +1084,8 @@ def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
         out["public"][pos] = block.public[sel]
         out["world"][pos] = block.world[sel]
         for name in _SCALAR_DTYPES:
+            out[name][pos] = getattr(block, name)[sel]
+        for name in optional:
             out[name][pos] = getattr(block, name)[sel]
         for name in _STRING_COLUMNS:
             column = getattr(block, name)[sel]
@@ -1100,7 +1142,7 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
     else:
         history = np.zeros((b, 1, HISTORY_EVENT_DIM), dtype=np.float32)
         mask = np.ones((b, 1), dtype=bool)
-    return {
+    out = {
         "public": torch.from_numpy(np.ascontiguousarray(batch["public"])).to(device),
         "world": (torch.from_numpy(np.ascontiguousarray(batch["world"])).to(device)
                   .to(torch.float32) * 0.5),
@@ -1110,7 +1152,13 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
         "target": torch.from_numpy(np.ascontiguousarray(batch["target"])).to(device),
         "attacker_points": torch.from_numpy(
             np.ascontiguousarray(batch["attacker_points"])).to(device),
+        "role_attacker": torch.from_numpy(
+            np.ascontiguousarray(batch["role_attacker"]).astype(bool)).to(device),
     }
+    if "search_mean_played" in batch:
+        out["search_mean_played"] = torch.from_numpy(
+            np.ascontiguousarray(batch["search_mean_played"])).to(device)
+    return out
 
 
 def tensors_rows(batch: Mapping[str, np.ndarray]) -> list[ValueAfterstateTensors]:
@@ -1185,7 +1233,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
                    history: bool, witness_seed: int,
                    progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
-                   resident_bytes: int | None = None) -> Prepared:
+                   resident_bytes: int | None = None, sidecar_dir: str | None = None) -> Prepared:
     """Discover, verify, encode (the missing shard caches ``cache_workers``
     at a time) and index every store into one ``CwvBlockStore``."""
     stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
@@ -1223,7 +1271,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             for i in range(first, len(entries)):
                 keep[i] = set(kept)
     block_store = CwvBlockStore(entries, residency=residency, resident_bytes=resident_bytes,
-                                keep=keep, history=history)
+                                keep=keep, history=history, sidecar_dir=sidecar_dir)
     rows = block_store.rows()
     counts["records_total"] = int(sum(rows))
     counts["deals_total"] = len(block_store.keys())

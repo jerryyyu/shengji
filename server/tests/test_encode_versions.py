@@ -57,7 +57,8 @@ def test_v1_stays_the_default_and_v2_is_declared_beside_it():
     assert OBS_DIM == 531 == OBS_DIM_BY_VERSION[1]
     assert OBS_SCHEMA == OBS_SCHEMA_BY_VERSION[1] == \
         "rl-observation-v1-public-no-private-kitty"
-    assert ENC_VERSION_MAX == 2 and OBS_DIM_BY_VERSION[2] == 560
+    # 3 is reserved for Codex's own-hand block (PR #336); 4 is v2 + opponent pairs (#341)
+    assert ENC_VERSION_MAX == 4 and OBS_DIM_BY_VERSION[2] == 560 and OBS_DIM_BY_VERSION[4] == 635
     assert obs_dim(1) == 531 and obs_dim(2) == 560
 
 

@@ -39,13 +39,13 @@ def test_changing_a_val_ce_moves_the_chart_dot_the_registry_and_the_day_table(da
     before, c0 = _render(rows, table_only, series)
     rows2 = copy.deepcopy(rows)
     r = next(x for x in rows2 if x["ck"] == "c6d48d57")  # volVOL-144k, on the base_v2 line
-    r["ce"] = "0.60100"  # below every on-scale CE today (best 0.60570)
+    r["ce"] = "0.59100"  # below every on-scale CE today (best 0.60570)
     after, c = _render(rows2, table_only, series)
-    assert "0.60100" in _registry_cell(after, "c6d48d57", 7)
-    assert "0.60100" in after.split("{{")[0]  # registry
+    assert "0.59100" in _registry_cell(after, "c6d48d57", 7)
+    assert "0.59100" in after.split("{{")[0]  # registry
     # the day table's running best and the chart's best line both moved
-    assert re.search(r"<td>10 Sep</td><td class=\"n\">\d+</td><td class=\"n\">0.60100", after)
-    assert c["best_ce"] == 0.601 and c["best_day"] == "2026-09-10"
+    assert re.search(r"<td>10 Sep</td><td class=\"n\">\d+</td><td class=\"n\">0.59100", after)
+    assert c["best_ce"] == 0.591 and c["best_day"] == "2026-09-10"
     assert "unbeaten since 10 Sep" in after
     assert f"unbeaten since {c0['best_day'][8:]} Sep" in before
     # chart 1's base_v2 polyline changed (coordinates come from the row)
@@ -360,7 +360,7 @@ def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(da
     assert "50M" in page2
     # a CE below the chart floor is a loud failure, never a vanished dot
     rows3 = copy.deepcopy(rows)
-    rows3[0]["ce"] = "0.59000"
+    rows3[0]["ce"] = "0.58000"
     with pytest.raises(SystemExit):
         _render(rows3, table_only, series)
 
@@ -399,3 +399,24 @@ def test_a_one_window_only_row_dropped_from_the_leader_charts_is_reported(data):
         "0.62000", "", "", "", "", "")))]
     page2, _ = _render(rows2, table_only, series)
     assert "<td>02 Oct</td>" in page2
+
+
+def test_a_checkpoint_parameter_count_overrides_the_width_map_on_the_parameter_axis(data):
+    """Codex HOLD on #401: M1 (h330 + a second head, 644,568 params) was placed at the
+    width map's 610,704 on charts 2 and 2b."""
+    rows, table_only, series = data
+    m1 = next(r for r in rows if r["ck"] == "3cb9cd62")
+    twin = next(r for r in rows if r["ck"] == "0c40c591")
+    assert m1["w"] == twin["w"] == 330 and m1["params"] == 644568 and twin["params"] is None
+
+    def cx(page, ck, chart_index):
+        svg = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)[chart_index]
+        m = re.search(r'<circle cx="([-0-9.]+)" cy="[-0-9.]+" r="[0-9.]+" class="pt [^"]*hit" tabindex="0" data-t="[^"]*\(' + ck + r'\)', svg)
+        return float(m.group(1))
+    page, _ = _render(*data)
+    assert cx(page, "3cb9cd62", 2) > cx(page, "0c40c591", 2)   # chart 2: more parameters sit further right
+    # without the override the two would share the width map's x
+    rows2 = copy.deepcopy(rows)
+    next(r for r in rows2 if r["ck"] == "3cb9cd62")["params"] = None
+    page2, _ = _render(rows2, table_only, series)
+    assert cx(page2, "3cb9cd62", 2) == cx(page2, "0c40c591", 2)

@@ -57,6 +57,8 @@ M = [
  "","","","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182), best epoch 4/7; five-window screen running on perf 09-13"),
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
  "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]"),
+("M1: two heads on the S-d4 cell, 176k","3cb9cd62","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.59746","0.0298",
+ "","","SCREENING","M1 (#373): S-d4-176k cell + search-mean head, selected on the outcome head; programme-best val_ce and regret@4; head-vs-head 5w on cloud"),
 ("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
  "","","5w +0.0104 [-0.0121, +0.0329]","S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",
@@ -99,6 +101,10 @@ M += [
 ("v3 fit probe 768","c50d95ef","2026-09-08","v3",512,"3e-4","768","112,344","0.86095","0.0482","","","","768-cluster fit probe, 10 epochs. Off both chart axes, table only"),
 ("v2 fit probe 768","5bde6b85","2026-09-08","v2",512,"3e-4","768","112,344","0.86962","0.0427","","","","the matched v2 partner, so the probe above is readable"),
 ]
+# Per-checkpoint parameter counts read from the receipt where the width->parameters map
+# (charts.py PAR, one trunk + one head) does not apply: M1 carries a second 204-class head.
+PARAMS = {"3cb9cd62": 644568}
+
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
 
 # Chart series by CHECKPOINT IDENTITY: the charts look these rows up and read
@@ -122,6 +128,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "3cb9cd62":
+        "M1 (Jerry 09-13 09:4x ET: residual depth 4 at the h512 budget, all 176k clusters, two heads, select on the outcome head; #373/#374): volNEW-176k argv verbatim + --hidden 330 --trunk-layers 4 --trunk-block residual + --search-head --search-head-weight 1.0 --search-mean-sidecar sidecar-search-mean-v2 (176,000 sidecars, 83.3% of rows with a search mean); 644,568 params (610,704 trunk+outcome head + the second 204-class head); on-disk directory A-d4-2h-176k; sealed 09-13 17:53 ET (rc=0, seal check vs the volNEW-176k receipt: same corpus/counts/split, diff only in depth+head fields); best epoch 18/20; OUTCOME head val_ce 0.59746 = the best of the programme, 0.0296 below volNEW-176k (0.62703) and 0.0089 below the depth-only twin S-d4-176k (0.60636): training the search-mean head alongside IMPROVED the outcome head; outcome regret@4 0.0298 / recall@4 0.737 (leader 0.0381 / 0.683); SEARCH head regret@4 0.0244 / recall@4 0.772 -- clears the pre-registered <= 0.0361 line for screening the search head; screen: M1-out (--value-head outcome) and M1-srch (--value-head search-mean) on five seeds each vs vol96k on the cloud lane v8 from ~18:30 ET",
     "c6d48d57":
         "volVOL-144k: ten windows vs vol96k on the Hetzner queues +0.0030 [-0.0130, +0.0190] (the page cell). Air lane replicate 09-13 (five windows, seeds 13260910..13660910, as S-d4 own-corpus control): +0.0156 [-0.0070, +0.0383], tau 0, Q 1.13/4, MDE80 0.0323 -- crosses zero; the point sits above +0.015 but this is a five-window replicate of an arm already read at ten windows, so the ten-window answer stands and nothing is extended",
     "0c40c591":

@@ -67,9 +67,15 @@ def load():
     g = {}
     exec(open(MODELS).read(), g)
     record = g.get("RECORD", {})
+    params = g.get("PARAMS", {})
     rows = [dict(zip(FIELDS, m)) for m in g["M"]]
+    known = {r["ck"] for r in rows}
+    for ck in params:
+        if ck not in known:
+            raise ValueError(f"PARAMS names {ck}, which is not a row")
     for r in rows:
         r["record"] = record.get(r["ck"], "")
+        r["params"] = params.get(r["ck"])
     global NOTE_LIMIT
     NOTE_LIMIT = g.get("NOTE_LIMIT", NOTE_LIMIT)
     return rows, g["TABLE_ONLY"], g["SERIES"]
@@ -161,7 +167,8 @@ def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
     g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
          "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
-         "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")}}
+         "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
+         "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
     svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6")]

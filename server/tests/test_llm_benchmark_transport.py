@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from shengji.luna.benchmark_transport import BenchmarkTransport
+from shengji.luna.benchmark_transport import BenchmarkTransport, output_schema
 from shengji.luna.transport import (CodexExecPlannerTransport, CodexTurnTransportError,
-                                    InvocationResult)
+                                    InvocationResult, _events_and_usage)
 from test_luna_transport import trace
 
 
@@ -48,3 +48,42 @@ def test_forbidden_tool_event_retained_as_failure(tmp_path):
         transport({})
     assert transport.calls[0]["accepted"] is False
     assert (Path(transport.calls[0]["evidence_path"]) / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_duplicate_final_answers_are_identical_or_refused(tmp_path, conflicting):
+    final = {"cards": ["C3"], "evaluations": None, "memory": "lead"}
+    rows = [json.loads(line) for line in trace(final).splitlines()]
+    duplicate = json.loads(json.dumps(rows[-2]))
+    duplicate["item"]["id"] = "item_1"
+    if conflicting:
+        duplicate["item"]["text"] = json.dumps({**final, "cards": ["C4"]})
+    rows.insert(-1, duplicate)
+    raw = b"\n".join(json.dumps(row).encode() for row in rows)
+    # The default shared parser must not silently change existing callers.
+    with pytest.raises(CodexTurnTransportError, match="^Codex completion telemetry drift$"):
+        _events_and_usage(raw)
+
+    def run(command, prompt, workspace, timeout):
+        (workspace / "final.json").write_text(json.dumps(final))
+        return InvocationResult(0, raw, b"", 12)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    if conflicting:
+        with pytest.raises(CodexTurnTransportError, match="^Codex completion telemetry drift$"):
+            transport({})
+    else:
+        assert transport({}) == {"cards": ["C3"], "memory": "lead"}
+        assert transport.calls[0]["usage"]["input_tokens"] == 100
+        assert transport.calls[0]["usage"]["output_tokens"] == 20
+    assert transport.calls[0]["accepted"] is not conflicting
+    assert (Path(transport.calls[0]["evidence_path"]) / "stdout.jsonl").read_bytes() == raw
+
+
+def test_rollout_schema_expresses_existing_call_limits():
+    arrays = output_schema()["properties"]["evaluations"]["anyOf"][0]
+    assert arrays["minItems"] == 1
+    assert arrays["maxItems"] == 16

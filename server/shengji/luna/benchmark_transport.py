@@ -19,7 +19,8 @@ def output_schema():
     return {"type": "object", "additionalProperties": False,
             "required": ["cards", "evaluations", "memory"], "properties": {
                 "cards": {"anyOf": [cards, {"type": "null"}]},
-                "evaluations": {"anyOf": [{"type": "array", "items": evaluation},
+                "evaluations": {"anyOf": [{"type": "array", "items": evaluation,
+                                            "minItems": 1, "maxItems": 16},
                                             {"type": "null"}]},
                 "memory": {"type": "string"}}}
 
@@ -41,9 +42,12 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                   "Your memory belongs to this seat, not your partner. Return cards to play "
                   "from suggested_actions, or propose another legal action. Suggestions are "
                   "a bounded public-information ballot, not exhaustive or guaranteed winning "
-                  "throws. Follow suit and pair/tractor requirements; a failed throw may be "
+                  "throws. All cards of trump_rank are trumps regardless of printed suit; "
+                  "jokers and cards of trump_suit are trumps too. Follow the effective suit "
+                  "and pair/tractor requirements; a failed throw may be "
                   "reduced by the engine. Respect rollout_calls_remaining. "
-                  "and evaluations=null, OR cards=null and up to 16 {cards,continuation} "
+                  "Return nonempty cards and evaluations=null, OR cards=null and 1 to 16 "
+                  "{cards,continuation} "
                   "rollout requests. At most two rollout batches per decision. "
                   "Rollouts use the true world in perfect mode and shared constraint-sampled "
                   "worlds in actor-only mode; results are estimates under the named policy, "
@@ -65,7 +69,11 @@ class BenchmarkTransport(CodexExecPlannerTransport):
             self._check_dispatch_deadline(deadline)
             if result.returncode or not final_path.is_file() or final_path.is_symlink():
                 raise CodexTurnTransportError("benchmark provider failed or final absent")
-            _, usage, message = _events_and_usage(result.stdout)
+            # Some CLI turns repeat the exact final answer. Preserve the raw
+            # trace, but accept only byte-identical repetitions, never choose
+            # between conflicting answers. Legacy transport remains strict.
+            _, usage, message = _events_and_usage(
+                result.stdout, allow_identical_messages=True)
             receipt["usage"] = usage
             final = _strict_json(final_path.read_bytes(), "benchmark final")
             if final != _strict_json(message.encode(), "benchmark message"):

@@ -73,7 +73,7 @@ def test_duplicate_final_answers_are_identical_or_refused(tmp_path, conflicting)
         runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
         run_command=run)
     if conflicting:
-        with pytest.raises(CodexTurnTransportError, match="^Codex completion telemetry drift$"):
+        with pytest.raises(CodexTurnTransportError, match="^benchmark final/message mismatch$"):
             transport({})
     else:
         assert transport({}) == {"cards": ["C3"], "memory": "lead"}
@@ -87,3 +87,36 @@ def test_rollout_schema_expresses_existing_call_limits():
     arrays = output_schema()["properties"]["evaluations"]["anyOf"][0]
     assert arrays["minItems"] == 1
     assert arrays["maxItems"] == 16
+
+
+@pytest.mark.parametrize("change", ["memory", "cards"])
+def test_cli_final_output_wins_over_intermediate_message(tmp_path, change):
+    first = {"cards": ["C3"], "evaluations": None, "memory": "draft"}
+    final = {**first, change: "revised" if change == "memory" else ["C4"]}
+    rows = [json.loads(line) for line in trace(first).splitlines()]
+    last = json.loads(json.dumps(rows[-2]))
+    last["item"].update(id="item_final", text=json.dumps(final))
+    rows.insert(-1, last)
+    raw = b"\n".join(json.dumps(row).encode() for row in rows)
+
+    def run(command, prompt, workspace, timeout):
+        (workspace / "final.json").write_text(json.dumps(final))
+        return InvocationResult(0, raw, b"", 12)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    assert transport({}) == {"cards": final["cards"], "memory": final["memory"]}
+    assert transport.calls[0]["usage"]["input_tokens"] == 100
+    assert (Path(transport.calls[0]["evidence_path"]) / "stdout.jsonl").read_bytes() == raw
+    with pytest.raises(CodexTurnTransportError, match="^Codex completion telemetry drift$"):
+        _events_and_usage(raw)
+
+
+def test_final_message_mode_rejects_message_after_completion():
+    rows = [json.loads(line) for line in trace({"cards": ["C3"]}).splitlines()]
+    rows.append(rows[-2])
+    raw = b"\n".join(json.dumps(row).encode() for row in rows)
+    with pytest.raises(CodexTurnTransportError, match="^Codex final-message ordering drift$"):
+        _events_and_usage(raw, use_final_message=True)

@@ -109,9 +109,9 @@ s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 # ---------- 3: width vs val_ce (LOG y) ----------
 s,X,Y,x0,x1,y0,y1=frame(880,420,84,200,26,70,2.0e5,5.5e6,0.602,0.740,
   [0.62,0.64,0.66,0.68,0.70,0.72,0.74],
-  [(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+  [(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)","validation cross-entropy (log)",ylog=True)
-for v,lab in [(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")]:
+for v,lab in [(2.72e5,"h256 at depth 2"),(6.11e5,"h512 / S-d4"),(1.48e6,"h1024"),(4.02e6,"h2048")]:
     s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(X(v),y1+37,lab))
 SER=[("width_lr1e4_96k","ln3","pt3"),("width_3e4_96k","ln2","pt2"),
      ("width_3e4_72k","ln4","pt4"),("width_3e4_144k","ln5","pt5")]
@@ -246,7 +246,7 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
 leaderchart(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
   "training records (log scale)",OUT+"/g2.svg",
   ["Only 3 of 7 corpus sizes","have ANY leader number.","Nothing below 14M does.","Click a dot for detail."])
-leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/g4.svg",
   ["Every width screened, but","at one corpus size and","mostly one learning rate."])
 print("all charts rebuilt")
@@ -356,7 +356,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
 both(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
   "training records (log scale)",OUT+"/h2.svg",
   ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true."])
-both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/h4.svg",
   ["Both benchmarks, same","models, one axis."])
 print("dual-benchmark charts built")

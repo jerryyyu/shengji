@@ -778,7 +778,8 @@ every distinct deal we own</title></circle>
 
 <section>
   <h2 class="sec">2 &middot; Model width versus validation cross-entropy</h2>
-  <p class="cap">Every model whose width is known. Four lines connect the base recipe: the old
+  <p class="cap">Every model with a parameter count, on a log parameter axis (the depth cells sit at
+  the same budget as their depth-2 twins: S-d4 at 611k). Four lines connect the base recipe: the old
   lr 1e&#8209;4 sweep, the deployed 3e&#8209;4 at 96k, the 72k corpus, and in gold our maximum
   144k corpus.</p>
   <div class="figure"><svg viewBox="0 0 880 420">
@@ -797,19 +798,19 @@ every distinct deal we own</title></circle>
 <line x1="84" y1="26.0" x2="680" y2="26.0" class="grid"/>
 <text x="73" y="30.0" class="ax ar">0.74</text>
 <line x1="139.3" y1="26" x2="139.3" y2="350" class="grid"/>
-<text x="139.3" y="371" class="ax am">h256</text>
+<text x="139.3" y="371" class="ax am">273k</text>
 <line x1="284.8" y1="26" x2="284.8" y2="350" class="grid"/>
-<text x="284.8" y="371" class="ax am">h512</text>
+<text x="284.8" y="371" class="ax am">611k</text>
 <line x1="443.9" y1="26" x2="443.9" y2="350" class="grid"/>
-<text x="443.9" y="371" class="ax am">h1024</text>
+<text x="443.9" y="371" class="ax am">1.48M</text>
 <line x1="623.6" y1="26" x2="623.6" y2="350" class="grid"/>
-<text x="623.6" y="371" class="ax am">h2048</text>
+<text x="623.6" y="371" class="ax am">4.02M</text>
 <text x="382" y="395" class="axl am">parameters (log scale)</text>
 <text x="17" y="188" class="axl am" transform="rotate(-90 17 188)">validation cross-entropy (log)</text>
-<text x="139.3" y="387" class="axs am">273k</text>
-<text x="284.8" y="387" class="axs am">611k</text>
-<text x="443.9" y="387" class="axs am">1.48M</text>
-<text x="623.6" y="387" class="axs am">4.02M</text>
+<text x="139.3" y="387" class="axs am">h256 at depth 2</text>
+<text x="284.8" y="387" class="axs am">h512 / S-d4</text>
+<text x="443.9" y="387" class="axs am">h1024</text>
+<text x="623.6" y="387" class="axs am">h2048</text>
 <polyline class="ln ln3" points="139.8,324.4 284.8,327.8 444.4,338.0 623.4,333.7"/>
 <polyline class="ln ln2" points="284.8,299.1 444.4,290.2"/>
 <polyline class="ln ln4" points="284.8,296.9 444.4,295.7"/>
@@ -1081,13 +1082,13 @@ val_ce 0.71690
 <line x1="84" y1="68.7" x2="674" y2="68.7" class="grid"/>
 <text x="73" y="72.7" class="ax ar">+0.16</text>
 <line x1="138.7" y1="30" x2="138.7" y2="406" class="grid"/>
-<text x="138.7" y="427" class="ax am">h256</text>
+<text x="138.7" y="427" class="ax am">273k</text>
 <line x1="282.8" y1="30" x2="282.8" y2="406" class="grid"/>
-<text x="282.8" y="427" class="ax am">h512</text>
+<text x="282.8" y="427" class="ax am">611k</text>
 <line x1="440.3" y1="30" x2="440.3" y2="406" class="grid"/>
-<text x="440.3" y="427" class="ax am">h1024</text>
+<text x="440.3" y="427" class="ax am">1.48M</text>
 <line x1="618.2" y1="30" x2="618.2" y2="406" class="grid"/>
-<text x="618.2" y="427" class="ax am">h2048</text>
+<text x="618.2" y="427" class="ax am">4.02M</text>
 <text x="379" y="451" class="axl am">parameters (log scale)</text>
 <text x="17" y="218" class="axl am" transform="rotate(-90 17 218)">effect per round</text>
 <text x="90" y="52.1" class="lab">beats MC-LCB &#8593;</text>

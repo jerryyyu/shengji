@@ -531,7 +531,8 @@ def attest_codex_runtime(codex_binary: Path | str) -> dict[str, object]:
             "feature_catalog_sha256": _sha_bytes(catalog.stdout)}
 
 
-def _events_and_usage(raw: bytes, *, allow_identical_messages: bool = False
+def _events_and_usage(raw: bytes, *, allow_identical_messages: bool = False,
+                      use_final_message: bool = False
                       ) -> tuple[list[dict[str, object]], dict[str, int], str]:
     if not raw or len(raw) > MAX_TRACE_BYTES:
         raise CodexTurnTransportError("Codex JSONL size drift")
@@ -575,16 +576,20 @@ def _events_and_usage(raw: bytes, *, allow_identical_messages: bool = False
             raise CodexTurnTransportError("Codex trace event forbidden")
     completed = [event for event in events if event["type"] == "turn.completed"]
     message_count_valid = len(messages) == 1 or (
-        allow_identical_messages and bool(messages) and len(set(messages)) == 1)
+        allow_identical_messages and bool(messages) and len(set(messages)) == 1) or (
+        use_final_message and bool(messages))
     if diagnostics != 1 or not turn_started \
             or len(completed) != 1 or not message_count_valid:
         raise CodexTurnTransportError("Codex completion telemetry drift")
+    if use_final_message and events[-1]["type"] != "turn.completed":
+        raise CodexTurnTransportError("Codex final-message ordering drift")
     usage = completed[0].get("usage")
     if type(usage) is not dict or set(usage) != CODEX_USAGE_KEYS or any(
             isinstance(usage[key], bool) or not isinstance(usage[key], int)
             or usage[key] < 0 for key in CODEX_USAGE_KEYS):
         raise CodexTurnTransportError("Codex token telemetry drift")
-    return events, {key: usage[key] for key in CODEX_USAGE_KEYS}, messages[0]
+    return events, {key: usage[key] for key in CODEX_USAGE_KEYS}, (
+        messages[-1] if use_final_message else messages[0])
 
 
 def _b64(raw: bytes) -> str:

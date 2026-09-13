@@ -69,11 +69,12 @@ class BenchmarkTransport(CodexExecPlannerTransport):
             self._check_dispatch_deadline(deadline)
             if result.returncode or not final_path.is_file() or final_path.is_symlink():
                 raise CodexTurnTransportError("benchmark provider failed or final absent")
-            # Some CLI turns repeat the exact final answer. Preserve the raw
-            # trace, but accept only byte-identical repetitions, never choose
-            # between conflicting answers. Legacy transport remains strict.
+            # JSONL contains intermediate agent messages too. The CLI's
+            # --output-last-message file defines the final answer; bind it to
+            # the last message before the sole completed turn. Never select
+            # an earlier answer by legality or score. Legacy callers stay strict.
             _, usage, message = _events_and_usage(
-                result.stdout, allow_identical_messages=True)
+                result.stdout, use_final_message=True)
             receipt["usage"] = usage
             final = _strict_json(final_path.read_bytes(), "benchmark final")
             if final != _strict_json(message.encode(), "benchmark message"):

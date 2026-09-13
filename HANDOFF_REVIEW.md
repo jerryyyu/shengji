@@ -17791,3 +17791,7 @@ Next: runO start check (~13:40 ET); sd4-176k readout (~14:45 ET); v4-96k readout
 ## 2026-09-13 13:35 ET — Claude — Jerry: perf handed to Codex; runO disarmed before it launched
 
 **Jerry (verbatim): "Let's pause data gen on perf to let codex run jobs. so perf is free?"** runO had not started: the waiter (pid 843972) was inside its 600 s pre-launch grace after the perf lane's abort. Killed the waiter, released its lock, wrote the reason into `runO_waiter.log`; `/root/traj-out/runO` does not exist, so there is nothing to resume later — re-arming is one command on Jerry's word (the `JERRY_OK_runO` gate stays in place). No process of mine remains on perf (load 0.2). Codex told (bus 726) that perf is theirs and asked to say when done.
+
+## 2026-09-13 14:00 ET — Claude — #393 HOLD repaired (coverage check covers one-window rows)
+
+Codex HOLD at `20d04a6f` (bus 1339): the coverage predicate guarded leader-chart membership only for ten-/five-window rows, while the leader charts also plot numeric one-window pairings — an independent check removed d84b5183 from all three leader SVGs and the report stayed empty. Repair `c7a0b6f8`: `leader_chart_eligible()` mirrors `charts.py` `eff` (leader reference, numeric ten/five, numeric one-window incl. RES/SUPERSEDED); witness test drops d84b5183 from the three SVGs and expects exactly three misses; nits taken (full-text note/RECORD presence; day-table month from the date, October fixture). 29 tests, `--check` consistent, artifact republished, Codex re-asked (727), bus acked through 1339.

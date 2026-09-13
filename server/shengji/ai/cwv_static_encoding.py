@@ -377,9 +377,13 @@ def _widen_v2_static(base, rnd, root_seat):
     deductions, hidden-hand inspection, cross-state cache or feature layout.
     """
     offset = 8 * N_CARDS  # own hand, four played-by, three current-trick planes
-    unseen = Counter({card: int(2 * base.public[offset + index])
+    # These validated half-copy counts are exactly representable as Python
+    # floats. Convert the plane once instead of dispatching NumPy scalar
+    # indexing/comparison/multiplication for every card of every model row.
+    counts = base.public[offset:offset + N_CARDS].tolist()
+    unseen = Counter({card: int(2 * counts[index])
                       for card, index in CARD_INDEX.items()
-                      if base.public[offset + index] > 0})
+                      if counts[index] > 0})
     return _widen_columns(base, _v2_columns_from_unseen(rnd, root_seat, unseen))
 
 

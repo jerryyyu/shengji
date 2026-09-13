@@ -89,6 +89,8 @@ def main():
     p.add_argument("--config", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--run", action="store_true")
+    p.add_argument("--warmup", action="store_true",
+                   help="run one bounded full control recipe before timing; retain it separately")
     p.add_argument("--arm-timeout-seconds", type=int, default=900)
     p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args()
@@ -100,7 +102,8 @@ def main():
     if args.child:
         child(config, out)
         return
-    plan = {"recipe": kw, "order": ["control", "optimized", "optimized", "control"], "out": str(out)}
+    plan = {"recipe": kw, "order": ["control", "optimized", "optimized", "control"],
+            "warmup": args.warmup, "out": str(out)}
     print(json.dumps(plan, indent=2), flush=True)
     if not args.run:
         return
@@ -109,8 +112,11 @@ def main():
     # Frozen local copy: no mid-benchmark edits to caller config.
     frozen = out / "recipe.json"
     frozen.write_text(json.dumps(kw, sort_keys=True, indent=2) + "\n")
-    for i, arm in enumerate(plan["order"]):
-        arm_out = out / f"{i}-{arm}"
+    stages = [(f"{i}-{arm}", arm) for i, arm in enumerate(plan["order"])]
+    if args.warmup:
+        stages.insert(0, ("warmup", "control"))
+    for name, arm in stages:
+        arm_out = out / name
         arm_out.mkdir()
         env = dict(os.environ, SHENGJI_CWV_LOSS_SYNC_EVERY="1" if arm == "control" else "32",
                    SHENGJI_CWV_BATCHED_CANDIDATES="0" if arm == "control" else "1")
@@ -134,7 +140,11 @@ def main():
                 raise
             if code:
                 raise subprocess.CalledProcessError(code, proc.args)
-        if cache_inventory(kw["cache_dir"]) != cache_before:
+        if name == "warmup":
+            # Preparing only state stores misses validation/test candidate caches.
+            # The exact recipe prepares all consumers, outside the timed ABBA.
+            cache_before = cache_inventory(kw["cache_dir"])
+        elif cache_inventory(kw["cache_dir"]) != cache_before:
             raise RuntimeError("cache changed during benchmark; retain arm, prewarm cache before a fresh timing run")
     reports = [json.loads((out / f"{i}-{arm}" / "measurement.json").read_text()) for i, arm in enumerate(plan["order"])]
     def same(a, b):
@@ -142,6 +152,8 @@ def main():
                 and a["torch_cpu_rng_sha256"] == b["torch_cpu_rng_sha256"])
     equal = all(same(r, reports[0]) for r in reports)
     summary = {"exact_checkpoint_and_cpu_rng_parity": equal, "arms": reports,
+               "warmup": (json.loads((out / "warmup" / "measurement.json").read_text())
+                          if args.warmup else None),
                "control_repeatable": same(reports[0], reports[3]),
                "optimized_repeatable": same(reports[1], reports[2]),
                "control_mean_wall": (reports[0]["wall_seconds"] + reports[3]["wall_seconds"]) / 2,

@@ -205,7 +205,12 @@ def test_the_three_play_instruments_render_as_one_badged_column(data):
     assert "never paired" in cells["528dbbe0"]  # a gap with nothing queued
     # the caption's MDE80s are derived from the intervals on the page (ten windows: ~0.023)
     assert 0.020 <= c["mde"]["10w"] <= 0.026 and c["mde"]["1w"] > c["mde"]["10w"]
-    assert f"MDE80 about {c['mde']['10w']:.3f}" in page and "has no readout yet" in page
+    assert f"MDE80 about {c['mde']['10w']:.3f}" in page
+    # the five-window clause follows the data: absent -> "no readout yet", present -> its MDE80
+    if c["five_total"]:
+        assert "has no readout yet" not in page and f"MDE80 about {c['mde']['5w']:.3f}" in page
+    else:
+        assert "has no readout yet" in page
 
 
 def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
@@ -214,14 +219,21 @@ def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
     rows2 = copy.deepcopy(rows)
     next(x for x in rows2 if x["ck"] == "fc73c0f4")["ten"] = "5w +0.0105 [-0.0100, +0.0310]"
     page, c = _render(rows2, table_only, series)
-    assert c["five_total"] == 1 and c["five_cross"] == 1 and c["ten_total"] == c0["ten_total"] - 1
+    assert c["five_total"] == c0["five_total"] + 1 and c["five_cross"] == c0["five_cross"] + 1
+    assert c["ten_total"] == c0["ten_total"] - 1
     cell = _play_cells(page)["fc73c0f4"]
     assert "+0.0105" in cell and "5w" in cell and "10w" not in cell
     assert 'class="pt pt7"' in page and "five windows (wider)" in page  # legend + hollow marker
     assert 'class="ci ci5"' in page and page.count("svg .ci3{") == 1  # its own interval class; no CSS collision (Codex, #370)
     assert "a null there means not large" in page and "has no readout yet" not in page
-    assert f"MDE80 about {c['mde']['5w']:.3f}" in page and abs(c["mde"]["5w"] - 0.0205 * build.MDE_PER_HALFWIDTH) < 1e-6
-    base, _ = _render(rows, table_only, series)
+    assert f"MDE80 about {c['mde']['5w']:.3f}" in page
+    # with no other five-window row the MDE80 is exactly this cell's half-width x 1.43
+    if c["five_total"] == 1:
+        assert abs(c["mde"]["5w"] - 0.0205 * build.MDE_PER_HALFWIDTH) < 1e-6
+    # the marker and legend appear only when a five-window row exists
+    rows0 = [r for r in rows if not (r["ten"] or "").startswith("5w ")]
+    base, c_base = _render(rows0, table_only, series)
+    assert c_base["five_total"] == 0
     assert 'class="pt pt7"' not in base and "five windows (wider)" not in base
 
 

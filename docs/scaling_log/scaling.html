@@ -181,8 +181,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div><b>&minus;0.0036</b><span>last full data doubling</span></div>
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
-  <div><b>0 of 18</b><span>models above the leader</span></div>
-  <div><b>29 of 47</b><span>no search number yet</span></div>
+  <div><b>0 of 19</b><span>models above the leader</span></div>
+  <div><b>28 of 47</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -648,10 +648,19 @@ val_ce 0.62313
 vs MC-LCB  +0.0702 [+0.024, +0.116]
 vs leader  -0.0558 [-0.106, -0.008]
 aux_weight 0.1</title></circle>
-<line x1="336.5" y1="258.8" x2="336.5" y2="224.4" class="ci ci2"/>
-<line x1="331.5" y1="258.8" x2="341.5" y2="258.8" class="ci ci2"/>
-<line x1="331.5" y1="224.4" x2="341.5" y2="224.4" class="ci ci2"/>
-<circle cx="336.5" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
+<line x1="333.0" y1="255.8" x2="333.0" y2="199.0" class="ci ci5"/>
+<line x1="328.0" y1="255.8" x2="338.0" y2="255.8" class="ci ci5"/>
+<line x1="328.0" y1="199.0" x2="338.0" y2="199.0" class="ci ci5"/>
+<circle cx="333.0" cy="227.4" r="4.8" class="pt pt7 hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;five windows  +0.0165 [-0.0092, +0.0422]&#10;#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+five windows  +0.0165 [-0.0092, +0.0422]
+#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
+<line x1="340.0" y1="258.8" x2="340.0" y2="224.4" class="ci ci2"/>
+<line x1="335.0" y1="258.8" x2="345.0" y2="258.8" class="ci ci2"/>
+<line x1="335.0" y1="224.4" x2="345.0" y2="224.4" class="ci ci2"/>
+<circle cx="340.0" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
 trained 2026-09-07
 encoder v2 | width 512 | lr 1e-4 | 96k clusters
 val_ce 0.61058
@@ -659,54 +668,54 @@ vs MC-LCB  +0.0673 [+0.024, +0.109]
 vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED
 ten windows  +0.0037 [-0.0119, +0.0192]
 one window said resolves worse; ten windows say NULL</title></circle>
-<circle cx="343.5" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
+<circle cx="347.0" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
 trained 2026-09-07
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
 vs MC-LCB  +0.1260 [+0.081, +0.172]
 LEADER, deployed</title></circle>
-<line x1="350.5" y1="273.1" x2="350.5" y2="230.2" class="ci ci2"/>
-<line x1="345.5" y1="273.1" x2="355.5" y2="273.1" class="ci ci2"/>
-<line x1="345.5" y1="230.2" x2="355.5" y2="230.2" class="ci ci2"/>
-<circle cx="350.5" cy="251.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volCAP-h1024  (1fc58269)&#10;trained 2026-09-10&#10;encoder v2 | width 1024 | lr 3e-4 | 96k clusters&#10;val_ce 0.62537&#10;ten windows  -0.0054 [-0.0248, +0.0140]&#10;width at the deployed LR"><title>volCAP-h1024  (1fc58269)
+<line x1="354.0" y1="273.1" x2="354.0" y2="230.2" class="ci ci2"/>
+<line x1="349.0" y1="273.1" x2="359.0" y2="273.1" class="ci ci2"/>
+<line x1="349.0" y1="230.2" x2="359.0" y2="230.2" class="ci ci2"/>
+<circle cx="354.0" cy="251.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volCAP-h1024  (1fc58269)&#10;trained 2026-09-10&#10;encoder v2 | width 1024 | lr 3e-4 | 96k clusters&#10;val_ce 0.62537&#10;ten windows  -0.0054 [-0.0248, +0.0140]&#10;width at the deployed LR"><title>volCAP-h1024  (1fc58269)
 trained 2026-09-10
 encoder v2 | width 1024 | lr 3e-4 | 96k clusters
 val_ce 0.62537
 ten windows  -0.0054 [-0.0248, +0.0140]
 width at the deployed LR</title></circle>
-<line x1="357.5" y1="336.3" x2="357.5" y2="230.2" class="ci ci1"/>
-<line x1="352.5" y1="336.3" x2="362.5" y2="336.3" class="ci ci1"/>
-<line x1="352.5" y1="230.2" x2="362.5" y2="230.2" class="ci ci1"/>
-<circle cx="357.5" cy="282.9" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 1024, lr 1e-4  (d84b5183)&#10;trained 2026-09-08&#10;encoder v2 | width 1024 | lr 1e-4 | 96k clusters&#10;val_ce 0.60661&#10;vs MC-LCB  +0.0923 [+0.049, +0.136]&#10;vs leader  -0.0337 [-0.082, +0.014]&#10;best offline of all 41"><title>width 1024, lr 1e-4  (d84b5183)
+<line x1="361.0" y1="336.3" x2="361.0" y2="230.2" class="ci ci1"/>
+<line x1="356.0" y1="336.3" x2="366.0" y2="336.3" class="ci ci1"/>
+<line x1="356.0" y1="230.2" x2="366.0" y2="230.2" class="ci ci1"/>
+<circle cx="361.0" cy="282.9" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 1024, lr 1e-4  (d84b5183)&#10;trained 2026-09-08&#10;encoder v2 | width 1024 | lr 1e-4 | 96k clusters&#10;val_ce 0.60661&#10;vs MC-LCB  +0.0923 [+0.049, +0.136]&#10;vs leader  -0.0337 [-0.082, +0.014]&#10;best offline of all 41"><title>width 1024, lr 1e-4  (d84b5183)
 trained 2026-09-08
 encoder v2 | width 1024 | lr 1e-4 | 96k clusters
 val_ce 0.60661
 vs MC-LCB  +0.0923 [+0.049, +0.136]
 vs leader  -0.0337 [-0.082, +0.014]
 best offline of all 41</title></circle>
-<line x1="364.5" y1="344.1" x2="364.5" y2="232.4" class="ci ci1"/>
-<line x1="359.5" y1="344.1" x2="369.5" y2="344.1" class="ci ci1"/>
-<line x1="359.5" y1="232.4" x2="369.5" y2="232.4" class="ci ci1"/>
-<circle cx="364.5" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
+<line x1="368.0" y1="344.1" x2="368.0" y2="232.4" class="ci ci1"/>
+<line x1="363.0" y1="344.1" x2="373.0" y2="344.1" class="ci ci1"/>
+<line x1="363.0" y1="232.4" x2="373.0" y2="232.4" class="ci ci1"/>
+<circle cx="368.0" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
 trained 2026-09-07
 encoder v1 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.65944
 vs MC-LCB  +0.0875 [+0.042, +0.132]
 vs leader  -0.0385 [-0.089, +0.012]
 260-deal: +0.0462</title></circle>
-<line x1="371.5" y1="361.8" x2="371.5" y2="249.0" class="ci ci1"/>
-<line x1="366.5" y1="361.8" x2="376.5" y2="361.8" class="ci ci1"/>
-<line x1="366.5" y1="249.0" x2="376.5" y2="249.0" class="ci ci1"/>
-<circle cx="371.5" cy="305.1" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 256, lr 1e-4  (752427c3)&#10;trained 2026-09-07&#10;encoder v2 | width 256 | lr 1e-4 | 96k clusters&#10;val_ce 0.61189&#10;vs MC-LCB  +0.0721 [+0.026, +0.119]&#10;vs leader  -0.0538 [-0.105, -0.003]"><title>width 256, lr 1e-4  (752427c3)
+<line x1="375.0" y1="361.8" x2="375.0" y2="249.0" class="ci ci1"/>
+<line x1="370.0" y1="361.8" x2="380.0" y2="361.8" class="ci ci1"/>
+<line x1="370.0" y1="249.0" x2="380.0" y2="249.0" class="ci ci1"/>
+<circle cx="375.0" cy="305.1" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 256, lr 1e-4  (752427c3)&#10;trained 2026-09-07&#10;encoder v2 | width 256 | lr 1e-4 | 96k clusters&#10;val_ce 0.61189&#10;vs MC-LCB  +0.0721 [+0.026, +0.119]&#10;vs leader  -0.0538 [-0.105, -0.003]"><title>width 256, lr 1e-4  (752427c3)
 trained 2026-09-07
 encoder v2 | width 256 | lr 1e-4 | 96k clusters
 val_ce 0.61189
 vs MC-LCB  +0.0721 [+0.026, +0.119]
 vs leader  -0.0538 [-0.105, -0.003]</title></circle>
-<line x1="378.5" y1="383.9" x2="378.5" y2="276.6" class="ci ci1"/>
-<line x1="373.5" y1="383.9" x2="383.5" y2="383.9" class="ci ci1"/>
-<line x1="373.5" y1="276.6" x2="383.5" y2="276.6" class="ci ci1"/>
-<circle cx="378.5" cy="329.7" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 2048, lr 1e-4  (b25ea6ef)&#10;trained 2026-09-08&#10;encoder v2 | width 2048 | lr 1e-4 | 96k clusters&#10;val_ce 0.60830&#10;vs MC-LCB  +0.0500 [+0.004, +0.095]&#10;vs leader  -0.0760 [-0.125, -0.028]&#10;worst screened"><title>width 2048, lr 1e-4  (b25ea6ef)
+<line x1="382.0" y1="383.9" x2="382.0" y2="276.6" class="ci ci1"/>
+<line x1="377.0" y1="383.9" x2="387.0" y2="383.9" class="ci ci1"/>
+<line x1="377.0" y1="276.6" x2="387.0" y2="276.6" class="ci ci1"/>
+<circle cx="382.0" cy="329.7" r="4.8" class="pt pt3 hit" tabindex="0" data-t="width 2048, lr 1e-4  (b25ea6ef)&#10;trained 2026-09-08&#10;encoder v2 | width 2048 | lr 1e-4 | 96k clusters&#10;val_ce 0.60830&#10;vs MC-LCB  +0.0500 [+0.004, +0.095]&#10;vs leader  -0.0760 [-0.125, -0.028]&#10;worst screened"><title>width 2048, lr 1e-4  (b25ea6ef)
 trained 2026-09-08
 encoder v2 | width 2048 | lr 1e-4 | 96k clusters
 val_ce 0.60830
@@ -1272,10 +1281,19 @@ val_ce 0.60830
 vs MC-LCB  +0.0500 [+0.004, +0.095]
 vs leader  -0.0760 [-0.125, -0.028]
 worst screened</title></circle>
-<line x1="242.7" y1="258.8" x2="242.7" y2="224.4" class="ci ci2"/>
-<line x1="237.7" y1="258.8" x2="247.7" y2="258.8" class="ci ci2"/>
-<line x1="237.7" y1="224.4" x2="247.7" y2="224.4" class="ci ci2"/>
-<circle cx="242.7" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
+<line x1="239.2" y1="255.8" x2="239.2" y2="199.0" class="ci ci5"/>
+<line x1="234.2" y1="255.8" x2="244.2" y2="255.8" class="ci ci5"/>
+<line x1="234.2" y1="199.0" x2="244.2" y2="199.0" class="ci ci5"/>
+<circle cx="239.2" cy="227.4" r="4.8" class="pt pt7 hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;five windows  +0.0165 [-0.0092, +0.0422]&#10;#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+five windows  +0.0165 [-0.0092, +0.0422]
+#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
+<line x1="246.2" y1="258.8" x2="246.2" y2="224.4" class="ci ci2"/>
+<line x1="241.2" y1="258.8" x2="251.2" y2="258.8" class="ci ci2"/>
+<line x1="241.2" y1="224.4" x2="251.2" y2="224.4" class="ci ci2"/>
+<circle cx="246.2" cy="241.6" r="4.8" class="pt pt2 hit" tabindex="0" data-t="lr 1e-4, full mixture  (8d92dd6e)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 1e-4 | 96k clusters&#10;val_ce 0.61058&#10;vs MC-LCB  +0.0673 [+0.024, +0.109]&#10;vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED&#10;ten windows  +0.0037 [-0.0119, +0.0192]&#10;one window said resolves worse; ten windows say NULL"><title>lr 1e-4, full mixture  (8d92dd6e)
 trained 2026-09-07
 encoder v2 | width 512 | lr 1e-4 | 96k clusters
 val_ce 0.61058
@@ -1283,90 +1301,90 @@ vs MC-LCB  +0.0673 [+0.024, +0.109]
 vs leader  -0.0587 [-0.107, -0.010] SUPERSEDED
 ten windows  +0.0037 [-0.0119, +0.0192]
 one window said resolves worse; ten windows say NULL</title></circle>
-<line x1="249.7" y1="259.6" x2="249.7" y2="224.0" class="ci ci2"/>
-<line x1="244.7" y1="259.6" x2="254.7" y2="259.6" class="ci ci2"/>
-<line x1="244.7" y1="224.0" x2="254.7" y2="224.0" class="ci ci2"/>
-<circle cx="249.7" cy="241.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
+<line x1="253.2" y1="259.6" x2="253.2" y2="224.0" class="ci ci2"/>
+<line x1="248.2" y1="259.6" x2="258.2" y2="259.6" class="ci ci2"/>
+<line x1="248.2" y1="224.0" x2="258.2" y2="224.0" class="ci ci2"/>
+<circle cx="253.2" cy="241.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep base seed 2  (d1858d5b)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62300&#10;ten windows  +0.0035 [-0.0126, +0.0196]&#10;SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"><title>sweep base seed 2  (d1858d5b)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62300
 ten windows  +0.0035 [-0.0126, +0.0196]
 SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null</title></circle>
-<line x1="256.7" y1="260.0" x2="256.7" y2="224.6" class="ci ci2"/>
-<line x1="251.7" y1="260.0" x2="261.7" y2="260.0" class="ci ci2"/>
-<line x1="251.7" y1="224.6" x2="261.7" y2="224.6" class="ci ci2"/>
-<circle cx="256.7" cy="242.3" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-144k  (c6d48d57)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 144k clusters&#10;val_ce 0.61912&#10;ten windows  +0.0030 [-0.0130, +0.0190]&#10;every distinct deal we own"><title>volVOL-144k  (c6d48d57)
+<line x1="260.2" y1="260.0" x2="260.2" y2="224.6" class="ci ci2"/>
+<line x1="255.2" y1="260.0" x2="265.2" y2="260.0" class="ci ci2"/>
+<line x1="255.2" y1="224.6" x2="265.2" y2="224.6" class="ci ci2"/>
+<circle cx="260.2" cy="242.3" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-144k  (c6d48d57)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 144k clusters&#10;val_ce 0.61912&#10;ten windows  +0.0030 [-0.0130, +0.0190]&#10;every distinct deal we own"><title>volVOL-144k  (c6d48d57)
 trained 2026-09-10
 encoder v2 | width 512 | lr 3e-4 | 144k clusters
 val_ce 0.61912
 ten windows  +0.0030 [-0.0130, +0.0190]
 every distinct deal we own</title></circle>
-<line x1="263.7" y1="261.1" x2="263.7" y2="225.7" class="ci ci2"/>
-<line x1="258.7" y1="261.1" x2="268.7" y2="261.1" class="ci ci2"/>
-<line x1="258.7" y1="225.7" x2="268.7" y2="225.7" class="ci ci2"/>
-<circle cx="263.7" cy="243.4" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep weight decay 1e-3  (b0f196e4)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62260&#10;ten windows  +0.0020 [-0.0140, +0.0180]&#10;scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null"><title>sweep weight decay 1e-3  (b0f196e4)
+<line x1="267.2" y1="261.1" x2="267.2" y2="225.7" class="ci ci2"/>
+<line x1="262.2" y1="261.1" x2="272.2" y2="261.1" class="ci ci2"/>
+<line x1="262.2" y1="225.7" x2="272.2" y2="225.7" class="ci ci2"/>
+<circle cx="267.2" cy="243.4" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep weight decay 1e-3  (b0f196e4)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62260&#10;ten windows  +0.0020 [-0.0140, +0.0180]&#10;scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null"><title>sweep weight decay 1e-3  (b0f196e4)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62260
 ten windows  +0.0020 [-0.0140, +0.0180]
 scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null</title></circle>
-<line x1="270.7" y1="261.2" x2="270.7" y2="226.0" class="ci ci2"/>
-<line x1="265.7" y1="261.2" x2="275.7" y2="261.2" class="ci ci2"/>
-<line x1="265.7" y1="226.0" x2="275.7" y2="226.0" class="ci ci2"/>
-<circle cx="270.7" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
+<line x1="274.2" y1="261.2" x2="274.2" y2="226.0" class="ci ci2"/>
+<line x1="269.2" y1="261.2" x2="279.2" y2="261.2" class="ci ci2"/>
+<line x1="269.2" y1="226.0" x2="279.2" y2="226.0" class="ci ci2"/>
+<circle cx="274.2" cy="243.7" r="4.8" class="pt pt2 hit" tabindex="0" data-t="A+C+D encoder v2  (633663cd)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62270&#10;vs MC-LCB  +0.0990 [+0.054, +0.146]&#10;ten windows  +0.0018 [-0.0141, +0.0178]&#10;260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"><title>A+C+D encoder v2  (633663cd)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62270
 vs MC-LCB  +0.0990 [+0.054, +0.146]
 ten windows  +0.0018 [-0.0141, +0.0178]
 260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued</title></circle>
-<circle cx="277.7" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
+<circle cx="281.2" cy="245.6" r="6" class="pt pt2 hit" tabindex="0" data-t="A+C+D+E+F2 v2  (3cd27716)&#10;trained 2026-09-07&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62182&#10;vs MC-LCB  +0.1260 [+0.081, +0.172]&#10;LEADER, deployed"><title>A+C+D+E+F2 v2  (3cd27716)
 trained 2026-09-07
 encoder v2 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62182
 vs MC-LCB  +0.1260 [+0.081, +0.172]
 LEADER, deployed</title></circle>
-<line x1="284.7" y1="265.1" x2="284.7" y2="230.5" class="ci ci2"/>
-<line x1="279.7" y1="265.1" x2="289.7" y2="265.1" class="ci ci2"/>
-<line x1="279.7" y1="230.5" x2="289.7" y2="230.5" class="ci ci2"/>
-<circle cx="284.7" cy="247.9" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep aux weight 0.3  (52d3f243)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62180&#10;ten windows  -0.0020 [-0.0176, +0.0137]&#10;scr-aux03: ten windows sealed 09-12; vs its own control enc2 -0.0035 [-0.0191, +0.0122], tau 0, MDE80 0.0224; tenth ten-window null"><title>sweep aux weight 0.3  (52d3f243)
+<line x1="288.2" y1="265.1" x2="288.2" y2="230.5" class="ci ci2"/>
+<line x1="283.2" y1="265.1" x2="293.2" y2="265.1" class="ci ci2"/>
+<line x1="283.2" y1="230.5" x2="293.2" y2="230.5" class="ci ci2"/>
+<circle cx="288.2" cy="247.9" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep aux weight 0.3  (52d3f243)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 3e-4 | 72k clusters&#10;val_ce 0.62180&#10;ten windows  -0.0020 [-0.0176, +0.0137]&#10;scr-aux03: ten windows sealed 09-12; vs its own control enc2 -0.0035 [-0.0191, +0.0122], tau 0, MDE80 0.0224; tenth ten-window null"><title>sweep aux weight 0.3  (52d3f243)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 3e-4 | 72k clusters
 val_ce 0.62180
 ten windows  -0.0020 [-0.0176, +0.0137]
 scr-aux03: ten windows sealed 09-12; vs its own control enc2 -0.0035 [-0.0191, +0.0122], tau 0, MDE80 0.0224; tenth ten-window null</title></circle>
-<line x1="291.7" y1="274.1" x2="291.7" y2="239.6" class="ci ci2"/>
-<line x1="286.7" y1="274.1" x2="296.7" y2="274.1" class="ci ci2"/>
-<line x1="286.7" y1="239.6" x2="296.7" y2="239.6" class="ci ci2"/>
-<circle cx="291.7" cy="256.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-128k  (81f0b843)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;ten windows  -0.0101 [-0.0257, +0.0055]&#10;aux_weight 1.0 -- NOT the same ckpt as A-H"><title>volVOL-128k  (81f0b843)
+<line x1="295.2" y1="274.1" x2="295.2" y2="239.6" class="ci ci2"/>
+<line x1="290.2" y1="274.1" x2="300.2" y2="274.1" class="ci ci2"/>
+<line x1="290.2" y1="239.6" x2="300.2" y2="239.6" class="ci ci2"/>
+<circle cx="295.2" cy="256.8" r="4.8" class="pt pt2 hit" tabindex="0" data-t="volVOL-128k  (81f0b843)&#10;trained 2026-09-10&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;ten windows  -0.0101 [-0.0257, +0.0055]&#10;aux_weight 1.0 -- NOT the same ckpt as A-H"><title>volVOL-128k  (81f0b843)
 trained 2026-09-10
 encoder v2 | width 512 | lr 3e-4 | 128k clusters
 val_ce 0.62313
 ten windows  -0.0101 [-0.0257, +0.0055]
 aux_weight 1.0 -- NOT the same ckpt as A-H</title></circle>
-<line x1="298.7" y1="274.7" x2="298.7" y2="239.2" class="ci ci2"/>
-<line x1="293.7" y1="274.7" x2="303.7" y2="274.7" class="ci ci2"/>
-<line x1="293.7" y1="239.2" x2="303.7" y2="239.2" class="ci ci2"/>
-<circle cx="298.7" cy="257.0" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep lr 6e-4  (c684b32a)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 6e-4 | 72k clusters&#10;val_ce 0.63260&#10;ten windows  -0.0103 [-0.0263, +0.0058]&#10;scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best"><title>sweep lr 6e-4  (c684b32a)
+<line x1="302.2" y1="274.7" x2="302.2" y2="239.2" class="ci ci2"/>
+<line x1="297.2" y1="274.7" x2="307.2" y2="274.7" class="ci ci2"/>
+<line x1="297.2" y1="239.2" x2="307.2" y2="239.2" class="ci ci2"/>
+<circle cx="302.2" cy="257.0" r="4.8" class="pt pt2 hit" tabindex="0" data-t="sweep lr 6e-4  (c684b32a)&#10;trained 2026-09-07 (approx)&#10;encoder v2 | width 512 | lr 6e-4 | 72k clusters&#10;val_ce 0.63260&#10;ten windows  -0.0103 [-0.0263, +0.0058]&#10;scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best"><title>sweep lr 6e-4  (c684b32a)
 trained 2026-09-07 (approx)
 encoder v2 | width 512 | lr 6e-4 | 72k clusters
 val_ce 0.63260
 ten windows  -0.0103 [-0.0263, +0.0058]
 scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best</title></circle>
-<line x1="305.7" y1="344.1" x2="305.7" y2="232.4" class="ci ci1"/>
-<line x1="300.7" y1="344.1" x2="310.7" y2="344.1" class="ci ci1"/>
-<line x1="300.7" y1="232.4" x2="310.7" y2="232.4" class="ci ci1"/>
-<circle cx="305.7" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
+<line x1="309.2" y1="344.1" x2="309.2" y2="232.4" class="ci ci1"/>
+<line x1="304.2" y1="344.1" x2="314.2" y2="344.1" class="ci ci1"/>
+<line x1="304.2" y1="232.4" x2="314.2" y2="232.4" class="ci ci1"/>
+<circle cx="309.2" cy="288.2" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2 v1  (528b3a7a)&#10;trained 2026-09-07&#10;encoder v1 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.65944&#10;vs MC-LCB  +0.0875 [+0.042, +0.132]&#10;vs leader  -0.0385 [-0.089, +0.012]&#10;260-deal: +0.0462"><title>A+C+D+E+F2 v1  (528b3a7a)
 trained 2026-09-07
 encoder v1 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.65944
 vs MC-LCB  +0.0875 [+0.042, +0.132]
 vs leader  -0.0385 [-0.089, +0.012]
 260-deal: +0.0462</title></circle>
-<line x1="312.7" y1="362.9" x2="312.7" y2="254.5" class="ci ci1"/>
-<line x1="307.7" y1="362.9" x2="317.7" y2="362.9" class="ci ci1"/>
-<line x1="307.7" y1="254.5" x2="317.7" y2="254.5" class="ci ci1"/>
-<circle cx="312.7" cy="307.4" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2+G+H  (fd2e5335)&#10;trained 2026-09-08&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;vs MC-LCB  +0.0702 [+0.024, +0.116]&#10;vs leader  -0.0558 [-0.106, -0.008]&#10;aux_weight 0.1"><title>A+C+D+E+F2+G+H  (fd2e5335)
+<line x1="316.2" y1="362.9" x2="316.2" y2="254.5" class="ci ci1"/>
+<line x1="311.2" y1="362.9" x2="321.2" y2="362.9" class="ci ci1"/>
+<line x1="311.2" y1="254.5" x2="321.2" y2="254.5" class="ci ci1"/>
+<circle cx="316.2" cy="307.4" r="4.8" class="pt pt3 hit" tabindex="0" data-t="A+C+D+E+F2+G+H  (fd2e5335)&#10;trained 2026-09-08&#10;encoder v2 | width 512 | lr 3e-4 | 128k clusters&#10;val_ce 0.62313&#10;vs MC-LCB  +0.0702 [+0.024, +0.116]&#10;vs leader  -0.0558 [-0.106, -0.008]&#10;aux_weight 0.1"><title>A+C+D+E+F2+G+H  (fd2e5335)
 trained 2026-09-08
 encoder v2 | width 512 | lr 3e-4 | 128k clusters
 val_ce 0.62313
@@ -1769,7 +1787,7 @@ val_ce 0.62703
 
 <section>
   <h2 class="sec">4 &middot; Effect against the leader, by training day</h2>
-  <p class="cap">The same question on the only measurement that matters. 18 charted models have such a number; 29 do not. Above the line beats the leader.</p>
+  <p class="cap">The same question on the only measurement that matters. 19 charted models have such a number; 28 do not. Above the line beats the leader.</p>
   <div class="figure"><svg viewBox="0 0 880 430">
 <line x1="84" y1="338.0" x2="674" y2="338.0" class="grid"/>
 <text x="73" y="342.0" class="ax ar">-0.12</text>
@@ -1798,7 +1816,7 @@ val_ce 0.62703
 <text x="563.4" y="387" class="ax am">09-11</text>
 <text x="563.4" y="403" class="axs am">1 vs leader</text>
 <text x="637.1" y="387" class="ax am">09-12</text>
-<text x="637.1" y="403" class="axs am">none vs leader</text>
+<text x="637.1" y="403" class="axs am">1 vs leader</text>
 <text x="379" y="422" class="axl am">the day the model was trained</text>
 <text x="17" y="198" class="axl am" transform="rotate(-90 17 198)">effect vs the leader</text>
 <line x1="151.4" y1="125.8" x2="151.4" y2="66.8" class="ci ci2"/>
@@ -1959,17 +1977,27 @@ encoder v2 | width 256 | lr 3e-4 | 144k clusters
 val_ce 0.61525
 ten windows  +0.0105 [-0.0056, +0.0267]
 best offline at max data, 45% of the weights; vs its own h512 control (vol144k) +0.0068 [-0.0087, +0.0223]; tau 0 on both; fifth ten-window arm, fifth to cross zero</title></circle>
+<line x1="637.1" y1="131.2" x2="637.1" y2="35.2" class="ci ci5"/>
+<line x1="631.1" y1="131.2" x2="643.1" y2="131.2" class="ci ci5"/>
+<line x1="631.1" y1="35.2" x2="643.1" y2="35.2" class="ci ci5"/>
+<circle cx="637.1" cy="83.2" r="5" class="pt pt7 hit" tabindex="0" data-t="smean-96k  (8a6d5260)&#10;trained 2026-09-12&#10;encoder v2 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 1.67515&#10;five windows  +0.0165 [-0.0092, +0.0422]&#10;#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"><title>smean-96k  (8a6d5260)
+trained 2026-09-12
+encoder v2 | width 512 | lr 3e-4 | 96k clusters
+val_ce 1.67515
+five windows  +0.0165 [-0.0092, +0.0422]
+#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 -- crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered &lt;= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</title></circle>
 <text x="696" y="44" class="lgh">INSTRUMENT</text>
 <circle cx="702" cy="64" r="5" class="pt pt3"/><text x="715" y="68" class="lg">one 520-deal window</text>
 <circle cx="702" cy="86" r="5" class="pt pt2"/><text x="715" y="90" class="lg">ten windows</text>
-<text x="696" y="122" class="lgs">The 10 Sep points are</text>
-<text x="696" y="138" class="lgs">NOT better models. They</text>
-<text x="696" y="154" class="lgs">are the same question</text>
-<text x="696" y="170" class="lgs">asked with a better</text>
-<text x="696" y="186" class="lgs">instrument.</text>
-<text x="696" y="202" class="lgs"></text>
-<text x="696" y="218" class="lgs">29 of 47 models have</text>
-<text x="696" y="234" class="lgs">no point here at all.</text>
+<circle cx="702" cy="108" r="5" class="pt pt7"/><text x="715" y="112" class="lg">five windows (wider)</text>
+<text x="696" y="144" class="lgs">The 10 Sep points are</text>
+<text x="696" y="160" class="lgs">NOT better models. They</text>
+<text x="696" y="176" class="lgs">are the same question</text>
+<text x="696" y="192" class="lgs">asked with a better</text>
+<text x="696" y="208" class="lgs">instrument.</text>
+<text x="696" y="224" class="lgs"></text>
+<text x="696" y="240" class="lgs">28 of 47 models have</text>
+<text x="696" y="256" class="lgs">no point here at all.</text>
 </svg></div>
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
   those arms got ten windows, the earlier ones got one. The leader itself measures +0.1260 on one
@@ -2014,7 +2042,7 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
   bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
   type. The badge names the instrument, and the interval must be read with that instrument&#8217;s power:
   <b>10w</b> is ten independent 520-cluster windows against vol96k (bit-identical weights to the deployed leader),
-  DerSimonian&#8211;Laird random effects, 95% interval, MDE80 about 0.023 on this page. <b>5w</b> (the first five windows, the triage instrument) has no readout yet.
+  DerSimonian&#8211;Laird random effects, 95% interval, MDE80 about 0.023 on this page. <b>5w</b> is the first five of those windows, MDE80 about 0.037: a null there means not large, never no effect (one arm so far).
   <b>1w paired</b> is one 520-cluster window against the W32 leader on identical deals, 95% paired interval,
   MDE80 about 0.070: its &#8220;resolves&#8221; verdicts were overturned when the same arms got ten windows and are
   marked superseded. <b>1w MC&#8209;LCB</b> is one window against the old production bot, not the leader, so its
@@ -2047,7 +2075,7 @@ best offline at max data, 45% of the weights; vs its own h512 control (vol144k) 
 <tr class=""><td><b>cap144-h1024</b><br><span class="mono null">34e6fa0f</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">1024</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62043</td><td class="n">&mdash;</td><td class="n null"><span class="pill live">queued</span></td><td class="null">above the h512 control: the pre-registered falsifier did not fire</td></tr>
 <tr class=""><td><b>cap144-h2048</b><br><span class="mono null">e2436f98</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">2048</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62314</td><td class="n">&mdash;</td><td class="n null"><span class="pill live">queued</span></td><td class="null">widest arm; worst offline of the four, 14.7x the weights of h256</td></tr>
 <tr class=""><td><b>volNEW-176k</b><br><span class="mono null">02510c50</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">176k</td><td class="n">25,388,708</td><td class="n">0.62703</td><td class="n">0.0348</td><td class="n null"><span class="pill live">queued</span></td><td class="null">144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</td></tr>
-<tr class=""><td><b>smean-96k</b><br><span class="mono null">8a6d5260</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">1.67515</td><td class="n">0.0353</td><td class="n null"><span class="pill live">queued</span></td><td class="null">#340 arm: leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</td></tr>
+<tr class=""><td><b>smean-96k</b><br><span class="mono null">8a6d5260</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">1.67515</td><td class="n">0.0353</td><td class="n pos"><b>+0.0165 [&#8209;0.0092, +0.0422] <span class="pill inst">5w</span></b></td><td class="null">#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 &mdash; crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</td></tr>
 <tr class=""><td><b>grid S-d4 (4 residual layers)</b><br><span class="mono null">f88b54cb</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.60570</td><td class="n">0.0344</td><td class="n null"><span class="pill live">queued</span></td><td class="null">ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play</td></tr>
 <tr class=""><td><b>grid S-d2 (2 residual layers)</b><br><span class="mono null">fa657ec8</span></td><td class="n">2026-09-13</td><td>v2</td><td class="n">436</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.60929</td><td class="n">0.0374</td><td class="n null">&mdash;</td><td class="null">ARCHITECTURE GRID row S, cell d2: --trunk-layers 2 --trunk-block residual --hidden 436, 609,296 params = the h512 budget; best epoch 9/12; sealed 09-13 04:24 ET; parameter-matched (width 512 -> 436 changes with the block, so not a single-variable ablation): the residual cell at depth 2 sits 0.0098 below depth-2 plain (volVOL-144k 0.61912); depth 4 residual (S-d4 0.60570) a further 0.0036 below; row S complete: plain d2 0.61912 -> plain d4 0.61516 -> residual d2 0.60929 -> residual d4 0.60570; regret@4 0.0374 beats the leader's 0.0381</td></tr>
 <tr class=""><td><b>grid S-d4-plain (4 plain layers)</b><br><span class="mono null">e9cd80ba</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">340</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.61516</td><td class="n">0.0396</td><td class="n null">&mdash;</td><td class="null">ARCHITECTURE GRID row S, cell d4-plain: --trunk-layers 4 --trunk-block plain --hidden 340, 608,294 params = the h512 budget, the optimisation control for S-d4 (no LayerNorm, no skip); best epoch 9/12; sealed 09-13 01:46 ET; val_ce 0.61516 sits between depth-2 (volVOL-144k 0.61912) and the residual cell (S-d4 0.60570): naive depth buys 0.0040, the residual block another 0.0095; regret@4 0.0396 is WORSE than the leader's 0.0381 (S-d4: 0.0344)</td></tr>

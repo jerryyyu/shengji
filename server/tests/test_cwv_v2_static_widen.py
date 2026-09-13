@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import random
+from collections import Counter
 
 import numpy as np
 import pytest
@@ -165,6 +166,29 @@ def test_v1_static_width_and_v2_invalid_input_refusal_remain_unchanged():
     with pytest.raises(type(reference_error.value)) as static_error:
         static.tensors_from_round_static(corrupt, rnd.turn, version=2)
     assert str(static_error.value) == str(reference_error.value)
+
+
+def test_v2_static_widen_preserves_every_unseen_count_and_banker_privacy(monkeypatch):
+    from shengji.ai.memory import Memory
+
+    rnd = _state_after(68, 35)
+    original = static._v2_columns_from_unseen
+    seen = []
+
+    def capture(state, seat, unseen):
+        expected = Memory(state, seat, own_kitty=False).unseen
+        assert unseen == expected
+        seen.append((seat, Counter(unseen)))
+        return original(state, seat, unseen)
+
+    monkeypatch.setattr(static, "_v2_columns_from_unseen", capture)
+    for seat in range(4):
+        row = static.tensors_from_round_static(rnd, seat, version=2)
+        reference = v2.tensors_from_round(rnd, seat, version=2)
+        assert row.public.tobytes() == reference.public.tobytes()
+    assert [seat for seat, _ in seen] == list(range(4))
+    counts = {unseen[card] for _, unseen in seen for card in static.CARD_INDEX}
+    assert counts == {0, 1, 2}
 
 
 class _RecordingEvaluator(CompleteWorldEvaluator):

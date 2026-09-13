@@ -163,13 +163,13 @@ def make_side(config: dict, side: str, seed: int):
         # #373: the value head rides in config.json and binds the ARM's evaluator
         # only; a flat-shortlist baseline built from the same config keeps the
         # checkpoint's own head (its evaluator is a separate cache entry).
+        head = config.get("value_head") if side == "arm" else None
         evaluator = shared_evaluator(config["checkpoint"], threads=1,
                                      max_batch=config.get(
                                          "batch_size",
                                          config["shortlist"]["batch_size"]),
                                      encoding=_encoding(config),
-                                     value_head=(config.get("value_head")
-                                                 if side == "arm" else None))
+                                     **({"value_head": head} if head else {}))
         if evaluator.checkpoint_sha256 != config["checkpoint_sha256"]:
             raise ValueError("checkpoint changed between configuration and worker")
     inner = config.get("double_shortlist") if side == "arm" else None
@@ -477,7 +477,8 @@ def _run_screen(args, trump_ranks):
     if args.arm == "learned":
         evaluator = shared_evaluator(
             checkpoint, threads=1, max_batch=args.batch_size,
-            encoding=args.encoding, value_head=args.value_head)
+            encoding=args.encoding,
+            **({"value_head": args.value_head} if args.value_head else {}))
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
     shortlist = CWVShortlistConfig(

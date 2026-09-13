@@ -222,6 +222,10 @@ def test_screen_binds_the_value_head_to_the_arm_evaluator_only(tmp_path, monkeyp
     S.make_side(persisted, "arm", seed=17)
     S.make_side(persisted, "baseline", seed=17)
     assert seen == ["search-mean"]  # the arm gets the head; the production baseline builds no evaluator
+    # a recipe without the knob calls the evaluator exactly as before (no value_head kwarg at all)
+    seen.clear()
+    S.make_side({**persisted, "value_head": None}, "arm", seed=17)
+    assert seen == [None]
     out2 = tmp_path / "plain"
     assert S.main(["--arm", "learned", "--checkpoint", str(ckpt),
                    "--clusters", "1", "--workers", "1", "--seed0", "17", "--out", str(out2)]) == 0

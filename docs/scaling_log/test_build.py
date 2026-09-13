@@ -234,3 +234,19 @@ def test_window_prefixes_are_validated(data, field, value, msg):
     rows2[0][field] = value
     errs = build.check_data(rows2, table_only, series)
     assert errs and any(msg in e for e in errs), errs
+
+
+def test_chart_1b_puts_same_corpus_models_on_one_x_and_spans_only_leader_sizes(data):
+    """Jerry (09-13): the leader-vs-records chart should cover only the sizes that have
+    points and models trained on the same corpus must sit at the same x."""
+    page, c = _render(*data)
+    svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
+    g2 = svgs[1][2]
+    by_corpus = {}
+    for cx, tip in re.findall(r'<circle cx="([-0-9.]+)" cy="[-0-9.]+" r="[0-9.]+" class="pt [^"]*hit" tabindex="0" data-t="([^"]*)"', g2):
+        corpus = re.search(r"\| (\d+k) clusters", tip).group(1)
+        by_corpus.setdefault(corpus, set()).add(float(cx))
+    assert len(by_corpus) >= 3 and all(len(xs) == 1 for xs in by_corpus.values()), by_corpus
+    assert len(by_corpus["96k"]) == 1 and "96k clusters" in g2  # tick labelled with its corpus
+    assert 'am">1M</text>' not in g2 and 'am">2M</text>' not in g2 and 'am">5M</text>' not in g2  # the empty low end is gone
+    assert re.search(r"\d of \d corpus sizes</text>", g2)  # legend derived, not typed

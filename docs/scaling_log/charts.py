@@ -57,10 +57,12 @@ def frame(W,H,L,Rm,T,B,XLO,XHI,ylo,yhi,yt,xt,xlab,ylab,ylog=False,yfmt="{:.2f}")
         z=" zero" if v==0 else ""
         s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" class="grid%s"/>'%(x0,Y(v),x1,Y(v),z))
         s.append('<text x="%d" y="%.1f" class="ax ar">%s</text>'%(x0-11,Y(v)+4,yfmt.format(v)))
-    for v,lab in xt:
+    for t in xt:
+        v,lab=t[0],t[1]
         s.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" class="grid"/>'%(X(v),y0,X(v),y1))
         s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(X(v),y1+21,lab))
-    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+45,xlab))
+        if len(t)>2: s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(X(v),y1+34,t[2]))
+    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+(52 if any(len(t)>2 for t in xt) else 45),xlab))
     s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">%s</text>'%((y0+y1)/2,(y0+y1)/2,ylab))
     return s,X,Y,x0,x1,y0,y1
 
@@ -220,7 +222,9 @@ def legend(s,lx,r,y0,ys):
         s.append('<circle cx="%d" cy="108" r="%s" class="pt pt7"/><text x="%d" y="112" class="lg">five windows (wider)</text>'%(lx+6,r,lx+19))
         return ys+22
     return ys
-def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
+def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra, spread=17):
+    """spread: horizontal px between points sharing one x (17 = fan the markers apart;
+    a few px = markers at the true x, only the interval lines fanned for legibility)."""
     W,H=880,400; L,Rm,T,B=84,206,30,64
     x0,x1,y0,y1=L,W-Rm,T,H-B
     YLO2,YHI2=-0.135,0.045
@@ -230,10 +234,12 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
     for v in [-0.12,-0.09,-0.06,-0.03,0,0.03]:
         s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" class="grid%s"/>'%(x0,Y(v),x1,Y(v)," zero" if v==0 else ""))
         s.append('<text x="%d" y="%.1f" class="ax ar">%+.2f</text>'%(x0-11,Y(v)+4,v))
-    for v,lab in xt:
+    for t in xt:
+        v,lab=t[0],t[1]
         s.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" class="grid"/>'%(X(v),y0,X(v),y1))
         s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(X(v),y1+21,lab))
-    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+45,xlab))
+        if len(t)>2: s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(X(v),y1+34,t[2]))
+    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+(52 if any(len(t)>2 for t in xt) else 45),xlab))
     s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">effect vs the leader</text>'%((y0+y1)/2,(y0+y1)/2))
     grp={}
     for d in SCR:
@@ -241,23 +247,33 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
         if e: grp.setdefault(keyfn(d),[]).append((d,e))
     for xv,items in grp.items():
         for k,(d,(m,lo,hi,inst)) in enumerate(sorted(items,key=lambda z:-z[1][0])):
-            off=(k-(len(items)-1)/2)*17
+            off=(k-(len(items)-1)/2)*spread
+            mk=off if spread>=10 else 0          # marker at the true x when only the intervals are fanned
             if inst=="ref":
-                s.append(dot(X(xv,off),Y(0),6,"pt pt2",d))
-                s.append('<text x="%.1f" y="%.1f" class="lab am">leader</text>'%(X(xv,off),Y(0)-13)); continue
+                s.append(dot(X(xv,mk),Y(0),6,"pt pt2",d))
+                s.append('<text x="%.1f" y="%.1f" class="lab am">leader</text>'%(X(xv,mk),Y(0)-13)); continue
             col,pt=STYLE[inst]
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi),col))
             for e2 in (lo,hi):
                 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off)-5,Y(e2),X(xv,off)+5,Y(e2),col))
-            s.append(dot(X(xv,off),Y(m),4.8,"pt "+pt,d))
+            s.append(dot(X(xv,mk),Y(m),4.8,"pt "+pt,d))
     lx=x1+22
     ys=legend(s,lx,"4.8",44,124)
     for i,t in enumerate(extra):
         s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ys+i*16,t))
     s.append('</svg>'); open(out,"w").write("\n".join(s))
-leaderchart(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
-  "training records (log scale)",OUT+"/g2.svg",
-  ["Only 3 of 7 corpus sizes","have ANY leader number.","Nothing below 14M does.","Click a dot for detail."])
+# chart 1b: axis spans only the corpus sizes that carry a leader number (derived), one
+# tick per size labelled with its records and cluster count; every model trained on the
+# same corpus sits at the same x, only the interval lines fan by 3 px for legibility
+_g2_pts=[d for d in SCR if eff(d)]
+_g2_sizes=sorted({d["cl"] for d in _g2_pts}, key=lambda c: REC[c])
+_g2_all=len({d["cl"] for d in R if d["ce"] is not None})
+_g2_min=min(d["rec"] for d in _g2_pts)
+leaderchart(lambda d:d["rec"], REC[_g2_sizes[0]]*0.82, REC[_g2_sizes[-1]]*1.18,
+  [(REC[c],"%.1fM"%(REC[c]/1e6),c+" clusters") for c in _g2_sizes],
+  "training records (log scale; only sizes with a leader number)",OUT+"/g2.svg",
+  ["%d of %d corpus sizes"%(len(_g2_sizes),_g2_all),"have a leader number.","Nothing below %.1fM does."%(_g2_min/1e6),"",
+   "Same corpus = same x;","interval lines fanned","3 px so they can be told","apart. Click a dot."], spread=3)
 leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/g4.svg",
   ["Every width screened, but","at one corpus size and","mostly one learning rate."])
@@ -310,7 +326,7 @@ def parse(v):
     v=v.replace("RES","")
     m,rest=v.split(" [",1); lo,hi=rest.rstrip("]").split(", ")
     return float(m),float(lo),float(hi)
-def both(keyfn, XLO, XHI, xt, xlab, out, extra):
+def both(keyfn, XLO, XHI, xt, xlab, out, extra, spread=15):
     W,H=880,470; L,Rm,T,B=84,206,30,64
     x0,x1,y0,y1=L,W-Rm,T,H-B
     YLO2,YHI2=-0.145,0.195
@@ -320,10 +336,12 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
     for v in [-0.12,-0.08,-0.04,0,0.04,0.08,0.12,0.16]:
         s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" class="grid%s"/>'%(x0,Y(v),x1,Y(v)," zero" if v==0 else ""))
         s.append('<text x="%d" y="%.1f" class="ax ar">%+.2f</text>'%(x0-11,Y(v)+4,v))
-    for v,lab in xt:
+    for t in xt:
+        v,lab=t[0],t[1]
         s.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" class="grid"/>'%(X(v),y0,X(v),y1))
         s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(X(v),y1+21,lab))
-    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+45,xlab))
+        if len(t)>2: s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(X(v),y1+34,t[2]))
+    s.append('<text x="%d" y="%d" class="axl am">%s</text>'%((x0+x1)/2,y1+(52 if any(len(t)>2 for t in xt) else 45),xlab))
     s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">effect per round</text>'%((y0+y1)/2,(y0+y1)/2))
     s.append('<text x="%d" y="%.1f" class="lab">beats MC-LCB &#8593;</text>'%(x0+6,Y(0.175)))
     s.append('<text x="%d" y="%.1f" class="lab">loses to the leader &#8595;</text>'%(x0+6,Y(-0.125)))
@@ -333,12 +351,13 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
         if d["mc"]: g.setdefault(keyfn(d),[]).append(d)
     for xv,items in g.items():
         for k,d in enumerate(sorted(items,key=lambda z:-parse(z["mc"])[0])):
-            off=(k-(len(items)-1)/2)*15
+            off=(k-(len(items)-1)/2)*spread
+            mk=off if spread>=10 else 0          # marker at the true x when only the intervals are fanned
             m,lo,hi=parse(d["mc"])
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci ci3"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi)))
             for e in (lo,hi):
                 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci ci3"/>'%(X(xv,off)-5,Y(e),X(xv,off)+5,Y(e)))
-            s.append(dot(X(xv,off),Y(m),4.8,"pt pt6",d))
+            s.append(dot(X(xv,mk),Y(m),4.8,"pt pt6",d))
     # vs the leader
     g2={}
     for d in SCR:
@@ -346,14 +365,15 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
         if e: g2.setdefault(keyfn(d),[]).append((d,e))
     for xv,items in g2.items():
         for k,(d,(m,lo,hi,inst)) in enumerate(sorted(items,key=lambda z:-z[1][0])):
-            off=(k-(len(items)-1)/2)*15
+            off=(k-(len(items)-1)/2)*spread
+            mk=off if spread>=10 else 0
             if inst=="ref":
-                s.append(dot(X(xv,off),Y(0),6,"pt pt2",d)); continue
+                s.append(dot(X(xv,mk),Y(0),6,"pt pt2",d)); continue
             col,pt=STYLE[inst]
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi),col))
             for e2 in (lo,hi):
                 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off)-5,Y(e2),X(xv,off)+5,Y(e2),col))
-            s.append(dot(X(xv,off),Y(m),4.8,"pt "+pt,d))
+            s.append(dot(X(xv,mk),Y(m),4.8,"pt "+pt,d))
     lx=x1+22
     s.append('<text x="%d" y="44" class="lgh">BENCHMARK</text>'%lx)
     s.append('<circle cx="%d" cy="64" r="4.8" class="pt pt6"/><text x="%d" y="68" class="lg">vs MC-LCB</text>'%(lx+6,lx+19))
@@ -363,9 +383,17 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
     for i,t in enumerate(extra):
         s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,164+i*16,t))
     s.append('</svg>'); open(out,"w").write("\n".join(s))
-both(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
-  "training records (log scale)",OUT+"/h2.svg",
-  ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true."])
+# section 1b: the axis spans only the corpus sizes that carry a benchmark point (derived),
+# one tick per size with its cluster count; models trained on the same corpus sit at the
+# same x and only the interval lines fan by 3 px so they can be told apart
+_h2_pts=[d for d in R if d["mc"] or (d in SCR and eff(d))]
+_h2_sizes=sorted({d["cl"] for d in _h2_pts}, key=lambda c: REC[c])
+_h2_all=len({d["cl"] for d in R if d["ce"] is not None})
+both(lambda d:d["rec"], REC[_h2_sizes[0]]*0.82, REC[_h2_sizes[-1]]*1.18,
+  [(REC[c],"%.1fM"%(REC[c]/1e6),c+" clusters") for c in _h2_sizes],
+  "training records (log scale; only sizes with a benchmark point)",OUT+"/h2.svg",
+  ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true.","",
+   "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all.","Same corpus = same x;","interval lines fanned","3 px to tell them apart."], spread=3)
 both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/h4.svg",
   ["Both benchmarks, same","models, one axis."])

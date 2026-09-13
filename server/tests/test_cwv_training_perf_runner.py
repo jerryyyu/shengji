@@ -45,9 +45,11 @@ def test_dry_run_never_launches_or_creates_output(runner, args, monkeypatch, war
 
 
 @pytest.mark.parametrize("mismatch", [False, True])
-def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mismatch):
+@pytest.mark.parametrize("comparison", ["batching-sync", "numeric-gather"])
+def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mismatch, comparison):
     argv, out = args
     argv.append("--run")
+    argv.extend(["--comparison", comparison])
     seen = []
     class Process:
         def __init__(self, cmd, **kw):
@@ -56,6 +58,8 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
             seen.append((kw["env"]["SHENGJI_CWV_LOSS_SYNC_EVERY"],
                          kw["env"]["SHENGJI_CWV_BATCHED_CANDIDATES"]))
             assert Path(cmd[cmd.index("--config") + 1]) == out / "recipe.json"
+            assert cmd[cmd.index("--comparison") + 1] == comparison
+            assert cmd[cmd.index("--arm") + 1] == ["control", "optimized", "optimized", "control"][len(seen)-1]
             dest = Path(cmd[cmd.index("--out") + 1])
             changed = mismatch and len(seen) == 2
             report = dict(wall_seconds=2 if len(seen) in (1, 4) else 1,
@@ -70,13 +74,32 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
             runner.main()
     else:
         runner.main()
-    assert seen == [("1", "0"), ("32", "1"), ("32", "1"), ("1", "0")]
+    assert seen == ([("32", "1")] * 4 if comparison == "numeric-gather" else
+                    [("1", "0"), ("32", "1"), ("32", "1"), ("1", "0")])
     summary = json.loads((out / "summary.json").read_text())
     assert summary["exact_checkpoint_and_cpu_rng_parity"] is (not mismatch)
     assert summary["control_repeatable"] is True
     assert summary["optimized_repeatable"] is (not mismatch)
     assert summary["control_mean_wall"] == 2
     assert summary["optimized_mean_wall"] == 1
+    assert summary["comparison"] == comparison
+
+
+def test_numeric_gather_control_restores_strings_and_method_after_failure(runner, monkeypatch):
+    from shengji.train.cwv_data import CwvBlockStore
+    calls = []
+    def original(self, *args, **kwargs):
+        calls.append(kwargs["include_strings"])
+        return "sentinel"
+    monkeypatch.setattr(CwvBlockStore, "iter_batches", original)
+    with pytest.raises(RuntimeError, match="injected"):
+        with runner.gather_control(True):
+            assert CwvBlockStore.iter_batches(None, include_strings=False) == "sentinel"
+            raise RuntimeError("injected")
+    assert CwvBlockStore.iter_batches is original
+    with runner.gather_control(False):
+        CwvBlockStore.iter_batches(None, include_strings=False)
+    assert calls == [True, False]
 
 
 @pytest.mark.parametrize("warmup", [False, True])
@@ -154,7 +177,11 @@ def test_full_warmup_prepares_candidate_cache_but_timed_changes_refuse(runner, a
         assert len(summary["arms"]) == 4
 
 
-def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path):
+@pytest.mark.parametrize("comparison,arm", [("batching-sync", "optimized"),
+                                            ("numeric-gather", "control"),
+                                            ("numeric-gather", "optimized")])
+def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path,
+                                                        monkeypatch, comparison, arm):
     """Exercise the actual child entry point on the small engine-generated fixture.
 
     This is a transport smoke, not a speed measurement or new research data.
@@ -171,9 +198,23 @@ def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_p
         **THIRDS)))
     out = tmp_path / "child"
     out.mkdir()
-    runner.child(str(config), out)
+    from shengji.train.cwv_data import CwvBlockStore
+    observed = []
+    original = CwvBlockStore.iter_batches
+    def traced(self, *args, **kwargs):
+        observed.append(kwargs.get("include_strings", True))
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(CwvBlockStore, "iter_batches", traced)
+    runner.child(str(config), out, comparison=comparison, arm=arm)
+    assert observed
+    if comparison == "numeric-gather" and arm == "control":
+        assert all(observed)
+    else:
+        assert False in observed
+    assert CwvBlockStore.iter_batches is traced
     report = json.loads((out / "measurement.json").read_text())
     assert report["wall_seconds"] > 0
+    assert (report["comparison"], report["arm"]) == (comparison, arm)
     assert report["cpu_seconds_including_reaped_children"] > 0
     assert report["parent_peak_rss_bytes"] > 0
     assert len(report["epoch_train_seconds"]) == 1

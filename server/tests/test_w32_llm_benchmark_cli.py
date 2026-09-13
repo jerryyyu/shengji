@@ -41,13 +41,13 @@ def wiring(tmp_path, **kwargs):
                   output=str(output), seeds=[7, 11], register_fn=register,
                   recipe_reader=recipe_reader, bot_factory=lambda *_a, **_k: FakePolicy(),
                   game_factory=game_factory, prepare_fn=prepare,
-                  wall_seconds=30)
+                  wall_seconds=30, token_limit=100000)
     config.update(kwargs)
     return output, config
 
 
 def test_dry_run_plans_four_arms_without_constructing_transport(tmp_path):
-    output, config = wiring(tmp_path)
+    output, config = wiring(tmp_path, token_limit=None)
 
     def no_transport(**_kwargs):
         raise AssertionError("dry-run must not construct a provider")
@@ -58,6 +58,18 @@ def test_dry_run_plans_four_arms_without_constructing_transport(tmp_path):
     assert result["planned_arms"] == [
         "sol-actor-only", "sol-perfect", "luna-actor-only", "luna-perfect"]
     assert result["planned_mirrors"] == 16
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("limit", [None, 0, -1, True, 1.5])
+def test_run_requires_positive_integer_token_ceiling_before_any_work(tmp_path, monkeypatch, limit):
+    output, config = wiring(tmp_path, run=True, token_limit=limit)
+    def no_work(*args, **kwargs):
+        raise AssertionError("must refuse before opening checkpoint or launching work")
+    monkeypatch.setattr(benchmark, "_checkpoint_identity", no_work)
+    with pytest.raises(benchmark.BenchmarkRefusal,
+                       match="^--run requires a positive --soft-token-limit$"):
+        benchmark.run_benchmark(**config)
     assert not output.exists()
 
 

@@ -268,6 +268,8 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                   recipe_reader=bury_env_recipe,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
+    if run and (type(token_limit) is not int or token_limit <= 0):
+        raise BenchmarkRefusal("--run requires a positive --soft-token-limit")
     checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
     information = tuple(information)

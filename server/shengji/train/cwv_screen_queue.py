@@ -1,7 +1,7 @@
 """Opt-in static-Torch W32 screen queue; resume pairs instead of deleting windows.
 
-The legacy screen's defaults stay unchanged. This entry point pins its fast
-recipe explicitly and calls the existing runner even when summary.json exists:
+This entry point pins its fast recipe and 300s total play deadline explicitly,
+and calls the existing runner even when summary.json exists:
 that file can describe a partial result, and is never a completion certificate.
 No automatic retry, seed allocation, model selection or deployment is performed.
 """
@@ -26,6 +26,8 @@ def main(argv=None):
     parser.add_argument("--seeds", type=int, nargs="+", required=True)
     parser.add_argument("--clusters", type=int, default=520)
     parser.add_argument("--workers", type=int, required=True)
+    parser.add_argument("--decision-deadline", type=int, choices=(0, 300), default=300,
+                        help="300s total per play; 0 explicitly selects legacy uncapped policy")
     parser.add_argument("--encoding", choices=("reference", "mlp-static"),
                         default="mlp-static")
     parser.add_argument("--trump-ranks", default="2,3,4,5,6,7,8,9,10,J,Q,K,A")
@@ -71,6 +73,7 @@ def main(argv=None):
                 "--trump-ranks", args.trump_ranks,
                 "--clusters", str(args.clusters), "--workers", str(args.workers),
                 "--seed0", str(seed), "--out", str(output),
+                "--decision-deadline", str(args.decision_deadline),
             ]
             if args.cost_order_root is not None:
                 prior = args.cost_order_root / f"{args.cost_order_name or args.name}-{seed}"

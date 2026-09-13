@@ -1,6 +1,6 @@
 # Future screens: 300-second total play deadline
 
-Status: implementation contract, not an implemented timeout. Tracks #396.
+Status: implemented in PR #400; review required before merge/use. Tracks #396.
 Jerry selected **300 seconds total per play**, replacing the issue's proposed
 600 seconds. This is a new screen recipe, not a change to active windows.
 
@@ -24,22 +24,27 @@ Jerry selected **300 seconds total per play**, replacing the issue's proposed
 
 ## Enforcement: do not promise a hard cap with a Python timer
 
-Current `search_screen.TimedPolicy` measures a move after `decide_play` returns;
-`CwvTimedPolicy` attaches shortlist receipts. Neither enforces a deadline.
+The original `search_screen.TimedPolicy` measures after `decide_play` returns;
+`CwvTimedPolicy` attaches shortlist receipts. `screen_deadline.DeadlineSession`
+now supervises those wrappers from the game-owning process.
 
 An in-process signal/cooperative check alone is insufficient: Python may not
-handle it until a native operation returns. The implementation should supervise
-search in a separate process, with the game state and legal fallback owned by
-the supervisor. The supervisor stops waiting at the deadline, rejects late
+handle it until a native operation returns. The implementation supervises search
+in a spawned process, with game state and legal fallback owned by the supervisor.
+The supervisor stops waiting at the deadline, rejects late
 results, terminates unfinished work and continues with the fallback. Record
 actual return latency and cancellation overshoot; ordinary scheduling and
 cleanup still prevent a real-time guarantee of exactly 300.000 seconds.
 
-Use persistent workers so model loading is not repeated per move. Do not fork
-an already-threaded Torch/MPS process. Explicitly define RNG/state recovery after
-cancellation; retaining a half-mutated bot or reseeding it silently is not safe.
-Completed work must preserve the uncapped action, RNG continuation and receipts.
-Parent/worker cleanup must not leave orphan searches consuming screen cores.
+One persistent child per cluster shares evaluator caches across all bots. Only
+completed requests commit bot state/counters/RNG; timeout restores the previous
+checkpoint and clears stale decision evidence. A replacement child recreates
+models and restores those checkpoints (cold restart counts in the next play's
+budget). Completed work preserves the uncapped action, RNG and receipts. Linux
+uses a parent-death signal as well as explicit kill/reap cleanup; macOS has normal
+daemon/finally cleanup, not a parent-SIGKILL orphan guarantee. Registration has
+a separate 120s startup guard. Unexpected crashes refuse the shard; they are not
+misreported as timeouts. Completed shards remain available for recovery.
 
 ## Telemetry (every move, including forced moves)
 
@@ -73,3 +78,37 @@ receipt. Timeout rates remain visible even when gameplay strength is neutral.
 Use short injected deadlines in tests. Then qualify wrapper overhead and
 cancellation on a bounded saved-state comparison, including a wide-tail state.
 No repeated multi-hour capacity runs, no changes to live windows, no deployment.
+
+## Entry points and local qualification
+
+Both `cwv_shortlist_screen` and `cwv_screen_queue` default to
+`--decision-deadline 300`. `--decision-deadline 0` explicitly selects uncapped
+behavior. This does not retrofit frozen/older checked-out runners. There are no
+registry, Fly or production default changes.
+
+`scripts/check_screen_deadline.py` exercises the actual W32 model and saved tail:
+
+```
+PYTHONPATH=server python server/scripts/check_screen_deadline.py \
+  --checkpoint /path/to/w32-fd6bb411.npz \
+  --wide-snapshot /path/to/prefix-profile.json --out /new/path/result.json
+```
+
+2026-09-13 local qualification (not an isolated cloud performance claim):
+
+- Checkpoint `fd6bb4114eb1f2ff049a77989cbd99eb35b949eef944dd72de448ff25b4fabd9`,
+  W32 / selection 30 / report 300 / mlp-static / successor reuse.
+- Four pairs on seed 431, including one warmup: identical actions, RNG, complete
+  non-timing receipts and rollout counts. Three warm direct calls 2.420–2.474s;
+  supervised calls 2.533–2.777s. Startup 0.636s. Not a broad overhead estimate.
+- Saved seed 13561373 follow with 379,753 actions: deliberately shortened 2s
+  deadline cancelled ranking at 2.013s, engine accepted fallback, next request
+  restarted and completed. This validates cancellation, not strength.
+- Artifact: `~/shengji-archive/2026-09-13/deadline-qualification.json`.
+- Focused tests include GIL-held native hangs in all five phases, total-budget
+  expiry, rollback, fast real MC parity, a complete mirrored driver retaining
+  four timeouts per side, per-policy summary bins, crash refusal, CLI/queue
+  defaults and capped/uncapped shard separation.
+- Validation: 48 tests passed across `test_screen_deadline.py`,
+  `test_cwv_shortlist_screen.py`, `test_cwv_double_shortlist_screen.py` and
+  `test_cwv_screen_queue.py`; independent source review passed.

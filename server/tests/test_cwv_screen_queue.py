@@ -40,12 +40,30 @@ def harness(tmp_path, monkeypatch):
 def publish_pair(config, cluster, shards, output):
     seed, rank = config["seed0"] + cluster, Q.screen.rank_for(config, cluster)
     shard = {"schema": "cwv-shortlist-shard-v1", "cluster": cluster, "seed": seed,
+             "decision_traces": [],
              "rank": rank, "recipe": Q.screen._recipe(config),
              "records": [{"cluster": cluster, "seed": seed, "mirror": mirror,
                           "trump_rank": rank, "trump_suit": "NT", "arm": "learned"}
                          for mirror in (0, 1)]}
     Q.screen._publish(output / f"cluster-{cluster:05d}.json", shard)
     shards.append(shard)
+
+
+@pytest.mark.parametrize("extra,enabled", [([], True), (["--decision-deadline", "0"], False)])
+def test_queue_passes_deadline_recipe_to_each_window(harness, monkeypatch, extra, enabled):
+    args, _, _, _ = harness
+    configs = []
+    def complete(config, pending, shards, *, output, **kwargs):
+        configs.append(config)
+        for cluster in pending:
+            publish_pair(config, cluster, shards, output)
+    monkeypatch.setattr(Q.screen, "_run_pending", complete)
+    assert Q.main([*args, *extra]) == 0
+    assert len(configs) == 2
+    for config in configs:
+        assert ("decision_deadline" in config) is enabled
+        if enabled:
+            assert config["decision_deadline"] == Q.screen.DEADLINE_RECIPE
 
 
 def test_partial_summary_resumes_exact_pairs_and_complete_windows_do_no_work(harness, monkeypatch):

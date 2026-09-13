@@ -17402,3 +17402,7 @@ Jerry on section 1b: focus on the 5–20M+ range where the points are, and model
 ## 2026-09-13 00:58 ET — Claude — Jerry: chart 2b on the same rule (PR #371 extended)
 
 Chart 2b (`h4.svg`, parameters): ticks derived from the parameter counts that carry a benchmark point, counts within 2% merged onto one tick (a depth cell sits on its depth-2 twin's), labelled count + width; markers at the true x (18 at h512, 4 at h1024, 3 at h256, 3 at h2048), interval lines fanned 3 px; caption added. 21 tests, `--check` consistent, artifact republished, PR #371 body updated, Codex ask 666 supersedes 665.
+
+## 2026-09-13 01:00 ET — Claude — Jerry: 1b/2b spacing partly restored (PR #371 head `9fb56dd1`)
+
+Jerry: the same-x points were too clumped; add some spacing, less than before. Points (markers and intervals together) now fan 7 px per point around one tick per corpus size / parameter count (was 15 px before today, 3 px interval-only fan after the first change). Captions and legends say "one tick, fanned a few pixels"; tests assert the fan pitch (≤ 7 px per point, below the old 15). 21 tests, `--check` consistent, artifact republished, Codex ask 667 supersedes 666. No merge until green + PASS.

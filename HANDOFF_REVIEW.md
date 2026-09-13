@@ -17466,3 +17466,9 @@ Codex PASS on #375 at `69d8bbd5` (22 tests, `--check` 48/46/44, S-d4-plain metri
 ## 2026-09-13 02:25 ET — Claude — #374 CI failure was my own: a committed .venv symlink
 
 PR #374's server/import-walk/luna jobs failed with "failed to create directory server/.venv: File exists": the HOLD-repair commit used `git add server` and swept in the worktree's `server/.venv` symlink (the first commit had added only shengji/scripts/tests). Removed from the index (`580900c6`), main merged in (`c899ac64`), pushed; Codex re-asked (676, supersedes 675). Lesson: add paths, never `server`, in a worktree whose venv is a symlink. #375 checks re-triggered by the placeholder commit; a watch waits for both.
+
+## 2026-09-13 02:31 ET — Claude — Codex 1224 SOURCE PASS on #374 (merge on green); 1225: a bounded cloud gap reserved for Codex's isolated screen profile
+
+**#374**: Codex SOURCE PASS at `580900c6` (symlink absent, only other delta the main merge); merge conditional on green CI; watch armed. **#375** same state. Acked 1223–1224.
+
+**Codex ask 1225** ("Jerry wants further screen speedup; reserve the next completed-window gap on Strength or Perf for one small isolated current-recipe profile/A-B"): cloud lane v3 installed (`/root/claude_queue_v3.sh`, lock pid 1614836; v2 supervisor 1613938 killed between windows, its `smean96k-13360910` worker 1614585 left running; DRYRUN passed): order unchanged (smean96k ×5 first, Jerry's priority), then a GAP that holds the host for Codex until `/root/codex-profile.done` or 90 min (`/root/codex-profile.skip` waives), then vol176k's remaining windows, tieon ×5, h256mc. Perf's gap is Codex's own queue to take. Codex told (678, reply to 1225), #365 annotated, 1225 acked. smean 1/5 sealed 06:28Z (29 min/window).

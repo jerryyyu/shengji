@@ -58,7 +58,7 @@ M = [
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
  "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]"),
 ("M1: two heads on the S-d4 cell, 176k","3cb9cd62","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.59746","0.0298",
- "","","SCREENING","M1 (#373): S-d4-176k cell + search-mean head at lambda 1, selected on the outcome head; best val_ce and regret@4 of the programme; head-vs-head 5w on cloud"),
+ "","","SCREENING","M1 (#373): S-d4-176k cell + search-mean head, selected on the outcome head; programme-best val_ce and regret@4; head-vs-head 5w on cloud"),
 ("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
  "","","5w +0.0104 [-0.0121, +0.0329]","S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",

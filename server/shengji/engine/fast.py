@@ -28,6 +28,7 @@ Tests:  SHENGJI_FAST=1 uv run python -m pytest tests/ -q   (fast path active)
 
 from __future__ import annotations
 
+import os
 import sys
 
 from . import cards as _cards
@@ -123,6 +124,9 @@ else:  # pure-Python fallbacks
 # ------------------------------------------------------------------ activation
 
 _saved: dict[str, object] = {}
+#: the compiled rollout driver while the fast path is active, else None
+#: (MCBot reads it per rollout; SHENGJI_FAST_ROLLOUT=0 keeps it None)
+ROLLOUT = None
 
 
 def _rebind(mapping: dict) -> None:
@@ -260,6 +264,13 @@ def activate() -> bool:
     _fast.set_play_deps(Round, Trick, TrickPlay, _saved["Round.play"],
                         KITTY_MULTIPLIER)
     Round.play = _fast.round_play
+    # The compiled rollout driver (loop + decide_play dispatch) is opt-out:
+    # SHENGJI_FAST_ROLLOUT=0 keeps every kernel above but drives rollouts
+    # from the pure Python loop, for A/B and for bisecting a parity report.
+    global ROLLOUT
+    _fast.set_rollout_deps(HeuristicBot)
+    if os.environ.get("SHENGJI_FAST_ROLLOUT", "1") != "0":
+        ROLLOUT = _fast.rollout_trusted
     return True
 
 
@@ -274,8 +285,10 @@ def _subclasses(cls) -> list[type]:
 
 
 def deactivate() -> None:
+    global ROLLOUT
     if not _saved:
         return
+    ROLLOUT = None
     from ..ai.heuristic import HeuristicBot
     for key, attr, _, _ in _METHOD_ROUTED:
         setattr(HeuristicBot, attr, _saved.pop(key))

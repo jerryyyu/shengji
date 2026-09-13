@@ -1375,3 +1375,74 @@ def validate_follow(list play, list hand, list lead, ordering):
         for c in range(N_CODES):
             if cnths[c] > cntp[c]:
                 raise IllegalPlay("You must play all your cards of the led suit.")
+
+
+# ----------------------------------------------------------------------------
+# Trusted rollout driver (#208 "compiled rollout driver", the loop slice).
+#
+# A Monte-Carlo rollout plays a determinized clone to round_end.  The per-play
+# work is already native (entry-bound ``heuristic_lead``/``heuristic_follow``
+# and the trusted ``round_play`` for follows), but the DRIVER is still Python:
+# the ``while`` loop in MCBot._rollout, ``HeuristicBot.decide_play`` (a pure
+# dispatcher frame around _lead/_follow plus the validate_follow safety net)
+# and the bound-method call into ``Round.play`` -- about 1.2M Python frames per
+# 520-cluster screen window.  ``rollout_trusted`` runs that driver in C over
+# the SAME objects and the SAME registered kernels, so the clone's end state
+# is identical to the pure loop's: leads still go through the saved pure
+# ``Round.play`` (validate_lead and its throw penalty stay on the audited
+# path), follows through ``round_play`` (which defers to the pure method on any
+# guard miss), and the decision policy is the same bound HeuristicBot
+# methods called in the same order.  Admission is exact-type: only the
+# built-in HeuristicBot (no subclass, so no overridden decide_play) inside a
+# trusted rollout clone; anything else raises before touching the round, and
+# the caller keeps the pure loop.
+cdef object _HEURISTIC_CLS = None
+
+
+def set_rollout_deps(heuristic_cls):
+    """Register the built-in HeuristicBot type (called from engine.fast)."""
+    global _HEURISTIC_CLS
+    _HEURISTIC_CLS = heuristic_cls
+
+
+def rollout_trusted(rnd, policy):
+    """Play ``rnd`` (a trusted determinized clone in the play phase) to
+    round_end with ``policy`` and return ``rnd.attacker_points``.
+
+    Byte-for-byte the pure driver::
+
+        while rnd.phase == "play":
+            s = rnd.turn
+            rnd.play(s, policy.decide_play(rnd, s))
+
+    with ``decide_play`` inlined (lead -> ``_lead``; follow -> ``_follow``,
+    re-checked by ``validate_follow`` with the ``_forced_follow`` fallback).
+    """
+    if (_PURE_PLAY is None or _HEURISTIC_CLS is None
+            or type(policy) is not _HEURISTIC_CLS
+            or type(rnd) is not _ROUND_CLS
+            or getattr(rnd, "_trusted_rollout", False) is not True):
+        raise RuntimeError(
+            "rollout_trusted: only the built-in HeuristicBot inside a trusted "
+            "rollout clone (engine.fast must be active)")
+    while rnd.phase == "play":
+        seat = rnd.turn
+        assert seat is not None
+        trick = rnd.trick
+        ordering = rnd.ordering
+        assert trick is not None and ordering is not None
+        plays = trick.plays
+        if not plays:
+            cards = policy._lead(rnd, seat)
+            _PURE_PLAY(rnd, seat, cards)
+        else:
+            cards = policy._follow(rnd, seat)
+            lead = (<object>plays[0]).cards
+            hand = rnd.hands[seat]
+            try:
+                validate_follow(cards, hand, lead, ordering)
+            except IllegalPlay:
+                cards = policy._forced_follow(hand, lead, ordering,
+                                              prefer_points=False)
+            round_play(rnd, seat, cards)
+    return rnd.attacker_points

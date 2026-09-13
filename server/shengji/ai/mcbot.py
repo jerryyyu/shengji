@@ -42,6 +42,7 @@ from ..engine.cards import TRUMP
 from ..engine.combos import decompose
 from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow, validate_lead
 from ..engine.round import Round, Trick, TrickPlay
+from ..engine import fast as _fast_mod
 
 
 class DeterminizationContractError(RuntimeError):
@@ -1226,6 +1227,11 @@ class MCBot(SmartBot):
         clone._determinized_world = True
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME
+        _kern = _fast_mod.ROLLOUT
+        if _kern is not None and not _exact_on and clone._trusted_rollout:
+            # Compiled driver: the same loop, decisions and Round.play path
+            # in C (engine.fast; SHENGJI_FAST_ROLLOUT=0 opts out).
+            return float(_kern(clone, policy))
         while clone.phase == "play":
             # A bury candidate changes the terminal kitty context, so it may
             # not share an exact cache with another bury candidate.
@@ -1987,6 +1993,11 @@ class MCBot(SmartBot):
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME
+        _kern = _fast_mod.ROLLOUT
+        if _kern is not None and not _exact_on and type(policy) is HeuristicBot:
+            # Compiled driver: the same loop, decisions and Round.play path
+            # in C (engine.fast; SHENGJI_FAST_ROLLOUT=0 opts out).
+            return float(_kern(clone, policy))
         while clone.phase == "play":
             exact = (self._exact_endgame_value(clone, exact_session)
                      if _exact_on else None)

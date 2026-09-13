@@ -23,7 +23,8 @@ def tip(d):
     elif d["w32"]=="GAP": pass
     elif d["w32"]=="GAP": lines.append("vs leader  never paired")
     if d["ten"] and d["ten"] not in ("REF","CONTROL","QUEUED","RUNNING","SCREENING","CODEX"):
-        lines.append("ten windows  %s"%d["ten"])
+        if d["ten"].startswith("5w "): lines.append("five windows  %s"%d["ten"][3:])
+        else: lines.append("ten windows  %s"%d["ten"])
     if d["note"]: lines.append(d["note"])
     return esc("\n".join(lines))
 def dot(cx,cy,r,cls,d):
@@ -199,14 +200,26 @@ def eff(d):
     if d["ck"]=="3cd27716": return (0.0,None,None,"ref")
     t=d["ten"]
     if t and t not in ("REF","CONTROL","QUEUED","RUNNING","SCREENING","CODEX"):
+        inst="ten"
+        if t.startswith("5w "): t=t[3:]; inst="five"
         m,rest=t.split(" [",1); lo,hi=rest.rstrip("]").split(", ")
-        return (float(m),float(lo),float(hi),"ten")
+        return (float(m),float(lo),float(hi),inst)
     w=d["w32"]
     if w and w not in ("REF","GAP"):
         w=w.replace("RES","").replace(" SUPERSEDED","")
         m,rest=w.split(" [",1); lo,hi=rest.rstrip("]").split(", ")
         return (float(m),float(lo),float(hi),"one")
     return None
+STYLE={"one":("ci1","pt3"),"ten":("ci2","pt2"),"five":("ci3","pt7")}
+ANYFIVE=any(eff(d) and eff(d)[3]=="five" for d in SCR)
+def legend(s,lx,r,y0,ys):
+    s.append('<text x="%d" y="44" class="lgh">INSTRUMENT</text>'%lx)
+    s.append('<circle cx="%d" cy="64" r="%s" class="pt pt3"/><text x="%d" y="68" class="lg">one 520-deal window</text>'%(lx+6,r,lx+19))
+    s.append('<circle cx="%d" cy="86" r="%s" class="pt pt2"/><text x="%d" y="90" class="lg">ten windows</text>'%(lx+6,r,lx+19))
+    if ANYFIVE:
+        s.append('<circle cx="%d" cy="108" r="%s" class="pt pt7"/><text x="%d" y="112" class="lg">five windows (wider)</text>'%(lx+6,r,lx+19))
+        return ys+22
+    return ys
 def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
     W,H=880,400; L,Rm,T,B=84,206,30,64
     x0,x1,y0,y1=L,W-Rm,T,H-B
@@ -232,17 +245,15 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
             if inst=="ref":
                 s.append(dot(X(xv,off),Y(0),6,"pt pt2",d))
                 s.append('<text x="%.1f" y="%.1f" class="lab am">leader</text>'%(X(xv,off),Y(0)-13)); continue
-            col="ci1" if inst=="one" else "ci2"; pt="pt3" if inst=="one" else "pt2"
+            col,pt=STYLE[inst]
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi),col))
             for e2 in (lo,hi):
                 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off)-5,Y(e2),X(xv,off)+5,Y(e2),col))
             s.append(dot(X(xv,off),Y(m),4.8,"pt "+pt,d))
     lx=x1+22
-    s.append('<text x="%d" y="44" class="lgh">INSTRUMENT</text>'%lx)
-    s.append('<circle cx="%d" cy="64" r="4.8" class="pt pt3"/><text x="%d" y="68" class="lg">one 520-deal window</text>'%(lx+6,lx+19))
-    s.append('<circle cx="%d" cy="86" r="4.8" class="pt pt2"/><text x="%d" y="90" class="lg">ten windows</text>'%(lx+6,lx+19))
+    ys=legend(s,lx,"4.8",44,124)
     for i,t in enumerate(extra):
-        s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,124+i*16,t))
+        s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ys+i*16,t))
     s.append('</svg>'); open(out,"w").write("\n".join(s))
 leaderchart(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
   "training records (log scale)",OUT+"/g2.svg",
@@ -279,20 +290,18 @@ for i,dd in enumerate(DAYS):
         if inst=="ref":
             s.append(dot(XE(i,off),YE(0),6,"pt pt2",d))
             s.append('<text x="%.1f" y="%.1f" class="lab am">leader</text>'%(XE(i,off),YE(0)-13)); continue
-        col="ci1" if inst=="one" else "ci2"; pt="pt3" if inst=="one" else "pt2"
+        col,pt=STYLE[inst]
         s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(XE(i,off),YE(lo),XE(i,off),YE(hi),col))
         for e2 in (lo,hi):
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(XE(i,off)-6,YE(e2),XE(i,off)+6,YE(e2),col))
         s.append(dot(XE(i,off),YE(m),5,"pt "+pt,d))
 lx=x1+22
-s.append('<text x="%d" y="44" class="lgh">INSTRUMENT</text>'%lx)
-s.append('<circle cx="%d" cy="64" r="5" class="pt pt3"/><text x="%d" y="68" class="lg">one 520-deal window</text>'%(lx+6,lx+19))
-s.append('<circle cx="%d" cy="86" r="5" class="pt pt2"/><text x="%d" y="90" class="lg">ten windows</text>'%(lx+6,lx+19))
+_ys=legend(s,lx,"5",44,122)
 def _hasld(d):
     return (d["w32"] and d["w32"]!="GAP") or (d["ten"] and d["ten"] not in ("QUEUED","RUNNING","SCREENING","CODEX"))
 _no=sum(1 for d in R if not _hasld(d))
 for i,t in enumerate(["The 10 Sep points are","NOT better models. They","are the same question","asked with a better","instrument.","","%d of %d models have"%(_no,len(R)),"no point here at all."]):
-    s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,122+i*16,t))
+    s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,_ys+i*16,t))
 s.append('</svg>'); open(OUT+"/g6.svg","w").write("\n".join(s))
 print("chart 6 built; total charts:", 6)
 
@@ -340,7 +349,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
             off=(k-(len(items)-1)/2)*15
             if inst=="ref":
                 s.append(dot(X(xv,off),Y(0),6,"pt pt2",d)); continue
-            col="ci1" if inst=="one" else "ci2"; pt="pt3" if inst=="one" else "pt2"
+            col,pt=STYLE[inst]
             s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off),Y(lo),X(xv,off),Y(hi),col))
             for e2 in (lo,hi):
                 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>'%(X(xv,off)-5,Y(e2),X(xv,off)+5,Y(e2),col))
@@ -370,6 +379,8 @@ _effs=[(d,eff(d)) for d in SCR if eff(d) and eff(d)[3]!="ref"]
 _above=sum(1 for d,(m,lo,hi,inst) in _effs if lo>0)
 _ten=[(d,eff(d)) for d in R if d["ten"] and eff(d) and eff(d)[3]=="ten"]
 _ten_cross=sum(1 for d,(m,lo,hi,inst) in _ten if lo<=0<=hi)   # touching zero is not resolving
+_five=[(d,eff(d)) for d in R if d["ten"] and eff(d) and eff(d)[3]=="five"]
+_five_cross=sum(1 for d,(m,lo,hi,inst) in _five if lo<=0<=hi)
 _lead=BYCK["3cd27716"]; _lead_mc=parse(_lead["mc"])[0]
 _paired=[d for d in R if d["mc"] and d["w32"] and d["w32"] not in ("REF","GAP") and d["ck"]!="3cd27716"]
 _paired_exact=sum(1 for d in _paired if abs(parse(d["w32"].replace(" SUPERSEDED",""))[0]-(parse(d["mc"])[0]-_lead_mc))<5e-5)
@@ -393,7 +404,7 @@ open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
     w144_span=_w144_span, w144_n=len(_w144), w144_rec=_w144[0]["rec"], lr14_best_w=_lr14_best["w"],
     models=len(R), with_ce=NCE, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
     since_best=len(_since), best_day=_bst["tr"], best_ce=_bst["ce"],
-    above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross,
+    above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross, five_total=len(_five), five_cross=_five_cross,
     enc_gap=ENC_GAP, cell_n=CELL_N, cell_spread=CELL_SPREAD,
     big_day=BIG_DAY, big_drop=BIG_DROP, big_beats_rest=BIG_BEATS_REST,
     paired_one=len(_paired), paired_exact=_paired_exact, last_doubling=LAST_DOUBLING)))

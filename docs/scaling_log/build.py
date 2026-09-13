@@ -46,9 +46,14 @@ WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "sev
 MONTHS = {9: "September", 10: "October", 11: "November", 12: "December"}
 FIELDS = ("n", "ck", "tr", "enc", "w", "lr", "cl", "rec", "ce", "rg", "mc", "w32", "ten", "note")
 KEYWORDS = ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX")
-#: a screen cell: optional RES prefix (a one-window result that resolves), point
-#: estimate and interval, optional " SUPERSEDED" suffix; nothing else
-CELL = re.compile(r"(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
+#: a screen cell: optional instrument prefix ("5w " = a five-window readout; only
+#: the ten-window field takes one), optional RES prefix (a one-window result that
+#: resolves), point estimate and interval, optional " SUPERSEDED" suffix; nothing else
+CELL = re.compile(r"(?:(5w) )?(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
+#: the instrument each field measures with (a five-window cell overrides "10w")
+INSTRUMENT = {"ten": "10w", "w32": "1w", "mc": "mc"}
+#: MDE80 = (z.975 + z.80) * SE while a 95% interval half-width is z.975 * SE
+MDE_PER_HALFWIDTH = (1.95996 + 0.84162) / 1.95996
 
 
 def word(n):
@@ -61,19 +66,37 @@ def load():
     return [dict(zip(FIELDS, m)) for m in g["M"]], g["TABLE_ONLY"], g["SERIES"]
 
 
-def parse_cell(v):
-    """``(m, lo, hi)`` for a numeric screen cell; None for a keyword; raises on junk."""
+def parse_cell(v, field="ten"):
+    """``(m, lo, hi, instrument)`` for a numeric screen cell; None for a keyword; raises on junk."""
     if v in KEYWORDS:
         return None
     m = CELL.fullmatch(v)
     if not m:
         raise ValueError(f"screen cell {v!r} is neither a keyword nor 'm [lo, hi]' with a known suffix")
-    mid, lo, hi = (float(m.group(i)) for i in (2, 3, 4))
+    if m.group(1) and field != "ten":
+        raise ValueError(f"screen cell {v!r}: a window-count prefix belongs only in the ten-window field")
+    mid, lo, hi = (float(m.group(i)) for i in (3, 4, 5))
     if not all(math.isfinite(x) for x in (mid, lo, hi)):
         raise ValueError(f"screen cell {v!r} is not finite")
     if not lo <= mid <= hi:
         raise ValueError(f"screen cell {v!r}: interval endpoints are not ordered around the point")
-    return mid, lo, hi
+    return mid, lo, hi, (m.group(1) or INSTRUMENT[field])
+
+
+def mde80(rows):
+    """Median MDE80 per instrument, derived from the intervals actually on the page."""
+    hw = {}
+    for r in rows:
+        for key in ("mc", "w32", "ten"):
+            parsed = parse_cell(r[key], key) if r[key] else None
+            if parsed:
+                hw.setdefault(parsed[3], []).append((parsed[2] - parsed[1]) / 2)
+    out = {}
+    for inst, xs in hw.items():
+        xs = sorted(xs)
+        med = xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2
+        out[inst] = med * MDE_PER_HALFWIDTH
+    return out
 
 
 def check_data(rows, table_only, series):
@@ -97,7 +120,7 @@ def check_data(rows, table_only, series):
         for key in ("mc", "w32", "ten"):
             if r[key]:
                 try:
-                    parse_cell(r[key])
+                    parse_cell(r[key], key)
                 except ValueError as e:
                     errs.append(f"{r['ck']}: {key}: {e}")
     for ck in table_only:
@@ -127,29 +150,56 @@ def signed(v, nd=4):
     return ("&minus;" if v < 0 else "+") + f"{abs(v):.{nd}f}"
 
 
-def num_cell(v, bold=False):
-    if not v:
-        return '<td class="n null">&mdash;</td>'
-    if v == "REF":
-        return '<td class="n">&mdash; reference</td>'
-    if v == "GAP":
-        return '<td class="n null">never paired</td>'
-    if v == "CONTROL":
-        return '<td class="n ok">the control</td>'
-    if v in ("QUEUED", "RUNNING", "SCREENING"):
-        return f'<td class="n null">{v.lower()}</td>'
-    if v == "CODEX":
-        return '<td class="n null">codex 260&#8209;pair</td>'
+BADGE = {"10w": "10w", "5w": "5w", "1w": "1w paired", "mc": "1w MC&#8209;LCB"}
+
+
+def measure(v, field):
+    """One measurement as html: signed point, interval, instrument badge, pills; plus its class."""
+    mid, lo, hi, inst = parse_cell(v, field)
+    core = re.sub(r"^5w ", "", v).replace("RES", "").replace(" SUPERSEDED", "").replace("-", "&#8209;")
     pill = ""
     if "RES" in v and "SUPERSEDED" not in v:
         pill = ' <span class="pill res">resolves</span>'
     if "SUPERSEDED" in v:
         pill = ' <span class="pill res">superseded</span>'
-    core = v.replace("RES", "").replace(" SUPERSEDED", "").replace("-", "&#8209;")
-    # negative and resolving = red; negative but crossing zero (or superseded) = grey
-    cls = "pos" if core.startswith("+") else ("neg" if "resolves" in pill else "null")
-    body = f"<b>{core}</b>" if bold else core
-    return f'<td class="n {cls}">{body}{pill}</td>'
+    # positive = green; negative and resolving = red; negative but crossing zero (or superseded) = grey
+    cls = "pos" if mid > 0 else ("neg" if "resolves" in pill else "null")
+    if "SUPERSEDED" in v:
+        cls = "null"
+    return f'{core} <span class="pill inst">{BADGE[inst]}</span>{pill}', cls
+
+
+def play_cell(r):
+    """The consolidated play column: the best available comparison against the
+    leader first (ten or five windows, else the one-window pairing), the other
+    measurements underneath in small type, every one labelled with its
+    instrument so the interval is read with the right MDE."""
+    ten, w32, mc = r["ten"], r["w32"], r["mc"]
+    main, cls, rest = "", "n null", []
+    if "REF" in (ten, w32):
+        main, cls = "&mdash; reference", "n"
+    elif ten == "CONTROL":
+        main, cls = "the control", "n ok"
+    elif ten and ten not in KEYWORDS:
+        body, c = measure(ten, "ten")
+        main, cls = f"<b>{body}</b>", "n " + c
+        if w32 and w32 not in KEYWORDS:
+            rest.append(measure(w32, "w32")[0])
+    elif w32 and w32 not in KEYWORDS:
+        body, c = measure(w32, "w32")
+        main, cls = body, "n " + c
+    elif ten == "CODEX":
+        main = 'codex 260&#8209;pair <span class="pill inst">260p</span>'
+    elif w32 == "GAP" and ten not in ("QUEUED", "RUNNING", "SCREENING"):
+        main = "never paired"
+    if ten in ("QUEUED", "RUNNING", "SCREENING"):
+        main = (main + " " if main else "") + f'<span class="pill live">{ten.lower()}</span>'
+    if mc:
+        rest.append(measure(mc, "mc")[0])
+    if not main and not rest:
+        return '<td class="n null">&mdash;</td>'
+    tail = "".join(f'<br><span class="small null">{x}</span>' for x in rest)
+    return f'<td class="{cls}">{main}{tail}</td>'
 
 
 def registry_rows(rows):
@@ -164,8 +214,7 @@ def registry_rows(rows):
             f'{tr}<td>{r["enc"]}</td><td class="n">{r["w"]}</td>'
             f'<td class="n">{r["lr"].replace("-", "&#8209;")}</td><td class="n">{r["cl"]}</td>'
             f'<td class="n">{r["rec"]}</td><td class="n">{r["ce"] or "&mdash;"}</td>'
-            f'<td class="n">{r["rg"] or "&mdash;"}</td>{num_cell(r["mc"])}{num_cell(r["w32"])}'
-            f'{num_cell(r["ten"], bold=True)}<td class="null">{note}</td></tr>')
+            f'<td class="n">{r["rg"] or "&mdash;"}</td>{play_cell(r)}<td class="null">{note}</td></tr>')
     return "\n".join(out)
 
 
@@ -234,7 +283,14 @@ def render(rows=None, table_only=None, series=None):
                      f"That spread is {w['cell_spread'] / w['w144_span']:.1f}&times; the whole 144k width sweep.")
     ratio = abs(w["w144_span"] / w["last_doubling"]) if w["last_doubling"] else float("inf")
     span_vs_doubling = ("twice" if 1.75 <= ratio <= 2.25 else ("about equal to" if 0.8 <= ratio <= 1.25 else f"{ratio:.1f}&times;"))
+    mde = mde80(rows)
+    fmt = lambda k: f"{mde[k]:.3f}" if k in mde else "n/a"
+    n_five = c.get("five_total", 0)
+    five_clause = (f" <b>5w</b> is the first five of those windows, MDE80 about {fmt('5w')}: "
+                   f"a null there means not large, never no effect ({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
+                   if n_five else " <b>5w</b> (the first five windows, the triage instrument) has no readout yet.")
     subs = {
+        "MDE_TEN": fmt("10w"), "MDE_ONE": fmt("1w"), "MDE_MC": fmt("mc"), "FIVE_CLAUSE": five_clause,
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
         "OFFSCALE_CLAUSE": ("" if not c["off_scale"] else
                             " " + ", ".join(f"{n} (CE {v:.3f})" for n, v in c["off_scale"])
@@ -266,13 +322,15 @@ def render(rows=None, table_only=None, series=None):
         print("UNFILLED placeholders:", left)
         sys.exit(1)
     c["rows"] = len(rows)
+    c["mde"] = mde
     return page, c
 
 
 def main():
     page, c = render()
     summary = (f"{c['rows']} rows, {c['models']} charted, {c['with_ce']} with val_ce, "
-               f"{c['ten_total']} ten-window results ({c['ten_cross']} cross zero)")
+               f"{c['ten_total']} ten-window results ({c['ten_cross']} cross zero), "
+               f"{c['five_total']} five-window")
     if "--check" in sys.argv:
         pub = open(PAGE).read() if PAGE.exists() else ""
         if pub != page:

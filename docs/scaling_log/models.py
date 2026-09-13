@@ -1,5 +1,5 @@
 # name, ckpt8, trained(~=approx), enc, width, lr, clusters, records, val_ce, regret4,
-# vsMCLCB(520 @91261190), vsW32 paired, ten-window, note
+# vsMCLCB(520 @91261190), vsW32 paired, ten-window (prefix '5w ' for a five-window readout), note
 M = [
 ("A+C+D+E+F2 v2","3cd27716","2026-09-07","v2",512,"3e-4","96k","14,077,520","0.62182","0.0381",
  "+0.1260 [+0.081, +0.172]","REF","REF","LEADER, deployed"),

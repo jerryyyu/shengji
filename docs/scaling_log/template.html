@@ -79,12 +79,14 @@ svg .spread{stroke:var(--verm);stroke-width:2.4}
 svg .pt4{fill:var(--slate);stroke:var(--card);stroke-width:2}
 svg .ci1{stroke:var(--verm);stroke-width:1.6}
 svg .ci2{stroke:var(--jade);stroke-width:2.2}
+svg .ci3{stroke:var(--jade);stroke-width:1.6;stroke-dasharray:3 2}
 svg .ci3{stroke:var(--gold);stroke-width:1.6}
 svg .pt6{fill:var(--gold);stroke:var(--card);stroke-width:2}
 svg .shrink{stroke:var(--gold);stroke-width:2;stroke-dasharray:3 3}
 svg .lgs{fill:var(--ink-3);font-family:'IBM Plex Sans',sans-serif;font-size:11.5px}
 svg .pt1{fill:var(--slate);stroke:var(--card);stroke-width:2}
 svg .pt2{fill:var(--jade);stroke:var(--card);stroke-width:2}
+svg .pt7{fill:var(--card);stroke:var(--jade);stroke-width:2.2}
 svg .pt3{fill:var(--verm);stroke:var(--card);stroke-width:2}
 svg .hollow{fill:var(--card);stroke-width:2.4}
 svg .pt1.hollow{stroke:var(--slate)}
@@ -152,6 +154,7 @@ footer{border-top:1px solid var(--rule);padding-top:20px;font-size:13px;color:va
 .pill.res{border-color:var(--verm);color:var(--verm)}
 .pill.ok{border-color:var(--jade);color:var(--jade)}
 .pill.live{border-color:var(--gold);color:var(--gold)}
+.pill.inst{border-color:var(--ink-3);color:var(--ink-3);font-size:9px;padding:0 4px;vertical-align:1px}
 .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
   background:var(--rule);border:1px solid var(--rule)}
 .kpi div{background:var(--card);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
@@ -299,18 +302,26 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">6 &middot; Every checkpoint</h2>
-  <p class="cap">All 43 models, one row each, including Codex&#8217;s encoder-v3 line read from the archive. <b>vs MC&#8209;LCB</b> is one 520-deal window against
-  the old production bot. <b>vs W32</b> is the leader <code>3cd27716</code> on identical deals.
-  <b>Ten windows</b> repeats that on ten independent windows with random effects. Click any column heading to sort; click again to reverse. The v3 gameplay number comes from Codex&#8217;s instrument, 260 fresh mirrored pairs with a fixed v2 hybrid bury on both sides, not the 520-cluster paired screen the other two benchmark columns use, so it is labelled and kept out of the leader charts rather than averaged in. The two 768-cluster fit probes sit outside both chart axes and appear here only.</p>
+  <p class="cap">All {{N_REGISTRY}} models, one row each, including Codex&#8217;s encoder-v3 line read from the archive.
+  <b>Play vs leader</b> is one column: the best instrument each model has been measured with comes first,
+  bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
+  type. The badge names the instrument, and the interval must be read with that instrument&#8217;s power:
+  <b>10w</b> is ten independent 520-cluster windows against vol96k (bit-identical weights to the deployed leader),
+  DerSimonian&#8211;Laird random effects, 95% interval, MDE80 about {{MDE_TEN}} on this page.{{FIVE_CLAUSE}}
+  <b>1w paired</b> is one 520-cluster window against the W32 leader on identical deals, 95% paired interval,
+  MDE80 about {{MDE_ONE}}: its &#8220;resolves&#8221; verdicts were overturned when the same arms got ten windows and are
+  marked superseded. <b>1w MC&#8209;LCB</b> is one window against the old production bot, not the leader, so its
+  numbers are never compared with the others (MDE80 about {{MDE_MC}}). <b>260p</b> is Codex&#8217;s instrument, 260 fresh
+  mirrored pairs with a fixed v2 hybrid bury on both sides, labelled and kept out of the leader charts rather than
+  averaged in. Click any column heading to sort (the first number in the cell sorts, so the best instrument wins);
+  click again to reverse. The two 768-cluster fit probes sit outside both chart axes and appear here only.</p>
   <div class="tw"><table class="sortable">
-<thead><tr><th>Checkpoint</th><th>Trained</th><th>Enc</th><th class="n">Width</th><th class="n">LR</th><th class="n">Clusters</th><th class="n">Records</th><th class="n">val_ce</th><th class="n">regret@4</th><th class="n">vs MC&#8209;LCB<br>520 window</th><th class="n">vs W32 leader<br>paired</th><th class="n">Ten windows<br>vs vol96k</th><th>Note</th></tr></thead>
+<thead><tr><th>Checkpoint</th><th>Trained</th><th>Enc</th><th class="n">Width</th><th class="n">LR</th><th class="n">Clusters</th><th class="n">Records</th><th class="n">val_ce</th><th class="n">regret@4</th><th class="n">Play vs leader<br>best instrument first</th><th>Note</th></tr></thead>
 <tbody>
 {{REGISTRY}}
 </tbody></table></div>
   <p class="cap">Every arm beats MC&#8209;LCB. Against the leader nothing has resolved in either
-  direction. Four rows say never paired and already carry a margin over the old bot; three of those
-  sit in the top five of that column. Screens for them are running ahead of any further data
-  generation.</p>
+  direction on a multi-window instrument.</p>
 </section>
 
 <footer>

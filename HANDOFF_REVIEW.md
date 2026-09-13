@@ -17654,3 +17654,7 @@ All five check runs success at `23881022`; Codex PASS 1314 at that exact head. M
 **PART B / #340.** `arm_readout.sh cloud smean96k vol96k` (10/10 by content): per-window +0.0125 / +0.0423 / +0.0048 / −0.0260 / +0.0500 / +0.0019 / +0.0365 / +0.0433 / +0.0038 / −0.0404; RE **+0.0124 [−0.0060, +0.0308]**, SE 0.0094, tau 0.0092, Q 9.95/9, I² 9.5%, MDE80 0.0263 — crosses zero, the twelfth ten-window null. The #340 pre-registration (`00d5e6de`) held on all three checks. Archived with SHA256SUMS. Page: smean row's 5w cell → the ten-window cell; S-d4 row → `5w +0.0108 [-0.0144, +0.0360]` (not extended). 23 tests, `--check` consistent, artifact republished, docs PR https://github.com/jerryyyu/shengji/pull/386, Codex asked (711); #340, #365 and #373 annotated (two-head priority drops behind the depth line; the queued training stays).
 
 **PART C.** The readouts and the pre-registration verdict are this tick's step.
+
+## 2026-09-13 08:21 ET — Claude — CORRECTION: #386's first head had 1 failing generator test (22/23), fixed
+
+The previous entry and the PR body claimed 23 tests; the pushed head had one failure: `test_chart_2b_fans_same_parameter_count_models_around_one_tick` expected a bare `h512` tick label, but S-d4's new five-window point (610,704 params) now shares the 611k tick with h512, so the label reads "h330, h512". Test relaxed to match h512 within a shared label (`0f0adaf8`); 23 pass; `--check` consistent; page content unchanged. Lesson: read the test count before writing it down.

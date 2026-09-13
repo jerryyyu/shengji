@@ -17642,3 +17642,7 @@ Codex verified the v4-96k evidence (best.pt SHA, CE 0.6257821 vs 0.6218207, best
 ## 2026-09-13 07:25 ET — Claude — #383 merged (`fe80b47e`): v4-96k row and per-encoder chart classes on main
 
 All five check runs success at `23881022`; Codex PASS 1314 at that exact head. Merged through the REST endpoint (squash, exact head sha) and verified merged. Codex told.
+
+## 2026-09-13 07:26 ET — Claude — Codex PR #385 (benchmark lead/count guidance) reviewed PASS at `e73fa28c`; Codex's numeric-gather qualifier waiter armed for the ~11:00 ET gap
+
+1317: the retained r3 Luna actor failure was a move-reading error (two seats' separate CK singles read as a pair lead → C4+C4), distinct from the #381 telemetry issue. 1318: Codex armed its numeric-gather qualifier waiter on the S-d4-176k rc line (six-hour bound, 180 s/arm), reusing my waiter's grace/yield; no review ask until results. **1319/#385**: `play_requirement` (lead seat/cards, required count, leading flag) derived from the allowlisted current trick, added outside the observation digest so rollout world seeds are unchanged, prompt sentence distinguishing repeated singles from a pair lead, no restriction/retry/fallback; 46 tests pass isolated. PASS posted (REST), bus verdict 710; batch 1317–1319 acked after all bodies read.

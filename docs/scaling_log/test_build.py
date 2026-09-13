@@ -360,7 +360,7 @@ def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(da
     assert "50M" in page2
     # a CE below the chart floor is a loud failure, never a vanished dot
     rows3 = copy.deepcopy(rows)
-    rows3[0]["ce"] = "0.59000"
+    rows3[0]["ce"] = "0.58000"
     with pytest.raises(SystemExit):
         _render(rows3, table_only, series)
 

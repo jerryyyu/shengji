@@ -68,9 +68,9 @@ def frame(W,H,L,Rm,T,B,XLO,XHI,ylo,yhi,yt,xt,xlab,ylab,ylog=False,yfmt="{:.2f}")
     s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">%s</text>'%((y0+y1)/2,(y0+y1)/2,ylab))
     return s,X,Y,x0,x1,y0,y1
 
-YT=[0.60,0.62,0.64,0.66,0.68,0.70,0.72,0.74]
+YT=[0.59,0.60,0.62,0.64,0.66,0.68,0.70,0.72,0.74]   # floor lowered 09-13 for M1 (0.59746); the guard refuses anything under CE_LO
 CE_HI=0.740   # every CE chart's top; a model above it is listed by name, never drawn off-canvas
-CE_LO=0.600   # every CE chart's bottom
+CE_LO=0.590   # every CE chart's bottom
 for d in R:
     if d["ce"] is not None and d["ce"]<CE_LO: raise SystemExit("%s: CE %.5f is below the chart floor %.3f; lower CE_LO/YT"%(d["ck"],d["ce"],CE_LO))
 OFFSCALE=[d for d in R if d["ce"] is not None and d["ce"]>CE_HI]
@@ -86,7 +86,7 @@ def offscale_note(s, lx, y0):
 REC_MAX=max(d["rec"] for d in ONSCALE); REC_MIN=min(d["rec"] for d in ONSCALE)
 XHI1=REC_MAX*1.12; XLO1=REC_MIN*0.85   # the axis follows the data (25.4M records at 176k sat past the old 24M edge)
 XT1=[t for t in [(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M"),(3e7,"30M"),(5e7,"50M")] if XLO1<=t[0]<=XHI1]
-s,X,Y,x0,x1,y0,y1=frame(880,470,84,200,26,64,XLO1,XHI1,0.600,0.740,YT,XT1,
+s,X,Y,x0,x1,y0,y1=frame(880,470,84,200,26,64,XLO1,XHI1,0.590,0.740,YT,XT1,
   "training records (log scale)","validation cross-entropy (log)",ylog=True)
 b1=series("base_v1","rec"); b2=series("base_v2","rec")
 _g1,_g2=(BYCK[c] for c in SERIES["enc_gap"]); ENC_GAP=_g2["ce"]-_g1["ce"]
@@ -123,7 +123,7 @@ FRAME1=[x0,x1]
 s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 
 # ---------- 3: width vs val_ce (LOG y) ----------
-s,X,Y,x0,x1,y0,y1=frame(880,420,84,200,26,70,2.0e5,5.5e6,0.602,0.740,
+s,X,Y,x0,x1,y0,y1=frame(880,420,84,200,26,70,2.0e5,5.5e6,0.590,0.740,
   [0.62,0.64,0.66,0.68,0.70,0.72,0.74],
   [(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)","validation cross-entropy (log)",ylog=True)
@@ -161,7 +161,7 @@ print("charts 1 and 3 rebuilt with clickable dots")
 DAYS=sorted({d["tr"] for d in R if d["ce"] is not None})
 W,H=880,440; L,Rm,T,B=84,206,30,64
 x0,x1,y0,y1=L,W-Rm,T,H-B
-YLO,YHI=0.600,0.740
+YLO,YHI=0.590,0.740
 XD=lambda i,k=0: x0+(i+0.5)/len(DAYS)*(x1-x0)+k
 YD=lambda v: y0+(math.log(YHI)-math.log(v))/(math.log(YHI)-math.log(YLO))*(y1-y0)
 s=['<svg viewBox="0 0 %d %d">'%(W,H)]

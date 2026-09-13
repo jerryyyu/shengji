@@ -4,7 +4,7 @@ M = [
 ("A+C+D+E+F2 v2","3cd27716","2026-09-07","v2",512,"3e-4","96k","14,077,520","0.62182","0.0381",
  "+0.1260 [+0.081, +0.172]","REF","REF","LEADER, deployed"),
 ("volVOL-96k","ca58e1e9","2026-09-10","v2",512,"3e-4","96k","14,077,520","0.62182","0.0381",
- "","","CONTROL","reproduces the leader; the fixed 10-window control"),
+ "","","CONTROL","reproduces the leader; the fixed 10-window control; its tie-keeps-incumbent knob (#339 L1): 5w +0.0025 [-0.0081, +0.0131], null"),
 ("A+C+D encoder v2","633663cd","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62270","0.0478",
  "+0.0990 [+0.054, +0.146]","GAP","+0.0018 [-0.0141, +0.0178]","the 72k control (enc2): ten windows null vs vol96k, tau 0, MDE80 0.0228; 260-deal +0.0519"),
 ("sweep lr 1e-4","4dc21822","~2026-09-07","v2",512,"1e-4","72k","10,559,236","0.61020","0.0433",
@@ -120,6 +120,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "ca58e1e9":
+        "#339 layer 1, the report-fold tie rule: the SAME weights with --report-tie-keeps-incumbent on the ARM side only vs the production tie rule; five windows sealed 09-13 11:03 ET on the cloud lane (seeds 13260910..13660910): +0.0025 [-0.0081, +0.0131], tau 0, Q 1.47/4, MDE80 0.0151 -- crosses zero, point below the +0.015 extension line so NOT extended; an exact tie is rare and which side we keep does not move play at this precision; layer 3 (the production knob) stays a product decision",
     "633663cd":
         '260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued',
     "fc73c0f4":

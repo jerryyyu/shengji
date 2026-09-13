@@ -17885,3 +17885,13 @@ Next: v4-96k five-window readout once cloud v7 seals 13660910 (~21:15 ET) or the
 ## 2026-09-13 17:35 ET — Claude — SSD ejected cleanly; the lingering file-by-file rsync was the dissenter
 
 Jerry asked to eject the SSD (and had cleared space elsewhere: the Mini is at 57 GB free). Two eject attempts were cut short by my own command time limits; `diskutil` then named the blocker: the afternoon's file-by-file rsync (pid 30764/30766, child of the first backup task's wrapper) was still alive and holding the volume — it had resumed writing into `train-out-cwv/` when the disk remounted, separate from the verified `train-out-cwv-tars/` archives. Killed it, then `diskutil eject` returned "Disk /Volumes/Extreme SSD ejected"; `/Volumes` shows only Macintosh HD. The verified tar backup (51 archives, manifest in the archive folder) is unaffected. Lesson: a background copy that a wedged mount blocked is still alive when the mount comes back — list the volume's open processes before an eject.
+
+## 2026-09-13 18:20 ET — Claude — tick: nothing new sealed; M1 at epoch 16 with a new offline best (0.5984); checkpoint shipping to cloud armed
+
+**Part A.** Tip `45bf4f0e` = my last push. Production release 24 unchanged. Codex goal paused; bus quiet since 1352 (acked). Hosts at 18:14 ET: Mini load 3.5, 57 GB free — M1 epoch 16/20, val_ce **0.5984** (below S-d4-176k's 0.60636 and the programme's previous best 0.60570; the selection is on the outcome head, so this is the outcome head's val_ce with the search head training alongside), seal ≈ 19:30 ET; M2/M3 waiter armed. Cloud load 14: v6 on `v4-96k-13760910` at 510/520 (~40 min/window; extension done ≈ 21:00 ET), v7 armed behind it. Perf load 1.0: Codex's screens. Air load 2.6: the orphan `v4-96k-13560910` at 519/520, on cluster 463 as expected.
+
+**Part B.** No arm sealed since the last build; no new checkpoint. Page current (main `84868ccb`).
+
+**Part C.** Proven step: `fl-pilot/ship_M1_to_cloud.sh` (pid in the log) armed — waits for M1's `rc=0` AND `SEAL OK` lines, then ships `best.pt` to cloud as `/root/claude-M1.pt` with a sha256 file, atomic rename, sha verified on the far side; refuses on rc≠0 or a missing SEAL OK. With it, lane v7 starts the M1 head-vs-head windows the moment M1 seals, without waiting for a tick.
+
+Next: M1 seal (~19:30 ET) → seal check, page row (M1 with the naming), #373 note; v4-96k five-window readout after v7's 13660910 (~21:40 ET) → #341 + page; M2 starts automatically after M1 (v4 cache build ~1.5 h first).

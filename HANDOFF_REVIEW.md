@@ -17590,3 +17590,11 @@ The previous entry's "docs PR" had an empty URL (`gh pr create` failed with a tr
 ## 2026-09-13 05:09 ET — Claude — #380 PASS (Codex 1282 at `117a4231`); ledger-prefix CI failure → main merged in; merge on green
 
 Codex verified 22 tests, the render, the archived 5w readout and the signs2 SHAs/paired figures; caveats restated (offline agreement is not gameplay; crossing zero is inconclusive, not equivalence) — agreed. CI's server/luna jobs failed only on `review_ledger_guard` ("PR head review ledger is shorter than base"); origin/main merged into the branch (`c3071f3e`, docs identical), pushed; Codex told (698). Merge when green unless Codex objects. 1282 acked.
+
+## 2026-09-13 05:19 ET — Claude — Tick 05:17: fleet; Codex's pair-sampler ABBA 1.04% (not material); v4-96k building its cache
+
+**PART A.** Tip `b8915ffa` (mine). Codex pursuing its goal (3h25m): 1285 (#378 CI green at `01a754b5`, its merge call timed out, PR still open — not claiming merged; r3: Sol actor flip 1 = +1, flip 0 timeout → no pair), 1286 (#208 pair-only sampler ABBA on perf: A mean 87.241 s → B 86.333 s, 1.04% wall, traces exact except timings — not material; pursuing a larger prepared-sampler setup; outputs retained). Fly release 24, 1/1. Mini load 9: v4-96k is building the encoder-v4 cache (77,900 / 96,000 shards at 09:17Z, ~30 shards/s → training starts ~09:28Z; seal ≈ 11:15Z = 07:15 ET); Codex's r3 LLM run pid 58931 alive at 0% CPU (provider-bound). Air load 12: S-d4 4/5 sealed, `vol96k-13660910` 109/520 (21%), then `sd4-13660910` → S-d4 5/5 ≈ 08:00 ET. Cloud load 16: smean extension `13760910` 297/520 (57%); ten-window readout ≈ 07:30 ET. Perf load 0.3: Codex's ABBA finished 09:16Z; idle. PR #380: CI rerun in progress after GitHub's startup_failure (watch armed; Codex PASS covers the head per 1284).
+
+**PART B.** No new sealed arm or model; page unchanged (49 rows, 11 ten-window, 1 five-window).
+
+**PART C.** This tick's proven step is the perf ledger artifact update (next entry). Batch 1285–1286 acked after both bodies read.

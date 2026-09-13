@@ -40,7 +40,7 @@ WHAT_CHANGED = {
     "09-10": "the data-volume arms, 96k to 144k",
     "09-11": "the width sweep at maximum data (h256, h1024, h2048) and Codex&#8217;s encoder v3",
     "09-12": "volNEW-176k, the search-mean arm and the depth row (S-d4, S-d8, S-d4-plain)",
-    "09-13": "the depth row closes (S-d2)",
+    "09-13": "the depth row closes (S-d2); encoder v4 at 96k",
 }
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
          9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
@@ -300,7 +300,10 @@ def render(rows=None, table_only=None, series=None):
     five_clause = (f" <b>5w</b> is the first five of those windows, MDE80 about {fmt('5w')}: "
                    f"a null there means not large, never no effect ({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
                    if n_five else " <b>5w</b> (the first five windows, the triage instrument) has no readout yet.")
+    present = [e for e in ("v1", "v2", "v3", "v4") if c["enc_counts"].get(e)]
+    enc_list = "encoder " + (", ".join(present[:-1]) + " and " + present[-1] if len(present) > 1 else present[0])
     subs = {
+        "ENC_LIST": enc_list,
         "MDE_TEN": fmt("10w"), "MDE_ONE": fmt("1w"), "MDE_MC": fmt("mc"), "FIVE_CLAUSE": five_clause,
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
         "OFFSCALE_CLAUSE": ("" if not c["off_scale"] else

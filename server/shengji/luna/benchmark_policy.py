@@ -51,7 +51,17 @@ class SeatPlannerPolicy:
         # Do not invoke its true-world decision/search path. Proposals outside
         # this ballot remain possible and are validated by the normal engine.
         candidates = WideHeuristicBallotBot(seed=self.seed)._candidates(rnd, seat)
+        trick = visible["current_trick"]
+        plays = trick["plays"] if trick else []
+        # Redundant public guidance, outside the observation digest so the
+        # existing shared-world sampling seeds do not change.
+        lead = plays[0] if plays else None
         packet = {"observation": visible, "memory": self._memory,
+                  "play_requirement": {
+                      "is_leading": lead is None,
+                      "lead_seat": None if lead is None else lead["seat"],
+                      "lead_cards": [] if lead is None else list(lead["cards"]),
+                      "required_card_count": None if lead is None else len(lead["cards"])},
                   "suggested_actions": [sorted(cards) for cards in candidates],
                   "rollout_results": []}
         tool = None

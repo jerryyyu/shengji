@@ -6,6 +6,40 @@ from shengji.luna.benchmark_policy import SeatPlannerPolicy
 from test_llm_benchmark_observation import state
 
 
+@pytest.mark.parametrize("pair,illegal", [(False, False), (True, False), (False, True)])
+def test_lead_requirement_comes_from_first_engine_play_not_same_cards_across_seats(pair, illegal):
+    from shengji.luna.benchmark_observation import observation
+    from shengji.engine.legal import IllegalPlay
+    rnd = state()
+    # The saved Luna failure confused CK from seat1 and CK from seat2 as a
+    # pair lead. Build those plays through the engine, plus a real pair control.
+    rnd.hands = [["C4", "C4", "CQ"],
+                 ["CK", "CK", "C3"] if pair else ["CK", "C3", "C5"],
+                 ["C8", "C8", "C6"] if pair else ["CK", "C6", "C8"],
+                 ["D10", "D9", "D8"]]
+    rnd.play(1, ["CK", "CK"] if pair else ["CK"])
+    rnd.play(2, ["C8", "C8"] if pair else ["CK"])
+    rnd.play(3, ["D10", "D9"] if pair else ["D10"])
+    before = observation(rnd, 0, information="actor-only")
+    received = []
+    def planner(packet):
+        received.append(packet)
+        return {"cards": ["C4", "C4"] if pair or illegal else ["C4"], "memory": ""}
+    cards = policy(0, planner).decide_play(rnd, 0)
+    if illegal:
+        assert cards == ["C4", "C4"]  # no silent correction or fallback
+        with pytest.raises(IllegalPlay, match=r"^Must play exactly 1 card\(s\)\.$"):
+            rnd.play(0, cards)
+        assert len(received) == 1  # no retry
+    else:
+        rnd.play(0, cards)
+    assert received[0]["observation"] == before
+    assert received[0]["play_requirement"] == {
+        "is_leading": False, "lead_seat": 1,
+        "lead_cards": ["CK", "CK"] if pair else ["CK"],
+        "required_card_count": 2 if pair else 1}
+
+
 def policy(seat, planner, information="actor-only"):
     return SeatPlannerPolicy(seat=seat, information=information,
                              planner=planner, setup_policy=None)
@@ -44,6 +78,9 @@ def test_hidden_twins_are_identical_at_planner_callback():
         policy(1, planner).decide_play(rnd, 1)
     assert received[0] == received[1]
     assert received[0]["suggested_actions"]
+    assert received[0]["play_requirement"] == {
+        "is_leading": True, "lead_seat": None, "lead_cards": [],
+        "required_card_count": None}
     from shengji.luna.game import WideHeuristicBallotBot
     assert received[0]["suggested_actions"] == [
         sorted(cards) for cards in WideHeuristicBallotBot(seed=0)._candidates(a, 1)]

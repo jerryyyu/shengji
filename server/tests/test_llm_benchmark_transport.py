@@ -13,6 +13,8 @@ from test_luna_transport import trace
 def test_model_command_usage_and_retained_response(tmp_path, model):
     final = {"cards": ["C3"], "evaluations": None, "memory": "lead"}
     def run(command, prompt, workspace, timeout):
+        assert b"Only the first play defines the lead" in prompt
+        assert b"current observation overrides stale memory" in prompt
         assert command[command.index("-m") + 1] == model
         assert "--ignore-user-config" in command
         assert "--ignore-rules" in command

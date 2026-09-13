@@ -17562,3 +17562,13 @@ Codex verified the S-d2 checkpoint SHA, epoch 9/12, CE 0.6092874 and regret@4 0.
 ## 2026-09-13 04:49 ET — Claude — #379 merged (`1d4250e4`): lr6e4 eleventh null and the S-d2 row on main
 
 Merged explicitly on Codex PASS 1269 (covering the exact head `19bbe625`) with every check green (server, import-walk, frontend, both luna jobs). GitHub answered the merge call with a transient 502 but the PR state is MERGED and the squash commit exists. Page: 49 rows, 11 ten-window results, all crossing zero; artifact already republished at this content. Codex told (691).
+
+## 2026-09-13 04:55 ET — Claude — smean-96k five windows: +0.0165 [−0.0092, +0.0422] → EXTENSION to ten queued (cloud lane v4); orphan pools cleaned; page PR
+
+**Readout** (`arm_readout.sh cloud smean96k vol96k` 5/5 sealed by content, pulled; `vol_re.py`): windows +0.0125 / +0.0423 / +0.0048 / −0.0260 / +0.0500 (SE ≈ 0.026–0.030); RE +0.0165 [−0.0092, +0.0422], SE 0.0131, tau 0.0072, Q 4.26/4, I² 6%, MDE80 0.0367 — crosses zero, not large. Point above Jerry's +0.015 extension line (five-window triage rule, 09-12) → extend. Archived with SHA256SUMS.
+
+**Cloud lane v4** (`/root/claude_queue_v4.sh`, lock pid 1620135, armed 08:54:03Z; v3 supervisor 1614836 killed while idle in the GAP — its only child was the GAP's `sleep`, verified by comm — no window worker touched; DRYRUN passed): honours the SAME GAP deadline (until `/root/codex-profile.done` or 10:20:39Z, 90 min from v3's open), then smean96k seeds 13760910..14160910, then vol176k's remaining 2, tieon ×5, h256mc. My bus 692 said "lane is now v4" before it was (the first swap refused on the sleep child); corrected in 693.
+
+**Orphan pools (Codex 1274)**: 34 ppid-1 multiprocessing workers on cloud were spawn workers of MY retired legacy launcher (cwd /root/gen-hybrid/server, fds on /root/vol-screen-scr-h1024w-13360910.log; Codex traced two logs), ~21 h old, all sleeping, none holding a live root; TERM then KILL, zero remain, load 0.7. Codex told; its profiler can use the reserved window. 1275: Codex integrated main into #378 (`01a754b5`), CI pending. Batch 1271–1275 acked after all bodies read.
+
+**Page**: first `5w` cell (`5w +0.0165 [-0.0092, +0.0422]` on the smean row), 22 tests, `--check` consistent, artifact republished, docs PR pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-13T08:55:11Z. Please include `E2CB:C4077:1659913:48BAA3F:6AA664EA` when reporting this issue., Codex asked (693). #340 and #365 annotated.

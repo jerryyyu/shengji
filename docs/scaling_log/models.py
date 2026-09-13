@@ -58,7 +58,7 @@ M = [
 ("sweep base seed 2","d1858d5b","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62300","0.0400",
  "","GAP","+0.0035 [-0.0126, +0.0196]","SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"),
 ("sweep aux weight 0.3","52d3f243","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62180","0.0429",
- "","GAP","QUEUED",""),
+ "","GAP","-0.0020 [-0.0176, +0.0137]","scr-aux03: ten windows sealed 09-12; vs its own control enc2 -0.0035 [-0.0191, +0.0122], tau 0, MDE80 0.0224; tenth ten-window null"),
 ("sweep weight decay 1e-3","b0f196e4","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62260","0.0478",
  "","GAP","+0.0020 [-0.0140, +0.0180]","scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null"),
 ("sweep aux weight 0.1","eae33f49","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62370","0.0469",

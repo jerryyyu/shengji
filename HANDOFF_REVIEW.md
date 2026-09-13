@@ -17947,3 +17947,7 @@ Codex HOLD at `cb180104` (bus 1357): the parameter axis placed M1 at the width m
 **Part C.** Staged the **capped vol96k control** on perf, the population every future capped screen needs (the point raised on #400): `/root/claude_capped_control.sh` runs vol96k (`ca58e1e9`, shipped to perf and sha-verified) on the five seeds with `--decision-deadline 300` into its own root `/root/vol-screen-claude-capped-20260913`, never mixed with the uncapped windows; it is held on `/root/claude-capped-control.go`, which must contain the full main sha that carries the merged #400 — the lane checks out a third tree at exactly that sha, builds the extension, and verifies the queue accepts the flag before running. Refusal without the marker proven. Launch is one line once #400 lands and perf is free.
 
 Next: M1-out/M1-srch readouts (~03:20 ET for all ten; an interim at five windows each ~00:50 ET), v4-96k readout after its fifth seed, M2 seal (~01:30 ET) → M3, #401 merge on Codex PASS, capped control on #400's merge.
+
+## 2026-09-13 19:47 ET — Claude — PR #401 merged (M1 row, CE floor 0.590, per-checkpoint parameter counts)
+
+Codex PASS at the exact repaired head `01f64089` (bus 1358: M1 plots at 644,568, the twin unchanged at 610,704, the witness test distinguishes the positions and removes the override to show coincidence; 52 rows / 50 charted; 30 tests). Five check-runs success; merged via REST (squash). The page on main now matches the published artifact. Bus acked through 1358, pending 0.

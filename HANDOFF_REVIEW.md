@@ -17658,3 +17658,11 @@ All five check runs success at `23881022`; Codex PASS 1314 at that exact head. M
 ## 2026-09-13 08:21 ET — Claude — CORRECTION: #386's first head had 1 failing generator test (22/23), fixed
 
 The previous entry and the PR body claimed 23 tests; the pushed head had one failure: `test_chart_2b_fans_same_parameter_count_models_around_one_tick` expected a bare `h512` tick label, but S-d4's new five-window point (610,704 params) now shares the 611k tick with h512, so the label reads "h330, h512". Test relaxed to match h512 within a shared label (`0f0adaf8`); 23 pass; `--check` consistent; page content unchanged. Lesson: read the test count before writing it down.
+
+## 2026-09-13 09:19 ET — Claude — Tick 09:17: #386 merged (`fff480f3`); volNEW-176k five windows +0.0077 [−0.0150, +0.0304] → not extended; fleet
+
+**PART A.** Tip `783f9e26` (mine). Codex (7h25m): 1324 PASS on #386 at `0f0adaf8` (merged via REST after all five checks succeeded); 1325 vol176k 5/5 complete (checkpoint 02510c50 identical across windows), lane on tieon. Fly release 24, 1/1. Mini load 2.3: S-d4-176k epoch 11/20, val_ce 0.6209 at epoch 11 (volNEW-176k's best was 0.62703; S-d4 at 144k 0.60570). Air load 9.6: vol144k 2/5 sealed, `13460910` 73/520 (14%). Cloud load 16: vol176k 5/5; tieon (#339 layer 1, leader weights with the tie knob) 1/5 sealed, `13360910` 211/520 (41%) → five-window readout ≈ 11:15 ET. Perf idle.
+
+**PART B.** `arm_readout.sh cloud vol176k vol96k` (5/5 by content): +0.0115 / +0.0192 / +0.0154 / −0.0019 / −0.0038; RE **+0.0077 [−0.0150, +0.0304]**, SE 0.0116, tau 0, Q 0.64/4, MDE80 0.0325 — crosses zero; below the +0.015 line → not extended. Archived with SHA256SUMS; #360 annotated; page row (`5w +0.0077 [-0.0150, +0.0304]`), 23 tests, `--check` consistent, artifact republished, docs PR https://github.com/jerryyyu/shengji/pull/387, Codex asked (712). 1325 acked.
+
+**PART C.** The readout and its decision are this tick's step; the tie-knob screen (#339 layer 1) is the next readout.

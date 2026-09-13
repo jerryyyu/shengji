@@ -341,6 +341,7 @@ def render(rows=None, table_only=None, series=None):
         "PAIRED_CLAUSE": paired_clause,
         "ENC_GAP": signed(c["enc_gap"]), "LAST_DOUBLING": signed(c["last_doubling"]),
         "N_CELL_WORD": word(c["cell_n"]), "CELL_SPREAD": f"{c['cell_spread']:.4f}",
+        "LAST_DAY_LONG": long_day(max(c["days"])),
         "BEST_DAY_LONG": long_day(c["best_day"]), "BIG_DAY_LONG": long_day(c["big_day"]),
         "BIG_DROP": signed(-c["big_drop"]),
         "BIG_CLAUSE": ", more than every day since combined" if c["big_beats_rest"] else "",

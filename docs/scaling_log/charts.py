@@ -70,6 +70,9 @@ def frame(W,H,L,Rm,T,B,XLO,XHI,ylo,yhi,yt,xt,xlab,ylab,ylog=False,yfmt="{:.2f}")
 
 YT=[0.60,0.62,0.64,0.66,0.68,0.70,0.72,0.74]
 CE_HI=0.740   # every CE chart's top; a model above it is listed by name, never drawn off-canvas
+CE_LO=0.600   # every CE chart's bottom
+for d in R:
+    if d["ce"] is not None and d["ce"]<CE_LO: raise SystemExit("%s: CE %.5f is below the chart floor %.3f; lower CE_LO/YT"%(d["ck"],d["ce"],CE_LO))
 OFFSCALE=[d for d in R if d["ce"] is not None and d["ce"]>CE_HI]
 ONSCALE=[d for d in R if d["ce"] is not None and d["ce"]<=CE_HI]
 def offscale_note(s, lx, y0):
@@ -80,8 +83,10 @@ def offscale_note(s, lx, y0):
         s.append('<text x="%d" y="%d" class="lgs">%s: CE %.3f</text>'%(lx,y0+16+i*14,esc(d["n"]),d["ce"]))
     return y0+16+len(OFFSCALE)*14+6
 # ---------- 1: data vs val_ce (LOG y) ----------
-s,X,Y,x0,x1,y0,y1=frame(880,470,84,200,26,64,9e5,2.4e7,0.600,0.740,YT,
-  [(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
+REC_MAX=max(d["rec"] for d in ONSCALE); REC_MIN=min(d["rec"] for d in ONSCALE)
+XHI1=REC_MAX*1.12; XLO1=REC_MIN*0.85   # the axis follows the data (25.4M records at 176k sat past the old 24M edge)
+XT1=[t for t in [(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M"),(3e7,"30M"),(5e7,"50M")] if XLO1<=t[0]<=XHI1]
+s,X,Y,x0,x1,y0,y1=frame(880,470,84,200,26,64,XLO1,XHI1,0.600,0.740,YT,XT1,
   "training records (log scale)","validation cross-entropy (log)",ylog=True)
 b1=series("base_v1","rec"); b2=series("base_v2","rec")
 _g1,_g2=(BYCK[c] for c in SERIES["enc_gap"]); ENC_GAP=_g2["ce"]-_g1["ce"]
@@ -101,6 +106,7 @@ for d in R:
     if d["ce"] is None or d["ce"]>CE_HI: continue
     if d["enc"] not in ENC_CLASS: raise SystemExit("chart 1 has no marker class for encoder %r (%s)"%(d["enc"],d["ck"]))
     ENC_N[d["enc"]]+=1
+    if not (x0<=X(d["rec"])<=x1 and y0<=Y(d["ce"])<=y1): raise SystemExit("chart 1: %s (%s records, CE %.5f) falls outside the plot frame"%(d["ck"],d["rec"],d["ce"]))
     s.append(dot(X(d["rec"]),Y(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.4, "pt "+ENC_CLASS[d["enc"]], d))
 lx=x1+22
 s.append('<text x="%d" y="40" class="lgh">ENCODER</text>'%lx)
@@ -113,6 +119,7 @@ NCE=len(ONSCALE)
 for i,t in enumerate(["All %d models with a"%NCE,"validation number on","this scale.","Click or tab to any dot","for its full record."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ly+14+i*16,t))
 offscale_note(s, lx, ly+110)
+FRAME1=[x0,x1]
 s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 
 # ---------- 3: width vs val_ce (LOG y) ----------
@@ -148,7 +155,10 @@ s.append('</svg>'); open(OUT+"/g3.svg","w").write("\n".join(s))
 print("charts 1 and 3 rebuilt with clickable dots")
 
 # ---------- 5: by trained date (LOG y) ----------
-DAYS=["2026-09-05","2026-09-06","2026-09-07","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-12"]
+# Every distinct training day in the data, in order: a day is never dropped silently
+# (until 09-13 this list was typed by hand and ended on 09-12, so three models trained
+# on 09-13 were missing from charts 3 and 4 and the by-day table).
+DAYS=sorted({d["tr"] for d in R if d["ce"] is not None})
 W,H=880,440; L,Rm,T,B=84,206,30,64
 x0,x1,y0,y1=L,W-Rm,T,H-B
 YLO,YHI=0.600,0.740
@@ -446,7 +456,7 @@ open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
     w144_monotone=_w144_mono, w144_gap_256_vs_512=_w144_gap, w144_worst_w=_w144_worst["w"], w144_best_w=_w144_best["w"],
     w144_worst_over_best_params=_w144_worst["par"]/_w144_best["par"], w144_256_param_frac=PAR[256]/PAR[512],
     w144_span=_w144_span, w144_n=len(_w144), w144_rec=_w144[0]["rec"], lr14_best_w=_lr14_best["w"],
-    models=len(R), with_ce=NCE, enc_counts=ENC_N, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
+    days=DAYS, per_day={dd:sum(1 for d in ONSCALE if d["tr"]==dd) for dd in DAYS}, frame1=FRAME1, models=len(R), with_ce=NCE, enc_counts=ENC_N, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
     since_best=len(_since), best_day=_bst["tr"], best_ce=_bst["ce"],
     above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross, five_total=len(_five), five_cross=_five_cross,
     enc_gap=ENC_GAP, cell_n=CELL_N, cell_spread=CELL_SPREAD,

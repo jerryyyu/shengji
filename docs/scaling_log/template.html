@@ -168,7 +168,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; {{N_REGISTRY}} checkpoints; {{N_MODELS}} on the charts, {{N_CE}} of them with a validation number (the {{N_TABLE_ONLY}} 768-cluster probes are table-only) &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
+  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; {{N_REGISTRY}} checkpoints; {{N_MODELS}} on the charts, {{N_CE}} of them with a validation number on the CE scale (the {{N_TABLE_ONLY}} 768-cluster probes are table-only){{OFFSCALE_CLAUSE}} &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
@@ -200,7 +200,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">1 &middot; Data versus validation cross-entropy</h2>
-  <p class="cap">All {{N_CE}} charted models with a validation number. Lines connect the base recipe only
+  <p class="cap">All {{N_CE}} charted models with a validation number on the CE scale.{{OFFSCALE_CLAUSE}} Lines connect the base recipe only
   (width 512, lr 3e&#8209;4), so vertical scatter at one x is the hyperparameter sweep at that
   corpus size.</p>
   <div class="figure">{{SVG1}}</div>
@@ -219,7 +219,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">2 &middot; Model width versus validation cross-entropy</h2>
-  <p class="cap">Every model whose width is known. Four lines connect the base recipe: the old
+  <p class="cap">Every model with a parameter count, on a log parameter axis (the depth cells sit at
+  the same budget as their depth-2 twins: S-d4 at 611k). Four lines connect the base recipe: the old
   lr 1e&#8209;4 sweep, the deployed 3e&#8209;4 at 96k, the 72k corpus, and in gold our maximum
   144k corpus.</p>
   <div class="figure">{{SVG3}}</div>

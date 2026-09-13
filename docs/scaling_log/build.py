@@ -92,7 +92,7 @@ def check_data(rows, table_only, series):
             errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
         if r["enc"] not in ("v1", "v2", "v3", "v4"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
-        if r["ce"] and not re.fullmatch(r"0\.\d{4,5}", r["ce"]):
+        if r["ce"] and not re.fullmatch(r"\d\.\d{4,5}", r["ce"]):  # a soft-target head can sit above 1.0
             errs.append(f"{r['ck']}: val_ce {r['ce']!r}")
         for key in ("mc", "w32", "ten"):
             if r[key]:
@@ -236,6 +236,11 @@ def render(rows=None, table_only=None, series=None):
     span_vs_doubling = ("twice" if 1.75 <= ratio <= 2.25 else ("about equal to" if 0.8 <= ratio <= 1.25 else f"{ratio:.1f}&times;"))
     subs = {
         "N_REGISTRY": len(rows), "N_MODELS": c["models"], "N_CE": c["with_ce"],
+        "OFFSCALE_CLAUSE": ("" if not c["off_scale"] else
+                            " " + ", ".join(f"{n} (CE {v:.3f})" for n, v in c["off_scale"])
+                            + (" is" if len(c["off_scale"]) == 1 else " are")
+                            + " above the CE axis and listed on each chart instead of drawn; "
+                              "the registry carries the full row."),
         "N_TABLE_ONLY": word(len(table_only)),
         "N_LEADER": c["with_leader"], "N_NOLEADER": c["without_leader"],
         "N_ABOVE_LEADER": c["above_leader"], "ABOVE_CLAUSE": above_clause,

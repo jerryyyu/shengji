@@ -2,7 +2,8 @@ import math
 if "M" not in globals():          # build.py may inject M / TABLE_ONLY / SERIES (tests)
     exec(open(MODELS).read())
 M=[m for m in M if m[1] not in TABLE_ONLY]
-PAR={256:272716,512:610764,1024:1483468,2048:4015308}
+PAR={256:272716,512:610764,1024:1483468,2048:4015308,
+     330:610704}   # depth-4 residual at the h512 budget (grid S-d4, from its receipt)
 REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708}
 R=[]
@@ -62,6 +63,16 @@ def frame(W,H,L,Rm,T,B,XLO,XHI,ylo,yhi,yt,xt,xlab,ylab,ylog=False,yfmt="{:.2f}")
     return s,X,Y,x0,x1,y0,y1
 
 YT=[0.60,0.62,0.64,0.66,0.68,0.70,0.72,0.74]
+CE_HI=0.740   # every CE chart's top; a model above it is listed by name, never drawn off-canvas
+OFFSCALE=[d for d in R if d["ce"] is not None and d["ce"]>CE_HI]
+ONSCALE=[d for d in R if d["ce"] is not None and d["ce"]<=CE_HI]
+def offscale_note(s, lx, y0):
+    """Legend lines naming every model above the CE axis (visible, not silent)."""
+    if not OFFSCALE: return y0
+    s.append('<text x="%d" y="%d" class="lgh">OFF THIS SCALE</text>'%(lx,y0))
+    for i,d in enumerate(OFFSCALE):
+        s.append('<text x="%d" y="%d" class="lgs">%s: CE %.3f</text>'%(lx,y0+16+i*14,esc(d["n"]),d["ce"]))
+    return y0+16+len(OFFSCALE)*14+6
 # ---------- 1: data vs val_ce (LOG y) ----------
 s,X,Y,x0,x1,y0,y1=frame(880,470,84,200,26,64,9e5,2.4e7,0.600,0.740,YT,
   [(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
@@ -77,7 +88,7 @@ s.append('<text x="%.1f" y="%.1f" class="note" text-anchor="end">encoder v1 &#85
 s.append('<text x="%.1f" y="%.1f" class="noteb" text-anchor="end">%s at identical data</text>'%(X(_gx)-12,_gy+16,fmt_signed(ENC_GAP)))
 n1=n2=n3=0
 for d in R:
-    if d["ce"] is None: continue
+    if d["ce"] is None or d["ce"]>CE_HI: continue
     # v3 gets its own class. Folding it into the v2 branch would have mislabelled the
     # legend and hidden a whole encoder generation inside another one.
     if d["enc"]=="v1": cls="pt pt1"; n1+=1
@@ -89,17 +100,18 @@ s.append('<text x="%d" y="40" class="lgh">ENCODER</text>'%lx)
 s.append('<circle cx="%d" cy="60" r="4.4" class="pt pt1"/><text x="%d" y="64" class="lg">v1 &middot; %d runs</text>'%(lx+6,lx+19,n1))
 s.append('<circle cx="%d" cy="82" r="4.4" class="pt pt2"/><text x="%d" y="86" class="lg">v2 &middot; %d runs</text>'%(lx+6,lx+19,n2))
 s.append('<circle cx="%d" cy="104" r="4.4" class="pt pt5"/><text x="%d" y="108" class="lg">v3 &middot; %d run%s</text>'%(lx+6,lx+19,n3,"s" if n3!=1 else ""))
-NCE=sum(1 for d in R if d["ce"] is not None)
-for i,t in enumerate(["All %d models with a"%NCE,"validation number.","Click or tab to any dot","for its full record."]):
+NCE=len(ONSCALE)
+for i,t in enumerate(["All %d models with a"%NCE,"validation number on","this scale.","Click or tab to any dot","for its full record."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,140+i*16,t))
+offscale_note(s, lx, 236)
 s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 
 # ---------- 3: width vs val_ce (LOG y) ----------
 s,X,Y,x0,x1,y0,y1=frame(880,420,84,200,26,70,2.0e5,5.5e6,0.602,0.740,
   [0.62,0.64,0.66,0.68,0.70,0.72,0.74],
-  [(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+  [(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)","validation cross-entropy (log)",ylog=True)
-for v,lab in [(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")]:
+for v,lab in [(2.72e5,"h256 at depth 2"),(6.11e5,"h512 / S-d4"),(1.48e6,"h1024"),(4.02e6,"h2048")]:
     s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(X(v),y1+37,lab))
 SER=[("width_lr1e4_96k","ln3","pt3"),("width_3e4_96k","ln2","pt2"),
      ("width_3e4_72k","ln4","pt4"),("width_3e4_144k","ln5","pt5")]
@@ -108,7 +120,7 @@ for key,ln,_ in SER:
     s.append('<polyline class="ln %s" points="'%ln+" ".join("%.1f,%.1f"%(X(a),Y(b)) for a,b in pts)+'"/>')
 _member={ck:pt for key,_,pt in SER for ck in SERIES[key]}
 for d in R:
-    if d["ce"] is None: continue
+    if d["ce"] is None or d["ce"]>CE_HI: continue
     cls=("pt "+_member[d["ck"]]) if d["ck"] in _member else None
     s.append(dot(X(d["par"]),Y(d["ce"]), 5 if cls else 3.6, cls or "pt ptx", d))
 _cell=[BYCK[c] for c in SERIES["one_cell_72k"]]
@@ -122,6 +134,7 @@ s.append('<text x="%d" y="40" class="lgh">BASE RECIPE AT</text>'%lx)
 for i,(lab,pt) in enumerate([("96k, lr 1e-4","pt3"),("96k, lr 3e-4","pt2"),("72k, lr 3e-4","pt4"),("144k, lr 3e-4","pt5")]):
     s.append('<circle cx="%d" cy="%d" r="5" class="pt %s"/><text x="%d" y="%d" class="lg">%s</text>'%(lx+6,60+i*22,pt,lx+19,64+i*22,lab))
 s.append('<circle cx="%d" cy="148" r="3.6" class="pt ptx"/><text x="%d" y="152" class="lg">every other model</text>'%(lx+6,lx+19))
+offscale_note(s, lx, 184)
 s.append('</svg>'); open(OUT+"/g3.svg","w").write("\n".join(s))
 print("charts 1 and 3 rebuilt with clickable dots")
 
@@ -137,14 +150,14 @@ for v in YT:
     s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" class="grid"/>'%(x0,YD(v),x1,YD(v)))
     s.append('<text x="%d" y="%.1f" class="ax ar">%.2f</text>'%(x0-11,YD(v)+4,v))
 for i,d in enumerate(DAYS):
-    n=sum(1 for r in R if r["tr"]==d and r["ce"])
+    n=sum(1 for r in ONSCALE if r["tr"]==d)
     s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(XD(i),y1+21,d[5:]))
     s.append('<text x="%.1f" y="%d" class="axs am">%d model%s</text>'%(XD(i),y1+37,n,"s" if n!=1 else ""))
 s.append('<text x="%d" y="%d" class="axl am">the day the model was trained</text>'%((x0+x1)/2,y1+56))
 s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">validation cross-entropy (log)</text>'%((y0+y1)/2,(y0+y1)/2))
 best=9; pathpts=[]; DROPS=[]
 for i in range(len(DAYS)):
-    day=[r["ce"] for r in R if r["tr"]==DAYS[i] and r["ce"]]
+    day=[r["ce"] for r in ONSCALE if r["tr"]==DAYS[i]]
     prev=best
     if day: best=min(best,min(day))
     DROPS.append((prev-best) if prev<9 and best<prev else 0.0)
@@ -154,12 +167,12 @@ BIG_I=max(range(len(DAYS)),key=lambda i:DROPS[i]); BIG_DROP=DROPS[BIG_I]; BIG_DA
 BIG_BEATS_REST=BIG_DROP>sum(DROPS[BIG_I+1:])
 s.append('<polyline class="ln ln5" points="'+" ".join(pathpts)+'"/>')
 for i,dd in enumerate(DAYS):
-    day=[r for r in R if r["tr"]==dd and r["ce"]]
+    day=[r for r in ONSCALE if r["tr"]==dd]
     for k,d in enumerate(sorted(day,key=lambda z:z["ce"])):
         off=(k-(len(day)-1)/2)*9
         s.append(dot(XD(i,off),YD(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.2,
                      "pt pt2" if d["ck"]=="3cd27716" else "pt pt1", d))
-_ce=[d for d in R if d["ce"] is not None]
+_ce=list(ONSCALE)
 _bst=min(_ce,key=lambda d:d["ce"]); _bi=DAYS.index(_bst["tr"])
 s.append('<text x="%.1f" y="%.1f" class="slope s2 am">%s in one day</text>'%(XD(BIG_I),YD(_bst["ce"]-0.0021),fmt_signed(-BIG_DROP)))
 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ref"/>'%(XD(_bi)+18,YD(_bst["ce"]),x1-6,YD(_bst["ce"])))
@@ -176,6 +189,7 @@ _bt=[d for d in _aft if d["ce"]<_bst["ce"]]
 # derived, not hand-counted: a hardcoded "31 of the 38" stood here and was simply wrong.
 for i,t in enumerate(["%d of the %d models"%(len(_aft),len(_ce)),"were trained AFTER","the best was set.","%s beat it."%("None" if not _bt else str(len(_bt)))]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,142+i*16,t))
+offscale_note(s, lx, 216)
 s.append('</svg>'); open(OUT+"/g5.svg","w").write("\n".join(s))
 
 # ---------- leader-axis charts: 2 (data), 4 (width), 6 (date) ----------
@@ -232,7 +246,7 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra):
 leaderchart(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
   "training records (log scale)",OUT+"/g2.svg",
   ["Only 3 of 7 corpus sizes","have ANY leader number.","Nothing below 14M does.","Click a dot for detail."])
-leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/g4.svg",
   ["Every width screened, but","at one corpus size and","mostly one learning rate."])
 print("all charts rebuilt")
@@ -342,7 +356,7 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra):
 both(lambda d:d["rec"], 9e5,2.4e7,[(1e6,"1M"),(2e6,"2M"),(5e6,"5M"),(1e7,"10M"),(2e7,"20M")],
   "training records (log scale)",OUT+"/h2.svg",
   ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true."])
-both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"h256"),(6.11e5,"h512"),(1.48e6,"h1024"),(4.02e6,"h2048")],
+both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/h4.svg",
   ["Both benchmarks, same","models, one axis."])
 print("dual-benchmark charts built")
@@ -376,7 +390,7 @@ open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
     w144_monotone=_w144_mono, w144_gap_256_vs_512=_w144_gap, w144_worst_w=_w144_worst["w"], w144_best_w=_w144_best["w"],
     w144_worst_over_best_params=_w144_worst["par"]/_w144_best["par"], w144_256_param_frac=PAR[256]/PAR[512],
     w144_span=_w144_span, w144_n=len(_w144), w144_rec=_w144[0]["rec"], lr14_best_w=_lr14_best["w"],
-    models=len(R), with_ce=NCE, beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
+    models=len(R), with_ce=NCE, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
     since_best=len(_since), best_day=_bst["tr"], best_ce=_bst["ce"],
     above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross,
     enc_gap=ENC_GAP, cell_n=CELL_N, cell_spread=CELL_SPREAD,

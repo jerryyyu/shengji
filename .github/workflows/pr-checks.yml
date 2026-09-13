@@ -69,7 +69,11 @@ jobs:
 
   import-walk:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # This job installs the rl group (torch), builds the engine, walks every
+    # module AND runs scripts/ci_cwv_modes.sh; on a shared runner that has been
+    # hitting the old 15-minute ceiling (a timeout shows as "cancelled", not
+    # "failed"). Give it the same room as the server job.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: server

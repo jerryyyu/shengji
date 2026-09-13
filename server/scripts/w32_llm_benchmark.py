@@ -27,7 +27,7 @@ from shengji.luna.atomic_io import publish_exclusive_bytes
 from shengji.luna.benchmark_games import play_mirror
 from shengji.luna.benchmark_transport import BenchmarkTransport
 from shengji.luna.canonical import canonical_json_bytes
-from shengji.luna.game import _state_snapshot
+from shengji.luna.game import _round_from_snapshot, _state_snapshot
 from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
 
 
@@ -245,21 +245,172 @@ def _summary(rows: Sequence[Mapping[str, object]], *, arm: str, seed: int) -> di
                            float(pair[1].get("signed_levels", 0))) / 2.0)
     calls = [call for row in rows for call in row.get("calls", ())
              if isinstance(call, Mapping)]
+    # A failed prior attempt is not allowed to disappear when its key later
+    # succeeds.  Continuations put that attempt under this private field;
+    # fresh rows have no such field.
+    calls.extend(call for row in rows
+                 for call in (row.get("prior_attempt", {}).get("calls", ())
+                              if isinstance(row.get("prior_attempt"), Mapping)
+                              else ())
+                 if isinstance(call, Mapping))
     raw_tokens = sum(int(call.get("usage", {}).get("input_tokens", 0)) +
                      int(call.get("usage", {}).get("output_tokens", 0))
                      for call in calls if isinstance(call.get("usage"), Mapping))
+    prior_failures = []
+    for row in rows:
+        prior = row.get("prior_attempt")
+        if isinstance(prior, Mapping) and prior.get("complete") is not True:
+            prior_failures.append({
+                "key": row.get("key"), "error": prior.get("error"),
+                "cost_tokens": prior.get("cost_tokens", 0),
+                "source_row_sha256": prior.get("source_row_sha256"),
+            })
     return {"arm": arm, "complete_mirrors": len(complete),
             "complete_deal_pairs": len(paired), "paired_signed_levels": paired,
             "paired_signed_level_mean": statistics.fmean(paired) if paired else None,
             "deal_cluster_ci95": _bootstrap(paired, seed=seed),
             "failures": [dict(row) for row in rows if row.get("complete") is not True],
+            "prior_failures": prior_failures,
             "raw_cost_tokens": raw_tokens}
+
+
+def _row_cost(row: Mapping[str, object]) -> int:
+    calls = row.get("calls", ())
+    return sum(int(call.get("usage", {}).get("input_tokens", 0)) +
+               int(call.get("usage", {}).get("output_tokens", 0))
+               for call in calls if isinstance(call, Mapping)
+               and isinstance(call.get("usage"), Mapping))
+
+
+def _load_json_file(path: Path, *, label: str) -> tuple[object, bytes]:
+    if not path.is_file() or path.is_symlink():
+        raise BenchmarkRefusal(f"prior {label} must be a regular file")
+    raw = path.read_bytes()
+    try:
+        return json.loads(raw), raw
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BenchmarkRefusal(f"prior {label} is not valid JSON") from exc
+
+
+def _load_continuation(prior: str | os.PathLike, *, seeds: tuple[int, ...],
+                       checkpoint: Mapping[str, str], policy: str,
+                       baseline_recipe: Mapping[str, object],
+                       models: tuple[str, ...],
+                       information: tuple[str, ...]) -> dict[str, object]:
+    """Read and validate a sealed prior report without touching its files."""
+    prior_path = Path(prior).expanduser().resolve()
+    if (not prior_path.is_dir() or prior_path.is_symlink()):
+        raise BenchmarkRefusal("--continue-from must name a prior output directory")
+    result_path = prior_path / "result.json"
+    result_obj, result_raw = _load_json_file(result_path, label="result.json")
+    if not isinstance(result_obj, Mapping) or result_obj.get("schema") != SCHEMA \
+            or result_obj.get("mode") != "run":
+        raise BenchmarkRefusal("prior result.json is not a terminal benchmark report")
+    if (not isinstance(result_obj.get("summaries"), Mapping)
+            or not isinstance(result_obj.get("budget"), Mapping)
+            or not isinstance(result_obj.get("setup_failures"), Mapping)):
+        raise BenchmarkRefusal("prior result.json is not a terminal benchmark report")
+    prior_config = result_obj.get("config")
+    if not isinstance(prior_config, Mapping):
+        raise BenchmarkRefusal("prior result.json has no benchmark config")
+    if prior_config.get("continue_from") is not None:
+        raise BenchmarkRefusal("chained --continue-from is not supported")
+    prior_checkpoint = prior_config.get("checkpoint")
+    if (not isinstance(prior_checkpoint, Mapping)
+            or prior_checkpoint.get("sha256") != checkpoint.get("sha256")):
+        raise BenchmarkRefusal("prior checkpoint SHA does not match selected checkpoint")
+    if prior_config.get("policy") != policy:
+        raise BenchmarkRefusal("prior policy does not match selected policy")
+    if prior_config.get("baseline_recipe") != dict(baseline_recipe):
+        raise BenchmarkRefusal("prior baseline recipe does not match selected recipe")
+    if (prior_config.get("seeds") != list(seeds)
+            or prior_config.get("models") != list(models)
+            or prior_config.get("information") != list(information)):
+        raise BenchmarkRefusal("prior seeds/models/information must exactly match continuation")
+    roots_obj = result_obj.get("roots")
+    prior_rows = result_obj.get("mirrors")
+    if not isinstance(roots_obj, Mapping) or not isinstance(prior_rows, list):
+        raise BenchmarkRefusal("prior result.json is missing terminal roots or mirrors")
+    rows_by_key: dict[str, Mapping[str, object]] = {}
+    for row in prior_rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("key"), str):
+            raise BenchmarkRefusal("prior mirror row is malformed")
+        key = str(row["key"])
+        if key in rows_by_key:
+            raise BenchmarkRefusal("prior mirror keys are not unique")
+        rows_by_key[key] = row
+    expected_keys = {
+        f"{model}-{mode}-seed{seed}-flip{flip}"
+        for model in models for mode in information for seed in seeds
+        for flip in (0, 1)
+    }
+    if set(rows_by_key) != expected_keys:
+        raise BenchmarkRefusal("prior terminal report does not cover selected mirrors")
+    # Seal every source row before creating the new output or invoking a
+    # retry.  In particular, an incomplete row must not be discovered as
+    # corrupt only after its replacement has already spent provider budget.
+    source_rows: dict[str, dict[str, object]] = {}
+    for model in models:
+        for mode in information:
+            for seed in seeds:
+                for flip in (0, 1):
+                    key = f"{model}-{mode}-seed{seed}-flip{flip}"
+                    source_path = prior_path / f"mirror-{model}-{mode}-{seed}-{flip}.json"
+                    source_obj, source_raw = _load_json_file(
+                        source_path, label=f"mirror row {key}")
+                    prior_row = rows_by_key[key]
+                    if (not isinstance(source_obj, Mapping)
+                            or source_obj.get("key") != key
+                            or canonical_json_bytes(source_obj)
+                            != canonical_json_bytes(prior_row)):
+                        raise BenchmarkRefusal(
+                            f"prior mirror row {key} disagrees with result.json")
+                    source_rows[key] = {
+                        "row": source_obj, "path": str(source_path),
+                        "sha256": _sha_bytes(source_raw),
+                    }
+    imported_roots: dict[int, Mapping[str, object]] = {}
+    for seed in seeds:
+        root_path = prior_path / f"root-{seed}.json"
+        root_obj, root_raw = _load_json_file(root_path, label=f"root-{seed}.json")
+        if not isinstance(root_obj, Mapping) or root_obj.get("seed") != seed \
+                or not isinstance(root_obj.get("round"), Mapping):
+            raise BenchmarkRefusal(f"prior root-{seed}.json is malformed")
+        expected = roots_obj.get(str(seed))
+        if not isinstance(expected, str) or _sha(root_obj) != expected:
+            raise BenchmarkRefusal(f"prior root hash mismatch for seed {seed}")
+        # Keep the bytes identity available to callers/tests, while the root
+        # itself remains the decoded private snapshot used for restoration.
+        imported_roots[seed] = dict(root_obj, _source_bytes_sha256=_sha_bytes(root_raw))
+    return {"path": str(prior_path), "result_sha256": _sha_bytes(result_raw),
+            "result": result_obj, "rows": rows_by_key, "source_rows": source_rows,
+            "roots": imported_roots,
+            "prior_cost_tokens": sum(_row_cost(row) for row in rows_by_key.values()),
+            "prior_attempts": len(rows_by_key)}
+
+
+def _restore_game(root: Mapping[str, object], seed: int, game_factory: Callable[[object], object]):
+    """Restore a Game from an imported private root; never deal or bury it."""
+    level_idx = root.get("level_idx")
+    banker = root.get("banker")
+    if (not isinstance(level_idx, list) or len(level_idx) != 2
+            or not isinstance(banker, int) or isinstance(banker, bool)
+            or not 0 <= banker < 4):
+        raise BenchmarkRefusal(f"prior root-{seed}.json has invalid game identity")
+    game = game_factory(random.Random(seed))
+    game.level_idx = list(level_idx)
+    game.banker = banker
+    game.round = _round_from_snapshot(root["round"])
+    if getattr(game.round, "banker", None) != banker:
+        raise BenchmarkRefusal(f"prior root-{seed}.json banker mismatch")
+    return game
 
 
 def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                   seeds: Sequence[int], models: Sequence[str] = ("sol", "luna"),
                   information: Sequence[str] = INFORMATION_MODES,
                   wall_seconds: float = 1800.0, token_limit: int | None = None,
+                  continue_from: str | os.PathLike | None = None,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -289,12 +440,24 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
         raise BenchmarkRefusal(
             f"requested policy {policy!r} is not the registered baseline {baseline_name!r}")
     source = _source_identity()
+    continuation = None
+    if continue_from is not None:
+        if not run:
+            raise BenchmarkRefusal("--continue-from requires --run")
+        continuation = _load_continuation(
+            continue_from, seeds=seeds, checkpoint=checkpoint_id, policy=policy,
+            baseline_recipe=baseline_recipe, models=models, information=information)
     config = {"schema": SCHEMA, "checkpoint": checkpoint_id, "policy": policy,
               "seeds": list(seeds), "models": list(models),
               "information": list(information), "wall_seconds": wall_seconds,
               "soft_token_limit": token_limit, "run": bool(run),
               "baseline_recipe": baseline_recipe, "source": source,
               "claim": "benchmark execution only; runtime production parity is not claimed"}
+    if continuation is not None:
+        config["continue_from"] = {
+            "path": continuation["path"],
+            "result_sha256": continuation["result_sha256"],
+        }
     if not run:
         return {"schema": SCHEMA, "mode": "dry-run", "config": config,
                 "planned_arms": [f"{model}-{mode}" for model in models for mode in information],
@@ -310,31 +473,55 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     roots: dict[int, object] = {}
     root_hashes: dict[int, str] = {}
     setup_failures: dict[int, str] = {}
-    for index, seed in enumerate(seeds):
-        game = game_factory(random.Random(seed))
-        rank_index = index % len(RANKS)
-        game.level_idx = [rank_index, rank_index]
-        game.banker = seed % 4
-        try:
-            budget.check("deal setup")
-            setup = [baseline_fn(seat, seed) for seat in range(4)]
-            prepare_fn(game, setup)
-            root = _root_snapshot(game, seed, rank_index)
-            root_sha = _sha(root)
-            receipt = {"schema": "w32-llm-benchmark-setup-v1", "seed": seed,
-                       "banker": seed % 4, "rank_index": rank_index,
-                       "policy": policy, "root_sha256": root_sha,
-                       "bury": [_json_safe(getattr(bot, "bury_recipe_identity", None))
-                                for bot in setup]}
-            _publish(output_path / f"root-{seed}.json", root)
-            _publish(output_path / f"setup-{seed}.json", receipt)
-            roots[seed], root_hashes[seed] = game, root_sha
-        except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
-            setup_failures[seed] = error
-            _publish(output_path / f"setup-{seed}.error.json",
-                     {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
-                      "error": error})
+    if continuation is not None:
+        # Imported roots are already dealt/buried.  In particular, do not
+        # invoke baseline setup or prepare_round on this path.
+        for seed in seeds:
+            root = continuation["roots"][seed]
+            try:
+                roots[seed] = _restore_game(root, seed, game_factory)
+                root_hashes[seed] = _sha({key: value for key, value in root.items()
+                                          if key != "_source_bytes_sha256"})
+                _publish(output_path / f"root-{seed}.json",
+                         {key: value for key, value in root.items()
+                          if key != "_source_bytes_sha256"})
+                _publish(output_path / f"setup-{seed}.json", {
+                    "schema": "w32-llm-benchmark-imported-setup-v1", "seed": seed,
+                    "policy": policy, "root_sha256": root_hashes[seed],
+                    "source": continuation["path"],
+                })
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                setup_failures[seed] = error
+                _publish(output_path / f"setup-{seed}.error.json",
+                         {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
+                          "error": error})
+    else:
+        for index, seed in enumerate(seeds):
+            game = game_factory(random.Random(seed))
+            rank_index = index % len(RANKS)
+            game.level_idx = [rank_index, rank_index]
+            game.banker = seed % 4
+            try:
+                budget.check("deal setup")
+                setup = [baseline_fn(seat, seed) for seat in range(4)]
+                prepare_fn(game, setup)
+                root = _root_snapshot(game, seed, rank_index)
+                root_sha = _sha(root)
+                receipt = {"schema": "w32-llm-benchmark-setup-v1", "seed": seed,
+                           "banker": seed % 4, "rank_index": rank_index,
+                           "policy": policy, "root_sha256": root_sha,
+                           "bury": [_json_safe(getattr(bot, "bury_recipe_identity", None))
+                                    for bot in setup]}
+                _publish(output_path / f"root-{seed}.json", root)
+                _publish(output_path / f"setup-{seed}.json", receipt)
+                roots[seed], root_hashes[seed] = game, root_sha
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                setup_failures[seed] = error
+                _publish(output_path / f"setup-{seed}.error.json",
+                         {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
+                          "error": error})
 
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
@@ -345,7 +532,19 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
             for seed in seeds:
                 for flip in (0, 1):
                     key = f"{arm}-seed{seed}-flip{flip}"
-                    if seed in setup_failures:
+                    prior_row = (continuation["rows"].get(key)
+                                 if continuation is not None else None)
+                    if prior_row is not None and prior_row.get("complete") is True:
+                        source = continuation["source_rows"][key]
+                        row = dict(source["row"])
+                        row["lineage"] = {
+                            "source": continuation["path"],
+                            "source_result_sha256": continuation["result_sha256"],
+                            "source_row": source["path"],
+                            "source_row_sha256": source["sha256"],
+                            "kind": "imported-complete",
+                        }
+                    elif seed in setup_failures:
                         row = {"schema": "w32-llm-benchmark-mirror-v1", "key": key,
                                "arm": arm, "model": model, "information": mode,
                                "seed": seed, "flip": flip, "complete": False,
@@ -385,17 +584,45 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                                    "error": f"{type(exc).__name__}: {exc}",
                                    "calls": [call for transport in transports
                                              for call in getattr(transport, "calls", ())]}
+                        if prior_row is not None:
+                            # The previous incomplete attempt is deliberately
+                            # retained even if this whole-mirror retry succeeds.
+                            source = continuation["source_rows"][key]
+                            row["prior_attempt"] = {
+                                "complete": prior_row.get("complete") is True,
+                                "error": prior_row.get("error"),
+                                "calls": list(prior_row.get("calls", ())),
+                                "cost_tokens": _row_cost(prior_row),
+                                "source": continuation["path"],
+                                "source_result_sha256": continuation["result_sha256"],
+                                "source_row": source["path"],
+                                "source_row_sha256": source["sha256"],
+                            }
                     _publish(output_path / f"mirror-{model}-{mode}-{seed}-{flip}.json", row)
                     arm_rows.append(row)
                     all_rows.append(row)
             summaries[arm] = _summary(
                 arm_rows, arm=arm,
                 seed=int.from_bytes(hashlib.sha256(arm.encode("ascii")).digest()[:4], "big"))
+    prior_meta = None
+    if continuation is not None:
+        prior_meta = {
+            "source": continuation["path"],
+            "result_sha256": continuation["result_sha256"],
+            "attempts": continuation["prior_attempts"],
+            "cost_tokens": continuation["prior_cost_tokens"],
+        }
     report = {"schema": SCHEMA, "mode": "run", "config": config,
               "roots": {str(seed): root_hashes.get(seed) for seed in seeds},
               "summaries": summaries, "mirrors": all_rows,
               "budget": {"tokens": budget.tokens,
+                         "new_tokens": budget.tokens,
+                         "prior_tokens": continuation["prior_cost_tokens"]
+                         if continuation is not None else 0,
+                         "combined_tokens": budget.tokens +
+                         (continuation["prior_cost_tokens"] if continuation is not None else 0),
                          "wall_seconds": time.monotonic() - budget.started},
+              "prior": prior_meta,
               "setup_failures": setup_failures}
     _publish(output_path / "result.json", report)
     return report
@@ -415,6 +642,8 @@ def build_parser() -> argparse.ArgumentParser:
                         dest="token_limit", type=int)
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--timeout-seconds", type=int, default=90)
+    parser.add_argument("--continue-from", metavar="DIR",
+                        help="continue incomplete mirrors from a terminal prior output")
     parser.add_argument("--run", action="store_true", help="execute provider calls")
     return parser
 
@@ -427,6 +656,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             seeds=args.seeds, models=_parse_csv(args.models, label="models"),
             information=_parse_csv(args.information, label="information"),
             wall_seconds=args.wall_seconds, token_limit=args.token_limit,
+            continue_from=args.continue_from,
             run=args.run, codex_binary=args.codex_binary,
             timeout_seconds=args.timeout_seconds)
     except (BenchmarkRefusal, ValueError) as exc:

@@ -458,9 +458,25 @@ def _default_run(command: tuple[str, ...], prompt: bytes, workspace: Path,
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        process.communicate()
-        raise CodexProviderResourceError(
-            "Codex turn deadline exceeded") from exc
+        # communicate() after the kill returns the complete buffered streams,
+        # including any prefix in TimeoutExpired.output. Do not concatenate it.
+        stdout, stderr = process.communicate()
+        refusal = CodexProviderResourceError("Codex turn deadline exceeded")
+        try:
+            (workspace / "stdout.jsonl").write_bytes(stdout)
+            (workspace / "stderr.txt").write_bytes(stderr)
+            (workspace / "timeout.json").write_bytes(canonical_json_bytes({
+                "schema": "codex-turn-timeout-v1",
+                "timeout_seconds": timeout_seconds,
+                "wall_ms": max(0, (time.monotonic_ns() - started) // 1_000_000),
+                "returncode": process.returncode,
+                "accepted": False,
+            }))
+        except OSError as evidence_error:
+            # Evidence I/O must not turn a deadline into an accepted response
+            # or hide the original failure classification.
+            refusal.add_note(f"Timeout evidence write failed: {evidence_error}")
+        raise refusal from exc
     finally:
         # Exactly one path owns group cleanup.  Cancellation removes the
         # mapping before signaling, so the completing call must not signal the

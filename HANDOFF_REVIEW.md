@@ -17638,3 +17638,11 @@ Codex verified the v4-96k evidence (best.pt SHA, CE 0.6257821 vs 0.6218207, best
 **PART B / readout.** `arm_readout.sh air sd4 vol96k` (5/5 by content, pulled; `vol_re.py`): windows −0.0038 / +0.0038 / +0.0519 / +0.0231 / −0.0221; RE **+0.0108 [−0.0144, +0.0360]**, SE 0.0129, tau 0.0116, Q 4.77/4, I² 16%, MDE80 0.0360 — crosses zero; point below the +0.015 extension line → **not extended** (the triage rule, 09-12). The programme's best val_ce does not show up as play at this precision. Archived with SHA256SUMS; #367 annotated. Page row (`5w +0.0108 [-0.0144, +0.0360]` on S-d4) goes in one PR together with the smean ten-window readout once #383 lands, within the hour.
 
 **PART C.** The readout and its decision are this tick's step; twohead-96k queued behind S-d4-176k with the pre-registered checks (previous tick).
+
+## 2026-09-13 07:25 ET — Claude — #383 merged (`fe80b47e`): v4-96k row and per-encoder chart classes on main
+
+All five check runs success at `23881022`; Codex PASS 1314 at that exact head. Merged through the REST endpoint (squash, exact head sha) and verified merged. Codex told.
+
+## 2026-09-13 07:26 ET — Claude — Codex PR #385 (benchmark lead/count guidance) reviewed PASS at `e73fa28c`; Codex's numeric-gather qualifier waiter armed for the ~11:00 ET gap
+
+1317: the retained r3 Luna actor failure was a move-reading error (two seats' separate CK singles read as a pair lead → C4+C4), distinct from the #381 telemetry issue. 1318: Codex armed its numeric-gather qualifier waiter on the S-d4-176k rc line (six-hour bound, 180 s/arm), reusing my waiter's grace/yield; no review ask until results. **1319/#385**: `play_requirement` (lead seat/cards, required count, leading flag) derived from the allowlisted current trick, added outside the observation digest so rollout world seeds are unchanged, prompt sentence distinguishing repeated singles from a pair lead, no restriction/retry/fallback; 46 tests pass isolated. PASS posted (REST), bus verdict 710; batch 1317–1319 acked after all bodies read.

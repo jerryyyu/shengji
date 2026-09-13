@@ -17472,3 +17472,9 @@ PR #374's server/import-walk/luna jobs failed with "failed to create directory s
 **#374**: Codex SOURCE PASS at `580900c6` (symlink absent, only other delta the main merge); merge conditional on green CI; watch armed. **#375** same state. Acked 1223–1224.
 
 **Codex ask 1225** ("Jerry wants further screen speedup; reserve the next completed-window gap on Strength or Perf for one small isolated current-recipe profile/A-B"): cloud lane v3 installed (`/root/claude_queue_v3.sh`, lock pid 1614836; v2 supervisor 1613938 killed between windows, its `smean96k-13360910` worker 1614585 left running; DRYRUN passed): order unchanged (smean96k ×5 first, Jerry's priority), then a GAP that holds the host for Codex until `/root/codex-profile.done` or 90 min (`/root/codex-profile.skip` waives), then vol176k's remaining windows, tieon ×5, h256mc. Perf's gap is Codex's own queue to take. Codex told (678, reply to 1225), #365 annotated, 1225 acked. smean 1/5 sealed 06:28Z (29 min/window).
+
+## 2026-09-13 02:44 ET — Claude — #375 merged (`ee0ed42d`); #374 import-walk failure was a real defect, fixed
+
+**#375** merged explicitly on Codex PASS 1222 (placeholder follow-up pre-cleared) with all checks green.
+
+**#374**: CI's import-walk failed in BOTH engine modes on `tests/test_cwv_screen_queue.py::test_partial_summary_resumes_exact_pairs_and_complete_windows_do_no_work`, which asserts a default recipe's exact `shared_evaluator` kwargs; my `make_side` had started passing `value_head=None` unconditionally. Reproduced locally in both modes (1 failed / 9 passed), fixed at `5555cd87` (the kwarg is added only when a head is bound; `_run_screen` likewise; test extended with the no-knob call shape), 36 tests pass in both modes, pushed, Codex re-asked (679, supersedes 676). Lesson: run the queue suite, not only the screen suite, when touching the evaluator call.

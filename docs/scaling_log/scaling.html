@@ -171,7 +171,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 49 checkpoints; 47 on the charts, 45 of them with a validation number on the CE scale (the two 768-cluster probes are table-only) smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
+  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 50 checkpoints; 48 on the charts, 46 of them with a validation number on the CE scale (the two 768-cluster probes are table-only) smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
@@ -182,7 +182,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
   <div><b>0 of 19</b><span>models above the leader</span></div>
-  <div><b>28 of 47</b><span>no search number yet</span></div>
+  <div><b>29 of 48</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -203,7 +203,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 
 <section>
   <h2 class="sec">1 &middot; Data versus validation cross-entropy</h2>
-  <p class="cap">All 45 charted models with a validation number on the CE scale. smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. Lines connect the base recipe only
+  <p class="cap">All 46 charted models with a validation number on the CE scale. smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. Lines connect the base recipe only
   (width 512, lr 3e&#8209;4), so vertical scatter at one x is the hyperparameter sweep at that
   corpus size.</p>
   <div class="figure"><svg viewBox="0 0 880 470">
@@ -370,6 +370,11 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
+<circle cx="583.2" cy="329.8" r="4.4" class="pt pt2 hit" tabindex="0" data-t="encoder v4, 96k  (eedf3139)&#10;trained 2026-09-13&#10;encoder v4 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62578&#10;#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it"><title>encoder v4, 96k  (eedf3139)
+trained 2026-09-13
+encoder v4 | width 512 | lr 3e-4 | 96k clusters
+val_ce 0.62578
+#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it</title></circle>
 <circle cx="655.2" cy="388.9" r="4.4" class="pt pt2 hit" tabindex="0" data-t="grid S-d4 (4 residual layers)  (f88b54cb)&#10;trained 2026-09-12&#10;encoder v2 | width 330 | lr 3e-4 | 144k clusters&#10;val_ce 0.60570&#10;ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play"><title>grid S-d4 (4 residual layers)  (f88b54cb)
 trained 2026-09-12
 encoder v2 | width 330 | lr 3e-4 | 144k clusters
@@ -490,9 +495,9 @@ val_ce 0.71690
 1 epoch, probe</title></circle>
 <text x="702" y="40" class="lgh">ENCODER</text>
 <circle cx="708" cy="60" r="4.4" class="pt pt1"/><text x="721" y="64" class="lg">v1 &middot; 14 runs</text>
-<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 30 runs</text>
+<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 31 runs</text>
 <circle cx="708" cy="104" r="4.4" class="pt pt5"/><text x="721" y="108" class="lg">v3 &middot; 1 run</text>
-<text x="702" y="140" class="lgs">All 45 models with a</text>
+<text x="702" y="140" class="lgs">All 46 models with a</text>
 <text x="702" y="156" class="lgs">validation number on</text>
 <text x="702" y="172" class="lgs">this scale.</text>
 <text x="702" y="188" class="lgs">Click or tab to any dot</text>
@@ -1003,6 +1008,11 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
+<circle cx="284.8" cy="289.2" r="3.6" class="pt ptx hit" tabindex="0" data-t="encoder v4, 96k  (eedf3139)&#10;trained 2026-09-13&#10;encoder v4 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62578&#10;#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it"><title>encoder v4, 96k  (eedf3139)
+trained 2026-09-13
+encoder v4 | width 512 | lr 3e-4 | 96k clusters
+val_ce 0.62578
+#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it</title></circle>
 <circle cx="284.7" cy="340.4" r="3.6" class="pt ptx hit" tabindex="0" data-t="grid S-d4 (4 residual layers)  (f88b54cb)&#10;trained 2026-09-12&#10;encoder v2 | width 330 | lr 3e-4 | 144k clusters&#10;val_ce 0.60570&#10;ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play"><title>grid S-d4 (4 residual layers)  (f88b54cb)
 trained 2026-09-12
 encoder v2 | width 330 | lr 3e-4 | 144k clusters
@@ -1759,7 +1769,7 @@ val_ce 0.62703
 <circle cx="702" cy="64" r="4.2" class="pt pt1"/><text x="715" y="68" class="lg">one model</text>
 <circle cx="702" cy="86" r="6" class="pt pt2"/><text x="715" y="90" class="lg">the deployed leader</text>
 <line x1="696" y1="106" x2="709" y2="106" class="ln ln5"/><text x="715" y="110" class="lg">best so far</text>
-<text x="696" y="142" class="lgs">1 of the 46 models</text>
+<text x="696" y="142" class="lgs">2 of the 47 models</text>
 <text x="696" y="158" class="lgs">were trained AFTER</text>
 <text x="696" y="174" class="lgs">the best was set.</text>
 <text x="696" y="190" class="lgs">None beat it.</text>
@@ -1777,17 +1787,17 @@ val_ce 0.62703
 <tr><td>10 Sep</td><td class="n">4</td><td class="n">0.61912<br><span class="small">volVOL-144k</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>the data-volume arms, 96k to 144k</td></tr>
 <tr><td>11 Sep</td><td class="n">4</td><td class="n">0.61525<br><span class="small">cap144-h256</span></td><td class="n">0.60661</td><td class="n">&mdash;</td><td>the width sweep at maximum data (h256, h1024, h2048) and Codex&#8217;s encoder v3</td></tr>
 <tr><td>12 Sep</td><td class="n">5</td><td class="n">0.60570<br><span class="small">grid S-d4 (4 residual layers)</span></td><td class="n">0.60570</td><td class="n">&minus;0.0009</td><td>volNEW-176k, the search-mean arm and the depth row (S-d4, S-d8, S-d4-plain)</td></tr>
-<tr><td>13 Sep</td><td class="n">1</td><td class="n">0.60929<br><span class="small">grid S-d2 (2 residual layers)</span></td><td class="n">0.60570</td><td class="n">&mdash;</td><td>the depth row closes (S-d2)</td></tr>
+<tr><td>13 Sep</td><td class="n">2</td><td class="n">0.60929<br><span class="small">grid S-d2 (2 residual layers)</span></td><td class="n">0.60570</td><td class="n">&mdash;</td><td>the depth row closes (S-d2); encoder v4 at 96k</td></tr>
 </tbody>
   </table></div>
-  <p class="cap">The best validation loss has not moved since 12 September. 1 charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
+  <p class="cap">The best validation loss has not moved since 12 September. 2 charted models have been trained since, including every data-volume arm and both width sweeps, and none has beaten it.
   The day that mattered was 07 September at &minus;0.0365, more than every day since combined,
   and it was the encoder change and the learning-rate sweep, not more data.</p>
 </section>
 
 <section>
   <h2 class="sec">4 &middot; Effect against the leader, by training day</h2>
-  <p class="cap">The same question on the only measurement that matters. 19 charted models have such a number; 28 do not. Above the line beats the leader.</p>
+  <p class="cap">The same question on the only measurement that matters. 19 charted models have such a number; 29 do not. Above the line beats the leader.</p>
   <div class="figure"><svg viewBox="0 0 880 430">
 <line x1="84" y1="338.0" x2="674" y2="338.0" class="grid"/>
 <text x="73" y="342.0" class="ax ar">-0.12</text>
@@ -1996,7 +2006,7 @@ five windows  +0.0165 [-0.0092, +0.0422]
 <text x="696" y="192" class="lgs">asked with a better</text>
 <text x="696" y="208" class="lgs">instrument.</text>
 <text x="696" y="224" class="lgs"></text>
-<text x="696" y="240" class="lgs">28 of 47 models have</text>
+<text x="696" y="240" class="lgs">29 of 48 models have</text>
 <text x="696" y="256" class="lgs">no point here at all.</text>
 </svg></div>
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
@@ -2037,7 +2047,7 @@ five windows  +0.0165 [-0.0092, +0.0422]
 
 <section>
   <h2 class="sec">6 &middot; Every checkpoint</h2>
-  <p class="cap">All 49 models, one row each, including Codex&#8217;s encoder-v3 line read from the archive.
+  <p class="cap">All 50 models, one row each, including Codex&#8217;s encoder-v3 line read from the archive.
   <b>Play vs leader</b> is one column: the best instrument each model has been measured with comes first,
   bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
   type. The badge names the instrument, and the interval must be read with that instrument&#8217;s power:
@@ -2076,6 +2086,7 @@ five windows  +0.0165 [-0.0092, +0.0422]
 <tr class=""><td><b>cap144-h2048</b><br><span class="mono null">e2436f98</span></td><td class="n">2026-09-11</td><td>v2</td><td class="n">2048</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.62314</td><td class="n">&mdash;</td><td class="n null"><span class="pill live">queued</span></td><td class="null">widest arm; worst offline of the four, 14.7x the weights of h256</td></tr>
 <tr class=""><td><b>volNEW-176k</b><br><span class="mono null">02510c50</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">176k</td><td class="n">25,388,708</td><td class="n">0.62703</td><td class="n">0.0348</td><td class="n null"><span class="pill live">queued</span></td><td class="null">144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</td></tr>
 <tr class=""><td><b>smean-96k</b><br><span class="mono null">8a6d5260</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">1.67515</td><td class="n">0.0353</td><td class="n pos"><b>+0.0165 [&#8209;0.0092, +0.0422] <span class="pill inst">5w</span></b></td><td class="null">#340 arm: FIVE windows sealed 09-13 04:51 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0165 [-0.0092, +0.0422], tau 0.0072, MDE80 0.0367 &mdash; crosses zero (not large), point ABOVE the +0.015 extension line so seeds 13760910..14160910 are queued next on the same lane (ten-window readout to follow); offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)</td></tr>
+<tr class=""><td><b>encoder v4, 96k</b><br><span class="mono null">eedf3139</span></td><td class="n">2026-09-13</td><td>v4</td><td class="n">512</td><td class="n">3e&#8209;4</td><td class="n">96k</td><td class="n">14,077,520</td><td class="n">0.62578</td><td class="n">0.0397</td><td class="n null">&mdash;</td><td class="null">#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it</td></tr>
 <tr class=""><td><b>grid S-d4 (4 residual layers)</b><br><span class="mono null">f88b54cb</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.60570</td><td class="n">0.0344</td><td class="n null"><span class="pill live">queued</span></td><td class="null">ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play</td></tr>
 <tr class=""><td><b>grid S-d2 (2 residual layers)</b><br><span class="mono null">fa657ec8</span></td><td class="n">2026-09-13</td><td>v2</td><td class="n">436</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.60929</td><td class="n">0.0374</td><td class="n null">&mdash;</td><td class="null">ARCHITECTURE GRID row S, cell d2: --trunk-layers 2 --trunk-block residual --hidden 436, 609,296 params = the h512 budget; best epoch 9/12; sealed 09-13 04:24 ET; parameter-matched (width 512 -> 436 changes with the block, so not a single-variable ablation): the residual cell at depth 2 sits 0.0098 below depth-2 plain (volVOL-144k 0.61912); depth 4 residual (S-d4 0.60570) a further 0.0036 below; row S complete: plain d2 0.61912 -> plain d4 0.61516 -> residual d2 0.60929 -> residual d4 0.60570; regret@4 0.0374 beats the leader's 0.0381</td></tr>
 <tr class=""><td><b>grid S-d4-plain (4 plain layers)</b><br><span class="mono null">e9cd80ba</span></td><td class="n">2026-09-12</td><td>v2</td><td class="n">340</td><td class="n">3e&#8209;4</td><td class="n">144k</td><td class="n">20,939,532</td><td class="n">0.61516</td><td class="n">0.0396</td><td class="n null">&mdash;</td><td class="null">ARCHITECTURE GRID row S, cell d4-plain: --trunk-layers 4 --trunk-block plain --hidden 340, 608,294 params = the h512 budget, the optimisation control for S-d4 (no LayerNorm, no skip); best epoch 9/12; sealed 09-13 01:46 ET; val_ce 0.61516 sits between depth-2 (volVOL-144k 0.61912) and the residual cell (S-d4 0.60570): naive depth buys 0.0040, the residual block another 0.0095; regret@4 0.0396 is WORSE than the leader's 0.0381 (S-d4: 0.0344)</td></tr>

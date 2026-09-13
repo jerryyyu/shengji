@@ -40,7 +40,7 @@ WHAT_CHANGED = {
     "09-10": "the data-volume arms, 96k to 144k",
     "09-11": "the width sweep at maximum data (h256, h1024, h2048) and Codex&#8217;s encoder v3",
     "09-12": "volNEW-176k, the search-mean arm and the depth row (S-d4, S-d8, S-d4-plain)",
-    "09-13": "the depth row closes (S-d2)",
+    "09-13": "the depth row closes (S-d2); encoder v4 at 96k",
 }
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
          9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}

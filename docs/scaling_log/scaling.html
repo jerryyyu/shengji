@@ -88,6 +88,7 @@ svg .pt1{fill:var(--slate);stroke:var(--card);stroke-width:2}
 svg .pt2{fill:var(--jade);stroke:var(--card);stroke-width:2}
 svg .pt7{fill:var(--card);stroke:var(--jade);stroke-width:2.2}
 svg .pt3{fill:var(--verm);stroke:var(--card);stroke-width:2}
+svg .pt8{fill:var(--card);stroke:var(--verm);stroke-width:2.2}
 svg .hollow{fill:var(--card);stroke-width:2.4}
 svg .pt1.hollow{stroke:var(--slate)}
 svg .lab{fill:var(--ink-2);font-family:"IBM Plex Mono",monospace;font-size:11.5px}
@@ -171,7 +172,7 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 50 checkpoints; 48 on the charts, 46 of them with a validation number on the CE scale (the two 768-cluster probes are table-only) smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. &middot; encoder v1, v2 and v3 &middot; 12 Sep 2026</div>
+  <div class="eyebrow">Sheng Ji &middot; complete-world value net &middot; 50 checkpoints; 48 on the charts, 46 of them with a validation number on the CE scale (the two 768-cluster probes are table-only) smean-96k (CE 1.675) is above the CE axis and listed on each chart instead of drawn; the registry carries the full row. &middot; encoder v1, v2, v3 and v4 &middot; 12 Sep 2026</div>
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
@@ -370,7 +371,7 @@ trained 2026-09-12
 encoder v2 | width 512 | lr 3e-4 | 176k clusters
 val_ce 0.62703
 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer</title></circle>
-<circle cx="583.2" cy="329.8" r="4.4" class="pt pt2 hit" tabindex="0" data-t="encoder v4, 96k  (eedf3139)&#10;trained 2026-09-13&#10;encoder v4 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62578&#10;#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it"><title>encoder v4, 96k  (eedf3139)
+<circle cx="583.2" cy="329.8" r="4.4" class="pt pt8 hit" tabindex="0" data-t="encoder v4, 96k  (eedf3139)&#10;trained 2026-09-13&#10;encoder v4 | width 512 | lr 3e-4 | 96k clusters&#10;val_ce 0.62578&#10;#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it"><title>encoder v4, 96k  (eedf3139)
 trained 2026-09-13
 encoder v4 | width 512 | lr 3e-4 | 96k clusters
 val_ce 0.62578
@@ -495,15 +496,16 @@ val_ce 0.71690
 1 epoch, probe</title></circle>
 <text x="702" y="40" class="lgh">ENCODER</text>
 <circle cx="708" cy="60" r="4.4" class="pt pt1"/><text x="721" y="64" class="lg">v1 &middot; 14 runs</text>
-<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 31 runs</text>
+<circle cx="708" cy="82" r="4.4" class="pt pt2"/><text x="721" y="86" class="lg">v2 &middot; 30 runs</text>
 <circle cx="708" cy="104" r="4.4" class="pt pt5"/><text x="721" y="108" class="lg">v3 &middot; 1 run</text>
-<text x="702" y="140" class="lgs">All 46 models with a</text>
-<text x="702" y="156" class="lgs">validation number on</text>
-<text x="702" y="172" class="lgs">this scale.</text>
-<text x="702" y="188" class="lgs">Click or tab to any dot</text>
-<text x="702" y="204" class="lgs">for its full record.</text>
-<text x="702" y="236" class="lgh">OFF THIS SCALE</text>
-<text x="702" y="252" class="lgs">smean-96k: CE 1.675</text>
+<circle cx="708" cy="126" r="4.4" class="pt pt8"/><text x="721" y="130" class="lg">v4 &middot; 1 run</text>
+<text x="702" y="162" class="lgs">All 46 models with a</text>
+<text x="702" y="178" class="lgs">validation number on</text>
+<text x="702" y="194" class="lgs">this scale.</text>
+<text x="702" y="210" class="lgs">Click or tab to any dot</text>
+<text x="702" y="226" class="lgs">for its full record.</text>
+<text x="702" y="258" class="lgh">OFF THIS SCALE</text>
+<text x="702" y="274" class="lgs">smean-96k: CE 1.675</text>
 </svg></div>
   <p class="cap">The four points at 20.9M records are the 144k width sweep, spanning 0.0079 &mdash;
   twice what the last doubling of data bought. Arm I and arm J near 2M come from separate

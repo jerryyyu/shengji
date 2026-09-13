@@ -90,24 +90,27 @@ _gx=_g1["rec"]; _gy=(Y(_g1["ce"])+Y(_g2["ce"]))/2
 s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="drop"/>'%(X(_gx),Y(_g1["ce"]),X(_gx),Y(_g2["ce"])))
 s.append('<text x="%.1f" y="%.1f" class="note" text-anchor="end">encoder v1 &#8594; v2</text>'%(X(_gx)-12,_gy))
 s.append('<text x="%.1f" y="%.1f" class="noteb" text-anchor="end">%s at identical data</text>'%(X(_gx)-12,_gy+16,fmt_signed(ENC_GAP)))
-n1=n2=n3=0
+# Every encoder generation gets its OWN marker class and legend line; an encoder the
+# chart does not know is a loud failure, never a silent fold into another generation
+# (Codex HOLD on #383: a v4 row had been counted and painted as v2).
+ENC_CLASS={"v1":"pt1","v2":"pt2","v3":"pt5","v4":"pt8"}
+ENC_N={k:0 for k in ENC_CLASS}
 for d in R:
     if d["ce"] is None or d["ce"]>CE_HI: continue
-    # v3 gets its own class. Folding it into the v2 branch would have mislabelled the
-    # legend and hidden a whole encoder generation inside another one.
-    if d["enc"]=="v1": cls="pt pt1"; n1+=1
-    elif d["enc"]=="v3": cls="pt pt5"; n3+=1
-    else: cls="pt pt2"; n2+=1
-    s.append(dot(X(d["rec"]),Y(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.4, cls, d))
+    if d["enc"] not in ENC_CLASS: raise SystemExit("chart 1 has no marker class for encoder %r (%s)"%(d["enc"],d["ck"]))
+    ENC_N[d["enc"]]+=1
+    s.append(dot(X(d["rec"]),Y(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.4, "pt "+ENC_CLASS[d["enc"]], d))
 lx=x1+22
 s.append('<text x="%d" y="40" class="lgh">ENCODER</text>'%lx)
-s.append('<circle cx="%d" cy="60" r="4.4" class="pt pt1"/><text x="%d" y="64" class="lg">v1 &middot; %d runs</text>'%(lx+6,lx+19,n1))
-s.append('<circle cx="%d" cy="82" r="4.4" class="pt pt2"/><text x="%d" y="86" class="lg">v2 &middot; %d runs</text>'%(lx+6,lx+19,n2))
-s.append('<circle cx="%d" cy="104" r="4.4" class="pt pt5"/><text x="%d" y="108" class="lg">v3 &middot; %d run%s</text>'%(lx+6,lx+19,n3,"s" if n3!=1 else ""))
+ly=60
+for enc in ("v1","v2","v3","v4"):
+    if ENC_N[enc]==0: continue   # a generation with no charted run gets no legend line
+    s.append('<circle cx="%d" cy="%d" r="4.4" class="pt %s"/><text x="%d" y="%d" class="lg">%s &middot; %d run%s</text>'%(lx+6,ly,ENC_CLASS[enc],lx+19,ly+4,enc,ENC_N[enc],"s" if ENC_N[enc]!=1 else ""))
+    ly+=22
 NCE=len(ONSCALE)
 for i,t in enumerate(["All %d models with a"%NCE,"validation number on","this scale.","Click or tab to any dot","for its full record."]):
-    s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,140+i*16,t))
-offscale_note(s, lx, 236)
+    s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ly+14+i*16,t))
+offscale_note(s, lx, ly+110)
 s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 
 # ---------- 3: width vs val_ce (LOG y) ----------
@@ -441,7 +444,7 @@ open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
     w144_monotone=_w144_mono, w144_gap_256_vs_512=_w144_gap, w144_worst_w=_w144_worst["w"], w144_best_w=_w144_best["w"],
     w144_worst_over_best_params=_w144_worst["par"]/_w144_best["par"], w144_256_param_frac=PAR[256]/PAR[512],
     w144_span=_w144_span, w144_n=len(_w144), w144_rec=_w144[0]["rec"], lr14_best_w=_lr14_best["w"],
-    models=len(R), with_ce=NCE, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
+    models=len(R), with_ce=NCE, enc_counts=ENC_N, off_scale=[(d["n"],d["ce"]) for d in OFFSCALE], beat_mc=NMC, with_leader=NLD, without_leader=len(R)-NLD,
     since_best=len(_since), best_day=_bst["tr"], best_ce=_bst["ce"],
     above_leader=_above, ten_total=len(_ten), ten_cross=_ten_cross, five_total=len(_five), five_cross=_five_cross,
     enc_gap=ENC_GAP, cell_n=CELL_N, cell_spread=CELL_SPREAD,

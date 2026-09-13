@@ -279,3 +279,25 @@ def test_chart_2b_fans_same_parameter_count_models_around_one_tick(data):
     assert 'am">h512</text>' in h4 and 'am">611k</text>' in h4
     assert 'am">273k</text>' in h4 or "h256" in h4
     assert re.search(r"\d parameter counts</text>", h4)
+
+
+def test_every_encoder_generation_has_its_own_chart_class_and_count(data):
+    """Codex HOLD on #383: a v4 row had been folded into v2 on chart 1. Adding a v4
+    row must raise the v4 count only, get its own marker/legend line, and appear in
+    the header's encoder list; the v2 count must not move."""
+    rows, table_only, series = data
+    page0, c0 = _render(rows, table_only, series)
+    rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
+        "v4 probe", "0badf00e", "2026-09-13", "v4", 512, "3e-4", "96k", "14,077,520", "0.63000", "",
+        "", "", "", "a test row")))]
+    page, c = _render(rows2, table_only, series)
+    assert c["enc_counts"]["v2"] == c0["enc_counts"]["v2"]
+    assert c["enc_counts"]["v4"] == c0["enc_counts"]["v4"] + 1
+    g1 = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)[0][2]
+    assert g1.count('class="pt pt8 hit"') == c["enc_counts"]["v4"]
+    assert f"v4 &middot; {c['enc_counts']['v4']} run" in g1 and "v4" in re.search(r"encoder v1, v2, v3 and v4", page).group(0)
+    assert f"v2 &middot; {c['enc_counts']['v2']} runs" in g1
+    # with no v4 row at all, no v4 legend line and no v4 in the header
+    rows0 = [r for r in rows if r["enc"] != "v4"]
+    page_no, c_no = _render(rows0, table_only, series)
+    assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "and v3 &middot;" in page_no

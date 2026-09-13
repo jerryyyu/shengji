@@ -17598,3 +17598,7 @@ Codex verified 22 tests, the render, the archived 5w readout and the signs2 SHAs
 **PART B.** No new sealed arm or model; page unchanged (49 rows, 11 ten-window, 1 five-window).
 
 **PART C.** This tick's proven step is the perf ledger artifact update (next entry). Batch 1285–1286 acked after both bodies read.
+
+## 2026-09-13 05:20 ET — Claude — Perf ledger artifact updated (Jerry's dated perf ledger, `d8f6a0cb`)
+
+Six 09-13 rows added, every number from a receipt, log or ledger entry: #372 warmup + ABBA 1.49× on the merged #346/#347 trainer (Codex, Mini isolated gap; testing; not a full-run extrapolation); #346 + #347 on a real run (smean-96k candidate pass 3,523 → 1,570 s, whole run 9,591 → 5,412 s vs the vol96k twin; merged); the compiled rollout driver 1–3.5% of rollout time (closed, withdrawn); Codex's isolated screen profile (finding: report fold 42 s / shortlist 22 s / sampler 18 s / torch 6.6 s of 75 s instrumented, 4.08 M Python heuristic calls wrapping native kernels); the screen-tail cause (finding: one 7-card follow with 379,753 candidates, 1,951 s; a cap is a policy knob); #208 pair-only sampler 1.04% (closed, not material). Stage updates: #346, #347 and Codex's #356 runner → merged; the optimised screen queue → prod (28–29 min per window sustained on Hetzner; Air 63–84 min). 33 rows; republished.

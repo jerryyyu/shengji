@@ -32,8 +32,11 @@ def args(tmp_path, runner, monkeypatch):
     return argv, out
 
 
-def test_dry_run_never_launches_or_creates_output(runner, args, monkeypatch):
-    _, out = args
+@pytest.mark.parametrize("warmup", [False, True])
+def test_dry_run_never_launches_or_creates_output(runner, args, monkeypatch, warmup):
+    argv, out = args
+    if warmup:
+        argv.append("--warmup")
     def forbidden(*a, **kw):
         raise AssertionError("dry-run launched a child")
     monkeypatch.setattr(runner.subprocess, "Popen", forbidden)
@@ -76,9 +79,12 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
     assert summary["optimized_mean_wall"] == 1
 
 
-def test_timeout_stops_only_private_group_and_does_not_advance(runner, args, monkeypatch):
+@pytest.mark.parametrize("warmup", [False, True])
+def test_timeout_stops_only_private_group_and_does_not_advance(runner, args, monkeypatch, warmup):
     argv, out = args
     argv.append("--run")
+    if warmup:
+        argv.append("--warmup")
     launches, signals = [], []
     class Process:
         pid = 876543
@@ -96,7 +102,9 @@ def test_timeout_stops_only_private_group_and_does_not_advance(runner, args, mon
         runner.main()
     assert len(launches) == 1
     assert len(signals) == 1 and signals[0][0] == Process.pid
-    assert (out / "0-control" / "run.log").exists()
+    assert (out / ("warmup" if warmup else "0-control") / "run.log").exists()
+    if warmup:
+        assert not (out / "0-control").exists()
     assert not (out / "1-optimized").exists()
     assert not (out / "summary.json").exists()
 
@@ -107,6 +115,43 @@ def test_existing_output_is_never_reused(runner, args):
     out.mkdir()
     with pytest.raises(FileExistsError):
         runner.main()
+
+
+@pytest.mark.parametrize("late_change", [False, True])
+def test_full_warmup_prepares_candidate_cache_but_timed_changes_refuse(runner, args, monkeypatch, late_change):
+    argv, out = args
+    argv.extend(["--run", "--warmup"])
+    launches = []
+    cache = out.parent / "cache"
+    class Process:
+        def __init__(self, cmd, **kw):
+            self.args = cmd
+            dest = Path(cmd[cmd.index("--out") + 1])
+            launches.append(dest.name)
+            if dest.name == "warmup":
+                assert kw["env"]["SHENGJI_CWV_BATCHED_CANDIDATES"] == "0"
+                (cache / "candidates.npz").write_bytes(b"prepared")
+            elif late_change and dest.name == "0-control":
+                (cache / "unexpected.npz").write_bytes(b"late")
+            (dest / "measurement.json").write_text(json.dumps(dict(
+                wall_seconds=999 if dest.name == "warmup" else 2,
+                checkpoints={"best.pt": "same"}, torch_cpu_rng_sha256="same")))
+        def wait(self, timeout):
+            assert timeout == 900
+            return 0
+    monkeypatch.setattr(runner.subprocess, "Popen", Process)
+    if late_change:
+        with pytest.raises(RuntimeError, match="cache changed during benchmark"):
+            runner.main()
+        assert launches == ["warmup", "0-control"]
+        assert not (out / "summary.json").exists()
+    else:
+        runner.main()
+        assert launches == ["warmup", "0-control", "1-optimized", "2-optimized", "3-control"]
+        summary = json.loads((out / "summary.json").read_text())
+        assert summary["warmup"]["wall_seconds"] == 999
+        assert summary["control_mean_wall"] == summary["optimized_mean_wall"] == 2
+        assert len(summary["arms"]) == 4
 
 
 def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path):

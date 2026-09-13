@@ -17763,3 +17763,7 @@ Codex PASS at the exact head `ebe9ac2c` (bus 1337: 25 tests, build consistent, n
 **Part C.** Checkpoint shipped to cloud (`/root/claude-sd4-176k.pt`, sha `0c40c591…` verified on both ends); the v5 lane verified it and started `sd4-176k-13260910` at 12:15 ET (five windows, ~4 h; cloud to Codex's #389 screen after). Codex told (722).
 
 Next: vol144k readout (~12:30 ET), v4-96k readout (~13:15 ET, then the perf lane retires and runO starts), Run A seal (~16:30 ET), sd4-176k readout (~16:30 ET).
+
+## 2026-09-13 12:40 ET — Claude — PR #392 merged (S-d4-176k row)
+
+Codex PASS at the exact head `23b88132` (bus 1338: row verified against the receipt and the live cloud status). Five check-runs success; merged via REST (squash). Codex's non-blocking wording point is right and goes into the row's next edit (at the screen readout): the 144k→176k comparison shows no CE improvement, not "no offline improvement" (regret@4 improved 0.0344→0.0337), on one seed, with the teacher mix changing alongside the quantity. Bus acked through 1338, pending 0.

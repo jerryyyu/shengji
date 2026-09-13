@@ -36,17 +36,18 @@ def test_baseline_renders_and_matches_the_committed_page(data):
 
 def test_changing_a_val_ce_moves_the_chart_dot_the_registry_and_the_day_table(data):
     rows, table_only, series = data
-    before, _ = _render(rows, table_only, series)
+    before, c0 = _render(rows, table_only, series)
     rows2 = copy.deepcopy(rows)
     r = next(x for x in rows2 if x["ck"] == "c6d48d57")  # volVOL-144k, on the base_v2 line
-    r["ce"] = "0.60100"
+    r["ce"] = "0.60100"  # below every on-scale CE today (best 0.60570)
     after, c = _render(rows2, table_only, series)
     assert "0.60100" in _registry_cell(after, "c6d48d57", 7)
     assert "0.60100" in after.split("{{")[0]  # registry
     # the day table's running best and the chart's best line both moved
     assert re.search(r"<td>10 Sep</td><td class=\"n\">\d+</td><td class=\"n\">0.60100", after)
     assert c["best_ce"] == 0.601 and c["best_day"] == "2026-09-10"
-    assert "unbeaten since 10 Sep" in after and "unbeaten since 08 Sep" in before
+    assert "unbeaten since 10 Sep" in after
+    assert f"unbeaten since {c0['best_day'][8:]} Sep" in before
     # chart 1's base_v2 polyline changed (coordinates come from the row)
     poly = lambda p: re.findall(r'<polyline class="ln ln2" points="([^"]+)"', p)[0]
     assert poly(before) != poly(after)
@@ -60,7 +61,9 @@ def test_adding_a_model_updates_every_count(data):
         "", "", "", "a test row")))]
     page, c = _render(rows2, table_only, series)
     assert c["rows"] == c0["rows"] + 1 and c["models"] == c0["models"] + 1 and c["with_ce"] == c0["with_ce"] + 1
-    assert c["without_leader"] == c0["without_leader"] + 1 and c["since_best"] == c0["since_best"] + 1
+    assert c["without_leader"] == c0["without_leader"] + 1
+    # trained AFTER the best only if its day is later than the best's day
+    assert c["since_best"] == c0["since_best"] + (1 if "2026-09-12" > c0["best_day"] else 0)
     assert f"{c['rows']} checkpoints; {c['models']} on the charts, {c['with_ce']} of them" in page
     assert f"{c['without_leader']} of {c['models']}</b><span>no search number yet" in page
     base, _ = _render(rows, table_only, series)
@@ -140,3 +143,31 @@ def test_a_series_naming_an_unknown_or_table_only_checkpoint_is_refused(data):
     assert any("table-only" in e for e in build.check_data(rows, table_only, s2))
     s2["base_v2"][-1] = "deadbeef"
     assert any("not a row" in e for e in build.check_data(rows, table_only, s2))
+
+
+def _circles(svg):
+    return [(float(cx), float(cy)) for cx, cy in re.findall(r'<circle cx="([-0-9.]+)" cy="([-0-9.]+)"', svg)]
+
+
+def test_every_plotted_dot_is_inside_its_chart_and_off_scale_models_are_named(data):
+    """Codex's witness on #364: a CE above the axis must be visibly listed, never
+    emitted as an off-canvas circle."""
+    page, c = _render(*data)
+    svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
+    assert len(svgs) == 6
+    for w, h, body in svgs:
+        for cx, cy in _circles(body):
+            assert 0 <= cx <= float(w) and 0 <= cy <= float(h), (cx, cy, w, h)
+    assert c["off_scale"], "the smean-96k row (CE 1.675) is above the 0.74 axis today"
+    for name, ce in c["off_scale"]:
+        assert f"OFF THIS SCALE" in page and f"{name}: CE {ce:.3f}" in page
+        assert f"{name} (CE {ce:.3f}) is above the CE axis" in page
+    # and the on-scale count excludes it
+    assert c["with_ce"] == sum(1 for r in data[0] if r["ce"] and float(r["ce"]) <= 0.74 and r["ck"] not in data[1])
+
+
+def test_removing_the_off_scale_row_removes_the_note(data):
+    rows, table_only, series = data
+    rows2 = [r for r in rows if r["ck"] != "8a6d5260"]
+    page, c = _render(rows2, table_only, series)
+    assert not c["off_scale"] and "OFF THIS SCALE" not in page and "above the CE axis" not in page

@@ -17753,3 +17753,13 @@ Next: S-d4-176k seal → seal check, page row, checkpoint + sha to **cloud** (`/
 ## 2026-09-13 11:40 ET — Claude — PR #391 merged (concise notes, dismissable detail, tieon on the control row)
 
 Codex PASS at the exact head `ebe9ac2c` (bus 1337: 25 tests, build consistent, non-note fields unchanged, thirteen histories verbatim, tieon readout matches; non-blocking: label RECORD as historical, a strength null alone does not measure tie frequency — both fair, neither changes the page's numbers). Five check-runs success. Merged via REST (squash). Bus acked through 1337, pending 0. The page source on main again matches the published artifact.
+
+## 2026-09-13 12:25 ET — Claude — tick: S-d4-176k sealed (0.60636); its screen started on cloud; Run A training since 11:49 ET
+
+**Part A.** Tip `e612f2bf` = my last push. Production release 24 unchanged. Codex goal paused; nothing new on the bus since 1337 (acked). Hosts at 12:14 ET: Mini load 1.9 — S-d4-176k `rc=0` at 11:39 ET, SEAL OK (same 176k corpus/counts/split as volNEW-176k, diff only in the depth fields); `handover_runA` fired, yielded 600 s (no `qualify_cwv_training_perf` process appeared) and started **Run A** (`A-d4-2h-176k`, pid 67624, head a6e1ccfc) at 11:49 ET. Cloud load 0: v5 waiting. Perf load 1.5: v4-96k 3/5 sealed, window 4 finishing (520 files). Air load 9: vol144k 4/5 sealed, window 5 at 412/520.
+
+**Part B — S-d4-176k on the page.** Receipt (`grid-S-d4-176k`): ckpt8 `0c40c591`, best epoch 17/20, val_ce **0.60636**, regret@4 **0.0337**, recall@4 0.726, 610,704 params. Against volNEW-176k (depth 2, same corpus) −0.0207; against S-d4 at 144k (0.60570) +0.0007: at this parameter budget the extra 32k clusters (runK + runL) buy nothing offline, while the stored-ballot metrics are the best of the programme (leader 0.0381 / 0.683). Row added with `SCREENING` in the play cell and the history in RECORD; my own NOTE_LIMIT guard refused my first note (171 chars) and the first push of the branch carried an un-regenerated page — fixed in the second commit (`--check` consistent, 25 tests). PR #392 (`claude/scaling-log-13`); Codex asked on the bus. Artifact republished.
+
+**Part C.** Checkpoint shipped to cloud (`/root/claude-sd4-176k.pt`, sha `0c40c591…` verified on both ends); the v5 lane verified it and started `sd4-176k-13260910` at 12:15 ET (five windows, ~4 h; cloud to Codex's #389 screen after). Codex told (722).
+
+Next: vol144k readout (~12:30 ET), v4-96k readout (~13:15 ET, then the perf lane retires and runO starts), Run A seal (~16:30 ET), sd4-176k readout (~16:30 ET).

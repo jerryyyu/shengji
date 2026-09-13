@@ -4,9 +4,9 @@ M = [
 ("A+C+D+E+F2 v2","3cd27716","2026-09-07","v2",512,"3e-4","96k","14,077,520","0.62182","0.0381",
  "+0.1260 [+0.081, +0.172]","REF","REF","LEADER, deployed"),
 ("volVOL-96k","ca58e1e9","2026-09-10","v2",512,"3e-4","96k","14,077,520","0.62182","0.0381",
- "","","CONTROL","reproduces the leader; the fixed 10-window control"),
+ "","","CONTROL","reproduces the leader; the fixed 10-window control; its tie-keeps-incumbent knob (#339 L1): 5w +0.0025 [-0.0081, +0.0131], null"),
 ("A+C+D encoder v2","633663cd","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62270","0.0478",
- "+0.0990 [+0.054, +0.146]","GAP","+0.0018 [-0.0141, +0.0178]","260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued"),
+ "+0.0990 [+0.054, +0.146]","GAP","+0.0018 [-0.0141, +0.0178]","the 72k control (enc2): ten windows null vs vol96k, tau 0, MDE80 0.0228; 260-deal +0.0519"),
 ("sweep lr 1e-4","4dc21822","~2026-09-07","v2",512,"1e-4","72k","10,559,236","0.61020","0.0433",
  "+0.0971 [+0.051, +0.140]","GAP","QUEUED",""),
 ("width 1024, lr 1e-4","d84b5183","2026-09-08","v2",1024,"1e-4","96k","14,077,520","0.60661","0.0402",
@@ -44,37 +44,37 @@ M = [
 ("runACDEF-v3","5b43322f","2026-09-11","v3",512,"3e-4","96k","14,077,520","0.61916","0.0393",
  "","","CODEX","Codex PR337: vs matched v2, 260 mirrored pairs, -0.01731 [-0.09423, +0.05197], win 50.0%"),
 ("cap144-h256","fc73c0f4","2026-09-11","v2",256,"3e-4","144k","20,939,532","0.61525","",
- "","","+0.0105 [-0.0056, +0.0267]","best offline at max data, 45% of the weights; vs its own h512 control (vol144k) +0.0068 [-0.0087, +0.0223]; tau 0 on both; fifth ten-window arm, fifth to cross zero"),
+ "","","+0.0105 [-0.0056, +0.0267]","best offline at max data with 45% of the weights; vs its own h512 control +0.0068 [-0.0087, +0.0223]; ten-window null"),
 ("cap144-h1024","34e6fa0f","2026-09-11","v2",1024,"3e-4","144k","20,939,532","0.62043","",
  "","","QUEUED","above the h512 control: the pre-registered falsifier did not fire"),
 ("cap144-h2048","e2436f98","2026-09-11","v2",2048,"3e-4","144k","20,939,532","0.62314","",
  "","","QUEUED","widest arm; worst offline of the four, 14.7x the weights of h256"),
 ("volNEW-176k","02510c50","2026-09-12","v2",512,"3e-4","176k","25,388,708","0.62703","0.0348",
- "","","5w +0.0077 [-0.0150, +0.0304]","FIVE windows sealed 09-13 08:37 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0077 [-0.0150, +0.0304], tau 0, MDE80 0.0325 -- crosses zero (not large), point below the +0.015 extension line so NOT extended; 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer"),
+ "","","5w +0.0077 [-0.0150, +0.0304]","five windows 09-13: not large (MDE80 0.0325), below the +0.015 line, not extended; val_ce band falsified; regret@4 0.0348 beats the leader"),
 ("smean-96k","8a6d5260","2026-09-12","v2",512,"3e-4","96k","14,077,520","1.67515","0.0353",
- "","","+0.0124 [-0.0060, +0.0308]","#340 arm: TEN windows sealed 09-13 (cloud lane; five at 04:51 ET, extension after the five-window point +0.0165 crossed the +0.015 line, ten at 07:38 ET): +0.0124 [-0.0060, +0.0308], tau 0.0092, Q 9.95/9, MDE80 0.0263 -- crosses zero, twelfth ten-window null; the pre-registration (ledger 00d5e6de: ten windows cross zero, point in [-0.01, +0.02]) HELD on all three checks; offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)"),
+ "","","+0.0124 [-0.0060, +0.0308]","#340 arm, --target search-mean: ten windows null (the twelfth), pre-registration held; regret@4 0.0353; val_ce 1.675 by construction"),
 ("encoder v4, 96k","eedf3139","2026-09-13","v4",512,"3e-4","96k","14,077,520","0.62578","0.0397",
- "","","","#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it"),
+ "","","","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182), best epoch 4/7; five-window screen running on perf 09-13"),
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
- "","","5w +0.0108 [-0.0144, +0.0360]","FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play"),
+ "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget: programme-best val_ce; five windows 09-13 not large (MDE80 0.0360), not extended"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",
- "","","","ARCHITECTURE GRID row S, cell d2: --trunk-layers 2 --trunk-block residual --hidden 436, 609,296 params = the h512 budget; best epoch 9/12; sealed 09-13 04:24 ET; parameter-matched (width 512 -> 436 changes with the block, so not a single-variable ablation): the residual cell at depth 2 sits 0.0098 below depth-2 plain (volVOL-144k 0.61912); depth 4 residual (S-d4 0.60570) a further 0.0036 below; row S complete: plain d2 0.61912 -> plain d4 0.61516 -> residual d2 0.60929 -> residual d4 0.60570; regret@4 0.0374 beats the leader's 0.0381"),
+ "","","","grid S d2 residual, 609,296 params: 0.0098 below plain d2; row S: plain d2 0.61912 > plain d4 0.61516 > res d2 0.60929 > res d4 0.60570"),
 ("grid S-d4-plain (4 plain layers)","e9cd80ba","2026-09-12","v2",340,"3e-4","144k","20,939,532","0.61516","0.0396",
- "","","","ARCHITECTURE GRID row S, cell d4-plain: --trunk-layers 4 --trunk-block plain --hidden 340, 608,294 params = the h512 budget, the optimisation control for S-d4 (no LayerNorm, no skip); best epoch 9/12; sealed 09-13 01:46 ET; val_ce 0.61516 sits between depth-2 (volVOL-144k 0.61912) and the residual cell (S-d4 0.60570): naive depth buys 0.0040, the residual block another 0.0095; regret@4 0.0396 is WORSE than the leader's 0.0381 (S-d4: 0.0344)"),
+ "","","","grid S d4 plain, 608,294 params, the optimisation control for S-d4: naive depth buys 0.0040, the residual block another 0.0095; regret@4 worse"),
 ("grid S-d8 (8 residual layers)","8951c8c0","2026-09-12","v2",244,"3e-4","144k","20,939,532","0.60600","0.0344",
- "","","","ARCHITECTURE GRID row S, cell d8: --trunk-layers 8 --trunk-block residual --hidden 244, 608,252 params = the h512 budget; best epoch 13/16; val_ce within 0.0003 of S-d4 (0.60570): no observed gain from depth beyond 4 at this budget (not a demonstrated equivalence); not screened unless S-d4 resolves"),
+ "","","","grid S d8 residual, 608,252 params: within 0.0003 of S-d4, no observed gain beyond depth 4 at this budget"),
 ("sweep base seed 2","d1858d5b","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62300","0.0400",
- "","GAP","+0.0035 [-0.0126, +0.0196]","SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null"),
+ "","GAP","+0.0035 [-0.0126, +0.0196]","seed-only replicate = the noise floor: vs enc2 +0.0004 [-0.0185, +0.0192]; eighth ten-window null"),
 ("sweep aux weight 0.3","52d3f243","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62180","0.0429",
  "","GAP","-0.0020 [-0.0176, +0.0137]","scr-aux03: ten windows sealed 09-12; vs its own control enc2 -0.0035 [-0.0191, +0.0122], tau 0, MDE80 0.0224; tenth ten-window null"),
 ("sweep weight decay 1e-3","b0f196e4","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62260","0.0478",
- "","GAP","+0.0020 [-0.0140, +0.0180]","scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null"),
+ "","GAP","+0.0020 [-0.0140, +0.0180]","vs enc2 +0.0004 [-0.0036, +0.0045], MDE80 0.0058: plays the same deals the same way; ninth ten-window null"),
 ("sweep aux weight 0.1","eae33f49","~2026-09-07","v2",512,"3e-4","72k","10,559,236","0.62370","0.0469",
  "","GAP","QUEUED",""),
 ("sweep hidden 1024","6e40a18e","~2026-09-07","v2",1024,"3e-4","72k","10,559,236","0.62320","0.0435",
- "","GAP","+0.0095 [-0.0063, +0.0253]","scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"),
+ "","GAP","+0.0095 [-0.0063, +0.0253]","width 1024 at 72k: vs enc2 +0.0079 [-0.0080, +0.0238], tau 0; seventh ten-window null"),
 ("sweep lr 6e-4","c684b32a","~2026-09-07","v2",512,"6e-4","72k","10,559,236","0.63260","0.0459",
- "","GAP","-0.0103 [-0.0263, +0.0058]","scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best"),
+ "","GAP","-0.0103 [-0.0263, +0.0058]","worst v2 sweep offline: vs enc2 -0.0137 [-0.0300, +0.0025], MDE80 0.0232; eleventh ten-window null"),
 ("sweep-base","c0cdd4d3","2026-09-06","v1",512,"3e-4","72k","10,559,236","0.65941","0.0482",
  "","","","v1 sweep baseline"),
 ("sweep aux weight 0.1, v1","8afd79f4","~2026-09-07","v1",512,"3e-4","72k","10,559,236","0.66970","0.0486","","","",""),
@@ -114,4 +114,38 @@ SERIES = {
     "width_3e4_144k": ["fc73c0f4", "c6d48d57", "34e6fa0f", "e2436f98"],
     # the 72k / 512 / 3e-4 cell: second-order hyperparameters only
     "one_cell_72k": ["633663cd", "d1858d5b", "4e6fc12e", "b0f196e4", "eae33f49", "52d3f243"],
+}
+
+# NOTE_LIMIT: a table note is a one-line summary; the full history of a checkpoint lives in
+# RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
+NOTE_LIMIT = 150
+RECORD = {
+    "ca58e1e9":
+        "#339 layer 1, the report-fold tie rule: the SAME weights with --report-tie-keeps-incumbent on the ARM side only vs the production tie rule; five windows sealed 09-13 11:03 ET on the cloud lane (seeds 13260910..13660910): +0.0025 [-0.0081, +0.0131], tau 0, Q 1.47/4, MDE80 0.0151 -- crosses zero, point below the +0.015 extension line so NOT extended; an exact tie is rare and which side we keep does not move play at this precision; layer 3 (the production knob) stays a product decision",
+    "633663cd":
+        '260-deal: +0.0519; enc2 = the 72k control, ten windows sealed 09-12 (8 retained + 2 on the optimised queue): null vs vol96k, tau 0, MDE80 0.0228; its arms: scr-h1024w 7/10 running, seed2 / aux03 / lr6e4 queued',
+    "fc73c0f4":
+        'best offline at max data, 45% of the weights; vs its own h512 control (vol144k) +0.0068 [-0.0087, +0.0223]; tau 0 on both; fifth ten-window arm, fifth to cross zero',
+    "02510c50":
+        "FIVE windows sealed 09-13 08:37 ET on the cloud lane (seeds 13260910..13660910 vs vol96k): +0.0077 [-0.0150, +0.0304], tau 0, MDE80 0.0325 -- crosses zero (not large), point below the +0.015 extension line so NOT extended; 144k + runK + runL (hybrid-bury teacher): quantity AND teacher move together; early-stopped epoch 9, best epoch 6; pre-registered val_ce [0.6165, 0.6205] FALSIFIED (worse than the leader's 0.62182) while regret@4 0.0348 beats the leader's 0.0381; wall 14,019 s of which the candidate pass 6,058 s on the pre-#346 trainer",
+    "8a6d5260":
+        "#340 arm: TEN windows sealed 09-13 (cloud lane; five at 04:51 ET, extension after the five-window point +0.0165 crossed the +0.015 line, ten at 07:38 ET): +0.0124 [-0.0060, +0.0308], tau 0.0092, Q 9.95/9, MDE80 0.0263 -- crosses zero, twelfth ten-window null; the pre-registration (ledger 00d5e6de: ten windows cross zero, point in [-0.01, +0.02]) HELD on all three checks; offline third check: confident-pair sign agreement with the search +0.046 [+0.035, +0.058] over the leader (room-log), +0.029 [+0.009, +0.047] (luna);  leader recipe + --target search-mean (ramp(E[points]) surrogate, sidecar v2) + select on val_rank_regret; best epoch 5/8; realised val_ce 1.675 by construction (two-point targets); regret@4 0.0353 beats the leader's 0.0381 and clears the pre-registered <= 0.0361; wall 5,412 s vs vol96k's 9,591 s with #346/#347 (candidate pass 1,570 s vs 3,523 s)",
+    "eedf3139":
+        "#341 arm: the leader's 96k recipe verbatim with --encoder-version 4 (public_dim 636, 649,164 params; the v1 public head served as a prefix); best epoch 4/7 (early stop), wall 8,042 s incl. the first-use v4 cache build; sealed 09-13 06:48 ET; val_ce 0.62578 is WORSE than the v2 twin volVOL-96k (0.62182) and regret@4 0.0397 worse than the leader's 0.0381: the v4 observation encoder buys nothing offline at 96k; not screened unless the two-head or depth lines call for it",
+    "f88b54cb":
+        "FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play",
+    "fa657ec8":
+        "ARCHITECTURE GRID row S, cell d2: --trunk-layers 2 --trunk-block residual --hidden 436, 609,296 params = the h512 budget; best epoch 9/12; sealed 09-13 04:24 ET; parameter-matched (width 512 -> 436 changes with the block, so not a single-variable ablation): the residual cell at depth 2 sits 0.0098 below depth-2 plain (volVOL-144k 0.61912); depth 4 residual (S-d4 0.60570) a further 0.0036 below; row S complete: plain d2 0.61912 -> plain d4 0.61516 -> residual d2 0.60929 -> residual d4 0.60570; regret@4 0.0374 beats the leader's 0.0381",
+    "e9cd80ba":
+        "ARCHITECTURE GRID row S, cell d4-plain: --trunk-layers 4 --trunk-block plain --hidden 340, 608,294 params = the h512 budget, the optimisation control for S-d4 (no LayerNorm, no skip); best epoch 9/12; sealed 09-13 01:46 ET; val_ce 0.61516 sits between depth-2 (volVOL-144k 0.61912) and the residual cell (S-d4 0.60570): naive depth buys 0.0040, the residual block another 0.0095; regret@4 0.0396 is WORSE than the leader's 0.0381 (S-d4: 0.0344)",
+    "8951c8c0":
+        'ARCHITECTURE GRID row S, cell d8: --trunk-layers 8 --trunk-block residual --hidden 244, 608,252 params = the h512 budget; best epoch 13/16; val_ce within 0.0003 of S-d4 (0.60570): no observed gain from depth beyond 4 at this budget (not a demonstrated equivalence); not screened unless S-d4 resolves',
+    "d1858d5b":
+        'SEED-ONLY replicate = THE NOISE FLOOR: ten windows sealed 09-12; vs its own control enc2 (same recipe, seed 1) +0.0004 [-0.0185, +0.0192], tau 0.0159, I2 27%, MDE80 0.0270; vs vol96k tau 0.0035; eighth ten-window null, and the one that should be null',
+    "b0f196e4":
+        'scr-wd1e3: ten windows sealed 09-12; vs its own control enc2 +0.0004 [-0.0036, +0.0045] with RE SE 0.0021 and MDE80 0.0058 (weight decay 1e-3 vs 1e-4 plays almost the same deals the same way); vs vol96k tau 0; ninth ten-window null',
+    "6e40a18e":
+        'scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null',
+    "c684b32a":
+        "scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best",
 }

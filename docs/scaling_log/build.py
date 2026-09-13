@@ -21,6 +21,7 @@ import datetime as dt
 import io
 import json
 import math
+import html
 import re
 import shutil
 import sys
@@ -45,6 +46,7 @@ WHAT_CHANGED = {
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
          9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
 MONTHS = {9: "September", 10: "October", 11: "November", 12: "December"}
+NOTE_LIMIT = 150  # a table note is one line; longer history goes in RECORD
 FIELDS = ("n", "ck", "tr", "enc", "w", "lr", "cl", "rec", "ce", "rg", "mc", "w32", "ten", "note")
 KEYWORDS = ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX")
 #: a screen cell: optional instrument prefix ("5w " = a five-window readout; only
@@ -64,7 +66,13 @@ def word(n):
 def load():
     g = {}
     exec(open(MODELS).read(), g)
-    return [dict(zip(FIELDS, m)) for m in g["M"]], g["TABLE_ONLY"], g["SERIES"]
+    record = g.get("RECORD", {})
+    rows = [dict(zip(FIELDS, m)) for m in g["M"]]
+    for r in rows:
+        r["record"] = record.get(r["ck"], "")
+    global NOTE_LIMIT
+    NOTE_LIMIT = g.get("NOTE_LIMIT", NOTE_LIMIT)
+    return rows, g["TABLE_ONLY"], g["SERIES"]
 
 
 def parse_cell(v, field="ten"):
@@ -110,6 +118,9 @@ def known_widths():
 def check_data(rows, table_only, series):
     """Every row well-formed; refuse to render inconsistent data."""
     errs = []
+    for r in rows:
+        if len(r["note"]) > NOTE_LIMIT:
+            errs.append(f"{r['ck']}: note is {len(r['note'])} chars (> {NOTE_LIMIT}); move the history into RECORD")
     seen = set()
     widths = known_widths()
     for r in rows:
@@ -149,7 +160,8 @@ def check_data(rows, table_only, series):
 def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
     g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
-         "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series}
+         "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
+         "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")}}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
     svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6")]
@@ -220,12 +232,19 @@ def registry_rows(rows):
         tr = (f'<td class="n null">{r["tr"][1:]} <span class="pill">approx</span></td>' if r["tr"].startswith("~")
               else f'<td class="n">{r["tr"]}</td>')
         note = r["note"].replace(" -- ", " &mdash; ")
+        rec = r.get("record", "")
+        if rec:
+            body = html.escape(f'{r["n"]}  {r["ck"]}\n{r["note"]}\n\n{rec}', quote=True).replace("\n", "&#10;")
+            cls = f'{cls} hit'.strip()
+            open_tr = f'<tr class="{cls}" tabindex="0" data-t="{body}" title="tap for the full record">'
+        else:
+            open_tr = f'<tr class="{cls}">'
         out.append(
-            f'<tr class="{cls}"><td><b>{r["n"]}</b><br><span class="mono null">{r["ck"]}</span></td>'
+            open_tr + f'<td><b>{r["n"]}</b><br><span class="mono null">{r["ck"]}</span></td>'
             f'{tr}<td>{r["enc"]}</td><td class="n">{r["w"]}</td>'
             f'<td class="n">{r["lr"].replace("-", "&#8209;")}</td><td class="n">{r["cl"]}</td>'
             f'<td class="n">{r["rec"]}</td><td class="n">{r["ce"] or "&mdash;"}</td>'
-            f'<td class="n">{r["rg"] or "&mdash;"}</td>{play_cell(r)}<td class="null">{note}</td></tr>')
+            f'<td class="n">{r["rg"] or "&mdash;"}</td>{play_cell(r)}<td class="null note">{note}</td></tr>')
     return "\n".join(out)
 
 

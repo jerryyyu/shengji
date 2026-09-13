@@ -273,6 +273,46 @@ def long_day(iso):
     return f"{d.day:02d} {MONTHS.get(d.month, d.strftime('%B'))}"
 
 
+CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
+               "3 by training day", "4 leader effect by day")
+
+
+def coverage_report(page, rows, table_only, c):
+    """Every row must reach every surface it qualifies for; the list of misses.
+
+    A row with a val_ce on the CE scale must be a dot on charts 1, 2 and 3; a row
+    with a numeric ten-/five-window cell must be a dot on charts 1b, 2b and 4;
+    every row must be a registry line with its note; every history in RECORD must
+    reach the detail text.  Jerry 2026-09-13: three models trained that day were
+    missing from charts 3 and 4 because a typed day list ended the day before, and
+    nothing noticed.  This runs on every build and fails it."""
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    if len(svgs) != len(CHART_NAMES):
+        return [("page", f"{len(svgs)} charts rendered, {len(CHART_NAMES)} expected")]
+    charts = dict(zip(CHART_NAMES, svgs))
+    off_scale = {n for n, _ in c.get("off_scale", [])}
+    misses = []
+    for r in rows:
+        ck, tag = r["ck"], f"({r['ck']})"
+        if f'<span class="mono null">{ck}</span>' not in page:
+            misses.append((ck, "registry table"))
+        if r["note"] and html.escape(r["note"]).replace(" -- ", " &mdash; ")[:40] not in page:
+            misses.append((ck, "registry note"))
+        if r.get("record") and html.escape(r["record"], quote=True)[:40] not in page:
+            misses.append((ck, "RECORD history in the detail text"))
+        if ck in table_only:
+            continue
+        if r["ce"] and r["n"] not in off_scale:
+            for name in ("1 data vs CE", "2 width vs CE", "3 by training day"):
+                if tag not in charts[name]:
+                    misses.append((ck, f"chart {name}"))
+        if r["ten"] and parse_cell(r["ten"]) is not None:
+            for name in ("1b data vs leader", "2b width vs leader", "4 leader effect by day"):
+                if tag not in charts[name]:
+                    misses.append((ck, f"chart {name}"))
+    return misses
+
+
 def render(rows=None, table_only=None, series=None):
     """The page as a string plus the derived numbers; raises SystemExit on bad data."""
     if rows is None:
@@ -357,6 +397,11 @@ def render(rows=None, table_only=None, series=None):
         sys.exit(1)
     c["rows"] = len(rows)
     c["mde"] = mde
+    misses = coverage_report(page, rows, table_only, c)
+    if misses:
+        print("COVERAGE ERRORS (a row did not reach a surface it qualifies for):\n  "
+              + "\n  ".join(f"{ck}: missing from {where}" for ck, where in misses))
+        sys.exit(1)
     return page, c
 
 

@@ -340,7 +340,7 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
     assert "2026-09-14" in c2["days"] and "<td>14 Sep</td>" in page2
-    assert "14 Sep 2026" in page2  # the header date follows the latest training day
+    assert "14 September 2026" in page2  # the header date follows the latest training day
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):
@@ -363,3 +363,17 @@ def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(da
     rows3[0]["ce"] = "0.59000"
     with pytest.raises(SystemExit):
         _render(rows3, table_only, series)
+
+
+def test_every_row_reaches_every_surface_it_qualifies_for_and_an_omission_fails_the_build(data):
+    rows, table_only, series = data
+    page, c = _render(*data)
+    assert build.coverage_report(page, rows, table_only, c) == []
+    # a dot silently dropped from one chart is reported by checkpoint and chart
+    ck = "0c40c591"  # S-d4-176k, trained 09-13: the row the typed day list lost
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    broken = page.replace(svgs[4], svgs[4].replace(f"({ck})", "(dropped)"), 1)
+    assert (ck, "chart 3 by training day") in build.coverage_report(broken, rows, table_only, c)
+    # a registry row that vanished is reported too
+    broken2 = page.replace(f'<span class="mono null">{ck}</span>', "", 1)
+    assert (ck, "registry table") in build.coverage_report(broken2, rows, table_only, c)

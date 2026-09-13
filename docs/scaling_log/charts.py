@@ -394,9 +394,20 @@ both(lambda d:d["rec"], REC[_h2_sizes[0]]*0.82, REC[_h2_sizes[-1]]*1.18,
   "training records (log scale; only sizes with a benchmark point)",OUT+"/h2.svg",
   ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true.","",
    "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all.","Same corpus = same x;","interval lines fanned","3 px to tell them apart."], spread=3)
-both(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
-  "parameters (log scale)",OUT+"/h4.svg",
-  ["Both benchmarks, same","models, one axis."])
+# section 2b: same rule on the parameter axis; ticks are the parameter counts that carry a
+# point, counts within 2% share one tick (a depth cell sits at its depth-2 twin's budget)
+def _par_ticks(pts):
+    groups=[]
+    for d in sorted(pts,key=lambda d:d["par"]):
+        if groups and d["par"]<=groups[-1][0]*1.02: groups[-1][1].add(d["w"])
+        else: groups.append((d["par"],{d["w"]}))
+    fmt=lambda p: "%.2fM"%(p/1e6) if p>=1e6 else "%dk"%round(p/1e3)
+    return [(p,fmt(p),"h"+", h".join(str(w) for w in sorted(ws))) for p,ws in groups]
+_h4_pts=[d for d in R if d["mc"] or (d in SCR and eff(d))]
+_h4_t=_par_ticks(_h4_pts)
+both(lambda d:d["par"], _h4_t[0][0]*0.8, _h4_t[-1][0]*1.25, _h4_t,
+  "parameters (log scale; only sizes with a benchmark point)",OUT+"/h4.svg",
+  ["Both benchmarks, same","models, one axis.","","%d parameter counts"%len(_h4_t),"carry a point. Same","count = same x; interval","lines fanned 3 px."], spread=3)
 print("dual-benchmark charts built")
 
 # ---------- derived caption numbers and the by-day table ----------

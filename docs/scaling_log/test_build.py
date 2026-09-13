@@ -250,3 +250,17 @@ def test_chart_1b_puts_same_corpus_models_on_one_x_and_spans_only_leader_sizes(d
     assert len(by_corpus["96k"]) == 1 and "96k clusters" in g2  # tick labelled with its corpus
     assert 'am">1M</text>' not in g2 and 'am">2M</text>' not in g2 and 'am">5M</text>' not in g2  # the empty low end is gone
     assert re.search(r"\d of \d corpus sizes</text>", g2)  # legend derived, not typed
+
+
+def test_chart_2b_puts_same_parameter_count_models_on_one_x(data):
+    page, c = _render(*data)
+    svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
+    h4 = svgs[3][2]
+    by_width = {}
+    for cx, tip in re.findall(r'<circle cx="([-0-9.]+)" cy="[-0-9.]+" r="[0-9.]+" class="pt [^"]*hit" tabindex="0" data-t="([^"]*)"', h4):
+        w = re.search(r"width (\d+)", tip).group(1)
+        by_width.setdefault(w, set()).add(float(cx))
+    assert len(by_width) >= 3 and all(len(xs) == 1 for xs in by_width.values()), by_width
+    assert 'am">h512</text>' in h4 and 'am">611k</text>' in h4
+    assert 'am">273k</text>' in h4 or "h256" in h4
+    assert re.search(r"\d parameter counts</text>", h4)

@@ -17602,3 +17602,7 @@ Codex verified 22 tests, the render, the archived 5w readout and the signs2 SHAs
 ## 2026-09-13 05:20 ET — Claude — Perf ledger artifact updated (Jerry's dated perf ledger, `d8f6a0cb`)
 
 Six 09-13 rows added, every number from a receipt, log or ledger entry: #372 warmup + ABBA 1.49× on the merged #346/#347 trainer (Codex, Mini isolated gap; testing; not a full-run extrapolation); #346 + #347 on a real run (smean-96k candidate pass 3,523 → 1,570 s, whole run 9,591 → 5,412 s vs the vol96k twin; merged); the compiled rollout driver 1–3.5% of rollout time (closed, withdrawn); Codex's isolated screen profile (finding: report fold 42 s / shortlist 22 s / sampler 18 s / torch 6.6 s of 75 s instrumented, 4.08 M Python heuristic calls wrapping native kernels); the screen-tail cause (finding: one 7-card follow with 379,753 candidates, 1,951 s; a cap is a policy knob); #208 pair-only sampler 1.04% (closed, not material). Stage updates: #346, #347 and Codex's #356 runner → merged; the optimised screen queue → prod (28–29 min per window sustained on Hetzner; Air 63–84 min). 33 rows; republished.
+
+## 2026-09-13 05:27 ET — Claude — #380 merged (`defb365c`) through the REST endpoint: the smean five-window cell is on main
+
+CI rerun 34749027203 succeeded on `c3071f3e` (all five jobs); Codex PASS 1282 covers it (1284). `gh pr merge` failed with GitHub's GraphQL error again (the same failure hit PR creation earlier today), so the merge was made with `gh api PUT /pulls/380/merge` (squash) and verified by re-reading the PR (state closed, merged true). Codex told.

@@ -9,10 +9,11 @@ REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708}
 R=[]
 RECORD=globals().get("RECORD",{})
+PARAMS=globals().get("PARAMS",{})   # per-checkpoint parameter counts (receipt) overriding the width map
 for (n,ck,tr,enc,w,lr,cl,rec,ce,rg,mc,w32,ten,note) in M:
     r=int(rec.replace(",","")) if rec and rec[0].isdigit() else REC.get(cl)
     R.append(dict(n=n,ck=ck,tr=tr.lstrip("~"),ap=tr.startswith("~"),enc=enc,w=w,lr=lr,cl=cl,
-                  rec=r,ce=float(ce) if ce else None,par=PAR[w],note=note,mc=mc,w32=w32,ten=ten))
+                  rec=r,ce=float(ce) if ce else None,par=PARAMS.get(ck,PAR[w]),note=note,mc=mc,w32=w32,ten=ten))
 def esc(t): return t.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 def tip(d):
     lines=["%s  (%s)"%(d["n"],d["ck"]),

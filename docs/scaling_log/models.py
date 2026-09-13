@@ -101,6 +101,10 @@ M += [
 ("v3 fit probe 768","c50d95ef","2026-09-08","v3",512,"3e-4","768","112,344","0.86095","0.0482","","","","768-cluster fit probe, 10 epochs. Off both chart axes, table only"),
 ("v2 fit probe 768","5bde6b85","2026-09-08","v2",512,"3e-4","768","112,344","0.86962","0.0427","","","","the matched v2 partner, so the probe above is readable"),
 ]
+# Per-checkpoint parameter counts read from the receipt where the width->parameters map
+# (charts.py PAR, one trunk + one head) does not apply: M1 carries a second 204-class head.
+PARAMS = {"3cb9cd62": 644568}
+
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
 
 # Chart series by CHECKPOINT IDENTITY: the charts look these rows up and read

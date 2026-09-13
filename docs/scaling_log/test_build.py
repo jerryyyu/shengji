@@ -399,3 +399,24 @@ def test_a_one_window_only_row_dropped_from_the_leader_charts_is_reported(data):
         "0.62000", "", "", "", "", "")))]
     page2, _ = _render(rows2, table_only, series)
     assert "<td>02 Oct</td>" in page2
+
+
+def test_a_checkpoint_parameter_count_overrides_the_width_map_on_the_parameter_axis(data):
+    """Codex HOLD on #401: M1 (h330 + a second head, 644,568 params) was placed at the
+    width map's 610,704 on charts 2 and 2b."""
+    rows, table_only, series = data
+    m1 = next(r for r in rows if r["ck"] == "3cb9cd62")
+    twin = next(r for r in rows if r["ck"] == "0c40c591")
+    assert m1["w"] == twin["w"] == 330 and m1["params"] == 644568 and twin["params"] is None
+
+    def cx(page, ck, chart_index):
+        svg = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)[chart_index]
+        m = re.search(r'<circle cx="([-0-9.]+)" cy="[-0-9.]+" r="[0-9.]+" class="pt [^"]*hit" tabindex="0" data-t="[^"]*\(' + ck + r'\)', svg)
+        return float(m.group(1))
+    page, _ = _render(*data)
+    assert cx(page, "3cb9cd62", 2) > cx(page, "0c40c591", 2)   # chart 2: more parameters sit further right
+    # without the override the two would share the width map's x
+    rows2 = copy.deepcopy(rows)
+    next(r for r in rows2 if r["ck"] == "3cb9cd62")["params"] = None
+    page2, _ = _render(rows2, table_only, series)
+    assert cx(page2, "3cb9cd62", 2) == cx(page2, "0c40c591", 2)

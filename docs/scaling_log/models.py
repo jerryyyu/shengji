@@ -70,7 +70,7 @@ M = [
 ("sweep hidden 1024","6e40a18e","~2026-09-07","v2",1024,"3e-4","72k","10,559,236","0.62320","0.0435",
  "","GAP","+0.0095 [-0.0063, +0.0253]","scr-h1024w: width 1024 at 72k, ten windows sealed 09-12 on the optimised queue; vs its own control enc2 +0.0079 [-0.0080, +0.0238], tau 0; vs vol96k tau 0.0056, I2 4.8%; seventh ten-window null"),
 ("sweep lr 6e-4","c684b32a","~2026-09-07","v2",512,"6e-4","72k","10,559,236","0.63260","0.0459",
- "","","","worst v2 sweep"),
+ "","GAP","-0.0103 [-0.0263, +0.0058]","scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null, and the worst offline model of the 72k cell plays indistinguishably from the best"),
 ("sweep-base","c0cdd4d3","2026-09-06","v1",512,"3e-4","72k","10,559,236","0.65941","0.0482",
  "","","","v1 sweep baseline"),
 ("sweep aux weight 0.1, v1","8afd79f4","~2026-09-07","v1",512,"3e-4","72k","10,559,236","0.66970","0.0486","","","",""),

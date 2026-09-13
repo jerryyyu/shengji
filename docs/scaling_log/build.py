@@ -262,7 +262,8 @@ def day_rows(rows, table_only):
         else:
             gained = "&mdash;"
         key = d[5:]
-        out.append(f'<tr><td>{key[3:]} Sep</td><td class="n">{len(day)}</td>'
+        label = dt.date.fromisoformat(d).strftime("%d %b")
+        out.append(f'<tr><td>{label}</td><td class="n">{len(day)}</td>'
                    f'<td class="n">{day[0]["ce"]}<br><span class="small">{day[0]["n"]}</span></td>'
                    f'<td class="n">{run:.5f}</td><td class="n">{gained}</td><td>{WHAT_CHANGED.get(key, "")}</td></tr>')
     return "\n".join(out)
@@ -271,6 +272,59 @@ def day_rows(rows, table_only):
 def long_day(iso):
     d = dt.date.fromisoformat(iso)
     return f"{d.day:02d} {MONTHS.get(d.month, d.strftime('%B'))}"
+
+
+CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
+               "3 by training day", "4 leader effect by day")
+
+
+def leader_chart_eligible(r):
+    """The rows the leader-axis charts (1b, 2b, 4) plot: the leader itself as the
+    reference mark, any numeric ten-/five-window cell, or a numeric one-window
+    pairing (charts.py ``eff``; ``RES``/``SUPERSEDED`` prefixes are still numbers).
+    Codex HOLD on #393: the first version guarded only ten-window rows, so a
+    one-window-only row (d84b5183) could vanish from all three leader charts unseen."""
+    if r["ck"] == "3cd27716":
+        return True
+    if r["ten"] and parse_cell(r["ten"]) is not None:
+        return True
+    return bool(r["w32"]) and r["w32"] not in KEYWORDS
+
+
+def coverage_report(page, rows, table_only, c):
+    """Every row must reach every surface it qualifies for; the list of misses.
+
+    A row with a val_ce on the CE scale must be a dot on charts 1, 2 and 3; a row
+    with a numeric ten-/five-window cell must be a dot on charts 1b, 2b and 4;
+    every row must be a registry line with its note; every history in RECORD must
+    reach the detail text.  Jerry 2026-09-13: three models trained that day were
+    missing from charts 3 and 4 because a typed day list ended the day before, and
+    nothing noticed.  This runs on every build and fails it."""
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    if len(svgs) != len(CHART_NAMES):
+        return [("page", f"{len(svgs)} charts rendered, {len(CHART_NAMES)} expected")]
+    charts = dict(zip(CHART_NAMES, svgs))
+    off_scale = {n for n, _ in c.get("off_scale", [])}
+    misses = []
+    for r in rows:
+        ck, tag = r["ck"], f"({r['ck']})"
+        if f'<span class="mono null">{ck}</span>' not in page:
+            misses.append((ck, "registry table"))
+        if r["note"] and r["note"].replace(" -- ", " &mdash; ") not in page:
+            misses.append((ck, "registry note (complete text)"))
+        if r.get("record") and html.escape(r["record"], quote=True).replace("\n", "&#10;") not in page:
+            misses.append((ck, "RECORD history in the detail text (complete text)"))
+        if ck in table_only:
+            continue
+        if r["ce"] and r["n"] not in off_scale:
+            for name in ("1 data vs CE", "2 width vs CE", "3 by training day"):
+                if tag not in charts[name]:
+                    misses.append((ck, f"chart {name}"))
+        if leader_chart_eligible(r):
+            for name in ("1b data vs leader", "2b width vs leader", "4 leader effect by day"):
+                if tag not in charts[name]:
+                    misses.append((ck, f"chart {name}"))
+    return misses
 
 
 def render(rows=None, table_only=None, series=None):
@@ -341,6 +395,7 @@ def render(rows=None, table_only=None, series=None):
         "PAIRED_CLAUSE": paired_clause,
         "ENC_GAP": signed(c["enc_gap"]), "LAST_DOUBLING": signed(c["last_doubling"]),
         "N_CELL_WORD": word(c["cell_n"]), "CELL_SPREAD": f"{c['cell_spread']:.4f}",
+        "LAST_DAY_LONG": long_day(max(c["days"])),
         "BEST_DAY_LONG": long_day(c["best_day"]), "BIG_DAY_LONG": long_day(c["big_day"]),
         "BIG_DROP": signed(-c["big_drop"]),
         "BIG_CLAUSE": ", more than every day since combined" if c["big_beats_rest"] else "",
@@ -356,6 +411,11 @@ def render(rows=None, table_only=None, series=None):
         sys.exit(1)
     c["rows"] = len(rows)
     c["mde"] = mde
+    misses = coverage_report(page, rows, table_only, c)
+    if misses:
+        print("COVERAGE ERRORS (a row did not reach a surface it qualifies for):\n  "
+              + "\n  ".join(f"{ck}: missing from {where}" for ck, where in misses))
+        sys.exit(1)
     return page, c
 
 

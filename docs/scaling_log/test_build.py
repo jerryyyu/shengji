@@ -325,3 +325,77 @@ def test_the_detail_panel_is_dismissable(data):
     assert 'id="detail-x"' in page and 'aria-label="Dismiss the model record"' in page
     assert 'e.key==="Escape"' in page and "function dismiss()" in page
     assert '<th class="note">Note</th>' in page and 'td.note{white-space:normal;min-width:360px' in page
+
+
+def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table(data):
+    rows, table_only, series = data
+    page, c = _render(*data)
+    days = sorted({r["tr"].lstrip("~") for r in rows if r["ce"] and r["ck"] not in table_only})
+    assert c["days"] == days
+    for d in days:
+        assert f"<td>{d[8:]} Sep</td>" in page, f"day {d} missing from the by-day table"
+    # a model trained on a NEW day (tomorrow) appears without any list being edited
+    rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
+        "future model", "0badc0de", "2026-09-14", "v2", 512, "3e-4", "96k", "14,077,520",
+        "0.62000", "", "", "", "", "")))]
+    page2, c2 = _render(rows2, table_only, series)
+    assert "2026-09-14" in c2["days"] and "<td>14 Sep</td>" in page2
+    assert "14 September 2026" in page2  # the header date follows the latest training day
+
+
+def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):
+    rows, table_only, series = data
+    page, c = _render(*data)
+    x0, x1 = c["frame1"]
+    svg1 = re.search(r'<svg viewBox="0 0 880 470">(.*?)</svg>', page, re.S).group(1)
+    dots = re.findall(r'<circle cx="([-0-9.]+)" cy="([-0-9.]+)" r="[0-9.]+" class="pt [^"]*hit"', svg1)
+    assert len(dots) == c["with_ce"]
+    for cx, cy in dots:
+        assert x0 - 0.01 <= float(cx) <= x1 + 0.01, (cx, x0, x1)
+    # ten times the largest corpus still lands inside the frame (the axis is derived)
+    rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
+        "huge corpus", "0badc0df", "2026-09-14", "v2", 512, "3e-4", "1.7M", "253,887,080",
+        "0.61000", "", "", "", "", "")))]
+    page2, c2 = _render(rows2, table_only, series)
+    assert "50M" in page2
+    # a CE below the chart floor is a loud failure, never a vanished dot
+    rows3 = copy.deepcopy(rows)
+    rows3[0]["ce"] = "0.59000"
+    with pytest.raises(SystemExit):
+        _render(rows3, table_only, series)
+
+
+def test_every_row_reaches_every_surface_it_qualifies_for_and_an_omission_fails_the_build(data):
+    rows, table_only, series = data
+    page, c = _render(*data)
+    assert build.coverage_report(page, rows, table_only, c) == []
+    # a dot silently dropped from one chart is reported by checkpoint and chart
+    ck = "0c40c591"  # S-d4-176k, trained 09-13: the row the typed day list lost
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    broken = page.replace(svgs[4], svgs[4].replace(f"({ck})", "(dropped)"), 1)
+    assert (ck, "chart 3 by training day") in build.coverage_report(broken, rows, table_only, c)
+    # a registry row that vanished is reported too
+    broken2 = page.replace(f'<span class="mono null">{ck}</span>', "", 1)
+    assert (ck, "registry table") in build.coverage_report(broken2, rows, table_only, c)
+
+
+def test_a_one_window_only_row_dropped_from_the_leader_charts_is_reported(data):
+    """Codex HOLD on #393: leader charts also plot numeric one-window pairings."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    ck = "d84b5183"  # width 1024 lr 1e-4: a one-window pairing, no ten-window cell
+    row = next(r for r in rows if r["ck"] == ck)
+    assert not row["ten"] and row["w32"] and build.leader_chart_eligible(row)
+    svgs = re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)
+    broken = page
+    for i in (1, 3, 5):
+        assert f"({ck})" in svgs[i]
+        broken = broken.replace(svgs[i], svgs[i].replace(f"({ck})", "(dropped)"), 1)
+    misses = build.coverage_report(broken, rows, table_only, c)
+    assert {w for k, w in misses if k == ck} == {"chart 1b data vs leader", "chart 2b width vs leader", "chart 4 leader effect by day"}
+    # the month label in the day table comes from the date
+    rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
+        "october model", "0badc0d0", "2026-10-02", "v2", 512, "3e-4", "96k", "14,077,520",
+        "0.62000", "", "", "", "", "")))]
+    page2, _ = _render(rows2, table_only, series)
+    assert "<td>02 Oct</td>" in page2

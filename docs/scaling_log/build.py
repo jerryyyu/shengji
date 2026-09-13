@@ -39,7 +39,7 @@ WHAT_CHANGED = {
     "09-09": "the I/J teacher contrast",
     "09-10": "the data-volume arms, 96k to 144k",
     "09-11": "the width sweep at maximum data (h256, h1024, h2048) and Codex&#8217;s encoder v3",
-    "09-12": "volNEW-176k and the search-mean arm",
+    "09-12": "volNEW-176k, the search-mean arm and the depth row (S-d4, S-d8, S-d4-plain)",
 }
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
          9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
@@ -99,10 +99,18 @@ def mde80(rows):
     return out
 
 
+def known_widths():
+    """The hidden widths charts.py can place on the parameter axis (its PAR map)."""
+    src = open(HERE / "charts.py").read()
+    par = re.search(r"^PAR=\{([^}]*)\}", src, re.M).group(1)
+    return {int(k) for k in re.findall(r"(\d+)\s*:", par)}
+
+
 def check_data(rows, table_only, series):
     """Every row well-formed; refuse to render inconsistent data."""
     errs = []
     seen = set()
+    widths = known_widths()
     for r in rows:
         if r["ck"] in seen:
             errs.append(f"duplicate checkpoint {r['ck']}")
@@ -115,6 +123,8 @@ def check_data(rows, table_only, series):
             errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
         if r["enc"] not in ("v1", "v2", "v3", "v4"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
+        if r["w"] not in widths:
+            errs.append(f"{r['ck']}: width {r['w']} has no parameter count in charts.py PAR")
         if r["ce"] and not re.fullmatch(r"\d\.\d{4,5}", r["ce"]):  # a soft-target head can sit above 1.0
             errs.append(f"{r['ck']}: val_ce {r['ce']!r}")
         for key in ("mc", "w32", "ten"):

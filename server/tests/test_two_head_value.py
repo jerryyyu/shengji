@@ -274,3 +274,28 @@ def test_export_packages_the_named_head(two_head_run, tmp_path):
     with pytest.raises(ValueError, match="no search-mean head"):
         export_cwv_numpy(two_head_run["tmp"] / "plain" / "best.pt", tmp_path / "bad.npz",
                          value_head="search-mean")
+    # export -> reopen -> identity (Codex HOLD on #374): the numpy evaluator binds
+    # the exported head, names it in identity(), and computes with those weights;
+    # an outcome package keeps the legacy omission
+    outcome_eval = cwv_policy.shared_evaluator(tmp_path / "outcome.npz", threads=1)
+    search_eval = cwv_policy.shared_evaluator(tmp_path / "search.npz", threads=1)
+    assert outcome_eval.value_head == "outcome" and "value_head" not in outcome_eval.identity()
+    assert search_eval.value_head == "search-mean" and search_eval.identity()["value_head"] == "search-mean"
+    cfg = model.config
+    public, _h, _m, world, persp = _inputs(cfg, n=3, seed=9)
+    from shengji.rl.value_afterstate import ValueAfterstateTensors
+    rows = [ValueAfterstateTensors(public[i].numpy(), np.zeros((1, HISTORY_EVENT_DIM), np.float32),
+                                   world[i].numpy(), persp[i].numpy()) for i in range(3)]
+    torch_search = cwv_policy.CompleteWorldEvaluator(ckpt, threads=1, value_head="search-mean")
+    assert np.allclose(search_eval.probabilities(rows), torch_search.probabilities(rows), atol=1e-5)
+    assert not np.allclose(search_eval.probabilities(rows), outcome_eval.probabilities(rows))
+    with pytest.raises(cwv_policy.CWVError, match="cannot be overridden"):
+        cwv_policy.shared_evaluator(tmp_path / "outcome.npz", threads=1, value_head="search-mean")
+    # a package naming a head this schema does not know is refused at open
+    import shutil
+    z = dict(np.load(tmp_path / "search.npz"))
+    meta = json.loads(str(z["metadata"])); meta["metadata"]["exported_value_head"] = "aux"
+    z["metadata"] = np.asarray(json.dumps(meta, sort_keys=True))
+    np.savez_compressed(tmp_path / "unknown.npz", **z)
+    with pytest.raises(cwv_policy.CWVError, match="unknown exported value head"):
+        cwv_policy.shared_evaluator(tmp_path / "unknown.npz", threads=1)

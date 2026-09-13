@@ -508,10 +508,10 @@ class CompleteWorldEvaluator:
                 "encoding": self.encoding,
                 "effective_encoding": self.effective_encoding,
                 "adapter": adapter,
-                # #373: a numpy package (NumpyCompleteWorldEvaluator, which does not
-                # run this __init__) carries the head it was exported with
-                **({"value_head": self.value_head}
-                   if getattr(self, "value_head", "outcome") != "outcome" else {})}
+                # #373: the head this evaluator reads (a numpy package binds the
+                # head it was exported with in its own __init__); the outcome
+                # head keeps the legacy omission
+                **({"value_head": self.value_head} if self.value_head != "outcome" else {})}
 
     def score(self, positions: Sequence[Round], root_seat: int, *,
               tensor_cache=None) -> np.ndarray:

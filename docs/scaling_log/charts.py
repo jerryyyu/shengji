@@ -210,7 +210,7 @@ def eff(d):
         m,rest=w.split(" [",1); lo,hi=rest.rstrip("]").split(", ")
         return (float(m),float(lo),float(hi),"one")
     return None
-STYLE={"one":("ci1","pt3"),"ten":("ci2","pt2"),"five":("ci3","pt7")}
+STYLE={"one":("ci1","pt3"),"ten":("ci2","pt2"),"five":("ci5","pt7")}
 ANYFIVE=any(eff(d) and eff(d)[3]=="five" for d in SCR)
 def legend(s,lx,r,y0,ys):
     s.append('<text x="%d" y="44" class="lgh">INSTRUMENT</text>'%lx)

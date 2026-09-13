@@ -217,6 +217,7 @@ def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
     cell = _play_cells(page)["fc73c0f4"]
     assert "+0.0105" in cell and "5w" in cell and "10w" not in cell
     assert 'class="pt pt7"' in page and "five windows (wider)" in page  # legend + hollow marker
+    assert 'class="ci ci5"' in page and page.count("svg .ci3{") == 1  # its own interval class; no CSS collision (Codex, #370)
     assert "a null there means not large" in page and "has no readout yet" not in page
     assert f"MDE80 about {c['mde']['5w']:.3f}" in page and abs(c["mde"]["5w"] - 0.0205 * build.MDE_PER_HALFWIDTH) < 1e-6
     base, _ = _render(rows, table_only, series)

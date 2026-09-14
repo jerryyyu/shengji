@@ -18233,3 +18233,9 @@ Jerry (11:5x ET): "intuitively I want to push more compute from search into the 
 ## 2026-09-14 15:40 UTC — Claude: runM resume HELD (Jerry) — Mini handover disarmed
 
 Jerry (12:0x ET): "run M can hold." `handover_probe_grid.sh` (pid 37958, the waiter that would resume runM after G1) stopped; G1's trainer and `ship_G1_to_cloud.sh` untouched. After G1 seals the Mini is free for the #419 policy head at scale and continued training (plan #421). No production-recipe data generation is armed on any host.
+
+## 2026-09-14 16:13 UTC — Claude tick 12:1x ET: gate v3 (ordering-only witness); fleet
+
+Bus 1415 (Codex): report exact swaps separately; the 1e-4 witness also tripped the value guard and masked the ordering guard. Gate v3 (`/root/g1_identity_check.py`, read by v13 at gate time): exact-ordering-identical count reported apart from tie-resolved swaps and mismatches; the witness now swaps the two best non-tied candidates on path B with the value guard off in witness mode, so exit 1 comes only from the ordering guard (Mini/cloud: witness rc=1, real rc=0; cloud random net 22/25 exact, 3 tie-resolved, max diff 3.3e-6). Acked through 1415; fyi 774.
+
+**Fleet (12:12 ET):** Mini — G1 epoch 9/20 (0.5726; plateau ≈ 0.57), seal ≈ 19:30 ET; runM resume held. Cloud — v9 phase B window 5/5 (M3-out-throw-13660910 since 12:04 ET; done ≈ 12:50), then v11 → v14 → v13; runP held. Perf — p12 phase B window 2/5 (M1-out-14360910 since 11:57 ET; readout ≈ 14:15 ET).

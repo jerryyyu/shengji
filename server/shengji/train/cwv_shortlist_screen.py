@@ -15,8 +15,10 @@ import platform
 from ..ai.cwv_policy import shared_evaluator
 from ..ai.registry import make_bot
 from ..oracle import screen as duel
+from .cwv_bury_policy import CWVBuryBot
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -28,6 +30,15 @@ BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity")
+
+
+class CWVWideTailBuryBot(CWVBuryBot, CWVWideTailBot):
+    """Full-completion hybrid bury layered onto the wide-tail play hook.
+
+    The base order is intentionally Bury first: its constructor and bury
+    decision call through to ``CWVWideTailBot`` before reaching the ordinary
+    shortlist bot, while the wide-tail candidate hook remains in the MRO.
+    """
 
 
 @contextmanager
@@ -145,7 +156,21 @@ def _encoding(config: dict) -> str:
     return config.get("encoding", "reference")
 
 
+def _validate_hybrid_config(config: dict):
+    if not config.get("hybrid_bury"):
+        return
+    if (config.get("arm") != "learned"
+            or config.get("baseline") != "flat-shortlist"
+            or "double_shortlist" in config):
+        raise ValueError(
+            "hybrid-bury requires learned with flat-shortlist baseline and no inner mode")
+    if ("wide_tail" in config
+            and config["wide_tail"] != asdict(CWVWideTailConfig())):
+        raise ValueError("hybrid-bury requires the default wide-tail recipe")
+
+
 def make_side(config: dict, side: str, seed: int):
+    _validate_hybrid_config(config)
     arm = config["arm"]
     if "wide_tail" in config:
         if (arm != "learned" or "double_shortlist" in config
@@ -181,8 +206,12 @@ def make_side(config: dict, side: str, seed: int):
     inner = config.get("double_shortlist") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
-    if side == "arm" and "wide_tail" in config:
-        from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
+    if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
+        # CWVBuryBot is first in CWVWideTailBuryBot's MRO.  Its constructor
+        # delegates to CWVWideTailBot, which therefore supplies the fixed
+        # default wide-tail recipe without accepting a second recipe surface.
+        bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
+    elif side == "arm" and "wide_tail" in config:
         bot = CWVWideTailBot(evaluator, **kwargs,
                             wide_tail=CWVWideTailConfig(**config["wide_tail"]))
     elif inner is not None:
@@ -195,6 +224,8 @@ def make_side(config: dict, side: str, seed: int):
                                    inner_batch_size=inner["batch_size"],
                                    inner_reuse_successors=inner.get(
                                        "reuse_successors", False))
+    elif config.get("hybrid_bury"):
+        bot = CWVBuryBot(evaluator, **kwargs, arm="hybrid")
     else:
         bot = CWVShortlistBot(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
@@ -252,7 +283,8 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline", "decision_deadline", "wide_tail"):
+    for key in ("double_shortlist", "baseline", "decision_deadline", "wide_tail",
+                "hybrid_bury"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -411,6 +443,19 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Wide-tail ranking is a policy change, not decision-preserving acceleration. "
             "Only the refinement pool receives remaining-world scores.")
+    if config.get("hybrid_bury"):
+        result["arm_description"] = (
+            "full-completion hybrid bury on both sides (wide-tail arm and flat-W32 "
+            "shortlist baseline)"
+            if "wide_tail" in config else
+            "full-completion hybrid bury on both sides (flat-W32 shortlist comparison)")
+        result["hybrid_bury"] = {
+            "arm": "hybrid", "scope": "both sides",
+            "serving_budget_seconds": None, "completion": "full",
+        }
+        result["work_caveat"] += (
+            " Both sides use the full-completion CWV hybrid bury policy; this is "
+            "not Fly 2s serving-budget parity.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -458,6 +503,8 @@ def main(argv=None):
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
     parser.add_argument("--wide-tail", action="store_true",
                         help="DEV: >10000 legal actions use 2-world coarse top256 plus anchors, then 30 disjoint worlds")
+    parser.add_argument("--hybrid-bury", action="store_true",
+                        help="DEV: full-completion hybrid bury on both sides")
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
@@ -507,6 +554,10 @@ def main(argv=None):
                           or args.alternatives != 4 or args.inner_mode is not None
                           or args.value_head is not None or args.report_tie_keeps_incumbent):
         parser.error("--wide-tail requires isolated learned W32 ranking with four alternatives")
+    if args.hybrid_bury and (args.arm != "learned"
+                             or args.baseline != "flat-shortlist"
+                             or args.inner_mode is not None):
+        parser.error("--hybrid-bury requires learned with flat-shortlist baseline and no inner mode")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -564,8 +615,9 @@ def _run_screen(args, trump_ranks):
     if args.reuse_successors:
         config["reuse_successors"] = True
     if args.wide_tail:
-        from .cwv_wide_tail import CWVWideTailConfig
         config["wide_tail"] = asdict(CWVWideTailConfig())
+    if args.hybrid_bury:
+        config["hybrid_bury"] = True
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

@@ -18143,3 +18143,9 @@ Bus 1405: Codex PASS on #415 at d5581067 (source delta; 88 grid+trunk tests; not
 **G1 started 05:46 ET** on the Mini (`fl-pilot/train_G1.sh`, gridw @ ff903703, lean grid C=44, 3 residual blocks, both heads, M1's recipe on 176k, select on the outcome head; lock `.trainlock-G1-grid-2h-176k`; log `train-out/cwv/G1-grid-2h-176k.log`). The handover ran the probe step as already-done (rc=0) and fired G1 after the 600 s grace; runM resume follows G1. Epoch time to be read at the next tick (expected ~35 min).
 
 **Bus 1407: Codex HOLD (wording only) on #416** — the capped control's identical outcomes on the same seeds make a capped M1-out replicate a robustness replicate, not a second independent population; and the +0.0184 headline is a nominal CI from a multi-arm, extend-on-positive design. Reworded (note + RECORD) at 7e0f1ba8; re-asked (763); #373 corrected in a follow-up comment; artifact republished. Correction to the 05:4x entry above accordingly: independent confirmation needs fresh seeds or a paired common-opponent contrast.
+
+## 2026-09-14 10:16 UTC — Claude tick 06:2x ET: fresh-seed M1 confirmation lane armed (v12); G1 in setup
+
+**Lane v12 armed on cloud** (`/root/claude_queue_v12.sh`, DRYRUN clean; waits for "v11 PHASE B DONE" before the lock loop; tree claude-main-4 @ 6b111b5f, capped): Phase A vol96k-capped ×5 on FRESH seeds 14260910..14660910 (checked unused on cloud and perf), Phase B M1-out ×5 on the same seeds. Pre-registered on #373 with the reading rule (confirmed only if the fresh-seed lower bound is above zero; same-direction-but-crossing = consistent, not confirmed; ≤ 0 closes the line). Cloud order: v9 (running, M3-out-13260910 since 05:35 ET) → v11 → v12 → runP waiter (data gen last, per Jerry).
+
+**G1:** 28 min in at 06:14 ET, params 644,423 confirmed by the trainer, candidate set built; epoch 1 not yet logged. **Bus:** empty; #416 awaits Codex's re-review at 7e0f1ba8. Perf: Codex's throw screen.

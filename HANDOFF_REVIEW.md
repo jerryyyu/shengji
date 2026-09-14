@@ -18291,3 +18291,17 @@ v11's status line was written in the form v14 waits for, so v14 (M3-out extensio
 ## 2026-09-14 19:04 UTC — Claude: search atlas updated for Jerry (scoreboard, by-date and by-latency charts, September lane)
 
 Jerry asked for the atlas to carry the policies tried by Claude and Codex with visualisation and screen results, the screen date and checkpoint per policy, and two scaling-style charts. Artifact 8bb3e7d8 republished: new section 0 (27-row scoreboard: policy, what it changes, screened date, checkpoint, reference, result, cost, verdict — pre-09-08 ladders dated "≤ 09-08"), chart "performance vs production by screen date" (reference rule at 09-08: MC-LCB before, the W32 leader after), chart "by search latency" (measured-vs-MC-LCB arms filled; September proposer swaps hollow and chained as +0.126 + their delta at the leader's 3.5x cost, labelled as an estimate), and section III (seven diagrams: proposer head, throw admission, corrected rollout, coarse-to-fine prune, 300 s cap, tie rule, policy prior; forest plot of every window screen since 09-12; policy table). Old sections renumbered IV/V. Source of the numbers: this ledger, #373/#389/#341/#419, Codex bus 1403/1411, section II of the page for the pre-09-08 ladders.
+
+## 2026-09-14 19:05 UTC — Claude: M3 extension dropped (Jerry) — cloud lane v14 stood down
+
+Jerry (15:3x ET): "if v4 features are captured by G1, I'm good to drop M3 heavy evaluation as well." Outcome on cloud:
+```
+    2026-09-14T18:55:19Z v14 gate: v11 done, lock free, host quiet
+    2026-09-14T18:55:19Z M3-out-13760910 start
+    v14 supervisor 2660958; lock pid 2660958
+    v14 supervisor stopped
+    lane lock released
+    in-flight window worker 4098381 finishes on its own
+    3033348 /bin/bash /root/claude_queue_v13
+```
+v14's release line was written in the form v13 waits for; v13 (G1 screen) takes the lock once the in-flight worker exits and /root/claude-G1.pt lands (ship waiter armed on the Mini). M3 stays at five windows on the page. The v4-captured-by-G1 claim is checked at G1's seal with the #411 probe on G1's hidden layer (pair-cap group). Queue file, #373 and Codex updated.

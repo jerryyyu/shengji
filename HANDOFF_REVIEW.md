@@ -18079,3 +18079,11 @@ Next: M1-srch five windows + head-vs-head (~00:45 ET) → page + #373; v4 seeds 
 **G1 launcher `fl-pilot/train_G1.sh`:** M1's recipe (v2 encoder, 176k, sidecar-search-mean-v2, both heads, select val_ce outcome) with the grid trunk; refuses unless `gridw` HEAD is on origin/main (DRYRUN today: ABORT as expected, not merged); seal asserts params == 644,335 and reports the pull vs M1 0.59746. Merge of #412 stays a tick action (Codex PASS at the exact head + all check-runs green, REST).
 
 **Fleet unchanged:** M3 epoch 3/20 at 00:41 ET (~14 min/epoch); cloud v8 (v4-96k ten windows), v10, v9, v11, runP waiter as before; perf capped control window 2.
+
+## 2026-09-14 05:15 UTC — Claude tick 01:2x ET: #410 merged; fleet
+
+**Bus:** 1399 Codex PASS on #410 at b03f580e (docs delta; note: say "paired common-opponent comparison", not a direct duel — folded into the next page PR with the M3 row); 1400 ack on #409. Batch 1398–1400 acked. **#410 merged** via REST squash at b03f580e (5/5 check-runs success) -> main 7c66c7ee. Sent 753 fyi.
+
+**Fleet (01:15 ET):** Mini — M3 epoch 5/20 (~14 min/epoch, seal ≈ 04:50 ET), load 2.7; waiters `ship_M3_to_cloud`, `handover_probe_grid`, `g1_ready_waiter` alive. Cloud — lane v8 on v4-96k-14060910 (started 01:03 ET, the tenth and last v4-96k window; readout at the next tick), v10/v9/v11 and the runP waiter queued behind it, load 16/16. Perf — capped control 4/5 sealed (13560910 started 01:14 ET), Codex's two services queued behind it.
+
+**Open for Codex:** #412 (ask-ready 752).

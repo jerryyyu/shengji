@@ -195,3 +195,25 @@ def test_queue_passes_the_tie_knob_to_every_window(harness, monkeypatch):
                         "--seeds", "100", "200", "--clusters", "2", "--workers", "1"]
     assert Q.main(plain) == 0
     assert len(calls) == 2 and not any("--report-tie-keeps-incumbent" in c for c in calls)
+
+
+def test_queue_passes_throw_admission_to_every_window(harness, monkeypatch):
+    args, out, encodings, checkpoint = harness
+    calls = []
+
+    def fake_main(command):
+        calls.append(list(command))
+        output = Path(command[command.index("--out") + 1])
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "summary.json").write_text(json.dumps(
+            {"complete": True, "completed_clusters": 2, "requested_clusters": 2}))
+        return 0
+
+    monkeypatch.setattr(Q.screen, "main", fake_main)
+    assert Q.main(args + ["--throw-components"]) == 0
+    assert len(calls) == 2 and all("--throw-components" in c for c in calls)
+    calls.clear()
+    plain = args[:4] + ["--out", str(out.parent / "plain"), "--name", "plain",
+                        "--seeds", "100", "200", "--clusters", "2", "--workers", "1"]
+    assert Q.main(plain) == 0
+    assert len(calls) == 2 and not any("--throw-components" in c for c in calls)

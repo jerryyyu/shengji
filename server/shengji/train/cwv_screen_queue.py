@@ -39,6 +39,9 @@ def main(argv=None):
                         help="#339 layer 1 arm: pass through to every window (arm side only)")
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373: the arm evaluator's head, passed through to every window")
+    parser.add_argument("--throw-components", action="store_true",
+                        help="#389/#404: admit direct components of shortlisted lead throws "
+                             "on the ARM side; passed through to every window")
     args = parser.parse_args(argv)
     if min(args.clusters, args.workers) < 1 or min(args.seeds) < 0:
         parser.error("positive clusters/workers and nonnegative seeds required")
@@ -82,6 +85,8 @@ def main(argv=None):
                 command += ["--report-tie-keeps-incumbent"]
             if args.value_head is not None:
                 command += ["--value-head", args.value_head]
+            if args.throw_components:
+                command += ["--throw-components"]
             print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume",
                   flush=True)
             result = screen.main(command)

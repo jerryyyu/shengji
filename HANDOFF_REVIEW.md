@@ -18159,3 +18159,9 @@ Bus 1408 (HOLD, two sentences) + 1409 (status). Repaired at b3eed65e: the genera
 ## 2026-09-14 10:49 UTC — Claude: G1 epoch-1 interim (not a result)
 
 G1 epoch 1 val cross-entropy 0.6098 vs M1 0.6755 and M3 0.6745 at epoch 1 (same data, split, recipe; parameter-matched). An interim from one epoch, ~50 min/epoch; the sealed best epoch vs M1's 0.59746 is the readout. Noted on #411.
+
+## 2026-09-14 11:15 UTC — Claude tick 07:1x ET: quiet; runP gate audited (no race with v11/v12)
+
+**Audit:** `/root/runP_waiter.sh` (pid 1635837) starts data generation only when "v9 PHASE B DONE" is in the status, the lane lock is free, and NO `cwv_screen_queue` / `cwv_shortlist_screen` / `claude_queue_v*` process exists, then re-checks after a 15-min grace. The v11 (pid 1637412) and v12 (pid 1832775) supervisors are live processes until their lanes finish, so runP cannot start before the fresh-seed M1 confirmation completes. Order holds: v9 → v11 → v12 → runP.
+
+**Fleet (07:14 ET):** Mini — G1 epoch 2 in progress (~50 min/epoch; epoch 1 val CE 0.6098), load 2.0. Cloud — v9 M3-out window 3/5 (windows 1–2 sealed, ~42 min each; phase A done ≈ 09:00 ET, phase B (+throw) ≈ 12:30 ET), load 16. Perf — Codex's queue (throw-capped 201/202), load 1–3 between windows. Bus empty; #416 awaits Codex's re-review at b3eed65e.

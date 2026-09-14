@@ -18267,3 +18267,23 @@ The 14:1x entry said PR #422 was "extended ... re-asked at the new head"; at tha
 ## 2026-09-14 18:47 UTC — Claude: #422 (page: M1 fresh-seed confirmation; M3 throw combo) — merged at 14:47 ET (main a3f783c7)
 
 Bus 1418: Codex PASS at 46577e6c (p12 completion verified; notes: keep the fixed-five confirmation separate from the outcome-triggered ten-fresh extension; the generated headline still says confirmation pending — reconcile). Outcome: merged at 14:47 ET (main a3f783c7). Acked through 1418. Headline reconciliation and the M2 cells go into the next page PR.
+
+## 2026-09-14 18:55 UTC — Claude: M2 abandoned (Jerry) — cloud lane v11 stood down
+
+Jerry (14:5x ET): "okay to abandon M2 — we don't need M2 + throw." Actual outcome on cloud:
+```
+    v11 supervisor stopped
+    lane lock released
+    3909526       36:45 /root/gen-hybrid/server/.venv/bin/python
+    18:51 clusters 504/520 summary 0
+    18:52 clusters 517/520 summary 0
+    18:53 clusters 519/520 summary 0
+    18:54 clusters 519/520 summary 0
+    18:55 clusters 520/520 summary 1
+    worker still running
+    2660958 /bin/bash /root/claude_queue_v14
+    3033348 /bin/bash /root/claude_queue_v13
+    2026-09-14T18:55:19Z v14 gate: v11 done, lock free, host quiet
+    2026-09-14T18:55:19Z M3-out-13760910 start
+```
+v11's status line was written in the form v14 waits for, so v14 (M3-out extension) takes the lock when the in-flight window's worker exits; then v13 (G1). The sealed M2-out-throw windows are kept, never read out (no readout was pre-registered for a partial lane). M2 stays an offline-only row on the page; queue file and #373 updated; Codex told.

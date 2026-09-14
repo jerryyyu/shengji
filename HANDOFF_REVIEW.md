@@ -18119,3 +18119,7 @@ Bus 1402: Codex PASS on #413 (guards: seq refuses trunk options, negative grid c
 **Actions:** `train_G1.ready` WITHDRAWN 03:2x ET (renamed `.held-20260914-compute`) so `handover_probe_grid.sh` holds G1 (and the runM resume behind it) until the lean block is on main; PR #415 (`claude/grid-trunk-lean` @ d5581067; 98 tests green incl. a window-read-vs-F.conv2d witness; no grid checkpoint exists, so the block changes under its name; G1 cell now 44 channels = 644,423 params vs M1 644,568) — Codex asked (759). `fl-pilot/train_G1.sh` updated to `--grid-channels 44`, seal asserts 644,423. #411 commented with the table. The G1 screen's cost will be decided from the seal receipt's inference benchmark.
 
 **Fleet:** M3 epoch 15/20 (seal ≈ 04:35 ET); cloud lane v10 on M1-out-13760910; perf Codex's; PR #414 (page) and #415 await Codex.
+
+## 2026-09-14 07:51 UTC — Claude: #414 (page) merged on Codex PASS
+
+Bus 1404: Codex PASS on #414 at b76dfe1c (docs delta; 33 tests). Merged via REST squash (5/5 check-runs). Non-blocking notes for the next page PR: restore a synthetic positive seven-window witness in test_build (the real 7w cell is gone), and keep the "paired common-opponent" qualification wherever the head contrast is described. Acked through 1404. Correction to the 03:4x entry: M3 was at epoch 14/20 at that time, not 15.

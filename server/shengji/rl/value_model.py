@@ -47,6 +47,10 @@ _LEGACY_TRUNK = {"trunk_layers": 2, "trunk_block": "plain"}
 #: checkpoint trained before the option existed keeps its stored config.
 _HEAD_FIELDS = ("search_head", "value_head")
 _LEGACY_HEAD = {"search_head": False, "value_head": "outcome"}
+#: #411: the ``grid`` trunk block's convolution width; omitted from every
+#: payload whose trunk is not a grid, so archived configs compare unchanged.
+_GRID_FIELDS = ("grid_channels",)
+_LEGACY_GRID = {"grid_channels": 0}
 VALUE_HEADS = ("outcome", "search-mean")
 
 
@@ -67,6 +71,7 @@ class ValueModelConfig:
     feedforward_width: int = 128
     trunk_layers: int = 2
     trunk_block: str = "plain"
+    grid_channels: int = 0
     dropout: float = 0.0
     max_history: int = HISTORY_MAX_EVENTS
     outcome_classes: int = OUTCOME_CLASSES
@@ -110,7 +115,10 @@ class ValueModelConfig:
                 or type(self.trunk_layers) is not int or self.trunk_layers < 2 \
                 or self.trunk_layers > 64 \
                 or type(self.trunk_block) is not str \
-                or self.trunk_block not in ("plain", "residual"):
+                or self.trunk_block not in ("plain", "residual", "grid") \
+                or type(self.grid_channels) is not int \
+                or (self.trunk_block == "grid") != (self.grid_channels > 0) \
+                or self.grid_channels > 1024:
             raise ValueModelError("model configuration drift")
         if type(self.search_head) is not bool or type(self.value_head) is not str \
                 or self.value_head not in VALUE_HEADS:
@@ -136,15 +144,20 @@ class ValueModelConfig:
         if all(getattr(self, k) == v for k, v in _LEGACY_HEAD.items()):
             for name in _HEAD_FIELDS:
                 del out[name]
+        if all(getattr(self, k) == v for k, v in _LEGACY_GRID.items()):
+            for name in _GRID_FIELDS:
+                del out[name]
         return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
-        base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS) - set(_HEAD_FIELDS)
-        allowed = {frozenset(base | w | t | h)
+        base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS) \
+            - set(_HEAD_FIELDS) - set(_GRID_FIELDS)
+        allowed = {frozenset(base | w | t | h | g)
                    for w in (set(), set(_WIDTH_FIELDS))
                    for t in (set(), set(_TRUNK_FIELDS))
-                   for h in (set(), set(_HEAD_FIELDS))}
+                   for h in (set(), set(_HEAD_FIELDS))
+                   for g in (set(), set(_GRID_FIELDS))}
         if type(value) is not dict or frozenset(value) not in allowed:
             raise ValueModelError("model configuration schema drift")
         try:
@@ -190,6 +203,83 @@ class ResidualTrunkBlock(nn.Module):
         return x + self.drop_outer(h)
 
 
+class GridTrunk(nn.Module):
+    """#411: the ``grid`` trunk block.  Lays the fourteen card planes out as
+    ``GRID_ROWS x GRID_COLS`` cells (``card_grid``), convolves ALONG each row
+    (kernel 3, weights shared across rows and ranks: "this level and its
+    neighbours"), summarises every row by mean and max and pastes the summary
+    back onto each of its cells, convolves once more, and hands the heads
+    three views: a cheap per-cell projection (where exactly), the five row
+    summaries (what each suit holds) and a global mean/max over rows, plus the
+    non-card public columns untouched.  The stem projects to ``width`` and the
+    same residual blocks as ``trunk_block=residual`` follow, so the two arms
+    differ only in how the planes are read."""
+
+    CELL_PROJ = 8
+    COL_EMBED = 8
+
+    def __init__(self, config: "ValueModelConfig"):
+        super().__init__()
+        from .card_grid import (GRID_COLS, GRID_ROWS, RANK_ONEHOT_OFFSET, SUIT_ONEHOT_OFFSET,
+                                grid_table)
+        self.public_dim = config.public_dim
+        self.n_planes = 9 + WORLD_RECEIVERS
+        self.scalar_dim = config.public_dim - 9 * N_CARDS
+        self.rows, self.cols = GRID_ROWS, GRID_COLS
+        self.suit_off, self.rank_off = SUIT_ONEHOT_OFFSET, RANK_ONEHOT_OFFSET
+        self.register_buffer("table", torch.from_numpy(grid_table()), persistent=False)
+        c = config.grid_channels
+        cin = self.n_planes + GRID_ROWS + self.COL_EMBED
+        self.col_embed = nn.Parameter(torch.zeros(self.COL_EMBED, 1, GRID_COLS))
+        nn.init.normal_(self.col_embed, std=0.1)
+        self.conv1 = nn.Conv2d(cin, c, kernel_size=(1, 3), padding=(0, 1))
+        self.conv2 = nn.Conv2d(c, c, kernel_size=(1, 3), padding=(0, 1))
+        self.conv3 = nn.Conv2d(3 * c, c, kernel_size=(1, 3), padding=(0, 1))
+        self.cell_proj = nn.Conv2d(c, self.CELL_PROJ, kernel_size=1)
+        feat = (self.CELL_PROJ * GRID_ROWS * GRID_COLS + 2 * c * GRID_ROWS + 4 * c
+                + self.scalar_dim + PERSPECTIVE_DIM)
+        width = config.width
+        blocks = [ResidualTrunkBlock(width, config.feedforward_width, config.dropout)
+                  for _ in range(config.trunk_layers)]
+        self.stem = nn.Linear(feat, width)
+        self.blocks = nn.Sequential(*blocks, nn.LayerNorm(width), nn.ReLU())
+        self.drop = nn.Dropout(config.dropout)
+
+    def grid(self, x: torch.Tensor) -> torch.Tensor:
+        """``(batch, planes, rows, cols)`` cells of the concatenated input."""
+        b = x.shape[0]
+        public = x[:, :self.public_dim]
+        world = x[:, self.public_dim:self.public_dim + WORLD_RECEIVERS * N_CARDS]
+        planes = torch.cat((public[:, :9 * N_CARDS].reshape(b, 9, N_CARDS),
+                            world.reshape(b, WORLD_RECEIVERS, N_CARDS)), dim=1)
+        planes = torch.cat((planes, planes.new_zeros(b, self.n_planes, 1)), dim=2)
+        suit = public[:, self.suit_off:self.suit_off + 5].argmax(dim=1)
+        rank = public[:, self.rank_off:self.rank_off + 13].argmax(dim=1)
+        slots = self.table[suit * 13 + rank]                       # (b, rows*cols)
+        idx = slots.unsqueeze(1).expand(b, self.n_planes, slots.shape[1])
+        return torch.gather(planes, 2, idx).reshape(b, self.n_planes, self.rows, self.cols)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b = x.shape[0]
+        g = self.grid(x)
+        row_id = torch.eye(self.rows, device=x.device, dtype=x.dtype)
+        row_id = row_id.t().reshape(1, self.rows, self.rows, 1).expand(b, -1, -1, self.cols)
+        col = self.col_embed.unsqueeze(0).expand(b, -1, self.rows, -1)
+        h = torch.cat((g, row_id, col), dim=1)
+        h = torch.nn.functional.gelu(self.conv1(h))
+        h = torch.nn.functional.gelu(self.conv2(h))
+        row_mean = h.mean(dim=3, keepdim=True).expand(-1, -1, -1, self.cols)
+        row_max = h.amax(dim=3, keepdim=True).expand(-1, -1, -1, self.cols)
+        h = torch.nn.functional.gelu(self.conv3(torch.cat((h, row_mean, row_max), dim=1)))
+        cells = self.cell_proj(h).reshape(b, -1)
+        rows = torch.cat((h.mean(dim=3), h.amax(dim=3)), dim=1)      # (b, 2c, rows)
+        glob = torch.cat((rows.mean(dim=2), rows.amax(dim=2)), dim=1)
+        scalars = x[:, 9 * N_CARDS:self.public_dim]
+        perspective = x[:, -PERSPECTIVE_DIM:]
+        feat = torch.cat((cells, rows.reshape(b, -1), glob, scalars, perspective), dim=1)
+        return self.blocks(self.drop(self.stem(feat)))
+
+
 class ValueNetwork(nn.Module):
     """One state-only value model with a selectable history encoder."""
 
@@ -233,8 +323,11 @@ class ValueNetwork(nn.Module):
                           for _ in range(config.trunk_layers)]
                 self.trunk = nn.Sequential(nn.Linear(din, width), *blocks,
                                            nn.LayerNorm(width), nn.ReLU())
+            elif config.trunk_block == "grid":
+                # #411: the card planes read as a suit x level table.
+                self.trunk = GridTrunk(config)
             else:
-                raise ValueModelError("trunk_block must be plain or residual")
+                raise ValueModelError("trunk_block must be plain, residual or grid")
             self.head = nn.Linear(width, OUTCOME_CLASSES)
             if config.search_head:
                 # #373: the second head, same trunk, search-mean soft target.

@@ -306,6 +306,7 @@ PRIVACY = {
 
 def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                  trunk_layers: int = 2, trunk_block: str = "plain", search_head: bool = False,
+                 grid_channels: int = 0,
                  dropout: float = DEFAULTS["dropout"], seq_kind: str = DEFAULTS["seq_kind"],
                  seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
                  seq_heads: int = DEFAULTS["seq_heads"],
@@ -328,12 +329,14 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
     width_fields = dict(public_dim=public_dim(encoder_version), enc_version=encoder_version)
     try:
         if arch == "mlp":
-            return ValueModelConfig(
+            config = ValueModelConfig(
                 architecture="mlp", width=int(hidden) // 2, history_layers=1,
                 trunk_layers=int(trunk_layers), trunk_block=str(trunk_block),
-                search_head=bool(search_head),
+                grid_channels=int(grid_channels), search_head=bool(search_head),
                 attention_heads=1, feedforward_width=int(hidden), dropout=float(dropout),
                 max_history=HISTORY_MAX_EVENTS, **width_fields)
+            config.validate()      # a grid without channels (or channels without a grid) refuses here
+            return config
         if seq_kind not in SEQ_KINDS:
             raise TrainError(f"--seq-kind must be one of {SEQ_KINDS}")
         return ValueModelConfig(
@@ -1214,7 +1217,7 @@ def bench_inference(model: ValueNetwork, rows: Sequence[ValueAfterstateTensors],
 # ------------------------------------------------------------------ config
 
 def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str = "mlp",
-                 trunk_layers: int = 2, trunk_block: str = "plain",
+                 trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
                  search_head: bool = False, search_head_weight: float = 1.0,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
@@ -1272,7 +1275,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--search-head-weight must be a finite weight > 0")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
-                          search_head=search_head,
+                          grid_channels=grid_channels, search_head=search_head,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
                           seq_feedforward=seq_feedforward, encoder_version=encoder_version)
     identity = cwv_encoder_identity(encoder_version)
@@ -1412,7 +1415,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
           encoder_version: int = DEFAULTS["encoder_version"],
-          trunk_layers: int = 2, trunk_block: str = "plain",
+          trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
           search_head: bool = False, search_head_weight: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
@@ -1420,7 +1423,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     """Run the training pipeline; returns the receipt (also written)."""
     holdouts = parse_holdouts(eval_holdout)
     config = build_config(
-        trunk_layers=trunk_layers, trunk_block=trunk_block,
+        trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
         search_head=search_head, search_head_weight=search_head_weight,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
@@ -2344,8 +2347,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--trunk-layers", type=int, default=2,
                    help="hidden layers in the mlp trunk (2 = every model trained "
                         "before 2026-09-11; >2 needs --trunk-block residual to train)")
-    t.add_argument("--trunk-block", choices=("plain", "residual"), default="plain",
-                   help="residual = the tabular ResNet block of arXiv:2106.11959")
+    t.add_argument("--trunk-block", choices=("plain", "residual", "grid"), default="plain",
+                   help="residual = the tabular ResNet block of arXiv:2106.11959; grid = the "
+                        "card planes read as a suit x level table (#411) in front of "
+                        "--trunk-layers residual blocks")
+    t.add_argument("--grid-channels", type=int, default=0,
+                   help="convolution width of --trunk-block grid (required there, refused elsewhere)")
     t.add_argument("--hidden", type=int, default=DEFAULTS["hidden"],
                    help="mlp trunk widths [N, N // 2]")
     t.add_argument("--dropout", type=float, default=DEFAULTS["dropout"])
@@ -2437,7 +2444,8 @@ def main(argv: list[str] | None = None) -> int:
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,
                   encoder_version=args.encoder_version,
-                  trunk_layers=args.trunk_layers, trunk_block=args.trunk_block, **exec_kw)
+                  trunk_layers=args.trunk_layers, trunk_block=args.trunk_block,
+                  grid_channels=args.grid_channels, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

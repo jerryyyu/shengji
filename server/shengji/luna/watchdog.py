@@ -38,15 +38,13 @@ def main(argv: list[str] | None = None) -> int:
         target=terminate_on_parent_death,
         name="pt-luna-parent-death-watchdog", daemon=True).start()
     try:
+        # Inherit the controller's output pipes. Buffering them here until
+        # child exit would lose every diagnostic when the whole group times
+        # out, before this wrapper gets a chance to forward those buffers.
         child = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, close_fds=True)
+            command, stdin=subprocess.PIPE, close_fds=True)
         prompt = sys.stdin.buffer.read()
-        stdout, stderr = child.communicate(input=prompt)
-        sys.stdout.buffer.write(stdout)
-        sys.stderr.buffer.write(stderr)
-        sys.stdout.buffer.flush()
-        sys.stderr.buffer.flush()
+        child.communicate(input=prompt)
         normal_completion.set()
         return int(child.returncode or 0)
     except OSError:

@@ -1,4 +1,7 @@
 import json
+import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -7,6 +10,65 @@ from shengji.luna.benchmark_transport import BenchmarkTransport, output_schema
 from shengji.luna.transport import (CodexExecPlannerTransport, CodexTurnTransportError,
                                     InvocationResult, _events_and_usage)
 from test_luna_transport import trace
+
+
+def test_real_timeout_retains_streams_and_benchmark_refuses_once(tmp_path, monkeypatch):
+    from shengji.luna import transport as transport_module
+    from shengji.luna.transport import _default_run, CodexProviderResourceError
+
+    # The test venv may have an editable install of a different worktree.
+    # Exercise this source's real watchdog, not that stale installed module.
+    start = transport_module._start_contained_process
+    def start_current_source(command, *, workspace, env, active_calls):
+        env = {**env, "PYTHONPATH": str(Path(transport_module.__file__).resolve().parents[2])}
+        return start(command, workspace=workspace, env=env, active_calls=active_calls)
+    monkeypatch.setattr(transport_module, "_start_contained_process", start_current_source)
+    completed = _default_run((sys.executable, "-c",
+        "import sys; sys.stdout.buffer.write(b'OUT'); "
+        "sys.stderr.buffer.write(b'ERR'); raise SystemExit(7)"), b"", tmp_path, 5)
+    assert (completed.returncode, completed.stdout, completed.stderr) == (7, b"OUT", b"ERR")
+    assert not (tmp_path / "timeout.json").exists()
+
+    calls = []
+    def run(command, prompt, workspace, timeout):
+        calls.append(workspace)
+        return _default_run((sys.executable, "-c",
+            "import os,sys,time; "
+            "print(os.getpid(), flush=True); "
+            "print('diagnostic', file=sys.stderr, flush=True); "
+            "time.sleep(60)"), prompt, workspace, timeout)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=1,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexProviderResourceError,
+                       match="^Codex turn deadline exceeded$"):
+        transport({})
+    assert len(calls) == len(transport.calls) == 1
+    workspace = calls[0]
+    stdout = (workspace / "stdout.jsonl").read_text()
+    assert len(stdout.splitlines()) == 1  # no duplicated timeout prefix
+    pid = int(stdout)
+    assert (workspace / "stderr.txt").read_bytes() == b"diagnostic\n"
+    evidence = json.loads((workspace / "timeout.json").read_bytes())
+    assert evidence["accepted"] is False
+    assert evidence["timeout_seconds"] == 1
+    assert evidence["wall_ms"] >= 1000
+    assert evidence["returncode"] < 0
+    receipt = json.loads((workspace / "receipt.json").read_bytes())
+    assert receipt["accepted"] is False
+    assert receipt["error"] == "CodexProviderResourceError: Codex turn deadline exceeded"
+    assert not (workspace / "final.json").exists()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
 
 
 @pytest.mark.parametrize("model", ["gpt-5.6-sol", "gpt-5.6-luna"])

@@ -18149,3 +18149,9 @@ Bus 1405: Codex PASS on #415 at d5581067 (source delta; 88 grid+trunk tests; not
 **Lane v12 armed on cloud** (`/root/claude_queue_v12.sh`, DRYRUN clean; waits for "v11 PHASE B DONE" before the lock loop; tree claude-main-4 @ 6b111b5f, capped): Phase A vol96k-capped ×5 on FRESH seeds 14260910..14660910 (checked unused on cloud and perf), Phase B M1-out ×5 on the same seeds. Pre-registered on #373 with the reading rule (confirmed only if the fresh-seed lower bound is above zero; same-direction-but-crossing = consistent, not confirmed; ≤ 0 closes the line). Cloud order: v9 (running, M3-out-13260910 since 05:35 ET) → v11 → v12 → runP waiter (data gen last, per Jerry).
 
 **G1:** 28 min in at 06:14 ET, params 644,423 confirmed by the trainer, candidate set built; epoch 1 not yet logged. **Bus:** empty; #416 awaits Codex's re-review at 7e0f1ba8. Perf: Codex's throw screen.
+
+## 2026-09-14 10:48 UTC — Claude: #416 repaired with Codex's exact wording; G1 epoch 1 = 50 min
+
+Bus 1408 (HOLD, two sentences) + 1409 (status). Repaired at b3eed65e: the generated headline for one qualifying arm now reads "One nominal interval clears zero; independent confirmation is pending." (`build.py` above_clause; three witnesses updated; "beats the current one" asserted absent), and the M1 RECORD says independent confirmation needs fresh held-out deals (lane v12) while a paired contrast on existing deals is a dependent diagnostic; combo lanes are not confirmation of the M1-only effect. build --check consistent, 34 tests; artifact republished; re-asked (764). Acked through 1409.
+
+**G1 pace:** epoch 1 logged 06:48 ET (val_ce 0.6098), ~50 min per epoch on MPS after ~10 min setup (vs M3's 14): 20 epochs ≈ 17 h → seal ≈ 2026-09-15 00:00 ET unless early-stopped; the runM resume follows. The trainer logs per epoch only (Codex 1409 answered).

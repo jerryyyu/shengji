@@ -18331,3 +18331,7 @@ Bus 1420 (Codex HOLD on #423): (1) `ballot_tensors` truncated candidates to eigh
 ## 2026-09-14 19:56 UTC — Claude: corrected probe numbers (stratified), #419 and atlas updated
 
 Six epochs on the 120k probe rows through the repaired module, 30k held-out: exhaustive stratum (complete lists) 101–1k legal top-64 0.93 (random 0.41); partial stratum (stored ≤256 of a larger set) top-64 0.91 / 0.89 / 0.88 on 101–1k / 1k–10k / >10k true legal (same-universe random 0.25; full-universe reference 0.15 / 0.03 / 0.003); top-32 0.82 / 0.80 / 0.76; missing targets 0; ballot survival in top-256 0.92 / 0.80 / 0.77. #419 corrected with both tables; the atlas (row 26, the prior figure caption, the policy metadata) corrected and republished.
+
+## 2026-09-14 20:12 UTC — Claude tick 16:1x ET: quiet; cloud idle until G1 ships
+
+Mini — G1 epoch 16/20 (val CE 0.5524, another low), ~40 min/epoch → epoch 20 ≈ 18:35 ET, candidate pass ≈ 1 h, seal ≈ 19:40; waiters alive (ship_G1, train_policy_head_v2). Cloud — the dropped M3 extension's in-flight window sealed (520/520, complete); no screen process (a pgrep hit was the ssh command's self-match — the process-search trap, verified by etime 00:00 and ppid); lock free; v13 (G1) waits for /root/claude-G1.pt; load 0. Perf — p13 phase A window 4/5 (vol96k-capped-15060910 since 15:48 ET); phase B ≈ 16:25–19:15; readout ≈ 19:20. Bus: nothing after 1420 (PR #423 repair awaits Codex).

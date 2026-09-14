@@ -22,6 +22,7 @@ from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
     execution_source_identity,
 )
+from .screen_deadline import DeadlineSession, RECIPE as DEADLINE_RECIPE, latency_summary, validate_deadline
 
 BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
@@ -214,6 +215,8 @@ def work_counters(bots):
     out["full_rollout_accepted_worlds"] = int(out["accepted_worlds"] - out.get("cwv_cheap_worlds", 0))
     out["continuation_rollouts"] = int(out["rollouts"])
     out["total_rollouts"] = int(out["rollouts"])
+    if any(hasattr(bot, "timeout_count") for bot in bots):
+        out["decision_timeouts"] = sum(bot.timeout_count for bot in bots)
     if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
         out["inner_continuation_rollouts"] = int(out.get("double_inner_full_rollouts", 0))
         out["outer_continuation_rollouts"] = (
@@ -240,17 +243,27 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline"):
+    for key in ("double_shortlist", "baseline", "decision_deadline"):
         if key in config:
             recipe[key] = config[key]
     return recipe
 
 
+def _deadline_side(config, side, seed):
+    """Top-level spawn factory; the child shares cached evaluators across seats."""
+    return CwvTimedPolicy(make_side(config, side, seed))
+
+
 def run_cluster(config, cluster):
     created = []
+    deadline = config.get("decision_deadline")
+    if deadline is not None and deadline != DEADLINE_RECIPE:
+        raise ValueError("unsupported screen decision deadline recipe")
+    session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
 
     def factory(_config, side, seed):
-        wrapped = CwvTimedPolicy(make_side(config, side, seed))
+        wrapped = (session.register(config, side, seed) if session
+                   else CwvTimedPolicy(make_side(config, side, seed)))
         created.append((side, wrapped))
         return wrapped
 
@@ -265,10 +278,14 @@ def run_cluster(config, cluster):
         games.append(game)
         return game
 
-    rows = [duel.play_screen_round(
-        base, cluster, seed, mirror, bot_factory=factory,
-        counter_fn=work_counters, game_factory=game_factory)
-            for mirror in (0, 1)]
+    try:
+        rows = [duel.play_screen_round(
+            base, cluster, seed, mirror, bot_factory=factory,
+            counter_fn=work_counters, game_factory=game_factory)
+                for mirror in (0, 1)]
+    finally:
+        if session:
+            session.close()
     if len(rows) != len(games):
         raise ValueError("ranked screen game factory did not produce one game per mirror")
     for (record, _), game in zip(rows, games, strict=True):
@@ -392,6 +409,16 @@ def summary_for(shards, config):
             by_suit[suit] += 1
         result["trump_ranks"] = list(config["trump_ranks"])
         result["coverage"] = {"by_rank": by_rank, "by_trump_suit": by_suit}
+    if config.get("decision_deadline"):
+        result["decision_latency"] = latency_summary(shards)
+        complete_accounting = all(row["work_accounting_complete"]
+                                  for row in result["decision_latency"].values())
+        result["work_accounting_complete"] = complete_accounting
+        result["work_caveat"] += (
+            " Both policies have a 300s total play deadline with SmartBot fallback."
+            " Interrupted search counters/CPU are uncommitted lower bounds, not zero work.")
+        if not complete_accounting:
+            result["arm_over_baseline_decision_cpu"] = None
     return result
 
 
@@ -399,6 +426,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", choices=ARMS, required=True)
     parser.add_argument("--checkpoint")
+    parser.add_argument("--decision-deadline", type=float, default=300,
+                        help="300s total play deadline (default); 0 explicitly selects legacy uncapped policy")
     parser.add_argument("--worlds", type=int, default=1)
     parser.add_argument("--selection-worlds", type=int, default=30)
     parser.add_argument("--alternatives", type=int, default=4)
@@ -435,6 +464,10 @@ def main(argv=None):
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
+    if args.decision_deadline != 0:
+        validate_deadline(args.decision_deadline)
+        if args.decision_deadline != 300:
+            parser.error("screen recipe supports --decision-deadline 300 or legacy 0 only")
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
             or args.report_worlds < 30):
@@ -502,6 +535,8 @@ def _run_screen(args, trump_ranks):
                                         "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                                         "VECLIB_MAXIMUM_THREADS", "MKL_NUM_THREADS")}},
     }
+    if args.decision_deadline:
+        config["decision_deadline"] = dict(DEADLINE_RECIPE)
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True

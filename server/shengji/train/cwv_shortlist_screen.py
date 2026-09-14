@@ -17,6 +17,8 @@ from ..ai.registry import make_bot
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
+from .cwv_throw_aware import CWVThrowComponentsBot, CWVThrowComponentsBuryBot
+from .cwv_bury_policy import CWVBuryBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -187,7 +189,13 @@ def make_side(config: dict, side: str, seed: int):
                                    inner_reuse_successors=inner.get(
                                        "reuse_successors", False))
     else:
-        bot = CWVShortlistBot(evaluator, **kwargs)
+        cls = (CWVThrowComponentsBot if side == "arm" and
+               config.get("throw_components") else CWVShortlistBot)
+        if config.get("hybrid_bury"):
+            cls = (CWVThrowComponentsBuryBot if cls is CWVThrowComponentsBot
+                   else CWVBuryBot)
+            kwargs["arm"] = "hybrid"
+        bot = cls(evaluator, **kwargs)
     bot.REPORT_FOLD_WORLDS = int(config["report_worlds"])
     # #339 layer 1: bound per window in config.json, applied to the ARM bot only.
     # A flat-shortlist baseline also reaches this point; it must stay at the
@@ -243,7 +251,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline", "decision_deadline"):
+    for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components", "hybrid_bury"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -446,6 +454,10 @@ def main(argv=None):
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
                              "keeps the production default")
+    parser.add_argument("--throw-components", action="store_true",
+                        help="ARM only: admit direct components of model-shortlisted lead throws")
+    parser.add_argument("--hybrid-bury", action="store_true",
+                        help="same default hybrid bury on both learned/flat-shortlist sides")
     parser.add_argument("--inner-mode", choices=("learned", "uniform", "heuristic"),
                         help="DEV: one extra trick of per-world shortlist continuation; learned root only")
     parser.add_argument("--inner-worlds", type=int, default=4,
@@ -484,6 +496,11 @@ def main(argv=None):
         parser.error("--report-tie-keeps-incumbent is only valid for learned")
     if args.value_head is not None and args.arm != "learned":
         parser.error("--value-head is only valid for learned")
+    if args.throw_components and (args.arm != "learned" or args.inner_mode is not None):
+        parser.error("--throw-components requires learned without --inner-mode")
+    if args.hybrid_bury and (args.arm != "learned" or args.baseline != "flat-shortlist"
+                             or args.inner_mode is not None):
+        parser.error("--hybrid-bury requires learned/flat-shortlist without --inner-mode")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -544,6 +561,10 @@ def _run_screen(args, trump_ranks):
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:
         config["value_head"] = args.value_head
+    if args.throw_components:
+        config["throw_components"] = True
+    if args.hybrid_bury:
+        config["hybrid_bury"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
     if args.inner_mode is not None:

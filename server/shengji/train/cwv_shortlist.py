@@ -168,7 +168,8 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             means = self._means(rnd, seat, actions, worlds)
             chosen = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[
                 :self.shortlist_config.alternatives]
-        selected = [base, *chosen]
+        model_selected = [base, *chosen]
+        selected = self._augment_selected(rnd, actions, model_selected)
         production_keys = {tuple(sorted(a)) for a in production}
         kept = [actions[i] for i in selected]
         self.shortlist_counts["decisions"] += 1
@@ -187,6 +188,9 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             "cheap_sampler_delta": self._sampler_delta(sampler_before),
             "counts": {k: self.shortlist_counts[k] - before[k] for k in before},
         }
+        if selected != model_selected:
+            self.last_shortlist["model_shortlist_indices"] = model_selected
+            self.last_shortlist["admission_extension"] = "direct-throw-components-v1"
         if self.capture_full_legal_scores:
             self.last_shortlist["full_legal_scores"] = {
                 "schema": "cwv-full-legal-scores-v1",
@@ -212,6 +216,10 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         self.shortlist_wall_seconds += elapsed
         self.last_shortlist["wall_seconds"] = elapsed
         return kept
+
+    def _augment_selected(self, rnd, actions, selected):
+        """Experimental admission hook; production preserves the original ballot."""
+        return selected
 
     def decide_play(self, rnd, seat):
         self.last_shortlist = None

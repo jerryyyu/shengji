@@ -106,6 +106,23 @@ def test_g1_cell_is_parameter_matched_to_m1s_residual_twin_and_has_both_heads():
     assert all(p.grad is not None for name, p in net.named_parameters() if "search_head" not in name)
 
 
+def test_the_two_window_implementations_agree_and_the_forward_is_identical():
+    """The conv1d path (oneDNN CPUs) and the flat per-tap GEMM path compute the same
+    read; a whole forward through either gives the same features."""
+    net = ValueNetwork(_cfg(channels=16, hidden=64)).eval()
+    tr = net.trunk
+    h = torch.randn(3, tr.rows, tr.cols, tr.win2_w.shape[1])
+    tr.use_conv1d = True; a = tr._window(h, tr.win2_w, tr.win2_b)
+    tr.use_conv1d = False; b = tr._window(h, tr.win2_w, tr.win2_b)
+    assert torch.allclose(a, b, atol=1e-5)
+    x = torch.rand(7, 561 + 270 + 2); x[:, 486:491] = 0; x[:, 488] = 1; x[:, 491:504] = 0; x[:, 495] = 1
+    with torch.no_grad():
+        tr.use_conv1d = True; fa = net.features(x[:, :561], x[:, 561:831].reshape(7, 5, 54), x[:, 831:])
+        tr.use_conv1d = False; fb = net.features(x[:, :561], x[:, 561:831].reshape(7, 5, 54), x[:, 831:])
+    assert torch.allclose(fa, fb, atol=1e-5)
+    tr.use_conv1d = None
+
+
 def test_window_read_equals_a_kernel_3_convolution_along_the_row():
     """The flat per-tap GEMM is a width-3 convolution along the column axis with
     zero padding, weights shared across rows -- checked against F.conv2d."""

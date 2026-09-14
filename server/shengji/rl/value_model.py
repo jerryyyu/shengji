@@ -268,9 +268,27 @@ class GridTrunk(nn.Module):
         idx = slots.unsqueeze(1).expand(b, self.n_planes, slots.shape[1])
         return torch.gather(planes, 2, idx).reshape(b, self.n_planes, self.rows, self.cols)
 
+    #: read the windows with the native 1-d convolution on CPUs that have oneDNN
+    #: (the x86 screen hosts: 2.2x faster than the per-tap GEMMs at batch 1,024);
+    #: the flat GEMMs stay for Apple CPUs (nnpack conv is 4x slower there) and MPS.
+    use_conv1d: bool | None = None
+
+    def _conv1d_ok(self, h: torch.Tensor) -> bool:
+        if self.use_conv1d is not None:
+            return self.use_conv1d
+        return h.device.type == "cpu" and torch.backends.mkldnn.is_available()
+
     def _window(self, h: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
-        """Width-3 read along the column axis of channels-last ``(b, rows, cols, C)``."""
+        """Width-3 read along the column axis of channels-last ``(b, rows, cols, C)``.
+        Two implementations of the same arithmetic (tested equal): one GEMM per tap
+        on a flat matrix, or ``F.conv1d`` over ``(b*rows, C, cols)`` where oneDNN
+        makes that the faster path."""
         b, r, n, c = h.shape
+        if self._conv1d_ok(h):
+            kernel = w.permute(2, 1, 0)                                    # (O, C, 3)
+            y = torch.nn.functional.conv1d(h.reshape(b * r, n, c).transpose(1, 2), kernel, bias,
+                                           padding=1)                      # (b*rows, O, cols)
+            return y.transpose(1, 2).reshape(b, r, n, -1)
         hp = torch.nn.functional.pad(h, (0, 0, 1, 1))
         out = bias.expand(b * r * n, -1)
         for k in range(3):

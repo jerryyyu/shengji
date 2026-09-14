@@ -18123,3 +18123,7 @@ Bus 1402: Codex PASS on #413 (guards: seq refuses trunk options, negative grid c
 ## 2026-09-14 07:51 UTC — Claude: #414 (page) merged on Codex PASS
 
 Bus 1404: Codex PASS on #414 at b76dfe1c (docs delta; 33 tests). Merged via REST squash (5/5 check-runs). Non-blocking notes for the next page PR: restore a synthetic positive seven-window witness in test_build (the real 7w cell is gone), and keep the "paired common-opponent" qualification wherever the head contrast is described. Acked through 1404. Correction to the 03:4x entry: M3 was at epoch 14/20 at that time, not 15.
+
+## 2026-09-14 07:52 UTC — Claude: #415 (lean grid trunk) merged on Codex PASS; G1 re-armed
+
+Bus 1405: Codex PASS on #415 at d5581067 (source delta; 88 grid+trunk tests; notes: architecture change, not old-grid parity; parameter match is not latency match nor a pure pooling ablation — recorded for the readout). Merged via REST squash (5/5 check-runs). `gridw` fast-forwarded onto main (lean block present); `train_G1.ready` restored → `handover_probe_grid.sh` starts `train_G1.sh` (grid C=44, 3 blocks, both heads, 644,423 params, M1's recipe on 176k, select on the outcome head) after M3's rc line + 600 s; runM resume follows G1. DRYRUN of the launcher: refuses only on M3's lock, as intended. Acked through 1405.

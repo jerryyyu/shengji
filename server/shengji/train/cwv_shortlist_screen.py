@@ -147,6 +147,11 @@ def _encoding(config: dict) -> str:
 
 def make_side(config: dict, side: str, seed: int):
     arm = config["arm"]
+    if "wide_tail" in config:
+        if (arm != "learned" or "double_shortlist" in config
+                or config.get("report_tie_keeps_incumbent")
+                or config.get("value_head") is not None):
+            raise ValueError("wide-tail screen requires isolated learned ranking")
     flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
     if (side == "baseline" and not flat_baseline) or arm in ("identity", "production"):
         bot = make_bot("mc-s0-report-lcb", seed=seed)
@@ -176,7 +181,11 @@ def make_side(config: dict, side: str, seed: int):
     inner = config.get("double_shortlist") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
-    if inner is not None:
+    if side == "arm" and "wide_tail" in config:
+        from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
+        bot = CWVWideTailBot(evaluator, **kwargs,
+                            wide_tail=CWVWideTailConfig(**config["wide_tail"]))
+    elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
@@ -243,7 +252,7 @@ def _recipe(config):
         recipe["reuse_successors"] = config["reuse_successors"]
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
-    for key in ("double_shortlist", "baseline", "decision_deadline"):
+    for key in ("double_shortlist", "baseline", "decision_deadline", "wide_tail"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -394,6 +403,14 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Inner finalist continuations count separately and are included exactly once "
             "in total rollouts. Inner choices see sampled complete worlds, not true hidden hands.")
+    if "wide_tail" in config:
+        result["arm_description"] = (
+            "wide-tail two-stage admission: coarse full legal set, production-anchor "
+            "union, disjoint-world refinement; unchanged MC selection/report")
+        result["wide_tail"] = config["wide_tail"]
+        result["work_caveat"] += (
+            " Wide-tail ranking is a policy change, not decision-preserving acceleration. "
+            "Only the refinement pool receives remaining-world scores.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -439,6 +456,8 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--wide-tail", action="store_true",
+                        help="DEV: >10000 legal actions use 2-world coarse top256 plus anchors, then 30 disjoint worlds")
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
@@ -484,6 +503,10 @@ def main(argv=None):
         parser.error("--report-tie-keeps-incumbent is only valid for learned")
     if args.value_head is not None and args.arm != "learned":
         parser.error("--value-head is only valid for learned")
+    if args.wide_tail and (args.arm != "learned" or args.worlds != 32
+                          or args.alternatives != 4 or args.inner_mode is not None
+                          or args.value_head is not None or args.report_tie_keeps_incumbent):
+        parser.error("--wide-tail requires isolated learned W32 ranking with four alternatives")
     if args.inner_mode is not None:
         if args.arm != "learned" or args.alternatives != 4:
             parser.error("--inner-mode requires a learned root with four alternatives plus incumbent")
@@ -540,6 +563,9 @@ def _run_screen(args, trump_ranks):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    if args.wide_tail:
+        from .cwv_wide_tail import CWVWideTailConfig
+        config["wide_tail"] = asdict(CWVWideTailConfig())
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

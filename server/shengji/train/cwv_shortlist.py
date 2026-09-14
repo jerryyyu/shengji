@@ -127,6 +127,15 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             "peak_tensor_entries": tensor_cache.peak_entries})
         return sums / len(worlds)
 
+    def _admission_means(self, rnd, seat, actions, worlds, production):
+        """Score the admission population before shortlist ranking.
+
+        The default is deliberately the original one-stage operation.  The
+        production ballot is supplied as context for bounded experimental
+        admission policies, but does not alter this reference path.
+        """
+        return self._means(rnd, seat, actions, worlds)
+
     def _candidates(self, rnd, seat):
         started = time.perf_counter()
         self.last_successor_reuse = None
@@ -165,7 +174,7 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             if len(worlds) != self.shortlist_config.worlds:
                 raise ValueError("CWV shortlist cheap world population underfilled")
             self.shortlist_counts["cheap_worlds"] += len(worlds)
-            means = self._means(rnd, seat, actions, worlds)
+            means = self._admission_means(rnd, seat, actions, worlds, production)
             chosen = sorted(alternatives, key=lambda i: (-means[i], keys[i]))[
                 :self.shortlist_config.alternatives]
         selected = [base, *chosen]

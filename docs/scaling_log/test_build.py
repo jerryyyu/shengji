@@ -223,7 +223,7 @@ def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
     assert c["ten_total"] == c0["ten_total"] - 1
     cell = _play_cells(page)["fc73c0f4"]
     assert "+0.0105" in cell and "5w" in cell and "10w" not in cell
-    assert 'class="pt pt7"' in page and "five windows (wider)" in page  # legend + hollow marker
+    assert 'class="pt pt7"' in page and "fewer than ten windows (wider)" in page  # legend + hollow marker
     assert 'class="ci ci5"' in page and page.count("svg .ci3{") == 1  # its own interval class; no CSS collision (Codex, #370)
     assert "a null there means not large" in page and "has no readout yet" not in page
     assert f"MDE80 about {c['mde']['5w']:.3f}" in page
@@ -231,15 +231,15 @@ def test_a_five_window_cell_is_badged_counted_and_charted_separately(data):
     if c["five_total"] == 1:
         assert abs(c["mde"]["5w"] - 0.0205 * build.MDE_PER_HALFWIDTH) < 1e-6
     # the marker and legend appear only when a five-window row exists
-    rows0 = [r for r in rows if not (r["ten"] or "").startswith("5w ")]
+    rows0 = [r for r in rows if not re.match(r"^\d+w ", r["ten"] or "")]
     base, c_base = _render(rows0, table_only, series)
     assert c_base["five_total"] == 0
-    assert 'class="pt pt7"' not in base and "five windows (wider)" not in base
+    assert 'class="pt pt7"' not in base and "fewer than ten windows (wider)" not in base
 
 
 @pytest.mark.parametrize("field,value,msg", [
     ("w32", "5w +0.1000 [+0.0500, +0.1500]", "belongs only in the ten-window field"),
-    ("ten", "7w +0.1000 [+0.0500, +0.1500]", "neither a keyword"),
+    ("ten", "5x +0.1000 [+0.0500, +0.1500]", "neither a keyword"),
 ])
 def test_window_prefixes_are_validated(data, field, value, msg):
     rows, table_only, series = data
@@ -420,3 +420,34 @@ def test_a_checkpoint_parameter_count_overrides_the_width_map_on_the_parameter_a
     next(r for r in rows2 if r["ck"] == "3cb9cd62")["params"] = None
     page2, _ = _render(rows2, table_only, series)
     assert cx(page2, "3cb9cd62", 2) == cx(page2, "0c40c591", 2)
+
+
+def test_a_readout_at_any_window_count_below_ten_is_badged_with_its_count(data):
+    rows, table_only, series = data
+    assert build.parse_cell("7w +0.0203 [+0.0013, +0.0393]") == (0.0203, 0.0013, 0.0393, "7w")
+    page, c = _render(*data)
+    cells = _play_cells(page)
+    assert "+0.0203" in cells["eedf3139"] and "7w" in cells["eedf3139"]
+    assert "7w" in c["mde"] and c["five_total"] >= 3  # the seven-window cell counts among the fewer-than-ten readouts
+    assert "fewer than ten windows" in page
+
+
+def test_an_interim_at_fewer_than_ten_windows_never_counts_as_above_the_leader(data):
+    """v4-96k's seven-window interval clears zero; the headline still waits for ten."""
+    page, c = _render(*data)
+    assert c["above_leader"] == 0 and "None beats the current one." in page
+
+
+def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_text(data, tmp_path, monkeypatch):
+    """Codex HOLD on #405: a second RECORD entry for eedf3139 silently replaced the first."""
+    rows, table_only, series = data
+    page, _ = _render(*data)
+    rec = next(r for r in rows if r["ck"] == "eedf3139")["record"]
+    assert rec.startswith("SEVEN-WINDOW INTERIM") and "Offline:" in rec  # one merged record
+    assert "SEVEN-WINDOW INTERIM" in page  # and it reaches the rendered detail text
+    src = open(Path(__file__).with_name("models.py")).read()
+    dup = src.replace('RECORD = {\n', 'RECORD = {\n    "eedf3139": "stray duplicate",\n', 1)
+    bad = tmp_path / "models.py"; bad.write_text(dup)
+    monkeypatch.setattr(build, "MODELS", bad)
+    with pytest.raises(ValueError, match="RECORD repeats eedf3139"):
+        build.load()

@@ -1,3 +1,4 @@
+import re
 import math
 if "M" not in globals():          # build.py may inject M / TABLE_ONLY / SERIES (tests)
     exec(open(MODELS).read())
@@ -25,7 +26,8 @@ def tip(d):
     elif d["w32"]=="GAP": pass
     elif d["w32"]=="GAP": lines.append("vs leader  never paired")
     if d["ten"] and d["ten"] not in ("REF","CONTROL","QUEUED","RUNNING","SCREENING","CODEX"):
-        if d["ten"].startswith("5w "): lines.append("five windows  %s"%d["ten"][3:])
+        _m=re.match(r"^(\d+)w (.*)$",d["ten"])
+        if _m: lines.append("%s windows  %s"%(_m.group(1),_m.group(2)))
         else: lines.append("ten windows  %s"%d["ten"])
     if d["note"]: lines.append(d["note"])
     if RECORD.get(d["ck"]): lines.append(""); lines.append(RECORD[d["ck"]])
@@ -219,7 +221,8 @@ def eff(d):
     t=d["ten"]
     if t and t not in ("REF","CONTROL","QUEUED","RUNNING","SCREENING","CODEX"):
         inst="ten"
-        if t.startswith("5w "): t=t[3:]; inst="five"
+        _m=re.match(r"^(\d+)w (.*)$",t)
+        if _m: t=_m.group(2); inst="five"   # any readout at fewer than ten windows shares the wide style
         m,rest=t.split(" [",1); lo,hi=rest.rstrip("]").split(", ")
         return (float(m),float(lo),float(hi),inst)
     w=d["w32"]
@@ -235,7 +238,7 @@ def legend(s,lx,r,y0,ys):
     s.append('<circle cx="%d" cy="64" r="%s" class="pt pt3"/><text x="%d" y="68" class="lg">one 520-deal window</text>'%(lx+6,r,lx+19))
     s.append('<circle cx="%d" cy="86" r="%s" class="pt pt2"/><text x="%d" y="90" class="lg">ten windows</text>'%(lx+6,r,lx+19))
     if ANYFIVE:
-        s.append('<circle cx="%d" cy="108" r="%s" class="pt pt7"/><text x="%d" y="112" class="lg">five windows (wider)</text>'%(lx+6,r,lx+19))
+        s.append('<circle cx="%d" cy="108" r="%s" class="pt pt7"/><text x="%d" y="112" class="lg">fewer than ten windows (wider)</text>'%(lx+6,r,lx+19))
         return ys+22
     return ys
 def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra, spread=17):
@@ -431,7 +434,7 @@ NMC=sum(1 for d in R if d["mc"])
 NLD=sum(1 for d in R if _hasld(d))
 _since=[d for d in _ce if d["tr"]>_bst["tr"]]
 _effs=[(d,eff(d)) for d in SCR if eff(d) and eff(d)[3]!="ref"]
-_above=sum(1 for d,(m,lo,hi,inst) in _effs if lo>0)
+_above=sum(1 for d,(m,lo,hi,inst) in _effs if lo>0 and inst=="ten")   # only the pre-registered ten-window readout can put an arm "above the leader"; interims at fewer windows never do
 _ten=[(d,eff(d)) for d in R if d["ten"] and eff(d) and eff(d)[3]=="ten"]
 _ten_cross=sum(1 for d,(m,lo,hi,inst) in _ten if lo<=0<=hi)   # touching zero is not resolving
 _five=[(d,eff(d)) for d in R if d["ten"] and eff(d) and eff(d)[3]=="five"]

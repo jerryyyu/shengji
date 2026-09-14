@@ -33,7 +33,8 @@ def test_baseline_renders_and_matches_the_committed_page(data):
     assert page == open(Path(__file__).with_name("scaling.html")).read()
     # 09-14: M1's outcome head is the one ten-window interval that excludes zero (by 0.0007)
     assert c["ten_total"] == c["ten_cross"] + 1 and c["above_leader"] == 1
-    assert "One beats the current one." in page
+    assert "One nominal interval clears zero; independent confirmation is pending." in page
+    assert "beats the current one" not in page
 
 
 def test_changing_a_val_ce_moves_the_chart_dot_the_registry_and_the_day_table(data):
@@ -86,7 +87,8 @@ def test_a_positive_ten_window_interval_changes_the_headline_and_the_kpi(data):
     assert "all " + build.word(c["ten_total"]) + " cross zero" not in page
     assert f"{c['above_leader']} of {c['with_leader']}</b><span>models above the leader" in page
     # the whole page, not only the KPI: the section-1b sentence follows the same rows
-    assert "None beats the current one." not in page and "One beats the current one." in page
+    assert "None beats the current one." not in page \
+        and "One nominal interval clears zero; independent confirmation is pending." in page
 
 
 def test_chart_series_follow_checkpoint_identity_not_typed_numbers(data):
@@ -460,7 +462,7 @@ def test_an_interim_at_fewer_than_ten_windows_never_counts_as_above_the_leader(d
     interval that excludes zero counts (today: M1's outcome head, exactly one)."""
     rows, table_only, series = data
     page, c = _render(*data)
-    assert c["above_leader"] == 1 and "One beats the current one." in page
+    assert c["above_leader"] == 1 and "One nominal interval clears zero; independent confirmation is pending." in page
     rows2 = copy.deepcopy(rows)
     next(x for x in rows2 if x["ck"] == "3cb9cd62")["ten"] = "5w +0.0174 [+0.0057, +0.0404]"
     page2, c2 = _render(rows2, table_only, series)   # the same interval at five windows counts for nothing

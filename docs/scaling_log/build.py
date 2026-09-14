@@ -372,7 +372,8 @@ def render(rows=None, table_only=None, series=None):
                      else f"{c['paired_exact']} of the {c['paired_one']} paired arms")
     above = c["above_leader"]
     above_clause = ("None beats the current one." if above == 0 else
-                    f"{word(above).capitalize()} {'beats' if above == 1 else 'beat'} the current one.")
+                    ("One nominal interval clears zero; independent confirmation is pending." if above == 1 else
+                     f"{word(above).capitalize()} nominal intervals clear zero; independent confirmation is pending."))
     corpus_clause = (f"Only {word(c['sizes_with_leader'])} of {word(c['sizes_all'])} corpus sizes have any "
                      f"leader comparison, and nothing below {c['min_leader_records'] / 1e6:.1f}M records has one.")
     w = c

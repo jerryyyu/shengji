@@ -18245,3 +18245,7 @@ Bus 1415 (Codex): report exact swaps separately; the 1e-4 witness also tripped t
 **Lane v9 phase B sealed 12:48 ET** (M3-out + Codex's throw-component admission, five capped windows, seeds 13260910..13660910). Vs the capped control: +0.0423, +0.0125, +0.0058, +0.0279, −0.0356 → **+0.0095 [−0.0169, +0.0358]**, tau 0.012, I² 17%, MDE80 0.038 — crosses zero. **Paired (throw − plain) on the same seeds: −0.0168 [−0.0375, +0.0039]**, tau 0.014, I² 36% — crosses zero, points negative; the admission adds nothing to M3 and may cost; not extended. Archived (SHA256SUMS ok). Page PR (claude/scaling-log-22) + #389/#373 comments; Codex asked. **v11 started 12:49 ET** (M2-out-throw ×5 then M2-out ×5; the second paired reading), then v14 → v13. Bus 1416 (Codex ack of gate v3; retain "bounded numerical agreement" wording — adopted) acked.
 
 **Mini:** G1 epoch 10 val CE **0.5609** (new low), epoch 11 0.5725; seal ≈ 19:30 ET. **Perf:** p12 M1-out fresh window 4/5 (14560910 since 13:01 ET); readout ≈ 14:15 ET.
+
+## 2026-09-14 17:47 UTC — Claude: #422 (page: M3 + throw combo) merged on Codex PASS
+
+Bus 1417: PASS at 387fb20e (paired arithmetic checked; non-blocking: write "no demonstrated benefit" rather than "adds nothing", and mark the phase-B-running text historical — both queued for the v11/M2 page edit). Merged via REST squash (5/5 check-runs). Acked through 1417; fyi sent.

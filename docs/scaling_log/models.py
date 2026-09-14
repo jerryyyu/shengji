@@ -54,7 +54,7 @@ M = [
 ("smean-96k","8a6d5260","2026-09-12","v2",512,"3e-4","96k","14,077,520","1.67515","0.0353",
  "","","+0.0124 [-0.0060, +0.0308]","#340 arm, --target search-mean: ten windows null (the twelfth), pre-registration held; regret@4 0.0353; val_ce 1.675 by construction"),
 ("encoder v4, 96k","eedf3139","2026-09-13","v4",512,"3e-4","96k","14,077,520","0.62578","0.0397",
- "","","","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182), best epoch 4/7; five-window screen running on perf 09-13"),
+ "","","7w +0.0203 [+0.0013, +0.0393]","#341 arm, --encoder-version 4: worse than the v2 twin offline (0.62578 vs 0.62182) yet the only arm whose interval clears zero (7w); ten pending"),
 ("grid S-d4 (4 residual layers)","f88b54cb","2026-09-12","v2",330,"3e-4","144k","20,939,532","0.60570","0.0344",
  "","","5w +0.0108 [-0.0144, +0.0360]","grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]"),
 ("M1: two heads on the S-d4 cell, 176k","3cb9cd62","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.59746","0.0298",
@@ -128,6 +128,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "eedf3139":
+        "SEVEN-WINDOW INTERIM 09-13 21:5x ET (four windows on perf 13260910..13560910 + three extension windows on cloud 13760910..13960910, all vs vol96k): +0.0279, +0.0490, +0.0106, -0.0077, +0.0221, +0.0231, +0.0163 (SE ~0.025 each, twice the other arms: the v4 encoder changes more plays per deal); random effects +0.0203 [+0.0013, +0.0393], SE 0.0097, tau 0, Q 2.82/6, MDE80 0.027 -- the point unchanged since the four-window interim (+0.0202) and the interval just above zero. NOT the pre-registered ten (seeds 13660910 and 14160910 run after M1 tonight); caveats: sixteen arms have been read against the same ten vol96k control windows and every one points slightly positive while own-control readouts sit at zero (a shared-control offset of +0.005 to +0.01 is plausible), so the like-for-like check is v4 against a second control population (the capped vol96k control). Offline: ",
     "3cb9cd62":
         "M1 (Jerry 09-13 09:4x ET: residual depth 4 at the h512 budget, all 176k clusters, two heads, select on the outcome head; #373/#374): volNEW-176k argv verbatim + --hidden 330 --trunk-layers 4 --trunk-block residual + --search-head --search-head-weight 1.0 --search-mean-sidecar sidecar-search-mean-v2 (176,000 sidecars, 83.3% of rows with a search mean); 644,568 params (610,704 trunk+outcome head + the second 204-class head); on-disk directory A-d4-2h-176k; sealed 09-13 17:53 ET (rc=0, seal check vs the volNEW-176k receipt: same corpus/counts/split, diff only in depth+head fields); best epoch 18/20; OUTCOME head val_ce 0.59746 = the best of the programme, 0.0296 below volNEW-176k (0.62703) and 0.0089 below the depth-only twin S-d4-176k (0.60636): training the search-mean head alongside IMPROVED the outcome head; outcome regret@4 0.0298 / recall@4 0.737 (leader 0.0381 / 0.683); SEARCH head regret@4 0.0244 / recall@4 0.772 -- clears the pre-registered <= 0.0361 line for screening the search head; screen: M1-out (--value-head outcome) and M1-srch (--value-head search-mean) on five seeds each vs vol96k on the cloud lane v8 from ~18:30 ET",
     "c6d48d57":

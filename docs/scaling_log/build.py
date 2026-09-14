@@ -49,10 +49,10 @@ MONTHS = {9: "September", 10: "October", 11: "November", 12: "December"}
 NOTE_LIMIT = 150  # a table note is one line; longer history goes in RECORD
 FIELDS = ("n", "ck", "tr", "enc", "w", "lr", "cl", "rec", "ce", "rg", "mc", "w32", "ten", "note")
 KEYWORDS = ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX")
-#: a screen cell: optional instrument prefix ("5w " = a five-window readout; only
+#: a screen cell: optional window-count prefix ("5w " = a five-window readout, "7w " = seven; only
 #: the ten-window field takes one), optional RES prefix (a one-window result that
 #: resolves), point estimate and interval, optional " SUPERSEDED" suffix; nothing else
-CELL = re.compile(r"(?:(5w) )?(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
+CELL = re.compile(r"(?:(\d+w) )?(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
 #: the instrument each field measures with (a five-window cell overrides "10w")
 INSTRUMENT = {"ten": "10w", "w32": "1w", "mc": "mc"}
 #: MDE80 = (z.975 + z.80) * SE while a 95% interval half-width is z.975 * SE
@@ -186,7 +186,7 @@ BADGE = {"10w": "10w", "5w": "5w", "1w": "1w paired", "mc": "1w MC&#8209;LCB"}
 def measure(v, field):
     """One measurement as html: signed point, interval, instrument badge, pills; plus its class."""
     mid, lo, hi, inst = parse_cell(v, field)
-    core = re.sub(r"^5w ", "", v).replace("RES", "").replace(" SUPERSEDED", "").replace("-", "&#8209;")
+    core = re.sub(r"^\d+w ", "", v).replace("RES", "").replace(" SUPERSEDED", "").replace("-", "&#8209;")
     pill = ""
     if "RES" in v and "SUPERSEDED" not in v:
         pill = ' <span class="pill res">resolves</span>'
@@ -196,7 +196,7 @@ def measure(v, field):
     cls = "pos" if mid > 0 else ("neg" if "resolves" in pill else "null")
     if "SUPERSEDED" in v:
         cls = "null"
-    return f'{core} <span class="pill inst">{BADGE[inst]}</span>{pill}', cls
+    return f'{core} <span class="pill inst">{BADGE.get(inst, inst)}</span>{pill}', cls
 
 
 def play_cell(r):
@@ -377,8 +377,10 @@ def render(rows=None, table_only=None, series=None):
     mde = mde80(rows)
     fmt = lambda k: f"{mde[k]:.3f}" if k in mde else "n/a"
     n_five = c.get("five_total", 0)
-    five_clause = (f" <b>5w</b> is the first five of those windows, MDE80 about {fmt('5w')}: "
-                   f"a null there means not large, never no effect ({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
+    few = sorted((k for k in mde if k.endswith("w") and k not in ("10w", "1w")), key=lambda k: int(k[:-1]))
+    five_clause = (" A cell badged <b>" + "</b>/<b>".join(few) + "</b> is a readout at that many windows, fewer than ten "
+                   f"(MDE80 about {', '.join(fmt(k) for k in few)}): a null there means not large, never no effect "
+                   f"({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
                    if n_five else " <b>5w</b> (the first five windows, the triage instrument) has no readout yet.")
     present = [e for e in ("v1", "v2", "v3", "v4") if c["enc_counts"].get(e)]
     enc_list = "encoder " + (", ".join(present[:-1]) + " and " + present[-1] if len(present) > 1 else present[0])

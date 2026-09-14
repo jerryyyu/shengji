@@ -18229,3 +18229,7 @@ Jerry (11:3x ET): the search sets better labels for actions; we only train value
 ## 2026-09-14 15:39 UTC — Claude: runP HELD (Jerry) — waiter disarmed on cloud
 
 Jerry (11:5x ET): "intuitively I want to push more compute from search into the neural net. Yes let's hold run P." The runP waiter (pid 1635837) stopped while waiting (no data-gen process had started); `/root/JERRY_OK_runP` renamed to `/root/JERRY_HOLD_runP-20260914`; lanes v9/v11/v14/v13 untouched (four supervisors alive). runP is re-issued only as generation-1 data gen under plan #421, played by the improved searcher. The Mini's runM resume after G1 is unchanged for now (it is a resume of an existing production-recipe corpus, 2,094/8,000 clusters; ask Jerry whether it should also wait).
+
+## 2026-09-14 15:40 UTC — Claude: runM resume HELD (Jerry) — Mini handover disarmed
+
+Jerry (12:0x ET): "run M can hold." `handover_probe_grid.sh` (pid 37958, the waiter that would resume runM after G1) stopped; G1's trainer and `ship_G1_to_cloud.sh` untouched. After G1 seals the Mini is free for the #419 policy head at scale and continued training (plan #421). No production-recipe data generation is armed on any host.

@@ -18361,3 +18361,7 @@ Mini — G1 epoch 19/20 (val CE 0.5509; best so far 0.5506 at epoch 18); epoch 2
 **Page PR #424** (claude/scaling-log-23 @ 43e204d9; Codex asked 786): G1 row + PARAMS + RECORD, M1 ten-fresh cell/RECORD, CE floor 0.590 → 0.540 with the floor witness (0.530) and the moves-a-dot witness (0.541; `best_ce`) moved; build --check 55 rows; 34 tests. Artifact republished.
 
 **Policy prior v1 trained at scale** (`train_policy_head_v2.sh` fired on the seal: 1,000,000 root-state rows from train-split deals, thin 0.1; 10 epochs BCE + listwise 1.0; module on main 33028c4e; `fl-pilot/policy_prior_v1.pt`). Held-out (30k rows): exhaustive : top-32 , top-64  (random64 ); partial (stored ≤256 candidates, same-universe random top-64 0.25): 1001-10000: top-32 0.919, top-64 0.996;10001-1000000: top-32 0.790, top-64 0.971;{"out":: top-32 1,, top-64 "train_loss":;. Next per #421: the shortlist-prior consumer flag (Codex) and a matched-wall capped screen.
+
+## 2026-09-14 23:48 UTC — Claude: #424 (page: G1 row, M1 ten fresh, CE floor) — NOT merged (checks 5 1)
+
+Bus 1422: Codex PASS at 43e204d9 (receipt, gate logs and p13 summaries verified; keep the fixed-five confirmation separate from the outcome-triggered ten-fresh extension — kept). Outcome: NOT merged (checks 5 1). Acked through 1422; fyi sent. Open on the fleet: cloud v13 (G1 screen, window 1/5 since 19:15 ET), perf Codex's wide-tail run, Mini idle (runM held).

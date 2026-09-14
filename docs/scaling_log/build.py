@@ -52,7 +52,7 @@ KEYWORDS = ("REF", "GAP", "CONTROL", "QUEUED", "RUNNING", "SCREENING", "CODEX")
 #: a screen cell: optional window-count prefix ("5w " = a five-window readout, "7w " = seven; only
 #: the ten-window field takes one), optional RES prefix (a one-window result that
 #: resolves), point estimate and interval, optional " SUPERSEDED" suffix; nothing else
-CELL = re.compile(r"(?:(\d+w) )?(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
+CELL = re.compile(r"(?:([1-9]w) )?(RES)?([+-]\d\.\d{4}) \[([+-]\d\.\d{3,4}), ([+-]\d\.\d{3,4})\]( SUPERSEDED)?")
 #: the instrument each field measures with (a five-window cell overrides "10w")
 INSTRUMENT = {"ten": "10w", "w32": "1w", "mc": "mc"}
 #: MDE80 = (z.975 + z.80) * SE while a 95% interval half-width is z.975 * SE
@@ -63,9 +63,27 @@ def word(n):
     return WORDS.get(n, str(n))
 
 
+def _duplicate_literal_keys(src, name):
+    """Keys repeated inside the ``name = {...}`` literal of models.py (a dict literal keeps
+    only the last, so a repeated checkpoint would silently drop a history)."""
+    import ast
+    tree = ast.parse(src)
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets) \
+                and isinstance(node.value, ast.Dict):
+            keys = [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
+            return sorted({k for k in keys if keys.count(k) > 1})
+    return []
+
+
 def load():
     g = {}
-    exec(open(MODELS).read(), g)
+    src = open(MODELS).read()
+    for name in ("RECORD", "PARAMS"):
+        dup = _duplicate_literal_keys(src, name)
+        if dup:
+            raise ValueError(f"{name} repeats {', '.join(dup)}: merge into one entry")
+    exec(src, g)
     record = g.get("RECORD", {})
     params = g.get("PARAMS", {})
     rows = [dict(zip(FIELDS, m)) for m in g["M"]]

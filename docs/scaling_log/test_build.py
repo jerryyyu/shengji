@@ -436,3 +436,18 @@ def test_an_interim_at_fewer_than_ten_windows_never_counts_as_above_the_leader(d
     """v4-96k's seven-window interval clears zero; the headline still waits for ten."""
     page, c = _render(*data)
     assert c["above_leader"] == 0 and "None beats the current one." in page
+
+
+def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_text(data, tmp_path, monkeypatch):
+    """Codex HOLD on #405: a second RECORD entry for eedf3139 silently replaced the first."""
+    rows, table_only, series = data
+    page, _ = _render(*data)
+    rec = next(r for r in rows if r["ck"] == "eedf3139")["record"]
+    assert rec.startswith("SEVEN-WINDOW INTERIM") and "Offline:" in rec  # one merged record
+    assert "SEVEN-WINDOW INTERIM" in page  # and it reaches the rendered detail text
+    src = open(Path(__file__).with_name("models.py")).read()
+    dup = src.replace('RECORD = {\n', 'RECORD = {\n    "eedf3139": "stray duplicate",\n', 1)
+    bad = tmp_path / "models.py"; bad.write_text(dup)
+    monkeypatch.setattr(build, "MODELS", bad)
+    with pytest.raises(ValueError, match="RECORD repeats eedf3139"):
+        build.load()

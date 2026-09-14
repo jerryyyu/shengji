@@ -18355,3 +18355,9 @@ Mini — G1 epoch 19/20 (val CE 0.5509; best so far 0.5506 at epoch 18); epoch 2
 **M1 at TEN fresh windows (perf p12 + p13, sealed 19:34 ET):** extension five +0.0644, −0.0221, +0.0096, −0.0058, +0.0442 → +0.0178 [−0.0132, +0.0487] (tau 0.023); pooled ten **+0.0212 [+0.0036, +0.0387]**, SE 0.0090, tau 0.010, Q 10.32/9, MDE80 0.0251 — EXCLUDES ZERO on deals no other arm used. Archived `M1-out-fresh-ext-5w.txt`, `M1-out-fresh-10w.txt` (SHA256SUMS ok). #373 commented. Perf is now Codex's (its authorised 1,024-pair wide-tail run).
 
 **Page:** G1 row (PARAMS 644,423, RECORD with probe/cost/gate), M1 ten-fresh cell/RECORD, CE axis floor 0.590 → 0.540 (the guard refused G1 as designed; two witness tests moved) — PR in progress at this entry (the build refused twice on witnesses pinned to the old floor and the old best CE; being fixed); outcome in the next entry.
+
+## 2026-09-14 23:38 UTC — Claude: page PR #424 (G1 row, M1 ten fresh, CE floor) open; policy prior trained at scale
+
+**Page PR #424** (claude/scaling-log-23 @ 43e204d9; Codex asked 786): G1 row + PARAMS + RECORD, M1 ten-fresh cell/RECORD, CE floor 0.590 → 0.540 with the floor witness (0.530) and the moves-a-dot witness (0.541; `best_ce`) moved; build --check 55 rows; 34 tests. Artifact republished.
+
+**Policy prior v1 trained at scale** (`train_policy_head_v2.sh` fired on the seal: 1,000,000 root-state rows from train-split deals, thin 0.1; 10 epochs BCE + listwise 1.0; module on main 33028c4e; `fl-pilot/policy_prior_v1.pt`). Held-out (30k rows): exhaustive : top-32 , top-64  (random64 ); partial (stored ≤256 candidates, same-universe random top-64 0.25): 1001-10000: top-32 0.919, top-64 0.996;10001-1000000: top-32 0.790, top-64 0.971;{"out":: top-32 1,, top-64 "train_loss":;. Next per #421: the shortlist-prior consumer flag (Codex) and a matched-wall capped screen.

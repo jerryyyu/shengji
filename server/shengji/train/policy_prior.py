@@ -51,7 +51,6 @@ INPUT_DIM = 561 + WORLD_RECEIVERS * N_CARDS + 2      # v2 public + world + persp
 MAX_LEGAL = 4000
 BUCKETS = ((0, 20), (21, 100), (101, 1000), (1001, 10000), (10001, 10 ** 9))
 TOP_NS = (1, 5, 8, 32, 64, 256)
-BALLOT_MAX, CARDS_MAX = 6, 8
 
 
 class PolicyPriorError(ValueError):
@@ -199,19 +198,22 @@ def score_candidates(log_odds: np.ndarray, candidates: Sequence[Sequence[int]]) 
 
 
 def ballot_tensors(meta: Sequence[Mapping[str, Any]]):
-    """Padded ballot card indices (-1 = none), a slot mask, and the played slot (-1 if
-    the played action is not in the ballot) for the listwise target."""
+    """Padded ballot card indices (int8, -1 = none), a slot mask, and the played slot
+    (-1 if the played action is not in the ballot).  Padding is DYNAMIC: every slot
+    and every card of every candidate is kept, so the training score of a candidate
+    is exactly its inference score (``score_candidates``), whatever its length."""
     import torch
     n = len(meta)
-    ball = np.full((n, BALLOT_MAX, CARDS_MAX), -1, np.int64)
-    mask = np.zeros((n, BALLOT_MAX), bool)
+    ballots = [[tuple(sorted(a)) for a in m["ballot"] if a] for m in meta]
+    b_max = max((len(b) for b in ballots), default=1) or 1
+    c_max = max((len(c) for b in ballots for c in b), default=1) or 1
+    ball = np.full((n, b_max, c_max), -1, np.int8)
+    mask = np.zeros((n, b_max), bool)
     tgt = np.full(n, -1, np.int64)
-    for i, m in enumerate(meta):
-        cands = [tuple(sorted(a)) for a in m["ballot"] if a][:BALLOT_MAX]
+    for i, (m, cands) in enumerate(zip(meta, ballots)):
         taken = tuple(sorted(m["taken"]))
         for j, c in enumerate(cands):
-            for k, card in enumerate(c[:CARDS_MAX]):
-                ball[i, j, k] = card
+            ball[i, j, :len(c)] = c
             mask[i, j] = True
             if c == taken:
                 tgt[i] = j
@@ -226,7 +228,7 @@ def listwise_loss(logits, ball, mask, tgt):
     if not bool(ok.any()):
         return logits.sum() * 0.0
     lo = logits[ok]                                                    # (n, 54) log-odds
-    b = ball[ok]
+    b = ball[ok].long()
     gathered = lo.gather(1, b.clamp(min=0).reshape(b.shape[0], -1)).reshape(b.shape)
     gathered = gathered * (b >= 0)
     scores = gathered.sum(2).masked_fill(~mask[ok], -1e9)
@@ -293,50 +295,72 @@ def predict_log_odds(net, payload, X: np.ndarray) -> np.ndarray:
 
 def evaluate(checkpoint: str | Path, test: str | Path, *, log=print) -> dict:
     """Recall of the played action and survival of the whole ballot inside the
-    prior's top-N over the stored legal list, per legal-count bucket."""
+    prior's top-N over the STORED legal list, per legal-count bucket, reported in
+    two strata: ``exhaustive`` (the record's legal list is complete and was not
+    sampled) and ``partial`` (incomplete or sampled to ``MAX_LEGAL``).  Rows whose
+    played action is not in the stored list are COUNTED (``missing_target``) and
+    excluded from recall.  The random baseline is computed on the same ranked
+    universe (the stored list); the full-universe reference (the record's true
+    legal count) is reported separately and labelled."""
     net, payload = load_prior(checkpoint)
     d = np.load(str(test) + ".npz"); X = d["X"]
     meta = [json.loads(l) for l in open(str(test) + ".meta.jsonl")]
     lo = predict_log_odds(net, payload, X)
-    stats = {b: {"n": 0, "taken": {N: 0 for N in TOP_NS}, "ballot_rows": 0, "ballot": {N: 0 for N in TOP_NS},
-                 "rand64": 0.0} for b in BUCKETS}
-    sampled = 0
+    strata = {"exhaustive": {}, "partial": {}}
+    counters = {"rows": len(meta), "no_legal_list": 0, "missing_target": {"exhaustive": 0, "partial": 0},
+                "ranked": {"exhaustive": 0, "partial": 0}}
+    def bucket_stats():
+        return {"n": 0, "taken": {N: 0 for N in TOP_NS}, "ballot_rows": 0, "ballot": {N: 0 for N in TOP_NS},
+                "rand_same": {N: 0.0 for N in TOP_NS}, "rand_full": {N: 0.0 for N in TOP_NS}}
     for i, m in enumerate(meta):
         legal = m["legal"]
         if not legal:
+            counters["no_legal_list"] += 1
             continue
+        nL = int(m["n_legal"])
+        stratum = "exhaustive" if (m.get("complete", True) and nL <= MAX_LEGAL and len(legal) >= nL) else "partial"
         sc = score_candidates(lo[i], legal)
         order = np.argsort(-sc, kind="stable")
         keys = [tuple(sorted(legal[j])) for j in order]
         try:
             r_taken = keys.index(tuple(sorted(m["taken"])))
         except ValueError:
+            counters["missing_target"][stratum] += 1
             continue
-        nL = m["n_legal"]; sampled += nL > MAX_LEGAL
-        b = next(bb for bb in BUCKETS if bb[0] <= nL <= bb[1]); s = stats[b]; s["n"] += 1
+        counters["ranked"][stratum] += 1
+        b = next(bb for bb in BUCKETS if bb[0] <= nL <= bb[1])
+        s = strata[stratum].setdefault(b, bucket_stats()); s["n"] += 1
+        universe = len(keys)
         for N in TOP_NS:
             s["taken"][N] += r_taken < N
+            s["rand_same"][N] += min(1.0, N / universe)
+            s["rand_full"][N] += min(1.0, N / max(nL, 1))
         bal = [tuple(sorted(a)) for a in m["ballot"] if a]
         if bal:
             s["ballot_rows"] += 1
             for N in TOP_NS:
                 top = set(keys[:N]); s["ballot"][N] += all(k in top for k in bal)
-        s["rand64"] += min(1.0, 64 / max(nL, 1))
-    report = {"buckets": [], "sampled_rows": int(sampled), "rows": int(len(meta))}
-    lines = ["legal-count bucket      rows  " + " ".join(f"top{N:<4d}" for N in TOP_NS) + " | rand64 | ballot in top256"]
-    for b in BUCKETS:
-        s = stats[b]
-        if not s["n"]:
-            continue
-        rec = {"bucket": list(b), "rows": s["n"], "taken_recall": {str(N): s["taken"][N] / s["n"] for N in TOP_NS},
-               "ballot_survival": {str(N): (s["ballot"][N] / s["ballot_rows"] if s["ballot_rows"] else None) for N in TOP_NS},
-               "random_top64": s["rand64"] / s["n"]}
-        report["buckets"].append(rec)
-        lines.append(f"{b[0]:>6}-{min(b[1], 10**6):<7} {s['n']:6d}  " + " ".join(f"{s['taken'][N] / s['n']:7.3f}" for N in TOP_NS)
-                     + f" | {s['rand64'] / s['n']:6.3f} | {(s['ballot'][256] / s['ballot_rows']) if s['ballot_rows'] else float('nan'):.3f}")
+    report = {"counters": counters, "strata": {}}
+    lines = [f"rows {counters['rows']} · no legal list {counters['no_legal_list']} · ranked exhaustive {counters['ranked']['exhaustive']} / partial {counters['ranked']['partial']} · missing target exhaustive {counters['missing_target']['exhaustive']} / partial {counters['missing_target']['partial']}"]
+    for name in ("exhaustive", "partial"):
+        recs = []
+        lines.append(f"\n[{name}] legal-count bucket   rows  " + " ".join(f"top{N:<4d}" for N in TOP_NS) + " | rand64 same-universe | rand64 full (ref) | ballot in top256")
+        for b in BUCKETS:
+            s = strata[name].get(b)
+            if not s:
+                continue
+            rec = {"bucket": list(b), "rows": s["n"], "taken_recall": {str(N): s["taken"][N] / s["n"] for N in TOP_NS},
+                   "ballot_survival": {str(N): (s["ballot"][N] / s["ballot_rows"] if s["ballot_rows"] else None) for N in TOP_NS},
+                   "random_same_universe": {str(N): s["rand_same"][N] / s["n"] for N in TOP_NS},
+                   "random_full_universe_reference": {str(N): s["rand_full"][N] / s["n"] for N in TOP_NS}}
+            recs.append(rec)
+            bs = (s["ballot"][256] / s["ballot_rows"]) if s["ballot_rows"] else float("nan")
+            lines.append(f"{b[0]:>6}-{min(b[1], 10**6):<7} {s['n']:6d}  " + " ".join(f"{s['taken'][N] / s['n']:7.3f}" for N in TOP_NS)
+                         + f" | {s['rand_same'][64] / s['n']:6.3f} | {s['rand_full'][64] / s['n']:6.3f} | {bs:.3f}")
+        report["strata"][name] = recs
     report["text"] = "\n".join(lines)
     if log:
-        log(report["text"]); log(f"rows ranked within a {MAX_LEGAL}-action sample: {sampled}")
+        log(report["text"])
     return report
 
 

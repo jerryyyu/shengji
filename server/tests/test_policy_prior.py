@@ -48,7 +48,7 @@ def test_listwise_loss_prefers_the_played_candidate_and_ignores_rows_outside_the
     meta = [{"ballot": [[CARD_INDEX["H2"]], [CARD_INDEX["S9"]], [CARD_INDEX["C5"], CARD_INDEX["C5"]]], "taken": [CARD_INDEX["S9"]]},
             {"ballot": [[CARD_INDEX["H2"]]], "taken": [CARD_INDEX["DK"]]}]          # played action not in the ballot
     ball, mask, tgt = pp.ballot_tensors(meta)
-    assert tgt.tolist() == [1, -1] and mask[0].tolist() == [True, True, True, False, False, False]
+    assert tgt.tolist() == [1, -1] and mask[0].tolist() == [True, True, True] and ball.shape == (2, 3, 2)
     good = torch.full((2, 54), -3.0); good[0, CARD_INDEX["S9"]] = 6.0
     bad = torch.full((2, 54), -3.0); bad[0, CARD_INDEX["H2"]] = 6.0
     assert float(pp.listwise_loss(good, ball, mask, tgt)) < 0.01 < float(pp.listwise_loss(bad, ball, mask, tgt))
@@ -65,10 +65,53 @@ def test_extract_train_eval_round_trip(store_dir, tmp_path):  # noqa: F811
     assert all(m["taken"] and m["n_legal"] >= 1 for m in meta)
     ck = tmp_path / "prior.pt"
     res = pp.train(out, ck, test=out, epochs=2, listwise_weight=1.0, threads=1, log=None)
-    assert len(res["history"]) == 2 and res["eval"]["rows"] == summary["rows"]
+    assert len(res["history"]) == 2 and res["eval"]["counters"]["rows"] == summary["rows"]
     net, payload = pp.load_prior(ck)
     assert payload["schema"] == pp.SCHEMA and payload["listwise_weight"] == 1.0
-    small = [b for b in res["eval"]["buckets"] if b["bucket"][1] <= 20]
-    assert small and small[0]["taken_recall"]["256"] == 1.0          # every ≤20-legal decision is inside top-256
+    ev = res["eval"]; assert ev["counters"]["rows"] == summary["rows"]
+    small = [b for b in ev["strata"]["exhaustive"] + ev["strata"]["partial"] if b["bucket"][1] <= 20]
+    assert small and all(b["taken_recall"]["256"] == 1.0 for b in small)   # every ≤20-legal decision is inside top-256
     with pytest.raises(pp.PolicyPriorError):
         torch.save({"schema": "x"}, tmp_path / "bad.pt"); pp.load_prior(tmp_path / "bad.pt")
+
+
+def test_a_nine_card_candidate_trains_on_its_full_length():
+    """Codex HOLD on #423: the listwise target must score a candidate exactly as inference does,
+    whatever its length -- a nine-card throw and its eight-card prefix are different candidates."""
+    nine = list(range(9)); eight = nine[:8]
+    meta = [{"ballot": [nine, eight], "taken": nine}]
+    ball, mask, tgt = pp.ballot_tensors(meta)
+    assert ball.shape[2] == 9 and mask.tolist() == [[True, True]] and tgt.tolist() == [0]
+    logits = torch.full((1, 54), 0.0); logits[0, 8] = 10.0        # only the ninth card carries evidence
+    inference = pp.score_candidates(logits[0].numpy(), [nine, eight])
+    assert inference[0] - inference[1] == pytest.approx(10.0)
+    loss = float(pp.listwise_loss(logits, ball, mask, tgt))
+    assert loss < 1e-3                                             # nine-card candidate wins by 10 in training too
+    prefix_only = pp.ballot_tensors([{"ballot": [eight, eight], "taken": eight}])
+    assert float(pp.listwise_loss(logits, *prefix_only)) == pytest.approx(np.log(2.0), abs=1e-5)   # a true tie is 0.693
+
+
+def test_eval_strata_missing_targets_and_same_universe_baseline(tmp_path):
+    """Codex HOLD on #423: sampled/incomplete rows are reported apart from exhaustive ones, rows whose
+    played action is not in the stored list are counted (not silently dropped), and the random
+    baseline is computed on the ranked universe with the full-universe number labelled as a reference."""
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((4, pp.INPUT_DIM)).astype(np.float32); Y = np.zeros((4, 54), np.float32)
+    rows = [
+        {"n_legal": 3, "legal": [[0], [1], [2]], "ballot": [[0], [1]], "taken": [1], "complete": True},          # exhaustive
+        {"n_legal": 12000, "legal": [[i] for i in range(50)], "ballot": [[3]], "taken": [3], "complete": True},   # sampled: stored 50 of 12,000
+        {"n_legal": 30, "legal": [[i] for i in range(10)], "ballot": [[5]], "taken": [5], "complete": False},     # incomplete
+        {"n_legal": 3, "legal": [[0], [1], [2]], "ballot": [[0]], "taken": [9], "complete": True},               # played action not stored
+    ]
+    np.savez_compressed(tmp_path / "t.npz", X=X, Y=Y)
+    with open(tmp_path / "t.meta.jsonl", "w") as fh:
+        for r in rows: fh.write(json.dumps(r) + "\n")
+    ck = tmp_path / "p.pt"; pp.train(tmp_path / "t", ck, epochs=1, listwise_weight=0.0, threads=1, log=None)
+    ev = pp.evaluate(ck, tmp_path / "t", log=None)
+    c = ev["counters"]
+    assert c["ranked"] == {"exhaustive": 1, "partial": 2} and c["missing_target"] == {"exhaustive": 1, "partial": 0}
+    part = {tuple(b["bucket"]): b for b in ev["strata"]["partial"]}
+    big = part[(10001, 10 ** 9)]
+    assert big["random_same_universe"]["64"] == 1.0                       # 64 of a 50-action stored universe
+    assert big["random_full_universe_reference"]["64"] == pytest.approx(64 / 12000)
+    assert "missing target exhaustive 1" in ev["text"] and "[partial]" in ev["text"]

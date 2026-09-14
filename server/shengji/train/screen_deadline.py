@@ -44,9 +44,16 @@ def _phases(bot, send):
     """Instrument only the isolated instance; restore methods before checkpointing."""
     originals = {}
     phase = None
+    largest_legal_count = None
 
     def mark(name, legal_count=None):
-        nonlocal phase
+        nonlocal phase, largest_legal_count
+        # Two-stage ranking first visits the full legal set, then a smaller
+        # refinement pool. Retain the full population for tail/timeout
+        # attribution rather than relabeling a huge root as a small decision.
+        if legal_count is not None:
+            largest_legal_count = max(legal_count, largest_legal_count or 0)
+            legal_count = largest_legal_count
         if phase != name or legal_count is not None:
             phase = name
             send(name, legal_count)

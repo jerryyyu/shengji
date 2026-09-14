@@ -205,15 +205,21 @@ class ResidualTrunkBlock(nn.Module):
 
 class GridTrunk(nn.Module):
     """#411: the ``grid`` trunk block.  Lays the fourteen card planes out as
-    ``GRID_ROWS x GRID_COLS`` cells (``card_grid``), convolves ALONG each row
-    (kernel 3, weights shared across rows and ranks: "this level and its
-    neighbours"), summarises every row by mean and max and pastes the summary
-    back onto each of its cells, convolves once more, and hands the heads
-    three views: a cheap per-cell projection (where exactly), the five row
-    summaries (what each suit holds) and a global mean/max over rows, plus the
-    non-card public columns untouched.  The stem projects to ``width`` and the
-    same residual blocks as ``trunk_block=residual`` follow, so the two arms
-    differ only in how the planes are read."""
+    ``GRID_ROWS x GRID_COLS`` cells (``card_grid``), reads each cell with its
+    two neighbours along the row (a width-3 window, weights shared across rows
+    and levels), summarises every row by mean and max and ADDS a projection of
+    that summary back onto each of its cells, reads the window once more, and
+    hands the heads three views: a cheap per-cell projection (where exactly),
+    the five row summaries (what each suit holds) and a global mean/max over
+    rows, plus the non-card public columns untouched.  The stem projects to
+    ``width`` and the same residual blocks as ``trunk_block=residual`` follow.
+
+    Compute: the first version concatenated the row summary onto the cells and
+    convolved 3C -> C over 90 cells, which alone cost more than M1's whole
+    forward (25x M1's CPU latency at batch 2048 for the same parameter count).
+    This form adds the summary instead and runs each window read as one GEMM
+    per tap on a channels-last (batch*rows*cols, C) matrix: ~2.3x M1's MACs.
+    """
 
     CELL_PROJ = 8
     COL_EMBED = 8
@@ -230,12 +236,15 @@ class GridTrunk(nn.Module):
         self.register_buffer("table", torch.from_numpy(grid_table()), persistent=False)
         c = config.grid_channels
         cin = self.n_planes + GRID_ROWS + self.COL_EMBED
-        self.col_embed = nn.Parameter(torch.zeros(self.COL_EMBED, 1, GRID_COLS))
+        self.col_embed = nn.Parameter(torch.zeros(GRID_COLS, self.COL_EMBED))
         nn.init.normal_(self.col_embed, std=0.1)
-        self.conv1 = nn.Conv2d(cin, c, kernel_size=(1, 3), padding=(0, 1))
-        self.conv2 = nn.Conv2d(c, c, kernel_size=(1, 3), padding=(0, 1))
-        self.conv3 = nn.Conv2d(3 * c, c, kernel_size=(1, 3), padding=(0, 1))
-        self.cell_proj = nn.Conv2d(c, self.CELL_PROJ, kernel_size=1)
+        # window reads: weight (3, in, out) = one GEMM per tap
+        self.win1_w = nn.Parameter(torch.empty(3, cin, c)); self.win1_b = nn.Parameter(torch.zeros(c))
+        self.win2_w = nn.Parameter(torch.empty(3, c, c)); self.win2_b = nn.Parameter(torch.zeros(c))
+        for w in (self.win1_w, self.win2_w):
+            nn.init.kaiming_uniform_(w.view(-1, w.shape[-1]).t(), a=5 ** 0.5)
+        self.row_proj = nn.Linear(2 * c, c)          # row summary pasted back additively
+        self.cell_proj = nn.Linear(c, self.CELL_PROJ)
         feat = (self.CELL_PROJ * GRID_ROWS * GRID_COLS + 2 * c * GRID_ROWS + 4 * c
                 + self.scalar_dim + PERSPECTIVE_DIM)
         width = config.width
@@ -259,21 +268,29 @@ class GridTrunk(nn.Module):
         idx = slots.unsqueeze(1).expand(b, self.n_planes, slots.shape[1])
         return torch.gather(planes, 2, idx).reshape(b, self.n_planes, self.rows, self.cols)
 
+    def _window(self, h: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+        """Width-3 read along the column axis of channels-last ``(b, rows, cols, C)``."""
+        b, r, n, c = h.shape
+        hp = torch.nn.functional.pad(h, (0, 0, 1, 1))
+        out = bias.expand(b * r * n, -1)
+        for k in range(3):
+            out = out + hp[:, :, k:k + n].reshape(b * r * n, c) @ w[k]
+        return out.reshape(b, r, n, -1)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b = x.shape[0]
-        g = self.grid(x)
+        g = self.grid(x).permute(0, 2, 3, 1)                        # (b, rows, cols, planes)
         row_id = torch.eye(self.rows, device=x.device, dtype=x.dtype)
-        row_id = row_id.t().reshape(1, self.rows, self.rows, 1).expand(b, -1, -1, self.cols)
-        col = self.col_embed.unsqueeze(0).expand(b, -1, self.rows, -1)
-        h = torch.cat((g, row_id, col), dim=1)
-        h = torch.nn.functional.gelu(self.conv1(h))
-        h = torch.nn.functional.gelu(self.conv2(h))
-        row_mean = h.mean(dim=3, keepdim=True).expand(-1, -1, -1, self.cols)
-        row_max = h.amax(dim=3, keepdim=True).expand(-1, -1, -1, self.cols)
-        h = torch.nn.functional.gelu(self.conv3(torch.cat((h, row_mean, row_max), dim=1)))
-        cells = self.cell_proj(h).reshape(b, -1)
-        rows = torch.cat((h.mean(dim=3), h.amax(dim=3)), dim=1)      # (b, 2c, rows)
-        glob = torch.cat((rows.mean(dim=2), rows.amax(dim=2)), dim=1)
+        row_id = row_id.reshape(1, self.rows, 1, self.rows).expand(b, -1, self.cols, -1)
+        col = self.col_embed.reshape(1, 1, self.cols, -1).expand(b, self.rows, -1, -1)
+        h = torch.nn.functional.gelu(self._window(torch.cat((g, row_id, col), -1),
+                                                  self.win1_w, self.win1_b))
+        summary = torch.cat((h.mean(2), h.amax(2)), -1)             # (b, rows, 2C)
+        h = torch.nn.functional.gelu(h + self.row_proj(summary).unsqueeze(2))
+        h = torch.nn.functional.gelu(self._window(h, self.win2_w, self.win2_b))
+        cells = self.cell_proj(h).reshape(b, -1)                    # (b, rows*cols*8)
+        rows = torch.cat((h.mean(2), h.amax(2)), -1)                # (b, rows, 2C)
+        glob = torch.cat((rows.mean(1), rows.amax(1)), -1)          # (b, 4C)
         scalars = x[:, 9 * N_CARDS:self.public_dim]
         perspective = x[:, -PERSPECTIVE_DIM:]
         feat = torch.cat((cells, rows.reshape(b, -1), glob, scalars, perspective), dim=1)

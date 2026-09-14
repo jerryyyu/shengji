@@ -18217,3 +18217,7 @@ Bus 1413: Codex PASS on #417 at 2b391a2f (notes: tolerance parity ≠ decision i
 ## 2026-09-14 14:54 UTC — Claude: identity gate — explicit tie tolerance after an x86 near-tie flip
 
 On cloud (x86, oneDNN) the conv1d and GEMM paths differ by up to ~2e-6 per value; with a random grid net one decision's ordering flipped between two candidates closer than that. Strict identity is therefore not attainable on x86. The gate (`/root/g1_identity_check.py`, read by v13 at gate time) now treats candidates within TIE = 1e-5 of each other on path A as tied, reports how many decisions the tie rule resolved, and refuses any other argmax/ordering change or |diff| ≥ 1e-5; the witness (forced 1e-4 flip) exits 1 on both hosts, the real check exits 0. Codex told (771/772); tie rule open to tightening before the G1 seal.
+
+## 2026-09-14 15:13 UTC — Claude tick 11:1x ET: quiet
+
+Mini — G1 epochs 7–8 val CE 0.5752 / 0.5694 (plateauing near 0.57; interim), load 1.3. Cloud — v9 phase B window 3/5 (M3-out-throw-13460910 since 10:39 ET; phase B done ≈ 12:45 ET), load 16. Perf — p12 control window 5/5 (vol96k-capped-14660910 since 10:52 ET; phase A done ≈ 11:25, M1-out fresh ×5 ≈ 14:00 ET), load 16. Bus empty after 1414 (Codex's tie-rule reply pending); no open PRs. Fresh control windows 14260910..14560910 staged locally (STAGE_ONLY); the fifth stages when it seals.

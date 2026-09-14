@@ -329,7 +329,12 @@ class MCBot(SmartBot):
         d_sq = [0.0] * len(candidates)
         n_worlds = 0
         n_by = [0] * len(candidates)
-        if self.ADAPTIVE_ALLOCATION:
+        override = self._selection_override(
+            rnd, seat, candidates, mem, i_attack,
+            allocation_rng=random.Random(allocation_seed))
+        if override is not None:
+            totals, d_sum, d_sq, n_by, n_worlds = override
+        elif self.ADAPTIVE_ALLOCATION:
             totals, d_sum, d_sq, n_by, n_worlds, _rk = self._decide_adaptive(
                 rnd, seat, candidates, mem, i_attack,
                 allocation_rng=random.Random(allocation_seed))
@@ -451,8 +456,10 @@ class MCBot(SmartBot):
             "candidates": [list(c) for c in candidates],
             "means": list(means),
             "n_by_candidate": list(n_by),
-            "paired_se": [self._paired_se(d_sum[i], d_sq[i], n_by[i])
-                          for i in range(len(candidates))],
+            "paired_se": ([self._paired_se(d_sum[i], d_sq[i], n_by[i])
+                           for i in range(len(candidates))]
+                          if self.last_alloc.get("paired_se_available", True)
+                          else None),
             "raw_winner_index": best,
             "report_candidate_index": challenger,
             "worlds": n_worlds,
@@ -831,6 +838,11 @@ class MCBot(SmartBot):
         if keep_deltas:
             out["deltas"] = deltas
         return out
+
+    def _selection_override(self, rnd, seat, candidates, mem, i_attack,
+                            *, allocation_rng):
+        """Opt-in experimental selector. Default leaves production unchanged."""
+        return None
 
     def _decide_adaptive(self, rnd, seat, candidates, mem, i_attack,
                          *, allocation_rng):

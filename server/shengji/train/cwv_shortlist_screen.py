@@ -20,6 +20,7 @@ from .cwv_double_shortlist import CWVDoubleShortlistBot
 from .cwv_throw_aware import CWVThrowComponentsBot, CWVThrowComponentsBuryBot
 from .cwv_bury_policy import CWVBuryBot
 from .cwv_corrected_rollout import CWVCorrectedRolloutBot, CWVCorrectedRolloutBuryBot
+from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -31,6 +32,10 @@ BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity")
+
+
+class CWVWideTailBuryBot(CWVBuryBot, CWVWideTailBot):
+    """Full-completion hybrid bury layered onto the wide-tail play hook."""
 
 
 @contextmanager
@@ -166,7 +171,32 @@ def _validate_corrected_config(config, correction):
         raise ValueError("require 1 <= residual worlds <= correction worlds")
 
 
+def _validate_wide_config(config):
+    if "wide_tail" not in config:
+        return
+    arm = config["arm"]
+    if (config.get("hybrid_bury")
+            and (arm != "learned" or config.get("baseline") != "flat-shortlist"
+                 or "double_shortlist" in config)):
+        raise ValueError(
+            "hybrid-bury requires learned with flat-shortlist baseline and no inner mode")
+    if (arm != "learned" or "double_shortlist" in config
+            or config.get("report_tie_keeps_incumbent")
+            or config.get("value_head") is not None
+            or config.get("throw_components")):
+        raise ValueError("wide-tail screen requires isolated learned ranking")
+    if config.get("hybrid_bury"):
+        if config["wide_tail"] != asdict(CWVWideTailConfig()):
+            raise ValueError("hybrid-bury requires the default wide-tail recipe")
+
+
 def make_side(config: dict, side: str, seed: int):
+    if (config.get("hybrid_bury")
+            and (config["arm"] != "learned" or config.get("baseline") not in
+                 ("flat-shortlist", "levels-shortlist")
+                 or "double_shortlist" in config)):
+        raise ValueError("hybrid-bury requires learned with a shortlist baseline and no inner mode")
+    _validate_wide_config(config)
     if config.get("baseline") == "levels-shortlist" and not config.get("corrected_rollout"):
         raise ValueError("levels-shortlist requires corrected rollout configuration")
     if config.get("corrected_rollout") is not None:
@@ -206,7 +236,12 @@ def make_side(config: dict, side: str, seed: int):
     inner = config.get("double_shortlist") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
-    if inner is not None:
+    if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
+        bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
+    elif side == "arm" and "wide_tail" in config:
+        bot = CWVWideTailBot(evaluator, **kwargs,
+                             wide_tail=CWVWideTailConfig(**config["wide_tail"]))
+    elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
         bot = CWVDoubleShortlistBot(evaluator, **kwargs,
@@ -298,7 +333,7 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout"):
+                "hybrid_bury", "corrected_rollout", "wide_tail"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -455,6 +490,23 @@ def summary_for(shards, config):
             "model-corrected shared-world rollout shortlist"
             if mode == "corrected" else "levels-only shared-world rollout shortlist")
         result["baseline_description"] = config.get("baseline", "production")
+    if "wide_tail" in config:
+        result["arm_description"] = (
+            "wide-tail two-stage admission: coarse full legal set, production-anchor "
+            "union, disjoint-world refinement; unchanged MC selection/report")
+        result["wide_tail"] = config["wide_tail"]
+        result["work_caveat"] += (
+            " Wide-tail ranking is a policy change, not decision-preserving acceleration. "
+            "Only the refinement pool receives remaining-world scores.")
+    if config.get("hybrid_bury"):
+        result["arm_description"] += "; full-completion hybrid bury on both sides"
+        result["hybrid_bury"] = {
+            "arm": "hybrid", "scope": "both sides",
+            "serving_budget_seconds": None, "completion": "full",
+        }
+        result["work_caveat"] += (
+            " Both sides use the full-completion CWV hybrid bury policy; this is "
+            "not Fly 2s serving-budget parity.")
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -500,6 +552,8 @@ def main(argv=None):
                         default="reference")
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
+    parser.add_argument("--wide-tail", action="store_true",
+                        help="DEV: >10000 legal actions use 2-world coarse top256 plus anchors, then 30 disjoint worlds")
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
@@ -554,15 +608,23 @@ def main(argv=None):
         parser.error("--report-tie-keeps-incumbent is only valid for learned")
     if args.value_head is not None and args.arm != "learned":
         parser.error("--value-head is only valid for learned")
+    if args.wide_tail and (args.arm != "learned" or args.worlds != 32
+                           or args.alternatives != 4 or args.inner_mode is not None
+                           or args.value_head is not None
+                           or args.report_tie_keeps_incumbent):
+        parser.error("--wide-tail requires isolated learned W32 ranking with four alternatives")
     if args.throw_components and (args.arm != "learned" or args.inner_mode is not None):
         parser.error("--throw-components requires learned without --inner-mode")
+    if args.wide_tail and args.throw_components:
+        parser.error("--wide-tail cannot be combined with --throw-components")
     if args.corrected_rollout is not None:
         if args.arm != "learned" or args.baseline not in ("flat-shortlist", "levels-shortlist"):
             parser.error("--corrected-rollout requires learned with a shortlist baseline")
         if args.baseline == "levels-shortlist" and args.corrected_rollout != "corrected":
             parser.error("levels-shortlist requires --corrected-rollout corrected")
         if (args.inner_mode is not None or args.value_head is not None
-                or args.report_tie_keeps_incumbent or args.throw_components):
+                or args.report_tie_keeps_incumbent or args.throw_components
+                or args.wide_tail):
             parser.error("--corrected-rollout cannot be combined with inner/value-head/tie options")
         if args.residual_worlds > args.correction_worlds:
             parser.error("residual worlds must be <= correction worlds")
@@ -628,6 +690,8 @@ def _run_screen(args, trump_ranks):
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True
+    if args.wide_tail:
+        config["wide_tail"] = asdict(CWVWideTailConfig())
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

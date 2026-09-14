@@ -25,7 +25,7 @@ from tests.test_cwv_train import THIRDS, train_v0
 CODES = {index: code for code, index in CARD_INDEX.items()}
 
 
-def _cfg(block="grid", channels=40, layers=3, hidden=330, search_head=True):
+def _cfg(block="grid", channels=44, layers=3, hidden=330, search_head=True):
     return train_cwv.model_config("mlp", hidden=hidden, trunk_layers=layers, trunk_block=block,
                                   grid_channels=channels, search_head=search_head,
                                   encoder_version=2)
@@ -94,7 +94,7 @@ def test_g1_cell_is_parameter_matched_to_m1s_residual_twin_and_has_both_heads():
                                 search_head=True, encoder_version=2)
     assert n(m1) == 644_568                          # M1 (A-d4-2h-176k, ckpt 3cb9cd62)
     g1 = n(_cfg())
-    assert abs(g1 - 644_568) / 644_568 < 0.005 and g1 == 644_335
+    assert abs(g1 - 644_568) / 644_568 < 0.005 and g1 == 644_423   # lean block, 44 channels
     net = ValueNetwork(_cfg())
     x = torch.randn(5, 561 + 270 + 2)
     x[:, 486:491] = 0; x[:, 488] = 1; x[:, 491:504] = 0; x[:, 495] = 1
@@ -104,6 +104,18 @@ def test_g1_cell_is_parameter_matched_to_m1s_residual_twin_and_has_both_heads():
     assert net.head_logits(f, "search-mean").shape == (5, 204)
     net.head_logits(f, "outcome").sum().backward()
     assert all(p.grad is not None for name, p in net.named_parameters() if "search_head" not in name)
+
+
+def test_window_read_equals_a_kernel_3_convolution_along_the_row():
+    """The flat per-tap GEMM is a width-3 convolution along the column axis with
+    zero padding, weights shared across rows -- checked against F.conv2d."""
+    net = ValueNetwork(_cfg(channels=16, hidden=64))
+    tr = net.trunk
+    h = torch.randn(3, tr.rows, tr.cols, tr.win2_w.shape[1])
+    out = tr._window(h, tr.win2_w, tr.win2_b)
+    weight = tr.win2_w.permute(2, 1, 0).unsqueeze(2)               # (O, C, 1, 3)
+    ref = torch.nn.functional.conv2d(h.permute(0, 3, 1, 2), weight, tr.win2_b, padding=(0, 1))
+    assert torch.allclose(out, ref.permute(0, 2, 3, 1), atol=1e-5)
 
 
 def test_grid_requires_its_channels_and_other_blocks_refuse_them():

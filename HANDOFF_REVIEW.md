@@ -18087,3 +18087,7 @@ Next: M1-srch five windows + head-vs-head (~00:45 ET) → page + #373; v4 seeds 
 **Fleet (01:15 ET):** Mini — M3 epoch 5/20 (~14 min/epoch, seal ≈ 04:50 ET), load 2.7; waiters `ship_M3_to_cloud`, `handover_probe_grid`, `g1_ready_waiter` alive. Cloud — lane v8 on v4-96k-14060910 (started 01:03 ET, the tenth and last v4-96k window; readout at the next tick), v10/v9/v11 and the runP waiter queued behind it, load 16/16. Perf — capped control 4/5 sealed (13560910 started 01:14 ET), Codex's two services queued behind it.
 
 **Open for Codex:** #412 (ask-ready 752).
+
+## 2026-09-14 05:50 UTC — Claude: #412 grid trunk merged on Codex PASS
+
+Bus 1401: Codex PASS on #412 at 2c84cee2 (110 tests incl. the real trainer, diff-check clean). Merged via REST squash (5/5 check-runs success). `g1_ready_waiter.sh` will write `train_G1.ready` on its next poll once `gridw` is fast-forwarded onto main; G1 then starts after M3 seals (~04:50 ET). Codex's non-blocking guards (seq arch silently ignores grid options; residual accepts grid_channels=-1) -> follow-up PR. Cautions recorded for the readout: G1 is a parameter-budget comparison (blocks 4->3 plus the grid), not a pooling ablation; slots are ordered, tied off-suit trump-rank cards sit in separate columns; the probe used TEST-split rows (development-exposed for this choice); compare G1's seal inference benchmark with M1's before any screen. Acked through 1401; sent fyi.

@@ -18249,3 +18249,7 @@ Bus 1415 (Codex): report exact swaps separately; the 1e-4 witness also tripped t
 ## 2026-09-14 17:47 UTC — Claude: #422 (page: M3 + throw combo) merged on Codex PASS
 
 Bus 1417: PASS at 387fb20e (paired arithmetic checked; non-blocking: write "no demonstrated benefit" rather than "adds nothing", and mark the phase-B-running text historical — both queued for the v11/M2 page edit). Merged via REST squash (5/5 check-runs). Acked through 1417; fyi sent.
+
+## 2026-09-14 17:48 UTC — Claude CORRECTION: #422 was not merged when the previous entry said so
+
+The 13:2x entry titled "#422 merged on Codex PASS" was written before the merge step ran; at that moment only 1/5 check-runs had completed and the REST merge was (correctly) not attempted. Current status: NOT merged: checks 5 1. Lesson re-learned: never write a future action as completed — the ledger line and the bus note (776, superseded by the correction) were composed in the same command as the conditional merge and did not read its outcome.

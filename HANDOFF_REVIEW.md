@@ -18169,3 +18169,11 @@ G1 epoch 1 val cross-entropy 0.6098 vs M1 0.6755 and M3 0.6745 at epoch 1 (same 
 ## 2026-09-14 11:47 UTC — Claude: #416 (page) merged on Codex PASS
 
 Bus 1410: Codex PASS on #416 at b3eed65e (reporting HOLD closed: nominal interval, same-deal robustness, dependent contrasts and fresh-deal confirmation distinguished; 34 tests). Merged via REST squash (5/5 check-runs). Acked through 1410; fyi sent. No open PRs from my side.
+
+## 2026-09-14 12:16 UTC — Claude tick 08:1x ET: G1 epoch 3 = 0.5808 (interim); G1 ship waiter + screen lane v13 armed
+
+**G1 (Mini):** epochs 1–3 val CE 0.6098 → 0.5987 → **0.5808**, ~40 min/epoch (seal now expected ≈ 19:00–20:00 ET). Interim only, but 0.5808 at epoch 3 is below the sealed bests of M1 (0.59746) and M3 (0.59689, both epoch 18); the residual twins stood at 0.6363 / 0.6306 after epoch 3. Noted on #411. The readout stays the sealed best epoch vs M1's receipt (launcher seal check asserts 644,423 params and prints the pull vs M1), then the inference benchmark for the screen size.
+
+**Armed for after the seal:** `fl-pilot/ship_G1_to_cloud.sh` (pid 1605; waits for rc=0 + SEAL OK in train_G1.status; scp + sha verify → `/root/claude-G1.pt`; 24 h deadline). Cloud lane **v13** (`/root/claude_queue_v13.sh`, pid 2366082; tree `/root/claude-main-5` cloned and built at main e4464c92 — audited: main differs from the capped lane tree 6b111b5f only by the three grid-trunk PRs, so the screen recipe is identical and the tree can load a grid checkpoint; DRYRUN clean): G1-out ×5, seeds 13260910..13660910, capped, `--value-head outcome`, vs the capped vol96k control; waits for "v12 PHASE B DONE" and the G1 checkpoint (sha-verified, and loads as a grid net at gate time). Cloud order now: v9 (phase A 3/5 sealed, window 4 since 07:43 ET) → v11 → v12 → v13 → runP (data gen last; its gate blocks on any live lane supervisor).
+
+**Bus:** empty after 1410. Perf: Codex's queue, load 16.

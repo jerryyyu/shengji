@@ -31,7 +31,9 @@ def _registry_cell(page, ck, col):
 def test_baseline_renders_and_matches_the_committed_page(data):
     page, c = _render(*data)
     assert page == open(Path(__file__).with_name("scaling.html")).read()
-    assert c["ten_total"] == c["ten_cross"]  # today: every ten-window arm crosses zero
+    # 09-14: M1's outcome head is the one ten-window interval that excludes zero (by 0.0007)
+    assert c["ten_total"] == c["ten_cross"] + 1 and c["above_leader"] == 1
+    assert "One beats the current one." in page
 
 
 def test_changing_a_val_ce_moves_the_chart_dot_the_registry_and_the_day_table(data):
@@ -76,6 +78,8 @@ def test_a_positive_ten_window_interval_changes_the_headline_and_the_kpi(data):
     rows2 = copy.deepcopy(rows)
     r = next(x for x in rows2 if x["ck"] == "fc73c0f4")
     r["ten"] = "+0.1000 [+0.0500, +0.1500]"
+    m1 = next(x for x in rows2 if x["ck"] == "3cb9cd62")
+    m1["ten"] = "+0.0100 [-0.0100, +0.0300]"      # neutralise the real one so exactly one resolves
     page, c = _render(rows2, table_only, series)
     assert c["ten_cross"] == c["ten_total"] - 1 and c["above_leader"] >= 1
     assert f"{build.word(c['ten_cross'])} cross zero and one resolves" in page
@@ -427,18 +431,40 @@ def test_a_readout_at_any_window_count_below_ten_is_badged_with_its_count(data):
     assert build.parse_cell("7w +0.0203 [+0.0013, +0.0393]") == (0.0203, 0.0013, 0.0393, "7w")
     page, c = _render(*data)
     cells = _play_cells(page)
-    # v4-96k reached its ten (09-14): the cell carries no count prefix any more
+    # v4-96k and M1 both reached their ten (09-14): no count prefix on either cell
     assert "+0.0089" in cells["eedf3139"] and "7w" not in cells["eedf3139"]
-    assert "+0.0174" in cells["3cb9cd62"] and "5w" in cells["3cb9cd62"]  # M1's five-window cell is badged
+    assert "+0.0184" in cells["3cb9cd62"] and "5w" not in cells["3cb9cd62"]
+    assert "+0.0077" in cells["02510c50"] and "5w" in cells["02510c50"]  # volNEW-176k's five-window cell is badged
     assert "5w" in c["mde"] and c["five_total"] >= 3
     assert "fewer than ten windows" in page
 
 
+def test_a_synthetic_positive_seven_window_cell_is_badged_and_never_counts_as_above_the_leader(data):
+    """Codex on #414: the real 7w cell reached ten and left; keep a synthetic witness
+    for the badge and the headline rule (an interval that clears zero at fewer than
+    ten windows is an instrument reading, not a model above the leader)."""
+    rows, table_only, series = data
+    rows = [dict(r) for r in rows]
+    victim = next(r for r in rows if r["ck"] == "eedf3139")
+    victim["ten"] = "7w +0.0203 [+0.0013, +0.0393]"
+    page, c = _render(rows, table_only, series)
+    cells = _play_cells(page)
+    assert "+0.0203" in cells["eedf3139"] and "7w" in cells["eedf3139"]
+    assert "7w" in c["mde"]
+    _, c0 = _render(*data)
+    assert c["above_leader"] == c0["above_leader"] == 1   # the synthetic 7w cell adds nothing to the count
+
+
 def test_an_interim_at_fewer_than_ten_windows_never_counts_as_above_the_leader(data):
-    """v4-96k's seven-window interval cleared zero and its ten did not; M1's five-window
-    cell is positive; the headline waits for a ten-window interval that excludes zero."""
+    """v4-96k's seven-window interval cleared zero and its ten did not; only a ten-window
+    interval that excludes zero counts (today: M1's outcome head, exactly one)."""
+    rows, table_only, series = data
     page, c = _render(*data)
-    assert c["above_leader"] == 0 and "None beats the current one." in page
+    assert c["above_leader"] == 1 and "One beats the current one." in page
+    rows2 = copy.deepcopy(rows)
+    next(x for x in rows2 if x["ck"] == "3cb9cd62")["ten"] = "5w +0.0174 [+0.0057, +0.0404]"
+    page2, c2 = _render(rows2, table_only, series)   # the same interval at five windows counts for nothing
+    assert c2["above_leader"] == 0 and "None beats the current one." in page2
 
 
 def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_text(data, tmp_path, monkeypatch):

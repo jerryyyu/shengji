@@ -18309,3 +18309,11 @@ v14's release line was written in the form v13 waits for; v13 (G1 screen) takes 
 ## 2026-09-14 19:11 UTC — Claude: search atlas restructured for Jerry (one scoreboard, one diagram section, clickable metadata)
 
 Jerry's asks (15:4x–16:0x ET): clickable policy metadata like the scaling artifact; the Screened column sortable; diagrams for the post-09-13 policies; padding to remove occlusions; drop the "six scaling levers" section; one run table instead of pre/post-09-08 tables; one diagram section. Done and republished (8bb3e7d8): sticky detail panel with 27 policy records (name, owner, changes, screened, checkpoint, reference, instrument, result, cost, verdict, notes) reachable from every chart marker and scoreboard row (click/keyboard, Esc to dismiss); sortable headers (#, policy, screened by ISO date, verdict); charts widened with staggered labels and wider jitter; two new diagrams (proposer swaps rows 14–22; G1) merged with the seven September diagrams into section I's grid (20 figures + the September forest plot); sections II (old scores table) and IV (levers) removed; the chain-links section is now II. Found and fixed a stray-quote syntax error that would have blanked the September diagrams; all six script blocks now parse (node check).
+
+## 2026-09-14 19:12 UTC — Claude tick 15:1x ET: quiet; probe_G1 staged for the seal
+
+Bus 1419 (Codex fyi): Jerry authorised Codex's fixed 1,024 fresh paired-deal wide-tail comparison on perf (4×256, threshold 10k, W32 vs capped W32, hybrid both, 300 s both), queued behind my p13 on the shared perf lock; ~7–9 h; perf reserved for it next. Acked.
+
+**Fleet:** Mini — G1 epoch 14/20 (0.5558), epoch 15 due ≈ 15:20 ET, seal ≈ 19:40; runM held. Cloud — v14's in-flight M3-out window finishing (worker alive, lock free); v13 (G1) waits for the checkpoint; runP held. Perf — p13 phase A window 2/5 (vol96k-capped-14860910 since 14:46 ET); phase B ≈ 16:30–19:15; readout ≈ 19:20.
+
+**Staged:** `fl-pilot/probe_G1.sh` — the #411 probe (same rows and targets as probe_M1) on G1's hidden layer; refuses until train_G1.status carries SEAL OK (verified: refusal fires now). Purpose: check the claim G1 captures v4's deduced pair-cap group before any v4-on-grid variant is considered.

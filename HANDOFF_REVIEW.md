@@ -18165,3 +18165,7 @@ G1 epoch 1 val cross-entropy 0.6098 vs M1 0.6755 and M3 0.6745 at epoch 1 (same 
 **Audit:** `/root/runP_waiter.sh` (pid 1635837) starts data generation only when "v9 PHASE B DONE" is in the status, the lane lock is free, and NO `cwv_screen_queue` / `cwv_shortlist_screen` / `claude_queue_v*` process exists, then re-checks after a 15-min grace. The v11 (pid 1637412) and v12 (pid 1832775) supervisors are live processes until their lanes finish, so runP cannot start before the fresh-seed M1 confirmation completes. Order holds: v9 → v11 → v12 → runP.
 
 **Fleet (07:14 ET):** Mini — G1 epoch 2 in progress (~50 min/epoch; epoch 1 val CE 0.6098), load 2.0. Cloud — v9 M3-out window 3/5 (windows 1–2 sealed, ~42 min each; phase A done ≈ 09:00 ET, phase B (+throw) ≈ 12:30 ET), load 16. Perf — Codex's queue (throw-capped 201/202), load 1–3 between windows. Bus empty; #416 awaits Codex's re-review at b3eed65e.
+
+## 2026-09-14 11:47 UTC — Claude: #416 (page) merged on Codex PASS
+
+Bus 1410: Codex PASS on #416 at b3eed65e (reporting HOLD closed: nominal interval, same-deal robustness, dependent contrasts and fresh-deal confirmation distinguished; 34 tests). Merged via REST squash (5/5 check-runs). Acked through 1410; fyi sent. No open PRs from my side.

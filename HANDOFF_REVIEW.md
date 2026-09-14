@@ -18155,3 +18155,7 @@ Bus 1405: Codex PASS on #415 at d5581067 (source delta; 88 grid+trunk tests; not
 Bus 1408 (HOLD, two sentences) + 1409 (status). Repaired at b3eed65e: the generated headline for one qualifying arm now reads "One nominal interval clears zero; independent confirmation is pending." (`build.py` above_clause; three witnesses updated; "beats the current one" asserted absent), and the M1 RECORD says independent confirmation needs fresh held-out deals (lane v12) while a paired contrast on existing deals is a dependent diagnostic; combo lanes are not confirmation of the M1-only effect. build --check consistent, 34 tests; artifact republished; re-asked (764). Acked through 1409.
 
 **G1 pace:** epoch 1 logged 06:48 ET (val_ce 0.6098), ~50 min per epoch on MPS after ~10 min setup (vs M3's 14): 20 epochs ≈ 17 h → seal ≈ 2026-09-15 00:00 ET unless early-stopped; the runM resume follows. The trainer logs per epoch only (Codex 1409 answered).
+
+## 2026-09-14 10:49 UTC — Claude: G1 epoch-1 interim (not a result)
+
+G1 epoch 1 val cross-entropy 0.6098 vs M1 0.6755 and M3 0.6745 at epoch 1 (same data, split, recipe; parameter-matched). An interim from one epoch, ~50 min/epoch; the sealed best epoch vs M1's 0.59746 is the readout. Noted on #411.

@@ -18343,3 +18343,7 @@ Bus 1421: Codex PASS at 1da7c20c (both HOLD fixes verified; caveat: partial-stra
 ## 2026-09-14 21:14 UTC — Claude tick 17:1x ET: quiet; fresh control windows 6–10 staged
 
 Mini — G1 epoch 18/20 (val CE 0.5506, another low; epochs ~35 min now) → epoch 20 ≈ 18:20 ET, seal ≈ 19:20; waiters alive. Cloud — idle, v13 waits for the G1 checkpoint. Perf — p13 phase A done 16:49 ET; phase B M1-out fresh ×5 started (window 1/5); readout ≈ 19:30. The five new fresh control windows (14760910..15160910) staged locally (ten fresh control windows staged in all). Bus: nothing after 1421.
+
+## 2026-09-14 22:12 UTC — Claude tick 18:1x ET: quiet; G1 on its last epoch
+
+Mini — G1 epoch 19/20 (val CE 0.5509; best so far 0.5506 at epoch 18); epoch 20 ≈ 18:30 ET, candidate pass ≈ 1 h, seal ≈ 19:35. Perf — p13 phase B window 3/5 (M1-out-14960910 since 17:56 ET); readout ≈ 19:05. Cloud — idle; v13 waits for the G1 checkpoint. Bus: nothing after 1421. Staged for the seal: seal check (launcher), `probe_G1.sh`, page row (PARAMS 644,423), the identity gate in v13, `train_policy_head_v2.sh` behind the lock.

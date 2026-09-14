@@ -18339,3 +18339,7 @@ Mini — G1 epoch 16/20 (val CE 0.5524, another low), ~40 min/epoch → epoch 20
 ## 2026-09-14 20:48 UTC — Claude: #423 (policy prior module) — merged at 16:48 ET (main 33028c4e)
 
 Bus 1421: Codex PASS at 1da7c20c (both HOLD fixes verified; caveat: partial-stratum recall is not exhaustive-wide evidence; consumer/strength separate). Outcome: merged at 16:48 ET (main 33028c4e). policyw fast-forwarded onto main so `train_policy_head_v2.sh` (armed) can pass its on-main gate once G1 seals. Acked through 1421; fyi sent.
+
+## 2026-09-14 21:14 UTC — Claude tick 17:1x ET: quiet; fresh control windows 6–10 staged
+
+Mini — G1 epoch 18/20 (val CE 0.5506, another low; epochs ~35 min now) → epoch 20 ≈ 18:20 ET, seal ≈ 19:20; waiters alive. Cloud — idle, v13 waits for the G1 checkpoint. Perf — p13 phase A done 16:49 ET; phase B M1-out fresh ×5 started (window 1/5); readout ≈ 19:30. The five new fresh control windows (14760910..15160910) staged locally (ten fresh control windows staged in all). Bus: nothing after 1421.

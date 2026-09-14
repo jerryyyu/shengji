@@ -427,13 +427,16 @@ def test_a_readout_at_any_window_count_below_ten_is_badged_with_its_count(data):
     assert build.parse_cell("7w +0.0203 [+0.0013, +0.0393]") == (0.0203, 0.0013, 0.0393, "7w")
     page, c = _render(*data)
     cells = _play_cells(page)
-    assert "+0.0203" in cells["eedf3139"] and "7w" in cells["eedf3139"]
-    assert "7w" in c["mde"] and c["five_total"] >= 3  # the seven-window cell counts among the fewer-than-ten readouts
+    # v4-96k reached its ten (09-14): the cell carries no count prefix any more
+    assert "+0.0089" in cells["eedf3139"] and "7w" not in cells["eedf3139"]
+    assert "+0.0174" in cells["3cb9cd62"] and "5w" in cells["3cb9cd62"]  # M1's five-window cell is badged
+    assert "5w" in c["mde"] and c["five_total"] >= 3
     assert "fewer than ten windows" in page
 
 
 def test_an_interim_at_fewer_than_ten_windows_never_counts_as_above_the_leader(data):
-    """v4-96k's seven-window interval clears zero; the headline still waits for ten."""
+    """v4-96k's seven-window interval cleared zero and its ten did not; M1's five-window
+    cell is positive; the headline waits for a ten-window interval that excludes zero."""
     page, c = _render(*data)
     assert c["above_leader"] == 0 and "None beats the current one." in page
 
@@ -443,8 +446,9 @@ def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_tex
     rows, table_only, series = data
     page, _ = _render(*data)
     rec = next(r for r in rows if r["ck"] == "eedf3139")["record"]
-    assert rec.startswith("SEVEN-WINDOW INTERIM") and "Offline:" in rec  # one merged record
-    assert "SEVEN-WINDOW INTERIM" in page  # and it reaches the rendered detail text
+    assert rec.startswith("TEN WINDOWS (final") and "SEVEN-WINDOW INTERIM" in rec \
+        and "Offline:" in rec  # one merged record: final, interim and offline history together
+    assert "SEVEN-WINDOW INTERIM" in page  # and the interim still reaches the rendered detail text
     src = open(Path(__file__).with_name("models.py")).read()
     dup = src.replace('RECORD = {\n', 'RECORD = {\n    "eedf3139": "stray duplicate",\n', 1)
     bad = tmp_path / "models.py"; bad.write_text(dup)

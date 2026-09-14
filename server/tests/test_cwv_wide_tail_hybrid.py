@@ -79,10 +79,22 @@ def test_programmatic_hybrid_config_refuses_invalid_combinations(monkeypatch, ba
         S.make_side(config, "arm", 17)
 
 
-def test_programmatic_hybrid_refuses_custom_wide_recipe(monkeypatch):
+@pytest.mark.parametrize("threshold", [1, 5_000, 10_000, 25_000])
+def test_programmatic_hybrid_preserves_custom_threshold(monkeypatch, threshold):
     _bind_evaluator(monkeypatch)
-    config = _config(wide_tail={"threshold": 9_999, "coarse_worlds": 2, "pool": 256})
-    with pytest.raises(ValueError, match="default wide-tail recipe"):
+    config = _config(wide_tail={"threshold": threshold, "coarse_worlds": 2, "pool": 256})
+    arm = S.make_side(config, "arm", 17)
+    baseline = S.make_side(config, "baseline", 17)
+    assert arm.wide_tail_config == CWVWideTailConfig(threshold=threshold)
+    assert not hasattr(baseline, "wide_tail_config")
+    assert arm.bury_config == baseline.bury_config == CWVBuryConfig()
+
+
+@pytest.mark.parametrize("change", [{"coarse_worlds": 4}, {"pool": 128}])
+def test_programmatic_hybrid_refuses_other_recipe_changes(monkeypatch, change):
+    _bind_evaluator(monkeypatch)
+    config = _config(wide_tail=dict(threshold=10_000, coarse_worlds=2, pool=256) | change)
+    with pytest.raises(ValueError, match="^hybrid-bury requires 2 coarse worlds and pool 256$"):
         S.make_side(config, "arm", 17)
 
 

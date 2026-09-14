@@ -43,19 +43,44 @@ def test_factory_refuses_silent_combination(extra):
         S.make_side(config, "arm", 0)
 
 
-def test_cli_persists_default_cap_and_wide_recipe_without_running(tmp_path, monkeypatch):
+@pytest.mark.parametrize("threshold", [None, 1, 5_000, 10_000, 25_000])
+@pytest.mark.parametrize("hybrid", [False, True])
+def test_cli_persists_default_cap_and_wide_recipe_without_running(tmp_path, monkeypatch, threshold, hybrid):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     monkeypatch.setattr(S, "shared_evaluator", lambda *a, **k:
                         SimpleNamespace(checkpoint_sha256="same", identity=lambda: {}))
     seen = []
     monkeypatch.setattr(S, "_run_pending", lambda config, *a, **k: seen.append(config))
     out = tmp_path / "screen"
+    options = [] if threshold is None else ["--wide-tail-threshold", str(threshold)]
+    if hybrid:
+        options += ["--hybrid-bury"]
     assert S.main(["--arm", "learned", "--checkpoint", "unused", "--worlds", "32",
                    "--wide-tail", "--baseline", "flat-shortlist", "--seed0", "17",
-                   "--out", str(out)]) == 0
-    assert seen[0]["wide_tail"] == asdict(CWVWideTailConfig())
+                   "--out", str(out), *options]) == 0
+    expected = CWVWideTailConfig(threshold=10_000 if threshold is None else threshold)
+    assert seen[0]["wide_tail"] == asdict(expected)
     assert seen[0]["decision_deadline"]["seconds"] == 300
     assert json.loads((out / "config.json").read_text())["wide_tail"] == seen[0]["wide_tail"]
+    arm = S.make_side(seen[0], "arm", 17)
+    baseline = S.make_side(seen[0], "baseline", 17)
+    assert arm.wide_tail_config == expected
+    assert not hasattr(baseline, "wide_tail_config")
+    assert S._recipe(seen[0])["wide_tail"] == asdict(expected)
+
+
+@pytest.mark.parametrize("options", [
+    ["--wide-tail-threshold", "5000"],
+    ["--wide-tail", "--wide-tail-threshold", "0"],
+    ["--wide-tail", "--wide-tail-threshold", "-1"],
+])
+def test_cli_rejects_unused_or_invalid_threshold(tmp_path, monkeypatch, capsys, options):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    with pytest.raises(SystemExit):
+        S.main(["--arm", "learned", "--checkpoint", "unused", "--seed0", "17",
+                "--out", str(tmp_path / "no-run"), *options])
+    assert "--wide-tail-threshold requires --wide-tail and a positive integer" in capsys.readouterr().err
+    assert not (tmp_path / "no-run").exists()
 
 
 def test_cli_refuses_other_world_dose(tmp_path, monkeypatch):

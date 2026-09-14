@@ -37,6 +37,11 @@ ARMS = ("learned", "uniform", "production", "identity")
 class CWVWideTailBuryBot(CWVBuryBot, CWVWideTailBot):
     """Full-completion hybrid bury layered onto the wide-tail play hook."""
 
+    def __init__(self, evaluator, *, wide_tail_threshold=10_000, **kwargs):
+        recipe = CWVWideTailConfig(threshold=wide_tail_threshold)
+        super().__init__(evaluator, **kwargs)
+        self.wide_tail_config = recipe
+
 
 @contextmanager
 def screen_output_lock(output: Path):
@@ -186,8 +191,9 @@ def _validate_wide_config(config):
             or config.get("throw_components")):
         raise ValueError("wide-tail screen requires isolated learned ranking")
     if config.get("hybrid_bury"):
-        if config["wide_tail"] != asdict(CWVWideTailConfig()):
-            raise ValueError("hybrid-bury requires the default wide-tail recipe")
+        recipe = CWVWideTailConfig(**config["wide_tail"])
+        if recipe.coarse_worlds != 2 or recipe.pool != 256:
+            raise ValueError("hybrid-bury requires 2 coarse worlds and pool 256")
 
 
 def make_side(config: dict, side: str, seed: int):
@@ -237,7 +243,8 @@ def make_side(config: dict, side: str, seed: int):
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
     if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
-        bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
+        bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid",
+                               wide_tail_threshold=config["wide_tail"]["threshold"])
     elif side == "arm" and "wide_tail" in config:
         bot = CWVWideTailBot(evaluator, **kwargs,
                              wide_tail=CWVWideTailConfig(**config["wide_tail"]))
@@ -553,7 +560,9 @@ def main(argv=None):
     parser.add_argument("--reuse-successors", action="store_true",
                         help="reuse equivalent leaves/inputs without changing action rows or model batches")
     parser.add_argument("--wide-tail", action="store_true",
-                        help="DEV: >10000 legal actions use 2-world coarse top256 plus anchors, then 30 disjoint worlds")
+                        help="DEV: above threshold use 2-world coarse top256 plus anchors, then 30 disjoint worlds")
+    parser.add_argument("--wide-tail-threshold", type=int, default=None,
+                        help="requires --wide-tail; trigger only ABOVE this legal-action count (default 10000)")
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
@@ -587,6 +596,9 @@ def main(argv=None):
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
+    if args.wide_tail_threshold is not None:
+        if not args.wide_tail or args.wide_tail_threshold < 1:
+            parser.error("--wide-tail-threshold requires --wide-tail and a positive integer")
     if args.decision_deadline != 0:
         validate_deadline(args.decision_deadline)
         if args.decision_deadline != 300:
@@ -691,7 +703,8 @@ def _run_screen(args, trump_ranks):
     if args.reuse_successors:
         config["reuse_successors"] = True
     if args.wide_tail:
-        config["wide_tail"] = asdict(CWVWideTailConfig())
+        config["wide_tail"] = asdict(CWVWideTailConfig(
+            threshold=10_000 if args.wide_tail_threshold is None else args.wide_tail_threshold))
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

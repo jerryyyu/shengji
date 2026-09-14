@@ -108,13 +108,14 @@ def test_threshold_path_remains_one_original_means_call():
     assert "wide_tail" not in bot.last_shortlist
 
 
-def test_threshold_boundary_is_reference_equivalent():
+@pytest.mark.parametrize("headroom", [0, 1, 10_000])
+def test_threshold_boundary_is_reference_equivalent(headroom):
     rnd = play_state()
     count = len(enumerate_legal(rnd, rnd.turn, cap=None).actions)
     config = CWVShortlistConfig(worlds=32, batch_size=17)
     reference = CWVShortlistBot(Values(), seed=13, config=config)
     bounded = CWVWideTailBot(Values(), seed=13, config=config,
-                             wide_tail=CWVWideTailConfig(threshold=count))
+                             wide_tail=CWVWideTailConfig(threshold=count + headroom))
     assert bounded._candidates(rnd, rnd.turn) == reference._candidates(rnd, rnd.turn)
     assert bounded.rng.getstate() == reference.rng.getstate()
     assert bounded.shortlist_counts == reference.shortlist_counts
@@ -123,6 +124,27 @@ def test_threshold_boundary_is_reference_equivalent():
     for detail in (bounded.last_shortlist, reference.last_shortlist):
         detail.pop("wall_seconds")
     assert bounded.last_shortlist == reference.last_shortlist
+
+
+@pytest.mark.parametrize("count", [9_999, 10_000, 10_001])
+def test_ten_thousand_boundary_selects_exact_world_doses(count):
+    bot = CWVWideTailBot(Values(), seed=13)
+    actions = [[i] for i in range(count)]
+    worlds = list(range(32))
+    calls = []
+
+    def means(_rnd, _seat, candidates, sampled):
+        calls.append((len(candidates), tuple(sampled)))
+        return np.zeros(len(candidates))
+
+    bot._means = means
+    bot._admission_means(None, 0, actions, worlds, actions[:1])
+    if count <= 10_000:
+        assert calls == [(count, tuple(worlds))]
+        assert bot._wide_tail_diagnostics is None
+    else:
+        assert calls == [(count, (0, 1)), (256, tuple(range(2, 32)))]
+        assert bot._wide_tail_diagnostics["threshold"] == 10_000
 
 
 def test_forced_decision_drops_previous_wide_receipt(monkeypatch):

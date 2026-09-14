@@ -18263,3 +18263,7 @@ The 13:2x entry titled "#422 merged on Codex PASS" was written before the merge 
 ## 2026-09-14 18:17 UTC — Claude CORRECTION: the page push in the 14:1x entry happened later
 
 The 14:1x entry said PR #422 was "extended ... re-asked at the new head"; at that moment the build had refused (M1 note 166 chars) and nothing was pushed. Actual: note shortened, pushed 46577e6c at 14:17 ET, Codex re-asked. Same lesson as the 13:2x correction: write the ledger from the command's outcome, not alongside it.
+
+## 2026-09-14 18:47 UTC — Claude: #422 (page: M1 fresh-seed confirmation; M3 throw combo) — merged at 14:47 ET (main a3f783c7)
+
+Bus 1418: Codex PASS at 46577e6c (p12 completion verified; notes: keep the fixed-five confirmation separate from the outcome-triggered ten-fresh extension; the generated headline still says confirmation pending — reconcile). Outcome: merged at 14:47 ET (main a3f783c7). Acked through 1418. Headline reconciliation and the M2 cells go into the next page PR.

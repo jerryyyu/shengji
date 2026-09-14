@@ -18253,3 +18253,9 @@ Bus 1417: PASS at 387fb20e (paired arithmetic checked; non-blocking: write "no d
 ## 2026-09-14 17:48 UTC — Claude CORRECTION: #422 was not merged when the previous entry said so
 
 The 13:2x entry titled "#422 merged on Codex PASS" was written before the merge step ran; at that moment only 1/5 check-runs had completed and the REST merge was (correctly) not attempted. Current status: NOT merged: checks 5 1. Lesson re-learned: never write a future action as completed — the ledger line and the bus note (776, superseded by the correction) were composed in the same command as the conditional merge and did not read its outcome.
+
+## 2026-09-14 18:17 UTC — Claude tick 14:1x ET: M1 outcome head CONFIRMED on fresh seeds (+0.0244 [+0.0016, +0.0473])
+
+**Perf lane p12 sealed 14:09 ET.** Five never-used seeds 14260910..14660910, capped; the control (ca58e1e9) and M1-out (3cb9cd62) played on the same fresh deals for this readout alone: +0.0163, +0.0288, +0.0490, +0.0413, −0.0096 → **+0.0244 [+0.0016, +0.0473]**, tau 0, Q 3.27/4, MDE80 0.0327 — lower bound above zero, the pre-registered confirmation rule (#373) met. With the ten shared-control windows (+0.0184 nominal) this is the programme's first independently confirmed strength result. Archived `M1-out-fresh-5w.txt` (SHA256SUMS ok). Point > +0.015 → **perf lane p13 armed** (seeds 14760910..15160910, unused on both hosts; control ×5 then M1-out ×5; ~5.5 h). #373 and #421 commented (M1 = generation-0 incumbent candidate). Page: PR #422 extended with the confirmation (note + RECORD) and Codex's two wording notes; re-asked at the new head (CI was 5/5 at 38bd8e0d after merging main into the branch — the conftest guard had failed the first head because the branch's ledger was behind main).
+
+**Fleet:** Mini — G1 epoch 13/20 (val CE 0.5552, new low), seal ≈ 19:30 ET. Cloud — v11 window 2/10 (M2-out-throw-13360910 since 13:33 ET), then v14 → v13. Perf — p13 starting. runP/runM held (Jerry).

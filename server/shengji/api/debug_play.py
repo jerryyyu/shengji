@@ -34,8 +34,10 @@ def play_analysis(bot, pick, *, is_attacker, elapsed):
         (tuple(sorted(c)) for c in shortlist.get("shortlist", [])),
         shortlist.get("shortlist_means") or []))
     old_ballot = {tuple(sorted(c)) for c in shortlist.get("production_keys", [])}
+    selection_levels = (rec.get("alloc", {}).get("selection_units")
+                        == "acting-team-signed-level")
     def at(name, i):
-        values = rec.get(name, [])
+        values = rec.get(name) or []
         return _number(values[i]) if i < len(values) else None
     rows = []
     for i in indices:
@@ -43,7 +45,7 @@ def play_analysis(bot, pick, *, is_attacker, elapsed):
         mean = _number(means[i]) if i < len(means) else None
         rows.append({
             "index": i, "play": list(candidates[i]),
-            "attackers_avg": None if mean is None else mean * (1 if is_attacker else -1),
+            "attackers_avg": None if mean is None or selection_levels else mean * (1 if is_attacker else -1),
             "se": None,  # Individual-mean uncertainty is not retained.
             "paired_se_vs_incumbent": at("paired_se", i),
             "selection_worlds": at("n_by_candidate", i),
@@ -54,6 +56,8 @@ def play_analysis(bot, pick, *, is_attacker, elapsed):
             "report_finalist": bool(rec.get("report_fold")) and i in (0, rec.get("report_candidate_index")),
             "bot_plays": key == chosen_key,
         })
+        if selection_levels:
+            rows[-1]["acting_team_levels"] = mean
     evaluator = getattr(bot, "evaluator", None)
     model = None
     if evaluator is not None:
@@ -74,7 +78,8 @@ def play_analysis(bot, pick, *, is_attacker, elapsed):
         "reason": str(rec.get("reason", "forced_or_no_search"))[:100],
         "model": model,
         "model_score_units": "expected signed levels for acting team",
-        "selection_score_units": "expected final attacker points",
+        "selection_score_units": ("expected signed levels for acting team" if selection_levels
+                                  else "expected final attacker points"),
         "report_gap_units": "acting-team points: challenger minus incumbent",
         "report": safe_report,
         "recipe": {**_fields(shortlist.get("config", {}), ("worlds", "alternatives", "selection_worlds", "batch_size", "uniform")),

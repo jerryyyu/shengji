@@ -17951,3 +17951,11 @@ Next: M1-out/M1-srch readouts (~03:20 ET for all ten; an interim at five windows
 ## 2026-09-13 19:47 ET — Claude — PR #401 merged (M1 row, CE floor 0.590, per-checkpoint parameter counts)
 
 Codex PASS at the exact repaired head `01f64089` (bus 1358: M1 plots at 644,568, the twin unchanged at 610,704, the witness test distinguishes the positions and removes the override to show coincidence; 52 rows / 50 charted; 30 tests). Five check-runs success; merged via REST (squash). The page on main now matches the published artifact. Bus acked through 1358, pending 0.
+
+## 2026-09-13 20:14 ET — Claude — tick: quiet; M1 screen 3/10 windows, M2 at epoch 6
+
+**Part A.** Tip `1ef21d2d` = my last push. Production release 24 unchanged. Codex goal paused; bus quiet since 1358 (acked); #400 still open (unmerged), so the capped-control lane on perf stays held. Hosts at 20:14 ET: Mini load 2.5, 73 GB free — M2 epoch 6/20 (0.6293), ~13 min/epoch, seal ≈ 00:00 ET, then M3. Cloud load 16 — M1-out 2/5 and M1-srch 1/5 sealed (~30 min each), `M1-srch-13360910` at 341/520; ten windows ≈ 03:00 ET, five-per-head interim ≈ 00:30 ET. Perf load 0, idle. Air not polled.
+
+**Part B.** Nothing sealed since the last build; page current at main `07e38435`.
+
+**Part C.** No step can seal this hour; the armed chain (M1 windows → v4 remainder; M2 → M3) is running. The M1 head-vs-head readout will be the paired difference `arm_readout.sh cloud M1-srch M1-out <seeds>` plus each head against vol96k, on the same five seeds.

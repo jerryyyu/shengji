@@ -118,7 +118,7 @@ class ValueModelConfig:
                 or self.trunk_block not in ("plain", "residual", "grid") \
                 or type(self.grid_channels) is not int \
                 or (self.trunk_block == "grid") != (self.grid_channels > 0) \
-                or self.grid_channels > 1024:
+                or self.grid_channels < 0 or self.grid_channels > 1024:
             raise ValueModelError("model configuration drift")
         if type(self.search_head) is not bool or type(self.value_head) is not str \
                 or self.value_head not in VALUE_HEADS:

@@ -111,6 +111,13 @@ def test_grid_requires_its_channels_and_other_blocks_refuse_them():
         _cfg(channels=0)
     with pytest.raises(train_cwv.TrainError):
         _cfg(block="residual", channels=40)
+    with pytest.raises(train_cwv.TrainError):          # Codex #412 review: a negative count
+        _cfg(block="residual", channels=-1)
+    with pytest.raises(train_cwv.TrainError):          # Codex #412 review: seq silently ignored grid
+        train_cwv.model_config("seq", trunk_block="grid", grid_channels=40, encoder_version=2)
+    with pytest.raises(train_cwv.TrainError):
+        train_cwv.model_config("seq", trunk_layers=4, trunk_block="residual", encoder_version=2)
+    assert train_cwv.model_config("seq", encoder_version=2).architecture != "mlp"
     base = _cfg().payload()
     for change in ({"grid_channels": 0}, {"trunk_block": "residual"}, {"grid_channels": 2048}):
         with pytest.raises(ValueModelError):

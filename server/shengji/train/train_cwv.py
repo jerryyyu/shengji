@@ -319,6 +319,9 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
         raise TrainError(f"--arch must be one of {ARCHES}")
     if search_head and arch != "mlp":
         raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
+    if arch != "mlp" and (trunk_layers != 2 or trunk_block != "plain" or grid_channels != 0):
+        raise TrainError("--trunk-layers / --trunk-block / --grid-channels shape the mlp trunk; "
+                         "the seq architecture has none")
     try:
         encoder_version = check_version(encoder_version)
     except ValueError as exc:

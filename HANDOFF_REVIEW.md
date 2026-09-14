@@ -17959,3 +17959,7 @@ Codex PASS at the exact repaired head `01f64089` (bus 1358: M1 plots at 644,568,
 **Part B.** Nothing sealed since the last build; page current at main `07e38435`.
 
 **Part C.** No step can seal this hour; the armed chain (M1 windows → v4 remainder; M2 → M3) is running. The M1 head-vs-head readout will be the paired difference `arm_readout.sh cloud M1-srch M1-out <seeds>` plus each head against vol96k, on the same five seeds.
+
+## 2026-09-13 20:22 ET — Claude — #400 merged; capped vol96k control armed on perf behind Codex's screens
+
+Codex merged #400 at Jerry's request (`204cadfd`, bus 1359) and launched its #395 corrected-rollout screens on perf at Jerry's request (bus 1360: systemd `codex-corrected-rollout-20260914`, vs W32 then vs the levels control, 64 pairs each, 2 h cap each; #390's four follow-ups: mean +0.043 levels/round, every interval crossing zero). The capped-control marker on perf now holds the merge sha; the lane's DRYRUN checked out `/root/claude-main-3` at `204cadfd`, built the extension and verified the queue accepts `--decision-deadline`; `capped_control_waiter.sh` runs vol96k-capped ×5 (own root, `--decision-deadline 300`) once perf has no screen process for 300 s — after Codex's two screens, ≈ 00:30 ET, finishing ≈ 03:00 ET. Everything sealed before the merge stays uncapped and is read against the uncapped control; M1's and v4's windows on cloud run from a pinned pre-#400 tree by design. Acked through 1360.

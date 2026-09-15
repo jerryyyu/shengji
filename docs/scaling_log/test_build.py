@@ -342,11 +342,11 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
         assert f"<td>{d[8:]} Sep</td>" in page, f"day {d} missing from the by-day table"
     # a model trained on a NEW day (tomorrow) appears without any list being edited
     rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
-        "future model", "0badc0de", "2026-09-14", "v2", 512, "3e-4", "96k", "14,077,520",
+        "future model", "0badc0de", "2026-09-16", "v2", 512, "3e-4", "96k", "14,077,520",
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
-    assert "2026-09-14" in c2["days"] and "<td>14 Sep</td>" in page2
-    assert "14 September 2026" in page2  # the header date follows the latest training day
+    assert "2026-09-16" in c2["days"] and "<td>16 Sep</td>" in page2
+    assert "16 September 2026" in page2  # the header date follows the latest training day
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):

@@ -342,7 +342,9 @@ def _rank_rows(lo: np.ndarray, meta: Sequence[Mapping[str, Any]]) -> list[dict]:
             out.append({"skip": "missing_target", "stratum": stratum})
             continue
         bal = [tuple(sorted(a)) for a in m["ballot"] if a]
-        pos = {k: r for r, k in enumerate(keys)}
+        pos: dict[tuple, int] = {}
+        for r, k in enumerate(keys):
+            pos.setdefault(k, r)          # FIRST rank per action: the stored list may hold duplicates
         out.append({"stratum": stratum, "bucket": next(bb for bb in BUCKETS if bb[0] <= nL <= bb[1]),
                     "deal": m.get("deal", ""), "r_taken": r_taken, "universe": len(keys), "n_legal": nL,
                     "ballot_worst": (max(pos.get(k, 10 ** 9) for k in bal) if bal else None)})

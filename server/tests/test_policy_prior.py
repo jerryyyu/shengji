@@ -152,3 +152,20 @@ def test_compare_resamples_whole_deals_and_refuses_rows_without_deal_ids(tmp_pat
         for r in rows: fh.write(json.dumps({k: v for k, v in r.items() if k != "deal"}) + "\n")
     with pytest.raises(pp.PolicyPriorError):
         pp.compare(ck, ck, tmp_path / "t", log=None)
+
+
+def test_ballot_survival_uses_the_first_rank_of_a_duplicated_action(tmp_path):
+    """Codex HOLD on #426: the extractor appends protected played/ballot candidates to a random
+    sample without dedup, so a stored list can hold the same action twice.  Survival must be
+    judged at the action's FIRST rank.  Witness: 300 stored candidates where the ballot's action
+    sits at rank 0 and again at rank 299, straddling the top-256 cutoff."""
+    lo = np.zeros(54, np.float32); lo[7] = 5.0                       # card 7 scores highest
+    legal = [[7]] + [[i % 54] for i in range(8, 8 + 298)] + [[7]]     # duplicate of the best action at the end
+    meta = [{"n_legal": 300, "legal": legal, "ballot": [[7]], "taken": [7], "complete": True, "deal": "d" * 16},
+            {"n_legal": 2, "legal": [[0], [0]], "ballot": [[0]], "taken": [0], "complete": True, "deal": "d" * 16}]
+    rows = pp._rank_rows(np.stack([lo, lo]), meta)
+    assert rows[0]["r_taken"] == 0 and rows[0]["ballot_worst"] == 0
+    assert rows[1]["r_taken"] == 0 and rows[1]["ballot_worst"] == 0
+    rep = pp._report(rows, 2, None)
+    for b in rep["strata"]["exhaustive"]:
+        assert b["ballot_survival"]["1"] == 1.0 and b["ballot_survival"]["256"] == 1.0

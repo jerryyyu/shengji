@@ -51,6 +51,11 @@ _LEGACY_HEAD = {"search_head": False, "value_head": "outcome"}
 #: payload whose trunk is not a grid, so archived configs compare unchanged.
 _GRID_FIELDS = ("grid_channels",)
 _LEGACY_GRID = {"grid_channels": 0}
+#: #425: an optional 54-card policy head on the same mlp trunk (root-state
+#: action prior); omitted from every payload without it, so archived configs
+#: compare unchanged and a headless net never grows the module.
+_POLICY_FIELDS = ("policy_head",)
+_LEGACY_POLICY = {"policy_head": False}
 VALUE_HEADS = ("outcome", "search-mean")
 
 
@@ -85,6 +90,9 @@ class ValueModelConfig:
     #: default ("outcome" = the realised-outcome head every model has).
     search_head: bool = False
     value_head: str = "outcome"
+    #: #425 joint net: ``policy_head`` adds ``ValueNetwork.policy_head`` (54
+    #: card logits over the mlp trunk; the factorised action prior of #419).
+    policy_head: bool = False
 
     def validate(self) -> None:
         try:
@@ -129,6 +137,11 @@ class ValueModelConfig:
         if self.value_head == "search-mean" and not self.search_head:
             raise ValueModelError("model configuration drift: value_head names a "
                                   "search-mean head this net does not have")
+        if type(self.policy_head) is not bool:
+            raise ValueModelError("model configuration drift")
+        if self.policy_head and self.architecture != "mlp":
+            raise ValueModelError("model configuration drift: the policy head reads "
+                                  "the mlp trunk")
 
     def payload(self) -> dict[str, object]:
         self.validate()
@@ -147,17 +160,21 @@ class ValueModelConfig:
         if all(getattr(self, k) == v for k, v in _LEGACY_GRID.items()):
             for name in _GRID_FIELDS:
                 del out[name]
+        if all(getattr(self, k) == v for k, v in _LEGACY_POLICY.items()):
+            for name in _POLICY_FIELDS:
+                del out[name]
         return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
         base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS) \
-            - set(_HEAD_FIELDS) - set(_GRID_FIELDS)
-        allowed = {frozenset(base | w | t | h | g)
+            - set(_HEAD_FIELDS) - set(_GRID_FIELDS) - set(_POLICY_FIELDS)
+        allowed = {frozenset(base | w | t | h | g | p)
                    for w in (set(), set(_WIDTH_FIELDS))
                    for t in (set(), set(_TRUNK_FIELDS))
                    for h in (set(), set(_HEAD_FIELDS))
-                   for g in (set(), set(_GRID_FIELDS))}
+                   for g in (set(), set(_GRID_FIELDS))
+                   for p in (set(), set(_POLICY_FIELDS))}
         if type(value) is not dict or frozenset(value) not in allowed:
             raise ValueModelError("model configuration schema drift")
         try:
@@ -367,6 +384,9 @@ class ValueNetwork(nn.Module):
             if config.search_head:
                 # #373: the second head, same trunk, search-mean soft target.
                 self.search_head = nn.Linear(width, OUTCOME_CLASSES)
+            if config.policy_head:
+                # #425: the action prior, same trunk, 54 card log-odds.
+                self.policy_head = nn.Linear(width, N_CARDS)
             return
         self.public_encoder = nn.Sequential(
             nn.Linear(config.public_dim, width), nn.ReLU(), nn.LayerNorm(width))
@@ -419,6 +439,23 @@ class ValueNetwork(nn.Module):
                 raise ValueModelError("this net has no search-mean head")
             return self.search_head(features)
         raise ValueModelError(f"unknown value head {head!r}")
+
+    def policy_logits(self, features: torch.Tensor) -> torch.Tensor:
+        """#425: the 54 card log-odds of the policy head over mlp trunk features."""
+        if self.config.architecture != "mlp" or not self.config.policy_head:
+            raise ValueModelError("this net has no policy head")
+        return self.policy_head(features)
+
+    def features_flat(self, flat: torch.Tensor) -> torch.Tensor:
+        """Trunk features from a flat ``(B, public_dim + 5*54 + 2)`` row in the
+        ``public | world | perspective`` order ``features`` concatenates (the
+        layout ``policy_prior.flat_input`` writes)."""
+        if self.config.architecture != "mlp":
+            raise ValueModelError("features are exposed by the mlp architecture only")
+        d = self.config.public_dim
+        if flat.dim() != 2 or flat.shape[1] != d + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM:
+            raise ValueModelError("flat input width drift")
+        return self.trunk(flat)
 
     def _history_context(self, history: torch.Tensor,
                          history_mask: torch.Tensor) -> torch.Tensor:

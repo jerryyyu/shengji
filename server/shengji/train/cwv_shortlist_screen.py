@@ -368,6 +368,17 @@ def work_counters(bots):
     return out
 
 
+def continuation_state_contract(config):
+    horizon = config['value_continuation']['tricks']
+    return {
+        'leaf_state': ('terminal' if horizon == 'full' else
+                       'immediate-afterstate-including-mid-trick' if horizon == 0 else
+                       'completed-trick-boundary'),
+        'training_bridge': 'one-engine-action-then-encode-no-trick-finisher',
+        'calibration': 'unqualified-on-search-selected-sampled-world-leaves',
+    }
+
+
 def _recipe(config):
     ranks = config.get("trump_ranks")
     recipe = {
@@ -391,6 +402,8 @@ def _recipe(config):
                 "hybrid_bury", "corrected_rollout", "wide_tail", "prior", "value_continuation"):
         if key in config:
             recipe[key] = config[key]
+    if 'value_continuation' in config:
+        recipe['continuation_state_contract'] = continuation_state_contract(config)
     return recipe
 
 
@@ -564,6 +577,7 @@ def summary_for(shards, config):
             "not Fly 2s serving-budget parity.")
     if 'value_continuation' in config:
         result['value_continuation'] = config['value_continuation']
+        result['continuation_state_contract'] = continuation_state_contract(config)
         result['arm_description'] = 'value-truncated selection and independent report; final signed levels'
         result['baseline_description'] = config['value_continuation']['baseline'] + ' continuation; matched admission'
         result['work_caveat'] += (' Legacy rollout counters are candidate-world evaluations, not full playouts. '

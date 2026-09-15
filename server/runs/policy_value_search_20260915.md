@@ -15,6 +15,25 @@ its afterstate. Terminal leaves use exact engine outcomes, never the model.
 No accrued-points correction is added. The sampled-world SE is not a measure
 of model error. No exact-endgame substitution in the new continuation arms.
 
+### Training state class versus existing W32 consumer
+
+The executable training bridge `cwv_data.bridge_record` calls
+`value_afterstate.apply_action` (exactly one engine play), then encodes that
+immediate successor. It does **not** finish the trick. Thus k0 may be mid-trick,
+but it is not categorically a state class absent from this training bridge.
+The existing W32 ranking consumer separately uses `finish_trick=True`; this is
+the #229 consumer convention, not the training bridge convention. A four-position
+real-engine bridge witness checks this distinction, with reconstruction stubbed
+to isolate the real apply/encode path.
+
+k0 remains a diagnostic immediate-afterstate probe. k1 completes the root trick;
+k2 completes the next trick too. Matching an encoding/state class does not prove
+calibration: sampled worlds, searched actions and continuation policies can all
+shift the distribution. None of these horizons is qualified by offline CE alone.
+Screen recipes and summaries explicitly state leaf class and this calibration
+limitation. The first launch request is still k1 only, unchanged. This source
+witness is not a retrospective audit of every historical cache shard.
+
 ## Local real-checkpoint smoke (September 15)
 
 M1 SHA256 `3cb9cd62a083736e3b41712baabaa86398b74f0e303a4a15290ec1cd9585612d`,

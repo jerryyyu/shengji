@@ -39,6 +39,11 @@ def test_continuation_summary_does_not_claim_hybrid_bury(monkeypatch):
     result = S.summary_for([], config)
     assert 'hybrid_bury' not in result
     assert 'hybrid bury' not in result['work_caveat']
+    assert result['continuation_state_contract']['leaf_state'] == 'completed-trick-boundary'
+    config['value_continuation']['tricks'] = 0
+    contract = S._recipe(config)['continuation_state_contract']
+    assert contract['leaf_state'] == 'immediate-afterstate-including-mid-trick'
+    assert contract['calibration'] == 'unqualified-on-search-selected-sampled-world-leaves'
 
 
 def test_baseline_dose_is_fixed_when_production_arm_is_scaled():

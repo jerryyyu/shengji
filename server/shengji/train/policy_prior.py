@@ -37,12 +37,15 @@ import numpy as np
 
 from ..engine.cards import make_deck
 from ..harvest.rebuild import state_for_record
-from ..rl.douzero_micro import HISTORY_EVENT_DIM
+from ..rl.public_history import HISTORY_EVENT_DIM      # torch-free (douzero_micro imports torch)
 from ..rl.encode import CARD_INDEX, N_CARDS, encode_obs
 from ..rl.value_afterstate import (WORLD_RECEIVERS, ValueAfterstateError,
                                    ValueAfterstateTensors)
 from ..rl.value_afterstate_v2 import widen_to
-from .cwv_data import deal_key, tensors_at
+# torch-free sources: cwv_data imports rl.douzero_micro (torch) at module level, and the
+# served admission reaches this module through _prior_scores (Codex HOLD on #442).
+from ..rl.value_afterstate_v2 import tensors_from_round as tensors_at
+from .data import deal_key
 from .data import ShardRef, discover_store, iter_records
 
 SCHEMA = "shengji-policy-prior-v1"

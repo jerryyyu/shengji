@@ -299,19 +299,37 @@ def test_numpy_prior_package_matches_torch_and_serves_admission_without_torch(pr
     z = dict(np.load(pkg)); z.pop("mu"); np.savez_compressed(tmp_path / "bad.npz", **z)
     with pytest.raises(CWVNumpyError, match="schema drift"):
         load_numpy_prior(tmp_path / "bad.npz")
+    # Codex HOLD on #442: the witness must drive the REAL consumer path (a real engine state,
+    # _candidates with the prior activated) under a blocked Torch, not only the loader.
     code = f"""
-import sys
+import sys, random
 class Block:
     def find_spec(self, fullname, path=None, target=None):
         if fullname == 'torch' or fullname.startswith('torch.'):
             raise RuntimeError('torch import blocked')
 sys.meta_path.insert(0, Block())
 import numpy as np
-from shengji.ai.cwv_prior_numpy import load_numpy_prior
-from shengji.train.cwv_prior_admission import load_prior_checked
-kind, prior, _ = load_prior_checked({str(pkg)!r}, {psha!r})
-assert kind == 'separate-numpy' and prior.log_odds(np.zeros((1, 833), np.float32)).shape == (1, 54)
-assert 'torch' not in sys.modules
+from shengji.ai.heuristic import HeuristicBot
+from shengji.engine.game import Game
+from shengji.train.cwv_shortlist import CWVShortlistConfig
+from shengji.train.cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
+rnd = Game(random.Random(431)).start_round(); h = HeuristicBot()
+while rnd.phase == 'deal':
+    seat, _, _ = rnd.deal_next(); c = h.decide_declare(rnd, seat)
+    if c: rnd.declare(seat, c)
+for seat in range(4):
+    c = h.decide_declare(rnd, seat, final=True)
+    if c: rnd.declare(seat, c)
+rnd.finalize_declare(); rnd.bury(rnd.banker, h.decide_bury(rnd, rnd.banker))
+class Values:
+    def score(self, states, seat):
+        return np.asarray([r.attacker_points for r in states], dtype=float)
+bot = CWVPriorAdmissionBot(Values(), seed=13, config=CWVShortlistConfig(worlds=2),
+                           prior=CWVPriorAdmissionConfig(checkpoint={str(pkg)!r}, checkpoint_sha256={psha!r}, threshold=1, top=8))
+selected = bot._candidates(rnd, rnd.turn)
+d = bot.last_shortlist['prior_admission']
+assert len(selected) == 5 and d['triggered'] and d['prior_kind'] == 'separate-numpy' and d['worlds'] == 2
+assert 'torch' not in sys.modules, [m for m in sys.modules if m.startswith('torch')]
 print('ok')
 """
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1]))

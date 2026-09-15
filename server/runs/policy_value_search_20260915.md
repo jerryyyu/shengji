@@ -108,3 +108,46 @@ tail/cap incidence and prior activation.26 pairs is a DEV screen, not proof of
 non-inferiority or a shipping decision. This request must pass source review and
 fleet/disjointness checks before launch. PUCT is not included in this first pair
 of comparisons and stays on the active goal.
+
+## Bounded PUCT implementation progress (not launch-qualified)
+
+The separate `codex/policy-value-puct` branch now has a real sampled-world bot
+adapter around `cwv_bounded_puct.search_worlds`. It reuses the constrained sampler,
+canonical world completion, checked separate/joint prior loader, exhaustive legal
+enumerator, and outcome-value evaluator. Each sampled world owns its tree and
+gets one simulation per sweep; leaves across worlds are batched. Progressive
+widening limits evaluated children, not legal enumeration. Descendant priors see
+the acting seat's sampled world; values retain root-team signed-level perspective.
+
+Ten focused tests pass, including a live-opponent-hand permutation witness:
+holding observed information and RNG fixed leaves actions, traces and evaluated
+sampled hands unchanged. This does not prove information-set correctness:
+descendants assume sampled hidden hands are known (strategy fusion). Root visits
+are aggregated equally by world budget; Q tie-breaks are conditional on visits,
+not unbiased shared-world action estimates. The factorized prior's existing
+action-length bias is unchanged.
+
+Small real-model late-game smoke: M1 + prior v2 (identities above), two sampled
+worlds, four sweeps/world, depth limit four. Legal choice CK; eight simulations,
+eight value rows in four batches, five prior rows, 13 enumerated actions.
+Decision wall 0.0256s excluding checkpoint load. This is a functionality witness,
+not representative runtime, strength evidence, or a screen launch qualification.
+
+Screen integration now binds `bounded_puct` in config/shard resume identity;
+baseline uses the same prior/value assets, ordinary shortlist admission and MC.
+Tree records bypass the MC-only trace schema (no invented incumbent/report).
+Work records keep simulations, learned leaves and terminal leaves separate from
+heuristic rollouts. Opponent/partner selection witnesses cover root-team signs.
+
+Paired supervised smoke: `/private/tmp/cwv-puct-paired-smoke-20260915`, seed19,
+one deal/two mirrors, W2, N3/R30/K3 baseline, PUCT two sweeps/depth3, batch128,
+300s total-play cap. Terminal complete, no problems, zero timeouts, 156 decisions
+(78 per side). Elapsed19.5s; PUCT312 simulations =304 model rows +8 terminal
+leaves,152 value batches,260 prior rows; no heuristic rollouts. All78 PUCT
+decision records persisted. PUCT decision wall4.43s vs baseline10.13s at these
+deliberately different tiny doses: NOT a strength or equal-work speed claim.
+42 PUCT/screen/deadline tests pass. A pre-run CLI-local variable-scope error was
+fixed before any game executed; no failed scientific run or partial game reused.
+
+Remaining before launch qualification: independent source review, bounded full-
+dose packet and representative host timing. No PUCT fleet run launched.

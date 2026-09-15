@@ -227,3 +227,37 @@ def test_screen_wiring_binds_the_prior_recipe_on_the_arm_only(prior_ckpt, monkey
     assert S._recipe(config)["prior"] == prior
     with pytest.raises(ValueError, match="plain learned"):
         S.make_side(dict(config, wide_tail={"threshold": 10_000, "coarse_worlds": 2, "pool": 256}), "arm", 1)
+
+
+def test_a_value_checkpoint_with_a_policy_head_serves_as_the_prior(prior_ckpt, tmp_path):
+    """#425 in play: the admission accepts a train_cwv checkpoint carrying a policy head (the joint
+    net) and reads its head over the trunk features; a headless value checkpoint is refused; the
+    trace records the prior kind.  Real checkpoints from one-epoch trainer runs on the tiny store."""
+    import hashlib
+    from shengji.train import policy_prior as pp, train_cwv
+    from shengji.train.cwv_prior_admission import load_prior_checked
+    from tests.test_cwv_train import THIRDS
+    from shengji.harvest import trajectory
+    store = tmp_path / "store"
+    trajectory.generate(rounds=6, seed0=4_100_000, out_dir=store, workers=1, merge=False,
+                        select_worlds=2, report_worlds=30, explore_rate=0.5, explore_k=2)
+    rows = tmp_path / "rows"
+    pp.extract(rows, [str(store)], lo=0.0, hi=1.01, thin=1.0, max_rows=200, workers=1)
+    kw = dict(data=[str(store)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32,
+              log=None, cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2, **THIRDS)
+    train_cwv.train(out=tmp_path / "headless", **kw)
+    train_cwv.train(out=tmp_path / "joint", policy_head=True, policy_rows=str(rows), **kw)
+    sha = lambda p: hashlib.file_digest(open(p, "rb"), "sha256").hexdigest()
+    joint, headless = str(tmp_path / "joint" / "best.pt"), str(tmp_path / "headless" / "best.pt")
+    kind, model, payload = load_prior_checked(joint, sha(joint))
+    assert kind == "joint" and payload is None and model.config.policy_head
+    with pytest.raises(ValueError, match="neither"):
+        load_prior_checked(headless, sha(headless))
+    assert load_prior_checked(prior_ckpt[0], prior_ckpt[1])[0] == "separate"
+    rnd = play_state(); seat = rnd.turn
+    bot = CWVPriorAdmissionBot(Values(), seed=13, config=CWVShortlistConfig(worlds=2),
+                               prior=CWVPriorAdmissionConfig(checkpoint=joint, checkpoint_sha256=sha(joint), threshold=1, top=8))
+    selected = bot._candidates(rnd, seat)
+    assert len(selected) == 5 and bot.last_shortlist["prior_admission"]["prior_kind"] == "joint"
+    scores = bot._prior_scores(rnd, seat, enumerate_legal(rnd, seat, cap=None).actions[:5], [(rnd.hands, rnd.buried)])
+    assert scores.shape == (1, 5) and np.isfinite(scores).all()

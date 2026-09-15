@@ -241,3 +241,67 @@ def test_reject_hostile_packages(tmp_path):
         z.writestr("metadata.npy", b"x")
         z.writestr("metadata.npy", b"y")
     with pytest.raises(CWVNumpyError): load_numpy_checkpoint(duplicate)
+
+
+@pytest.mark.parametrize("layers", [2, 4])
+def test_residual_trunk_export_matches_torch_and_loads_torch_free(tmp_path, layers):
+    """#435: M1's residual trunk (stem -> L tabular-ResNet blocks -> LayerNorm -> ReLU) exports
+    as a v2 package that a Torch-free process loads and that reproduces the Torch softmax."""
+    torch = pytest.importorskip("torch")
+    from shengji.ai.cwv_policy import local_encoder_identity
+    from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+    from shengji.rl.value_checkpoint import save_checkpoint
+    from scripts.export_cwv_numpy import export_cwv_numpy
+    from shengji.ai.cwv_numpy import PACKAGE_SCHEMA_V2
+    torch.manual_seed(3)
+    net = ValueNetwork(ValueModelConfig(architecture="mlp", width=32, feedforward_width=64, public_dim=561,
+                                        enc_version=2, attention_heads=1, trunk_block="residual",
+                                        trunk_layers=layers, search_head=True))
+    net.eval()
+    ckpt = tmp_path / "res.pt"
+    save_checkpoint(ckpt, net, metadata={"encoder": local_encoder_identity(2), "sees_hidden_hands": True})
+    for head in ("outcome", "search-mean"):
+        package = tmp_path / f"res-{head}.npz"
+        export_cwv_numpy(ckpt, package, value_head=head)
+        model = load_numpy_checkpoint(package)
+        assert model.trunk_block == "residual" and model.trunk_layers == layers
+        assert json.loads(str(np.load(package)["metadata"].item()))["schema"] == PACKAGE_SCHEMA_V2
+        rng = np.random.default_rng(layers)
+        public = rng.standard_normal((7, 561)).astype(np.float32)
+        world = (rng.integers(0, 3, (7, 5, 54)) * 0.5).astype(np.float32)
+        persp = np.eye(2, dtype=np.float32)[rng.integers(0, 2, 7)]
+        got = model.probabilities(public, world, persp)
+        with torch.no_grad():
+            feats = net.features(torch.from_numpy(public), torch.from_numpy(world), torch.from_numpy(persp))
+            logits = net.head_logits(feats, head)
+        np.testing.assert_allclose(got, torch.softmax(logits, 1).numpy(), rtol=2e-5, atol=2e-6)
+    # a v2 package missing one block array is refused; a v1-schema package cannot claim a residual trunk
+    z = dict(np.load(tmp_path / "res-outcome.npz"))
+    bad = {k: v for k, v in z.items() if k != "block0_up_bias"}
+    np.savez_compressed(tmp_path / "bad.npz", **bad)
+    with pytest.raises(CWVNumpyError, match="schema drift"):
+        load_numpy_checkpoint(tmp_path / "bad.npz")
+    meta = json.loads(str(z["metadata"].item())); meta["schema"] = PACKAGE_SCHEMA
+    meta["config"] = {k: v for k, v in meta["config"].items() if k not in ("trunk_block", "trunk_layers")}
+    z2 = dict(z); z2["metadata"] = np.asarray(json.dumps(meta, sort_keys=True))
+    np.savez_compressed(tmp_path / "v1claim.npz", **z2)
+    with pytest.raises(CWVNumpyError):
+        load_numpy_checkpoint(tmp_path / "v1claim.npz")
+    # torch-free load + inference in a subprocess
+    import subprocess, sys
+    code = f"""
+import sys
+class Block:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'torch' or fullname.startswith('torch.'):
+            raise RuntimeError('torch import blocked')
+sys.meta_path.insert(0, Block())
+import numpy as np
+from shengji.ai.cwv_numpy import load_numpy_checkpoint
+m = load_numpy_checkpoint({str(tmp_path / 'res-outcome.npz')!r})
+p = m.probabilities(np.zeros((2, 561), np.float32), np.zeros((2, 5, 54), np.float32), np.eye(2, dtype=np.float32))
+assert p.shape == (2, 204) and 'torch' not in sys.modules
+print('ok', m.trunk_layers)
+"""
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1]))
+    assert out.returncode == 0 and out.stdout.strip() == f"ok {layers}", out.stderr[-800:]

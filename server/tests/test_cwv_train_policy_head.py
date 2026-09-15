@@ -210,3 +210,49 @@ def test_policy_detach_trains_the_head_without_moving_the_trunk(store_dir, tmp_p
     assert r["policy_head"]["detach"] is True and r["config"]["policy_detach"] is True
     with pytest.raises(train_cwv.TrainError, match="need --policy-head"):
         train_cwv.train(out=tmp_path / "bad", policy_detach=True, **kw)
+
+
+def test_chunked_root_rows_stream_every_row_and_train_the_head(store_dir, tmp_path):  # noqa: F811
+    """#425 root-row cache: a chunked extraction (small chunks) carries the same rows as the single
+    file; the stream yields every kept row once per pass, drops excluded deals, honours a per-pass
+    limit, and the trainer trains from the directory with the format recorded."""
+    from shengji.train.policy_rows import PolicyRows, PolicyRowsStream, open_policy_rows
+    flat = tmp_path / "flat"; chunked = tmp_path / "chunked"
+    pp.extract(flat, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1)
+    summary = pp.extract(chunked, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1, chunk_rows=64)
+    man = json.load(open(chunked / "manifest.json"))
+    single = PolicyRows(flat)
+    assert summary["chunks"] == man["chunks"].__len__() >= 2 and man["rows"] == single.n
+    assert sum(c["rows"] for c in man["chunks"]) == man["rows"]
+    with pytest.raises(pp.PolicyPriorError, match="already present"):
+        pp.extract(chunked, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=10, workers=1, chunk_rows=64)
+    stream = open_policy_rows(chunked)
+    assert isinstance(stream, PolicyRowsStream) and stream.n == single.n and stream.deal_keys == single.deal_keys
+    assert stream.identity["format"] == pp.CHUNK_SCHEMA and stream.identity["rows_excluded"] == 0
+    rng = np.random.default_rng(3)
+    seen = 0; keys = set()
+    for b in stream.batches(32, rng):
+        seen += len(b["x"]); keys.update(map(tuple, np.asarray(b["y"]).tolist()))
+        t = stream.tensors(b, "cpu")
+        assert t["x"].shape[1] == pp.INPUT_DIM and t["ball"].dtype == torch.int8 and t["tgt"].dtype == torch.long
+        assert t["mask"].shape[1] == t["ball"].shape[1] and t["ball"].shape[0] == len(b["x"])
+    assert seen == single.n                                                   # one pass = every row once
+    # the multiset of X rows is identical between the two formats (float16 both sides)
+    a = np.sort(single.X.view(np.uint16).sum(axis=1)); bb = np.sort(np.concatenate(
+        [np.load(chunked / c["file"])["X"].view(np.uint16).sum(axis=1) for c in man["chunks"]]))
+    assert np.array_equal(a, bb)
+    # exclusion and the per-pass limit
+    one = next(iter(single.deal_keys))
+    fewer = PolicyRowsStream(chunked, exclude={one})
+    assert fewer.n < single.n and one not in fewer.deal_keys
+    assert fewer.identity["deals_excluded"] == 1 and fewer.identity["rows_excluded"] == single.n - fewer.n
+    capped = PolicyRowsStream(chunked, limit=50)
+    assert sum(len(b["x"]) for b in capped.batches(32, np.random.default_rng(1))) == 50
+    with pytest.raises(ValueError, match="excluded"):
+        PolicyRowsStream(chunked, exclude=set(single.deal_keys))
+    # the trainer reads the directory
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32,
+              log=None, cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2, **THIRDS)
+    r = train_cwv.train(out=tmp_path / "run", policy_head=True, policy_rows=str(chunked), policy_batch_fraction=0.5, **kw)
+    assert r["policy_head"]["rows"]["format"] == pp.CHUNK_SCHEMA and r["epochs"][0]["train"]["policy_rows"] > 0
+    assert r["policy_head"]["rows"]["rows_excluded"] > 0                       # val/test deals dropped per chunk

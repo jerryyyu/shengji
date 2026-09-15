@@ -149,26 +149,79 @@ def _shard_rows(args: tuple) -> list[tuple]:
     return rows
 
 
+CHUNK_SCHEMA = "shengji-policy-rows-chunked-v1"
+
+
+def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
+    """One training chunk: rows as float16, the ballots padded once, the deal
+    keys alongside; no legal lists (training never reads them)."""
+    ball, mask, tgt = ballot_tensors(meta)
+    path = out_dir / f"chunk-{index:05d}.npz"
+    np.savez_compressed(path, X=np.stack(X).astype(np.float16), Y=np.stack(Y).astype(np.uint8),
+                        ball=ball.numpy(), mask=mask.numpy(), tgt=tgt.numpy(),
+                        deal_key=np.asarray([m["deal_key"] for m in meta]))
+    with open(path, "rb") as fh:
+        sha = hashlib.file_digest(fh, "sha256").hexdigest()
+    return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
+            "rows_with_ballot_target": int((tgt >= 0).sum()), "sha256": sha}
+
+
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
-            max_rows: int, workers: int, seed: int = 1) -> dict:
-    """Write ``<out>.npz`` (X, Y) and ``<out>.meta.jsonl`` (one record per row)."""
+            max_rows: int, workers: int, seed: int = 1, chunk_rows: int | None = None) -> dict:
+    """Write ``<out>.npz`` (X, Y) and ``<out>.meta.jsonl`` (one record per row);
+    with ``chunk_rows`` write a DIRECTORY ``<out>/`` of training chunks
+    (``chunk-NNNNN.npz`` with X float16, Y, padded ballots, deal keys) plus
+    ``manifest.json`` so a trainer can stream every root row instead of holding
+    them in memory (#425: the policy head on all ~20M root decisions)."""
     if not 0 < thin <= 1 or not 0 <= lo < hi <= 1.01:
         raise PolicyPriorError("thin must be in (0, 1] and 0 <= lo < hi")
+    if chunk_rows is not None and (type(chunk_rows) is not int or chunk_rows < 1):
+        raise PolicyPriorError("chunk_rows must be a positive integer")
     rng = random.Random(seed)
     paths: list[str] = []
     for root in corpora:
         paths.extend(sh.path for sh in discover_store(root).shards)
     rng.shuffle(paths)
     X, Y, meta = [], [], []
+    chunks: list[dict] = []
+    total = 0
+    out_dir = Path(out) if chunk_rows else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if any(out_dir.glob("chunk-*.npz")):
+            raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed) for p in paths], chunksize=4):
             for x, y, n, legal, ballot, taken, complete, deal, key in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
                              "deal": deal, "deal_key": key})
-            if len(X) >= max_rows:
+            if out_dir is not None:
+                while len(X) >= chunk_rows and total + chunk_rows <= max_rows:
+                    chunks.append(_write_chunk(out_dir, len(chunks), X[:chunk_rows], Y[:chunk_rows], meta[:chunk_rows]))
+                    total += chunk_rows
+                    X, Y, meta = X[chunk_rows:], Y[chunk_rows:], meta[chunk_rows:]
+                if total >= max_rows:
+                    ex.shutdown(cancel_futures=True)
+                    break
+            elif len(X) >= max_rows:
                 ex.shutdown(cancel_futures=True)
                 break
+    if out_dir is not None:
+        keep = min(len(X), max_rows - total)
+        if keep > 0:
+            chunks.append(_write_chunk(out_dir, len(chunks), X[:keep], Y[:keep], meta[:keep]))
+            total += keep
+        if not chunks:
+            raise PolicyPriorError("no rows extracted")
+        manifest = {"schema": CHUNK_SCHEMA, "input_dim": INPUT_DIM, "rows": total, "chunks": chunks,
+                    "deals": sum(c["deals"] for c in chunks),
+                    "split": {"lo": lo, "hi": hi, "thin": thin, "seed": seed, "max_rows": max_rows},
+                    "corpora": [str(Path(c).resolve()) for c in corpora],
+                    "deal_key_schema": "shengji-value-deal-key-v1"}
+        with open(out_dir / "manifest.json", "w") as fh:
+            json.dump(manifest, fh, indent=1)
+        return {"rows": total, "chunks": len(chunks), "dir": str(out_dir)}
     if not X:
         raise PolicyPriorError("no rows extracted")
     Xa = np.stack(X[:max_rows]); Ya = np.stack(Y[:max_rows]); meta = meta[:max_rows]
@@ -458,6 +511,8 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--lo", type=float, default=0.0); e.add_argument("--hi", type=float, default=0.8)
     e.add_argument("--thin", type=float, default=0.1); e.add_argument("--max-rows", type=int, default=1_000_000)
     e.add_argument("--workers", type=int, default=8); e.add_argument("--seed", type=int, default=1)
+    e.add_argument("--chunk-rows", type=int, default=None,
+                   help="write a streamable directory of chunks (this many rows each) instead of one npz")
     t = sub.add_parser("train"); t.add_argument("--data", required=True); t.add_argument("--out", required=True)
     t.add_argument("--test"); t.add_argument("--epochs", type=int, default=10); t.add_argument("--listwise-weight", type=float, default=1.0)
     t.add_argument("--lr", type=float, default=1e-3); t.add_argument("--threads", type=int, default=4); t.add_argument("--seed", type=int, default=1)
@@ -471,7 +526,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = build_parser().parse_args(argv)
     if a.cmd == "extract":
-        print(json.dumps(extract(a.out, a.data, lo=a.lo, hi=a.hi, thin=a.thin, max_rows=a.max_rows, workers=a.workers, seed=a.seed)))
+        print(json.dumps(extract(a.out, a.data, lo=a.lo, hi=a.hi, thin=a.thin, max_rows=a.max_rows, workers=a.workers,
+                                 seed=a.seed, chunk_rows=a.chunk_rows)))
     elif a.cmd == "train":
         r = train(a.data, a.out, test=a.test, epochs=a.epochs, listwise_weight=a.listwise_weight, lr=a.lr, threads=a.threads, seed=a.seed)
         print(json.dumps({k: v for k, v in r.items() if k != "eval"}))

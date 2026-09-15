@@ -95,17 +95,121 @@ class PolicyRows:
                          "rows_with_ballot_target": self.in_ballot}
 
     def batches(self, batch_size: int, rng: np.random.Generator):
-        """One pass in a fresh permutation; the caller cycles passes."""
+        """One pass in a fresh permutation, yielding numpy batches; the caller cycles passes."""
         perm = rng.permutation(self.n)
         for start in range(0, self.n, batch_size):
-            yield perm[start:start + batch_size]
+            idx = perm[start:start + batch_size]
+            yield {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
 
-    def tensors(self, idx: np.ndarray, device) -> dict[str, torch.Tensor]:
-        idx = np.asarray(idx)
-        return {"x": torch.from_numpy(self.X[idx].astype(np.float32)).to(device),
-                "y": torch.from_numpy(self.Y[idx].astype(np.float32)).to(device),
-                "ball": self.ball[idx].to(device), "mask": self.mask[idx].to(device),
-                "tgt": self.tgt[idx].to(device)}
+    @staticmethod
+    def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
+        return _to_device(batch, device)
+
+
+def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
+    def t(v, dtype=None):
+        v = torch.as_tensor(v) if not isinstance(v, torch.Tensor) else v
+        return (v.to(dtype) if dtype is not None else v).to(device)
+    return {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
+            "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
+
+
+class PolicyRowsStream:
+    """Root rows from a chunked extraction (``policy_prior.extract --chunk-rows``):
+    the manifest is read once (deal keys per chunk for the exposure rule), and
+    each pass streams the chunks in a fresh order, ``window`` chunks in memory
+    at a time with rows shuffled inside the window, so every root decision of
+    the corpus can train the head without a memory cap.  Rows on ``exclude``
+    deals are dropped per chunk; ``limit`` caps the rows drawn per pass."""
+
+    def __init__(self, directory: str | Path, *, limit: int | None = None,
+                 exclude: set[str] | frozenset[str] = frozenset(), window: int = 4):
+        from .policy_prior import CHUNK_SCHEMA
+        self.dir = Path(directory)
+        man = json.load(open(self.dir / "manifest.json"))
+        if man.get("schema") != CHUNK_SCHEMA or man.get("input_dim") != INPUT_DIM:
+            raise ValueError("policy rows stream: manifest schema drift")
+        self.chunks = man["chunks"]
+        if not self.chunks:
+            raise ValueError("policy rows stream: no chunks")
+        for c in self.chunks:
+            if not (self.dir / c["file"]).exists():
+                raise ValueError(f"policy rows stream: missing {c['file']}")
+        self.exclude = frozenset(exclude)
+        self.window = max(1, int(window))
+        self.limit = None if not limit else int(limit)
+        # deal keys and kept-row counts come from one cheap pass over the deal arrays only
+        keys: set[str] = set(); excluded: set[str] = set(); rows_used = 0; in_ballot = 0
+        for c in self.chunks:
+            d = np.load(self.dir / c["file"])
+            dk = d["deal_key"].astype(str); keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
+            keys.update(dk[keep].tolist()); excluded.update(dk[~keep].tolist())
+            rows_used += int(keep.sum()); in_ballot += int((d["tgt"][keep] >= 0).sum())
+        if rows_used < 1:
+            raise ValueError("policy rows stream: every row is in an excluded deal")
+        self.deal_keys = frozenset(keys)
+        self.deals = len(self.deal_keys)
+        self.n = rows_used
+        self.in_ballot = in_ballot
+        self.identity = {"schema": SCHEMA, "format": CHUNK_SCHEMA, "prefix": str(self.dir.resolve()),
+                         "npz_sha256": _digest(c["sha256"] for c in self.chunks),
+                         "rows_available": int(man["rows"]), "rows_read": int(man["rows"]), "rows_used": rows_used,
+                         "rows_excluded": int(man["rows"]) - rows_used, "rows_per_pass": min(rows_used, self.limit or rows_used),
+                         "deals": self.deals, "deals_excluded": len(excluded), "chunks": len(self.chunks),
+                         "window_chunks": self.window, "deal_key_schema": "shengji-value-deal-key-v1",
+                         "fit_deals_digest": _digest(self.deal_keys), "rows_with_ballot_target": in_ballot,
+                         "split": man.get("split")}
+
+    def _load(self, c: dict) -> dict[str, np.ndarray]:
+        d = np.load(self.dir / c["file"])
+        dk = d["deal_key"].astype(str)
+        keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
+        return {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
+
+    def batches(self, batch_size: int, rng: np.random.Generator):
+        """One pass: chunks in a fresh order, ``window`` at a time, rows shuffled within the window."""
+        order = rng.permutation(len(self.chunks)); drawn = 0
+        for start in range(0, len(order), self.window):
+            parts = [self._load(self.chunks[i]) for i in order[start:start + self.window]]
+            X = np.concatenate([p["X"] for p in parts]); Y = np.concatenate([p["Y"] for p in parts])
+            ball = _pad_concat([p["ball"] for p in parts], -1); mask = np.concatenate([_pad2(p["mask"], ball.shape[1], False) for p in parts])
+            tgt = np.concatenate([p["tgt"] for p in parts])
+            perm = rng.permutation(len(X))
+            for b in range(0, len(perm), batch_size):
+                if self.limit is not None and drawn >= self.limit:
+                    return
+                idx = perm[b:b + batch_size]
+                if self.limit is not None:
+                    idx = idx[:self.limit - drawn]          # the budget is exact, never a partial overshoot
+                drawn += len(idx)
+                yield {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+
+    @staticmethod
+    def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
+        return _to_device(batch, device)
+
+
+def _pad2(a: np.ndarray, width: int, fill) -> np.ndarray:
+    if a.shape[1] == width:
+        return a
+    out = np.full((a.shape[0], width), fill, dtype=a.dtype); out[:, :a.shape[1]] = a; return out
+
+
+def _pad_concat(arrays, fill) -> np.ndarray:
+    """Concatenate (n, B, C) int8 ballot arrays whose B and C differ per chunk."""
+    B = max(a.shape[1] for a in arrays); C = max(a.shape[2] for a in arrays)
+    out = []
+    for a in arrays:
+        o = np.full((a.shape[0], B, C), fill, dtype=a.dtype); o[:, :a.shape[1], :a.shape[2]] = a; out.append(o)
+    return np.concatenate(out)
+
+
+def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=frozenset()):
+    """A chunked directory streams; a ``<prefix>.npz`` loads in memory."""
+    p = Path(path)
+    if p.is_dir() and (p / "manifest.json").exists():
+        return PolicyRowsStream(p, limit=limit, exclude=exclude)
+    return PolicyRows(p, limit=limit, exclude=exclude)
 
 
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False):
@@ -173,4 +277,4 @@ class PolicyEval:
                 "strata": report["strata"], "text": report["text"], "max_legal": MAX_LEGAL}
 
 
-__all__ = ["PolicyEval", "PolicyRows", "SCHEMA", "policy_log_odds", "policy_losses"]
+__all__ = ["PolicyEval", "PolicyRows", "PolicyRowsStream", "SCHEMA", "open_policy_rows", "policy_log_odds", "policy_losses"]

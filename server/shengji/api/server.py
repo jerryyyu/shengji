@@ -37,6 +37,28 @@ def _fast_active() -> bool:
     except Exception:
         return False
 
+
+def _prior_health() -> dict | None:
+    """The served policy prior, by the SHA256 of the file actually on disk.
+
+    ``None`` when no prior is bound. The hash is what a rollback is checked
+    against (DEPLOY.md), so it is read from the file, not echoed from env.
+    """
+    path = os.environ.get("SHENGJI_CWV_PRIOR_CKPT")
+    if not path:
+        return None
+    try:
+        from ..ai.cwv_policy import file_sha256
+        from ..train.cwv_shortlist import (SHORTLIST_PRIOR_THRESHOLD,
+                                           SHORTLIST_PRIOR_TOP)
+        return {"sha256": file_sha256(path),
+                "threshold": int(os.environ.get("SHENGJI_CWV_PRIOR_THRESHOLD",
+                                                SHORTLIST_PRIOR_THRESHOLD)),
+                "top": int(os.environ.get("SHENGJI_CWV_PRIOR_TOP", SHORTLIST_PRIOR_TOP))}
+    except Exception as exc:                # noqa: BLE001 - health must answer
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 BOT_DELAY = 0.7
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
@@ -1529,7 +1551,10 @@ async def healthz() -> dict:
             # merely whether the .so shipped. `fast.py` falls back silently, so
             # without this a mismatched or missing extension is invisible and
             # the server just runs ~3x slower for months (it did).
-            "fast": _fast_active()}
+            "fast": _fast_active(),
+            # The served policy prior (#435), or null: a deploy that binds a
+            # prior must show its SHA256 here, and a rollback must show null.
+            "prior": _prior_health()}
 
 
 from .debug import register_debug  # noqa: E402

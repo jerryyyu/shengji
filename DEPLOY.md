@@ -17,7 +17,12 @@ clients hold WebSockets to it. That drives every deployment rule below.
   `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, using the
   A+C+D+E+F2 v2 model with N=30 selection and R=300 report checking.
   Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` and removes
-  the two `SHENGJI_CWV_BURY_*` settings. `mc-s0-report-lcb` is the broader W32
+  the two `SHENGJI_CWV_BURY_*` settings. A deploy that binds the policy prior
+  (`SHENGJI_CWV_PRIOR_CKPT`, optional `_SHA256` pin, `_THRESHOLD`, `_TOP`;
+  #435) serves a name ending `-prior-<sha8>` and reports the prior's SHA256
+  under `prior` in `/healthz`; prior-only rollback removes the four
+  `SHENGJI_CWV_PRIOR_*` settings and restores the prior-less name, and
+  `/healthz` must then show `"prior": null`. `mc-s0-report-lcb` is the broader W32
   play-policy rollback; `smart` and `heuristic`
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.

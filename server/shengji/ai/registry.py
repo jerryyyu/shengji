@@ -850,9 +850,11 @@ def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[s
 def _register_cwv_shortlist_from_env() -> None:
     """``SHENGJI_CWV_SHORTLIST_CKPT`` (+ the ``_WORLDS``/``_ALTERNATIVES``/
     ``_SELECTION_WORLDS``/``_REPORT_WORLDS``/``_BATCH_SIZE``/``_ENCODING``/
-    ``_REUSE_SUCCESSORS`` knobs) registers ``mc-shortlist-<ckpt8>-w<W>`` at
-    import, so a spawned trajectory worker resolves the same name the parent
-    did (`train.cwv_shortlist.shortlist_env_recipe`)."""
+    ``_REUSE_SUCCESSORS`` knobs, plus the opt-in ``SHENGJI_CWV_PRIOR_CKPT`` /
+    ``_SHA256`` / ``_THRESHOLD`` / ``_TOP`` prior group) registers
+    ``mc-shortlist-<ckpt8>-w<W>-r<recipe8>[-prior-<sha8>]`` at import, so a
+    spawned trajectory worker resolves the same name the parent did
+    (`train.cwv_shortlist.shortlist_env_recipe`)."""
     import os
     import sys
     if not os.environ.get("SHENGJI_CWV_SHORTLIST_CKPT"):

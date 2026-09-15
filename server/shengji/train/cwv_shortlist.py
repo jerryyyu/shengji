@@ -277,6 +277,14 @@ SHORTLIST_REUSE_SUCCESSORS = True
 #: env registration, in the style of `SHENGJI_CWV_*` / `SHENGJI_NETROLL_*`
 SHORTLIST_ENV_CKPT = "SHENGJI_CWV_SHORTLIST_CKPT"
 
+#: The served policy prior (#435 item 5; `cwv_prior_admission`): opt-in, and
+#: absent from the identity unless bound, so every prior-less name on file
+#: (the deployed ``...-r55d379a3``) is untouched.
+PRIOR_ENV_CKPT = "SHENGJI_CWV_PRIOR_CKPT"
+PRIOR_ENV_SHA256 = "SHENGJI_CWV_PRIOR_SHA256"
+SHORTLIST_PRIOR_THRESHOLD = 10_000
+SHORTLIST_PRIOR_TOP = 256
+
 
 class ShortlistPolicyError(RuntimeError):
     """A shortlist policy name did not build the shortlist bot."""
@@ -289,6 +297,13 @@ class ShortlistPolicyError(RuntimeError):
 RECIPE_FIELDS = ("alternatives", "selection_worlds", "report_worlds",
                  "batch_size", "encoding", "reuse_successors")
 
+#: The prior's identity fields. They enter the resolved recipe (and so the
+#: digest) ONLY when ``prior_sha256`` is bound: the prior is identified by the
+#: full SHA256 of its file, never by a path, so the same weights give the same
+#: name on every machine. ``prior_threshold`` / ``prior_top`` change what the
+#: admission bot does and are bound with it.
+PRIOR_RECIPE_FIELDS = ("prior_sha256", "prior_threshold", "prior_top")
+
 
 def resolved_recipe(**recipe) -> dict:
     """The recipe with every field present and normalised, or a refusal.
@@ -296,8 +311,13 @@ def resolved_recipe(**recipe) -> dict:
     Refusing an unknown field is the point: a knob added to the bot without
     being added to ``RECIPE_FIELDS`` would otherwise change behaviour while
     leaving the identity untouched, which is exactly the hole this closes.
+
+    The prior fields (`PRIOR_RECIPE_FIELDS`) are present in the result only
+    when ``prior_sha256`` is bound; a threshold or top without a prior is
+    refused rather than dropped, so a mis-spelt binding cannot silently build
+    the prior-less bot under the prior-less name.
     """
-    unknown = set(recipe) - set(RECIPE_FIELDS)
+    unknown = set(recipe) - set(RECIPE_FIELDS) - set(PRIOR_RECIPE_FIELDS)
     if unknown:
         raise ValueError(
             f"recipe fields {sorted(unknown)} are not in RECIPE_FIELDS; add them "
@@ -317,6 +337,22 @@ def resolved_recipe(**recipe) -> dict:
             out[field] = bool(value)
         else:
             out[field] = int(value)
+    sha = recipe.get("prior_sha256")
+    if sha is None:
+        stray = [f for f in PRIOR_RECIPE_FIELDS if recipe.get(f) is not None]
+        if stray:
+            raise ValueError(f"recipe fields {stray} need prior_sha256; "
+                             "a prior knob without a prior binds nothing")
+        return out
+    if type(sha) is not str or len(sha) != 64 or set(sha) - set("0123456789abcdef"):
+        raise ValueError("prior_sha256 must be the full lowercase SHA256 of the prior file")
+    out["prior_sha256"] = sha
+    for field in ("prior_threshold", "prior_top"):
+        default = SHORTLIST_PRIOR_THRESHOLD if field == "prior_threshold" else SHORTLIST_PRIOR_TOP
+        value = recipe.get(field, default)
+        if type(value) is bool or int(value) < 1:
+            raise ValueError(f"{field} must be a positive integer")
+        out[field] = int(value)
     return out
 
 
@@ -340,12 +376,26 @@ def shortlist_policy_name(ckpt8: str, worlds: int = SHORTLIST_WORLDS, *,
     wrong search silently. Making the argument impossible to omit is what stops
     that returning.
     """
-    return (f"mc-shortlist-{ckpt8}-w{int(worlds)}"
-            f"-r{recipe_digest(worlds, recipe)}")
+    resolved = resolved_recipe(**recipe)
+    name = f"mc-shortlist-{ckpt8}-w{int(worlds)}-r{recipe_digest(worlds, resolved)}"
+    if "prior_sha256" in resolved:
+        # Visible by eye as well as in the digest: a receipt reader must be
+        # able to tell a prior-admission run from the deployed shortlist.
+        name += f"-prior-{resolved['prior_sha256'][:8]}"
+    return name
 
 
-def _build_shortlist(evaluator, *, seed, config, reuse_successors):
-    """The one construction site, so the guard below has something to guard."""
+def _build_shortlist(evaluator, *, seed, config, reuse_successors, prior=None):
+    """The one construction site, so the guard below has something to guard.
+
+    With ``prior`` (a `cwv_prior_admission.CWVPriorAdmissionConfig`) the bot is
+    the prior-admission subclass: the same shortlist, whose decisions above the
+    threshold are pruned to the union of per-world prior top lists.
+    """
+    if prior is not None:
+        from .cwv_prior_admission import CWVPriorAdmissionBot
+        return CWVPriorAdmissionBot(evaluator, seed=seed, config=config, prior=prior,
+                                    reuse_successors=reuse_successors)
     return CWVShortlistBot(evaluator, seed=seed, config=config,
                            reuse_successors=reuse_successors)
 
@@ -370,8 +420,16 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                        encoding: str = SHORTLIST_ENCODING,
                        reuse_successors: bool = SHORTLIST_REUSE_SUCCESSORS,
                        threads: int | None = 1,
-                       name: str | None = None) -> "CWVShortlistBot":
+                       name: str | None = None,
+                       prior_checkpoint: str | None = None,
+                       prior_sha256: str | None = None,
+                       prior_threshold: int = SHORTLIST_PRIOR_THRESHOLD,
+                       prior_top: int = SHORTLIST_PRIOR_TOP) -> "CWVShortlistBot":
     """`cwv_shortlist_screen.make_side`'s learned arm, built by checkpoint.
+
+    ``prior_checkpoint`` opts into prior admission (#435): the file is hashed,
+    checked against ``prior_sha256`` when one is pinned, and bound into the
+    name with ``prior_threshold`` / ``prior_top``.
 
     The evaluator picks the tensor builder for the CHECKPOINT's own
     ``enc_version`` and applies the static adapter only while the net really
@@ -379,7 +437,22 @@ def make_shortlist_bot(checkpoint, *, seed=None,
     ``encoding='mlp-static'`` is a request, never an override of the
     checkpoint's identity.
     """
-    from ..ai.cwv_policy import shared_evaluator
+    from ..ai.cwv_policy import file_sha256, shared_evaluator
+
+    prior = None
+    if prior_checkpoint is not None:
+        from .cwv_prior_admission import CWVPriorAdmissionConfig
+        actual = file_sha256(prior_checkpoint)
+        if prior_sha256 is not None and actual != prior_sha256:
+            raise ShortlistPolicyError(
+                f"prior {prior_checkpoint!r} hashes to {actual}, not the bound "
+                f"{prior_sha256}; refusing to serve a prior the name does not describe")
+        prior_sha256 = actual
+        prior = CWVPriorAdmissionConfig(checkpoint=str(prior_checkpoint),
+                                        checkpoint_sha256=actual,
+                                        threshold=int(prior_threshold), top=int(prior_top))
+    elif prior_sha256 is not None:
+        raise ShortlistPolicyError("prior_sha256 without prior_checkpoint binds nothing")
 
     evaluator = shared_evaluator(checkpoint, threads=threads,
                                  max_batch=int(batch_size), encoding=encoding)
@@ -388,7 +461,7 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                                 alternatives=int(alternatives),
                                 batch_size=int(batch_size), uniform=False)
     bot = _build_shortlist(evaluator, seed=seed, config=config,
-                           reuse_successors=bool(reuse_successors))
+                           reuse_successors=bool(reuse_successors), prior=prior)
     # Name from THIS call's own resolved arguments, so a direct caller who is
     # not going through the registry still gets an identity that describes the
     # bot actually built. Passing only checkpoint and width here is what broke
@@ -400,7 +473,10 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                                report_worlds=report_worlds,
                                batch_size=batch_size,
                                encoding=encoding,
-                               reuse_successors=reuse_successors))
+                               reuse_successors=reuse_successors,
+                               prior_sha256=prior_sha256,
+                               prior_threshold=prior_threshold if prior else None,
+                               prior_top=prior_top if prior else None))
     _require_shortlist(bot, resolved_name)
     # Stamp the identity here rather than only in the registry wrapper: a bot
     # built directly would otherwise generate records carrying no policy name
@@ -411,10 +487,15 @@ def make_shortlist_bot(checkpoint, *, seed=None,
     bot.cwv_ckpt8 = evaluator.ckpt8
     bot.cwv_enc_version = evaluator.enc_version
     bot.cwv_encoding = evaluator.effective_encoding
+    # The prior's identity travels with the bot the same way the value net's
+    # does, so a record, a receipt and /healthz all name the served weights.
+    bot.cwv_prior_sha256 = prior_sha256
+    bot.cwv_prior_checkpoint = None if prior is None else str(prior_checkpoint)
     return bot
 
 
-def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
+def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,), *,
+                               prior_checkpoint=None, prior_sha256=None,
                                **recipe) -> dict:
     """``{name: factory}`` for every W, named by the VALUE checkpoint.
 
@@ -427,12 +508,26 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
 
     ckpt8 = checkpoint_id(checkpoint)
     full_sha = file_sha256(checkpoint)
+    if prior_checkpoint is not None:
+        # Hashed at registration for the same reason the value net is: the name
+        # must be stable and must describe the file as it was when bound.
+        actual = file_sha256(prior_checkpoint)
+        if prior_sha256 is not None and actual != prior_sha256:
+            raise ShortlistPolicyError(
+                f"prior {prior_checkpoint!r} hashes to {actual}, not the pinned "
+                f"{prior_sha256}; refusing to register a name for the wrong prior")
+        recipe = {**recipe, "prior_sha256": actual}
+    elif prior_sha256 is not None:
+        raise ShortlistPolicyError("prior_sha256 without prior_checkpoint binds nothing")
+    # Validates the prior fields (and refuses a threshold without a prior).
+    resolved_recipe(**recipe)
     entries = {}
 
     def factory(name: str, w: int):
         def make(**kw):
             bot = make_shortlist_bot(checkpoint, seed=kw.get("seed"),
-                                     worlds=w, name=name, **recipe)
+                                     worlds=w, name=name,
+                                     prior_checkpoint=prior_checkpoint, **recipe)
             # The name embeds the ckpt8 hashed HERE, at registration; the model
             # is loaded lazily on the first make_bot. If the file at this path
             # was replaced in between, the old name would serve new weights and
@@ -448,6 +543,11 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,),
                     f"{bot.cwv_checkpoint_sha256} ({bot.cwv_ckpt8}). The file "
                     "was replaced after registration; refusing to generate data "
                     "under a name that no longer describes the teacher.")
+            if bot.cwv_prior_sha256 != recipe.get("prior_sha256"):
+                raise ShortlistPolicyError(
+                    f"policy {name!r} was registered with prior "
+                    f"{recipe.get('prior_sha256')} but built one hashing to "
+                    f"{bot.cwv_prior_sha256}; the prior file changed after registration.")
             return bot
         return make
 
@@ -470,6 +570,16 @@ def shortlist_env_recipe(environ=None) -> tuple[str, list[int], dict] | None:
     SHENGJI_CWV_SHORTLIST_BATCH_SIZE        default 128
     SHENGJI_CWV_SHORTLIST_ENCODING          default mlp-static
     SHENGJI_CWV_SHORTLIST_REUSE_SUCCESSORS  1/0, default 1
+
+    The served prior (#435) is a separate, opt-in group; nothing is added to
+    the recipe unless the checkpoint is set:
+
+    SHENGJI_CWV_PRIOR_CKPT       prior checkpoint path (torch ``policy_prior``
+                                 checkpoint, a value checkpoint with a policy
+                                 head, or the NumPy package)
+    SHENGJI_CWV_PRIOR_SHA256     optional pin; registration refuses a mismatch
+    SHENGJI_CWV_PRIOR_THRESHOLD  default 10000 legal actions
+    SHENGJI_CWV_PRIOR_TOP        default 256 per sampled world
     """
     import os as _os
 
@@ -493,6 +603,18 @@ def shortlist_env_recipe(environ=None) -> tuple[str, list[int], dict] | None:
         "reuse_successors": env.get("SHENGJI_CWV_SHORTLIST_REUSE_SUCCESSORS", "1")
         not in ("0", "false", "no", ""),
     }
+    prior = env.get(PRIOR_ENV_CKPT)
+    if prior:
+        recipe["prior_checkpoint"] = prior
+        recipe["prior_sha256"] = env.get(PRIOR_ENV_SHA256) or None
+        recipe["prior_threshold"] = int(env.get("SHENGJI_CWV_PRIOR_THRESHOLD",
+                                                SHORTLIST_PRIOR_THRESHOLD))
+        recipe["prior_top"] = int(env.get("SHENGJI_CWV_PRIOR_TOP", SHORTLIST_PRIOR_TOP))
+    elif env.get(PRIOR_ENV_SHA256) or env.get("SHENGJI_CWV_PRIOR_THRESHOLD") \
+            or env.get("SHENGJI_CWV_PRIOR_TOP"):
+        raise ShortlistPolicyError(
+            f"SHENGJI_CWV_PRIOR_* set without {PRIOR_ENV_CKPT}; a prior knob "
+            "without a prior would serve the prior-less bot under the prior-less name")
     return checkpoint, (worlds or [SHORTLIST_WORLDS]), recipe
 
 

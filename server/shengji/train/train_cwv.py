@@ -1246,7 +1246,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_head: bool = False, policy_rows: str | None = None,
                  policy_eval: str | None = None, policy_weight: float = 1.0,
                  policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
-                 policy_rows_limit: int | None = None,
+                 policy_rows_limit: int | None = None, policy_detach: bool = False,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1314,8 +1314,10 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
             raise TrainError("--policy-batch-fraction must be in (0, 1]")
         if policy_rows_limit is not None and int(policy_rows_limit) < 1:
             raise TrainError("--policy-rows-limit must be >= 1")
-    elif policy_rows or policy_eval:
-        raise TrainError("--policy-rows / --policy-eval need --policy-head")
+        if type(policy_detach) is not bool:
+            raise TrainError("--policy-detach is a flag")
+    elif policy_rows or policy_eval or policy_detach:
+        raise TrainError("--policy-rows / --policy-eval / --policy-detach need --policy-head")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
                           grid_channels=grid_channels, search_head=search_head,
@@ -1344,6 +1346,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "policy_listwise_weight": float(policy_listwise_weight) if policy_head else 0.0,
         "policy_batch_fraction": float(policy_batch_fraction) if policy_head else 0.0,
         "policy_rows_limit": None if not policy_head else policy_rows_limit,
+        "policy_detach": bool(policy_detach) if policy_head else False,
         "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
@@ -1471,7 +1474,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_head: bool = False, policy_rows: str | None = None,
           policy_eval: str | None = None, policy_weight: float = 1.0,
           policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
-          policy_rows_limit: int | None = None,
+          policy_rows_limit: int | None = None, policy_detach: bool = False,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1483,6 +1486,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_head=policy_head, policy_rows=policy_rows, policy_eval=policy_eval,
         policy_weight=policy_weight, policy_listwise_weight=policy_listwise_weight,
         policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
+        policy_detach=policy_detach,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -1814,6 +1818,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             "rows": policy_data.identity,
             "eval": None if policy_evalset is None else policy_evalset.identity,
             "twin": float(policy_weight) == 0.0,
+            "detach": bool(policy_detach),
             "root_fit_deals": len(root_fit), "root_only_fit_deals": len(root_fit - set(population["train"])),
             "exposure_rule": "root deals are fit exposure: rows in this run's val/test or policy-eval "
                              "deals are dropped, kept deals are unioned into exposure.fit (checked "
@@ -1924,7 +1929,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     p_idx = next(policy_iter)
                 from .policy_rows import policy_losses
                 p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_idx, dev),
-                                               listwise_weight=float(policy_listwise_weight))
+                                               listwise_weight=float(policy_listwise_weight),
+                                               detach=bool(policy_detach))
                 b_r = int(len(p_idx))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
@@ -2552,6 +2558,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="root batch = this fraction of --batch-size, drawn once per value batch")
     t.add_argument("--policy-rows-limit", type=int, default=None,
                    help="use only the first N root rows (memory: X is kept as float16)")
+    t.add_argument("--policy-detach", action="store_true",
+                   help="stop-gradient: the policy head trains on the trunk features but never "
+                        "moves the trunk (zero cost to the value heads)")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2612,7 +2621,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_eval=args.policy_eval, policy_weight=args.policy_weight,
                   policy_listwise_weight=args.policy_listwise_weight,
                   policy_batch_fraction=args.policy_batch_fraction,
-                  policy_rows_limit=args.policy_rows_limit,
+                  policy_rows_limit=args.policy_rows_limit, policy_detach=args.policy_detach,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

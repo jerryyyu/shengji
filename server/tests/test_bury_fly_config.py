@@ -27,10 +27,10 @@ def test_fly_bury_name_matches_recipe_and_preserves_play():
     # The prior group reaches the play recipe from the env and the SHA pin is the package's.
     assert play_recipe["prior_checkpoint"] == "/data/models/prior-v2-b9ff76c9.npz"
     assert play_recipe["prior_sha256"] == PRIOR_PACKAGE_SHA
-    assert (play_recipe["prior_threshold"], play_recipe["prior_top"]) == (10_000, 256)
+    assert (play_recipe["prior_threshold"], play_recipe["prior_top"]) == (1_000, 256)
     play_fields = {k: v for k, v in play_recipe.items() if k not in ("prior_checkpoint",)}
     play_policy = shortlist_policy_name(M1_PACKAGE_SHA[:8], 32, recipe=resolved_recipe(**play_fields))
-    assert play_policy == "mc-shortlist-12ce4415-w32-r94c1cdbf-prior-b9ff76c9"
+    assert play_policy == "mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9"
     identity = dict(schema="cwv-bury-recipe-v1",
         play_policy=play_policy,
         checkpoint_sha256=M1_PACKAGE_SHA,

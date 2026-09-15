@@ -48,3 +48,30 @@ def test_actual_tree_recorder_is_bounded_and_does_not_change_search():
     report = recorder.compare_full()
     assert report['captured'] == 3 and len(report['predictions']) == 3
     assert np.isfinite(report['rmse'])
+
+
+def test_rescore_uses_identical_leaves_and_does_not_recapture():
+    rnd = root()
+    recorder = LeafRecorder(Evaluator(), limit=3)
+    search_worlds([rnd, copy.deepcopy(rnd)], rnd.turn,
+        evaluator=recorder, prior_logits=lambda r, s, a: np.zeros(len(a)),
+        config=PuctConfig(sweeps=4, depth=4))
+    a, b = Evaluator(), Evaluator()
+    report = recorder.compare_evaluators({'M1': a, 'G1': b}, batch_size=2)
+    assert report['rescored']['M1'] == report['rescored']['G1']
+    assert report['rescored']['M1']['predictions'] == report['predictions']
+    assert len(recorder.rows) == 3
+    assert [len(states) for states, _ in a.calls] == [2, 1]
+    for (left, ls), (right, rs) in zip(a.calls, b.calls, strict=True):
+        assert ls == rs
+        assert [s.hands for s in left] == [s.hands for s in right]
+
+
+def test_rescore_rejects_bad_predictions():
+    recorder = LeafRecorder(Evaluator(), limit=1)
+    recorder.score_many([root()], [0])
+    class Bad:
+        def score_many(self, states, seats):
+            return [float('nan')]
+    with pytest.raises(ValueError, match='finite one-score'):
+        recorder.compare_evaluators({'bad': Bad()})

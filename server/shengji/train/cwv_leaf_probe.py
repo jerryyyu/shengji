@@ -51,6 +51,36 @@ class LeafRecorder:
             mean_bias=float(error.mean()), rmse=float(np.sqrt(np.mean(error**2))),
             heuristic_plies=out.heuristic_plies)
 
+    def compare_evaluators(self, evaluators, batch_size=128):
+        """Rescore identical captured leaves; run the named comparator once.
+
+        Selection remains conditioned on the model that generated this search.
+        This is neither a gameplay comparison nor independent calibration data.
+        """
+        if not evaluators:
+            raise ValueError('at least one evaluator required')
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError('positive batch size required')
+        report = self.compare_full(batch_size=batch_size)
+        states, seats, _ = zip(*self.rows)
+        reference = np.asarray(report['full_heuristic_values'])
+        rescored = {}
+        for name, evaluator in evaluators.items():
+            values = []
+            for start in range(0, len(states), batch_size):
+                stop = start + batch_size
+                chunk = np.asarray(evaluator.score_many(
+                    [leaf_copy(s) for s in states[start:stop]], seats[start:stop]), float)
+                if chunk.shape != (len(states[start:stop]),) or not np.isfinite(chunk).all():
+                    raise ValueError('finite one-score-per-leaf vector required')
+                values.extend(chunk.tolist())
+            error = np.asarray(values) - reference
+            rescored[name] = dict(predictions=values, mean_bias=float(error.mean()),
+                rmse=float(np.sqrt(np.mean(error**2))))
+        report['rescored'] = rescored
+        report['selection_caveat'] = 'conditioned-on-capture-model-search-not-independent-games'
+        return report
+
 
 def compare_values(predicted, reference):
     predicted, reference = np.asarray(predicted, float), np.asarray(reference, float)

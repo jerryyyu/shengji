@@ -267,6 +267,16 @@ accounting. Same seed window610260915, ranks cycled twice, prior-v2,300s cap.
 | K1 vs full signed-level continuation | +0.0577 [-0.1923,+0.2885] | 0.796 |
 | PUCT8 sweeps/depth8 vs MC | -0.6154 [-0.8269,-0.3846] | 2.032 |
 
+G1 follow-up (same deals; control also uses G1): K1 vs inherited MC completed
+22:20:10UTC at +0.0577 [-0.1543,+0.2692], wall0.893. K1 vs full signed-level
+continuation completed22:24:34UTC at +0.2500 [+0.0385,+0.4808], wall0.900.
+Both have zero timeouts and complete accounting. The latter is a positive
+nominal DEV interval among several comparisons, not a production-MC win or
+multiplicity-adjusted confirmation. G1 PUCT completed22:37:15UTC at
+-0.5385 [-0.7885,-0.2885], wall1.604, zero timeouts, complete accounting;
+p99 42.53s versus29.14s and max122.97s versus80.07s. All six planned screens
+are now complete. Both service chains exited successfully; no retry occurred.
+
 K1 is strength-inconclusive, not proven equivalent. Costs include different
 visited positions: these are gameplay resource comparisons, not fixed-state
 engineering speedups. PUCT is clearly negative in this small DEV screen;
@@ -299,4 +309,36 @@ diagnostic clue, not a demonstrated sole cause of the gameplay loss. Next
 investigation should preserve a broad common-world root comparison before
 adding selective depth. Pruning/capping admission is a policy change, not a
 decision-preserving optimization. No new follow-up arm is queued from this
-diagnostic. Await G1 results before the final recommendation.
+diagnostic. Both models' negative PUCT screens support rejecting this recipe,
+not rejecting PUCT in general or proving a single causal explanation.
+
+### Decision after this bounded screen set
+
+Retain M1+prior-v2 MC as the qualified reference. K1 has a plausible cost benefit,
+but the relevant MC comparisons do not establish preserved or improved strength.
+Do not infer M1-vs-G1 strength from different within-model experiments, and do
+not pool these matched comparisons as independent games. Likewise, the
+diagnostic leaf RMSE comparator is heuristic play, not optimal play.
+
+If pursuing another search iteration, first test root coverage on a fixed set
+of saved states: retain a shared candidate set across worlds and score each
+candidate on the same worlds before adaptive visits. Keep production-ballot
+anchors, compare against the unchanged root comparator, and report root
+regret/coverage separately from depth. This is a policy change requiring its
+own bounded comparison, not a free engineering optimization. A larger PUCT
+depth limit alone cannot repair an eight-visit root budget. Avoid choosing
+model/horizon by phase from the single diagnostic deal above.
+
+Final recommendation: keep the qualified M1+prior-v2 MC recipe. Retain K1 as an
+experimental cost-saving candidate, not a proven strength/noninferiority win.
+Do not scale or deploy the tested PUCT arm. Any next search experiment should
+preserve broad common-world root comparison and isolate selective depth as one
+change. G1 did not rescue this PUCT recipe; its positive full-continuation
+comparison does not override its inconclusive standard-MC comparison.
+
+The goal's bounded exploration is complete: reviewed implementations (#438,
+#439), matched M1/G1 screens, real-leaf comparisons, root coverage/depth
+diagnostics, retained evidence and recommendation. Source approval is separate
+from strength qualification. No production deployment was performed by this
+research work. Production's hybrid-bury configuration is not part of these
+plain-play screens; Claude's separately authorized deployment remains separate.

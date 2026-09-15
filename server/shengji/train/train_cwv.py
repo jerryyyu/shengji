@@ -1608,7 +1608,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     policy_batch = 0
     root_fit: set[str] = set()
     if policy_head:
-        from .policy_rows import PolicyEval, PolicyRows
+        from .policy_rows import PolicyEval, open_policy_rows
         value_fit = set(population["train"])
         held = set(population["val"]) | set(population["test"])
         # The policy eval is a REPORTED held-out (a test-like set): it must not
@@ -1619,7 +1619,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if policy_eval:
             policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral)
             held |= set(policy_evalset.deal_keys)
-        policy_data = PolicyRows(policy_rows, limit=policy_rows_limit, exclude=held)
+        policy_data = open_policy_rows(policy_rows, limit=policy_rows_limit, exclude=held)
         root_fit = set(policy_data.deal_keys)
         assert not root_fit & held
         policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
@@ -1923,15 +1923,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 # #425: one root batch per value batch, ALWAYS forwarded (the twin
                 # runs the same batches with the loss weighted 0).
                 try:
-                    p_idx = next(policy_iter)
+                    p_batch = next(policy_iter)
                 except StopIteration:
                     policy_iter = policy_data.batches(policy_batch, policy_rng)
-                    p_idx = next(policy_iter)
+                    p_batch = next(policy_iter)
                 from .policy_rows import policy_losses
-                p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_idx, dev),
+                p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_batch, dev),
                                                listwise_weight=float(policy_listwise_weight),
                                                detach=bool(policy_detach))
-                b_r = int(len(p_idx))
+                b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
             finite = torch.isfinite(total).to(torch.float32)

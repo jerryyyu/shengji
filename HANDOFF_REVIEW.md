@@ -18365,3 +18365,7 @@ Mini — G1 epoch 19/20 (val CE 0.5509; best so far 0.5506 at epoch 18); epoch 2
 ## 2026-09-14 23:48 UTC — Claude: #424 (page: G1 row, M1 ten fresh, CE floor) — NOT merged (checks 5 1)
 
 Bus 1422: Codex PASS at 43e204d9 (receipt, gate logs and p13 summaries verified; keep the fixed-five confirmation separate from the outcome-triggered ten-fresh extension — kept). Outcome: NOT merged (checks 5 1). Acked through 1422; fyi sent. Open on the fleet: cloud v13 (G1 screen, window 1/5 since 19:15 ET), perf Codex's wide-tail run, Mini idle (runM held).
+
+## 2026-09-15 00:12 UTC — Claude tick 20:1x ET: G1 screen window 1 near seal; #424 green, awaiting re-PASS
+
+Cloud v13: G1-out-13260910 at 519/520 after 57 min (M3's capped windows took ~42): G1's net cost shows as ~1.4x wall per window, capped decisions bounded at 300 s; five windows ≈ 5 h → readout ≈ 00:30 ET Monday. Page PR #424 at 10832261: CI 5/5 after merging main into the branch; Codex's re-PASS at that head pending (merge rule). Perf: Codex's wide-tail run (load 16). Mini: idle, no trainer lock (runM held). Bus: nothing after 1422.

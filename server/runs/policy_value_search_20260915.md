@@ -67,3 +67,44 @@ wrapper trace. Preserve it as historical integration evidence, NOT as validation
 of the repaired policy. The consumer now uses `_complete_determinized_hands`
 and sorted kitty; wrapper saves the actual continuation trace. New tests cover
 permuted sampled multisets, corrupt-world refusal and durable wrapper details.
+
+Repaired source4153e6ce: real M1 plus priorv2
+`b6d928c5a13d7de2c5267cb3e936298628998dbc3868ee13d88ce726a797d1d6`
+on both sides, same diagnostic dose/seed19 and 300s cap. Completed in18.1s,
+120 decisions, zero timeouts,98 persisted continuation records. Prior activated
+5 times on arm and4 on control. Decision wall5.12s/7.95s; maxima0.765s/0.978s.
+Evidence `/private/tmp/cwv-truncated-prior-smoke.lHJdqw`. This differs from the
+old smoke in prior admission AND the correctness repair, so not an isolated
+prior speedup measurement. Subsequent main integration imports reviewed #434;
+revalidate separate-prior consumer tests, not repeat all historical runs.
+
+## First bounded screen request
+
+Fixed two comparisons, each26 fresh paired deals,13 ranks cycled twice. Arm:
+M1 outcome head + priorv2, threshold10000/top256, W32/selection30/report300,
+four alternatives, static encoding, successor reuse, k=1. Controls:
+(a) same admission + original point-MC, (b) same admission + full heuristic
+signed-level continuation. No hybrid-bury or tie-rule changes; these screens
+are not directly against the deployed hybrid-bury policy. All sides have300s
+play caps. Source #438 exact reviewed tip, M1/prior hashes above. Priorv2's
+historical split caveat is retained; use fresh gameplay deals only.
+
+Proposed seed start610260915 (verify disjointness against fleet run inventory
+before launch). Two sequential jobs on free Perf, up to16 one-thread workers,
+with disjoint output directories. Persist each pair, never overlap a peer job.
+Use CLI `--value-continuation 1 --continuation-baseline mc` then `full`, plus
+`--baseline flat-shortlist --worlds 32 --selection-worlds 30 --alternatives 4
+--report-worlds 300 --encoding mlp-static --reuse-successors --clusters 26
+--workers 16 --seed0 610260915 --trump-ranks 2,3,4,5,6,7,8,9,10,J,Q,K,A`.
+Checkpoint, prior and output arguments must resolve on the target host; verify
+first-consumption hashes once. No outcome-triggered extension. One2-hour job
+bound per comparison; on expiry preserve completed pairs and report incomplete,
+do not relaunch automatically. Initial ETA is not calibrated for this dose:
+report live completion-based ETA after the first pairs, not a speculative speedup.
+
+Readout: signed levels/round and whole-deal clustered95% interval, per-window
+completeness, actual model/terminal rows and heuristic plies, decision/total wall,
+tail/cap incidence and prior activation.26 pairs is a DEV screen, not proof of
+non-inferiority or a shipping decision. This request must pass source review and
+fleet/disjointness checks before launch. PUCT is not included in this first pair
+of comparisons and stays on the active goal.

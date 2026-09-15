@@ -49,3 +49,14 @@ Output `/private/tmp/cwv-truncated-smoke.FumMMN`; source is this uncommitted
 implementation, so preserve config and do not treat it as a clean-head screen.
 No production or statistical claim. Verify terminal summary before using it as
 integration evidence; an unfinished pair is not success.
+
+Completed: 1/1 paired deal (two mirrored rounds), exit0, 224.7s elapsed;
+120 total decisions, zero timeouts, zero failed/rejected worlds, complete work
+accounting. Arm: 3,336 learned continuation rows, 33 terminal continuations,
+5,847 heuristic plies. Full control: 3,306 terminal continuations, 138,445
+heuristic plies. Decision wall 109.0s versus111.8s; admission consumed107.4s
+versus107.9s, so this tiny no-prior smoke is dominated by admission. Different
+trajectories mean these totals are not a same-state speed comparison. One deal
+does not estimate strength. Summary/config/cluster shard retained at the above
+path. Executed implementation was subsequently committed as46fa5065; tests and
+notes do not affect the completed worker.

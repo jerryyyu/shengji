@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from shengji.ai.cwv_numpy import PACKAGE_SCHEMA
+from shengji.ai.cwv_numpy import PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2
 
 
 def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
@@ -44,18 +44,37 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
             "canonical_json_sha256": hashlib.sha256(raw).hexdigest(),
             "canonical_json_bytes": len(raw),
         }
-    names = {
-        "trunk.0.weight": "trunk0_weight", "trunk.0.bias": "trunk0_bias",
-        "trunk.3.weight": "trunk1_weight", "trunk.3.bias": "trunk1_bias",
-        f"{head_key}.weight": "head_weight", f"{head_key}.bias": "head_bias"}
+    names = {f"{head_key}.weight": "head_weight", f"{head_key}.bias": "head_bias"}
+    cfg = {"architecture": config.architecture, "width": config.width,
+           "feedforward_width": config.feedforward_width,
+           "public_dim": config.public_dim, "enc_version": config.enc_version}
+    if config.trunk_block == "plain" and config.trunk_layers == 2:
+        # The deployed schema, byte for byte: every plain model exports as before.
+        schema = PACKAGE_SCHEMA
+        names.update({"trunk.0.weight": "trunk0_weight", "trunk.0.bias": "trunk0_bias",
+                      "trunk.3.weight": "trunk1_weight", "trunk.3.bias": "trunk1_bias"})
+    elif config.trunk_block == "residual":
+        # value_model: Sequential(Linear stem, *ResidualTrunkBlock x L, LayerNorm, ReLU)
+        # -> indices 0 (stem), 1..L (blocks), L+1 (final LayerNorm).
+        schema = PACKAGE_SCHEMA_V2
+        cfg.update({"trunk_block": "residual", "trunk_layers": config.trunk_layers})
+        names.update({"trunk.0.weight": "stem_weight", "trunk.0.bias": "stem_bias"})
+        for i in range(config.trunk_layers):
+            for part in ("norm", "up", "down"):
+                names.update({f"trunk.{i + 1}.{part}.weight": f"block{i}_{part}_weight",
+                              f"trunk.{i + 1}.{part}.bias": f"block{i}_{part}_bias"})
+        final = config.trunk_layers + 1
+        names.update({f"trunk.{final}.weight": "final_norm_weight", f"trunk.{final}.bias": "final_norm_bias"})
+    else:
+        raise ValueError(f"trunk {config.trunk_block!r} x {config.trunk_layers} has no numpy runtime")
     metadata["exported_value_head"] = head
     state = model.state_dict()
+    missing = [src for src in names if src not in state]
+    if missing:
+        raise ValueError(f"checkpoint state lacks {missing[:3]}: layout drift")
     weights = {dst: state[src].detach().cpu().numpy().astype(np.float32, copy=True)
                for src, dst in names.items()}
-    payload = {"schema": PACKAGE_SCHEMA,
-               "config": {"architecture": config.architecture, "width": config.width,
-                          "feedforward_width": config.feedforward_width,
-                          "public_dim": config.public_dim, "enc_version": config.enc_version},
+    payload = {"schema": schema, "config": cfg,
                "original_checkpoint_sha256": original_sha,
                "metadata": metadata}
     target = Path(output)

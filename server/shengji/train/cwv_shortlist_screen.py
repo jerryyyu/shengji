@@ -212,6 +212,10 @@ def _validate_wide_config(config):
 def make_side(config: dict, side: str, seed: int):
     puct = config.get('bounded_puct')
     if puct is not None:
+        if config.get('decision_deadline') != DEADLINE_RECIPE:
+            raise ValueError('bounded PUCT requires the 300s supervised play deadline')
+        if config.get('reuse_successors'):
+            raise ValueError('bounded PUCT does not implement successor reuse')
         if (config['arm'] != 'learned' or config.get('baseline') != 'flat-shortlist'
                 or 'prior' not in config or config.get('value_head') not in (None, 'outcome')
                 or any(config.get(k) for k in ('value_continuation', 'corrected_rollout',
@@ -437,6 +441,8 @@ def _deadline_side(config, side, seed):
 def run_cluster(config, cluster):
     created = []
     deadline = config.get("decision_deadline")
+    if 'bounded_puct' in config and deadline != DEADLINE_RECIPE:
+        raise ValueError('bounded PUCT requires the 300s supervised play deadline')
     if deadline is not None and deadline != DEADLINE_RECIPE:
         raise ValueError("unsupported screen decision deadline recipe")
     session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
@@ -606,7 +612,8 @@ def summary_for(shards, config):
     if 'bounded_puct' in config:
         result['bounded_puct'] = config['bounded_puct']
         result['arm_description'] = 'per-world policy-guided PUCT with outcome-value leaves'
-        result['baseline_description'] = 'same checkpoint and prior; W32 admission with MC selection/report'
+        result['baseline_description'] = (f"same checkpoint and prior; W{config['shortlist']['worlds']} "
+                                          'admission with MC selection/report')
         result['work_caveat'] += ' PUCT simulations/model leaves are not terminal rollouts; determinization permits strategy fusion.'
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
@@ -721,6 +728,10 @@ def main(argv=None):
             or args.hybrid_bury or args.throw_components or args.report_tie_keeps_incumbent):
         parser.error('value continuation requires isolated outcome-head learned/flat-shortlist')
     if args.puct_sweeps is not None:
+        if args.decision_deadline != 300:
+            parser.error('bounded PUCT requires --decision-deadline 300')
+        if args.reuse_successors:
+            parser.error('bounded PUCT does not implement successor reuse')
         if (args.arm != 'learned' or args.baseline != 'flat-shortlist' or not args.prior_checkpoint
                 or args.value_head not in (None, 'outcome') or args.value_continuation
                 or args.corrected_rollout or args.wide_tail or args.inner_mode
@@ -796,10 +807,11 @@ def _run_screen(args, trump_ranks):
     checkpoint_sha = None
     checkpoint_recipe = None
     if args.arm == "learned":
+        requested_head = 'outcome' if args.puct_sweeps is not None else args.value_head
         evaluator = shared_evaluator(
             checkpoint, threads=1, max_batch=args.batch_size,
             encoding=args.encoding,
-            **({"value_head": args.value_head} if args.value_head else {}))
+            **({"value_head": requested_head} if requested_head else {}))
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
     shortlist = CWVShortlistConfig(

@@ -149,5 +149,14 @@ deliberately different tiny doses: NOT a strength or equal-work speed claim.
 42 PUCT/screen/deadline tests pass. A pre-run CLI-local variable-scope error was
 fixed before any game executed; no failed scientific run or partial game reused.
 
-Remaining before launch qualification: independent source review, bounded full-
-dose packet and representative host timing. No PUCT fleet run launched.
+Independent source review: PASS after repairing four configuration boundaries:
+canonical300s deadline required by CLI/factory/cluster launch, no unsupported
+successor-reuse claim, explicit outcome-head validation in parent before config
+publication, and summary world count derived from actual config.34 focused
+PUCT/screen tests pass after repairs; earlier42 included deadline tests. These
+repairs do not change gameplay in the capped smoke above.
+
+Remaining before launch qualification: bounded full-dose packet and representative
+host timing. Perf now reserved for Claude's p14; do not overlap. No PUCT fleet
+run launched. #438's k0 training-distribution review is being resolved against
+the actual training bridge, separately from this core source review.

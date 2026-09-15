@@ -110,6 +110,7 @@ def test_screen_factory_trace_and_accounting(monkeypatch):
     monkeypatch.setattr(CWVBoundedPuctBot, '_tree_prior', staticmethod(uniform))
     config = cfg('learned', checkpoint='unused', checkpoint_sha256='value-sha',
                  baseline='flat-shortlist', prior=dict(checkpoint='unused', checkpoint_sha256='a'*64),
+                 decision_deadline=dict(screen.DEADLINE_RECIPE),
                  bounded_puct=dict(sweeps=2, depth=2))
     bot = screen.make_side(config, 'arm', 19)
     baseline = screen.make_side(config, 'baseline', 19)
@@ -124,6 +125,48 @@ def test_screen_factory_trace_and_accounting(monkeypatch):
     assert counters['rollouts'] == 0
     assert counters['cheap_evaluations'] == counters['puct_model_rows']
     assert screen._recipe(config)['bounded_puct'] == config['bounded_puct']
+    config.pop('decision_deadline')
+    with pytest.raises(ValueError, match='300s supervised'):
+        screen.make_side(config, 'arm', 19)
+    with pytest.raises(ValueError, match='300s supervised'):
+        screen.run_cluster(config, 0)
+    config['decision_deadline'] = dict(screen.DEADLINE_RECIPE)
+    config['reuse_successors'] = True
+    with pytest.raises(ValueError, match='successor reuse'):
+        screen.make_side(config, 'arm', 19)
+
+
+def test_puct_summary_reports_configured_worlds(monkeypatch):
+    from test_cwv_shortlist_screen import cfg, identity_summary
+    from shengji.train import cwv_shortlist_screen as s
+    monkeypatch.setattr(s.duel, 'summarize', identity_summary)
+    result = s.summary_for([], cfg('learned', bounded_puct=dict(sweeps=2)))
+    assert 'W1 admission' in result['baseline_description']
+
+
+@pytest.mark.parametrize('extra', [['--decision-deadline', '0'], ['--reuse-successors']])
+def test_cli_refuses_unsupported_puct_recipe(monkeypatch, tmp_path, extra):
+    from shengji.train import cwv_shortlist_screen as s
+    monkeypatch.setenv('SHENGJI_REQUIRE_VOIDS', '1')
+    with pytest.raises(SystemExit) as exc:
+        s.main(['--arm', 'learned', '--checkpoint', 'unused', '--prior-checkpoint', 'unused',
+                '--baseline', 'flat-shortlist', '--puct-sweeps', '2', '--seed0', '19',
+                '--out', str(tmp_path / 'absent'), *extra])
+    assert exc.value.code == 2
+    assert not (tmp_path / 'absent' / 'config.json').exists()
+
+
+def test_parent_checks_outcome_head_before_publishing(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from shengji.train import cwv_shortlist_screen as s
+    def refuse(*a, **kw):
+        assert kw['value_head'] == 'outcome'
+        raise ValueError('unsupported export')
+    monkeypatch.setattr(s, 'shared_evaluator', refuse)
+    with pytest.raises(ValueError, match='unsupported export'):
+        s._run_screen(SimpleNamespace(checkpoint=str(tmp_path / 'bad.npz'), arm='learned',
+            puct_sweeps=2, value_head=None, batch_size=128, encoding='mlp-static'), None)
+    assert not (tmp_path / 'config.json').exists()
 
 
 @pytest.mark.parametrize('mover,expected_sign', [(1, -1), (2, 1)])

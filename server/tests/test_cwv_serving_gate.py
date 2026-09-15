@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from scripts.cwv_serving_gate import run_gate
-from shengji.engine import fast
+from shengji.engine import combos, fast
 
 # The play-based witnesses search real decisions (W4/N4, a full round each). In the
 # compiled engine that is ~1 min per run; in the pure-Python engine it is many
@@ -23,7 +23,8 @@ from shengji.engine import fast
 # does not depend on the engine mode (both sides of every comparison run in the
 # same process and mode), so the play witnesses run in the compiled mode only;
 # the scope/refusal tests below run in both.
-plays = pytest.mark.skipif(not fast.HAVE_FAST, reason="play witnesses run in the compiled engine only")
+plays = pytest.mark.skipif(not (fast.HAVE_FAST and combos.decompose is fast.decompose),
+                           reason="play witnesses run in the compiled engine only")
 
 from test_cwv_shortlist_registry import checkpoint  # noqa: F401  (tiny MLP value net)
 from test_cwv_prior_admission import prior_ckpt  # noqa: F401  (tiny torch prior)
@@ -75,10 +76,13 @@ def test_scope_is_serving_only_for_the_serving_recipe_with_a_prior(monkeypatch, 
     monkeypatch.setattr(gate, "_deal", fake_deal)
     r = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, worlds=32, selection_worlds=30,
                  threshold=10_000, top=256)
-    assert r["scope"] == "serving-w32-n30-prior" and r["result"] == "no-decisions" and r["qualifies_serving"] is False
+    assert r["scope"] == "serving-w32-n30-prior-t10000" and r["result"] == "no-decisions" and r["qualifies_serving"] is False
     r = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, worlds=32, selection_worlds=30,
                  threshold=1_000, top=256)
-    assert r["scope"] == "smoke", "a non-serving threshold is a smoke run"
+    assert r["scope"] == "serving-w32-n30-prior-t1000", "the threshold is a deploy setting named in the scope"
+    r = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, worlds=32, selection_worlds=30,
+                 threshold=1_000, top=64)
+    assert r["scope"] == "smoke", "a non-serving top is a smoke run"
     r = run_gate(checkpoint, value, rounds=1, worlds=32, selection_worlds=30)
     assert r["scope"] == "smoke", "no prior bound is never the serving scope"
 

@@ -23,6 +23,7 @@ from .cwv_bury_policy import CWVBuryBot
 from .cwv_corrected_rollout import CWVCorrectedRolloutBot, CWVCorrectedRolloutBuryBot
 from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 from .cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
+from .cwv_truncated_search import CWVTruncatedSearchBot, CWVPriorTruncatedSearchBot
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -144,6 +145,9 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            record = getattr(self.bot, 'last_decision_record', None)
+            if record and 'value_continuation' in record and len(self.decisions) > before:
+                self.decisions[-1]['value_continuation'] = copy.deepcopy(record['value_continuation'])
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -193,6 +197,19 @@ def _validate_wide_config(config):
 
 
 def make_side(config: dict, side: str, seed: int):
+    continuation = config.get('value_continuation')
+    if continuation is not None:
+        if (config['arm'] != 'learned' or config.get('baseline') != 'flat-shortlist'
+                or any(config.get(k) for k in ('corrected_rollout', 'wide_tail',
+                        'double_shortlist', 'throw_components', 'hybrid_bury',
+                        'report_tie_keeps_incumbent'))
+                or config.get('value_head') not in (None, 'outcome')):
+            raise ValueError('value continuation requires isolated outcome-head learned/flat-shortlist')
+        if (set(continuation) != {'tricks', 'baseline'}
+                or continuation['tricks'] not in ('full', 0, 1, 2)
+                or type(continuation['tricks']) is bool
+                or continuation['baseline'] not in ('mc', 'full')):
+            raise ValueError('invalid value continuation recipe')
     if (config.get("hybrid_bury")
             and (config["arm"] != "learned" or config.get("baseline") not in
                  ("flat-shortlist", "levels-shortlist")
@@ -226,7 +243,8 @@ def make_side(config: dict, side: str, seed: int):
         # #373: the value head rides in config.json and binds the ARM's evaluator
         # only; a flat-shortlist baseline built from the same config keeps the
         # checkpoint's own head (its evaluator is a separate cache entry).
-        head = config.get("value_head") if side == "arm" else None
+        head = ('outcome' if continuation is not None else
+                config.get("value_head") if side == "arm" else None)
         evaluator = shared_evaluator(config["checkpoint"], threads=1,
                                      max_batch=config.get(
                                          "batch_size",
@@ -242,7 +260,19 @@ def make_side(config: dict, side: str, seed: int):
             arm != "learned" or inner is not None or correction is not None
             or any(config.get(k) for k in ("throw_components", "hybrid_bury", "wide_tail"))):
         raise ValueError("prior admission requires the plain learned shortlist arm")
-    if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
+    if continuation is not None:
+        # Same admission on BOTH arms: isolate continuation from prior pruning.
+        truncated = side == 'arm' or continuation['baseline'] == 'full'
+        if 'prior' in config:
+            cls = CWVPriorTruncatedSearchBot if truncated else CWVPriorAdmissionBot
+            kwargs['prior'] = CWVPriorAdmissionConfig(**config['prior'])
+        else:
+            cls = CWVTruncatedSearchBot if truncated else CWVShortlistBot
+        if truncated:
+            horizon = continuation['tricks'] if side == 'arm' else 'full'
+            kwargs['continuation_tricks'] = None if horizon == 'full' else horizon
+        bot = cls(evaluator, **kwargs)
+    elif side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
         bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
     elif side == "arm" and "wide_tail" in config:
         bot = CWVWideTailBot(evaluator, **kwargs,
@@ -301,6 +331,9 @@ def work_counters(bots):
         for key, value in getattr(bot, "corrected_rollout_counts", {}).items():
             name = "correction_" + key
             out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, 'continuation_totals', {}).items():
+            name = 'value_continuation_' + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))
@@ -315,6 +348,17 @@ def work_counters(bots):
         - correction_sampled + correction_residual)
     out["continuation_rollouts"] = int(out["rollouts"])
     out["total_rollouts"] = int(out["rollouts"])
+    if any(hasattr(bot, 'continuation_totals') for bot in bots):
+        model_rows = out.get('value_continuation_model_rows', 0)
+        out['candidate_world_evaluations'] = out['rollouts']
+        out['rollouts'] -= model_rows
+        out['continuation_rollouts'] -= model_rows
+        out['total_rollouts'] -= model_rows
+        out['cheap_evaluations'] += model_rows
+        # A world can contain a mixture of terminal and learned candidate
+        # leaves. Retire the ambiguous world-count metric for this recipe;
+        # candidate-level terminal_rows and model_rows are exact instead.
+        out.pop('full_rollout_accepted_worlds', None)
     if any(hasattr(bot, "timeout_count") for bot in bots):
         out["decision_timeouts"] = sum(bot.timeout_count for bot in bots)
     if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
@@ -322,6 +366,17 @@ def work_counters(bots):
         out["outer_continuation_rollouts"] = (
             out["total_rollouts"] - out["inner_continuation_rollouts"])
     return out
+
+
+def continuation_state_contract(config):
+    horizon = config['value_continuation']['tricks']
+    return {
+        'leaf_state': ('terminal' if horizon == 'full' else
+                       'immediate-afterstate-including-mid-trick' if horizon == 0 else
+                       'completed-trick-boundary'),
+        'training_bridge': 'one-engine-action-then-encode-no-trick-finisher',
+        'calibration': 'unqualified-on-search-selected-sampled-world-leaves',
+    }
 
 
 def _recipe(config):
@@ -344,9 +399,11 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout", "wide_tail", "prior"):
+                "hybrid_bury", "corrected_rollout", "wide_tail", "prior", "value_continuation"):
         if key in config:
             recipe[key] = config[key]
+    if 'value_continuation' in config:
+        recipe['continuation_state_contract'] = continuation_state_contract(config)
     return recipe
 
 
@@ -518,6 +575,13 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Both sides use the full-completion CWV hybrid bury policy; this is "
             "not Fly 2s serving-budget parity.")
+    if 'value_continuation' in config:
+        result['value_continuation'] = config['value_continuation']
+        result['continuation_state_contract'] = continuation_state_contract(config)
+        result['arm_description'] = 'value-truncated selection and independent report; final signed levels'
+        result['baseline_description'] = config['value_continuation']['baseline'] + ' continuation; matched admission'
+        result['work_caveat'] += (' Legacy rollout counters are candidate-world evaluations, not full playouts. '
+                                  'Report uncertainty excludes model error. No strength claim from offline calibration.')
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -573,6 +637,10 @@ def main(argv=None):
                              "prunes decisions above --prior-threshold to the union of per-world top lists")
     parser.add_argument("--prior-threshold", type=int, default=10_000)
     parser.add_argument("--prior-top", type=int, default=256)
+    parser.add_argument('--value-continuation', choices=('0', '1', '2', 'full'),
+                        help='DEV: outcome-value selection and report after k tricks; full is levels control')
+    parser.add_argument('--continuation-baseline', choices=('mc', 'full'), default='mc',
+                        help='with value-continuation: point-MC or full heuristic signed-level control')
     parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
@@ -616,6 +684,12 @@ def main(argv=None):
         parser.error("SHENGJI_REQUIRE_VOIDS=1 is required")
     if args.arm == "learned" and not args.checkpoint:
         parser.error("learned requires --checkpoint")
+    if args.value_continuation is not None and (
+            args.arm != 'learned' or args.baseline != 'flat-shortlist'
+            or args.value_head not in (None, 'outcome')
+            or args.corrected_rollout or args.wide_tail or args.inner_mode
+            or args.hybrid_bury or args.throw_components or args.report_tie_keeps_incumbent):
+        parser.error('value continuation requires isolated outcome-head learned/flat-shortlist')
     if args.arm != "learned" and args.checkpoint:
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
@@ -720,6 +794,11 @@ def _run_screen(args, trump_ranks):
         config["prior"] = asdict(CWVPriorAdmissionConfig(
             checkpoint=str(Path(args.prior_checkpoint).resolve()), checkpoint_sha256=prior_sha,
             threshold=args.prior_threshold, top=args.prior_top))
+    if args.value_continuation is not None:
+        config['value_continuation'] = {
+            'tricks': ('full' if args.value_continuation == 'full' else int(args.value_continuation)),
+            'baseline': args.continuation_baseline,
+        }
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

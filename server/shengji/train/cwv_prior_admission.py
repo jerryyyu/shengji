@@ -25,6 +25,7 @@ import time
 import numpy as np
 
 from ..engine.round import Trick, TrickPlay
+from .cwv_bury_policy import CWVBuryBot
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 
 SCHEMA = "cwv-prior-admission-v1"
@@ -234,4 +235,15 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         return selected
 
 
-__all__ = ["CWVPriorAdmissionBot", "CWVPriorAdmissionConfig", "SCHEMA", "load_prior_checked", "root_clone"]
+class CWVPriorBuryBot(CWVBuryBot, CWVPriorAdmissionBot):
+    """The served composition (#435): prior-admission play plus a DEV bury arm.
+
+    Cooperative construction: `CWVBuryBot.__init__` forwards ``prior=`` to
+    `CWVPriorAdmissionBot.__init__`, so both stages are set up by their own
+    class and nothing here re-implements either. The play path is the prior
+    admission bot's; the bury path is the bury bot's.
+    """
+
+
+__all__ = ["CWVPriorAdmissionBot", "CWVPriorAdmissionConfig", "CWVPriorBuryBot", "SCHEMA",
+           "load_prior_checked", "root_clone"]

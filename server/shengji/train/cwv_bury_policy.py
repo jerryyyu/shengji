@@ -91,15 +91,19 @@ class CWVBuryBot(CWVShortlistBot):
     """
 
     def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
-                 reuse_successors=True, bury_config=None, serving_budget_seconds=None):
+                 reuse_successors=True, bury_config=None, serving_budget_seconds=None,
+                 **play_kwargs):
         if arm not in _ARMS:
             raise BuryPolicyError(f"unknown bury arm {arm!r}")
         if config is None:
             config = CWVShortlistConfig(
                 worlds=32, selection_worlds=30, alternatives=4,
                 batch_size=128, uniform=False)
+        # ``play_kwargs`` reach the play class next in the MRO (the prior
+        # admission bot's ``prior=``, `cwv_prior_admission.CWVPriorBuryBot`);
+        # the plain shortlist accepts none, so a stray key still fails loudly.
         super().__init__(evaluator, seed=seed, config=config,
-                         reuse_successors=reuse_successors)
+                         reuse_successors=reuse_successors, **play_kwargs)
         self.bury_arm = arm
         self.serving_budget_seconds = _serving_budget(serving_budget_seconds)
         self.bury_config = (CWVBuryConfig() if bury_config is None
@@ -382,6 +386,8 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
         raise TypeError("bury_config must be a CWVBuryConfig")
     checkpoint_sha = file_sha256(checkpoint)
     base_entries = shortlist_registry_entries(checkpoint, worlds, **play_recipe)
+    # The play name already carries the prior (``-prior-<sha8>`` and the
+    # digest), so the bury identity below binds it through ``play_policy``.
     entries = {}
 
     def wrap(base_factory, identity, name):
@@ -389,12 +395,25 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
             base = base_factory(**kwargs)
             if base.cwv_checkpoint_sha256 != identity["checkpoint_sha256"]:
                 raise BuryPolicyError("bury checkpoint changed after registration")
-            bot = CWVBuryBot(base.evaluator, seed=base.seed,
-                             config=base.shortlist_config, arm=arm,
-                             reuse_successors=base.reuse_successors, bury_config=config,
-                             serving_budget_seconds=budget)
+            prior = getattr(base, "prior_config", None)
+            if prior is not None:
+                # The play policy is the prior-admission shortlist (#435): keep
+                # its admission stage and add the bury arm, rather than
+                # rebuilding the prior-less bot under a name that binds a prior.
+                from .cwv_prior_admission import CWVPriorBuryBot
+                bot = CWVPriorBuryBot(base.evaluator, seed=base.seed,
+                                      config=base.shortlist_config, arm=arm,
+                                      reuse_successors=base.reuse_successors,
+                                      bury_config=config, serving_budget_seconds=budget,
+                                      prior=prior)
+            else:
+                bot = CWVBuryBot(base.evaluator, seed=base.seed,
+                                 config=base.shortlist_config, arm=arm,
+                                 reuse_successors=base.reuse_successors, bury_config=config,
+                                 serving_budget_seconds=budget)
             bot.REPORT_FOLD_WORLDS = base.REPORT_FOLD_WORLDS
-            for key in ("cwv_checkpoint_sha256", "cwv_ckpt8", "cwv_enc_version", "cwv_encoding"):
+            for key in ("cwv_checkpoint_sha256", "cwv_ckpt8", "cwv_enc_version", "cwv_encoding",
+                        "cwv_prior_sha256", "cwv_prior_checkpoint"):
                 setattr(bot, key, getattr(base, key))
             bot.policy_name = name
             bot.bury_recipe_identity = {**identity, "config": dict(identity["config"])}

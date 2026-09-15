@@ -207,7 +207,7 @@ POLICY_HEADS = [
  "first prior (PR #423); trained on rows that include the value val/test deals, so not readable on the common set"),
 ("prior v2", "b6d928c5", "separate", "833-512-256-54 MLP", "2.5M", "old [0, 0.8)", "15", "1.0", "own held-out (old split)",
  "", "", "", "", "0.950 / 0.929 / 0.910 / 0.869", "none",
- "the prior screened in play (lanes v15/v16: outcome-identical to M1, 22-25% less decision wall); same split caveat as v1"),
+ "the prior screened in play (v15/v16: paired vs M1 -0.0003 [-0.0017, +0.0012] on ten seeds, 15 of 5,200 clusters differ; vs capped M1 -0.0001 [-0.0019, +0.0016], 22-25% less decision wall); same split caveat as v1"),
 ("prior v3", "df9b2c58", "separate", "833-512-256-54 MLP", "2.5M", "[0.2, 1)", "15", "1.0", "common test-deal set",
  "0.975", "0.103", "0.388", "0.947", "0.960 / 0.935 / 0.945 / 0.935", "none",
  "the fair separate baseline (corrected split); on its own 30k held-out rows 0.958 / 0.935 / 0.934 / 0.887"),

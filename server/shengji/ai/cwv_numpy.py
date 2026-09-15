@@ -26,6 +26,12 @@ except ImportError:
 
 
 PACKAGE_SCHEMA = "shengji-cwv-numpy-mlp-v1"
+#: v2 adds the trunk shape (#435): the residual trunk of M1 (Linear stem ->
+#: N tabular-ResNet blocks -> LayerNorm -> ReLU) next to the plain two-layer
+#: MLP.  v1 packages are unchanged and keep loading byte for byte.
+PACKAGE_SCHEMA_V2 = "shengji-cwv-numpy-mlp-v2"
+PACKAGE_SCHEMAS = (PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2)
+LAYERNORM_EPS = 1e-5
 PACKAGE_MAX_BYTES = 128 * 1024 * 1024
 OUTCOME_CLASSES = 204
 WORLD_RECEIVERS = 5
@@ -44,10 +50,20 @@ class CWVNumpyConfig:
     feedforward_width: int
     public_dim: int
     enc_version: int
+    trunk_block: str = "plain"
+    trunk_layers: int = 2
 
     def validate(self) -> None:
         if self.architecture != "mlp":
             raise CWVNumpyError("only architecture=mlp is supported")
+        if self.trunk_block == "plain":
+            if self.trunk_layers != 2:
+                raise CWVNumpyError("the plain trunk is the two-layer MLP only")
+        elif self.trunk_block == "residual":
+            if type(self.trunk_layers) is not int or not 1 <= self.trunk_layers <= 64:
+                raise CWVNumpyError("invalid residual trunk depth")
+        else:
+            raise CWVNumpyError("trunk_block must be plain or residual")
         if any(type(v) is not int or v <= 0 for v in
                (self.width, self.feedforward_width, self.public_dim, self.enc_version)):
             raise CWVNumpyError("invalid exported model configuration")
@@ -69,6 +85,33 @@ def _readonly(value: np.ndarray, shape: tuple[int, ...], label: str) -> np.ndarr
     return np.frombuffer(raw, dtype=np.float32).reshape(shape)
 
 
+def _layer_norm(x: np.ndarray, weight: np.ndarray, bias: np.ndarray) -> np.ndarray:
+    # torch.nn.LayerNorm over the last dim: biased variance, eps inside the sqrt.
+    mean = x.mean(axis=-1, keepdims=True)
+    var = ((x - mean) ** 2).mean(axis=-1, keepdims=True)
+    return (x - mean) / np.sqrt(var + LAYERNORM_EPS) * weight + bias
+
+
+def expected_arrays(config: "CWVNumpyConfig") -> dict[str, tuple[int, ...]]:
+    """The exported array names and shapes a configuration requires."""
+    inp = config.public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+    head = {"head_weight": (OUTCOME_CLASSES, config.width), "head_bias": (OUTCOME_CLASSES,)}
+    if config.trunk_block == "plain":
+        return {"trunk0_weight": (config.feedforward_width, inp),
+                "trunk0_bias": (config.feedforward_width,),
+                "trunk1_weight": (config.width, config.feedforward_width),
+                "trunk1_bias": (config.width,), **head}
+    out = {"stem_weight": (config.width, inp), "stem_bias": (config.width,)}
+    for i in range(config.trunk_layers):
+        out.update({f"block{i}_norm_weight": (config.width,), f"block{i}_norm_bias": (config.width,),
+                    f"block{i}_up_weight": (config.feedforward_width, config.width),
+                    f"block{i}_up_bias": (config.feedforward_width,),
+                    f"block{i}_down_weight": (config.width, config.feedforward_width),
+                    f"block{i}_down_bias": (config.width,)})
+    out.update({"final_norm_weight": (config.width,), "final_norm_bias": (config.width,), **head})
+    return out
+
+
 def _gelu_exact(x: np.ndarray) -> np.ndarray:
     # torch.nn.GELU() defaults to the exact erf formulation.  np.erf is not
     # available in all supported NumPy builds. The optional native loop uses
@@ -86,15 +129,7 @@ class CWVNumpyMLP:
                  metadata: Mapping[str, Any] | None = None,
                  original_checkpoint_sha256: str | None = None):
         config.validate()
-        inp = config.public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
-        expected = {
-            "trunk0_weight": (config.feedforward_width, inp),
-            "trunk0_bias": (config.feedforward_width,),
-            "trunk1_weight": (config.width, config.feedforward_width),
-            "trunk1_bias": (config.width,),
-            "head_weight": (OUTCOME_CLASSES, config.width),
-            "head_bias": (OUTCOME_CLASSES,),
-        }
+        expected = expected_arrays(config)
         if set(weights) != set(expected):
             raise CWVNumpyError("unknown or missing exported weight array")
         self.config = config
@@ -117,6 +152,10 @@ class CWVNumpyMLP:
     def public_dim(self): return self.config.public_dim
     @property
     def enc_version(self): return self.config.enc_version
+    @property
+    def trunk_block(self): return self.config.trunk_block
+    @property
+    def trunk_layers(self): return self.config.trunk_layers
 
     def __deepcopy__(self, memo):
         del memo
@@ -150,13 +189,21 @@ class CWVNumpyMLP:
         # Keep storage compact, but promote operands explicitly.  Besides
         # making the numerical contract clear, this avoids platform BLAS
         # surprises for mixed float64/float32 matmul.
+        w = self._math_weights
         with np.errstate(all="ignore"):
-            h = _gelu_exact(x @ self._math_weights["trunk0_weight"].T
-                            + self._math_weights["trunk0_bias"])
-            h = _gelu_exact(h @ self._math_weights["trunk1_weight"].T
-                            + self._math_weights["trunk1_bias"])
-            logits = h @ self._math_weights["head_weight"].T \
-                + self._math_weights["head_bias"]
+            if self.config.trunk_block == "plain":
+                h = _gelu_exact(x @ w["trunk0_weight"].T + w["trunk0_bias"])
+                h = _gelu_exact(h @ w["trunk1_weight"].T + w["trunk1_bias"])
+            else:
+                # value_model.ResidualTrunkBlock: x + down(relu(up(norm(x))));
+                # then the trunk's final LayerNorm and ReLU (dropout is identity).
+                h = x @ w["stem_weight"].T + w["stem_bias"]
+                for i in range(self.config.trunk_layers):
+                    n = _layer_norm(h, w[f"block{i}_norm_weight"], w[f"block{i}_norm_bias"])
+                    n = np.maximum(n @ w[f"block{i}_up_weight"].T + w[f"block{i}_up_bias"], 0.0)
+                    h = h + (n @ w[f"block{i}_down_weight"].T + w[f"block{i}_down_bias"])
+                h = np.maximum(_layer_norm(h, w["final_norm_weight"], w["final_norm_bias"]), 0.0)
+            logits = h @ w["head_weight"].T + w["head_bias"]
         if not np.all(np.isfinite(logits)):
             raise CWVNumpyError("model produced nonfinite logits")
         shifted = logits - np.max(logits, axis=1, keepdims=True)
@@ -180,9 +227,7 @@ def _load_npz(path: str | os.PathLike[str]) -> CWVNumpyMLP:
                     or sum(info.file_size for info in infos) > PACKAGE_MAX_BYTES:
                 raise CWVNumpyError("export package member exceeds size limit")
         with np.load(resolved, allow_pickle=False) as z:
-            required = {"metadata", "trunk0_weight", "trunk0_bias", "trunk1_weight",
-                        "trunk1_bias", "head_weight", "head_bias"}
-            if set(z.files) != required:
+            if "metadata" not in z.files:
                 raise CWVNumpyError("export package schema drift")
             raw = z["metadata"]
             if raw.shape != () or raw.dtype.kind not in "SU":
@@ -190,17 +235,26 @@ def _load_npz(path: str | os.PathLike[str]) -> CWVNumpyMLP:
             metadata = json.loads(str(raw.item()))
             if not isinstance(metadata, dict) or set(metadata) != {
                     "schema", "config", "metadata", "original_checkpoint_sha256"} \
-                    or metadata.get("schema") != PACKAGE_SCHEMA:
+                    or metadata.get("schema") not in PACKAGE_SCHEMAS:
                 raise CWVNumpyError("invalid package metadata schema")
             sha = metadata["original_checkpoint_sha256"]
             if not isinstance(sha, str) or len(sha) != 64 \
                     or any(c not in "0123456789abcdef" for c in sha):
                 raise CWVNumpyError("invalid original checkpoint SHA256")
-            if not isinstance(metadata["config"], dict) or set(metadata["config"]) != {
-                    "architecture", "width", "feedforward_width", "public_dim", "enc_version"}:
+            base_keys = {"architecture", "width", "feedforward_width", "public_dim", "enc_version"}
+            v2_keys = base_keys | {"trunk_block", "trunk_layers"}
+            keys = set(metadata["config"]) if isinstance(metadata["config"], dict) else None
+            if keys is None or keys not in (base_keys, v2_keys):
                 raise CWVNumpyError("invalid package configuration")
             cfg = CWVNumpyConfig(**metadata["config"])
             cfg.validate()
+            # A v1 package is the plain two-layer MLP: the trunk keys may be absent or
+            # spell out that default, never anything else.
+            if metadata["schema"] == PACKAGE_SCHEMA and (cfg.trunk_block, cfg.trunk_layers) != ("plain", 2):
+                raise CWVNumpyError("a v1 package is the plain two-layer MLP only")
+            required = set(expected_arrays(cfg)) | {"metadata"}
+            if set(z.files) != required:
+                raise CWVNumpyError("export package schema drift")
             weights = {k: z[k] for k in required - {"metadata"}}
             model = CWVNumpyMLP(
                 cfg, weights, metadata=metadata.get("metadata"),

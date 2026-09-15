@@ -352,7 +352,9 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   against the ballot the search ranked, the scoring rule for &#8220;which action would the search play&#8221;; the
   <b>BCE</b> column is the 54-card multi-hot training loss and is not comparable across heads; <b>recall</b> is the
   played action inside the head&#8217;s top-k of the stored candidates on wide rows, and the four <b>strata</b> are
-  top-64 on exhaustive 101&#8211;1k, partial 101&#8211;1k, 1k&#8211;10k and 10k+ (deal counts 532 / 497 / 455 / 67).
+  top-64 on exhaustive 101&#8211;1k, partial 101&#8211;1k, 1k&#8211;10k and 10k+ (deal counts 532 / 497 / 455 / 67), all on the
+  common set; a head&#8217;s own-split numbers, where quoted, sit in its note. Point differences between heads are read with the
+  paired deal bootstrap (#425 4.2): &#8220;non-inferiority not shown&#8221; and &#8220;inferior&#8221; are different verdicts.
   Top-256 is 0.999 for every trained head and 0.996 for the untrained one, because records keep at most 256 candidates:
   the consumer&#8217;s operating point (256 of thousands per world) is invisible offline, which is why the prior arm played
   M1&#8217;s lines in the screens. <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
@@ -363,7 +365,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 </tbody></table></div>
   <p class="cap">Reading: more root rows and more epochs win (prior v3 saw 2.5M rows for 15 epochs; the joint heads
   1M for 4, held in memory as float16 on the Mini); the joint heads so far pay for their recall in value quality unless the
-  gradient is stopped. The runs marked running or queued fill in as they seal.</p>
+  gradient is stopped. The runs marked running or queued fill in as they seal; the streaming root-row cache (all ~20M root
+  decisions) is the next data step.</p>
 </section>
 
 <footer>

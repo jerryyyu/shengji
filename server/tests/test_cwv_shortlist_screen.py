@@ -32,6 +32,15 @@ def identity_summary(*args, **kwargs):
     }
 
 
+def test_continuation_summary_does_not_claim_hybrid_bury(monkeypatch):
+    monkeypatch.setattr(S.duel, 'summarize', identity_summary)
+    config = cfg('learned', baseline='flat-shortlist',
+                 value_continuation=dict(tricks=1, baseline='full'))
+    result = S.summary_for([], config)
+    assert 'hybrid_bury' not in result
+    assert 'hybrid bury' not in result['work_caveat']
+
+
 def test_baseline_dose_is_fixed_when_production_arm_is_scaled():
     baseline = S.make_side(cfg("production", production_multiplier=3), "baseline", 1)
     arm = S.make_side(cfg("production", production_multiplier=3), "arm", 1)

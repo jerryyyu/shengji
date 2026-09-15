@@ -555,12 +555,6 @@ def summary_for(shards, config):
             "Only the refinement pool receives remaining-world scores.")
     if config.get("hybrid_bury"):
         result["arm_description"] += "; full-completion hybrid bury on both sides"
-    if 'value_continuation' in config:
-        result['value_continuation'] = config['value_continuation']
-        result['arm_description'] = 'value-truncated selection and independent report; final signed levels'
-        result['baseline_description'] = config['value_continuation']['baseline'] + ' continuation; matched admission'
-        result['work_caveat'] += (' Legacy rollout counters are candidate-world evaluations, not full playouts. '
-                                  'Report uncertainty excludes model error. No strength claim from offline calibration.')
         result["hybrid_bury"] = {
             "arm": "hybrid", "scope": "both sides",
             "serving_budget_seconds": None, "completion": "full",
@@ -568,6 +562,12 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Both sides use the full-completion CWV hybrid bury policy; this is "
             "not Fly 2s serving-budget parity.")
+    if 'value_continuation' in config:
+        result['value_continuation'] = config['value_continuation']
+        result['arm_description'] = 'value-truncated selection and independent report; final signed levels'
+        result['baseline_description'] = config['value_continuation']['baseline'] + ' continuation; matched admission'
+        result['work_caveat'] += (' Legacy rollout counters are candidate-world evaluations, not full playouts. '
+                                  'Report uncertainty excludes model error. No strength claim from offline calibration.')
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}

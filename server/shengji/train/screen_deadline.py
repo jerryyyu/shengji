@@ -73,6 +73,7 @@ def _phases(bot, send):
 
     install("_candidates", lambda _: mark("enumeration"), lambda _: mark("selection"))
     install("_sample_hands", lambda _: mark("sampling") if phase == "enumeration" else None)
+    install("_prior_scores", lambda args: mark("prior", len(args[2])))
     install("_means", lambda args: mark("ranking", len(args[2])))
     install("_report_fold_gap", lambda _: mark("report"))
     try:

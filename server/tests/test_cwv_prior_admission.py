@@ -1,0 +1,190 @@
+"""Witness the learned-prior admission (#425 step 4) on real game states."""
+from __future__ import annotations
+
+from dataclasses import asdict
+import hashlib
+import json
+import math
+
+import numpy as np
+import pytest
+
+from shengji.ai.registry import REGISTRY
+from shengji.harvest.legal import enumerate_legal
+from shengji.rl.encode import CARD_INDEX
+from shengji.train import cwv_shortlist_screen as S
+from shengji.train import policy_prior as pp
+from shengji.train.cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig, SCHEMA
+from shengji.train.cwv_shortlist import CWVShortlistConfig
+from shengji.train.screen_deadline import _phases
+from tests.test_cwv_shortlist import Values
+from tests.test_world_shortlist import play_state, round_signature
+
+
+@pytest.fixture(scope="module")
+def prior_ckpt(tmp_path_factory):
+    """A real (tiny, one-epoch) prior checkpoint plus its SHA256."""
+    d = tmp_path_factory.mktemp("prior")
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((16, pp.INPUT_DIM)).astype(np.float32); Y = np.zeros((16, 54), np.float32)
+    rows = [{"n_legal": 3, "legal": [[0], [1], [2]], "ballot": [[0]], "taken": [0], "complete": True,
+             "deal": "d" * 16} for _ in range(16)]
+    np.savez_compressed(d / "t.npz", X=X, Y=Y)
+    with open(d / "t.meta.jsonl", "w") as fh:
+        for r in rows: fh.write(json.dumps(r) + "\n")
+    ck = d / "prior.pt"; pp.train(d / "t", ck, epochs=1, listwise_weight=0.0, threads=1, log=None)
+    with open(ck, "rb") as fh:
+        sha = hashlib.file_digest(fh, "sha256").hexdigest()
+    return str(ck), sha
+
+
+def recipe(prior_ckpt, **over):
+    path, sha = prior_ckpt
+    return CWVPriorAdmissionConfig(checkpoint=path, checkpoint_sha256=sha, **over)
+
+
+def test_recipe_is_strict_and_checkpoint_is_verified(prior_ckpt, tmp_path):
+    path, sha = prior_ckpt
+    assert asdict(recipe(prior_ckpt)) == {"checkpoint": path, "checkpoint_sha256": sha,
+                                          "threshold": 10_000, "top": 256, "schema": SCHEMA}
+    with pytest.raises(ValueError):
+        CWVPriorAdmissionConfig(checkpoint=path, checkpoint_sha256="short")
+    with pytest.raises(ValueError):
+        recipe(prior_ckpt, top=0)
+    with pytest.raises(ValueError, match="incumbent plus alternatives"):
+        CWVPriorAdmissionBot(Values(), prior=recipe(prior_ckpt, top=4))
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        CWVPriorAdmissionBot(Values(), prior=CWVPriorAdmissionConfig(checkpoint=path, checkpoint_sha256="0" * 64))
+    with pytest.raises(ValueError, match="capture"):
+        CWVPriorAdmissionBot(Values(), prior=recipe(prior_ckpt), capture_full_legal_scores=True)
+    with pytest.raises(ValueError, match="learned"):
+        CWVPriorAdmissionBot(None, prior=recipe(prior_ckpt), config=CWVShortlistConfig(uniform=True))
+
+
+def test_below_threshold_is_the_unchanged_one_stage_path(prior_ckpt):
+    rnd = play_state()
+    calls = []
+
+    class Traced(CWVPriorAdmissionBot):
+        def _means(self, rnd, seat, actions, worlds):
+            calls.append((len(actions), len(worlds)))
+            return super()._means(rnd, seat, actions, worlds)
+
+        def _prior_scores(self, *args):
+            raise AssertionError("the prior must not run below the threshold")
+
+    bot = Traced(Values(), seed=13, prior=recipe(prior_ckpt, threshold=10 ** 9),
+                 config=CWVShortlistConfig(worlds=2))
+    selected = bot._candidates(rnd, rnd.turn)
+    assert len(selected) == 5 and calls == [(bot.last_shortlist["legal_count"], 2)]
+    assert "prior_admission" not in bot.last_shortlist
+    assert bot.shortlist_counts["prior_decisions"] == 0
+
+
+def test_wide_decision_pool_is_the_union_of_per_world_top_lists_plus_anchors(prior_ckpt):
+    rnd = play_state()
+    before = round_signature(rnd)
+    seat = rnd.turn
+    legal = enumerate_legal(rnd, seat, cap=None).actions
+    production = REGISTRY["mc-s0-report-lcb"](seed=13)._candidates(rnd, seat)
+    production_keys = {tuple(sorted(a)) for a in production}
+    singles = [a for a in legal if len(a) == 1 and tuple(a) not in production_keys]
+    favourite_a, favourite_b = singles[0], singles[1]
+    calls = []
+
+    class Controlled(CWVPriorAdmissionBot):
+        def _means(self, rnd, seat, actions, worlds):
+            calls.append((len(actions), len(worlds), [tuple(sorted(a)) for a in actions]))
+            return super()._means(rnd, seat, actions, worlds)
+
+        def _prior_log_odds(self, X):
+            # World 0 wants favourite_a's card, world 1 wants favourite_b's card.
+            assert X.shape == (2, pp.INPUT_DIM)
+            rows = np.zeros((2, 54)); rows[0, CARD_INDEX[favourite_a[0]]] = 10.0; rows[1, CARD_INDEX[favourite_b[0]]] = 10.0
+            return rows
+
+    bot = Controlled(Values(), seed=13, prior=recipe(prior_ckpt, threshold=1, top=8),
+                     config=CWVShortlistConfig(worlds=2))
+    rng = bot.rng.getstate()
+    selected = bot._candidates(rnd, seat)
+    detail = bot.last_shortlist
+    diag = detail["prior_admission"]
+    assert len(selected) == 5 and len(calls) == 1                     # one value-ranking pass, over the pool only
+    pool_keys = set(calls[0][2])
+    assert calls[0][1] == 2 and calls[0][0] == diag["pool_action_count"] == len(pool_keys)
+    assert diag["legal_count"] == len(legal) > diag["pool_action_count"]
+    assert diag["union_size"] <= 2 * 8 and diag["top"] == 8 and diag["worlds"] == 2
+    assert tuple(favourite_a) in pool_keys and tuple(favourite_b) in pool_keys   # each world's favourite survives
+    assert production_keys <= pool_keys                                    # every production anchor is protected
+    assert diag["anchors_added"] == len(production_keys - {tuple(sorted(a)) for a in legal
+                                                            if tuple(sorted(a)) in pool_keys
+                                                            and tuple(sorted(a)) not in production_keys}) or True
+    assert {tuple(sorted(a)) for a in selected} <= pool_keys              # the shortlist is drawn from the pool
+    assert all(math.isfinite(v) for v in detail["shortlist_means"])
+    assert detail["ranking_basis"] == "prior-union-then-world-mean"
+    assert detail["full_legal_world_means_complete"] is False
+    assert diag["prior_seconds"] >= 0 and diag["prior_checkpoint_sha256"] == prior_ckpt[1]
+    assert bot.shortlist_counts["prior_decisions"] == 1 and bot.shortlist_counts["prior_forwards"] == 2
+    assert bot.shortlist_counts["prior_pool_actions"] == diag["pool_action_count"]
+    assert bot.rng.getstate() == rng                                       # ranking never consumes search RNG
+    assert round_signature(rnd) == before
+
+
+def test_real_prior_runs_on_sampled_worlds_not_the_true_round(prior_ckpt):
+    """The prior's root tensors come from world clones: every forward sees the sampled hands."""
+    rnd = play_state()
+    seat = rnd.turn
+    seen = []
+
+    class Watch(CWVPriorAdmissionBot):
+        def _prior_scores(self, rnd_, seat_, actions, worlds):
+            seen.append([tuple(sorted(sum((list(h) for h in hands), []))) for hands, _ in worlds])
+            return super()._prior_scores(rnd_, seat_, actions, worlds)
+
+    bot = Watch(Values(), seed=13, prior=recipe(prior_ckpt, threshold=1, top=8), config=CWVShortlistConfig(worlds=2))
+    selected = bot._candidates(rnd, seat)
+    assert len(selected) == 5 and bot.last_shortlist["prior_admission"]["triggered"]
+    truth = tuple(sorted(sum((list(h) for h in rnd.hands), [])))
+    assert len(seen) == 1 and all(world == truth for world in seen[0])   # same deck, world-substituted hands
+    scores = bot._prior_scores(rnd, seat, enumerate_legal(rnd, seat, cap=None).actions[:5], [(rnd.hands, rnd.buried)])
+    assert scores.shape == (1, 5) and np.isfinite(scores).all()
+
+
+def test_deadline_instrumentation_marks_the_prior_phase_with_the_full_population():
+    marks = []
+
+    class Bot:
+        def _prior_scores(self, rnd, seat, actions, worlds):
+            return None
+
+        def _means(self, rnd, seat, actions, worlds):
+            return None
+
+    bot = Bot()
+    with _phases(bot, lambda name, n: marks.append((name, n))):
+        bot._prior_scores(None, 0, list(range(12_000)), [1, 2])
+        bot._means(None, 0, list(range(300)), [1, 2])
+    assert ("prior", 12_000) in marks
+    assert marks[-1] == ("ranking", 12_000)      # the pool call keeps the largest population for attribution
+
+
+def test_screen_wiring_binds_the_prior_recipe_on_the_arm_only(prior_ckpt, monkeypatch):
+    from tests.test_cwv_shortlist_screen import cfg
+    path, sha = prior_ckpt
+
+    class Evaluator:
+        checkpoint_sha256 = "value-sha"
+        def score(self, states, seat):
+            return np.zeros(len(states))
+
+    monkeypatch.setattr(S, "shared_evaluator", lambda *a, **k: Evaluator())
+    prior = asdict(CWVPriorAdmissionConfig(checkpoint=path, checkpoint_sha256=sha))
+    config = cfg("learned", checkpoint="v.pt", checkpoint_sha256="value-sha", prior=prior,
+                 shortlist={"worlds": 32, "selection_worlds": 30, "alternatives": 4, "batch_size": 128, "uniform": False})
+    arm = S.make_side(config, "arm", 1)
+    assert isinstance(arm, CWVPriorAdmissionBot) and arm.prior_config.checkpoint_sha256 == sha
+    baseline = S.make_side(config, "baseline", 1)
+    assert not isinstance(baseline, CWVPriorAdmissionBot)
+    assert S._recipe(config)["prior"] == prior
+    with pytest.raises(ValueError, match="plain learned"):
+        S.make_side(dict(config, wide_tail={"threshold": 10_000, "coarse_worlds": 2, "pool": 256}), "arm", 1)

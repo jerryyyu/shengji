@@ -68,7 +68,8 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     rows_id, eval_id = block["rows"], block["eval"]
     assert rows_id["rows_excluded"] > 0 and rows_id["deals_excluded"] >= 2
     assert rows_id["rows_used"] + rows_id["rows_excluded"] == rows_id["rows_read"]
-    assert eval_id["rows_excluded"] > 0 and eval_id["deals"] == 2          # the val + test deals
+    # the ancestor (base) fit the train deal and selected on the val deal: the eval keeps the test deal only
+    assert eval_id["rows_excluded"] > 0 and eval_id["deals"] == 1 and eval_id["ancestral_exposed_deals"] == 2
     assert block["root_fit_deals"] == 1 and block["root_only_fit_deals"] == 0
     fit = exposure_sets(joint["exposure"])["fit"]
     assert set(joint["population"]["train"]) <= fit and len(fit) == 1
@@ -146,3 +147,34 @@ def test_disjoint_root_store_joins_the_exposure_and_a_later_warm_start_sees_it(
     with pytest.raises(train_cwv.TrainError, match="fit on land in this run's val|fit-or-selected"):
         train_cwv.train(out=tmp_path / "later", data=[str(store_dir), str(other_dir)],
                         init=str(tmp_path / "joint" / "best.pt"), **{**kw, "seed": seed})
+
+
+def test_policy_eval_excludes_ancestral_fit_and_selection_deals(store_dir, other_dir, tmp_path):  # noqa: F811
+    """Codex HOLD 2 on #428: a deal the --init source (or an ancestor) fit or selected on, but
+    absent from the current value training, must not survive into the policy eval.  Ancestor:
+    a headless net on store_dir whose recorded exposure carries one extra fit deal (other_dir's,
+    never in store_dir); current run: value rows from store_dir, policy eval rows from other_dir."""
+    from shengji.train.train_cwv import exposure_block, exposure_sets as sets_of, load_cwv_checkpoint, save_cwv_checkpoint
+    rows = tmp_path / "rows"
+    pp.extract(rows, [str(other_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1)
+    train_rows = tmp_path / "train_rows"
+    pp.extract(train_rows, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1)
+    eval_deals = PolicyRows(rows).deal_keys
+    kw = dict(arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32, log=None,
+              cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2, **THIRDS)
+    base = train_cwv.train(out=tmp_path / "base", data=[str(store_dir)], **kw)
+    assert not eval_deals & set(base["population"]["train"])                # absent from the value training
+    model, meta, _ = load_cwv_checkpoint(tmp_path / "base" / "best.pt")
+    exp = sets_of(meta["exposure"])
+    meta = {**meta, "exposure": exposure_block(exp["fit"] | eval_deals, exp["selection"],
+                                                 ancestors=meta["exposure"].get("ancestors", []))}
+    save_cwv_checkpoint(tmp_path / "anc.pt", model, metadata=meta)
+    # without the warm start the eval is held out from this run's value fit and is accepted
+    ok = train_cwv.train(out=tmp_path / "noinit", data=[str(store_dir)], policy_head=True,
+                         policy_rows=str(train_rows), policy_eval=str(rows), policy_batch_fraction=0.5, **kw)
+    assert ok["policy_head"]["eval"]["rows"] > 0 and ok["policy_head"]["eval"]["ancestral_exposed_deals"] == 0
+    # with the ancestor as --init the eval deal is ancestrally FIT -> refused, never reported as held out
+    with pytest.raises(ValueError, match="policy eval: every row is in an excluded deal"):
+        train_cwv.train(out=tmp_path / "init", data=[str(store_dir)], policy_head=True,
+                        policy_rows=str(train_rows), policy_eval=str(rows), policy_batch_fraction=0.5,
+                        init=str(tmp_path / "anc.pt"), **kw)

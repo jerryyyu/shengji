@@ -1607,8 +1607,13 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         from .policy_rows import PolicyEval, PolicyRows
         value_fit = set(population["train"])
         held = set(population["val"]) | set(population["test"])
+        # The policy eval is a REPORTED held-out (a test-like set): it must not
+        # contain a deal this run fits, nor one the --init source or any
+        # ancestor fit or selected on (the exposure rule for a test split).
+        ancestral = (set() if source_exposure is None else
+                     exposure_sets(source_exposure)["fit"] | exposure_sets(source_exposure)["selection"])
         if policy_eval:
-            policy_evalset = PolicyEval(policy_eval, exclude=value_fit)
+            policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral)
             held |= set(policy_evalset.deal_keys)
         policy_data = PolicyRows(policy_rows, limit=policy_rows_limit, exclude=held)
         root_fit = set(policy_data.deal_keys)
@@ -1623,8 +1628,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"{' [TWIN: policy loss off]' if float(policy_weight) == 0 else ''}")
         if policy_evalset is not None:
             pe_ = policy_evalset.identity
+            pe_["exclusion_rule"] = "current fit deals + ancestral fit-or-selected deals (test rule)"
+            pe_["ancestral_exposed_deals"] = len(ancestral)
             say(f"policy eval: {pe_['rows']} rows / {pe_['deals']} deals "
-                f"({pe_['rows_excluded']} rows on value-fit deals dropped)")
+                f"({pe_['rows_excluded']} rows on fit or ancestrally exposed deals dropped; "
+                f"{len(ancestral)} ancestral fit/selection deals)")
     if source_exposure is None:
         exposure = exposure_block(set(population["train"]) | root_fit, population["val"])
     else:

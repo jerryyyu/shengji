@@ -15,6 +15,15 @@ import numpy as np
 import pytest
 
 from scripts.cwv_serving_gate import run_gate
+from shengji.engine import fast
+
+# The play-based witnesses search real decisions (W4/N4, a full round each). In the
+# compiled engine that is ~1 min per run; in the pure-Python engine it is many
+# times slower and CI's dual-mode job (25 min) cannot hold it. The gate's verdict
+# does not depend on the engine mode (both sides of every comparison run in the
+# same process and mode), so the play witnesses run in the compiled mode only;
+# the scope/refusal tests below run in both.
+plays = pytest.mark.skipif(not fast.HAVE_FAST, reason="play witnesses run in the compiled engine only")
 
 from test_cwv_shortlist_registry import checkpoint  # noqa: F401  (tiny MLP value net)
 from test_cwv_prior_admission import prior_ckpt  # noqa: F401  (tiny torch prior)
@@ -31,6 +40,7 @@ def packages(checkpoint, prior_ckpt, tmp_path_factory):
     return str(value), str(prior)
 
 
+@plays
 def test_matching_packages_pass_and_the_receipt_names_every_file(checkpoint, prior_ckpt, packages):
     value, prior = packages
     # threshold 6 (just above the shortlist of 5) and top 5 (alternatives 4 + 1) make the prior fire on every wide decision
@@ -46,6 +56,7 @@ def test_matching_packages_pass_and_the_receipt_names_every_file(checkpoint, pri
     assert receipt["qualifies_serving"] is False, "a W4/N4 smoke run must not qualify a deploy"
 
 
+@plays
 def test_a_bound_prior_that_never_fires_is_incomplete_not_a_pass(checkpoint, prior_ckpt, packages):
     value, prior = packages
     # threshold above any legal set in one tiny round: every decision agrees, the prior never runs
@@ -72,6 +83,7 @@ def test_scope_is_serving_only_for_the_serving_recipe_with_a_prior(monkeypatch, 
     assert r["scope"] == "smoke", "no prior bound is never the serving scope"
 
 
+@plays
 def test_a_tampered_value_package_is_refused_with_the_mismatch_recorded(checkpoint, prior_ckpt, packages, tmp_path):
     value, prior = packages
     with np.load(value) as z:
@@ -86,6 +98,7 @@ def test_a_tampered_value_package_is_refused_with_the_mismatch_recorded(checkpoi
     assert receipt["first_mismatch"] is not None and receipt["first_mismatch"]["decision"] >= 1
 
 
+@plays
 def test_a_tampered_prior_package_is_refused(checkpoint, prior_ckpt, packages, tmp_path):
     value, prior = packages
     with np.load(prior) as z:
@@ -97,6 +110,7 @@ def test_a_tampered_prior_package_is_refused(checkpoint, prior_ckpt, packages, t
     assert receipt["passed"] is False and receipt["first_mismatch"] is not None
 
 
+@plays
 def test_cli_exit_status_follows_the_verdict_and_writes_the_receipt(checkpoint, prior_ckpt, packages, tmp_path):
     value, prior = packages
     receipt = tmp_path / "gate.json"

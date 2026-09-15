@@ -67,6 +67,11 @@ def load_prior_checked(path: str, sha256: str):
             actual = hashlib.file_digest(handle, "sha256").hexdigest()
         if actual != sha256:
             raise ValueError("prior checkpoint SHA256 mismatch")
+        if str(path).lower().endswith(".npz"):
+            # The served form (#435): a NumPy prior package; no Torch on this path.
+            from ..ai.cwv_prior_numpy import load_numpy_prior
+            _PRIORS[key] = ("separate-numpy", load_numpy_prior(path), None)
+            return _PRIORS[key]
         from .policy_prior import PolicyPriorError, load_prior
         try:
             net, payload = load_prior(path)
@@ -130,7 +135,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
 
     def _prior_scores(self, rnd, seat, actions, worlds):
         """``(worlds, actions)`` factorised prior scores: one root forward per world."""
-        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
+        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors   # torch-free module level
         X = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat))
                       for hands, buried in worlds]).astype(np.float32)
         log_odds = self._prior_log_odds(X)
@@ -144,6 +149,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         return (log_odds.astype(np.float32) @ multiplicity.T).astype(np.float64)
 
     def _prior_log_odds(self, X):
+        if self._prior_kind == "separate-numpy":
+            return self._prior_net.log_odds(X)
         if self._prior_kind == "joint":
             from .policy_rows import policy_log_odds
             return np.asarray(policy_log_odds(self._prior_net, X, "cpu"), dtype=np.float64)

@@ -261,3 +261,58 @@ def test_a_value_checkpoint_with_a_policy_head_serves_as_the_prior(prior_ckpt, t
     assert len(selected) == 5 and bot.last_shortlist["prior_admission"]["prior_kind"] == "joint"
     scores = bot._prior_scores(rnd, seat, enumerate_legal(rnd, seat, cap=None).actions[:5], [(rnd.hands, rnd.buried)])
     assert scores.shape == (1, 5) and np.isfinite(scores).all()
+
+
+def test_numpy_prior_package_matches_torch_and_serves_admission_without_torch(prior_ckpt, tmp_path):
+    """#435 item 2: the exported prior package reproduces the Torch log-odds, the admission loads it
+    as kind 'separate-numpy' with no Torch import, and the admitted pool is identical to the Torch
+    prior's on a real wide decision; hostile packages are refused."""
+    import hashlib, subprocess, sys
+    from pathlib import Path
+    from scripts.export_policy_prior_numpy import export_policy_prior_numpy
+    from shengji.ai.cwv_prior_numpy import load_numpy_prior
+    from shengji.ai.cwv_numpy import CWVNumpyError
+    from shengji.train.policy_prior import load_prior, predict_log_odds
+    path, sha = prior_ckpt
+    pkg = tmp_path / "prior.npz"
+    assert export_policy_prior_numpy(path, pkg) == sha
+    net, payload = load_prior(path)
+    prior = load_numpy_prior(pkg)
+    rng = np.random.default_rng(0); X = rng.standard_normal((9, pp.INPUT_DIM)).astype(np.float32)
+    np.testing.assert_allclose(prior.log_odds(X), predict_log_odds(net, payload, X), rtol=2e-5, atol=2e-6)
+    psha = hashlib.file_digest(open(pkg, "rb"), "sha256").hexdigest()
+    rnd = play_state(); seat = rnd.turn
+    pools = []
+    for ck, cs in ((str(pkg), psha), (path, sha)):
+        calls = []
+        class Traced(CWVPriorAdmissionBot):
+            def _means(self, rnd_, seat_, actions, worlds):
+                calls.append([tuple(sorted(a)) for a in actions]); return super()._means(rnd_, seat_, actions, worlds)
+        bot = Traced(Values(), seed=13, config=CWVShortlistConfig(worlds=2),
+                     prior=CWVPriorAdmissionConfig(checkpoint=ck, checkpoint_sha256=cs, threshold=1, top=8))
+        sel = bot._candidates(rnd, seat); pools.append((sel, calls[0], bot.last_shortlist["prior_admission"]["prior_kind"]))
+    assert pools[0][2] == "separate-numpy" and pools[1][2] == "separate"
+    assert pools[0][1] == pools[1][1] and pools[0][0] == pools[1][0]          # same pool, same shortlist
+    with open(pkg, "rb") as fh: data = fh.read()
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        CWVPriorAdmissionBot(Values(), prior=CWVPriorAdmissionConfig(checkpoint=str(pkg), checkpoint_sha256="0" * 64))
+    z = dict(np.load(pkg)); z.pop("mu"); np.savez_compressed(tmp_path / "bad.npz", **z)
+    with pytest.raises(CWVNumpyError, match="schema drift"):
+        load_numpy_prior(tmp_path / "bad.npz")
+    code = f"""
+import sys
+class Block:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'torch' or fullname.startswith('torch.'):
+            raise RuntimeError('torch import blocked')
+sys.meta_path.insert(0, Block())
+import numpy as np
+from shengji.ai.cwv_prior_numpy import load_numpy_prior
+from shengji.train.cwv_prior_admission import load_prior_checked
+kind, prior, _ = load_prior_checked({str(pkg)!r}, {psha!r})
+assert kind == 'separate-numpy' and prior.log_odds(np.zeros((1, 833), np.float32)).shape == (1, 54)
+assert 'torch' not in sys.modules
+print('ok')
+"""
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1]))
+    assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr[-1200:]

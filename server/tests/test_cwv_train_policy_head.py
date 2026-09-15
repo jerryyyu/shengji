@@ -256,3 +256,45 @@ def test_chunked_root_rows_stream_every_row_and_train_the_head(store_dir, tmp_pa
     r = train_cwv.train(out=tmp_path / "run", policy_head=True, policy_rows=str(chunked), policy_batch_fraction=0.5, **kw)
     assert r["policy_head"]["rows"]["format"] == pp.CHUNK_SCHEMA and r["epochs"][0]["train"]["policy_rows"] > 0
     assert r["policy_head"]["rows"]["rows_excluded"] > 0                       # val/test deals dropped per chunk
+
+
+def test_chunked_extraction_stops_at_the_limit_and_the_stream_refuses_tampered_chunks(store_dir, tmp_path):  # noqa: F811
+    """Codex HOLD on #437: (1) a limit that is not a multiple of the chunk size, or smaller than one
+    chunk, stops extraction with a partial last chunk instead of buffering the rest of the corpus;
+    (2) the stream verifies each chunk's SHA256 and row alignment once and refuses a rewritten chunk;
+    (3) rows are aligned across X/Y/ballot/target/deal key between the two formats."""
+    import hashlib
+    from shengji.train.policy_rows import PolicyRows, PolicyRowsStream
+    # (1) non-divisible limit with excess input: the corpus has ~400 rows, we ask for 100 in chunks of 64
+    d100 = tmp_path / "d100"
+    r = pp.extract(d100, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=100, workers=1, chunk_rows=64)
+    man = json.load(open(d100 / "manifest.json"))
+    assert r["rows"] == 100 and [c["rows"] for c in man["chunks"]] == [64, 36]
+    d10 = tmp_path / "d10"
+    r = pp.extract(d10, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=10, workers=1, chunk_rows=64)
+    assert r["rows"] == 10 and [c["rows"] for c in json.load(open(d10 / "manifest.json"))["chunks"]] == [10]
+    # (3) aligned equality with the single-file format on the same 100 rows (same shard order and seed)
+    flat = tmp_path / "flat"
+    pp.extract(flat, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=100, workers=1)
+    single = PolicyRows(flat)
+    meta = [json.loads(l) for l in open(str(flat) + ".meta.jsonl")]
+    X = np.concatenate([np.load(d100 / c["file"])["X"] for c in man["chunks"]])
+    Y = np.concatenate([np.load(d100 / c["file"])["Y"] for c in man["chunks"]])
+    tgt = np.concatenate([np.load(d100 / c["file"])["tgt"] for c in man["chunks"]])
+    dk = np.concatenate([np.load(d100 / c["file"])["deal_key"].astype(str) for c in man["chunks"]])
+    assert np.array_equal(X, single.X) and np.array_equal(Y, single.Y)          # row order is the extraction order
+    assert np.array_equal(tgt, single.tgt.numpy()) and dk.tolist() == [m["deal_key"] for m in meta]
+    # (2) verification: a rewritten chunk (same shape, one row changed) is refused; a truncated one too
+    ok = PolicyRowsStream(d100)
+    assert ok.identity["chunks_verified"] == 2
+    c0 = d100 / man["chunks"][0]["file"]
+    z = dict(np.load(c0)); z["Y"] = z["Y"].copy(); z["Y"][0] = 1 - z["Y"][0]
+    np.savez_compressed(c0, **z)
+    with pytest.raises(ValueError, match="SHA256 differs"):
+        PolicyRowsStream(d100)
+    z = dict(np.load(c0)); z = {k: v[:-1] if k != "deal_key" else v for k, v in z.items()}
+    np.savez_compressed(c0, **z)
+    man["chunks"][0]["sha256"] = hashlib.file_digest(open(c0, "rb"), "sha256").hexdigest()
+    json.dump(man, open(d100 / "manifest.json", "w"))
+    with pytest.raises(ValueError, match="not row-aligned"):
+        PolicyRowsStream(d100)

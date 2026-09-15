@@ -132,16 +132,28 @@ class PolicyRowsStream:
         self.chunks = man["chunks"]
         if not self.chunks:
             raise ValueError("policy rows stream: no chunks")
-        for c in self.chunks:
-            if not (self.dir / c["file"]).exists():
-                raise ValueError(f"policy rows stream: missing {c['file']}")
         self.exclude = frozenset(exclude)
         self.window = max(1, int(window))
         self.limit = None if not limit else int(limit)
-        # deal keys and kept-row counts come from one cheap pass over the deal arrays only
-        keys: set[str] = set(); excluded: set[str] = set(); rows_used = 0; in_ballot = 0
+        # One verification pass at construction (the first-consumption boundary):
+        # every chunk's SHA256 must equal the manifest's, and its arrays must be
+        # row-aligned with the recorded count.  A replaced or truncated chunk
+        # refuses here; passes never re-hash.
+        keys: set[str] = set(); excluded: set[str] = set(); rows_used = 0; in_ballot = 0; verified: list[str] = []
         for c in self.chunks:
-            d = np.load(self.dir / c["file"])
+            path = self.dir / c["file"]
+            if not path.exists():
+                raise ValueError(f"policy rows stream: missing {c['file']}")
+            actual = _file_sha256(path)
+            if actual != c["sha256"]:
+                raise ValueError(f"policy rows stream: {c['file']} SHA256 differs from the manifest (tampered or rewritten)")
+            d = np.load(path)
+            n = int(c["rows"])
+            if (d["X"].ndim != 2 or d["X"].shape != (n, INPUT_DIM) or d["Y"].shape != (n, 54)
+                    or d["ball"].shape[0] != n or d["mask"].shape[0] != n or d["tgt"].shape != (n,)
+                    or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]):
+                raise ValueError(f"policy rows stream: {c['file']} arrays are not row-aligned with the manifest")
+            verified.append(actual)
             dk = d["deal_key"].astype(str); keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
             keys.update(dk[keep].tolist()); excluded.update(dk[~keep].tolist())
             rows_used += int(keep.sum()); in_ballot += int((d["tgt"][keep] >= 0).sum())
@@ -152,7 +164,7 @@ class PolicyRowsStream:
         self.n = rows_used
         self.in_ballot = in_ballot
         self.identity = {"schema": SCHEMA, "format": CHUNK_SCHEMA, "prefix": str(self.dir.resolve()),
-                         "npz_sha256": _digest(c["sha256"] for c in self.chunks),
+                         "npz_sha256": _digest(verified), "chunks_verified": len(verified),
                          "rows_available": int(man["rows"]), "rows_read": int(man["rows"]), "rows_used": rows_used,
                          "rows_excluded": int(man["rows"]) - rows_used, "rows_per_pass": min(rows_used, self.limit or rows_used),
                          "deals": self.deals, "deals_excluded": len(excluded), "chunks": len(self.chunks),

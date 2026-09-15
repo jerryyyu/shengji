@@ -197,11 +197,19 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
                              "deal": deal, "deal_key": key})
             if out_dir is not None:
+                # Flush full chunks as they fill; the LAST chunk may be partial so the
+                # limit is met the moment total + buffered reaches it (bounded memory:
+                # never more than chunk_rows + one shard's rows are held).
                 while len(X) >= chunk_rows and total + chunk_rows <= max_rows:
                     chunks.append(_write_chunk(out_dir, len(chunks), X[:chunk_rows], Y[:chunk_rows], meta[:chunk_rows]))
                     total += chunk_rows
                     X, Y, meta = X[chunk_rows:], Y[chunk_rows:], meta[chunk_rows:]
-                if total >= max_rows:
+                if total + len(X) >= max_rows:
+                    keep = max_rows - total
+                    if keep > 0:
+                        chunks.append(_write_chunk(out_dir, len(chunks), X[:keep], Y[:keep], meta[:keep]))
+                        total += keep
+                    X, Y, meta = [], [], []
                     ex.shutdown(cancel_futures=True)
                     break
             elif len(X) >= max_rows:

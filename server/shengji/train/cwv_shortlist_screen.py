@@ -6,6 +6,7 @@ import copy
 from contextlib import contextmanager
 from dataclasses import asdict
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -21,6 +22,7 @@ from .cwv_throw_aware import CWVThrowComponentsBot, CWVThrowComponentsBuryBot
 from .cwv_bury_policy import CWVBuryBot
 from .cwv_corrected_rollout import CWVCorrectedRolloutBot, CWVCorrectedRolloutBuryBot
 from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
+from .cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -236,11 +238,20 @@ def make_side(config: dict, side: str, seed: int):
     inner = config.get("double_shortlist") if side == "arm" else None
     kwargs = dict(seed=seed, config=_shortlist_config(config),
                   reuse_successors=config.get("reuse_successors", False))
+    if side == "arm" and "prior" in config and (
+            arm != "learned" or inner is not None or correction is not None
+            or any(config.get(k) for k in ("throw_components", "hybrid_bury", "wide_tail"))):
+        raise ValueError("prior admission requires the plain learned shortlist arm")
     if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
         bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
     elif side == "arm" and "wide_tail" in config:
         bot = CWVWideTailBot(evaluator, **kwargs,
                              wide_tail=CWVWideTailConfig(**config["wide_tail"]))
+    elif side == "arm" and "prior" in config:
+        # #425 step 4: the learned prior prunes wide decisions on the ARM only;
+        # it composes with nothing else in this first test (refused above).
+        bot = CWVPriorAdmissionBot(evaluator, **kwargs,
+                                   prior=CWVPriorAdmissionConfig(**config["prior"]))
     elif inner is not None:
         if inner.get("guidance") != "selection-fraction-ceil-v2":
             raise ValueError("double-shortlist guidance recipe is not selection-fraction-ceil-v2")
@@ -333,7 +344,7 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout", "wide_tail"):
+                "hybrid_bury", "corrected_rollout", "wide_tail", "prior"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -557,6 +568,11 @@ def main(argv=None):
     parser.add_argument("--value-head", choices=("outcome", "search-mean"), default=None,
                         help="#373 two-head checkpoints, ARM side only: which head the "
                              "arm's evaluator reads (default: the checkpoint's own value_head)")
+    parser.add_argument("--prior-checkpoint", type=Path,
+                        help="#425: policy-prior checkpoint (policy_prior.py); ARM side only, "
+                             "prunes decisions above --prior-threshold to the union of per-world top lists")
+    parser.add_argument("--prior-threshold", type=int, default=10_000)
+    parser.add_argument("--prior-top", type=int, default=256)
     parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
@@ -643,6 +659,12 @@ def main(argv=None):
         parser.error("--inner-reuse-successors requires --inner-mode")
     if args.baseline in ("flat-shortlist", "levels-shortlist") and args.arm != "learned":
         parser.error("shortlist baseline requires the learned checkpoint/root recipe")
+    if args.prior_checkpoint is not None:
+        if args.arm != "learned" or args.wide_tail or args.throw_components or args.hybrid_bury \
+                or args.inner_mode is not None or args.corrected_rollout is not None:
+            parser.error("--prior-checkpoint requires the plain learned arm")
+        if min(args.prior_threshold, args.prior_top) < 1 or args.prior_top < args.alternatives + 1:
+            parser.error("positive prior threshold and prior top > alternatives required")
     trump_ranks = None
     if args.trump_ranks is not None:
         try:
@@ -692,6 +714,12 @@ def _run_screen(args, trump_ranks):
         config["reuse_successors"] = True
     if args.wide_tail:
         config["wide_tail"] = asdict(CWVWideTailConfig())
+    if args.prior_checkpoint is not None:
+        with Path(args.prior_checkpoint).open("rb") as handle:
+            prior_sha = hashlib.file_digest(handle, "sha256").hexdigest()
+        config["prior"] = asdict(CWVPriorAdmissionConfig(
+            checkpoint=str(Path(args.prior_checkpoint).resolve()), checkpoint_sha256=prior_sha,
+            threshold=args.prior_threshold, top=args.prior_top))
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

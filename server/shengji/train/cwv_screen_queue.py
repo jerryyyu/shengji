@@ -42,7 +42,16 @@ def main(argv=None):
     parser.add_argument("--throw-components", action="store_true",
                         help="#389/#404: admit direct components of shortlisted lead throws "
                              "on the ARM side; passed through to every window")
+    parser.add_argument("--prior-checkpoint", type=Path,
+                        help="#425: policy-prior checkpoint for ARM-side admission pruning")
+    parser.add_argument("--prior-checkpoint-sha256")
+    parser.add_argument("--prior-threshold", type=int, default=10_000)
+    parser.add_argument("--prior-top", type=int, default=256)
     args = parser.parse_args(argv)
+    if (args.prior_checkpoint is None) != (args.prior_checkpoint_sha256 is None):
+        parser.error("--prior-checkpoint and --prior-checkpoint-sha256 go together")
+    if args.prior_checkpoint_sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", args.prior_checkpoint_sha256):
+        parser.error("prior-checkpoint-sha256 must be a full lowercase SHA256")
     if min(args.clusters, args.workers) < 1 or min(args.seeds) < 0:
         parser.error("positive clusters/workers and nonnegative seeds required")
     ordered = sorted(args.seeds)
@@ -87,6 +96,14 @@ def main(argv=None):
                 command += ["--value-head", args.value_head]
             if args.throw_components:
                 command += ["--throw-components"]
+            if args.prior_checkpoint is not None:
+                with args.prior_checkpoint.open("rb") as handle:
+                    prior_sha = hashlib.file_digest(handle, "sha256").hexdigest()
+                if prior_sha != args.prior_checkpoint_sha256:
+                    raise ValueError("queue prior checkpoint SHA256 mismatch")
+                command += ["--prior-checkpoint", str(args.prior_checkpoint.resolve()),
+                            "--prior-threshold", str(args.prior_threshold),
+                            "--prior-top", str(args.prior_top)]
             print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume",
                   flush=True)
             result = screen.main(command)

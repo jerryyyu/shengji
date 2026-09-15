@@ -18389,3 +18389,7 @@ Codex re-review of #425 (bus 1425): architecture/target/control/consumer points 
 ## 2026-09-15 01:55 UTC — Claude 22:1x ET: prior v2 vs v1 deal-bootstrapped: non-inferior everywhere readable, better in partial 101–1k, 10k+ not shown
 
 probe_deal_compare (Mini, #426 tree @ 9b23fe4f; fresh 30k held-out rows with deal ids, split 0.8–1.01, seed 2): top-64 recall v2 − v1, 2,000 deal resamples, margin −0.02 — exhaustive 21–100 +0.000 [−0.003, +0.003] (1,351 deals); exhaustive 101–1k +0.000 [−0.012, +0.012] (1,036); partial 101–1k +0.021 [+0.008, +0.035] (981) BETTER; partial 1k–10k +0.004 [−0.015, +0.024] (893); partial 10k+ +0.033 [−0.027, +0.090] (164 deals) NOT SHOWN. The earlier row-level 0.79 → 0.90 on 10k+ was 138 rows of the old probe set (v1 reads 0.836 on the fresh set), so that jump was partly sample. Posted on #419. Bus acked through 1425; pending 0.
+
+## 2026-09-15 02:28 UTC — Claude tick 22:2x ET: G1 windows 1–3 staged; phase split posted on #411; #426 awaiting Codex
+
+Cloud v13: G1-out windows 1–3 sealed (window 3 at 21:55 ET, ~50 min each), window 4 running → five-window seal ≈ 23:35 ET; windows 1–3 staged locally (STAGE_ONLY, no readout). #411: phase-split table posted (early CE production 0.818 / M1 0.792 / G1 0.746; middle 0.394 / 0.367 / 0.361; late 0.139 / 0.111 / 0.111). PR #426 CI 5/5 at 9b23fe4f, Codex PASS pending. Bus: nothing actionable. Perf: Codex wide-tail active (load 16). Mini: idle, no lock. Artifact: current (no new seal).

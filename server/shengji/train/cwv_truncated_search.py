@@ -80,7 +80,8 @@ class TruncatedSearchMixin:
             if world is None:
                 continue
             opponents, buried = world
-            hands = [rnd.hands[seat] if s == seat else opponents[s] for s in range(4)]
+            hands = self._complete_determinized_hands(rnd, seat, opponents, buried=buried)
+            buried = sorted(buried)
             wi = len(values)
             values.append([0.] * len(candidates))
             for ci, action in enumerate(candidates):

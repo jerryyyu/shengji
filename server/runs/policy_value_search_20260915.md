@@ -60,3 +60,10 @@ trajectories mean these totals are not a same-state speed comparison. One deal
 does not estimate strength. Summary/config/cluster shard retained at the above
 path. Executed implementation was subsequently committed as46fa5065; tests and
 notes do not affect the completed worker.
+
+Review repair: the first smoke bypassed production's sampled-hand canonical
+sorting/conservation boundary and did not persist continuation details in the
+wrapper trace. Preserve it as historical integration evidence, NOT as validation
+of the repaired policy. The consumer now uses `_complete_determinized_hands`
+and sorted kitty; wrapper saves the actual continuation trace. New tests cover
+permuted sampled multisets, corrupt-world refusal and durable wrapper details.

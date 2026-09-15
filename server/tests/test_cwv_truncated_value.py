@@ -196,3 +196,44 @@ def test_report_restores_rng_and_preserves_pairing(monkeypatch):
                                  action, action, 30, seed=123)
     assert not report['complete'] and report['worlds'] == 0
     assert bot.rng.getstate() == before
+
+
+def test_actual_consumer_canonicalizes_worlds_and_refuses_corruption(monkeypatch):
+    from shengji.train.cwv_shortlist import CWVShortlistConfig
+    from shengji.train.cwv_truncated_search import CWVTruncatedSearchBot
+    from shengji.ai.mcbot import DeterminizationContractError
+    rnd = state()
+    rnd.play(rnd.turn, [rnd.hands[rnd.turn][0]])
+    seat = rnd.turn
+    action = HeuristicBot().decide_play(rnd, seat)
+    opponents = {s: list(rnd.hands[s]) for s in range(4) if s != seat}
+    bot = CWVTruncatedSearchBot(Evaluator(), continuation_tricks=None,
+                              config=CWVShortlistConfig(worlds=1))
+    bot.continuation_counts = dict.fromkeys(('model_rows', 'model_batches', 'terminal_rows', 'heuristic_plies'), 0)
+    monkeypatch.setattr(bot, '_sample_hands', lambda *a: (opponents, rnd.buried))
+    first, _ = bot._continuation_matrix(rnd, seat, [action], None, 1)
+    for hand in opponents.values():
+        hand.reverse()
+    rnd.hands[seat].reverse()
+    rnd.buried.reverse()
+    second, _ = bot._continuation_matrix(rnd, seat, [action], None, 1)
+    np.testing.assert_array_equal(first, second)
+    opponents[next(iter(opponents))][0] = 'INVALID'
+    with pytest.raises(DeterminizationContractError, match='conservation'):
+        bot._continuation_matrix(rnd, seat, [action], None, 1)
+
+
+def test_timed_wrapper_keeps_actual_continuation_trace():
+    from shengji.train.cwv_shortlist import CWVShortlistConfig
+    from shengji.train.cwv_truncated_search import CWVTruncatedSearchBot
+    from shengji.train.cwv_shortlist_screen import CwvTimedPolicy
+    rnd = state()
+    rnd.play(rnd.turn, [rnd.hands[rnd.turn][0]])
+    bot = CWVTruncatedSearchBot(Evaluator(), config=CWVShortlistConfig(worlds=1, selection_worlds=2))
+    bot.REPORT_FOLD_WORLDS = 30
+    wrapped = CwvTimedPolicy(bot)
+    wrapped.decide_play(rnd, rnd.turn)
+    trace = wrapped.decisions[-1]['value_continuation']
+    assert trace['tricks'] == 1 and trace['model_rows'] > 0
+    assert trace['units'] == 'acting-team-final-signed-levels'
+    assert trace is not bot.last_decision_record['value_continuation']

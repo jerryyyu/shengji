@@ -145,6 +145,9 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            record = getattr(self.bot, 'last_decision_record', None)
+            if record and 'value_continuation' in record and len(self.decisions) > before:
+                self.decisions[-1]['value_continuation'] = copy.deepcopy(record['value_continuation'])
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:

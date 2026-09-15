@@ -177,5 +177,63 @@ repairs do not change gameplay in the capped smoke above.
 
 Remaining before launch qualification: bounded full-dose packet and representative
 host timing. Perf now reserved for Claude's p14; do not overlap. No PUCT fleet
-run launched. #438's k0 training-distribution review is being resolved against
-the actual training bridge, separately from this core source review.
+run launched. #438's training-state review resolved with source PASS at68f9dafe
+(canonical main ledger14:35UTC); this does not itself reserve a host.
+
+## Shared-world leaf diagnostic
+
+`cwv_leaf_probe.probe_root` measures k0/k1/k2 against the same worlds/actions
+continued by the heuristic to terminal. The comparator is NOT optimal-play
+truth. Matrices are retained; action ranking is computed after world averaging.
+No confidence interval treats world/action rows as independent deals.
+
+First local witness `/private/tmp/cwv-leaf-probe-seed19-20260915.json`: one
+existing diagnostic deal, heuristic root path at plies1/25/49, first four
+production-ballot actions, four shared worlds per root, M1 outcome head.
+All horizons selected a comparator-best action on these three roots. Absolute
+RMSE still ranges0.82–1.64 signed levels; k1 action-gap RMSE0.19/0.19/0.38.
+This illustrates common value offsets versus decision ranking, not calibrated
+play strength. K0 pairwise accuracy was1/3,1,1/3 on only3/4/3 strict comparator
+action pairs; k1/k2 each1 on these tiny sets. No horizon selected or promoted
+from this evidence. Three probe tests pass. Retain all rows, including errors.
+
+## First bounded PUCT screen request
+
+One fixed26-pair DEV comparison, same M1 outcome/prior-v2 identities as #438.
+Arm:32 sampled worlds ×8 sweeps=256 simulations per decision, depth8 plies,
+PUCT c1.5, widening2*sqrt(N+1), batch128. No noise, no root temperature, no
+hybrid bury, throw addition, report tie change or successor-reuse flag. Baseline:
+M1+prior-v2 W32/N30/R300/four alternatives, threshold10000/top256. Thus both
+sides use the same models; the new mechanism is replacing shortlist+MC with
+policy-guided determinized tree search. It is not an equal-work comparison.
+
+Reuse the prospective #438 matched deal window610260915..610260940 (13 ranks
+cycled twice), only after checking canonical generation/screen seed inventories.
+Overlap across the three intentionally paired DEV comparisons is desired; no
+training/held-out overlap is permitted. These are not confirmation/production
+promotion tests. No outcome-based extension.
+
+Exact invocation after target paths are validated:
+
+```
+SHENGJI_REQUIRE_VOIDS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+PYTHONPATH=server python -m shengji.train.cwv_shortlist_screen \
+  --arm learned --checkpoint MODEL --prior-checkpoint PRIOR \
+  --prior-threshold 10000 --prior-top 256 --baseline flat-shortlist \
+  --value-head outcome --encoding mlp-static --worlds 32 \
+  --selection-worlds 30 --alternatives 4 --report-worlds 300 \
+  --puct-sweeps 8 --puct-depth 8 --puct-exploration 1.5 --puct-widening 2 \
+  --batch-size 128 --clusters 26 --workers 16 --seed0 610260915 \
+  --trump-ranks 2,3,4,5,6,7,8,9,10,J,Q,K,A \
+  --decision-deadline 300 --out FRESH_PUCT_OUTPUT
+```
+
+Requested host: Perf **after** p14 and any existing reservations, coordinated
+with Claude; source/model hashes checked at first consumption. Enclosing job
+deadline2h; preserve completed pair shards if exceeded, no automatic retry.
+The19.5s tiny smoke is NOT a full-dose ETA. Measure actual host timing from the
+first pairs and report stage/completion/worker utilization/tails, then let the
+same bounded job proceed; no separate repeated capacity census. Halt on a
+correctness failure, not on neutral/negative outcomes. Summarize signed levels
+with whole-deal clustered uncertainty, model/prior/simulation work, wall and
+tail/timeout rates. Review PASS leaves host/seed/launch guards mandatory.

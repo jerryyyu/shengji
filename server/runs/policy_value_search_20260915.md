@@ -253,3 +253,50 @@ same bounded job proceed; no separate repeated capacity census. Halt on a
 correctness failure, not on neutral/negative outcomes. Summarize signed levels
 with whole-deal clustered uncertainty, model/prior/simulation work, wall and
 tail/timeout rates. Review PASS leaves host/seed/launch guards mandatory.
+
+## September 15 evening: first fleet results
+
+This update supersedes the historical pending-launch notes above. M1 sources
+68f9dafe (truncation) and2557b958 (PUCT) ran unchanged on Perf; all three
+26-deal/52-round DEV screens completed with zero timeouts and complete work
+accounting. Same seed window610260915, ranks cycled twice, prior-v2,300s cap.
+
+| M1 arm vs matched control | Signed levels/round (95% deal-cluster CI) | Aggregate decision-wall ratio |
+|---|---|---|
+| K1 vs inherited MC | +0.1154 [-0.1731,+0.4038] | 0.822 |
+| K1 vs full signed-level continuation | +0.0577 [-0.1923,+0.2885] | 0.796 |
+| PUCT8 sweeps/depth8 vs MC | -0.6154 [-0.8269,-0.3846] | 2.032 |
+
+K1 is strength-inconclusive, not proven equivalent. Costs include different
+visited positions: these are gameplay resource comparisons, not fixed-state
+engineering speedups. PUCT is clearly negative in this small DEV screen;
+do not scale this recipe as-is. It uses immediate model-only leaves, with no
+heuristic continuation. Its305124 expanded nodes processed509246072 legal
+action entries, versus454387 model leaves and24333 terminal leaves. Enumeration
+is repeated across nodes/worlds; these are not distinct decision positions.
+
+Artifacts: Perf `/root/codex-policy-value-screens-20260915`, with local archive
+under `~/shengji-archive/2026-09-15/policy-value-screens/`. G1's identical
+three-arm sequence started22:15:38UTC after successful M1 completion; G1 is
+also used by each corresponding baseline. Thus these compare search *within*
+model, not direct G1-vs-M1 gameplay. G1 full SHA:
+`1bcbb47f253a7151df08749b31868a1d1608fbf3e578a2dc4d24f232b1e2e648`.
+
+### Actual-leaf and coverage diagnostics
+
+`/private/tmp/cwv-shared-leaves.NZGkAY/` contains probe.py, coverage.py and
+six reports of each kind. Existing diagnostic deal19; heuristic path roots at
+max hand sizes12/6/3, four shared sampled worlds, eight PUCT sweeps/depth8.
+Both M1/G1 capture searches are rescored on their identical captured leaves.
+Each comparator runs once: full heuristic play, NOT optimal-play truth.
+G1 has lower RMSE at12cards; M1 at6/3cards. These are correlated rows of ONE
+deal and cannot select a model or justify a phase-dependent switching policy.
+
+At the3071-action root, M1 visits4–6 actions/world (7–15% prior mass), with
+18/10/4 of32 leaves at depth1/2/3. G1 visits2–5 actions/world, reaching at most
+depth5. Configured depth8 is only a ceiling. Sparse coverage is a concrete
+diagnostic clue, not a demonstrated sole cause of the gameplay loss. Next
+investigation should preserve a broad common-world root comparison before
+adding selective depth. Pruning/capping admission is a policy change, not a
+decision-preserving optimization. No new follow-up arm is queued from this
+diagnostic. Await G1 results before the final recommendation.

@@ -37,6 +37,11 @@ def test_balanced_batched_legal_and_private():
     assert tuple(out['action']) in enumerate_legal(rnd, rnd.turn, cap=None).keys()
     assert all(seats == [rnd.turn] * len(seats) for _, seats in ev.calls)
     assert rnd.hands == before.hands and rnd.history == before.history
+    diagnostic = out['diagnostics']
+    assert sum(diagnostic['depth_histogram'].values()) == 15
+    assert max(diagnostic['depth_histogram']) <= 3
+    assert all(0 < n <= 5 for n in diagnostic['root_visited_actions'])
+    assert all(0 < mass <= 1.0000001 for mass in diagnostic['root_visited_prior_mass'])
 
 
 def test_reject_live_world_and_bad_prior():

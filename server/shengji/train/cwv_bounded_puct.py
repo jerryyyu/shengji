@@ -63,6 +63,7 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
     roots = [Node(leaf_copy(world)) for world in worlds]
     counts = dict(model_rows=0, model_batches=0, terminal_rows=0,
                   prior_rows=0, legal_actions=0, expanded_nodes=0)
+    depth_histogram = {}
 
     def expand(node):
         if node.priors is not None:
@@ -115,6 +116,8 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
                     break
             paths.append(path)
             leaves.append(node.state)
+            depth = len(path) - 1
+            depth_histogram[depth] = depth_histogram.get(depth, 0) + 1
         out = continuation_values(leaves, [seat] * len(leaves),
                                   [len(s.history) for s in leaves], evaluator=evaluator,
                                   tricks=0, batch_size=config.batch_size)
@@ -134,6 +137,12 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
     chosen = max(sorted(visits), key=lambda a: (visits[a], totals[a] / visits[a]))
     return dict(action=list(chosen), visits=visits, totals=totals,
                 world_visits=[r.visits for r in roots], simulations=len(roots) * config.sweeps,
+                diagnostics=dict(depth_histogram=depth_histogram,
+                    root_legal_counts=[len(r.actions) for r in roots],
+                    root_visited_actions=[len(r.children) for r in roots],
+                    root_visited_prior_mass=[float(sum(
+                        r.priors[i] for i, action in enumerate(r.actions)
+                        if action in r.children)) for r in roots]),
                 counts=counts, units='root-team-final-signed-levels',
                 limitation='determinization-and-strategy-fusion')
 

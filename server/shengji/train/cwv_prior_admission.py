@@ -57,15 +57,27 @@ _PRIORS: dict[tuple[str, str], tuple] = {}
 
 
 def load_prior_checked(path: str, sha256: str):
-    """The prior net and payload, verified against the bound SHA256 (cached per process)."""
+    """The prior, verified against the bound SHA256 (cached per process): either a
+    standalone ``policy_prior`` checkpoint (``("separate", net, payload)``) or a
+    value checkpoint carrying a policy head (#425 joint net; ``("joint", model,
+    None)``), whose head reads the trunk features of the flat root row."""
     key = (path, sha256)
     if key not in _PRIORS:
         with open(path, "rb") as handle:
             actual = hashlib.file_digest(handle, "sha256").hexdigest()
         if actual != sha256:
             raise ValueError("prior checkpoint SHA256 mismatch")
-        from .policy_prior import load_prior
-        _PRIORS[key] = load_prior(path)
+        from .policy_prior import PolicyPriorError, load_prior
+        try:
+            net, payload = load_prior(path)
+            _PRIORS[key] = ("separate", net, payload)
+        except PolicyPriorError:
+            from .train_cwv import load_cwv_checkpoint
+            model, _meta, _aux = load_cwv_checkpoint(path, "cpu")
+            if not getattr(model.config, "policy_head", False):
+                raise ValueError("prior checkpoint is neither a policy prior nor a value net with a policy head")
+            model.eval()
+            _PRIORS[key] = ("joint", model, None)
     return _PRIORS[key]
 
 
@@ -106,7 +118,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         if capture_full_legal_scores:
             raise ValueError("prior admission does not support full legal score capture")
         self.prior_config = prior
-        self._prior_net, self._prior_payload = load_prior_checked(prior.checkpoint, prior.checkpoint_sha256)
+        self._prior_kind, self._prior_net, self._prior_payload = load_prior_checked(
+            prior.checkpoint, prior.checkpoint_sha256)
         self._prior_diagnostics = None
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors, capture_full_legal_scores=False)
@@ -131,6 +144,9 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         return (log_odds.astype(np.float32) @ multiplicity.T).astype(np.float64)
 
     def _prior_log_odds(self, X):
+        if self._prior_kind == "joint":
+            from .policy_rows import policy_log_odds
+            return np.asarray(policy_log_odds(self._prior_net, X, "cpu"), dtype=np.float64)
         from .policy_prior import predict_log_odds
         return np.asarray(predict_log_odds(self._prior_net, self._prior_payload, X), dtype=np.float64)
 
@@ -192,6 +208,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
             "prior_seconds": prior_seconds,
             "ranking_basis": "prior-union-then-world-mean",
             "prior_checkpoint_sha256": cfg.checkpoint_sha256,
+            "prior_kind": self._prior_kind,
         }
         return means
 

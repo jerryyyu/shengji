@@ -18461,3 +18461,7 @@ Cloud v17 (M1-capped-out ×5, 13260910..13660910) sealed 07:34 ET: vs capped con
 ## 2026-09-15 12:26 UTC — Claude tick 08:2x ET: J2 (policy weight 0.2) epochs 0.5943/0.5951/0.5926/0.5944 (best +0.0018 vs twin, inside the bound); J3 armed; #432 re-PASS pending
 
 J2-M1-policy-w0.2 (log, receipt pending; final pass running, pid 86189): val_ce 0.5943 / 0.5951 / 0.5926 / 0.5944 → best epoch 3 = 0.5926 vs the twin's 0.5908 (+0.0018, inside the #425 4.1 +0.002 bound) and J1's 0.5989; policy top-64 at epoch 3: exhaustive 101–1k 0.939, partial 0.900 / 0.899 / 0.870 (epoch 4: 0.942 / 0.905 / 0.900 / 0.891) — below J1 (0.937/0.920/0.920/0.902) and prior v3 (0.958/0.935/0.934/0.887); the 4.2 paired deal bootstrap runs at the seal (≈ 09:05 ET). J3 (--policy-detach, weight 1; PR #432 Codex source PASS at a647aed6, re-asked at a8cc2bfb after the ledger-guard merge) armed behind J2. Cloud idle (v17 done 07:34 ET; no lane armed). Bus: nothing actionable; Codex idle. Artifacts current.
+
+## 2026-09-15 12:57 UTC — Claude 09:0x ET: #432 merged; Jerry queues from-scratch joint nets on the M1 and G1 recipes
+
+#432 (--policy-detach) merged at a8cc2bfb on Codex's carried-forward PASS + CI 5/5. Jerry 09:0x ET: "train a joint model with m1 and g1 recipe from scratch to compare" → fl-pilot/train_joint_scratch.sh armed after J3: JS-M1-policy-w0.2 (M1 recipe, 20 epochs, policy weight 0.2, ~5 h) then JS-G1-policy-w0.2 (G1 recipe, ~13 h); twins = the original M1 / G1 seals (identical value batches). J2 sealing (final pass), J3 (detach) next. Posted on #425.

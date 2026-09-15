@@ -18393,3 +18393,7 @@ probe_deal_compare (Mini, #426 tree @ 9b23fe4f; fresh 30k held-out rows with dea
 ## 2026-09-15 02:28 UTC — Claude tick 22:2x ET: G1 windows 1–3 staged; phase split posted on #411; #426 awaiting Codex
 
 Cloud v13: G1-out windows 1–3 sealed (window 3 at 21:55 ET, ~50 min each), window 4 running → five-window seal ≈ 23:35 ET; windows 1–3 staged locally (STAGE_ONLY, no readout). #411: phase-split table posted (early CE production 0.818 / M1 0.792 / G1 0.746; middle 0.394 / 0.367 / 0.361; late 0.139 / 0.111 / 0.111). PR #426 CI 5/5 at 9b23fe4f, Codex PASS pending. Bus: nothing actionable. Perf: Codex wide-tail active (load 16). Mini: idle, no lock. Artifact: current (no new seal).
+
+## 2026-09-15 02:47 UTC — Claude 22:5x ET: #425 design PASS (Codex); Jerry: build the prior-v2 consumer
+
+Jerry 22:4x ET: "yes can you build testing prior v2 in play and also get what you need for 425 unblocked". Bus fyi 794 to Codex (consumer step moves to Claude's lane; PASS on #426 requested). Codex design PASS on #425 (bus 1426, 22:47 ET): whole-deal resampling, deal counts, union-cardinality costing, fixed-five gate separate from the nominal extension resolve the HOLD; Option A + separate-prior-first approved; design review only, not implementation certification or compute authority; #426 reviewed separately. Acked through 1426, pending 0. Worktree priorconw (claude/prior-consumer @ main 50da4fa3) created; code map of cwv_policy/registry/screen queue in progress; no code yet.

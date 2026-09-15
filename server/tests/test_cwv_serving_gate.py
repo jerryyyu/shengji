@@ -42,6 +42,34 @@ def test_matching_packages_pass_and_the_receipt_names_every_file(checkpoint, pri
     assert receipt["kinds"] == {"served_prior": "separate-numpy", "reference_prior": "separate"}
     assert set(receipt["files"]) == {"value_torch", "value_numpy", "prior_torch", "prior_numpy"}
     assert receipt["files"]["prior_torch"]["sha256"] == prior_ckpt[1]
+    assert receipt["result"] == "identical" and receipt["scope"] == "smoke"
+    assert receipt["qualifies_serving"] is False, "a W4/N4 smoke run must not qualify a deploy"
+
+
+def test_a_bound_prior_that_never_fires_is_incomplete_not_a_pass(checkpoint, prior_ckpt, packages):
+    value, prior = packages
+    # threshold above any legal set in one tiny round: every decision agrees, the prior never runs
+    receipt = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, threshold=10_000_000, top=5)
+    assert receipt["identical"] == receipt["decisions"] > 0 and receipt["prior_fired"] == 0
+    assert receipt["passed"] is False and receipt["result"] == "incomplete-prior-never-fired"
+
+
+def test_scope_is_serving_only_for_the_serving_recipe_with_a_prior(monkeypatch, checkpoint, prior_ckpt, packages):
+    import scripts.cwv_serving_gate as gate
+    value, prior = packages
+    seen = {}
+    def fake_deal(seed):                        # no play: the recipe/scope logic is what is under test
+        class Done:  phase = "done"
+        return Done(), None
+    monkeypatch.setattr(gate, "_deal", fake_deal)
+    r = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, worlds=32, selection_worlds=30,
+                 threshold=10_000, top=256)
+    assert r["scope"] == "serving-w32-n30-prior" and r["result"] == "no-decisions" and r["qualifies_serving"] is False
+    r = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, worlds=32, selection_worlds=30,
+                 threshold=1_000, top=256)
+    assert r["scope"] == "smoke", "a non-serving threshold is a smoke run"
+    r = run_gate(checkpoint, value, rounds=1, worlds=32, selection_worlds=30)
+    assert r["scope"] == "smoke", "no prior bound is never the serving scope"
 
 
 def test_a_tampered_value_package_is_refused_with_the_mismatch_recorded(checkpoint, prior_ckpt, packages, tmp_path):
@@ -77,7 +105,7 @@ def test_cli_exit_status_follows_the_verdict_and_writes_the_receipt(checkpoint, 
            "--prior-numpy", prior, "--rounds", "1", "--threshold", "6", "--top", "5", "--receipt", str(receipt)]
     run = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parents[1])
     assert run.returncode == 0, run.stdout + run.stderr
-    assert run.stdout.startswith("PASS")
+    assert run.stdout.startswith("PASS (identical, scope smoke)")
     assert json.loads(receipt.read_text())["passed"] is True
 
 

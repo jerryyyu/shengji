@@ -92,10 +92,17 @@ def test_wide_decision_pool_is_the_union_of_per_world_top_lists_plus_anchors(pri
     favourite_a, favourite_b = singles[0], singles[1]
     calls = []
 
+    recorded = []
+
     class Controlled(CWVPriorAdmissionBot):
         def _means(self, rnd, seat, actions, worlds):
             calls.append((len(actions), len(worlds), [tuple(sorted(a)) for a in actions]))
             return super()._means(rnd, seat, actions, worlds)
+
+        def _prior_scores(self, rnd, seat, actions, worlds):
+            scores = super()._prior_scores(rnd, seat, actions, worlds)
+            recorded.append(scores)
+            return scores
 
         def _prior_log_odds(self, X):
             # World 0 wants favourite_a's card, world 1 wants favourite_b's card.
@@ -116,9 +123,16 @@ def test_wide_decision_pool_is_the_union_of_per_world_top_lists_plus_anchors(pri
     assert diag["union_size"] <= 2 * 8 and diag["top"] == 8 and diag["worlds"] == 2
     assert tuple(favourite_a) in pool_keys and tuple(favourite_b) in pool_keys   # each world's favourite survives
     assert production_keys <= pool_keys                                    # every production anchor is protected
-    assert diag["anchors_added"] == len(production_keys - {tuple(sorted(a)) for a in legal
-                                                            if tuple(sorted(a)) in pool_keys
-                                                            and tuple(sorted(a)) not in production_keys}) or True
+    # Expected union from the recorded per-world scores, computed independently of the bot.
+    scores = recorded[0]
+    expected_union = set()
+    for row in scores:
+        order = sorted(range(len(legal)), key=lambda i: (-row[i], i))[:8]
+        expected_union.update(tuple(sorted(legal[i])) for i in order)
+    anchors = set(production_keys)
+    assert pool_keys == expected_union | anchors
+    assert diag["union_size"] == len(expected_union)
+    assert diag["anchors_added"] == len(anchors - expected_union)
     assert {tuple(sorted(a)) for a in selected} <= pool_keys              # the shortlist is drawn from the pool
     assert all(math.isfinite(v) for v in detail["shortlist_means"])
     assert detail["ranking_basis"] == "prior-union-then-world-mean"
@@ -130,24 +144,49 @@ def test_wide_decision_pool_is_the_union_of_per_world_top_lists_plus_anchors(pri
     assert round_signature(rnd) == before
 
 
-def test_real_prior_runs_on_sampled_worlds_not_the_true_round(prior_ckpt):
-    """The prior's root tensors come from world clones: every forward sees the sampled hands."""
+def test_prior_inputs_are_the_sampled_worlds_and_ignore_the_true_hidden_hands(prior_ckpt):
+    """Codex HOLD on #427: witness the privacy claim on the tensors the network receives.
+    Two controlled worlds redistribute the non-actor hands and the kitty; X must equal the
+    mover-relative root tensors of each world clone, and must not change when only the TRUE
+    round's hidden hands and kitty change with the worlds held fixed."""
+    from shengji.train.cwv_prior_admission import root_clone
+    from shengji.train.policy_prior import flat_input, root_tensors
     rnd = play_state()
     seat = rnd.turn
+    others = [s for s in range(4) if s != seat]
+    actions = enumerate_legal(rnd, seat, cap=None).actions[:6]
+    # World A: the truth.  World B: two non-actor hands swapped and the kitty exchanged with
+    # the first len(buried) cards of the third non-actor's hand (deck conserved).
+    a_hands, a_buried = [list(h) for h in rnd.hands], list(rnd.buried)
+    b_hands = [list(h) for h in rnd.hands]
+    b_hands[others[0]], b_hands[others[1]] = list(rnd.hands[others[1]]), list(rnd.hands[others[0]])
+    k = len(rnd.buried)
+    b_buried = sorted(b_hands[others[2]][:k]); b_hands[others[2]] = b_hands[others[2]][k:] + list(rnd.buried)
+    worlds = [(a_hands, a_buried), (b_hands, b_buried)]
     seen = []
 
     class Watch(CWVPriorAdmissionBot):
-        def _prior_scores(self, rnd_, seat_, actions, worlds):
-            seen.append([tuple(sorted(sum((list(h) for h in hands), []))) for hands, _ in worlds])
-            return super()._prior_scores(rnd_, seat_, actions, worlds)
+        def _prior_log_odds(self, X):
+            seen.append(np.array(X, copy=True))
+            return super()._prior_log_odds(X)
 
     bot = Watch(Values(), seed=13, prior=recipe(prior_ckpt, threshold=1, top=8), config=CWVShortlistConfig(worlds=2))
-    selected = bot._candidates(rnd, seat)
-    assert len(selected) == 5 and bot.last_shortlist["prior_admission"]["triggered"]
-    truth = tuple(sorted(sum((list(h) for h in rnd.hands), [])))
-    assert len(seen) == 1 and all(world == truth for world in seen[0])   # same deck, world-substituted hands
-    scores = bot._prior_scores(rnd, seat, enumerate_legal(rnd, seat, cap=None).actions[:5], [(rnd.hands, rnd.buried)])
-    assert scores.shape == (1, 5) and np.isfinite(scores).all()
+    scores = bot._prior_scores(rnd, seat, actions, worlds)
+    assert scores.shape == (2, 6) and np.isfinite(scores).all() and len(seen) == 1
+    X = seen[0]
+    expected = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat)) for hands, buried in worlds])
+    assert X.shape == (2, pp.INPUT_DIM) and np.array_equal(X, expected)
+    assert not np.array_equal(X[0], X[1])                                  # hand ownership and kitty are encoded
+    assert not np.array_equal(X[1], flat_input(root_tensors(rnd, seat)))    # world B is not the truth
+
+    # Mutate ONLY the true round's hidden information (actor's hand untouched), worlds fixed.
+    rnd.hands[others[0]], rnd.hands[others[2]] = rnd.hands[others[2]], rnd.hands[others[0]]
+    swapped = rnd.hands[others[1]][:k]
+    rnd.hands[others[1]] = rnd.hands[others[1]][k:] + list(rnd.buried); rnd.buried = sorted(swapped)
+    assert not np.array_equal(flat_input(root_tensors(rnd, seat)), flat_input(root_tensors(root_clone(rnd, a_hands, a_buried), seat)))
+    scores_after = bot._prior_scores(rnd, seat, actions, worlds)
+    assert len(seen) == 2 and np.array_equal(seen[1], X)                    # a bypass of root_clone would change this
+    assert np.array_equal(scores_after, scores)
 
 
 def test_deadline_instrumentation_marks_the_prior_phase_with_the_full_population():

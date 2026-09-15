@@ -306,7 +306,7 @@ PRIVACY = {
 
 def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                  trunk_layers: int = 2, trunk_block: str = "plain", search_head: bool = False,
-                 grid_channels: int = 0,
+                 grid_channels: int = 0, policy_head: bool = False,
                  dropout: float = DEFAULTS["dropout"], seq_kind: str = DEFAULTS["seq_kind"],
                  seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
                  seq_heads: int = DEFAULTS["seq_heads"],
@@ -319,6 +319,8 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
         raise TrainError(f"--arch must be one of {ARCHES}")
     if search_head and arch != "mlp":
         raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
+    if policy_head and arch != "mlp":
+        raise TrainError("--policy-head reads the mlp trunk; the seq architecture exposes none")
     if arch != "mlp" and (trunk_layers != 2 or trunk_block != "plain" or grid_channels != 0):
         raise TrainError("--trunk-layers / --trunk-block / --grid-channels shape the mlp trunk; "
                          "the seq architecture has none")
@@ -336,6 +338,7 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                 architecture="mlp", width=int(hidden) // 2, history_layers=1,
                 trunk_layers=int(trunk_layers), trunk_block=str(trunk_block),
                 grid_channels=int(grid_channels), search_head=bool(search_head),
+                policy_head=bool(policy_head),
                 attention_heads=1, feedforward_width=int(hidden), dropout=float(dropout),
                 max_history=HISTORY_MAX_EVENTS, **width_fields)
             config.validate()      # a grid without channels (or channels without a grid) refuses here
@@ -1020,7 +1023,8 @@ class Selector:
                 "best_value": None if self.best_epoch is None else self.best_value}
 
 
-def consumer_block(select_metric: str, aux_points: bool, search_head: bool = False) -> dict:
+def consumer_block(select_metric: str, aux_points: bool, search_head: bool = False,
+                   policy_head: bool = False) -> dict:
     """Which search designs consume which head on which positions, and
     the metric this run selected on (``cwv_eval.CONSUMERS``)."""
     heads = {"level_head": copy.deepcopy(CONSUMERS["level_head"])}
@@ -1033,6 +1037,14 @@ def consumer_block(select_metric: str, aux_points: bool, search_head: bool = Fal
                          "the evaluator's value_head override names 'search-mean'",
             "selection": "never the selection metric; reported alongside as "
                          "val.search_head.rank_regret"}
+    if policy_head:
+        heads["policy_head"] = {
+            "quantity": "54 card log-odds of the played action at a decision ROOT from the "
+                        "mover's seat (#419 factorised prior; #425 joint net)",
+            "consumers": "shortlist prior admission (cwv_prior_admission: union of per-world "
+                         "top-N by the sum of card log-odds); never the value ranking",
+            "selection": "never the selection metric; reported alongside as val.policy.top64 "
+                         "(recall of the played action inside the prior's top-64 per stratum)"}
     return {"select_metric": select_metric, "heads": heads,
             "rule": "the training validation metric, the held-out eval and what the search "
                     "consumes are the SAME quantity computed by the SAME code "
@@ -1127,15 +1139,23 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     if metadata.get("arch") != config["arch"]:
         raise TrainError(f"--init {init}: arch {metadata.get('arch')!r} != --arch "
                          f"{config['arch']!r}")
-    if metadata.get("model_config") != config["model_config"]:
+    ours_cfg = dict(config["model_config"])
+    theirs_cfg = dict(metadata.get("model_config") or {})
+    # #425: a policy-head net may warm-start from a headless incumbent: every
+    # trunk/head weight loads, the policy head alone starts fresh.  Any other
+    # configuration difference is still refused.
+    policy_fresh = (ours_cfg.get("policy_head") is True and "policy_head" not in theirs_cfg
+                    and {k: v for k, v in ours_cfg.items() if k != "policy_head"} == theirs_cfg)
+    if not policy_fresh and theirs_cfg != ours_cfg:
         raise TrainError(f"--init {init}: model configuration differs (theirs "
                          f"{metadata.get('model_config')}, ours {config['model_config']}); "
                          "--hidden / --dropout / seq knobs must match")
     theirs = source.state_dict()
     ours = model.state_dict()
-    if set(theirs) != set(ours) or any(theirs[k].shape != ours[k].shape for k in ours):
+    expected = {k for k in ours if not (policy_fresh and k.startswith("policy_head."))}
+    if set(theirs) != expected or any(theirs[k].shape != ours[k].shape for k in expected):
         raise TrainError(f"--init {init}: parameter layout differs from this model")
-    model.load_state_dict(theirs)
+    model.load_state_dict(theirs, strict=not policy_fresh)
     aux_loaded = False
     if aux_head is not None and source_aux is not None:
         if source_aux.linear.in_features != aux_head.linear.in_features:
@@ -1150,6 +1170,7 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         "epoch": metadata.get("epoch"), "config_sha256": metadata.get("config_sha256"),
         "git": metadata.get("git"), "aux_points_head_loaded": aux_loaded,
         "aux_points_head_in_init": source_aux is not None,
+        "policy_head_fresh": bool(policy_fresh),
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
         "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()
@@ -1222,6 +1243,10 @@ def bench_inference(model: ValueNetwork, rows: Sequence[ValueAfterstateTensors],
 def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str = "mlp",
                  trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
                  search_head: bool = False, search_head_weight: float = 1.0,
+                 policy_head: bool = False, policy_rows: str | None = None,
+                 policy_eval: str | None = None, policy_weight: float = 1.0,
+                 policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
+                 policy_rows_limit: int | None = None,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1276,9 +1301,25 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
     if not (float(search_head_weight) > 0 and math.isfinite(float(search_head_weight))):
         raise TrainError("--search-head-weight must be a finite weight > 0")
+    if policy_head:
+        if arch != "mlp":
+            raise TrainError("--policy-head reads the mlp trunk; the seq architecture exposes none")
+        if not policy_rows:
+            raise TrainError("--policy-head needs --policy-rows (policy_prior.extract output)")
+        if not (float(policy_weight) >= 0 and math.isfinite(float(policy_weight))):
+            raise TrainError("--policy-weight must be a finite weight >= 0 (0 = the matched twin)")
+        if not (float(policy_listwise_weight) >= 0 and math.isfinite(float(policy_listwise_weight))):
+            raise TrainError("--policy-listwise-weight must be a finite weight >= 0")
+        if not (0.0 < float(policy_batch_fraction) <= 1.0):
+            raise TrainError("--policy-batch-fraction must be in (0, 1]")
+        if policy_rows_limit is not None and int(policy_rows_limit) < 1:
+            raise TrainError("--policy-rows-limit must be >= 1")
+    elif policy_rows or policy_eval:
+        raise TrainError("--policy-rows / --policy-eval need --policy-head")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
                           grid_channels=grid_channels, search_head=search_head,
+                          policy_head=policy_head,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
                           seq_feedforward=seq_feedforward, encoder_version=encoder_version)
     identity = cwv_encoder_identity(encoder_version)
@@ -1296,6 +1337,13 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "aux_weight": float(aux_weight) if aux_points else 0.0, "n_boot": int(n_boot),
         "search_head": bool(search_head),
         "search_head_weight": float(search_head_weight) if search_head else 0.0,
+        "policy_head": bool(policy_head),
+        "policy_rows": None if not policy_rows else str(Path(policy_rows).resolve()),
+        "policy_eval": None if not policy_eval else str(Path(policy_eval).resolve()),
+        "policy_weight": float(policy_weight) if policy_head else 0.0,
+        "policy_listwise_weight": float(policy_listwise_weight) if policy_head else 0.0,
+        "policy_batch_fraction": float(policy_batch_fraction) if policy_head else 0.0,
+        "policy_rows_limit": None if not policy_head else policy_rows_limit,
         "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
@@ -1420,6 +1468,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           encoder_version: int = DEFAULTS["encoder_version"],
           trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
           search_head: bool = False, search_head_weight: float = 1.0,
+          policy_head: bool = False, policy_rows: str | None = None,
+          policy_eval: str | None = None, policy_weight: float = 1.0,
+          policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
+          policy_rows_limit: int | None = None,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1428,6 +1480,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
         search_head=search_head, search_head_weight=search_head_weight,
+        policy_head=policy_head, policy_rows=policy_rows, policy_eval=policy_eval,
+        policy_weight=policy_weight, policy_listwise_weight=policy_listwise_weight,
+        policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -1540,12 +1595,51 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
     population = fit_population(assignment, stores=prepared.stores)
+    # #425/#428: root rows are FIT exposure (their loss updates the shared trunk).
+    # They are read here, against this run's split: rows in val/test or in the
+    # policy-eval deals are dropped, the kept deals join the exposure's fit set
+    # (so holdouts, ancestry and future warm starts see them), and policy-eval
+    # rows on value-fit deals are dropped so its recall is on unseen deals.
+    policy_data = policy_evalset = None
+    policy_batch = 0
+    root_fit: set[str] = set()
+    if policy_head:
+        from .policy_rows import PolicyEval, PolicyRows
+        value_fit = set(population["train"])
+        held = set(population["val"]) | set(population["test"])
+        # The policy eval is a REPORTED held-out (a test-like set): it must not
+        # contain a deal this run fits, nor one the --init source or any
+        # ancestor fit or selected on (the exposure rule for a test split).
+        ancestral = (set() if source_exposure is None else
+                     exposure_sets(source_exposure)["fit"] | exposure_sets(source_exposure)["selection"])
+        if policy_eval:
+            policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral)
+            held |= set(policy_evalset.deal_keys)
+        policy_data = PolicyRows(policy_rows, limit=policy_rows_limit, exclude=held)
+        root_fit = set(policy_data.deal_keys)
+        assert not root_fit & held
+        policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
+        pd_ = policy_data.identity
+        say(f"policy rows: {pd_['rows_used']} of {pd_['rows_read']} read "
+            f"({pd_['rows_excluded']} rows / {pd_['deals_excluded']} deals dropped as val/test/eval); "
+            f"{pd_['deals']} root fit deals ({len(root_fit - value_fit)} beyond the value fit); "
+            f"{policy_data.in_ballot} with a ballot target; root batch {policy_batch} per value batch "
+            f"{batch_size}; weight {policy_weight} (listwise {policy_listwise_weight})"
+            f"{' [TWIN: policy loss off]' if float(policy_weight) == 0 else ''}")
+        if policy_evalset is not None:
+            pe_ = policy_evalset.identity
+            pe_["exclusion_rule"] = "current fit deals + ancestral fit-or-selected deals (test rule)"
+            pe_["ancestral_exposed_deals"] = len(ancestral)
+            say(f"policy eval: {pe_['rows']} rows / {pe_['deals']} deals "
+                f"({pe_['rows_excluded']} rows on fit or ancestrally exposed deals dropped; "
+                f"{len(ancestral)} ancestral fit/selection deals)")
     if source_exposure is None:
-        exposure = exposure_block(population["train"], population["val"])
+        exposure = exposure_block(set(population["train"]) | root_fit, population["val"])
     else:
         src = exposure_sets(source_exposure)
         exposure = exposure_block(
-            src["fit"] | set(population["train"]), src["selection"] | set(population["val"]),
+            src["fit"] | set(population["train"]) | root_fit,
+            src["selection"] | set(population["val"]),
             ancestors=[*source_exposure.get("ancestors", []),
                        {"path": str(Path(init).resolve()), "sha256": file_sha256(init),
                         "epoch": init_loaded[1].get("epoch"),
@@ -1554,7 +1648,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         assert not set(population["val"]) & src["fit"]
         assert not set(population["test"]) & (src["fit"] | src["selection"])
     say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
-        f"deals (ancestors {len(exposure['ancestors'])})")
+        f"deals (ancestors {len(exposure['ancestors'])}; root-only fit {len(root_fit - set(population['train']))})")
     baselines = fit_baselines(store, masks["train"])
     say(f"baselines: stratified prior n={baselines['stratified_prior']['n']} "
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
@@ -1632,7 +1726,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     selection = {"split": SELECTION_SPLIT, "criterion": selector.criterion,
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
-    consumer = consumer_block(select_metric, aux_points, search_head)
+    consumer = consumer_block(select_metric, aux_points, search_head, policy_head)
+    policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
         ev = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
@@ -1643,6 +1738,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             # the selection metric (the Selector reads top-level keys only).
             metrics["search_head"] = search_head_rank(model, ev, val_cands, dev,
                                                       batch_size=batch_size)
+        if policy_evalset is not None:
+            # #425: the policy head's held-out recall; never the selection metric.
+            metrics["policy"] = policy_evalset.run(model, dev)
         return metrics
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:
@@ -1663,6 +1761,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if sh.get("rank_regret") is not None:
             shown["val_search_head_rank_regret"] = (
                 f"val_search_head_rank_regret={sh['rank_regret']:.4f}")
+        pol = metrics.get("policy") or {}
+        for key, value in (pol.get("top64") or {}).items():
+            shown["val_policy_top64 " + key] = f"val_policy_top64[{key.replace(' ', ':')}]={value:.3f}"
         if metrics.get("points_mae") is not None:
             shown["val_points_mae"] = f"val_points_mae={metrics['points_mae']:.2f}"
             shown["val_points_bias"] = f"val_points_bias={metrics['points_bias']:+.2f}"
@@ -1705,10 +1806,29 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     "elsewhere); the outcome head keeps the realised target and is the "
                     "selection head; consumers read the checkpoint's value_head unless "
                     "the evaluator overrides it"}
+    policy_head_block = None
+    if policy_head:
+        policy_head_block = {
+            "weight": float(policy_weight), "listwise_weight": float(policy_listwise_weight),
+            "batch_fraction": float(policy_batch_fraction), "root_batch": policy_batch,
+            "rows": policy_data.identity,
+            "eval": None if policy_evalset is None else policy_evalset.identity,
+            "twin": float(policy_weight) == 0.0,
+            "root_fit_deals": len(root_fit), "root_only_fit_deals": len(root_fit - set(population["train"])),
+            "exposure_rule": "root deals are fit exposure: rows in this run's val/test or policy-eval "
+                             "deals are dropped, kept deals are unioned into exposure.fit (checked "
+                             "by holdouts and by every later --init)",
+            "note": "#425: a 54-card head on the same trunk trained on ROOT rows from the "
+                    "mover's seat (policy_prior.extract: BCE on the played action's multi-hot "
+                    "+ listwise CE against the search ballot); one root batch per value "
+                    "batch, per-row-mean terms; the value rows and their targets are "
+                    "unchanged; weight 0 = the matched twin (same batches, same steps, "
+                    "no policy gradient); the outcome head remains the selection head"}
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
         "target": target_block, "search_head": search_head_block,
+        "policy_head": policy_head_block,
         "population": population, "exposure": exposure, "baselines": baselines,
         "git": git_identity(), "receipt_schema": RECEIPT_SCHEMA,
     }
@@ -1719,9 +1839,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         model.train()
         if aux_head is not None:
             aux_head.train()
-        sums = {"total": 0.0, "ce": 0.0, "aux": 0.0}
+        sums = {"total": 0.0, "ce": 0.0, "aux": 0.0, "policy_bce": 0.0, "policy_listwise": 0.0,
+                "policy_rows": 0}
         rows = 0
         batches = 0
+        policy_iter = (policy_data.batches(policy_batch, policy_rng) if policy_data is not None
+                       else None)
         # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
         # best of 3): a step costs 3.4 ms without host syncs and 7.3 ms with
         # the four this loop used to force per batch (isfinite + three
@@ -1747,6 +1870,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 raise TrainError("training loss is non-finite")
             sums["total"] += vals[0]; sums["ce"] += vals[1]; sums["aux"] += vals[2]
             rows += int(vals[3])
+            sums["policy_bce"] += vals[4]; sums["policy_listwise"] += vals[5]
+            sums["policy_rows"] += int(vals[6])
             pending = None
             finite_all = None
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
@@ -1787,16 +1912,35 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 if s_loss is not None:
                     sums["search_head_ce"] = sums.get("search_head_ce", 0.0) \
                         + float(s_loss.detach().item()) * n_used
+            p_bce = p_lw = None
+            b_r = 0
+            if policy_iter is not None:
+                # #425: one root batch per value batch, ALWAYS forwarded (the twin
+                # runs the same batches with the loss weighted 0).
+                try:
+                    p_idx = next(policy_iter)
+                except StopIteration:
+                    policy_iter = policy_data.batches(policy_batch, policy_rng)
+                    p_idx = next(policy_iter)
+                from .policy_rows import policy_losses
+                p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_idx, dev),
+                                               listwise_weight=float(policy_listwise_weight))
+                b_r = int(len(p_idx))
+                total = total + float(policy_weight) * (
+                    p_bce + float(policy_listwise_weight) * p_lw)
             finite = torch.isfinite(total).to(torch.float32)
             if sync_every == 1 and not bool(finite):
                 raise TrainError("training loss is non-finite")
             optim.zero_grad(set_to_none=True)
             total.backward()
             optim.step()
+            zero = torch.zeros((), device=total.device)
             contrib = torch.stack((total.detach() * b, ce.detach() * b,
-                                   (a_loss.detach() * b) if a_loss is not None
-                                   else torch.zeros((), device=total.device),
-                                   torch.full((), float(b), device=total.device))
+                                   (a_loss.detach() * b) if a_loss is not None else zero,
+                                   torch.full((), float(b), device=total.device),
+                                   (p_bce.detach() * b_r) if p_bce is not None else zero,
+                                   (p_lw.detach() * b_r) if p_lw is not None else zero,
+                                   torch.full((), float(b_r), device=total.device))
                                   ).to(torch.float32)
             finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
             pending = contrib if pending is None else pending + contrib
@@ -1816,6 +1960,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 sums.get("search_head_ce", 0.0) / n_used if n_used else None)
         if aux_head is not None:
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
+        if policy_head:
+            n_r = int(sums["policy_rows"])
+            train_metrics["policy_rows"] = n_r
+            train_metrics["policy_bce"] = sums["policy_bce"] / n_r if n_r else None
+            train_metrics["policy_listwise"] = sums["policy_listwise"] / n_r if n_r else None
         train_secs = round(time.perf_counter() - t0, 3)
         val_metrics = validate()
         secs = round(time.perf_counter() - t0, 3)
@@ -1947,6 +2096,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "schema": RECEIPT_SCHEMA,
         "command": "train",
         "target": target_block, "search_head": search_head_block,
+        "policy_head": policy_head_block,
         "argv": list(argv) if argv is not None else None,
         "started": started_at,
         "wall_secs": wall,
@@ -2387,6 +2537,21 @@ def build_parser() -> argparse.ArgumentParser:
                         "head keeps the realised target and remains the selection head)")
     t.add_argument("--search-head-weight", type=float, default=1.0,
                    help="loss weight of the search-mean head (default 1.0)")
+    t.add_argument("--policy-head", action="store_true",
+                   help="#425: add a 54-card policy head on the mlp trunk trained on root rows "
+                        "(needs --policy-rows); the outcome head remains the selection head")
+    t.add_argument("--policy-rows", default=None,
+                   help="prefix of policy_prior.extract output (<prefix>.npz + .meta.jsonl)")
+    t.add_argument("--policy-eval", default=None,
+                   help="prefix of held-out root rows (with deal ids) for per-epoch policy recall")
+    t.add_argument("--policy-weight", type=float, default=1.0,
+                   help="loss weight of the policy terms (0 = the matched twin: same batches, "
+                        "same steps, no policy gradient)")
+    t.add_argument("--policy-listwise-weight", type=float, default=1.0)
+    t.add_argument("--policy-batch-fraction", type=float, default=0.25,
+                   help="root batch = this fraction of --batch-size, drawn once per value batch")
+    t.add_argument("--policy-rows-limit", type=int, default=None,
+                   help="use only the first N root rows (memory: X is kept as float16)")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2443,6 +2608,11 @@ def main(argv: list[str] | None = None) -> int:
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   target=args.target, search_mean_sidecar=args.search_mean_sidecar,
                   search_head=args.search_head, search_head_weight=args.search_head_weight,
+                  policy_head=args.policy_head, policy_rows=args.policy_rows,
+                  policy_eval=args.policy_eval, policy_weight=args.policy_weight,
+                  policy_listwise_weight=args.policy_listwise_weight,
+                  policy_batch_fraction=args.policy_batch_fraction,
+                  policy_rows_limit=args.policy_rows_limit,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

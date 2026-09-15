@@ -46,6 +46,35 @@ class Evaluator:
 
 
 @pytest.mark.parametrize('prior_plays', [0, 1, 2, 3])
+def test_training_bridge_encodes_immediate_not_finished_trick(monkeypatch, prior_plays):
+    from shengji.train import cwv_data
+    from shengji.harvest.rebuild import outcome_for
+    from shengji.ai.cwv_policy import afterstate
+    rnd = state()
+    for _ in range(prior_plays):
+        play(rnd)
+    seat = rnd.turn
+    action = HeuristicBot().decide_play(rnd, seat)
+    # Isolate reconstruction; exercise real bridge apply/encode and real engine.
+    monkeypatch.setattr(cwv_data, 'state_for_record', lambda record: copy.deepcopy(rnd))
+    record = dict(schema=cwv_data.SCHEMA, decision_kind='play', seat=seat,
+                  role='attacker-team' if rnd.is_attacker(seat) else 'banker-team',
+                  action=action, outcome=outcome_for(80, banker=rnd.banker, seat=seat),
+                  ply=prior_plays, source_ref='state-class-witness:0')
+    row = cwv_data.bridge_record(record)
+    immediate = afterstate(rnd, seat, rnd.hands, rnd.buried, action)
+    assert row.successor.hands == immediate.hands
+    assert row.successor.trick == immediate.trick
+    assert len(row.successor.history) == len(rnd.history) + int(prior_plays == 3)
+    if prior_plays < 3:
+        assert len(row.successor.trick.plays) == prior_plays + 1
+    ev = Evaluator()
+    continuation_values([immediate], [seat], [len(rnd.history)], evaluator=ev,
+                        tricks=0)
+    assert ev.calls[0][0][0].trick == row.successor.trick
+
+
+@pytest.mark.parametrize('prior_plays', [0, 1, 2, 3])
 @pytest.mark.parametrize('tricks', [0, 1, 2])
 def test_horizon_counts_root_trick_not_extra_trick(prior_plays, tricks):
     rnd = state()

@@ -197,6 +197,22 @@ play strength. K0 pairwise accuracy was1/3,1,1/3 on only3/4/3 strict comparator
 action pairs; k1/k2 each1 on these tiny sets. No horizon selected or promoted
 from this evidence. Three probe tests pass. Retain all rows, including errors.
 
+Actual-tree follow-up: `LeafRecorder` wraps the evaluator without changing returned
+scores, retaining at most32 leaves; full heuristic comparison runs AFTER search.
+The invariance test checks identical PUCT choices/visits/values/counters with and
+without recording. `/private/tmp/cwv-actual-puct-leaves-seed19-20260915.json`
+captures32 actual M1/prior-v2 PUCT leaves (same single diagnostic deal, root ply1,
+W8×4 sweeps/depth4). They span mid-trick and boundary states. Against2181 extra
+heuristic continuation plies, leaf mean bias=-0.3751 and RMSE=1.1679 signed levels.
+These correlated leaves from one root do NOT establish calibration or compare
+search strength. The useful capability is now measuring the actual selected
+leaf population, not assuming generic offline CE transfers to it. Four probe
+tests pass. No screen policy/runtime source changed by this recorder.
+
+Source reviews now both PASS in canonical main ledger: #438 at68f9dafe,
+#439 at2557b958. These reviewed commits remain the proposed run sources even
+as diagnostic helpers are added. Host scheduling and seed checks remain separate.
+
 ## First bounded PUCT screen request
 
 One fixed26-pair DEV comparison, same M1 outcome/prior-v2 identities as #438.

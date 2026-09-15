@@ -10,7 +10,46 @@ import time
 import numpy as np
 
 from ..ai.cwv_policy import afterstate, sample_worlds
+from ..ai.cwv_puct import leaf_copy
 from .cwv_truncated_value import continuation_values
+
+
+class LeafRecorder:
+    """Diagnostic evaluator wrapper: keep a bounded prefix of ACTUAL net leaves.
+
+    Returns the wrapped scores unchanged. No rollout/comparator work occurs
+    inside search. Prefix selection is explicit, outcome-blind and potentially
+    unrepresentative; captures are correlated, not independent game samples.
+    """
+    def __init__(self, evaluator, limit=32):
+        if type(limit) is not int or limit < 1:
+            raise ValueError('positive capture limit required')
+        self.evaluator, self.limit = evaluator, limit
+        self.rows = []
+
+    def score_many(self, states, seats):
+        scores = self.evaluator.score_many(states, seats)
+        for state, seat, score in zip(states, seats, scores, strict=True):
+            if len(self.rows) == self.limit:
+                break
+            self.rows.append((leaf_copy(state), seat, float(score)))
+        return scores
+
+    def compare_full(self, batch_size=128):
+        if not self.rows:
+            raise ValueError('no model leaves captured')
+        states, seats, predictions = zip(*self.rows)
+        out = continuation_values(states, seats, [len(s.history) for s in states],
+            evaluator=None, tricks=None, batch_size=batch_size)
+        error = np.asarray(predictions) - out.values
+        return dict(schema='cwv-actual-leaf-probe-v1', captured=len(states),
+            capture_limit=self.limit, selection='prefix-of-actual-model-leaves',
+            comparator='full-heuristic-not-optimal-policy-truth',
+            units='root-team-final-signed-levels', predictions=list(predictions),
+            full_heuristic_values=out.values.tolist(), perspectives=list(seats),
+            trick_plays=[len(s.trick.plays) if s.trick else 0 for s in states],
+            mean_bias=float(error.mean()), rmse=float(np.sqrt(np.mean(error**2))),
+            heuristic_plies=out.heuristic_plies)
 
 
 def compare_values(predicted, reference):

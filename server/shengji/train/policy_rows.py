@@ -108,9 +108,15 @@ class PolicyRows:
                 "tgt": self.tgt[idx].to(device)}
 
 
-def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float):
-    """``(bce, listwise, logits)`` of the policy head on one root batch."""
-    logits = model.policy_logits(model.features_flat(t["x"]))
+def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False):
+    """``(bce, listwise, logits)`` of the policy head on one root batch.  With
+    ``detach`` the head reads the trunk features through a stop-gradient: the
+    policy loss trains the head only and never moves the shared trunk (#425
+    step after J1: the head's recall on frozen value features at zero value cost)."""
+    features = model.features_flat(t["x"])
+    if detach:
+        features = features.detach()
+    logits = model.policy_logits(features)
     bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
     lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"]) if listwise_weight > 0 \
         else logits.sum() * 0.0

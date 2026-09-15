@@ -178,3 +178,35 @@ def test_policy_eval_excludes_ancestral_fit_and_selection_deals(store_dir, other
         train_cwv.train(out=tmp_path / "init", data=[str(store_dir)], policy_head=True,
                         policy_rows=str(train_rows), policy_eval=str(rows), policy_batch_fraction=0.5,
                         init=str(tmp_path / "anc.pt"), **kw)
+
+
+def test_policy_detach_trains_the_head_without_moving_the_trunk(store_dir, tmp_path):  # noqa: F811
+    """#425 after J1: with --policy-detach the policy loss reaches the head only.  Witness on the
+    loss function: gradients of the policy terms on the trunk are None/zero under detach and
+    non-zero without it; and a trainer run records the flag in the receipt."""
+    from shengji.train.policy_rows import policy_losses
+    cfg = ValueModelConfig(architecture="mlp", width=16, history_layers=1, attention_heads=1,
+                           feedforward_width=32, public_dim=561, enc_version=2, policy_head=True)
+    net = ValueNetwork(cfg); torch.manual_seed(1)
+    t = {"x": torch.randn(4, 833), "y": (torch.rand(4, 54) > 0.9).float(),
+         "ball": torch.full((4, 2, 3), -1, dtype=torch.int8), "mask": torch.zeros(4, 2, dtype=torch.bool),
+         "tgt": torch.full((4,), -1, dtype=torch.long)}
+    for detach in (False, True):
+        net.zero_grad(set_to_none=True)
+        bce, lw, _ = policy_losses(net, t, listwise_weight=1.0, detach=detach)
+        (bce + lw).backward()
+        trunk_grads = [p.grad for n, p in net.named_parameters() if n.startswith("trunk")]
+        head_grads = [p.grad for n, p in net.named_parameters() if n.startswith("policy_head")]
+        assert all(g is not None and g.abs().sum() > 0 for g in head_grads)
+        if detach:
+            assert all(g is None for g in trunk_grads)
+        else:
+            assert any(g is not None and g.abs().sum() > 0 for g in trunk_grads)
+    rows = tmp_path / "rows"
+    pp.extract(rows, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=200, workers=1)
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32,
+              log=None, cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2, **THIRDS)
+    r = train_cwv.train(out=tmp_path / "det", policy_head=True, policy_rows=str(rows), policy_detach=True, **kw)
+    assert r["policy_head"]["detach"] is True and r["config"]["policy_detach"] is True
+    with pytest.raises(train_cwv.TrainError, match="need --policy-head"):
+        train_cwv.train(out=tmp_path / "bad", policy_detach=True, **kw)

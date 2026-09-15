@@ -27,6 +27,27 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
+## Planned release: M1 + policy prior v2 (#435, Jerry's go 2026-09-15 18:2x ET)
+
+Play policy `mc-shortlist-12ce4415-w32-r94c1cdbf-prior-b9ff76c9-bury-hybrid-629b031628ce`:
+M1 (`3cb9cd62`) served as NumPy package `/data/models/m1-12ce4415.npz`
+(SHA256 `12ce4415a65c479b03d52a08574e14a5909b09435c1d8dddeab1726fbc1d4d4f`),
+policy prior v2 (`b6d928c5`) as `/data/models/prior-v2-b9ff76c9.npz`
+(SHA256 `b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c`, pinned by
+`SHENGJI_CWV_PRIOR_SHA256`), applied above 10,000 legal actions with top 256 per
+sampled world; hybrid bury and the 2-second bury budget unchanged. Evidence: twenty
+fresh windows of the M1 family +0.0140 [+0.0026, +0.0254] vs the previous recipe;
+the prior arm is outcome-identical to M1 (paired −0.0003 [−0.0017, +0.0012]) at
+0.79× the previous decision wall with 0 decisions over 60 s and 0 cap hits in
+365,414 (previous recipe: 161 and 7). Preconditions before `fly deploy --ha=false`:
+both packages on the volume with matching SHA256, the in-repo serving gate
+(`scripts/cwv_serving_gate.py --serving`) PASS with `qualifies_serving` on these
+exact files, `/healthz` after deploy showing the policy name and `"prior"` with the
+prior SHA. Prior-only rollback: remove the four `SHENGJI_CWV_PRIOR_*` settings and set
+`SHENGJI_BOT` to the prior-less M1 name the registry prints; full rollback: release
+24 (below) with its environment. The release number, image and health response are
+recorded here once deployed.
+
 ## Current production and rollback boundary
 
 Release **22** deployed September 9 at approximately 20:51 ET, image

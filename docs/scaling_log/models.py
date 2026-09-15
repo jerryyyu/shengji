@@ -189,3 +189,44 @@ RECORD = {
     "c684b32a":
         "scr-lr6e4: worst v2 sweep offline (0.63260); ten windows sealed 09-13 on Codex's optimised queue (perf); vs its own control enc2 -0.0137 [-0.0300, +0.0025], tau 0, MDE80 0.0232; vs vol96k tau 0, MDE80 0.0230; eleventh ten-window null: no detected difference at this precision between the worst offline model of the 72k cell and the best",
 }
+
+
+# POLICY HEADS (#419 / #425): every action prior trained so far, what it was trained on, and how it reads on ONE
+# common held-out set: the 15,517 root rows on the 1,018 TEST deals of the value split (deals no value net fit or
+# selected on; "wide" = decisions with more than 100 legal actions, 2,340 rows).  Heads trained before the split
+# correction (prior v1, v2) saw those deals, so their common-set cells are blank and their own-held-out numbers are
+# quoted in the note.  listwise CE = cross-entropy of the search's chosen action against the search's ballot (the
+# scoring rule of "which action would the search play"); BCE = the 54-card multi-hot training loss (not comparable
+# across sharpness); recall = the played action inside the head's top-k of the stored candidates.
+# fields: name, ck, kind, trunk, rows, split, epochs, weight, eval, listwise, bce, top1, top64, strata, value_cost, note
+POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weight", "eval",
+                 "listwise", "bce", "top1", "top64", "strata", "value_cost", "note")
+POLICY_HEADS = [
+("prior v1", "7da0ceab", "separate", "833-512-256-54 MLP", "1.0M", "old [0, 0.8)", "10", "1.0", "own held-out (old split)",
+ "", "", "", "", "0.951 / 0.907 / 0.919 / 0.790", "none",
+ "first prior (PR #423); trained on rows that include the value val/test deals, so not readable on the common set"),
+("prior v2", "b6d928c5", "separate", "833-512-256-54 MLP", "2.5M", "old [0, 0.8)", "15", "1.0", "own held-out (old split)",
+ "", "", "", "", "0.950 / 0.929 / 0.910 / 0.869", "none",
+ "the prior screened in play (lanes v15/v16: outcome-identical to M1, 22-25% less decision wall); same split caveat as v1"),
+("prior v3", "df9b2c58", "separate", "833-512-256-54 MLP", "2.5M", "[0.2, 1)", "15", "1.0", "common test-deal set",
+ "0.975", "0.103", "0.388", "0.947", "0.958 / 0.935 / 0.934 / 0.887", "none",
+ "the fair separate baseline (corrected split); best recall on every wide stratum"),
+("J1 head", "8662d9ba", "joint, continued from M1", "M1 trunk (residual d4)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "1.0", "common test-deal set",
+ "0.999", "0.149", "0.300", "0.925", "0.937 / 0.920 / 0.920 / 0.902", "+0.0081 vs twin",
+ "fails both #425 gates: the value head pays 4x the bound and the head trails prior v3 on every wide stratum"),
+("J2 head", "ac85d19d", "joint, continued from M1", "M1 trunk (residual d4)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "0.2", "common test-deal set",
+ "1.073", "0.165", "0.250", "0.912", "0.939 / 0.900 / 0.899 / 0.870", "+0.0018 vs twin",
+ "inside the value bound but the head is weaker still: the weight buys value quality with recall"),
+("twin head", "f39e7abc", "untrained (J1's control)", "M1 trunk (residual d4)", "1.0M forwarded", "[0.2, 1)", "4", "0.0", "common test-deal set",
+ "1.473", "0.707", "0.004", "0.267", "0.331 / 0.212 / 0.256 / 0.293", "0 (defines it)",
+ "the head never moves (weight 0): the chance floor of this eval; the value head reaches 0.59082"),
+("J3 head", "", "joint, stop-gradient", "M1 trunk (features only)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "1.0 (detached)", "common test-deal set",
+ "", "", "", "", "", "0 by construction",
+ "RUNNING (09-15 08:53 ET): the head reads the value features but cannot move them; asks whether those features carry the prior"),
+("JS-M1 head", "", "joint, from scratch", "M1 recipe (residual d4)", "1.0M", "[0.2, 1)", "20", "0.2", "common test-deal set",
+ "", "", "", "", "", "vs M1's seal",
+ "QUEUED after J3 (Jerry 09-15): co-trained from random weights on the exact M1 recipe"),
+("JS-G1 head", "", "joint, from scratch", "G1 recipe (grid trunk)", "1.0M", "[0.2, 1)", "20", "0.2", "common test-deal set",
+ "", "", "", "", "", "vs G1's seal",
+ "QUEUED after JS-M1: the same on the grid trunk (~13 h)"),
+]

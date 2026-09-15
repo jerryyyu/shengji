@@ -273,6 +273,28 @@ def registry_rows(rows):
     return "\n".join(out)
 
 
+def policy_rows(g=None):
+    """Section 7: one row per policy head (models.POLICY_HEADS), blanks rendered as an em dash."""
+    if g is None:
+        src = open(MODELS).read()
+        g = {}
+        exec(compile(src, MODELS, "exec"), g)
+    heads = [dict(zip(g["POLICY_FIELDS"], row)) for row in g["POLICY_HEADS"]]
+    for h in heads:
+        if len(h) != len(g["POLICY_FIELDS"]):
+            raise SystemExit(f"policy head {h.get('name')}: wrong field count")
+    cell = lambda v, cls="n": f'<td class="{cls}">{html.escape(str(v)) if v else "&mdash;"}</td>'
+    out = []
+    for h in heads:
+        ck = f'<br><span class="mono null">{h["ck"]}</span>' if h["ck"] else ""
+        out.append(
+            f'<tr><td><b>{html.escape(h["name"])}</b>{ck}</td><td>{html.escape(h["kind"])}</td><td>{html.escape(h["trunk"])}</td>'
+            + cell(h["rows"]) + cell(h["split"]) + cell(h["epochs"]) + cell(h["weight"]) + f'<td>{html.escape(h["eval"])}</td>'
+            + cell(h["listwise"]) + cell(h["bce"]) + cell(h["top1"]) + cell(h["top64"]) + cell(h["strata"]) + cell(h["value_cost"])
+            + f'<td class="null note">{html.escape(h["note"])}</td></tr>')
+    return "\n".join(out), heads
+
+
 def day_rows(rows, table_only):
     charted = [r for r in rows if r["ck"] not in table_only and r["ce"]]
     days = sorted({r["tr"].lstrip("~") for r in charted})
@@ -429,6 +451,10 @@ def render(rows=None, table_only=None, series=None):
         "BIG_CLAUSE": ", more than every day since combined" if c["big_beats_rest"] else "",
         "REGISTRY": registry_rows(rows), "DAYROWS": day_rows(rows, table_only),
     }
+    policy_html, policy_heads = policy_rows()
+    subs["POLICYROWS"] = policy_html
+    subs["N_POLICY"] = len(policy_heads)
+    subs["N_POLICY_COMMON"] = sum(1 for h in policy_heads if h["listwise"])
     for i, svg in enumerate(svgs, 1):
         subs[f"SVG{i}"] = svg
     for k, v in subs.items():

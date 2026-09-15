@@ -340,6 +340,32 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   direction on a multi-window instrument.</p>
 </section>
 
+<section>
+  <h2 class="sec">7 &middot; Policy heads</h2>
+  <p class="cap">Every action prior trained so far ({{N_POLICY}} heads, {{N_POLICY_COMMON}} readable on one common
+  set), with what each was trained on. <b>Separate</b> heads are the #419 prior: a small MLP on the same 833 root
+  inputs; <b>joint</b> heads sit on a value net&#8217;s trunk (#425). <b>Root rows</b> are decision roots from the
+  mover&#8217;s seat with the action the search played and the ballot it ranked; <b>split</b> is the slice of the value
+  split&#8217;s hash order they came from (test is [0, 0.1), val [0.1, 0.2), train the rest), so only heads trained
+  on [0.2, 1) are held out from the common set. The common set is 15,517 rows on the 1,018 test deals; <b>wide</b> means
+  more than 100 legal actions (2,340 rows). <b>Listwise CE</b> is the cross-entropy of the search&#8217;s chosen action
+  against the ballot the search ranked, the scoring rule for &#8220;which action would the search play&#8221;; the
+  <b>BCE</b> column is the 54-card multi-hot training loss and is not comparable across heads; <b>recall</b> is the
+  played action inside the head&#8217;s top-k of the stored candidates on wide rows, and the four <b>strata</b> are
+  top-64 on exhaustive 101&#8211;1k, partial 101&#8211;1k, 1k&#8211;10k and 10k+ (deal counts 532 / 497 / 455 / 67).
+  Top-256 is 0.999 for every trained head and 0.996 for the untrained one, because records keep at most 256 candidates:
+  the consumer&#8217;s operating point (256 of thousands per world) is invisible offline, which is why the prior arm played
+  M1&#8217;s lines in the screens. <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
+  <div class="tw"><table class="sortable">
+<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Value cost</th><th>Note</th></tr></thead>
+<tbody>
+{{POLICYROWS}}
+</tbody></table></div>
+  <p class="cap">Reading: more root rows and more epochs win (prior v3 saw 2.5M rows for 15 epochs; the joint heads
+  1M for 4, held in memory as float16 on the Mini); the joint heads so far pay for their recall in value quality unless the
+  gradient is stopped. The runs marked running or queued fill in as they seal.</p>
+</section>
+
 <footer>
   Scope: the complete-world value net only. An earlier v0 two-head network (531-dim observation,
   a value head plus a 60-way action prior) has 46 further checkpoints on disk; its inputs, outputs

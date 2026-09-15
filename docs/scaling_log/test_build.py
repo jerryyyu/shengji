@@ -483,3 +483,22 @@ def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_tex
     monkeypatch.setattr(build, "MODELS", bad)
     with pytest.raises(ValueError, match="RECORD repeats eedf3139"):
         build.load()
+
+
+def test_policy_head_section_lists_every_head_and_blanks_unreadable_cells(data):
+    """Section 7 (Jerry 09-15): every POLICY_HEADS row renders; heads trained before the split correction have
+    blank common-set cells; the common-set count matches the rows with a listwise number; the numbers in the
+    source are the numbers on the page."""
+    page, _ = _render(*data)
+    html_rows, heads = build.policy_rows()
+    assert "7 &middot; Policy heads" in page and html_rows in page
+    assert f"({len(heads)} heads" in page
+    common = [h for h in heads if h["listwise"]]
+    assert f"{len(common)} readable on one common" in page
+    v1 = next(h for h in heads if h["name"] == "prior v1")
+    assert v1["listwise"] == "" and v1["top64"] == "" and "old" in v1["split"]
+    v3 = next(h for h in heads if h["name"] == "prior v3")
+    assert v3["split"] == "[0.2, 1)" and v3["top64"] == "0.947" and "0.947" in page
+    assert all(h["value_cost"] for h in heads)                     # every head states its value cost
+    with pytest.raises(SystemExit):                                # a short row is refused, never rendered blank
+        build.policy_rows({"POLICY_FIELDS": ("name", "ck"), "POLICY_HEADS": [("x",)]})

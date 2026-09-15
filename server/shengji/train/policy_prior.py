@@ -111,6 +111,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
     rows: list[tuple] = []
     first = True
     deal = ""
+    key = ""
     for rec in iter_records(ShardRef(path=path, label="", sha256="", records=None, cluster=None, store="")):
         if rec.get("decision_kind") != "play":
             continue
@@ -127,6 +128,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
             continue
         if first:
             deal = deal_id(root)
+            key = deal_key(list(root.deck))       # the exposure system's identity (#428)
         first = False
         seat = int(rec["seat"])
         if root.phase != "play" or root.turn != seat:
@@ -143,7 +145,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
             legal = keep
         rows.append((x, y, n_legal, [cards_to_idx(a) for a in legal],
                      [cards_to_idx(a) for a in rec.get("ballot", [])], cards_to_idx(rec["action"]),
-                     bool(rec.get("legal_actions_complete", True)), deal))
+                     bool(rec.get("legal_actions_complete", True)), deal, key))
     return rows
 
 
@@ -160,10 +162,10 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     X, Y, meta = [], [], []
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed) for p in paths], chunksize=4):
-            for x, y, n, legal, ballot, taken, complete, deal in got:
+            for x, y, n, legal, ballot, taken, complete, deal, key in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
-                             "deal": deal})
+                             "deal": deal, "deal_key": key})
             if len(X) >= max_rows:
                 ex.shutdown(cancel_futures=True)
                 break

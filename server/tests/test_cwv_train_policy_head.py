@@ -11,7 +11,9 @@ import torch
 from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 from shengji.train import policy_prior as pp
 from shengji.train import train_cwv
-from tests.test_cwv_train import THIRDS, store_dir, records  # noqa: F401
+from tests.test_cwv_train import THIRDS, store_dir, other_dir, records  # noqa: F401
+from shengji.train.policy_rows import PolicyRows
+from shengji.train.train_cwv import exposure_sets
 
 
 def test_policy_head_config_is_optional_in_the_payload_and_builds_the_module():
@@ -59,8 +61,17 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     assert joint["model"]["config"]["policy_head"] is True
     assert joint["init"]["policy_head_fresh"] is True and joint["init"]["aux_points_head_loaded"] is True
     block = joint["policy_head"]
-    assert block["twin"] is False and block["root_batch"] == 32 and block["rows"]["rows_used"] > 20
-    assert block["rows"]["deals"] >= 1 and block["eval"]["rows"] == block["rows"]["rows_available"]
+    assert block["twin"] is False and block["root_batch"] == 32 and block["rows"]["rows_used"] > 0
+    # Codex HOLD on #428: root rows share the value store's three deals (train/val/test), so the
+    # rows on the val/test deals and on the policy-eval deals are DROPPED, the kept root deals
+    # are inside the exposure's fit set, and the policy eval keeps only deals the trunk never fit.
+    rows_id, eval_id = block["rows"], block["eval"]
+    assert rows_id["rows_excluded"] > 0 and rows_id["deals_excluded"] >= 2
+    assert rows_id["rows_used"] + rows_id["rows_excluded"] == rows_id["rows_read"]
+    assert eval_id["rows_excluded"] > 0 and eval_id["deals"] == 2          # the val + test deals
+    assert block["root_fit_deals"] == 1 and block["root_only_fit_deals"] == 0
+    fit = exposure_sets(joint["exposure"])["fit"]
+    assert set(joint["population"]["train"]) <= fit and len(fit) == 1
     tr = joint["epochs"][0]["train"]
     assert tr["policy_rows"] > 0 and tr["policy_bce"] > 0 and tr["policy_listwise"] >= 0
     val = joint["epochs"][0]["val"]["policy"]
@@ -88,3 +99,50 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     # weight 0: the trunk received no policy gradient, so the two nets diverge only through it
     assert not torch.allclose(tw.state_dict()["head.weight"], model.state_dict()["head.weight"])
     assert twin["epochs"][0]["train"]["policy_bce"] is not None      # forwarded and measured, not trained
+
+
+def test_root_rows_refuse_metadata_without_deal_keys(tmp_path):
+    rng = np.random.default_rng(0)
+    np.savez_compressed(tmp_path / "r.npz", X=rng.standard_normal((3, pp.INPUT_DIM)).astype(np.float32),
+                        Y=np.zeros((3, 54), np.float32))
+    with open(tmp_path / "r.meta.jsonl", "w") as fh:
+        for _ in range(3):
+            fh.write(json.dumps({"n_legal": 2, "legal": [[0], [1]], "ballot": [[0]], "taken": [0],
+                                 "complete": True, "deal": "a" * 16}) + "\n")
+    with pytest.raises(ValueError, match="deal_key"):
+        PolicyRows(tmp_path / "r")
+    with open(tmp_path / "r.meta.jsonl", "w") as fh:
+        for _ in range(3):
+            fh.write(json.dumps({"n_legal": 2, "legal": [[0], [1]], "ballot": [[0]], "taken": [0],
+                                 "complete": True, "deal": "a" * 16, "deal_key": "deck:" + "a" * 64}) + "\n")
+    rows = PolicyRows(tmp_path / "r", exclude={"deck:" + "b" * 64})
+    assert rows.n == 3 and rows.identity["rows_excluded"] == 0 and rows.deal_keys == {"deck:" + "a" * 64}
+    with pytest.raises(ValueError, match="excluded"):
+        PolicyRows(tmp_path / "r", exclude={"deck:" + "a" * 64})
+
+
+def test_disjoint_root_store_joins_the_exposure_and_a_later_warm_start_sees_it(
+        store_dir, other_dir, tmp_path):  # noqa: F811
+    """Root rows from a DIFFERENT store: nothing is dropped, their deals are fit exposure beyond
+    the value population, and a headless run on that store warm-starting from the joint
+    checkpoint is refused because its val/test deals were root-fit."""
+    out = tmp_path / "rows"
+    pp.extract(out, [str(other_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1)
+    kw = dict(arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32, log=None,
+              cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=2, **THIRDS)
+    joint = train_cwv.train(out=tmp_path / "joint", data=[str(store_dir)], policy_head=True,
+                            policy_rows=str(out), policy_batch_fraction=0.5, **kw)
+    block = joint["policy_head"]
+    assert block["rows"]["rows_excluded"] == 0 and block["root_only_fit_deals"] == block["root_fit_deals"] >= 1
+    fit = exposure_sets(joint["exposure"])["fit"]
+    assert len(fit) == len(joint["population"]["train"]) + block["root_fit_deals"]
+    # A later run whose val/test contains the root-fit deal (a seed under which the combined
+    # stores put it there) is refused by the ancestral exposure check.
+    from shengji.train.data import split_deals
+    root_deal = next(iter(fit - set(joint["population"]["train"])))
+    all_keys = sorted(fit | set(joint["population"]["val"]) | set(joint["population"]["test"]))
+    seed = next(s for s in range(1, 400)
+                if split_deals(all_keys, seed=s, **THIRDS).get(root_deal) in ("val", "test"))
+    with pytest.raises(train_cwv.TrainError, match="fit on land in this run's val|fit-or-selected"):
+        train_cwv.train(out=tmp_path / "later", data=[str(store_dir), str(other_dir)],
+                        init=str(tmp_path / "joint" / "best.pt"), **{**kw, "seed": seed})

@@ -1595,12 +1595,43 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
     population = fit_population(assignment, stores=prepared.stores)
+    # #425/#428: root rows are FIT exposure (their loss updates the shared trunk).
+    # They are read here, against this run's split: rows in val/test or in the
+    # policy-eval deals are dropped, the kept deals join the exposure's fit set
+    # (so holdouts, ancestry and future warm starts see them), and policy-eval
+    # rows on value-fit deals are dropped so its recall is on unseen deals.
+    policy_data = policy_evalset = None
+    policy_batch = 0
+    root_fit: set[str] = set()
+    if policy_head:
+        from .policy_rows import PolicyEval, PolicyRows
+        value_fit = set(population["train"])
+        held = set(population["val"]) | set(population["test"])
+        if policy_eval:
+            policy_evalset = PolicyEval(policy_eval, exclude=value_fit)
+            held |= set(policy_evalset.deal_keys)
+        policy_data = PolicyRows(policy_rows, limit=policy_rows_limit, exclude=held)
+        root_fit = set(policy_data.deal_keys)
+        assert not root_fit & held
+        policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
+        pd_ = policy_data.identity
+        say(f"policy rows: {pd_['rows_used']} of {pd_['rows_read']} read "
+            f"({pd_['rows_excluded']} rows / {pd_['deals_excluded']} deals dropped as val/test/eval); "
+            f"{pd_['deals']} root fit deals ({len(root_fit - value_fit)} beyond the value fit); "
+            f"{policy_data.in_ballot} with a ballot target; root batch {policy_batch} per value batch "
+            f"{batch_size}; weight {policy_weight} (listwise {policy_listwise_weight})"
+            f"{' [TWIN: policy loss off]' if float(policy_weight) == 0 else ''}")
+        if policy_evalset is not None:
+            pe_ = policy_evalset.identity
+            say(f"policy eval: {pe_['rows']} rows / {pe_['deals']} deals "
+                f"({pe_['rows_excluded']} rows on value-fit deals dropped)")
     if source_exposure is None:
-        exposure = exposure_block(population["train"], population["val"])
+        exposure = exposure_block(set(population["train"]) | root_fit, population["val"])
     else:
         src = exposure_sets(source_exposure)
         exposure = exposure_block(
-            src["fit"] | set(population["train"]), src["selection"] | set(population["val"]),
+            src["fit"] | set(population["train"]) | root_fit,
+            src["selection"] | set(population["val"]),
             ancestors=[*source_exposure.get("ancestors", []),
                        {"path": str(Path(init).resolve()), "sha256": file_sha256(init),
                         "epoch": init_loaded[1].get("epoch"),
@@ -1609,7 +1640,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         assert not set(population["val"]) & src["fit"]
         assert not set(population["test"]) & (src["fit"] | src["selection"])
     say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
-        f"deals (ancestors {len(exposure['ancestors'])})")
+        f"deals (ancestors {len(exposure['ancestors'])}; root-only fit {len(root_fit - set(population['train']))})")
     baselines = fit_baselines(store, masks["train"])
     say(f"baselines: stratified prior n={baselines['stratified_prior']['n']} "
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
@@ -1688,19 +1719,6 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
     consumer = consumer_block(select_metric, aux_points, search_head, policy_head)
-    policy_data = policy_evalset = None
-    policy_batch = 0
-    if policy_head:
-        from .policy_rows import PolicyEval, PolicyRows
-        policy_data = PolicyRows(policy_rows, limit=policy_rows_limit)
-        policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
-        say(f"policy rows: {policy_data.n} of {policy_data.identity['rows_available']} "
-            f"({policy_data.deals} deals, {policy_data.in_ballot} with a ballot target); "
-            f"root batch {policy_batch} per value batch {batch_size}; weight {policy_weight} "
-            f"(listwise {policy_listwise_weight}){' [TWIN: policy loss off]' if float(policy_weight) == 0 else ''}")
-        if policy_eval:
-            policy_evalset = PolicyEval(policy_eval)
-            say(f"policy eval: {policy_evalset.identity['rows']} rows, {policy_evalset.identity['deals']} deals")
     policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
@@ -1788,6 +1806,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             "rows": policy_data.identity,
             "eval": None if policy_evalset is None else policy_evalset.identity,
             "twin": float(policy_weight) == 0.0,
+            "root_fit_deals": len(root_fit), "root_only_fit_deals": len(root_fit - set(population["train"])),
+            "exposure_rule": "root deals are fit exposure: rows in this run's val/test or policy-eval "
+                             "deals are dropped, kept deals are unioned into exposure.fit (checked "
+                             "by holdouts and by every later --init)",
             "note": "#425: a 54-card head on the same trunk trained on ROOT rows from the "
                     "mover's seat (policy_prior.extract: BCE on the played action's multi-hot "
                     "+ listwise CE against the search ballot); one root batch per value "

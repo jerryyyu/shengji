@@ -61,6 +61,8 @@ M = [
  "","","QUEUED","M2: S-d4-176k cell with --encoder-version 4, no search head; +0.0002 vs the v2 twin: v4 buys nothing offline at 176k either; capped screen queued"),
 ("M3: encoder v4 + two heads on the S-d4 cell, 176k","dd85a21d","2026-09-14","v4",330,"3e-4","176k","25,388,708","0.59689","0.0316",
  "","","5w +0.0260 [+0.0025, +0.0495]","M3 = M2 + the search-mean head; five capped windows clear zero (nominal), paired vs M1 +0.009 null: extension dropped; + throw paired -0.0168 null"),
+("J3: stop-gradient policy head on M1, continued 4 epochs","cad530e4","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59082","0.0325",
+ "","","QUEUED","J3 (#425): the head reads M1's value features through a stop-gradient; value side = the twin exactly; head trails prior v3 by 0.04-0.09 on wide strata"),
 ("M1c: M1 continued 4 epochs, no policy loss (J1's twin)","f39e7abc","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59082","0.0325",
  "","","QUEUED","J1's TWIN (#425): M1 warm-started, same batches and steps as J1, policy loss off; val_ce 0.59082 = -0.0066 vs M1, regret@4 0.0325; not screened"),
 ("J1: M1 + a policy head, continued 4 epochs","8662d9ba","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59895","0.0336",
@@ -113,7 +115,7 @@ M += [
 ]
 # Per-checkpoint parameter counts read from the receipt where the width->parameters map
 # (charts.py PAR, one trunk + one head) does not apply: M1 carries a second 204-class head.
-PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532}
+PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532}
 
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
 
@@ -138,6 +140,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "cad530e4":
+        "J3 = the STOP-GRADIENT joint test (#425, PR #432 --policy-detach): M1 warm-started with every weight, the same batches, root batches and steps as J1 and the twin, policy weight 1 but the policy loss cannot reach the trunk (the head reads the value features through a stop-gradient). 4 epochs, lr 1.5e-4; trained 09-15 08:53 -> 11:49 ET (wall 10,518 s); sealed 11:49 ET. Value side: val_ce 0.5920 / 0.5933 / 0.5908 / 0.5929, best epoch 3 = 0.59082, regret@4 0.0325, search head 0.0261, holdouts 0.0749 / 0.0934 / 0.1055 / 0.0288 -- identical to the twin to four decimals, the zero-value-cost design holding. Policy head on the 15,517 common test-deal rows: listwise CE 1.381 (prior v3 0.975, J1 0.999, J2 1.073, untrained 1.473), BCE 0.175, top-1 wide 0.211, top-64 wide 0.888; strata 0.919 / 0.889 / 0.854 / 0.870. Paired deal bootstrap vs prior v3 (top-64): 21-100 -0.001 [-0.006, +0.005]; exhaustive 101-1k -0.041 [-0.063, -0.020]; partial 101-1k -0.047 [-0.071, -0.024]; 1k-10k -0.091 [-0.118, -0.063]; 10k+ -0.065 [-0.133, 0.000] -- inferior on three wide strata, non-inferiority shown on none. Read: frozen value features do not carry the action prior; a competitive joint head must shape the trunk (which J1 showed costs value quality at weight 1) or get more data and capacity (the from-scratch runs on all 20.3M root rows test the data side). Inference 2.39 ms per 1,024 (cpu). Not screened.",
     "f39e7abc":
         "M1c = J1's TWIN (#425 4.1 matched control): M1 warm-started with every weight, the SAME value batches, root batches and optimizer steps as J1, with the policy loss weighted 0 (the policy head exists as a module, 653,532 params, but never moves: its recall stays at the untrained 0.32 / 0.21 / 0.26 / 0.30). 4 epochs, lr 1.5e-4; trained 09-15 03:43 -> 06:08 ET (wall 8,696 s); sealed 06:08 ET. Best epoch 3/4: OUTCOME val_ce 0.59082 = -0.0066 vs M1's seal (0.59746) -- continued training on the same corpus at half the learning rate improves the evaluator by itself, the best val_ce in the M1 family; epoch trace 0.5920 / 0.5933 / 0.5908 / 0.5929; outcome regret@4 0.0325 / recall@4 0.730 (M1 0.0298 / 0.737: the proposer metric moves the other way); search head regret@4 0.0261 (M1 0.0244); points MAE 11.4; holdouts rank regret room-log 0.0749 (M1 0.0737), luna 0.0934 (0.0896), high-N 0.1055 (0.1068), PT1 0.0288 (0.0361). Inference 2.06 ms per 1,024 on cpu. Exposure identical to M1 (fit 140,800 / selection 17,600; root-only fit 0). READ against J1 (same steps, policy weight 1, val_ce 0.59895): the policy objective costs the outcome head +0.0081, four times the +0.002 diagnostic bound; the joint head's recall was bought with value quality. Next in #425: J2 (policy weight 0.2, queued 06:2x ET behind prior v3) and, if the cost persists, a stop-gradient head. Not screened: a candidate evaluator only if regret@4 is not the operative metric, which the shortlist screens have not settled.",
     "8662d9ba":
@@ -220,13 +224,13 @@ POLICY_HEADS = [
 ("twin head", "f39e7abc", "untrained (J1's control)", "M1 trunk (residual d4)", "1.0M forwarded", "[0.2, 1)", "4", "0.0", "common test-deal set",
  "1.473", "0.707", "0.004", "0.267", "0.331 / 0.212 / 0.256 / 0.293", "0 (defines it)",
  "the head never moves (weight 0): the chance floor of this eval; the value head reaches 0.59082"),
-("J3 head", "", "joint, stop-gradient", "M1 trunk (features only)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "1.0 (detached)", "common test-deal set",
- "", "", "", "", "", "0 by construction",
- "RUNNING (09-15 08:53 ET): the head reads the value features but cannot move them; asks whether those features carry the prior"),
-("JS-M1 head", "", "joint, from scratch", "M1 recipe (residual d4)", "1.0M", "[0.2, 1)", "20", "0.2", "common test-deal set",
+("J3 head", "cad530e4", "joint, stop-gradient", "M1 trunk (features only)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "1.0 (detached)", "common test-deal set",
+ "1.381", "0.175", "0.211", "0.888", "0.919 / 0.889 / 0.854 / 0.870", "0 by construction (value side = twin)",
+ "frozen value features do not carry the prior: vs v3 -0.041 [-0.063, -0.020], -0.047 [-0.071, -0.024], -0.091 [-0.118, -0.063], -0.065 [-0.133, 0.000]"),
+("JS-M1 head", "", "joint, from scratch", "M1 recipe (residual d4)", "20.3M streamed", "[0.2, 1)", "20", "0.2", "common test-deal set",
  "", "", "", "", "", "vs M1's seal",
- "QUEUED after J3 (Jerry 09-15): co-trained from random weights on the exact M1 recipe"),
-("JS-G1 head", "", "joint, from scratch", "G1 recipe (grid trunk)", "1.0M", "[0.2, 1)", "20", "0.2", "common test-deal set",
+ "RUNNING (09-15 11:49 ET): co-trained from random weights on the exact M1 recipe with EVERY root decision streamed (#437)"),
+("JS-G1 head", "", "joint, from scratch", "G1 recipe (grid trunk)", "20.3M streamed", "[0.2, 1)", "20", "0.2", "common test-deal set",
  "", "", "", "", "", "vs G1's seal",
  "QUEUED after JS-M1: the same on the grid trunk (~13 h)"),
 ]

@@ -91,6 +91,13 @@ def cards_to_idx(cards: Sequence[str]) -> list[int]:
     return [CARD_INDEX[c] for c in cards]
 
 
+def deal_id(rnd) -> str:
+    """A stable 16-hex id of the deal (the deck), written into every row's
+    metadata so evaluation can resample whole deals (Codex on #425: decisions of
+    one game are correlated; a row bootstrap understates the uncertainty)."""
+    return hashlib.sha256(deal_key(list(rnd.deck)).encode()).hexdigest()[:16]
+
+
 def deal_fraction(rnd) -> float:
     """The split hash of ``cwv_data.split_deals`` (seed 1) as a fraction in [0, 1)."""
     return int(hashlib.sha256(f"1|{deal_key(list(rnd.deck))}".encode()).hexdigest(), 16) / 16 ** 64
@@ -103,6 +110,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
     rng = random.Random(f"{seed}|{path}")
     rows: list[tuple] = []
     first = True
+    deal = ""
     for rec in iter_records(ShardRef(path=path, label="", sha256="", records=None, cluster=None, store="")):
         if rec.get("decision_kind") != "play":
             continue
@@ -117,6 +125,8 @@ def _shard_rows(args: tuple) -> list[tuple]:
             if first:
                 return []            # a shard is one deal: the whole shard is out of the split
             continue
+        if first:
+            deal = deal_id(root)
         first = False
         seat = int(rec["seat"])
         if root.phase != "play" or root.turn != seat:
@@ -133,7 +143,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
             legal = keep
         rows.append((x, y, n_legal, [cards_to_idx(a) for a in legal],
                      [cards_to_idx(a) for a in rec.get("ballot", [])], cards_to_idx(rec["action"]),
-                     bool(rec.get("legal_actions_complete", True))))
+                     bool(rec.get("legal_actions_complete", True)), deal))
     return rows
 
 
@@ -150,9 +160,10 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     X, Y, meta = [], [], []
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed) for p in paths], chunksize=4):
-            for x, y, n, legal, ballot, taken, complete in got:
+            for x, y, n, legal, ballot, taken, complete, deal in got:
                 X.append(x); Y.append(y)
-                meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete})
+                meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
+                             "deal": deal})
             if len(X) >= max_rows:
                 ex.shutdown(cancel_futures=True)
                 break
@@ -167,7 +178,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     summary = {"rows": int(len(Xa)), "mean_legal": float(np.mean([m["n_legal"] for m in meta])),
                "max_legal": int(max(m["n_legal"] for m in meta)),
                "sampled_rows": int(sum(m["n_legal"] > MAX_LEGAL for m in meta)),
-               "incomplete_rows": int(sum(not m["complete"] for m in meta))}
+               "incomplete_rows": int(sum(not m["complete"] for m in meta)),
+               "deals": len({m["deal"] for m in meta})}
     with open(str(out) + ".summary.json", "w") as fh:
         json.dump(summary, fh, indent=1)
     return summary
@@ -306,16 +318,18 @@ def evaluate(checkpoint: str | Path, test: str | Path, *, log=print) -> dict:
     d = np.load(str(test) + ".npz"); X = d["X"]
     meta = [json.loads(l) for l in open(str(test) + ".meta.jsonl")]
     lo = predict_log_odds(net, payload, X)
-    strata = {"exhaustive": {}, "partial": {}}
-    counters = {"rows": len(meta), "no_legal_list": 0, "missing_target": {"exhaustive": 0, "partial": 0},
-                "ranked": {"exhaustive": 0, "partial": 0}}
-    def bucket_stats():
-        return {"n": 0, "taken": {N: 0 for N in TOP_NS}, "ballot_rows": 0, "ballot": {N: 0 for N in TOP_NS},
-                "rand_same": {N: 0.0 for N in TOP_NS}, "rand_full": {N: 0.0 for N in TOP_NS}}
+    return _report(_rank_rows(lo, meta), len(meta), log)
+
+
+def _rank_rows(lo: np.ndarray, meta: Sequence[Mapping[str, Any]]) -> list[dict]:
+    """One record per ranked row: stratum, bucket, deal id, the played action's
+    rank, the ranked universe size, the true legal count and the ballot's worst
+    rank; plus the counter rows (no legal list / missing target) flagged."""
+    out = []
     for i, m in enumerate(meta):
         legal = m["legal"]
         if not legal:
-            counters["no_legal_list"] += 1
+            out.append({"skip": "no_legal_list"})
             continue
         nL = int(m["n_legal"])
         stratum = "exhaustive" if (m.get("complete", True) and nL <= MAX_LEGAL and len(legal) >= nL) else "partial"
@@ -325,39 +339,106 @@ def evaluate(checkpoint: str | Path, test: str | Path, *, log=print) -> dict:
         try:
             r_taken = keys.index(tuple(sorted(m["taken"])))
         except ValueError:
-            counters["missing_target"][stratum] += 1
+            out.append({"skip": "missing_target", "stratum": stratum})
             continue
-        counters["ranked"][stratum] += 1
-        b = next(bb for bb in BUCKETS if bb[0] <= nL <= bb[1])
-        s = strata[stratum].setdefault(b, bucket_stats()); s["n"] += 1
-        universe = len(keys)
-        for N in TOP_NS:
-            s["taken"][N] += r_taken < N
-            s["rand_same"][N] += min(1.0, N / universe)
-            s["rand_full"][N] += min(1.0, N / max(nL, 1))
         bal = [tuple(sorted(a)) for a in m["ballot"] if a]
-        if bal:
+        pos = {k: r for r, k in enumerate(keys)}
+        out.append({"stratum": stratum, "bucket": next(bb for bb in BUCKETS if bb[0] <= nL <= bb[1]),
+                    "deal": m.get("deal", ""), "r_taken": r_taken, "universe": len(keys), "n_legal": nL,
+                    "ballot_worst": (max(pos.get(k, 10 ** 9) for k in bal) if bal else None)})
+    return out
+
+
+def _report(rows: list[dict], n_rows: int, log) -> dict:
+    strata = {"exhaustive": {}, "partial": {}}
+    counters = {"rows": n_rows, "no_legal_list": 0, "missing_target": {"exhaustive": 0, "partial": 0},
+                "ranked": {"exhaustive": 0, "partial": 0}}
+    def bucket_stats():
+        return {"n": 0, "deals": set(), "taken": {N: 0 for N in TOP_NS}, "ballot_rows": 0, "ballot": {N: 0 for N in TOP_NS},
+                "rand_same": {N: 0.0 for N in TOP_NS}, "rand_full": {N: 0.0 for N in TOP_NS}}
+    for r in rows:
+        if r.get("skip") == "no_legal_list":
+            counters["no_legal_list"] += 1
+            continue
+        if r.get("skip") == "missing_target":
+            counters["missing_target"][r["stratum"]] += 1
+            continue
+        counters["ranked"][r["stratum"]] += 1
+        s = strata[r["stratum"]].setdefault(r["bucket"], bucket_stats()); s["n"] += 1; s["deals"].add(r["deal"])
+        for N in TOP_NS:
+            s["taken"][N] += r["r_taken"] < N
+            s["rand_same"][N] += min(1.0, N / r["universe"])
+            s["rand_full"][N] += min(1.0, N / max(r["n_legal"], 1))
+        if r["ballot_worst"] is not None:
             s["ballot_rows"] += 1
             for N in TOP_NS:
-                top = set(keys[:N]); s["ballot"][N] += all(k in top for k in bal)
+                s["ballot"][N] += r["ballot_worst"] < N
     report = {"counters": counters, "strata": {}}
     lines = [f"rows {counters['rows']} · no legal list {counters['no_legal_list']} · ranked exhaustive {counters['ranked']['exhaustive']} / partial {counters['ranked']['partial']} · missing target exhaustive {counters['missing_target']['exhaustive']} / partial {counters['missing_target']['partial']}"]
     for name in ("exhaustive", "partial"):
         recs = []
-        lines.append(f"\n[{name}] legal-count bucket   rows  " + " ".join(f"top{N:<4d}" for N in TOP_NS) + " | rand64 same-universe | rand64 full (ref) | ballot in top256")
+        lines.append(f"\n[{name}] legal-count bucket   rows  deals " + " ".join(f"top{N:<4d}" for N in TOP_NS) + " | rand64 same-universe | rand64 full (ref) | ballot in top256")
         for b in BUCKETS:
             s = strata[name].get(b)
             if not s:
                 continue
-            rec = {"bucket": list(b), "rows": s["n"], "taken_recall": {str(N): s["taken"][N] / s["n"] for N in TOP_NS},
+            rec = {"bucket": list(b), "rows": s["n"], "deals": len(s["deals"]), "taken_recall": {str(N): s["taken"][N] / s["n"] for N in TOP_NS},
                    "ballot_survival": {str(N): (s["ballot"][N] / s["ballot_rows"] if s["ballot_rows"] else None) for N in TOP_NS},
                    "random_same_universe": {str(N): s["rand_same"][N] / s["n"] for N in TOP_NS},
                    "random_full_universe_reference": {str(N): s["rand_full"][N] / s["n"] for N in TOP_NS}}
             recs.append(rec)
             bs = (s["ballot"][256] / s["ballot_rows"]) if s["ballot_rows"] else float("nan")
-            lines.append(f"{b[0]:>6}-{min(b[1], 10**6):<7} {s['n']:6d}  " + " ".join(f"{s['taken'][N] / s['n']:7.3f}" for N in TOP_NS)
+            lines.append(f"{b[0]:>6}-{min(b[1], 10**6):<7} {s['n']:6d} {len(s['deals']):5d} " + " ".join(f"{s['taken'][N] / s['n']:7.3f}" for N in TOP_NS)
                          + f" | {s['rand_same'][64] / s['n']:6.3f} | {s['rand_full'][64] / s['n']:6.3f} | {bs:.3f}")
         report["strata"][name] = recs
+    report["text"] = "\n".join(lines)
+    if log:
+        log(report["text"])
+    return report
+
+
+def compare(baseline: str | Path, candidate: str | Path, test: str | Path, *, top: int = 64,
+            margin: float = -0.02, n_boot: int = 1000, seed: int = 1, log=print) -> dict:
+    """Paired non-inferiority read of ``candidate`` against ``baseline`` on the
+    same rows: per stratum and bucket, the difference in top-``top`` recall of the
+    played action, with a percentile interval from resampling whole DEALS (never
+    rows: the decisions of one game are correlated).  ``pass`` = the interval's
+    lower bound is above ``margin``.  Refuses metadata without deal ids."""
+    d = np.load(str(test) + ".npz"); X = d["X"]
+    meta = [json.loads(l) for l in open(str(test) + ".meta.jsonl")]
+    if any(not m.get("deal") for m in meta):
+        raise PolicyPriorError("compare needs deal ids in the metadata (re-extract with this module)")
+    ranked = []
+    for ck in (baseline, candidate):
+        net, payload = load_prior(ck)
+        ranked.append(_rank_rows(predict_log_odds(net, payload, X), meta))
+    cells: dict[tuple, dict] = {}
+    for ra, rb in zip(*ranked):
+        if ra.get("skip") or rb.get("skip"):
+            continue
+        assert ra["deal"] == rb["deal"] and ra["stratum"] == rb["stratum"]
+        c = cells.setdefault((ra["stratum"], ra["bucket"]), {})
+        hit = c.setdefault(ra["deal"], [0, 0, 0])      # rows, base hits, cand hits
+        hit[0] += 1; hit[1] += ra["r_taken"] < top; hit[2] += rb["r_taken"] < top
+    rng = np.random.default_rng(seed)
+    report = {"top": top, "margin": margin, "n_boot": n_boot, "cells": []}
+    lines = [f"paired deal bootstrap · top{top} recall · candidate − baseline · margin {margin:+.3f} · {n_boot} resamples",
+             f"{'stratum':>10} {'bucket':>14} {'rows':>6} {'deals':>6} {'base':>7} {'cand':>7} {'diff':>8} {'lo':>8} {'hi':>8}  verdict"]
+    for (stratum, b), deals in sorted(cells.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        arr = np.array(list(deals.values()), dtype=np.float64)        # deals × (rows, base, cand)
+        n_rows = arr[:, 0].sum(); base = arr[:, 1].sum() / n_rows; cand = arr[:, 2].sum() / n_rows
+        diffs = []
+        for _ in range(n_boot):
+            pick = arr[rng.integers(0, len(arr), len(arr))]
+            diffs.append((pick[:, 2].sum() - pick[:, 1].sum()) / pick[:, 0].sum())
+        lo_, hi_ = (float(np.percentile(diffs, 2.5)), float(np.percentile(diffs, 97.5))) if len(arr) > 1 else (float("nan"), float("nan"))
+        ok = bool(lo_ > margin) if len(arr) > 1 else False
+        cell = {"stratum": stratum, "bucket": list(b), "rows": int(n_rows), "deals": len(arr), "baseline": base,
+                "candidate": cand, "diff": cand - base, "lo": lo_, "hi": hi_, "pass": ok}
+        report["cells"].append(cell)
+        lines.append(f"{stratum:>10} {b[0]:>6}-{min(b[1], 10**6):<7} {int(n_rows):6d} {len(arr):6d} {base:7.3f} {cand:7.3f} "
+                     f"{cand - base:+8.4f} {lo_:+8.4f} {hi_:+8.4f}  {'PASS' if ok else 'not shown'}"
+                     + ("" if len(arr) > 1 else " (one deal: no interval)"))
     report["text"] = "\n".join(lines)
     if log:
         log(report["text"])
@@ -377,6 +458,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--test"); t.add_argument("--epochs", type=int, default=10); t.add_argument("--listwise-weight", type=float, default=1.0)
     t.add_argument("--lr", type=float, default=1e-3); t.add_argument("--threads", type=int, default=4); t.add_argument("--seed", type=int, default=1)
     v = sub.add_parser("eval"); v.add_argument("--checkpoint", required=True); v.add_argument("--test", required=True)
+    c = sub.add_parser("compare"); c.add_argument("--baseline", required=True); c.add_argument("--candidate", required=True)
+    c.add_argument("--test", required=True); c.add_argument("--top", type=int, default=64); c.add_argument("--margin", type=float, default=-0.02)
+    c.add_argument("--n-boot", type=int, default=1000); c.add_argument("--seed", type=int, default=1)
     return p
 
 
@@ -387,8 +471,10 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "train":
         r = train(a.data, a.out, test=a.test, epochs=a.epochs, listwise_weight=a.listwise_weight, lr=a.lr, threads=a.threads, seed=a.seed)
         print(json.dumps({k: v for k, v in r.items() if k != "eval"}))
-    else:
+    elif a.cmd == "eval":
         evaluate(a.checkpoint, a.test)
+    else:
+        compare(a.baseline, a.candidate, a.test, top=a.top, margin=a.margin, n_boot=a.n_boot, seed=a.seed)
     return 0
 
 

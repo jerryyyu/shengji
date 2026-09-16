@@ -18750,3 +18750,13 @@ No launches, no production changes; `/tmp/replay_slow_turn3.py` left on the mach
 **Fleet (07:1x ET).** Production `/healthz` ok, rooms 0, release 28. Mini JS-G1 epoch 16/20 val_ce=0.5555 val_mae_pt0=0. (seal ≈09:45 ET; waiter pid 31031). Perf runJS1 (10387/16000) clusters (≈11:40 ET). Cloud: Codex's G1 S128D16 rung running. Codex's tmux pane still shows the rate-limit model prompt awaiting Enter (Jerry notified 05:4x ET); Codex keeps working over the bus. Bus acked through codex:1607.
 
 **Next.** JS-G1 seal → `jsg1_postseal.txt` → page row + atlas (and, if the reads pass, a grid package via #472 + the serving gate); runJS1 seal; Jerry: Codex prompt, disk option for generation-1, machine size.
+
+## 2026-09-16 11:42 UTC — Claude tick 07:4x ET: quiet hour — JS-G1 epoch 17/20 (seal ≈09:45 ET); runJS1 10,910/16,000 (≈11:40 ET); post-seal waiter upgraded to also export the #472 grid package and run a smoke-scope serving gate
+
+**Part A.** main 2adfd25f. Bus: nothing pending (acked through codex:1607). Codex: last bus message 06:56 ET; its tmux pane still shows the rate-limit model prompt awaiting Enter (Jerry notified 05:4x ET) — 45 min of silence now, so it may be blocked; Jerry's keypress. Production `/healthz` ok, rooms 0, release 28. Mini JS-G1 epoch 17/20 val_ce 0.5570 (log 07:33 ET; ≈44 min/epoch → seal ≈09:45 ET). Perf runJS1 cluster 10,910/16,000, 1.49M decisions (≈11:40 ET). Cloud: Codex's G1 S128D16 rung running. Open PRs of mine: none (#470, #472 merged).
+
+**Part B.** No new sealed screen or model; artifacts current.
+
+**Part C.** Replaced the idle post-seal waiter (pid 31031: `bash` + `sleep 300`, verified before the kill) with `scratchpad/claude_jsg1_postseal2.sh` (nohup, pid 82485; output `scratchpad/jsg1_postseal.txt`): the v1 reads (receipt, best.pt SHA, `compare_joint` and `listwise_ce` vs prior v3 on the 15,517 common rows) PLUS, from the merged #472 tree, `export_cwv_numpy.py best.pt → scratchpad/js-g1-joint.npz` and a SMOKE-scope `cwv_serving_gate.py` on that package as value net + own-head prior (threshold 1,000, top 256, 2 rounds, receipt `js-g1-gate-smoke.json`). Local artifacts and reads only. A serving-scope gate (W32/N30, 60 rounds ≈ 12 min by the release 28 receipt) follows by hand only if the offline reads and the smoke pass.
+
+**Next.** JS-G1 seal → read `jsg1_postseal.txt` → page row + atlas; runJS1 seal; Jerry: Codex prompt (Enter), disk option for generation-1, machine size.

@@ -90,6 +90,24 @@ def flat_input(t: ValueAfterstateTensors) -> np.ndarray:
     return x
 
 
+def root_flat_input(rnd, seat: int) -> np.ndarray:
+    """Flat prior input without constructing history that this model discards.
+
+    Keep the original root builder as the authority for empty-history opening
+    states and static-builder refusals. Sequential/value tensor callers still
+    use ``root_tensors`` unchanged.
+    """
+    from ..ai.cwv_static_encoding import tensors_from_round_static
+
+    if not rnd.history:
+        return flat_input(root_tensors(rnd, seat))
+    try:
+        tensors = tensors_from_round_static(rnd, seat, version=ENC_VERSION)
+    except ValueAfterstateError:
+        return flat_input(root_tensors(rnd, seat))
+    return flat_input(tensors)
+
+
 def cards_to_idx(cards: Sequence[str]) -> list[int]:
     return [CARD_INDEX[c] for c in cards]
 

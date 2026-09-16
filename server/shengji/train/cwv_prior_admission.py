@@ -136,8 +136,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
 
     def _prior_scores(self, rnd, seat, actions, worlds):
         """``(worlds, actions)`` factorised prior scores: one root forward per world."""
-        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors   # torch-free module level
-        X = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat))
+        from .policy_prior import CARD_INDEX, N_CARDS, root_flat_input   # torch-free module level
+        X = np.stack([root_flat_input(root_clone(rnd, hands, buried), seat)
                       for hands, buried in worlds]).astype(np.float32)
         log_odds = self._prior_log_odds(X)
         if log_odds.shape != (len(worlds), N_CARDS) or not np.isfinite(log_odds).all():

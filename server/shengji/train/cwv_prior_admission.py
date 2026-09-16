@@ -69,9 +69,18 @@ def load_prior_checked(path: str, sha256: str):
         if actual != sha256:
             raise ValueError("prior checkpoint SHA256 mismatch")
         if str(path).lower().endswith(".npz"):
-            # The served form (#435): a NumPy prior package; no Torch on this path.
+            # The served forms (#435): a NumPy prior package, or a NumPy VALUE
+            # package that carries the joint net's policy head (#425: one file
+            # serves both stages). No Torch on either path.
+            from ..ai.cwv_numpy import CWVNumpyError, load_cwv_numpy
             from ..ai.cwv_prior_numpy import load_numpy_prior
-            _PRIORS[key] = ("separate-numpy", load_numpy_prior(path), None)
+            try:
+                _PRIORS[key] = ("separate-numpy", load_numpy_prior(path), None)
+            except CWVNumpyError:
+                model = load_cwv_numpy(path)
+                if not model.policy_head:
+                    raise ValueError("numpy package is neither a policy prior nor a value package with a policy head")
+                _PRIORS[key] = ("joint-numpy", model, None)
             return _PRIORS[key]
         from .policy_prior import PolicyPriorError, load_prior
         try:
@@ -152,6 +161,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
     def _prior_log_odds(self, X):
         if self._prior_kind == "separate-numpy":
             return self._prior_net.log_odds(X)
+        if self._prior_kind == "joint-numpy":
+            return np.asarray(self._prior_net.policy_log_odds(X), dtype=np.float64)
         if self._prior_kind == "joint":
             from .policy_rows import policy_log_odds
             return np.asarray(policy_log_odds(self._prior_net, X, "cpu"), dtype=np.float64)

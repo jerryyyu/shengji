@@ -23,7 +23,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import os
 import random
 import sys
 import time
@@ -48,9 +47,13 @@ def env_from_fly_toml(path, mappings: dict[str, str]) -> dict[str, str]:
 
 
 def build_production_bot(env: dict[str, str]):
-    """Register exactly what the server registers from this env and build SHENGJI_BOT."""
-    for key, value in env.items():
-        os.environ[key] = value
+    """Register exactly what the server registers from this env and build SHENGJI_BOT.
+
+    The registration is done EXPLICITLY from the parsed env rather than by
+    exporting it into ``os.environ``: the server registers at import from the
+    process environment, and exporting here would leak the deploy env into
+    every later import in the same process (and its subprocesses).
+    """
     from shengji.ai import registry
     from shengji.train.cwv_bury_policy import bury_env_recipe
     from shengji.train.cwv_shortlist import shortlist_env_recipe

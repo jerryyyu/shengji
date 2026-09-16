@@ -127,3 +127,27 @@ def test_summary_reports_bury_fallbacks_and_missing_accounting(monkeypatch):
     assert result['bury_outcomes']['baseline']['completed'] == 1
     shard['bury_records'].pop()
     assert not S.summary_for([shard], config)['bury_accounting_complete']
+
+
+def test_compact_warmup_cli_refuses_before_asset_access(monkeypatch, tmp_path):
+    from scripts import cwv_release27_screen as C
+    def forbidden(*args, **kwargs):
+        raise AssertionError('must refuse before opening model assets')
+    monkeypatch.setattr(C, 'file_sha256', forbidden)
+    with pytest.raises(SystemExit) as exc:
+        C.main(['--baseline-checkpoint', 'missing', '--prior-checkpoint', 'missing',
+                '--arm-checkpoint', 'missing', '--mode', 'puct', '--seed0', '19',
+                '--clusters', '1', '--out', str(tmp_path / 'never-created'),
+                '--root-warmup-top', '1', '--compact-expansions'])
+    assert exc.value.code == 2
+    assert not (tmp_path / 'never-created').exists()
+
+
+def test_compact_warmup_factory_refuses_before_model_load(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError('must refuse before model loading')
+    monkeypatch.setattr(R, 'shared_evaluator', forbidden)
+    with pytest.raises(ValueError, match='cannot be combined'):
+        R.make_release27_side(side='arm', seed=19, baseline_checkpoint='missing',
+            prior_checkpoint='missing', arm_checkpoint='missing', arm_sha256='none',
+            mode='puct', root_warmup_top=1, compact_expansions=True)

@@ -52,10 +52,15 @@ class CWVNumpyConfig:
     enc_version: int
     trunk_block: str = "plain"
     trunk_layers: int = 2
+    #: #425 joint net served as ONE package: a 54-card policy head on the trunk
+    #: features (``policy_weight`` / ``policy_bias``), read by the prior admission.
+    policy_head: bool = False
 
     def validate(self) -> None:
         if self.architecture != "mlp":
             raise CWVNumpyError("only architecture=mlp is supported")
+        if type(self.policy_head) is not bool:
+            raise CWVNumpyError("policy_head must be a boolean")
         if self.trunk_block == "plain":
             if self.trunk_layers != 2:
                 raise CWVNumpyError("the plain trunk is the two-layer MLP only")
@@ -97,10 +102,10 @@ def expected_arrays(config: "CWVNumpyConfig") -> dict[str, tuple[int, ...]]:
     inp = config.public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
     head = {"head_weight": (OUTCOME_CLASSES, config.width), "head_bias": (OUTCOME_CLASSES,)}
     if config.trunk_block == "plain":
-        return {"trunk0_weight": (config.feedforward_width, inp),
-                "trunk0_bias": (config.feedforward_width,),
-                "trunk1_weight": (config.width, config.feedforward_width),
-                "trunk1_bias": (config.width,), **head}
+        return _with_policy({"trunk0_weight": (config.feedforward_width, inp),
+                             "trunk0_bias": (config.feedforward_width,),
+                             "trunk1_weight": (config.width, config.feedforward_width),
+                             "trunk1_bias": (config.width,), **head}, config)
     out = {"stem_weight": (config.width, inp), "stem_bias": (config.width,)}
     for i in range(config.trunk_layers):
         out.update({f"block{i}_norm_weight": (config.width,), f"block{i}_norm_bias": (config.width,),
@@ -109,7 +114,13 @@ def expected_arrays(config: "CWVNumpyConfig") -> dict[str, tuple[int, ...]]:
                     f"block{i}_down_weight": (config.width, config.feedforward_width),
                     f"block{i}_down_bias": (config.width,)})
     out.update({"final_norm_weight": (config.width,), "final_norm_bias": (config.width,), **head})
-    return out
+    return _with_policy(out, config)
+
+
+def _with_policy(arrays: dict, config: "CWVNumpyConfig") -> dict:
+    if config.policy_head:
+        arrays.update({"policy_weight": (N_CARDS, config.width), "policy_bias": (N_CARDS,)})
+    return arrays
 
 
 def _gelu_exact(x: np.ndarray) -> np.ndarray:
@@ -172,20 +183,11 @@ class CWVNumpyMLP:
     def source_checkpoint_sha256(self):
         return self.original_checkpoint_sha256
 
-    def probabilities(self, public, world, perspective) -> np.ndarray:
-        p = np.asarray(public)
-        w = np.asarray(world)
-        q = np.asarray(perspective)
-        if p.ndim != 2 or w.ndim != 3 or q.ndim != 2 or p.shape[1:] != (self.public_dim,) \
-                or w.shape[1:] != (WORLD_RECEIVERS, N_CARDS) or q.shape[1:] != (PERSPECTIVE_DIM,) \
-                or not (p.shape[0] == w.shape[0] == q.shape[0]):
-            raise CWVNumpyError("model batch shape drift")
-        if not all(np.issubdtype(x.dtype, np.number) and np.all(np.isfinite(x))
-                   for x in (p, w, q)):
-            raise CWVNumpyError("model batch contains nonfinite values")
-        if p.shape[0] == 0:
-            return np.empty((0, OUTCOME_CLASSES), dtype=np.float64)
-        x = np.concatenate((p, w.reshape(p.shape[0], -1), q), axis=1).astype(np.float64)
+    @property
+    def policy_head(self): return self.config.policy_head
+
+    def _trunk(self, x: np.ndarray) -> np.ndarray:
+        """Trunk features of a flat float64 ``(B, public | world | perspective)`` batch."""
         # Keep storage compact, but promote operands explicitly.  Besides
         # making the numerical contract clear, this avoids platform BLAS
         # surprises for mixed float64/float32 matmul.
@@ -203,7 +205,46 @@ class CWVNumpyMLP:
                     n = np.maximum(n @ w[f"block{i}_up_weight"].T + w[f"block{i}_up_bias"], 0.0)
                     h = h + (n @ w[f"block{i}_down_weight"].T + w[f"block{i}_down_bias"])
                 h = np.maximum(_layer_norm(h, w["final_norm_weight"], w["final_norm_bias"]), 0.0)
-            logits = h @ w["head_weight"].T + w["head_bias"]
+        return h
+
+    def policy_log_odds(self, flat) -> np.ndarray:
+        """The joint net's policy head over a flat root row (the layout
+        ``policy_prior.flat_input`` writes: ``public | world | perspective``),
+        i.e. ``ValueNetwork.policy_logits(features_flat(x))`` without Torch."""
+        if not self.config.policy_head:
+            raise CWVNumpyError("this package carries no policy head")
+        x = np.asarray(flat)
+        inp = self.public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+        if x.ndim != 2 or x.shape[1] != inp:
+            raise CWVNumpyError("policy batch shape drift")
+        if not (np.issubdtype(x.dtype, np.number) and np.all(np.isfinite(x))):
+            raise CWVNumpyError("policy batch contains nonfinite values")
+        if x.shape[0] == 0:
+            return np.empty((0, N_CARDS), dtype=np.float64)
+        h = self._trunk(x.astype(np.float64))
+        with np.errstate(all="ignore"):
+            logits = h @ self._math_weights["policy_weight"].T + self._math_weights["policy_bias"]
+        if not np.all(np.isfinite(logits)):
+            raise CWVNumpyError("policy head produced nonfinite logits")
+        return logits.astype(np.float64, copy=False)
+
+    def probabilities(self, public, world, perspective) -> np.ndarray:
+        p = np.asarray(public)
+        w = np.asarray(world)
+        q = np.asarray(perspective)
+        if p.ndim != 2 or w.ndim != 3 or q.ndim != 2 or p.shape[1:] != (self.public_dim,) \
+                or w.shape[1:] != (WORLD_RECEIVERS, N_CARDS) or q.shape[1:] != (PERSPECTIVE_DIM,) \
+                or not (p.shape[0] == w.shape[0] == q.shape[0]):
+            raise CWVNumpyError("model batch shape drift")
+        if not all(np.issubdtype(x.dtype, np.number) and np.all(np.isfinite(x))
+                   for x in (p, w, q)):
+            raise CWVNumpyError("model batch contains nonfinite values")
+        if p.shape[0] == 0:
+            return np.empty((0, OUTCOME_CLASSES), dtype=np.float64)
+        x = np.concatenate((p, w.reshape(p.shape[0], -1), q), axis=1).astype(np.float64)
+        h = self._trunk(x)
+        with np.errstate(all="ignore"):
+            logits = h @ self._math_weights["head_weight"].T + self._math_weights["head_bias"]
         if not np.all(np.isfinite(logits)):
             raise CWVNumpyError("model produced nonfinite logits")
         shifted = logits - np.max(logits, axis=1, keepdims=True)
@@ -243,11 +284,14 @@ def _load_npz(path: str | os.PathLike[str]) -> CWVNumpyMLP:
                 raise CWVNumpyError("invalid original checkpoint SHA256")
             base_keys = {"architecture", "width", "feedforward_width", "public_dim", "enc_version"}
             v2_keys = base_keys | {"trunk_block", "trunk_layers"}
+            joint_keys = v2_keys | {"policy_head"}
             keys = set(metadata["config"]) if isinstance(metadata["config"], dict) else None
-            if keys is None or keys not in (base_keys, v2_keys):
+            if keys is None or keys not in (base_keys, v2_keys, joint_keys):
                 raise CWVNumpyError("invalid package configuration")
             cfg = CWVNumpyConfig(**metadata["config"])
             cfg.validate()
+            if cfg.policy_head and metadata["schema"] != PACKAGE_SCHEMA_V2:
+                raise CWVNumpyError("a policy head is a v2 package feature")
             # A v1 package is the plain two-layer MLP: the trunk keys may be absent or
             # spell out that default, never anything else.
             if metadata["schema"] == PACKAGE_SCHEMA and (cfg.trunk_block, cfg.trunk_layers) != ("plain", 2):

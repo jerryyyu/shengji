@@ -65,6 +65,27 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
                               f"trunk.{i + 1}.{part}.bias": f"block{i}_{part}_bias"})
         final = config.trunk_layers + 1
         names.update({f"trunk.{final}.weight": "final_norm_weight", f"trunk.{final}.bias": "final_norm_bias"})
+    elif config.trunk_block == "grid":
+        # value_model.GridTrunk: col_embed, two window reads, row/cell projections, stem,
+        # then blocks = Sequential(*ResidualTrunkBlock x L, LayerNorm, ReLU). The per-trump
+        # index table (card_grid.grid_table) rides in the package so the served gather
+        # is the exported layout, not whatever the runtime's engine says today.
+        schema = PACKAGE_SCHEMA_V2
+        cfg.update({"trunk_block": "grid", "trunk_layers": config.trunk_layers,
+                    "grid_channels": config.grid_channels})
+        names.update({"trunk.col_embed": "col_embed",
+                      "trunk.win1_w": "win1_weight", "trunk.win1_b": "win1_bias",
+                      "trunk.win2_w": "win2_weight", "trunk.win2_b": "win2_bias",
+                      "trunk.row_proj.weight": "row_proj_weight", "trunk.row_proj.bias": "row_proj_bias",
+                      "trunk.cell_proj.weight": "cell_proj_weight", "trunk.cell_proj.bias": "cell_proj_bias",
+                      "trunk.stem.weight": "stem_weight", "trunk.stem.bias": "stem_bias"})
+        for i in range(config.trunk_layers):
+            for part in ("norm", "up", "down"):
+                names.update({f"trunk.blocks.{i}.{part}.weight": f"block{i}_{part}_weight",
+                              f"trunk.blocks.{i}.{part}.bias": f"block{i}_{part}_bias"})
+        final = config.trunk_layers
+        names.update({f"trunk.blocks.{final}.weight": "final_norm_weight",
+                      f"trunk.blocks.{final}.bias": "final_norm_bias"})
     else:
         raise ValueError(f"trunk {config.trunk_block!r} x {config.trunk_layers} has no numpy runtime")
     if config.policy_head:
@@ -82,6 +103,12 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
         raise ValueError(f"checkpoint state lacks {missing[:3]}: layout drift")
     weights = {dst: state[src].detach().cpu().numpy().astype(np.float32, copy=True)
                for src, dst in names.items()}
+    if config.trunk_block == "grid":
+        from shengji.rl.card_grid import grid_table
+        table = grid_table()
+        if not np.array_equal(table, model.trunk.table.detach().cpu().numpy()):
+            raise ValueError("the checkpoint's grid table differs from card_grid.grid_table(): layout drift")
+        weights["grid_table"] = table.astype(np.float32)
     payload = {"schema": schema, "config": cfg,
                "original_checkpoint_sha256": original_sha,
                "metadata": metadata}

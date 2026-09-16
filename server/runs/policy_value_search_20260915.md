@@ -471,3 +471,22 @@ Focused kernel suite:21passed, including lead/follow parity, hidden-hand-varying
 prior callbacks, reordered own hands, legality-key separation, and actual
 enumerator-call reduction. Broader runtime qualification remains before opting
 future gameplay into this path; production/data-generation defaults untouched.
+
+Follow-up at approved ff30898b: five more saved lead roots, M1/W32/S8/D8,
+ABBA order, all semantic outputs exactly equal on every pass:
+
+| Root | Legal actions | Off mean s | On mean s | Ratio |
+|---|---:|---:|---:|---:|
+| 1 | 3,071 | 0.5279 | 0.2073 | 2.55× |
+| 4 | 1,592 | 0.4778 | 0.3047 | 1.57× |
+| 6 | 63 | 0.1225 | 0.1169 | 1.05× |
+| 8 | 9,239 | 1.6883 | 0.7118 | 2.37× |
+| 10 | 63 | 0.1420 | 0.1337 | 1.06× |
+
+Raw ABBA receipts: `~/shengji-archive/2026-09-16/puct-root-reuse/M1-state-*.jsonl`.
+These follow-up timings are indicative, not isolated-host capacity evidence:
+other local jobs were active. Additionally advance root1 by1/2/3HeuristicBot
+plays, seed616092026+plies, resampleW32; all three follow positions (7/10/1
+legal actions) compare exactly off/on, each31cachehits/1miss. This includes a
+forced follow. Narrow-position savings are small, as expected; no fleet-wide
+speedup or strength claim. No changes to the live gameplay source.

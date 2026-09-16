@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Scheduling-only successor to the held launcher; never stops a live job.
+# Launch in a retained systemd unit (no --collect), KillMode=control-group,
+# RuntimeMaxSec bounded by the absolute deadline below, TimeoutStopSec=30.
+# The outer cgroup deadline, not timeout alone, must contain all descendants.
 set -euo pipefail
 mode=${1:---check}
 [[ "$mode" == --check || "$mode" == --launch ]] || exit 2
@@ -29,6 +32,9 @@ for sweeps, depth in ((8,8),(32,8),(128,8),(128,16)):
     c = x['config']; r = c['release27_search']
     assert (r['mode'],r['sweeps'],r['depth']) == ('puct',sweeps,depth), p
     assert r['arm_checkpoint'] == '/root/claude-M1.pt', p
+    assert c['checkpoint_sha256'] == r['arm_sha256'] == '3cb9cd62a083736e3b41712baabaa86398b74f0e303a4a15290ec1cd9585612d', p
+    assert c['baseline_asset_sha256'] == '12ce4415a65c479b03d52a08574e14a5909b09435c1d8dddeab1726fbc1d4d4f', p
+    assert c['prior_asset_sha256'] == 'b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c', p
     assert c['decision_deadline']['seconds'] == 300, p
 for path, sha in {
     '/root/claude-G1.pt': '1bcbb47f253a7151df08749b31868a1d1608fbf3e578a2dc4d24f232b1e2e648',

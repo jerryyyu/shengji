@@ -515,6 +515,10 @@ def run_cluster(config, cluster):
         "seed": seed, "rank": rank, "recipe": _recipe(config),
         "records": [record for record, _ in rows],
         "timings": [timing for _, timing in rows],
+        "bury_records": [{"mirror": i // 4, "side": side,
+                          "record": copy.deepcopy(policy.last_bury_record)}
+                         for i, (side, policy) in enumerate(created)
+                         if getattr(policy, 'last_bury_record', None) is not None],
         "decision_traces": [{"mirror": i // 4, "side": side,
                              "decisions": policy.decisions}
                             for i, (side, policy) in enumerate(created)],
@@ -645,6 +649,18 @@ def summary_for(shards, config):
         result['claim'] = 'exploratory paired DEV strength estimate; not confirmation or deployment'
         result['hybrid_bury'] = dict(arm='hybrid', scope='both sides',
                                     evaluator='frozen release27 M1', serving_budget_seconds=2.0)
+        result['bury_outcomes'] = {}
+        for side in ('arm', 'baseline'):
+            records = [entry['record'] for shard in shards
+                       for entry in shard.get('bury_records', []) if entry['side'] == side]
+            result['bury_outcomes'][side] = {
+                'decisions': len(records),
+                'budget_fallbacks': sum(r.get('reason') == 'budget' for r in records),
+                'error_fallbacks': sum(r.get('reason') == 'search-error' for r in records),
+                'completed': sum(r.get('schema') != 'cwv-bury-fallback-v1' for r in records),
+            }
+        result['bury_accounting_complete'] = (
+            sum(r['decisions'] for r in result['bury_outcomes'].values()) == 2 * len(shards))
         result['work_caveat'] += (' Fixed M1 hybrid bury on both sides has a 2s wall budget; '
             'hardware-dependent fallback incidence must be reported. Search uses sampled '
             'hidden worlds; model predictions are not completed heuristic rollouts.')

@@ -74,3 +74,19 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     monkeypatch.setattr(C.screen, 'summary_for', lambda *a: {'complete': False})
     assert C.main(argv) == 0
     assert seen[1][1] == [1]
+
+
+def test_summary_reports_bury_fallbacks_and_missing_accounting(monkeypatch):
+    from shengji.train import cwv_shortlist_screen as S
+    from test_cwv_shortlist_screen import cfg, identity_summary
+    monkeypatch.setattr(S.duel, 'summarize', identity_summary)
+    config = cfg('learned', release27_search={'mode': 'puct'})
+    shard = {'records': [], 'bury_records': [
+        {'side': 'arm', 'record': {'schema': 'cwv-bury-fallback-v1', 'reason': 'budget'}},
+        {'side': 'baseline', 'record': {'schema': 'cwv-bury-v1'}}]}
+    result = S.summary_for([shard], config)
+    assert result['bury_accounting_complete']
+    assert result['bury_outcomes']['arm']['budget_fallbacks'] == 1
+    assert result['bury_outcomes']['baseline']['completed'] == 1
+    shard['bury_records'].pop()
+    assert not S.summary_for([shard], config)['bury_accounting_complete']

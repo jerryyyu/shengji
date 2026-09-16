@@ -26,8 +26,27 @@ from shengji.engine import combos, fast
 plays = pytest.mark.skipif(not (fast.HAVE_FAST and combos.decompose is fast.decompose),
                            reason="play witnesses run in the compiled engine only")
 
-from test_cwv_shortlist_registry import checkpoint  # noqa: F401  (tiny MLP value net)
+from test_cwv_shortlist_registry import _load_script
 from test_cwv_prior_admission import prior_ckpt  # noqa: F401  (tiny torch prior)
+
+
+@pytest.fixture(scope="module")
+def checkpoint(tmp_path_factory) -> str:
+    """A tiny MLP value net trained under a FIXED torch seed.
+
+    The registry test's fixture trains under torch's default (random) seed, so
+    its weights differ per run and a 16-wide net produces near-ties in the
+    shortlist means that the NumPy and Torch backends can resolve differently
+    at 1e-6 (CI: 39/40 identical on one run, 40/40 on the next). The gate's
+    job is to count exactly such mismatches on real nets; the TEST needs a net
+    whose ties do not move between runs, so it seeds the training.
+    """
+    import torch
+    torch.manual_seed(20260915)
+    out = tmp_path_factory.mktemp("gate-value") / "tiny.pt"
+    _load_script("cwv_dev_checkpoint").build_dev_checkpoint(
+        str(out), rounds=2, architecture="mlp", width=16, max_epochs=2, quiet=True)
+    return str(out)
 
 
 @pytest.fixture(scope="module")

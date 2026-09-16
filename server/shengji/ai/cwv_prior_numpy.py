@@ -9,6 +9,7 @@ imports only NumPy and the standard library; the exporter lives in
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import os
 import zipfile
@@ -51,6 +52,17 @@ class CWVNumpyPrior:
         self.metadata = dict(metadata or {})
         self.original_checkpoint_sha256 = original_checkpoint_sha256
         self.package_sha256: str | None = None
+
+    def __deepcopy__(self, memo):
+        # Server turn snapshots isolate bot state, but these bytes-backed,
+        # read-only arrays can safely be shared. Mapping proxies themselves
+        # are not pickleable, so the generic deepcopy path fails before search.
+        clone = object.__new__(type(self))
+        memo[id(self)] = clone
+        for name, value in vars(self).items():
+            setattr(clone, name, value if name in ("_weights", "_math")
+                    else copy.deepcopy(value, memo))
+        return clone
 
     def log_odds(self, X) -> np.ndarray:
         x = np.asarray(X)

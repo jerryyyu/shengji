@@ -148,6 +148,24 @@ the small network—as the dominant cost, so adding a GPU is not the current
 bottleneck. Any shortcut that changes rollout length or action semantics is a
 new strength experiment, not a performance-only patch.
 
+## Training batch provenance copies (2026-09-16)
+
+The optimizer loop now requests `include_metadata=False` from
+`CwvBlockStore.iter_batches`: it omits only `deal_key`, `source_ref`, and
+`input_sha256` string arrays during gather. Split selection still occurs on the
+original blocks before gather. Evaluation and other callers retain the complete
+batch by default; numeric inputs, history, optional search-mean targets, row IDs,
+batch order and RNG use are unchanged.
+
+Synthetic CPU gather diagnostic, two resident8192-row blocks, batch4096,
+seed4 row selection,50iterations per ABBA arm: median full6.302/6.305ms;
+lean3.425/3.478ms. Gathered array storage14,307,328→10,522,624bytes. This
+isolates metadata preparation, not decoding, GPU execution or epoch throughput;
+string lengths affect the benefit and local background load was not isolated.
+No end-to-end training speedup claim. Qualification includes exact numeric/tensor
+and optimizer-step equality with/without history, iterator ordering, plus the
+existing real training/receipt/checkpoint smoke. Active training jobs unchanged.
+
 ## Rules
 
 - Every optimization ships with a differential test (identical seeded

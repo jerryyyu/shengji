@@ -1,0 +1,73 @@
+"""Training may omit provenance strings, never tensors or batch ordering."""
+import numpy as np
+import pytest
+
+from shengji.train import cwv_data as D
+
+
+def block(n=64, seed=7, history=False):
+    rng = np.random.default_rng(seed)
+    arrays = {name: np.zeros(n, dtype=np.int64) for name in D.CwvBlock.ARRAYS}
+    arrays.update(public=rng.random((n, 561), dtype=np.float32),
+                  world=rng.integers(0, 3, (n, D.WORLD_RECEIVERS, D.N_CARDS), dtype=np.uint8),
+                  perspective=rng.integers(0, 2, n, dtype=np.uint8),
+                  target=rng.integers(0, 2, n),
+                  search_mean_played=rng.random(n, dtype=np.float32))
+    for name in D._STRING_COLUMNS:
+        arrays[name] = np.array([f'{name}-{seed}-{i:064d}' for i in range(n)])
+    if history:
+        arrays.update(history_offsets=np.arange(n + 1),
+                      history_cards=rng.integers(0, 3, (n, D.N_CARDS), dtype=np.uint8),
+                      history_meta=np.zeros((n, 4), dtype=np.uint8))
+    return D.CwvBlock(arrays, {})
+
+
+def assert_equal(full, lean):
+    assert set(full) - set(lean) == set(D._STRING_COLUMNS)
+    for key in lean:
+        np.testing.assert_array_equal(lean[key], full[key])
+        assert lean[key].dtype == full[key].dtype
+
+
+@pytest.mark.parametrize('history', [False, True])
+def test_gather_retains_every_numeric_field_and_optional_target(history):
+    blocks = [block(history=history), block(seed=8, history=history)]
+    which = np.array([1, 0, 1, 0, 0])
+    rows = np.array([3, 8, 3, 1, 63])
+    full = D.gather(blocks, which, rows)
+    lean = D.gather(blocks, which, rows, include_metadata=False)
+    assert_equal(full, lean)
+    torch = pytest.importorskip('torch')
+    a, b = D.tensors_of(full, 'cpu'), D.tensors_of(lean, 'cpu')
+    assert a.keys() == b.keys()
+    for key in a:
+        assert torch.equal(a[key], b[key])
+    # Same actual optimizer update, not just equal labels.
+    torch.manual_seed(7)
+    initial = torch.nn.Linear(561, 2).state_dict()
+    results = []
+    for tensors in (a, b):
+        net = torch.nn.Linear(561, 2)
+        net.load_state_dict(initial)
+        opt = torch.optim.Adam(net.parameters(), lr=.001)
+        loss = torch.nn.functional.cross_entropy(net(tensors['public']), tensors['target'])
+        loss.backward()
+        opt.step()
+        results.append(net.state_dict())
+    for key in results[0]:
+        assert torch.equal(results[0][key], results[1][key])
+
+
+def test_iter_batches_keeps_rng_order_and_default_metadata():
+    blocks = [block(), block(seed=8)]
+    store = object.__new__(D.CwvBlockStore)
+    store.entries = [None, None]
+    store.windows = lambda order, window: [list(order)]
+    store.block = lambda i, **kw: blocks[i]
+    batches = []
+    for metadata in (True, False):
+        batches.append(list(store.iter_batches(lambda b: np.arange(b.n) % 2 == 0,
+            11, rng=np.random.default_rng(19), include_metadata=metadata)))
+    assert len(batches[0]) == len(batches[1]) == 6
+    for full, lean in zip(*batches, strict=True):
+        assert_equal(full, lean)

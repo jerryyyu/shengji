@@ -151,9 +151,13 @@ def afterstate_source_paths(version: int = 1) -> dict[str, Path]:
     """Replica of ``cwv_data.cwv_source_paths``: v1/v2 hash the frozen ten
     files; v4 also binds the two files that compute its public columns."""
     paths = dict(AFTERSTATE_SOURCE_PATHS)
-    if check_version(version) >= 4:
-        for name in ("encode_versions", "encode_opponent_pairs"):
-            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    version = check_version(version)
+    if version >= 4:
+        paths["encode_versions"] = _SHENGJI / "rl" / "encode_versions.py"
+        if version == 4:
+            paths["encode_opponent_pairs"] = _SHENGJI / "rl" / "encode_opponent_pairs.py"
+        if version == 5:
+            paths["encode_banker_kitty"] = _SHENGJI / "rl" / "encode_banker_kitty.py"
     return paths
 
 
@@ -185,6 +189,16 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     version = check_version(version)
     sources = {name: file_sha256(path)
                for name, path in afterstate_source_paths(version).items()}
+    # Replica of ``cwv_data.PUBLISHED_DISPATCHER_SHA256``: a published version
+    # pins the dispatcher digest it shipped with, so adding a later version does
+    # not orphan its caches or refuse its checkpoints.  Kept as a literal rather
+    # than imported: this module is the INDEPENDENT check on the training build,
+    # and a shared constant would let one edit move both sides at once.
+    published_dispatcher = {
+        4: "aa8528a636f5d59a326afbf7826043a9fcd670ddb610e36ca78f551c3c60a88b",
+    }.get(version)
+    if published_dispatcher is not None:
+        sources["encode_versions"] = published_dispatcher
     parts = [AFTERSTATE_IDENTITY_SCHEMA, AFTERSTATE_SCHEMA]
     if version != 1:
         parts.append(f"enc_version:{version}")

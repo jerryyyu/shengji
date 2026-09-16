@@ -16,6 +16,7 @@ from shengji.engine.game import Game
 from shengji.harvest import trajectory
 from shengji.train import cwv_bury_policy as policy
 from shengji.train.cwv_bury_diagnostic import capture_state, reopen_state
+from test_cwv_prior_admission import prior_ckpt  # noqa: F401
 
 
 class Evaluator:
@@ -24,6 +25,58 @@ class Evaluator:
 
     def score(self, positions, seat, **kwargs):
         return np.zeros(len(positions))
+
+
+def test_numpy_prior_bury_survives_server_snapshot_and_commit(prior_ckpt, tmp_path):
+    """KXXD: immutable prior mappings used to crash before the bury budget began."""
+    from scripts.export_policy_prior_numpy import export_policy_prior_numpy
+    from shengji.ai.cwv_policy import file_sha256
+    from shengji.train.cwv_prior_admission import CWVPriorBuryBot, CWVPriorAdmissionConfig
+
+    package = tmp_path / "prior.npz"
+    export_policy_prior_numpy(prior_ckpt[0], package)
+    player = CWVPriorBuryBot(
+        Evaluator(), seed=73, arm="hybrid", serving_budget_seconds=2,
+        bury_config=policy.CWVBuryConfig(max_candidates=2, model_worlds=1,
+                                         selection_worlds=1, alternatives=1),
+        prior=CWVPriorAdmissionConfig(str(package), file_sha256(package)))
+    original = player._prior_net
+    original.metadata["nested"] = {"values": [1]}
+    clone = copy.deepcopy(original)
+    assert clone is not original
+    assert clone._weights is original._weights and clone._math is original._math
+    assert clone.package_sha256 == original.package_sha256
+    assert clone.original_checkpoint_sha256 == original.original_checkpoint_sha256
+    clone.metadata["nested"]["values"].append(2)
+    assert original.metadata["nested"]["values"] == [1]
+    for arrays in (clone._weights, clone._math):
+        for array in arrays.values():
+            with pytest.raises(ValueError):
+                array.setflags(write=True)
+    X = np.zeros((2, original.input_dim), dtype=np.float32)
+    np.testing.assert_array_equal(original.log_odds(X), clone.log_odds(X))
+
+    async def scenario():
+        rnd = reopen_state(capture_state(65))
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = server.Room(code="KXXDTEST", game=game, bot=player,
+                           seats=[server.Seat(str(i), is_bot=True) for i in range(4)],
+                           log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        before = player.rng.getstate()
+        prepared = await server._paced_bot_step(room, rnd.banker, minimum_turn_seconds=0)
+        assert prepared is not None and room.bot is player and rnd.phase == "bury"
+        assert player.rng.getstate() == before
+        copied = prepared.decision.snapshot.bot_copy
+        assert copied.rng is not player.rng
+        assert copied.shortlist_counts is not player.shortlist_counts
+        assert copied._prior_net is not original
+        assert server._commit_bot_turn(room, prepared)
+        assert rnd.phase == "play" and len(rnd.buried) == 8
+
+    asyncio.run(scenario())
 
 
 def bot(evaluator=None, budget=1.0, arm="hybrid"):

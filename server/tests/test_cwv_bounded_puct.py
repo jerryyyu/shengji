@@ -67,6 +67,26 @@ def test_optional_profile_preserves_search_result():
         timings['search_seconds'])
 
 
+@pytest.mark.parametrize('sweeps,widening,power', [(1, 1., .5), (8, 2., .5), (16, 1.5, 1.)])
+@pytest.mark.parametrize('reuse', [False, True])
+@pytest.mark.parametrize('prior_mode', ['uniform', 'varying'])
+def test_compact_expansions_exact_with_ties(sweeps, widening, power, reuse, prior_mode):
+    rnd = root()
+    worlds = [copy.deepcopy(rnd) for _ in range(3)]
+    # Uniform priors exercise stable ties at the retained-prefix boundary.
+    cfg = PuctConfig(sweeps=sweeps, depth=8, batch_size=2,
+                     widening=widening, widening_power=power)
+    prior = uniform if prior_mode == 'uniform' else lambda r,s,a: np.arange(len(a)) % 7
+    kwargs = dict(prior_logits=prior, config=cfg, reuse_root_actions=reuse)
+    reference = search_worlds(worlds, rnd.turn, evaluator=Evaluator(), **kwargs)
+    compact = search_worlds(worlds, rnd.turn, evaluator=Evaluator(),
+                            compact_expansions=True, **kwargs)
+    storage = compact.pop('expansion_storage')
+    assert compact == reference
+    assert storage['retained_action_entries'] <= storage['exhaustive_action_entries']
+    assert storage['retained_action_entries'] <= storage['reachable_width'] * compact['counts']['expanded_nodes']
+
+
 def test_terminal_bypasses_model():
     rnd = root()
     while sum(map(len, rnd.hands)) > 1:
@@ -80,7 +100,8 @@ def test_terminal_bypasses_model():
     assert out['counts']['model_rows'] == 0
 
 
-def test_bot_root_reuse_preserves_decision_and_reports_work(monkeypatch):
+@pytest.mark.parametrize('flag', ['reuse_root_actions', 'compact_expansions'])
+def test_bot_root_reuse_preserves_decision_and_reports_work(monkeypatch, flag):
     from shengji.train import cwv_bounded_puct as kernel
     from shengji.train import cwv_prior_admission as prior
     from shengji.train.cwv_shortlist import CWVShortlistConfig
@@ -94,12 +115,16 @@ def test_bot_root_reuse_preserves_decision_and_reports_work(monkeypatch):
             config=CWVShortlistConfig(worlds=3),
             prior=prior.CWVPriorAdmissionConfig(checkpoint='unused', checkpoint_sha256='0' * 64),
             puct_config=PuctConfig(sweeps=8, depth=4, batch_size=3),
-            reuse_root_actions=enabled)
+            **{flag: enabled})
         monkeypatch.setattr(bot, '_tree_prior', uniform)
         actions.append(bot.decide_play(copy.deepcopy(rnd), rnd.turn))
         record = bot.last_decision_record['bounded_puct'].copy()
         if enabled:
-            assert record.pop('root_enumeration_reuse') == dict(hits=2, misses=1)
+            if flag == 'reuse_root_actions':
+                assert record.pop('root_enumeration_reuse') == dict(hits=2, misses=1)
+            else:
+                storage = record.pop('expansion_storage')
+                assert storage['retained_action_entries'] <= storage['exhaustive_action_entries']
         records.append(record)
     assert actions[0] == actions[1]
     assert records[0] == records[1]

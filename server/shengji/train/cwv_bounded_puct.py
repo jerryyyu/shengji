@@ -45,6 +45,7 @@ class Node:
     actions: list = field(default_factory=list)
     priors: np.ndarray | None = None
     children: dict = field(default_factory=dict)
+    legal_count: int = 0
 
 
 def _root_legal_key(state):
@@ -56,7 +57,7 @@ def _root_legal_key(state):
 
 
 def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(), profile=False,
-                  reuse_root_actions=False):
+                  reuse_root_actions=False, compact_expansions=False):
     """Prior callback receives ONLY a private determinized state and legal set.
 
     Scores are logits in enumerator order for the ACTING seat. Exhaustive
@@ -80,8 +81,14 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
     counts = dict(model_rows=0, model_batches=0, terminal_rows=0,
                   prior_rows=0, legal_actions=0, expanded_nodes=0)
     depth_histogram = {}
+    retained_actions = 0
+    # A node is selected at most once per sweep in its world. Before its last
+    # selection visits+1 <= sweeps. This bound does NOT cover warmup-seeded or
+    # persistent trees; those require a different visit budget.
+    reachable_width = max(1, math.ceil(config.widening * config.sweeps ** config.widening_power))
 
     def expand(node):
+        nonlocal retained_actions
         if node.priors is not None:
             return
         tick = time.perf_counter() if profile else 0.
@@ -108,8 +115,14 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
             raise ValueError('one finite policy logit required per legal action')
         order = np.argsort(-logits, kind='stable')
         weights = np.exp(logits - logits.max())
+        node.legal_count = len(actions)
+        if compact_expansions:
+            order = order[:reachable_width]
         node.actions = [actions[i] for i in order]
+        # Normalize over ALL legal actions exactly as the scalar reference;
+        # dropping inaccessible storage must not renormalize retained priors.
         node.priors = (weights / weights.sum())[order]
+        retained_actions += len(node.actions)
         counts['prior_rows'] += 1
         counts['legal_actions'] += len(actions)
         counts['expanded_nodes'] += 1
@@ -175,7 +188,7 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
     result = dict(action=list(chosen), visits=visits, totals=totals,
                 world_visits=[r.visits for r in roots], simulations=len(roots) * config.sweeps,
                 diagnostics=dict(depth_histogram=depth_histogram,
-                    root_legal_counts=[len(r.actions) for r in roots],
+                    root_legal_counts=[r.legal_count for r in roots],
                     root_visited_actions=[len(r.children) for r in roots],
                     root_visited_prior_mass=[float(sum(
                         r.priors[i] for i, action in enumerate(r.actions)
@@ -184,6 +197,10 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
                 limitation='determinization-and-strategy-fusion')
     if reuse_root_actions:
         result['root_enumeration_reuse'] = reuse
+    if compact_expansions:
+        result['expansion_storage'] = dict(reachable_width=reachable_width,
+            retained_action_entries=retained_actions,
+            exhaustive_action_entries=counts['legal_actions'])
     if profile:
         timings['search_seconds'] = time.perf_counter() - started
         timings['other_seconds'] = max(0., timings['search_seconds'] - sum(
@@ -205,10 +222,12 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
     tree: every expanded node ranks its exhaustive set. Declare/bury inherited.
     """
 
-    def __init__(self, *args, puct_config=None, reuse_root_actions=False, **kwargs):
+    def __init__(self, *args, puct_config=None, reuse_root_actions=False,
+                 compact_expansions=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.puct_config = puct_config or PuctConfig()
         self.reuse_root_actions = bool(reuse_root_actions)
+        self.compact_expansions = bool(compact_expansions)
         self.puct_totals = dict.fromkeys(('decisions', 'simulations', 'model_rows',
                                         'model_batches', 'terminal_rows', 'prior_rows',
                                         'legal_actions', 'expanded_nodes'), 0)
@@ -229,7 +248,8 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
         roots = [root_clone(rnd, hands, buried) for hands, buried in worlds]
         result = search_worlds(roots, seat, prior_logits=self._tree_prior,
                                evaluator=self.evaluator, config=self.puct_config,
-                               reuse_root_actions=self.reuse_root_actions)
+                               reuse_root_actions=self.reuse_root_actions,
+                               compact_expansions=self.compact_expansions)
         counts = result['counts']
         self.puct_totals['decisions'] += 1
         self.puct_totals['simulations'] += result['simulations']
@@ -252,4 +272,6 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
         if self.reuse_root_actions:
             self.last_decision_record['bounded_puct']['root_enumeration_reuse'] = (
                 result['root_enumeration_reuse'])
+        if self.compact_expansions:
+            self.last_decision_record['bounded_puct']['expansion_storage'] = result['expansion_storage']
         return result['action']

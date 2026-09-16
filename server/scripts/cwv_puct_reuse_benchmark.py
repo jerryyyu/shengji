@@ -28,6 +28,7 @@ def main():
     p.add_argument('--worlds', type=int, default=32)
     p.add_argument('--sweeps', type=int, default=8)
     p.add_argument('--depth', type=int, default=8)
+    p.add_argument('--optimization', choices=('root-reuse', 'compact'), default='root-reuse')
     a = p.parse_args()
     evaluator = _outcome_evaluator(a.checkpoint)
     prior_sha = file_sha256(a.prior_checkpoint)
@@ -42,17 +43,21 @@ def main():
         raise RuntimeError('sample pool underfilled')
     roots = [root_clone(rnd, hands, buried) for hands, buried in worlds]
     reference = None
-    for reuse in (False, True, True, False):
+    for enabled in (False, True, True, False):
+        reuse = enabled if a.optimization == 'root-reuse' else True
         result = search_worlds(roots, rnd.turn, prior_logits=bot._tree_prior,
             evaluator=evaluator, config=PuctConfig(sweeps=a.sweeps, depth=a.depth),
-            profile=True, reuse_root_actions=reuse)
+            profile=True, reuse_root_actions=reuse,
+            compact_expansions=enabled if a.optimization == 'compact' else False)
         timing = result.pop('timings')
         cache = result.pop('root_enumeration_reuse', None)
+        storage = result.pop('expansion_storage', None)
         if reference is None:
             reference = result
         if result != reference:
             raise AssertionError('root enumeration reuse changed the search result')
         print(json.dumps(dict(reuse=reuse, exact_equal=True, timings=timing,
+            optimization=a.optimization, enabled=enabled, storage=storage,
             cache=cache, world_sha256=_world_digest(worlds),
             checkpoint_sha256=checkpoint_sha, prior_sha256=prior_sha,
             root_actions=result['diagnostics']['root_legal_counts'][0])), flush=True)

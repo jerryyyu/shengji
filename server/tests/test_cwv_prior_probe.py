@@ -112,3 +112,51 @@ def test_real_puct_consumer_keeps_action_rng_and_visits(monkeypatch):
     assert plain_prior.calls == recorded_prior.calls
     assert len(recorder.rows) == 3 and not recorder._pending
     assert all(row.probabilities is not None for row in recorder.rows)
+
+
+def test_prior_metrics_keep_ties_and_regret_explicit():
+    result = probe.compare_prior([.6, .3, .1], [[0, 2, 2], [2, 2, 2]], top_k=2)
+    assert result["selected_index"] == 0
+    assert result["comparator_regret"] == 1
+    assert result["comparator_best_indices"] == [1, 2]
+    assert result["best_set_prior_mass"] == pytest.approx(.4)
+    assert result["top_k_hits_best"] and result["strict_pairs"] == 2
+    assert result["pairwise_accuracy"] == 0
+    tied = probe.compare_prior([.5, .5], [[1, 1]], top_k=1)
+    assert tied["selected_index"] == 0 and tied["pairwise_accuracy"] is None
+    assert tied["comparator_regret"] == 0
+
+
+@pytest.mark.parametrize("p,v", [([1], []), ([1], [[0, 1]]), ([1], [[np.nan]]),
+                                 ([.5], [[1]]), ([-1, 2], [[1, 2]])])
+def test_prior_metric_validation(p, v):
+    with pytest.raises(ValueError):
+        probe.compare_prior(p, v)
+
+
+def test_unserved_request_cannot_be_compared():
+    recorder = probe.PriorRecorder(FakePrior())
+    recorder.encode({}, 0, [["S2"]])
+    with pytest.raises(ValueError, match="not been served"):
+        probe.compare_request(recorder.rows[0], sampler=None)
+
+
+def test_real_common_world_comparator_uses_captured_actor_and_preserves_capture(monkeypatch):
+    from test_cwv_puct import _contested_state
+    from shengji.ai.cwv_puct import leaf_copy
+    from shengji.ai.mcbot import MCBot
+    monkeypatch.setattr(probe, "leaf_copy", leaf_copy)
+    state = _contested_state(start=40)
+    seat = state.turn
+    ballot = MCBot(seed=0)._candidates(state, seat)[:2]
+    prior = FakePrior()
+    recorder = probe.PriorRecorder(prior, limit=1)
+    recorder.probabilities(state, seat, ballot)
+    row = recorder.rows[0]
+    before = (copy.deepcopy(row.state.hands), len(row.state.history), row.state.turn)
+    report = probe.compare_request(row, sampler=MCBot(seed=817), worlds=2)
+    assert report["seat"] == seat and report["own_kitty"] is False
+    assert report["metrics"]["worlds"] == 2 and report["metrics"]["actions"] == 2
+    assert np.asarray(report["world_values"]).shape == (2, 2)
+    assert (row.state.hands, len(row.state.history), row.state.turn) == before
+    assert prior.calls == 1

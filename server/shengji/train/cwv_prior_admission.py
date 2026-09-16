@@ -80,6 +80,16 @@ def load_prior_checked(path: str, sha256: str):
                 model = load_cwv_numpy(path)
                 if not model.policy_head:
                     raise ValueError("numpy package is neither a policy prior nor a value package with a policy head")
+                # The admission feeds the head `policy_prior.flat_input` rows (the v2
+                # public encoding, INPUT_DIM columns); bind only a package whose trunk
+                # reads exactly that layout, or the first wide decision would fail.
+                from .policy_prior import INPUT_DIM
+                from ..ai.cwv_numpy import N_CARDS, PERSPECTIVE_DIM, WORLD_RECEIVERS
+                width = model.public_dim + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+                if model.enc_version != 2 or width != INPUT_DIM:
+                    raise ValueError(
+                        f"joint numpy prior expects enc_version 2 with {INPUT_DIM}-column root rows; "
+                        f"package is enc_version {model.enc_version} ({width} columns)")
                 _PRIORS[key] = ("joint-numpy", model, None)
             return _PRIORS[key]
         from .policy_prior import PolicyPriorError, load_prior

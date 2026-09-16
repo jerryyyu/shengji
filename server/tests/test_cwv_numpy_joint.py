@@ -146,3 +146,35 @@ def test_serving_gate_accepts_the_joint_package_as_both_value_and_prior(joint):
     receipt = run_gate(ckpt, pkg, ckpt, pkg, rounds=1, threshold=6, top=5)
     assert receipt["kinds"] == {"served_prior": "joint-numpy", "reference_prior": "joint"}
     assert receipt["passed"] is True and receipt["prior_fired"] > 0
+
+
+def test_a_v1_encoder_joint_package_is_refused_at_binding(tmp_path):
+    """Codex HOLD on #455: the admission feeds v2 root rows (833 columns); a joint package whose
+    trunk reads another layout must be refused when bound, not at the first wide decision."""
+    torch = pytest.importorskip("torch")
+    from scripts.export_cwv_numpy import export_cwv_numpy
+    from shengji.ai.cwv_policy import local_encoder_identity
+    from shengji.rl.value_checkpoint import save_checkpoint
+    from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+    from shengji.train.cwv_prior_admission import load_prior_checked
+    torch.manual_seed(2)
+    net = ValueNetwork(ValueModelConfig(architecture="mlp", width=32, feedforward_width=64, public_dim=532,
+                                        enc_version=1, attention_heads=1, trunk_block="residual",
+                                        trunk_layers=2, search_head=True, policy_head=True))
+    net.eval()
+    ckpt = tmp_path / "v1joint.pt"
+    save_checkpoint(ckpt, net, metadata={"encoder": local_encoder_identity(1), "sees_hidden_hands": True})
+    pkg = tmp_path / "v1joint.npz"
+    export_cwv_numpy(ckpt, pkg)
+    sha = hashlib.file_digest(open(pkg, "rb"), "sha256").hexdigest()
+    with pytest.raises(ValueError, match="enc_version 2 with 833-column root rows"):
+        load_prior_checked(str(pkg), sha)
+
+
+def test_gate_reports_near_tie_reorders_separately():
+    from scripts.cwv_serving_gate import _near_tie, _same
+    a = {"shortlist": [["S4"], ["S9"], ["S4", "S6"]], "means": [0.5, 0.5 + 4e-6, 0.5 - 4e-6], "admission": None}
+    b = {"shortlist": [["S4"], ["S4", "S6"], ["S9"]], "means": [0.5, 0.5 - 4e-6, 0.5 + 4e-6], "admission": None}
+    assert not _same(a, b) and _near_tie(a, b)
+    c = dict(b, means=[0.5, 0.3, 0.7])
+    assert not _near_tie(a, c), "a real ranking difference is not a near-tie"

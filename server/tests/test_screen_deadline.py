@@ -3,15 +3,20 @@ import copy
 import ctypes
 import json
 import os
+import pickle
 import random
 import time
+from types import MappingProxyType
 
+import numpy as np
 import pytest
 
+from shengji.ai.cwv_prior_numpy import load_numpy_prior
 from shengji.ai.registry import make_bot
 from shengji.ai.smart import SmartBot
 from shengji.train import cwv_shortlist_screen as S
-from shengji.train.screen_deadline import DeadlineSession, RECIPE, latency_summary
+from shengji.train.screen_deadline import (DeadlineSession, RECIPE, _snapshot,
+                                           latency_summary)
 from tests.test_world_shortlist import play_state
 from tests.test_cwv_shortlist_screen import cfg
 
@@ -69,6 +74,115 @@ class ProbeBot(SmartBot):
 
 def probe_factory(mode):
     return S.CwvTimedPolicy(ProbeBot(mode))
+
+
+class _UnpickleableAsset:
+    """A factory-owned stand-in for an immutable NumPy-backed evaluator."""
+
+    def __init__(self):
+        self.weights = MappingProxyType({"w": np.zeros(1, dtype=np.float32)})
+        self.owner_pid = os.getpid()
+
+
+class _NumpyPriorProbeBot(SmartBot):
+    def __init__(self, prior_path):
+        self.mode = "fast"
+        self.rng = random.Random(19)
+        self.calls = 0
+        self.last_decision_record = None
+        self.evaluator = _UnpickleableAsset()
+        self.bury_evaluator = _UnpickleableAsset()
+        self._prior_kind = "separate-numpy"
+        self._prior_net = load_numpy_prior(prior_path)
+        self._prior_net.owner_pid = os.getpid()
+        self._prior_payload = None
+
+    def decide_play(self, rnd, seat):
+        if self.mode == "slow":
+            time.sleep(10)
+        self.calls += 1
+        self.rng.random()
+        self.mode = "slow"
+        return SmartBot().decide_play(rnd, seat)
+
+
+class _NumpyPriorProbeWrapper:
+    def __init__(self, bot):
+        self.bot = bot
+        self.decisions = []
+        self.decision_wall_seconds = 0.0
+
+    def decide_play(self, rnd, seat):
+        result = self.bot.decide_play(rnd, seat)
+        self.decisions.append({"prior_owner": self.bot._prior_net.owner_pid,
+                               "bury_owner": self.bot.bury_evaluator.owner_pid})
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self.bot, name)
+
+
+def _numpy_prior_probe_factory(prior_path):
+    return _NumpyPriorProbeWrapper(_NumpyPriorProbeBot(prior_path))
+
+
+def _write_test_numpy_prior(path):
+    metadata = {
+        "schema": "shengji-policy-prior-numpy-v1",
+        "source_schema": "shengji-policy-prior-v1",
+        "input_dim": 833,
+        "hidden": [1, 1],
+        "enc_version": 2,
+        "original_checkpoint_sha256": "a" * 64,
+        "metadata": {},
+    }
+    arrays = {
+        "w0": np.zeros((1, 833), dtype=np.float32), "b0": np.zeros(1, dtype=np.float32),
+        "w1": np.zeros((1, 1), dtype=np.float32), "b1": np.zeros(1, dtype=np.float32),
+        "w2": np.zeros((54, 1), dtype=np.float32), "b2": np.zeros(54, dtype=np.float32),
+        "mu": np.zeros(833, dtype=np.float32), "sd": np.ones(833, dtype=np.float32),
+    }
+    np.savez_compressed(path, metadata=np.asarray(json.dumps(metadata)), **arrays)
+
+
+def test_numpy_prior_and_bury_assets_are_factory_owned_across_deadline_restart(tmp_path):
+    package = tmp_path / "prior.npz"
+    _write_test_numpy_prior(package)
+    wrapped = _numpy_prior_probe_factory(str(package))
+    checkpoint = _snapshot(wrapped)
+    pickle.dumps(checkpoint)
+    assert "_prior_net" not in checkpoint["state"]
+    assert "bury_evaluator" not in checkpoint["state"]
+    assert checkpoint["state"]["calls"] == 0
+
+    session = DeadlineSession(_numpy_prior_probe_factory, .20)
+    try:
+        policy = session.register(str(package))
+        rnd = play_state()
+        policy.decide_play(rnd, rnd.turn)
+        first = policy.decisions[-1]
+        assert policy.calls == 1
+        assert policy.mode == "slow"
+        expected_rng = random.Random(19)
+        expected_rng.random()
+        assert policy.rng.getstate() == expected_rng.getstate()
+
+        session.seconds = .001
+        policy.decide_play(rnd, rnd.turn)
+        assert session.process is None
+        assert policy.timeout_count == 1
+        session.checkpoints[0]["state"]["mode"] = "fast"
+        session.seconds = 10
+        rnd.play(rnd.turn, SmartBot().decide_play(rnd, rnd.turn))
+        policy.decide_play(rnd, rnd.turn)
+        second = policy.decisions[-1]
+        assert policy.calls == 2
+        expected_rng.random()
+        assert policy.rng.getstate() == expected_rng.getstate()
+        assert first["prior_owner"] != second["prior_owner"]
+        assert first["bury_owner"] != second["bury_owner"]
+    finally:
+        session.close()
 
 
 @pytest.mark.parametrize("phase", ["enumeration", "sampling", "ranking", "selection", "report"])

@@ -368,3 +368,40 @@ Perf is reserved by Claude for runJS1 after v22 (canonical issue436 coordination
 comment). Do not use its presently idle CPU. Candidate host is shengji-cloud
 only after v22's actual process/service is terminal and its lane reservation is
 released. No follow-up job has launched as of this note.
+
+### Boundary runner readiness
+
+Added `scripts/cwv_puct_boundary.py` and focused tests. Each saved root runs in
+a fresh child with a 300s total-task cap (including asset loading); rows retain
+errors/timeouts, configuration identity, sampled-world digest, depth/coverage,
+phase timing, CPU and peak RSS. Resume refuses incompatible rows/configurations.
+Diagnostic snapshots are heuristic-generated roots, not a gameplay holdout.
+
+Primary integration inspection found a pipe backpressure defect: joining before
+reading could turn a large successful result into a false timeout. The supervisor
+now drains concurrently within the same deadline. Regressions cover a 2MB result,
+exit without a result, child error, and a real terminated timeout. Boundary,
+bounded-PUCT and snapshot-generator tests: **25 passed (2.09s)**. This is local
+runner validation, not evidence of deeper-search strength or a fleet launch.
+
+### Fixed-control factory (implementation, not launch-ready)
+
+`cwv_release27_search.py` composes PUCT or truncated play with hybrid bury and
+an independent fixed M1 bury evaluator. The control binds the release-27 M1
+NumPy SHA and prior-v2 SHA, threshold1000/top256, W32/N30/R300 and 2s bury
+budget. Default bury consumers remain unchanged. Focused factory/bury/boundary/
+PUCT/screen tests: **53 passed (3.63s)**. Tests verify evaluator separation and
+control-asset rejection; they do not yet prove an end-to-end release-27 match.
+Remaining before gameplay: CLI/config/receipt integration, actual-asset factory
+and deadline restart smoke, independent review, and host-reservation checks.
+
+Follow-up implementation: `scripts/cwv_release27_screen.py` now reuses the
+existing paired screen/deadline/shard machinery, binds separate arm and frozen
+control assets, refuses mixed legacy mechanisms, locks output and resumes only
+missing pairs. Summary labels the fixed M1/2s bury and its hardware-dependent
+fallback, not full-completion bury. CLI/wiring plus existing factory/bury/PUCT
+tests: **55 passed (3.62s)**. Real local M1 and G1 factory construction succeeds
+with the frozen NumPy M1/prior packages. G1 deadline snapshots serialize at
+7,810 bytes (PUCT) / 7,668 bytes (truncated), excluding immutable weights.
+Independent harness review is requested. No paired gameplay or fleet launch
+has occurred; those remain distinct from construction/serialization checks.

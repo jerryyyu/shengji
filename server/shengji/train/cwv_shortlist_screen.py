@@ -210,6 +210,15 @@ def _validate_wide_config(config):
 
 
 def make_side(config: dict, side: str, seed: int):
+    if 'release27_search' in config:
+        if config.get('decision_deadline') != DEADLINE_RECIPE:
+            raise ValueError('release27 search requires the 300s supervised play deadline')
+        if any(config.get(key) for key in ('bounded_puct', 'value_continuation',
+                'corrected_rollout', 'wide_tail', 'double_shortlist', 'throw_components',
+                'hybrid_bury', 'prior', 'report_tie_keeps_incumbent')):
+            raise ValueError('release27 search cannot mix legacy experiment recipes')
+        from .cwv_release27_search import make_release27_side
+        return make_release27_side(side=side, seed=seed, **config['release27_search'])
     puct = config.get('bounded_puct')
     if puct is not None:
         if config.get('decision_deadline') != DEADLINE_RECIPE:
@@ -438,7 +447,7 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout", "wide_tail", "prior", "value_continuation", "bounded_puct"):
+                "hybrid_bury", "corrected_rollout", "wide_tail", "prior", "value_continuation", "bounded_puct", "release27_search"):
         if key in config:
             recipe[key] = config[key]
     if 'value_continuation' in config:
@@ -454,7 +463,7 @@ def _deadline_side(config, side, seed):
 def run_cluster(config, cluster):
     created = []
     deadline = config.get("decision_deadline")
-    if 'bounded_puct' in config and deadline != DEADLINE_RECIPE:
+    if ('bounded_puct' in config or 'release27_search' in config) and deadline != DEADLINE_RECIPE:
         raise ValueError('bounded PUCT requires the 300s supervised play deadline')
     if deadline is not None and deadline != DEADLINE_RECIPE:
         raise ValueError("unsupported screen decision deadline recipe")
@@ -629,6 +638,16 @@ def summary_for(shards, config):
         result['baseline_description'] = (f"same checkpoint and prior; W{config['shortlist']['worlds']} "
                                           'admission with MC selection/report')
         result['work_caveat'] += ' PUCT simulations/model leaves are not terminal rollouts; determinization permits strategy fusion.'
+    if 'release27_search' in config:
+        mode = config['release27_search']['mode']
+        result['arm_description'] = f'{mode} search with independent outcome-value checkpoint'
+        result['baseline_description'] = 'frozen release27 M1/prior-v2 W32/N30/R300'
+        result['claim'] = 'exploratory paired DEV strength estimate; not confirmation or deployment'
+        result['hybrid_bury'] = dict(arm='hybrid', scope='both sides',
+                                    evaluator='frozen release27 M1', serving_budget_seconds=2.0)
+        result['work_caveat'] += (' Fixed M1 hybrid bury on both sides has a 2s wall budget; '
+            'hardware-dependent fallback incidence must be reported. Search uses sampled '
+            'hidden worlds; model predictions are not completed heuristic rollouts.')
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}

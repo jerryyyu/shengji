@@ -130,6 +130,8 @@ reference and no K16 escalation follows.
 | 08-02 | decompose memo (cache on Ordering, per-round lifetime) | **1.26x** | pure function; differential-tested byte-identical |
 | 08-02 | trusted-rollout fast path (skip follow re-validation in MC clones only) | ~1% solo (memo cheapened validation) | validate_lead always runs (throw penalties) |
 | 08-03 | compiled phases 0-2: caller-order caches, rules kernels and policy leaves | **3.42x** round (5.74 -> 1.68s) | 10k+ randomized parity cases, six byte-identical seeded histories; opt-in `SHENGJI_FAST=1` |
+| 09-15 | policy-prior admission above 1,000 legal actions (releases 27/28) | fresh-deal decision wall 0.79× the release 24 recipe at 10k, 0.60× at 1,000; 0 decisions >60 s in 365k (old recipe 161, 7 cap hits); longest decision 9.9 s at 1,000 | paired vs M1 −0.0003 [−0.0017, +0.0012] (no resolved difference); tail figures are the observed windows, not a bound; the prior fires on ~4.6% of decisions at 1,000, pool median ~600 |
+| 09-16 | one-package joint serving (release 28) | same decision wall as the two-package arm (1.00×); live round p50 0.6 s, p90 1.6 s, max 2.7 s on the Fly machine | the value net and the prior read one trunk; `model_search` events now carry the phase (bury/play) |
 | 08-07 | release-17 speculative scheduler + off-loop X-ray | live searched-turn p95 `1.714s`; WebSockets responsive during search | Decision semantics unchanged; overlaps pacing, validates before commit, discards stale snapshot state. This is responsiveness isolation, not rollout-throughput speedup. |
 
 ## Fast-path evidence and boundaries

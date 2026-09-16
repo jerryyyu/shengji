@@ -7,47 +7,55 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-09-09
+## Project state — 2026-09-16
 
-The current Fly snapshot is **release 22: W32 PLAY with HYBRID BURY**.
-Hybrid bury is deployed with a 2-second cooperative search budget and legal
-heuristic fallback; the existing W32 play model and search are unchanged.
-The prior `mc-s0-report-lcb` result remains the confirmed strength reference and
-rollback parent for challengers.
+The live Fly snapshot is **release 28: the JS-M1 joint model as ONE package**
+(`/data/models/js-m1-0d17fd03.npz`; policy `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`).
+One checkpoint now does two jobs. As the **value net** it ranks every legal
+action across 32 sampled hidden worlds and hands the incumbent plus four
+alternatives to production's full Monte Carlo search (N30 selection, R300
+report, heuristic rollouts). Above 1,000 legal actions its own **policy head is
+the admission prior**: it runs once per sampled world, and the union of the
+per-world top-256 plus production's anchors (about 600 actions, median) is what
+the value net ranks, so the exhaustive wide follows that used to take minutes
+are gone. Hybrid bury (heuristic candidates, model scoring, MC selection, 2 s
+budget) is unchanged. The engine is the compiled fast path.
 
-**Latest bury milestone:** PR [#323](https://github.com/jerryyyu/shengji/pull/323)
-merged at `ec7f27ad`; the final report is
-[docs_archive/value-guided-bury-dev-2026-09-08.md](docs_archive/value-guided-bury-dev-2026-09-08.md).
-On 1,976 fixed deals, hybrid versus heuristic gained `+0.03644`
-utility `[+0.01164,+0.06024]` and `+1.62` percentage points in win rate
-`[+0.56,+2.68]`; hybrid versus MC-only was unresolved. Hybrid also had more
-kitty-risk tail events (kitty bonus at least 80: 4 vs 0 for heuristic).
+How it got here (2026-09-15/16, each step on Jerry's explicit go, records in
+[DEPLOY.md](DEPLOY.md)): release 25 shipped M1 plus a separate policy prior and
+stalled every bot turn (the server's turn snapshot could not deep-copy the NumPy
+prior); it was rolled back within the hour, fixed, and redeployed as release 27;
+release 28 replaced the two files with the single joint checkpoint.
 
-**Earlier W32 PLAY screen (dated DEV result):** A value model
-ranks *every legal action* across 32 sampled hidden worlds, then production's
-full Monte Carlo search checks four alternatives plus its heuristic incumbent.
-On 256 paired rank-2 deals / 512 mirrored rounds, the A+B+C model scored **+0.139
-signed levels per round** versus production (95% interval **[+0.064, +0.217]**).
-Decision-preserving engineering made it **2.85× faster**, lowering measured
-decision cost from **10.61× to 3.53× production**. This is a positive DEV
-screen; its play consumer is now the live W32 path, while the quoted strength
-result remains a dated DEV screen and not independent confirmation. Superiority
-given comparable extra compute remains unresolved.
+**Evidence behind the current policy** (details in
+[AI_POLICIES.md](AI_POLICIES.md#production-contract); readouts in the scaling
+log and the search atlas):
 
-See the [MC vs W32 diagram and results](AI_POLICIES.md#experimental-w32-shortlist)
-and [improvement plan](RL_PLAN.md#current-decision-tree). The same A+B+C
-checkpoint's separate 13-rank check was inconclusive. Wider shortlists, extra ranking worlds, doubled final
-rollouts, adaptive allocation and the tested extra-depth recipes did not
-establish an improvement over flat W32. Keep it as the experimental reference;
-test better models separately from decision-preserving engineering.
+- M1 (`3cb9cd62`, a residual-trunk MLP on the 176k afterstate corpus) confirmed
+  on ten fresh windows against the release 24 recipe, `+0.0212 [+0.0036, +0.0387]`
+  signed levels per round; twenty fresh windows of the M1 family pooled
+  `+0.0140 [+0.0026, +0.0254]`.
+- The policy prior changed M1's outcomes by `−0.0003 [−0.0017, +0.0012]` on paired
+  seeds (no resolved difference; this is a paired estimate, not an equivalence
+  test) and, in the observed windows, cut the latency tail: 0 decisions over
+  60 s in 365,414 fresh-deal decisions against 161 (and 7 cap hits) for the old
+  recipe; at threshold 1,000 the longest decision in 182,494 was 9.9 s at 0.60×
+  the old decision wall.
+- JS-M1 (`a5248cc5`): M1's recipe trained from scratch with a policy head on all
+  20.3M root decisions. Offline it beats M1 on the outcome head (val CE 0.5957 vs
+  0.5975) and its head is non-inferior to the separate prior on four of five
+  strata. In play as one net (five capped windows) it read
+  `+0.0239 [+0.0005, +0.0472]` against the release 24 recipe and
+  `+0.0057 [−0.0163, +0.0277]` paired against release 27 at the same wall. No
+  ten-window or fresh-seed read yet.
+- Releases 27 and 28 passed the decision-identity gate (the NumPy packages
+  reproduce the Torch checkpoints' decisions) and the server-path smoke (the
+  server can take bury and play turns with the built bot), both in
+  `server/scripts/`. Release 25 passed the gate alone and stalled live; the
+  smoke was written because of it and has preceded every deploy since.
 
-![Full-legal W32 shortlist pipeline](docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
-
-The earlier BELIEF R4/R5 lane is closed. PT-Sol/Luna supplied promising
-privileged-teacher results and retained datasets; D64 learned outcome shape
-without establishing accurate action values. These remain useful lessons,
-not production policies. See
-[RL_PLAN.md](RL_PLAN.md) for the decision tree and rigor tiers,
+Older lanes (BELIEF R4/R5, PT-Sol/Luna teachers, D64) are closed and remain
+lessons, not policies. See [RL_PLAN.md](RL_PLAN.md) for the decision tree,
 [BACKLOG.md](BACKLOG.md) for the queue, [AI_POLICIES.md](AI_POLICIES.md) for
 measured results, and [RESEARCH_PRINCIPLES.md](RESEARCH_PRINCIPLES.md) for the
 rules those results produced.
@@ -125,15 +133,19 @@ A policy is anything implementing three methods (`decide_declare`,
 (`curl /healthz` reports the active one). Current evidence, with provenance
 and promotion caveats in `AI_POLICIES.md`:
 
-- **`mc-s0-report-lcb` (former production, current play rollback/reference)** —
+- **JS-M1 joint model, one package (live PLAY + PRIOR + hybrid BURY, release 28)** —
+  the network proposes (value head over the exhaustive legal set on 32 sampled
+  worlds; policy head prunes decisions above 1,000 legal actions), full MC
+  rollouts and the report fold still decide. Registered from the `fly.toml`
+  environment by `server/shengji/ai/registry.py`; the name binds the package
+  SHA, the recipe and the prior settings.
+  [Architecture and evidence](AI_POLICIES.md#production-contract).
+- **M1 + policy prior v2 (release 27, rollback)** — the same design with two
+  files (value package `12ce4415`, prior package `b9ff76c9`).
+- **`mc-s0-report-lcb` (the MC-LCB search; screen baseline and deep rollback)** —
   N=30 determinized MC plus the fresh paired report check described above.
 - **`mc` (source fallback, not production)** — the older N=10 determinized
   search policy.
-- **W32 shortlist (live PLAY with hybrid BURY in release 22)** — the
-  network proposes; full MC rollouts and the report fold still decide. The
-  hybrid bury integration is live. It uses the
-  existing constrained sampler, not BELIEF R4 or true opponent hands.
-  [Architecture and evidence](AI_POLICIES.md#experimental-w32-shortlist).
 - **`rl-override-v11pair` (experimental)** — the best learned milestone beat
   SmartBot 57.7%, but the corrected direct-v2 screen lost to current search and
   selected none. Keep it only as a bounded proposal/ranking and teacher
@@ -216,9 +228,11 @@ sampled hidden hands, or establish that the bot planned a later sequence.
 | `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |
 | `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` |
+| `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` (removal under discussion with Codex) |
 | `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; its existing authenticated historical rotation is preserved in `docs_archive/` |
-| `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
+| `DEPLOY.md` / `PROTOCOL.md` | hosting, release records and rollbacks + wire protocol |
+| `W32_FLY_SERVING.md` | the NumPy serving path: packages, identity gate, server-path smoke, healthz |
+| `docs/scaling_log/` | the scaling log page: every value model, its offline metrics and screen results (built from `models.py`) |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |
 

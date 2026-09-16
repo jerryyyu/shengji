@@ -49,15 +49,23 @@ when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
-0. **Keep serving boundaries explicit.** PR323 (`ec7f27ad`) integrates the
-   deployed `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a` arm
-   in release 22 with a 2-second cooperative deadline and heuristic fallback.
-   The research recipe had no deadline or fallback.
-   On 1,976 deals, hybrid versus heuristic was `+0.03644` utility
-   `[+0.01164,+0.06024]` and `+1.62` pp wins `[+0.56,+2.68]`; hybrid versus
-   MC-only was unresolved, and kitty bonus ≥80 occurred 4 times versus 0 for
-   heuristic. The fixed512 six-arm scaling result was null; no full-round
-   speedup claim follows.
+0. **Production is the JS-M1 joint model as one package (release 28, 2026-09-16).**
+   The deployed design: the value head ranks the exhaustive legal set on 32
+   sampled worlds; above 1,000 legal actions the same network's policy head
+   prunes to the union of per-world top-256 plus production's anchors; the
+   incumbent plus four alternatives go to production's N30/R300 MC search with
+   heuristic rollouts; hybrid bury with a 2 s budget. The chain of evidence and
+   the serving qualification (identity gate + server-path smoke) are in
+   `AI_POLICIES.md#production-contract` and `DEPLOY.md`. Owed before any
+   further production claim for JS-M1: ten-window and fresh-seed reads.
+   Next model steps: JS-G1 (the grid trunk, the best offline evaluator, on the
+   same 20.3M root rows) and generation 1 trained on the runJS1 corpus
+   (JS-M1 as teacher, 32,000 rounds, Perf). Next search steps (#436, Codex):
+   policy/value-guided search that spends less on full rollouts. Bounded PUCT
+   lost badly at 2× wall; truncated-value and prior-guided continuations are
+   the live diagnostics, all against a frozen release-27 control.
+   The items below record how the W32 shortlist reached this point; they are
+   history, not the queue.
 
 1. **Keep optimized A+B+C W32 as the experimental reference.** It ranks the
    exhaustive legal set on 32 constrained sampled worlds, keeps four

@@ -1,13 +1,47 @@
 # W32 serving
 
-Implementation and engineering measurements for [#300](https://github.com/jerryyyu/shengji/issues/300).
-**Production default since September 8, 19:53 UTC, explicitly authorized by Jerry.**
-The initial ordinary-room default was `mc-shortlist-fd6bb411-w32-r55d379a3`,
-without an access code. The September 9 shipping config adds hybrid bury below;
-check live `/healthz` for the deployed policy. The original W32 switch was an
-environment-only update on release20; release21 subsequently added X-ray.
-VM size, volume and Docker entry point remain unchanged. Serving this backend does not
-inherit a new strength claim from the Torch checkpoint.
+Implementation and engineering measurements for the NumPy serving path.
+**Production since September 8, explicitly authorized by Jerry at each step.**
+Check live `/healthz` for the deployed policy; it now also reports the prior's
+SHA, threshold and top. Release records with images, digests and rollback
+environments are in `DEPLOY.md`.
+
+## Release 28 (September 16): the JS-M1 joint model as one package
+
+`SHENGJI_BOT = mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`, with
+`SHENGJI_CWV_SHORTLIST_CKPT` and `SHENGJI_CWV_PRIOR_CKPT` both naming
+`/data/models/js-m1-0d17fd03.npz` (SHA `0d17fd03…`), `SHENGJI_CWV_PRIOR_SHA256`
+pinned, threshold 1,000, top 256, hybrid bury with the 2 s budget. The package
+is a v2 NumPy export (`server/scripts/export_cwv_numpy.py`) that carries the
+residual trunk, the outcome head and the policy head; `cwv_numpy.CWVNumpyMLP`
+serves `probabilities` for the value net and `policy_log_odds` for the prior
+over the same trunk, and `cwv_prior_admission.load_prior_checked` binds such a
+package as prior kind `joint-numpy` (refusing a headless package or one whose
+trunk does not read the v2 833-column root rows). Registration is from the
+environment at import (`registry._register_cwv_shortlist_from_env` /
+`_register_cwv_bury_from_env`); the policy name binds the package SHA, the
+W32/N30/R300 recipe and the prior fields (`cwv_shortlist.PRIOR_RECIPE_FIELDS`).
+
+Qualification before the deploy: `scripts/cwv_serving_gate.py --serving
+--threshold 1000` on the exact package as value and prior vs the Torch
+checkpoint (2,208 decisions: 2,207 identical, 1 near-tie with the same play and
+RNG, prior fired 141×); `scripts/cwv_serving_smoke.py` from a clean checkout of
+main with the committed fly.toml (40 server turns through the server's bot-turn
+path); SHA verified on the volume; a live takeover-driven room played a full
+round (bury 0.7 s after the trump call; 69 searches p50 0.6 s / p90 1.6 s /
+max 2.7 s).
+
+## Releases 25–27 (September 15): M1 + policy prior v2, two packages
+
+Release 25 shipped M1 (`12ce4415`, the first residual-trunk NumPy export; schema
+v2 added the residual trunk to the runtime) plus a separate policy-prior package
+(`b9ff76c9`, `cwv_prior_numpy`). It passed the identity gate and stalled every
+live bot turn: the server's turn snapshot deep-copies the bot and the prior's
+read-only weight mapping could not be pickled. It was rolled back to the
+release 24 image within the hour (release 26), fixed
+(`CWVNumpyPrior.__deepcopy__`), and redeployed as release 27 at threshold 1,000
+with the new server-path smoke as a precondition. Release 27 is the rollback for
+release 28.
 
 ## Hybrid bury release (September 9)
 
@@ -204,15 +238,24 @@ automatic removal, not an operator restart.
 
 ## Configuration and rollback
 
-For the current global default, set these **before Python starts**:
+For the current global default, set these **before Python starts** (the exact
+values are in `fly.toml`; the name is derived by the registry from them):
 
 ```sh
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 export SHENGJI_FAST=1
-export SHENGJI_BOT=mc-shortlist-fd6bb411-w32-r55d379a3
-export SHENGJI_CWV_SHORTLIST_CKPT=/data/models/w32-fd6bb411.npz
+export SHENGJI_BOT=mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff
+export SHENGJI_CWV_SHORTLIST_CKPT=/data/models/js-m1-0d17fd03.npz
+export SHENGJI_CWV_PRIOR_CKPT=/data/models/js-m1-0d17fd03.npz
+export SHENGJI_CWV_PRIOR_SHA256=0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747
+export SHENGJI_CWV_PRIOR_THRESHOLD=1000 SHENGJI_CWV_PRIOR_TOP=256
+export SHENGJI_CWV_BURY_ARM=hybrid SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS=2
 export SHENGJI_MODEL_SEARCH_CONCURRENCY=1
 ```
+
+Prior-only rollback: drop the four `SHENGJI_CWV_PRIOR_*` settings and set
+`SHENGJI_BOT` to the prior-less name the registry prints; `/healthz` must show
+`"prior": null`. Release rollbacks (27, 24) are in `DEPLOY.md`.
 
 Optional excluded engineering rooms additionally use `SHENGJI_W32_TEST_ROOMS=1`
 and `SHENGJI_W32_TEST_CKPT=/data/models/w32-fd6bb411.npz`.

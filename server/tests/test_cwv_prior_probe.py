@@ -96,7 +96,7 @@ def test_real_puct_consumer_keeps_action_rng_and_visits(monkeypatch):
     monkeypatch.setattr(probe, "leaf_copy", leaf_copy)
     cls = type("PriorProbe", (CWVPuctBot,), dict(
         CWV_PRIOR="head", CWV_WORLD_POOL=2, CWV_BATCH=2,
-        CWV_SIMULATIONS=8, CWV_MAX_DEPTH=2))
+        CWV_SIMULATIONS=8))
     plain_prior = FakePrior()
     recorded_prior = FakePrior()
     recorder = probe.PriorRecorder(recorded_prior, limit=3)
@@ -160,3 +160,11 @@ def test_real_common_world_comparator_uses_captured_actor_and_preserves_capture(
     assert np.asarray(report["world_values"]).shape == (2, 2)
     assert (row.state.hands, len(row.state.history), row.state.turn) == before
     assert prior.calls == 1
+    # Changing hidden assignments without changing the actor's hand/public
+    # history must not affect resampling or comparator values at a fixed RNG.
+    others = [s for s in range(4) if s != seat]
+    a, b = others[:2]
+    row.state.hands[a], row.state.hands[b] = row.state.hands[b], row.state.hands[a]
+    second = probe.compare_request(row, sampler=MCBot(seed=817), worlds=2)
+    assert second["sampled_worlds"] == report["sampled_worlds"]
+    assert second["world_values"] == report["world_values"]

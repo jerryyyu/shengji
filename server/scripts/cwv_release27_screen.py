@@ -23,6 +23,8 @@ def main(argv=None):
     parser.add_argument('--sweeps', type=int, default=8)
     parser.add_argument('--depth', type=int, default=8)
     parser.add_argument('--continuation-tricks', type=int, default=1)
+    parser.add_argument('--root-warmup-top', type=int, default=0,
+                        help='PUCT only: retain MC candidates plus K mean-prior proposals; evaluate each in all worlds')
     parser.add_argument('--seed0', type=int, required=True)
     parser.add_argument('--clusters', type=int, required=True)
     parser.add_argument('--workers', type=int, default=1)
@@ -32,6 +34,8 @@ def main(argv=None):
         parser.error('counts and depth must be positive')
     if args.continuation_tricks < 0:
         parser.error('continuation-tricks must be nonnegative')
+    if args.root_warmup_top < 0 or (args.root_warmup_top and args.mode != 'puct'):
+        parser.error('root-warmup-top requires PUCT and a nonnegative count')
     if file_sha256(args.baseline_checkpoint) != M1_SHA or file_sha256(args.prior_checkpoint) != PRIOR_SHA:
         parser.error('baseline/prior assets do not match frozen release27')
     recipe = dict(baseline_checkpoint=str(args.baseline_checkpoint.resolve()),
@@ -40,6 +44,8 @@ def main(argv=None):
                   arm_sha256=file_sha256(args.arm_checkpoint), mode=args.mode,
                   sweeps=args.sweeps, depth=args.depth,
                   continuation_tricks=args.continuation_tricks)
+    if args.root_warmup_top:
+        recipe['root_warmup_top'] = args.root_warmup_top
     # Fail on unsupported assets/constructors before allocating pair workers.
     for side in ('baseline', 'arm'):
         make_release27_side(side=side, seed=args.seed0, **recipe)

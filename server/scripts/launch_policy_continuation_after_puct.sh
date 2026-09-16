@@ -19,9 +19,13 @@ py=/root/gen-hybrid/server/.venv/bin/python
 state=$(systemctl show "$predecessor" --property=ActiveState --value)
 result=$(systemctl show "$predecessor" --property=Result --value)
 load=$(systemctl show "$predecessor" --property=LoadState --value)
-[[ "$load" == loaded && "$state" == inactive && "$result" == success ]] || {
-  echo "HOLD predecessor state=$state result=$result"; exit 3;
-}
+if [[ "$load" == not-found && "$state" == inactive ]]; then
+  # Successful transient units can be unloaded even without --collect. Never
+  # accept systemctl's default Result=success for an absent unit.
+  "$py" "$(dirname "$0")/verify_puct_predecessor.py" || exit 3
+elif [[ "$load" != loaded || "$state" != inactive || "$result" != success ]]; then
+  echo "HOLD predecessor load=$load state=$state result=$result"; exit 3
+fi
 [[ $(git -C "$root" rev-parse HEAD) == 1ecefa90f010d6a635037814868ba1382019d4f7 ]] || exit 4
 git -C "$root" diff --quiet HEAD -- server
 "$py" - <<'PY'

@@ -13,6 +13,7 @@ import time
 
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
+from shengji.engine import combos, fast
 from shengji.train import policy_prior as pp
 from shengji.train.cwv_shortlist import make_shortlist_bot
 
@@ -62,6 +63,8 @@ def main():
             print(json.dumps(dict(mode=mode, full_play=args.full_play,
                 seed=args.seed, plies=args.plies, model_sha256=sha,
                 legal_count=record["legal_count"], wall_seconds=wall,
+                fast_available=fast.HAVE_FAST,
+                decompose_module=combos.decompose.__module__,
                 ranking_seconds=ranking, prior_seconds=prior, exact=True)), flush=True)
     finally:
         signal.alarm(0)

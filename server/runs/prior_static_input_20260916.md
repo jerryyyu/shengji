@@ -17,6 +17,8 @@ four plies, 6,940 exhaustive legal actions. No holdout data used.
 ABBA within one process, same state and fresh seeded bot each pass; model loading
 outside timed decision. Local Mac also running training: NOT isolated fleet
 capacity evidence. Alarm bounds each pass at 300 seconds.
+The first two tables below use the pure-Python engine, not Fly's compiled
+engine. The compiled qualification is reported separately below.
 
 | Pass | Whole play (s) | Ranking (s) | Prior stage (s) |
 |---|---:|---:|---:|
@@ -47,3 +49,30 @@ encoding improvement, not a claim that it resolves serving/search latency.
 Tests also cover complete rounds/all seats, opening/follow/terminal states,
 hidden-hand/kitty swaps, and joint-NumPy admitted-pool equality. This does not
 qualify training changes, PUCT tree changes, or different numerical backends.
+
+## Compiled-engine follow-up
+
+Built both extensions with `python setup.py build_ext --inplace`, reran with
+`SHENGJI_FAST=1`, and verified `fast_available=true` and
+`decompose_module=shengji.engine._fast`. The six focused tests pass with that
+environment too. Same seed41/6,940-action fixture, unprofiled ABBA:
+
+| Pass | Whole play (s) | Ranking (s) | Prior stage (s) |
+|---|---:|---:|---:|
+| Reference | 0.656572 | 0.408791 | 0.020788 |
+| Static | 0.605284 | 0.406570 | 0.017375 |
+| Static | 0.606203 | 0.408320 | 0.017784 |
+| Reference | 0.619061 | 0.417171 | 0.019470 |
+
+All final actions, shortlist score records and RNG states match. Shared-host
+timing and only two repetitions still do not establish a general speedup.
+
+A separate cProfile run (timings include instrumentation) totals 4.004s in
+four decisions: ranking 2.528s (63%), report-fold evaluation 1.167s (29%).
+Within ranking, value scoring totals 1.454s and NumPy probabilities 0.832s.
+Tensor-cache lookup is invoked 70,144 times, versus 3,412 static encodings
+(the latter includes prior inputs); repeated tensors still enter forward
+batches. This identifies **value prediction reuse** as a candidate, not a
+qualified optimization. Deduplicating rows changes batch shapes and potentially
+floating-point results; require separate raw-score, admission, final-action,
+RNG and wall/memory comparisons. Keep it out of this encoding-only PR.

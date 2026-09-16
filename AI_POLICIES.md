@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-09 (release 22 W32 PLAY / hybrid BURY)**. This file defines the current callable-policy
+Last reconciled: **2026-09-16 (release 28: JS-M1 joint model as one package)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -17,29 +17,92 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 22: **W32 PLAY with HYBRID BURY**.
-The play package remains `fd6bb411` / source `3cd27716`; hybrid bury is deployed
-with a 2-second cooperative budget and legal heuristic fallback.
+The current live Fly snapshot is release 28: **the JS-M1 joint model as ONE
+package** (value net + its own policy head as the admission prior + hybrid bury).
 
 The current selection is:
 
 ```toml
-SHENGJI_BOT = "mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a"
+SHENGJI_BOT = "mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff"
+SHENGJI_CWV_SHORTLIST_CKPT = "/data/models/js-m1-0d17fd03.npz"
+SHENGJI_CWV_PRIOR_CKPT = "/data/models/js-m1-0d17fd03.npz"
+SHENGJI_CWV_PRIOR_SHA256 = "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747"
+SHENGJI_CWV_PRIOR_THRESHOLD = "1000"
+SHENGJI_CWV_PRIOR_TOP = "256"
 SHENGJI_CWV_BURY_ARM = "hybrid"
 SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS = "2"
-SHENGJI_CWV_SHORTLIST_CKPT = "/data/models/w32-fd6bb411.npz"
 SHENGJI_FAST = "1"
 ```
 
-The server source fallback is `mc` when `SHENGJI_BOT` is absent. The named
-production rollback is `mc-s0-report-lcb`; changing the default, rollback, N/R work,
-ballot, sampler, continuation, or confidence rule is a new policy and needs
-fresh evidence.
+The name is derived by the registry from that environment (the package SHA, the
+W32/N30/R300 recipe digest, the prior SHA and the bury identity); it is never
+hand-written. `/healthz` reports the policy name and the prior's on-disk SHA,
+threshold and top. The server source fallback is `mc` when `SHENGJI_BOT` is
+absent. Rollbacks, in order of proximity: release 27 (M1 + separate prior v2,
+two packages), release 24 (`fd6bb411` + hybrid bury), `mc-s0-report-lcb`.
+Changing the checkpoint, the prior threshold/top, N/R work, ballot, sampler,
+continuation or confidence rule is a new policy and needs fresh evidence.
+Release records, images and the exact rollback environments are in `DEPLOY.md`.
 
-Jerry authorized the W32 play and hybrid-bury switches; release 22 is the observed
-serving snapshot. See [serving qualification and rollback](W32_FLY_SERVING.md).
-Historical screens below compare against the then-production MC-LCB and retain
-their original dates and scopes.
+### Policy prior admission — deployed (releases 27 and 28)
+
+Below 1,000 legal actions the value net ranks every legal action (unchanged
+from the original W32 design). Above 1,000, the policy prior runs once per
+sampled world on a root clone of that world (never the true hidden hands);
+each world's top 256 actions are unioned with production's own anchor
+candidates (median pool about 600 of a bound 8,192, roughly 5% of the legal
+set), and only that pool is ranked. The final shortlist (incumbent plus four
+alternatives) and the MC selection/report stages are unchanged. Every recipe
+field is bound in the policy name (`cwv_shortlist.PRIOR_RECIPE_FIELDS`), the
+admission trace records union size, anchors and pool size per decision, and
+the 300 s total play deadline stays as the backstop.
+
+Evidence (2026-09-15, capped screens; the release 24 recipe is the control):
+paired with M1 on ten shared seeds the prior changes outcomes by
+`−0.0003 [−0.0017, +0.0012]`; on ten fresh windows M1 + prior read
+`+0.0073 [−0.0087, +0.0233]` (MDE80 0.023) with 0 decisions over 60 s and 0 cap
+hits in 365,414 (release 24 recipe on the same deals: 161 and 7) at 0.79× its
+decision wall; threshold 1,000 is outcome-identical to 10,000
+(`−0.0006 [−0.0026, +0.0014]`) at 0.72× that arm's wall with no decision over
+9.9 s. Twenty fresh windows of the M1 family pooled `+0.0140 [+0.0026, +0.0254]`
+against release 24.
+
+### JS-M1 — the joint model (release 28)
+
+`a5248cc5`: M1's recipe (residual d4 trunk, 176k afterstate corpus, outcome +
+search-mean + points heads) trained from scratch for 20 epochs with a 54-card
+policy head at weight 0.2, one root batch per value batch streamed from the
+full root-row cache (20.3M mover-encoded root decisions on the 140,800 fit
+deals). Offline: val CE 0.5957 (M1 0.5975), regret@4 0.0306, holdouts at or
+better than M1; policy head on the 15,517 common test-deal rows: listwise CE
+0.858 (prior v3 0.975), top-64 recall non-inferior to the separate prior on
+four of five strata and better on the two wide partial strata (the 10k+
+stratum, 67 deals, is unresolved). In play as one net (five capped windows,
+seeds 13260910..13660910): `+0.0239 [+0.0005, +0.0472]` vs the release 24
+recipe (nominal, shared-control seeds), paired `+0.0057 [−0.0163, +0.0277]` vs
+release 27 at the same decision wall, 0 decisions over 60 s. Served as one
+NumPy package (schema v2 with the policy head, `server/shengji/ai/cwv_numpy.py`);
+the prior admission loads the same file as kind `joint-numpy`. The earlier
+joint attempts continued from M1 on 1.0M root rows (J1 weight 1, J2 weight 0.2,
+J3 stop-gradient) all trailed the separate prior offline; the from-scratch run
+on all root rows closed that gap. Extension to ten windows and fresh seeds are
+still owed; JS-G1 (the grid trunk on the same data) and a JS-M1-teacher corpus
+(Perf, runJS1) are in progress.
+
+### Serving qualification — every deploy
+
+1. Decision-identity gate (`server/scripts/cwv_serving_gate.py --serving
+   --threshold 1000`): the NumPy packages must reproduce the Torch checkpoints'
+   decisions (action, RNG state, shortlist and means, admission trace) on 60
+   rounds at the serving recipe with the prior exercised; near-tie reorders
+   with the same play are reported separately, never folded into "identical".
+2. Server-path smoke (`server/scripts/cwv_serving_smoke.py`): build the bot
+   from the fly.toml environment exactly as the server does and play bury and
+   play turns through `_paced_bot_step` / `_commit_bot_turn`. Release 25 passed
+   the gate and stalled every live bot turn because nothing took this path; it
+   now precedes every deploy.
+3. Packages SHA256-verified on the volume; `/healthz`; a live room's log showing
+   a bot bury and bot plays completing.
 
 ### Hybrid bury integration — deployed
 
@@ -313,7 +376,8 @@ production claims.
 
 | lane | conclusion for policy work |
 |---|---|
-| **RLCB** | Confirmed and deployed. It is the literal parent all strength challengers must beat. |
+| **RLCB** | The confirmed MC-LCB search; still the screen baseline. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model). |
+| **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior is outcome-identical and removes the latency tail (0 >60 s in 365k); JS-M1 as one net is at least the two-model arm's equal on paired seeds and clears zero at five vs release 24 (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
 | **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |
 | **T4 model proposal** | Selected none. The uninformed widening control was positive against champion but used 14.8% more accepted worlds and 80.9% more searches; it requires a three-arm compute/candidate attribution test. |
@@ -409,8 +473,9 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- `mc-s0-report-lcb` is the immediate W32 policy rollback. For runtime
-  regressions, use the separately identified image rollback in `DEPLOY.md`.
+- Release 27 is the immediate rollback for release 28, release 24 the next;
+  `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use
+  the image rollback in `DEPLOY.md`.
 
 ## Durable pointers
 

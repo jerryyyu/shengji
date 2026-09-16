@@ -64,7 +64,7 @@ M = [
 ("JS-M1: M1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","a5248cc5","2026-09-15","v2",330,"3e-4","176k","25,388,708","0.5957","0.0306",
  "","","5w +0.0239 [+0.0005, +0.0472]","JS-M1 (#425): production since release 28 as one package; five capped windows clear zero (nominal), paired vs M1 + prior +0.0057 null; ten/fresh owed"),
 ("JS-G1: G1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","9ee9fedb","2026-09-16","v2",330,"3e-4","176k","25,388,708","0.5497","0.0291",
- "","","5w +0.0184 [-0.0056, +0.0425]","JS-G1 (#425): grid twin of JS-M1; in play as one net: five capped null, paired vs JS-M1 -0.005 null, 1.32x the wall of M1 + prior at the same threshold"),
+ "","","5w +0.0184 [-0.0056, +0.0425]","JS-G1 (#425): grid twin of JS-M1; in play as one net: five capped null, paired vs JS-M1 -0.005 null, 1.32x the wall of M1 + prior at matched threshold"),
 ("J2: M1 + a policy head at weight 0.2, continued 4 epochs","ac85d19d","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59264","0.0331",
  "","","5w +0.0151 [-0.0082, +0.0383]","J2 (#425): policy weight 0.2, +0.0018 vs the twin; in play as value net + own head as prior: five capped null, paired vs M1 + prior v2 -0.0024"),
 ("J3: stop-gradient policy head on M1, continued 4 epochs","cad530e4","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59082","0.0325",

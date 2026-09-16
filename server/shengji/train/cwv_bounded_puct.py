@@ -57,20 +57,38 @@ def _root_legal_key(state):
 
 
 def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(), profile=False,
-                  reuse_root_actions=False, compact_expansions=False):
+                  reuse_root_actions=False, compact_expansions=False,
+                  root_warmup_actions=(), root_warmup_top=0):
     """Prior callback receives ONLY a private determinized state and legal set.
 
     Scores are logits in enumerator order for the ACTING seat. Exhaustive
     enumeration is retained; widening limits child evaluation, not enumeration.
     One in-flight path per world eliminates virtual-loss/batch-order effects.
     A hard move deadline belongs to the existing supervising screen process.
+    Optional common root actions each receive one evaluation in EVERY world
+    before adaptive sweeps. These are additional simulations, explicitly counted;
+    the returned warmup matrix is comparable evidence, unlike adaptive Q values.
+    root_warmup_top adds proposals ranked by mean normalized policy probability
+    across all roots, retaining every caller-supplied anchor.
     """
     if not worlds or type(seat) is not int or not 0 <= seat < 4:
         raise ValueError('nonempty sampled worlds and valid root seat required')
+    if type(root_warmup_top) is not int or root_warmup_top < 0:
+        raise ValueError('root_warmup_top must be a nonnegative integer')
     for world in worlds:
         if (world.phase != 'play' or world.turn != seat
                 or not getattr(world, '_determinized_world', False)):
             raise ValueError('roots must be determinized play states at root turn')
+    warmup_actions = tuple(tuple(sorted(a)) for a in root_warmup_actions)
+    if compact_expansions and (warmup_actions or root_warmup_top):
+        raise ValueError('compact expansions cannot be combined with root warmup')
+    if len(set(warmup_actions)) != len(warmup_actions):
+        raise ValueError('common root actions must be distinct')
+    if warmup_actions:
+        from ..harvest.legal import is_legal
+        if any(not is_legal(world, seat, action)
+               for world in worlds for action in warmup_actions):
+            raise ValueError('common root actions must be legal in every world')
     started = time.perf_counter() if profile else 0.
     timings = dict(enumeration_seconds=0., prior_seconds=0., transition_seconds=0.,
                    leaf_seconds=0.)
@@ -126,6 +144,49 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
         counts['prior_rows'] += 1
         counts['legal_actions'] += len(actions)
         counts['expanded_nodes'] += 1
+
+    warmup_anchors = warmup_actions
+    if root_warmup_top:
+        for root in roots:
+            expand(root)
+        keys = set(roots[0].actions)
+        if any(set(root.actions) != keys for root in roots):
+            raise ValueError('common policy proposals require identical root legal populations')
+        masses = dict.fromkeys(keys, 0.)
+        for root in roots:
+            for action, probability in zip(root.actions, root.priors, strict=True):
+                masses[action] += float(probability) / len(roots)
+        additions = sorted(keys - set(warmup_actions), key=lambda a: (-masses[a], a))[
+            :root_warmup_top]
+        warmup_actions = (*warmup_actions, *additions)
+    warmup_values = []
+    for action in warmup_actions:
+        children = []
+        for root in roots:
+            expand(root)
+            tick = time.perf_counter() if profile else 0.
+            state = leaf_copy(root.state)
+            state.play(state.turn, list(action))
+            child = Node(state)
+            root.children[action] = child
+            children.append(child)
+            if profile:
+                timings['transition_seconds'] += time.perf_counter() - tick
+        tick = time.perf_counter() if profile else 0.
+        values = continuation_values([child.state for child in children],
+            [seat] * len(children), [len(root.state.history) for root in roots],
+            evaluator=evaluator, tricks=0, batch_size=config.batch_size)
+        if profile:
+            timings['leaf_seconds'] += time.perf_counter() - tick
+        for name in ('model_rows', 'model_batches', 'terminal_rows'):
+            counts[name] += getattr(values, name)
+        warmup_values.append(values.values.tolist())
+        for root, child, value in zip(roots, children, values.values, strict=True):
+            child.visits = 1
+            child.total = float(value)
+            root.visits += 1
+            root.total += float(value)
+        depth_histogram[1] = depth_histogram.get(1, 0) + len(roots)
 
     for _ in range(config.sweeps):
         paths, leaves = [], []
@@ -186,7 +247,8 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
     # are conditional on visits, not an unbiased common-world action estimate.
     chosen = max(sorted(visits), key=lambda a: (visits[a], totals[a] / visits[a]))
     result = dict(action=list(chosen), visits=visits, totals=totals,
-                world_visits=[r.visits for r in roots], simulations=len(roots) * config.sweeps,
+                world_visits=[r.visits for r in roots],
+                simulations=len(roots) * (config.sweeps + len(warmup_actions)),
                 diagnostics=dict(depth_histogram=depth_histogram,
                     root_legal_counts=[r.legal_count for r in roots],
                     root_visited_actions=[len(r.children) for r in roots],
@@ -201,6 +263,18 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
         result['expansion_storage'] = dict(reachable_width=reachable_width,
             retained_action_entries=retained_actions,
             exhaustive_action_entries=counts['legal_actions'])
+
+    if warmup_actions:
+        result['common_root_warmup'] = dict(
+            actions=[list(a) for a in warmup_actions],
+            anchors=[list(a) for a in warmup_anchors],
+            policy_additions_requested=root_warmup_top,
+            policy_additions_actual=len(warmup_actions) - len(warmup_anchors),
+            values_by_action_world=warmup_values,
+            means=np.mean(warmup_values, axis=1).tolist(),
+            simulations=len(roots) * len(warmup_actions),
+            adaptive_simulations=len(roots) * config.sweeps,
+            limitation='immediate-value-leaves; adaptive final Q remains visit-conditional')
     if profile:
         timings['search_seconds'] = time.perf_counter() - started
         timings['other_seconds'] = max(0., timings['search_seconds'] - sum(
@@ -220,11 +294,18 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
     Shortlist configuration supplies world count ONLY; shortlist admission,
     selection and report are not called. Prior threshold/top do not prune this
     tree: every expanded node ranks its exhaustive set. Declare/bury inherited.
+    Opt-in root warmup retains the MC generator's candidates plus common policy
+    proposals; it does not promise to retain the release27 W32-selected winner.
     """
 
     def __init__(self, *args, puct_config=None, reuse_root_actions=False,
-                 compact_expansions=False, **kwargs):
+                 compact_expansions=False, root_warmup_top=0, **kwargs):
+        if type(root_warmup_top) is not int or root_warmup_top < 0:
+            raise ValueError('root_warmup_top must be a nonnegative integer')
+        if compact_expansions and root_warmup_top:
+            raise ValueError('compact expansions cannot be combined with root warmup')
         super().__init__(*args, **kwargs)
+        self.root_warmup_top = root_warmup_top
         self.puct_config = puct_config or PuctConfig()
         self.reuse_root_actions = bool(reuse_root_actions)
         self.compact_expansions = bool(compact_expansions)
@@ -246,10 +327,19 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
         if len(worlds) != self.shortlist_config.worlds:
             raise CWVError('bounded PUCT sampled-world pool underfilled')
         roots = [root_clone(rnd, hands, buried) for hands, buried in worlds]
+        anchors = ()
+        if self.root_warmup_top:
+            from ..ai.mcbot import MCBot
+            # Preserve the literal MC candidate generator, not a second sampled
+            # W32 ranking pass. All inputs here are public/own-hand information.
+            anchors = tuple(dict.fromkeys(tuple(sorted(a))
+                            for a in MCBot._candidates(self, rnd, seat)))
         result = search_worlds(roots, seat, prior_logits=self._tree_prior,
                                evaluator=self.evaluator, config=self.puct_config,
                                reuse_root_actions=self.reuse_root_actions,
-                               compact_expansions=self.compact_expansions)
+                               compact_expansions=self.compact_expansions,
+                               root_warmup_actions=anchors,
+                               root_warmup_top=self.root_warmup_top)
         counts = result['counts']
         self.puct_totals['decisions'] += 1
         self.puct_totals['simulations'] += result['simulations']
@@ -262,6 +352,7 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
                 'config': asdict(self.puct_config), 'worlds': len(worlds),
                 'attempts': attempts, 'world_visits': result['world_visits'],
                 'simulations': result['simulations'], **counts,
+                'diagnostics': result['diagnostics'],
                 'units': result['units'], 'limitation': result['limitation'],
                 'prior_checkpoint_sha256': self.prior_config.checkpoint_sha256,
                 'root_actions': [dict(cards=list(a), visits=n,
@@ -274,4 +365,7 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
                 result['root_enumeration_reuse'])
         if self.compact_expansions:
             self.last_decision_record['bounded_puct']['expansion_storage'] = result['expansion_storage']
+
+        if 'common_root_warmup' in result:
+            self.last_decision_record['bounded_puct']['common_root_warmup'] = result['common_root_warmup']
         return result['action']

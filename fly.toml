@@ -10,21 +10,18 @@ primary_region = 'ewr'
   dockerfile = 'Dockerfile'
 
 [env]
-  # Jerry authorized M1 + policy prior v2 on 2026-09-15 (#435): package 12ce4415 is
-  # the reviewed NumPy export (schema v2, residual trunk; PR #441) of M1 3cb9cd62;
-  # package b9ff76c9 is the NumPy export (PR #442) of policy prior v2 b6d928c5,
-  # bound by SHA (PR #443) and applied above 1,000 legal actions, top 256 per world
-  # (Jerry accepted 1,000 on 2026-09-15 19:2x ET after lane v20: outcome-identical to
-  # 10,000, 0.72x its decision wall, no decision over 10 s).
-  # Hybrid bury (authorized September 9) is unchanged.
+  # Jerry authorized shipping JS-M1 on 2026-09-15 23:4x ET (#425/#435): ONE package,
+  # js-m1-0d17fd03.npz, is the reviewed NumPy export (schema v2 with the policy head,
+  # PR #455) of the from-scratch joint net a5248cc5. It is both the value net and,
+  # above 1,000 legal actions (top 256 per world), its own policy head is the prior
+  # (kind joint-numpy). Hybrid bury unchanged (JS-M1 scores bury candidates too).
   # Prior-only rollback: remove the four SHENGJI_CWV_PRIOR_* lines and set
-  # SHENGJI_BOT to mc-shortlist-12ce4415-w32-r55d379a3-bury-hybrid-<12> (the
-  # prior-less M1 name, printed by the registry). Full rollback: the previous
-  # release (fd6bb411 + hybrid, name in DEPLOY.md).
-  SHENGJI_BOT = 'mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f'
-  SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/m1-12ce4415.npz'
-  SHENGJI_CWV_PRIOR_CKPT = '/data/models/prior-v2-b9ff76c9.npz'
-  SHENGJI_CWV_PRIOR_SHA256 = 'b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c'
+  # SHENGJI_BOT to the prior-less JS-M1 name the registry prints. Full rollback:
+  # release 27 (M1 + prior v2; fly.toml of main 55f0029c..d31bd428) or release 24.
+  SHENGJI_BOT = 'mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff'
+  SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/js-m1-0d17fd03.npz'
+  SHENGJI_CWV_PRIOR_CKPT = '/data/models/js-m1-0d17fd03.npz'
+  SHENGJI_CWV_PRIOR_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747'
   SHENGJI_CWV_PRIOR_THRESHOLD = '1000'
   SHENGJI_CWV_PRIOR_TOP = '256'
   SHENGJI_CWV_BURY_ARM = 'hybrid'

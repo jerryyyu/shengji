@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-09 (release 22 W32 play / hybrid bury)**. This file is the prioritized
+Last reconciled: **2026-09-16 (release 28: JS-M1 joint model as one package)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -11,66 +11,37 @@ Git history. Do not append dated progress blocks here.
 
 ## Program objective
 
-Beat the live W32 policy on fresh mirrored whole games, retaining
-`mc-s0-report-lcb` as the established comparison and play-rollback reference. The
-2026-08-28..09-03 week (retrospective at ledger `0088544f`) produced five honest
-adjudications and no strength learning because confirmatory-grade machinery was
-applied to exploratory questions and every lane targeted an *input* to a
-hypothetical future policy. The queue below inverts that: measure each lane's
-ceiling first, attack the planner (the demonstrated lever: C0 with perfect
-information lost, PT-Sol0 with perfect information and a flexible planner won
-`+17/26`), prove transport at tiny scale before collecting more data, and apply
-full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
-`RL_PLAN.md` "Operating modes").
-
-Latest model decision (ledger `b707062b`): on identical deals, armJ minus
-deployed `3cd27716` is `+0.0006 [−0.0302,+0.0314]`, and armI minus deployed
-is `−0.0147 [−0.0458,+0.0164]` (paired fixed-effect readings). Neither supports
-replacement; this is not proof of equivalence. Keep the deployed checkpoint.
-The suggested armI stability advantage remains an exploratory three-window
-observation, not a shipping conclusion.
+Beat the live policy on fresh mirrored whole games with a single learned model
+that keeps improving from its own search data, and keep production's latency
+tail bounded. The reference points are `mc-s0-report-lcb` (the screen
+baseline), the release 24 recipe (`fd6bb411` + hybrid bury, the capped control
+of every 2026-09 screen), release 27 (M1 + prior v2) and release 28 (JS-M1 as
+one package, live). Screens are 520-cluster mirrored windows; five windows
+triage (extend only when the point exceeds +0.015; MDE80 about 0.033), ten
+shared-control windows are nominal, and only fresh held-out deals confirm.
 
 ## Now — ordered by decision value
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **LIVE** | **W32 serving — Codex, #300 / #310** | Fly release 22 is verified as W32 PLAY with HYBRID BURY, unchanged 512MB/shared CPU. The prior public W32 round completed in 604.808s; 63 bot play turns, compute median/p95/max 5.358/27.763/122.273s, no worker errors. | Retain [rollout evidence](W32_FLY_SERVING.md); continue monitoring long-tail latency. | No active-game interruption, resize or extra replica. |
-| **SHIPPED / MONITOR** | **Hybrid bury integration — Codex, PR #323** | Merged at `ec7f27ad`; deployed `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, unchanged compact `fd6bb411` / source `3cd27716`, 2s cooperative deadline with heuristic fallback. Release 22 health and native/no-Torch functional bury passed. | Monitor latency/fallbacks and large-kitty losses with completed-round denominators; no further bury compute queued. | Research had no deadline/fallback; hybrid vs heuristic was +0.03644 `[+0.01164,+0.06024]` utility and +1.62 pp `[+0.56,+2.68]` wins on 1,976 deals; hybrid vs MC unresolved and kitty≥80 was 4 vs 0 heuristic. Native actual-consumer smoke 11/11 and focused boundary/registry/config tests 17/17 passed. |
-| **FUTURE INVESTIGATION** | **Model-to-search follow-up — Codex, coordinated with Claude** | Prior-assisted admission, learned continuations, harvest performance and v3 features remain separate mechanisms; bury completion does not close them. | Use retained model/search diagnostics to justify a specific next comparison, not an automatic sweep. | Preserve existing negative/neutral continuation and depth results; no new run is queued by this update. |
-| **COMPLETE** | **W32 engineering integration — Codex** | A+B+C W32: +0.1387 levels/round [+0.0645,+0.2168] on 256 opened rank-2 deals. Optimized replay preserves all saved traces and cuts decision wall 2.849× (10.61× → 3.53× production). #249 (`270bd3b9`) → #252 (`0a0d70d1`) → #254 (`0d355c4c`) merged after source PASS and CI; #251 holds the completed scaling readout. | Keep the optimization available to the deployed consumer and record the measured result; no gameplay rerun is needed to integrate unchanged semantics. | Integration alone did not authorize deployment; the later W32 rollout did. |
-| **COMPLETE / PARKED** | **Tested shortlist scaling — Codex, [#248](https://github.com/jerryyyu/shengji/issues/248)** | Keep optimized K4/W32. K8, W64, doubled final search and both 26-deal double-shortlist arms did not establish improvement. Adaptive root allocation completed at +0.00577 [−0.05774,+0.07308] versus flat; selective depth at −0.00577 [−0.06736,+0.05769] and 1.5892× wall, each on 260 opened broader-rank deals. | No additional unchanged-recipe arm queued. Use retained evidence or a separately tested better checkpoint to motivate any new mechanism. [Results](AI_POLICIES.md#completed-allocation-and-depth-screens). | No equivalence, universal depth-failure or fresh-confirmation claim. Retain all artifacts; no automatic world/threshold/depth sweep. |
-| **COMPLETE** | **W32 engineering closeout — Codex** | #286 prepared-lead optimization merged. [#288](https://github.com/jerryyyu/shengji/pull/288) merged at `24541d98`: fused-input full-consumer A/B had identical outputs on nine pairs, 1.3324× speedup on two huge zero-reuse follows, neutral small panel with mixed individual timings. | Retain the source and measured scope; no further capacity or reconstruction run. | Do not extrapolate to whole-game speedup, multiply different-host ratios or change live workers/production defaults. |
-| **P1** | **Model/data — Claude** | The earlier ACDEF v2 − ACD v1 `+0.0779` result did not replicate. Claude's five-window random-effects pooled contrast is `−0.0064 [−0.0412,+0.0285]`. I/J is `−0.0154 [−0.0455,+0.0148]` under its preregistered fixed-effect analysis; importing the other contrast's tau gives conditional sensitivity interval `[−0.0601,+0.0294]`. Neither resolves a generator improvement. | Preserve completed evidence; consult the latest [review ledger](HANDOFF_REVIEW.md) for Claude's active work. | `tau_paired ≈ 0.0290` is uncertain and contrast-specific, not a universal SE floor. Lower offline CE has not reliably selected stronger search checkpoints. Retain model/data provenance and independent-deal boundaries. |
-| **COMPLETE** | **PT-Luna efficiency and quality — Codex** | #246/#275/#280 merged; #247 superseded with source archived. All 52 deals / 104 mirrored rounds complete. Batch4−compact1: −0.1058 [−0.2885,+0.0769] levels/round alongside 2.27× fewer reported tokens/decision and 1.70× serial provider throughput. Equal quality is not established. | Reuse the [completed readout and native harvest](server/runs/luna_quality_gameplay_tranche1_result_20260906.md): 3,900 fit + 3,852 validation records, losses included and provenance retained. Historical teacher bridge remains separate. No rerun required. | Seven shared-response waves limit deal-bootstrap inference; opened validation stays out of fitting and fresh confirmation. No historic-teacher equivalence, subscription-quota saving or automatic data promotion. |
-| **P2** | **Fresh strength confirmation** | W32 is deployed by explicit product decision; earlier screens and the bury confirmation have their own limited claims. | A future challenger must name its exact live/reference parent, fresh population and useful work/behavior control. | Separate deployment from proof of superiority and candidate selection from confirmation; no new run is launched by this queue entry. |
-| **CLOSED** | **BELIEF R4 / R5** | Original R4 test scored +21.40% Brier but failed the label control; outer resource/integrity refusal. Separate #179 DEV diagnostic: `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). | [All 18 reviewed PRs closed](https://github.com/jerryyyu/shengji/issues/217#issuecomment-5588118823), with exact heads reachable from permanent archive tags. [Preservation scope](RL_PLAN.md#r4-and-r5) is verified, not a full Mini dataset copy. | No research restart or artifact deletion. Original test is spent; any later confirmation needs a new disjoint population. |
-| **COMPLETE** | **Original PT-Luna isolated collection** | Five attempts, one complete 32-game dataset retained; failed predecessors remain engineering evidence. | Reuse within its data contract. New bounded efficiency experiments are tracked separately above. | No retrospective upgrade of predecessor quality or independence. |
-| **P2** | **Production-policy quality gaps** | User-reported bare-point / weak-fallback / point-insensitive play remain diagnosis surfaces. | Replay production decisions, classify cause, test one causal treatment with a matched null. | No blanket rules. |
+| **LIVE** | **Release 28: JS-M1 one package — Claude** | Deployed 2026-09-16 00:5x ET after the identity gate (2,207/2,208 + 1 near-tie), the server-path smoke and a live bot round. Rollback release 27 / 24. | Ten-window extension and five fresh windows vs release 27; production room logs (bury/play phase timings now logged). | Any regression → rollback to release 27; no recipe change without a new go. |
+| **RUNNING** | **runJS1 corpus — Perf** | 32,000 rounds with JS-M1 as teacher (own head as prior at 1,000, hybrid bury), 16 workers, started 09-15 23:10 ET, about 20 clusters/min. | A generation-1 training run on the new corpus vs JS-M1 (same recipe, new data): the search→data→model loop's first measured link. | Offline gates (val CE, policy-head non-inferiority) then the in-play screen. |
+| **RUNNING** | **JS-G1 — Mini** | G1's grid trunk from scratch with the policy head on all 20.3M root rows; the value curve tracks plain G1 (0.5495 at seal) so far. | Both #425 gates, then in play as one net vs JS-M1 at matched wall (G1 alone was 5.9× MC-LCB wall). | Same gates as JS-M1. |
+| **P1** | **Search with the heads — Codex, #436** | Bounded PUCT lost (−0.62 levels/round at 2× wall); root reuse, compact expansions, root warmup, truncated-value and prior-guided continuations are merged or under review as opt-in research arms against a frozen release-27 control. | A matched-control read showing any of them beats the shortlist at equal wall. | Paired DEV screens first; five capped windows before any claim. |
+| **P2** | **Bury latency — Claude** | Locally bury is 0.10–0.15 s and the banker's opening lead 0.4–0.65 s; production decisions queue behind one search worker. Phase telemetry on `model_search` events landed (#450). | The production split of bury vs play wall from the new events; then a bury screen at 16 candidates / 16 worlds if bury is the visible wait. | Bury screen vs the hybrid recipe; no default change without it. |
+| **P2** | **Docs cleanup** | This pass updates README, AI_POLICIES, RL_PLAN, BACKLOG, W32_FLY_SERVING, PERF. Removal of HANDOFF_ACTIVE.md, the two Luna teacher docs, TEACHER_TOKEN_EFFICIENCY.md and RESEARCH_PRINCIPLES.md is proposed to Codex. | Codex's answer on the deletion list. | Nothing deleted without it. |
+| **CLOSED** | **BELIEF R4/R5, PT-Sol/Luna, D64, Direct-Q, V11** | Retained as lessons and datasets. | — | — |
 
 ## Immediate sequence
 
-0. Finish the reviewed close/archive disposition in #196 and gated serving
-   in #300/#310. #256's older playable-registry implementation is superseded
-   by main, not a merge prerequisite. Preserve unique source and outcomes;
-   #272/#284/#287 default changes and #307 identity repair remain real work.
-1. Retain the sealed K8 readout, keep K4, and do not escalate to K16.
-2. Runs A through H are complete and local; run I is generating the first
-   shortlist-produced teacher data. Data generation yields to strength
-   experiments when they contend for a box. Do not take a contended host
-   for a performance benchmark.
-3. Retain the completed rank-diverse comparison at `bc89b557` and its
-   inconclusive broader-rank estimate. Its actual allocation
-   `[91260904,91261164)` is committed; PR259 documents the larger reserved range.
-   Double-shortlist, adaptive root allocation and selective depth have since
-   completed without a supported gain. Preserve their results; neither
-   all-world depth, W128 nor more uniform rollout work follows automatically.
-   #288 engineering integration is complete; retain its bounded measurements.
-4. Luna collection and native harvest are complete; preserve fit/validation
-   separation and mixed play-only continuation labels when reusing the data.
-   Keep the direct batching contrast separate from the historical teacher
-   bridge. Shared-wave sensitivity is descriptive, not a confidence interval.
-   No further provider collection is queued by this completed experiment.
-5. Confirm a selected policy on fresh deals with measured work controls.
+1. Read runJS1 when it seals (about 09-16 midday); train generation 1 on it
+   with JS-M1's recipe; compare offline against JS-M1, then in play.
+2. Read JS-G1 at seal (about 09-16 07:00 ET): both gates, then the one-net screen.
+3. Extend JS-M1 in play to ten windows and five fresh seeds; record on #425/#435.
+4. Read the first production days of release 28 from the room logs (phase
+   timings, fallbacks, timeouts); if bury is the visible wait, screen a lighter
+   bury recipe.
+5. Finish the docs cleanup once Codex answers on the deletion list.
 
 ## Entry criteria for new scientific lanes
 

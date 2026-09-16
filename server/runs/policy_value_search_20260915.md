@@ -490,3 +490,35 @@ plays, seed616092026+plies, resampleW32; all three follow positions (7/10/1
 legal actions) compare exactly off/on, each31cachehits/1miss. This includes a
 forced follow. Narrow-position savings are small, as expected; no fleet-wide
 speedup or strength claim. No changes to the live gameplay source.
+
+## Common-root warmup kernel prototype (2026-09-16, not screened)
+
+Optional `root_warmup_actions` evaluates every supplied legal action in every
+world before adaptive PUCT sweeps. The kernel refuses duplicate or world-illegal
+actions before inference, keeps private transitions, and publishes the complete
+action-by-world matrix. Warmup visits seed the trees; the work budget explicitly
+adds K×W initial evaluations rather than hiding them inside adaptive sweeps.
+Default empty warmup retains the original path. Adaptive final Q is still
+visit-conditional: this is an initial-coverage test, not a claim to have removed
+determinization or selection bias.
+
+20focused kernel tests pass, including comparison with independently evaluated
+afterstates, distinct hidden-world inputs, rejection before inference, batching,
+and total visit/model-row accounting. Real M1/prior-v2 smoke on saved root2,
+seed619092026,W32,S8,D8, first5enumerated actions:0.197s,5×32warmup matrix,
+160warmup+256adaptive=416simulations,13visits/world,416modelrows/13batches.
+Candidate choice here is deliberately a mechanics fixture, not a strength recipe.
+
+The adapter now exposes `--root-warmup-top K` in the release27 screen. When K>0,
+it retains the MC generator's full candidate set, deduplicated, then adds up toK
+other actions by mean normalized prior probability across all sampled worlds.
+Those priors are the same per-world priors used in PUCT expansion, not another
+sampling/ranking pass. This preserves MC anchors, not necessarily release27's
+W32-selected winning move. Unequal legal populations refuse common proposals.
+The option is bound into the saved recipe; zero leaves the old recipe unchanged.
+
+Validation:29focused kernel/factory/CLI tests, including low-prior anchor
+preservation and the actual MC adapter, plus option binding/resume. Review is to
+unblock saved-state M1/G1 comparison of default versus warmup before gameplay;
+warmup adds work and must report K×W on top of the configured sweep budget.
+No live source/default change and no gameplay launch from this prototype.

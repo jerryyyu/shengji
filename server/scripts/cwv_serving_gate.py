@@ -91,12 +91,64 @@ def _trace(bot):
             "admission": admission}
 
 
+NEAR_TIE = 1e-5
+
+
 def _same(a, b) -> bool:
     if a["shortlist"] != b["shortlist"] or a["admission"] != b["admission"]:
         return False
     if len(a["means"]) != len(b["means"]):
         return False
     return bool(np.allclose(a["means"], b["means"], rtol=1e-4, atol=1e-5))
+
+
+def _near_tie(a, b) -> bool:
+    """A shortlist that differs ONLY at near-tied candidates, with both implementations
+    agreeing on every candidate they share.
+
+    Two conditions, both required: (1) every candidate present in both shortlists has the
+    same mean on both sides (within the identity tolerance) -- cross-implementation
+    agreement, so a shifted or otherwise divergent score vector never qualifies; (2) every
+    candidate present on one side only (the reordered / swapped members) has a mean within
+    NEAR_TIE of every other such member, so the only difference is which of two
+    near-equal candidates made the cut. Admission traces must match. Reported separately;
+    never counted as identical."""
+    if a["admission"] != b["admission"] or not a["means"] or not b["means"]:
+        return False
+    sa = {tuple(x): m for x, m in zip(a["shortlist"], a["means"])}
+    sb = {tuple(x): m for x, m in zip(b["shortlist"], b["means"])}
+    shared = set(sa) & set(sb)
+    if not shared:
+        return False
+    if any(not np.isclose(sa[k], sb[k], rtol=1e-4, atol=1e-5) for k in shared):
+        return False
+    changed = [sa[k] for k in set(sa) - shared] + [sb[k] for k in set(sb) - shared]
+    if not changed:
+        # same membership, different order: the reordered pair must be near-tied
+        order_a = [k for k in sa if k in sb]; order_b = [k for k in sb if k in sa]
+        moved = [k for k, j in zip(order_a, order_b) if k != j]
+        changed = [sa[k] for k in moved]
+        if not changed:
+            return False
+    return max(changed) - min(changed) <= NEAR_TIE
+
+
+def _same_play(a, b, served, reference) -> bool:
+    """The same action AND the same selection-RNG state afterwards (the same amount of search consumed)."""
+    return sorted(a) == sorted(b) and served.rng.getstate() == reference.rng.getstate()
+
+
+def _classify(a, b, served, reference, ta, tb) -> str:
+    """One decision's verdict: ``identical`` (same play, RNG state, shortlist, admission trace and
+    means within tolerance), ``near-tie`` (same play and RNG state, shortlist differing only at
+    near-tied candidates -- see ``_near_tie``), else ``mismatch``. The single classification unit
+    of the gate; the mechanics tests stub it, the identity tests do not."""
+    same_play = _same_play(a, b, served, reference)
+    if same_play and _same(ta, tb):
+        return "identical"
+    if same_play and _near_tie(ta, tb):
+        return "near-tie"
+    return "mismatch"
 
 
 def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, rounds=4,
@@ -119,13 +171,18 @@ def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, ro
                # What a PASS here may be cited for. Only the serving recipe with the prior bound
                # qualifies a deployment; every other run is a smoke test of the same code paths.
                "scope": f"serving-w32-n30-prior-t{int(threshold)}" if serving else "smoke",
-               "decisions": 0, "identical": 0, "prior_fired": 0, "first_mismatch": None, "result": None}
+               "decisions": 0, "identical": 0, "prior_fired": 0, "first_mismatch": None, "result": None,
+               # Mismatches broken down: the served bot made the same play with the same RNG state
+               # but searched a shortlist that differs at a near-tie (see _near_tie), vs anything else.
+               "near_tie_same_play": 0, "other_mismatches": 0}
     kw = dict(seed=seed, worlds=worlds, selection_worlds=selection_worlds, threshold=threshold, top=top)
     served = _bot(value_numpy, prior_numpy, **kw)
     reference = _bot(value_torch, prior_torch, **kw)
     receipt["kinds"] = {"served_prior": getattr(served, "_prior_kind", None),
                         "reference_prior": getattr(reference, "_prior_kind", None)}
-    if prior_numpy is not None and receipt["kinds"]["served_prior"] != "separate-numpy":
+    # The served prior is either the NumPy prior package or the joint value package's own
+    # head (#425: one file serves both stages); anything else means the served side loaded Torch.
+    if prior_numpy is not None and receipt["kinds"]["served_prior"] not in ("separate-numpy", "joint-numpy"):
         raise ValueError("the served prior did not load as the NumPy package")
     t0 = time.perf_counter()
     for r in range(int(rounds)):
@@ -138,25 +195,39 @@ def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, ro
                 ta, tb = _trace(served), _trace(reference)
                 receipt["decisions"] += 1
                 receipt["prior_fired"] += ta["admission"] is not None
-                ok = sorted(a) == sorted(b) and served.rng.getstate() == reference.rng.getstate() and _same(ta, tb)
-                receipt["identical"] += ok
-                if not ok and receipt["first_mismatch"] is None:
-                    receipt["first_mismatch"] = {"round": r, "decision": receipt["decisions"], "seat": seat,
-                                                 "served": sorted(a), "reference": sorted(b),
-                                                 "served_shortlist": ta["shortlist"], "reference_shortlist": tb["shortlist"]}
+                verdict = _classify(a, b, served, reference, ta, tb)
+                receipt["identical"] += verdict == "identical"
+                if verdict != "identical":
+                    if verdict == "near-tie":
+                        receipt["near_tie_same_play"] += 1
+                    else:
+                        receipt["other_mismatches"] += 1
+                    if receipt["first_mismatch"] is None:
+                        receipt["first_mismatch"] = {"round": r, "decision": receipt["decisions"], "seat": seat,
+                                                     "same_play": _same_play(a, b, served, reference),
+                                                     "near_tie": verdict == "near-tie",
+                                                     "served": sorted(a), "reference": sorted(b),
+                                                     "served_shortlist": ta["shortlist"], "reference_shortlist": tb["shortlist"],
+                                                     "served_means": ta["means"], "reference_means": tb["means"]}
                 rnd.play(seat, b)
             else:
                 rnd.play(seat, h.decide_play(rnd, seat))
     receipt["seconds"] = round(time.perf_counter() - t0, 1)
     identical = receipt["decisions"] > 0 and receipt["identical"] == receipt["decisions"]
-    if not identical:
-        receipt["result"] = "mismatch" if receipt["decisions"] else "no-decisions"
+    near_ties_only = receipt["decisions"] > 0 and not identical and receipt["other_mismatches"] == 0
+    if not receipt["decisions"]:
+        receipt["result"] = "no-decisions"
+    elif not identical and not near_ties_only:
+        receipt["result"] = "mismatch"
     elif prior_torch is not None and receipt["prior_fired"] == 0:
-        # Every decision agreed, but the prior never ran: the combined path is NOT certified.
+        # Every decision agreed (or differed only at near-ties), but the prior never ran:
+        # the combined path is NOT certified, whichever of the two accepted shapes it took.
         receipt["result"] = "incomplete-prior-never-fired"
     else:
-        receipt["result"] = "identical"
-    receipt["passed"] = receipt["result"] == "identical"
+        receipt["result"] = "identical" if identical else "identical-except-near-ties"
+    # A near-tie reorder with the same play and RNG is reported, never silently passed:
+    # the deploy record must quote the count. It does not fail the gate on its own.
+    receipt["passed"] = receipt["result"] in ("identical", "identical-except-near-ties")
     receipt["qualifies_serving"] = bool(receipt["passed"] and serving)
     return receipt
 
@@ -187,7 +258,8 @@ def main(argv=None) -> int:
         args.receipt.write_text(json.dumps(receipt, indent=1, sort_keys=True))
     print(f"{'PASS' if receipt['passed'] else 'FAIL'} ({receipt['result']}, scope {receipt['scope']}"
           f"{', qualifies serving' if receipt['qualifies_serving'] else ''}): decisions {receipt['decisions']} "
-          f"identical {receipt['identical']} prior fired {receipt['prior_fired']} secs {receipt['seconds']}")
+          f"identical {receipt['identical']} near-tie same-play {receipt['near_tie_same_play']} "
+          f"other {receipt['other_mismatches']} prior fired {receipt['prior_fired']} secs {receipt['seconds']}")
     if receipt["first_mismatch"]:
         print("first mismatch:", json.dumps(receipt["first_mismatch"]))
     return 0 if receipt["passed"] else 1

@@ -54,6 +54,36 @@ def test_reject_live_world_and_bad_prior():
         search_worlds([rnd], rnd.turn, prior_logits=lambda *a: [float('nan')], evaluator=Evaluator())
 
 
+def test_gameplay_record_preserves_search_coverage(monkeypatch):
+    """Exercise the adapter and real search, not just kernel diagnostics."""
+    import json
+    from collections import defaultdict
+    from types import SimpleNamespace
+    from shengji.train import cwv_bounded_puct as module
+    rnd = root()
+    bot = object.__new__(module.CWVBoundedPuctBot)
+    bot.shortlist_config = SimpleNamespace(worlds=2)
+    bot.puct_config = PuctConfig(sweeps=5, depth=3, batch_size=2)
+    bot.root_warmup_top = 0
+    bot.reuse_root_actions = False
+    bot.compact_expansions = False
+    bot.evaluator = Evaluator()
+    bot.prior_config = SimpleNamespace(checkpoint_sha256='test-prior')
+    bot.puct_totals = defaultdict(int)
+    bot._tree_prior = uniform
+    monkeypatch.setattr(module, 'sample_worlds',
+                        lambda *args: ([(rnd.hands, rnd.buried)] * 2, 2))
+    monkeypatch.setattr(module, 'root_clone', lambda *args: copy.deepcopy(rnd))
+    action = bot.decide_play(rnd, rnd.turn)
+    record = json.loads(json.dumps(bot.last_decision_record))['bounded_puct']
+    d = record['diagnostics']
+    assert sum(d['depth_histogram'].values()) == record['simulations'] == 10
+    assert max(map(int, d['depth_histogram'])) <= 3
+    assert len(d['root_legal_counts']) == len(d['root_visited_actions']) == 2
+    assert len(d['root_visited_prior_mass']) == 2
+    assert tuple(action) in enumerate_legal(rnd, rnd.turn, cap=None).keys()
+
+
 def test_optional_profile_preserves_search_result():
     rnd = root()
     args = dict(prior_logits=uniform, config=PuctConfig(sweeps=8, depth=8))
@@ -183,6 +213,126 @@ def test_root_reuse_key_separates_legality_inputs():
         else:
             play(other)
         assert _root_legal_key(other) != key
+
+def test_common_root_warmup_has_equal_world_evidence_and_explicit_work():
+    from shengji.ai.cwv_puct import leaf_copy
+    from shengji.train.cwv_truncated_value import continuation_values
+    rnd = root()
+    actions = enumerate_legal(rnd, rnd.turn, cap=None).actions[:2]
+    worlds = [rnd, copy.deepcopy(rnd)]
+    others = [s for s in range(4) if s != rnd.turn]
+    worlds[1].hands[others[0]], worlds[1].hands[others[1]] = (
+        worlds[1].hands[others[1]], worlds[1].hands[others[0]])
+    class Fingerprint(Evaluator):
+        def score_many(self, states, seats):
+            super().score_many(states, seats)
+            return [sum((s+1)*sum(ord(c) for card in hand for c in card)
+                        for s, hand in enumerate(state.hands)) / 10000
+                    for state in states]
+    ev = Fingerprint()
+    out = search_worlds(worlds, rnd.turn, prior_logits=uniform, evaluator=ev,
+        config=PuctConfig(sweeps=3, depth=3, batch_size=1), root_warmup_actions=actions)
+    warmup = out['common_root_warmup']
+    assert warmup['simulations'] == 2 * len(actions)
+    assert warmup['adaptive_simulations'] == 6
+    assert out['simulations'] == sum(out['world_visits']) == 6 + 2 * len(actions)
+    assert sum(out['visits'].values()) == out['simulations']
+    assert sum(out['diagnostics']['depth_histogram'].values()) == out['simulations']
+    assert out['counts']['model_rows'] + out['counts']['terminal_rows'] == out['simulations']
+    for i, action in enumerate(actions):
+        states = []
+        for world in worlds:
+            child = leaf_copy(world)
+            child.play(child.turn, action)
+            states.append(child)
+        expected = continuation_values(states, [rnd.turn]*2, [len(rnd.history)]*2,
+            evaluator=Fingerprint(), tricks=0, batch_size=1).values
+        assert warmup['values_by_action_world'][i] == expected.tolist()
+        assert warmup['means'][i] == float(expected.mean())
+        assert out['visits'][tuple(sorted(action))] >= 2
+    assert all(len(states) <= 1 for states, _ in ev.calls)
+
+
+def test_common_root_warmup_refuses_duplicates_and_illegal_before_inference():
+    rnd = root()
+    action = enumerate_legal(rnd, rnd.turn, cap=None).actions[0]
+    ev = Evaluator()
+    for actions, message in (([action, action], 'distinct'),
+                             ([['BJ']*3], 'legal in every world')):
+        with pytest.raises(ValueError, match=message):
+            search_worlds([rnd], rnd.turn, prior_logits=uniform, evaluator=ev,
+                          root_warmup_actions=actions)
+    assert not ev.calls
+
+
+@pytest.mark.parametrize('warmup', ['explicit', 'prior'])
+def test_compact_warmup_refused_before_prior_or_value(warmup):
+    rnd = root()
+    ev = Evaluator()
+    def forbidden(*args):
+        raise AssertionError('prior must not run')
+    options = (dict(root_warmup_top=1) if warmup == 'prior' else
+               dict(root_warmup_actions=enumerate_legal(rnd, rnd.turn, cap=None).actions[:1]))
+    with pytest.raises(ValueError, match='cannot be combined'):
+        search_worlds([rnd], rnd.turn, prior_logits=forbidden, evaluator=ev,
+                      compact_expansions=True, **options)
+    assert not ev.calls
+
+
+def test_compact_warmup_bot_refuses_before_loading():
+    from shengji.train.cwv_bounded_puct import CWVBoundedPuctBot
+    with pytest.raises(ValueError, match='cannot be combined'):
+        CWVBoundedPuctBot(Evaluator(), compact_expansions=True, root_warmup_top=1)
+
+
+def test_root_enumeration_reuse_preserves_warmup_matrix_and_search():
+    rnd = root()
+    worlds = [rnd, copy.deepcopy(rnd)]
+    options = dict(prior_logits=uniform, config=PuctConfig(sweeps=3, depth=3),
+                   root_warmup_top=2)
+    baseline = search_worlds(worlds, rnd.turn, evaluator=Evaluator(), **options)
+    reused = search_worlds(worlds, rnd.turn, evaluator=Evaluator(),
+                           reuse_root_actions=True, **options)
+    assert reused.pop('root_enumeration_reuse') == dict(hits=1, misses=1)
+    assert reused == baseline
+
+
+def test_common_root_policy_proposals_preserve_low_prior_anchor():
+    rnd = root()
+    legal = enumerate_legal(rnd, rnd.turn, cap=None).actions
+    keys = sorted(tuple(sorted(a)) for a in legal)
+    anchor = keys[-1]
+    def policy(world, seat, actions):
+        return np.array([-10. if tuple(a) == anchor else 0. for a in actions])
+    out = search_worlds([rnd, copy.deepcopy(rnd)], rnd.turn,
+        prior_logits=policy, evaluator=Evaluator(), config=PuctConfig(sweeps=1),
+        root_warmup_actions=[anchor], root_warmup_top=2)
+    warmup = out['common_root_warmup']
+    assert warmup['anchors'] == [list(anchor)]
+    assert warmup['actions'] == [list(anchor), *[list(a) for a in keys[:-1][:2]]]
+    assert warmup['policy_additions_actual'] == min(2, len(keys)-1)
+    assert out['visits'][anchor] >= 2
+
+
+def test_common_root_adapter_keeps_mc_candidates(monkeypatch):
+    from shengji.train import cwv_prior_admission as prior_module
+    from shengji.train.cwv_bounded_puct import CWVBoundedPuctBot
+    from shengji.train.cwv_shortlist import CWVShortlistConfig
+    from shengji.ai.mcbot import MCBot
+    monkeypatch.setattr(prior_module, 'load_prior_checked', lambda *a: ('separate', None, None))
+    monkeypatch.setattr(CWVBoundedPuctBot, '_tree_prior', staticmethod(uniform))
+    bot = CWVBoundedPuctBot(Evaluator(), seed=37,
+        config=CWVShortlistConfig(worlds=2),
+        prior=prior_module.CWVPriorAdmissionConfig('unused', 'a'*64),
+        puct_config=PuctConfig(sweeps=2), root_warmup_top=2)
+    rnd = root()
+    anchors = {tuple(sorted(a)) for a in MCBot._candidates(bot, rnd, rnd.turn)}
+    bot.decide_play(rnd, rnd.turn)
+    record = bot.last_decision_record['bounded_puct']
+    warmup = record['common_root_warmup']
+    assert {tuple(a) for a in warmup['anchors']} == anchors
+    assert anchors <= {tuple(a) for a in warmup['actions']}
+    assert record['simulations'] == warmup['simulations'] + 4
 
 
 @pytest.mark.parametrize('kwargs', [dict(sweeps=0), dict(depth=0), dict(batch_size=0),

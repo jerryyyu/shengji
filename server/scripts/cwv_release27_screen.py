@@ -26,6 +26,8 @@ def main(argv=None):
                         help='reuse identical root legal sets across sampled worlds (PUCT only)')
     parser.add_argument('--compact-expansions', action='store_true')
     parser.add_argument('--continuation-tricks', type=int, default=1)
+    parser.add_argument('--root-warmup-top', type=int, default=0,
+                        help='PUCT only: retain MC candidates plus K mean-prior proposals; evaluate each in all worlds')
     parser.add_argument('--seed0', type=int, required=True)
     parser.add_argument('--clusters', type=int, required=True)
     parser.add_argument('--workers', type=int, default=1)
@@ -39,6 +41,11 @@ def main(argv=None):
         parser.error('root action reuse requires puct mode')
     if args.compact_expansions and args.mode != 'puct':
         parser.error('compact expansions requires puct mode')
+
+    if args.root_warmup_top < 0 or (args.root_warmup_top and args.mode != 'puct'):
+        parser.error('root-warmup-top requires PUCT and a nonnegative count')
+    if args.compact_expansions and args.root_warmup_top:
+        parser.error('compact expansions cannot be combined with root warmup')
     if file_sha256(args.baseline_checkpoint) != M1_SHA or file_sha256(args.prior_checkpoint) != PRIOR_SHA:
         parser.error('baseline/prior assets do not match frozen release27')
     recipe = dict(baseline_checkpoint=str(args.baseline_checkpoint.resolve()),
@@ -51,6 +58,9 @@ def main(argv=None):
         recipe['reuse_root_actions'] = True
     if args.compact_expansions:
         recipe['compact_expansions'] = True
+
+    if args.root_warmup_top:
+        recipe['root_warmup_top'] = args.root_warmup_top
     # Fail on unsupported assets/constructors before allocating pair workers.
     for side in ('baseline', 'arm'):
         make_release27_side(side=side, seed=args.seed0, **recipe)

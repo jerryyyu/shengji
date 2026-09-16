@@ -37,11 +37,16 @@ What the evidence says (details and provenance in
 - JS-M1 is M1's recipe (a residual-trunk MLP on the afterstate encoding)
   trained from scratch on all 20.3M root decisions with a policy head at
   weight 0.2. Offline it beats M1 on the outcome head (val CE 0.5957 vs 0.5975)
-  and its head is non-inferior to the separate prior on four of five strata.
-- In play as one net, five capped windows read `+0.0239 [+0.0005, +0.0472]`
-  signed levels per round against the release 24 recipe and
-  `+0.0057 [−0.0163, +0.0277]` paired against release 27 at the same decision
-  wall. Ten-window and fresh-seed confirmation are still owed.
+  and its head is non-inferior to the separate prior on four of five strata, so
+  one net can do both jobs without giving up either.
+- **Release 28 shipped for maintainability, not for strength.** One checkpoint
+  and one file replace two, so there is a single artifact to export, gate,
+  version and roll back. In play it read `+0.0057 [−0.0163, +0.0277]` signed
+  levels per round paired against release 27 at the same decision wall: no
+  resolved difference, which is the bar it had to clear. (Against the older
+  release 24 recipe, five capped windows read `+0.0239 [+0.0005, +0.0472]`,
+  but that inherits M1's win rather than adding to it.) A fresh-deal check that
+  the simplification did not cost strength is running.
 - The prior is a latency device with no resolved strength effect: on paired
   seeds it changed outcomes by `−0.0003 [−0.0017, +0.0012]` while removing every
   decision over 60 s (0 in 365k fresh-deal decisions vs 161 for the old recipe).

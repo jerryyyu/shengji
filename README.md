@@ -4,61 +4,56 @@
 with friends (phones: landscape).
 
 Full-stack implementation of the classic Chinese partnership trick-taking game:
-Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
-UI with Mandarin voice announcements.
+Python rules engine + a learned-model-guided Monte Carlo AI + FastAPI
+multiplayer server + React web UI with Mandarin voice announcements.
 
-## Project state — 2026-09-16
+## The production bot — release 28 (2026-09-16)
 
-The live Fly snapshot is **release 28: the JS-M1 joint model as ONE package**
-(`/data/models/js-m1-0d17fd03.npz`; policy `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`).
-One checkpoint now does two jobs. As the **value net** it ranks every legal
-action across 32 sampled hidden worlds and hands the incumbent plus four
-alternatives to production's full Monte Carlo search (N30 selection, R300
-report, heuristic rollouts). Above 1,000 legal actions its own **policy head is
-the admission prior**: it runs once per sampled world, and the union of the
-per-world top-256 plus production's anchors (about 600 actions, median) is what
-the value net ranks, so the exhaustive wide follows that used to take minutes
-are gone. Hybrid bury (heuristic candidates, model scoring, MC selection, 2 s
-budget) is unchanged. The engine is the compiled fast path.
+![Release 28: one JS-M1 package proposes, production's Monte Carlo search decides](docs/visuals/js-m1-one-package.svg)
 
-How it got here (2026-09-15/16, each step on Jerry's explicit go, records in
-[DEPLOY.md](DEPLOY.md)): release 25 shipped M1 plus a separate policy prior and
-stalled every bot turn (the server's turn snapshot could not deep-copy the NumPy
-prior); it was rolled back within the hour, fixed, and redeployed as release 27;
-release 28 replaced the two files with the single joint checkpoint.
+One checkpoint, **JS-M1** (`a5248cc5`, served as the NumPy package
+`js-m1-0d17fd03.npz`), does two jobs on every play decision:
 
-**Evidence behind the current policy** (details in
-[AI_POLICIES.md](AI_POLICIES.md#production-contract); readouts in the scaling
-log and the search atlas):
+1. **Prior (policy head).** When a position has more than 1,000 legal actions
+   (wide throw follows), the policy head scores the actions once per sampled
+   world; the union of each world's top 256 plus production's own anchors
+   (about 600 actions, median) is all that goes forward. Below 1,000 actions
+   nothing is pruned.
+2. **Proposer (value head).** The admitted actions are scored across 32 shared
+   sampled hidden worlds; the four best plus the incumbent form the shortlist.
+3. **Decider (unchanged Monte Carlo search).** Production's MC-LCB search plays
+   the shortlist out in 30 sampled worlds with heuristic rollouts, applies its
+   lower-bound rule and re-checks the winner on a 300-world report fold. The
+   net proposes; the search decides.
 
-- M1 (`3cb9cd62`, a residual-trunk MLP on the 176k afterstate corpus) confirmed
-  on ten fresh windows against the release 24 recipe, `+0.0212 [+0.0036, +0.0387]`
-  signed levels per round; twenty fresh windows of the M1 family pooled
-  `+0.0140 [+0.0026, +0.0254]`.
-- The policy prior changed M1's outcomes by `−0.0003 [−0.0017, +0.0012]` on paired
-  seeds (no resolved difference; this is a paired estimate, not an equivalence
-  test) and, in the observed windows, cut the latency tail: 0 decisions over
-  60 s in 365,414 fresh-deal decisions against 161 (and 7 cap hits) for the old
-  recipe; at threshold 1,000 the longest decision in 182,494 was 9.9 s at 0.60×
-  the old decision wall.
-- JS-M1 (`a5248cc5`): M1's recipe trained from scratch with a policy head on all
-  20.3M root decisions. Offline it beats M1 on the outcome head (val CE 0.5957 vs
-  0.5975) and its head is non-inferior to the separate prior on four of five
-  strata. In play as one net (five capped windows) it read
-  `+0.0239 [+0.0005, +0.0472]` against the release 24 recipe and
-  `+0.0057 [−0.0163, +0.0277]` paired against release 27 at the same wall. No
-  ten-window or fresh-seed read yet.
-- Releases 27 and 28 passed the decision-identity gate (the NumPy packages
-  reproduce the Torch checkpoints' decisions) and the server-path smoke (the
-  server can take bury and play turns with the built bot), both in
-  `server/scripts/`. Release 25 passed the gate alone and stalled live; the
-  smoke was written because of it and has preceded every deploy since.
+Bury is hybrid: heuristic candidates, scored by the same package, MC selection
+with four alternatives, a 2 s budget with heuristic fallback. Declares are
+heuristic. The engine runs the compiled fast path.
 
-Older lanes (BELIEF R4/R5, PT-Sol/Luna teachers, D64) are closed and remain
-lessons, not policies. See [RL_PLAN.md](RL_PLAN.md) for the decision tree,
-[BACKLOG.md](BACKLOG.md) for the queue, [AI_POLICIES.md](AI_POLICIES.md) for
-measured results, and [RESEARCH_PRINCIPLES.md](RESEARCH_PRINCIPLES.md) for the
-rules those results produced.
+What the evidence says (details and provenance in
+[AI_POLICIES.md](AI_POLICIES.md#production-contract), readouts in the
+[scaling log](docs/scaling_log/) and the search atlas):
+
+- JS-M1 is M1's recipe (a residual-trunk MLP on the afterstate encoding)
+  trained from scratch on all 20.3M root decisions with a policy head at
+  weight 0.2. Offline it beats M1 on the outcome head (val CE 0.5957 vs 0.5975)
+  and its head is non-inferior to the separate prior on four of five strata.
+- In play as one net, five capped windows read `+0.0239 [+0.0005, +0.0472]`
+  signed levels per round against the release 24 recipe and
+  `+0.0057 [−0.0163, +0.0277]` paired against release 27 at the same decision
+  wall. Ten-window and fresh-seed confirmation are still owed.
+- The prior is a latency device with no resolved strength effect: on paired
+  seeds it changed outcomes by `−0.0003 [−0.0017, +0.0012]` while removing every
+  decision over 60 s (0 in 365k fresh-deal decisions vs 161 for the old recipe).
+- Every deploy passes two gates in `server/scripts/`: the decision-identity
+  gate (the NumPy package reproduces the Torch checkpoint's decisions) and the
+  server-path smoke (the server can take bury and play turns with the built
+  bot). Release 25 passed the first alone and stalled live; the second exists
+  because of it.
+
+Rollbacks and release records: [DEPLOY.md](DEPLOY.md). The serving path
+(packages, gate, smoke, `/healthz`): [W32_FLY_SERVING.md](W32_FLY_SERVING.md).
+What comes next: [BACKLOG.md](BACKLOG.md) and [RL_PLAN.md](RL_PLAN.md).
 
 ## Quick start
 
@@ -74,50 +69,46 @@ Open http://localhost:8000, create a room, add 3 bots (or share the room code
 with friends on your network), and start. For frontend development use
 `npm run dev` in `web/` (Vite on :5173, talks to the server on :8000).
 
-Tests: `cd server && uv run pytest`.
-Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
+Tests: `cd server && uv run pytest` (`SHENGJI_FAST=1` runs the compiled-engine
+witnesses). Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
 
 ## Rules implemented (standard 4-player, 2 decks)
 
 - Teams 0+2 vs 1+3, levels 2→A; the banker team's level is the trump rank.
-- Live dealing phase: cards are dealt one at a time and any player may
-  declare mid-deal by revealing trump-rank card(s) (pair beats single, joker
-  pair declares no-trump and beats both), with a short grace window after the
-  last card for over-declarations. No declaration → trump is flipped from
-  the kitty. First round's first declarer becomes banker.
+- Live dealing: any player may declare mid-deal by revealing trump-rank
+  card(s) (pair beats single, joker pair declares no-trump and beats both),
+  with a short grace window for over-declarations; no declaration → trump is
+  flipped from the kitty. The first round's first declarer becomes banker.
 - Banker takes the 8-card kitty and buries 8.
 - Pairs, tractors (consecutive pairs, trump-aware adjacency incl. rank cards
-  and jokers), and throws (甩牌) — an invalid throw is forced down to its
-  lowest component.
+  and jokers) and throws (甩牌); an invalid throw is forced down to its lowest
+  component.
 - Follow rules: follow suit with matching count; pairs must cover pair leads;
   tractor leads oblige an in-suit tractor of that length when you hold one;
   void hands may trump with a shape-matching play.
-- Points: 5s=5, 10s/Ks=10 (200 total). Attackers win at 80. If attackers
-  take the last trick, kitty points are multiplied by 2 × the size of the
-  winning play (single ×2, pair ×4, 2-pair tractor ×8).
-- Scoring: attackers 0 → banker +3, <40 → +2, <80 → +1; attackers 80+ take
-  the deal and gain (points−80)/40 levels. The game is won by successfully
-  **defending** at level A — attackers who win at A take the deal and must
-  then hold their A.
+- Points: 5s=5, 10s/Ks=10 (200 total). Attackers win at 80; taking the last
+  trick multiplies kitty points by 2 × the size of the winning play.
+- Scoring: attackers 0 → banker +3, <40 → +2, <80 → +1; attackers 80+ take the
+  deal and gain (points−80)/40 levels. The game is won by **defending** at
+  level A.
 
-House-rule simplifications (v1): throws are checked against all three other
-hands with no 10-point penalty; pair obligations for multi-component throws
-use the pair-count rule.
+House rules (v1): throws are checked against all three other hands with no
+10-point penalty; pair obligations for multi-component throws use the
+pair-count rule.
 
 ## Layout
 
 ```
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
-server/shengji/ai/       policies: heuristic.py (baseline), smart.py +
-                         memory.py (card-counting heuristic), mcbot.py
-                         (Monte Carlo search; source fallback, while Fly pins
-                         mc-s0-report-lcb),
-                         registry.py + env.py + tournament.py (evaluation;
-                         ladder and all measurements in AI_POLICIES.md)
-server/shengji/rl/       learned-policy pipeline: encoder, action
-                         enumeration, afterstate value model
-                         (roadmap in RL_PLAN.md)
+server/shengji/ai/       policies: heuristic.py, smart.py + memory.py (card-counting
+                         heuristic), mcbot.py (the Monte Carlo search), cwv_numpy.py
+                         (the Torch-free package runtime), registry.py (SHENGJI_BOT
+                         names are derived from the fly.toml env, never hand-written)
+server/shengji/train/    the shortlist bot, prior admission, bury policy, screens
+server/shengji/rl/       encoders, action enumeration, the value/policy model, trainer
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
+server/scripts/          export_cwv_numpy.py, cwv_serving_gate.py, cwv_serving_smoke.py,
+                         replay.py, xray.py
 server/tests/            unit tests + randomized self-play soak tests
 web/                     React + TypeScript UI (Vite)
 PROTOCOL.md              WebSocket protocol contract
@@ -126,117 +117,46 @@ PROTOCOL.md              WebSocket protocol contract
 The engine is authoritative and UI-free; the server maps card instance ids to
 codes per seat so hidden information never leaves the server.
 
-## The AI
+## Other policies in the registry
 
-A policy is anything implementing three methods (`decide_declare`,
-`decide_bury`, `decide_play`); the server picks one via `SHENGJI_BOT`
-(`curl /healthz` reports the active one). Current evidence, with provenance
-and promotion caveats in `AI_POLICIES.md`:
-
-- **JS-M1 joint model, one package (live PLAY + PRIOR + hybrid BURY, release 28)** —
-  the network proposes (value head over the exhaustive legal set on 32 sampled
-  worlds; policy head prunes decisions above 1,000 legal actions), full MC
-  rollouts and the report fold still decide. Registered from the `fly.toml`
-  environment by `server/shengji/ai/registry.py`; the name binds the package
-  SHA, the recipe and the prior settings.
-  [Architecture and evidence](AI_POLICIES.md#production-contract).
-- **M1 + policy prior v2 (release 27, rollback)** — the same design with two
-  files (value package `12ce4415`, prior package `b9ff76c9`).
-- **`mc-s0-report-lcb` (the MC-LCB search; screen baseline and deep rollback)** —
-  N=30 determinized MC plus the fresh paired report check described above.
-- **`mc` (source fallback, not production)** — the older N=10 determinized
-  search policy.
-- **`rl-override-v11pair` (experimental)** — the best learned milestone beat
-  SmartBot 57.7%, but the corrected direct-v2 screen lost to current search and
-  selected none. Keep it only as a bounded proposal/ranking and teacher
-  diagnostic; it is not a scalar leaf or production candidate.
-- **Direct-Q and Suphx O0 (experimental, closed)** — both learned something,
-  but each failed its own preregistered robustness/held-out gate. They inform a
-  fresh learner-mechanism experiment; neither is deployable or extendable from
-  its inspected result.
-- **`smart`, `heuristic`** — the hand-written baselines.
-
-The objective is verified bot strength, not RL or search complexity for its
-own sake. Screens choose what deserves confirmation; only fresh paired games
-against the named live champion establish a new strength claim.
-
-Training pipeline (`server/shengji/rl/`, roadmap and full experiment
-log in `RL_PLAN.md`): observation/action encoders, legal-play
-enumeration, the afterstate value model behind the `mc-cwv-*` bots, the
-trajectory/oracle screens under `server/shengji/train/`, and an Elo
-tournament + human-agreement validation battery.  The BC/distillation/DMC,
-suphx and belief lanes were removed on 2026-09-05 (tag
-`archive/code-lanes-pre-cleanup-20260905` keeps them).
-
-## Evaluation glossary
-
-- **Paired cluster:** the same deal is played with fixed seat/team flips so
-  policy differences are compared on shared luck rather than unrelated games.
-- **Signed level utility:** round outcome measured in levels from one named
-  team's perspective; it is not the same as game win rate.
-- **Report fold:** fresh simulations used only to re-evaluate a decision chosen
-  on a separate selection fold.
-- **LCB:** lower confidence bound. A positive LCB means the conservative edge,
-  not merely the noisy point estimate, is above zero.
-- **Screen:** a bounded design-selection experiment. It cannot by itself
-  promote a policy.
-- **Confirmation:** a fresh, preregistered paired evaluation of one frozen
-  candidate against a named champion and controls.
-- **SELECT NONE:** the registered gate did not authorize a candidate. It does
-  not necessarily mean every observed point estimate was negative.
+`mc-s0-report-lcb` is the bare MC-LCB search (the screen baseline and the deep
+rollback); release 27's two-file recipe (M1 value package + separate prior v2)
+is the first rollback; `smart` and `heuristic` are the hand-written baselines.
+Closed lanes (G1's grid trunk in play, the PUCT ladder with the heads, the
+BELIEF and privileged-teacher teachers, direct-Q, Suphx O0) are recorded as
+lessons in [AI_POLICIES.md](AI_POLICIES.md) and [RL_PLAN.md](RL_PLAN.md), not
+as policies.
 
 ## Debugging & analysis tools
 
-- `scripts/replay.py` — render any game log (`logs/<ROOM>.jsonl`) as a
-  full transcript with all hands.
+- `scripts/replay.py` — render any room log (`logs/<ROOM>.jsonl`) as a full
+  transcript with all hands.
 - `scripts/xray.py` / the in-game X-ray (press `x`; needs
-  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any
-  position, including the banker's chosen kitty bury and any available
-  bury-search candidates/work account. The in-game panel also separates W32
-  model nominations (acting-team signed levels), MC selection estimates
-  (attacker points), and the paired report-gap decision (acting-team points).
-  It labels the checkpoint, recipe, search work and measured times. Missing
-  uncertainty is shown as unavailable, not zero.
+  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any position:
+  W32 nominations, MC selection estimates and the paired report-gap decision,
+  with the checkpoint, recipe, search work and measured times labelled. It
+  evaluates an isolated snapshot and never changes the live bot's RNG.
 - `scripts/fetch_fly_logs.sh` — stage, validate, refresh and hash prod logs.
-- `python -m shengji.rl.human_shards` — build a fresh replay-audited,
-  provenance-bound human play/bury corpus; raw human choices remain proposal
-  data until counterfactually validated.
-
-For the in-game panel, set `localStorage.setItem("shengji.debug", "<token>")`
-in browser devtools using the server's `SHENGJI_DEBUG_TOKEN`, then press `x`
-on your play turn. It evaluates an **isolated snapshot**, not a historical
-bot decision or a continuously updating view; reopen it for a new position.
-The report gap is challenger minus incumbent, so a positive mean does not
-guarantee an override: with W32's LCB rule, the displayed decision statistic
-(a lower bound) must clear the gain threshold.
-Xray uses the same model-worker limit as gameplay and returns a busy message
-instead of queuing extra searches. It does not change the live bot RNG, reveal
-sampled hidden hands, or establish that the bot planned a later sequence.
-
+- `python -m shengji.rl.human_shards` — build a replay-audited human play/bury
+  corpus (raw human choices are proposal data until counterfactually validated).
 
 ## Project docs
 
 | file | what it holds |
 |---|---|
-| `RL_PLAN.md` | state of play, key learnings, roadmap, measurement rules |
-| `AI_POLICIES.md` | canonical AI results + every policy/toggle and durable conclusion |
-| `CORRECTNESS.md` | validation suite, house rules, incident index |
-| `incidents/` | postmortems (what happened, why detection was slow) |
-| `PERF.md` | engine/search speed rules, dated baselines, shipped optimisations (live perf work: issue #208) |
+| `AI_POLICIES.md` | the production contract, every measured policy and durable conclusion |
+| `RL_PLAN.md` | decision tree, key learnings, measurement rules |
 | `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
-| `AGENTS.md` | automatically loaded execution, review, parallelism and long-run discipline |
-| `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |
-| `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
-| `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` (removal under discussion with Codex) |
-| `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; its existing authenticated historical rotation is preserved in `docs_archive/` |
-| `DEPLOY.md` / `PROTOCOL.md` | hosting, release records and rollbacks + wire protocol |
-| `W32_FLY_SERVING.md` | the NumPy serving path: packages, identity gate, server-path smoke, healthz |
-| `docs/scaling_log/` | the scaling log page: every value model, its offline metrics and screen results (built from `models.py`) |
-| `web/README.md` | client architecture, protocol contract, UI invariants |
-| `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |
+| `DEPLOY.md` / `W32_FLY_SERVING.md` | release records and rollbacks; the NumPy serving path and its gates |
+| `PERF.md` | engine/search speed rules, dated baselines, shipped optimisations |
+| `CORRECTNESS.md` / `incidents/` | validation suite, house rules, postmortems |
+| `docs/scaling_log/` | every value model, its offline metrics and screen results (built from `models.py`) |
+| `AGENTS.md` / `CODEX_WORKFLOW.md` / `MAINTENANCE.md` | execution discipline, the Codex setup, the daily routine |
+| `RESEARCH_PRINCIPLES.md` | scientific doctrine, estimands and evidence boundaries |
+| `HANDOFF_ACTIVE.md` / `HANDOFF_REVIEW.md` | current gate summary; the append-only review ledger on `main` |
+| `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
+| `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |
 
-Top-level documents are reserved for current project, operational, or durable
-contract surfaces. A completed one-off experiment spec should be summarized in
-its canonical owner and moved to `docs_archive/`; evidence-bound specs remain
-in place only while their experiment is live.
+Top-level documents are reserved for current project, operational or durable
+contract surfaces; completed one-off specs are summarized in their owner and
+moved to `docs_archive/`.

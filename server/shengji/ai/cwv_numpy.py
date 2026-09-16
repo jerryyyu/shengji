@@ -184,7 +184,9 @@ class CWVNumpyMLP:
             table = self._weights["grid_table"]
             if not np.array_equal(table, np.rint(table)) or table.min() < 0 or table.max() > N_CARDS:
                 raise CWVNumpyError("malformed grid_table array")
-            self._grid_slots = table.astype(np.int64)
+            slots = table.astype(np.int64)
+            slots.setflags(write=False)                 # shared across deep copies: immutable
+            self._grid_slots = slots
         self._math_weights = MappingProxyType({
             k: np.frombuffer(np.asarray(v, dtype=np.float64).tobytes(),
                              dtype=np.float64).reshape(v.shape)

@@ -137,4 +137,7 @@ def test_grid_package_deep_copies_share_weights_and_the_table(grid):
     clone = copy.deepcopy(model)
     assert clone._weights is model._weights and clone._grid_slots is model._grid_slots
     assert clone._grid_slots.shape == (65, GRID_ROWS * GRID_COLS)
+    assert not clone._grid_slots.flags.writeable, "the shared table must be immutable"
+    with pytest.raises(ValueError):
+        clone._grid_slots[0, 0] = 0
     assert clone.package_sha256 == model.package_sha256

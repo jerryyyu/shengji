@@ -4,13 +4,22 @@
 set -euo pipefail
 mode=${1:---check}
 [[ "$mode" == --check || "$mode" == --launch ]] || exit 2
-predecessor=codex-puct-gameplay-recovery-20260916.service
+# The original wrapper is deliberately retired after M1 seals; it must never
+# be resumed into its unsafe concurrent G1 wave. Require the replacement G1
+# service to finish successfully, plus all eight summaries below.
+predecessor=codex-puct-g1-sequential-20260916.service
+old=codex-puct-gameplay-recovery-20260916.service
+old_state=$(systemctl show "$old" --property=ActiveState --value)
+[[ "$old_state" == inactive || "$old_state" == failed ]] || {
+  echo "HOLD old launcher still present: $old_state"; exit 3;
+}
 root=/root/codex-policy-continuation-20260916
 out=/root/codex-policy-continuation-gameplay-20260916
 py=/root/gen-hybrid/server/.venv/bin/python
 state=$(systemctl show "$predecessor" --property=ActiveState --value)
 result=$(systemctl show "$predecessor" --property=Result --value)
-[[ "$state" == inactive && "$result" == success ]] || {
+load=$(systemctl show "$predecessor" --property=LoadState --value)
+[[ "$load" == loaded && "$state" == inactive && "$result" == success ]] || {
   echo "HOLD predecessor state=$state result=$result"; exit 3;
 }
 [[ $(git -C "$root" rev-parse HEAD) == 1ecefa90f010d6a635037814868ba1382019d4f7 ]] || exit 4

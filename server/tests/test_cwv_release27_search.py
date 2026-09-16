@@ -36,7 +36,8 @@ def test_release27_refuses_different_control_asset(monkeypatch):
             prior_checkpoint="prior", arm_checkpoint="g1", arm_sha256="g1", mode="puct")
 
 
-def test_root_reuse_factory_is_arm_only_and_puct_only(monkeypatch):
+@pytest.mark.parametrize('flag', ['reuse_root_actions', 'compact_expansions'])
+def test_root_reuse_factory_is_arm_only_and_puct_only(monkeypatch, flag):
     fixed = SimpleNamespace(checkpoint_sha256=R.M1_SHA)
     arm = SimpleNamespace(checkpoint_sha256='g1')
     monkeypatch.setattr(R, 'shared_evaluator',
@@ -44,14 +45,14 @@ def test_root_reuse_factory_is_arm_only_and_puct_only(monkeypatch):
     monkeypatch.setattr(P, 'load_prior_checked', lambda *a: ('separate', None, None))
     kw = dict(seed=19, baseline_checkpoint='m1.npz', prior_checkpoint='prior.npz',
               arm_checkpoint='g1.pt', arm_sha256='g1', mode='puct')
-    assert not R.make_release27_side(side='arm', **kw).reuse_root_actions
-    candidate = R.make_release27_side(side='arm', reuse_root_actions=True, **kw)
-    control = R.make_release27_side(side='baseline', reuse_root_actions=True, **kw)
-    assert candidate.reuse_root_actions and candidate.bury_evaluator is fixed
-    assert not hasattr(control, 'reuse_root_actions')
+    assert not getattr(R.make_release27_side(side='arm', **kw), flag)
+    candidate = R.make_release27_side(side='arm', **{flag: True}, **kw)
+    control = R.make_release27_side(side='baseline', **{flag: True}, **kw)
+    assert getattr(candidate, flag) and candidate.bury_evaluator is fixed
+    assert not hasattr(control, flag)
     kw['mode'] = 'truncated'
     with pytest.raises(ValueError, match='requires puct'):
-        R.make_release27_side(side='arm', reuse_root_actions=True, **kw)
+        R.make_release27_side(side='arm', **{flag: True}, **kw)
 
 
 def test_screen_dispatch_requires_deadline_and_binds_recipe(monkeypatch):
@@ -100,6 +101,11 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     argv[-1] = str(fresh)
     assert C.main(argv + ['--reuse-root-actions']) == 0
     assert seen[-1][0]['release27_search']['reuse_root_actions'] is True
+    with pytest.raises(ValueError):
+        C.main(argv + ['--reuse-root-actions', '--compact-expansions'])
+    argv[-1] = str(tmp_path / 'compact')
+    assert C.main(argv + ['--compact-expansions']) == 0
+    assert seen[-1][0]['release27_search']['compact_expansions'] is True
 
 
 def test_summary_reports_bury_fallbacks_and_missing_accounting(monkeypatch):

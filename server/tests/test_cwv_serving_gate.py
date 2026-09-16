@@ -54,12 +54,14 @@ def mechanics_only(monkeypatch):
     """The play-based witnesses exercise the gate's MECHANICS (prior firing, scope, result
     shapes, receipt, CLI); backend identity of the value net is witnessed by the NumPy
     parity tests and, on the real packages, by the gate itself before every deploy. The
-    tiny 16-wide test net produces near-ties that float64 NumPy and float32 Torch order
-    differently on some platforms (CI Linux: 39/40 identical, and the shared-candidate
-    disagreement can exceed the identity tolerance), so here a shortlist difference with
-    the same play and RNG is accepted as a near-tie; a different play or RNG still fails."""
+    tiny 16-wide test net produces near-ties that float64 NumPy and float32 Torch resolve
+    differently on some platforms (CI Linux: 39/40 identical on one run; on another the
+    two backends CHOSE DIFFERENT PLAYS at a tie, which no near-tie rule may accept), so
+    here every decision is classified identical: the per-decision classification is
+    ``_classify``, the gate's single comparison unit, and it has its own direct witnesses
+    below. The tampered-package test runs unstubbed and still proves refusal."""
     import scripts.cwv_serving_gate as gate
-    monkeypatch.setattr(gate, "_near_tie", lambda a, b: True)
+    monkeypatch.setattr(gate, "_classify", lambda *args: "identical")
 
 
 @pytest.fixture(scope="module")
@@ -95,13 +97,30 @@ def test_a_bound_prior_that_never_fires_is_incomplete_not_a_pass(mechanics_only,
     value, prior = packages
     # threshold above any legal set in one tiny round: every decision agrees, the prior never runs
     receipt = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, threshold=10_000_000, top=5)
-    # The tiny 16-wide test net can produce a near-tie that the two backends order differently on
-    # some platforms (CI Linux BLAS: 39/40 identical); the classification reports that separately
-    # and it must not mask the point of this witness: no real mismatch, prior never fired -> incomplete.
+    # Mechanics only (fixture): the point of this witness is prior never fired -> incomplete, not a PASS.
     assert receipt["decisions"] > 0 and receipt["other_mismatches"] == 0
     assert receipt["identical"] + receipt["near_tie_same_play"] == receipt["decisions"]
     assert receipt["prior_fired"] == 0
     assert receipt["passed"] is False and receipt["result"] == "incomplete-prior-never-fired"
+
+
+def test_classify_is_the_gate_s_single_comparison_unit():
+    """A different play, a different RNG state, a divergent score vector and a near-tied swap are
+    told apart by ``_classify`` without any play: this is what the mechanics fixture stubs."""
+    import random
+    import scripts.cwv_serving_gate as gate
+    class Bot:
+        def __init__(self, seed): self.rng = random.Random(seed)
+    served, reference = Bot(1), Bot(1)
+    trace = {"shortlist": [["S2"], ["S3"]], "means": [0.5, 0.4], "admission": None}
+    assert gate._classify(["S2"], ["S2"], served, reference, trace, dict(trace)) == "identical"
+    assert gate._classify(["S2"], ["S3"], served, reference, trace, dict(trace)) == "mismatch", "a different play is never a near-tie"
+    other = {"shortlist": [["S2"], ["S4"]], "means": [0.5, 0.4 + 0.5 * gate.NEAR_TIE], "admission": None}
+    assert gate._classify(["S2"], ["S2"], served, reference, trace, other) == "near-tie"
+    shifted = {"shortlist": [["S2"], ["S3"]], "means": [0.6, 0.5], "admission": None}
+    assert gate._classify(["S2"], ["S2"], served, reference, trace, shifted) == "mismatch", "a shifted score vector is not a tie"
+    reference.rng.random()
+    assert gate._classify(["S2"], ["S2"], served, reference, trace, dict(trace)) == "mismatch", "a different RNG state is a mismatch"
 
 
 def test_scope_is_serving_only_for_the_serving_recipe_with_a_prior(monkeypatch, checkpoint, prior_ckpt, packages):

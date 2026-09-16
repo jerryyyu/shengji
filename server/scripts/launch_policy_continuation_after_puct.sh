@@ -17,6 +17,7 @@ result=$(systemctl show "$predecessor" --property=Result --value)
 git -C "$root" diff --quiet HEAD -- server
 "$py" - <<'PY'
 import json
+import hashlib
 from pathlib import Path
 base = Path('/root/codex-puct-gameplay-20260916')
 for model in ('M1', 'G1'):
@@ -31,6 +32,12 @@ for model in ('M1', 'G1'):
         assert (r['mode'], r['sweeps'], r['depth']) == ('puct', sweeps, depth), path
         assert c['decision_deadline']['seconds'] == 300, path
         assert r['arm_checkpoint'] == f'/root/claude-{model}.pt', path
+for name, expected in {
+    'M1': '3cb9cd62a083736e3b41712baabaa86398b74f0e303a4a15290ec1cd9585612d',
+    'G1': '1bcbb47f253a7151df08749b31868a1d1608fbf3e578a2dc4d24f232b1e2e648',
+}.items():
+    with open(f'/root/claude-{name}.pt', 'rb') as stream:
+        assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected, name
 PY
 [[ ! -e /root/.claude-lane.lock ]] || { echo 'HOLD lane reserved'; exit 5; }
 if pgrep -f '[c]wv_screen_queue|[c]wv_shortlist_screen|[t]rajectory_cli|[c]wv_release27_screen.py' >/dev/null; then

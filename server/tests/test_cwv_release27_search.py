@@ -6,7 +6,7 @@ from shengji.train import cwv_release27_search as R
 from shengji.train import cwv_prior_admission as P
 
 
-@pytest.mark.parametrize("mode", ["puct", "truncated"])
+@pytest.mark.parametrize("mode", ["puct", "truncated", "policy"])
 def test_release27_bury_and_baseline_do_not_follow_arm_model(monkeypatch, mode):
     fixed = SimpleNamespace(checkpoint_sha256=R.M1_SHA)
     arm = SimpleNamespace(checkpoint_sha256="g1")
@@ -26,6 +26,27 @@ def test_release27_bury_and_baseline_do_not_follow_arm_model(monkeypatch, mode):
         assert bot.prior_config.threshold == 1000
         assert bot.prior_config.top == 256
         assert bot.REPORT_FOLD_WORLDS == 300
+
+
+def test_policy_matched_control_changes_only_guidance(monkeypatch):
+    fixed = SimpleNamespace(checkpoint_sha256=R.M1_SHA)
+    arm = SimpleNamespace(checkpoint_sha256='g1')
+    monkeypatch.setattr(R, 'shared_evaluator',
+                        lambda path, **kw: fixed if path == 'm1.npz' else arm)
+    monkeypatch.setattr(P, 'load_prior_checked', lambda *a: ('separate', None, None))
+    kwargs = dict(seed=19, baseline_checkpoint='m1.npz', prior_checkpoint='prior.npz',
+        arm_checkpoint='g1.pt', arm_sha256='g1', mode='policy', control='matched-continuation',
+        guided_tricks=1, continuation_tricks=None)
+    baseline = R.make_release27_side(side='baseline', **kwargs)
+    candidate = R.make_release27_side(side='arm', **kwargs)
+    assert type(candidate) is type(baseline) is R.PolicyFixedBuryBot
+    assert baseline.guided_tricks == 0 and candidate.guided_tricks == 1
+    for bot in (baseline, candidate):
+        assert bot.evaluator is arm and bot.bury_evaluator is fixed
+        assert bot.continuation_tricks is None
+    assert baseline.shortlist_config == candidate.shortlist_config
+    assert baseline.prior_config == candidate.prior_config
+    assert baseline.rng.getstate() == candidate.rng.getstate()
 
 
 def test_release27_refuses_different_control_asset(monkeypatch):

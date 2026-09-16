@@ -405,3 +405,19 @@ with the frozen NumPy M1/prior packages. G1 deadline snapshots serialize at
 7,810 bytes (PUCT) / 7,668 bytes (truncated), excluding immutable weights.
 Independent harness review is requested. No paired gameplay or fleet launch
 has occurred; those remain distinct from construction/serialization checks.
+
+### Policy-guided MC continuation prototype
+
+Separate follow-up branch `codex/policy-guided-continuation` adds an opt-in
+`policy` screen mode. A deterministic policy-head argmax over exhaustive legal
+actions guides the first K root-relative tricks, followed by heuristic completion
+(`--full-continuation`) or a separately specified value cutoff. This uses sampled
+complete-world features, not a public-only policy, and adds no value-per-action
+ranking or new root admission rule. Bury stays frozen M1.
+
+`--control matched-continuation` uses the same arm model, admission, worlds,
+signed-level objective and cutoff, but zero guided tricks. Release27 remains a
+separate control. Guided/fallback/prior-call/action counts distinguish work from
+the inherited total-ply counter. 61 focused tests pass. A real M1/prior-v2 late
+state smoke scored two candidates in one world: six guided plies, five prior
+calls, sixteen heuristic plies, finite terminal values. No gameplay result yet.

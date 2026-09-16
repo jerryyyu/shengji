@@ -378,6 +378,9 @@ def work_counters(bots):
         for key, value in getattr(bot, 'puct_totals', {}).items():
             name = 'puct_' + key
             out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, 'policy_continuation_totals', {}).items():
+            name = 'policy_continuation_' + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))
@@ -407,6 +410,10 @@ def work_counters(bots):
         # leaves. Retire the ambiguous world-count metric for this recipe;
         # candidate-level terminal_rows and model_rows are exact instead.
         out.pop('full_rollout_accepted_worlds', None)
+    if any(hasattr(bot, 'policy_continuation_totals') for bot in bots):
+        total = out.pop('value_continuation_heuristic_plies', 0)
+        out['value_continuation_total_plies'] = total
+        out['value_continuation_heuristic_plies'] = total - out.get('policy_continuation_guided_plies', 0)
     if any(hasattr(bot, "timeout_count") for bot in bots):
         out["decision_timeouts"] = sum(bot.timeout_count for bot in bots)
     if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
@@ -646,6 +653,9 @@ def summary_for(shards, config):
         mode = config['release27_search']['mode']
         result['arm_description'] = f'{mode} search with independent outcome-value checkpoint'
         result['baseline_description'] = 'frozen release27 M1/prior-v2 W32/N30/R300'
+        if config['release27_search'].get('control') == 'matched-continuation':
+            result['baseline_description'] = ('same arm checkpoint, admission, signed-level objective '
+                'and leaf horizon; heuristic-only continuation, fixed M1 bury')
         result['claim'] = 'exploratory paired DEV strength estimate; not confirmation or deployment'
         result['hybrid_bury'] = dict(arm='hybrid', scope='both sides',
                                     evaluator='frozen release27 M1', serving_budget_seconds=2.0)

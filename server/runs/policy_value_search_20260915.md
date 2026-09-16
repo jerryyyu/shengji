@@ -438,3 +438,55 @@ as the same-baseline low-budget reference. Keep a separately named high-depth
 boundary comparison; these fixtures do not establish that deeper search wins.
 Enumeration reuse/proposal generation and shared-world root comparison are
 better-supported engineering hypotheses than optimizing leaf inference first.
+
+## Root enumeration reuse diagnostic (2026-09-16)
+
+Opt-in `search_worlds(reuse_root_actions=True)` shares only immutable exhaustive
+root action tuples when actor hand multiset, trump ordering and lead match.
+World-specific prior inference, sorting, child transitions and backups remain
+independent. Descendant enumeration is unchanged. Default remains off; the live
+release27 gameplay ladder stays pinned to b798bc48.
+
+Local Mac diagnostic, M1 outcome/prior-v2 Torch, single inference thread,
+saved root0 (55,307 legal actions), W32/S8/D8, seed616092026. ABBA execution:
+
+| Pass | Reuse | Search wall seconds | Enumeration seconds |
+|---|---|---:|---:|
+| A1 | off | 16.3822 | 12.8502 |
+| B1 | on | 7.6017 | 4.2111 |
+| B2 | on | 7.3758 | 4.1291 |
+| A2 | off | 15.5812 | 12.2541 |
+
+Mean search wall 15.9817→7.4888s (2.13×, 53.1% lower). Both reuse passes
+have31cachehits/1miss. Full returned search outputs (actions, visit counts,
+totals, logical work counts and depth/coverage diagnostics) compare exactly;
+only timing and reuse counters are excluded. Shared-world digest:
+`e3bffe83638fc077103b27bd5d6fc7d7b5fb6792572ed8139a6dee25e54ecfb2`.
+This is one wide-position engineering result, not a fleet throughput or strength
+claim. Reproduce with `server/scripts/cwv_puct_reuse_benchmark.py --states
+/private/tmp/cwv-puct-boundary-states-20260916.json --checkpoint <M1.pt>
+--prior-checkpoint <prior-v2.pt>` (defaults select the above fixture/recipe).
+
+Focused kernel suite:21passed, including lead/follow parity, hidden-hand-varying
+prior callbacks, reordered own hands, legality-key separation, and actual
+enumerator-call reduction. Broader runtime qualification remains before opting
+future gameplay into this path; production/data-generation defaults untouched.
+
+Follow-up at approved ff30898b: five more saved lead roots, M1/W32/S8/D8,
+ABBA order, all semantic outputs exactly equal on every pass:
+
+| Root | Legal actions | Off mean s | On mean s | Ratio |
+|---|---:|---:|---:|---:|
+| 1 | 3,071 | 0.5279 | 0.2073 | 2.55× |
+| 4 | 1,592 | 0.4778 | 0.3047 | 1.57× |
+| 6 | 63 | 0.1225 | 0.1169 | 1.05× |
+| 8 | 9,239 | 1.6883 | 0.7118 | 2.37× |
+| 10 | 63 | 0.1420 | 0.1337 | 1.06× |
+
+Raw ABBA receipts: `~/shengji-archive/2026-09-16/puct-root-reuse/M1-state-*.jsonl`.
+These follow-up timings are indicative, not isolated-host capacity evidence:
+other local jobs were active. Additionally advance root1 by1/2/3HeuristicBot
+plays, seed616092026+plies, resampleW32; all three follow positions (7/10/1
+legal actions) compare exactly off/on, each31cachehits/1miss. This includes a
+forced follow. Narrow-position savings are small, as expected; no fleet-wide
+speedup or strength claim. No changes to the live gameplay source.

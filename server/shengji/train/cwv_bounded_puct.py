@@ -47,7 +47,16 @@ class Node:
     children: dict = field(default_factory=dict)
 
 
-def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(), profile=False):
+def _root_legal_key(state):
+    """Only enumerator inputs; hidden hands affect priors/transitions, not legality."""
+    lead = (tuple(sorted(state.trick.plays[0].cards))
+            if state.trick.plays else None)
+    return (state.phase, state.turn, state.ordering.trump_suit,
+            state.ordering.trump_rank, tuple(sorted(state.hands[state.turn])), lead)
+
+
+def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(), profile=False,
+                  reuse_root_actions=False):
     """Prior callback receives ONLY a private determinized state and legal set.
 
     Scores are logits in enumerator order for the ACTING seat. Exhaustive
@@ -65,6 +74,9 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
     timings = dict(enumeration_seconds=0., prior_seconds=0., transition_seconds=0.,
                    leaf_seconds=0.)
     roots = [Node(leaf_copy(world)) for world in worlds]
+    root_ids = {id(root) for root in roots}
+    root_actions = {}
+    reuse = dict(hits=0, misses=0)
     counts = dict(model_rows=0, model_batches=0, terminal_rows=0,
                   prior_rows=0, legal_actions=0, expanded_nodes=0)
     depth_histogram = {}
@@ -73,14 +85,23 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
         if node.priors is not None:
             return
         tick = time.perf_counter() if profile else 0.
-        legal = enumerate_legal(node.state, node.state.turn, cap=None)
+        key = (_root_legal_key(node.state)
+               if reuse_root_actions and id(node) in root_ids else None)
+        actions = root_actions.get(key) if key is not None else None
+        if actions is None:
+            legal = enumerate_legal(node.state, node.state.turn, cap=None)
+            if not legal.complete or not legal.actions:
+                raise ValueError('PUCT requires the exhaustive legal set')
+            actions = tuple(tuple(a) for a in legal.actions)
+            if key is not None:
+                root_actions[key] = actions
+                reuse['misses'] += 1
+        elif key is not None:
+            reuse['hits'] += 1
         if profile:
             timings['enumeration_seconds'] += time.perf_counter() - tick
-        if not legal.complete or not legal.actions:
-            raise ValueError('PUCT requires the exhaustive legal set')
-        actions = [tuple(a) for a in legal.actions]
         tick = time.perf_counter() if profile else 0.
-        logits = np.asarray(prior_logits(node.state, node.state.turn, actions), dtype=float)
+        logits = np.asarray(prior_logits(node.state, node.state.turn, list(actions)), dtype=float)
         if profile:
             timings['prior_seconds'] += time.perf_counter() - tick
         if logits.shape != (len(actions),) or not np.isfinite(logits).all():
@@ -161,6 +182,8 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(),
                         if action in r.children)) for r in roots]),
                 counts=counts, units='root-team-final-signed-levels',
                 limitation='determinization-and-strategy-fusion')
+    if reuse_root_actions:
+        result['root_enumeration_reuse'] = reuse
     if profile:
         timings['search_seconds'] = time.perf_counter() - started
         timings['other_seconds'] = max(0., timings['search_seconds'] - sum(

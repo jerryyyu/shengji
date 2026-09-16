@@ -27,7 +27,31 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
-## Current production: release 26 = the release 24 image (rollback), 2026-09-15 20:55 ET
+## Current production: release 27 — M1 + policy prior v2 (#435), redeployed 2026-09-15 22:0x ET
+
+Release **27**, image `registry.fly.io/shengji:deployment-01M2M1B48P44H5HJXEP6ETYQXE` (digest
+`sha256:ff1b78f900f141315582d770ef2232da8d1999d65e6e7a63e22e8d52c0a62993`), deployed with
+`fly deploy --ha=false` from main `383c8dc8` (the release 25 recipe plus the
+`CWVNumpyPrior.__deepcopy__` fix from #451/#452) on machine `48e7e35a9597e8`, 0 rooms at
+deploy time. Live health after the deploy:
+
+```
+{"ok":true,"rooms":0,"bot":"mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f","fast":true,"prior":{"sha256":"b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c","threshold":1000,"top":256}}
+```
+
+Preconditions met, in order: fix merged; `scripts/cwv_serving_smoke.py` PASS from a clean
+checkout of that main on the exact packages with this fly.toml (40 server turns through
+`_paced_bot_step` / `_commit_bot_turn`); decision-identity gate PASS at threshold 1,000
+(2,222/2,222 identical, prior fired 139×); packages SHA256-verified on the volume.
+`/healthz` cannot see a bot-turn failure (release 25 reported ok while every bot turn
+raised), so the first live room's log is the completion check: a bot `bury` event and
+`model_search` `completed` events must appear.
+
+**Rollback** is unchanged: release 24 image
+`registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A` with release 24's
+`fly.toml` (as done for release 26 at 20:55 ET); prior-only rollback as described below.
+
+## Release 26 = the release 24 image (rollback), 2026-09-15 20:55 ET → superseded by release 27
 
 Release 25 (below) stalled every bot turn in its first live room (KXXD): the server
 deep-copies the bot into a turn snapshot before any search, and the NumPy prior's

@@ -87,6 +87,9 @@ def test_actual_room_uses_admission_telemetry_and_discards_stale_numpy_decision(
         prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
         assert prepared is not None
         assert [f["event"] for k, f in events if k == "model_search"] == ["queued", "running", "completed"]
+        # Every stage names the phase it searched (a play decision here), so a
+        # log reader can separate bury search time from play search time.
+        assert [f["phase"] for k, f in events if k == "model_search"] == ["play"] * 3
         assert room.bot.rng.getstate() == before
         assert prepared.decision.snapshot.bot_copy.evaluator.model._weights is room.bot.evaluator.model._weights
         room.seats[seat].is_bot = False

@@ -784,9 +784,12 @@ async def _paced_bot_step(room: Room, seat: int, *,
                             "backend", None) == "numpy"
     if model_serving:
         def emit(kind, **fields):
+            # ``phase`` (bury / play) lets a log reader separate bury search
+            # time from play search time; the room log otherwise records only
+            # the queue/run/complete stages and their elapsed seconds.
             room.log_event("model_search", seat=seat, mode=mode,
                            policy=getattr(snapshot.bot_copy, "policy_name", "W32"),
-                           event=kind, **fields)
+                           phase=snapshot.phase, event=kind, **fields)
         try:
             decision = await run_model_search(
                 lambda: _compute_bot_turn_off_loop(snapshot), emit)

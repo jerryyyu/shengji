@@ -133,6 +133,24 @@ def _near_tie(a, b) -> bool:
     return max(changed) - min(changed) <= NEAR_TIE
 
 
+def _same_play(a, b, served, reference) -> bool:
+    """The same action AND the same selection-RNG state afterwards (the same amount of search consumed)."""
+    return sorted(a) == sorted(b) and served.rng.getstate() == reference.rng.getstate()
+
+
+def _classify(a, b, served, reference, ta, tb) -> str:
+    """One decision's verdict: ``identical`` (same play, RNG state, shortlist, admission trace and
+    means within tolerance), ``near-tie`` (same play and RNG state, shortlist differing only at
+    near-tied candidates -- see ``_near_tie``), else ``mismatch``. The single classification unit
+    of the gate; the mechanics tests stub it, the identity tests do not."""
+    same_play = _same_play(a, b, served, reference)
+    if same_play and _same(ta, tb):
+        return "identical"
+    if same_play and _near_tie(ta, tb):
+        return "near-tie"
+    return "mismatch"
+
+
 def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, rounds=4,
              threshold=10_000, top=256, worlds=4, selection_worlds=4, seed=13, deal_seed=3000) -> dict:
     if (prior_torch is None) != (prior_numpy is None):
@@ -177,17 +195,17 @@ def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, ro
                 ta, tb = _trace(served), _trace(reference)
                 receipt["decisions"] += 1
                 receipt["prior_fired"] += ta["admission"] is not None
-                same_play = sorted(a) == sorted(b) and served.rng.getstate() == reference.rng.getstate()
-                ok = same_play and _same(ta, tb)
-                receipt["identical"] += ok
-                if not ok:
-                    if same_play and _near_tie(ta, tb):
+                verdict = _classify(a, b, served, reference, ta, tb)
+                receipt["identical"] += verdict == "identical"
+                if verdict != "identical":
+                    if verdict == "near-tie":
                         receipt["near_tie_same_play"] += 1
                     else:
                         receipt["other_mismatches"] += 1
                     if receipt["first_mismatch"] is None:
                         receipt["first_mismatch"] = {"round": r, "decision": receipt["decisions"], "seat": seat,
-                                                     "same_play": same_play, "near_tie": same_play and _near_tie(ta, tb),
+                                                     "same_play": _same_play(a, b, served, reference),
+                                                     "near_tie": verdict == "near-tie",
                                                      "served": sorted(a), "reference": sorted(b),
                                                      "served_shortlist": ta["shortlist"], "reference_shortlist": tb["shortlist"],
                                                      "served_means": ta["means"], "reference_means": tb["means"]}

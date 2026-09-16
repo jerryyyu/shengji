@@ -87,6 +87,14 @@ def _uniform_prior(_world, _seat, actions):
     return np.zeros(len(actions), dtype=np.float64)
 
 
+def _outcome_evaluator(checkpoint):
+    kwargs = {} if Path(checkpoint).suffix.lower() == '.npz' else {'value_head': 'outcome'}
+    evaluator = shared_evaluator(checkpoint, threads=1, **kwargs)
+    if evaluator.value_head != 'outcome':
+        raise ValueError('boundary PUCT requires an outcome-head value evaluator')
+    return evaluator
+
+
 def _child_run(spec: dict[str, Any], send) -> None:
     """Load and run exactly one state.  Never called in the parent process."""
     process_started = time.perf_counter()
@@ -94,8 +102,7 @@ def _child_run(spec: dict[str, Any], send) -> None:
     try:
         # Loading is intentionally before decision timing.  The parent still
         # applies the documented 300-second total child cap, including load.
-        evaluator = shared_evaluator(spec["checkpoint"], threads=1,
-                                     value_head="outcome")
+        evaluator = _outcome_evaluator(spec["checkpoint"])
         prior_sha = spec.get("prior_checkpoint_sha256")
         prior_config = None
         if spec.get("prior_checkpoint") is not None:

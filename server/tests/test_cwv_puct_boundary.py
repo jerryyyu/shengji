@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,6 +36,20 @@ def test_child_explicitly_requests_outcome_head(monkeypatch):
     runner._child_run(_spec(), sink)
     assert seen == {'threads': 1, 'value_head': 'outcome'}
     assert sink.row['status'] == 'error'
+
+
+def test_numpy_head_is_package_bound_and_wrong_head_refused(monkeypatch):
+    seen = []
+    evaluator = SimpleNamespace(value_head='outcome')
+    def load(path, **kwargs):
+        seen.append(kwargs)
+        return evaluator
+    monkeypatch.setattr(runner, 'shared_evaluator', load)
+    assert runner._outcome_evaluator('m1.npz') is evaluator
+    assert seen == [{'threads': 1}]
+    evaluator.value_head = 'search-mean'
+    with pytest.raises(ValueError, match='outcome-head'):
+        runner._outcome_evaluator('other.npz')
 
 
 def _spec():

@@ -27,7 +27,34 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
-## Planned release 28: JS-M1, the from-scratch joint net, as ONE package (#425 / #435; Jerry's go 2026-09-15 23:4x ET)
+## Current production: release 28 — JS-M1, the from-scratch joint net, as ONE package (#425 / #435), deployed 2026-09-16 00:5x ET
+
+Release **28**, image `registry.fly.io/shengji:deployment-01M2M90VYR34R7CWKTTEA4C57V`
+(digest `sha256:c6927dbafb81d55ce823070b6df7ceea4ddfce8a07992139b46afe9f098866ff`), deployed
+with `fly deploy --ha=false` from main `bf7fde5e` on machine `48e7e35a9597e8`, 0 rooms at
+deploy time. Live health after the deploy:
+
+```
+{"ok":true,"rooms":0,"bot":"mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff","fast":true,"prior":{"sha256":"0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747","threshold":1000,"top":256}}
+```
+
+Preconditions met, in order: #455 (joint head in the NumPy package) and #457 (this
+config) merged; decision-identity gate at threshold 1,000 on the exact package as value
+AND prior: 2,207/2,208 identical, one near-tie same-play (same action and RNG, a 1e-7
+mean tie ordered differently), prior fired 141× (`scripts/cwv_serving_gate.py`);
+`scripts/cwv_serving_smoke.py` PASS from a clean checkout of `bf7fde5e` (40 server turns);
+package SHA256-verified on the volume; live room VEZV played a full bot-driven round on
+the new policy (bury 0.7 s after the trump call, 69 searches p50 0.6 s / p90 1.6 s /
+max 2.7 s, no fallbacks). Jerry's go: 2026-09-15 23:4x ET.
+
+**Rollback.** Release **27** (M1 + policy prior v2, image
+`registry.fly.io/shengji:deployment-01M2M1B48P44H5HJXEP6ETYQXE`, its `fly.toml` as of
+main `d31bd428`) or release **24** (image `deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`, release
+24's `fly.toml`); every package stays on the volume. Prior-only rollback: remove the four
+`SHENGJI_CWV_PRIOR_*` settings and set `SHENGJI_BOT` to the prior-less JS-M1 name the
+registry prints; `/healthz` must then show `"prior": null`.
+
+## Release 28 plan as approved (kept for the record)
 
 Play policy `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`: JS-M1 (`a5248cc5`, M1's recipe from scratch with a policy head trained on all
 20.3M root rows) served as a single NumPy package `/data/models/js-m1-0d17fd03.npz`

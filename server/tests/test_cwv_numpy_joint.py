@@ -134,3 +134,15 @@ print(kind, out.shape)
     run = subprocess.run([sys.executable, "-P", "-B", "-c", code], capture_output=True, text=True)
     assert run.returncode == 0, run.stderr[-800:]
     assert run.stdout.strip() == "joint-numpy (2, 54)"
+
+
+def test_serving_gate_accepts_the_joint_package_as_both_value_and_prior(joint):
+    """The deploy gate's served side may be ONE package (value + own head as prior)."""
+    from scripts.cwv_serving_gate import run_gate
+    net, ckpt, pkg, hpkg = joint
+    from shengji.train import cwv_prior_admission as adm
+    sha = __import__("hashlib").file_digest(open(ckpt, "rb"), "sha256").hexdigest()
+    adm._PRIORS[(ckpt, sha)] = ("joint", net, None)          # Torch reference kind (see above)
+    receipt = run_gate(ckpt, pkg, ckpt, pkg, rounds=1, threshold=6, top=5)
+    assert receipt["kinds"] == {"served_prior": "joint-numpy", "reference_prior": "joint"}
+    assert receipt["passed"] is True and receipt["prior_fired"] > 0

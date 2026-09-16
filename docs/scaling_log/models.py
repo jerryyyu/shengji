@@ -62,7 +62,9 @@ M = [
 ("M3: encoder v4 + two heads on the S-d4 cell, 176k","dd85a21d","2026-09-14","v4",330,"3e-4","176k","25,388,708","0.59689","0.0316",
  "","","5w +0.0260 [+0.0025, +0.0495]","M3 = M2 + the search-mean head; five capped windows clear zero (nominal), paired vs M1 +0.009 null: extension dropped; + throw paired -0.0168 null"),
 ("JS-M1: M1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","a5248cc5","2026-09-15","v2",330,"3e-4","176k","25,388,708","0.5957","0.0306",
- "","","QUEUED","JS-M1 (#425): from scratch, root batches from ALL 20.3M root rows; val_ce -0.0018 vs M1; head >= prior v3 on 4 of 5 strata, 10k+ unresolved; v22 armed"),
+ "","","5w +0.0239 [+0.0005, +0.0472]","JS-M1 (#425): production since release 28 as one package; five capped windows clear zero (nominal), paired vs M1 + prior +0.0057 null; ten/fresh owed"),
+("JS-G1: G1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","9ee9fedb","2026-09-16","v2",330,"3e-4","176k","25,388,708","0.5497","0.0291",
+ "","","QUEUED","JS-G1 (#425): JS-M1's grid twin (16 h); val_ce +0.0002 vs G1, -0.046 vs JS-M1; head >= prior v3 on 5 of 6 strata; grid package passes the smoke gate"),
 ("J2: M1 + a policy head at weight 0.2, continued 4 epochs","ac85d19d","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59264","0.0331",
  "","","5w +0.0151 [-0.0082, +0.0383]","J2 (#425): policy weight 0.2, +0.0018 vs the twin; in play as value net + own head as prior: five capped null, paired vs M1 + prior v2 -0.0024"),
 ("J3: stop-gradient policy head on M1, continued 4 epochs","cad530e4","2026-09-15","v2",330,"1.5e-4","176k","25,388,708","0.59082","0.0325",
@@ -119,7 +121,7 @@ M += [
 ]
 # Per-checkpoint parameter counts read from the receipt where the width->parameters map
 # (charts.py PAR, one trunk + one head) does not apply: M1 carries a second 204-class head.
-PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532, "ac85d19d": 653532, "a5248cc5": 653532}
+PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532, "ac85d19d": 653532, "a5248cc5": 653532, "9ee9fedb": 653387}
 
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
 
@@ -144,6 +146,8 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "9ee9fedb":
+        "JS-G1 = the FROM-SCRATCH joint net on the GRID recipe (#425; Jerry 09-15: train a joint model with the M1 and G1 recipes from scratch to compare): G1's recipe unchanged (grid trunk, 3 residual layers, 44 grid channels, 176k afterstate corpus, 20 epochs, lr 3e-4, seed 1, both value heads, aux points) plus the policy head at weight 0.2 on ALL 20.3M root rows streamed (policy_rows_v4), the same value batches as JS-M1 (its twin). Trained on the Mini 09-15 18:42 -> 09-16 10:45 ET (57,710 s; the grid trunk runs at 29.6k positions/s on CPU against JS-M1's 415k), best epoch 18 of 20, 653,387 parameters. Offline: val_ce 0.5497 (G1 0.54952: +0.0002, the policy loss cost the grid value head nothing; JS-M1 0.5957: -0.046, the grid trunk's usual offline lead); val regret@4 0.0291 (JS-M1 0.0306); test regret@4 0.0273, top-1 0.378 (JS-M1 0.367), test MAE 0.421 (JS-M1 0.457). Head on the common 15,517 test-deal rows: listwise CE 0.857 (JS-M1 0.858, prior v3 0.975), BCE 0.132; top-64 recall paired deal bootstrap vs prior v3 (margin -0.02): exhaustive 0-20 1.000 = 1.000, 21-100 0.994 vs 0.993 (+0.0008), 101-1k 0.965 vs 0.960 (+0.0050), partial 101-1k 0.938 vs 0.935 (+0.0026), 1k-10k 0.949 vs 0.945 (+0.0045) -- all PASS; 10k+ (67 deals) 0.913 vs 0.935 (-0.022 [-0.074, +0.024]) not shown. SERVING: exported as a v2 grid package (#472, 5eb7cf18...) and PASSED the smoke-scope serving gate as value net + own-head prior (86/86 decisions identical, prior fired 8x); serving-scope gate running 11:0x ET. In play: not yet screened; G1 itself was a null in play at 5.9x the wall (row 1bcbb47f), and JS-G1's forward pass is 14x slower than JS-M1's, so its screen must report the wall against the release 28 recipe (the control) before any promotion talk. Parameter-matched with JS-M1, not compute-matched.",
     "a5248cc5":
         "JS-M1 = the FROM-SCRATCH joint net on ALL root rows (#425; Jerry 09-15: train a joint model with the M1 and G1 recipes from scratch to compare; more policy data as the unlock): M1 recipe unchanged (residual d4 trunk, 176k afterstate corpus, 20 epochs, lr 3e-4, aux 1.0, outcome + search-mean + points heads) plus a 54-card policy head at weight 0.2, with one ROOT batch (256) per value batch (1,024) streamed from the full root-row cache (policy_rows_v4: 407 verified chunks, 20.3M rows on the 140,800 fit deals; val/test/eval deals dropped, 285 excluded). Trained 09-15 15:49 -> 18:42 ET (~1,000 s/epoch, streaming, 6 GB); sealed 18:42 ET; best epoch 17/20. VALUE side vs M1 at seal: val_ce 0.5957 (M1 0.5975, -0.0018: the joint objective from scratch does not cost the outcome head; J1 continued from M1 at weight 1 cost +0.0081); outcome regret@4 0.0306 / recall@4 0.740 (M1 0.0298 / 0.737); search head regret@4 0.0238 (0.0244); points MAE 11.7; holdouts rank regret room-log 0.0734 (0.0737), luna 0.0858 (0.0896), high-N 0.1073 (0.1068), PT1 0.0288 (0.0361). Parameter-matched to J1/J3, NOT compute-matched to M1 (the root batches are extra work). POLICY head on the 15,517 common test-deal rows: listwise CE 0.858 (prior v3 0.975, J1 0.999, J2 1.073, J3 1.381), BCE 0.102; top-64 recall by stratum 0.997 / 0.965 / 0.953 / 0.966 / 0.957 (prior v3 0.993 / 0.960 / 0.935 / 0.945 / 0.935); paired deal bootstrap JS-M1 head minus prior v3: exhaustive 21-100 +0.003 [-0.002, +0.009], exhaustive 101-1k +0.005 [-0.009, +0.019], partial 101-1k +0.018 [+0.000, +0.036], 1k-10k +0.021 [+0.007, +0.036], 10k+ +0.022 [-0.024, +0.076] (67 deals). Under the predeclared -0.02 margin (lower bound must exceed it): non-inferior on four of five strata and better on the two wide partial strata; the widest stratum (10k+, 67 deals) is NOT SHOWN -- its interval spans the margin. Gate 4.1 (value) passes; gate 4.2 is established on four strata and unresolved on the widest, so the joint net is not yet declared non-inferior overall. Read: the continued-from-M1 heads (J1/J2/J3, 1.0M rows) trailed the separate prior; the from-scratch head on 20x the root rows leads it -- consistent with data volume as the lever, though from-scratch vs continued is confounded with it (JS-G1, the same data on the G1 recipe, is training). Next: JS-M1 in play as ONE net (value + own head as the admission prior; cloud lane v22 armed behind v21).",
     "ac85d19d":
@@ -238,10 +242,7 @@ POLICY_HEADS = [
 ("J3 head", "cad530e4", "joint, stop-gradient", "M1 trunk (features only)", "1.0M", "[0.2, 1)", "4 (+M1's 20)", "1.0 (detached)", "common test-deal set",
  "1.381", "0.175", "0.211", "0.888", "0.919 / 0.889 / 0.854 / 0.870", "0 by construction (value side = twin)",
  "detached head learns (0.32 -> 0.92 on exhaustive 101-1k) but trails v3: -0.041 [-0.063, -0.020], -0.047 [-0.071, -0.024], -0.091 [-0.118, -0.063], -0.065 [-0.133, 0.000]; cause not isolated"),
-("JS-M1 head", "", "joint, from scratch", "M1 recipe (residual d4)", "20.3M streamed", "[0.2, 1)", "20", "0.2", "common test-deal set",
- "", "", "", "", "", "vs M1's seal",
- "RUNNING (09-15 11:49 ET): co-trained from random weights on the exact M1 recipe with EVERY root decision streamed (#437)"),
-("JS-G1 head", "", "joint, from scratch", "G1 recipe (grid trunk)", "20.3M streamed", "[0.2, 1)", "20", "0.2", "common test-deal set",
- "", "", "", "", "", "vs G1's seal",
- "QUEUED after JS-M1: the same on the grid trunk (~13 h)"),
+("JS-G1 head", "9ee9fedb", "joint, from scratch", "G1 recipe (grid trunk, 3 layers, 44 ch)", "20.3M", "[0.2, 1)", "20", "0.2", "common test-deal set",
+ "0.857", "0.132", "", "", "0.994 / 0.965 / 0.938 / 0.949", "+0.0002 vs G1 (not compute-matched)",
+ "non-inferior to prior v3 on 5 of 6 strata (10k+, 67 deals, not shown under the -0.02 margin); listwise CE equal to JS-M1's head (0.857 vs 0.858); grid package passes the smoke gate; the grid trunk forwards 14x slower than JS-M1"),
 ]

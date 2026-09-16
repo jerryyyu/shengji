@@ -29,7 +29,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
 
 ## Current production: release 27 — M1 + policy prior v2 (#435), redeployed 2026-09-15 22:0x ET
 
-Release **27**, image `registry.fly.io/shengji:deployment-01M2KQVJVPC6WD85RQD59SYG38`-successor image (digest
+Release **27**, image `registry.fly.io/shengji:deployment-01M2M1B48P44H5HJXEP6ETYQXE` (digest
 `sha256:ff1b78f900f141315582d770ef2232da8d1999d65e6e7a63e22e8d52c0a62993`), deployed with
 `fly deploy --ha=false` from main `383c8dc8` (the release 25 recipe plus the
 `CWVNumpyPrior.__deepcopy__` fix from #451/#452) on machine `48e7e35a9597e8`, 0 rooms at

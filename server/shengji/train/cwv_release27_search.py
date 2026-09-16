@@ -25,9 +25,11 @@ class TruncatedFixedBuryBot(CWVBuryBot, CWVPriorTruncatedSearchBot):
 
 def make_release27_side(*, side, seed, baseline_checkpoint, prior_checkpoint,
                         arm_checkpoint, arm_sha256, mode, sweeps=8, depth=8,
-                        continuation_tricks=1):
+                        continuation_tricks=1, root_warmup_top=0):
     if side not in ("arm", "baseline") or mode not in ("puct", "truncated"):
         raise ValueError("invalid release27 comparison side/mode")
+    if root_warmup_top and mode != 'puct':
+        raise ValueError('common-root warmup requires PUCT')
     fixed = shared_evaluator(baseline_checkpoint, threads=1, max_batch=128,
                              encoding="mlp-static")
     if fixed.checkpoint_sha256 != M1_SHA:
@@ -49,6 +51,7 @@ def make_release27_side(*, side, seed, baseline_checkpoint, prior_checkpoint,
         if mode == "puct":
             bot = PuctFixedBuryBot(evaluator, reuse_successors=False,
                 puct_config=PuctConfig(sweeps=sweeps, depth=depth, batch_size=32),
+                root_warmup_top=root_warmup_top,
                 **kwargs)
         else:
             bot = TruncatedFixedBuryBot(evaluator, reuse_successors=True,

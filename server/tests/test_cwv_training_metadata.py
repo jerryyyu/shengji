@@ -3,6 +3,8 @@ import numpy as np
 import pytest
 
 from shengji.train import cwv_data as D
+from tests.test_cwv_train import THIRDS, records, store_dir  # noqa: F401
+from tests.test_cwv_train_policy_head import policy_rows  # noqa: F401
 
 
 def block(n=64, seed=7, history=False):
@@ -71,3 +73,36 @@ def test_iter_batches_keeps_rng_order_and_default_metadata():
     assert len(batches[0]) == len(batches[1]) == 6
     for full, lean in zip(*batches, strict=True):
         assert_equal(full, lean)
+
+
+def test_real_joint_training_matches_with_and_without_metadata(store_dir, policy_rows,
+                                                              tmp_path, monkeypatch):
+    """Actual mixed policy/value trainer, not a surrogate optimizer update."""
+    import torch
+    from shengji.train import train_cwv
+    from shengji.ai.cwv_policy import load_cwv_checkpoint
+    original = D.CwvBlockStore.iter_batches
+    models, receipts = [], []
+    for include in (True, False):
+        calls = []
+        def batches(self, *args, **kwargs):
+            # Only override explicit optimizer opt-out; evaluation keeps metadata.
+            if kwargs.get('include_metadata') is False:
+                calls.append(True)
+                kwargs['include_metadata'] = include
+            return original(self, *args, **kwargs)
+        monkeypatch.setattr(D.CwvBlockStore, 'iter_batches', batches)
+        out = tmp_path / ('full' if include else 'lean')
+        receipts.append(train_cwv.train(data=[str(store_dir)], out=out,
+            arch='mlp', device='cpu', epochs=1, seed=7, batch_size=64,
+            n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1,
+            bench_batch=32, val_rank_records=50, encoder_version=2,
+            policy_head=True, policy_rows=policy_rows, **THIRDS))
+        assert calls, 'the actual optimizer iterator must exercise this option'
+        model, _, _ = load_cwv_checkpoint(out / 'best.pt')
+        models.append(model.state_dict())
+    assert models[0].keys() == models[1].keys()
+    for name in models[0]:
+        assert torch.equal(models[0][name], models[1][name]), name
+    assert receipts[0]['population'] == receipts[1]['population']
+    assert receipts[0]['exposure'] == receipts[1]['exposure']

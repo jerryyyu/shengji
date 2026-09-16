@@ -454,3 +454,44 @@ as the same-baseline low-budget reference. Keep a separately named high-depth
 boundary comparison; these fixtures do not establish that deeper search wins.
 Enumeration reuse/proposal generation and shared-world root comparison are
 better-supported engineering hypotheses than optimizing leaf inference first.
+
+## Policy continuation consumer rehearsal (2026-09-16)
+
+Exact source5b386f5a; local Mac, M1 Torch outcome head, frozen release27
+M1/prior-v2 NumPy assets, W32/N30/R300, K5, static encoding, successor reuse.
+Saved fixture `/private/tmp/cwv-puct-boundary-states-20260916.json` roots2/6/10
+(six-card late positions), seed618092026+root index. This is a diagnostic,
+not a gameplay/strength screen. Both sides use identical final-signed-level
+objectives. Control guides0tricks; arm guides1trick with prior argmax.
+
+| Root | Leaf horizon | Heuristic wall s | Guided wall s | Same final play? |
+|---|---|---:|---:|---|
+| 2 | 1 trick | 0.3040 | 1.2575 | no |
+| 6 | 1 trick | 0.2123 | 1.2309 | no |
+| 10 | 1 trick | 0.2168 | 1.2160 | yes |
+| 2 | terminal | 0.3514 | 1.3727 | yes |
+| 6 | terminal | 0.3770 | 1.3905 | yes |
+| 10 | terminal | 0.3559 | 1.4872 | yes |
+
+All12decisions finish through selection and independent report:750candidate-world
+evaluations each. Shortlist, admission-world seed and sampler counts match within
+each arm/control pair. Each guided decision invokes2250guided plies; prior
+calls2250/2171/2250 and legal actions11681/9265/9399 by root. At K1,750model
+leaves are evaluated in7batches; at terminal,750exact outcomes and0modelleaves.
+The inherited `continuation_totals.heuristic_plies` counts all continuation plies;
+the screen work-counters subtract guided plies and report both categories.
+
+Interpretation: this end-to-end path works, but unbatched policy guidance is
+~4–6x the heuristic decision cost on these small roots. Guided K1 changes2/3
+decisions toward the full-continuation decision; terminal guidance changes0/3.
+This is evidence of leaf/continuation sensitivity, not improved strength or
+general calibration. Do not tune to these three positions.
+
+Next planned gameplay comparison after the live PUCT ladder releases cloud:
+M1 and G1, each K1 and terminal, guided1versus matched guided0;13freshpaired
+deals per comparison, seed618092026..618092038,300s supervised cap, fixedM1
+hybrid bury on both sides. Start with one pair worker for a measured early-game
+memory/latency rehearsal; preserve that completed pair in the same13-pair
+screen. No concurrent launch into the occupied cloud and no resource claim from
+these late-game timings. Compare any supported recipe against release27 in a
+separately named follow-up, rather than confuse guidance with changed objectives.

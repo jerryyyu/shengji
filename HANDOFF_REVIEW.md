@@ -18858,3 +18858,20 @@ Reading: lowering the threshold to 256 cuts ≈37% off a hundreds-of-follows dec
 **Mini — generation-1.** `policy_rows_v5` extract rc=0 at 13:28 ET (441 chunks, 2.1 GB); `JS1-M1-policy-w0.2-gen1` training started 13:28 ET (JS-M1's recipe + runJS1; mps; 20 epochs) — in its first epoch; seal ≈20:00 ET.
 
 **Other.** Production release 28 ok. #473/#474 5/5 at their re-merged heads; Codex still on its rate-limit prompt (since 05:4x ET). Memory: `datagen-runjs2-runjs3`.
+
+## 2026-09-16 20:17 UTC — Claude 16:0x–16:3x ET: JS-G1 IN PLAY SEALED (lane v23) — five capped windows +0.0184 [−0.0056, +0.0425] null vs the old control; PAIRED vs JS-M1 −0.0051 [−0.0286, +0.0184] null; 1.32× the wall of M1 + prior at the same threshold → no promotion case, not extended; runJS3 took the cloud lane 16:03 ET; draft PR #475 (dedicated vCPU) for Jerry
+
+**Lane v23 (cloud, 13:45 → 16:01 ET; five windows × 520 clusters, capped, rc=0 sealed=yes each).** JS-G1 9ee9fedb as ONE net (value net + own-head prior at the PRODUCTION threshold 1,000 / top 256, hybrid bury) on the v22 seeds 13260910..13660910.
+- vs the capped vol96k control: +0.0163, +0.0423, +0.0135, +0.0221, +0.0000 → RE +0.0184 [−0.0056, +0.0425], tau 0, Q 1.31/4, MDE80 0.034 — null. Point above the +0.015 five-window line.
+- PAIRED on the same seeds (dependent diagnostics): vs JS-M1-joint-out (v22, threshold 10,000) −0.0087, +0.0048, −0.0308, +0.0010, +0.0067 → −0.0051 [−0.0286, +0.0184], MDE80 0.034; vs M1-prior-out (10,000) +0.0017 [−0.0210, +0.0243], MDE80 0.032 — nulls. JS-G1 plays like the production net on these deals.
+- COST (arm-side decision wall = sum of per-decision `deadline.elapsed_seconds` over the arm's traces; the same method as the v22 read, which reproduces its 80,982 s): JS-G1 76,620 s = 0.95× JS-M1 at 10k (80,982), 0.95× M1 + prior at 10k (80,774), 0.79× the old control (97,277), but **1.32× M1 + prior at the SAME threshold 1,000** (v20 `M1-prior1k-out`, 57,902 s) — at matched admission the grid trunk's 14× slower forward shows up as +32% wall. Tail: 0 decisions > 60 s, 0 cap hits in 182,256, max 9.5 s, p99 2.7 s (the 1,000-threshold tail, as v20). Baseline for the ratios stated per number; the screen's MC-LCB opponent side is not in these walls.
+- Reading: no promotion case — paired null against the current production net and a third more wall at matched admission; the −0.046 val_ce offline lead did not carry into play, exactly as G1's did not (row 27). NOT extended to ten: the extension rule targets the control contrast, and a promotion would need the paired one (Jerry can override). Readouts archived: `~/shengji-archive/2026-09-13/readouts/v23-JS-G1-joint-out-vs-{vol96k-capped,JS-M1-joint-out,M1-prior-out}-5w.txt` + SHA256SUMS (a REFUSING placeholder for the M1-prior-out file was written first, then removed and replaced with the real readout; its SHA line replaced).
+- Staging note: the local `vol-screen` copies deleted this morning were re-pulled by `arm_readout.sh` from the server roots (cloud + Perf) — the control windows live on Perf.
+
+**Artifacts.** Scaling log: JS-G1 row's screen cell `5w +0.0184 [-0.0056, +0.0425]` + note + RECORD paragraph (PR #474 branch, new head; `build --check` CONSISTENT, 35 tests); page republished. Atlas row 34 + detail added and republished.
+
+**Cloud.** `runJS3 start: 32000 rounds seed 22292910 workers 16` at 16:03 ET (took the lane lock after "v23 PHASE A DONE") → seal ≈04:00 ET 09-17. Perf runJS2 running. Mini generation-1 at epoch 4+.
+
+**Draft PR #475 (`claude/fly-vm-performance-1x`, d681219e, DRAFT — Jerry's go required):** config-only `[[vm]] shared-cpu-1x/512 MB → performance-1x/2048 MB` with the DEPLOY.md "proposed release 29" note (identity-witness evidence; gate + smoke + live check before deploy; rollback = the release 28 image). Not for merge without his word.
+
+**Codex.** Still on its rate-limit prompt (since 05:4x ET); #473/#474 waiting.

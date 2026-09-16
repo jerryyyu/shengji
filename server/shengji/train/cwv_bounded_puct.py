@@ -352,6 +352,7 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
                 'config': asdict(self.puct_config), 'worlds': len(worlds),
                 'attempts': attempts, 'world_visits': result['world_visits'],
                 'simulations': result['simulations'], **counts,
+                'diagnostics': result['diagnostics'],
                 'units': result['units'], 'limitation': result['limitation'],
                 'prior_checkpoint_sha256': self.prior_config.checkpoint_sha256,
                 'root_actions': [dict(cards=list(a), visits=n,

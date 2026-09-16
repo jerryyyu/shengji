@@ -54,6 +54,36 @@ def test_reject_live_world_and_bad_prior():
         search_worlds([rnd], rnd.turn, prior_logits=lambda *a: [float('nan')], evaluator=Evaluator())
 
 
+def test_gameplay_record_preserves_search_coverage(monkeypatch):
+    """Exercise the adapter and real search, not just kernel diagnostics."""
+    import json
+    from collections import defaultdict
+    from types import SimpleNamespace
+    from shengji.train import cwv_bounded_puct as module
+    rnd = root()
+    bot = object.__new__(module.CWVBoundedPuctBot)
+    bot.shortlist_config = SimpleNamespace(worlds=2)
+    bot.puct_config = PuctConfig(sweeps=5, depth=3, batch_size=2)
+    bot.root_warmup_top = 0
+    bot.reuse_root_actions = False
+    bot.compact_expansions = False
+    bot.evaluator = Evaluator()
+    bot.prior_config = SimpleNamespace(checkpoint_sha256='test-prior')
+    bot.puct_totals = defaultdict(int)
+    bot._tree_prior = uniform
+    monkeypatch.setattr(module, 'sample_worlds',
+                        lambda *args: ([(rnd.hands, rnd.buried)] * 2, 2))
+    monkeypatch.setattr(module, 'root_clone', lambda *args: copy.deepcopy(rnd))
+    action = bot.decide_play(rnd, rnd.turn)
+    record = json.loads(json.dumps(bot.last_decision_record))['bounded_puct']
+    d = record['diagnostics']
+    assert sum(d['depth_histogram'].values()) == record['simulations'] == 10
+    assert max(map(int, d['depth_histogram'])) <= 3
+    assert len(d['root_legal_counts']) == len(d['root_visited_actions']) == 2
+    assert len(d['root_visited_prior_mass']) == 2
+    assert tuple(action) in enumerate_legal(rnd, rnd.turn, cap=None).keys()
+
+
 def test_optional_profile_preserves_search_result():
     rnd = root()
     args = dict(prior_logits=uniform, config=PuctConfig(sweeps=8, depth=8))

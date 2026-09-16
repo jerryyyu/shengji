@@ -9,6 +9,7 @@ production constrained sampler, never live opponent hands, to construct roots.
 """
 from dataclasses import dataclass, field
 import math
+import time
 
 import numpy as np
 
@@ -46,7 +47,7 @@ class Node:
     children: dict = field(default_factory=dict)
 
 
-def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig()):
+def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig(), profile=False):
     """Prior callback receives ONLY a private determinized state and legal set.
 
     Scores are logits in enumerator order for the ACTING seat. Exhaustive
@@ -60,6 +61,9 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
         if (world.phase != 'play' or world.turn != seat
                 or not getattr(world, '_determinized_world', False)):
             raise ValueError('roots must be determinized play states at root turn')
+    started = time.perf_counter() if profile else 0.
+    timings = dict(enumeration_seconds=0., prior_seconds=0., transition_seconds=0.,
+                   leaf_seconds=0.)
     roots = [Node(leaf_copy(world)) for world in worlds]
     counts = dict(model_rows=0, model_batches=0, terminal_rows=0,
                   prior_rows=0, legal_actions=0, expanded_nodes=0)
@@ -68,11 +72,17 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
     def expand(node):
         if node.priors is not None:
             return
+        tick = time.perf_counter() if profile else 0.
         legal = enumerate_legal(node.state, node.state.turn, cap=None)
+        if profile:
+            timings['enumeration_seconds'] += time.perf_counter() - tick
         if not legal.complete or not legal.actions:
             raise ValueError('PUCT requires the exhaustive legal set')
         actions = [tuple(a) for a in legal.actions]
+        tick = time.perf_counter() if profile else 0.
         logits = np.asarray(prior_logits(node.state, node.state.turn, actions), dtype=float)
+        if profile:
+            timings['prior_seconds'] += time.perf_counter() - tick
         if logits.shape != (len(actions),) or not np.isfinite(logits).all():
             raise ValueError('one finite policy logit required per legal action')
         order = np.argsort(-logits, kind='stable')
@@ -105,9 +115,12 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
                 action = node.actions[max(range(width), key=score)]
                 fresh = action not in node.children
                 if fresh:
+                    tick = time.perf_counter() if profile else 0.
                     child_state = leaf_copy(node.state)
                     child_state.play(child_state.turn, list(action))
                     node.children[action] = Node(child_state)
+                    if profile:
+                        timings['transition_seconds'] += time.perf_counter() - tick
                 # Children are per attempted action in ONE fixed world: failed
                 # throws cannot alias states from other worlds or attempts.
                 node = node.children[action]
@@ -118,9 +131,12 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
             leaves.append(node.state)
             depth = len(path) - 1
             depth_histogram[depth] = depth_histogram.get(depth, 0) + 1
+        tick = time.perf_counter() if profile else 0.
         out = continuation_values(leaves, [seat] * len(leaves),
                                   [len(s.history) for s in leaves], evaluator=evaluator,
                                   tricks=0, batch_size=config.batch_size)
+        if profile:
+            timings['leaf_seconds'] += time.perf_counter() - tick
         for name in ('model_rows', 'model_batches', 'terminal_rows'):
             counts[name] += getattr(out, name)
         for path, value in zip(paths, out.values, strict=True):
@@ -135,7 +151,7 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
     # Visit aggregation gives every world the same vote budget. Q tie-breaks
     # are conditional on visits, not an unbiased common-world action estimate.
     chosen = max(sorted(visits), key=lambda a: (visits[a], totals[a] / visits[a]))
-    return dict(action=list(chosen), visits=visits, totals=totals,
+    result = dict(action=list(chosen), visits=visits, totals=totals,
                 world_visits=[r.visits for r in roots], simulations=len(roots) * config.sweeps,
                 diagnostics=dict(depth_histogram=depth_histogram,
                     root_legal_counts=[len(r.actions) for r in roots],
@@ -145,6 +161,13 @@ def search_worlds(worlds, seat, *, prior_logits, evaluator, config=PuctConfig())
                         if action in r.children)) for r in roots]),
                 counts=counts, units='root-team-final-signed-levels',
                 limitation='determinization-and-strategy-fusion')
+    if profile:
+        timings['search_seconds'] = time.perf_counter() - started
+        timings['other_seconds'] = max(0., timings['search_seconds'] - sum(
+            timings[k] for k in ('enumeration_seconds', 'prior_seconds',
+                                'transition_seconds', 'leaf_seconds')))
+        result['timings'] = timings
+    return result
 
 
 from .cwv_prior_admission import CWVPriorAdmissionBot, root_clone

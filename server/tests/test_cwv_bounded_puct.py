@@ -54,6 +54,19 @@ def test_reject_live_world_and_bad_prior():
         search_worlds([rnd], rnd.turn, prior_logits=lambda *a: [float('nan')], evaluator=Evaluator())
 
 
+def test_optional_profile_preserves_search_result():
+    rnd = root()
+    args = dict(prior_logits=uniform, config=PuctConfig(sweeps=8, depth=8))
+    plain = search_worlds([rnd], rnd.turn, evaluator=Evaluator(), **args)
+    profiled = search_worlds([rnd], rnd.turn, evaluator=Evaluator(), profile=True, **args)
+    timings = profiled.pop('timings')
+    assert plain == profiled
+    assert all(np.isfinite(value) and value >= 0 for value in timings.values())
+    assert timings['search_seconds'] > 0
+    assert sum(value for key, value in timings.items() if key != 'search_seconds') == pytest.approx(
+        timings['search_seconds'])
+
+
 def test_terminal_bypasses_model():
     rnd = root()
     while sum(map(len, rnd.hands)) > 1:

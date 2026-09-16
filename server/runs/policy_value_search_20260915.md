@@ -438,3 +438,43 @@ as the same-baseline low-budget reference. Keep a separately named high-depth
 boundary comparison; these fixtures do not establish that deeper search wins.
 Enumeration reuse/proposal generation and shared-world root comparison are
 better-supported engineering hypotheses than optimizing leaf inference first.
+
+### M1 paired gameplay ladder completed (September 16)
+
+The proposed screens above have now run on frozen source **b798bc48** against
+the frozen release-27 W32 control, 13 matched deals / 26 seat-swapped rounds per
+arm, seed617092026. Each summary is complete with no problems/refusal and full
+bury accounting. These are exploratory DEV results, not deployment evidence.
+
+| Sweeps | Depth cap | Signed levels/round (95% paired-bootstrap CI) | Arm/control decision wall | 300s caps |
+|---:|---:|---:|---:|---:|
+| 8 | 8 | −0.6154 [−0.8846, −0.3462] | 7.69× | 0 |
+| 32 | 8 | −0.3846 [−0.6154, −0.1538] | 17.77× | 2 |
+| 128 | 8 | −0.3462 [−0.6538, −0.0375] | 47.80× | 13 |
+| 128 | 16 | −0.3462 [−0.6538, −0.0375] | 49.56× | 14 |
+
+Each utility is the arm's signed-level outcome versus the same control, not
+a direct duel between sweep budgets. Shared deals make the rows correlated;
+they are not 52 independent deals. Wall ratios measure decision time, not
+total fleet elapsed time. Interrupted CPU/work counters are incomplete.
+
+At S128, all 26 aligned rounds have identical level utility at depths8 and16;
+23 also have identical history digests. Three changed histories alter attacker
+points without crossing a level threshold. Thus the equal mean does not hide
+offsetting level gains/losses. It does not establish equivalence in general.
+The frozen gameplay adapter omitted kernel depth diagnostics, so actual
+gameplay depth cannot be reconstructed from these summaries; the fixed-root
+depth table above is a different population. PR467 preserves that telemetry
+for future runs without changing the frozen ladder.
+
+Recommendation: do not promote this M1 PUCT recipe. More simulations reduce
+the observed deficit but do not establish a useful strength/cost result;
+doubling the depth cap provides no level gain here. Finish the independently
+requested G1 contrast, then test shared-world root evidence and continuation
+quality rather than expand this sweep blindly.
+
+Canonical artifacts: Cloud `/root/codex-puct-gameplay-20260916/M1-s*/`, with
+summary copies at `~/shengji-archive/2026-09-16/puct-gameplay/`. G1 remains a
+separate in-progress result: its four configurations run sequentially with
+two workers under the original absolute deadline, after retiring the old
+concurrent launcher. No G1 strength claim is made here.

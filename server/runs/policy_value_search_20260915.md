@@ -421,3 +421,36 @@ separate control. Guided/fallback/prior-call/action counts distinguish work from
 the inherited total-ply counter. 61 focused tests pass. A real M1/prior-v2 late
 state smoke scored two candidates in one world: six guided plies, five prior
 calls, sixteen heuristic plies, finite terminal values. No gameplay result yet.
+
+### Completed depth boundary ladder (September 16)
+
+Cloud `codex-puct-ladder-20260916.service` terminated successfully and released
+the lane. Source **b798bc48**, W32, seed616092026, twelve heuristic fixture roots;
+all **96/96** model/config/state rows completed without error or timeout. Every
+root's sampled-world SHA matches across all eight arms. Artifacts retained at
+Cloud `/root/codex-puct-ladder-20260916` and Mini
+`~/shengji-archive/2026-09-16/puct-boundary/`.
+
+| Model | Sweeps | Depth cap | Summed decision wall (s) | Mean leaf depth |
+|---|---:|---:|---:|---:|
+| M1 | 8 | 8 | 42.0 | 2.11 |
+| M1 | 32 | 8 | 137.1 | 3.22 |
+| M1 | 128 | 8 | 455.6 | 4.26 |
+| M1 | 128 | 16 | 504.4 | 4.79 |
+| G1 | 8 | 8 | 41.4 | 2.15 |
+| G1 | 32 | 8 | 179.9 | 3.25 |
+| G1 | 128 | 8 | 481.4 | 4.29 |
+| G1 | 128 | 16 | 539.6 | 4.78 |
+
+Wall sums exclude child load and are not fleet elapsed time. Means count all
+simulation leaves on the fixed fixture; no gameplay/strength inference. At
+128 sweeps, depth8→16 changes 0/12 M1 moves and 1/12 G1 moves. M1 S128/D16
+spends 341.61s enumerating legal actions, 110.71s in prior evaluation and 16.67s
+in leaf evaluation. Root0 has 55,307 legal actions; mean visited actions/world
+grow from1.69 at S8 to6.22 at S128. Depth alone does not improve root coverage.
+
+Next screen candidate: S32/D8 versus the frozen release27 control, with S8/D8
+as the same-baseline low-budget reference. Keep a separately named high-depth
+boundary comparison; these fixtures do not establish that deeper search wins.
+Enumeration reuse/proposal generation and shared-world root comparison are
+better-supported engineering hypotheses than optimizing leaf inference first.

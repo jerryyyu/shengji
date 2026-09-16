@@ -36,6 +36,24 @@ def test_release27_refuses_different_control_asset(monkeypatch):
             prior_checkpoint="prior", arm_checkpoint="g1", arm_sha256="g1", mode="puct")
 
 
+def test_root_reuse_factory_is_arm_only_and_puct_only(monkeypatch):
+    fixed = SimpleNamespace(checkpoint_sha256=R.M1_SHA)
+    arm = SimpleNamespace(checkpoint_sha256='g1')
+    monkeypatch.setattr(R, 'shared_evaluator',
+                        lambda path, **kw: fixed if path == 'm1.npz' else arm)
+    monkeypatch.setattr(P, 'load_prior_checked', lambda *a: ('separate', None, None))
+    kw = dict(seed=19, baseline_checkpoint='m1.npz', prior_checkpoint='prior.npz',
+              arm_checkpoint='g1.pt', arm_sha256='g1', mode='puct')
+    assert not R.make_release27_side(side='arm', **kw).reuse_root_actions
+    candidate = R.make_release27_side(side='arm', reuse_root_actions=True, **kw)
+    control = R.make_release27_side(side='baseline', reuse_root_actions=True, **kw)
+    assert candidate.reuse_root_actions and candidate.bury_evaluator is fixed
+    assert not hasattr(control, 'reuse_root_actions')
+    kw['mode'] = 'truncated'
+    with pytest.raises(ValueError, match='requires puct'):
+        R.make_release27_side(side='arm', reuse_root_actions=True, **kw)
+
+
 def test_screen_dispatch_requires_deadline_and_binds_recipe(monkeypatch):
     from shengji.train import cwv_shortlist_screen as S
     from test_cwv_shortlist_screen import cfg
@@ -68,12 +86,20 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     assert seen[0][1] == [0, 1]
     assert seen[0][0]['baseline_asset_sha256'] == R.M1_SHA
     assert seen[0][0]['release27_search']['arm_sha256'] == 'armsha'
+    assert 'reuse_root_actions' not in seen[0][0]['release27_search']
     # A completed pair is loaded, never re-enqueued.
     (tmp_path / 'cluster-00000.json').write_text('{}')
     monkeypatch.setattr(C.screen, 'reopen_shard', lambda *a: {'cluster': 0})
     monkeypatch.setattr(C.screen, 'summary_for', lambda *a: {'complete': False})
     assert C.main(argv) == 0
     assert seen[1][1] == [1]
+    # Enabling the optimization cannot silently resume an existing recipe.
+    with pytest.raises(ValueError):
+        C.main(argv + ['--reuse-root-actions'])
+    fresh = tmp_path / 'reuse'
+    argv[-1] = str(fresh)
+    assert C.main(argv + ['--reuse-root-actions']) == 0
+    assert seen[-1][0]['release27_search']['reuse_root_actions'] is True
 
 
 def test_summary_reports_bury_fallbacks_and_missing_accounting(monkeypatch):

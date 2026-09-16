@@ -80,6 +80,31 @@ def test_terminal_bypasses_model():
     assert out['counts']['model_rows'] == 0
 
 
+def test_bot_root_reuse_preserves_decision_and_reports_work(monkeypatch):
+    from shengji.train import cwv_bounded_puct as kernel
+    from shengji.train import cwv_prior_admission as prior
+    from shengji.train.cwv_shortlist import CWVShortlistConfig
+    rnd = root()
+    monkeypatch.setattr(prior, 'load_prior_checked', lambda *a: ('separate', None, None))
+    monkeypatch.setattr(kernel, 'sample_worlds', lambda *a:
+        ([(copy.deepcopy(rnd.hands), list(rnd.buried)) for _ in range(3)], 3))
+    records, actions = [], []
+    for enabled in (False, True):
+        bot = kernel.CWVBoundedPuctBot(Evaluator(), seed=19,
+            config=CWVShortlistConfig(worlds=3),
+            prior=prior.CWVPriorAdmissionConfig(checkpoint='unused', checkpoint_sha256='0' * 64),
+            puct_config=PuctConfig(sweeps=8, depth=4, batch_size=3),
+            reuse_root_actions=enabled)
+        monkeypatch.setattr(bot, '_tree_prior', uniform)
+        actions.append(bot.decide_play(copy.deepcopy(rnd), rnd.turn))
+        record = bot.last_decision_record['bounded_puct'].copy()
+        if enabled:
+            assert record.pop('root_enumeration_reuse') == dict(hits=2, misses=1)
+        records.append(record)
+    assert actions[0] == actions[1]
+    assert records[0] == records[1]
+
+
 @pytest.mark.parametrize('follow', [False, True])
 def test_root_reuse_exact_search_and_world_specific_prior(monkeypatch, follow):
     from shengji.train import cwv_bounded_puct as kernel

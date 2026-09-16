@@ -205,9 +205,10 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
     tree: every expanded node ranks its exhaustive set. Declare/bury inherited.
     """
 
-    def __init__(self, *args, puct_config=None, **kwargs):
+    def __init__(self, *args, puct_config=None, reuse_root_actions=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.puct_config = puct_config or PuctConfig()
+        self.reuse_root_actions = bool(reuse_root_actions)
         self.puct_totals = dict.fromkeys(('decisions', 'simulations', 'model_rows',
                                         'model_batches', 'terminal_rows', 'prior_rows',
                                         'legal_actions', 'expanded_nodes'), 0)
@@ -227,7 +228,8 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
             raise CWVError('bounded PUCT sampled-world pool underfilled')
         roots = [root_clone(rnd, hands, buried) for hands, buried in worlds]
         result = search_worlds(roots, seat, prior_logits=self._tree_prior,
-                               evaluator=self.evaluator, config=self.puct_config)
+                               evaluator=self.evaluator, config=self.puct_config,
+                               reuse_root_actions=self.reuse_root_actions)
         counts = result['counts']
         self.puct_totals['decisions'] += 1
         self.puct_totals['simulations'] += result['simulations']
@@ -247,4 +249,7 @@ class CWVBoundedPuctBot(CWVPriorAdmissionBot):
                                  for a, n in sorted(result['visits'].items())],
             },
         }
+        if self.reuse_root_actions:
+            self.last_decision_record['bounded_puct']['root_enumeration_reuse'] = (
+                result['root_enumeration_reuse'])
         return result['action']

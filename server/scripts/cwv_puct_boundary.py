@@ -94,7 +94,8 @@ def _child_run(spec: dict[str, Any], send) -> None:
     try:
         # Loading is intentionally before decision timing.  The parent still
         # applies the documented 300-second total child cap, including load.
-        evaluator = shared_evaluator(spec["checkpoint"], threads=1)
+        evaluator = shared_evaluator(spec["checkpoint"], threads=1,
+                                     value_head="outcome")
         prior_sha = spec.get("prior_checkpoint_sha256")
         prior_config = None
         if spec.get("prior_checkpoint") is not None:

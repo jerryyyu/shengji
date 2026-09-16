@@ -17,6 +17,26 @@ def test_json_safe_serializes_tuple_key_maps_as_lists():
     assert out["totals"][0]["value"] == pytest.approx(1.5)
 
 
+def test_child_explicitly_requests_outcome_head(monkeypatch):
+    seen = {}
+
+    def load(checkpoint, **kwargs):
+        seen.update(kwargs)
+        raise RuntimeError('stop after constructor witness')
+
+    class Sink:
+        def send(self, row):
+            self.row = row
+        def close(self):
+            pass
+
+    monkeypatch.setattr(runner, 'shared_evaluator', load)
+    sink = Sink()
+    runner._child_run(_spec(), sink)
+    assert seen == {'threads': 1, 'value_head': 'outcome'}
+    assert sink.row['status'] == 'error'
+
+
 def _spec():
     rnd = root()
     return {"state": 0, "snapshot": _state_snapshot(rnd), "seed": 7,

@@ -57,7 +57,11 @@ primary_region = 'ewr'
     path = '/healthz'
 
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '512mb'
+  # Release 29 proposal (2026-09-16): a DEDICATED vCPU for the bot. The 100+ s turns Jerry saw on
+  # release 27 replayed in 7-9 s on the same shared-cpu-1x machine with the same state, model and
+  # RNG (identity witness, room TCNY): the slowness was the host on that boot, not the search.
+  # A shared vCPU is a burstable fraction of a core; performance-1x is a whole core and 2 GB.
+  size = 'performance-1x'
+  memory = '2048mb'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 2048

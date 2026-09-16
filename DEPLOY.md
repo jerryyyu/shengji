@@ -27,6 +27,23 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
+## Proposed release 29 — machine size only (awaiting Jerry's go)
+
+Config-only change: `[[vm]]` from `shared-cpu-1x` / 512 MB to `performance-1x` / 2,048 MB. No
+package, policy or code change; `SHENGJI_BOT` and every model path stay exactly release 28's.
+
+Why: the two 100+ s production turns in room TCNY (release 27, 2026-09-15 22:53 ET) replayed in
+7.3 s and 8.5 s on the production machine itself with the same state, model and logged RNG state
+(the logged actions were reproduced), so the search is not what was slow; the host on that boot
+was, by ~15x. A shared vCPU is a burstable fraction of a core; a dedicated core removes that
+variance. The ~8 s floor for hundreds of four-card follow candidates remains and is a separate
+lever (prior threshold, screened first).
+
+Before deploying: the decision-identity gate and the server-path smoke re-run on the exact
+image (PR #463's condition), then a live room check; rollback = the release 28 image
+`deployment-01M2M90VYR34R7CWKTTEA4C57V` with release 28's fly.toml. Cost: a performance-1x is
+priced as a dedicated core (see fly.io/docs/about/pricing); Jerry decides.
+
 ## Current production: release 28 — JS-M1, the from-scratch joint net, as ONE package (#425 / #435), deployed 2026-09-16 00:5x ET
 
 Release **28**, image `registry.fly.io/shengji:deployment-01M2M90VYR34R7CWKTTEA4C57V`

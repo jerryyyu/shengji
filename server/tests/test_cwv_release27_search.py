@@ -70,7 +70,8 @@ def test_screen_dispatch_requires_deadline_and_binds_recipe(monkeypatch):
         S.make_side(config, 'arm', 19)
 
 
-def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path):
+@pytest.mark.parametrize('warmup', [0, 2])
+def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path, warmup):
     from scripts import cwv_release27_screen as C
     monkeypatch.setattr(C, 'file_sha256', lambda path:
         R.M1_SHA if str(path) == 'm1' else R.PRIOR_SHA if str(path) == 'prior' else 'armsha')
@@ -82,12 +83,14 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     monkeypatch.setattr(C, '_run_pending', pending)
     argv = ['--baseline-checkpoint', 'm1', '--prior-checkpoint', 'prior',
             '--arm-checkpoint', 'arm', '--mode', 'puct', '--seed0', '19',
-            '--clusters', '2', '--out', str(tmp_path)]
+            '--clusters', '2', '--out', str(tmp_path), '--root-warmup-top', str(warmup)]
     assert C.main(argv) == 0
     assert seen[0][1] == [0, 1]
     assert seen[0][0]['baseline_asset_sha256'] == R.M1_SHA
     assert seen[0][0]['release27_search']['arm_sha256'] == 'armsha'
     assert 'reuse_root_actions' not in seen[0][0]['release27_search']
+
+    assert seen[0][0]['release27_search'].get('root_warmup_top', 0) == warmup
     # A completed pair is loaded, never re-enqueued.
     (tmp_path / 'cluster-00000.json').write_text('{}')
     monkeypatch.setattr(C.screen, 'reopen_shard', lambda *a: {'cluster': 0})
@@ -98,12 +101,14 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     with pytest.raises(ValueError):
         C.main(argv + ['--reuse-root-actions'])
     fresh = tmp_path / 'reuse'
-    argv[-1] = str(fresh)
+    argv[argv.index('--out') + 1] = str(fresh)
     assert C.main(argv + ['--reuse-root-actions']) == 0
     assert seen[-1][0]['release27_search']['reuse_root_actions'] is True
-    with pytest.raises(ValueError):
+    with pytest.raises(SystemExit if warmup else ValueError):
         C.main(argv + ['--reuse-root-actions', '--compact-expansions'])
-    argv[-1] = str(tmp_path / 'compact')
+    if warmup:
+        return  # The combined mode must refuse before any output or asset work.
+    argv[argv.index('--out') + 1] = str(tmp_path / 'compact')
     assert C.main(argv + ['--compact-expansions']) == 0
     assert seen[-1][0]['release27_search']['compact_expansions'] is True
 

@@ -18783,3 +18783,21 @@ No launches, no production changes; `/tmp/replay_slow_turn3.py` left on the mach
 Reading: lowering the threshold to 256 cuts ≈37% off a hundreds-of-follows decision by pruning the shortlist scoring, and changes nothing where the prior already fires; on the production box (≈5× the Mini on these states) that is ≈7.8 s → ≈5 s for the worst follow states. It is a serving-recipe change (new registry name) and needs a v20-style outcome-identity screen before any deploy; the machine size remains the first lever. (Earlier "6.4 s" for this state on the Mini was under cProfile; unprofiled it is 1.6 s.)
 
 **Next.** JS-G1 seal → `jsg1_postseal.txt` (reads + #472 package + smoke gate) → page row + atlas; runJS1 seal; Jerry: Codex prompt (Enter), disk option for generation-1, machine size; threshold-256 screen only on Jerry's ask.
+
+## 2026-09-16 13:07 UTC — Claude DAILY MAINTENANCE 09:0x–09:1x ET: main tree Codex-owned (codex/aug12-strength-status, 20 dirty entries) → steps 1–2 only, 3–5 skipped; both crons recreated with corrected STATE (hourly 59f06bb0, daily 916b90a3; old fbb0dece/03f90881 deleted; expire ~2026-09-23)
+
+**Step 0 (prompt audit).** Drift corrected in both prompts: production is RELEASE 28 (JS-M1 one package), not 24; worktrees/fl-pilot/train-out live under /Users/jerryyu/.claude/jobs/68f9c8bd/tmp, not Projects/shengji/tmp; compiled-engine tests need `SHENGJI_FAST=1`; lanes v18–v22 sealed (not "running"); cloud is Codex's continuation queue; open PRs of mine: none; latency findings and levers, generation-1 disk block, Codex's tmux modal, the ledger-push-during-CI hold, zsh gotchas (`${C}:fly.toml`, quoted `====`) added.
+
+**(1) Status, all hosts (ground truth = live processes + progress files + bus).**
+- Production (Fly app shengji): machine 48e7e35a9597e8 ewr, version 28, image deployment-01M2M90VYR34R7CWKTTEA4C57V, started, 1/1 checks passing; `/healthz` ok, rooms 0, bot mc-shortlist-0d17fd03-…-prior-0d17fd03-bury-hybrid-003c2abe49ff, prior {0d17fd03…, 1000, 256}. Release 28 since 09-16 00:5x ET.
+- Mini (M4 10c/16 GB): load 1.5; JS-G1 trainer (rootcw venv, pid 14280) at epoch 19/20 (09:00 ET) → seal ≈09:45 ET; post-seal waiter v2 pid 82485 armed; Jerry's :8899 dev server pid 96175 up 43 d; Codex tmux read-only (rate-limit modal still displayed; Codex active on the bus). Disk 34 GB free (generation-1 block).
+- shengji-perf (16c): load 16.0 (16 harvest workers); disk 88%, 74 GB free — the box to watch; runJS1 `shengji.harvest.trajectory` pid 4099055 etime 9 h 53 m, cluster 12,710/16,000 (79%), 1.73M decisions, ≈21 clusters/min → seal ≈11:40 ET. Nothing else running.
+- shengji-cloud (16c): load 1.1; disk 42%, 338 GB free; Codex's `codex-policy-continuation-20260916.service` active/running (pid 1231209): M1-k1 sealed (16 files, summary), M1-terminal sealed (13/13 pairs, 1,229 s), G1-k1 sealed (summary), G1-terminal running (8 files ≈ 4/13 clusters). Codex-owned; read-only.
+- Air: OFF (Jerry disabled remote login).
+- Bus: acked through codex:1615; nothing new since.
+
+**(2) fly logs (read-only).** Last 25 lines = `/healthz` 200s every 30 s from the Fly checker (12:52–13:04 UTC); no errors, no room traffic.
+
+**(3)–(5) skipped** (Codex-owned tree; live runs on Mini/Perf/cloud; no deletions anywhere).
+
+**Watch items for Jerry.** Codex's tmux modal (Enter); Perf disk at 88% with runJS1 still growing (≈+2.5 GB to seal); generation-1 disk decision; production machine size.

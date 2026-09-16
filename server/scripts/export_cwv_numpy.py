@@ -67,6 +67,14 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
         names.update({f"trunk.{final}.weight": "final_norm_weight", f"trunk.{final}.bias": "final_norm_bias"})
     else:
         raise ValueError(f"trunk {config.trunk_block!r} x {config.trunk_layers} has no numpy runtime")
+    if config.policy_head:
+        # #425 joint net: the policy head rides in the SAME package (v2 schema), so
+        # one file serves the value net and, via `cwv_prior_admission`, the prior.
+        if schema == PACKAGE_SCHEMA:
+            schema = PACKAGE_SCHEMA_V2
+            cfg.update({"trunk_block": config.trunk_block, "trunk_layers": config.trunk_layers})
+        cfg["policy_head"] = True
+        names.update({"policy_head.weight": "policy_weight", "policy_head.bias": "policy_bias"})
     metadata["exported_value_head"] = head
     state = model.state_dict()
     missing = [src for src in names if src not in state]

@@ -66,13 +66,14 @@ def test_matching_packages_pass_and_the_receipt_names_every_file(checkpoint, pri
     # threshold 6 (just above the shortlist of 5) and top 5 (alternatives 4 + 1) make the prior fire on every wide decision
     # and prune to a strict subset, so the prior side is exercised, not just loaded.
     receipt = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, threshold=6, top=5)
-    assert receipt["passed"] is True
-    assert receipt["decisions"] > 0 and receipt["identical"] == receipt["decisions"]
+    assert receipt["passed"] is True and receipt["result"] in ("identical", "identical-except-near-ties")
+    assert receipt["decisions"] > 0 and receipt["other_mismatches"] == 0
+    assert receipt["identical"] + receipt["near_tie_same_play"] == receipt["decisions"]
     assert receipt["prior_fired"] > 0, "the gate never reached the prior stage"
     assert receipt["kinds"] == {"served_prior": "separate-numpy", "reference_prior": "separate"}
     assert set(receipt["files"]) == {"value_torch", "value_numpy", "prior_torch", "prior_numpy"}
     assert receipt["files"]["prior_torch"]["sha256"] == prior_ckpt[1]
-    assert receipt["result"] == "identical" and receipt["scope"] == "smoke"
+    assert receipt["scope"] == "smoke"
     assert receipt["qualifies_serving"] is False, "a W4/N4 smoke run must not qualify a deploy"
 
 
@@ -81,7 +82,12 @@ def test_a_bound_prior_that_never_fires_is_incomplete_not_a_pass(checkpoint, pri
     value, prior = packages
     # threshold above any legal set in one tiny round: every decision agrees, the prior never runs
     receipt = run_gate(checkpoint, value, prior_ckpt[0], prior, rounds=1, threshold=10_000_000, top=5)
-    assert receipt["identical"] == receipt["decisions"] > 0 and receipt["prior_fired"] == 0
+    # The tiny 16-wide test net can produce a near-tie that the two backends order differently on
+    # some platforms (CI Linux BLAS: 39/40 identical); the classification reports that separately
+    # and it must not mask the point of this witness: no real mismatch, prior never fired -> incomplete.
+    assert receipt["decisions"] > 0 and receipt["other_mismatches"] == 0
+    assert receipt["identical"] + receipt["near_tie_same_play"] == receipt["decisions"]
+    assert receipt["prior_fired"] == 0
     assert receipt["passed"] is False and receipt["result"] == "incomplete-prior-never-fired"
 
 
@@ -142,7 +148,7 @@ def test_cli_exit_status_follows_the_verdict_and_writes_the_receipt(checkpoint, 
            "--prior-numpy", prior, "--rounds", "1", "--threshold", "6", "--top", "5", "--receipt", str(receipt)]
     run = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parents[1])
     assert run.returncode == 0, run.stdout + run.stderr
-    assert run.stdout.startswith("PASS (identical, scope smoke)")
+    assert run.stdout.startswith("PASS (identical") and "scope smoke" in run.stdout
     assert json.loads(receipt.read_text())["passed"] is True
 
 

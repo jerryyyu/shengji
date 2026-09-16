@@ -27,7 +27,28 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
-## Current production: release 27 — M1 + policy prior v2 (#435), redeployed 2026-09-15 22:0x ET
+## Planned release 28: JS-M1, the from-scratch joint net, as ONE package (#425 / #435; Jerry's go 2026-09-15 23:4x ET)
+
+Play policy `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`: JS-M1 (`a5248cc5`, M1's recipe from scratch with a policy head trained on all
+20.3M root rows) served as a single NumPy package `/data/models/js-m1-0d17fd03.npz`
+(SHA256 `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`, schema v2 with the policy head, PR #455). The package is the value net
+AND, above 1,000 legal actions with top 256 per sampled world, its own policy head is the
+admission prior (`SHENGJI_CWV_PRIOR_CKPT` names the same file; prior kind `joint-numpy`).
+Hybrid bury and the 2-second bury budget unchanged (JS-M1 scores bury candidates).
+Evidence: offline, val_ce 0.5957 (M1 0.5975) and a policy head non-inferior to prior v3 on
+four of five strata (widest unresolved); in play (cloud lane v22, five capped windows),
++0.0239 [+0.0005, +0.0472] vs the release 24 recipe (nominal, shared-control seeds) and
+paired +0.0057 [−0.0163, +0.0277] vs the release 27 recipe at the same decision wall with
+0 decisions over 60 s in 182,096 — no ten-window or fresh-seed read yet. Preconditions
+before `fly deploy --ha=false`: #455 merged; decision-identity gate PASS at threshold
+1,000 on this exact package as value and prior (`scripts/cwv_serving_gate.py --serving
+--threshold 1000`); `scripts/cwv_serving_smoke.py` PASS from a clean checkout of main with
+this fly.toml; the package SHA256-verified on the volume; a live room's log showing a bot
+bury and bot plays completing. Prior-only rollback: remove the four `SHENGJI_CWV_PRIOR_*`
+settings and set `SHENGJI_BOT` to the prior-less JS-M1 name the registry prints. Full
+rollback: release 27 (M1 + prior v2, its fly.toml) or release 24.
+
+## Release 27 — M1 + policy prior v2 (#435), redeployed 2026-09-15 22:0x ET
 
 Release **27**, image `registry.fly.io/shengji:deployment-01M2M1B48P44H5HJXEP6ETYQXE` (digest
 `sha256:ff1b78f900f141315582d770ef2232da8d1999d65e6e7a63e22e8d52c0a62993`), deployed with

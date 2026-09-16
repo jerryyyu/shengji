@@ -27,7 +27,48 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
-## Planned release: M1 + policy prior v2 (#435, Jerry's go 2026-09-15 18:2x ET)
+## Current production: release 26 = the release 24 image (rollback), 2026-09-15 20:55 ET
+
+Release 25 (below) stalled every bot turn in its first live room (KXXD): the server
+deep-copies the bot into a turn snapshot before any search, and the NumPy prior's
+read-only weight mapping could not be pickled, so the snapshot raised before the bury
+budget began. The in-process decision-identity gate could not catch it (it never takes
+the server's snapshot path). Rolled back with
+`fly deploy --image registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A --ha=false`
+and release 24's `fly.toml` → release **26**, `/healthz`
+`{"ok":true,"rooms":0,"bot":"mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a","fast":true}`.
+The two new packages stay on the volume. Redeploy of the release 25 recipe requires:
+PR #451 (`CWVNumpyPrior.__deepcopy__`) merged, `scripts/cwv_serving_smoke.py` PASS on the
+real packages from the fixed tree (it builds the bot from `fly.toml` and plays a bury and
+play turns through the server's own bot-turn path), and Jerry's word.
+
+## Release 25 — M1 + policy prior v2 (#435), deployed 2026-09-15 19:54 ET, rolled back 20:55 ET
+
+Release **25**, image `registry.fly.io/shengji:deployment-01M2KQVJVPC6WD85RQD59SYG38`
+(digest `sha256:4ed088a25eef1244818bbce6dc3e9742ade8f913679a70ebf2a62def1b3af189`), deployed
+with `fly deploy --ha=false` from main `55f0029c` on machine `48e7e35a9597e8`
+(1/1 health passing, 0 rooms at deploy time). Live health after the deploy:
+
+```
+{"ok":true,"rooms":0,"bot":"mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f","fast":true,"prior":{"sha256":"b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c","threshold":1000,"top":256}}
+```
+
+Preconditions that were met, in order: serving gate merged (#445), config merged (#448),
+the serving-scope gate on the exact packages at threshold 1,000 PASS (2,222/2,222 decisions
+identical, prior fired 139×; receipt archived under `~/shengji-archive/2026-09-15/release25/`
+with the 10k run, the deploy log and this health response), both packages SHA256-verified on
+the volume. Jerry's go: 18:2x ET (M1 + prior v2), 19:2x ET (threshold 1,000).
+
+**Rollback.** Full: release **24**, image
+`registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A` (fd6bb411 + hybrid bury,
+`SHENGJI_BOT=mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`,
+`SHENGJI_CWV_SHORTLIST_CKPT=/data/models/w32-fd6bb411.npz`, no `SHENGJI_CWV_PRIOR_*`); the
+release 24 package stays on the volume. Prior-only: remove the four `SHENGJI_CWV_PRIOR_*`
+settings and set `SHENGJI_BOT` to the registry's prior-less M1 name; `/healthz` must then
+show `"prior": null`. Machine and volume `vol_rkgj0xeg8ejy1kw4` are unchanged; logs and
+model packages must be preserved.
+
+## Release 25 plan as approved (kept for the record)
 
 Play policy `mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f`:
 M1 (`3cb9cd62`) served as NumPy package `/data/models/m1-12ce4415.npz`
@@ -50,11 +91,11 @@ both packages on the volume with matching SHA256, the in-repo serving gate
 prior SHA. Prior-only rollback: remove the four `SHENGJI_CWV_PRIOR_*` settings and set
 `SHENGJI_BOT` to the prior-less M1 name the registry prints; full rollback: release
 24 (below) with its environment. The release number, image and health response are
-recorded here once deployed.
+recorded above.
 
 ## Current production and rollback boundary
 
-Release **22** deployed September 9 at approximately 20:51 ET, image
+Previous production (superseded by release 25 above): release **22** deployed September 9 at approximately 20:51 ET, image
 `registry.fly.io/shengji@sha256:b5dc327f79d8804d2a9f79bcddbb6bea1740b71547937ce1be1c08661030c82d`.
 Live health reports the exact hybrid policy and native engine. An isolated
 functional probe verified the literal model path and SHA, encoder bytes,

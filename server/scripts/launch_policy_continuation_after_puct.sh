@@ -29,6 +29,10 @@ import json
 import hashlib
 from pathlib import Path
 base = Path('/root/codex-puct-gameplay-20260916')
+model_shas = {
+    'M1': '3cb9cd62a083736e3b41712baabaa86398b74f0e303a4a15290ec1cd9585612d',
+    'G1': '1bcbb47f253a7151df08749b31868a1d1608fbf3e578a2dc4d24f232b1e2e648',
+}
 for model in ('M1', 'G1'):
     for sweeps, depth in ((8,8),(32,8),(128,8),(128,16)):
         path = base / f'{model}-s{sweeps}-d{depth}' / 'summary.json'
@@ -41,6 +45,9 @@ for model in ('M1', 'G1'):
         assert (r['mode'], r['sweeps'], r['depth']) == ('puct', sweeps, depth), path
         assert c['decision_deadline']['seconds'] == 300, path
         assert r['arm_checkpoint'] == f'/root/claude-{model}.pt', path
+        assert c['checkpoint_sha256'] == r['arm_sha256'] == model_shas[model], path
+        assert c['baseline_asset_sha256'] == '12ce4415a65c479b03d52a08574e14a5909b09435c1d8dddeab1726fbc1d4d4f', path
+        assert c['prior_asset_sha256'] == 'b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c', path
 for name, expected in {
     'M1': '3cb9cd62a083736e3b41712baabaa86398b74f0e303a4a15290ec1cd9585612d',
     'G1': '1bcbb47f253a7151df08749b31868a1d1608fbf3e578a2dc4d24f232b1e2e648',

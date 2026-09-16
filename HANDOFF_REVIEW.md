@@ -18709,3 +18709,17 @@ Codex reviews: #459 PASS (root warmup), #460 PASS (training-batch provenance omi
 **Part C.** Armed `scratchpad/claude_jsg1_postseal.sh` (nohup, pid 31031; output `scratchpad/jsg1_postseal.txt`): polls every 5 min for `train-out/cwv/JS-G1-policy-w0.2-full/{receipt,metrics}.json`, then records receipt/best.pt SHA and runs the two JS-M1-seal reads unchanged — `fl-pilot/compare_joint.py best.pt policy_prior_v3.pt policy_rows_v3_eval` (paired deal bootstrap top-64, margin −0.02) and `fl-pilot/listwise_ce.py` on the 15,517 common test-deal rows. Reads only (no launch, no page edit). Noted for the in-play step: `scripts/export_cwv_numpy.py` accepts `architecture=mlp` only, so a JS-G1 serving package needs an exporter extension; its in-play screen runs from the Torch checkpoint as G1's did (cloud lane, after Codex's ladder releases the lock).
 
 **Next.** JS-G1 seal → read `jsg1_postseal.txt` → page row + atlas; runJS1 seal → generation-1 training plan on the corpus; machine-size proposal for production latency stands for Jerry.
+
+## 2026-09-16 08:42 UTC — Claude tick 04:4x ET: REPLAY IDENTITY WITNESS — both 100+ s production turns reproduce the LOGGED ACTION exactly with the release 27 bot and the logged RNG state, in 7.3 s / 8.5 s on the production machine (logged 106.9 s / 132.6 s); JS-G1 epoch 13/20; runJS1 7,080/16,000
+
+**Part A.** main f9077174. Bus: codex:1582–1585 acked (fyi only: #436 issue body reconciled; PR #469 draft `--full-guidance` for the continuation kernel — "no review gate requested yet", 22 tests, rehearsal costs heuristic 2.7–3.4 s / guided1 3.5–4.0 s / full policy 8.2–15.6 s per terminal state; queue unchanged). Codex alive (pursuing goal 5 h 50 m). Production `/healthz` ok, rooms 0, release 28. Mini JS-G1 epoch 13/20 val_ce 0.5562 (≈30 min/epoch → seal ≈08:10 ET); post-seal waiter pid 31031 still waiting. Perf runJS1 cluster 7,080/16,000, 964k decisions (≈11:35 ET). Cloud: Codex's S128D8 G1 rung running; untouched.
+
+**Part C (production latency, continued).** `scratchpad/replay_slow_turn.py` now restores the logged pre-decision `decision.rng_state` (`mcbot.restore_random_state`) before `decide_play` and compares the action to the logged play (Codex's suggestion, bus codex:1578). Release 27 recipe (M1 12ce4415 + prior v2 b9ff76c9 from the volume, fly.toml 55f0029c — the bot that produced the logged turns):
+- seat 2 (t=1789527201.32, 468 legal actions): PRODUCTION MACHINE 7.3 s → `D5 D7 DJ H2` = logged (MATCH); Mini 2.3 s, MATCH.
+- seat 3 (t=1789527333.961, 1,001 legal actions, prior fires): PRODUCTION MACHINE 8.5 s → `H3 H6 H8 H9` = logged (MATCH); Mini 2.3 s, MATCH.
+Same state, same model, same RNG, same action — 14.6× and 15.6× faster on the same machine size today than when logged. The state and the search are ruled out as the cause; what differed was the host at 22:53 ET on 09-15 (release 27 boot). Leading explanation stays shared-vCPU throttling/steal on that boot (unobservable now). The ≈8 s decision floor on shared-cpu-1x for hundreds of 4-card throw-follow candidates is the engineering target; the machine size is the immediate lever (Jerry's call; a fly.toml `[[vm]]` change = a deploy).
+No launches, no production changes; `/tmp/replay_slow_turn3.py` left on the machine's tmpfs.
+
+**Part B.** Nothing new sealed; artifacts current.
+
+**Next.** JS-G1 seal ≈08:10 ET → `jsg1_postseal.txt` → page row + atlas; runJS1 seal ≈11:35 ET; propose the machine-size change to Jerry with the identity witness.

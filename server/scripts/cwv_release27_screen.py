@@ -21,7 +21,10 @@ def main(argv=None):
     parser.add_argument('--arm-checkpoint', required=True, type=Path)
     parser.add_argument('--mode', choices=('puct', 'truncated', 'policy'), required=True)
     parser.add_argument('--control', choices=('release27', 'matched-continuation'), default='release27')
-    parser.add_argument('--guided-tricks', type=int, default=1)
+    guidance = parser.add_mutually_exclusive_group()
+    guidance.add_argument('--guided-tricks', type=int, default=1)
+    guidance.add_argument('--full-guidance', action='store_true',
+                          help='Use the policy throughout the continuation, not just its first trick')
     parser.add_argument('--full-continuation', action='store_true')
     parser.add_argument('--sweeps', type=int, default=8)
     parser.add_argument('--depth', type=int, default=8)
@@ -37,6 +40,8 @@ def main(argv=None):
         parser.error('continuation-tricks must be nonnegative')
     if args.guided_tricks < 0:
         parser.error('guided-tricks must be nonnegative')
+    if args.full_guidance and args.mode != 'policy':
+        parser.error('full-guidance requires policy mode')
     if args.mode != 'policy' and args.control != 'release27':
         parser.error('matched-continuation requires policy mode')
     if args.mode == 'puct' and args.full_continuation:
@@ -49,7 +54,8 @@ def main(argv=None):
                   arm_sha256=file_sha256(args.arm_checkpoint), mode=args.mode,
                   sweeps=args.sweeps, depth=args.depth,
                   continuation_tricks=None if args.full_continuation else args.continuation_tricks,
-                  guided_tricks=args.guided_tricks, control=args.control)
+                  guided_tricks=None if args.full_guidance else args.guided_tricks,
+                  control=args.control)
     # Fail on unsupported assets/constructors before allocating pair workers.
     for side in ('baseline', 'arm'):
         make_release27_side(side=side, seed=args.seed0, **recipe)

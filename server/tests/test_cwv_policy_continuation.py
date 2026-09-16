@@ -62,6 +62,20 @@ def test_guidance_stops_at_root_relative_trick_boundary():
     assert out.terminal_rows == 1
 
 
+def test_full_guidance_reaches_terminal_without_heuristic_fallback():
+    rnd = root()
+    class NoFallback:
+        def decide_play(self, *args):
+            raise AssertionError('full guidance must never use the heuristic')
+    guide = PriorRolloutPolicy(lambda world, mover, actions: np.zeros(len(actions)),
+                              fallback=NoFallback(), stop_trick=None)
+    out = continuation_values([rnd], [rnd.turn], [len(rnd.history)],
+                              evaluator=Evaluator(), tricks=None, policy=guide)
+    assert out.terminal_rows == 1
+    assert guide.counts['guided_plies'] > 4
+    assert guide.counts['fallback_plies'] == 0
+
+
 def test_transient_guide_restored_even_on_continuation_failure(monkeypatch):
     rnd = root()
     bot = object.__new__(CWVPolicyContinuationBot)

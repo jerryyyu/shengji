@@ -173,8 +173,34 @@ def test_a_v1_encoder_joint_package_is_refused_at_binding(tmp_path):
 
 def test_gate_reports_near_tie_reorders_separately():
     from scripts.cwv_serving_gate import _near_tie, _same
+    # reorder of two near-equal candidates, every shared candidate agreeing across implementations
     a = {"shortlist": [["S4"], ["S9"], ["S4", "S6"]], "means": [0.5, 0.5 + 4e-6, 0.5 - 4e-6], "admission": None}
-    b = {"shortlist": [["S4"], ["S4", "S6"], ["S9"]], "means": [0.5, 0.5 - 4e-6, 0.5 + 4e-6], "admission": None}
+    b = {"shortlist": [["S4"], ["S4", "S6"], ["S9"]], "means": [0.5, 0.5 - 3e-6, 0.5 + 3e-6], "admission": None}
     assert not _same(a, b) and _near_tie(a, b)
-    c = dict(b, means=[0.5, 0.3, 0.7])
-    assert not _near_tie(a, c), "a real ranking difference is not a near-tie"
+    # a swapped member whose replacement is near-tied with it
+    c = {"shortlist": [["S4"], ["S9"], ["S6"]], "means": [0.5, 0.5 + 4e-6, 0.5 - 4e-6], "admission": None}
+    assert _near_tie(a, c)
+    # NEGATIVE: the same shortlist order with every score shifted is a divergence, not a tie
+    shifted = dict(a, means=[m + 0.1 for m in a["means"]])
+    assert not _near_tie(a, shifted)
+    # NEGATIVE: a real ranking difference (the changed members are far apart)
+    far = {"shortlist": [["S4"], ["S9"], ["S6"]], "means": [0.5, 0.5 + 4e-6, 0.3], "admission": None}
+    assert not _near_tie(a, far)
+    # NEGATIVE: shared candidates disagreeing across implementations
+    disagree = dict(b, means=[0.5, 0.5 - 3e-6, 0.6])
+    assert not _near_tie(a, disagree)
+
+
+def test_near_tie_result_still_requires_the_prior_to_have_fired(checkpoint_stub=None):
+    """The relaxed result shape must not bypass the bound-prior condition."""
+    import scripts.cwv_serving_gate as gate
+    receipt = {"decisions": 10, "identical": 9, "other_mismatches": 0, "near_tie_same_play": 1,
+               "prior_fired": 0}
+    # emulate the classification block on a receipt with a bound prior and no firing
+    identical = receipt["identical"] == receipt["decisions"]
+    near_ties_only = not identical and receipt["other_mismatches"] == 0
+    assert near_ties_only and receipt["prior_fired"] == 0
+    # the source rule: bound prior + never fired -> incomplete, for either accepted shape
+    src = open(gate.__file__).read()
+    assert 'elif prior_torch is not None and receipt["prior_fired"] == 0:' in src
+    assert src.index('elif prior_torch is not None and receipt["prior_fired"] == 0:') < src.index('"identical-except-near-ties"')

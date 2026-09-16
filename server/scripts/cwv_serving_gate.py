@@ -103,14 +103,34 @@ def _same(a, b) -> bool:
 
 
 def _near_tie(a, b) -> bool:
-    """A shortlist that differs only because two candidates' means sit within NEAR_TIE of
-    each other: float64 NumPy and float32 Torch can order such a pair differently. The
-    served bot then searched a set that differs by a near-equal member. This is reported
-    separately; it is NOT counted as identical."""
-    if a["admission"] != b["admission"] or len(a["means"]) != len(b["means"]) or not a["means"]:
+    """A shortlist that differs ONLY at near-tied candidates, with both implementations
+    agreeing on every candidate they share.
+
+    Two conditions, both required: (1) every candidate present in both shortlists has the
+    same mean on both sides (within the identity tolerance) -- cross-implementation
+    agreement, so a shifted or otherwise divergent score vector never qualifies; (2) every
+    candidate present on one side only (the reordered / swapped members) has a mean within
+    NEAR_TIE of every other such member, so the only difference is which of two
+    near-equal candidates made the cut. Admission traces must match. Reported separately;
+    never counted as identical."""
+    if a["admission"] != b["admission"] or not a["means"] or not b["means"]:
         return False
-    spread = max(max(a["means"]) - min(a["means"]), max(b["means"]) - min(b["means"]))
-    return spread <= NEAR_TIE
+    sa = {tuple(x): m for x, m in zip(a["shortlist"], a["means"])}
+    sb = {tuple(x): m for x, m in zip(b["shortlist"], b["means"])}
+    shared = set(sa) & set(sb)
+    if not shared:
+        return False
+    if any(not np.isclose(sa[k], sb[k], rtol=1e-4, atol=1e-5) for k in shared):
+        return False
+    changed = [sa[k] for k in set(sa) - shared] + [sb[k] for k in set(sb) - shared]
+    if not changed:
+        # same membership, different order: the reordered pair must be near-tied
+        order_a = [k for k in sa if k in sb]; order_b = [k for k in sb if k in sa]
+        moved = [k for k, j in zip(order_a, order_b) if k != j]
+        changed = [sa[k] for k in moved]
+        if not changed:
+            return False
+    return max(changed) - min(changed) <= NEAR_TIE
 
 
 def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, rounds=4,
@@ -176,14 +196,17 @@ def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, ro
                 rnd.play(seat, h.decide_play(rnd, seat))
     receipt["seconds"] = round(time.perf_counter() - t0, 1)
     identical = receipt["decisions"] > 0 and receipt["identical"] == receipt["decisions"]
-    if not identical:
-        receipt["result"] = ("mismatch" if receipt["other_mismatches"] or not receipt["decisions"]
-                             else "identical-except-near-ties") if receipt["decisions"] else "no-decisions"
+    near_ties_only = receipt["decisions"] > 0 and not identical and receipt["other_mismatches"] == 0
+    if not receipt["decisions"]:
+        receipt["result"] = "no-decisions"
+    elif not identical and not near_ties_only:
+        receipt["result"] = "mismatch"
     elif prior_torch is not None and receipt["prior_fired"] == 0:
-        # Every decision agreed, but the prior never ran: the combined path is NOT certified.
+        # Every decision agreed (or differed only at near-ties), but the prior never ran:
+        # the combined path is NOT certified, whichever of the two accepted shapes it took.
         receipt["result"] = "incomplete-prior-never-fired"
     else:
-        receipt["result"] = "identical"
+        receipt["result"] = "identical" if identical else "identical-except-near-ties"
     # A near-tie reorder with the same play and RNG is reported, never silently passed:
     # the deploy record must quote the count. It does not fail the gate on its own.
     receipt["passed"] = receipt["result"] in ("identical", "identical-except-near-ties")

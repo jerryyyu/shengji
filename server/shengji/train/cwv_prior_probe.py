@@ -16,9 +16,35 @@ class PriorRequest:
     state: object
     seat: int
     ballot: tuple
-    observation: np.ndarray
-    candidates: np.ndarray
+    observation: np.ndarray | None
+    candidates: np.ndarray | None
     probabilities: np.ndarray | None = None
+
+
+class LogitPriorRecorder:
+    """Recorder for the CURRENT bounded PUCT ``prior_logits`` callback.
+
+    Return raw logits unchanged; record the same stable softmax that its
+    expand() uses, in original enumerator order. No extra model invocation.
+    Unlike the legacy encoded-batch adapter below, this interface does not
+    expose encoded arrays, so those fields explicitly remain None.
+    """
+    def __init__(self, prior_logits, limit=16):
+        if type(limit) is not int or limit < 1:
+            raise ValueError("positive integer capture limit required")
+        self.prior_logits, self.limit = prior_logits, limit
+        self.rows = []
+
+    def __call__(self, state, seat, ballot):
+        output = self.prior_logits(state, seat, ballot)
+        if len(self.rows) < self.limit:
+            logits = np.asarray(output, dtype=float)
+            if logits.shape != (len(ballot),) or not len(ballot) or not np.isfinite(logits).all():
+                raise ValueError("one finite logit per candidate required")
+            weights = np.exp(logits - logits.max())
+            self.rows.append(PriorRequest(leaf_copy(state), seat,
+                tuple(tuple(a) for a in ballot), None, None, weights / weights.sum()))
+        return output
 
 
 class PriorRecorder:

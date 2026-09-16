@@ -168,3 +168,40 @@ def test_real_common_world_comparator_uses_captured_actor_and_preserves_capture(
     second = probe.compare_request(row, sampler=MCBot(seed=817), worlds=2)
     assert second["sampled_worlds"] == report["sampled_worlds"]
     assert second["world_values"] == report["world_values"]
+
+
+def test_current_bounded_puct_consumer_whole_result_parity(monkeypatch):
+    from test_cwv_bounded_puct import root, Evaluator
+    from shengji.train.cwv_bounded_puct import search_worlds, PuctConfig
+    from shengji.ai.cwv_puct import leaf_copy
+    monkeypatch.setattr(probe, "leaf_copy", leaf_copy)
+    calls = []
+    def logits(state, seat, ballot):
+        calls.append((seat, len(ballot)))
+        return np.linspace(-1., 1., len(ballot))
+    state = root()
+    config = PuctConfig(sweeps=5, depth=3, batch_size=2)
+    plain = search_worlds([state, copy.deepcopy(state)], state.turn,
+                         prior_logits=logits, evaluator=Evaluator(), config=config)
+    plain_calls = list(calls)
+    calls.clear()
+    recorder = probe.LogitPriorRecorder(logits, limit=3)
+    captured = search_worlds([state, copy.deepcopy(state)], state.turn,
+                            prior_logits=recorder, evaluator=Evaluator(), config=config)
+    assert captured == plain and calls == plain_calls
+    assert len(recorder.rows) == 3
+    for row in recorder.rows:
+        expected = np.exp(np.linspace(-1., 1., len(row.ballot)) - 1.)
+        np.testing.assert_allclose(row.probabilities, expected / expected.sum())
+        assert row.seat == row.state.turn
+        assert row.observation is None and row.candidates is None
+
+
+def test_logit_recorder_returns_exact_original_output():
+    output = [1000., 999.]
+    recorder = probe.LogitPriorRecorder(lambda *args: output, limit=1)
+    state = {"history": []}
+    assert recorder(state, 0, [["S2"], ["S3"]]) is output
+    state["history"].append(1)
+    assert recorder.rows[0].state == {"history": []}
+    assert np.isfinite(recorder.rows[0].probabilities).all()

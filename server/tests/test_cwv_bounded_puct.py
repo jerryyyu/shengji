@@ -80,6 +80,61 @@ def test_terminal_bypasses_model():
     assert out['counts']['model_rows'] == 0
 
 
+@pytest.mark.parametrize('follow', [False, True])
+def test_root_reuse_exact_search_and_world_specific_prior(monkeypatch, follow):
+    from shengji.train import cwv_bounded_puct as kernel
+    rnd = root()
+    while bool(rnd.trick.plays) != follow:
+        play(rnd)
+    worlds = [copy.deepcopy(rnd) for _ in range(3)]
+    # Preserve own hand/public legality but change hidden hands across worlds.
+    others = [s for s in range(4) if s != rnd.turn]
+    worlds[1].hands[others[0]], worlds[1].hands[others[1]] = (
+        worlds[1].hands[others[1]], worlds[1].hands[others[0]])
+    worlds[2].hands[rnd.turn].reverse()
+    enumeration_calls, prior_calls = [], []
+    original = kernel.enumerate_legal
+    def counted(*args, **kwargs):
+        enumeration_calls.append(1)
+        return original(*args, **kwargs)
+    def prior(world, seat, actions):
+        signature = tuple(tuple(hand) for hand in world.hands)
+        prior_calls.append((signature, tuple(actions)))
+        offset = sum(ord(c) for card in world.hands[(seat + 1) % 4] for c in card)
+        return np.array([(i + offset) % 7 for i in range(len(actions))], dtype=float)
+    monkeypatch.setattr(kernel, 'enumerate_legal', counted)
+    args = dict(prior_logits=prior, config=PuctConfig(sweeps=8, depth=8))
+    reference = search_worlds(worlds, rnd.turn, evaluator=Evaluator(), **args)
+    n_reference, calls_reference = len(enumeration_calls), list(prior_calls)
+    enumeration_calls.clear()
+    prior_calls.clear()
+    optimized = search_worlds(worlds, rnd.turn, evaluator=Evaluator(),
+                              reuse_root_actions=True, **args)
+    assert optimized.pop('root_enumeration_reuse') == dict(hits=2, misses=1)
+    assert optimized == reference
+    assert prior_calls == calls_reference
+    assert len(enumeration_calls) == n_reference - 2
+
+
+def test_root_reuse_key_separates_legality_inputs():
+    from shengji.train.cwv_bounded_puct import _root_legal_key
+    rnd = root()
+    key = _root_legal_key(rnd)
+    for change in ('hand', 'suit', 'rank', 'turn', 'lead'):
+        other = copy.deepcopy(rnd)
+        if change == 'hand':
+            other.hands[other.turn].pop()
+        elif change == 'suit':
+            other.ordering.trump_suit = 'different'
+        elif change == 'rank':
+            other.ordering.trump_rank = 'different'
+        elif change == 'turn':
+            other.turn = (other.turn + 1) % 4
+        else:
+            play(other)
+        assert _root_legal_key(other) != key
+
+
 @pytest.mark.parametrize('kwargs', [dict(sweeps=0), dict(depth=0), dict(batch_size=0),
                                   dict(widening=0), dict(exploration=float('nan')),
                                   dict(widening_power=0)])

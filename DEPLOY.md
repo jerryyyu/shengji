@@ -27,7 +27,22 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
 
-## Current production: release 25 — M1 + policy prior v2 (#435), deployed 2026-09-15 19:54 ET
+## Current production: release 26 = the release 24 image (rollback), 2026-09-15 20:55 ET
+
+Release 25 (below) stalled every bot turn in its first live room (KXXD): the server
+deep-copies the bot into a turn snapshot before any search, and the NumPy prior's
+read-only weight mapping could not be pickled, so the snapshot raised before the bury
+budget began. The in-process decision-identity gate could not catch it (it never takes
+the server's snapshot path). Rolled back with
+`fly deploy --image registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A --ha=false`
+and release 24's `fly.toml` → release **26**, `/healthz`
+`{"ok":true,"rooms":0,"bot":"mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a","fast":true}`.
+The two new packages stay on the volume. Redeploy of the release 25 recipe requires:
+PR #451 (`CWVNumpyPrior.__deepcopy__`) merged, `scripts/cwv_serving_smoke.py` PASS on the
+real packages from the fixed tree (it builds the bot from `fly.toml` and plays a bury and
+play turns through the server's own bot-turn path), and Jerry's word.
+
+## Release 25 — M1 + policy prior v2 (#435), deployed 2026-09-15 19:54 ET, rolled back 20:55 ET
 
 Release **25**, image `registry.fly.io/shengji:deployment-01M2KQVJVPC6WD85RQD59SYG38`
 (digest `sha256:4ed088a25eef1244818bbce6dc3e9742ade8f913679a70ebf2a62def1b3af189`), deployed

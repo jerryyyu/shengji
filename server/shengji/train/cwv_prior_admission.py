@@ -127,7 +127,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
     """Learned W32 shortlist whose wide decisions are pruned by the policy prior."""
 
     def __init__(self, evaluator, *, seed=0, config=None, prior=None,
-                 reuse_successors=False, capture_full_legal_scores=False):
+                 reuse_successors=False, capture_full_legal_scores=False,
+                 reuse_values=False):
         if prior is None and isinstance(config, CWVPriorAdmissionConfig):
             prior, config = config, None
         if not isinstance(prior, CWVPriorAdmissionConfig):
@@ -147,7 +148,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
             prior.checkpoint, prior.checkpoint_sha256)
         self._prior_diagnostics = None
         super().__init__(evaluator, seed=seed, config=config,
-                         reuse_successors=reuse_successors, capture_full_legal_scores=False)
+                         reuse_successors=reuse_successors, capture_full_legal_scores=False,
+                         reuse_values=reuse_values)
         self.shortlist_counts.update(dict.fromkeys((
             "prior_decisions", "prior_forwards", "prior_union_actions", "prior_pool_actions"), 0))
 

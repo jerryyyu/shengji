@@ -52,7 +52,7 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
     PRODUCTION_BALLOT_POLICY = "mc-s0-report-lcb"
 
     def __init__(self, evaluator, *, seed=0, config=None, reuse_successors=False,
-                 capture_full_legal_scores=False):
+                 capture_full_legal_scores=False, reuse_values=False):
         super().__init__(seed)
         self.shortlist_config = config or CWVShortlistConfig()
         if type(reuse_successors) is not bool:
@@ -60,6 +60,12 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         if reuse_successors and self.shortlist_config.uniform:
             raise ValueError("successor reuse requires the learned shortlist")
         self.reuse_successors = reuse_successors
+        if type(reuse_values) is not bool:
+            raise ValueError("reuse_values must be boolean")
+        if reuse_values and not reuse_successors:
+            raise ValueError("value reuse requires immutable successor reuse")
+        self.reuse_values = reuse_values
+        self.last_value_reuse = None
         if type(capture_full_legal_scores) is not bool:
             raise ValueError("capture_full_legal_scores must be boolean")
         # Diagnostic retention only: never changes enumeration, forward batches,
@@ -94,14 +100,19 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         # forward batches can straddle world boundaries. Exact leaf identity
         # keeps those worlds distinct without flushing/changing batch shapes.
         tensor_cache = TensorInputCache() if self.reuse_successors else None
+        from ..ai.cwv_value_reuse import SuccessorValueCache
+        value_cache = SuccessorValueCache(self.evaluator) if self.reuse_values else None
         reuse = {"root_actions": 0, "leaf_hits": 0, "leaf_completions": 0,
                  "peak_entries": 0}
 
         def flush():
             if not pending:
                 return
-            scored = (self.evaluator.score(pending, seat) if tensor_cache is None
-                      else self.evaluator.score(pending, seat, tensor_cache=tensor_cache))
+            if value_cache is not None:
+                scored = value_cache.score(pending, seat, tensor_cache=tensor_cache)
+            else:
+                scored = (self.evaluator.score(pending, seat) if tensor_cache is None
+                          else self.evaluator.score(pending, seat, tensor_cache=tensor_cache))
             values = np.asarray(scored, dtype=np.float64)
             if values.shape != (len(pending),) or not np.isfinite(values).all():
                 raise ValueError("CWV shortlist requires one finite root-team value per afterstate")
@@ -129,6 +140,10 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
                     reuse[key] += successor_cache.counters[key]
                 reuse["peak_entries"] = max(reuse["peak_entries"], successor_cache.peak_entries)
         flush()
+        self.last_value_reuse = (None if value_cache is None else {
+            "schema": "cwv-value-reuse-v1", "max_entries": value_cache.max_entries,
+            "rows": value_cache.rows, "forwarded_rows": value_cache.forwarded_rows,
+            "peak_entries": value_cache.peak_entries})
         self.last_successor_reuse = (None if tensor_cache is None else {
             "schema": "cwv-successor-reuse-v1", "max_entries_per_cache": 128,
             **reuse, "tensor_hits": tensor_cache.hits,
@@ -137,6 +152,7 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
         return sums / len(worlds)
 
     def _candidates(self, rnd, seat):
+        self.last_value_reuse = None
         started = time.perf_counter()
         self.last_successor_reuse = None
         production = super()._candidates(rnd, seat)
@@ -304,6 +320,10 @@ RECIPE_FIELDS = ("alternatives", "selection_worlds", "report_worlds",
 #: admission bot does and are bound with it.
 PRIOR_RECIPE_FIELDS = ("prior_sha256", "prior_threshold", "prior_top")
 
+# Experimental numeric optimization: only True participates in the digest,
+# retaining old names for False/omitted. No serving environment enables it.
+VALUE_REUSE_RECIPE_FIELDS = ("reuse_values",)
+
 
 def resolved_recipe(**recipe) -> dict:
     """The recipe with every field present and normalised, or a refusal.
@@ -317,7 +337,8 @@ def resolved_recipe(**recipe) -> dict:
     refused rather than dropped, so a mis-spelt binding cannot silently build
     the prior-less bot under the prior-less name.
     """
-    unknown = set(recipe) - set(RECIPE_FIELDS) - set(PRIOR_RECIPE_FIELDS)
+    unknown = (set(recipe) - set(RECIPE_FIELDS) - set(PRIOR_RECIPE_FIELDS)
+               - set(VALUE_REUSE_RECIPE_FIELDS))
     if unknown:
         raise ValueError(
             f"recipe fields {sorted(unknown)} are not in RECIPE_FIELDS; add them "
@@ -329,6 +350,14 @@ def resolved_recipe(**recipe) -> dict:
                 "encoding": SHORTLIST_ENCODING,
                 "reuse_successors": SHORTLIST_REUSE_SUCCESSORS}
     out = {}
+    reuse_values = recipe.get("reuse_values", False)
+    if type(reuse_values) is not bool:
+        raise ValueError("reuse_values must be boolean")
+    # False/omitted keeps every historical recipe digest unchanged.
+    if reuse_values:
+        if not recipe.get("reuse_successors", SHORTLIST_REUSE_SUCCESSORS):
+            raise ValueError("value reuse requires immutable successor reuse")
+        out["reuse_values"] = True
     for field in RECIPE_FIELDS:
         value = recipe.get(field, defaults[field])
         if field == "encoding":
@@ -385,7 +414,8 @@ def shortlist_policy_name(ckpt8: str, worlds: int = SHORTLIST_WORLDS, *,
     return name
 
 
-def _build_shortlist(evaluator, *, seed, config, reuse_successors, prior=None):
+def _build_shortlist(evaluator, *, seed, config, reuse_successors, prior=None,
+                     reuse_values=False):
     """The one construction site, so the guard below has something to guard.
 
     With ``prior`` (a `cwv_prior_admission.CWVPriorAdmissionConfig`) the bot is
@@ -395,9 +425,9 @@ def _build_shortlist(evaluator, *, seed, config, reuse_successors, prior=None):
     if prior is not None:
         from .cwv_prior_admission import CWVPriorAdmissionBot
         return CWVPriorAdmissionBot(evaluator, seed=seed, config=config, prior=prior,
-                                    reuse_successors=reuse_successors)
+                                    reuse_successors=reuse_successors, reuse_values=reuse_values)
     return CWVShortlistBot(evaluator, seed=seed, config=config,
-                           reuse_successors=reuse_successors)
+                           reuse_successors=reuse_successors, reuse_values=reuse_values)
 
 
 def _require_shortlist(bot, name: str):
@@ -419,6 +449,7 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                        batch_size: int = SHORTLIST_BATCH_SIZE,
                        encoding: str = SHORTLIST_ENCODING,
                        reuse_successors: bool = SHORTLIST_REUSE_SUCCESSORS,
+                       reuse_values: bool = False,
                        threads: int | None = 1,
                        name: str | None = None,
                        prior_checkpoint: str | None = None,
@@ -439,6 +470,8 @@ def make_shortlist_bot(checkpoint, *, seed=None,
     """
     from ..ai.cwv_policy import file_sha256, shared_evaluator
 
+    if type(reuse_values) is not bool:
+        raise ValueError("reuse_values must be boolean")
     prior = None
     if prior_checkpoint is not None:
         from .cwv_prior_admission import CWVPriorAdmissionConfig
@@ -461,12 +494,13 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                                 alternatives=int(alternatives),
                                 batch_size=int(batch_size), uniform=False)
     bot = _build_shortlist(evaluator, seed=seed, config=config,
-                           reuse_successors=bool(reuse_successors), prior=prior)
+                           reuse_successors=bool(reuse_successors), prior=prior,
+                           reuse_values=reuse_values)
     # Name from THIS call's own resolved arguments, so a direct caller who is
     # not going through the registry still gets an identity that describes the
     # bot actually built. Passing only checkpoint and width here is what broke
     # the no-name path when the recipe became required.
-    resolved_name = name or shortlist_policy_name(
+    derived_name = shortlist_policy_name(
         evaluator.ckpt8 or "unknown", worlds,
         recipe=resolved_recipe(alternatives=alternatives,
                                selection_worlds=selection_worlds,
@@ -474,9 +508,13 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                                batch_size=batch_size,
                                encoding=encoding,
                                reuse_successors=reuse_successors,
+                               reuse_values=reuse_values,
                                prior_sha256=prior_sha256,
                                prior_threshold=prior_threshold if prior else None,
                                prior_top=prior_top if prior else None))
+    if reuse_values and name is not None and name != derived_name:
+        raise ValueError("value reuse requires its derived policy name")
+    resolved_name = name or derived_name
     _require_shortlist(bot, resolved_name)
     # Stamp the identity here rather than only in the registry wrapper: a bot
     # built directly would otherwise generate records carrying no policy name

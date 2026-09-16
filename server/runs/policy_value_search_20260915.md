@@ -342,3 +342,29 @@ diagnostics, retained evidence and recommendation. Source approval is separate
 from strength qualification. No production deployment was performed by this
 research work. Production's hybrid-bury configuration is not part of these
 plain-play screens; Claude's separately authorized deployment remains separate.
+
+## Follow-up goal: release-27 search (September 16)
+
+Jerry reopened research with higher-budget/deeper PUCT, shared-world root
+comparison, policy-guided MC continuations, and performance profiling of
+production, data generation and training. The prior negative results remain
+evidence; this is a new bounded experiment, not an outcome-triggered extension.
+
+Reviewed branches #438/#439 integrated onto main bf70cb81 in isolated worktree
+`/private/tmp/shengji-puct-depth-boundary`; 71 focused PUCT/leaf/truncation/screen
+tests pass. No production mutation. First diagnostic ladder uses saved roots,
+M1/G1, W32 and (sweeps,depth)=(8,8),(32,8),(128,8),(128,16), with 300s supervised
+limits and timeout rows retained. A dedicated saved-state runner is in progress.
+
+Before gameplay: the old CLI refuses hybrid bury with PUCT/truncation and binds
+both sides to one checkpoint. It must not be described as release27 until the
+control is explicitly M1 + priorv2 threshold1000/top256 + hybrid bury (including
+the serving budget), independent of the arm value checkpoint. Preserve the
+same bury evaluator/config across arms, not G1 bury versus M1 bury. Record
+backend/serving differences; existing Torch/NumPy qualification is not a blanket
+claim for arbitrary changed inference paths.
+
+Perf is reserved by Claude for runJS1 after v22 (canonical issue436 coordination
+comment). Do not use its presently idle CPU. Candidate host is shengji-cloud
+only after v22's actual process/service is terminal and its lane reservation is
+released. No follow-up job has launched as of this note.

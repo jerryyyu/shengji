@@ -58,13 +58,14 @@ admission trace records union size, anchors and pool size per decision, and
 the 300 s total play deadline stays as the backstop.
 
 Evidence (2026-09-15, capped screens; the release 24 recipe is the control):
-paired with M1 on ten shared seeds the prior changes outcomes by
-`−0.0003 [−0.0017, +0.0012]`; on ten fresh windows M1 + prior read
+paired with M1 on ten shared seeds the prior changed outcomes by
+`−0.0003 [−0.0017, +0.0012]` (no resolved difference; a paired estimate, not an
+equivalence test); on ten fresh windows M1 + prior read
 `+0.0073 [−0.0087, +0.0233]` (MDE80 0.023) with 0 decisions over 60 s and 0 cap
 hits in 365,414 (release 24 recipe on the same deals: 161 and 7) at 0.79× its
-decision wall; threshold 1,000 is outcome-identical to 10,000
-(`−0.0006 [−0.0026, +0.0014]`) at 0.72× that arm's wall with no decision over
-9.9 s. Twenty fresh windows of the M1 family pooled `+0.0140 [+0.0026, +0.0254]`
+decision wall; threshold 1,000 versus 10,000 read `−0.0006 [−0.0026, +0.0014]`
+paired (no resolved difference) at 0.72× that arm's wall with no decision over
+9.9 s in those five windows. Twenty fresh windows of the M1 family pooled `+0.0140 [+0.0026, +0.0254]`
 against release 24.
 
 ### JS-M1 — the joint model (release 28)
@@ -80,7 +81,8 @@ four of five strata and better on the two wide partial strata (the 10k+
 stratum, 67 deals, is unresolved). In play as one net (five capped windows,
 seeds 13260910..13660910): `+0.0239 [+0.0005, +0.0472]` vs the release 24
 recipe (nominal, shared-control seeds), paired `+0.0057 [−0.0163, +0.0277]` vs
-release 27 at the same decision wall, 0 decisions over 60 s. Served as one
+release 27 at the same decision wall (no resolved difference, not an
+equivalence result), 0 decisions over 60 s in those windows. Served as one
 NumPy package (schema v2 with the policy head, `server/shengji/ai/cwv_numpy.py`);
 the prior admission loads the same file as kind `joint-numpy`. The earlier
 joint attempts continued from M1 on 1.0M root rows (J1 weight 1, J2 weight 0.2,
@@ -377,7 +379,7 @@ production claims.
 | lane | conclusion for policy work |
 |---|---|
 | **RLCB** | The confirmed MC-LCB search; still the screen baseline. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model). |
-| **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior is outcome-identical and removes the latency tail (0 >60 s in 365k); JS-M1 as one net is at least the two-model arm's equal on paired seeds and clears zero at five vs release 24 (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
+| **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
 | **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |
 | **T4 model proposal** | Selected none. The uninformed widening control was positive against champion but used 14.8% more accepted worlds and 80.9% more searches; it requires a three-arm compute/candidate attribution test. |

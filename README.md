@@ -35,8 +35,9 @@ log and the search atlas):
   on ten fresh windows against the release 24 recipe, `+0.0212 [+0.0036, +0.0387]`
   signed levels per round; twenty fresh windows of the M1 family pooled
   `+0.0140 [+0.0026, +0.0254]`.
-- The policy prior is outcome-identical to M1 on paired seeds
-  (`−0.0003 [−0.0017, +0.0012]`) and removes the latency tail: 0 decisions over
+- The policy prior changed M1's outcomes by `−0.0003 [−0.0017, +0.0012]` on paired
+  seeds (no resolved difference; this is a paired estimate, not an equivalence
+  test) and, in the observed windows, cut the latency tail: 0 decisions over
   60 s in 365,414 fresh-deal decisions against 161 (and 7 cap hits) for the old
   recipe; at threshold 1,000 the longest decision in 182,494 was 9.9 s at 0.60×
   the old decision wall.
@@ -47,9 +48,11 @@ log and the search atlas):
   `+0.0239 [+0.0005, +0.0472]` against the release 24 recipe and
   `+0.0057 [−0.0163, +0.0277]` paired against release 27 at the same wall. No
   ten-window or fresh-seed read yet.
-- Every deploy passed the decision-identity gate (the NumPy packages reproduce
-  the Torch checkpoints' decisions) and the server-path smoke (the server can
-  take bury and play turns with the built bot), both in `server/scripts/`.
+- Releases 27 and 28 passed the decision-identity gate (the NumPy packages
+  reproduce the Torch checkpoints' decisions) and the server-path smoke (the
+  server can take bury and play turns with the built bot), both in
+  `server/scripts/`. Release 25 passed the gate alone and stalled live; the
+  smoke was written because of it and has preceded every deploy since.
 
 Older lanes (BELIEF R4/R5, PT-Sol/Luna teachers, D64) are closed and remain
 lessons, not policies. See [RL_PLAN.md](RL_PLAN.md) for the decision tree,

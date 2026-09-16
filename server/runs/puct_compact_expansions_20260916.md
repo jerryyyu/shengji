@@ -44,3 +44,21 @@ but reduced runtime can change fallback incidence under a wall cap.
 Reproduce with `server/scripts/cwv_puct_reuse_benchmark.py --optimization compact`
 and the same checkpoint/prior/fixture arguments used for #458, adding
 `--state 0 --sweeps 32`. The benchmark refuses complete-result drift.
+
+## Fresh-process RSS follow-up
+
+Same fixture/model/world digest and S32 recipe, one fresh process each using
+`--passes off` then `--passes on`:
+
+| Mode | Peak process RSS bytes | Search seconds |
+|---|---:|---:|
+| full | 918,880,256 | 30.6670 |
+| compact | 427,343,872 | 28.5024 |
+
+This is a measured53.5% process peak-RSS reduction on this saved state, including
+model loading. It is not a universal memory ratio or a cloud worker-capacity
+grant. Both processes used root reuse; no concurrent benchmark arms. Other Mac
+work remains active. The single-pass receipts correctly report `exact_equal=null`
+because they do not compare results in-process; the preceding ABBA test provides
+the exactness evidence. The RSS field on multi-pass runs is explicitly a process
+lifetime high-water mark and must not be interpreted as per-pass memory.

@@ -7,6 +7,8 @@ and transitions. Prints one JSON receipt per pass and refuses any result drift.
 """
 import argparse
 import json
+import resource
+import sys
 
 from cwv_puct_boundary import _outcome_evaluator, _world_digest
 from shengji.ai.cwv_policy import file_sha256, sample_worlds
@@ -29,6 +31,8 @@ def main():
     p.add_argument('--sweeps', type=int, default=8)
     p.add_argument('--depth', type=int, default=8)
     p.add_argument('--optimization', choices=('root-reuse', 'compact'), default='root-reuse')
+    p.add_argument('--passes', choices=('abba', 'off', 'on'), default='abba',
+                   help='single off/on runs permit fresh-process peak-RSS comparison')
     a = p.parse_args()
     evaluator = _outcome_evaluator(a.checkpoint)
     prior_sha = file_sha256(a.prior_checkpoint)
@@ -43,7 +47,8 @@ def main():
         raise RuntimeError('sample pool underfilled')
     roots = [root_clone(rnd, hands, buried) for hands, buried in worlds]
     reference = None
-    for enabled in (False, True, True, False):
+    passes = (False, True, True, False) if a.passes == 'abba' else (a.passes == 'on',)
+    for enabled in passes:
         reuse = enabled if a.optimization == 'root-reuse' else True
         result = search_worlds(roots, rnd.turn, prior_logits=bot._tree_prior,
             evaluator=evaluator, config=PuctConfig(sweeps=a.sweeps, depth=a.depth),
@@ -52,11 +57,15 @@ def main():
         timing = result.pop('timings')
         cache = result.pop('root_enumeration_reuse', None)
         storage = result.pop('expansion_storage', None)
+        compared = reference is not None
         if reference is None:
             reference = result
         if result != reference:
             raise AssertionError('root enumeration reuse changed the search result')
-        print(json.dumps(dict(reuse=reuse, exact_equal=True, timings=timing,
+        print(json.dumps(dict(reuse=reuse, exact_equal=True if compared else None, timings=timing,
+            peak_process_rss_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (
+                1 if sys.platform == 'darwin' else 1024),
+            rss_scope='process lifetime including model load and previous passes',
             optimization=a.optimization, enabled=enabled, storage=storage,
             cache=cache, world_sha256=_world_digest(worlds),
             checkpoint_sha256=checkpoint_sha, prior_sha256=prior_sha,

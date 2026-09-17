@@ -19161,3 +19161,19 @@ Random effects, tau 0.0000, Q 3.06/4df, I² 0%, 2,600 clusters, **MDE80 0.0316 �
 - Extraction and training queue behind the direct head-to-head, which still holds the Mini.
 
 **The direct head-to-head remains sealed and unread.** 8 of 20 shards rc=0; wave 2 running. Its 2,600 deals are the same ones above, so it is the sharper instrument on identical data — it removes the control arm's own sampling noise rather than partly cancelling it. Nothing is read until all 20 shards are rc=0.
+
+## 2026-09-17 09:24 UTC — Claude tick 05:2x ET: #483 MERGED (main 06c3a238), so the generation-1 null is on the page. PART C — **generation 2 is ARMED** behind the duel at 20.5% corpus share, the first rung the #421 gating rule permits
+
+**PART A.** Bus empty after acking muse's PASS on #483. Main **06c3a238**. Duel 8 of 20 shards rc=0, wave 2 at 90–120 of 130 per shard → ≈1,880 of 2,600 clusters done (line counts only, no outcomes read) → all 20 nearer **07:00 ET** than the 08:30 I revised to. Perf running v24 Phase B; Cloud running runJS4 (started on its own at 04:28 ET).
+
+**PART B.** **#483 merged at muse's exact head fa5be21c.** The page now carries generation-1's paired null in its screen cell and the full record. muse verified every figure against the sealed readout, confirmed the `"192k"` key equals the row's own record count, and specifically confirmed the **cost wording** — that calling 0.936 indicative rather than a finding is the honest framing — which was the sentence I was least sure of.
+
+**PART C — generation 2 armed (`scratchpad/claude_gen2_pipeline.sh`, pid 84921).**
+- **Why now, and why not before:** rule 1 on #421 says do not train a generation below 20% new-teacher share. runJS1+2+3 = 48,000 clusters = **20.5%**, 2.6× generation-1's 7.9%. This is the first INFORMATIVE test of the loop — a null here would be the first null worth interpreting, and the question would become whether the teacher must be *stronger* rather than merely more sampled.
+- **Recipe identical to generation-1** (itself JS-M1's): mlp, hidden 330, four residual trunk layers, encoder v2, 20 epochs, lr 3e-4, seed 1, aux points, search head + sidecar, policy head weight 0.2. **Only `--data` and the policy rows change** (policy_rows_v6 over 13 corpora). Parameter-matched with JS-M1 and gen-1, **NOT compute-matched** — more rows per epoch and the trainer's own patience decides how many epochs are kept. Any comparison must say so.
+- **Gated on the duel**, which owns the Mini: it waits for `ALL SHARDS DONE` in the v26 status AND verifies no `gen1_vs_prod.py` process survives, because a status line is not process truth. Never runs a trainer beside the duel.
+- Preflight refuses before waiting hours for the box: all 13 corpora present, the three runJS corpora at exactly 32,000 shard files each with `run.json`, the trainer venv and the sidecar builder present. Disk guarded twice, 30 GB before extraction and 25 GB before training. Train lock plus a `pgrep` refusal against a second trainer. Verified by DRYRUN: 13 corpora, rootcw at f66eb885, 74 GB free.
+- Staging confirmed by content, not by the copy exiting 0: **runJS1, runJS2 and runJS3 each 32,000 shard files with `run.json`**, 10 GB apiece.
+- Expect extraction ≈95 min (v4 took 73 min on ten corpora) and training ≈8 h (gen-1 took 6.6 h on 27% fewer rows), so a gen-2 seal late in the day. **It starts by itself; killing pid 84921 stands it down without touching anything else.**
+
+**The duel remains sealed and unread.** Its 2,600 deals are the same ones the paired screen just used, so it is the sharper instrument on identical data. Nothing is read until all 20 shards are rc=0.

@@ -19132,3 +19132,32 @@ So setting `SHENGJI_FAST: "0"` on the pure CI step **while main still carries th
 - muse's earlier bury note (same class of bug, reachable) was fixed in the prior commit; their second note — a forced single-action decision emits no `prior_*` keys — is documented rather than fixed, since absence there is a missing value, not a wrong one.
 
 **A peek I am declaring rather than burying.** Control window 16260910 and arm window 16260910 are both sealed, so I ran the paired readout on that ONE window to verify the pipeline end to end before 04:10: **+0.0115 ± 0.0240** (gen-1 minus production, 520 clusters). One window resolves ≈0.067, roughly double any effect worth acting on, so it is close to uninformative. **The pre-registered read is still all five windows at MDE80 0.033 and nothing here changes it or licenses stopping early.** The duel's 2,600-cluster read stays sealed until all 20 shards are rc=0; wave 1 finishing does not license a partial read either.
+
+## 2026-09-17 08:52 UTC — **GENERATION-1 vs PRODUCTION IS A NULL: +0.0136 [−0.0085, +0.0357]**, 2,600 fresh deals, MDE80 0.0316. The gating rule pre-registered on #421 three hours earlier predicted exactly this. runJS3 sealed, runJS4 fired on its own, and the generation-2 corpus is being staged
+
+**THE RESULT.** v24 Phase A sealed at 04:05 ET, so generation-1 (06dd925b) finally has a same-seed, same-threshold contrast against the **production recipe itself** (`JS-M1-joint1k-out`, threshold 1,000) rather than the cross-seed sanity check it had before.
+
+| window | gen-1 − production | SE |
+|---|---|---|
+| 16260910 | +0.0115 | 0.0240 |
+| 16360910 | +0.0375 | 0.0235 |
+| 16460910 | +0.0298 | 0.0251 |
+| 16560910 | −0.0135 | 0.0262 |
+| 16660910 | −0.0067 | 0.0280 |
+| **pooled** | **+0.0136 [−0.0085, +0.0357]** | RE SE 0.0113 |
+
+Random effects, tau 0.0000, Q 3.06/4df, I² 0%, 2,600 clusters, **MDE80 0.0316 — crosses zero**. Point below the +0.015 line, so **not extended to ten windows**. Readout archived at `~/shengji-archive/2026-09-13/readouts/v25-gen1-vs-prod-paired.txt` with its SHA256.
+- **What it licenses:** one generation of self-play at 7.9% corpus share did not make a resolvably better player at 0.032 levels/round. **What it does NOT license:** the claim that the loop fails. The interval's upper end, +0.0357, is larger than most effects this project has ever promoted on.
+- Four instruments agreed in advance — fixed holdouts a wash, head-alone play paired −0.0003, head recall +0.0149 that did not carry into play, and now the in-play paired contrast. No contradiction to explain away.
+- **Cost, stated narrowly:** gen-1 1.550× its baseline decision wall, production 1.656× its own → ratio of ratios 0.936. The arms ran on DIFFERENT hosts (Mini 8 workers, Perf 16), so the within-run ratios are the host-robust figures and 0.936 is indicative, not a controlled cost comparison. **Tail, both clean:** gen-1 0 over 60 s, 0 cap hits, max 5.5 s in 182,152 decisions; production 0, 0, 6.4 s in 182,084.
+- Page row in **#483** (5/5 green, muse asked). Filling the screen cell is what first made the row chartable and exposed a latent build failure: `charts.py`'s cluster→records map had no `"192k"` key and the build died with `KeyError`. Added, with the value read out of the row rather than typed.
+
+**The gating rule earned its keep.** Posted on #421 at 04:2x ET: rule 1 said do not train a generation below 20% new-teacher share because the screen cannot see a plausible effect below it; generation-1 was at 7.9% and returned the predicted null. Rule 3 (head recall is the leading indicator, the in-play paired contrast is the decision) now has a worked example where the two **disagreed and the decision won**.
+
+**GENERATION 2 IS NOW THE FIRST INFORMATIVE RUN, and its inputs are in hand.**
+- **runJS3 SEALED rc=0 at 04:26 ET**: 16,000 clusters, 32,000 rounds, 2,214,472 records, `incomplete_work 0`, seed span [22292910, 22308910], **no registry conflicts**, same teacher policy as runJS1/2.
+- **runJS4 started on its own at 04:28 ET** (seed 22308910, 326 GB free) — the armed waiter fired exactly as designed, no hand launch.
+- Staging on the trainer box: runJS1 10 GB and runJS2 10 GB copied, runJS3 in flight. Mini 84 GB free. Together runJS1–3 = 48,000 clusters = **20.5% corpus share**, 2.6× generation-1's dilution and the first rung where rule 1 permits a training run.
+- Extraction and training queue behind the direct head-to-head, which still holds the Mini.
+
+**The direct head-to-head remains sealed and unread.** 8 of 20 shards rc=0; wave 2 running. Its 2,600 deals are the same ones above, so it is the sharper instrument on identical data — it removes the control arm's own sampling noise rather than partly cancelling it. Nothing is read until all 20 shards are rc=0.

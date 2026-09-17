@@ -19380,3 +19380,19 @@ And gen-2 ran **11 epochs against 17 and 20**, because patience on `val_ce` fire
 - The registry refusing a re-used probe seed is the guard working exactly as designed; the bug was that the script ignored it.
 
 **Not done, deliberately:** the head-recall-vs-prior-v3 read for gen-2 is still owed from NEXT. It needs CPU on the Mini, which is running the screen, and the screen measures decision WALL time per arm — a concurrent job during one phase would inflate that arm's cost and bias the comparison. It waits for the lane (≈00:00 ET). Same reason the duel could not run beside training this morning.
+
+## 2026-09-17 22:16 UTC — Claude tick 18:1x ET: **the generation-2 READOUT is now armed too, written while the screen is on window 6 of 15 and no contrast is computable.** It takes me out of the analysis path after the data exists
+
+**PART A.** v27 **PHASE A DONE** — all five `GEN2-joint1k-out` windows sealed rc=0 (≈36–39 min each). Phase B (control A, gen-1 replayed on the same seeds) started 17:48 ET. Bus empty. Main e6f5c163. Cloud runJS6 running since 17:18 ET; Perf runJS5 continuing. Production healthy.
+
+**PART C — `scratchpad/gen2_readout.sh`, armed behind the lane (pid 99770, reparented to init).** The pre-registration fixed the *design* before the weights existed; this fixes the *analysis* before the numbers exist. Everything it prints is decided now: which contrasts, in what order, on which scales, with which tool. After midnight I do not get to choose what to compute.
+- **Control A first (gen-2 − gen-1)**, the incremental contrast #421 rule 2 asks for, labelled in the output as the one that decides the generation-1 points hypothesis — supported ONLY if its POINTS interval excludes zero positively.
+- **Control B second (gen-2 − production)**, labelled as the ONLY trigger for a ten-window extension, and only on its LEVEL point estimate above +0.015.
+- A **levels-only cross-check through `vol_re.py`**, the estimator every prior screen used, so the new tool cannot quietly disagree with the old one unnoticed.
+- It **refuses to read anything** unless all fifteen windows report `complete` at 520 clusters, and refuses if a screen process survives the LANE DONE line — a status file is not process truth.
+- Output is archived with its SHA256 automatically.
+- The report ends by restating that levels are the promotion criterion and points decide nothing, so the reminder travels with the numbers rather than living only in a document.
+
+**Deliberately NOT read: gen-2's own five sealed windows against the yardstick.** They are sealed and I am allowed to. I read exactly that figure for generation 1 (+0.0676) and it was harmless then, but there is now a pre-registration saying the *contrasts* decide, and an arm-alone number would only anchor me before control A lands. Declining it costs nothing and keeps the analysis honest.
+
+**Two process slips this tick, both caught immediately.** The first launch redirected its log to an unset variable and failed; the second, after `pkill`, still showed `ppid 20446`, so I waited and re-checked rather than trusting the first `ps` — it had reparented to init by then. Verifying a waiter twice costs seconds; discovering at midnight that nothing was armed costs the night.

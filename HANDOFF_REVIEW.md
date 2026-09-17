@@ -18897,3 +18897,26 @@ Reading: lowering the threshold to 256 cuts ≈37% off a hundreds-of-follows dec
 **Distributed value-cache build (Jerry's ask).** Cache files are content-addressed `<shard sha>.cwv-<encoder cache key>.npz`, both halves host-independent, so a file built on a server is byte-valid for the trainer IFF the encoder cache keys agree. VERIFIED they do: Mini trainer tree f66eb885 and the servers' bf70cb81 both give `v2-a56679bbd170`. Tool `scratchpad/build_cache_remote.py` (uploaded to the cloud): refuses on a key mismatch (it fired correctly on my first, wrong expected value), refuses if `discover_store` skips any shard, builds only what is missing, prints a JSON summary. PROBE on the cloud against runB: after 23 min it was still in `discover_store`'s single-threaded sha256 verification of 16,000 shard files at 0.8% CPU while runJS3's 16 workers held the box at load 20, and had built nothing. KILLED (verified pid tree 2201335/2201336; runJS3 unaffected, 3,570/16,000 and healthy). Lesson recorded: the distributed build is viable but must be scheduled when the host is FREE, and the fail-closed verification pass dominates for a 16k-file corpus — so the natural slots are the cloud after runJS3 (≈04:00 ET) and Perf after lane v24 (≈07:30 ET), each building the corpora that already live on it.
 
 **Fleet (19:0x ET).** Mini gen-1 epoch 16/20 (val_ce 0.6036; JS-M1's 20-epoch seal was 0.5957) → seal ≈20:15 ET. Perf runJS2 6,184/16,000 → ≈01:30 ET; lane v24 armed behind it. Cloud runJS3 3,570/16,000 → ≈04:00 ET. Production release 28 ok. PRs #473/#474/#475/#476 all 5/5 and unmerged (no reviewer: Codex out of tokens; Jerry has not named a replacement protocol).
+
+## 2026-09-17 00:00 UTC — Claude tick 19:5x–20:1x ET: the banker-slice instrument (built BEFORE paying for the v5 retrain) says the banker deficit is an EARLY-round effect — the opposite of the kitty-error signature, which lowers the expected value of encoder v5
+
+**Part C — `scratchpad/holdout_banker_slice.py`.** Encoder v5 (PR #476) changes only the banker's observation, so ~1 decision in 4; a whole-holdout read dilutes it ~4x and could call a real effect nothing. This is the instrument that could see it, built first on purpose. It reuses the trainer's own pieces so the numbers are the trainer's (`holdout_record`/`state_for_record` to rebuild, `score_candidates` to encode the candidate afterstates, `CandidateSet.concatenate`, `rank_levels`, `rank_metrics`); the only addition is the per-record split. Two bugs found and fixed while building: `score_candidates` defaults to `ENC_VERSION` (still 1), which silently builds a 532-wide public vector for a 561-wide v2 net — the version is now DERIVED from the checkpoint's declared `public_dim`; and `rank_levels` needs an explicit `batch_size`.
+
+**Read on the room-log holdout, JS-M1 (production), 9,699 labelled decisions, 0 rebuild failures.** Seat split alone: banker (2,499) top1 0.4542, regret@1 0.0972, regret@4 0.0228, recall@4 0.8143; other (7,200) top1 0.4697, regret@1 0.0651, regret@4 0.0117, recall@4 0.8628 — the banker slice is worse on every metric, which is the direction the kitty hypothesis predicts.
+
+**The signature test says it is NOT the kitty.** The burial is EIGHT cards of an unseen pool that shrinks every trick (~83 at trick 0, ~47 by trick 9), so the kitty error's RELATIVE size grows as the round runs; if the burial drove the banker deficit the gap would widen late. Split by seat x phase (late = 9+ completed tricks):
+
+| slice | n | top1 | regret@1 | regret@4 | recall@4 |
+|---|---|---|---|---|---|
+| banker-early | 1,306 | 0.3331 | 0.1309 | 0.0406 | 0.7152 |
+| other-early | 3,832 | 0.4011 | 0.0832 | 0.0175 | 0.8092 |
+| banker-late | 1,193 | 0.5868 | 0.0604 | 0.0034 | 0.9229 |
+| other-late | 3,368 | 0.5478 | 0.0445 | 0.0050 | 0.9237 |
+
+banker − other: EARLY regret@1 +0.0477, regret@4 +0.0231, top1 −0.0680; LATE regret@1 +0.0158, regret@4 −0.0017, top1 **+0.0390** (the banker is better late on two of three). The deficit is concentrated where the kitty error is relatively SMALLEST and nearly vanishes where it is largest — the opposite of the predicted signature. The likelier reading is that early banker decisions (the opening lead right after burying, a strong known hand) are intrinsically harder or differently distributed, not that the observation is corrupted.
+
+**Consequence for the plan.** The strongest prior argument for spending ~15 h of retrain on v5 was a measurable banker deficit; that argument is now weak. v5 remains a real correctness fix (the sampler excludes the burial, the net's input does not) and PR #476 stands on its own, but I would NOT queue the retrain on this evidence. The decisive cheap test is the sensitivity probe: correct the unseen plane in place for real banker positions and measure how far the net's value and ranking move at all. This is observational, not causal — banker and non-banker decisions differ in many ways besides the burial — and a v5 twin is still the only thing that would settle it.
+
+Receipt: `scratchpad/banker_slice_jsm1_roomlog.json`.
+
+**Fleet (20:1x ET).** Mini gen-1 epoch 17/20 logged, seal ≈20:25 (post-seal reader armed, pid 79749). Perf runJS2 → ≈01:30, lane v24 armed behind it. Cloud runJS3 → ≈04:00. Production release 28 ok. PRs #473/#474/#475/#476 all 5/5, unmerged, no reviewer.

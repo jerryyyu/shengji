@@ -33,8 +33,12 @@ def tip(d):
     if RECORD.get(d["ck"]): lines.append(""); lines.append(RECORD[d["ck"]])
     return esc("\n".join(lines))
 def dot(cx,cy,r,cls,d):
-    return ('<circle cx="%.1f" cy="%.1f" r="%s" class="%s hit" tabindex="0" data-t="%s">'
-            '<title>%s</title></circle>')%(cx,cy,r,cls,tip(d).replace("\n","&#10;"),tip(d))
+    # data-tr is the trained date, so the page's "recent only" control can hide a point
+    # without the chart being re-rendered.  It goes AFTER data-t on purpose: test_build
+    # matches circles with a positional regex that ends at data-t, and the attribute
+    # order is not what those geometry tests are about.
+    return ('<circle cx="%.1f" cy="%.1f" r="%s" class="%s hit" tabindex="0" data-t="%s" data-tr="%s">'
+            '<title>%s</title></circle>')%(cx,cy,r,cls,tip(d).replace("\n","&#10;"),d["tr"].lstrip("~"),tip(d))
 def sc(v,lo,hi,a,b): return a+(v-lo)/(hi-lo)*(b-a)
 def lgs(v,lo,hi,a,b): return sc(math.log10(v),math.log10(lo),math.log10(hi),a,b)
 open(OUT+"/_R.py","w").write(repr(R))

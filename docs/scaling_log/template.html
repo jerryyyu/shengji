@@ -177,6 +177,15 @@ th[tabindex]:focus-visible{outline:2px solid var(--jade);outline-offset:-2px}
 th[aria-sort]{color:var(--ink)}
 th[aria-sort="ascending"]::after{content:"\2191";position:absolute;right:7px;opacity:.9}
 th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;opacity:.9}
+
+/* "Hide runs before 14 Sep": the page carries every run ever trained, which is the point
+   of a log and also what makes the recent work hard to see. The control hides table rows
+   and chart points by their data-tr (trained date) and never touches an axis, so a hidden
+   point leaves empty space instead of a chart that silently rescales around it. */
+.recent-ctl{margin-top:.6rem;font-size:.95em}
+.recent-ctl label{cursor:pointer;user-select:none}
+.recent-ctl input{vertical-align:-1px;margin-right:.35rem}
+body.recent-only [data-tr].pre-cut{display:none}
 </style>
 <div class="wrap">
 
@@ -185,6 +194,8 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
+  <p class="dek recent-ctl"><label><input type="checkbox" id="recentOnly"> Hide runs trained before
+  <b>14 Sep 2026</b></label> <span class="null" id="recentCount"></span></p>
 </header>
 
 <div class="kpi">
@@ -306,6 +317,11 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
 <tr><td><b>run K</b> <span class="pill">sealed</span></td><td class="n">10260910</td><td class="n">16,000</td><td class="n">&asymp;2.34M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
 <tr><td><b>run L</b> <span class="pill">sealed</span></td><td class="n">12260910</td><td class="n">16,000</td><td class="n">&asymp;2.34M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
 <tr><td><b>run M</b> <span class="pill live">35%</span> <span class="pill">full-legal scores</span></td><td class="n">16260911</td><td class="n">8,000</td><td class="n">&asymp;1.17M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
+<tr><td><b>runJS1</b> <span class="pill">sealed</span></td><td class="n">22260910</td><td class="n">16,000</td><td class="n">2,213,808</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; trained gen-1</td></tr>
+<tr><td><b>runJS2</b> <span class="pill live">live</span></td><td class="n">22276910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; for gen-2</td></tr>
+<tr><td><b>runJS3</b> <span class="pill live">live</span></td><td class="n">22292910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; for gen-2</td></tr>
+<tr><td><b>runJS4</b> <span class="pill">armed</span></td><td class="n">22308910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; queued, cloud</td></tr>
+<tr><td><b>runJS5</b> <span class="pill">armed</span></td><td class="n">22324910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; queued, perf</td></tr>
 </tbody></table></div>
   <p class="cap">Records scale linearly at 146.2 per cluster (sd 0.44 across seven corpora spanning
   18&times;). A cluster is one deal played twice with seats mirrored, so 73.1 records per round.
@@ -313,7 +329,14 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   round in fewer recorded decisions. Runs K, L and M are the first corpora carrying
   <code>bury_records &gt; 0</code>, and M also carries the full-legal score vector; they use a
   different teacher, so folding them in would move mixture and quantity together. 144,000 clusters
-  is the largest clean corpus.</p>
+  is the largest clean corpus. The <b>runJS</b> block is different in kind from everything
+  above it: its teacher is not production MC but <b>JS-M1 served as one package</b> (value net plus
+  its own policy head as the admission prior at threshold 1,000 / top 256, hybrid bury) &mdash; the
+  release-28 recipe. These are the <b>generation corpora</b>: games the current best net played
+  against itself, recorded so the next net can train on them. runJS1 alone trained gen-1 and is
+  <b>7.9%</b> of that net&#8217;s policy corpus; at 138.4 records per cluster it sits about 5% below
+  the 146.2 rate for the same reason run I does. They are not part of the 144k corpus, and folding
+  them in would move teacher and quantity together.</p>
 </section>
 
 <section>
@@ -461,4 +484,28 @@ th[aria-sort="descending"]::after{content:"\2193";position:absolute;right:7px;op
   });
 })();
 
+</script>
+
+<script>
+/* Tag every dated element once, then toggle a single class on <body>.  The dates come
+   from the generator (build.py for rows, charts.py for points), so nothing here parses
+   a tooltip.  Counts are shown both ways so the control never hides how much it hides. */
+(function(){
+  var CUT="2026-09-14";
+  var box=document.getElementById("recentOnly"), out=document.getElementById("recentCount");
+  if(!box) return;
+  var dated=document.querySelectorAll("[data-tr]"), hidden=0;
+  dated.forEach(function(el){
+    if(el.getAttribute("data-tr")<CUT){ el.classList.add("pre-cut"); hidden++; }
+  });
+  function paint(){
+    document.body.classList.toggle("recent-only", box.checked);
+    out.textContent=box.checked ? hidden+" of "+dated.length+" hidden"
+                                : hidden+" of "+dated.length+" trained before the cut";
+    try{ localStorage.setItem("scalingRecentOnly", box.checked?"1":"0"); }catch(e){}
+  }
+  try{ box.checked=localStorage.getItem("scalingRecentOnly")==="1"; }catch(e){}
+  box.addEventListener("change",paint);
+  paint();
+})();
 </script>

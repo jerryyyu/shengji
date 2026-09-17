@@ -124,6 +124,17 @@ else:  # pure-Python fallbacks
 
 _saved: dict[str, object] = {}
 
+_ACTIVE = False  # the compiled kernels are currently routed in
+
+
+def active() -> bool:
+    """True when the compiled kernels are currently routed in.
+
+    The central "is the fast engine on" check: the flag is set only by
+    activate()/deactivate(), the two functions that change the routing.
+    """
+    return _ACTIVE
+
 
 def _rebind(mapping: dict) -> None:
     """Swap function objects in every loaded shengji module — covers both
@@ -228,9 +239,11 @@ def activate() -> bool:
     Returns True when the fast path is (already) active, False when the
     extension isn't built. Idempotent; undo with deactivate().
     """
+    global _ACTIVE
     if not HAVE_FAST:
         return False
     if _saved:
+        _ACTIVE = True
         return True
     from ..ai.heuristic import HeuristicBot  # deferred: ai imports engine
     mapping = {}
@@ -260,6 +273,7 @@ def activate() -> bool:
     _fast.set_play_deps(Round, Trick, TrickPlay, _saved["Round.play"],
                         KITTY_MULTIPLIER)
     Round.play = _fast.round_play
+    _ACTIVE = True
     return True
 
 
@@ -274,6 +288,8 @@ def _subclasses(cls) -> list[type]:
 
 
 def deactivate() -> None:
+    global _ACTIVE
+    _ACTIVE = False
     if not _saved:
         return
     from ..ai.heuristic import HeuristicBot

@@ -32,8 +32,8 @@ from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
 def _fast_active() -> bool:
     """True only if the compiled decompose is the one in use."""
     try:
-        from ..engine import combos, fast
-        return bool(fast.HAVE_FAST and combos.decompose is fast.decompose)
+        from ..engine import fast
+        return fast.active()
     except Exception:
         return False
 

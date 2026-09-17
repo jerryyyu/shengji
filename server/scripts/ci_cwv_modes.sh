@@ -6,7 +6,7 @@ set -euo pipefail
 export SHENGJI_REQUIRE_VOIDS=1
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
-(env -u SHENGJI_FAST uv run python -B -m pytest -q tests/test_*cwv*.py 2>&1 |
+(SHENGJI_FAST=0 uv run python -B -m pytest -q tests/test_*cwv*.py 2>&1 |
     sed -u 's/^/[pure] /') &
 pure_pid=$!
 (SHENGJI_FAST=1 uv run python -B -m pytest -q tests/test_*cwv*.py 2>&1 |

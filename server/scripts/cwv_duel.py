@@ -130,10 +130,15 @@ def machine_identity() -> dict:
         torch_version, threads = torch.__version__, torch.get_num_threads()
     except Exception:                                  # pragma: no cover
         torch_version, threads = None, None
+    try:
+        from shengji.engine import fast as _fast_mod
+        fast_engine = _fast_mod.active()
+    except Exception:                                  # pragma: no cover
+        fast_engine = bool(os.environ.get("SHENGJI_FAST"))
     return {"platform": platform.platform(), "machine": platform.machine(),
             "cpu_count": os.cpu_count(), "python": platform.python_version(),
             "torch": torch_version, "torch_threads": threads,
-            "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
+            "fast_engine": fast_engine,
             "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS"))}
 
 

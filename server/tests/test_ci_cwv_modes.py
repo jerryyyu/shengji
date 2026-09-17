@@ -17,7 +17,7 @@ assert sys.argv[1:] == ["run", "python", "-B", "-m", "pytest", "-q", "tests/test
 assert all(os.environ[k] == "1" for k in (
     "SHENGJI_REQUIRE_VOIDS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"))
 flag = os.environ.get("SHENGJI_FAST")
-assert flag in (None, "1")
+assert flag in ("0", "1")
 mode = "compiled" if flag == "1" else "pure"
 pathlib.Path(mode + ".started").touch()
 other = pathlib.Path(("pure" if mode == "compiled" else "compiled") + ".started")

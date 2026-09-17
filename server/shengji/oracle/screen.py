@@ -1627,8 +1627,8 @@ def _git(args, cwd) -> str | None:
 
 
 def fast_engine_active() -> bool:
-    from ..engine import combos, fast
-    return bool(fast.HAVE_FAST and combos.decompose is fast.decompose)
+    from ..engine import fast
+    return fast.active()
 
 
 def identity(config: dict, script_path: str | None = None) -> dict:

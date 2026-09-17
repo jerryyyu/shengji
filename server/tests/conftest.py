@@ -26,12 +26,12 @@ sys.path.insert(0, ".")
 # GitHub's synthetic merge checkout can otherwise mask a stale branch ledger.
 enforce_pr_head_extends_base(Path(__file__).parents[2])
 
-if os.environ.get("SHENGJI_FAST"):
+if "SHENGJI_FAST" in os.environ and os.environ["SHENGJI_FAST"] != "0":
     from shengji.engine import fast
 
     assert fast.activate(), (
-        "SHENGJI_FAST=1 but shengji/engine/_fast is not built; run: "
-        "uv run python setup.py build_ext --inplace"
+        "SHENGJI_FAST=%s but shengji/engine/_fast is not built; run: "
+        "uv run python setup.py build_ext --inplace" % os.environ["SHENGJI_FAST"]
     )
 
 

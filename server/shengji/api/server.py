@@ -877,7 +877,14 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
                 "bury_error_class": record.get("error_class"),
             }
     prior_fields = {}
-    diagnostic = getattr(snapshot.bot_copy, "_prior_diagnostics", None)
+    # PLAY ONLY, and that is load-bearing.  `room.bot = snapshot.bot_copy` keeps the
+    # bot between turns and `decide_bury` never touches `_prior_diagnostics`, so on a
+    # bury turn the attribute still holds the PREVIOUS play turn's admission figures.
+    # Logging those under phase="bury" would write a number that was never measured
+    # for that decision.  A play decision always goes through `_candidates`, which
+    # clears the attribute first, so the play path cannot go stale the same way.
+    diagnostic = (getattr(snapshot.bot_copy, "_prior_diagnostics", None)
+                  if snapshot.phase == "play" else None)
     if isinstance(diagnostic, dict):
         # The admission prior already builds this per decision; until now nothing
         # carried it off the machine, so how much of the wide tail the threshold

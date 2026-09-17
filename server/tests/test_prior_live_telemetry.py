@@ -91,6 +91,32 @@ def test_the_room_log_carries_the_prior_fields(triggered):
         assert not any(k.startswith("prior_pool") or k == "prior_union_size" for k in f)
 
 
+def test_a_bury_turn_never_reports_the_previous_play_turn_s_admission():
+    """The room keeps the bot between turns; the dict must not leak across phases.
+
+    `room.bot = snapshot.bot_copy`, and `decide_bury` never resets
+    `_prior_diagnostics`, so on a bury turn the attribute still holds whatever the
+    last PLAY decision measured.  Logging that under phase="bury" would put a
+    number in the record that was never measured for that decision.
+    """
+    stale = {"triggered": True, "legal_count": 4312, "union_size": 271,
+             "anchors_added": 2, "pool_action_count": 273, "pool_evaluations": 8736,
+             "prior_seconds": 0.0421, "recipe": {"threshold": 1000, "top": 256}}
+    bot = types.SimpleNamespace(policy_name="mc-shortlist-test", _prior_diagnostics=stale,
+                                last_bury_record=None)
+    room = _Room()
+    _log_bot_timing(room, _prepared(bot, phase="bury"), acted=True)
+    (_, f), = room.events
+    assert f["phase"] == "bury"
+    assert not any(k.startswith("prior_") for k in f)
+
+    # the same bot on a play turn still reports, so this scopes rather than disables
+    room2 = _Room()
+    _log_bot_timing(room2, _prepared(bot, phase="play"), acted=True)
+    (_, g), = room2.events
+    assert g["prior_triggered"] is True and g["prior_pool_actions"] == 273
+
+
 def test_a_bot_without_a_prior_adds_no_prior_fields():
     bot = types.SimpleNamespace(policy_name="mc-s0-report-lcb")
     room = _Room()

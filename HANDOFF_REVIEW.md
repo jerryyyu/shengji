@@ -18955,3 +18955,24 @@ Receipts: `scratchpad/gen1_postseal.txt`, `fl-pilot/policy_head_players/gen1-hea
 - Reading: the columns are NOT inert, but the motivating symptom is ruled out and the perturbation does not improve decisions. **A correctness fix of unknown benefit, not queued.** Exit criteria recorded on #477 (v5 twin vs v2 twin, read on the fixed holdouts sliced to banker decisions, never on val_ce). Receipt archived at `gate-out/banker_kitty_sensitivity_jsm1.json`.
 
 **Fleet (22:0x ET).** Mini: GEN1-joint1k-out ×5 capped (gen-1 06dd925b as one package at threshold 1,000, tree bf70cb81 = the same commit Perf's v24 control runs, 8 workers) — window 1 sealing, lane ≈23:50 ET; its paired control is v24's JS-M1-joint1k-out on the same fresh seeds. Perf runJS2 ≈9.9k/16,000 → ≈01:30, then lane v24. Cloud runJS3 ≈6.7k/16,000 → ≈04:00. Production release 28 ok, rooms 0.
+
+## 2026-09-17 02:23 UTC — Claude tick 22:2x ET: LIVE PRODUCTION EVIDENCE on release 28 — two real games tonight, 364 bot searches, worst decision 6.5 s, ZERO over 60 s, bury 0.5–0.7 s. Jerry's latency complaint does not reproduce on the current release. Also: #473 merged (main 951162a5), muse PASSed #476/#475/#473 and carried its own verdict forward
+
+**The latency read Jerry actually asked for, from real play.** Two rooms on release 28 (policy `mc-shortlist-0d17fd03-…`), read read-only from `/data/logs`:
+
+| room | window (ET) | rounds | phase | n | p50 | p90 | max |
+|---|---|---|---|---|---|---|---|
+| ENTC | 21:38–21:41 | 1 | play | 76 | 0.64 | 1.67 | **2.80** |
+| ENTC | | | bury | 1 | 0.69 | — | 0.69 |
+| SSMC | 21:40–22:22 | 8 | play | 284 | 0.59 | 1.62 | **6.50** |
+| SSMC | | | bury | 4 | 0.64 | 0.66 | 0.66 |
+
+364 completed searches, **0 over 60 s, 0 cap hits**, worst single decision 6.5 s. Against the room Jerry complained about (TCNY, release 27, 09-15 22:53 ET): same p50 (0.59) but p90 5.0 s and max 132.6 s with two 100+ s turns. So the slow-turn complaint does not reproduce on release 28 across a 42-minute, 8-round game — consistent with the replay finding that those turns were a host effect on that boot rather than the search, and with the prior's tail removal. Bury is not slow and never was (0.5–0.7 s live, matching the 0.4–0.6 s measured earlier).
+- Caveat: this is observational, not a controlled comparison — different deals, different boot, and 364 searches is not a tail sample. It cannot rule out a recurrence of whatever throttled that boot. What it does say is that the CURRENT release, on the CURRENT machine, served a full 8-round game with no decision above 6.5 s.
+- PR #475 (production on a dedicated vCPU) is therefore less urgent than it looked at 15:2x ET. It remains a real robustness change against shared-vCPU variance; it is not fixing an active problem. Draft, muse PASSed the review, awaiting Jerry's go.
+
+**Merges and reviews since the last entry.** #473 (README rewritten around release 28, PT-Luna docs archived) merged on Jerry's word at head fa9f4c07 → main **951162a5**, after waiting out the last check rather than merging on a pending run. muse then returned three verdicts: PASS #476 at 96aebeac (41 encoder tests with the compiled engine; append-only block and zero-for-non-banker verified; the three dispatcher pins agree and match the pre-v5 hash; the golden-vector test pins v4's bytes), PASS #475 at df741418 (config-only, explicitly "not an authorization"), and PASS #473 at 3f6f25d — the last arriving minutes after the merge, against a head two merge-only commits behind, so that review was spent on a closing PR. Told muse to check PR state before starting. muse then **carried its own #476 PASS forward to 70917363** after verifying the merge-only delta itself, and got its GitHub token working, so the signed review is now on the PR rather than only on the bus.
+
+**Process change (mine, recorded in memory).** I had been merging `origin/main` into every open branch after each ledger push to keep the review-ledger CI guard happy; that moved heads out from under a reviewer twice in one hour. From now on: branch CI sits red on the ledger guard, and main is merged in ONCE when a merge is actually imminent, with the PASS carried forward mechanically (verify two parents + empty `git show --cc`). Cost: a ~25-minute CI cycle before each merge. Benefit: a head a reviewer signed stays the head.
+
+**Fleet (22:2x ET).** Mini: GEN1-joint1k-out 3 of 5 windows sealed, window 4 running, lane ≈23:50 ET; paired control (v24's JS-M1-joint1k-out on the same fresh seeds) starts when runJS2 seals. Perf runJS2 11,203/16,000 → ≈01:30. Cloud runJS3 8,035/16,000 → ≈04:00. Production release 28 healthy; one room live during this tick.

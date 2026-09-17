@@ -23,10 +23,21 @@ This project has been burned once by quoting a zero-excluding interval that late
 
 ## Arms
 
-| role | recipe |
-|---|---|
-| **arm** | generation 2 (`JS2-M1-policy-w0.2-gen2`) as ONE package: value net + its own policy head as the admission prior |
-| **control** | the production recipe, JS-M1 `a5248cc5` as one package, `JS-M1-joint1k-out` |
+| role | recipe | answers |
+|---|---|---|
+| **arm** | generation 2 (`JS2-M1-policy-w0.2-gen2`) as ONE package: value net + its own policy head as the admission prior | — |
+| **control A** | generation 1, `06dd925b`, same package form | **#421 rule 2**: did generation *n* beat generation *n−1*? |
+| **control B** | the production recipe, JS-M1 `a5248cc5`, `JS-M1-joint1k-out` | is there anything deployable yet? |
+
+**Amended 2026-09-17 12:3x ET, before generation 2's weights exist, after muse observed that an
+earlier draft used production alone and so contradicted #421 rule 2.** The two controls answer
+different questions and the earlier draft silently answered only the second. Generation 1 is
+therefore run as a third arm on the same seeds rather than the contrast being inferred by
+differencing across seed windows — that inference is exactly the cross-seed shortcut this project
+has already had to hedge around once.
+
+`gen-2 − gen-1` is the **incremental** contrast the loop rule asks for. `gen-2 − production` is the
+**cumulative** one a deploy would need. Both are read; neither is allowed to stand in for the other.
 
 Both at **threshold 1,000 / top 256, hybrid bury, capped `--decision-deadline 300`**, both against the
 fixed yardstick `mc-s0-report-lcb`, both in the same lane on the same host. The contrast is the
@@ -48,6 +59,15 @@ construction.
 If a window has to be replaced for an operational reason, the replacement is the next unused
 multiple of 100,000 and the substitution is recorded here **before** that window is read.
 
+**If triage triggers, the extension windows are 17260910, 17360910, 17460910, 17560910, 17660910**,
+in that order. Naming them now removes the freedom to pick favourable windows later.
+
+**Lane and host, named rather than implied:** Mini lane **v27**
+(`scratchpad/claude_queue_v27_gen2.sh`), 8 workers, screen tree pinned at **bf70cb81** — the same
+commit v24, v25 and v26 ran, so the search code is identical to every screen this will be compared
+against. All three arms run in this one lane on this one host, so no wall-cost figure needs the
+cross-host hedge the generation-1 read required.
+
 ## Outcome scales — both declared, one decides
 
 **PRIMARY, and the only promotion criterion: signed level utility per round.**
@@ -68,11 +88,14 @@ has established what a points gain is worth in levels, so nothing is promoted on
    **+0.015**. The points scale does not trigger an extension.
 2. **Promotion.** Nothing is proposed for deploy on this screen alone. A deploy request requires the
    level-scale interval to exclude zero on fresh deals *and* Jerry's go, as always.
-3. **The generation-1 points hypothesis.** The specific claim under test is that generation *n*
-   beats its predecessor on the points scale where the level scale cannot resolve it. It is
-   **supported** only if generation 2's points interval excludes zero **in the positive direction**.
-   Any other outcome — a null, or an interval excluding zero negatively — is recorded as the
-   hypothesis failing to confirm, and the generation-1 post-hoc result stays refused permanently.
+3. **The generation-1 points hypothesis.** muse noted that "beats its predecessor" was loose where
+   the operational test must be exact, so it is named here: the claim is supported **only if
+   `gen-2 − gen-1` on the points scale excludes zero in the positive direction**. That is control A,
+   the incremental contrast, because the hypothesis was born from a generation-over-generation
+   comparison. `gen-2 − production` excluding zero on points does **not** confirm it — that contrast
+   contains generation 1's own contribution and cannot attribute anything to the second step. Any
+   other outcome is recorded as the hypothesis failing to confirm, and the generation-1 post-hoc
+   +0.5106 stays refused permanently.
 4. **Sign agreement is a reportable check, not a filter.** If the two scales disagree in sign on
    generation 2, that is reported prominently as evidence against the points scale being a finer
    ruler for the same quantity, and #487's proposal is weakened accordingly.
@@ -82,7 +105,7 @@ has established what a points gain is worth in levels, so nothing is promoted on
 
 | outcome | reading |
 |---|---|
-| level interval excludes zero, positive | the loop works at 20.5% share; the first real generation gain |
+| `gen-2 − gen-1` level interval excludes zero, positive | the loop works at 20.5% share; the first real generation gain |
 | both nulls, scales agree in sign | the **first informative null** (#421 rule 4): the question becomes whether the teacher must be *stronger*, not merely more sampled |
 | levels null, points positive and excluding zero | the generation-1 hypothesis confirms; points becomes a candidate criterion and needs a points-to-levels conversion before anything is promoted on it |
 | scales disagree in sign | #487's core claim is damaged; investigate before trusting either scale further |

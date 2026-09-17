@@ -185,6 +185,13 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         self._prior_diagnostics = None
         cfg = self.prior_config
         if len(actions) <= cfg.threshold:
+            # Record the below-threshold case too, so a consumer can see HOW
+            # OFTEN the prior was close to firing and not only what it did when
+            # it fired.  ``triggered`` is the discriminator; nothing downstream
+            # may treat a dict alone as evidence the pool was pruned.
+            self._prior_diagnostics = {"triggered": False,
+                                       "legal_count": len(actions),
+                                       "threshold": cfg.threshold}
             return self._means(rnd, seat, actions, worlds)
         if len(actions) < self.shortlist_config.alternatives + 1:
             raise ValueError("prior admission legal population is smaller than shortlist")
@@ -241,12 +248,30 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         }
         return means
 
+    def decide_play(self, rnd, seat):
+        """Join `MCBot.decide_play`'s literal decision boundary.
+
+        That boundary exists because "every early return below must expose NO
+        evidence from the preceding move", and its comment records that putting
+        it after candidate generation once left tractor-lock and one-candidate
+        plays with stale logs.  `_prior_diagnostics` is exactly that kind of
+        state and is cleared in `_candidates`, which the TRACTOR_LOCK early
+        return never reaches -- so a heuristic tractor lead would otherwise
+        carry the PREVIOUS decision's admission figures, under phase="play"
+        where no phase filter can catch it.
+        """
+        self._prior_diagnostics = None
+        return super().decide_play(rnd, seat)
+
     def _candidates(self, rnd, seat):
         self._prior_diagnostics = None
         selected = super()._candidates(rnd, seat)
         detail = self.last_shortlist
         diagnostic = self._prior_diagnostics
-        if diagnostic is not None and detail is not None:
+        # ``triggered``, not merely present: a below-threshold decision now also
+        # leaves a diagnostic, and marking THAT shortlist prior-admitted would
+        # claim the full legal population was pruned when it was fully evaluated.
+        if diagnostic is not None and diagnostic.get("triggered") and detail is not None:
             shortlist_means = detail.get("shortlist_means") or []
             if not shortlist_means or not np.isfinite(np.asarray(shortlist_means, dtype=float)).all():
                 raise ValueError("prior admission selected means must be finite")

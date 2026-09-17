@@ -19092,3 +19092,26 @@ For reference, the same estimator on the already-sealed arms against the same ba
 - Head moved to e5895609 (fix + a main merge), so muse's PASS does not carry and I have asked for a re-review. 101 passed compiled across the prior, shortlist, world-shortlist and `server_ws` family.
 
 **Fleet at 02:1x ET.** **runJS2 SEALED rc=0 at 02:02 ET (32,000 shards).** The v24 lane took the Perf box at 02:07 ET and is running `JS-M1-joint1k-out-16260910` — **this is the paired control the generation-1 screen has been waiting for**, at the matched threshold 1,000 on the v25 seeds. Ten windows (5 control + 5 M1-prior1k), so runJS5 sits behind it. Cloud runJS3 ≈12,700/16,000; runJS4 armed behind it. Mini running the v26 duel.
+
+## 2026-09-17 06:24 UTC — Claude tick 02:2x ET: PART C found that my OWN #478 advice contained a trap — landing the workflow line on main before #478's conftest would turn the pure CI lane compiled IMMEDIATELY, because the string "0" is truthy. The two are inseparable. Also: the gen-1 duel ETA corrected from 04:20 to ≈08:30 ET from measured throughput
+
+**PART A.** Bus empty. Main 40284d8e. Mini running the v26 duel; Perf running v24 Phase A (`JS-M1-joint1k-out-16260910`, the paired control, since 02:07 ET); Cloud runJS3 ≈13,300/16,000. Open: #481 5/5 green awaiting muse's re-review at e5895609; #475 and #476 green awaiting Jerry; #478 held; #479 red on the ledger guard only, my PASS intact.
+
+**PART B.** #480 and #482 merged, so the page is current on main: generation-1 row with its sealed arm numbers, the runJS generation corpora in section 5, and the hide-before-14-Sep control. The gen-1 screen cell stays SCREENING until v24 Phase A lands the production-matched control.
+
+**PART C — I gave muse a wrong option on #478 and it is the kind that looks safe.** My review offered: "either land the workflow line here, or Jerry lands it on main first and this PR rebases onto it." **The second is a trap.** Main's `tests/conftest.py:29` is a bare truth test, `if os.environ.get("SHENGJI_FAST"):`, and the **string** `"0"` is truthy. Measured on a main worktree with the extension built:
+
+```
+env value repr: '0'
+truthiness of the main conftest guard: True
+compiled routed in: True
+```
+
+So setting `SHENGJI_FAST: "0"` on the pure CI step **while main still carries the old conftest** turns that lane compiled immediately — the identical damage the HOLD is about, arriving hours earlier instead of later. `SHENGJI_FAST=0` only means "pure" once #478's conftest change introduces the `!= "0"` comparison.
+- **Conclusion: the workflow line and #478's conftest change are inseparable and must land in one merge.** There is no safe ordering that separates them. #478 already pairs `server/scripts/ci_cwv_modes.sh` with its conftest correctly; only the workflow file, which it cannot touch, is left out.
+- **Blocked on Jerry, and the reason is narrow:** neither muse nor I can push a workflow file. My token is `gist, read:org, repo` — **no `workflow` scope**. Either Jerry applies the one line to muse's branch, or grants a token workflow scope. Posted on #478 and sent to muse.
+- The HOLD stands but is now a smaller objection than when filed: #478's code is correct and verified in all three modes plus all three unbuilt-extension branches.
+
+**Correction to a number I gave Jerry.** I told him the gen-1 vs production duel would finish ≈04:20 ET. Measured from record counts (line counts only — no utilities read, the shards are unsealed): 480 of 2,600 clusters in 83 minutes = **5.78 clusters/min aggregate**, so wave 1 ≈03:57 ET and the full run **≈08:30 ET**. My estimate came from a 2-cluster pilot running ALONE at 1.67 clusters/min; under 8-way concurrency each shard gets 0.72, so I was optimistic by more than 2×. **Not cutting it short:** 2,600 clusters is what makes this design sharper than the screen it improves on, and halving it would give a wider interval than simply differencing two yardstick screens, which would waste the run.
+
+**Housekeeping sent to muse:** #479's red is entirely my ledger pushes moving main past its branch point; the PASS is unaffected and one main merge clears it.

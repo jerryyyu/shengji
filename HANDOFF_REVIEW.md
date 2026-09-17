@@ -19364,3 +19364,19 @@ And gen-2 ran **11 epochs against 17 and 20**, because patience on `val_ce` fire
 - Posted as a correction on #421 rather than left standing.
 
 **PART A.** v27 screen: windows 1 and 2 of 15 sealed rc=0 (≈36 and ≈39 min), window 3 running. Bus empty. Main c83af015. Cloud runJS4 ≈15,200/16,000, nearly sealed; Perf runJS5 continuing. Production healthy.
+
+## 2026-09-17 21:19 UTC — Claude tick 17:1x ET: runJS4 SEALED and the idle cloud box was refilled within 26 minutes (runJS6, seed 22340910). **The dry run caught three of my own bugs, one of which was in the inherited dry-run path itself: it reported "ok" regardless of what the inner command did**
+
+**PART A.** v27 screen on window 5 of 15 (`GEN2-joint1k-out-17160910`), phase A nearly done; four windows sealed rc=0 at ≈36–39 min each. Bus empty. Main b9447c91. Perf runJS5 ≈14,600/16,000, 51 GB free. Production healthy.
+
+**runJS4 SEALED rc=0 at 16:52 ET.** Verified by content, not by the status line: 16,000 clusters, 32,000 rounds, **2,216,884 records**, `incomplete_work 0`, span [22308910, 22324910], **no registry conflicts**. Lane lock free, zero harvest processes. That is four sealed generation corpora; with runJS5 it will be five, putting generation 3 at **30.0%** new-teacher share.
+
+**runJS6 launched on the idle cloud box** (seed 22340910, 16 workers, 316 GB free), no gate because there was nothing left to wait for. Jerry's standing ask from 09-17 00:1x ET — queue data gen so hosts do not idle — so cloud sat idle 26 minutes rather than overnight.
+
+**Three bugs the dry run caught, recorded because the third is a trap for anyone reusing these scripts.**
+1. `sed`-derived script still wrote its status to `/root/claude_datagen4.status` — it would have appended runJS6's lines to runJS4's record and confused any gate grepping that file.
+2. The DRYRUN branch still wrote to `/root/traj-out/dryJS4`.
+3. **The inherited DRYRUN branch piped the harvest to `tail` and echoed "DRYRUN ok" unconditionally.** It printed ok while the seed registry was actively REFUSING the probe seed (already registered by my first buggy attempt). A dry run that cannot fail is not a check. Fixed to capture the exit code, print the tail, and exit non-zero on failure — and to draw a fresh probe seed each time instead of a fixed one that registers itself on first use.
+- The registry refusing a re-used probe seed is the guard working exactly as designed; the bug was that the script ignored it.
+
+**Not done, deliberately:** the head-recall-vs-prior-v3 read for gen-2 is still owed from NEXT. It needs CPU on the Mini, which is running the screen, and the screen measures decision WALL time per arm — a concurrent job during one phase would inflate that arm's cost and bias the comparison. It waits for the lane (≈00:00 ET). Same reason the duel could not run beside training this morning.

@@ -18997,3 +18997,27 @@ muse filed two PRs at Jerry's ask and asked for review on the bus. Both reviewed
 - #479's four red server jobs are the review-ledger guard failing on **my** ledger push 6bb97f41 landing after its branch point. Content-free, not muse's bug — and the expected cost of the no-eager-re-merge process. Main goes in once when a merge is imminent and the PASS carries forward.
 
 Neither merges tonight: #478 needs the workflow line, #479 needs Jerry's word plus one main merge.
+
+## 2026-09-17 03:26 UTC — Claude tick 23:2x ET: PART C on #435 — live-play latency DECOMPOSED (compute vs pacing) and the issue's last gate closed; PART B artifact verified CONSISTENT at 62 rows
+
+**PART A.** Bus empty (pending 0, acked through sequence 1622). Main 67d0e12f. Mini lane v25: windows 1–4 of the generation-1 in-play screen sealed rc=0, window 5 (seed 16660910) started 23:23 ET → lane done ≈23:59 ET. Perf runJS2 ≈12,574/16,000 → seals ≈02:00 ET. Cloud runJS3 ≈9,406/16,000 → seals ≈04:40 ET. Production release 28 healthy.
+
+**PART B.** `docs/scaling_log/build.py --check` on main 67d0e12f: `CONSISTENT: 62 rows, 60 charted, 57 with val_ce, 14 ten-window results (13 cross zero), 8 five-window, scaling.html == models.py`. Nothing new has sealed since #474, so no row is owed. The generation-1 in-play cell stays QUEUED until window 5 seals **and** its paired control (v24's `JS-M1-joint1k-out` on the same fresh seeds) runs on Perf after runJS2.
+
+**PART C — #435, last gate closed on real traffic.** Every gate in #435 was cleared on screens; tonight's two human-played rooms let me make the same claim on production traffic, and the decomposition matters enough to record.
+
+The server logs three quantities per bot turn and they must not be conflated: `compute_seconds` (the search), `pacing_seconds` (the deliberate anti-snap delay), and `turn_seconds` (what the human waits). Measured: `turn_seconds ≈ max(compute, 0.70)`.
+
+| release | room | phase | n | compute p50 | compute p90 | compute max |
+|---|---|---|---|---|---|---|
+| 28 | SSMC (8 rounds) | play | 340 | 0.580 | 1.51 | 6.50 |
+| 28 | ENTC (1 round) | play | 76 | 0.640 | 1.67 | 2.80 |
+| 28 | both | bury | 5 | 0.637 | 0.66 | 0.70 |
+| 27 | TCNY | play | 53 | 0.573 | 5.01 | 132.63 |
+
+- **Gate: 0 decisions over 60 s and 0 cap hits in 421 live searches on release 28.** My 22:2x entry quoted these same figures; this confirms they were `compute_seconds` and not the pacing-inflated `turn_seconds`, so that entry stands as written.
+- **The median is a product decision, not a compute cost.** Pacing tops out at 0.69 s and release 28's median search is 0.58 s, so over half of live searches finish *inside* the pacing floor and are invisible to the player. Optimising the median would change nothing a human sees. Only the tail is worth spending on — which retires the "make search faster" framing and leaves only tail work.
+- **The tail:** p90 5.01 → 1.51 s (3.3×), worst 132.63 → 6.50 s. **Observational, not controlled:** different deals, different boots, n=53 against n=340. It does not show the prior caused it, and the replay evidence already attributes much of release 27's tail to that boot's host. MDE is not defined here — this is a tail description, not a test.
+- Posted on #435 with a proposal to **close** it: all gates satisfied, live-verified twice (takeover room VEZV, then real play). Follow-ons already have homes — pool cap and soft budget in #396/#400, the prior in #419, the vCPU question in #475. Left open for Jerry's word; I do not close his issues.
+
+**Not found, recorded so nobody re-derives it:** room logs carry no candidate counts and no prior-admission statistics, so live prior engagement (how much of the wide tail the threshold-1,000 prior actually prunes in production, and whether top-256 ever clips the played action) **cannot** be measured from `/data/logs` as it stands. Answering #419's productionization question on live traffic would need a new counter in the serving path.

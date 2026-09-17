@@ -39,8 +39,8 @@ has already had to hedge around once.
 `gen-2 − gen-1` is the **incremental** contrast the loop rule asks for. `gen-2 − production` is the
 **cumulative** one a deploy would need. Both are read; neither is allowed to stand in for the other.
 
-Both at **threshold 1,000 / top 256, hybrid bury, capped `--decision-deadline 300`**, both against the
-fixed yardstick `mc-s0-report-lcb`, both in the same lane on the same host. The contrast is the
+**All three** at **threshold 1,000 / top 256, hybrid bury, capped `--decision-deadline 300`**, all
+three against the fixed yardstick `mc-s0-report-lcb`, all three in the same lane on the same host. The contrast is the
 difference of the two arms on shared seeds, as always.
 
 Generation 2 is **parameter-matched** with JS-M1 and generation-1 (653,532 parameters, verified) and
@@ -84,8 +84,14 @@ has established what a points gain is worth in levels, so nothing is promoted on
 
 ## Decisions, fixed in advance
 
-1. **Triage.** Five windows first. Extend to ten only if the **level** point estimate exceeds
-   **+0.015**. The points scale does not trigger an extension.
+1. **Triage.** Five windows first. Extend to ten **only if the `gen-2 − production` level point
+   estimate exceeds +0.015** — control B, the cumulative contrast, named because muse pointed out
+   that two level estimates now exist and an unnamed "the point" is not a mechanical trigger.
+   Control B is the trigger because extension exists to firm up a **promotion** case, and promotion
+   rests on that contrast. **`gen-2 − gen-1` does NOT trigger an extension**, however large: it
+   answers the research question, not the deploy question. The points scale triggers nothing on
+   either contrast. Extension costs five more windows on **all three arms**, so this must be one
+   comparison against one number, decided before the data exists.
 2. **Promotion.** Nothing is proposed for deploy on this screen alone. A deploy request requires the
    level-scale interval to exclude zero on fresh deals *and* Jerry's go, as always.
 3. **The generation-1 points hypothesis.** muse noted that "beats its predecessor" was loose where
@@ -103,12 +109,16 @@ has established what a points gain is worth in levels, so nothing is promoted on
 
 ## What would falsify what
 
+Every row names its contrast, because with three arms an unnamed one is a loophole.
+
 | outcome | reading |
 |---|---|
-| `gen-2 − gen-1` level interval excludes zero, positive | the loop works at 20.5% share; the first real generation gain |
-| both nulls, scales agree in sign | the **first informative null** (#421 rule 4): the question becomes whether the teacher must be *stronger*, not merely more sampled |
-| levels null, points positive and excluding zero | the generation-1 hypothesis confirms; points becomes a candidate criterion and needs a points-to-levels conversion before anything is promoted on it |
-| scales disagree in sign | #487's core claim is damaged; investigate before trusting either scale further |
+| **`gen-2 − gen-1`** level interval excludes zero, positive | the loop works at 20.5% share; the first real generation gain |
+| **`gen-2 − production`** level interval excludes zero, positive | there is finally something deployable; a deploy request becomes available, still needing Jerry's go |
+| **both** level contrasts null, and both scales agree in sign on each | the **first informative null** (#421 rule 4): the question becomes whether the teacher must be *stronger*, not merely more sampled |
+| **`gen-2 − gen-1`** level null but its **points** interval excludes zero positively | the generation-1 hypothesis confirms; points becomes a candidate criterion and needs a points-to-levels conversion before anything is promoted on it |
+| the two scales disagree in sign on **either** contrast | #487's core claim is damaged; investigate before trusting either scale further |
+| `gen-2 − production` positive while `gen-2 − gen-1` is null | the gain is generation 1's, not generation 2's; the loop is not compounding and the ladder above 20.5% needs rethinking |
 
 ## What this document does not cover
 

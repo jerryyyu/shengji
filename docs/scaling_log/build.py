@@ -256,14 +256,15 @@ def registry_rows(rows):
         cls = "ref" if r["ck"] == "3cd27716" else ""
         tr = (f'<td class="n null">{r["tr"][1:]} <span class="pill">approx</span></td>' if r["tr"].startswith("~")
               else f'<td class="n">{r["tr"]}</td>')
+        trd = r["tr"].lstrip("~")
         note = r["note"].replace(" -- ", " &mdash; ")
         rec = r.get("record", "")
         if rec:
             body = html.escape(f'{r["n"]}  {r["ck"]}\n{r["note"]}\n\n{rec}', quote=True).replace("\n", "&#10;")
             cls = f'{cls} hit'.strip()
-            open_tr = f'<tr class="{cls}" tabindex="0" data-t="{body}" title="tap for the full record">'
+            open_tr = f'<tr class="{cls}" tabindex="0" data-tr="{trd}" data-t="{body}" title="tap for the full record">'
         else:
-            open_tr = f'<tr class="{cls}">'
+            open_tr = f'<tr class="{cls}" data-tr="{trd}">'
         out.append(
             open_tr + f'<td><b>{r["n"]}</b><br><span class="mono null">{r["ck"]}</span></td>'
             f'{tr}<td>{r["enc"]}</td><td class="n">{r["w"]}</td>'

@@ -19335,3 +19335,32 @@ Ranking regret improves too: roomlog 0.0734 → 0.0738 → **0.0705**; luna 0.08
 **#488 MERGED earlier this tick** (main fcf83e4a) at muse's exact head, so the design was on main before the weights existed. #489 (both scales in the harness) is green but deliberately unmerged: muse's PASS predates my bootstrap-seed correction and does not carry.
 
 **Fleet.** Mini running the v27 screen (15 windows, ≈9.5 h → ≈00:00 ET). Cloud runJS4 ≈13,900/16,000; Perf runJS5 ≈12,000/16,000, 52 GB free. Production healthy.
+
+## 2026-09-17 20:16 UTC — Claude tick 16:1x ET: **I OVERSTATED THE gen-2 VALUE REGRESSION AN HOUR AGO AND HAVE CORRECTED IT.** It is the AUXILIARY points head that degraded; the PRIMARY outcome head — the one the search plays with — is mixed. My proposed mechanism was wrong too. Checking it turned up a real one
+
+**The correction.** At 15:1x ET I wrote that generation 2 "trades value accuracy for ranking accuracy" and that "a net that ranks better and prices worse is not obviously a better player". **I named the wrong head.** `--aux-points` is training-time auxiliary supervision; the screens play with `--value-head outcome`.
+
+| fixed holdout | JS-M1 | gen-1 | gen-2 | best |
+|---|---|---|---|---|
+| **outcome CE** (what plays) roomlog | 0.7237 | 0.7342 | 0.7319 | JS-M1 |
+| **outcome CE** (what plays) luna | 0.8497 | 0.8496 | **0.8418** | **gen-2** |
+| *auxiliary* points MAE roomlog | 14.590 | **14.531** | 14.827 | gen-1 |
+| *auxiliary* points MAE luna | **16.884** | 17.040 | 17.767 | JS-M1 |
+
+Honest version: **the auxiliary head degraded; the primary head is mixed** — gen-2 best on luna, between the other two on roomlog. The conclusion I drew does not follow from the numbers I drew it from.
+
+**My mechanism was also wrong.** I guessed "a third more policy rows at fixed policy weight". The policy-to-value row ratio is **constant at 26.7%** across all three (5.41M/20.26M, 5.88M/22.01M, 6.82M/25.50M). Both grew together; nothing shifted. Checking a guess before repeating it is the only reason this did not become received wisdom.
+
+**What checking it DID find — selection on `val_ce` leaves points accuracy on the table in every run:**
+
+| net | epochs run | selected | points MAE there | best later epoch | left on the table |
+|---|---|---|---|---|---|
+| JS-M1 | 20 | 17 | 11.663 | 11.549 (ep 20) | 0.114 |
+| gen-1 | 17 | 14 | 11.849 | 11.621 (ep 15) | 0.228 |
+| gen-2 | 11 | 8 | 12.035 | 11.910 (ep 9) | 0.125 |
+
+And gen-2 ran **11 epochs against 17 and 20**, because patience on `val_ce` fires sooner once each epoch carries more rows. Its points head never reached the floor the others found around epoch 15. That alone explains the auxiliary degradation with no policy/value trade involved.
+- **Why it matters going up the ladder:** the two heads do not peak together and the selection rule watches only one. More rows per epoch → fewer epochs before patience fires → the gap grows. Generation 3 at 25.5% or 30% share will see it more strongly. Worth considering a combined selection metric or wider patience **before** that run. Not urgent: the outcome head is what plays and it is fine.
+- Posted as a correction on #421 rather than left standing.
+
+**PART A.** v27 screen: windows 1 and 2 of 15 sealed rc=0 (≈36 and ≈39 min), window 3 running. Bus empty. Main c83af015. Cloud runJS4 ≈15,200/16,000, nearly sealed; Perf runJS5 continuing. Production healthy.

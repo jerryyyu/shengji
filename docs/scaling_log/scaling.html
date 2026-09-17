@@ -194,8 +194,10 @@ body.recent-only [data-tr].pre-cut{display:none}
   <h1>Sheng Ji Scaling Curves</h1>
   <p class="dek">Every training run and every gameplay screen, on one page. Charts first, then the
   two registries they are drawn from.</p>
-  <p class="dek recent-ctl"><label><input type="checkbox" id="recentOnly"> Hide runs trained before
-  <b>14 Sep 2026</b></label> <span class="null" id="recentCount"></span></p>
+  <p class="dek recent-ctl"><label><input type="checkbox" id="recentOnly"> Hide models trained before
+  <b>14 Sep 2026</b></label> <span class="null" id="recentCount"></span>
+  <span class="null">&mdash; checkpoints and chart points only; the corpus table in section 5 is
+  not filtered.</span></p>
 </header>
 
 <div class="kpi">
@@ -2848,7 +2850,8 @@ JS-G1 = the FROM-SCRATCH joint net on the GRID recipe (#425; Jerry 09-15: train 
   its own policy head as the admission prior at threshold 1,000 / top 256, hybrid bury) &mdash; the
   release-28 recipe. These are the <b>generation corpora</b>: games the current best net played
   against itself, recorded so the next net can train on them. runJS1 alone trained gen-1 and is
-  <b>7.9%</b> of that net&#8217;s policy corpus; at 138.4 records per cluster it sits about 5% below
+  <b>7.9%</b> of that net&#8217;s policy corpus &mdash; that is the POLICY-row increment,
+  1.74M of 22.04M, not a ratio of the value-record counts in this table; at 138.4 records per cluster it sits about 5% below
   the 146.2 rate for the same reason run I does. They are not part of the 144k corpus, and folding
   them in would move teacher and quantity together.</p>
 </section>
@@ -3083,8 +3086,8 @@ JS-G1 = the FROM-SCRATCH joint net on the GRID recipe (#425; Jerry 09-15: train 
   });
   function paint(){
     document.body.classList.toggle("recent-only", box.checked);
-    out.textContent=box.checked ? hidden+" of "+dated.length+" hidden"
-                                : hidden+" of "+dated.length+" trained before the cut";
+    out.textContent=box.checked ? hidden+" of "+dated.length+" dated items hidden"
+                                : hidden+" of "+dated.length+" dated items are older";
     try{ localStorage.setItem("scalingRecentOnly", box.checked?"1":"0"); }catch(e){}
   }
   try{ box.checked=localStorage.getItem("scalingRecentOnly")==="1"; }catch(e){}

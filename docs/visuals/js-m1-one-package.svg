@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="Release 28: one JS-M1 package proposes with its policy head and value head; production's Monte Carlo search decides; hybrid bury uses the same package.">
+<rect x="0" y="0" width="1000" height="400" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:12px;fill:#1e2833}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}.mut{fill:#65727f;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.06em;fill:#65727f}.big{font-size:13px;font-weight:600}</style>
+<!-- column headers -->
+<text x="70" y="22" class="hdr" text-anchor="middle">EVERY LEGAL ACTION</text>
+<text x="255" y="22" class="hdr" text-anchor="middle">POLICY HEAD · PRIOR</text>
+<text x="460" y="22" class="hdr" text-anchor="middle">VALUE HEAD · 32 WORLDS</text>
+<text x="640" y="22" class="hdr" text-anchor="middle">SHORTLIST</text>
+<text x="820" y="22" class="hdr" text-anchor="middle">PRODUCTION MC-LCB</text>
+<text x="960" y="22" class="hdr" text-anchor="middle">PLAY</text>
+<!-- the one package -->
+<rect x="176" y="34" width="372" height="212" rx="8" fill="none" stroke="#117a75" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="362" y="50" class="big" text-anchor="middle" fill="#117a75">ONE NUMPY PACKAGE  js-m1-0d17fd03.npz</text>
+<text x="362" y="64" class="mut" text-anchor="middle">shared trunk · two heads · no Torch on the server</text>
+<!-- legal actions column -->
+<g>
+<rect x="28" y="60" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="73" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="86" width="84" height="8" rx="2" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<rect x="28" y="99" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="112" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="125" width="84" height="8" rx="2" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<rect x="28" y="138" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="151" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="164" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="177" width="84" height="8" rx="2" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<rect x="28" y="190" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="203" width="84" height="8" rx="2" fill="#ffffff" stroke="#b6bec7" stroke-width="1.5"/>
+<rect x="28" y="216" width="84" height="8" rx="2" fill="#f3e7cc" stroke="#a8741c" stroke-width="1.5"/>
+</g>
+<text x="70" y="244" class="mut" text-anchor="middle">median 8 · p99 20,758</text>
+<text x="70" y="258" class="mut" text-anchor="middle">exhaustive, engine-enumerated</text>
+<!-- prior stage -->
+<rect x="196" y="82" width="120" height="120" rx="5" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="256" y="104" text-anchor="middle">above 1,000 actions</text>
+<text x="256" y="122" text-anchor="middle">policy head scores</text>
+<text x="256" y="138" text-anchor="middle">once per world</text>
+<text x="256" y="160" class="mono" text-anchor="middle">union of top 256</text>
+<text x="256" y="176" class="mono" text-anchor="middle">+ production anchors</text>
+<text x="256" y="196" class="mut" text-anchor="middle">≈600 actions, median</text>
+<text x="256" y="222" class="mut" text-anchor="middle">below 1,000: pass-through</text>
+<path d="M114,140 C154,140 154,140 194,140" fill="none" stroke="#117a75" stroke-width="1.4"/>
+<!-- value stage -->
+<rect x="360" y="76" width="70" height="20" rx="3" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="395" y="90" class="mono" text-anchor="middle">world 1</text>
+<rect x="360" y="104" width="70" height="20" rx="3" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="395" y="118" class="mono" text-anchor="middle">world 2</text>
+<rect x="360" y="132" width="70" height="20" rx="3" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="395" y="146" class="mono" text-anchor="middle">…</text>
+<rect x="360" y="160" width="70" height="20" rx="3" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="395" y="174" class="mono" text-anchor="middle">world 32</text>
+<text x="395" y="202" class="mut" text-anchor="middle">one draw per decision</text>
+<text x="395" y="216" class="mut" text-anchor="middle">every admitted action</text>
+<text x="395" y="230" class="mut" text-anchor="middle">scored in all of them</text>
+<path d="M318,140 C338,140 338,86 358,86" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M318,140 C338,140 338,114 358,114" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M318,140 C338,140 338,142 358,142" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M318,140 C338,140 338,170 358,170" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M500,124 L516,140 L500,156 L484,140 Z" fill="#117a75"/>
+<text x="500" y="176" class="mut" text-anchor="middle">value head</text>
+<text x="500" y="190" class="mut" text-anchor="middle">mean over worlds</text>
+<path d="M432,86 C458,86 458,140 482,140" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M432,114 C458,114 458,140 482,140" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M432,142 C458,142 458,140 482,140" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M432,170 C458,170 458,140 482,140" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<!-- shortlist -->
+<rect x="600" y="78" width="80" height="20" rx="3" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="640" y="92" class="mono" text-anchor="middle">top 1</text>
+<rect x="600" y="106" width="80" height="20" rx="3" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="640" y="120" class="mono" text-anchor="middle">top 2</text>
+<rect x="600" y="134" width="80" height="20" rx="3" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="640" y="148" class="mono" text-anchor="middle">top 3</text>
+<rect x="600" y="162" width="80" height="20" rx="3" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="640" y="176" class="mono" text-anchor="middle">top 4</text>
+<rect x="600" y="196" width="80" height="20" rx="3" fill="#f3e7cc" stroke="#a8741c" stroke-width="1.5"/>
+<text x="640" y="210" class="mono" text-anchor="middle">incumbent</text>
+<text x="640" y="236" class="mut" text-anchor="middle">4 net picks + production's own</text>
+<path d="M516,140 C558,140 558,88 598,88" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M516,140 C558,140 558,116 598,116" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M516,140 C558,140 558,144 598,144" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M516,140 C558,140 558,172 598,172" fill="none" stroke="#117a75" stroke-width="1.2"/>
+<path d="M114,220 C300,262 500,262 598,206" fill="none" stroke="#a8741c" stroke-width="1.2" stroke-dasharray="3 3"/>
+<!-- MC search -->
+<rect x="740" y="60" width="160" height="176" rx="5" fill="#f3e7cc" stroke="#a8741c" stroke-width="1.5"/>
+<text x="820" y="86" text-anchor="middle">sample 30 worlds</text>
+<text x="820" y="106" text-anchor="middle">heuristic playouts</text>
+<text x="820" y="126" text-anchor="middle">paired means</text>
+<text x="820" y="146" text-anchor="middle">lower-bound rule</text>
+<text x="820" y="166" text-anchor="middle">report fold, 300 worlds</text>
+<text x="820" y="200" class="mut" text-anchor="middle">the search decides;</text>
+<text x="820" y="214" class="mut" text-anchor="middle">the net only proposes</text>
+<path d="M682,88 C712,88 712,148 738,148" fill="none" stroke="#a8741c" stroke-width="1.2"/>
+<path d="M682,116 C712,116 712,148 738,148" fill="none" stroke="#a8741c" stroke-width="1.2"/>
+<path d="M682,144 C712,144 712,148 738,148" fill="none" stroke="#a8741c" stroke-width="1.2"/>
+<path d="M682,172 C712,172 712,148 738,148" fill="none" stroke="#a8741c" stroke-width="1.2"/>
+<path d="M682,206 C712,206 712,148 738,148" fill="none" stroke="#a8741c" stroke-width="1.2"/>
+<circle cx="960" cy="148" r="11" fill="#1e2833"/>
+<path d="M902,148 C924,148 924,148 946,148" fill="none" stroke="#a8741c" stroke-width="1.4"/>
+<text x="960" y="180" class="mut" text-anchor="middle">chosen play</text>
+<!-- bury strip -->
+<line x1="28" y1="280" x2="972" y2="280" stroke="#d5dae0" stroke-width="1"/>
+<text x="28" y="300" class="hdr" text-anchor="start">BURY (BANKER, ONCE PER ROUND) · HYBRID, 2 s BUDGET</text>
+<rect x="28" y="312" width="200" height="50" rx="4" fill="none" stroke="#b6bec7" stroke-width="1.5"/>
+<text x="128" y="332" class="mono" text-anchor="middle">heuristic candidates</text>
+<text x="128" y="350" class="mut" text-anchor="middle">up to 32 eight-card buries</text>
+<path d="M230,337 C252,337 252,337 274,337" fill="none" stroke="#117a75" stroke-width="1.4"/>
+<rect x="276" y="312" width="220" height="50" rx="4" fill="none" stroke="#117a75" stroke-width="1.5"/>
+<text x="386" y="332" class="mono" text-anchor="middle">same package scores them</text>
+<text x="386" y="350" class="mut" text-anchor="middle">value head on 32 worlds</text>
+<path d="M498,337 C520,337 520,337 542,337" fill="none" stroke="#a8741c" stroke-width="1.4"/>
+<rect x="544" y="312" width="220" height="50" rx="4" fill="none" stroke="#a8741c" stroke-width="1.5"/>
+<text x="654" y="332" class="mono" text-anchor="middle">MC selection, 4 alternatives</text>
+<text x="654" y="350" class="mut" text-anchor="middle">heuristic bury on error or budget</text>
+<text x="880" y="337" class="mut" text-anchor="middle">measured live: 0.4–0.6 s</text>
+<text x="28" y="388" class="mut" text-anchor="start">Release 28 (2026-09-16). Identity: mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff. Gates before deploy: decision-identity gate (NumPy = Torch) and server-path smoke.</text>
+</svg>

@@ -19246,3 +19246,27 @@ Two harnesses, two deal sets (13 dev pairs vs 2,600 fresh), two kinds of change 
 - **Cheapest available precision win, and bigger than the modelling side has delivered recently:** gen-1 null, release 28's fresh read null, the eight-arm PUCT ladder negative. We keep buying compute to chase effects the ruler cannot resolve.
 - Proposed on #487, in order: (1) score on **attacker points**, already recorded on every cluster, and check on SEALED data that a points-scale contrast **agrees in sign** with the level-scale one — free, since every sealed screen carries both; (2) surface the tie fraction in capped screen summaries (`zero_clusters` exists in the DEV summaries and is not reported in ours, so nobody sees the waste); (3) deal selection considered and argued AGAINST — it changes the estimand, whereas (1) changes only the ruler.
 - **Explicitly not done:** no measurement yet that a points contrast has lower variance per deal, which is the load-bearing assumption. That check is free on sealed data and is the obvious next step. Nor whether the tie fraction varies by trump rank or banker role.
+
+## 2026-09-17 13:25 UTC — DAILY MAINTENANCE 09:2x ET. Steps 3–5 correctly SKIPPED (tree Codex-owned). Fleet all green, production clean. STEP 0: both crons recreated with corrected STATE — the old ones still carried a day-stale picture including release 28's retracted strength claim
+
+**FIRST CHECK — hold in force.** `/Users/jerryyu/Projects/shengji` is on **codex/aug12-strength-status** with ~20 uncommitted files. Codex-owned → only read-only steps run. **Steps 3 (doc sync), 4 (smoke + audit_sourcing) and 5 (deletion) correctly SKIPPED**, as they have been 09-12..09-17. No deletion anywhere: every host has a live run.
+
+**STEP 0 — the prompt audit, and it mattered.** Both cron prompts still carried STATE from 09-16 09:1x, which by this morning was wrong in most particulars: data generation described as HELD (Jerry lifted it 00:1x), generation-1 training described as BLOCKED on Mini disk (it trained and sealed), JS-G1 described as mid-epoch (sealed and read), runJS1 described as 12,710/16,000 (sealed, plus two more since), and — the damaging one — **release 28's +0.0239 quoted as a live figure after the fresh-seed read retracted it**. A tick reading that could have re-asserted a strength claim this project has now explicitly withdrawn. Hourly recreated as **18fac563** (09-17 08:2x), daily as **176d89e2** (09-17 09:2x); old ids 59f06bb0 and 916b90a3 deleted. Both expire ≈09-24.
+- New standing lessons folded into both: a generated artifact has exactly ONE correct conflict resolution (regenerate from merged source); a SKIPPED test proves nothing; quote POOLED figures; **halving a per-cluster interval is NOT the per-round interval** (the harness bootstraps each scale separately, different seeds); measure rather than project; counting records before a seal is fine, reading utilities is not; **verify an OWED item before working it**.
+
+**STEP 1 — fleet (Jerry's standing format).**
+
+| host | cores | load | disk | job | progress |
+|---|---|---|---|---|---|
+| Mini | 10 | 2.24 | 69 GB free | **gen-2 training** (JS2-M1-policy-w0.2-gen2) | 54 min in, model built, 653,532 params |
+| shengji-perf | 16 | 16.02 | **57 GB free, 91% used** | runJS5 (seed 22324910) | 4,400/16,000 clusters ≈ **28%**, seals ≈18:00 ET |
+| shengji-cloud | 16 | 16.20 | 323 GB free, 45% used | runJS4 (seed 22308910) | 6,290/16,000 ≈ **39%**, seals ≈17:00 ET |
+| Air | — | — | — | OFF (remote login disabled by Jerry) | — |
+
+- **gen-2 parameter count 653,532 matches JS-M1 and gen-1 exactly** — parameter-matched confirmed by measurement, still NOT compute-matched. Corpus verified from the split line: fit 179,200 + selection 22,400 → 224,000 deals = 176,000 + the 48,000 new clusters.
+- Perf remains the box to watch at 91%, but runJS5 needs ≈8 GB more against 57 GB free and its script guards at 25 GB twice.
+- pid 96175 (Jerry's :8899 dev server) alive, 44 days.
+
+**STEP 1/2 — production, read-only.** `fly status`: machine 48e7e35a9597e8, version **28**, image `deployment-01M2M90VYR34R7CWKTTEA4C57V`, started, **1/1 check passing**. `/healthz` reports the release-28 bot with prior threshold 1,000 / top 256 and 0 rooms. `fly logs --no-tail`: healthz polls only, **no errors, no restarts**.
+
+**Not owed after checking.** The previous prompt's OWED list named "atlas rows for the Codex queue". **Atlas row 33 already exists**, complete and accurate, added 09-16 — Codex's four-arm continuation queue sealed 09-16 09:15 ET. I had carried the item forward without verifying it. Worse, I nearly "corrected" the atlas with a wrong number: I derived G1-k1's per-round interval as per-cluster ÷ 2 = [0.000, +1.154] against the atlas's [−0.08, +1.23]; **the atlas is right** because the summary carries separate bootstraps for `per_cluster_sum` and `per_round`. Checked before touching.

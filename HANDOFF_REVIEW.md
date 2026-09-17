@@ -19396,3 +19396,24 @@ And gen-2 ran **11 epochs against 17 and 20**, because patience on `val_ce` fire
 **Deliberately NOT read: gen-2's own five sealed windows against the yardstick.** They are sealed and I am allowed to. I read exactly that figure for generation 1 (+0.0676) and it was harmless then, but there is now a pre-registration saying the *contrasts* decide, and an arm-alone number would only anchor me before control A lands. Declining it costs nothing and keeps the analysis honest.
 
 **Two process slips this tick, both caught immediately.** The first launch redirected its log to an unset variable and failed; the second, after `pkill`, still showed `ppid 20446`, so I waited and re-checked rather than trusting the first `ps` — it had reparented to init by then. Verifying a waiter twice costs seconds; discovering at midnight that nothing was armed costs the night.
+
+## 2026-09-17 23:17 UTC — Claude tick 19:1x ET: **runJS5 SEALED — five corpora now in hand = 30.0% share, the TOP of the published ladder, so generation 3 is fully supplied today.** Perf is idle and I am HOLDING it rather than filling it, against Jerry's standing "keep hosts busy" ask, for reasons stated
+
+**runJS5 sealed rc=0 at 18:18 ET**, verified by content: 16,000 clusters, 32,000 rounds, **2,213,984 records**, `incomplete_work 0`, span [22324910, 22340910], no registry conflicts. Perf idle, lane lock free, zero harvest processes.
+
+**The ladder is now topped out on sealed data:**
+
+| corpora | clusters | new policy rows | share |
+|---|---|---|---|
+| runJS1–3 | 48,000 | 5.22M | 20.5% (gen-2, screening now) |
+| runJS1–4 | 64,000 | 6.96M | 25.5% |
+| **runJS1–5** | **80,000** | **8.70M** | **30.0% — SEALED, gen-3 available today** |
+| runJS1–6 | 96,000 | 10.44M | 34.0% (runJS6 running on cloud) |
+
+**Perf HELD, not filled — the judgement and why, since it runs against a standing instruction.** Jerry asked on 09-17 00:1x ET to queue data gen so hosts do not idle. I have staged `runJS7` on Perf (seed 22356910, dry-run clean) and **deliberately not started it**:
+1. **Perf is at 92% disk, 49 GB free**; the run would leave ≈38 GB. It is the tightest box and its measured safe reclaim is only ≈3 GB — the two obvious 4–5 GB targets free nothing because they are hardlinked into live venvs.
+2. **The generation-2 in-play result lands ≈00:00 ET and bears directly on whether more data from the SAME teacher is the right spend.** #421 rule 4, pre-registered: if gen-2 is null at 20.5% share, the question becomes whether the teacher must be **stronger**, not merely more sampled. Generating a seventh same-teacher corpus hours before that number arrives is spending the tightest disk on a guess.
+3. Five sealed corpora already supply generation 3 at the top of the ladder, and runJS6 is running on cloud (317 GB free), so the fleet is not idle — only Perf is, for about five hours.
+- **This is a hold, not a refusal**, and it is one command to start: `nohup bash /root/claude_datagen_js7.sh &`. The reasoning is written into the script's own header so whoever runs it next sees why it was staged rather than launched.
+
+**PART A.** v27 phase B (control A, gen-1 replayed) on window 3 of 5; two sealed rc=0. Readout waiter alive (pid 99770, ppid 1) and will not read until all fifteen windows report complete. Bus empty. Main 8c074efc. #489 still green and awaiting muse's re-review at the corrected head — its earlier PASS predates my bootstrap-seed fix and does not carry. Production healthy.

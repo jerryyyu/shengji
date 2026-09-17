@@ -18920,3 +18920,26 @@ banker − other: EARLY regret@1 +0.0477, regret@4 +0.0231, top1 −0.0680; LATE
 Receipt: `scratchpad/banker_slice_jsm1_roomlog.json`.
 
 **Fleet (20:1x ET).** Mini gen-1 epoch 17/20 logged, seal ≈20:25 (post-seal reader armed, pid 79749). Perf runJS2 → ≈01:30, lane v24 armed behind it. Cloud runJS3 → ≈04:00. Production release 28 ok. PRs #473/#474/#475/#476 all 5/5, unmerged, no reviewer.
+
+## 2026-09-17 00:26 UTC — Claude 20:2x ET: GENERATION-1 SEALED (06dd925b) — the first net trained on its own predecessor's games. Early-stopped at epoch 14; on the FIXED holdouts it is a wash (roomlog CE +0.0105 worse, top1 +0.0099 better; luna identical), its HEAD is better than JS-M1's against prior v3, and as a player it is indistinguishable from JS-M1 (paired −0.0003)
+
+**The run.** `JS1-M1-policy-w0.2-gen1`, JS-M1's exact recipe with runJS1 added to `--data` and `policy_rows_v5` (22.04M rows vs 20.30M, +8.5%) as the root rows; 23,655 s wall, **best epoch 14 of 20, `stopped_early` TRUE** (the trainer's own patience fired at 17), 653,532 params, best.pt `06dd925b0bb42af13f695fccaafb341ffc87dbce4aff01a4651ae72fbeb377b4`. Validation curve flattened at epoch 14 (0.6006) and oscillated 0.6013–0.6036 after; JS-M1 on the same recipe was still descending to epoch 17. **val_ce is NOT comparable between them** — runJS1's deals entered every split, so gen-1's val set is not JS-M1's, and the tooling says so explicitly rather than quoting a difference.
+
+**The comparable read — the four FIXED holdouts, identical rows, digests verified equal:**
+
+| holdout | n | gen1 CE | JS-M1 CE | gen1 top1 | JS-M1 top1 |
+|---|---|---|---|---|---|
+| roomlog | 13,528 | 0.7342 | 0.7237 | 0.4755 | 0.4656 |
+| luna | 4,808 | 0.8496 | 0.8497 | 0.4552 | 0.4567 |
+| highn | — | n/a | n/a | 0.3788 | 0.3746 |
+| pt1 | — | n/a | n/a | 0.6010 | 0.6370 |
+
+A wash with no consistent direction: gen-1 is worse on room-log cross-entropy (+0.0105) but better on its ranking top-1 (+0.0099); luna is identical to four decimals; highn slightly better, pt1 (416 rows) worse. Nothing here clears its own noise.
+
+**The head got BETTER against the separate prior.** compare_joint on the common test-deal rows (15,494 after exclusions): gen-1 − prior v3 top-64 recall +0.0000 / +0.0033 / **+0.0149 [+0.0012, +0.0289]** / +0.0155 / +0.0104 / +0.0217 across the strata — five PASS and the exhaustive 101–1k stratum now CLEARS ZERO, where JS-M1's head read +0.0050 on the same stratum. Listwise CE 0.8707 (JS-M1 0.858, prior v3 0.975); BCE 0.1040 (JS-M1 0.1322).
+
+**As a player it is the same net.** Head alone vs SmartBot on the same 2,000 mirrored deals: gen-1 −0.0020 [−0.0293, +0.0250], JS-M1 −0.0018 [−0.0295, +0.0265]; **paired gen-1 − JS-M1 −0.0003 [−0.0350, +0.0353]**. Still SmartBot-level, neither better nor worse.
+
+**Reading.** One generation of self-play data at +8.5% of the corpus moved the policy head's recall on wide exhaustive decisions and moved nothing else measurable. That is the honest scale of the effect and it matches the dilution: the new rows are a twelfth of the training set. runJS2 and runJS3 (another 32,000 clusters, sealing overnight) roughly triple the new-teacher share, which is the run that can actually test the generation idea. No in-play screen is warranted on this evidence — a paired null against the production net at the same wall is what an in-play screen would be chasing, and the offline reads do not suggest one.
+
+Receipts: `scratchpad/gen1_postseal.txt`, `fl-pilot/policy_head_players/gen1-head-vs-smart.json`.

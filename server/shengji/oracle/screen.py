@@ -1566,12 +1566,17 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
                              "nothing is promoted on points until a points-to-"
                              "levels conversion is established"),
         "arm_signed_attacker_points": {
+            # The SAME bootstrap seeds as the level scale, on purpose. Both
+            # scales are computed on the same clusters, so a shared seed draws
+            # the same resample for each replicate and the common
+            # cluster-sampling noise cancels when the two are compared -- the
+            # ordinary paired-vs-unpaired argument. Independent seeds would
+            # make a level-vs-points disagreement HARDER to see, not easier.
             "per_round": cluster_bootstrap(
-                per_round_points, replicates=replicates,
-                seed=bootstrap_seed + 3),
+                per_round_points, replicates=replicates, seed=bootstrap_seed),
             "per_cluster_sum": cluster_bootstrap(
                 per_cluster_points, replicates=replicates,
-                seed=bootstrap_seed + 4),
+                seed=bootstrap_seed + 1),
             "positive_clusters": sum(v > 0 for v in per_cluster_points),
             "zero_clusters": sum(v == 0 for v in per_cluster_points),
             "negative_clusters": sum(v < 0 for v in per_cluster_points),

@@ -71,10 +71,22 @@ def test_both_scales_count_the_same_clusters():
     assert lev["per_cluster_sum"]["clusters"] == pts["per_cluster_sum"]["clusters"] == 4
 
 
-def test_the_two_scales_use_different_bootstrap_seeds():
-    """Sharing a seed would correlate the two intervals and hide disagreement."""
+def test_the_two_scales_share_bootstrap_seeds_so_the_comparison_is_paired():
+    """Shared seeds PAIR the resamples across scales, which is what we want.
+
+    An earlier version of this file asserted the opposite and justified it as
+    stopping the intervals correlating and hiding a disagreement. That was
+    backwards, and muse caught it. Both scales are computed on the same
+    clusters, so a shared seed draws the same resample per replicate and the
+    common cluster-sampling noise cancels when the two are compared -- the same
+    paired-versus-unpaired argument used everywhere else in this project.
+    Independent seeds would make a level-versus-points disagreement harder to
+    see, and that disagreement is a declared check in the generation-2
+    pre-registration.
+    """
     recs = [_rec(0, 0, "attacker", 95, +1, 1), _rec(0, 1, "banker", 85, -1, 0),
             _rec(1, 0, "attacker", 60, -1, 0), _rec(1, 1, "banker", 90, +1, 1)]
     s = _summary(recs)
-    assert (s["arm_signed_level_utility"]["per_round"]["seed"]
-            != s["arm_signed_attacker_points"]["per_round"]["seed"])
+    lev, pts = s["arm_signed_level_utility"], s["arm_signed_attacker_points"]
+    assert lev["per_round"]["seed"] == pts["per_round"]["seed"]
+    assert lev["per_cluster_sum"]["seed"] == pts["per_cluster_sum"]["seed"]

@@ -876,6 +876,28 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
                 "bury_fallback_reason": record.get("reason"),
                 "bury_error_class": record.get("error_class"),
             }
+    prior_fields = {}
+    diagnostic = getattr(snapshot.bot_copy, "_prior_diagnostics", None)
+    if isinstance(diagnostic, dict):
+        # The admission prior already builds this per decision; until now nothing
+        # carried it off the machine, so how much of the wide tail the threshold
+        # actually prunes in real play was unmeasurable from the room logs (#419).
+        # Logging only: read after the decision, never consulted by it.
+        prior_fields = {
+            "prior_triggered": bool(diagnostic.get("triggered")),
+            "prior_legal_count": diagnostic.get("legal_count"),
+            "prior_threshold": (diagnostic.get("threshold")
+                                if not diagnostic.get("triggered")
+                                else (diagnostic.get("recipe") or {}).get("threshold")),
+        }
+        if diagnostic.get("triggered"):
+            prior_fields.update(
+                prior_union_size=diagnostic.get("union_size"),
+                prior_anchors_added=diagnostic.get("anchors_added"),
+                prior_pool_actions=diagnostic.get("pool_action_count"),
+                prior_pool_evaluations=diagnostic.get("pool_evaluations"),
+                prior_seconds=round(float(diagnostic.get("prior_seconds") or 0.0), 6),
+            )
     room.log_event(
         "bot_timing", seat=snapshot.seat, phase=snapshot.phase,
         policy=getattr(
@@ -889,6 +911,7 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
         snapshot_isolated=True,
         acted=acted,
         stale_discarded=not acted,
+        **prior_fields,
         **bury_fields,
     )
 

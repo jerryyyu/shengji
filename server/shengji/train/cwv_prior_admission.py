@@ -248,6 +248,21 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         }
         return means
 
+    def decide_play(self, rnd, seat):
+        """Join `MCBot.decide_play`'s literal decision boundary.
+
+        That boundary exists because "every early return below must expose NO
+        evidence from the preceding move", and its comment records that putting
+        it after candidate generation once left tractor-lock and one-candidate
+        plays with stale logs.  `_prior_diagnostics` is exactly that kind of
+        state and is cleared in `_candidates`, which the TRACTOR_LOCK early
+        return never reaches -- so a heuristic tractor lead would otherwise
+        carry the PREVIOUS decision's admission figures, under phase="play"
+        where no phase filter can catch it.
+        """
+        self._prior_diagnostics = None
+        return super().decide_play(rnd, seat)
+
     def _candidates(self, rnd, seat):
         self._prior_diagnostics = None
         selected = super()._candidates(rnd, seat)

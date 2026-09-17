@@ -18,7 +18,10 @@ import types
 import pytest
 
 from shengji.api.server import _log_bot_timing
-from shengji.train.cwv_prior_admission import CWVPriorAdmissionBot
+from shengji.ai.mcbot import MCBot
+from shengji.train.cwv_prior_admission import (
+    CWVPriorAdmissionBot, CWVPriorBuryBot)
+from shengji.train.cwv_shortlist import CWVShortlistBot
 from shengji.train.cwv_shortlist import CWVShortlistConfig
 from tests.test_cwv_prior_admission import prior_ckpt, recipe  # noqa: F401
 from tests.test_cwv_shortlist import Values
@@ -89,6 +92,66 @@ def test_the_room_log_carries_the_prior_fields(triggered):
     else:
         # nothing was pruned, so no pool figures may be implied
         assert not any(k.startswith("prior_pool") or k == "prior_union_size" for k in f)
+
+
+class _Stop(Exception):
+    """Cut decide_play short at the TRACTOR_LOCK branch."""
+
+
+def test_the_shortlist_family_does_not_take_the_tractor_lock_early_return():
+    """Pins WHY the play path is not already stale, since it is not obvious.
+
+    `MCBot.decide_play` can return a heuristic tractor lead before `_candidates`
+    runs.  Every bot that owns `_prior_diagnostics` inherits from
+    `CWVShortlistBot`, which sets `TRACTOR_LOCK = False` because "the full-legal
+    request includes leads production would tractor-lock" -- so that branch is
+    unreachable here.  The guard below is defence in depth, not a live bug fix;
+    this test is what would fail first if someone re-enabled the lock.
+    """
+    assert MCBot.TRACTOR_LOCK is True                      # the base really does lock
+    assert CWVShortlistBot.TRACTOR_LOCK is False
+    assert CWVPriorAdmissionBot.TRACTOR_LOCK is False
+    assert CWVPriorBuryBot.TRACTOR_LOCK is False           # the served composition
+
+
+def test_decide_play_clears_on_entry_so_an_early_return_cannot_leak(prior_ckpt):
+    """With the lock forced on, the early return must see a cleared attribute.
+
+    `_candidates` is not the decision boundary; `decide_play` is, and
+    `MCBot.decide_play` keeps exactly this boundary for `last_decision_record`
+    and friends because putting it after candidate generation once "left
+    tractor-lock and one-candidate plays with stale logs".
+    """
+    seen = []
+
+    class ForcedLock(CWVPriorAdmissionBot):
+        TRACTOR_LOCK = True
+
+        def canonical_lead(self, rnd, seat):               # only the early return calls this
+            seen.append(self._prior_diagnostics)
+            raise _Stop()
+
+    rnd = play_state()
+    assert rnd.trick is not None and not rnd.trick.plays, "play_state must be a lead"
+    bot = ForcedLock(Values(), seed=13, prior=recipe(prior_ckpt, threshold=1, top=8),
+                     config=CWVShortlistConfig(worlds=2))
+    bot._candidates(rnd, rnd.turn)
+    assert bot._prior_diagnostics["triggered"] is True     # a real measurement, on file
+
+    with pytest.raises(_Stop):
+        bot.decide_play(rnd, rnd.turn)
+    assert seen == [None], (
+        "the early return saw the previous decision's admission figures")
+
+
+def test_clearing_on_entry_does_not_stop_the_prior_from_recording(prior_ckpt):
+    """The boundary must scope, not disable: a full decide_play still measures."""
+    rnd = play_state()
+    bot = CWVPriorAdmissionBot(Values(), seed=13, prior=recipe(prior_ckpt, threshold=1, top=8),
+                               config=CWVShortlistConfig(worlds=2))
+    bot.decide_play(rnd, rnd.turn)
+    d = bot._prior_diagnostics
+    assert d is not None and d["triggered"] is True and d["pool_action_count"] >= 1
 
 
 def test_a_bury_turn_never_reports_the_previous_play_turn_s_admission():

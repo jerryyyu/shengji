@@ -881,8 +881,10 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
     # bot between turns and `decide_bury` never touches `_prior_diagnostics`, so on a
     # bury turn the attribute still holds the PREVIOUS play turn's admission figures.
     # Logging those under phase="bury" would write a number that was never measured
-    # for that decision.  A play decision always goes through `_candidates`, which
-    # clears the attribute first, so the play path cannot go stale the same way.
+    # for that decision.  The play side is kept honest at the other end, by
+    # `CWVPriorAdmissionBot.decide_play` clearing the attribute on entry -- the
+    # TRACTOR_LOCK early return never reaches `_candidates`, so clearing there alone
+    # is not enough.
     diagnostic = (getattr(snapshot.bot_copy, "_prior_diagnostics", None)
                   if snapshot.phase == "play" else None)
     if isinstance(diagnostic, dict):

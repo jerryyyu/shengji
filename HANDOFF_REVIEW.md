@@ -19177,3 +19177,28 @@ Random effects, tau 0.0000, Q 3.06/4df, I² 0%, 2,600 clusters, **MDE80 0.0316 �
 - Expect extraction ≈95 min (v4 took 73 min on ten corpora) and training ≈8 h (gen-1 took 6.6 h on 27% fewer rows), so a gen-2 seal late in the day. **It starts by itself; killing pid 84921 stands it down without touching anything else.**
 
 **The duel remains sealed and unread.** Its 2,600 deals are the same ones the paired screen just used, so it is the sharper instrument on identical data. Nothing is read until all 20 shards are rc=0.
+
+## 2026-09-17 10:58 UTC — **RELEASE 28's OWED FRESH-SEED READ IS A NULL WITH A NEGATIVE POINT: −0.0159 [−0.0383, +0.0065]**. The +0.0239 that excluded zero DID NOT CONFIRM on fresh deals. No strength claim survives; no rollback implied
+
+**The read this row has owed since the deploy.** v24 finished both phases at 05:57 ET. Phase A played JS-M1 as one package (value net + its own head as the prior, threshold 1,000 / top 256); Phase B played M1 `3cb9cd62` + policy prior v2 `b6d928c5` at the **same** threshold. Same five **fresh** windows 16260910..16660910, same lane, same host, same screen baseline — so the contrast isolates the MODEL at matched admission rather than confounding model with threshold. Arm identities verified from the summaries before reading anything.
+
+| window | JS-M1 − (M1 + prior v2) | SE |
+|---|---|---|
+| 16260910 | −0.0308 | 0.0247 |
+| 16360910 | −0.0394 | 0.0254 |
+| 16460910 | +0.0038 | 0.0247 |
+| 16560910 | +0.0154 | 0.0253 |
+| 16660910 | −0.0317 | 0.0281 |
+| **pooled** | **−0.0159 [−0.0383, +0.0065]** | RE SE 0.0114 |
+
+tau 0.0000, Q 3.70/4df, I² 0%, 2,600 clusters, **MDE80 0.0320 — crosses zero, point NEGATIVE**.
+
+**Why this is more than another null.** The row carried **+0.0239 [+0.0005, +0.0472]**, which EXCLUDES zero. That was a shared-control **nominal** read on the v22 seeds. On fresh held-out deals the point moves **+0.024 → −0.016**. It did not confirm. This is exactly the failure the reading rule (#416) exists for: a shared-control interval is nominal, and independent confirmation means fresh deals. **The correction is written into the row in place**, rather than leaving a zero-excluding interval to be quoted later as a result.
+- **Settles the framing Jerry gave on 09-16:** release 28 carries **NO strength claim**. It shipped for maintainability — one checkpoint and one file replacing two — and the evidence supports non-inferiority and nothing more.
+- **No rollback implied:** the interval covers zero comfortably and the maintainability argument is untouched.
+- **COST is the good news, and unlike the gen-1 comparison this one is clean** — same host, same lane, same deals: **1.648× the shared baseline against 1.672×, so 0.986×**. The one-package net costs what the two-file pair costs. Stated plainly rather than as indicative, precisely because the confounds that forced hedging on gen-1 are absent here.
+- Readout archived at `~/shengji-archive/2026-09-13/readouts/v24-jsm1-vs-r27-fresh.txt` with its SHA256. Page row in **#484** (5/5 green); muse asked to check three things hard, first among them whether I have the two arms the right way round, **since swapping them inverts the conclusion**.
+
+**Fleet at 06:5x ET.** Duel 16 of 20 shards rc=0, final four at ~60 of 130 each when last measured, ETA ≈07:25 ET — still sealed and unread. Generation 2 armed and waiting on it (pid 84921, reparented to init). Perf started **runJS5** at 05:58 ET (seed 22324910, 59 GB free) the moment v24 released the lane. Cloud running runJS4. Production healthy.
+
+**Two nulls in one night, and they point the same way.** Generation-1 did not beat production (+0.0136, MDE80 0.0316) and production's own recipe did not beat the release it replaced (−0.0159, MDE80 0.0320). The honest summary is that the last two model changes bought maintainability and cost parity, not strength — and that the instruments resolve ≈0.032, which is wide enough that a real gain of the size this project usually chases would be invisible. That is the case for generation 2 at 20.5% share rather than another 8% increment.

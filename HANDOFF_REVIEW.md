@@ -19220,3 +19220,29 @@ tau 0.0000, Q 3.70/4df, I² 0%, 2,600 clusters, **MDE80 0.0320 — crosses zero,
 **A number of mine that was wrong, caught by muse on #484.** I read `arm_over_baseline_decision_wall` off the `16260910` summary for both arms and published "1.648× against 1.672×, so 0.986×" as if it were the contrast — one window of five. Pooled by total decision wall it is **1.6561× against 1.6956× = 0.977×**; every window agrees in direction and the pooled figure is slightly MORE favourable. Correction in **#486**, which also records what the earlier revision said rather than swapping the number silently, since the wrong figure was published and merged. muse verified the #484 arm identity **three separate ways** before passing it — the right instinct, because a swap inverts the sign and I would have told Jerry his production release was worse than it is.
 
 **Generation 2 is running unattended.** The duel released the Mini at 07:04 and the armed pipeline took over at 07:07 with no hand launch: sidecars for runJS2 and runJS3 built (224,001 files), then `policy_rows_v6` extraction over 13 corpora, 2.0 GB written at 71 min against ≈95 expected. Training follows automatically — ≈8 h, so a seal late today. 20.5% new-teacher corpus share, the first rung the #421 gating rule permits.
+
+## 2026-09-17 13:18 UTC — Claude tick 09:1x ET: PART C — **the tie rate is a property of the OUTCOME SCALE, not of one experiment: 54–62% across two harnesses, two deal sets and two kinds of change.** Filed as #487. ~60% of every screen's sample is paid for and discarded. Also: #486 merged; my own OWED list was stale and the atlas was already current
+
+**PART A.** Bus empty. Main **97a91b32** (#486 merged at muse's exact head 2cf438bf — that closes all seven of my overnight PRs: #480–#486). gen-2 training on the Mini, 45 min in, past cache building; its split reports fit 179,200 + selection 22,400 deals, which with the test split is **224,000 = 176,000 + the 48,000 new clusters**, so the corpus assembled exactly as intended. Cloud runJS4 and Perf runJS5 both running. Mini 70 GB free.
+- **Checked for a mistake I might have made and had not:** Codex's continuation unit shows `ActiveState=active` on the cloud box, which looked like I had oversubscribed Codex's host with runJS4. `SubState=exited` — it is a finished oneshot. Load 16.14 on 16 cores is entirely runJS4's, and the lane lock is held by its pid. No contention.
+
+**Two of my own errors caught this tick, both by checking instead of trusting.**
+1. **My OWED list was stale.** The STATE I rewrote at 08:2x ET carried "atlas rows for the Codex queue" forward from the old prompt without verifying. **Atlas row 33 already exists** and is complete and accurate — Codex's four-arm queue sealed 09-16 09:15 ET and was recorded the same day. Carrying an owed item forward is not the same as confirming it is owed.
+2. **I nearly "corrected" the atlas with a wrong number.** I derived G1-k1's per-round interval as per-cluster ÷ 2 = [0.000, +1.154] and the atlas said [−0.08, +1.23]. The atlas is right: the summary carries **separate bootstraps** for `per_cluster_sum` (seed 20260905) and `per_round` (seed 20260904). **Halving a per-cluster interval does NOT give the per-round interval.** Verified before touching anything.
+
+**PART C — #487, and this is the most consequential thing I have found in two days.** Every in-play screen scores signed level change per round. On a mirrored pair, most deals produce the same level outcome in both mirrors, so the paired difference is exactly zero: full search cost, no contribution.
+
+| instrument | deals | ties | fraction |
+|---|---|---|---|
+| continuation M1-k1 (DEV, #436) | 13 | 7 | 0.538 |
+| continuation M1-terminal | 13 | 7 | 0.538 |
+| continuation G1-k1 | 13 | 8 | 0.615 |
+| continuation G1-terminal | 13 | 8 | 0.615 |
+| **those four pooled** | **52** | **30** | **0.577** |
+| gen-1 vs production, direct duel | **2,600** | **1,600** | **0.615** |
+
+Two harnesses, two deal sets (13 dev pairs vs 2,600 fresh), two kinds of change (search policy vs model), and the fraction lands in **54–62%** every time. **This is the outcome scale, not the experiment.**
+- **It is the structural reason everything reads null.** ~40% of each sample carries signal. If a scale made every deal informative and variance per informative deal held, SE scales by √0.40 ≈ 0.63: MDE80 **0.0316 → ≈0.0200**, **0.0337 → ≈0.0213**. We currently need **2.5× the deals** for a given precision — tonight's 2,600-deal screen took ≈3 h where ≈70 min would do.
+- **Cheapest available precision win, and bigger than the modelling side has delivered recently:** gen-1 null, release 28's fresh read null, the eight-arm PUCT ladder negative. We keep buying compute to chase effects the ruler cannot resolve.
+- Proposed on #487, in order: (1) score on **attacker points**, already recorded on every cluster, and check on SEALED data that a points-scale contrast **agrees in sign** with the level-scale one — free, since every sealed screen carries both; (2) surface the tie fraction in capped screen summaries (`zero_clusters` exists in the DEV summaries and is not reported in ours, so nobody sees the waste); (3) deal selection considered and argued AGAINST — it changes the estimand, whereas (1) changes only the ruler.
+- **Explicitly not done:** no measurement yet that a points contrast has lower variance per deal, which is the load-bearing assumption. That check is free on sealed data and is the obvious next step. Nor whether the tie fraction varies by trump rank or banker role.

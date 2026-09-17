@@ -19310,3 +19310,28 @@ Two harnesses, two deal sets (13 dev pairs vs 2,600 fresh), two kinds of change 
 **A shortcut declined, recorded so the reasoning survives.** The v27 screen takes ≈9.5 h on the Mini and roughly half that on a server once runJS4/runJS5 finish tonight. The pre-registration **names the Mini**, precisely so the host cannot be chosen after the fact. Moving it for a ≈4.5 h saving, hours after asking muse to guard that document against drift, would cost more than it gains. It stays on the Mini.
 
 **#490 filed — CI's `import-walk` job runs within minutes of its own ceiling.** Measured over twelve runs: successes span 12.8–23.8 min against a 25-minute limit, **the slowest success had 1.2 minutes of headroom**, and one run crossed it. A timeout reports as *cancelled*, not failed, so checks go not-green with no stated reason. It cost attention twice today on a **markdown-only** PR, and muse had to write "not attributable" twice in an afternoon. The job comment records the ceiling was already raised once for this; the measurement says it is back. **Blocked exactly as #478 is** — `.github/workflows/` needs `workflow` scope and neither muse nor I have it (mine: `gist, read:org, repo`). **That is now two blocked one-liners waiting on Jerry**, and #478's is the serious one because it silently converts the parity lane to compiled.
+
+## 2026-09-17 19:18 UTC — **GENERATION 2 SEALED (61625eec) at 14:36 ET and its screen started 34 SECONDS LATER with no hand launch.** Its offline reads are the FIRST in this loop to move in one direction — and the value head got worse while the policy head got better
+
+**The handoff worked exactly as armed.** gen-2 training finished rc=0 at 14:36 ET, early-stopped at best epoch **8 of 11 run**. The v27 waiter verified the seal line's hash against the checkpoint on disk, confirmed no trainer survived, and started `GEN2-joint1k-out-16760910` **34 seconds** after the seal. First window already sealed rc=0 in 35 min; window 2 running. No idle time, no hand launch, and the design was fixed on main (#488) before any of it existed.
+
+**Offline reads on the FIXED external holdouts** — identical rows and identical candidate-set digests for all three nets, which is why these are comparable where `val_ce` is not (each generation's val split differs because the new corpus enters every split).
+
+| holdout | records | JS-M1 | gen-1 | gen-2 | gen-2 − JS-M1 |
+|---|---|---|---|---|---|
+| roomlog | 9,699 | 0.4656 | 0.4755 | **0.4796** | **+0.0140** |
+| luna | 3,930 | 0.4567 | 0.4552 | **0.4664** | +0.0097 |
+| highn | 33,695 | 0.3746 | 0.3788 | **0.3793** | +0.0047 |
+| pt1 | 416 | 0.6370 | 0.6010 | 0.6322 | −0.0048 |
+
+Ranking regret improves too: roomlog 0.0734 → 0.0738 → **0.0705**; luna 0.0858 → 0.0779 → **0.0776**.
+
+- **This is the first consistent offline signal the loop has produced.** Generation 1's holdout reads were "a wash with no consistent direction"; generation 2 improves on three of four and is monotone across generations on the two largest.
+- **But it is precisely the signal that already failed to carry.** gen-1's one real offline gain was head recall (+0.0149, clearing zero) and it produced a null in play. Rule 3 on #421 exists because of that. Leading indicator, not decision.
+- **No intervals attached, and I am not quoting significance I have not measured.** These are receipt point estimates; the unpaired binomial SE on roomlog is 0.0051, but the paired interval these records permit was not computed.
+- **THE VALUE HEAD GOT WORSE, which is the most interesting line here.** Points MAE rises: roomlog 14.590 → 14.827, luna 16.884 → **17.767**. Generation 2 appears to trade value accuracy for ranking accuracy — plausible at policy weight 0.2 with a third more policy rows. It matters because **the search uses the value head to CHOOSE and the policy head only to ADMIT**: a net that ranks better and prices worse is not obviously a better player. Another reason the screen decides.
+- Not compute-matched, as pre-registered: best epoch 8/11 against gen-1's 14/17 and JS-M1's 17/20.
+
+**#488 MERGED earlier this tick** (main fcf83e4a) at muse's exact head, so the design was on main before the weights existed. #489 (both scales in the harness) is green but deliberately unmerged: muse's PASS predates my bootstrap-seed correction and does not carry.
+
+**Fleet.** Mini running the v27 screen (15 windows, ≈9.5 h → ≈00:00 ET). Cloud runJS4 ≈13,900/16,000; Perf runJS5 ≈12,000/16,000, 52 GB free. Production healthy.

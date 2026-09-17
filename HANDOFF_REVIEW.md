@@ -19021,3 +19021,33 @@ The server logs three quantities per bot turn and they must not be conflated: `c
 - Posted on #435 with a proposal to **close** it: all gates satisfied, live-verified twice (takeover room VEZV, then real play). Follow-ons already have homes — pool cap and soft budget in #396/#400, the prior in #419, the vCPU question in #475. Left open for Jerry's word; I do not close his issues.
 
 **Not found, recorded so nobody re-derives it:** room logs carry no candidate counts and no prior-admission statistics, so live prior engagement (how much of the wide tail the threshold-1,000 prior actually prunes in production, and whether top-256 ever clips the played action) **cannot** be measured from `/data/logs` as it stands. Answering #419's productionization question on live traffic would need a new counter in the serving path.
+
+## 2026-09-17 04:18 UTC — GENERATION-1 IN PLAY, early read: +0.0676 [+0.0461, +0.0890] vs the screen baseline, and UNPAIRED it is −0.0088 [−0.0387, +0.0211] against JS-M1 — no resolved gain, matching every offline read. Two more data-gen runs armed behind the busy hosts
+
+**The generation-1 screen sealed.** Mini lane v25, all five windows rc=0, lane done 23:58 ET. Arm = gen-1 (06dd925b) as ONE package (value net + its own policy head as the prior at the production settings, threshold 1,000 / top 256, hybrid bury), capped 300 s, fresh seeds 16260910..16660910, 520 clusters per window.
+
+Each window already pairs the arm against `mc-s0-report-lcb` on mirrored deals, so the arm's own signed level utility is readable now, pooled DerSimonian-Laird exactly as `vol_re.py` does (between-window tau does not cancel):
+
+| window | n | delta |
+|---|---|---|
+| 16260910 | 520 | +0.0837 ± 0.0241 |
+| 16360910 | 520 | +0.0683 ± 0.0235 |
+| 16460910 | 520 | +0.0971 ± 0.0249 |
+| 16560910 | 520 | +0.0577 ± 0.0225 |
+| 16660910 | 520 | +0.0308 ± 0.0254 |
+| **pooled** | **2,600** | **+0.0676 [+0.0461, +0.0890]**, tau 0.0045, Q 4.14 |
+
+For reference, the same estimator on the already-sealed arms against the same baseline, on **different** seeds 13260910..13660910: JS-M1 **+0.0764 [+0.0555, +0.0973]** (tau 0, Q 1.78) and JS-G1 **+0.0711 [+0.0499, +0.0922]** (tau 0, Q 3.33).
+
+- **gen-1 minus JS-M1 = −0.0088 [−0.0387, +0.0211] — UNPAIRED, and read it as weak.** Three things break the comparison: different seed windows, so neither window's sampling error cancels; different prior thresholds (gen-1 at 1,000, that JS-M1 run at **10,000**), so it is not the same recipe; and different hosts. This is a sanity check, not the result.
+- **The result still needs the paired control**, v24 Phase A's `JS-M1-joint1k-out` on these exact seeds at threshold 1,000. That is armed on Perf behind runJS2 and resolves the contrast to MDE80 ≈ 0.033.
+- Direction is consistent with everything already on file: fixed holdouts a wash, head-alone play paired −0.0003 [−0.0350, +0.0353], head recall up +0.0149. **Nothing so far says one turn of the loop made a better player.** The honest prior for the paired read is a null.
+- Wall: gen-1 ran 1.54× the baseline's decision wall; that JS-M1 run 2.36× and JS-G1 2.23×, but at threshold 10,000 and 1,000 on a different host, so the three are not a wall comparison.
+
+**Data generation queued so the hosts do not idle (Jerry 00:1x ET: "can we queue up more data gen jobs so we dont waste compute?").**
+- `runJS4` on **Cloud**, seed 22308910, gate "runJS3 rc=0". Armed, pid 2213607, reparented to init, 329 GB free.
+- `runJS5` on **Perf**, seed 22324910, gate "LANE DONE" in the v24 status. Armed, pid 4110932, 62 GB free.
+- Both dry-ran first and both derived **the identical policy name** runJS2/runJS3 use, `mc-shortlist-a5248cc5-w32-r4606e788-prior-a5248cc5-bury-hybrid-a72177144d8d`, so the pooled corpus stays homogeneous. Seed windows are adjacent and disjoint: runJS1 [22260910,22276910), runJS2 [22276910,22292910), runJS3 [22292910,22308910), runJS4 [22308910,22324910), runJS5 [22324910,22340910).
+- **Teacher deliberately NOT switched to gen-1.** Gen-1 shows no resolved gain, so switching teachers now would make the corpus heterogeneous for no measured benefit. Both scripts carry a 25 GB free-disk refusal checked twice, at arm and at start — Perf is at 90% used with 62 GB free, which is the tightest host.
+- **The Mini is deliberately left free.** Its next job is the runJS2/runJS3 extraction and the generation-2 trainer, which only it can run; filling it with a ~30 h data-gen run at 8 workers would block the pipeline it feeds.
+- Checked and found harmless: the cloud's v25 screen waiter was never launched (the generation-1 screen moved to the Mini at Jerry's ask), so no duplicate screen was sitting armed on the cloud.

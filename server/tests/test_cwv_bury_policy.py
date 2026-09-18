@@ -6,6 +6,7 @@ import copy
 import random
 
 import numpy as np
+import pytest
 
 from shengji.engine.game import Game
 from shengji.train.cwv_bury_policy import (
@@ -93,7 +94,8 @@ def test_candidate_source_receives_configured_cap(monkeypatch):
     assert seen["cap"] == 64
 
 
-def test_scaled_config_reaches_world_and_rollout_consumers(monkeypatch):
+@pytest.mark.parametrize("separate_bury", [False, True])
+def test_scaled_config_reaches_world_and_rollout_consumers(monkeypatch, separate_bury):
     rnd = _bury_state(14)
     incumbent = list(SmartBot().decide_bury(rnd, rnd.banker))
     candidates = [incumbent] + [list(rnd.hands[rnd.banker][i:i + 8])
@@ -111,8 +113,10 @@ def test_scaled_config_reaches_world_and_rollout_consumers(monkeypatch):
 
     monkeypatch.setattr("shengji.train.cwv_bury_policy.sample_worlds", worlds)
     seen = {}
+    evaluated_by = []
 
     def score(_rnd, local, sampled_worlds, _evaluator, **_kwargs):
+        evaluated_by.append(_evaluator)
         seen["model"] = len(sampled_worlds)
         return np.repeat(np.arange(len(local), dtype=float)[None, :],
                          len(sampled_worlds), axis=0)
@@ -131,9 +135,14 @@ def test_scaled_config_reaches_world_and_rollout_consumers(monkeypatch):
     baseline_samples = sampled[:2]
     config = CWVBuryConfig(max_candidates=64, model_worlds=64,
                            selection_worlds=128, alternatives=8)
-    bot = make_cwv_bury_bot(_Evaluator(), seed=19, arm="hybrid",
-                            bury_config=config)
+    play_evaluator = _Evaluator()
+    fixed_bury = _Evaluator()
+    bot = CWVBuryBot(play_evaluator, seed=19, arm="hybrid",
+                    bury_config=config,
+                    bury_evaluator=fixed_bury if separate_bury else None)
     bot.decide_bury(rnd, rnd.banker)
+    assert evaluated_by[-1] is (fixed_bury if separate_bury else play_evaluator)
+    assert bot.evaluator is play_evaluator
     scaled_samples = sampled[2:]
     record = bot.last_bury_record
     assert seen == {"model": 64, "selection": 128}

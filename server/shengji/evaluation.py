@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 
 from .ai.env import play_round
 from .ai.registry import make_bot
+from .engine import fast as _fast
 from .engine.game import Game
 
 
@@ -254,7 +255,7 @@ def evaluate(arm, opponent, *, clusters=250, seed0=None, control=None, bar,
         "library_sha256_16": digest(__file__),
         "ckpt_digests": {c: digest(c) for c in ckpts},
         "ballots": arm_ballots(plan_names),
-        "fast_engine": bool(os.environ.get("SHENGJI_FAST")),
+        "fast_engine": _fast.active(),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),
     }

@@ -19417,3 +19417,21 @@ And gen-2 ran **11 epochs against 17 and 20**, because patience on `val_ce` fire
 - **This is a hold, not a refusal**, and it is one command to start: `nohup bash /root/claude_datagen_js7.sh &`. The reasoning is written into the script's own header so whoever runs it next sees why it was staged rather than launched.
 
 **PART A.** v27 phase B (control A, gen-1 replayed) on window 3 of 5; two sealed rc=0. Readout waiter alive (pid 99770, ppid 1) and will not read until all fifteen windows report complete. Bus empty. Main 8c074efc. #489 still green and awaiting muse's re-review at the corrected head — its earlier PASS predates my bootstrap-seed fix and does not carry. Production healthy.
+
+## 2026-09-18 00:15 UTC — Claude tick 20:1x ET: PART C — both blocked workflow one-liners are now **ready-to-apply patches**, each verified against the branch it belongs to, with the one that is safe on main separated from the one that is not
+
+**PART A.** v27 phase B on window 4 of 5 (`GEN1-joint1k-new-17060910`); three control-A windows sealed rc=0. Readout waiter alive (pid 99770, ppid 1), still refusing to read until all fifteen report complete. Bus empty. Main 8f4e6b5d. Cloud runJS6 ≈3,800/16,000 clusters. Perf idle by choice with runJS7 staged. Production healthy.
+
+**PART C — turn two "needs Jerry" items from a diagnosis into a paste.** Neither muse nor I can push `.github/workflows/` (my token: `gist, read:org, repo`). Both patches are now on their issues, and the important part is that **they are not interchangeable**:
+
+**#490, the `import-walk` ceiling — SAFE on main alone.** `timeout-minutes: 25 → 40`. It changes a ceiling and nothing depends on it. I also said in the comment that this is the *cheap* fix rather than the right one: the job installs torch, builds the engine, walks every module and runs the mode script, and the first two are duplicated in the `server` job. Splitting it would make it faster instead of merely more patient.
+
+**#478, the pure-lane line — NOT safe on main alone, and I verified the claim rather than asserting it again:**
+- The PR's copy of `pr-checks.yml` is **byte-identical to main's** — it does not touch the workflow and cannot.
+- The PR **does** change `conftest.py:29` from `if os.environ.get("SHENGJI_FAST"):` to `if "SHENGJI_FAST" in os.environ and os.environ["SHENGJI_FAST"] != "0":`.
+- That second change is the only thing that makes `SHENGJI_FAST: "0"` mean *pure*. On main the bare truth test sees the **string** `"0"`, which is truthy. Measured: main → `combos.decompose is fast.decompose` **False**, the PR's branch → **True**.
+- So the direction of the danger is precise: **the workflow line is safe on that branch and unsafe on main.** Applied there, the HOLD lifts and #478 merges as a unit.
+
+Both comments say explicitly that the two must NOT be combined into one commit, because one can go now and the other cannot. Getting that wrong is how the parity lane silently becomes a second compiled lane.
+
+**Still not doable, for the same reason as every tick since the screen started:** the gen-2 head-recall-vs-prior-v3 read needs Mini CPU, and the screen measures decision wall time per arm — a concurrent job during one phase inflates that arm's cost. It waits for the lane.

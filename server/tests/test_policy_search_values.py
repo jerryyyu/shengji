@@ -146,3 +146,60 @@ def test_the_soft_loss_backpropagates():
     vals = torch.tensor([[9.0, 4.0], [1.0, 7.0]])
     listwise_loss_soft(logits, ball, mask, tgt, vals, 1.0).backward()
     assert logits.grad is not None and torch.isfinite(logits.grad).all()
+
+
+# ------------------------------------------------- the trainer flag and its refusal
+
+def test_policy_losses_dispatches_to_the_soft_loss_only_when_asked():
+    from shengji.train.policy_rows import policy_losses
+
+    class _M:
+        def features_flat(self, x):
+            return x
+        def policy_logits(self, f):
+            out = torch.zeros(f.shape[0], 54)
+            out[:, 0] = 2.0
+            return out.requires_grad_(True)
+
+    t = {"x": torch.zeros(1, 4), "y": torch.zeros(1, 54),
+         "ball": torch.tensor([[[0, -1], [1, -1]]], dtype=torch.int64),
+         "mask": torch.ones(1, 2, dtype=torch.bool), "tgt": torch.tensor([1]),
+         "vals": torch.tensor([[8.0, 10.0]])}
+    hard = policy_losses(_M(), t, listwise_weight=1.0)[1]
+    soft = policy_losses(_M(), t, listwise_weight=1.0, soft_targets=True)[1]
+    assert not torch.allclose(hard, soft), "the flag must change the listwise term"
+
+
+def test_the_soft_flag_refuses_an_extract_with_no_values_rather_than_training_hard():
+    """A run asked for the soft arm; silently training the hard one would produce a result
+    labelled as something it is not. The refusal lives in the trainer loop, so this pins the
+    message that makes it diagnosable."""
+    import inspect
+
+    from shengji.train import train_cwv
+    src = inspect.getsource(train_cwv)
+    assert "--policy-soft-targets: this extract carries no per-candidate search" in src
+    assert "re-extract with the current" in src
+    # and it is guarded on the tensor actually being absent, not on a config flag
+    assert 'if policy_soft_targets and "vals" not in _p_t:' in src
+
+
+def test_the_flag_needs_a_policy_head_and_a_positive_temperature(tmp_path):
+    """Exercise the validation for real rather than grepping the source for its message."""
+    import pytest as _pytest
+
+    from shengji.train.train_cwv import TrainError, build_config
+
+    base = dict(data=["/nonexistent"], policy_head=True, policy_rows="x", policy_eval="y")
+
+    # a flag is a flag
+    with _pytest.raises(TrainError, match="--policy-soft-targets is a flag"):
+        build_config(**base, policy_soft_targets="yes")
+    # temperature must be finite and positive: 0 would divide by zero, negative inverts the
+    # preference, and NaN would poison every target silently
+    for bad in (0.0, -1.0, float("nan"), float("inf")):
+        with _pytest.raises(TrainError, match="--policy-soft-temperature"):
+            build_config(**base, policy_soft_targets=True, policy_soft_temperature=bad)
+    # and it is refused without a policy head at all
+    with _pytest.raises(TrainError, match="need --policy-head"):
+        build_config(data=["/nonexistent"], policy_head=False, policy_soft_targets=True)

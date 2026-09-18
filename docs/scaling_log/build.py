@@ -296,9 +296,11 @@ def policy_rows(g=None):
         exec(compile(src, MODELS, "exec"), g)
     heads = [dict(zip(g["POLICY_FIELDS"], row)) for row in g["POLICY_HEADS"]]
     vs_smart = g.get("POLICY_VS_SMART", {})
-    for ck in vs_smart:
-        if ck not in {h["ck"] for h in heads}:
-            raise SystemExit(f"POLICY_VS_SMART names {ck}, which is not a policy head")
+    # A measured head need NOT have a POLICY_HEADS row: that table stops at JS-G1 and the
+    # generation nets (gen-1/2/3) are not in it, though they all carry policy heads. The
+    # chart draws from the MODEL rows, and load() already refuses a checkpoint that is not
+    # a row at all, so a table row is not required to record the measurement.
+    _unlisted = sorted(ck for ck in vs_smart if ck not in {h["ck"] for h in heads})
     for h in heads:
         if len(h) != len(g["POLICY_FIELDS"]):
             raise SystemExit(f"policy head {h.get('name')}: wrong field count")

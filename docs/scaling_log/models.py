@@ -246,11 +246,19 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: THE FIGURES BELOW ARE THE 8,000-DEAL READ ON FRESH SEEDS (seed0 20000). A 2,000-deal
 #: discovery read on seed0 7000 said the opposite and DID NOT SURVIVE: it had JS-G1 at +0.0213
 #: and JS-M1 at -0.0018, i.e. the two models swapped places. Quote only the 8,000-deal column.
-#: The discovery read also suggested top-64 recall and play ANTI-correlate; on the confirmed
-#: data they do not -- JS-M1 has both the better top-64 and the better play.
+#: NOT every discovery read reversed: gen-2's held and TIGHTENED (2k -0.0730 -> 8k -0.0684),
+#: so the generation loop measurably DEGRADED the policy head as a player -- a harm the
+#: in-play screens, which were null, could not see.
+#:
+#: On the three confirmed points, top-64 recall does NOT predict play and is not a proxy for
+#: it: gen-2 sits BETWEEN the other two on top-64 (0.956 on 1k-10k against 0.963 and 0.952)
+#: and is far the worst player. They are not strictly anti-correlated either -- JS-M1 leads
+#: on both -- so the honest statement is that the shortlist metric carries no information
+#: about standalone play.
 POLICY_VS_SMART = {
     "a5248cc5": "+0.0159 [+0.0023, +0.0293]",   # JS-M1: BEATS SmartBot, interval excludes zero
     "9ee9fedb": "+0.0014 [-0.0117, +0.0148]",   # JS-G1: a wash, not the edge the 2k read showed
+    "61625eec": "-0.0684 [-0.0818, -0.0546]",   # gen-2: resolvably WORSE than SmartBot
 }
 
 POLICY_HEADS = [

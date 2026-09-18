@@ -595,18 +595,23 @@ s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">head 
 for _d, (_m, _lo, _hi) in _PTS:
     _same = [q for q, _ in _PTS if q["tr"] == _d["tr"]]
     _off = (_same.index(_d) - (len(_same) - 1) / 2) * 26
-    _cls = "ci2" if _lo > 0 else "ci1"
+    # THREE states, not two: clears zero (a beat), crosses zero (a wash), and entirely BELOW
+    # zero (resolvably worse). Collapsing the last two would draw gen-2, which is measurably
+    # worse than SmartBot, the same as JS-G1, which is a wash.
+    _cls = "ci2" if _lo > 0 else ("ci1" if _hi < 0 else "ci3")
     s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X7(_d["tr"], _off), Y7(_lo), X7(_d["tr"], _off), Y7(_hi), _cls))
     for _e in (_lo, _hi):
         s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X7(_d["tr"], _off) - 6, Y7(_e), X7(_d["tr"], _off) + 6, Y7(_e), _cls))
-    s.append(dot(X7(_d["tr"], _off), Y7(_m), 5.4, "pt " + ("pt2" if _lo > 0 else "pt1"), _d))
+    _pt = "pt2" if _lo > 0 else ("pt3" if _hi < 0 else "pt1")
+    s.append(dot(X7(_d["tr"], _off), Y7(_m), 5.4, "pt " + _pt, _d))
     s.append('<text x="%.1f" y="%.1f" class="lab am">%s</text>'
              % (X7(_d["tr"], _off), Y7(_hi) - 9, esc(_d["n"].split(":")[0][:12])))
 lx = x1 + 22
 s.append('<text x="%d" y="44" class="lgh">THE GOAL</text>' % lx)
 s.append('<circle cx="%d" cy="64" r="5.4" class="pt pt2"/><text x="%d" y="68" class="lg">beats SmartBot</text>' % (lx + 6, lx + 19))
-s.append('<circle cx="%d" cy="86" r="5.4" class="pt pt1"/><text x="%d" y="90" class="lg">interval crosses zero</text>' % (lx + 6, lx + 19))
-for _i, _t2 in enumerate(["The head plays ALONE:", "argmax over its card", "log-odds, no value net", "and no rollouts.", "",
+s.append('<circle cx="%d" cy="86" r="5.4" class="pt pt1"/><text x="%d" y="90" class="lg">a wash (crosses zero)</text>' % (lx + 6, lx + 19))
+s.append('<circle cx="%d" cy="108" r="5.4" class="pt pt3"/><text x="%d" y="112" class="lg">WORSE than SmartBot</text>' % (lx + 6, lx + 19))
+for _i, _t2 in enumerate(["","The head plays ALONE:", "argmax over its card", "log-odds, no value net", "and no rollouts.", "",
                           "8,000 mirrored deals on", "FRESH seeds. A 2,000-deal", "read on other seeds put", "JS-G1 above JS-M1; it did", "not survive.", "",
                           "%d of %d policy heads" % (len(_PTS), len([d for d in R if d["ck"] in _VS]) or len(_PTS)), "have been measured."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>' % (lx, 112 + _i * 15, _t2))

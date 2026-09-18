@@ -652,5 +652,9 @@ def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(da
         name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
         dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
         assert dot, f"{name} is not drawn on the goal chart"
-        assert dot.group(1) == ("2" if lo > 0 else "1"), (
-            f"{name} lo={lo:+.4f} is drawn as {'a beat' if dot.group(1)=='2' else 'crossing zero'}")
+        hi = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*[-+][\d.]+,\s*([-+][\d.]+)', txt).group(1))
+        want = "2" if lo > 0 else ("3" if hi < 0 else "1")
+        kind = {"2": "beats SmartBot", "3": "WORSE than SmartBot", "1": "a wash"}
+        assert dot.group(1) == want, (
+            f"{name} [{lo:+.4f}, {hi:+.4f}] should be drawn as {kind[want]}, "
+            f"is drawn as {kind[dot.group(1)]}")

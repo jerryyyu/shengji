@@ -63,6 +63,11 @@ def source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
             paths["encode_opponent_pairs"] = here.with_name("encode_opponent_pairs.py")
         if version == 5:
             paths["encode_banker_kitty"] = here.with_name("encode_banker_kitty.py")
+        if version == 6:
+            # v6 EXECUTES this module, so its bytes must be in the identity or a change to
+            # the correction would leave every v6 cache file and checkpoint validating
+            # against a stale digest -- the hazard #476 fixed for v4.
+            paths["encode_banker_kitty_corrected"] = here.with_name("encode_banker_kitty_corrected.py")
     return paths
 
 

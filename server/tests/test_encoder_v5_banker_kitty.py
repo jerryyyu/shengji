@@ -27,7 +27,7 @@ UNSEEN_SLICE = slice(N_CARDS * 8, N_CARDS * 9)
 def test_layout_is_v2_plus_fifty_six():
     assert N_BANKER_KITTY_COLUMNS == len(BANKER_KITTY_COLUMNS) == 1 + N_CARDS + 1 == 56
     assert ev.OBS_DIM_BY_VERSION[5] == ev.OBS_DIM_BY_VERSION[2] + 56 == 616
-    assert ev.ENC_VERSION_MAX == 5
+    assert ev.ENC_VERSION_MAX == 6   # v6 is the corrected-unseen-plane arm (#477)
     assert ev.OBS_SCHEMA_BY_VERSION[5] == "rl-observation-v5-banker-kitty"
     with pytest.raises(ValueError):
         ev.check_version(3)

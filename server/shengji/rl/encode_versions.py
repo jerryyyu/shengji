@@ -49,6 +49,9 @@ OBS_SCHEMA_BY_VERSION = {
     # and bundling it here would confound the one change under test.  The two
     # can still be combined under a later number if both pay.
     5: "rl-observation-v5-banker-kitty",
+    # Version 6 is the ONE version that is not a strict extension: v2's columns with the
+    # unseen plane CORRECTED (the banker's own burial removed) plus a kitty_known flag.
+    6: "rl-observation-v6-banker-kitty-corrected",
 }
 #: v2 appends 16 trick-local, 5 points-regime and 8 hand-shape columns
 _OBS_EXTRA_V2 = 16 + 5 + 8                                   # = 29

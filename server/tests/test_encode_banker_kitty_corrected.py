@@ -109,3 +109,41 @@ def test_correct_in_place_refuses_a_plane_that_does_not_contain_the_burial():
         correct_in_place(obs, [1.0] * N_CARDS)
     with pytest.raises(ValueError, match="54 columns"):
         correct_in_place(obs, [0.0] * 3)
+
+
+def test_v6_is_complete_in_every_version_table_and_identity_closure():
+    """muse's HOLD on #493: registering a version means MORE than a width.
+
+    Three gaps shipped green because CI's server job runs an explicit file list with no
+    encoder tests, and because I ran a test list I chose myself rather than every encoder
+    file. This walks the tables generically, so the NEXT version cannot half-register either.
+    """
+    from shengji.rl import encode_versions as ev
+    from shengji.rl.encoder_identity import source_paths
+    from shengji.train import cwv_data
+    from shengji.ai import cwv_policy
+
+    assert ev.ENC_VERSION_MAX == 6
+    for table, name in ((ev.OBS_DIM_BY_VERSION, "OBS_DIM_BY_VERSION"),
+                        (ev.OBS_SCHEMA_BY_VERSION, "OBS_SCHEMA_BY_VERSION")):
+        assert 6 in table, f"v6 missing from {name}"
+    assert ev.obs_schema(6) == "rl-observation-v6-banker-kitty-corrected"
+    assert ev.obs_dim(6) == 561
+
+    # every version's schema string is distinct: two versions sharing one would make their
+    # caches interchangeable
+    schemas = list(ev.OBS_SCHEMA_BY_VERSION.values())
+    assert len(set(schemas)) == len(schemas), f"duplicate obs schema: {schemas}"
+
+    # v6 EXECUTES encode_banker_kitty_corrected, so all THREE identity closures must hash it
+    # or a change to the correction leaves stale caches validating -- the hazard #476 fixed.
+    for paths, where in ((source_paths(6), "encoder_identity"),
+                         (cwv_data._encoder_source_paths(6)
+                          if hasattr(cwv_data, "_encoder_source_paths") else None, "cwv_data"),
+                         (cwv_policy._encoder_source_paths(6)
+                          if hasattr(cwv_policy, "_encoder_source_paths") else None, "cwv_policy")):
+        if paths is None:
+            continue
+        assert "encode_banker_kitty_corrected" in paths, (
+            f"{where} does not hash v6's module; a change to it would not move the identity")
+        assert "encode_banker_kitty" not in paths, f"{where} hashes v5's module for v6"

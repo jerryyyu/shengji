@@ -22,7 +22,7 @@ SUITS_EFF = tuple(SUITS) + (TRUMP,)
 def test_layout_widths_and_reserved_three():
     assert N_OPPONENT_PAIR_COLUMNS == 75 and len(OPPONENT_PAIR_COLUMNS) == 75
     assert ev.OBS_DIM_BY_VERSION[4] == ev.OBS_DIM_BY_VERSION[2] + 75 == 635
-    assert ev.ENC_VERSION_MAX == 5, "v5 (banker kitty) is the newest; v4's own width is pinned above"
+    assert ev.ENC_VERSION_MAX == 6, "v6 (banker kitty CORRECTED) is the newest; v4's own width is pinned above"
     with pytest.raises(ValueError):
         ev.check_version(3)          # Codex's own-hand block; not defined on this branch
 

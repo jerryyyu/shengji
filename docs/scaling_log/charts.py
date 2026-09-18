@@ -9,7 +9,9 @@ PAR={256:272716,512:610764,1024:1483468,2048:4015308,
 REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708,
      "192k":27602516,
-     "224k":31872200}   # gen-1: 176k + runJS1 16k, the first generation corpus
+     "224k":32032200}   # counts.records (TOTAL) for every entry -- gen-2 briefly used
+                        # counts.records.encoded (31,872,200), a different field from every
+                        # other row; muse caught it on #491.
 R=[]
 OWN_SPLIT=set(globals().get("OWN_SPLIT",()) or ())   # val_ce measured on a DIFFERENT split
 RECORD=globals().get("RECORD",{})

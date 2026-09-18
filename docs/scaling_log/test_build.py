@@ -604,3 +604,28 @@ def test_a_stale_no_ce_reason_is_a_loud_failure(data):
             r["ce"] = "0.62000"          # every blank row now has a number; the table is stale
     with pytest.raises(SystemExit):
         _render(rows2, table_only, series)
+
+
+def test_a_generation_rows_record_count_is_the_total_not_the_encoded_subset(data):
+    """Receipts carry BOTH counts.records (total) and counts.records.encoded, ~0.5% smaller.
+    Every row on this page uses the total; gen-2 briefly used encoded (31,872,200 against the
+    real 32,032,200) and so did charts.py's REC, which muse caught on #491.  The page cannot
+    check provenance itself, so the two known-correct totals are pinned here.
+
+    NOTE the deliberately narrow scope: a corpus LABEL like "16k" is a cluster count, not a
+    corpus identity -- armI, armJ and run A+B all sit at 16k with genuinely different record
+    counts, and REC is only the fallback for rows carrying none.  A blanket row-vs-REC rule
+    would flag that legitimate variation, so this pins the generation rows, which are one row
+    per size and whose receipts I read directly."""
+    rows, table_only, series = data
+    src = open(Path(__file__).with_name("charts.py")).read()
+    body = re.search(r"REC\s*=\s*\{(.*?)\}", src, re.S).group(1)
+    rec_map = {k: int(v) for k, v in re.findall(r'"([^"]+)"\s*:\s*(\d+)', body)}
+    for ck, cl, total in (("06dd925b", "192k", 27_602_516), ("61625eec", "224k", 32_032_200)):
+        row = next((r for r in rows if r["ck"] == ck), None)
+        if row is None:
+            continue                      # the row may be retired; the pin should not block that
+        assert int(row["rec"].replace(",", "")) == total, (
+            f"{ck}: row says {row['rec']}, counts.records says {total:,} "
+            "(counts.records.encoded is the WRONG field)")
+        assert rec_map[cl] == total, f'charts.py REC["{cl}"] is {rec_map[cl]:,}, not {total:,}'

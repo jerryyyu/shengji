@@ -1539,6 +1539,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_eval: str | None = None, policy_weight: float = 1.0,
           policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
           policy_rows_limit: int | None = None, policy_detach: bool = False,
+          policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1550,7 +1551,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_head=policy_head, policy_rows=policy_rows, policy_eval=policy_eval,
         policy_weight=policy_weight, policy_listwise_weight=policy_listwise_weight,
         policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
-        policy_detach=policy_detach,
+        policy_detach=policy_detach, policy_soft_targets=policy_soft_targets,
+        policy_soft_temperature=policy_soft_temperature,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,

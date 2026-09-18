@@ -203,3 +203,45 @@ def test_the_flag_needs_a_policy_head_and_a_positive_temperature(tmp_path):
     # and it is refused without a policy head at all
     with _pytest.raises(TrainError, match="need --policy-head"):
         build_config(data=["/nonexistent"], policy_head=False, policy_soft_targets=True)
+
+
+def test_cli_forwards_every_argument_train_is_called_with():
+    """Every ``x=args.y`` at the CLI call site must be a parameter ``train()`` accepts.
+
+    The soft-target flags shipped parsed, validated and forwarded -- and `train()` itself,
+    a thin wrapper over `build_config`, never grew the two parameters.  `--policy-soft-targets`
+    therefore died with `TypeError: train() got an unexpected keyword argument` one second into
+    a 15-hour run, after the preflight had passed.  Every unit test I wrote for this feature
+    called the loss functions directly and never crossed the CLI -> train() -> build_config
+    boundary, so all of them passed against a build that could not run.
+
+    This checks the boundary generally rather than pinning the two flags: it reads the actual
+    `train(...)` call in `main()` and asserts the signature accepts each keyword.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from shengji.train import train_cwv
+
+    source = inspect.getsource(train_cwv.main)
+    tree = ast.parse(textwrap.dedent(source))
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "train"]
+    assert calls, "no train(...) call found in main(); this guard has gone blind"
+
+    accepted = set(inspect.signature(train_cwv.train).parameters)
+    missing = sorted({kw.arg for call in calls for kw in call.keywords
+                      if kw.arg is not None and kw.arg not in accepted})
+    assert not missing, f"main() passes keywords train() does not accept: {missing}"
+
+
+def test_train_forwards_soft_target_settings_into_the_receipt_config():
+    """The forwarded values must reach the config, not merely be accepted and dropped."""
+    from shengji.train import train_cwv
+
+    config = train_cwv.build_config(policy_head=True, policy_rows="rows",
+                                    policy_soft_targets=True, policy_soft_temperature=0.5,
+                                    data=["d"], eval_luna=None)
+    assert config["policy_soft_targets"] is True
+    assert config["policy_soft_temperature"] == 0.5

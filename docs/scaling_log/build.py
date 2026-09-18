@@ -289,6 +289,10 @@ def policy_rows(g=None):
         g = {}
         exec(compile(src, MODELS, "exec"), g)
     heads = [dict(zip(g["POLICY_FIELDS"], row)) for row in g["POLICY_HEADS"]]
+    vs_smart = g.get("POLICY_VS_SMART", {})
+    for ck in vs_smart:
+        if ck not in {h["ck"] for h in heads}:
+            raise SystemExit(f"POLICY_VS_SMART names {ck}, which is not a policy head")
     for h in heads:
         if len(h) != len(g["POLICY_FIELDS"]):
             raise SystemExit(f"policy head {h.get('name')}: wrong field count")
@@ -299,7 +303,9 @@ def policy_rows(g=None):
         out.append(
             f'<tr><td><b>{html.escape(h["name"])}</b>{ck}</td><td>{html.escape(h["kind"])}</td><td>{html.escape(h["trunk"])}</td>'
             + cell(h["rows"]) + cell(h["split"]) + cell(h["epochs"]) + cell(h["weight"]) + f'<td>{html.escape(h["eval"])}</td>'
-            + cell(h["listwise"]) + cell(h["bce"]) + cell(h["top1"]) + cell(h["top64"]) + cell(h["strata"]) + cell(h["value_cost"])
+            + cell(h["listwise"]) + cell(h["bce"]) + cell(h["top1"]) + cell(h["top64"]) + cell(h["strata"])
+            + cell(vs_smart.get(h["ck"], ""), "n pos" if str(vs_smart.get(h["ck"], "")).startswith("+") else "n")
+            + cell(h["value_cost"])
             + f'<td class="null note">{html.escape(h["note"])}</td></tr>')
     return "\n".join(out), heads
 

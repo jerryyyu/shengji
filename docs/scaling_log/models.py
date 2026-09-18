@@ -235,6 +235,21 @@ RECORD = {
 # fields: name, ck, kind, trunk, rows, split, epochs, weight, eval, listwise, bce, top1, top64, strata, value_cost, note
 POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weight", "eval",
                  "listwise", "bce", "top1", "top64", "strata", "value_cost", "note")
+#: HEAD ALONE vs SmartBot, keyed by checkpoint: argmax over the prior's card log-odds with NO
+#: value net and NO rollouts (fl-pilot/policy_head_vs_heuristic.py), mirrored deals, signed
+#: level per round, paired bootstrap interval. Kept as a side table rather than a POLICY_HEADS
+#: column so no existing row's field positions move.
+#:
+#: This is the ONLY number here that measures the stated goal -- a policy that beats SmartBot.
+#: Every other column measures the ADMISSION PRIOR's shortlist coverage, and measured
+#: 2026-09-18 the two ANTI-CORRELATE: gen-2 has the best top-64 on the 10k+ stratum of any
+#: head and is resolvably WORSE than SmartBot; JS-G1 has the worst top-64 of the three JS
+#: heads and the best play. Improving top-64 has not been progress toward the goal.
+POLICY_VS_SMART = {
+    "a5248cc5": "-0.0018 [-0.0295, +0.0265]",   # JS-M1, 2,000 mirrored deals, seed0 7000
+    "9ee9fedb": "+0.0213 [-0.0055, +0.0488]",   # JS-G1, same deals -- the only positive point
+}
+
 POLICY_HEADS = [
 ("prior v1", "7da0ceab", "separate", "833-512-256-54 MLP", "1.0M", "old [0, 0.8)", "10", "1.0", "own held-out (old split)",
  "", "", "", "", "0.951 / 0.907 / 0.919 / 0.790", "none",

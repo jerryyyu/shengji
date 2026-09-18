@@ -395,9 +395,13 @@ body.recent-only [data-tr].pre-cut{display:none}
   paired deal bootstrap (#425 4.2): &#8220;non-inferiority not shown&#8221; and &#8220;inferior&#8221; are different verdicts.
   Top-256 is 0.999 for every trained head and 0.996 for the untrained one, because records keep at most 256 candidates:
   the consumer&#8217;s operating point (256 of thousands per world) is invisible offline, which is why the prior arm played
-  M1&#8217;s lines in the screens. <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
+  M1&#8217;s lines in the screens. <b>Head alone vs SmartBot</b> is the head playing by itself &mdash; argmax over its card log-odds, no value net and no
+  rollouts &mdash; on mirrored deals, signed level per round with a paired bootstrap interval. It is the only column here that
+  measures the goal the policy line exists for; every other column measures the admission prior&#8217;s shortlist coverage, and
+  the two <b>anti-correlate</b>: the head with the best top-64 on the widest stratum is the one resolvably WORSE than SmartBot.
+  <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
   <div class="tw"><table class="sortable">
-<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Value cost</th><th>Note</th></tr></thead>
+<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Head alone vs SmartBot</th><th class="n">Value cost</th><th>Note</th></tr></thead>
 <tbody>
 {{POLICYROWS}}
 </tbody></table></div>

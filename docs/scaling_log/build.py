@@ -92,6 +92,9 @@ def load():
     for ck in params:
         if ck not in known:
             raise ValueError(f"PARAMS names {ck}, which is not a row")
+    for ck in g.get("POLICY_VS_SMART", {}):
+        if ck not in known:
+            raise ValueError(f"POLICY_VS_SMART names {ck}, which is not a row")
     for ck in own_split:
         if ck not in known:
             raise ValueError(f"OWN_SPLIT names {ck}, which is not a row")
@@ -190,14 +193,17 @@ def check_data(rows, table_only, series):
 
 def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
+    g_models = {}
+    exec(compile(open(MODELS).read(), str(MODELS), "exec"), g_models)
     g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
          "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
          "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
+         "POLICY_VS_SMART": g_models.get("POLICY_VS_SMART", {}),
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
-    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6")]
+    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6", "g7")]
     counts = json.load(open(OUT_DIR / "_counts.json"))
     return svgs, counts
 
@@ -337,7 +343,7 @@ def long_day(iso):
 
 
 CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
-               "3 by training day", "4 leader effect by day")
+               "3 by training day", "4 leader effect by day", "5 policy vs SmartBot by day")
 
 
 def leader_chart_eligible(r):

@@ -305,6 +305,18 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
+  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day</h2>
+  <p class="cap">Every other chart on this page measures a proxy. This one measures the goal: the policy head
+  playing by <b>itself</b> &mdash; argmax over its own card log-odds, no value net and no rollouts &mdash; against
+  SmartBot on mirrored deals. Zero is SmartBot parity, so <b>above the line is the thing the policy line exists to
+  achieve</b>. Points are 8,000 mirrored deals on fresh seeds with a paired bootstrap interval.</p>
+  <div class="figure">{{SVG7}}</div>
+  <p class="cap">Read the intervals, not the points. A 2,000-deal read on a different seed window put JS-G1 above
+  JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. The shortlist
+  metrics elsewhere on this page (top-64 recall) are what the ADMISSION PRIOR needs; they are not this.</p>
+</section>
+
+<section>
   <h2 class="sec">5 &middot; The data</h2>
   <p class="cap">Every corpus and the recipe that produced it. These are not interchangeable units
   of data: 8,000 to 144,000 clusters crosses three teacher changes and a tripling of search work.</p>

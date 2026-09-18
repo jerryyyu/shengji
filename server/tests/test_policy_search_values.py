@@ -72,3 +72,77 @@ def test_widths_match_ballot_tensors_so_a_slot_index_is_valid_in_both():
     vals, _h = ballot_value_tensor(metas, b_max=int(ball.shape[1]))
     assert vals.shape == (len(metas), int(ball.shape[1]))
     assert vals.shape[:2] == mask.shape
+
+
+# ---------------------------------------------------------------- the soft target itself
+
+import torch
+
+from shengji.train.policy_prior import listwise_loss, listwise_loss_soft, soft_ballot_targets
+
+
+def test_the_target_is_a_distribution_over_masked_finite_slots_only():
+    vals = torch.tensor([[10.0, 12.0, float("nan"), 5.0]])
+    mask = torch.tensor([[True, True, True, False]])     # slot 3 masked OUT, slot 2 has no value
+    probs, usable = soft_ballot_targets(vals, mask, temperature=1.0)
+    assert bool(usable[0])
+    assert probs[0, 2] == 0.0 and probs[0, 3] == 0.0, "no mass on unscored or unmasked slots"
+    assert abs(float(probs[0].sum()) - 1.0) < 1e-6
+    assert probs[0, 1] > probs[0, 0], "the higher-valued candidate must carry more mass"
+
+
+def test_a_row_the_search_did_not_score_is_not_usable_and_gets_no_mass():
+    vals = torch.tensor([[float("nan"), float("nan")]])
+    mask = torch.tensor([[True, True]])
+    probs, usable = soft_ballot_targets(vals, mask, temperature=1.0)
+    assert not bool(usable[0]) and float(probs[0].sum()) == 0.0
+
+
+def test_temperature_moves_the_target_between_one_hot_and_uniform():
+    vals = torch.tensor([[0.0, 30.0, 60.0]])
+    mask = torch.ones(1, 3, dtype=torch.bool)
+    sharp, _ = soft_ballot_targets(vals, mask, temperature=1.0)
+    flat, _ = soft_ballot_targets(vals, mask, temperature=100_000.0)
+    assert float(sharp[0].max()) > 0.99, "T=1 on a 60-point gap is nearly one-hot"
+    # T=1000 still leaves 60/1000 = 0.06 of logit spread, so it approaches uniform without
+    # reaching it (max 0.3434). The limit is the claim, so test it at a T where it holds.
+    assert abs(float(flat[0].max()) - 1 / 3) < 0.01, "a large T washes out to uniform"
+
+
+def test_soft_falls_back_to_the_hard_target_where_the_search_scored_nothing():
+    """Rows the search never scored keep the played-action target, so the ROW COUNT does not
+    change between the hard and soft arms -- otherwise the two would differ in sample size
+    as well as in target, and the comparison would be confounded."""
+    logits = torch.zeros(1, 54, requires_grad=True)
+    ball = torch.tensor([[[0, -1], [1, -1]]], dtype=torch.int64)
+    mask = torch.ones(1, 2, dtype=torch.bool)
+    tgt = torch.tensor([1])
+    vals = torch.full((1, 2), float("nan"))
+    soft = listwise_loss_soft(logits, ball, mask, tgt, vals, temperature=1.0)
+    hard = listwise_loss(logits, ball, mask, tgt)
+    assert torch.allclose(soft, hard, atol=1e-6), "no search values => identical to the hard loss"
+
+
+def test_soft_differs_from_hard_where_the_search_DID_score():
+    # NON-uniform logits are essential: with all-zero logits log_softmax is uniform and ANY
+    # normalised target gives the identical loss, so the test could not tell them apart.
+    logits = torch.zeros(1, 54)
+    logits[0, 0] = 2.0
+    logits = logits.clone().requires_grad_(True)
+    ball = torch.tensor([[[0, -1], [1, -1]]], dtype=torch.int64)
+    mask = torch.ones(1, 2, dtype=torch.bool)
+    tgt = torch.tensor([1])
+    vals = torch.tensor([[8.0, 10.0]])                 # the search liked BOTH, slot 1 more
+    soft = listwise_loss_soft(logits, ball, mask, tgt, vals, temperature=1.0)
+    hard = listwise_loss(logits, ball, mask, tgt)
+    assert not torch.allclose(soft, hard, atol=1e-6), "a real preference must change the loss"
+
+
+def test_the_soft_loss_backpropagates():
+    logits = torch.zeros(2, 54, requires_grad=True)
+    ball = torch.tensor([[[0, -1], [1, -1]], [[2, -1], [3, -1]]], dtype=torch.int64)
+    mask = torch.ones(2, 2, dtype=torch.bool)
+    tgt = torch.tensor([0, 1])
+    vals = torch.tensor([[9.0, 4.0], [1.0, 7.0]])
+    listwise_loss_soft(logits, ball, mask, tgt, vals, 1.0).backward()
+    assert logits.grad is not None and torch.isfinite(logits.grad).all()

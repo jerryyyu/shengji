@@ -355,6 +355,58 @@ def ballot_value_tensor(meta: Sequence[Mapping[str, Any]], b_max: int | None = N
     return vals, has
 
 
+def soft_ballot_targets(vals, mask, temperature: float = 1.0):
+    """``(probs [b, B], usable [b])``: the search's preference over ballot slots.
+
+    AlphaGo Zero trains its policy on the MCTS visit distribution; we have per-candidate
+    VALUES instead of visit counts, so the analogue is a softmax over them. A row is usable
+    only with at least two finite values -- one value is not a preference.
+
+    ``temperature`` defaults to 1.0 because that is what the data says, not by convention:
+    on real extracted rows T=1 gives mean top-1 probability 0.596 and normalised entropy
+    0.612, while T>=50 collapses to uniform (entropy 1.000) and carries no signal at all.
+    I had predicted the opposite from the GLOBAL spread of the values (sd 78 on the points
+    scale) -- wrongly, because the candidates within ONE decision sit far closer together
+    than the across-row spread suggests.
+    """
+    import torch
+    finite = torch.isfinite(vals) & mask
+    usable = finite.sum(1) >= 2
+    scores = torch.where(finite, vals.to(torch.float32) / float(temperature),
+                         torch.full_like(vals, -1e9, dtype=torch.float32))
+    probs = torch.softmax(scores, dim=1)
+    probs = torch.where(finite, probs, torch.zeros_like(probs))
+    total = probs.sum(1, keepdim=True)
+    probs = torch.where(total > 0, probs / total.clamp(min=1e-9), torch.zeros_like(probs))
+    return probs, usable
+
+
+def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0):
+    """Listwise CE against the SEARCH'S DISTRIBUTION where it exists, the played action
+    elsewhere (#496 H3).
+
+    ``listwise_loss`` teaches "the search played this one"; this teaches "the search
+    preferred these, in this proportion" -- the information the search actually produced
+    and which the hard label throws away. Rows the search never scored fall back to the
+    hard target rather than being dropped, so the row count does not move between arms.
+    """
+    import torch
+    ok = tgt >= 0
+    if not bool(ok.any()):
+        return logits.sum() * 0.0
+    lo = logits[ok]
+    b = ball[ok].long()
+    gathered = lo.gather(1, b.clamp(min=0).reshape(b.shape[0], -1)).reshape(b.shape)
+    gathered = gathered * (b >= 0)
+    m = mask[ok]
+    scores = gathered.sum(2).masked_fill(~m, -1e9)
+    soft, usable = soft_ballot_targets(vals[ok], m, temperature)
+    hard = torch.zeros_like(soft)
+    hard[torch.arange(hard.shape[0], device=hard.device), tgt[ok]] = 1.0
+    target = torch.where(usable.unsqueeze(1), soft, hard)
+    return -(target * torch.log_softmax(scores, dim=1)).sum(1).mean()
+
+
 def listwise_loss(logits, ball, mask, tgt):
     """Cross-entropy over the ballot's factorised scores, rows whose played action is
     in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1."""

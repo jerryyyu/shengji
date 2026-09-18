@@ -19474,3 +19474,45 @@ On the weight question itself, from the existing J-arms (4-epoch continuations o
 **PAGE.** The generation rows were falling off charts 1, 1b, 3 and 4 because `ce` gated both chart AND day membership, so 2026-09-17 did not exist as a day and gen-2 would have stayed off chart 4 even after its screen sealed (#492). Jerry then asked for the generation val_ce to be charted anyway — gen-1 0.60060, gen-2 0.60998 now draw HOLLOW and off the fitted lines, because the three numbers sit on three nested growing val sets (17,600 → 19,200 → 22,400 deals) and the added deals are self-play. Artifact republished at each step.
 
 **OPEN.** #492 (page fixes + muse's two corrections), #493 (encoder v6), #494 (gen-2 row, stacked on #492), #495 (policy selection metric) — all 5/5 green, #492 with muse. Blocked on Jerry: the `workflow` scope for #478/#490 (`gh auth refresh -h github.com -s workflow`). #435 closed at Jerry's word.
+
+## 2026-09-18 13:25 UTC — Claude, DAILY MAINTENANCE 09:2x ET: all hosts busy or sealed, production healthy, and the training profile says data movement is ~46% of a run while the model is 7.6%
+
+**FIRST CHECK: `/Users/jerryyu/Projects/shengji` is on `codex/aug12-strength-status` with 20 uncommitted files — Codex-owned. Steps 3, 4 and 5 SKIPPED (read-only run); steps 1 and 2 only.**
+
+**(1) JOBS.** MINI: gen-3-warm training, pid 82199, 7h08m elapsed, **epoch 13/20, best val_ce 0.5998** (init 0.6099) — the warm start is holding; load 2.85; 38 GB free; Jerry's :8899 dev server (pid 96175) up 45 d. PERF: **runJS7 SEALED at 32,000/32,000**, no harvest running, box now IDLE, load 0.00. CLOUD: runJS8 at 7,426/32,000 (23%), harvest running, load 16.08 (saturated), 304 GB free. AIR: **OFF** (remote login disabled by Jerry) — off, not unreachable.
+
+**(2) PRODUCTION.** Release 28 unchanged, machine 48e7e35a9597e8 ewr, image deployment-01M2M90VYR34R7CWKTTEA4C57V, **1/1 check passing**, healthz-only traffic, no errors in the log window. Matches STATE.
+
+**(3)(4)(5) SKIPPED** — Codex-owned tree.
+
+**PERF DISK IS MOVING THE WRONG WAY: 94% used / 40 GB free, against the 91% / 57 GB this prompt carried.** runJS7 landing there accounts for most of it. Composition: 142 G traj-out, 95 G cloud-archive (both permanent-never-delete). **Jerry authorised removing runB/runJ/runM from all machines on 09-17 and that has still not been executed**: perf holds runB 5.9 G + runJ 11 G = 16.9 G, cloud holds runB 5.9 G + runM 1.9 G = 7.8 G, **0 open handles on any of them**. Deletion was skipped here only because step 5 is skipped on a Codex-owned tree, not because it is unsafe. Flagged for the next non-skipped window.
+
+**TRAINING PROFILE (Jerry asked to profile and optimise the trainer).** py-spy cannot attach: 0.4.2 is the latest and does not support Python 3.14.3 ("Unsupported version of Python: 0.0.0"). A cProfile run on one corpus (851 s wall) gives self-time attribution:
+
+| category | s | % of run |
+|---|---|---|
+| shard I/O + decompress (read 76.9, open 38.2, zlib 42.0, npy 18.3) | 175.4 | 20.5% |
+| host<->device transfers (.cpu 84.0, .to 67.7) | 151.6 | 17.7% |
+| LRU eviction `make_room` | 68.1 | 8.0% |
+| MODEL COMPUTE (linear 41.1, backward 23.8) | 64.9 | 7.6% |
+| batch gather | 11.8 | 1.4% |
+
+**Data movement is ~46% of the run; the model itself is 7.6%.** The trainer's main process sits at ~90% of ONE core with six decode workers at ~5% each, so the constraint is single-threaded work in the main process — not the GPU, not decode. Adding decode workers would not help.
+
+**THE RESIDENCY HYPOTHESIS IS REFUTED — MEASURED, NOT ASSUMED.** The budget defaults to 40% of physical (6.40 GiB) and one corpus decodes to 6.56 GB, i.e. 2.5% OVER: the pathological LRU case. A controlled A/B at half scale (`--limit-clusters 8000`, working set 3.51 GB) gave budget 3.44 GB (streams) **370.2 s wall / 43.1 s epoch** against budget 5.91 GB (fits) **359.0 s / 46.4 s** — no gain, and the fitting case's epoch was SLOWER. Reason: within an epoch each shard is read exactly ONCE (a single shuffled pass), so there is no reuse for a cache to exploit; cross-epoch reuse would need the whole corpus resident, and it decodes to ~77–98 GB against 16 GB of RAM. Confirmed independently by scaling: seconds per 1,000 deals across four real runs is 5.64 / 5.54 / 6.12 / 6.15 — **linear in data, with one ~10% step and then flat**. Raising `--resident-bytes` for future runs is possible and is NOT worth doing.
+
+**FOUR OF MY HYPOTHESES ABOUT THE REMAINING TIME WERE MEASURED AND REFUTED TODAY**: the two unguarded `.item()` syncs (1.6 ms/batch, not ~50), `tensors_of` (2.05 ms), the string-column gather (0.162 ms with realistic numpy unicode dtype), and the residency budget (above). Each was a genuine code smell in the right place with a plausible mechanism. The measured cost centres that remain are the POLICY PASS at 13.82 ms of a ~56 ms iteration (**24.7%** — a second forward/backward on every value batch for a head weighted 0.2) and, in this 1-epoch profile, the per-epoch `candidate_pass` at 291 s of 854 s.
+
+**#460 / #479 / #384 ALL OPTIMISE THE STRING-COLUMN GATHER, WHICH IS 0.162 ms OF A ~56 ms ITERATION (~0.3%).** Commented the measured context on all three rather than leaving them to be reviewed without it. This does NOT argue for closing them — the changes are correct and tested, and #460's own body already says "NOT an end-to-end epoch speedup claim", which this supports rather than contradicts. It argues that none should be expected to move epoch wall time.
+
+**Caveat on the profile's proportions:** one epoch over-weights setup and validation relative to a 20-epoch run, and the earlier ~31 ms "residual" was a SUBTRACTION that absorbed everything unmeasured. Neither is evidence for a particular cause.
+
+**muse is now 7/7.** Their HOLD on #493 named three registration gaps, all confirmed from the source: two stale `ENC_VERSION_MAX == 5` assertions; `OBS_SCHEMA_BY_VERSION` missing v6 so `obs_schema(6)` raised KeyError; and **`encode_banker_kitty_corrected.py` absent from all three identity closures** — v6 executes that module, so a change to the correction would not move the identity and every v6 cache and checkpoint would keep validating against a stale digest. That is the hazard #476 fixed for v4, reproduced one version later. All three fixed at 17281fe3 and re-sent. **Why it shipped green matters more than the fixes: CI's server job runs an explicit file list with no encoder tests, and locally I ran a test list I chose myself which happened to exclude both files carrying the stale assertion.** The replacement test walks the version tables generically.
+
+**#492 MERGED** (muse PASS at e8a4823a, the exact head, 5/5).
+
+**THE SMARTBOT DISCOVERY READ DID NOT SURVIVE ITS CONFIRMATION.** On 2,000 deals (seed0 7000) JS-G1 read +0.0213 and JS-M1 −0.0018; on 8,000 FRESH deals (seed0 20000) they swap: **JS-M1 +0.0159 [+0.0023, +0.0293] — BEATS SmartBot, interval excludes zero — and JS-G1 +0.0014 [−0.0117, +0.0148], a wash.** So the policy head that meets the stated goal is production's, and it already did; we had never measured it on enough fresh deals. Three claims of mine are withdrawn: that JS-G1 has the best play, that nobody beats SmartBot, and that top-64 recall and play anti-correlate (on confirmed data JS-M1 has BOTH the better top-64 and the better play). gen-2's −0.0730 is from the same unconfirmed window and its 8,000-deal re-run is in flight; its cell stays off the page until it lands.
+
+**PAGE.** New section 5 charts the head alone vs SmartBot by training day, the only chart whose y axis is the goal rather than a proxy. Its first build rendered a legend and no points with no complaint — charts.py is exec'd with an injected globals dict that lacked POLICY_VS_SMART — so it now refuses an empty table. runJS6 sealed at 2,216,648 records and runJS8 added to the corpus table; the prose now states that gen-3 is the first generation WARM-STARTED rather than trained from fresh random weights.
+
+**OPEN, all 5/5 green:** #493 (encoder v6, with muse), #494 (gen-2 screen row), #495 (policy selection metric). **Blocked on Jerry:** the `workflow` scope for #478/#490; the policy-weight grid scope (3 arms ≈ 45 h of Mini time vs 1 for the narrow answer); whether to execute the authorised runB/runJ/runM deletion.

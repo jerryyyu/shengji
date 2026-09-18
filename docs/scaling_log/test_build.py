@@ -349,13 +349,13 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
     # a model trained on a NEW day (tomorrow) appears without any list being edited
     # the new day must be LATER than every real one, or it proves nothing about the header
     newest = max(r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only)
-    assert newest < "2026-09-18", f"fixture day 2026-09-18 is no longer in the future of {newest}"
+    assert newest < "2026-09-19", f"fixture day 2026-09-19 is no longer in the future of {newest}"
     rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
-        "future model", "0badc0de", "2026-09-18", "v2", 512, "3e-4", "96k", "14,077,520",
+        "future model", "0badc0de", "2026-09-19", "v2", 512, "3e-4", "96k", "14,077,520",
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
-    assert "2026-09-18" in c2["days"] and "<td>18 Sep</td>" in page2
-    assert "18 September 2026" in page2  # the header date follows the latest training day
+    assert "2026-09-19" in c2["days"] and "<td>19 Sep</td>" in page2
+    assert "19 September 2026" in page2  # the header date follows the latest training day
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):

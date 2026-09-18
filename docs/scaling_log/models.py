@@ -65,6 +65,8 @@ M = [
  "","","5w +0.0239 [+0.0005, +0.0472]","JS-M1 (#425): production since release 28. The owed FRESH-seed read is a NULL: -0.0159 [-0.0383, +0.0065] vs release 27 at matched 1k"),
 ("gen-1: JS-M1's recipe with runJS1 added (first net trained on its predecessor's games)","06dd925b","2026-09-16","v2",330,"3e-4","192k","27,602,516","0.60060","",
  "","","5w +0.0136 [-0.0085, +0.0357]","gen-1 (#425): +16k clusters of JS-M1-teacher self-play; paired vs production on fresh seeds is a NULL at MDE80 0.032; 0.94x its decision wall"),
+("gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)","d2514e6e","2026-09-18","v2",330,"3e-4","256k","36,463,068","0.59650","",
+ "","","","gen-3-warm: the first WARM START; head alone beats SmartBot +0.0993, 6x JS-M1's margin; run UNSEALED (candidate pass killed)"),
 ("gen-2: gen-1's recipe with runJS2 and runJS3 added (the first run the #421 gating rule permits)","61625eec","2026-09-17","v2",330,"3e-4","224k","32,032,200","0.60998","",
  "","","5w -0.0035 [-0.0252, +0.0183]","gen-2 (#421): 20.5% self-play; vs production NULL, MDE80 0.031, point negative; vs gen-1 also null: sampling alone does not compound"),
 ("JS-G1: G1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","9ee9fedb","2026-09-16","v2",330,"3e-4","176k","25,388,708","0.5497","0.0291",
@@ -133,7 +135,7 @@ M += [
 #: and those extra deals are self-play, a different distribution from the room corpus.
 #: Jerry 2026-09-17: report it anyway, marked, rather than leave the point off the chart.
 #: These dots are drawn hollow and excluded from the fitted base-recipe lines.
-OWN_SPLIT = {"06dd925b", "61625eec"}
+OWN_SPLIT = {"06dd925b", "61625eec", "d2514e6e"}
 
 PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532, "ac85d19d": 653532, "a5248cc5": 653532, "9ee9fedb": 653387, "06dd925b": 653532, "61625eec": 653532}
 
@@ -256,6 +258,7 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: on both -- so the honest statement is that the shortlist metric carries no information
 #: about standalone play.
 POLICY_VS_SMART = {
+    "d2514e6e": "+0.0993 [+0.0856, +0.1126]",   # gen-3-warm: 6x JS-M1's margin
     "a5248cc5": "+0.0159 [+0.0023, +0.0293]",   # JS-M1: BEATS SmartBot, interval excludes zero
     "9ee9fedb": "+0.0014 [-0.0117, +0.0148]",   # JS-G1: a wash, not the edge the 2k read showed
     "61625eec": "-0.0684 [-0.0818, -0.0546]",   # gen-2: resolvably WORSE than SmartBot

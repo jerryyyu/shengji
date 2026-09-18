@@ -1247,6 +1247,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_eval: str | None = None, policy_weight: float = 1.0,
                  policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
                  policy_rows_limit: int | None = None, policy_detach: bool = False,
+                 policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1316,8 +1317,14 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
             raise TrainError("--policy-rows-limit must be >= 1")
         if type(policy_detach) is not bool:
             raise TrainError("--policy-detach is a flag")
-    elif policy_rows or policy_eval or policy_detach:
-        raise TrainError("--policy-rows / --policy-eval / --policy-detach need --policy-head")
+        if type(policy_soft_targets) is not bool:
+            raise TrainError("--policy-soft-targets is a flag")
+        if not (float(policy_soft_temperature) > 0
+                and math.isfinite(float(policy_soft_temperature))):
+            raise TrainError("--policy-soft-temperature must be finite and > 0")
+    elif policy_rows or policy_eval or policy_detach or policy_soft_targets:
+        raise TrainError("--policy-rows / --policy-eval / --policy-detach / "
+                         "--policy-soft-targets need --policy-head")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
                           grid_channels=grid_channels, search_head=search_head,
@@ -1347,6 +1354,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "policy_batch_fraction": float(policy_batch_fraction) if policy_head else 0.0,
         "policy_rows_limit": None if not policy_head else policy_rows_limit,
         "policy_detach": bool(policy_detach) if policy_head else False,
+        "policy_soft_targets": bool(policy_soft_targets) if policy_head else False,
+        "policy_soft_temperature": float(policy_soft_temperature) if policy_head else 1.0,
         "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
@@ -1928,9 +1937,20 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     policy_iter = policy_data.batches(policy_batch, policy_rng)
                     p_batch = next(policy_iter)
                 from .policy_rows import policy_losses
-                p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_batch, dev),
+                _p_t = policy_data.tensors(p_batch, dev)
+                if policy_soft_targets and "vals" not in _p_t:
+                    # REFUSE rather than fall through to the hard target: a run asked for the
+                    # soft arm and silently training the hard one would produce a result
+                    # labelled as something it is not.
+                    raise TrainError(
+                        "--policy-soft-targets: this extract carries no per-candidate search "
+                        "values (`vals`). It predates #496; re-extract with the current "
+                        "policy_prior before running the soft arm.")
+                p_bce, p_lw, _ = policy_losses(model, _p_t,
                                                listwise_weight=float(policy_listwise_weight),
-                                               detach=bool(policy_detach))
+                                               detach=bool(policy_detach),
+                                               soft_targets=bool(policy_soft_targets),
+                                               soft_temperature=float(policy_soft_temperature))
                 b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
@@ -2561,6 +2581,17 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--policy-detach", action="store_true",
                    help="stop-gradient: the policy head trains on the trunk features but never "
                         "moves the trunk (zero cost to the value heads)")
+    t.add_argument("--policy-soft-targets", action="store_true",
+                   help="train the policy head on the SEARCH'S DISTRIBUTION over the ballot "
+                        "(softmax of its per-candidate means) instead of the single played "
+                        "action; the AlphaGo Zero shape (#496 H3). Rows the search never "
+                        "scored keep the played-action target, so the row count is unchanged. "
+                        "Needs an extract carrying `vals` (post-#496); older extracts have "
+                        "none and the run REFUSES rather than silently training hard.")
+    t.add_argument("--policy-soft-temperature", type=float, default=1.0,
+                   help="temperature of that softmax (default 1.0, chosen from the data: on "
+                        "real rows T=1 gives mean top-1 0.596 / normalised entropy 0.612, "
+                        "while T>=50 collapses to uniform and carries no signal)")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2622,6 +2653,8 @@ def main(argv: list[str] | None = None) -> int:
                   policy_listwise_weight=args.policy_listwise_weight,
                   policy_batch_fraction=args.policy_batch_fraction,
                   policy_rows_limit=args.policy_rows_limit, policy_detach=args.policy_detach,
+                  policy_soft_targets=args.policy_soft_targets,
+                  policy_soft_temperature=args.policy_soft_temperature,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

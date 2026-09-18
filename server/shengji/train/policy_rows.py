@@ -249,7 +249,8 @@ def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=froz
     return PolicyRows(p, limit=limit, exclude=exclude)
 
 
-def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False):
+def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
+                  soft_targets: bool = False, soft_temperature: float = 1.0):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (#425
@@ -259,8 +260,14 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
         features = features.detach()
     logits = model.policy_logits(features)
     bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
-    lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"]) if listwise_weight > 0 \
-        else logits.sum() * 0.0
+    if listwise_weight <= 0:
+        lw = logits.sum() * 0.0
+    elif soft_targets:
+        from .policy_prior import listwise_loss_soft
+        lw = listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"], t["vals"],
+                                temperature=float(soft_temperature))
+    else:
+        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"])
     return bce, lw, logits
 
 

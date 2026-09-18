@@ -240,14 +240,17 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: level per round, paired bootstrap interval. Kept as a side table rather than a POLICY_HEADS
 #: column so no existing row's field positions move.
 #:
-#: This is the ONLY number here that measures the stated goal -- a policy that beats SmartBot.
-#: Every other column measures the ADMISSION PRIOR's shortlist coverage, and measured
-#: 2026-09-18 the two ANTI-CORRELATE: gen-2 has the best top-64 on the 10k+ stratum of any
-#: head and is resolvably WORSE than SmartBot; JS-G1 has the worst top-64 of the three JS
-#: heads and the best play. Improving top-64 has not been progress toward the goal.
+#: This is the only number here that measures the stated goal -- a policy that beats SmartBot.
+#: Every other policy column measures the ADMISSION PRIOR's shortlist coverage.
+#:
+#: THE FIGURES BELOW ARE THE 8,000-DEAL READ ON FRESH SEEDS (seed0 20000). A 2,000-deal
+#: discovery read on seed0 7000 said the opposite and DID NOT SURVIVE: it had JS-G1 at +0.0213
+#: and JS-M1 at -0.0018, i.e. the two models swapped places. Quote only the 8,000-deal column.
+#: The discovery read also suggested top-64 recall and play ANTI-correlate; on the confirmed
+#: data they do not -- JS-M1 has both the better top-64 and the better play.
 POLICY_VS_SMART = {
-    "a5248cc5": "-0.0018 [-0.0295, +0.0265]",   # JS-M1, 2,000 mirrored deals, seed0 7000
-    "9ee9fedb": "+0.0213 [-0.0055, +0.0488]",   # JS-G1, same deals -- the only positive point
+    "a5248cc5": "+0.0159 [+0.0023, +0.0293]",   # JS-M1: BEATS SmartBot, interval excludes zero
+    "9ee9fedb": "+0.0014 [-0.0117, +0.0148]",   # JS-G1: a wash, not the edge the 2k read showed
 }
 
 POLICY_HEADS = [

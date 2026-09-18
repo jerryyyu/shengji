@@ -11,12 +11,14 @@ REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "192k":27602516,
      "224k":31872200}   # gen-1: 176k + runJS1 16k, the first generation corpus
 R=[]
+OWN_SPLIT=set(globals().get("OWN_SPLIT",()) or ())   # val_ce measured on a DIFFERENT split
 RECORD=globals().get("RECORD",{})
 PARAMS=globals().get("PARAMS",{})   # per-checkpoint parameter counts (receipt) overriding the width map
 for (n,ck,tr,enc,w,lr,cl,rec,ce,rg,mc,w32,ten,note) in M:
     r=int(rec.replace(",","")) if rec and rec[0].isdigit() else REC.get(cl)
     R.append(dict(n=n,ck=ck,tr=tr.lstrip("~"),ap=tr.startswith("~"),enc=enc,w=w,lr=lr,cl=cl,
-                  rec=r,ce=float(ce) if ce else None,par=PARAMS.get(ck,PAR[w]),note=note,mc=mc,w32=w32,ten=ten))
+                  rec=r,ce=float(ce) if ce else None,par=PARAMS.get(ck,PAR[w]),note=note,mc=mc,w32=w32,ten=ten,
+                  own=ck in OWN_SPLIT))
 def esc(t): return t.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 def tip(d):
     lines=["%s  (%s)"%(d["n"],d["ck"]),
@@ -96,14 +98,15 @@ def offscale_note(s, lx, y0):
 #: to prevent.  Every blank-CE row must be named here or the build fails loudly, the same
 #: contract ENC_CLASS holds for encoders.
 NO_CE_REASON={
-    "06dd925b":"generation corpus entered every split",
-    "61625eec":"generation corpus entered every split",
     "0dc7179d":"abandoned, no selection",
 }
 NO_CE=[d for d in R if d["ce"] is None]
 for _d in NO_CE:
     if _d["ck"] not in NO_CE_REASON:
         raise SystemExit("chart 1: %s (%s) has no val_ce and no reason in NO_CE_REASON"%(_d["ck"],_d["n"]))
+for _ck in NO_CE_REASON:                      # a stale reason is a lie waiting to be read
+    if _ck not in {d["ck"] for d in NO_CE}:
+        raise SystemExit("chart 1: NO_CE_REASON names %s, which HAS a val_ce"%_ck)
 def noce_note(s, lx, y0):
     """Legend lines naming every model that HAS no validation number (visible, not silent)."""
     if not NO_CE: return y0
@@ -138,7 +141,8 @@ for d in R:
     if d["enc"] not in ENC_CLASS: raise SystemExit("chart 1 has no marker class for encoder %r (%s)"%(d["enc"],d["ck"]))
     ENC_N[d["enc"]]+=1
     if not (x0<=X(d["rec"])<=x1 and y0<=Y(d["ce"])<=y1): raise SystemExit("chart 1: %s (%s records, CE %.5f) falls outside the plot frame"%(d["ck"],d["rec"],d["ce"]))
-    s.append(dot(X(d["rec"]),Y(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.4, "pt "+ENC_CLASS[d["enc"]], d))
+    _cls="pt "+ENC_CLASS[d["enc"]]+(" hollow" if d["own"] else "")
+    s.append(dot(X(d["rec"]),Y(d["ce"]), 6 if d["ck"]=="3cd27716" else 4.4, _cls, d))
 lx=x1+22
 s.append('<text x="%d" y="40" class="lgh">ENCODER</text>'%lx)
 ly=60
@@ -146,6 +150,15 @@ for enc in ("v1","v2","v3","v4"):
     if ENC_N[enc]==0: continue   # a generation with no charted run gets no legend line
     s.append('<circle cx="%d" cy="%d" r="4.4" class="pt %s"/><text x="%d" y="%d" class="lg">%s &middot; %d run%s</text>'%(lx+6,ly,ENC_CLASS[enc],lx+19,ly+4,enc,ENC_N[enc],"s" if ENC_N[enc]!=1 else ""))
     ly+=22
+_own=[d for d in ONSCALE if d["own"]]
+if _own:
+    s.append('<circle cx="%d" cy="%d" r="4.4" class="pt pt2 hollow"/>'%(lx+6,ly))
+    s.append('<text x="%d" y="%d" class="lg">own val split</text>'%(lx+19,ly+4))
+    ly+=18
+    for t in ["hollow = measured on a","different 10% split, so it","is NOT comparable with the","filled dots or the lines.",
+              "Here: %s."%" and ".join(d["n"].split(":")[0] for d in _own)]:
+        s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ly+10,t)); ly+=15
+    ly+=8
 NCE=len(ONSCALE)
 for i,t in enumerate(["All %d models with a"%NCE,"validation number on","this scale.","Click or tab to any dot","for its full record."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ly+14+i*16,t))

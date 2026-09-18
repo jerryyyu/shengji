@@ -572,3 +572,35 @@ def test_a_leader_chart_size_ratio_is_a_fraction(data):
         m = re.search(r"(\d+) of (\d+) corpus sizes", _svgs(page)[name])
         assert m, f"{name} lost its derived size ratio"
         assert int(m.group(1)) <= int(m.group(2)), f"{name}: {m.group(0)} is not a fraction"
+
+
+def test_an_own_split_val_ce_is_charted_but_marked_and_never_joins_a_fitted_line(data):
+    """Jerry 2026-09-17: report the generation val_ce even though it is worse.  It IS
+    comparable with nothing else on the chart -- the split is a rank over the whole corpus,
+    so each generation adds ~10% of its new deals to val (17,600 -> 19,200 -> 22,400) and the
+    added deals are self-play.  So the point is drawn, hollow, and stays off the base lines."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    own = [r for r in rows if r.get("own_split")]
+    assert own, "no OWN_SPLIT row in the fixture; this test would pass vacuously"
+    svg = _svgs(page)["1 data vs CE"]
+    for r in own:
+        assert r["ce"], f"{r['ck']} is OWN_SPLIT but has no val_ce to draw"
+        m = re.search(r'<circle[^>]*class="pt pt\d hollow hit"[^>]*data-t="%s' % re.escape(r["n"][:20]), svg)
+        assert m, f"{r['ck']} is OWN_SPLIT but is not drawn hollow on chart 1"
+    assert "own val split" in svg and "NOT comparable" in svg
+    # and it is excluded from every fitted base-recipe series
+    for key, names in series.items():
+        assert not (set(names) & {r["ck"] for r in own}), f"series {key} includes an own-split row"
+
+
+def test_a_stale_no_ce_reason_is_a_loud_failure(data):
+    """The reason table explains rows that have NO val_ce.  Once a row gains one the entry is
+    a lie, so the build must refuse rather than carry it."""
+    rows, table_only, series = data
+    rows2 = copy.deepcopy(rows)
+    for r in rows2:
+        if not r["ce"]:
+            r["ce"] = "0.62000"          # every blank row now has a number; the table is stale
+    with pytest.raises(SystemExit):
+        _render(rows2, table_only, series)

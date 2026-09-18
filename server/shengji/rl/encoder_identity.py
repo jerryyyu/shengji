@@ -34,22 +34,49 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+#: Versions >= 4 include the DISPATCHER (``encode_versions.py``) in their source
+#: closure, so publishing any later version would otherwise move an older one's
+#: ``implementation_sha256`` -- orphaning its caches (176,002 v4 shard files on
+#: the trainer when v5 was written) and refusing its archived checkpoints.  A
+#: published version therefore pins the dispatcher digest it was published with;
+#: its OWN block is still hashed live, and ``tests/data/encoder_v4_golden.json``
+#: pins the bytes the dispatcher actually produces for it, so behavioural drift
+#: is caught by the vector rather than by the file hash.
+PUBLISHED_DISPATCHER_SHA256 = {
+    4: "aa8528a636f5d59a326afbf7826043a9fcd670ddb610e36ca78f551c3c60a88b",
+}
+
+
 def source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
     """The executable dependency closure of encoder ``version``.
 
     v1 and v2 keep the frozen four-file closure (their archived identities
-    must keep matching).  v4 adds the files that compute its columns."""
+    must keep matching).  Later versions add the files that compute their own
+    columns, and ONLY those: v4's closure must not move because v5 exists, so
+    each version names its block explicitly rather than accumulating."""
+    version = check_version(version)
     paths = dict(SOURCE_PATHS)
-    if check_version(version) >= 4:
+    if version >= 4:
         here = Path(__file__).resolve()
         paths["encode_versions"] = here.with_name("encode_versions.py")
-        paths["encode_opponent_pairs"] = here.with_name("encode_opponent_pairs.py")
+        if version == 4:
+            paths["encode_opponent_pairs"] = here.with_name("encode_opponent_pairs.py")
+        if version == 5:
+            paths["encode_banker_kitty"] = here.with_name("encode_banker_kitty.py")
     return paths
 
 
 def source_sha256s(version: int = ENC_VERSION) -> dict[str, str]:
-    """Rehash the exact executable dependency closure on every call."""
-    return {name: sha256_file(path) for name, path in source_paths(version).items()}
+    """The digest of every file encoder ``version`` executes.
+
+    The dispatcher's entry is pinned for a published version (see
+    ``PUBLISHED_DISPATCHER_SHA256``); every other file is hashed live."""
+    version = check_version(version)
+    digests = {name: sha256_file(path) for name, path in source_paths(version).items()}
+    pinned = PUBLISHED_DISPATCHER_SHA256.get(version)
+    if pinned is not None and "encode_versions" in digests:
+        digests["encode_versions"] = pinned
+    return digests
 
 
 def implementation_sha256(sources: dict[str, str], version: int = ENC_VERSION) -> str:

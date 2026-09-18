@@ -35,7 +35,7 @@ from . import encode as _v1
 from .encode import ENC_VERSION, N_CARDS, OBS_DIM, OBS_SCHEMA  # noqa: F401  (re-export)
 
 #: the highest version ``encode_obs`` can emit
-ENC_VERSION_MAX = 4
+ENC_VERSION_MAX = 5
 OBS_SCHEMA_BY_VERSION = {
     1: OBS_SCHEMA,
     2: "rl-observation-v2-trick-state",
@@ -44,13 +44,21 @@ OBS_SCHEMA_BY_VERSION = {
     # Version 4 is v2 plus the opponent-pair block and does NOT include 3;
     # the two blocks can be combined under a later number if both pay.
     4: "rl-observation-v4-opponent-pairs",
+    # Version 5 is v2 plus the banker's own buried kitty and does NOT include
+    # 3 or 4: v4's opponent-pair block was measured (ten windows, null in play)
+    # and bundling it here would confound the one change under test.  The two
+    # can still be combined under a later number if both pay.
+    5: "rl-observation-v5-banker-kitty",
 }
 #: v2 appends 16 trick-local, 5 points-regime and 8 hand-shape columns
 _OBS_EXTRA_V2 = 16 + 5 + 8                                   # = 29
 #: v4 appends the 75 opponent-pair columns of ``encode_opponent_pairs``
 _OBS_EXTRA_V4 = 5 + 5 + 5 + 45 + 15                          # = 75
 OBS_DIM_BY_VERSION = {1: OBS_DIM, 2: OBS_DIM + _OBS_EXTRA_V2}  # 531, 560
+#: v5 appends the 56 banker-kitty columns of ``encode_banker_kitty``
+_OBS_EXTRA_V5 = 1 + 54 + 1                                   # = 56
 OBS_DIM_BY_VERSION[4] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V4  # 635
+OBS_DIM_BY_VERSION[5] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V5  # 616
 
 
 def check_version(version: object) -> int:
@@ -198,6 +206,11 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
         from .encode_opponent_pairs import opponent_pair_columns
         # the same public memory the v1/v2 columns see (own_kitty=False)
         obs += opponent_pair_columns(rnd, seat, Memory(rnd, seat, own_kitty=False))
+    if version == 5:
+        # The ONE block that adds a fact rather than restating one: the burial
+        # the acting seat made itself.  Zero for every other seat.
+        from .encode_banker_kitty import banker_kitty_columns
+        obs += banker_kitty_columns(rnd, seat)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 

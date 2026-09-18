@@ -772,9 +772,14 @@ OBS_SEGMENTS_V2_EXTRA = [["winner_rel", 4, "bits2"], ["partner_winning", 1, "bit
 OBS_SEGMENTS_V4_EXTRA = [["unseen_by_suit", 5, "f32"], ["pairs_played", 5, "f32"],
                          ["pairs_possible", 5, "f32"], ["pair_caps", 45, "bits2"],
                          ["pairs_played_by", 15, "f32"]]
+#: v5 appends the banker's own burial: a known flag, the burial as a card plane
+#: on the same 0/.5/1 scale as every other card plane, and its point total.
+OBS_SEGMENTS_V5_EXTRA = [["kitty_known", 1, "bits2"], ["kitty", N_CARDS, "bits2"],
+                         ["kitty_points", 1, "f32"]]
 OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
                            2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA,
-                           4: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V4_EXTRA}
+                           4: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V4_EXTRA,
+                           5: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V5_EXTRA}
 #: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
 OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],

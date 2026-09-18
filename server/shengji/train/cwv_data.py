@@ -165,10 +165,23 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
     and refuses every v4 checkpoint, exactly as the public encoder contract
     (``rl.encoder_identity.source_paths``) does."""
     paths = dict(CWV_SOURCE_PATHS)
-    if check_version(version) >= 4:
-        for name in ("encode_versions", "encode_opponent_pairs"):
-            paths[name] = _SHENGJI / "rl" / f"{name}.py"
+    version = check_version(version)
+    if version >= 4:
+        paths["encode_versions"] = _SHENGJI / "rl" / "encode_versions.py"
+        # each version names its OWN block, so v4's closure does not grow when a
+        # later version is published
+        if version == 4:
+            paths["encode_opponent_pairs"] = _SHENGJI / "rl" / "encode_opponent_pairs.py"
+        if version == 5:
+            paths["encode_banker_kitty"] = _SHENGJI / "rl" / "encode_banker_kitty.py"
     return paths
+
+
+#: dispatcher digests a published encoder version was published with (see
+#: ``cwv_encoder_identity``); mirrors ``rl.encoder_identity``'s table.
+PUBLISHED_DISPATCHER_SHA256 = {
+    4: "aa8528a636f5d59a326afbf7826043a9fcd670ddb610e36ca78f551c3c60a88b",
+}
 
 
 # ---------------------------------------------------------------- identity
@@ -182,6 +195,14 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     encoder versions cannot share a cache file."""
     version = check_version(version)
     sources = {name: sha256_file(path) for name, path in cwv_source_paths(version).items()}
+    # A published version pins the DISPATCHER digest it was published with: the
+    # dispatcher is in every closure from v4 on, so adding v5 would otherwise
+    # have moved v4's identity and orphaned its 176,002 cache files and its
+    # archived checkpoints.  v4's own block is still hashed live above, and
+    # tests/data/encoder_v4_golden.json pins the bytes it actually emits.
+    pinned = PUBLISHED_DISPATCHER_SHA256.get(version)
+    if pinned is not None:
+        sources["encode_versions"] = pinned
     # v1's payload is FROZEN: ``ai.cwv_policy.local_encoder_identity`` is an
     # independent replica of this recipe and archived CWV checkpoints are
     # checked against it.  Later versions extend the payload, so a v2 build

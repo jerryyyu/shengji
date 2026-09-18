@@ -91,6 +91,28 @@ def offscale_note(s, lx, y0):
     for i,d in enumerate(OFFSCALE):
         s.append('<text x="%d" y="%d" class="lgs">%s: CE %.3f</text>'%(lx,y0+16+i*14,esc(d["n"]),d["ce"]))
     return y0+16+len(OFFSCALE)*14+6
+#: Why a charted model carries no validation number.  Chart 1 plots val_ce, so a row
+#: with none is silently invisible -- exactly the failure the OFF THIS SCALE note exists
+#: to prevent.  Every blank-CE row must be named here or the build fails loudly, the same
+#: contract ENC_CLASS holds for encoders.
+NO_CE_REASON={
+    "06dd925b":"generation corpus entered every split",
+    "61625eec":"generation corpus entered every split",
+    "0dc7179d":"abandoned, no selection",
+}
+NO_CE=[d for d in R if d["ce"] is None]
+for _d in NO_CE:
+    if _d["ck"] not in NO_CE_REASON:
+        raise SystemExit("chart 1: %s (%s) has no val_ce and no reason in NO_CE_REASON"%(_d["ck"],_d["n"]))
+def noce_note(s, lx, y0):
+    """Legend lines naming every model that HAS no validation number (visible, not silent)."""
+    if not NO_CE: return y0
+    s.append('<text x="%d" y="%d" class="lgh">NO COMPARABLE val_ce</text>'%(lx,y0))
+    for i,d in enumerate(NO_CE):
+        s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,y0+16+i*28,esc(d["n"].split(":")[0])))
+        s.append('<text x="%d" y="%d" class="lgs">&#8212; %s</text>'%(lx,y0+16+i*28+13,esc(NO_CE_REASON[d["ck"]])))
+    return y0+16+len(NO_CE)*28+6
+
 # ---------- 1: data vs val_ce (LOG y) ----------
 REC_MAX=max(d["rec"] for d in ONSCALE); REC_MIN=min(d["rec"] for d in ONSCALE)
 XHI1=REC_MAX*1.12; XLO1=REC_MIN*0.85   # the axis follows the data (25.4M records at 176k sat past the old 24M edge)
@@ -127,7 +149,7 @@ for enc in ("v1","v2","v3","v4"):
 NCE=len(ONSCALE)
 for i,t in enumerate(["All %d models with a"%NCE,"validation number on","this scale.","Click or tab to any dot","for its full record."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,ly+14+i*16,t))
-offscale_note(s, lx, ly+110)
+noce_note(s, lx, offscale_note(s, lx, ly+110))
 FRAME1=[x0,x1]
 s.append('</svg>'); open(OUT+"/g1.svg","w").write("\n".join(s))
 
@@ -167,7 +189,12 @@ print("charts 1 and 3 rebuilt with clickable dots")
 # Every distinct training day in the data, in order: a day is never dropped silently
 # (until 09-13 this list was typed by hand and ended on 09-12, so three models trained
 # on 09-13 were missing from charts 3 and 4 and the by-day table).
-DAYS=sorted({d["tr"] for d in R if d["ce"] is not None})
+# EVERY charted day, not only the ones carrying a val_ce.  A generation row's val_ce is
+# deliberately blank (its corpus entered every split), so gating the axis on val_ce deleted
+# the whole DAY from charts 3 and 4 -- and would have kept gen-2 off chart 4 even after its
+# screen sealed and it had a leader number to plot.  Same class of bug as the hand-typed
+# list this line replaced.
+DAYS=sorted({d["tr"] for d in R})
 W,H=880,440; L,Rm,T,B=84,206,30,64
 x0,x1,y0,y1=L,W-Rm,T,H-B
 YLO,YHI=0.540,0.740
@@ -180,7 +207,9 @@ for v in YT:
 for i,d in enumerate(DAYS):
     n=sum(1 for r in ONSCALE if r["tr"]==d)
     s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(XD(i),y1+21,d[5:]))
-    s.append('<text x="%.1f" y="%d" class="axs am">%d model%s</text>'%(XD(i),y1+37,n,"s" if n!=1 else ""))
+    # the count alone: "%d models" ran ~52 px against a ~45 px tick pitch and collided with
+    # its neighbours.  The legend says what the number means.
+    s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(XD(i),y1+37,n if n else "no CE"))
 s.append('<text x="%d" y="%d" class="axl am">the day the model was trained</text>'%((x0+x1)/2,y1+56))
 s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">validation cross-entropy (log)</text>'%((y0+y1)/2,(y0+y1)/2))
 best=9; pathpts=[]; DROPS=[]
@@ -208,6 +237,7 @@ s.append('<text x="%.1f" y="%.1f" class="reft" text-anchor="end">programme best,
 lx=x1+22
 s.append('<text x="%d" y="44" class="lgh">READING IT</text>'%lx)
 s.append('<circle cx="%d" cy="64" r="4.2" class="pt pt1"/><text x="%d" y="68" class="lg">one model</text>'%(lx+6,lx+19))
+_noce_days=[d for d in DAYS if not any(r["tr"]==d for r in ONSCALE)]
 s.append('<circle cx="%d" cy="86" r="6" class="pt pt2"/><text x="%d" y="90" class="lg">the deployed leader</text>'%(lx+6,lx+19))
 s.append('<line x1="%d" y1="106" x2="%d" y2="106" class="ln ln5"/><text x="%d" y="110" class="lg">best so far</text>'%(lx,lx+13,lx+19))
 _ce=[d for d in R if d["ce"] is not None]
@@ -215,9 +245,11 @@ _bst=min(_ce,key=lambda d:d["ce"])
 _aft=[d for d in _ce if d["tr"]>_bst["tr"]]
 _bt=[d for d in _aft if d["ce"]<_bst["ce"]]
 # derived, not hand-counted: a hardcoded "31 of the 38" stood here and was simply wrong.
-for i,t in enumerate(["%d of the %d models"%(len(_aft),len(_ce)),"were trained AFTER","the best was set.","%s beat it."%("None" if not _bt else str(len(_bt)))]):
+for i,t in enumerate(["The number under each","day is how many models","that day put on this","chart.","",
+                      "%d of the %d models"%(len(_aft),len(_ce)),"were trained AFTER","the best was set.","%s beat it."%("None" if not _bt else str(len(_bt)))]
+                     +(["","%s has models but no"%", ".join(d[5:] for d in _noce_days),"comparable val_ce."] if _noce_days else [])):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,142+i*16,t))
-offscale_note(s, lx, 216)
+noce_note(s, lx, offscale_note(s, lx, 142+16*(9+(3 if _noce_days else 0))+10))
 s.append('</svg>'); open(OUT+"/g5.svg","w").write("\n".join(s))
 
 # ---------- leader-axis charts: 2 (data), 4 (width), 6 (date) ----------
@@ -292,13 +324,19 @@ def leaderchart(keyfn, XLO, XHI, xt, xlab, out, extra, spread=17):
 # same corpus sits at the same x, only the interval lines fan by 3 px for legibility
 _g2_pts=[d for d in SCR if eff(d)]
 _g2_sizes=sorted({d["cl"] for d in _g2_pts}, key=lambda c: REC[c])
-_g2_all=len({d["cl"] for d in R if d["ce"] is not None})
+# the denominator must be a SUPERSET of the numerator: sizes carrying a leader number are
+# counted against EVERY charted size, not against the ce-bearing ones.  A generation row has
+# a leader number and no val_ce, so the old denominator excluded a size the numerator counted
+# (192k), making the ratio incoherent -- and more so as generation rows land.
+_g2_all=len({d["cl"] for d in R})
+_g2_scr=sorted({d["cl"] for d in R if d["ten"]=="SCREENING"}, key=lambda c: REC[c])
 _g2_min=min(d["rec"] for d in _g2_pts)
 leaderchart(lambda d:d["rec"], REC[_g2_sizes[0]]*0.82, REC[_g2_sizes[-1]]*1.18,
   [(REC[c],"%.1fM"%(REC[c]/1e6),c+" clusters") for c in _g2_sizes],
   "training records (log scale; only sizes with a leader number)",OUT+"/g2.svg",
-  ["%d of %d corpus sizes"%(len(_g2_sizes),_g2_all),"have a leader number.","Nothing below %.1fM does."%(_g2_min/1e6),"",
-   "Same corpus = same x;","interval lines fanned","3 px so they can be told","apart. Click a dot."], spread=3)
+  ["%d of %d corpus sizes"%(len(_g2_sizes),_g2_all),"have a leader number.","Nothing below %.1fM does."%(_g2_min/1e6),""]
+  +(["%s is screening now"%", ".join(_g2_scr),"and joins when it seals.",""] if _g2_scr else [])
+  +["Same corpus = same x;","interval lines fanned","3 px so they can be told","apart. Click a dot."], spread=3)
 leaderchart(lambda d:d["par"], 2.0e5,5.5e6,[(2.72e5,"273k"),(6.11e5,"611k"),(1.48e6,"1.48M"),(4.02e6,"4.02M")],
   "parameters (log scale)",OUT+"/g4.svg",
   ["Every width screened, but","at one corpus size and","mostly one learning rate."])
@@ -321,7 +359,8 @@ for d in SCR:
 for i,dd in enumerate(DAYS):
     n=len(byday.get(dd,[]))
     s.append('<text x="%.1f" y="%d" class="ax am">%s</text>'%(XE(i),y1+21,dd[5:]))
-    s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(XE(i),y1+37,"%d vs leader"%n if n else "none vs leader"))
+    # bare count; "none vs leader" ran ~76 px against a ~45 px pitch.  Legend carries the sense.
+    s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(XE(i),y1+37,n if n else "&#8212;"))
 s.append('<text x="%d" y="%d" class="axl am">the day the model was trained</text>'%((x0+x1)/2,y1+56))
 s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">effect vs the leader</text>'%((y0+y1)/2,(y0+y1)/2))
 for i,dd in enumerate(DAYS):
@@ -341,7 +380,11 @@ _ys=legend(s,lx,"5",44,122)
 def _hasld(d):
     return (d["w32"] and d["w32"]!="GAP") or (d["ten"] and d["ten"] not in ("QUEUED","RUNNING","SCREENING","CODEX"))
 _no=sum(1 for d in R if not _hasld(d))
-for i,t in enumerate(["The 10 Sep points are","NOT better models. They","are the same question","asked with a better","instrument.","","%d of %d models have"%(_no,len(R)),"no point here at all."]):
+_scr_days=sorted({d["tr"][5:] for d in R if d["ten"]=="SCREENING"})
+for i,t in enumerate(["The number under each","day is how many models","have a leader point;","&#8212; means none yet.","",
+                      "The 10 Sep points are","NOT better models. They","are the same question","asked with a better","instrument.","",
+                      "%d of %d models have"%(_no,len(R)),"no point here at all."]
+                     +(["","%s is screening now."%", ".join(_scr_days)] if _scr_days else [])):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>'%(lx,_ys+i*16,t))
 s.append('</svg>'); open(OUT+"/g6.svg","w").write("\n".join(s))
 print("chart 6 built; total charts:", 6)
@@ -413,12 +456,18 @@ def both(keyfn, XLO, XHI, xt, xlab, out, extra, spread=15):
 # same tick, fanned 7 px (the old 15 px pitch spread them across the axis; 3 px was unreadable)
 _h2_pts=[d for d in R if d["mc"] or (d in SCR and eff(d))]
 _h2_sizes=sorted({d["cl"] for d in _h2_pts}, key=lambda c: REC[c])
-_h2_all=len({d["cl"] for d in R if d["ce"] is not None})
+# denominator must be a SUPERSET of the numerator (see _g2_all): a generation row carries a
+# leader number and no val_ce, so counting only ce-bearing sizes dropped a size the numerator
+# included and the ratio stopped being a fraction.
+_h2_all=len({d["cl"] for d in R})
+_h2_scr=sorted({d["cl"] for d in R if d["ten"]=="SCREENING"}, key=lambda c: REC[c])
 both(lambda d:d["rec"], REC[_h2_sizes[0]]*0.82, REC[_h2_sizes[-1]]*1.18,
   [(REC[c],"%.1fM"%(REC[c]/1e6),c+" clusters") for c in _h2_sizes],
   "training records (log scale; only sizes with a benchmark point)",OUT+"/h2.svg",
   ["Every point above zero","is vs the OLD production","bot. Every point below","is vs the CURRENT leader.","Same models, both true.","",
-   "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all.","Same corpus = one tick;","points fanned 7 px so","they can be read."], spread=7)
+   "%d of %d corpus sizes"%(len(_h2_sizes),_h2_all),"have a point at all."]
+  +(["%s is screening now"%", ".join(_h2_scr),"and joins when it seals."] if _h2_scr else [])
+  +["Same corpus = one tick;","points fanned 7 px so","they can be read."], spread=7)
 # section 2b: same rule on the parameter axis; ticks are the parameter counts that carry a
 # point, counts within 2% share one tick (a depth cell sits at its depth-2 twin's budget)
 def _par_ticks(pts):

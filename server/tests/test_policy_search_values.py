@@ -181,7 +181,7 @@ def test_the_soft_flag_refuses_an_extract_with_no_values_rather_than_training_ha
     assert "--policy-soft-targets: this extract carries no per-candidate search" in src
     assert "re-extract with the current" in src
     # and it is guarded on the tensor actually being absent, not on a config flag
-    assert 'if policy_soft_targets and "vals" not in _p_t:' in src
+    assert 'if policy_soft_targets and "vals" not in p_tensors:' in src   # the batch tensors, after the stage timer
 
 
 def test_the_flag_needs_a_policy_head_and_a_positive_temperature(tmp_path):

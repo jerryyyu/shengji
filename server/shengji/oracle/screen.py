@@ -1407,6 +1407,22 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
     per_cluster_win = [_mean([r["arm_won"] for r in by_cluster[c]])
                        for c in clusters]
 
+    def _signed_points(r):
+        """Attacker points from the ARM's side of the table.
+
+        The attacking team wants ``attacker_points`` high and the banker's team
+        wants it low, so the arm's gain is the raw figure when it attacks and the
+        negation when it banks.  Summed over a cluster's two mirrors this is the
+        same construction as the level scale, one resolution finer (#487).
+        """
+        points = float(r["attacker_points"])
+        return points if r["arm_role"] == "attacker" else -points
+
+    per_round_points = [_mean([_signed_points(r) for r in by_cluster[c]])
+                        for c in clusters]
+    per_cluster_points = [sum(_signed_points(r) for r in by_cluster[c])
+                          for c in clusters]
+
     def split(role):
         rows = [r for r in records if r["arm_role"] == role]
         return {
@@ -1543,6 +1559,27 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
             "positive_clusters": sum(v > 0 for v in per_cluster_sum),
             "zero_clusters": sum(v == 0 for v in per_cluster_sum),
             "negative_clusters": sum(v < 0 for v in per_cluster_sum),
+        },
+        "metric_secondary": ("arm signed attacker points per round, the same "
+                             "construction one resolution finer (#487); REPORTED "
+                             "ONLY -- levels remain the promotion criterion, and "
+                             "nothing is promoted on points until a points-to-"
+                             "levels conversion is established"),
+        "arm_signed_attacker_points": {
+            # The SAME bootstrap seeds as the level scale, on purpose. Both
+            # scales are computed on the same clusters, so a shared seed draws
+            # the same resample for each replicate and the common
+            # cluster-sampling noise cancels when the two are compared -- the
+            # ordinary paired-vs-unpaired argument. Independent seeds would
+            # make a level-vs-points disagreement HARDER to see, not easier.
+            "per_round": cluster_bootstrap(
+                per_round_points, replicates=replicates, seed=bootstrap_seed),
+            "per_cluster_sum": cluster_bootstrap(
+                per_cluster_points, replicates=replicates,
+                seed=bootstrap_seed + 1),
+            "positive_clusters": sum(v > 0 for v in per_cluster_points),
+            "zero_clusters": sum(v == 0 for v in per_cluster_points),
+            "negative_clusters": sum(v < 0 for v in per_cluster_points),
         },
         "arm_win_rate": cluster_bootstrap(
             per_cluster_win, replicates=replicates, seed=bootstrap_seed + 2),

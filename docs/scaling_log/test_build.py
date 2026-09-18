@@ -161,7 +161,7 @@ def test_every_plotted_dot_is_inside_its_chart_and_off_scale_models_are_named(da
     emitted as an off-canvas circle."""
     page, c = _render(*data)
     svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
-    assert len(svgs) == 6
+    assert len(svgs) == len(build.CHART_NAMES)   # derived, so a new chart does not edit this
     for w, h, body in svgs:
         for cx, cy in _circles(body):
             assert 0 <= cx <= float(w) and 0 <= cy <= float(h), (cx, cy, w, h)
@@ -629,3 +629,32 @@ def test_a_generation_rows_record_count_is_the_total_not_the_encoded_subset(data
             f"{ck}: row says {row['rec']}, counts.records says {total:,} "
             "(counts.records.encoded is the WRONG field)")
         assert rec_map[cl] == total, f'charts.py REC["{cl}"] is {rec_map[cl]:,}, not {total:,}'
+
+
+def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(data):
+    """Jerry 2026-09-18 asked for a chart with date on x and impact vs SmartBot on y. The first
+    build rendered a LEGEND AND NO POINTS -- charts.py is exec'd with an injected globals dict
+    and POLICY_VS_SMART was not in it, so the chart silently had no data. Pin that it does."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    svg = _svgs(page)["5 policy vs SmartBot by day"]
+    import re as _re
+    labels = _re.findall(r'class="lab am">([^<]*)</text>', svg)
+    assert labels, "the goal chart rendered with no plotted models"
+    ns = {}
+    exec(open(Path(__file__).with_name("models.py")).read(), ns)
+    assert len(labels) == len(ns["POLICY_VS_SMART"]), (
+        f"{len(labels)} points drawn for {len(ns['POLICY_VS_SMART'])} measured heads")
+    assert "SmartBot parity" in svg, "the zero line must be labelled as parity"
+    # a head whose interval clears zero is drawn as a BEAT (pt2); one that crosses is pt1
+    for ck, txt in ns["POLICY_VS_SMART"].items():
+        lo = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*([-+][\d.]+)', txt).group(1))
+        name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
+        dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
+        assert dot, f"{name} is not drawn on the goal chart"
+        hi = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*[-+][\d.]+,\s*([-+][\d.]+)', txt).group(1))
+        want = "2" if lo > 0 else ("3" if hi < 0 else "1")
+        kind = {"2": "beats SmartBot", "3": "WORSE than SmartBot", "1": "a wash"}
+        assert dot.group(1) == want, (
+            f"{name} [{lo:+.4f}, {hi:+.4f}] should be drawn as {kind[want]}, "
+            f"is drawn as {kind[dot.group(1)]}")

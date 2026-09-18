@@ -155,9 +155,21 @@ def _shard_rows(args: tuple) -> list[tuple]:
             keep = [a for a in legal if sorted(a) == sorted(rec["action"])] + [a for a in rec.get("ballot", [])]
             keep += rng.sample(legal, MAX_LEGAL - len(keep))
             legal = keep
+        # The search's per-candidate means, aligned to the RAW ballot list (NaN where the
+        # search reported none). Alignment is the whole risk here: `eligible_indices` index
+        # into record["ballot"], while ballot_tensors later DROPS falsy ballot entries, so
+        # slot positions shift. Emitting a raw-ballot-length list lets the same `if a`
+        # predicate filter both together and keeps them in step by construction.
+        raw_ballot = rec.get("ballot", []) or []
+        means_raw = [float("nan")] * len(raw_ballot)
+        from .cwv_data import search_means   # local: cwv_data is a heavier module, and a
+        got = search_means(rec)              # top-level import here risks an import cycle
+        if got is not None:
+            for _i, _m in zip(*got):
+                means_raw[_i] = _m
         rows.append((x, y, n_legal, [cards_to_idx(a) for a in legal],
-                     [cards_to_idx(a) for a in rec.get("ballot", [])], cards_to_idx(rec["action"]),
-                     bool(rec.get("legal_actions_complete", True)), deal, key))
+                     [cards_to_idx(a) for a in raw_ballot], cards_to_idx(rec["action"]),
+                     bool(rec.get("legal_actions_complete", True)), deal, key, means_raw))
     return rows
 
 
@@ -168,14 +180,19 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
     """One training chunk: rows as float16, the ballots padded once, the deal
     keys alongside; no legal lists (training never reads them)."""
     ball, mask, tgt = ballot_tensors(meta)
+    vals, has_vals = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
     path = out_dir / f"chunk-{index:05d}.npz"
+    # `vals`/`has_vals` are ADDITIVE and the schema string is deliberately unchanged: a live
+    # training run is reading policy_rows_v7, which has neither, and must keep loading.
     np.savez_compressed(path, X=np.stack(X).astype(np.float16), Y=np.stack(Y).astype(np.uint8),
                         ball=ball.numpy(), mask=mask.numpy(), tgt=tgt.numpy(),
-                        deal_key=np.asarray([m["deal_key"] for m in meta]))
+                        deal_key=np.asarray([m["deal_key"] for m in meta]),
+                        vals=vals, has_vals=has_vals)
     with open(path, "rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
-            "rows_with_ballot_target": int((tgt >= 0).sum()), "sha256": sha}
+            "rows_with_ballot_target": int((tgt >= 0).sum()),
+            "rows_with_search_values": int(has_vals.sum()), "sha256": sha}
 
 
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
@@ -209,10 +226,10 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
             raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
-            for x, y, n, legal, ballot, taken, complete, deal, key in got:
+            for x, y, n, legal, ballot, taken, complete, deal, key, means_raw in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
-                             "deal": deal, "deal_key": key})
+                             "deal": deal, "deal_key": key, "means": means_raw})
             if out_dir is not None:
                 # Flush full chunks as they fill; the LAST chunk may be partial so the
                 # limit is met the moment total + buffered reaches it (bounded memory:
@@ -311,6 +328,31 @@ def ballot_tensors(meta: Sequence[Mapping[str, Any]]):
             if c == taken:
                 tgt[i] = j
     return torch.from_numpy(ball), torch.from_numpy(mask), torch.from_numpy(tgt)
+
+
+def ballot_value_tensor(meta: Sequence[Mapping[str, Any]], b_max: int | None = None):
+    """``(vals [n, b_max] float32, has [n] bool)``: the search's mean for each SURVIVING
+    ballot slot, NaN where it reported none.
+
+    The filter is `if a` on the ballot entry -- character for character the one
+    ``ballot_tensors`` applies -- so slot j here is slot j there by construction rather
+    than by coincidence. ``eligible_indices`` index the RAW ballot, and dropping empty
+    entries shifts every later slot, which is exactly how these would silently misalign.
+    ``has`` marks rows with at least two finite means (one is not a distribution)."""
+    n = len(meta)
+    kept = []
+    for m in meta:
+        raw = m["ballot"]
+        means = m.get("means") or [float("nan")] * len(raw)
+        if len(means) != len(raw):                     # never silently zip-truncate
+            means = (list(means) + [float("nan")] * len(raw))[:len(raw)]
+        kept.append([mv for a, mv in zip(raw, means) if a])
+    width = b_max if b_max is not None else (max((len(v) for v in kept), default=1) or 1)
+    vals = np.full((n, width), np.nan, np.float32)
+    for i, v in enumerate(kept):
+        vals[i, :len(v)] = v[:width]
+    has = np.isfinite(vals).sum(1) >= 2
+    return vals, has
 
 
 def listwise_loss(logits, ball, mask, tgt):

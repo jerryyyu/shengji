@@ -107,12 +107,24 @@ class PolicyRows:
         return _to_device(batch, device)
 
 
+def _pad2f(a: np.ndarray, width: int, fill: float) -> np.ndarray:
+    """Pad a (n, b) float array out to ``width`` columns with ``fill``."""
+    if a.shape[1] >= width:
+        return a[:, :width]
+    out = np.full((a.shape[0], width), fill, np.float32)
+    out[:, :a.shape[1]] = a
+    return out
+
+
 def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
     def t(v, dtype=None):
         v = torch.as_tensor(v) if not isinstance(v, torch.Tensor) else v
         return (v.to(dtype) if dtype is not None else v).to(device)
-    return {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
-            "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
+    out = {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
+           "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
+    if batch.get("vals") is not None:
+        out["vals"] = t(np.asarray(batch["vals"], dtype=np.float32))
+    return out
 
 
 class PolicyRowsStream:
@@ -183,7 +195,10 @@ class PolicyRowsStream:
         d = np.load(self.dir / c["file"])
         dk = d["deal_key"].astype(str)
         keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
-        return {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
+        out = {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
+        if "vals" in d.files:          # present only in post-#496 extracts
+            out["vals"] = d["vals"][keep]
+        return out
 
     def batches(self, batch_size: int, rng: np.random.Generator):
         """One pass: chunks in a fresh order, ``window`` at a time, rows shuffled within the window."""
@@ -193,6 +208,13 @@ class PolicyRowsStream:
             X = np.concatenate([p["X"] for p in parts]); Y = np.concatenate([p["Y"] for p in parts])
             ball = _pad_concat([p["ball"] for p in parts], -1); mask = np.concatenate([_pad2(p["mask"], ball.shape[1], False) for p in parts])
             tgt = np.concatenate([p["tgt"] for p in parts])
+            # `vals` is OPTIONAL: pre-#496 extracts (policy_rows_v7 and earlier) have none.
+            # Carry it only when EVERY chunk in the window has it -- fabricating NaNs for the
+            # chunks that do not would look like "the search had no preference here", which is
+            # a different claim from "this extract predates the field".
+            vals = None
+            if all("vals" in p for p in parts):
+                vals = np.concatenate([_pad2f(p["vals"], ball.shape[1], np.nan) for p in parts])
             perm = rng.permutation(len(X))
             for b in range(0, len(perm), batch_size):
                 if self.limit is not None and drawn >= self.limit:
@@ -201,7 +223,10 @@ class PolicyRowsStream:
                 if self.limit is not None:
                     idx = idx[:self.limit - drawn]          # the budget is exact, never a partial overshoot
                 drawn += len(idx)
-                yield {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+                out = {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+                if vals is not None:
+                    out["vals"] = vals[idx]
+                yield out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:

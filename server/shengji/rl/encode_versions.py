@@ -35,7 +35,7 @@ from . import encode as _v1
 from .encode import ENC_VERSION, N_CARDS, OBS_DIM, OBS_SCHEMA  # noqa: F401  (re-export)
 
 #: the highest version ``encode_obs`` can emit
-ENC_VERSION_MAX = 5
+ENC_VERSION_MAX = 6
 OBS_SCHEMA_BY_VERSION = {
     1: OBS_SCHEMA,
     2: "rl-observation-v2-trick-state",
@@ -59,6 +59,13 @@ OBS_DIM_BY_VERSION = {1: OBS_DIM, 2: OBS_DIM + _OBS_EXTRA_V2}  # 531, 560
 _OBS_EXTRA_V5 = 1 + 54 + 1                                   # = 56
 OBS_DIM_BY_VERSION[4] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V4  # 635
 OBS_DIM_BY_VERSION[5] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V5  # 616
+#: v6 is the ONE version that is not a strict extension of v1: it CORRECTS the unseen plane
+#: (columns 432:486, inside the v1 block) by removing the banker's own burial, then appends a
+#: single kitty_known flag.  561 is chosen because it is a width no other version claims --
+#: dispatch is by width, and a corrected net emitted at v2's 560 would be served the
+#: UNCORRECTED plane with nothing to catch it (measured: kitty-serve-mismatch-probe.txt).
+_OBS_EXTRA_V6 = 1
+OBS_DIM_BY_VERSION[6] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V6  # 561
 
 
 def check_version(version: object) -> int:
@@ -211,6 +218,13 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
         # the acting seat made itself.  Zero for every other seat.
         from .encode_banker_kitty import banker_kitty_columns
         obs += banker_kitty_columns(rnd, seat)
+    if version == 6:
+        # NOT an append: v6 CORRECTS the v1 unseen plane, then appends one flag.  This is the
+        # only version that rewrites a v1 column, and it is why widen_to refuses it.
+        from .encode_banker_kitty_corrected import (banker_kitty_corrected_columns,
+                                                    corrected_unseen_plane, UNSEEN)
+        obs[UNSEEN] = corrected_unseen_plane(rnd, seat)
+        obs += banker_kitty_corrected_columns(rnd, seat)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 

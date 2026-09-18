@@ -86,14 +86,21 @@ def load():
     exec(src, g)
     record = g.get("RECORD", {})
     params = g.get("PARAMS", {})
+    own_split = set(g.get("OWN_SPLIT", ()))
     rows = [dict(zip(FIELDS, m)) for m in g["M"]]
     known = {r["ck"] for r in rows}
     for ck in params:
         if ck not in known:
             raise ValueError(f"PARAMS names {ck}, which is not a row")
+    for ck in own_split:
+        if ck not in known:
+            raise ValueError(f"OWN_SPLIT names {ck}, which is not a row")
+        if not next(r["ce"] for r in rows if r["ck"] == ck):
+            raise ValueError(f"OWN_SPLIT names {ck}, which has no val_ce to qualify")
     for r in rows:
         r["record"] = record.get(r["ck"], "")
         r["params"] = params.get(r["ck"])
+        r["own_split"] = r["ck"] in own_split
     global NOTE_LIMIT
     NOTE_LIMIT = g.get("NOTE_LIMIT", NOTE_LIMIT)
     return rows, g["TABLE_ONLY"], g["SERIES"]
@@ -185,6 +192,7 @@ def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
     g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
          "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
+         "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):

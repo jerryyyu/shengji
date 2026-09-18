@@ -270,7 +270,7 @@ def test_chart_1b_fans_same_corpus_models_around_one_tick_and_spans_only_leader_
     assert len(by_corpus["96k"]) >= 8 and max(by_corpus["96k"]) - min(by_corpus["96k"]) < 15 * (len(by_corpus["96k"]) - 1)
     assert "96k clusters" in g2  # tick labelled with its corpus
     assert 'am">1M</text>' not in g2 and 'am">2M</text>' not in g2 and 'am">5M</text>' not in g2  # the empty low end is gone
-    assert re.search(r"\d of \d corpus sizes</text>", g2)  # legend derived, not typed
+    assert re.search(r"\d+ of \d+ corpus sizes</text>", g2)  # legend derived, not typed
 
 
 def test_chart_2b_fans_same_parameter_count_models_around_one_tick(data):
@@ -336,17 +336,26 @@ def test_the_detail_panel_is_dismissable(data):
 def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table(data):
     rows, table_only, series = data
     page, c = _render(*data)
-    days = sorted({r["tr"].lstrip("~") for r in rows if r["ce"] and r["ck"] not in table_only})
-    assert c["days"] == days
+    # The day AXIS spans every charted day; the day TABLE is a val_ce progression and still
+    # spans only the days that have one.  A generation row has a training day and no
+    # comparable val_ce, and gating the axis on val_ce used to delete its day outright.
+    ce_days = sorted({r["tr"].lstrip("~") for r in rows if r["ce"] and r["ck"] not in table_only})
+    all_days = sorted({r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only})
+    assert c["days"] == all_days
+    assert set(ce_days) <= set(c["days"])
+    days = ce_days
     for d in days:
         assert f"<td>{d[8:]} Sep</td>" in page, f"day {d} missing from the by-day table"
     # a model trained on a NEW day (tomorrow) appears without any list being edited
+    # the new day must be LATER than every real one, or it proves nothing about the header
+    newest = max(r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only)
+    assert newest < "2026-09-18", f"fixture day 2026-09-18 is no longer in the future of {newest}"
     rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
-        "future model", "0badc0de", "2026-09-16", "v2", 512, "3e-4", "96k", "14,077,520",
+        "future model", "0badc0de", "2026-09-18", "v2", 512, "3e-4", "96k", "14,077,520",
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
-    assert "2026-09-16" in c2["days"] and "<td>16 Sep</td>" in page2
-    assert "16 September 2026" in page2  # the header date follows the latest training day
+    assert "2026-09-18" in c2["days"] and "<td>18 Sep</td>" in page2
+    assert "18 September 2026" in page2  # the header date follows the latest training day
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):
@@ -502,3 +511,121 @@ def test_policy_head_section_lists_every_head_and_blanks_unreadable_cells(data):
     assert all(h["value_cost"] for h in heads)                     # every head states its value cost
     with pytest.raises(SystemExit):                                # a short row is refused, never rendered blank
         build.policy_rows({"POLICY_FIELDS": ("name", "ck"), "POLICY_HEADS": [("x",)]})
+
+
+def _svgs(page):
+    return dict(zip(build.CHART_NAMES, re.findall(r"<svg viewBox[^>]*>.*?</svg>", page, re.S)))
+
+
+def test_a_model_with_no_validation_number_is_named_on_the_ce_charts(data):
+    """Charts 1 and 3 plot val_ce, so a row without one draws no dot and vanishes.  The
+    generation rows are exactly that (their corpus entered every split, so their val_ce is
+    not comparable with JS-M1's) and gen-2 could not be found on the page.  Absence has to
+    be stated, the same contract OFF THIS SCALE already holds for a CE above the axis."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    blank = [r for r in rows if not r["ce"] and r["ck"] not in table_only]
+    assert blank, "no blank-val_ce row in the fixture; this test would pass vacuously"
+    for name in ("1 data vs CE", "3 by training day"):
+        svg = _svgs(page)[name]
+        assert "NO COMPARABLE val_ce" in svg, f"{name} lost the absence note"
+        for r in blank:
+            assert r["n"].split(":")[0] in svg, f"{r['ck']} has no val_ce and is unnamed on {name}"
+
+
+def test_a_blank_val_ce_row_still_puts_its_training_day_on_the_day_axis(data):
+    """Charts 3 and 4 are indexed by training day.  The axis used to be built from rows WITH
+    a val_ce, so a day whose only models were generation rows disappeared entirely -- and the
+    row would have stayed off chart 4 even once its screen sealed and it had a leader point."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    for r in rows:
+        if r["ck"] in table_only:
+            continue
+        day = r["tr"].lstrip("~")
+        assert day in c["days"], f"{r['ck']} trained {day}, absent from the day axis"
+        for name in ("3 by training day", "4 leader effect by day"):
+            assert f'>{day[5:]}<' in _svgs(page)[name], f"{day} missing from {name}"
+
+
+def test_day_axis_labels_cannot_occlude_their_neighbours(data):
+    """'none vs leader' (14 mono chars, ~84 px) sat under a ~45 px tick pitch and ran into the
+    labels either side.  Both label rows must fit the pitch they are centred in."""
+    page, c = _render(*data)
+    pitch = (674 - 84) / len(c["days"])          # frame x0/x1 for the two day charts
+    for name in ("3 by training day", "4 leader effect by day"):
+        svg = _svgs(page)[name]
+        for cls, px in (("ax am", 11.5), ("axs am", 10.0)):
+            for t in re.findall(r'class="%s">([^<]*)</text>' % cls, svg):
+                if "the day the model" in t or "effect vs" in t:
+                    continue                     # axis titles, not per-tick labels
+                w = len(re.sub(r"&#?\w+;", "X", t)) * px * 0.6   # IBM Plex Mono advance
+                assert w <= pitch, f"{name}: {t!r} needs {w:.0f}px on a {pitch:.0f}px pitch"
+
+
+def test_a_leader_chart_size_ratio_is_a_fraction(data):
+    """'N of M corpus sizes' counted leader-bearing sizes on top and val_ce-bearing sizes
+    underneath -- and a generation row has the first without the second, so 192k was counted
+    in the numerator and not the denominator."""
+    page, c = _render(*data)
+    for name in ("1b data vs leader",):
+        m = re.search(r"(\d+) of (\d+) corpus sizes", _svgs(page)[name])
+        assert m, f"{name} lost its derived size ratio"
+        assert int(m.group(1)) <= int(m.group(2)), f"{name}: {m.group(0)} is not a fraction"
+
+
+def test_an_own_split_val_ce_is_charted_but_marked_and_never_joins_a_fitted_line(data):
+    """Jerry 2026-09-17: report the generation val_ce even though it is worse.  It IS
+    comparable with nothing else on the chart -- the split is a rank over the whole corpus,
+    so each generation adds ~10% of its new deals to val (17,600 -> 19,200 -> 22,400) and the
+    added deals are self-play.  So the point is drawn, hollow, and stays off the base lines."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    own = [r for r in rows if r.get("own_split")]
+    assert own, "no OWN_SPLIT row in the fixture; this test would pass vacuously"
+    svg = _svgs(page)["1 data vs CE"]
+    for r in own:
+        assert r["ce"], f"{r['ck']} is OWN_SPLIT but has no val_ce to draw"
+        m = re.search(r'<circle[^>]*class="pt pt\d hollow hit"[^>]*data-t="%s' % re.escape(r["n"][:20]), svg)
+        assert m, f"{r['ck']} is OWN_SPLIT but is not drawn hollow on chart 1"
+    assert "own val split" in svg and "NOT comparable" in svg
+    # and it is excluded from every fitted base-recipe series
+    for key, names in series.items():
+        assert not (set(names) & {r["ck"] for r in own}), f"series {key} includes an own-split row"
+
+
+def test_a_stale_no_ce_reason_is_a_loud_failure(data):
+    """The reason table explains rows that have NO val_ce.  Once a row gains one the entry is
+    a lie, so the build must refuse rather than carry it."""
+    rows, table_only, series = data
+    rows2 = copy.deepcopy(rows)
+    for r in rows2:
+        if not r["ce"]:
+            r["ce"] = "0.62000"          # every blank row now has a number; the table is stale
+    with pytest.raises(SystemExit):
+        _render(rows2, table_only, series)
+
+
+def test_a_generation_rows_record_count_is_the_total_not_the_encoded_subset(data):
+    """Receipts carry BOTH counts.records (total) and counts.records.encoded, ~0.5% smaller.
+    Every row on this page uses the total; gen-2 briefly used encoded (31,872,200 against the
+    real 32,032,200) and so did charts.py's REC, which muse caught on #491.  The page cannot
+    check provenance itself, so the two known-correct totals are pinned here.
+
+    NOTE the deliberately narrow scope: a corpus LABEL like "16k" is a cluster count, not a
+    corpus identity -- armI, armJ and run A+B all sit at 16k with genuinely different record
+    counts, and REC is only the fallback for rows carrying none.  A blanket row-vs-REC rule
+    would flag that legitimate variation, so this pins the generation rows, which are one row
+    per size and whose receipts I read directly."""
+    rows, table_only, series = data
+    src = open(Path(__file__).with_name("charts.py")).read()
+    body = re.search(r"REC\s*=\s*\{(.*?)\}", src, re.S).group(1)
+    rec_map = {k: int(v) for k, v in re.findall(r'"([^"]+)"\s*:\s*(\d+)', body)}
+    for ck, cl, total in (("06dd925b", "192k", 27_602_516), ("61625eec", "224k", 32_032_200)):
+        row = next((r for r in rows if r["ck"] == ck), None)
+        if row is None:
+            continue                      # the row may be retired; the pin should not block that
+        assert int(row["rec"].replace(",", "")) == total, (
+            f"{ck}: row says {row['rec']}, counts.records says {total:,} "
+            "(counts.records.encoded is the WRONG field)")
+        assert rec_map[cl] == total, f'charts.py REC["{cl}"] is {rec_map[cl]:,}, not {total:,}'

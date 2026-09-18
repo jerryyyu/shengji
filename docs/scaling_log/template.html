@@ -91,6 +91,11 @@ svg .pt3{fill:var(--verm);stroke:var(--card);stroke-width:2}
 svg .pt8{fill:var(--card);stroke:var(--verm);stroke-width:2.2}
 svg .hollow{fill:var(--card);stroke-width:2.4}
 svg .pt1.hollow{stroke:var(--slate)}
+/* an encoder marker drawn hollow = its val_ce was measured on its OWN validation split.
+   .pt2/.pt5/.pt8 stroke with the card colour when filled, so each needs its own outline. */
+svg .pt2.hollow{stroke:var(--jade)}
+svg .pt5.hollow{stroke:var(--gold)}
+svg .pt8.hollow{stroke:var(--verm)}
 svg .lab{fill:var(--ink-2);font-family:"IBM Plex Mono",monospace;font-size:11.5px}
 svg .lg{fill:var(--ink-2);font-family:"IBM Plex Sans",sans-serif;font-size:12.5px}
 svg .lgh{fill:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em}
@@ -341,7 +346,7 @@ body.recent-only [data-tr].pre-cut{display:none}
   <b>7.9%</b> of that net&#8217;s policy corpus &mdash; that is the POLICY-row increment,
   1.74M of 22.04M, not a ratio of the value-record counts in this table; at 138.4 records per cluster it sits about 5% below
   the 146.2 rate for the same reason run I does. <b>runJS1&#8211;3 together trained gen-2</b> and are
-  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,639,280 records. Five are now sealed, which
+  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,643,492 records. Five are now sealed, which
   is <b>30.0%</b> &mdash; the top of the ladder pre-registered on #421 &mdash; so a third generation is
   fully supplied. They are not part of the 144k corpus, and folding
   them in would move teacher and quantity together.</p>

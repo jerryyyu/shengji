@@ -252,15 +252,24 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: so the generation loop measurably DEGRADED the policy head as a player -- a harm the
 #: in-play screens, which were null, could not see.
 #:
-#: On the three confirmed points, top-64 recall does NOT predict play and is not a proxy for
-#: it: gen-2 sits BETWEEN the other two on top-64 (0.956 on 1k-10k against 0.963 and 0.952)
+#: On the three points that comparison was drawn on (JS-M1, JS-G1, gen-2), top-64 recall does
+#: NOT predict play and is not a proxy for it: gen-2 sits BETWEEN the other two on top-64
+#: (0.956 on 1k-10k against 0.963 and 0.952)
 #: and is far the worst player. They are not strictly anti-correlated either -- JS-M1 leads
 #: on both -- so the honest statement is that the shortlist metric carries no information
 #: about standalone play.
+#: RECEIPTS (added 2026-09-18 16:2x ET). Until now these four figures had NO receipt anywhere
+#: on the fleet: policy_head_vs_heuristic.py prints its JSON to stdout, the 2k discovery runs
+#: were captured with a redirect, and the 8k confirmations were read off the terminal and never
+#: written down. All four were re-derived on cloud and EVERY ONE reproduced to the digit; the
+#: run also added gen-1, which the table never carried. Receipts and SHA256SUMS at
+#: ~/shengji-archive/2026-09-13/readouts/head8k-*-20260918.json. The scoring box was validated
+#: first by reproducing the Mini's receipted gen-1 2k read (-0.002 [-0.02925, 0.025]) exactly.
 POLICY_VS_SMART = {
     "d2514e6e": "+0.0993 [+0.0856, +0.1126]",   # gen-3-warm: 6x JS-M1's margin
     "a5248cc5": "+0.0159 [+0.0023, +0.0293]",   # JS-M1: BEATS SmartBot, interval excludes zero
     "9ee9fedb": "+0.0014 [-0.0117, +0.0148]",   # JS-G1: a wash, not the edge the 2k read showed
+    "06dd925b": "-0.0093 [-0.0224, +0.0044]",   # gen-1: null, and ALREADY below JS-M1
     "61625eec": "-0.0684 [-0.0818, -0.0546]",   # gen-2: resolvably WORSE than SmartBot
 }
 

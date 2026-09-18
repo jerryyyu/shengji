@@ -174,6 +174,9 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
             paths["encode_opponent_pairs"] = _SHENGJI / "rl" / "encode_opponent_pairs.py"
         if version == 5:
             paths["encode_banker_kitty"] = _SHENGJI / "rl" / "encode_banker_kitty.py"
+        if version == 6:
+            paths["encode_banker_kitty_corrected"] = (
+                _SHENGJI / "rl" / "encode_banker_kitty_corrected.py")
     return paths
 
 

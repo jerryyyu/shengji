@@ -102,6 +102,13 @@ def widen_to(v1: ValueAfterstateTensors, rnd, root_seat: int,
         return v1
     if version == 2:
         return widen(v1, rnd, root_seat)
+    if version == 6:
+        # v6 CORRECTS bytes inside the v1 block (the unseen plane at 432:486), so
+        # "v1 tensor + appended columns" would hand back an UNCORRECTED vector that still
+        # passes every width and identity check.  Refuse loudly rather than round-trip a lie.
+        raise ValueError(
+            "encoder v6 corrects the v1 unseen plane and cannot be widened from a v1 tensor; "
+            "encode it directly with encode_obs(..., version=6)")
     from .encode import OBS_DIM
     from .encode_versions import encode_obs
     return _widen_columns(v1, encode_obs(rnd, root_seat, version=version)[OBS_DIM:])

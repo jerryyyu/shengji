@@ -776,10 +776,14 @@ OBS_SEGMENTS_V4_EXTRA = [["unseen_by_suit", 5, "f32"], ["pairs_played", 5, "f32"
 #: on the same 0/.5/1 scale as every other card plane, and its point total.
 OBS_SEGMENTS_V5_EXTRA = [["kitty_known", 1, "bits2"], ["kitty", N_CARDS, "bits2"],
                          ["kitty_points", 1, "f32"]]
+#: v6 packs EXACTLY like v2 plus one flag: it corrects the VALUE of the unseen plane, it does
+#: not move or resize any column, so the v1 segment table still describes the first 560.
+OBS_SEGMENTS_V6_EXTRA = [["kitty_known", 1, "bits2"]]
 OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
                            2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA,
                            4: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V4_EXTRA,
-                           5: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V5_EXTRA}
+                           5: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V5_EXTRA,
+                           6: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V6_EXTRA}
 #: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
 OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],

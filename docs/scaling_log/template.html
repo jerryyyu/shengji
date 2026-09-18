@@ -329,8 +329,9 @@ body.recent-only [data-tr].pre-cut{display:none}
 <tr><td><b>runJS3</b> <span class="pill">sealed</span></td><td class="n">22292910</td><td class="n">16,000</td><td class="n">2,214,472</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; in gen-2</td></tr>
 <tr><td><b>runJS4</b> <span class="pill">sealed</span></td><td class="n">22308910</td><td class="n">16,000</td><td class="n">2,216,884</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed, not yet trained on</td></tr>
 <tr><td><b>runJS5</b> <span class="pill">sealed</span></td><td class="n">22324910</td><td class="n">16,000</td><td class="n">2,213,984</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed, not yet trained on</td></tr>
-<tr><td><b>runJS6</b> <span class="pill live">live</span></td><td class="n">22340910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; running on cloud</td></tr>
+<tr><td><b>runJS6</b> <span class="pill">sealed</span></td><td class="n">22340910</td><td class="n">16,000</td><td class="n">2,216,648</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed 09-18, feeds gen-4</td></tr>
 <tr><td><b>runJS7</b> <span class="pill live">live</span></td><td class="n">22356910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; running on perf</td></tr>
+<tr><td><b>runJS8</b> <span class="pill live">live</span></td><td class="n">22372910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; running on cloud</td></tr>
 </tbody></table></div>
   <p class="cap">Records scale linearly at 146.2 per cluster (sd 0.44 across seven corpora spanning
   18&times;). A cluster is one deal played twice with seats mirrored, so 73.1 records per round.
@@ -346,9 +347,10 @@ body.recent-only [data-tr].pre-cut{display:none}
   <b>7.9%</b> of that net&#8217;s policy corpus &mdash; that is the POLICY-row increment,
   1.74M of 22.04M, not a ratio of the value-record counts in this table; at 138.4 records per cluster it sits about 5% below
   the 146.2 rate for the same reason run I does. <b>runJS1&#8211;3 together trained gen-2</b> and are
-  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,643,492 records. Five are now sealed, which
-  is <b>30.0%</b> &mdash; the top of the ladder pre-registered on #421 &mdash; so a third generation is
-  fully supplied. They are not part of the 144k corpus, and folding
+  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,643,492 records. <b>runJS1&#8211;5 are training
+  gen-3 now</b> at <b>30.0%</b> &mdash; the top of the ladder pre-registered on #421 &mdash; and that run is
+  the first of the series to be <b>warm-started from JS-M1</b> rather than trained from fresh random
+  weights, which every earlier generation was. runJS6 onward feed a fourth generation, not this one. They are not part of the 144k corpus, and folding
   them in would move teacher and quantity together.</p>
 </section>
 

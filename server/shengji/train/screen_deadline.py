@@ -76,6 +76,7 @@ def _phases(bot, send):
     install("_prior_scores", lambda args: mark("prior", len(args[2])))
     install("_means", lambda args: mark("ranking", len(args[2])))
     install("_report_fold_gap", lambda _: mark("report"))
+    install("_continuation_matrix", lambda _: mark("value-continuation"))
     try:
         mark("enumeration")
         yield

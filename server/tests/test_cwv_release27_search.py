@@ -28,7 +28,10 @@ def test_release27_bury_and_baseline_do_not_follow_arm_model(monkeypatch, mode):
         assert bot.REPORT_FOLD_WORLDS == 300
 
 
-def test_policy_matched_control_changes_only_guidance(monkeypatch):
+@pytest.mark.parametrize('guided_tricks', [1, None])
+@pytest.mark.parametrize('continuation_tricks', [1, None])
+def test_policy_matched_control_changes_only_guidance(monkeypatch, guided_tricks,
+                                                     continuation_tricks):
     fixed = SimpleNamespace(checkpoint_sha256=R.M1_SHA)
     arm = SimpleNamespace(checkpoint_sha256='g1')
     monkeypatch.setattr(R, 'shared_evaluator',
@@ -36,14 +39,14 @@ def test_policy_matched_control_changes_only_guidance(monkeypatch):
     monkeypatch.setattr(P, 'load_prior_checked', lambda *a: ('separate', None, None))
     kwargs = dict(seed=19, baseline_checkpoint='m1.npz', prior_checkpoint='prior.npz',
         arm_checkpoint='g1.pt', arm_sha256='g1', mode='policy', control='matched-continuation',
-        guided_tricks=1, continuation_tricks=None)
+        guided_tricks=guided_tricks, continuation_tricks=continuation_tricks)
     baseline = R.make_release27_side(side='baseline', **kwargs)
     candidate = R.make_release27_side(side='arm', **kwargs)
     assert type(candidate) is type(baseline) is R.PolicyFixedBuryBot
-    assert baseline.guided_tricks == 0 and candidate.guided_tricks == 1
+    assert baseline.guided_tricks == 0 and candidate.guided_tricks == guided_tricks
     for bot in (baseline, candidate):
         assert bot.evaluator is arm and bot.bury_evaluator is fixed
-        assert bot.continuation_tricks is None
+        assert bot.continuation_tricks == continuation_tricks
     assert baseline.shortlist_config == candidate.shortlist_config
     assert baseline.prior_config == candidate.prior_config
     assert baseline.rng.getstate() == candidate.rng.getstate()
@@ -95,6 +98,50 @@ def test_cli_binds_both_assets_and_retains_completed_pairs(monkeypatch, tmp_path
     monkeypatch.setattr(C.screen, 'summary_for', lambda *a: {'complete': False})
     assert C.main(argv) == 0
     assert seen[1][1] == [1]
+
+
+@pytest.mark.parametrize('full_continuation', [False, True])
+def test_cli_full_guidance_binds_independent_horizon(monkeypatch, tmp_path,
+                                                    full_continuation):
+    from scripts import cwv_release27_screen as C
+    monkeypatch.setattr(C, 'file_sha256', lambda path:
+        R.M1_SHA if str(path) == 'm1' else R.PRIOR_SHA if str(path) == 'prior' else 'armsha')
+    constructed, seen = [], []
+    monkeypatch.setattr(C, 'make_release27_side', lambda **kw: constructed.append(kw))
+    monkeypatch.setattr(C, 'execution_source_identity', lambda *a: {'test': 'source'})
+    monkeypatch.setattr(C, '_run_pending', lambda config, *a, **kw: seen.append(config))
+    argv = ['--baseline-checkpoint', 'm1', '--prior-checkpoint', 'prior',
+            '--arm-checkpoint', 'arm', '--mode', 'policy', '--full-guidance',
+            '--control', 'matched-continuation', '--seed0', '19',
+            '--clusters', '2', '--out', str(tmp_path)]
+    if full_continuation:
+        argv.append('--full-continuation')
+    assert C.main(argv) == 0
+    recipe = seen[0]['release27_search']
+    assert recipe['guided_tricks'] is None
+    assert recipe['continuation_tricks'] == (None if full_continuation else 1)
+    assert len(constructed) == 2
+    assert all(x['guided_tricks'] is None for x in constructed)
+    # Switching the guidance horizon cannot silently resume the same output.
+    with pytest.raises(ValueError):
+        C.main([x for x in argv if x != '--full-guidance'])
+
+
+@pytest.mark.parametrize('extra', [
+    ['--mode', 'puct', '--full-guidance'],
+    ['--mode', 'truncated', '--full-guidance'],
+    ['--mode', 'policy', '--full-guidance', '--guided-tricks', '1'],
+])
+def test_cli_rejects_invalid_full_guidance_before_loading(monkeypatch, tmp_path, extra):
+    from scripts import cwv_release27_screen as C
+    def forbidden(*args):
+        raise AssertionError('invalid arguments must fail before loading assets')
+    monkeypatch.setattr(C, 'file_sha256', forbidden)
+    with pytest.raises(SystemExit) as exc:
+        C.main(['--baseline-checkpoint', 'm1', '--prior-checkpoint', 'prior',
+                '--arm-checkpoint', 'arm', '--seed0', '19', '--clusters', '1',
+                '--out', str(tmp_path), *extra])
+    assert exc.value.code == 2
 
 
 def test_summary_reports_bury_fallbacks_and_missing_accounting(monkeypatch):

@@ -516,49 +516,44 @@ def _rps(prob: np.ndarray, target: np.ndarray) -> np.ndarray:
 @torch.no_grad()
 def run_eval(model: ValueNetwork, store: CwvBlockStore,
              mask_fn: Callable[[CwvBlock], np.ndarray], device: torch.device, *,
-             batch_size: int, aux_head: AuxPointsHead | None = None) -> dict[str, np.ndarray]:
+             batch_size: int, aux_head: AuxPointsHead | None = None,
+             pack_shards: bool = False, staging_bytes: int = 32 * 1024**2) -> dict[str, np.ndarray]:
     """Per-row predictions and losses over the selected rows."""
     model.eval()
     keys = ("expected_level", "expected_pt0", "median_pt0", "ce", "rps", "target",
             "target_level", "utility", "ply", "role_attacker", "points_so_far",
             "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
     out: dict[str, list] = {k: [] for k in keys}
-    # A shard holds one deal and the split is by deal, so a selector that can
-    # answer from recorded keys lets us decline most shards without decoding.
-    selects_any = getattr(mask_fn, "selects_any", None)
-    skip = (lambda deal_keys: not selects_any(deal_keys)) if selects_any else None
-    for block in store.iter_blocks(skip=skip):
-        sel = np.flatnonzero(mask_fn(block))
-        if not sel.size:
-            continue
-        for b0 in range(0, sel.size, batch_size):
-            idx = sel[b0:b0 + batch_size]
-            raw = collate(block, idx)
-            t = tensors_of(raw, device)
-            logits, aux = forward_batch(model, t, aux_head)
-            logp = torch.log_softmax(logits.to(torch.float32), dim=1)
-            target = t["target"]
-            ce = -logp.gather(1, target.unsqueeze(1)).squeeze(1)
-            prob = torch.exp(logp).cpu().numpy().astype(np.float64)
-            level, pt0 = expected_levels(prob)
-            tgt = raw["target"].astype(np.int64)
-            out["expected_level"].append(level)
-            out["expected_pt0"].append(pt0)
-            out["median_pt0"].append(median_pt0(prob))
-            out["ce"].append(ce.cpu().numpy().astype(np.float64))
-            out["rps"].append(_rps(prob, tgt))
-            out["target"].append(tgt)
-            out["target_level"].append(LEVEL_SUPPORT[tgt])
-            out["utility"].append(raw["utility"].astype(np.float64))
-            out["ply"].append(raw["ply"])
-            out["role_attacker"].append(raw["role_attacker"])
-            out["points_so_far"].append(raw["points_so_far"])
-            out["attacker_points"].append(raw["attacker_points"].astype(np.float64))
-            out["deal_key"].append(raw["deal_key"])
-            out["source_ref"].append(raw["source_ref"])
-            out["aux_pred"].append(np.full(len(idx), np.nan) if aux is None
-                                   else aux.cpu().numpy().astype(np.float64) * 100.0)
-            out["has_search_means"].append(block.has_search_means[idx])
+    from .cwv_eval_batches import eval_batches
+    if pack_shards and model.config.architecture != 'mlp':
+        raise ValueError('experimental packed evaluation supports MLP only')
+    for raw in eval_batches(store, mask_fn, batch_size, pack=pack_shards,
+                            staging_bytes=staging_bytes):
+        t = tensors_of(raw, device)
+        logits, aux = forward_batch(model, t, aux_head)
+        logp = torch.log_softmax(logits.to(torch.float32), dim=1)
+        target = t["target"]
+        ce = -logp.gather(1, target.unsqueeze(1)).squeeze(1)
+        prob = torch.exp(logp).cpu().numpy().astype(np.float64)
+        level, pt0 = expected_levels(prob)
+        tgt = raw["target"].astype(np.int64)
+        out["expected_level"].append(level)
+        out["expected_pt0"].append(pt0)
+        out["median_pt0"].append(median_pt0(prob))
+        out["ce"].append(ce.cpu().numpy().astype(np.float64))
+        out["rps"].append(_rps(prob, tgt))
+        out["target"].append(tgt)
+        out["target_level"].append(LEVEL_SUPPORT[tgt])
+        out["utility"].append(raw["utility"].astype(np.float64))
+        out["ply"].append(raw["ply"])
+        out["role_attacker"].append(raw["role_attacker"])
+        out["points_so_far"].append(raw["points_so_far"])
+        out["attacker_points"].append(raw["attacker_points"].astype(np.float64))
+        out["deal_key"].append(raw["deal_key"])
+        out["source_ref"].append(raw["source_ref"])
+        out["aux_pred"].append(np.full(len(raw['target']), np.nan) if aux is None
+                               else aux.cpu().numpy().astype(np.float64) * 100.0)
+        out["has_search_means"].append(raw['has_search_means'])
     if not out["ce"]:
         return {k: np.zeros(0) for k in keys}
     return {k: np.concatenate(v) for k, v in out.items()}

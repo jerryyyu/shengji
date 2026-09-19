@@ -21,6 +21,8 @@ SEED = 625100000
 DEALS = 800
 WORKERS = 12
 ARM_SECONDS = 1800
+QUALIFY_DEALS = 12
+QUALIFY_SECONDS = 900
 LOCKS = (Path('/root/.claude-lane.lock'), Path('/root/.claude-screen.lock'))
 ARMS = [('A', 4, 'policy', 'mc-smart4'),
         ('B', 16, 'policy', 'mc-smart4'),
@@ -29,11 +31,11 @@ BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
-def commands(python, checkpoint, output):
+def commands(python, checkpoint, output, *, qualify=False):
     return [(name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                    '--checkpoint', str(checkpoint), '--checkpoint-sha256', CHECKPOINT,
                    '--out', str(output / name), '--seed0', str(SEED),
-                   '--deals', str(DEALS), '--workers', str(WORKERS),
+                   '--deals', str(QUALIFY_DEALS if qualify else DEALS), '--workers', str(WORKERS),
                    '--worlds', str(worlds), '--mode', mode, '--candidates', '8',
                    '--control', control]) for name, worlds, mode, control in ARMS]
 
@@ -67,11 +69,11 @@ def resource_guard(output_parent):
         raise RuntimeError(f'host still occupied (including stopped jobs): {busy}')
 
 
-def validate_summary(path):
+def validate_summary(path, *, expected=DEALS):
     summary = json.loads(path.read_text())
-    if (summary.get('expected') != DEALS or summary.get('complete') != DEALS
+    if (summary.get('expected') != expected or summary.get('complete') != expected
             or summary.get('errors') != []):
-        raise RuntimeError('arm did not seal all 800 clean pairs')
+        raise RuntimeError(f'arm did not seal all {expected} clean pairs')
 
 
 def stop_owned_group(process):
@@ -113,6 +115,8 @@ def main(argv=None):
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--qualify', action='store_true',
+                        help='12 pairs per arm, 900s/arm ceiling; never advances to full experiment')
     args = parser.parse_args(argv)
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
@@ -136,9 +140,14 @@ def main(argv=None):
                VECLIB_MAXIMUM_THREADS='1', SHENGJI_REQUIRE_VOIDS='1')
     # Pure engine deliberately pinned; do not borrow a compiled extension from
     # a different tree. Performance/strength readouts must retain this setting.
-    plan = commands(args.python.resolve(), checkpoint, output)
-    print(json.dumps({'source': SOURCE, 'checkpoint': CHECKPOINT, 'commands': plan,
-                      'engine': 'pure', 'arm_timeout_seconds': ARM_SECONDS}, indent=2))
+    plan = commands(args.python.resolve(), checkpoint, output, qualify=args.qualify)
+    seconds = QUALIFY_SECONDS if args.qualify else ARM_SECONDS
+    expected = QUALIFY_DEALS if args.qualify else DEALS
+    receipt = {'source': SOURCE, 'checkpoint': CHECKPOINT, 'commands': plan,
+               'engine': 'pure', 'arm_timeout_seconds': seconds,
+               'mode': 'runtime-qualification' if args.qualify else 'experiment',
+               'automatic_promotion': False}
+    print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0
     previous = signal.signal(signal.SIGTERM, interrupted)
@@ -150,10 +159,12 @@ def main(argv=None):
             (path / 'pid').write_text(str(os.getpid()) + '\n')
         resource_guard(output.parent)
         output.mkdir()
+        (output / 'launch-plan.json').write_text(json.dumps(receipt, indent=2) + '\n')
         for name, cmd in plan:
             resource_guard(output.parent)
-            run_arm(cmd, env=env, cwd=source / 'server', log=output / f'{name}.log')
-            validate_summary(output / name / 'summary.json')
+            run_arm(cmd, env=env, cwd=source / 'server', log=output / f'{name}.log',
+                    seconds=seconds)
+            validate_summary(output / name / 'summary.json', expected=expected)
         return 0
     finally:
         for path in reversed(acquired):

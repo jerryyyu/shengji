@@ -144,3 +144,35 @@ def test_peer_lock_is_never_removed(monkeypatch, isolated_main):
         launcher.main(args + ['--run'])
     assert (peer / 'pid').read_text() == '123'
     assert not output.exists()
+
+
+@pytest.mark.parametrize('run', [False, True])
+def test_qualification_is_bounded_and_never_promotes(monkeypatch, isolated_main, run):
+    args, output = isolated_main
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert cmd[cmd.index('--deals')+1] == '12'
+        assert cmd[cmd.index('--workers')+1] == '12'
+        assert kwargs['seconds'] == 900
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm/'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(args+['--qualify']+(['--run'] if run else [])) == 0
+    assert seen == (['A','B','C'] if run else [])
+    assert not any(p.exists() for p in launcher.LOCKS)
+    if run:
+        receipt = json.loads((output/'launch-plan.json').read_text())
+        assert receipt['mode'] == 'runtime-qualification'
+        assert receipt['automatic_promotion'] is False
+    else:
+        assert not output.exists()
+
+
+def test_qualification_partial_summary_refuses(tmp_path):
+    path = tmp_path/'summary.json'
+    path.write_text(json.dumps(dict(expected=12,complete=11,errors=[])))
+    with pytest.raises(RuntimeError, match='12 clean pairs'):
+        launcher.validate_summary(path, expected=12)

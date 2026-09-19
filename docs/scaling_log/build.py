@@ -92,9 +92,10 @@ def load():
     for ck in params:
         if ck not in known:
             raise ValueError(f"PARAMS names {ck}, which is not a row")
-    for ck in g.get("POLICY_VS_SMART", {}):
-        if ck not in known:
-            raise ValueError(f"POLICY_VS_SMART names {ck}, which is not a row")
+    for table in ("POLICY_VS_SMART", "POLICY_VS_SMART_PUBLIC"):
+        for ck in g.get(table, {}):
+            if ck not in known:
+                raise ValueError(f"{table} names {ck}, which is not a row")
     for ck in own_split:
         if ck not in known:
             raise ValueError(f"OWN_SPLIT names {ck}, which is not a row")
@@ -199,6 +200,7 @@ def render_charts(rows, table_only, series):
          "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
          "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
          "POLICY_VS_SMART": g_models.get("POLICY_VS_SMART", {}),
+         "POLICY_VS_SMART_PUBLIC": g_models.get("POLICY_VS_SMART_PUBLIC", {}),
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):

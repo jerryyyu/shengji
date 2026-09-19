@@ -53,6 +53,9 @@ class PolicyValueBot(PolicyWorldBot):
         flush()
         return sums / len(worlds), batches
 
+    def _select(self, rnd, seat, admitted, means):
+        return int(np.argmax(means))  # anchor retained on an exact value tie
+
     def decide_play(self, rnd, seat):
         self.last_decision_record = None
         started = time.perf_counter()
@@ -72,7 +75,7 @@ class PolicyValueBot(PolicyWorldBot):
         chosen = chosen[:self.candidates]
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds)
-        winner = int(np.argmax(means))  # anchor retained on an exact value tie
+        winner = self._select(rnd, seat, admitted, means)
         self.last_decision_record = {
             'schema': 'policy-admit-value-mean-v1', 'worlds': len(worlds),
             'sample_attempts': attempts, 'actions': len(actions), 'cap': self.cap,

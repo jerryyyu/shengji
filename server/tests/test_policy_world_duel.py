@@ -122,7 +122,9 @@ def test_policy_control_work_is_not_reported_as_mc_work():
     assert control['policy_work']['capped_decisions'] == 1
 
 
-def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path):
+@pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
+                                        ('policy-selective-mc', 'policy-value')])
+def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control):
     checkpoint = tmp_path / "checkpoint.bin"
     checkpoint.write_bytes(b"test-checkpoint")
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
@@ -155,9 +157,50 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
     out = tmp_path / "out"
     assert duel.main(["--checkpoint", str(checkpoint), "--checkpoint-sha256", digest,
                       "--out", str(out), "--deals", "1", "--seed0", "9",
-                      "--workers", "2", "--worlds", "3", "--control", "mc-smart4"]) == 0
+                      "--workers", "2", "--worlds", "3", "--control", control,
+                      "--mode", mode]) == 0
     assert fake_pool.kwargs["max_workers"] == 2
     recipe = json.loads((out / "recipe.json").read_text())
-    assert recipe["control"] == "mc-smart4"
+    assert recipe["control"] == control
+    if mode == 'policy-selective-mc':
+        assert recipe['policy']['verification']['worlds'] == 8
+        assert recipe['policy']['verification']['gap'] == .1
+        assert recipe['control_effective']['class'] == 'PolicyValueBot'
+        assert recipe['control_effective']['candidates'] == 'same as arm'
     assert json.loads((out / "summary.json").read_text())["complete"] == 1
     assert len((out / "pairs.jsonl").read_text().splitlines()) == 1
+
+
+def test_verification_work_survives_mirrors_and_summary(monkeypatch):
+    from types import SimpleNamespace
+    def fake(*args):
+        sides = {role: duel._empty_side() for role in ('policy', 'control')}
+        bot = SimpleNamespace(last_decision_record={
+            'worlds': 4, 'sample_attempts': 5, 'legal_complete': True,
+            'verification': {'triggered': True, 'worlds': 8,
+                             'sample_attempts': 9, 'rollouts': 16}})
+        duel._record_decision(sides['policy'], .1,
+            duel._decision_telemetry(bot, 'policy'), 'policy')
+        return {'sides': sides, 'utility': 0}
+    monkeypatch.setattr(duel, '_play_one', fake)
+    row = duel.play_pair(7, 'ck', 'sha', mode='policy-selective-mc', control='policy-value')
+    summary = duel.aggregate_records([row], [7])
+    assert summary['policy']['worlds'] == 8
+    assert summary['policy']['verification_worlds'] == 16
+    assert summary['policy']['verification_attempts'] == 18
+    assert summary['policy']['verification_rollouts'] == 32
+    assert summary['policy']['verification_triggers'] == 2
+    assert summary['control']['policy_work']['verification_rollouts'] == 0
+
+
+def test_selective_factory_uses_checked_evaluator(monkeypatch):
+    sentinel = object()
+    monkeypatch.setattr(duel, '_value_evaluator', lambda *a: sentinel)
+    seen = {}
+    def fake(p, s, **kwargs):
+        seen.update(kwargs)
+        return sentinel
+    monkeypatch.setattr(duel.PolicySelectiveMCBot, 'from_checkpoint', fake)
+    assert duel.make_policy('ck', 'sha', 4, 7, 'policy-selective-mc', 12) is sentinel
+    assert seen['evaluator'] is sentinel
+    assert seen['candidates'] == 12

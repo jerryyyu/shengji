@@ -564,6 +564,47 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
+def validation_pass(model, store, mask_fn, device, *, batch_size, aux_head=None,
+                    candidates=None, search_head=False, policy_evalset=None) -> dict:
+    """Existing validation operations with host-wall stage attribution.
+
+    No extra device synchronization: stages return host metrics already. These
+    are wall timings, not kernel timings, and exclude checkpoint persistence.
+    Keep operation order and selection metric values unchanged.
+    """
+    timings = {}
+    started = time.perf_counter()
+    ev = run_eval(model, store, mask_fn, device, batch_size=batch_size, aux_head=aux_head)
+    now = time.perf_counter()
+    timings['outcome_eval'] = now - started
+    metrics = quick_metrics(ev)
+    end = time.perf_counter()
+    timings['outcome_metrics'] = end - now
+    metrics.update(search_facing(model, ev, candidates, device, batch_size=batch_size))
+    now = time.perf_counter()
+    timings['outcome_ranking'] = now - end
+    if search_head:
+        # #373: nested search-head ranking is not a selection metric;
+        # Selector reads top-level keys only.
+        metrics['search_head'] = search_head_rank(model, ev, candidates, device,
+                                                 batch_size=batch_size)
+        end = time.perf_counter()
+        timings['search_head_ranking'] = end - now
+        now = end
+    if policy_evalset is not None:
+        # #425 retains the nested policy report. #495 explicitly exposes its
+        # miss@64 as a flat selection metric; preserve that opt-in path.
+        metrics['policy'] = policy_evalset.run(model, device)
+        if metrics['policy'].get('miss_at_64') is not None:
+            metrics['policy_miss_at_64'] = float(metrics['policy']['miss_at_64'])
+        end = time.perf_counter()
+        timings['policy_eval'] = end - now
+        now = end
+    timings['total'] = now - started
+    metrics['stage_wall_seconds'] = timings
+    return metrics
+
+
 def quick_metrics(ev: Mapping[str, np.ndarray]) -> dict:
     n = int(ev["ce"].size)
     if n == 0:
@@ -1746,21 +1787,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
-        ev = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
-        metrics = quick_metrics(ev)
-        metrics.update(search_facing(model, ev, val_cands, dev, batch_size=batch_size))
-        if search_head:
-            # #373: the same ranking pass through the search-mean head.  Never
-            # the selection metric (the Selector reads top-level keys only).
-            metrics["search_head"] = search_head_rank(model, ev, val_cands, dev,
-                                                      batch_size=batch_size)
-        if policy_evalset is not None:
-            # #425: the policy head's held-out recall; never the selection metric.
-            metrics["policy"] = policy_evalset.run(model, dev)
-            # flat mirror: Selector.value_of reads a flat key off the validation block
-            if metrics["policy"].get("miss_at_64") is not None:
-                metrics["policy_miss_at_64"] = float(metrics["policy"]["miss_at_64"])
-        return metrics
+        return validation_pass(model, store, masks["val"], dev, batch_size=batch_size,
+                               aux_head=aux_head, candidates=val_cands,
+                               search_head=search_head, policy_evalset=policy_evalset)
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:
         # the selected metric first, then the rest (each once)

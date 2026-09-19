@@ -21,6 +21,7 @@ SEED = 625100000
 DEALS = 800
 WORKERS = 12
 ARM_SECONDS = 1800
+LOCKS = (Path('/root/.claude-lane.lock'), Path('/root/.claude-screen.lock'))
 ARMS = [('A', 4, 'policy', 'mc-smart4'),
         ('B', 16, 'policy', 'mc-smart4'),
         ('C', 4, 'policy-value', 'policy-world')]
@@ -124,7 +125,7 @@ def main(argv=None):
         raise RuntimeError('checkpoint mismatch')
     if output.exists() or not output.parent.is_dir():
         raise RuntimeError('fresh output under existing parent required; never resume/overwrite')
-    locks = [Path('/root/.claude-lane.lock'), Path('/root/.claude-screen.lock')]
+    locks = LOCKS
     if any(path.exists() for path in locks):
         raise RuntimeError('peer lane/screen reservation held')
     resource_guard(output.parent)

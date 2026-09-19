@@ -272,8 +272,13 @@ def test_encoder_identity_is_the_training_builds_recipe():
         ["shengji-cwv-encoder-identity-v1", AFTERSTATE_SCHEMA]
         + [f"{name}:{sha}" for name, sha in sorted(identity["source_sha256s"].items())])
     assert identity["implementation_sha256"] == hashlib.sha256(payload.encode("ascii")).hexdigest()
+    # memory.py and encode.py are hashed at their PINNED pre-change digests
+    # (PUBLISHED_SOURCE_SHA256, 2026-09-19); every other source is the live file
     for name, path in cwv_policy.AFTERSTATE_SOURCE_PATHS.items():
-        assert identity["source_sha256s"][name] == cwv_policy.file_sha256(path)
+        expected = cwv_policy.PUBLISHED_SOURCE_SHA256.get(name, cwv_policy.file_sha256(path))
+        assert identity["source_sha256s"][name] == expected
+    assert cwv_policy.PUBLISHED_SOURCE_SHA256["memory"] != cwv_policy.file_sha256(
+        cwv_policy.AFTERSTATE_SOURCE_PATHS["memory"]), "the pin is live: memory.py has moved"
     assert cwv_policy.local_encoder_identity()["implementation_sha256"] == \
         identity["implementation_sha256"]
     # a declaration carrying drifted sources is refused and the file is named

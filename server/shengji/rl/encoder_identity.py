@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from .encode import PUBLISHED_SOURCE_SHA256
 from .encode_versions import ENC_VERSION, OBS_SCHEMA_BY_VERSION, check_version
 
 
@@ -78,6 +79,12 @@ def source_sha256s(version: int = ENC_VERSION) -> dict[str, str]:
     ``PUBLISHED_DISPATCHER_SHA256``); every other file is hashed live."""
     version = check_version(version)
     digests = {name: sha256_file(path) for name, path in source_paths(version).items()}
+    # The 2026-09-19 speed change (encode.PUBLISHED_SOURCE_SHA256): byte-identical output,
+    # hashed at the pre-change digests; applied BEFORE the dispatcher pin so a published
+    # version's dispatcher digest still wins.
+    for name, digest in PUBLISHED_SOURCE_SHA256.items():
+        if name in digests:
+            digests[name] = digest
     pinned = PUBLISHED_DISPATCHER_SHA256.get(version)
     if pinned is not None and "encode_versions" in digests:
         digests["encode_versions"] = pinned

@@ -1896,8 +1896,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             sums["policy_rows"] += int(vals[6])
             pending = None
             finite_all = None
+        # The train step reads only the numeric tensors (``tensors_of``),
+        # so the per-row identity columns stay out of the batch: ~1.3 ms
+        # saved per 1024-row batch in ``gather`` (measured Sep 2026).  Eval
+        # keeps them (it clusters by deal_key).
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
-                                      decode_workers=decode_workers):
+                                      decode_workers=decode_workers, strings=False):
             t = tensors_of(raw, dev)
             s_logits = None
             if search_head:

@@ -5,6 +5,7 @@ import pytest
 
 from shengji.train import cwv_eval_batches as batching
 from tests.test_cwv_train import store_dir, blocks, luna, other_dir, other_records  # noqa: F401
+from tests.test_cwv_train_policy_head import policy_rows  # noqa: F401
 
 
 def fake_store(monkeypatch, lengths, history=False):
@@ -78,7 +79,9 @@ def test_real_model_and_metadata_parity(blocks):
             np.testing.assert_array_equal(a[key],b[key],err_msg=key)
 
 
-def test_packing_preserves_training_selection_and_weights(store_dir, luna, tmp_path, monkeypatch):
+@pytest.mark.parametrize('joint', [False, True], ids=['value', 'joint'])
+def test_packing_preserves_training_selection_and_weights(
+        store_dir, luna, policy_rows, tmp_path, monkeypatch, joint):
     import torch
     from shengji.train import train_cwv
     from tests.test_cwv_train import train_v0, THIRDS
@@ -101,9 +104,26 @@ def test_packing_preserves_training_selection_and_weights(store_dir, luna, tmp_p
         epochs=2,seed=7,batch_size=64,n_boot=20,hidden=32,log=None,
         cache_workers=1,eval_workers=1,bench_batch=32,
         public_head=str(tmp_path/'public'/'best.pt'),**THIRDS)
+    if joint:
+        from shengji.train import search_mean_sidecar
+        side = tmp_path/'sidecar'
+        built = [search_mean_sidecar.build_sidecar(p, side, level_objective=False)
+                 for p in sorted(store_dir.rglob('*.jsonl'))]
+        assert sum(row['with_mean'] for row in built) > 0
+        kwargs.update(encoder_version=2, aux_points=True, search_head=True,
+                      search_mean_sidecar=str(side),
+                      policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
+                      policy_weight=0.2, policy_batch_fraction=0.5)
     a=train_cwv.train(out=tmp_path/'legacy',**kwargs)
     packing=True
     b=train_cwv.train(out=tmp_path/'packed',**kwargs)
+    if joint:
+        for result in (a, b):
+            assert result['model']['config']['policy_head']
+            assert result['model']['config']['search_head']
+            assert all(epoch['train']['policy_rows'] > 0 for epoch in result['epochs'])
+        for left, right in zip(a['epochs'], b['epochs']):
+            assert left['val']['policy'] == right['val']['policy']
     assert a['selection']['best_epoch']==b['selection']['best_epoch']
     assert a['selection']['best_loss']==pytest.approx(b['selection']['best_loss'],abs=1e-7)
     ma,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'legacy'/'best.pt')

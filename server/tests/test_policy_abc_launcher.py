@@ -13,6 +13,7 @@ spec.loader.exec_module(launcher)
 
 
 def test_frozen_commands():
+    assert launcher.ARM_SECONDS == 3600
     arms = launcher.commands(Path('/python'), Path('/model'), Path('/output'))
     assert [name for name, _ in arms] == ['A', 'B', 'C']
     for name, cmd in arms:

@@ -20,7 +20,10 @@ CHECKPOINT = '8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01'
 SEED = 625100000
 DEALS = 800
 WORKERS = 12
-ARM_SECONDS = 1800
+# Perf pure-engine qualification (12 pairs, 12 workers): A/B/C 17.38/17.12/10.70s.
+# Linear 800-pair estimates peak at ~1159s; allow ~3.1x for startup/tail variation.
+# This ceiling is a failure bound, not an ETA or automatic retry authorization.
+ARM_SECONDS = 3600
 QUALIFY_DEALS = 12
 QUALIFY_SECONDS = 900
 LOCKS = (Path('/root/.claude-lane.lock'), Path('/root/.claude-screen.lock'))

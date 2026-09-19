@@ -41,7 +41,7 @@ from ..rl.public_history import HISTORY_EVENT_DIM      # torch-free (douzero_mic
 from ..rl.encode import CARD_INDEX, N_CARDS, encode_obs
 from ..rl.value_afterstate import (WORLD_RECEIVERS, ValueAfterstateError,
                                    ValueAfterstateTensors)
-from ..rl.value_afterstate_v2 import widen_to
+from ..rl.value_afterstate_v2 import public_dim, widen_to
 # torch-free sources: cwv_data imports rl.douzero_micro (torch) at module level, and the
 # served admission reaches this module through _prior_scores (Codex HOLD on #442).
 from ..rl.value_afterstate_v2 import tensors_from_round as tensors_at
@@ -50,7 +50,15 @@ from .data import ShardRef, discover_store, iter_records
 
 SCHEMA = "shengji-policy-prior-v1"
 ENC_VERSION = 2
-INPUT_DIM = 561 + WORLD_RECEIVERS * N_CARDS + 2      # v2 public + world + perspective = 833
+
+
+def input_dim(version: int = ENC_VERSION) -> int:
+    """Width of a flat root row for encoder ``version``: public block + world + perspective."""
+    return public_dim(version) + WORLD_RECEIVERS * N_CARDS + 2
+
+
+INPUT_DIM = input_dim(ENC_VERSION)      # v2 public 561 + world 270 + perspective 2 = 833
+assert INPUT_DIM == 833, "the published v2 root-row layout is 833 wide"
 MAX_LEGAL = 4000
 BUCKETS = ((0, 20), (21, 100), (101, 1000), (1001, 10000), (10001, 10 ** 9))
 TOP_NS = (1, 5, 8, 32, 64, 256)
@@ -62,13 +70,14 @@ class PolicyPriorError(ValueError):
 
 # ----------------------------------------------------------------- root tensors
 
-def root_tensors(rnd, seat: int) -> ValueAfterstateTensors:
-    """v2 tensors of a ROOT state.  The frozen afterstate builder refuses an empty
-    history (the opening lead), so that case is built by hand with a one-event
-    placeholder history and widened to v2; every other root goes through the
-    builder unchanged."""
+def root_tensors(rnd, seat: int, version: int = ENC_VERSION) -> ValueAfterstateTensors:
+    """Tensors of a ROOT state at encoder ``version`` (v2 by default: the published
+    prior and every archived extraction).  The frozen afterstate builder refuses an
+    empty history (the opening lead), so that case is built by hand with a one-event
+    placeholder history and widened to ``version``; every other root goes through
+    the builder unchanged."""
     try:
-        return tensors_at(rnd, seat, version=ENC_VERSION)
+        return tensors_at(rnd, seat, version=version)
     except ValueAfterstateError:
         public = np.asarray([*encode_obs(rnd, seat), float(rnd.phase == "round_end")], dtype=np.float32)
         world = np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32)
@@ -80,13 +89,13 @@ def root_tensors(rnd, seat: int) -> ValueAfterstateTensors:
         attacker = rnd.is_attacker(seat)
         v1 = ValueAfterstateTensors(public, np.zeros((1, HISTORY_EVENT_DIM), np.float32), world,
                                     np.asarray([float(attacker), float(not attacker)], np.float32))
-        return widen_to(v1, rnd, seat, ENC_VERSION)
+        return widen_to(v1, rnd, seat, version)
 
 
-def flat_input(t: ValueAfterstateTensors) -> np.ndarray:
+def flat_input(t: ValueAfterstateTensors, version: int = ENC_VERSION) -> np.ndarray:
     x = np.concatenate([t.public.ravel(), t.world.ravel(), t.perspective.ravel()]).astype(np.float32)
-    if x.shape != (INPUT_DIM,):
-        raise PolicyPriorError(f"root input width {x.shape[0]} != {INPUT_DIM}")
+    if x.shape != (input_dim(version),):
+        raise PolicyPriorError(f"root input width {x.shape[0]} != {input_dim(version)} (encoder v{version})")
     return x
 
 
@@ -109,7 +118,7 @@ def deal_fraction(rnd) -> float:
 # ----------------------------------------------------------------- extraction
 
 def _shard_rows(args: tuple) -> list[tuple]:
-    path, lo, hi, thin, seed = args
+    path, lo, hi, thin, seed, version = args
     rng = random.Random(f"{seed}|{path}")
     rows: list[tuple] = []
     first = True
@@ -136,7 +145,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
         seat = int(rec["seat"])
         if root.phase != "play" or root.turn != seat:
             continue
-        x = flat_input(root_tensors(root, seat))
+        x = flat_input(root_tensors(root, seat, version), version)
         y = np.zeros(N_CARDS, np.float32)
         for c in rec["action"]:
             y[CARD_INDEX[c]] = 1.0
@@ -170,12 +179,17 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
 
 
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
-            max_rows: int, workers: int, seed: int = 1, chunk_rows: int | None = None) -> dict:
+            max_rows: int, workers: int, seed: int = 1, chunk_rows: int | None = None,
+            version: int = ENC_VERSION) -> dict:
     """Write ``<out>.npz`` (X, Y) and ``<out>.meta.jsonl`` (one record per row);
     with ``chunk_rows`` write a DIRECTORY ``<out>/`` of training chunks
     (``chunk-NNNNN.npz`` with X float16, Y, padded ballots, deal keys) plus
     ``manifest.json`` so a trainer can stream every root row instead of holding
-    them in memory (#425: the policy head on all ~20M root decisions)."""
+    them in memory (#425: the policy head on all ~20M root decisions).
+
+    ``version`` is the encoder the rows are built at (v2 = the published layout; a
+    later encoder such as v5 widens the public block, so its rows train only a
+    joint net configured at that version); the manifest records it."""
     if not 0 < thin <= 1 or not 0 <= lo < hi <= 1.01:
         raise PolicyPriorError("thin must be in (0, 1] and 0 <= lo < hi")
     if chunk_rows is not None and (type(chunk_rows) is not int or chunk_rows < 1):
@@ -194,7 +208,7 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
         if any(out_dir.glob("chunk-*.npz")):
             raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
     with ProcessPoolExecutor(workers) as ex:
-        for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed) for p in paths], chunksize=4):
+        for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
             for x, y, n, legal, ballot, taken, complete, deal, key in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
@@ -225,7 +239,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
             total += keep
         if not chunks:
             raise PolicyPriorError("no rows extracted")
-        manifest = {"schema": CHUNK_SCHEMA, "input_dim": INPUT_DIM, "rows": total, "chunks": chunks,
+        manifest = {"schema": CHUNK_SCHEMA, "input_dim": input_dim(version), "enc_version": int(version),
+                    "rows": total, "chunks": chunks,
                     "deals": sum(c["deals"] for c in chunks),
                     "split": {"lo": lo, "hi": hi, "thin": thin, "seed": seed, "max_rows": max_rows},
                     "corpora": [str(Path(c).resolve()) for c in corpora],
@@ -241,7 +256,7 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     with open(str(out) + ".meta.jsonl", "w") as fh:
         for m in meta:
             fh.write(json.dumps(m) + "\n")
-    summary = {"rows": int(len(Xa)), "mean_legal": float(np.mean([m["n_legal"] for m in meta])),
+    summary = {"rows": int(len(Xa)), "enc_version": int(version), "input_dim": input_dim(version), "mean_legal": float(np.mean([m["n_legal"] for m in meta])),
                "max_legal": int(max(m["n_legal"] for m in meta)),
                "sampled_rows": int(sum(m["n_legal"] > MAX_LEGAL for m in meta)),
                "incomplete_rows": int(sum(not m["complete"] for m in meta)),
@@ -522,6 +537,8 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--lo", type=float, default=0.0); e.add_argument("--hi", type=float, default=0.8)
     e.add_argument("--thin", type=float, default=0.1); e.add_argument("--max-rows", type=int, default=1_000_000)
     e.add_argument("--workers", type=int, default=8); e.add_argument("--seed", type=int, default=1)
+    e.add_argument("--encoder-version", type=int, default=ENC_VERSION,
+                   help="encoder the root rows are built at (default v2, the published layout)")
     e.add_argument("--chunk-rows", type=int, default=None,
                    help="write a streamable directory of chunks (this many rows each) instead of one npz")
     t = sub.add_parser("train"); t.add_argument("--data", required=True); t.add_argument("--out", required=True)
@@ -538,7 +555,7 @@ def main(argv: list[str] | None = None) -> int:
     a = build_parser().parse_args(argv)
     if a.cmd == "extract":
         print(json.dumps(extract(a.out, a.data, lo=a.lo, hi=a.hi, thin=a.thin, max_rows=a.max_rows, workers=a.workers,
-                                 seed=a.seed, chunk_rows=a.chunk_rows)))
+                                 seed=a.seed, chunk_rows=a.chunk_rows, version=a.encoder_version)))
     elif a.cmd == "train":
         r = train(a.data, a.out, test=a.test, epochs=a.epochs, listwise_weight=a.listwise_weight, lr=a.lr, threads=a.threads, seed=a.seed)
         print(json.dumps({k: v for k, v in r.items() if k != "eval"}))

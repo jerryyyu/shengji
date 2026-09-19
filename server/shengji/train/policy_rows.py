@@ -18,7 +18,8 @@ from typing import Any, Mapping
 import numpy as np
 import torch
 
-from .policy_prior import (INPUT_DIM, MAX_LEGAL, _rank_rows, _report, ballot_tensors, listwise_loss)
+from .policy_prior import (ENC_VERSION, INPUT_DIM, MAX_LEGAL, _rank_rows, _report, ballot_tensors,
+                           input_dim, listwise_loss)
 
 SCHEMA = "shengji-policy-rows-v1"
 
@@ -59,12 +60,12 @@ class PolicyRows:
     updates the shared trunk, so a root deal is a fit exposure (#428)."""
 
     def __init__(self, prefix: str | Path, *, limit: int | None = None,
-                 exclude: set[str] | frozenset[str] = frozenset()):
+                 exclude: set[str] | frozenset[str] = frozenset(), version: int = ENC_VERSION):
         prefix = str(prefix)
         d = np.load(prefix + ".npz")
         X, Y = d["X"], d["Y"]
-        if X.ndim != 2 or X.shape[1] != INPUT_DIM or Y.shape != (len(X), 54):
-            raise ValueError("policy rows: unexpected X/Y layout")
+        if X.ndim != 2 or X.shape[1] != input_dim(version) or Y.shape != (len(X), 54):
+            raise ValueError(f"policy rows: unexpected X/Y layout for encoder v{version}")
         n = len(X) if not limit else min(int(limit), len(X))
         if n < 1:
             raise ValueError("policy rows: no rows")
@@ -123,12 +124,18 @@ class PolicyRowsStream:
     deals are dropped per chunk; ``limit`` caps the rows drawn per pass."""
 
     def __init__(self, directory: str | Path, *, limit: int | None = None,
-                 exclude: set[str] | frozenset[str] = frozenset(), window: int = 4):
+                 exclude: set[str] | frozenset[str] = frozenset(), window: int = 4,
+                 version: int = ENC_VERSION):
         from .policy_prior import CHUNK_SCHEMA
         self.dir = Path(directory)
         man = json.load(open(self.dir / "manifest.json"))
-        if man.get("schema") != CHUNK_SCHEMA or man.get("input_dim") != INPUT_DIM:
-            raise ValueError("policy rows stream: manifest schema drift")
+        # Extractions before 2026-09-19 carry no enc_version: they are all v2.
+        if (man.get("schema") != CHUNK_SCHEMA or int(man.get("enc_version", ENC_VERSION)) != int(version)
+                or man.get("input_dim") != input_dim(version)):
+            raise ValueError(f"policy rows stream: manifest schema drift (expected encoder v{version}, "
+                             f"{input_dim(version)} wide; manifest says v{man.get('enc_version', ENC_VERSION)}, "
+                             f"{man.get('input_dim')})")
+        self.input_dim = input_dim(version)
         self.chunks = man["chunks"]
         if not self.chunks:
             raise ValueError("policy rows stream: no chunks")
@@ -149,7 +156,7 @@ class PolicyRowsStream:
                 raise ValueError(f"policy rows stream: {c['file']} SHA256 differs from the manifest (tampered or rewritten)")
             d = np.load(path)
             n = int(c["rows"])
-            if (d["X"].ndim != 2 or d["X"].shape != (n, INPUT_DIM) or d["Y"].shape != (n, 54)
+            if (d["X"].ndim != 2 or d["X"].shape != (n, self.input_dim) or d["Y"].shape != (n, 54)
                     or d["ball"].shape[0] != n or d["mask"].shape[0] != n or d["tgt"].shape != (n,)
                     or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]):
                 raise ValueError(f"policy rows stream: {c['file']} arrays are not row-aligned with the manifest")
@@ -216,12 +223,14 @@ def _pad_concat(arrays, fill) -> np.ndarray:
     return np.concatenate(out)
 
 
-def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=frozenset()):
-    """A chunked directory streams; a ``<prefix>.npz`` loads in memory."""
+def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=frozenset(),
+                     version: int = ENC_VERSION):
+    """A chunked directory streams; a ``<prefix>.npz`` loads in memory.  Either
+    refuses rows built at another encoder version than ``version``."""
     p = Path(path)
     if p.is_dir() and (p / "manifest.json").exists():
-        return PolicyRowsStream(p, limit=limit, exclude=exclude)
-    return PolicyRows(p, limit=limit, exclude=exclude)
+        return PolicyRowsStream(p, limit=limit, exclude=exclude, version=version)
+    return PolicyRows(p, limit=limit, exclude=exclude, version=version)
 
 
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False):
@@ -254,10 +263,14 @@ class PolicyEval:
     Rows whose deal is in ``exclude`` (the value run's fit deals) are dropped
     so the reported recall is on deals the trunk never trained on."""
 
-    def __init__(self, prefix: str | Path, *, exclude: set[str] | frozenset[str] = frozenset()):
+    def __init__(self, prefix: str | Path, *, exclude: set[str] | frozenset[str] = frozenset(),
+                 version: int = ENC_VERSION):
         prefix = str(prefix)
         d = np.load(prefix + ".npz")
         X = d["X"]
+        if X.ndim != 2 or X.shape[1] != input_dim(version):
+            raise ValueError(f"policy eval: rows are {X.shape[1] if X.ndim == 2 else '?'} wide, "
+                             f"not encoder v{version}'s {input_dim(version)}")
         meta = [json.loads(l) for l in open(prefix + ".meta.jsonl")]
         if len(meta) != len(X):
             raise ValueError("policy eval: metadata/rows mismatch")

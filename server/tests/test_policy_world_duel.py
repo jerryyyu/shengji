@@ -107,6 +107,30 @@ def test_value_factory_uses_checked_evaluator(monkeypatch):
     assert seen['worlds'] == 4
 
 
+def test_lookahead_factory_and_continuation_accounting(monkeypatch):
+    from types import SimpleNamespace
+    evaluator = object()
+    monkeypatch.setattr(duel, '_value_evaluator', lambda *a: evaluator)
+    def factory(p, s, **kwargs):
+        assert kwargs['evaluator'] is evaluator
+        assert kwargs['worlds'] == 4 and kwargs['candidates'] == 8
+        return SimpleNamespace(last_decision_record={
+            'worlds': 4, 'sample_attempts': 4, 'legal_complete': True,
+            'value_evaluations': 32, 'value_batches': 1,
+            'continuation_work': {'plies': 128, 'worlds': 128,
+                                  'sample_attempts': 130, 'capped_decisions': 2}})
+    monkeypatch.setattr(duel.PolicyLookaheadBot, 'from_checkpoint', factory)
+    bot = duel.make_policy('ck', 'sha', 4, 7, 'policy-lookahead', 8)
+    row = _row(7)
+    duel._record_decision(row['sides']['policy'], .1,
+                          duel._decision_telemetry(bot, 'policy'), 'policy')
+    result = duel.aggregate_records([row], [7])['policy']
+    assert result['worlds'] == 4
+    assert result['continuation_worlds'] == result['continuation_plies'] == 128
+    assert result['continuation_sample_attempts'] == 130
+    assert result['continuation_capped_decisions'] == 2
+
+
 def test_policy_control_work_is_not_reported_as_mc_work():
     from types import SimpleNamespace
     bot = SimpleNamespace(last_decision_record={

@@ -289,6 +289,7 @@ POLICY_VS_SMART_PUBLIC = {
     "8ecd4fea": "+0.0522 [+0.0386, +0.0668]",   # soft-target: paired vs gen-3-warm +0.0059 [-0.0125, +0.0236], no clear advantage
     "61625eec": "-0.1133 [-0.1264, -0.0989]",   # gen-2 (from scratch): far below SmartBot; 0.045 below its perfect-info read, like the others
     "06dd925b": "-0.0383 [-0.0516, -0.0248]",   # gen-1 (from scratch): below SmartBot; 0.029 below its perfect-info -0.0093
+    "9ee9fedb": "-0.0267 [-0.0399, -0.0128]",   # JS-G1: below SmartBot; 0.028 below its perfect-info +0.0014.  ALL SIX IN.
 }
 
 POLICY_VS_SMART = {

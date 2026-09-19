@@ -68,7 +68,7 @@ M = [
 ("gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)","d2514e6e","2026-09-18","v2",330,"3e-4","256k","36,239,068","0.59650","",
  "","","5w +0.0109 [-0.0106, +0.0323]","gen-3-warm (#421): first WARM START; PERFECT-INFO head read +0.0993 (relabelled 09-19); in play NULL vs production, MDE80 0.031"),
 ("soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0","8ecd4fea","2026-09-19","v2",330,"3e-4","256k","36,239,068","0.59760","",
- "","","","soft target (#496): search values + w=1.0; PERFECT-INFO head read +0.1006 (relabelled 09-19), same as gen-3-warm; in play: v30"),
+ "","","5w +0.0039 [-0.0296, +0.0374]","soft target (#496): search values + w=1.0; public-info head +0.0522, paired vs gen-3-warm null; v30 vs prod 5w null (MDE80 0.048), ties 66%"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",

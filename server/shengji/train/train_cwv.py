@@ -516,56 +516,52 @@ def _rps(prob: np.ndarray, target: np.ndarray) -> np.ndarray:
 @torch.no_grad()
 def run_eval(model: ValueNetwork, store: CwvBlockStore,
              mask_fn: Callable[[CwvBlock], np.ndarray], device: torch.device, *,
-             batch_size: int, aux_head: AuxPointsHead | None = None) -> dict[str, np.ndarray]:
+             batch_size: int, aux_head: AuxPointsHead | None = None,
+             pack_shards: bool = False, staging_bytes: int = 32 * 1024**2) -> dict[str, np.ndarray]:
     """Per-row predictions and losses over the selected rows."""
     model.eval()
     keys = ("expected_level", "expected_pt0", "median_pt0", "ce", "rps", "target",
             "target_level", "utility", "ply", "role_attacker", "points_so_far",
             "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
     out: dict[str, list] = {k: [] for k in keys}
-    # A shard holds one deal and the split is by deal, so a selector that can
-    # answer from recorded keys lets us decline most shards without decoding.
-    selects_any = getattr(mask_fn, "selects_any", None)
-    skip = (lambda deal_keys: not selects_any(deal_keys)) if selects_any else None
-    for block in store.iter_blocks(skip=skip):
-        sel = np.flatnonzero(mask_fn(block))
-        if not sel.size:
-            continue
-        for b0 in range(0, sel.size, batch_size):
-            idx = sel[b0:b0 + batch_size]
-            raw = collate(block, idx)
-            t = tensors_of(raw, device)
-            logits, aux = forward_batch(model, t, aux_head)
-            logp = torch.log_softmax(logits.to(torch.float32), dim=1)
-            target = t["target"]
-            ce = -logp.gather(1, target.unsqueeze(1)).squeeze(1)
-            prob = torch.exp(logp).cpu().numpy().astype(np.float64)
-            level, pt0 = expected_levels(prob)
-            tgt = raw["target"].astype(np.int64)
-            out["expected_level"].append(level)
-            out["expected_pt0"].append(pt0)
-            out["median_pt0"].append(median_pt0(prob))
-            out["ce"].append(ce.cpu().numpy().astype(np.float64))
-            out["rps"].append(_rps(prob, tgt))
-            out["target"].append(tgt)
-            out["target_level"].append(LEVEL_SUPPORT[tgt])
-            out["utility"].append(raw["utility"].astype(np.float64))
-            out["ply"].append(raw["ply"])
-            out["role_attacker"].append(raw["role_attacker"])
-            out["points_so_far"].append(raw["points_so_far"])
-            out["attacker_points"].append(raw["attacker_points"].astype(np.float64))
-            out["deal_key"].append(raw["deal_key"])
-            out["source_ref"].append(raw["source_ref"])
-            out["aux_pred"].append(np.full(len(idx), np.nan) if aux is None
-                                   else aux.cpu().numpy().astype(np.float64) * 100.0)
-            out["has_search_means"].append(block.has_search_means[idx])
+    from .cwv_eval_batches import eval_batches
+    if pack_shards and model.config.architecture != 'mlp':
+        raise ValueError('experimental packed evaluation supports MLP only')
+    for raw in eval_batches(store, mask_fn, batch_size, pack=pack_shards,
+                            staging_bytes=staging_bytes):
+        t = tensors_of(raw, device)
+        logits, aux = forward_batch(model, t, aux_head)
+        logp = torch.log_softmax(logits.to(torch.float32), dim=1)
+        target = t["target"]
+        ce = -logp.gather(1, target.unsqueeze(1)).squeeze(1)
+        prob = torch.exp(logp).cpu().numpy().astype(np.float64)
+        level, pt0 = expected_levels(prob)
+        tgt = raw["target"].astype(np.int64)
+        out["expected_level"].append(level)
+        out["expected_pt0"].append(pt0)
+        out["median_pt0"].append(median_pt0(prob))
+        out["ce"].append(ce.cpu().numpy().astype(np.float64))
+        out["rps"].append(_rps(prob, tgt))
+        out["target"].append(tgt)
+        out["target_level"].append(LEVEL_SUPPORT[tgt])
+        out["utility"].append(raw["utility"].astype(np.float64))
+        out["ply"].append(raw["ply"])
+        out["role_attacker"].append(raw["role_attacker"])
+        out["points_so_far"].append(raw["points_so_far"])
+        out["attacker_points"].append(raw["attacker_points"].astype(np.float64))
+        out["deal_key"].append(raw["deal_key"])
+        out["source_ref"].append(raw["source_ref"])
+        out["aux_pred"].append(np.full(len(raw['target']), np.nan) if aux is None
+                               else aux.cpu().numpy().astype(np.float64) * 100.0)
+        out["has_search_means"].append(raw['has_search_means'])
     if not out["ce"]:
         return {k: np.zeros(0) for k in keys}
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
 def validation_pass(model, store, mask_fn, device, *, batch_size, aux_head=None,
-                    candidates=None, search_head=False, policy_evalset=None) -> dict:
+                    candidates=None, search_head=False, policy_evalset=None,
+                    pack_shards=False) -> dict:
     """Existing validation operations with host-wall stage attribution.
 
     No extra device synchronization: stages return host metrics already. These
@@ -574,7 +570,9 @@ def validation_pass(model, store, mask_fn, device, *, batch_size, aux_head=None,
     """
     timings = {}
     started = time.perf_counter()
-    ev = run_eval(model, store, mask_fn, device, batch_size=batch_size, aux_head=aux_head)
+    packing = {'pack_shards': True} if pack_shards else {}
+    ev = run_eval(model, store, mask_fn, device, batch_size=batch_size,
+                  aux_head=aux_head, **packing)
     now = time.perf_counter()
     timings['outcome_eval'] = now - started
     metrics = quick_metrics(ev)
@@ -1518,6 +1516,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           rank_limit: int | None = None, cache_dir: str | None = None,
           cache_workers: int | None = None, eval_workers: int | None = None,
           resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
+          pack_validation_shards: bool = False,
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
@@ -1552,6 +1551,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
         encoder_version=encoder_version)
     config["eval_holdouts"] = dict(holdouts)
+    if type(pack_validation_shards) is not bool:
+        raise TrainError('pack_validation_shards must be boolean')
+    if pack_validation_shards:
+        if arch != 'mlp':
+            raise TrainError('--pack-validation-shards supports MLP only')
+        # Record the numerical execution choice in checkpoints/receipts and
+        # their config hash. Defaults retain the legacy config identity.
+        config['validation_packing'] = {
+            'version': 1, 'scope': 'epoch-outcome-validation-only',
+            'staging_bytes': 32 * 1024**2,
+        }
     enc_version = int(config["encoder_version"])
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
@@ -1789,7 +1799,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     def validate() -> dict:
         return validation_pass(model, store, masks["val"], dev, batch_size=batch_size,
                                aux_head=aux_head, candidates=val_cands,
-                               search_head=search_head, policy_evalset=policy_evalset)
+                               search_head=search_head, policy_evalset=policy_evalset,
+                               pack_shards=pack_validation_shards)
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:
         # the selected metric first, then the rest (each once)
@@ -2605,6 +2616,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--policy-detach", action="store_true",
                    help="stop-gradient: the policy head trains on the trunk features but never "
                         "moves the trunk (zero cost to the value heads)")
+    t.add_argument('--pack-validation-shards', action='store_true',
+                   help='experimental MLP cross-shard batching for epoch outcome validation; '
+                        'recorded in config; final evaluation and other validation stages unchanged')
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2666,6 +2680,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_listwise_weight=args.policy_listwise_weight,
                   policy_batch_fraction=args.policy_batch_fraction,
                   policy_rows_limit=args.policy_rows_limit, policy_detach=args.policy_detach,
+                  pack_validation_shards=args.pack_validation_shards,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

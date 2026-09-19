@@ -8,7 +8,8 @@ from shengji.train import train_cwv as module
 
 @pytest.mark.parametrize('search,policy', [(False, False), (True, False),
                                          (False, True), (True, True)])
-def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy):
+@pytest.mark.parametrize('pack', [False, True])
+def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy, pack):
     calls = []
     clock = iter(range(10))
     monkeypatch.setattr(module.time, 'perf_counter', lambda: next(clock))
@@ -16,7 +17,7 @@ def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy)
     ev = object()
     def run(m, s, f, d, **kwargs):
         assert (m, s, f, d) == (model, store, mask, device)
-        assert kwargs == {'batch_size': 32, 'aux_head': aux}
+        assert kwargs == {'batch_size': 32, 'aux_head': aux, **({'pack_shards': True} if pack else {})}
         calls.append('eval')
         return ev
     def quick(e):
@@ -42,7 +43,7 @@ def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy)
     monkeypatch.setattr(module, 'search_head_rank', search_ranking)
     got = module.validation_pass(model, store, mask, device, batch_size=32,
         aux_head=aux, candidates=candidates, search_head=search,
-        policy_evalset=SimpleNamespace(run=policy_run) if policy else None)
+        policy_evalset=SimpleNamespace(run=policy_run) if policy else None, pack_shards=pack)
     assert calls == ['eval', 'metrics', 'ranking'] + (['search'] if search else []) + (['policy'] if policy else [])
     expected = {'loss': .75, 'n': 4, 'rank_regret': .125}
     if search:

@@ -201,7 +201,7 @@ body.recent-only [data-tr].pre-cut{display:none}
   two registries they are drawn from.</p>
   <p class="dek recent-ctl"><label><input type="checkbox" id="recentOnly"> Hide models trained before
   <b>14 Sep 2026</b></label> <span class="null" id="recentCount"></span>
-  <span class="null">&mdash; checkpoints and chart points only; the corpus table in section 5 is
+  <span class="null">&mdash; checkpoints and chart points only; the corpus table in section 6 is
   not filtered.</span></p>
 </header>
 
@@ -306,18 +306,28 @@ body.recent-only [data-tr].pre-cut{display:none}
 
 <section>
   <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day</h2>
-  <p class="cap">Every other chart on this page measures a proxy. This one measures the goal: the policy head
-  playing by <b>itself</b> &mdash; argmax over its own card log-odds, no value net and no rollouts &mdash; against
-  SmartBot on mirrored deals. Zero is SmartBot parity, so <b>above the line is the thing the policy line exists to
-  achieve</b>. Points are 8,000 mirrored deals on fresh seeds with a paired bootstrap interval.</p>
+  <p class="cap">Every other chart on this page measures a proxy. This one measures the policy line's stated goal: the
+  policy head playing by <b>itself</b> &mdash; argmax over its own card log-odds, no value net and no rollouts &mdash;
+  against SmartBot on mirrored deals. Zero is SmartBot parity. Points are 8,000 mirrored deals on fresh seeds with a
+  paired bootstrap interval, every one re-derived to a receipt on 09-18.</p>
   <div class="figure">{{SVG7}}</div>
+  <p class="cap"><b>The goal was reached and it did not convert.</b> Warm-starting from JS-M1 took the head from
+  &minus;0.068 (gen-2, trained from scratch) to <b>+0.099</b> (gen-3-warm) on the same data &mdash; initialisation, not
+  data, is what separates the rungs. A head six times stronger than production's then moved play by nothing
+  measurable in any role it holds: as the whole package in play (v28, +0.0109 [&minus;0.0106, +0.0323], MDE80 0.031);
+  <b>as the admission prior alone, with production's value net fixed in both arms (v29, +0.0020 [&minus;0.0002,
+  +0.0042], MDE80 0.0031 &mdash; 99.2% of paired deals identical)</b>; and as the MC rollout policy, where it is
+  worse than the heuristic at every temperature. Training the head on the search's own candidate values instead
+  of the played action (soft-target, w&nbsp;1.0) lands at +0.101 &mdash; on top of gen-3-warm. The shortlist the
+  prior admits already contains what the search needs.</p>
   <p class="cap">Read the intervals, not the points. A 2,000-deal read on a different seed window put JS-G1 above
-  JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. The shortlist
-  metrics elsewhere on this page (top-64 recall) are what the ADMISSION PRIOR needs; they are not this.</p>
+  JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. Top-64 recall
+  elsewhere on this page is what the admission prior needs; it does not predict this chart, and this chart does not
+  predict play.</p>
 </section>
 
 <section>
-  <h2 class="sec">5 &middot; The data</h2>
+  <h2 class="sec">6 &middot; The data</h2>
   <p class="cap">Every corpus and the recipe that produced it. These are not interchangeable units
   of data: 8,000 to 144,000 clusters crosses three teacher changes and a tripling of search work.</p>
   <div class="tw"><table class="sortable">
@@ -367,7 +377,7 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">6 &middot; Every checkpoint</h2>
+  <h2 class="sec">7 &middot; Every checkpoint</h2>
   <p class="cap">All {{N_REGISTRY}} models, one row each, including Codex&#8217;s encoder-v3 line read from the archive.
   <b>Play vs leader</b> is one column: the best instrument each model has been measured with comes first,
   bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
@@ -391,7 +401,7 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">7 &middot; Policy heads</h2>
+  <h2 class="sec">8 &middot; Policy heads</h2>
   <p class="cap">Every action prior trained so far ({{N_POLICY}} heads, {{N_POLICY_COMMON}} readable on one common
   set), with what each was trained on. <b>Separate</b> heads are the #419 prior: a small MLP on the same 833 root
   inputs; <b>joint</b> heads sit on a value net&#8217;s trunk (#425). <b>Root rows</b> are decision roots from the

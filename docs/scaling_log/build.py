@@ -9,7 +9,7 @@ models.py is the only place a model or a screen result is entered.  Everything
 else on the page is derived from it: the six charts (series are named by
 checkpoint identity in SERIES and read their coordinates from the rows), the
 by-day table, the checkpoint registry and every count or headline number in
-the prose.  The corpus table (section 5) is static in template.html; it
+the prose.  The corpus table (section 6) is static in template.html; it
 changes only when a corpus is generated.  Two KPI figures come from analyses
 outside this file and are labelled as such in the template: the +0.41
 loss-vs-search correlation and Codex's 50.0% v3 win rate.
@@ -289,7 +289,7 @@ def registry_rows(rows):
 
 
 def policy_rows(g=None):
-    """Section 7: one row per policy head (models.POLICY_HEADS), blanks rendered as an em dash."""
+    """Section 8: one row per policy head (models.POLICY_HEADS), blanks rendered as an em dash."""
     if g is None:
         src = open(MODELS).read()
         g = {}

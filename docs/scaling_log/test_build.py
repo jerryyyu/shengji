@@ -504,12 +504,12 @@ def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_tex
 
 
 def test_policy_head_section_lists_every_head_and_blanks_unreadable_cells(data):
-    """Section 7 (Jerry 09-15): every POLICY_HEADS row renders; heads trained before the split correction have
+    """Section 8 (Jerry 09-15): every POLICY_HEADS row renders; heads trained before the split correction have
     blank common-set cells; the common-set count matches the rows with a listwise number; the numbers in the
     source are the numbers on the page."""
     page, _ = _render(*data)
     html_rows, heads = build.policy_rows()
-    assert "7 &middot; Policy heads" in page and html_rows in page
+    assert "8 &middot; Policy heads" in page and html_rows in page
     assert f"({len(heads)} heads" in page
     common = [h for h in heads if h["listwise"]]
     assert f"{len(common)} readable on one common" in page

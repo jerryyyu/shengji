@@ -286,6 +286,7 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 POLICY_VS_SMART_PUBLIC = {
     "d2514e6e": "+0.0463 [+0.0334, +0.0593]",   # gen-3-warm: under half its perfect-info read, above zero
     "a5248cc5": "-0.0137 [-0.0269, -0.0004]",   # JS-M1 (production's head): BELOW SmartBot on public information
+    "8ecd4fea": "+0.0522 [+0.0386, +0.0668]",   # soft-target: paired vs gen-3-warm +0.0059 [-0.0125, +0.0236], no clear advantage
 }
 
 POLICY_VS_SMART = {

@@ -137,7 +137,7 @@ s.append('<text x="%.1f" y="%.1f" class="noteb" text-anchor="end">%s at identica
 # Every encoder generation gets its OWN marker class and legend line; an encoder the
 # chart does not know is a loud failure, never a silent fold into another generation
 # (Codex HOLD on #383: a v4 row had been counted and painted as v2).
-ENC_CLASS={"v1":"pt1","v2":"pt2","v3":"pt5","v4":"pt8"}
+ENC_CLASS={"v1":"pt1","v2":"pt2","v3":"pt5","v4":"pt8","v5":"pt9"}
 ENC_N={k:0 for k in ENC_CLASS}
 for d in R:
     if d["ce"] is None or d["ce"]>CE_HI: continue

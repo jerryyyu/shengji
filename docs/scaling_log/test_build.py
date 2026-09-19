@@ -303,12 +303,12 @@ def test_every_encoder_generation_has_its_own_chart_class_and_count(data):
     assert c["enc_counts"]["v4"] == c0["enc_counts"]["v4"] + 1
     g1 = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)[0][2]
     assert g1.count('class="pt pt8 hit"') == c["enc_counts"]["v4"]
-    assert f"v4 &middot; {c['enc_counts']['v4']} run" in g1 and "v4" in re.search(r"encoder v1, v2, v3 and v4", page).group(0)
+    assert f"v4 &middot; {c['enc_counts']['v4']} run" in g1 and "v4" in re.search(r"encoder v1, v2, v3(, v4 and v5| and v4)", page).group(0)
     assert f"v2 &middot; {c['enc_counts']['v2']} runs" in g1
     # with no v4 row at all, no v4 legend line and no v4 in the header
     rows0 = [r for r in rows if r["enc"] != "v4"]
     page_no, c_no = _render(rows0, table_only, series)
-    assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "and v3 &middot;" in page_no
+    assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "v3 &middot;" in page_no
 
 
 def test_table_notes_are_one_line_and_the_history_is_in_the_record(data):

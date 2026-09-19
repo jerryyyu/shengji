@@ -167,7 +167,7 @@ def check_data(rows, table_only, series):
             dt.date.fromisoformat(r["tr"].lstrip("~"))
         except ValueError:
             errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
-        if r["enc"] not in ("v1", "v2", "v3", "v4"):
+        if r["enc"] not in ("v1", "v2", "v3", "v4", "v5"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
         if r["w"] not in widths:
             errs.append(f"{r['ck']}: width {r['w']} has no parameter count in charts.py PAR")
@@ -446,7 +446,7 @@ def render(rows=None, table_only=None, series=None):
                    f"(MDE80 about {', '.join(fmt(k) for k in few)}): a null there means not large, never no effect "
                    f"({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
                    if n_five else " <b>5w</b> (the first five windows, the triage instrument) has no readout yet.")
-    present = [e for e in ("v1", "v2", "v3", "v4") if c["enc_counts"].get(e)]
+    present = [e for e in ("v1", "v2", "v3", "v4", "v5") if c["enc_counts"].get(e)]
     enc_list = "encoder " + (", ".join(present[:-1]) + " and " + present[-1] if len(present) > 1 else present[0])
     subs = {
         "ENC_LIST": enc_list,

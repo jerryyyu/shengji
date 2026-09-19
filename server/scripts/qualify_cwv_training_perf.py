@@ -4,6 +4,13 @@ Supply JSON kwargs for train_cwv.train using already-opened DEV data, a shared
 prewarmed cache, and an existing public_head. Each arm is a fresh process.
 This measures training/receipt engineering, not model quality. Run only in an
 isolated host window. Results remain available if a later arm fails.
+
+Use --comparison validation-packing for the opt-in epoch outcome-evaluation
+optimization: both arms retain candidate batching and sync32. The old default
+measures those older optimizations instead and cannot attribute a packing gain.
+Use a dedicated recipe cache, not a fleet-wide cache: inventory checks traverse
+the entire supplied directory. Bounds remain two epochs / 128 DEV clusters;
+this does not by itself qualify full-corpus throughput or downstream strength.
 """
 from __future__ import annotations
 
@@ -54,10 +61,28 @@ def cache_inventory(path):
             for p in root.rglob("*.npz")}
 
 
-def child(config, out):
+def arm_recipe(config, comparison, arm):
+    kw = recipe(config)
+    if comparison == "validation-packing":
+        if kw.get("arch", "mlp") != "mlp":
+            raise ValueError("validation packing requires MLP")
+        if kw.get("pack_validation_shards", False):
+            raise ValueError("qualifier owns pack_validation_shards; omit it from recipe")
+        kw["pack_validation_shards"] = arm == "optimized"
+    return kw
+
+
+def arm_env(comparison, arm):
+    old_baseline = comparison == "batching-sync" and arm == "control"
+    return dict(os.environ,
+                SHENGJI_CWV_LOSS_SYNC_EVERY="1" if old_baseline else "32",
+                SHENGJI_CWV_BATCHED_CANDIDATES="0" if old_baseline else "1")
+
+
+def child(config, out, *, comparison="batching-sync", arm="optimized"):
     import torch
     from shengji.train.train_cwv import train
-    kw = recipe(config)
+    kw = arm_recipe(config, comparison, arm)
     start = time.perf_counter()
     result = train(out=out / "train", **kw)
     # Finish queued GPU work before recording wall; child peak RSS is not GPU memory.
@@ -72,12 +97,15 @@ def child(config, out):
     rng = hashlib.sha256(torch.get_rng_state().numpy().tobytes()).hexdigest()
     checkpoints = [out / "train" / "best.pt", *sorted((out / "train" / "checkpoints").glob("epoch-*.pt"))]
     report = {
+        "comparison": comparison, "arm": arm,
         "wall_seconds": wall,
         "cpu_seconds_including_reaped_children": usage.ru_utime + usage.ru_stime + descendants.ru_utime + descendants.ru_stime,
         "parent_peak_rss_bytes": usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024),
         "torch_cpu_rng_sha256": rng,
         "checkpoints": {str(p.relative_to(out / "train")): checkpoint_fingerprint(p) for p in checkpoints},
         "epoch_train_seconds": [e["train_secs"] for e in result["epochs"]],
+        "epoch_loop_seconds": [e["secs"] for e in result["epochs"]],
+        "epoch_validation_stages": [e["val"]["stage_wall_seconds"] for e in result["epochs"]],
         "candidate_report_seconds": result["final"]["test"]["ranking"]["secs"],
         "note": "RSS excludes child/GPU peaks; report-score batching is tolerance-equivalent, not bit-exact",
     }
@@ -93,16 +121,25 @@ def main():
                    help="run one bounded full control recipe before timing; retain it separately")
     p.add_argument("--arm-timeout-seconds", type=int, default=900)
     p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--comparison", choices=("batching-sync", "validation-packing"),
+                   default="batching-sync",
+                   help="validation-packing holds candidate batching and sync32 on in both arms")
+    p.add_argument("--arm", choices=("control", "optimized"), default="optimized",
+                   help=argparse.SUPPRESS)
     args = p.parse_args()
     if not 1 <= args.arm_timeout_seconds <= 3600:
         p.error("arm timeout must be in 1..3600 seconds")
     config = str(Path(args.config).resolve())
     kw = recipe(config)
+    # Validate both treatments even in dry-run, before creating any output.
+    for arm in ("control", "optimized"):
+        arm_recipe(config, args.comparison, arm)
     out = Path(args.out).resolve()
     if args.child:
-        child(config, out)
+        child(config, out, comparison=args.comparison, arm=args.arm)
         return
     plan = {"recipe": kw, "order": ["control", "optimized", "optimized", "control"],
+            "comparison": args.comparison,
             "warmup": args.warmup, "out": str(out)}
     print(json.dumps(plan, indent=2), flush=True)
     if not args.run:
@@ -118,11 +155,11 @@ def main():
     for name, arm in stages:
         arm_out = out / name
         arm_out.mkdir()
-        env = dict(os.environ, SHENGJI_CWV_LOSS_SYNC_EVERY="1" if arm == "control" else "32",
-                   SHENGJI_CWV_BATCHED_CANDIDATES="0" if arm == "control" else "1")
+        env = arm_env(args.comparison, arm)
         with (arm_out / "run.log").open("x") as log:
             # Start a private group so expiry can stop decode workers too.
-            proc = subprocess.Popen([sys.executable, __file__, "--config", str(frozen), "--out", str(arm_out), "--child"],
+            proc = subprocess.Popen([sys.executable, __file__, "--config", str(frozen), "--out", str(arm_out), "--child",
+                                     "--comparison", args.comparison, "--arm", arm],
                                     env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 code = proc.wait(timeout=args.arm_timeout_seconds)

@@ -2,6 +2,7 @@
 the charts, the tables AND the headline prose together, and malformed rows must
 be refused.  Run: python3 -m pytest docs/scaling_log/test_build.py -q"""
 import copy
+import datetime as dt
 import importlib.util
 import re
 from pathlib import Path
@@ -349,13 +350,21 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
     # a model trained on a NEW day (tomorrow) appears without any list being edited
     # the new day must be LATER than every real one, or it proves nothing about the header
     newest = max(r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only)
-    assert newest < "2026-09-19", f"fixture day 2026-09-19 is no longer in the future of {newest}"
+    # The future day is DERIVED from the data, not hardcoded.  It used to be the literal
+    # "2026-09-19", which stopped being in the future the moment a model was actually trained
+    # on that day -- and the test then failed for a reason that had nothing to do with what it
+    # checks.  Deriving it means this never needs editing again.
+    future = dt.date.fromisoformat(newest) + dt.timedelta(days=1)
+    fiso = future.isoformat()
     rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
-        "future model", "0badc0de", "2026-09-19", "v2", 512, "3e-4", "96k", "14,077,520",
+        "future model", "0badc0de", fiso, "v2", 512, "3e-4", "96k", "14,077,520",
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
-    assert "2026-09-19" in c2["days"] and "<td>19 Sep</td>" in page2
-    assert "19 September 2026" in page2  # the header date follows the latest training day
+    assert fiso in c2["days"], f"a model trained on {fiso} did not reach the day axis"
+    assert f"<td>{future.strftime('%d %b')}</td>" in page2, f"{fiso} missing from the by-day table"
+    # the header date follows the latest training day; same formatting build.py uses
+    header = f"{future.day:02d} {build.MONTHS.get(future.month, future.strftime('%B'))} {future.year}"
+    assert header in page2, f"header did not follow the new latest day ({header})"
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):

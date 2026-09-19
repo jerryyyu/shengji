@@ -65,8 +65,10 @@ M = [
  "","","5w +0.0239 [+0.0005, +0.0472]","JS-M1 (#425): production since release 28. The owed FRESH-seed read is a NULL: -0.0159 [-0.0383, +0.0065] vs release 27 at matched 1k"),
 ("gen-1: JS-M1's recipe with runJS1 added (first net trained on its predecessor's games)","06dd925b","2026-09-16","v2",330,"3e-4","192k","27,602,516","0.60060","",
  "","","5w +0.0136 [-0.0085, +0.0357]","gen-1 (#425): +16k clusters of JS-M1-teacher self-play; paired vs production on fresh seeds is a NULL at MDE80 0.032; 0.94x its decision wall"),
-("gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)","d2514e6e","2026-09-18","v2",330,"3e-4","256k","36,463,068","0.59650","",
+("gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)","d2514e6e","2026-09-18","v2",330,"3e-4","256k","36,239,068","0.59650","",
  "","","5w +0.0109 [-0.0106, +0.0323]","gen-3-warm (#421): first WARM START; head alone +0.0993 vs SmartBot but in play NULL vs production, MDE80 0.031 - the head gain does not reach play"),
+("soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0","8ecd4fea","2026-09-19","v2",330,"3e-4","256k","36,239,068","0.59760","",
+ "","","","soft target (#496): search values + w=1.0; head alone +0.1006, indistinguishable from gen-3-warm's +0.0993 at hard/w=0.2"),
 ("gen-2: gen-1's recipe with runJS2 and runJS3 added (the first run the #421 gating rule permits)","61625eec","2026-09-17","v2",330,"3e-4","224k","32,032,200","0.60998","",
  "","","5w -0.0035 [-0.0252, +0.0183]","gen-2 (#421): 20.5% self-play; vs production NULL, MDE80 0.031, point negative; vs gen-1 also null: sampling alone does not compound"),
 ("JS-G1: G1 recipe + policy head (w 0.2) from scratch, all 20.3M root rows","9ee9fedb","2026-09-16","v2",330,"3e-4","176k","25,388,708","0.5497","0.0291",
@@ -135,9 +137,9 @@ M += [
 #: and those extra deals are self-play, a different distribution from the room corpus.
 #: Jerry 2026-09-17: report it anyway, marked, rather than leave the point off the chart.
 #: These dots are drawn hollow and excluded from the fitted base-recipe lines.
-OWN_SPLIT = {"06dd925b", "61625eec", "d2514e6e"}
+OWN_SPLIT = {"06dd925b", "61625eec", "d2514e6e", "8ecd4fea"}
 
-PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532, "ac85d19d": 653532, "a5248cc5": 653532, "9ee9fedb": 653387, "06dd925b": 653532, "61625eec": 653532, "d2514e6e": 653532}
+PARAMS = {"3cb9cd62": 644568, "0ba58f0f": 623079, "dd85a21d": 656943, "1bcbb47f": 644423, "8662d9ba": 653532, "f39e7abc": 653532, "cad530e4": 653532, "ac85d19d": 653532, "a5248cc5": 653532, "9ee9fedb": 653387, "06dd925b": 653532, "61625eec": 653532, "d2514e6e": 653532, "8ecd4fea": 653532}
 
 TABLE_ONLY = {"c50d95ef", "5bde6b85"}
 
@@ -268,6 +270,7 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: ~/shengji-archive/2026-09-13/readouts/head8k-*-20260918.json. The scoring box was validated
 #: first by reproducing the Mini's receipted gen-1 2k read (-0.002 [-0.02925, 0.025]) exactly.
 POLICY_VS_SMART = {
+    "8ecd4fea": "+0.1006 [+0.0864, +0.1153]",   # soft target, w=1.0: same as gen-3-warm
     "d2514e6e": "+0.0993 [+0.0856, +0.1126]",   # gen-3-warm: 6x JS-M1's margin
     "a5248cc5": "+0.0159 [+0.0023, +0.0293]",   # JS-M1: BEATS SmartBot, interval excludes zero
     "9ee9fedb": "+0.0014 [-0.0117, +0.0148]",   # JS-G1: a wash, not the edge the 2k read showed

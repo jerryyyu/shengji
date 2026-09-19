@@ -45,9 +45,11 @@ def test_dry_run_never_launches_or_creates_output(runner, args, monkeypatch, war
 
 
 @pytest.mark.parametrize("mismatch", [False, True])
-def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mismatch):
+@pytest.mark.parametrize("comparison", ["batching-sync", "validation-packing"])
+def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mismatch, comparison):
     argv, out = args
     argv.append("--run")
+    argv.extend(["--comparison", comparison])
     seen = []
     class Process:
         def __init__(self, cmd, **kw):
@@ -57,6 +59,8 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
                          kw["env"]["SHENGJI_CWV_BATCHED_CANDIDATES"]))
             assert Path(cmd[cmd.index("--config") + 1]) == out / "recipe.json"
             dest = Path(cmd[cmd.index("--out") + 1])
+            assert cmd[cmd.index("--comparison") + 1] == comparison
+            assert cmd[cmd.index("--arm") + 1] == ("control" if len(seen) in (1, 4) else "optimized")
             changed = mismatch and len(seen) == 2
             report = dict(wall_seconds=2 if len(seen) in (1, 4) else 1,
                           checkpoints={"best.pt": {"tensor_sha256": "different" if changed else "same", "epoch": 1}},
@@ -70,7 +74,8 @@ def test_abba_env_same_recipe_and_parity_refusal(runner, args, monkeypatch, mism
             runner.main()
     else:
         runner.main()
-    assert seen == [("1", "0"), ("32", "1"), ("32", "1"), ("1", "0")]
+    assert seen == ([("1", "0"), ("32", "1"), ("32", "1"), ("1", "0")]
+                    if comparison == "batching-sync" else [("32", "1")] * 4)
     summary = json.loads((out / "summary.json").read_text())
     assert summary["exact_checkpoint_and_cpu_rng_parity"] is (not mismatch)
     assert summary["control_repeatable"] is True
@@ -154,7 +159,10 @@ def test_full_warmup_prepares_candidate_cache_but_timed_changes_refuse(runner, a
         assert len(summary["arms"]) == 4
 
 
-def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path):
+@pytest.mark.parametrize("comparison,arm", [("batching-sync", "optimized"),
+                                           ("validation-packing", "control"),
+                                           ("validation-packing", "optimized")])
+def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_path, comparison, arm):
     """Exercise the actual child entry point on the small engine-generated fixture.
 
     This is a transport smoke, not a speed measurement or new research data.
@@ -171,12 +179,38 @@ def test_real_child_produces_checkpoint_and_measurement(runner, store_dir, tmp_p
         **THIRDS)))
     out = tmp_path / "child"
     out.mkdir()
-    runner.child(str(config), out)
+    runner.child(str(config), out, comparison=comparison, arm=arm)
     report = json.loads((out / "measurement.json").read_text())
     assert report["wall_seconds"] > 0
     assert report["cpu_seconds_including_reaped_children"] > 0
     assert report["parent_peak_rss_bytes"] > 0
     assert len(report["epoch_train_seconds"]) == 1
+    assert len(report["epoch_loop_seconds"]) == 1
+    assert report["epoch_validation_stages"][0]["outcome_eval"] > 0
+    assert report["comparison"] == comparison
+    assert report["arm"] == arm
     assert report["candidate_report_seconds"] > 0
     assert set(report["checkpoints"]) == {"best.pt", "checkpoints/epoch-01.pt"}
     assert report["checkpoints"]["best.pt"] == runner.checkpoint_fingerprint(out / "train" / "best.pt")
+
+
+def test_packing_recipe_changes_only_treatment_flag(runner, args):
+    argv, _ = args
+    config = argv[argv.index("--config") + 1]
+    original = runner.recipe(config)
+    for arm in ("control", "optimized"):
+        kw = runner.arm_recipe(config, "validation-packing", arm)
+        assert kw.pop("pack_validation_shards") is (arm == "optimized")
+        assert kw == original
+    assert runner.recipe(config) == original
+
+
+@pytest.mark.parametrize("extra", [{"arch": "history"}, {"pack_validation_shards": True}])
+def test_packing_invalid_recipe_refused_in_dry_run(runner, args, extra):
+    argv, out = args
+    config = Path(argv[argv.index("--config") + 1])
+    config.write_text(json.dumps(dict(runner.recipe(config), **extra)))
+    argv.extend(["--comparison", "validation-packing"])
+    with pytest.raises(ValueError):
+        runner.main()
+    assert not out.exists()

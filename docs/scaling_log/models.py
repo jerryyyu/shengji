@@ -288,6 +288,7 @@ POLICY_VS_SMART_PUBLIC = {
     "a5248cc5": "-0.0137 [-0.0269, -0.0004]",   # JS-M1 (production's head): BELOW SmartBot on public information
     "8ecd4fea": "+0.0522 [+0.0386, +0.0668]",   # soft-target: paired vs gen-3-warm +0.0059 [-0.0125, +0.0236], no clear advantage
     "61625eec": "-0.1133 [-0.1264, -0.0989]",   # gen-2 (from scratch): far below SmartBot; 0.045 below its perfect-info read, like the others
+    "06dd925b": "-0.0383 [-0.0516, -0.0248]",   # gen-1 (from scratch): below SmartBot; 0.029 below its perfect-info -0.0093
 }
 
 POLICY_VS_SMART = {

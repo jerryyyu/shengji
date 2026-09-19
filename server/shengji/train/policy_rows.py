@@ -285,8 +285,21 @@ class PolicyEval:
             for r in recs:
                 key = f"{stratum} {r['bucket'][0]}-{min(r['bucket'][1], 10 ** 6)}"
                 top64[key] = r["taken_recall"]["64"]; deals[key] = r["deals"]
+        # Selection needs ONE lower-is-better scalar (Selector reads a flat key), so the
+        # per-stratum recalls are reduced here rather than in the trainer.  EQUAL weight per
+        # stratum, deliberately: a deal-weighted mean is dominated by the easy small-action
+        # strata where recall is ~1.000, which would make the number nearly constant and
+        # useless for choosing an epoch.  The deal-weighted figure is reported beside it so
+        # the difference is visible rather than assumed.
+        miss = [1.0 - r for r in top64.values()]
+        wsum = sum(deals.get(k, 0) for k in top64)
         return {"top64": top64, "deals": deals, "counters": report["counters"],
-                "strata": report["strata"], "text": report["text"], "max_legal": MAX_LEGAL}
+                "strata": report["strata"], "text": report["text"], "max_legal": MAX_LEGAL,
+                "miss_at_64": (sum(miss) / len(miss)) if miss else None,
+                "miss_at_64_deal_weighted": (
+                    sum((1.0 - top64[k]) * deals.get(k, 0) for k in top64) / wsum)
+                    if wsum else None,
+                "strata_counted": len(top64)}
 
 
 __all__ = ["PolicyEval", "PolicyRows", "PolicyRowsStream", "SCHEMA", "open_policy_rows", "policy_log_odds", "policy_losses"]

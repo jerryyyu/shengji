@@ -230,6 +230,15 @@ SELECT_METRICS = {
                                        "quantity; levels are U(E[points]), the bracket "
                                        "transform of the search's MEAN points -- an "
                                        "MC-ranking proxy, not E[U])"),
+    "val_policy_miss_at_64": ("policy_miss_at_64",
+                             "1 - the mean per-stratum recall of the played action inside the "
+                             "policy prior's top-64 (train.policy_rows.PolicyEval; the SAME "
+                             "quantity cwv_prior_admission consumes). Strata are weighted "
+                             "EQUALLY, not by deal count: the deal-weighted mean is dominated "
+                             "by small-action strata at ~1.000 recall. Selecting on this "
+                             "optimises the ADMISSION PRIOR and will cost the value head -- "
+                             "measured on the J-arms, policy weight 1.0 bought +0.02 to +0.03 "
+                             "top-64 recall on the large-action strata for ~0.006 val_ce"),
     "val_points_mae": ("points_mae", "validation MAE of the aux points head in attacker "
                                      "points (cwv_eval.points_metrics; the vleaf leaf's "
                                      "quantity)"),
@@ -1043,8 +1052,11 @@ def consumer_block(select_metric: str, aux_points: bool, search_head: bool = Fal
                         "mover's seat (#419 factorised prior; #425 joint net)",
             "consumers": "shortlist prior admission (cwv_prior_admission: union of per-world "
                          "top-N by the sum of card log-odds); never the value ranking",
-            "selection": "never the selection metric; reported alongside as val.policy.top64 "
-                         "(recall of the played action inside the prior's top-64 per stratum)"}
+            "selection": "not the DEFAULT selection metric -- reported alongside as "
+                         "val.policy.top64 (recall of the played action inside the prior's "
+                         "top-64 per stratum) -- but selectable since 2026-09-18 via "
+                         "--select-metric val_policy_miss_at_64, which optimises the "
+                         "admission prior at the value head's expense"}
     return {"select_metric": select_metric, "heads": heads,
             "rule": "the training validation metric, the held-out eval and what the search "
                     "consumes are the SAME quantity computed by the SAME code "
@@ -1745,6 +1757,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if policy_evalset is not None:
             # #425: the policy head's held-out recall; never the selection metric.
             metrics["policy"] = policy_evalset.run(model, dev)
+            # flat mirror: Selector.value_of reads a flat key off the validation block
+            if metrics["policy"].get("miss_at_64") is not None:
+                metrics["policy_miss_at_64"] = float(metrics["policy"]["miss_at_64"])
         return metrics
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from shengji.train import cwv_eval_batches as batching
-from tests.test_cwv_train import store_dir, blocks  # noqa: F401
+from tests.test_cwv_train import store_dir, blocks, luna, other_dir, other_records  # noqa: F401
 
 
 def fake_store(monkeypatch, lengths, history=False):
@@ -76,3 +76,37 @@ def test_real_model_and_metadata_parity(blocks):
             np.testing.assert_allclose(a[key],b[key],rtol=1e-6,atol=1e-6,equal_nan=True,err_msg=key)
         else:
             np.testing.assert_array_equal(a[key],b[key],err_msg=key)
+
+
+def test_packing_preserves_training_selection_and_weights(store_dir, luna, tmp_path, monkeypatch):
+    import torch
+    from shengji.train import train_cwv
+    from tests.test_cwv_train import train_v0, THIRDS
+    train_v0.train(data=[str(store_dir)], out=tmp_path/'public', device='cpu', epochs=1,
+        seed=7, batch_size=64, n_boot=10, log=None, cache_workers=1,
+        encoder_version=train_cwv.DEFAULTS['encoder_version'], **THIRDS)
+    real_eval = train_cwv.run_eval
+    packing = False
+    def evaluate(model, store, mask, device, **kwargs):
+        # Split real cached rows contiguously to ensure this tiny fixture
+        # exercises cross-shard packing even when validation holds one deal.
+        def pieces(**kw):
+            for block in store.iter_blocks(**kw):
+                for start in range(0,block.n,17):
+                    yield block.subset(np.arange(start,min(start+17,block.n)))
+        return real_eval(model,SimpleNamespace(iter_blocks=pieces),mask,device,
+                         pack_shards=packing,**kwargs)
+    monkeypatch.setattr(train_cwv,'run_eval',evaluate)
+    kwargs=dict(data=[str(store_dir)],eval_luna=str(luna[0]),arch='mlp',device='cpu',
+        epochs=2,seed=7,batch_size=64,n_boot=20,hidden=32,log=None,
+        cache_workers=1,eval_workers=1,bench_batch=32,
+        public_head=str(tmp_path/'public'/'best.pt'),**THIRDS)
+    a=train_cwv.train(out=tmp_path/'legacy',**kwargs)
+    packing=True
+    b=train_cwv.train(out=tmp_path/'packed',**kwargs)
+    assert a['selection']['best_epoch']==b['selection']['best_epoch']
+    assert a['selection']['best_loss']==pytest.approx(b['selection']['best_loss'],abs=1e-7)
+    ma,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'legacy'/'best.pt')
+    mb,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'packed'/'best.pt')
+    for name,tensor in ma.state_dict().items():
+        assert torch.equal(tensor,mb.state_dict()[name]), name

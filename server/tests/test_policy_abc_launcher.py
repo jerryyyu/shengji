@@ -104,6 +104,17 @@ def test_default_preflight_does_not_launch_or_write(monkeypatch, isolated_main):
     assert not any(p.exists() for p in launcher.LOCKS)
 
 
+def test_preflight_preserves_venv_interpreter_symlink(isolated_main, tmp_path, capsys):
+    args, output = isolated_main
+    interpreter = tmp_path / 'venv-python'
+    interpreter.symlink_to(sys.executable)
+    args[args.index('--python') + 1] = str(interpreter)
+    assert launcher.main(args) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert all(cmd[0] == str(interpreter) for _, cmd in receipt['commands'])
+    assert not output.exists()
+
+
 def test_serial_arms_hold_both_locks_and_release(monkeypatch, isolated_main):
     args, output = isolated_main
     seen = []

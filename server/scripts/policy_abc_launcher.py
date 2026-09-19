@@ -140,7 +140,9 @@ def main(argv=None):
                VECLIB_MAXIMUM_THREADS='1', SHENGJI_REQUIRE_VOIDS='1')
     # Pure engine deliberately pinned; do not borrow a compiled extension from
     # a different tree. Performance/strength readouts must retain this setting.
-    plan = commands(args.python.resolve(), checkpoint, output, qualify=args.qualify)
+    # Resolving a venv interpreter symlink selects the system Python and loses
+    # the venv's dependencies. Make the path absolute without dereferencing it.
+    plan = commands(args.python.absolute(), checkpoint, output, qualify=args.qualify)
     seconds = QUALIFY_SECONDS if args.qualify else ARM_SECONDS
     expected = QUALIFY_DEALS if args.qualify else DEALS
     receipt = {'source': SOURCE, 'checkpoint': CHECKPOINT, 'commands': plan,

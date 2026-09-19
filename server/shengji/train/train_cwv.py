@@ -560,7 +560,8 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
 
 
 def validation_pass(model, store, mask_fn, device, *, batch_size, aux_head=None,
-                    candidates=None, search_head=False, policy_evalset=None) -> dict:
+                    candidates=None, search_head=False, policy_evalset=None,
+                    pack_shards=False) -> dict:
     """Existing validation operations with host-wall stage attribution.
 
     No extra device synchronization: stages return host metrics already. These
@@ -569,7 +570,9 @@ def validation_pass(model, store, mask_fn, device, *, batch_size, aux_head=None,
     """
     timings = {}
     started = time.perf_counter()
-    ev = run_eval(model, store, mask_fn, device, batch_size=batch_size, aux_head=aux_head)
+    packing = {'pack_shards': True} if pack_shards else {}
+    ev = run_eval(model, store, mask_fn, device, batch_size=batch_size,
+                  aux_head=aux_head, **packing)
     now = time.perf_counter()
     timings['outcome_eval'] = now - started
     metrics = quick_metrics(ev)
@@ -1513,6 +1516,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           rank_limit: int | None = None, cache_dir: str | None = None,
           cache_workers: int | None = None, eval_workers: int | None = None,
           resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
+          pack_validation_shards: bool = False,
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
@@ -1547,6 +1551,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
         encoder_version=encoder_version)
     config["eval_holdouts"] = dict(holdouts)
+    if type(pack_validation_shards) is not bool:
+        raise TrainError('pack_validation_shards must be boolean')
+    if pack_validation_shards:
+        if arch != 'mlp':
+            raise TrainError('--pack-validation-shards supports MLP only')
+        # Record the numerical execution choice in checkpoints/receipts and
+        # their config hash. Defaults retain the legacy config identity.
+        config['validation_packing'] = {
+            'version': 1, 'scope': 'epoch-outcome-validation-only',
+            'staging_bytes': 32 * 1024**2,
+        }
     enc_version = int(config["encoder_version"])
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
@@ -1784,7 +1799,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     def validate() -> dict:
         return validation_pass(model, store, masks["val"], dev, batch_size=batch_size,
                                aux_head=aux_head, candidates=val_cands,
-                               search_head=search_head, policy_evalset=policy_evalset)
+                               search_head=search_head, policy_evalset=policy_evalset,
+                               pack_shards=pack_validation_shards)
 
     def epoch_line(tag: str, metrics: Mapping[str, Any], extra: str) -> str:
         # the selected metric first, then the rest (each once)
@@ -2600,6 +2616,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--policy-detach", action="store_true",
                    help="stop-gradient: the policy head trains on the trunk features but never "
                         "moves the trunk (zero cost to the value heads)")
+    t.add_argument('--pack-validation-shards', action='store_true',
+                   help='experimental MLP cross-shard batching for epoch outcome validation; '
+                        'recorded in config; final evaluation and other validation stages unchanged')
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2661,6 +2680,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_listwise_weight=args.policy_listwise_weight,
                   policy_batch_fraction=args.policy_batch_fraction,
                   policy_rows_limit=args.policy_rows_limit, policy_detach=args.policy_detach,
+                  pack_validation_shards=args.pack_validation_shards,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

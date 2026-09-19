@@ -89,7 +89,6 @@ def test_packing_preserves_training_selection_and_weights(
         seed=7, batch_size=64, n_boot=10, log=None, cache_workers=1,
         encoder_version=train_cwv.DEFAULTS['encoder_version'], **THIRDS)
     real_eval = train_cwv.run_eval
-    packing = False
     def evaluate(model, store, mask, device, **kwargs):
         # Split real cached rows contiguously to ensure this tiny fixture
         # exercises cross-shard packing even when validation holds one deal.
@@ -98,7 +97,7 @@ def test_packing_preserves_training_selection_and_weights(
                 for start in range(0,block.n,17):
                     yield block.subset(np.arange(start,min(start+17,block.n)))
         return real_eval(model,SimpleNamespace(iter_blocks=pieces),mask,device,
-                         pack_shards=packing,**kwargs)
+                         **kwargs)
     monkeypatch.setattr(train_cwv,'run_eval',evaluate)
     kwargs=dict(data=[str(store_dir)],eval_luna=str(luna[0]),arch='mlp',device='cpu',
         epochs=2,seed=7,batch_size=64,n_boot=20,hidden=32,log=None,
@@ -115,8 +114,9 @@ def test_packing_preserves_training_selection_and_weights(
                       policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
                       policy_weight=0.2, policy_batch_fraction=0.5)
     a=train_cwv.train(out=tmp_path/'legacy',**kwargs)
-    packing=True
-    b=train_cwv.train(out=tmp_path/'packed',**kwargs)
+    b=train_cwv.train(out=tmp_path/'packed',pack_validation_shards=True,**kwargs)
+    assert 'validation_packing' not in a['config']
+    assert b['config']['validation_packing']['scope'] == 'epoch-outcome-validation-only'
     if joint:
         for result in (a, b):
             assert result['model']['config']['policy_head']
@@ -130,3 +130,14 @@ def test_packing_preserves_training_selection_and_weights(
     mb,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'packed'/'best.pt')
     for name,tensor in ma.state_dict().items():
         assert torch.equal(tensor,mb.state_dict()[name]), name
+
+
+def test_packing_cli_is_explicit_and_rejects_non_mlp(tmp_path):
+    from shengji.train import train_cwv
+    args = ['train', '--data', str(tmp_path), '--out', str(tmp_path/'out')]
+    assert not train_cwv.build_parser().parse_args(args).pack_validation_shards
+    assert train_cwv.build_parser().parse_args(args+['--pack-validation-shards']).pack_validation_shards
+    with pytest.raises(train_cwv.TrainError, match='MLP only'):
+        train_cwv.train(data=[str(tmp_path)], out=tmp_path/'out', arch='seq',
+                        pack_validation_shards=True)
+    assert not (tmp_path/'out').exists()

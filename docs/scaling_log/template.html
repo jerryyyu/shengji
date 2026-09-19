@@ -89,6 +89,7 @@ svg .pt2{fill:var(--jade);stroke:var(--card);stroke-width:2}
 svg .pt7{fill:var(--card);stroke:var(--jade);stroke-width:2.2}
 svg .pt3{fill:var(--verm);stroke:var(--card);stroke-width:2}
 svg .pt8{fill:var(--card);stroke:var(--verm);stroke-width:2.2}
+svg .pt9{fill:var(--card);stroke:var(--slate);stroke-width:2.2;stroke-dasharray:2 1.5}
 svg .hollow{fill:var(--card);stroke-width:2.4}
 svg .pt1.hollow{stroke:var(--slate)}
 /* an encoder marker drawn hollow = its val_ce was measured on its OWN validation split.
@@ -201,7 +202,7 @@ body.recent-only [data-tr].pre-cut{display:none}
   two registries they are drawn from.</p>
   <p class="dek recent-ctl"><label><input type="checkbox" id="recentOnly"> Hide models trained before
   <b>14 Sep 2026</b></label> <span class="null" id="recentCount"></span>
-  <span class="null">&mdash; checkpoints and chart points only; the corpus table in section 5 is
+  <span class="null">&mdash; checkpoints and chart points only; the corpus table in section 6 is
   not filtered.</span></p>
 </header>
 
@@ -305,7 +306,35 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">5 &middot; The data</h2>
+  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day &mdash; PERFECT-INFORMATION reads</h2>
+  <p class="cap"><b>Read this chart as perfect-information play, not as public-policy strength.</b> The head's input is
+  the 833-wide root tensor, whose WORLD block carries all four hands and the burial; the harness behind these points fed
+  it the live round, so the head saw its opponents' cards (Codex audit, 2026-09-19, confirmed from source). At serving
+  the same head reads <b>sampled</b> worlds. Every figure here is therefore an upper bound under privilege; the
+  public-information series is being re-run on the serving-time world scheme. Points are 8,000 mirrored deals on fresh
+  seeds with a paired bootstrap interval; zero is SmartBot parity.</p>
+  <div class="figure">{{SVG7}}</div>
+  <p class="cap"><b>What survives the relabel.</b> These reads share one privilege, so their ORDER may still be
+  informative and their absolute values are not: warm-starting from JS-M1 took the perfect-information read from
+  &minus;0.068 (gen-2, trained from scratch on a smaller corpus) to <b>+0.099</b> (gen-3-warm) &mdash; consistent with
+  initialisation mattering more than data, though not an isolation: the matched from-scratch gen-3 has not been run.
+  A head whose privileged margin was six times production's (a ratio between two perfect-information reads, not
+  playing strength) then moved play by nothing measurable in any role it holds: as the whole package in play (v28, +0.0109 [&minus;0.0106, +0.0323], MDE80 0.031);
+  <b>as the admission prior alone, with production's value net fixed in both arms (v29, +0.0020 [&minus;0.0002,
+  +0.0042], MDE80 0.0031 &mdash; 99.2% of paired deals identical)</b>; and as the MC rollout policy, where it is
+  worse than the heuristic at every temperature. Those three in-play measurements used sampled worlds and STAND.
+  Training the head on the search's own candidate values instead of the played action (soft-target, w&nbsp;1.0)
+  lands at +0.101 under the same privilege &mdash; on top of gen-3-warm. <b>First public-information read</b> (09-19, K=8 worlds
+  drawn through production&#8217;s sampler per decision, 8,000 deals, seed0 20000): gen-3-warm <b>+0.0463 [+0.0334, +0.0593]</b>
+  &mdash; under half its perfect-information figure, still above zero; the other five checkpoints follow on the same instrument.</p>
+  <p class="cap">Read the intervals, not the points. A 2,000-deal read on a different seed window put JS-G1 above
+  JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. Top-64 recall
+  elsewhere on this page is what the admission prior needs; it does not predict this chart, and this chart does not
+  predict play.</p>
+</section>
+
+<section>
+  <h2 class="sec">6 &middot; The data</h2>
   <p class="cap">Every corpus and the recipe that produced it. These are not interchangeable units
   of data: 8,000 to 144,000 clusters crosses three teacher changes and a tripling of search work.</p>
   <div class="tw"><table class="sortable">
@@ -323,14 +352,15 @@ body.recent-only [data-tr].pre-cut{display:none}
 <tr><td><b>run J</b></td><td class="n">95260904</td><td class="n">16,000</td><td class="n">2,335,624</td><td>production MC</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="neg">no &mdash; the SAME deals as I, its matched control</td></tr>
 <tr><td><b>run K</b> <span class="pill">sealed</span></td><td class="n">10260910</td><td class="n">16,000</td><td class="n">&asymp;2.34M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
 <tr><td><b>run L</b> <span class="pill">sealed</span></td><td class="n">12260910</td><td class="n">16,000</td><td class="n">&asymp;2.34M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
-<tr><td><b>run M</b> <span class="pill live">35%</span> <span class="pill">full-legal scores</span></td><td class="n">16260911</td><td class="n">8,000</td><td class="n">&asymp;1.17M</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator</td></tr>
+<tr><td><b>run M</b> <span class="pill live">35%</span> <span class="pill">full-legal scores</span></td><td class="n">16260911</td><td class="n">2,094</td><td class="n">290,860</td><td class="pos">hybrid bury</td><td class="n">N30 / R300</td><td>none</td><td>first</td><td class="null">different generator &mdash; ABANDONED 09-13 at 2,094 of 8,000 clusters; resume refused on generator/engine code identity</td></tr>
 <tr><td><b>runJS1</b> <span class="pill">sealed</span></td><td class="n">22260910</td><td class="n">16,000</td><td class="n">2,213,808</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; in gen-1 and gen-2</td></tr>
 <tr><td><b>runJS2</b> <span class="pill">sealed</span></td><td class="n">22276910</td><td class="n">16,000</td><td class="n">2,215,212</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; in gen-2</td></tr>
 <tr><td><b>runJS3</b> <span class="pill">sealed</span></td><td class="n">22292910</td><td class="n">16,000</td><td class="n">2,214,472</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; in gen-2</td></tr>
 <tr><td><b>runJS4</b> <span class="pill">sealed</span></td><td class="n">22308910</td><td class="n">16,000</td><td class="n">2,216,884</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed, not yet trained on</td></tr>
 <tr><td><b>runJS5</b> <span class="pill">sealed</span></td><td class="n">22324910</td><td class="n">16,000</td><td class="n">2,213,984</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed, not yet trained on</td></tr>
-<tr><td><b>runJS6</b> <span class="pill live">live</span></td><td class="n">22340910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; running on cloud</td></tr>
-<tr><td><b>runJS7</b> <span class="pill live">live</span></td><td class="n">22356910</td><td class="n">16,000</td><td class="n">&asymp;2.21M</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; running on perf</td></tr>
+<tr><td><b>runJS6</b> <span class="pill">sealed</span></td><td class="n">22340910</td><td class="n">16,000</td><td class="n">2,216,648</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed 09-18, feeds gen-4</td></tr>
+<tr><td><b>runJS7</b> <span class="pill">sealed</span></td><td class="n">22356910</td><td class="n">16,000</td><td class="n">2,212,548</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed 09-18, feeds gen-4</td></tr>
+<tr><td><b>runJS8</b> <span class="pill">sealed</span></td><td class="n">22372910</td><td class="n">16,000</td><td class="n">2,217,380</td><td class="pos">JS-M1 one package</td><td class="n">W32 / prior 1k</td><td>none</td><td>first</td><td class="null">generation corpus &mdash; sealed 09-18, feeds gen-4</td></tr>
 </tbody></table></div>
   <p class="cap">Records scale linearly at 146.2 per cluster (sd 0.44 across seven corpora spanning
   18&times;). A cluster is one deal played twice with seats mirrored, so 73.1 records per round.
@@ -346,14 +376,15 @@ body.recent-only [data-tr].pre-cut{display:none}
   <b>7.9%</b> of that net&#8217;s policy corpus &mdash; that is the POLICY-row increment,
   1.74M of 22.04M, not a ratio of the value-record counts in this table; at 138.4 records per cluster it sits about 5% below
   the 146.2 rate for the same reason run I does. <b>runJS1&#8211;3 together trained gen-2</b> and are
-  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,643,492 records. Five are now sealed, which
-  is <b>30.0%</b> &mdash; the top of the ladder pre-registered on #421 &mdash; so a third generation is
-  fully supplied. They are not part of the 144k corpus, and folding
+  <b>20.5%</b> of its policy corpus: 48,000 clusters and 6,643,492 records. <b>runJS1&#8211;5 are training
+  gen-3 now</b> at <b>30.0%</b> &mdash; the top of the ladder pre-registered on #421 &mdash; and that run is
+  the first of the series to be <b>warm-started from JS-M1</b> rather than trained from fresh random
+  weights, which every earlier generation was. runJS6 onward feed a fourth generation, not this one. They are not part of the 144k corpus, and folding
   them in would move teacher and quantity together.</p>
 </section>
 
 <section>
-  <h2 class="sec">6 &middot; Every checkpoint</h2>
+  <h2 class="sec">7 &middot; Every checkpoint</h2>
   <p class="cap">All {{N_REGISTRY}} models, one row each, including Codex&#8217;s encoder-v3 line read from the archive.
   <b>Play vs leader</b> is one column: the best instrument each model has been measured with comes first,
   bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
@@ -377,7 +408,7 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">7 &middot; Policy heads</h2>
+  <h2 class="sec">8 &middot; Policy heads</h2>
   <p class="cap">Every action prior trained so far ({{N_POLICY}} heads, {{N_POLICY_COMMON}} readable on one common
   set), with what each was trained on. <b>Separate</b> heads are the #419 prior: a small MLP on the same 833 root
   inputs; <b>joint</b> heads sit on a value net&#8217;s trunk (#425). <b>Root rows</b> are decision roots from the
@@ -393,9 +424,17 @@ body.recent-only [data-tr].pre-cut{display:none}
   paired deal bootstrap (#425 4.2): &#8220;non-inferiority not shown&#8221; and &#8220;inferior&#8221; are different verdicts.
   Top-256 is 0.999 for every trained head and 0.996 for the untrained one, because records keep at most 256 candidates:
   the consumer&#8217;s operating point (256 of thousands per world) is invisible offline, which is why the prior arm played
-  M1&#8217;s lines in the screens. <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
+  M1&#8217;s lines in the screens. <b>Head alone vs SmartBot (perfect-info)</b> is the head playing by itself &mdash; argmax over its card log-odds, no value
+  net and no rollouts &mdash; on mirrored deals, signed level per round with a paired bootstrap interval, <b>under perfect
+  information</b>: the harness fed the live round&#8217;s world block, all four hands and the burial (Codex audit, 2026-09-19),
+  so it is a privileged diagnostic, comparable between heads and NOT public playing strength. No column in this table
+  measures the goal the policy line exists for; every other column measures the admission prior&#8217;s shortlist coverage.
+  The public-information series on the serving-time sampled-world scheme is the read that will.
+  The figures are the <b>8,000-deal read on fresh seeds</b>; a 2,000-deal discovery read on a different seed window said
+  the opposite and did not survive, swapping the two models&#8217; places, so only the confirmed column is quoted.
+  <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
   <div class="tw"><table class="sortable">
-<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Value cost</th><th>Note</th></tr></thead>
+<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Head alone vs SmartBot (perfect&#8209;info)</th><th class="n">Value cost</th><th>Note</th></tr></thead>
 <tbody>
 {{POLICYROWS}}
 </tbody></table></div>

@@ -19619,3 +19619,21 @@ On the weight question itself, from the existing J-arms (4-epoch continuations o
 **GEN-4 DATA IS LANDING.** The queued pull fired the moment the trainer exited and has brought **runJS6 (16,000/16,000) and runJS7 (16,000/16,000)** onto the Mini; runJS8 is copying. perf is generating runJS9 (seed 22388910) and cloud runJS10 (seed 22404910), both with seed windows checked against all eight sealed runs rather than assumed. That is five corpora of fresh JS-M1-teacher self-play for a gen-4 that, on tonight's evidence, should be justified by something other than "more of the same data" before it is trained.
 
 **OPEN, all 5/5 green and unreviewed (muse offline since 09-17):** #498 (the v6 tensor-layer gap, test only), #497 (page), #495 (policy selection metric).
+
+## 2026-09-19 13:05Z — daily maintenance: the daily prompt was carrying a dead cron id, and cloud's released corpora are still there
+
+**STEP 0 — THE PROMPT AUDIT CAUGHT ITSELF.** The daily prompt warns that its own STATE goes stale fastest and names dead cron ids as the classic case. It was carrying one: **the hourly tick's id 73e43f29, which I replaced with 438e3e60 at 08:3x ET** — the same failure it records against 18fac563 a day earlier. Six further drifts, all verified rather than assumed: gen-3 was described as RUNNING at epoch 13/20 (it SEALED, was screened by v28, and a soft-target arm has sealed since); runJS7 "perf now idle" (perf is generating runJS9, 60%); runJS8 "running on cloud, 23%" (SEALED; cloud is on runJS10, 47%); **#493 MERGED and #494 CLOSED while still listed as my open PRs**; perf disk 94%/40 G (now 92%/48 G, after the runJ and runB deletions); and the runB/runJ/runM release described as unexecuted everywhere when perf was done on 09-18. Both crons recreated with corrected STATE and with each other's live ids: **daily 203c883c (8:51), hourly 438e3e60 (:13)**, expiring ~09-26.
+
+**FIRST CHECK — CODEX HOLD IN FORCE.** `/Users/jerryyu/Projects/shengji` is on `codex/aug12-strength-status` with 20 uncommitted files, so steps 3, 4 and 5 are correctly SKIPPED; only the read-only steps ran.
+
+**(1) FLEET.** **Production healthy and unchanged**: release 28, image deployment-01M2M90VYR34R7CWKTTEA4C57V, machine 48e7e35a9597e8 ewr, started, 1 total / 1 passing, last updated 09-16 04:54Z. **Mini** — no trainer; the gen-4 pull is running, runJS6 16,000/16,000 and runJS7 16,000/16,000 complete, runJS8 at 10,258/16,000 (64%); load 1.88; 55 GB free. **perf** — runJS9 at 9,633/16,000 (60%); load 16.00; 92% disk, 48 G free. **cloud** — runJS10 at 7,526/16,000 (47%); load 16.16; 50% disk, 290 G free. **Air is OFF** (remote login disabled by Jerry), not unreachable. muse is still offline on the bus.
+
+**(2) fly logs** read-only: healthz only, 200s every 30 s, no errors and no game traffic.
+
+**(3)(4)(5) SKIPPED** on the Codex hold. Step 5 would also have been skipped independently: **every host has a live run** — the Mini's pull, perf's runJS9, cloud's runJS10 — and the rule is to skip all deletion on any host with one.
+
+**JERRY'S 09-17 RELEASE OF runB/runJ/runM IS HALF DONE, AND THE REST IS DEFERRED FOR A REASON.** perf is clear — runB, runJ and runM all absent, confirmed by directory check. **cloud still holds runB 5.9 G and runM 1.9 G**, and I did not remove them: cloud is generating runJS10, and step 5 skips deletion on a host with a live run. 7.8 G on a box with 290 G free is not urgent; the rule is worth more than the space. First window with cloud idle.
+
+**PRs: #498, #497, #495 — all 5/5 green, all reviews=0.** muse has been offline since 09-17, so none can be merged under the rule (PASS at the exact head AND a review). Nothing is mid-CI, so this push is not held.
+
+**OWED, checked rather than carried forward:** the JS-M1 ten-window read and the Codex atlas rows are still owed; #419's live prior telemetry still starts only on the next deploy. The gen-3-warm and soft-arm RECEIPTS are permanently lost — both runs were SIGKILLed before writing one, and `evaluate` cannot reconstruct the fixed-holdout reads because it takes no `--eval-holdout`; that is now recorded in both prompts so it is not retried.

@@ -26,6 +26,10 @@ def test_parser_defaults_and_control_contracts():
     smart = duel.make_control("mc-smart4", 3)
     assert type(smart) is duel.MCSmartRoll
     assert smart.N_DETERMINIZATIONS == 4
+    policy = duel.full_control_config('policy-world')
+    assert policy['worlds'] == 'same as arm'
+    assert policy['checkpoint'] == 'same as arm'
+    assert policy['rollout_policy'] is None
 
 
 @pytest.mark.parametrize("rows", [
@@ -101,6 +105,21 @@ def test_value_factory_uses_checked_evaluator(monkeypatch):
     assert seen['evaluator'] is sentinel
     assert seen['candidates'] == 12
     assert seen['worlds'] == 4
+
+
+def test_policy_control_work_is_not_reported_as_mc_work():
+    from types import SimpleNamespace
+    bot = SimpleNamespace(last_decision_record={
+        'worlds': 4, 'sample_attempts': 6, 'legal_complete': False})
+    row = _row(8)
+    duel._record_decision(row['sides']['control'], .02,
+                          duel._decision_telemetry(bot, 'policy'), 'policy')
+    control = duel.aggregate_records([row], [8])['control']
+    assert control['decisions'] == 1
+    assert control['mc_decisions'] == control['worlds'] == control['rollouts'] == 0
+    assert control['policy_work']['worlds'] == 4
+    assert control['policy_work']['sample_attempts'] == 6
+    assert control['policy_work']['capped_decisions'] == 1
 
 
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path):

@@ -61,7 +61,7 @@ DECISION_TIMEOUT_SECONDS = 300
 BOOTSTRAP_REPLICATES = 10_000
 BOOTSTRAP_SEED = 20260919
 CAP = 4000
-CONTROL_NAMES = ("mc-lcb", "mc-smart4")
+CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world")
 
 
 def _rss_kib() -> int:
@@ -110,6 +110,10 @@ def make_control(name: str, seed: int):
 
 def control_config(name: str) -> dict[str, Any]:
     """Return effective, recipe-safe control settings (without live objects)."""
+    if name == "policy-world":
+        return {"requested": name, "class": "PolicyWorldBot", "cap": CAP,
+                "checkpoint": "same as arm", "worlds": "same as arm",
+                "seed_formula": "seed*4+seat", "rollout_policy": None}
     if name == "mc-lcb":
         # The registry's named policy is authoritative; these fields are also
         # checked by make_control for every worker.
@@ -140,6 +144,8 @@ def _jsonable(value):
 def full_control_config(name: str) -> dict[str, Any]:
     """Bind every uppercase gameplay knob in addition to the named dose."""
     config = control_config(name)
+    if name == "policy-world":
+        return config
     bot = make_control(name, 0)
     config["all_uppercase_attributes"] = {
         key: _jsonable(getattr(bot, key))
@@ -246,7 +252,9 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                 bot = make_policy(checkpoint, checkpoint_sha256, worlds,
                                   role_seed, mode, candidates)
             else:
-                bot = make_control(control_name, role_seed)
+                bot = (make_policy(checkpoint, checkpoint_sha256, worlds, role_seed)
+                       if control_name == "policy-world"
+                       else make_control(control_name, role_seed))
             bots.append(bot)
             roles.append(role)
         while rnd.phase == "play":
@@ -254,8 +262,10 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             assert seat is not None
             role = roles[seat]
             cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)
+                              else "control")
             _record_decision(side[role], elapsed,
-                             _decision_telemetry(bots[seat], role), role)
+                             _decision_telemetry(bots[seat], telemetry_kind), telemetry_kind)
             rnd.play(seat, cards)
         game.finish_round()
         utility = signed_level_utility(
@@ -399,10 +409,19 @@ def aggregate_records(records: Iterable[dict[str, Any]],
                    for key in ("sample_attempts", "worlds", "capped_decisions", "decisions",
                                "value_evaluations", "value_batches")})
     mc = {"timing": stats("control")}
+    # Keep policy sampling separate from the legacy MC work fields. A
+    # policy-only control performs zero MC worlds/rollouts, not zero work.
+    mc["policy_work"] = {
+        key: int(sum(row_side(by_seed[s], "control").get(key, 0) for s in expected))
+        for key in ("sample_attempts", "worlds", "capped_decisions",
+                    "value_evaluations", "value_batches")}
     for key in ("decisions", "short", "attempt_cap_hit", "worlds", "attempts", "rollouts",
                 "report_worlds", "report_rollouts", "report_incomplete"):
         mc[key] = int(sum(row_side(by_seed[s], "control").get("mc_last_alloc", {})
                           .get(key, 0) for s in expected))
+    mc["mc_decisions"] = mc["decisions"]
+    mc["decisions"] = int(sum(row_side(by_seed[s], "control").get("decisions", 0)
+                              for s in expected))
     return {
         "schema": SCHEMA, "expected": len(expected), "complete": len(rows),
         "mean": float(values.mean()), "mean_utility": float(values.mean()),

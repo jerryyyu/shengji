@@ -8,6 +8,7 @@ isolated host window. Results remain available if a later arm fails.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -54,12 +55,31 @@ def cache_inventory(path):
             for p in root.rglob("*.npz")}
 
 
-def child(config, out):
+@contextmanager
+def gather_control(enabled):
+    """Restore old string copying only in this isolated qualification child."""
+    if not enabled:
+        yield
+        return
+    from shengji.train.cwv_data import CwvBlockStore
+    original = CwvBlockStore.iter_batches
+    def with_strings(self, *args, **kwargs):
+        kwargs["include_strings"] = True
+        return original(self, *args, **kwargs)
+    CwvBlockStore.iter_batches = with_strings
+    try:
+        yield
+    finally:
+        CwvBlockStore.iter_batches = original
+
+
+def child(config, out, *, comparison="batching-sync", arm="optimized"):
     import torch
     from shengji.train.train_cwv import train
     kw = recipe(config)
     start = time.perf_counter()
-    result = train(out=out / "train", **kw)
+    with gather_control(comparison == "numeric-gather" and arm == "control"):
+        result = train(out=out / "train", **kw)
     # Finish queued GPU work before recording wall; child peak RSS is not GPU memory.
     if kw.get("device") == "mps":
         torch.mps.synchronize()
@@ -72,6 +92,7 @@ def child(config, out):
     rng = hashlib.sha256(torch.get_rng_state().numpy().tobytes()).hexdigest()
     checkpoints = [out / "train" / "best.pt", *sorted((out / "train" / "checkpoints").glob("epoch-*.pt"))]
     report = {
+        "comparison": comparison, "arm": arm,
         "wall_seconds": wall,
         "cpu_seconds_including_reaped_children": usage.ru_utime + usage.ru_stime + descendants.ru_utime + descendants.ru_stime,
         "parent_peak_rss_bytes": usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024),
@@ -91,6 +112,11 @@ def main():
     p.add_argument("--run", action="store_true")
     p.add_argument("--warmup", action="store_true",
                    help="run one bounded full control recipe before timing; retain it separately")
+    p.add_argument("--comparison", choices=("batching-sync", "numeric-gather"),
+                   default="batching-sync",
+                   help="numeric-gather holds batched scoring and sync32 ON in both arms")
+    p.add_argument("--arm", choices=("control", "optimized"), default="optimized",
+                   help=argparse.SUPPRESS)
     p.add_argument("--arm-timeout-seconds", type=int, default=900)
     p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args()
@@ -100,10 +126,10 @@ def main():
     kw = recipe(config)
     out = Path(args.out).resolve()
     if args.child:
-        child(config, out)
+        child(config, out, comparison=args.comparison, arm=args.arm)
         return
     plan = {"recipe": kw, "order": ["control", "optimized", "optimized", "control"],
-            "warmup": args.warmup, "out": str(out)}
+            "warmup": args.warmup, "out": str(out), "comparison": args.comparison}
     print(json.dumps(plan, indent=2), flush=True)
     if not args.run:
         return
@@ -118,11 +144,13 @@ def main():
     for name, arm in stages:
         arm_out = out / name
         arm_out.mkdir()
-        env = dict(os.environ, SHENGJI_CWV_LOSS_SYNC_EVERY="1" if arm == "control" else "32",
-                   SHENGJI_CWV_BATCHED_CANDIDATES="0" if arm == "control" else "1")
+        old_baseline = args.comparison == "batching-sync" and arm == "control"
+        env = dict(os.environ, SHENGJI_CWV_LOSS_SYNC_EVERY="1" if old_baseline else "32",
+                   SHENGJI_CWV_BATCHED_CANDIDATES="0" if old_baseline else "1")
         with (arm_out / "run.log").open("x") as log:
             # Start a private group so expiry can stop decode workers too.
-            proc = subprocess.Popen([sys.executable, __file__, "--config", str(frozen), "--out", str(arm_out), "--child"],
+            proc = subprocess.Popen([sys.executable, __file__, "--config", str(frozen), "--out", str(arm_out), "--child",
+                                     "--comparison", args.comparison, "--arm", arm],
                                     env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 code = proc.wait(timeout=args.arm_timeout_seconds)
@@ -151,7 +179,8 @@ def main():
         return (a["checkpoints"] == b["checkpoints"]
                 and a["torch_cpu_rng_sha256"] == b["torch_cpu_rng_sha256"])
     equal = all(same(r, reports[0]) for r in reports)
-    summary = {"exact_checkpoint_and_cpu_rng_parity": equal, "arms": reports,
+    summary = {"comparison": args.comparison,
+               "exact_checkpoint_and_cpu_rng_parity": equal, "arms": reports,
                "warmup": (json.loads((out / "warmup" / "measurement.json").read_text())
                           if args.warmup else None),
                "control_repeatable": same(reports[0], reports[3]),

@@ -1897,7 +1897,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             pending = None
             finite_all = None
         for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
-                                      decode_workers=decode_workers):
+                                      decode_workers=decode_workers, include_strings=False):
             t = tensors_of(raw, dev)
             s_logits = None
             if search_head:

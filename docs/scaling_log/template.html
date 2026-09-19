@@ -305,21 +305,24 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day</h2>
-  <p class="cap">Every other chart on this page measures a proxy. This one measures the policy line's stated goal: the
-  policy head playing by <b>itself</b> &mdash; argmax over its own card log-odds, no value net and no rollouts &mdash;
-  against SmartBot on mirrored deals. Zero is SmartBot parity. Points are 8,000 mirrored deals on fresh seeds with a
-  paired bootstrap interval, every one re-derived to a receipt on 09-18.</p>
+  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day &mdash; PERFECT-INFORMATION reads</h2>
+  <p class="cap"><b>Read this chart as perfect-information play, not as public-policy strength.</b> The head's input is
+  the 833-wide root tensor, whose WORLD block carries all four hands and the burial; the harness behind these points fed
+  it the live round, so the head saw its opponents' cards (Codex audit, 2026-09-19, confirmed from source). At serving
+  the same head reads <b>sampled</b> worlds. Every figure here is therefore an upper bound under privilege; the
+  public-information series is being re-run on the serving-time world scheme. Points are 8,000 mirrored deals on fresh
+  seeds with a paired bootstrap interval; zero is SmartBot parity.</p>
   <div class="figure">{{SVG7}}</div>
-  <p class="cap"><b>The goal was reached and it did not convert.</b> Warm-starting from JS-M1 took the head from
+  <p class="cap"><b>What survives the relabel.</b> These reads share one privilege, so their ORDER may still be
+  informative and their absolute values are not: warm-starting from JS-M1 took the perfect-information read from
   &minus;0.068 (gen-2, trained from scratch) to <b>+0.099</b> (gen-3-warm) on the same data &mdash; initialisation, not
   data, is what separates the rungs. A head six times stronger than production's then moved play by nothing
   measurable in any role it holds: as the whole package in play (v28, +0.0109 [&minus;0.0106, +0.0323], MDE80 0.031);
   <b>as the admission prior alone, with production's value net fixed in both arms (v29, +0.0020 [&minus;0.0002,
   +0.0042], MDE80 0.0031 &mdash; 99.2% of paired deals identical)</b>; and as the MC rollout policy, where it is
-  worse than the heuristic at every temperature. Training the head on the search's own candidate values instead
-  of the played action (soft-target, w&nbsp;1.0) lands at +0.101 &mdash; on top of gen-3-warm. The shortlist the
-  prior admits already contains what the search needs.</p>
+  worse than the heuristic at every temperature. Those three in-play measurements used sampled worlds and STAND.
+  Training the head on the search's own candidate values instead of the played action (soft-target, w&nbsp;1.0)
+  lands at +0.101 under the same privilege &mdash; on top of gen-3-warm.</p>
   <p class="cap">Read the intervals, not the points. A 2,000-deal read on a different seed window put JS-G1 above
   JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. Top-64 recall
   elsewhere on this page is what the admission prior needs; it does not predict this chart, and this chart does not

@@ -26,6 +26,10 @@ def test_parser_defaults_and_control_contracts():
     smart = duel.make_control("mc-smart4", 3)
     assert type(smart) is duel.MCSmartRoll
     assert smart.N_DETERMINIZATIONS == 4
+    policy = duel.full_control_config('policy-world')
+    assert policy['worlds'] == 'same as arm'
+    assert policy['checkpoint'] == 'same as arm'
+    assert policy['rollout_policy'] is None
 
 
 @pytest.mark.parametrize("rows", [
@@ -48,7 +52,7 @@ def test_aggregate_refuses_nonfinite_or_timeout_rows(row):
 
 
 def test_injected_fast_pair_smoke(monkeypatch):
-    def fast(seed, parity, checkpoint, checksum, worlds, control):
+    def fast(seed, parity, checkpoint, checksum, worlds, control, mode, candidates):
         return {"utility": float(1 if parity == 0 else -1),
                 "sides": {"policy": duel._empty_side(),
                           "control": duel._empty_side()}}
@@ -70,9 +74,52 @@ def test_worker_pair_keeps_keyword_only_configuration(monkeypatch):
         return {"seed": args[0]}
 
     monkeypatch.setattr(duel, "play_pair", fake)
-    assert duel._worker_pair((4, "ck", "sha", 8, "mc-smart4")) == {"seed": 4}
+    assert duel._worker_pair((4, "ck", "sha", 8, "mc-smart4", "policy-value", 12)) == {"seed": 4}
     assert seen == {"args": (4, "ck", "sha"),
-                    "kwargs": {"worlds": 8, "control": "mc-smart4"}}
+                    "kwargs": {"worlds": 8, "control": "mc-smart4",
+                               "mode": "policy-value", "candidates": 12}}
+
+
+def test_value_work_survives_decision_pair_summary():
+    from types import SimpleNamespace
+    bot = SimpleNamespace(last_decision_record={
+        'worlds': 4, 'sample_attempts': 5, 'legal_complete': True,
+        'value_evaluations': 32, 'value_batches': 1})
+    row = _row(7)
+    duel._record_decision(row['sides']['policy'], .01,
+                          duel._decision_telemetry(bot, 'policy'), 'policy')
+    summary = duel.aggregate_records([row], [7])
+    assert summary['policy']['value_evaluations'] == 32
+    assert summary['policy']['value_batches'] == 1
+
+
+def test_value_factory_uses_checked_evaluator(monkeypatch):
+    sentinel = object()
+    monkeypatch.setattr(duel, '_value_evaluator', lambda p, s: sentinel)
+    seen = {}
+    def fake(p, s, **kwargs):
+        seen.update(kwargs)
+        return sentinel
+    monkeypatch.setattr(duel.PolicyValueBot, 'from_checkpoint', fake)
+    assert duel.make_policy('ck', 'sha', 4, 7, 'policy-value', 12) is sentinel
+    assert seen['evaluator'] is sentinel
+    assert seen['candidates'] == 12
+    assert seen['worlds'] == 4
+
+
+def test_policy_control_work_is_not_reported_as_mc_work():
+    from types import SimpleNamespace
+    bot = SimpleNamespace(last_decision_record={
+        'worlds': 4, 'sample_attempts': 6, 'legal_complete': False})
+    row = _row(8)
+    duel._record_decision(row['sides']['control'], .02,
+                          duel._decision_telemetry(bot, 'policy'), 'policy')
+    control = duel.aggregate_records([row], [8])['control']
+    assert control['decisions'] == 1
+    assert control['mc_decisions'] == control['worlds'] == control['rollouts'] == 0
+    assert control['policy_work']['worlds'] == 4
+    assert control['policy_work']['sample_attempts'] == 6
+    assert control['policy_work']['capped_decisions'] == 1
 
 
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path):

@@ -32,6 +32,28 @@ from ..ai.mcbot import MCSmartRoll
 from ..engine.game import Game
 from ..harvest.rebuild import signed_level_utility
 from .policy_world_search import PolicyWorldBot
+from .policy_value_search import PolicyValueBot
+from ..ai.cwv_policy import CompleteWorldEvaluator
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _value_evaluator(checkpoint, checksum):
+    evaluator = CompleteWorldEvaluator(checkpoint, value_head="outcome", threads=1)
+    if evaluator.checkpoint_sha256 != checksum:
+        raise ValueError("value checkpoint SHA256 mismatch")
+    return evaluator
+
+
+def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8):
+    kwargs = dict(worlds=worlds, cap=CAP, seed=seed)
+    if mode == "policy":
+        return PolicyWorldBot.from_checkpoint(checkpoint, checksum, **kwargs)
+    if mode != "policy-value":
+        raise ValueError("unknown policy mode")
+    return PolicyValueBot.from_checkpoint(
+        checkpoint, checksum, evaluator=_value_evaluator(checkpoint, checksum),
+        candidates=candidates, **kwargs)
 
 
 SCHEMA = "policy-world-duel-v1"
@@ -39,7 +61,7 @@ DECISION_TIMEOUT_SECONDS = 300
 BOOTSTRAP_REPLICATES = 10_000
 BOOTSTRAP_SEED = 20260919
 CAP = 4000
-CONTROL_NAMES = ("mc-lcb", "mc-smart4")
+CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world")
 
 
 def _rss_kib() -> int:
@@ -88,6 +110,10 @@ def make_control(name: str, seed: int):
 
 def control_config(name: str) -> dict[str, Any]:
     """Return effective, recipe-safe control settings (without live objects)."""
+    if name == "policy-world":
+        return {"requested": name, "class": "PolicyWorldBot", "cap": CAP,
+                "checkpoint": "same as arm", "worlds": "same as arm",
+                "seed_formula": "seed*4+seat", "rollout_policy": None}
     if name == "mc-lcb":
         # The registry's named policy is authoritative; these fields are also
         # checked by make_control for every worker.
@@ -118,6 +144,8 @@ def _jsonable(value):
 def full_control_config(name: str) -> dict[str, Any]:
     """Bind every uppercase gameplay knob in addition to the named dose."""
     config = control_config(name)
+    if name == "policy-world":
+        return config
     bot = make_control(name, 0)
     config["all_uppercase_attributes"] = {
         key: _jsonable(getattr(bot, key))
@@ -134,6 +162,8 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
             "sample_attempts": int(record.get("sample_attempts", 0)),
             "worlds": int(record.get("worlds", 0)),
             "capped": bool(record.get("legal_complete") is False),
+            "value_evaluations": int(record.get("value_evaluations", 0)),
+            "value_batches": int(record.get("value_batches", 0)),
         }
     alloc = getattr(bot, "last_alloc", None) or {}
     record = getattr(bot, "last_decision_record", None) or {}
@@ -155,6 +185,7 @@ def _empty_side() -> dict[str, Any]:
     return {
         "seconds": [], "sample_attempts": 0, "worlds": 0,
         "capped_decisions": 0, "decisions": 0,
+        "value_evaluations": 0, "value_batches": 0,
         "mc_last_alloc": {"decisions": 0, "short": 0,
                           "attempt_cap_hit": 0, "worlds": 0,
                           "attempts": 0, "rollouts": 0,
@@ -171,6 +202,8 @@ def _record_decision(side_record: dict[str, Any], seconds: float,
         side_record["sample_attempts"] += telemetry["sample_attempts"]
         side_record["worlds"] += telemetry["worlds"]
         side_record["capped_decisions"] += int(telemetry["capped"])
+        for key in ("value_evaluations", "value_batches"):
+            side_record[key] += telemetry.get(key, 0)
     else:
         alloc = side_record["mc_last_alloc"]
         alloc["decisions"] += 1
@@ -202,7 +235,7 @@ def _prepare_round(game: Game, heuristic: HeuristicBot):
 
 
 def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
-              worlds: int, control_name: str) -> dict[str, Any]:
+              worlds: int, control_name: str, mode="policy", candidates=8) -> dict[str, Any]:
     """Play one mirror.  Only this function runs inside a worker."""
     signal.signal(signal.SIGALRM, _alarm_handler)
     side = {"policy": _empty_side(), "control": _empty_side()}
@@ -216,11 +249,12 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             role = "policy" if seat % 2 == parity else "control"
             role_seed = seed * 4 + seat
             if role == "policy":
-                bot = PolicyWorldBot.from_checkpoint(
-                    checkpoint, checkpoint_sha256, worlds=worlds, cap=CAP,
-                    seed=role_seed)
+                bot = make_policy(checkpoint, checkpoint_sha256, worlds,
+                                  role_seed, mode, candidates)
             else:
-                bot = make_control(control_name, role_seed)
+                bot = (make_policy(checkpoint, checkpoint_sha256, worlds, role_seed)
+                       if control_name == "policy-world"
+                       else make_control(control_name, role_seed))
             bots.append(bot)
             roles.append(role)
         while rnd.phase == "play":
@@ -228,8 +262,10 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             assert seat is not None
             role = roles[seat]
             cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)
+                              else "control")
             _record_decision(side[role], elapsed,
-                             _decision_telemetry(bots[seat], role), role)
+                             _decision_telemetry(bots[seat], telemetry_kind), telemetry_kind)
             rnd.play(seat, cards)
         game.finish_round()
         utility = signed_level_utility(
@@ -247,7 +283,8 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
 
 
 def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
-              worlds: int = 4, control: str = "mc-lcb") -> dict[str, Any]:
+              worlds: int = 4, control: str = "mc-lcb",
+              mode="policy", candidates=8) -> dict[str, Any]:
     """Play both team-parity mirrors; any exception refuses the whole pair."""
     started = time.monotonic()
     mirrors = []
@@ -255,11 +292,12 @@ def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
     try:
         for parity in (0, 1):
             one = _play_one(seed, parity, checkpoint, checkpoint_sha256,
-                            worlds, control)
+                            worlds, control, mode, candidates)
             for role in sides:
                 dst, src = sides[role], one["sides"][role]
                 dst["seconds"].extend(src["seconds"])
-                for key in ("sample_attempts", "worlds", "capped_decisions", "decisions"):
+                for key in ("sample_attempts", "worlds", "capped_decisions", "decisions",
+                            "value_evaluations", "value_batches"):
                     dst[key] += src[key]
                 for key, value in src["mc_last_alloc"].items():
                     dst["mc_last_alloc"][key] += value
@@ -293,7 +331,7 @@ def _refused(seed, sides, started, exc, *, timeout: bool) -> dict[str, Any]:
 
 
 def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
-                 control: str) -> None:
+                 control: str, mode="policy", candidates=8) -> None:
     # Verify in every spawned process: a changed path cannot silently alter a
     # worker's model after the parent bound the recipe.
     if _sha256(Path(checkpoint)) != checkpoint_sha256:
@@ -305,14 +343,14 @@ def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
         pass
     # Loading once here validates the checkpoint before any pair starts. The
     # PolicyWorldBot factory's checked loader is cached per process.
-    PolicyWorldBot.from_checkpoint(checkpoint, checkpoint_sha256,
-                                   worlds=worlds, cap=CAP, seed=0)
+    make_policy(checkpoint, checkpoint_sha256, worlds, 0, mode, candidates)
     control_config(control)
 
 
 def _worker_pair(args):
-    seed, checkpoint, checksum, worlds, control = args
-    return play_pair(seed, checkpoint, checksum, worlds=worlds, control=control)
+    seed, checkpoint, checksum, worlds, control, mode, candidates = args
+    return play_pair(seed, checkpoint, checksum, worlds=worlds, control=control,
+                     mode=mode, candidates=candidates)
 
 
 def aggregate_records(records: Iterable[dict[str, Any]],
@@ -368,12 +406,22 @@ def aggregate_records(records: Iterable[dict[str, Any]],
     policy = {"timing": stats("policy")}
     policy.update({key: int(sum(row_side(by_seed[s], "policy").get(key, 0)
                                 for s in expected))
-                   for key in ("sample_attempts", "worlds", "capped_decisions", "decisions")})
+                   for key in ("sample_attempts", "worlds", "capped_decisions", "decisions",
+                               "value_evaluations", "value_batches")})
     mc = {"timing": stats("control")}
+    # Keep policy sampling separate from the legacy MC work fields. A
+    # policy-only control performs zero MC worlds/rollouts, not zero work.
+    mc["policy_work"] = {
+        key: int(sum(row_side(by_seed[s], "control").get(key, 0) for s in expected))
+        for key in ("sample_attempts", "worlds", "capped_decisions",
+                    "value_evaluations", "value_batches")}
     for key in ("decisions", "short", "attempt_cap_hit", "worlds", "attempts", "rollouts",
                 "report_worlds", "report_rollouts", "report_incomplete"):
         mc[key] = int(sum(row_side(by_seed[s], "control").get("mc_last_alloc", {})
                           .get(key, 0) for s in expected))
+    mc["mc_decisions"] = mc["decisions"]
+    mc["decisions"] = int(sum(row_side(by_seed[s], "control").get("decisions", 0)
+                              for s in expected))
     return {
         "schema": SCHEMA, "expected": len(expected), "complete": len(rows),
         "mean": float(values.mean()), "mean_utility": float(values.mean()),
@@ -403,6 +451,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--worlds", type=int, default=4)
+    parser.add_argument("--mode", choices=("policy", "policy-value"), default="policy")
+    parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     return parser
 
@@ -414,6 +464,8 @@ def _validate_args(args) -> None:
         raise ValueError("workers must be in [1,16]")
     if not (1 <= args.worlds <= 128):
         raise ValueError("worlds must be in [1,128]")
+    if not (1 <= args.candidates <= 512):
+        raise ValueError("candidates must be in [1,512]")
     if (len(args.checkpoint_sha256) != 64
             or any(c not in "0123456789abcdefABCDEF" for c in args.checkpoint_sha256)):
         raise ValueError("checkpoint-sha256 must be a 64-character hexadecimal digest")
@@ -439,7 +491,11 @@ def main(argv=None) -> int:
         "seed0": args.seed0, "deals": args.deals, "workers": args.workers,
         "worlds": args.worlds, "cap": CAP, "control": args.control,
         "control_effective": full_control_config(args.control),
-        "policy": {"class": "PolicyWorldBot", "worlds": args.worlds,
+        "policy": {"class": "PolicyValueBot" if args.mode == "policy-value" else "PolicyWorldBot",
+                    "mode": args.mode, "candidates": args.candidates if args.mode == "policy-value" else None,
+                    "value_head": "outcome" if args.mode == "policy-value" else None,
+                    "value_batch_size": 128 if args.mode == "policy-value" else None,
+                    "worlds": args.worlds,
                     "cap": CAP, "seed_formula": "seed*4+seat",
                     "declare_bury": "shared HeuristicBot"},
         "decision_timeout_seconds": DECISION_TIMEOUT_SECONDS,
@@ -447,6 +503,7 @@ def main(argv=None) -> int:
         "source_git_sha": _git_sha(repo),
         "harness_sha256": _sha256(Path(__file__).resolve()),
         "policy_module_sha256": _sha256(policy_path),
+        "policy_value_module_sha256": _sha256(Path(inspect.getfile(PolicyValueBot)).resolve()),
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED},
         "runtime": {
             "python": sys.version,
@@ -463,13 +520,14 @@ def main(argv=None) -> int:
     expected = list(range(args.seed0, args.seed0 + args.deals))
     records = []
     started = time.monotonic()
-    pair_args = [(seed, str(checkpoint), args.checkpoint_sha256, args.worlds, args.control)
+    pair_args = [(seed, str(checkpoint), args.checkpoint_sha256, args.worlds, args.control,
+                  args.mode, args.candidates)
                  for seed in expected]
     ctx = mp.get_context("spawn")
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=ctx,
                              initializer=_worker_init,
                              initargs=(str(checkpoint), args.checkpoint_sha256,
-                                       args.worlds, args.control)) as pool, \
+                                       args.worlds, args.control, args.mode, args.candidates)) as pool, \
             (out / "pairs.jsonl").open("x") as handle:
         futures = {pool.submit(_worker_pair, item): item[0] for item in pair_args}
         for future in as_completed(futures):

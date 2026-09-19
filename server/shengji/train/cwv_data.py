@@ -234,6 +234,7 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         parts.append(f"enc_version:{version}")
     payload = "|".join(parts
                        + [f"{name}:{digest}" for name, digest in sorted(sources.items())])
+    public_identity = public_encoder_identity(version)
     return {
         "identity_schema": IDENTITY_SCHEMA,
         "afterstate_schema": AFTERSTATE_SCHEMA,
@@ -245,8 +246,8 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
         "outcome_classes": OUTCOME_CLASSES,
         "implementation_sha256": hashlib.sha256(payload.encode("ascii")).hexdigest(),
         "source_sha256s": sources,
-        "public_head_encoder_sha256": public_encoder_identity(version)["implementation_sha256"],
-        "public_head_encoder_contract_sha256": public_encoder_identity(version)["transitive"]["implementation_sha256"],
+        "public_head_encoder_sha256": public_identity["implementation_sha256"],
+        "public_head_encoder_contract_sha256": public_identity["transitive"]["implementation_sha256"],
     }
 
 

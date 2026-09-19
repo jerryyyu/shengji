@@ -12,6 +12,7 @@ import numpy as np
 from ..ai.heuristic import HeuristicBot
 from ..ai.mcbot import MCBot
 from ..ai.memory import Memory
+from ..ai.cwv_policy import sample_worlds
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import CWVPriorAdmissionBot, load_prior_checked, root_clone
 from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
@@ -46,23 +47,17 @@ class PolicyWorldBot(HeuristicBot):
         return cls(adapter._prior_log_odds, **kwargs)
 
     def _worlds(self, rnd, seat):
-        mem = Memory(rnd, seat)
-        worlds, attempts = [], 0
-        while len(worlds) < self.worlds and attempts < self.worlds * 40:
-            attempts += 1
-            sampled = self.sampler._sample_hands(rnd, seat, mem)
-            if sampled is None:
-                continue
-            other, buried = sampled
-            hands = [list(rnd.hands[s]) if s == seat else list(other[s]) for s in range(4)]
-            # _sample_hands can relax voids in legacy mode. Never admit those
-            # worlds in this public-information research path, regardless of env.
-            if any(rnd.ordering.eff_suit(c) in mem.voids[s]
-                   for s in range(4) if s != seat for c in hands[s]):
-                continue
-            worlds.append((hands, buried))
+        mem = Memory(rnd, seat, own_kitty=getattr(self.sampler, 'BANKER_KITTY', True))
+        # Production owns attempt bounds, conservation checks, and canonical
+        # card ordering. Do not duplicate its private sampler pipeline here.
+        worlds, attempts = sample_worlds(self.sampler, rnd, seat, self.worlds, mem=mem)
         if len(worlds) != self.worlds:
             raise RuntimeError(f'policy world sampling short: {len(worlds)}/{self.worlds}')
+        # Legacy sampling may relax voids. Refuse the entire decision rather
+        # than silently filter/replenish worlds with a different attempt budget.
+        if any(rnd.ordering.eff_suit(c) in mem.voids[s]
+               for hands, _ in worlds for s in range(4) if s != seat for c in hands[s]):
+            raise RuntimeError('policy world sampling violates public voids')
         return worlds, attempts
 
     def scores(self, rnd, seat, actions, worlds):

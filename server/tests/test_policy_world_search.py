@@ -114,16 +114,60 @@ def test_legacy_sampler_void_relaxations_are_rejected(monkeypatch):
     other = (seat + 1) % 4
     voids = {s: set() for s in range(4)}
     voids[other].add(rnd.ordering.eff_suit(rnd.hands[other][0]))
-    monkeypatch.setattr(module, 'Memory', lambda *a: SimpleNamespace(voids=voids))
+    monkeypatch.setattr(module, 'Memory', lambda *a, **k: SimpleNamespace(voids=voids))
     bot = PolicyWorldBot(None, worlds=1)
     calls = []
     def invalid(*args):
         calls.append(1)
         return {s: list(rnd.hands[s]) for s in range(4) if s != seat}, list(rnd.buried)
     monkeypatch.setattr(bot.sampler, '_sample_hands', invalid)
-    with pytest.raises(RuntimeError, match='sampling short'):
+    with pytest.raises(RuntimeError, match='violates public voids'):
         bot._worlds(rnd, seat)
-    assert len(calls) == 40
+    assert len(calls) == 1
+
+
+def test_production_attempt_factor_is_used(monkeypatch):
+    rnd = state()
+    bot = PolicyWorldBot(None, worlds=2)
+    bot.sampler.SAMPLE_ATTEMPT_FACTOR = 3
+    calls = []
+    monkeypatch.setattr(bot.sampler, '_sample_hands', lambda *a: calls.append(1))
+    with pytest.raises(RuntimeError, match='sampling short: 0/2'):
+        bot._worlds(rnd, rnd.turn)
+    assert len(calls) == 6
+
+
+def test_worlds_match_production_canonical_pipeline():
+    from shengji.ai.cwv_policy import sample_worlds
+    from shengji.ai.mcbot import MCBot
+    rnd = state()
+    expected = sample_worlds(MCBot(seed=31), rnd, rnd.turn, 4)
+    actual = PolicyWorldBot(None, worlds=4, seed=31)._worlds(rnd, rnd.turn)
+    assert actual == expected
+
+
+def test_completion_validation_cannot_be_bypassed(monkeypatch):
+    rnd = state()
+    bot = PolicyWorldBot(None, worlds=1)
+    def reject(*a, **k):
+        raise ValueError('conservation witness')
+    monkeypatch.setattr(bot.sampler, '_complete_determinized_hands', reject)
+    with pytest.raises(ValueError, match='conservation witness'):
+        bot._worlds(rnd, rnd.turn)
+
+
+def test_malformed_sample_fails_real_card_conservation(monkeypatch):
+    from shengji.ai.mcbot import DeterminizationContractError
+    rnd = state(); seat = rnd.turn
+    sampled = {s: list(rnd.hands[s]) for s in range(4) if s != seat}
+    hand = sampled[(seat + 1) % 4]
+    i = next(i for i, card in enumerate(hand) if card != hand[0])
+    hand[i] = hand[0]  # right seat lengths, wrong deck multiset
+    bot = PolicyWorldBot(None, worlds=1)
+    monkeypatch.setattr(bot.sampler, '_sample_hands',
+                        lambda *a: (sampled, list(rnd.buried)))
+    with pytest.raises(DeterminizationContractError, match='card conservation'):
+        bot._worlds(rnd, seat)
 
 
 @pytest.mark.parametrize('output',[np.zeros((2,54)), np.full((1,54),np.nan)])

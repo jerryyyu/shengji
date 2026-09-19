@@ -61,8 +61,13 @@ def _counts(cards) -> list[float]:
     return v
 
 
-def encode_obs(rnd: Round, seat: int) -> list[float]:
-    """Fixed-size observation for the acting seat. Public info + own hand."""
+def encode_obs(rnd: Round, seat: int, *, mem: "Memory | None" = None) -> list[float]:
+    """Fixed-size observation for the acting seat. Public info + own hand.
+
+    ``mem`` may be the public ``Memory(rnd, seat, own_kitty=False)`` already built by a
+    caller that also needs it (encode_versions builds one and hands it to every block);
+    when omitted it is built here exactly as before.  The bytes do not depend on which.
+    """
     assert rnd.ordering is not None
     o = rnd.ordering
     # Encoder v1 predates the banker's private-kitty Memory feature.  Its
@@ -72,7 +77,8 @@ def encode_obs(rnd: Round, seat: int) -> list[float]:
     # ENC_VERSION stayed 1.  Keep the historical v1 bytes explicit here.  A
     # future encoder may expose the legal private kitty only behind a version
     # bump and freshly generated data/checkpoints.
-    mem = Memory(rnd, seat, own_kitty=False)
+    if mem is None:
+        mem = Memory(rnd, seat, own_kitty=False)
 
     played_by = [[] for _ in range(4)]
     for t in rnd.history:

@@ -182,6 +182,15 @@ def file_sha256(path: str | os.PathLike[str]) -> str:
     return digest.hexdigest()
 
 
+#: Replica of ``cwv_data.PUBLISHED_SOURCE_SHA256``; keep the two tables identical
+#: (tests/test_encoder_bytes_golden.py asserts it).
+PUBLISHED_SOURCE_SHA256 = {
+    "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "encode": "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b",
+    "encode_versions": "8e85d046c1d09a387fc51f1f3f40c4fa992469ba981d6ad3def5f61c60a11b55",
+}
+
+
 def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     """This module's replica of the training build's identity recipe.
 
@@ -197,6 +206,15 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     # not orphan its caches or refuse its checkpoints.  Kept as a literal rather
     # than imported: this module is the INDEPENDENT check on the training build,
     # and a shared constant would let one edit move both sides at once.
+    # Replica of ``cwv_data.PUBLISHED_SOURCE_SHA256`` (2026-09-19): memory.py,
+    # encode.py and encode_versions.py were edited for speed with output proven
+    # byte-identical (tests/test_encoder_bytes_golden.py is the guard), so they
+    # are hashed at their pre-change digests and archived checkpoints keep
+    # matching.  Applied BEFORE the dispatcher pin below so a
+    # published version's dispatcher digest still wins.  Literal, not imported (see below).
+    for name, digest in PUBLISHED_SOURCE_SHA256.items():
+        if name in sources:
+            sources[name] = digest
     published_dispatcher = {
         4: "aa8528a636f5d59a326afbf7826043a9fcd670ddb610e36ca78f551c3c60a88b",
     }.get(version)

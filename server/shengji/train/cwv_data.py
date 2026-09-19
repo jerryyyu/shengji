@@ -180,6 +180,22 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
     return paths
 
 
+#: SOURCE digests pinned for PUBLISHED identities (2026-09-19).  memory.py, encode.py and
+#: encode_versions.py were edited for speed -- one Memory per encode instead of two or three --
+#: with output PROVEN byte-identical (tests/data/encoder_bytes_golden.json, generated from the
+#: pre-change tree, is regenerated and compared by tests/test_encoder_bytes_golden.py).  Hashing
+#: the new source would have moved every published identity, orphaned 432,004 cache files and
+#: made the loader REFUSE every archived checkpoint including production's.  So the identity
+#: hashes these three files at their pre-change digests, and the guard against a future edit
+#: that DOES change bytes is the golden test, which is the stronger guarantee: it checks the
+#: bytes, not the source.  Same mechanism and same reasoning as PUBLISHED_DISPATCHER_SHA256.
+#: Decision: Jerry 2026-09-19 ("B sounds good").
+PUBLISHED_SOURCE_SHA256 = {
+    "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "encode": "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b",
+    "encode_versions": "8e85d046c1d09a387fc51f1f3f40c4fa992469ba981d6ad3def5f61c60a11b55",
+}
+
 #: dispatcher digests a published encoder version was published with (see
 #: ``cwv_encoder_identity``); mirrors ``rl.encoder_identity``'s table.
 PUBLISHED_DISPATCHER_SHA256 = {
@@ -203,6 +219,9 @@ def cwv_encoder_identity(version: int = ENC_VERSION) -> dict:
     # have moved v4's identity and orphaned its 176,002 cache files and its
     # archived checkpoints.  v4's own block is still hashed live above, and
     # tests/data/encoder_v4_golden.json pins the bytes it actually emits.
+    for name, digest in PUBLISHED_SOURCE_SHA256.items():
+        if name in sources:
+            sources[name] = digest
     pinned = PUBLISHED_DISPATCHER_SHA256.get(version)
     if pinned is not None:
         sources["encode_versions"] = pinned

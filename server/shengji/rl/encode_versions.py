@@ -134,14 +134,17 @@ def trick_state(rnd: Round, seat: int) -> tuple[int | None, str | None, int]:
     return winner, o.eff_suit(lead[0]), points
 
 
-def encode_obs_v2_columns(rnd: Round, seat: int) -> list[float]:
-    """The 29 columns encoder v2 APPENDS to the v1 vector."""
+def encode_obs_v2_columns(rnd: Round, seat: int, *, mem: Memory | None = None) -> list[float]:
+    """The 29 columns encoder v2 APPENDS to the v1 vector.
+
+    ``own_kitty=False`` is v1's historical setting and the v2 columns must see the same
+    unseen set.  ``encode_obs`` builds that Memory once and passes it in; a direct caller
+    that omits it gets the identical object built here.
+    """
     o = rnd.ordering
     assert o is not None
-    # v1's own Memory construction, repeated here rather than shared, so
-    # ``encode.py`` needs no edit; ``own_kitty=False`` is v1's historical
-    # setting and the v2 columns must see the same unseen set.
-    mem = Memory(rnd, seat, own_kitty=False)
+    if mem is None:
+        mem = Memory(rnd, seat, own_kitty=False)
     return _v2_columns_from_unseen(rnd, seat, mem.unseen)
 
 
@@ -208,14 +211,18 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
     bytes cannot drift.  Later versions append to it.
     """
     version = check_version(version)
-    obs = _v1.encode_obs(rnd, seat)
+    # ONE public Memory for every block below.  v1, the v2 columns and the v4 columns each
+    # used to construct their own -- identical object, identical inputs -- so an encode paid
+    # for Memory two or three times.  Memory.__init__ was 77% of a v2 encode.
+    mem = Memory(rnd, seat, own_kitty=False)
+    obs = _v1.encode_obs(rnd, seat, mem=mem)
     assert len(obs) == OBS_DIM
     if version >= 2:
-        obs += encode_obs_v2_columns(rnd, seat)
+        obs += encode_obs_v2_columns(rnd, seat, mem=mem)
     if version == 4:
         from .encode_opponent_pairs import opponent_pair_columns
         # the same public memory the v1/v2 columns see (own_kitty=False)
-        obs += opponent_pair_columns(rnd, seat, Memory(rnd, seat, own_kitty=False))
+        obs += opponent_pair_columns(rnd, seat, mem)
     if version == 5:
         # The ONE block that adds a fact rather than restating one: the burial
         # the acting seat made itself.  Zero for every other seat.

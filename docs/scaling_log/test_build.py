@@ -2,6 +2,7 @@
 the charts, the tables AND the headline prose together, and malformed rows must
 be refused.  Run: python3 -m pytest docs/scaling_log/test_build.py -q"""
 import copy
+import datetime as dt
 import importlib.util
 import re
 from pathlib import Path
@@ -161,7 +162,7 @@ def test_every_plotted_dot_is_inside_its_chart_and_off_scale_models_are_named(da
     emitted as an off-canvas circle."""
     page, c = _render(*data)
     svgs = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)
-    assert len(svgs) == 6
+    assert len(svgs) == len(build.CHART_NAMES)   # derived, so a new chart does not edit this
     for w, h, body in svgs:
         for cx, cy in _circles(body):
             assert 0 <= cx <= float(w) and 0 <= cy <= float(h), (cx, cy, w, h)
@@ -302,12 +303,12 @@ def test_every_encoder_generation_has_its_own_chart_class_and_count(data):
     assert c["enc_counts"]["v4"] == c0["enc_counts"]["v4"] + 1
     g1 = re.findall(r'<svg viewBox="0 0 (\d+) (\d+)">(.*?)</svg>', page, re.S)[0][2]
     assert g1.count('class="pt pt8 hit"') == c["enc_counts"]["v4"]
-    assert f"v4 &middot; {c['enc_counts']['v4']} run" in g1 and "v4" in re.search(r"encoder v1, v2, v3 and v4", page).group(0)
+    assert f"v4 &middot; {c['enc_counts']['v4']} run" in g1 and "v4" in re.search(r"encoder v1, v2, v3(, v4 and v5| and v4)", page).group(0)
     assert f"v2 &middot; {c['enc_counts']['v2']} runs" in g1
     # with no v4 row at all, no v4 legend line and no v4 in the header
     rows0 = [r for r in rows if r["enc"] != "v4"]
     page_no, c_no = _render(rows0, table_only, series)
-    assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "and v3 &middot;" in page_no
+    assert c_no["enc_counts"]["v4"] == 0 and "v4 &middot;" not in page_no and "v3 &middot;" in page_no
 
 
 def test_table_notes_are_one_line_and_the_history_is_in_the_record(data):
@@ -349,13 +350,21 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
     # a model trained on a NEW day (tomorrow) appears without any list being edited
     # the new day must be LATER than every real one, or it proves nothing about the header
     newest = max(r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only)
-    assert newest < "2026-09-18", f"fixture day 2026-09-18 is no longer in the future of {newest}"
+    # The future day is DERIVED from the data, not hardcoded.  It used to be the literal
+    # "2026-09-19", which stopped being in the future the moment a model was actually trained
+    # on that day -- and the test then failed for a reason that had nothing to do with what it
+    # checks.  Deriving it means this never needs editing again.
+    future = dt.date.fromisoformat(newest) + dt.timedelta(days=1)
+    fiso = future.isoformat()
     rows2 = copy.deepcopy(rows) + [dict(zip(build.FIELDS, (
-        "future model", "0badc0de", "2026-09-18", "v2", 512, "3e-4", "96k", "14,077,520",
+        "future model", "0badc0de", fiso, "v2", 512, "3e-4", "96k", "14,077,520",
         "0.62000", "", "", "", "", "")))]
     page2, c2 = _render(rows2, table_only, series)
-    assert "2026-09-18" in c2["days"] and "<td>18 Sep</td>" in page2
-    assert "18 September 2026" in page2  # the header date follows the latest training day
+    assert fiso in c2["days"], f"a model trained on {fiso} did not reach the day axis"
+    assert f"<td>{future.strftime('%d %b')}</td>" in page2, f"{fiso} missing from the by-day table"
+    # the header date follows the latest training day; same formatting build.py uses
+    header = f"{future.day:02d} {build.MONTHS.get(future.month, future.strftime('%B'))} {future.year}"
+    assert header in page2, f"header did not follow the new latest day ({header})"
 
 
 def test_chart_1_axis_follows_the_data_and_a_dot_outside_the_frame_is_refused(data):
@@ -495,12 +504,12 @@ def test_a_repeated_record_key_is_refused_and_the_interim_reaches_the_detail_tex
 
 
 def test_policy_head_section_lists_every_head_and_blanks_unreadable_cells(data):
-    """Section 7 (Jerry 09-15): every POLICY_HEADS row renders; heads trained before the split correction have
+    """Section 8 (Jerry 09-15): every POLICY_HEADS row renders; heads trained before the split correction have
     blank common-set cells; the common-set count matches the rows with a listwise number; the numbers in the
     source are the numbers on the page."""
     page, _ = _render(*data)
     html_rows, heads = build.policy_rows()
-    assert "7 &middot; Policy heads" in page and html_rows in page
+    assert "8 &middot; Policy heads" in page and html_rows in page
     assert f"({len(heads)} heads" in page
     common = [h for h in heads if h["listwise"]]
     assert f"{len(common)} readable on one common" in page
@@ -629,3 +638,32 @@ def test_a_generation_rows_record_count_is_the_total_not_the_encoded_subset(data
             f"{ck}: row says {row['rec']}, counts.records says {total:,} "
             "(counts.records.encoded is the WRONG field)")
         assert rec_map[cl] == total, f'charts.py REC["{cl}"] is {rec_map[cl]:,}, not {total:,}'
+
+
+def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(data):
+    """Jerry 2026-09-18 asked for a chart with date on x and impact vs SmartBot on y. The first
+    build rendered a LEGEND AND NO POINTS -- charts.py is exec'd with an injected globals dict
+    and POLICY_VS_SMART was not in it, so the chart silently had no data. Pin that it does."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    svg = _svgs(page)["5 policy vs SmartBot by day"]
+    import re as _re
+    labels = _re.findall(r'class="lab am">([^<]*)</text>', svg)
+    assert labels, "the goal chart rendered with no plotted models"
+    ns = {}
+    exec(open(Path(__file__).with_name("models.py")).read(), ns)
+    assert len(labels) == len(ns["POLICY_VS_SMART"]), (
+        f"{len(labels)} points drawn for {len(ns['POLICY_VS_SMART'])} measured heads")
+    assert "SmartBot parity" in svg, "the zero line must be labelled as parity"
+    # a head whose interval clears zero is drawn as a BEAT (pt2); one that crosses is pt1
+    for ck, txt in ns["POLICY_VS_SMART"].items():
+        lo = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*([-+][\d.]+)', txt).group(1))
+        name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
+        dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
+        assert dot, f"{name} is not drawn on the goal chart"
+        hi = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*[-+][\d.]+,\s*([-+][\d.]+)', txt).group(1))
+        want = "2" if lo > 0 else ("3" if hi < 0 else "1")
+        kind = {"2": "beats SmartBot", "3": "WORSE than SmartBot", "1": "a wash"}
+        assert dot.group(1) == want, (
+            f"{name} [{lo:+.4f}, {hi:+.4f}] should be drawn as {kind[want]}, "
+            f"is drawn as {kind[dot.group(1)]}")

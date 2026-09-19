@@ -35,7 +35,7 @@ def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy)
     def policy_run(m, d):
         assert (m, d) == (model, device)
         calls.append('policy')
-        return {'top64': {'test': .5}}
+        return {'top64': {'test': .5}, 'miss_at_64': .5}
     monkeypatch.setattr(module, 'run_eval', run)
     monkeypatch.setattr(module, 'quick_metrics', quick)
     monkeypatch.setattr(module, 'search_facing', ranking)
@@ -48,7 +48,8 @@ def test_stage_timings_preserve_validation_contract(monkeypatch, search, policy)
     if search:
         expected['search_head'] = {'rank_regret': .125}
     if policy:
-        expected['policy'] = {'top64': {'test': .5}}
+        expected['policy'] = {'top64': {'test': .5}, 'miss_at_64': .5}
+        expected['policy_miss_at_64'] = .5
     timing = got.pop('stage_wall_seconds')
     assert got == expected
     assert timing.pop('total') == 3 + int(search) + int(policy)

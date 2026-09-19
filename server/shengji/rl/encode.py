@@ -31,10 +31,27 @@ def _source_sha256(path: Path) -> str:
 # Version integers catch deliberate layout changes; source digests also bind
 # behavioural dependencies that can drift without changing vector length.  The
 # Aug-3 Memory default change demonstrated why both are necessary.
-ENCODER_SOURCE_SHA256S = {
+#: Pre-change digests of the three files edited on 2026-09-19 for speed (one Memory per
+#: encode) with output PROVEN byte-identical: tests/data/encoder_bytes_golden.json was
+#: written by the pre-change tree and tests/test_encoder_bytes_golden.py regenerates it.
+#: Every identity that hashes these files -- this two-file public-head identity, the
+#: transitive contract (encoder_identity.py), and the CWV identities (train.cwv_data and
+#: its replica in ai.cwv_policy) -- substitutes these digests, so archived public-head
+#: and CWV checkpoints keep loading and no cache is orphaned.  The guard against a future
+#: change that DOES move bytes is the golden test, on its sampled states, not the source
+#: digest.  Decision: Jerry 2026-09-19.
+PUBLISHED_SOURCE_SHA256 = {
+    "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
+    "encode": "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b",
+    "encode_versions": "8e85d046c1d09a387fc51f1f3f40c4fa992469ba981d6ad3def5f61c60a11b55",
+}
+_LIVE_SOURCE_SHA256S = {
     "encode": _source_sha256(Path(__file__).resolve()),
     "memory": _source_sha256(
         Path(__file__).resolve().parents[1] / "ai" / "memory.py"),
+}
+ENCODER_SOURCE_SHA256S = {
+    name: PUBLISHED_SOURCE_SHA256.get(name, digest) for name, digest in _LIVE_SOURCE_SHA256S.items()
 }
 ENCODER_IMPLEMENTATION_SHA256 = hashlib.sha256(
     "|".join(f"{name}:{digest}" for name, digest in
@@ -61,8 +78,13 @@ def _counts(cards) -> list[float]:
     return v
 
 
-def encode_obs(rnd: Round, seat: int) -> list[float]:
-    """Fixed-size observation for the acting seat. Public info + own hand."""
+def encode_obs(rnd: Round, seat: int, *, mem: "Memory | None" = None) -> list[float]:
+    """Fixed-size observation for the acting seat. Public info + own hand.
+
+    ``mem`` may be the public ``Memory(rnd, seat, own_kitty=False)`` already built by a
+    caller that also needs it (encode_versions builds one and hands it to every block);
+    when omitted it is built here exactly as before.  The bytes do not depend on which.
+    """
     assert rnd.ordering is not None
     o = rnd.ordering
     # Encoder v1 predates the banker's private-kitty Memory feature.  Its
@@ -72,7 +94,8 @@ def encode_obs(rnd: Round, seat: int) -> list[float]:
     # ENC_VERSION stayed 1.  Keep the historical v1 bytes explicit here.  A
     # future encoder may expose the legal private kitty only behind a version
     # bump and freshly generated data/checkpoints.
-    mem = Memory(rnd, seat, own_kitty=False)
+    if mem is None:
+        mem = Memory(rnd, seat, own_kitty=False)
 
     played_by = [[] for _ in range(4)]
     for t in rnd.history:

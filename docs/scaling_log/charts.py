@@ -9,7 +9,8 @@ PAR={256:272716,512:610764,1024:1483468,2048:4015308,
 REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708,
      "192k":27602516,
-     "224k":32032200}   # counts.records (TOTAL) for every entry -- gen-2 briefly used
+     "224k":32032200,
+     "256k":36463068}   # counts.records (TOTAL) for every entry -- gen-2 briefly used
                         # counts.records.encoded (31,872,200), a different field from every
                         # other row; muse caught it on #491.
 R=[]
@@ -136,7 +137,7 @@ s.append('<text x="%.1f" y="%.1f" class="noteb" text-anchor="end">%s at identica
 # Every encoder generation gets its OWN marker class and legend line; an encoder the
 # chart does not know is a loud failure, never a silent fold into another generation
 # (Codex HOLD on #383: a v4 row had been counted and painted as v2).
-ENC_CLASS={"v1":"pt1","v2":"pt2","v3":"pt5","v4":"pt8"}
+ENC_CLASS={"v1":"pt1","v2":"pt2","v3":"pt5","v4":"pt8","v5":"pt9"}
 ENC_N={k:0 for k in ENC_CLASS}
 for d in R:
     if d["ce"] is None or d["ce"]>CE_HI: continue
@@ -547,3 +548,74 @@ for dd in DAYS:
     run=newrun
 open(OUT+"/daytable_rows.html","w").write("\n".join(rows))
 print("counts:",open(OUT+"/_counts.json").read()); print("day rows:",len(rows))
+
+# ---------- 7: policy head ALONE vs SmartBot, by trained date ----------
+# Jerry 2026-09-18: "x axis is date and y axis is impact vs smart bot in policy".
+# This is the only chart on the page whose y axis is the GOAL rather than a proxy: the head
+# playing by itself, no value net and no rollouts, against SmartBot. Zero is SmartBot parity,
+# so ABOVE THE LINE is the thing the policy line exists to achieve.
+import re as _re
+_VS = {}
+for _ck, _txt in (globals().get("POLICY_VS_SMART") or {}).items():
+    _m = _re.match(r'\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)\s*\]', str(_txt))
+    if not _m:
+        raise SystemExit("chart 7: POLICY_VS_SMART[%s] is not 'm [lo, hi]': %r" % (_ck, _txt))
+    _VS[_ck] = tuple(float(g) for g in _m.groups())
+# Refuse only on the FORWARDING bug (an empty table when models.py defines one): the first
+# build drew a legend with no points and nothing complained. An empty _PTS with a populated
+# _VS is legitimate -- a test fixture may swap in rows that exclude these checkpoints -- so
+# that case renders an empty frame instead of crashing.
+if not _VS:
+    raise SystemExit("chart 7: POLICY_VS_SMART reached charts.py empty; the builder is not "
+                     "forwarding it and the chart would render as a legend with no data.")
+_PTS = sorted(((d, _VS[d["ck"]]) for d in R if d["ck"] in _VS), key=lambda z: z[0]["tr"])
+
+W7, H7 = 880, 380
+L7, R7, T7, B7 = 84, 240, 30, 64
+x0, x1, y0, y1 = L7, W7 - R7, T7, H7 - B7
+_vals = [v for _, t in _PTS for v in t] or [0.0]
+YLO7, YHI7 = min(min(_vals) - 0.02, -0.02), max(max(_vals) + 0.02, 0.04)
+_DAYS7 = sorted({d["tr"] for d, _ in _PTS})
+X7 = lambda tr, k=0: x0 + (_DAYS7.index(tr) + 0.5) / max(1, len(_DAYS7)) * (x1 - x0) + k
+Y7 = lambda v: y0 + (YHI7 - v) / (YHI7 - YLO7) * (y1 - y0)
+s = ['<svg viewBox="0 0 %d %d">' % (W7, H7)]
+_step = 0.02
+_t = math.floor(YLO7 / _step) * _step
+while _t <= YHI7 + 1e-9:
+    s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" class="grid%s"/>'
+             % (x0, Y7(_t), x1, Y7(_t), " zero" if abs(_t) < 1e-9 else ""))
+    s.append('<text x="%d" y="%.1f" class="ax ar">%+.2f</text>' % (x0 - 11, Y7(_t) + 4, _t))
+    _t += _step
+s.append('<text x="%.1f" y="%.1f" class="reft" text-anchor="start">SmartBot parity</text>'
+         % (x1 + 6, Y7(0) + 4))
+for _i, _dd in enumerate(_DAYS7):
+    s.append('<text x="%.1f" y="%d" class="ax am">%s</text>' % (X7(_dd), y1 + 21, _dd[5:]))
+s.append('<text x="%d" y="%d" class="axl am">the day the model was trained</text>' % ((x0 + x1) / 2, y1 + 48))
+s.append('<text x="17" y="%d" class="axl am" transform="rotate(-90 17 %d)">head alone vs SmartBot (levels/round)</text>'
+         % ((y0 + y1) / 2, (y0 + y1) / 2))
+for _d, (_m, _lo, _hi) in _PTS:
+    _same = [q for q, _ in _PTS if q["tr"] == _d["tr"]]
+    _off = (_same.index(_d) - (len(_same) - 1) / 2) * 26
+    # THREE states, not two: clears zero (a beat), crosses zero (a wash), and entirely BELOW
+    # zero (resolvably worse). Collapsing the last two would draw gen-2, which is measurably
+    # worse than SmartBot, the same as JS-G1, which is a wash.
+    _cls = "ci2" if _lo > 0 else ("ci1" if _hi < 0 else "ci3")
+    s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X7(_d["tr"], _off), Y7(_lo), X7(_d["tr"], _off), Y7(_hi), _cls))
+    for _e in (_lo, _hi):
+        s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X7(_d["tr"], _off) - 6, Y7(_e), X7(_d["tr"], _off) + 6, Y7(_e), _cls))
+    _pt = "pt2" if _lo > 0 else ("pt3" if _hi < 0 else "pt1")
+    s.append(dot(X7(_d["tr"], _off), Y7(_m), 5.4, "pt " + _pt, _d))
+    s.append('<text x="%.1f" y="%.1f" class="lab am">%s</text>'
+             % (X7(_d["tr"], _off), Y7(_hi) - 9, esc(_d["n"].split(":")[0][:12])))
+lx = x1 + 22
+s.append('<text x="%d" y="44" class="lgh">THE GOAL</text>' % lx)
+s.append('<circle cx="%d" cy="64" r="5.4" class="pt pt2"/><text x="%d" y="68" class="lg">beats SmartBot</text>' % (lx + 6, lx + 19))
+s.append('<circle cx="%d" cy="86" r="5.4" class="pt pt1"/><text x="%d" y="90" class="lg">a wash (crosses zero)</text>' % (lx + 6, lx + 19))
+s.append('<circle cx="%d" cy="108" r="5.4" class="pt pt3"/><text x="%d" y="112" class="lg">WORSE than SmartBot</text>' % (lx + 6, lx + 19))
+for _i, _t2 in enumerate(["","The head plays ALONE:", "argmax over its card", "log-odds, no value net", "and no rollouts.", "",
+                          "8,000 mirrored deals on", "FRESH seeds. A 2,000-deal", "read on other seeds put", "JS-G1 above JS-M1; it did", "not survive.", "",
+                          "%d of %d policy heads" % (len(_PTS), len([d for d in R if d["ck"] in _VS]) or len(_PTS)), "have been measured."]):
+    s.append('<text x="%d" y="%d" class="lgs">%s</text>' % (lx, 112 + _i * 15, _t2))
+s.append('</svg>')
+open(OUT + "/g7.svg", "w").write("\n".join(s))
+print("policy-vs-smartbot chart built")

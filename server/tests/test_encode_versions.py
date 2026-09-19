@@ -117,32 +117,19 @@ def test_the_default_call_is_still_v1():
         break
 
 
-def test_encode_py_is_untouched_so_archived_checkpoint_gates_still_match():
-    """The digest of ``encode.py`` is an identity, not just source.
-
-    ``encode.ENCODER_SOURCE_SHA256S`` hashes the file; the transitive
-    contract hashes it again; ``cwv_data.cwv_encoder_identity`` folds that
-    into the ``implementation_sha256`` ``ai.cwv_policy`` accepts archived
-    complete-world checkpoints on.  Encoder v2 therefore lives in
-    ``encode_versions.py`` and must never edit ``encode.py``."""
-    import subprocess
-    from pathlib import Path as _Path
-
-    repo = _Path(__file__).resolve().parents[2]
-    for name in ("shengji/rl/encode.py", "shengji/rl/value_afterstate.py"):
-        try:
-            main_bytes = subprocess.run(
-                ["git", "-C", str(repo), "show", f"origin/main:server/{name}"],
-                capture_output=True, check=True).stdout
-        except (OSError, subprocess.CalledProcessError):
-            pytest.skip("origin/main is not available in this checkout")
-        assert (repo / "server" / name).read_bytes() == main_bytes, (
-            f"{name} must stay byte-identical to origin/main: archived "
-            "checkpoints are accepted on its digest")
+def test_encode_py_may_change_only_behind_the_source_pin_and_the_golden():
+    """Until 2026-09-19 this test required encode.py to be byte-identical to origin/main, because
+    archived checkpoints are accepted on its DIGEST.  The speed change of that day edited it with
+    output proven byte-identical; the identity now hashes encode.py (and memory.py,
+    encode_versions.py) at pinned pre-change digests, and tests/test_encoder_bytes_golden.py is
+    the guard.  What this test still pins: the published identities must not move, and the v1
+    encoder must not grow v2's columns."""
+    from shengji.rl import encode as encode_v1
+    from shengji.train.cwv_data import PUBLISHED_SOURCE_SHA256, cwv_encoder_identity
+    assert cwv_encoder_identity(2)["implementation_sha256"].startswith("a56679bbd170")
+    assert cwv_encoder_identity(4)["implementation_sha256"].startswith("d99e7836cc4c")
+    assert "encode" in PUBLISHED_SOURCE_SHA256 and "memory" in PUBLISHED_SOURCE_SHA256
     assert not hasattr(encode_v1, "encode_obs_v2_columns")
-
-
-# ------------------------------------------------------ B. v2 prefix rule
 
 def test_v2_extends_the_v1_vector_without_disturbing_it():
     """B: the first 531 columns of v2 ARE v1, on the same real positions."""

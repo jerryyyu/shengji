@@ -19,6 +19,12 @@ from ..engine.combos import decompose, pair_count
 from ..engine.round import Round
 
 
+#: the 54 distinct codes in deck order.  make_deck() is a pure constant (two copies of one
+#: fixed list), so this is the same value every call used to rebuild -- hoisted because
+#: Memory is constructed on every encode and every bot decision.
+_DECK_CODES: tuple[str, ...] = tuple(sorted(set(make_deck())))
+
+
 class Memory:
     def __init__(self, rnd: Round, seat: int, own_kitty: bool = True):
         assert rnd.ordering is not None
@@ -50,19 +56,24 @@ class Memory:
             lead_cards = trick.plays[0].cards
             lead_suit = self.o.eff_suit(lead_cards[0])
             n_led_pairs = pair_count(lead_cards) if len(lead_cards) >= 2 else 0
-            _ldec = decompose(list(lead_cards), self.o)
-            pure_tractor = (len(_ldec.components) == 1
+            # A single-card lead decomposes to one component of pair_len 1, so it can never be a
+            # pure tractor; skipping the decompose there changes nothing it feeds.
+            _ldec = decompose(list(lead_cards), self.o) if len(lead_cards) >= 2 else None
+            pure_tractor = (_ldec is not None and len(_ldec.components) == 1
                             and _ldec.components[0].pair_len >= 2)
             for i, tp in enumerate(trick.plays):
                 self.played.update(tp.cards)
                 self.played_by[tp.seat].update(tp.cards)
+                if i == 0:
+                    continue          # nothing below reads the leader's play
+                # eff_suit once per card; the off-suit test and `ins` both read it
+                suits = [self.o.eff_suit(c) for c in tp.cards]
                 # A follower whose play includes any off-suit card was
                 # obliged to exhaust the led suit first => void now.
-                if i > 0 and any(self.o.eff_suit(c) != lead_suit for c in tp.cards):
+                if any(s != lead_suit for s in suits):
                     self.voids[tp.seat].add(lead_suit)
-                if i > 0 and n_led_pairs:
-                    ins = [c for c in tp.cards
-                           if self.o.eff_suit(c) == lead_suit]
+                if n_led_pairs:
+                    ins = [c for c, s in zip(tp.cards, suits) if s == lead_suit]
                     shown = pair_count(ins)
                     if shown < n_led_pairs:
                         # The engine enforces need_pairs = min(led_pairs,
@@ -116,8 +127,9 @@ class Memory:
         # insertion order fed the world sampler and made "fixed-seed" MC
         # runs differ across processes (caught by the golden parity test,
         # 2026-08-02; same bug class as the tournament-chunk incident).
-        for code in sorted(set(make_deck())):
-            n = 2 - self.played[code] - hand[code]
+        played = self.played
+        for code in _DECK_CODES:
+            n = 2 - played.get(code, 0) - hand.get(code, 0)
             if n > 0:
                 self.unseen[code] = n
 

@@ -9,7 +9,7 @@ models.py is the only place a model or a screen result is entered.  Everything
 else on the page is derived from it: the six charts (series are named by
 checkpoint identity in SERIES and read their coordinates from the rows), the
 by-day table, the checkpoint registry and every count or headline number in
-the prose.  The corpus table (section 5) is static in template.html; it
+the prose.  The corpus table (section 6) is static in template.html; it
 changes only when a corpus is generated.  Two KPI figures come from analyses
 outside this file and are labelled as such in the template: the +0.41
 loss-vs-search correlation and Codex's 50.0% v3 win rate.
@@ -92,6 +92,9 @@ def load():
     for ck in params:
         if ck not in known:
             raise ValueError(f"PARAMS names {ck}, which is not a row")
+    for ck in g.get("POLICY_VS_SMART", {}):
+        if ck not in known:
+            raise ValueError(f"POLICY_VS_SMART names {ck}, which is not a row")
     for ck in own_split:
         if ck not in known:
             raise ValueError(f"OWN_SPLIT names {ck}, which is not a row")
@@ -164,7 +167,7 @@ def check_data(rows, table_only, series):
             dt.date.fromisoformat(r["tr"].lstrip("~"))
         except ValueError:
             errs.append(f"{r['ck']}: trained date {r['tr']!r} is not a calendar date")
-        if r["enc"] not in ("v1", "v2", "v3", "v4"):
+        if r["enc"] not in ("v1", "v2", "v3", "v4", "v5"):
             errs.append(f"{r['ck']}: encoder {r['enc']!r}")
         if r["w"] not in widths:
             errs.append(f"{r['ck']}: width {r['w']} has no parameter count in charts.py PAR")
@@ -190,14 +193,17 @@ def check_data(rows, table_only, series):
 
 def render_charts(rows, table_only, series):
     OUT_DIR.mkdir(exist_ok=True)
+    g_models = {}
+    exec(compile(open(MODELS).read(), str(MODELS), "exec"), g_models)
     g = {"MODELS": str(MODELS), "OUT": str(OUT_DIR),
          "M": [tuple(r[f] for f in FIELDS) for r in rows], "TABLE_ONLY": table_only, "SERIES": series,
          "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
+         "POLICY_VS_SMART": g_models.get("POLICY_VS_SMART", {}),
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
-    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6")]
+    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6", "g7")]
     counts = json.load(open(OUT_DIR / "_counts.json"))
     return svgs, counts
 
@@ -283,12 +289,18 @@ def registry_rows(rows):
 
 
 def policy_rows(g=None):
-    """Section 7: one row per policy head (models.POLICY_HEADS), blanks rendered as an em dash."""
+    """Section 8: one row per policy head (models.POLICY_HEADS), blanks rendered as an em dash."""
     if g is None:
         src = open(MODELS).read()
         g = {}
         exec(compile(src, MODELS, "exec"), g)
     heads = [dict(zip(g["POLICY_FIELDS"], row)) for row in g["POLICY_HEADS"]]
+    vs_smart = g.get("POLICY_VS_SMART", {})
+    # A measured head need NOT have a POLICY_HEADS row: that table stops at JS-G1 and the
+    # generation nets (gen-1/2/3) are not in it, though they all carry policy heads. The
+    # chart draws from the MODEL rows, and load() already refuses a checkpoint that is not
+    # a row at all, so a table row is not required to record the measurement.
+    _unlisted = sorted(ck for ck in vs_smart if ck not in {h["ck"] for h in heads})
     for h in heads:
         if len(h) != len(g["POLICY_FIELDS"]):
             raise SystemExit(f"policy head {h.get('name')}: wrong field count")
@@ -299,7 +311,9 @@ def policy_rows(g=None):
         out.append(
             f'<tr><td><b>{html.escape(h["name"])}</b>{ck}</td><td>{html.escape(h["kind"])}</td><td>{html.escape(h["trunk"])}</td>'
             + cell(h["rows"]) + cell(h["split"]) + cell(h["epochs"]) + cell(h["weight"]) + f'<td>{html.escape(h["eval"])}</td>'
-            + cell(h["listwise"]) + cell(h["bce"]) + cell(h["top1"]) + cell(h["top64"]) + cell(h["strata"]) + cell(h["value_cost"])
+            + cell(h["listwise"]) + cell(h["bce"]) + cell(h["top1"]) + cell(h["top64"]) + cell(h["strata"])
+            + cell(vs_smart.get(h["ck"], ""), "n pos" if str(vs_smart.get(h["ck"], "")).startswith("+") else "n")
+            + cell(h["value_cost"])
             + f'<td class="null note">{html.escape(h["note"])}</td></tr>')
     return "\n".join(out), heads
 
@@ -331,7 +345,7 @@ def long_day(iso):
 
 
 CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
-               "3 by training day", "4 leader effect by day")
+               "3 by training day", "4 leader effect by day", "5 policy vs SmartBot by day")
 
 
 def leader_chart_eligible(r):
@@ -432,7 +446,7 @@ def render(rows=None, table_only=None, series=None):
                    f"(MDE80 about {', '.join(fmt(k) for k in few)}): a null there means not large, never no effect "
                    f"({word(n_five)} arm{'s' if n_five != 1 else ''} so far)."
                    if n_five else " <b>5w</b> (the first five windows, the triage instrument) has no readout yet.")
-    present = [e for e in ("v1", "v2", "v3", "v4") if c["enc_counts"].get(e)]
+    present = [e for e in ("v1", "v2", "v3", "v4", "v5") if c["enc_counts"].get(e)]
     enc_list = "encoder " + (", ".join(present[:-1]) + " and " + present[-1] if len(present) > 1 else present[0])
     subs = {
         "ENC_LIST": enc_list,

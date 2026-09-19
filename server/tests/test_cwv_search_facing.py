@@ -282,12 +282,14 @@ def test_selector_picks_different_epochs_per_metric():
         {"rank_regret_at_1": 0.17, "rank_regret_at_2": 0.16, "rank_regret_at_4": 0.02,
          "rank_regret_at_8": 0.02},     # best top-4: a different epoch than CE / top-1
     ]
+    # policy_miss_at_64 is best at epoch 1 -- a FIFTH distinct answer, and the point of the
+    # metric: the epoch that is best for the admission prior is not the epoch val_ce picks.
     epochs = [
-        {"loss": 0.80, "rank_regret": 0.20, "points_mae": 30.0, **at_k[0]},
-        {"loss": 0.70, "rank_regret": 0.12, "points_mae": 28.0, **at_k[1]},   # best regret
-        {"loss": 0.65, "rank_regret": 0.15, "points_mae": 25.0, **at_k[2]},   # best CE
-        {"loss": 0.66, "rank_regret": 0.16, "points_mae": 24.0, **at_k[3]},   # best points
-        {"loss": 0.67, "rank_regret": 0.17, "points_mae": 26.0, **at_k[4]},
+        {"loss": 0.80, "rank_regret": 0.20, "points_mae": 30.0, "policy_miss_at_64": 0.10, **at_k[0]},
+        {"loss": 0.70, "rank_regret": 0.12, "points_mae": 28.0, "policy_miss_at_64": 0.12, **at_k[1]},   # best regret
+        {"loss": 0.65, "rank_regret": 0.15, "points_mae": 25.0, "policy_miss_at_64": 0.14, **at_k[2]},   # best CE
+        {"loss": 0.66, "rank_regret": 0.16, "points_mae": 24.0, "policy_miss_at_64": 0.15, **at_k[3]},   # best points
+        {"loss": 0.67, "rank_regret": 0.17, "points_mae": 26.0, "policy_miss_at_64": 0.16, **at_k[4]},
     ]
     # the synthetic at_1 column IS the rank_regret column (the k = 1 identity)
     assert [b["rank_regret_at_1"] for b in epochs] == [b["rank_regret"] for b in epochs]
@@ -305,11 +307,17 @@ def test_selector_picks_different_epochs_per_metric():
         assert sel.payload()["metric"] == metric and sel.payload()["best_epoch"] == sel.best_epoch
     assert picks == {"val_ce": 3, "val_rank_regret": 2, "val_points_mae": 4,
                      "val_rank_regret_at_1": 2, "val_rank_regret_at_2": 2,
-                     "val_rank_regret_at_4": 5, "val_rank_regret_at_8": 5}
+                     "val_rank_regret_at_4": 5, "val_rank_regret_at_8": 5,
+                     "val_policy_miss_at_64": 1}
     # the top-4 metric picks an epoch NEITHER val_ce NOR val_rank_regret picks
     assert picks["val_rank_regret_at_4"] not in (picks["val_ce"], picks["val_rank_regret"])
     assert stops == {"val_ce": 5, "val_rank_regret": 4,                 # patience 2 after best
-                     "val_rank_regret_at_1": 4, "val_rank_regret_at_2": 4}
+                     "val_rank_regret_at_1": 4, "val_rank_regret_at_2": 4,
+                     "val_policy_miss_at_64": 3}
+    # the whole reason the policy metric exists: the checkpoint that is best for the
+    # admission prior is NOT the one any value metric would have kept.
+    assert picks["val_policy_miss_at_64"] not in (
+        picks["val_ce"], picks["val_rank_regret"], picks["val_points_mae"])
     # the top-k selector reads the top-k key, and refuses a block without it
     assert train_cwv.SELECT_METRICS["val_rank_regret_at_4"][0] == "rank_regret_at_4"
     assert "shortlist" in train_cwv.SELECT_METRICS["val_rank_regret_at_4"][1].lower()

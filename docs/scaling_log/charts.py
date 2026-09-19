@@ -549,24 +549,26 @@ for dd in DAYS:
 open(OUT+"/daytable_rows.html","w").write("\n".join(rows))
 print("counts:",open(OUT+"/_counts.json").read()); print("day rows:",len(rows))
 
-# ---------- 7: policy head ALONE vs SmartBot, by trained date ----------
+# ---------- 7: policy head ALONE vs SmartBot, by trained date -- PUBLIC-INFORMATION reads ----------
+# 2026-09-19: the chart draws POLICY_VS_SMART_PUBLIC (K=8 sampled worlds through production's
+# sampler); the perfect-information series POLICY_VS_SMART stays in the section-8 table only.
 # Jerry 2026-09-18: "x axis is date and y axis is impact vs smart bot in policy".
 # This is the only chart on the page whose y axis is the GOAL rather than a proxy: the head
 # playing by itself, no value net and no rollouts, against SmartBot. Zero is SmartBot parity,
 # so ABOVE THE LINE is the thing the policy line exists to achieve.
 import re as _re
 _VS = {}
-for _ck, _txt in (globals().get("POLICY_VS_SMART") or {}).items():
+for _ck, _txt in (globals().get("POLICY_VS_SMART_PUBLIC") or {}).items():
     _m = _re.match(r'\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)\s*\]', str(_txt))
     if not _m:
-        raise SystemExit("chart 7: POLICY_VS_SMART[%s] is not 'm [lo, hi]': %r" % (_ck, _txt))
+        raise SystemExit("chart 7: POLICY_VS_SMART_PUBLIC[%s] is not 'm [lo, hi]': %r" % (_ck, _txt))
     _VS[_ck] = tuple(float(g) for g in _m.groups())
 # Refuse only on the FORWARDING bug (an empty table when models.py defines one): the first
 # build drew a legend with no points and nothing complained. An empty _PTS with a populated
 # _VS is legitimate -- a test fixture may swap in rows that exclude these checkpoints -- so
 # that case renders an empty frame instead of crashing.
 if not _VS:
-    raise SystemExit("chart 7: POLICY_VS_SMART reached charts.py empty; the builder is not "
+    raise SystemExit("chart 7: POLICY_VS_SMART_PUBLIC reached charts.py empty; the builder is not "
                      "forwarding it and the chart would render as a legend with no data.")
 _PTS = sorted(((d, _VS[d["ck"]]) for d in R if d["ck"] in _VS), key=lambda z: z[0]["tr"])
 
@@ -613,7 +615,7 @@ s.append('<circle cx="%d" cy="64" r="5.4" class="pt pt2"/><text x="%d" y="68" cl
 s.append('<circle cx="%d" cy="86" r="5.4" class="pt pt1"/><text x="%d" y="90" class="lg">a wash (crosses zero)</text>' % (lx + 6, lx + 19))
 s.append('<circle cx="%d" cy="108" r="5.4" class="pt pt3"/><text x="%d" y="112" class="lg">WORSE than SmartBot</text>' % (lx + 6, lx + 19))
 for _i, _t2 in enumerate(["","The head plays ALONE:", "argmax over its card", "log-odds, no value net", "and no rollouts.", "",
-                          "8,000 mirrored deals on", "FRESH seeds. A 2,000-deal", "read on other seeds put", "JS-G1 above JS-M1; it did", "not survive.", "",
+                          "8,000 mirrored deals,", "seed0 20000; K=8 worlds", "through production's", "sampler per decision", "(public information).", "",
                           "%d of %d policy heads" % (len(_PTS), len([d for d in R if d["ck"] in _VS]) or len(_PTS)), "have been measured."]):
     s.append('<text x="%d" y="%d" class="lgs">%s</text>' % (lx, 112 + _i * 15, _t2))
 s.append('</svg>')

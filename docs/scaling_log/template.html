@@ -306,13 +306,13 @@ body.recent-only [data-tr].pre-cut{display:none}
 </section>
 
 <section>
-  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day &mdash; PERFECT-INFORMATION reads</h2>
-  <p class="cap"><b>Read this chart as perfect-information play, not as public-policy strength.</b> The head's input is
-  the 833-wide root tensor, whose WORLD block carries all four hands and the burial; the harness behind these points fed
-  it the live round, so the head saw its opponents' cards (Codex audit, 2026-09-19, confirmed from source). At serving
-  the same head reads <b>sampled</b> worlds. Every figure here is therefore an upper bound under privilege; the
-  public-information series is being re-run on the serving-time world scheme. Points are 8,000 mirrored deals on fresh
-  seeds with a paired bootstrap interval; zero is SmartBot parity.</p>
+  <h2 class="sec">5 &middot; The policy head alone against SmartBot, by training day &mdash; PUBLIC-INFORMATION reads</h2>
+  <p class="cap"><b>These points are public-information play on the serving-time world scheme.</b> The head's input is
+  the 833-wide root tensor whose WORLD block carries all four hands and the burial; here, as at serving, that block is
+  filled from <b>K=8 worlds drawn through production&#8217;s sampler</b> per decision (card log-odds averaged across worlds,
+  then the summed-log-odds argmax), never from the live round. The earlier series that fed the live round (perfect
+  information; Codex audit, 2026-09-19) is retained only as a column in section 8. Points are 8,000 mirrored deals on
+  fresh seeds (seed0 20000) with a paired bootstrap interval; zero is SmartBot parity.</p>
   <div class="figure">{{SVG7}}</div>
   <p class="cap"><b>What survives the relabel.</b> These reads share one privilege, so their ORDER may still be
   informative and their absolute values are not: warm-starting from JS-M1 took the perfect-information read from
@@ -332,7 +332,10 @@ body.recent-only [data-tr].pre-cut{display:none}
   (deal bootstrap, 10k, seed 20260919): no clear advantage for the soft objective is detected under public information.
   <b>gen-2 (from scratch): &minus;0.1133 [&minus;0.1264, &minus;0.0989]</b> &mdash; far below SmartBot, and worse than its
   perfect-information &minus;0.0684 (a 0.045 drop, in line with the 0.048&ndash;0.053 the other heads lost). <b>gen-1: &minus;0.0383
-  [&minus;0.0516, &minus;0.0248]</b>, below SmartBot too (perfect-information &minus;0.0093). JS-G1 is the last of the six.</p>
+  [&minus;0.0516, &minus;0.0248]</b>, below SmartBot too (perfect-information &minus;0.0093). <b>JS-G1: &minus;0.0267 [&minus;0.0399, &minus;0.0128]</b>
+  (perfect-information +0.0014). <b>All six are in.</b> Under public information only the two warm-started heads (gen-3-warm, soft-target)
+  beat SmartBot; production's head and every from-scratch head sit below it; every head lost 0.028&ndash;0.053 to the loss of
+  privilege; the order of the six survived the re-measurement exactly. Chart 5 above now draws these figures.</p>
   <p class="cap">Read the intervals, not the points. A 2,000-deal read on a different seed window put JS-G1 above
   JS-M1 and did not survive its own confirmation &mdash; on 8,000 fresh deals the two swap places. Top-64 recall
   elsewhere on this page is what the admission prior needs; it does not predict this chart, and this chart does not

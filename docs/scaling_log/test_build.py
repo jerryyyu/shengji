@@ -652,11 +652,11 @@ def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(da
     assert labels, "the goal chart rendered with no plotted models"
     ns = {}
     exec(open(Path(__file__).with_name("models.py")).read(), ns)
-    assert len(labels) == len(ns["POLICY_VS_SMART"]), (
-        f"{len(labels)} points drawn for {len(ns['POLICY_VS_SMART'])} measured heads")
+    assert len(labels) == len(ns["POLICY_VS_SMART_PUBLIC"]), (
+        f"{len(labels)} points drawn for {len(ns['POLICY_VS_SMART_PUBLIC'])} measured heads")
     assert "SmartBot parity" in svg, "the zero line must be labelled as parity"
     # a head whose interval clears zero is drawn as a BEAT (pt2); one that crosses is pt1
-    for ck, txt in ns["POLICY_VS_SMART"].items():
+    for ck, txt in ns["POLICY_VS_SMART_PUBLIC"].items():
         lo = float(_re.match(r'\s*[-+][\d.]+\s*\[\s*([-+][\d.]+)', txt).group(1))
         name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
         dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)

@@ -315,9 +315,10 @@ body.recent-only [data-tr].pre-cut{display:none}
   <div class="figure">{{SVG7}}</div>
   <p class="cap"><b>What survives the relabel.</b> These reads share one privilege, so their ORDER may still be
   informative and their absolute values are not: warm-starting from JS-M1 took the perfect-information read from
-  &minus;0.068 (gen-2, trained from scratch) to <b>+0.099</b> (gen-3-warm) on the same data &mdash; initialisation, not
-  data, is what separates the rungs. A head six times stronger than production's then moved play by nothing
-  measurable in any role it holds: as the whole package in play (v28, +0.0109 [&minus;0.0106, +0.0323], MDE80 0.031);
+  &minus;0.068 (gen-2, trained from scratch on a smaller corpus) to <b>+0.099</b> (gen-3-warm) &mdash; consistent with
+  initialisation mattering more than data, though not an isolation: the matched from-scratch gen-3 has not been run.
+  A head whose privileged margin was six times production's (a ratio between two perfect-information reads, not
+  playing strength) then moved play by nothing measurable in any role it holds: as the whole package in play (v28, +0.0109 [&minus;0.0106, +0.0323], MDE80 0.031);
   <b>as the admission prior alone, with production's value net fixed in both arms (v29, +0.0020 [&minus;0.0002,
   +0.0042], MDE80 0.0031 &mdash; 99.2% of paired deals identical)</b>; and as the MC rollout policy, where it is
   worse than the heuristic at every temperature. Those three in-play measurements used sampled worlds and STAND.
@@ -420,14 +421,17 @@ body.recent-only [data-tr].pre-cut{display:none}
   paired deal bootstrap (#425 4.2): &#8220;non-inferiority not shown&#8221; and &#8220;inferior&#8221; are different verdicts.
   Top-256 is 0.999 for every trained head and 0.996 for the untrained one, because records keep at most 256 candidates:
   the consumer&#8217;s operating point (256 of thousands per world) is invisible offline, which is why the prior arm played
-  M1&#8217;s lines in the screens. <b>Head alone vs SmartBot</b> is the head playing by itself &mdash; argmax over its card log-odds, no value net and no
-  rollouts &mdash; on mirrored deals, signed level per round with a paired bootstrap interval. It is the only column here that
-  measures the goal the policy line exists for; every other column measures the admission prior&#8217;s shortlist coverage, and
+  M1&#8217;s lines in the screens. <b>Head alone vs SmartBot (perfect-info)</b> is the head playing by itself &mdash; argmax over its card log-odds, no value
+  net and no rollouts &mdash; on mirrored deals, signed level per round with a paired bootstrap interval, <b>under perfect
+  information</b>: the harness fed the live round&#8217;s world block, all four hands and the burial (Codex audit, 2026-09-19),
+  so it is a privileged diagnostic, comparable between heads and NOT public playing strength. No column in this table
+  measures the goal the policy line exists for; every other column measures the admission prior&#8217;s shortlist coverage.
+  The public-information series on the serving-time sampled-world scheme is the read that will.
   The figures are the <b>8,000-deal read on fresh seeds</b>; a 2,000-deal discovery read on a different seed window said
   the opposite and did not survive, swapping the two models&#8217; places, so only the confirmed column is quoted.
   <b>Value cost</b> is the outcome head&#8217;s val_ce against its matched twin.</p>
   <div class="tw"><table class="sortable">
-<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Head alone vs SmartBot</th><th class="n">Value cost</th><th>Note</th></tr></thead>
+<thead><tr><th>Head</th><th>Kind</th><th>Trunk</th><th class="n">Root rows</th><th class="n">Split</th><th class="n">Epochs</th><th class="n">Weight</th><th>Eval</th><th class="n">Listwise CE</th><th class="n">BCE</th><th class="n">Top&#8209;1 wide</th><th class="n">Top&#8209;64 wide</th><th class="n">Top&#8209;64 by stratum</th><th class="n">Head alone vs SmartBot (perfect&#8209;info)</th><th class="n">Value cost</th><th>Note</th></tr></thead>
 <tbody>
 {{POLICYROWS}}
 </tbody></table></div>

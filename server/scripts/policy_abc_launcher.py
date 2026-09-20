@@ -30,17 +30,28 @@ LOCKS = (Path('/root/.claude-lane.lock'), Path('/root/.claude-screen.lock'))
 ARMS = [('A', 4, 'policy', 'mc-smart4'),
         ('B', 16, 'policy', 'mc-smart4'),
         ('C', 4, 'policy-value', 'policy-world')]
+FOLLOWUP_SOURCE = '4976104af96d44f1ab7ca483ff823b849521d5de'
+# Fresh DEV window; qualification rows must never be pooled into a later screen.
+FOLLOWUP_SEED = 625200000
+FOLLOWUP_ARMS = [('D', 4, 'policy-value', 'mc-lcb'),
+                 ('E', 4, 'policy-selective-mc', 'policy-value')]
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
-def commands(python, checkpoint, output, *, qualify=False):
+def commands(python, checkpoint, output, *, qualify=False, suite='abc'):
+    if suite not in ('abc', 'search-followup'):
+        raise ValueError('unknown experiment suite')
+    if suite == 'search-followup' and not qualify:
+        raise ValueError('search-followup is qualification-only pending runtime review')
+    arms = ARMS if suite == 'abc' else FOLLOWUP_ARMS
+    seed = SEED if suite == 'abc' else FOLLOWUP_SEED
     return [(name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                    '--checkpoint', str(checkpoint), '--checkpoint-sha256', CHECKPOINT,
-                   '--out', str(output / name), '--seed0', str(SEED),
+                   '--out', str(output / name), '--seed0', str(seed),
                    '--deals', str(QUALIFY_DEALS if qualify else DEALS), '--workers', str(WORKERS),
                    '--worlds', str(worlds), '--mode', mode, '--candidates', '8',
-                   '--control', control]) for name, worlds, mode, control in ARMS]
+                   '--control', control]) for name, worlds, mode, control in arms]
 
 
 def busy_processes():
@@ -118,16 +129,20 @@ def main(argv=None):
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--suite', choices=('abc', 'search-followup'), default='abc')
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs per arm, 900s/arm ceiling; never advances to full experiment')
     args = parser.parse_args(argv)
+    if args.suite == 'search-followup' and not args.qualify:
+        raise ValueError('search-followup is qualification-only pending runtime review')
+    source_sha = SOURCE if args.suite == 'abc' else FOLLOWUP_SOURCE
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True)
-    if head != SOURCE or dirty:
-        raise RuntimeError('source must be clean frozen cfcb208e checkout')
+    if head != source_sha or dirty:
+        raise RuntimeError(f'source must be clean frozen {source_sha} checkout')
     if hashlib.sha256(checkpoint.read_bytes()).hexdigest() != CHECKPOINT:
         raise RuntimeError('checkpoint mismatch')
     if output.exists() or not output.parent.is_dir():
@@ -145,10 +160,12 @@ def main(argv=None):
     # a different tree. Performance/strength readouts must retain this setting.
     # Resolving a venv interpreter symlink selects the system Python and loses
     # the venv's dependencies. Make the path absolute without dereferencing it.
-    plan = commands(args.python.absolute(), checkpoint, output, qualify=args.qualify)
+    plan = commands(args.python.absolute(), checkpoint, output,
+                    qualify=args.qualify, suite=args.suite)
     seconds = QUALIFY_SECONDS if args.qualify else ARM_SECONDS
     expected = QUALIFY_DEALS if args.qualify else DEALS
-    receipt = {'source': SOURCE, 'checkpoint': CHECKPOINT, 'commands': plan,
+    receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
+               'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
                'mode': 'runtime-qualification' if args.qualify else 'experiment',
                'automatic_promotion': False}

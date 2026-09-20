@@ -145,3 +145,27 @@ def test_nonbanker_hidden_kitty_and_prior_rng_consumption_are_invisible():
     second = bot.rollout_policy.decide_play(changed, seat)
     assert first == second
     assert np.array_equal(traces[0], traces[1])
+
+
+def test_timeout_keeps_partial_work_separate_from_completed_decisions(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.train import policy_world_duel as duel
+    bot = MCPolicyValueRollout(continuation(), seed=7)
+    monkeypatch.setattr(duel, '_prepare_round', lambda *a: SimpleNamespace(phase='play', turn=0))
+    monkeypatch.setattr(duel, 'make_policy', lambda *a, **k: bot)
+    monkeypatch.setattr(duel, 'make_control', lambda *a, **k: bot)
+    def refused(*args):
+        bot.rollout_policy.decisions = 7
+        bot.rollout_policy.worlds = 28
+        raise TimeoutError('injected decision timeout')
+    monkeypatch.setattr(duel, '_timed_play', refused)
+    row = duel.play_pair(7, 'unused', 'a' * 64, mode='mc-policy-value-rollout')
+    assert row['timeout'] and row['error']['type'] == 'TimeoutError'
+    assert 'utility' not in row
+    assert row['sides']['policy']['decisions'] == 0
+    partial = row['interrupted_decision']
+    assert partial['complete'] is False
+    assert partial['completed_inner_work']['decisions'] == 7
+    assert partial['completed_inner_work']['worlds'] == 28
+    with pytest.raises(ValueError):
+        duel.aggregate_records([row], [7])

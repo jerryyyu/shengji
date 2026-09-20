@@ -310,6 +310,7 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
     """Play one mirror.  Only this function runs inside a worker."""
     signal.signal(signal.SIGALRM, _alarm_handler)
     side = {"policy": _empty_side(), "control": _empty_side()}
+    interrupted = None
     try:
         game = Game(random.Random(seed))
         heuristic = HeuristicBot()
@@ -334,7 +335,23 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             seat = rnd.turn
             assert seat is not None
             role = roles[seat]
-            cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            decision_started = time.perf_counter()
+            try:
+                cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            except Exception:
+                from .mc_policy_value_rollout import MCPolicyValueRollout
+                if isinstance(bots[seat], MCPolicyValueRollout):
+                    inner = bots[seat].rollout_policy
+                    interrupted = {
+                        'role': role, 'seat': seat,
+                        'seconds': time.perf_counter() - decision_started,
+                        'complete': False,
+                        'scope': 'completed inner decisions only; interrupted inner work unmeasured',
+                        'completed_inner_work': {k: getattr(inner, k) for k in (
+                            'decisions', 'worlds', 'sample_attempts', 'value_evaluations',
+                            'value_batches', 'legal_caps')},
+                    }
+                raise
             telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)
                               else "control")
             _record_decision(side[role], elapsed,
@@ -349,9 +366,11 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                 "max_rss_kib": _rss_kib()}
     except TimeoutError as exc:
         return {"sides": side, "max_rss_kib": _rss_kib(), "timeout": True,
+                "interrupted_decision": interrupted,
                 "error": {"type": type(exc).__name__, "message": str(exc)}}
     except Exception as exc:
         return {"sides": side, "max_rss_kib": _rss_kib(), "timeout": False,
+                "interrupted_decision": interrupted,
                 "error": {"type": type(exc).__name__, "message": str(exc)}}
 
 
@@ -381,6 +400,7 @@ def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
                     "sides": sides, "max_rss_kib": one.get("max_rss_kib", _rss_kib()),
                     "elapsed_seconds": time.monotonic() - started,
                     "timeout": bool(one.get("timeout")), "error": one["error"],
+                    "interrupted_decision": one.get("interrupted_decision"),
                 }
             mirrors.append(one["utility"])
         return {

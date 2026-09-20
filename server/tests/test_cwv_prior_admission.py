@@ -334,3 +334,44 @@ print('ok')
 """
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1]))
     assert out.returncode == 0 and out.stdout.strip() == "ok", out.stderr[-1200:]
+
+
+def test_the_prior_rows_are_built_at_the_priors_own_encoder_version(prior_ckpt, tmp_path):
+    """A joint value net trained at encoder v5 (#506 rows, 889 columns) serves as the prior with
+    its rows built at v5 — before this the admission built every row at v2 (833) and a v5 head
+    would have failed at its first wide decision.  The version is read from the prior, recorded
+    in the trace, and a prior whose declared version disagrees with its width is refused."""
+    import hashlib
+    from shengji.train import policy_prior as pp, train_cwv
+    from shengji.train.cwv_prior_admission import load_prior_checked, prior_encoder_version
+    from tests.test_cwv_train import THIRDS
+    from shengji.harvest import trajectory
+    store = tmp_path / "store"
+    trajectory.generate(rounds=6, seed0=4_100_000, out_dir=store, workers=1, merge=False,
+                        select_worlds=2, report_worlds=30, explore_rate=0.5, explore_k=2)
+    rows = tmp_path / "rows5"
+    pp.extract(rows, [str(store)], lo=0.0, hi=1.01, thin=1.0, max_rows=200, workers=1, version=5)
+    kw = dict(data=[str(store)], arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64, n_boot=10, hidden=32,
+              log=None, cache_workers=1, eval_workers=1, bench_batch=32, val_rank_records=50, encoder_version=5, **THIRDS)
+    train_cwv.train(out=tmp_path / "joint5", policy_head=True, policy_rows=str(rows), **kw)
+    sha = lambda p: hashlib.file_digest(open(p, "rb"), "sha256").hexdigest()
+    joint = str(tmp_path / "joint5" / "best.pt")
+    kind, model, payload = load_prior_checked(joint, sha(joint))
+    assert kind == "joint" and int(model.config.enc_version) == 5
+    assert prior_encoder_version(kind, model, payload) == 5
+    assert prior_encoder_version(*load_prior_checked(prior_ckpt[0], prior_ckpt[1])) == 2
+    rnd = play_state(); seat = rnd.turn
+    bot = CWVPriorAdmissionBot(Values(), seed=13, config=CWVShortlistConfig(worlds=2),
+                               prior=CWVPriorAdmissionConfig(checkpoint=joint, checkpoint_sha256=sha(joint), threshold=1, top=8))
+    assert bot._prior_version == 5
+    scores = bot._prior_scores(rnd, seat, enumerate_legal(rnd, seat, cap=None).actions[:5], [(rnd.hands, rnd.buried)])
+    assert scores.shape == (1, 5) and np.isfinite(scores).all()
+    selected = bot._candidates(rnd, seat)
+    assert len(selected) == 5 and bot.last_shortlist["prior_admission"]["prior_encoder_version"] == 5
+
+    class Lying:
+        class config:
+            enc_version = 5
+            public_dim = 561   # v2 width under a v5 declaration
+    with pytest.raises(ValueError, match="declares encoder v5"):
+        prior_encoder_version("joint", Lying(), None)

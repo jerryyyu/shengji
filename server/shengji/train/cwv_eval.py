@@ -432,6 +432,24 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
             batched_scores = score_many_fn(result.search)
             if len(batched_scores) != len(result.search):
                 raise ValueError("score_many_fn must return one score array per record")
+        # The public head scored one MPS forward PER SEARCH RECORD (~1 ms each of
+        # device round-trip for a handful of rows): 24,468 forwards = 25.5 s of a
+        # 37 s / 200-shard pass, ~1.5 h of a full test pass (issue #542 lever 4,
+        # measured 2026-09-20).  One forward per shard hands every record exactly
+        # the values it received alone up to float batch-shape effects; the head
+        # is row-wise (Linear/GELU, eval mode), so rows do not interact.
+        # SHENGJI_CWV_BATCHED_PUBLIC=0 restores the per-record path (parity control).
+        batched_public = None
+        if (public_head is not None and result.search
+                and os.environ.get("SHENGJI_CWV_BATCHED_PUBLIC", "1") != "0"):
+            head_dim = int(public_head.arch["obs_dim"])
+            widths_here = [int(entry["public"].shape[0]) for entry in result.search]
+            rows = np.concatenate([np.asarray(entry["public"][:, :head_dim], dtype=np.float32)
+                                   for entry in result.search])
+            flat = public_values(public_head, rows, device)
+            if flat.shape != (sum(widths_here),):
+                raise ValueError("public head must return one value per candidate row")
+            batched_public = np.split(flat, np.cumsum(widths_here)[:-1])
         for index, entry in enumerate(result.search):
             k = int(entry["means"].size)
             n_candidates += k
@@ -451,7 +469,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                 # Slice to the width the HEAD declares; a head of another
                 # encoder version fails loudly in ``public_values``.
                 head_dim = int(public_head.arch["obs_dim"])
-                values = public_values(public_head, entry["public"][:, :head_dim], device)
+                values = (batched_public[index] if batched_public is not None
+                          else public_values(public_head, entry["public"][:, :head_dim], device))
                 values = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), values)

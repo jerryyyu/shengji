@@ -43,12 +43,71 @@ def test_model_trio_commands():
             assert cmd[cmd.index(flag) + 1] == value
 
 
-@pytest.mark.parametrize('suite,mlp,grid', [
-    (launcher.MODEL_SUITE, None, '/grid'), (launcher.MODEL_SUITE, '/mlp', None),
-    ('abc', '/mlp', None)])
-def test_model_trio_argument_boundary(suite, mlp, grid):
+def test_model_screen_commands_are_full_800_pair_recipe():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    extra = dict(suite=launcher.MODEL_SCREEN_SUITE, mlp_checkpoint=Path('/mlp'),
+                 grid_checkpoint=Path('/grid'))
+    arms = launcher.commands(*args, **extra)
+    assert [n for n, _ in arms] == ['SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8']
+    for (_, cmd), path, sha in zip(arms, ('/soft', '/mlp', '/grid'),
+            (launcher.CHECKPOINT, launcher.JS_M1_CHECKPOINT_SHA256,
+             launcher.GRID_CHECKPOINT_SHA256)):
+        for flag, value in {'--checkpoint': path, '--checkpoint-sha256': sha,
+                            '--worlds': '16', '--candidates': '8', '--deals': '800',
+                            '--workers': '12', '--seed0': '626100000',
+                            '--mode': 'policy-value', '--control': 'mc-lcb'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+    with pytest.raises(ValueError, match='full-screen suite'):
+        launcher.commands(*args, qualify=True, **extra)
+
+
+def test_model_screen_preflight_receipt_and_run_hold(monkeypatch, isolated_main,
+                                                     tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    mlp, grid = tmp_path / 'mlp', tmp_path / 'grid'
+    mlp.write_bytes(b'mlp')
+    grid.write_bytes(b'grid')
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256', hashlib.sha256(b'mlp').hexdigest())
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256', hashlib.sha256(b'grid').hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', launcher.MODEL_SCREEN_SUITE,
+                   '--mlp-checkpoint', str(mlp), '--grid-checkpoint', str(grid)]
+    assert launcher.main(call) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['arm_timeout_seconds'] == 21600
+    assert receipt['total_arm_timeout_seconds'] == 64800
+    assert receipt['expected_pairs_per_arm'] == 800
+    assert receipt['launch_hold'] is True
+    assert receipt['analysis']['primary_intervals'].startswith('two-sided adjusted 98.333333%')
+    assert len(receipt['analysis']['primary_contrasts']) == 3
+    assert receipt['analysis']['model_contrasts'] == [
+        'SOFT_W16_K8 minus JS_M1_W16_K8', 'JS_G1_W16_K8 minus JS_M1_W16_K8']
+    assert receipt['analysis']['model_intervals'].startswith('two-sided adjusted 97.5%')
+    assert receipt['analysis']['bootstrap'] == (
+        'joint-deal bootstrap, 10000 replicates, seed 20260920')
+    assert receipt['analysis']['interval_method'] == (
+        'joint-deal bootstrap, 10000 replicates, seed 20260920')
+    assert receipt['analysis']['automatic_retry'] is False
+    assert receipt['analysis']['optional_extension'] is False
+    assert receipt['analysis']['pooling_qualification'] is False
+    assert not output.exists()
+
+    with pytest.raises(RuntimeError, match='runtime review'):
+        launcher.main(call + ['--run'])
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('suite,mlp,grid,qualify', [
+    (launcher.MODEL_SUITE, None, '/grid', True), (launcher.MODEL_SUITE, '/mlp', None, True),
+    (launcher.MODEL_SCREEN_SUITE, None, '/grid', False),
+    (launcher.MODEL_SCREEN_SUITE, '/mlp', None, False),
+    ('abc', '/mlp', None, True)])
+def test_model_trio_argument_boundary(suite, mlp, grid, qualify):
     with pytest.raises(ValueError, match='required exactly'):
-        launcher.commands(Path('/python'), Path('/soft'), Path('/out'), qualify=True,
+        launcher.commands(Path('/python'), Path('/soft'), Path('/out'), qualify=qualify,
                           suite=suite, mlp_checkpoint=mlp, grid_checkpoint=grid)
 
 

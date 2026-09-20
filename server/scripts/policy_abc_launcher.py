@@ -68,10 +68,14 @@ MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
 MODEL_SUITE = 'model-w16-qualify'
-GRID_SUITES = JOINT_SUITES + (MODEL_SUITE,)
+MODEL_SCREEN_SUITE = 'model-w16-screen'
+GRID_SUITES = JOINT_SUITES + (MODEL_SUITE, MODEL_SCREEN_SUITE)
 MODEL_QUALIFY_SEED = 626090000
+MODEL_SCREEN_SEED = 626100000
 MODEL_ARMS = [(name, 16, 'policy-value', 'mc-lcb') for name in
               ('SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8')]
+MODEL_SUITES = (MODEL_SUITE, MODEL_SCREEN_SUITE)
+MODEL_SCREEN_ARM_SECONDS = 21600
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
                              'pv-production-qualify', 'world-scaling-qualify', MODEL_SUITE)
@@ -85,7 +89,7 @@ PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
-          'world-scaling-qualify', MODEL_SUITE)
+          'world-scaling-qualify', MODEL_SUITE, MODEL_SCREEN_SUITE)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -96,15 +100,18 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if suite == MODEL_SCREEN_SUITE and qualify:
+        raise ValueError('model-w16-screen is a full-screen suite, not qualification')
     if suite in QUALIFICATION_ONLY_SUITES and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (suite in PRODUCTION_SUITES) != (production is not None):
         raise ValueError('production checkpoint required exactly for production suites')
-    if (suite == MODEL_SUITE) != (mlp_checkpoint is not None):
-        raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
+    if (suite in MODEL_SUITES) != (mlp_checkpoint is not None):
+        raise ValueError(f'mlp checkpoint required exactly for {suite}')
     if (suite in GRID_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     arms, seed = {MODEL_SUITE: (MODEL_ARMS, MODEL_QUALIFY_SEED),
+                  MODEL_SCREEN_SUITE: (MODEL_ARMS, MODEL_SCREEN_SEED),
                   'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
@@ -115,7 +122,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
                                         JOINT_GRID_QUALIFY_SEED if qualify else JOINT_GRID_SEED)}[suite]
-    if suite == MODEL_SUITE:
+    if suite in MODEL_SUITES:
         checkpoint_specs = ((checkpoint, CHECKPOINT),
                             (mlp_checkpoint, JS_M1_CHECKPOINT_SHA256),
                             (grid_checkpoint, GRID_CHECKPOINT_SHA256))
@@ -225,15 +232,18 @@ def main(argv=None):
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if args.suite == MODEL_SCREEN_SUITE and args.qualify:
+        raise ValueError('model-w16-screen is a full-screen suite, not qualification')
     if args.suite in QUALIFICATION_ONLY_SUITES and not args.qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (args.suite in PRODUCTION_SUITES) != (args.production_checkpoint is not None):
         raise ValueError('production checkpoint required exactly for production suites')
-    if (args.suite == MODEL_SUITE) != (args.mlp_checkpoint is not None):
-        raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
+    if (args.suite in MODEL_SUITES) != (args.mlp_checkpoint is not None):
+        raise ValueError(f'mlp checkpoint required exactly for {args.suite}')
     if (args.suite in GRID_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     source_sha = {MODEL_SUITE: REFERENCE_SOURCE,
+                  MODEL_SCREEN_SUITE: REFERENCE_SOURCE,
                   'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
                   'strength-screen': REFERENCE_SOURCE,
@@ -282,7 +292,8 @@ def main(argv=None):
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
                     grid_checkpoint=grid_checkpoint, mlp_checkpoint=mlp_checkpoint)
-    seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
+    seconds = (MODEL_SCREEN_ARM_SECONDS if args.suite == MODEL_SCREEN_SUITE
+               else STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
     expected = QUALIFY_DEALS if args.qualify else DEALS
@@ -324,6 +335,37 @@ def main(argv=None):
                       'automatic_promotion': False,
                       'full_screen': 'not implemented; freeze after runtime review',
                       'contrast_scope': 'common MC-LCB opponent, not direct head-to-head'})
+    if args.suite == MODEL_SCREEN_SUITE:
+        receipt.update(
+            checkpoint_identities=dict(zip((name for name, _ in plan),
+                (CHECKPOINT, JS_M1_CHECKPOINT_SHA256, GRID_CHECKPOINT_SHA256))),
+            seed_reservation='626100000:626100800; verify peer reservation before launch',
+            expected_pairs_per_arm=DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
+            comparison_scope='card play only; shared heuristic declare/bury',
+            launch_hold=True,
+            analysis={
+                'purpose': 'full model W16 policy-value screen against fixed MC-LCB',
+                'primary': 'three paired signed-level contrasts against MC-LCB',
+                'primary_contrasts': [
+                    'SOFT_W16_K8 minus MC-LCB', 'JS_M1_W16_K8 minus MC-LCB',
+                    'JS_G1_W16_K8 minus MC-LCB'],
+                'primary_intervals': (
+                    'two-sided adjusted 98.333333% intervals (Bonferroni, three contrasts)'),
+                'model_contrasts': [
+                    'SOFT_W16_K8 minus JS_M1_W16_K8',
+                    'JS_G1_W16_K8 minus JS_M1_W16_K8'],
+                'model_intervals': (
+                    'two-sided adjusted 97.5% intervals (Bonferroni, two contrasts)'),
+                'bootstrap': 'joint-deal bootstrap, 10000 replicates, seed 20260920',
+                'interval_method': 'joint-deal bootstrap, 10000 replicates, seed 20260920',
+                'unit': 'deal with both seat mirrors averaged',
+                'qualification_rows_excluded': True,
+                'automatic_retry': False,
+                'optional_extension': False,
+                'pooling_qualification': False,
+                'full_screen': 'launch held pending runtime review',
+                'contrast_scope': 'common MC-LCB opponent; model contrasts are paired on the same deals'})
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
@@ -407,6 +449,8 @@ def main(argv=None):
                       'qualification_rows_excluded': True,
                       'automatic_retry': False, 'automatic_promotion': False})
     print(json.dumps(receipt, indent=2))
+    if args.suite == MODEL_SCREEN_SUITE and args.run:
+        raise RuntimeError('model-w16-screen launch held pending runtime review')
     if not args.run:
         return 0
     previous = signal.signal(signal.SIGTERM, interrupted)

@@ -1680,9 +1680,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         ancestral = (set() if source_exposure is None else
                      exposure_sets(source_exposure)["fit"] | exposure_sets(source_exposure)["selection"])
         if policy_eval:
-            policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral)
+            # rows and eval must be built at THIS run's encoder (v5 rows are 889 wide, v2's 833)
+            policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral, version=enc_version)
             held |= set(policy_evalset.deal_keys)
-        policy_data = open_policy_rows(policy_rows, limit=policy_rows_limit, exclude=held)
+        policy_data = open_policy_rows(policy_rows, limit=policy_rows_limit, exclude=held,
+                                       version=enc_version)
         root_fit = set(policy_data.deal_keys)
         assert not root_fit & held
         policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))

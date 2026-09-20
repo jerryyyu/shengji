@@ -79,9 +79,10 @@ def test_real_model_and_metadata_parity(blocks):
             np.testing.assert_array_equal(a[key],b[key],err_msg=key)
 
 
-@pytest.mark.parametrize('joint', [False, True], ids=['value', 'joint'])
+@pytest.mark.parametrize('joint,version', [(False, 2), (True, 2), (True, 5)],
+                         ids=['value', 'joint-v2', 'joint-v5'])
 def test_packing_preserves_training_selection_and_weights(
-        store_dir, luna, policy_rows, tmp_path, monkeypatch, joint):
+        store_dir, luna, policy_rows, tmp_path, monkeypatch, joint, version):
     import torch
     from shengji.train import train_cwv
     from tests.test_cwv_train import train_v0, THIRDS
@@ -105,11 +106,18 @@ def test_packing_preserves_training_selection_and_weights(
         public_head=str(tmp_path/'public'/'best.pt'),**THIRDS)
     if joint:
         from shengji.train import search_mean_sidecar
+        if version == 5:
+            from shengji.train import policy_prior
+            rows = tmp_path/'policy-rows-v5'
+            extracted = policy_prior.extract(rows, [str(store_dir)], lo=0.0, hi=1.01,
+                thin=1.0, max_rows=400, workers=1, version=5)
+            assert extracted['rows'] > 20
+            policy_rows = str(rows)
         side = tmp_path/'sidecar'
         built = [search_mean_sidecar.build_sidecar(p, side, level_objective=False)
                  for p in sorted(store_dir.rglob('*.jsonl'))]
         assert sum(row['with_mean'] for row in built) > 0
-        kwargs.update(encoder_version=2, aux_points=True, search_head=True,
+        kwargs.update(encoder_version=version, aux_points=True, search_head=True,
                       search_mean_sidecar=str(side),
                       policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
                       policy_weight=0.2, policy_batch_fraction=0.5)
@@ -119,6 +127,7 @@ def test_packing_preserves_training_selection_and_weights(
     assert b['config']['validation_packing']['scope'] == 'epoch-outcome-validation-only'
     if joint:
         for result in (a, b):
+            assert result['model']['config']['enc_version'] == version
             assert result['model']['config']['policy_head']
             assert result['model']['config']['search_head']
             assert all(epoch['train']['policy_rows'] > 0 for epoch in result['epochs'])
@@ -126,10 +135,14 @@ def test_packing_preserves_training_selection_and_weights(
             assert left['val']['policy'] == right['val']['policy']
     assert a['selection']['best_epoch']==b['selection']['best_epoch']
     assert a['selection']['best_loss']==pytest.approx(b['selection']['best_loss'],abs=1e-7)
-    ma,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'legacy'/'best.pt')
-    mb,_,_=train_cwv.load_cwv_checkpoint(tmp_path/'packed'/'best.pt')
+    ma,_,aa=train_cwv.load_cwv_checkpoint(tmp_path/'legacy'/'best.pt')
+    mb,_,ab=train_cwv.load_cwv_checkpoint(tmp_path/'packed'/'best.pt')
     for name,tensor in ma.state_dict().items():
         assert torch.equal(tensor,mb.state_dict()[name]), name
+    assert (aa is None) == (ab is None)
+    if aa is not None:
+        for name,tensor in aa.state_dict().items():
+            assert torch.equal(tensor,ab.state_dict()[name]), name
 
 
 def test_packing_cli_is_explicit_and_rejects_non_mlp(tmp_path):

@@ -285,6 +285,7 @@ POLICY_FIELDS = ("name", "ck", "kind", "trunk", "rows", "split", "epochs", "weig
 #: replaces chart 7's figures when all six are in.  Receipts: ~/shengji-archive/2026-09-13/readouts/public-k8/.
 POLICY_VS_SMART_PUBLIC = {
     "d2514e6e": "+0.0463 [+0.0334, +0.0593]",   # gen-3-warm: under half its perfect-info read, above zero
+    "a5248cc5": "-0.0137 [-0.0269, -0.0004]",   # JS-M1 (production's head): BELOW SmartBot on public information
 }
 
 POLICY_VS_SMART = {

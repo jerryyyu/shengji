@@ -73,7 +73,7 @@ jobs:
     # module AND runs scripts/ci_cwv_modes.sh; on a shared runner that has been
     # hitting the old 15-minute ceiling (a timeout shows as "cancelled", not
     # "failed"). Give it the same room as the server job.
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: server

@@ -34,6 +34,18 @@ require_success() {
         return 1
     }
 }
+require_launcher() {
+    # The reviewed supervisor is standalone (stdlib imports only). Bind its
+    # exact bytes, not merely a mutable checkout pathname, at handoff time.
+    "$python" - "$launcher" <<'VERIFY_LAUNCHER'
+import hashlib
+import sys
+from pathlib import Path
+if hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest() != \
+        '8312cc2078dbcbca89afff70c332c1296d29120d99af89449653f93bb43b1c5c':
+    raise SystemExit('Reviewed MC-PV launcher changed; refusing handoff')
+VERIFY_LAUNCHER
+}
 while true; do
     read_snapshot
     case "$state/$substate" in
@@ -72,6 +84,7 @@ PY
 # reservations, processes and resources. Any refusal ends this queue: no retry.
 read_snapshot
 require_success
+require_launcher
 exec "$python" "$launcher" \
     --source /root/codex-mc-pv-source-20260920 \
     --python "$python" \

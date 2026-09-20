@@ -57,7 +57,7 @@ def test_replacement_detected_at_final_snapshot():
 
 def test_final_guard_precedes_qualification_only_exec():
     text = SCRIPT.read_text()
-    assert 'read_snapshot\nrequire_success\nexec "$python" "$launcher"' in text
+    assert 'read_snapshot\nrequire_success\nrequire_launcher\nexec "$python" "$launcher"' in text
     assert "--suite mc-pv-qualify --qualify --run" in text
 
 
@@ -88,7 +88,7 @@ def test_output_identity_and_completion_guard(tmp_path, damage):
     assert (result.returncode == 0) == (damage is None), result.stderr
 
 
-@pytest.mark.parametrize('scenario', ['success', 'replaced_final', 'failed', 'missing', 'deadline'])
+@pytest.mark.parametrize('scenario', ['success', 'replaced_final', 'failed', 'missing', 'deadline', 'launcher_tamper', 'launcher_missing'])
 def test_full_queue_flow(tmp_path, scenario):
     root = tmp_path / 'predecessor'
     root.mkdir()
@@ -104,6 +104,11 @@ def test_full_queue_flow(tmp_path, scenario):
     launcher = tmp_path / 'launcher.py'
     launcher.write_text('import json,sys\nfrom pathlib import Path\n'
                         f'Path({str(launched)!r}).write_text(json.dumps(sys.argv[1:]))\n')
+    launcher_sha = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    if scenario == 'launcher_tamper':
+        launcher.write_text(launcher.read_text() + '\n# changed after review\n')
+    elif scenario == 'launcher_missing':
+        launcher.unlink()
     active = snapshot(ActiveState='active', SubState='running', MainPID='3725830')
     first = (snapshot(ActiveState='failed', Result='exit-code') if scenario == 'failed'
              else '' if scenario == 'missing' else active)
@@ -124,6 +129,7 @@ def test_full_queue_flow(tmp_path, scenario):
     sleep() {{ :; }}
 '''
     script = SCRIPT.read_text().replace('read_snapshot() {', stub + '\nread_snapshot() {', 1)
+    script = script.replace('8312cc2078dbcbca89afff70c332c1296d29120d99af89449653f93bb43b1c5c', launcher_sha)
     script = script.replace('python=/root/gen-hybrid/server/.venv/bin/python',
                             f'python={shlex.quote(sys.executable)}')
     script = script.replace('launcher=/root/codex-mc-pv-launcher-20260920/server/scripts/policy_abc_launcher.py',

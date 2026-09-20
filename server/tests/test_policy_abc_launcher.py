@@ -188,3 +188,101 @@ def test_qualification_partial_summary_refuses(tmp_path):
     path.write_text(json.dumps(dict(expected=12,complete=11,errors=[])))
     with pytest.raises(RuntimeError, match='12 clean pairs'):
         launcher.validate_summary(path, expected=12)
+
+
+def test_followup_frozen_qualification_commands():
+    arms = launcher.commands(Path('/python'), Path('/model'), Path('/out'),
+                             qualify=True, suite='search-followup')
+    assert [name for name, _ in arms] == ['D', 'E']
+    for _, cmd in arms:
+        assert cmd[cmd.index('--seed0')+1] == '625200000'
+        assert cmd[cmd.index('--deals')+1] == '12'
+        assert cmd[cmd.index('--worlds')+1] == '4'
+        assert cmd[cmd.index('--candidates')+1] == '8'
+    assert arms[0][1][-1] == 'mc-lcb'
+    assert arms[1][1][-1] == 'policy-value'
+    assert arms[1][1][arms[1][1].index('--mode')+1] == 'policy-selective-mc'
+
+
+def test_followup_full_run_refused_before_any_io(isolated_main):
+    args, output = isolated_main
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.main(args + ['--suite', 'search-followup', '--run'])
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(Path('/python'), Path('/model'), output, suite='search-followup')
+    assert not output.exists()
+
+
+def test_followup_rejects_abc_source(isolated_main):
+    args, _ = isolated_main
+    with pytest.raises(RuntimeError, match='clean frozen'):
+        launcher.main(args + ['--suite', 'search-followup', '--qualify'])
+
+
+def test_followup_serial_qualification(monkeypatch, isolated_main):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.FOLLOWUP_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 900
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm/'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(args + ['--suite', 'search-followup', '--qualify', '--run']) == 0
+    assert seen == ['D', 'E']
+    receipt = json.loads((output/'launch-plan.json').read_text())
+    assert receipt['source'] == launcher.FOLLOWUP_SOURCE
+    assert receipt['automatic_promotion'] is False
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+def test_reference_commands_separate_models_and_preserve_controls():
+    arms = launcher.commands(Path('/python'), Path('/soft'), Path('/out'),
+        suite='search-reference', qualify=True, production=Path('/prod.npz'))
+    assert [name for name, _ in arms] == ['F', 'G']
+    assert '--production-checkpoint' not in arms[0][1]
+    assert arms[0][1][-1] == 'policy-value'
+    assert arms[0][1][arms[0][1].index('--mode')+1] == 'policy-lookahead'
+    for _, cmd in arms:
+        assert cmd[cmd.index('--seed0')+1] == '625300000'
+        assert cmd[cmd.index('--deals')+1] == '12'
+        assert cmd[cmd.index('--checkpoint')+1] == '/soft'
+    assert arms[1][1][-2:] == ['--production-checkpoint', '/prod.npz']
+
+
+@pytest.mark.parametrize('suite,production', [('abc', '/prod'), ('search-reference', None)])
+def test_reference_requires_exact_model_argument(suite, production):
+    with pytest.raises(ValueError, match='required exactly'):
+        launcher.commands(Path('/python'), Path('/soft'), Path('/out'),
+                          qualify=True, suite=suite, production=production)
+
+
+def test_reference_full_run_refused(isolated_main):
+    args, _ = isolated_main
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.main(args + ['--suite', 'search-reference', '--run'])
+
+
+def test_reference_model_hash_checked_before_output(monkeypatch, isolated_main, tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    production = tmp_path/'prod.npz'
+    production.write_bytes(b'production-fixture')
+    argv = args + ['--suite', 'search-reference', '--qualify',
+                   '--production-checkpoint', str(production)]
+    with pytest.raises(RuntimeError, match='production checkpoint mismatch'):
+        launcher.main(argv)
+    assert not output.exists()
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(production.read_bytes()).hexdigest())
+    assert launcher.main(argv) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['production_checkpoint_sha256'] == launcher.PRODUCTION_SHA256
+    assert receipt['automatic_promotion'] is False
+    assert not output.exists()

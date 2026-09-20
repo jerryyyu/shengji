@@ -40,8 +40,8 @@ PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431
 REFERENCE_SEED = 625300000
 REFERENCE_ARMS = [('F', 4, 'policy-lookahead', 'policy-value'),
                   ('G', 4, 'policy-value', 'production-play')]
-# Reviewable proposal only: reserve this fresh window with peers before a
-# separately reviewed launch release. Never reuse qualification rows.
+# Jerry directly approved this exact screen in the Codex thread on Sept 20.
+# Claude confirmed the window free on #521. Never reuse qualification rows.
 STRENGTH_SEED = 625400000
 STRENGTH_ARMS = [('PV', 4, 'policy-value', 'mc-lcb'),
                  ('PV_MC', 4, 'policy-selective-mc', 'mc-lcb'),
@@ -157,8 +157,6 @@ def main(argv=None):
                         help='12 pairs per arm, 900s/arm ceiling; never advances to full experiment')
     args = parser.parse_args(argv)
     if args.suite == 'strength-screen':
-        if args.run:
-            raise ValueError('strength-screen launch hold: review, seed reservation and user release required')
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
     if args.suite in ('search-followup', 'search-reference') and not args.qualify:
@@ -207,8 +205,9 @@ def main(argv=None):
                'automatic_promotion': False}
     if args.suite == 'strength-screen':
         receipt.update(
-            mode='held-strength-proposal', launch_hold=True,
-            seed_reservation='pending-peer-confirmation',
+            mode='strength-screen', launch_hold=False,
+            seed_reservation='625400000:625400800; peer confirmed on PR521',
+            authorization='Jerry direct Codex-thread approval, 2026-09-20',
             comparison_scope='card play only; shared heuristic declare/bury',
             total_arm_timeout_seconds=len(plan) * seconds,
             analysis={

@@ -9,6 +9,7 @@ THE RISK THIS FILE EXISTS FOR IS ALIGNMENT. `eligible_indices` index the RAW bal
 `ballot_tensors` DROPS falsy ballot entries -- so every slot after an empty one shifts. A
 misalignment here would not crash: it would train the policy on another candidate's value.
 """
+import json
 import numpy as np
 import pytest
 
@@ -245,3 +246,50 @@ def test_train_forwards_soft_target_settings_into_the_receipt_config():
                                     data=["d"], eval_luna=None)
     assert config["policy_soft_targets"] is True
     assert config["policy_soft_temperature"] == 0.5
+
+
+def _monolithic(tmp_path, rows, with_means=True):
+    """A current-format single-file extract: X/Y npz + meta.jsonl, optionally carrying means."""
+    from shengji.train.policy_prior import input_dim
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    X = np.zeros((len(rows), input_dim(2)), np.float32); Y = np.zeros((len(rows), 54), np.float32)
+    np.savez_compressed(tmp_path / "m.npz", X=X, Y=Y)
+    with open(tmp_path / "m.meta.jsonl", "w") as fh:
+        for ballot, means, taken, key in rows:
+            m = {"n_legal": len(ballot), "legal": ballot, "ballot": ballot, "taken": taken, "complete": True,
+                 "deal": "d" * 16, "deal_key": key}
+            if with_means:
+                m["means"] = means
+            fh.write(json.dumps(m) + "\n")
+    return tmp_path / "m"
+
+
+def test_the_monolithic_loader_carries_the_search_values_end_to_end(tmp_path):
+    """Codex on the rebase PR: ``policy_prior extract`` writes ``means`` into the meta file by
+    default (chunk_rows=None) but ``PolicyRows`` never yielded ``vals``, so the soft flag refused a
+    freshly re-extracted dataset.  Now the monolithic loader carries them through filtering,
+    shuffling and ``tensors``, aligned to the ballot slots; an extract without the key yields none."""
+    from shengji.train.policy_rows import PolicyRows
+    rows = [([[1], [2], [3]], [3.0, 4.0, float("nan")], [1], "deck:aaaa"),
+            ([[4], [5]], [0.5, 0.25], [5], "deck:bbbb"),
+            ([[6]], [1.0], [6], "deck:cccc")]
+    prefix = _monolithic(tmp_path / "with", rows)
+    pr = PolicyRows(prefix)
+    assert pr.vals is not None and pr.vals.shape == (3, pr.ball.shape[1])
+    batch = next(pr.batches(8, np.random.default_rng(0)))
+    t = PolicyRows.tensors(batch, "cpu")
+    assert "vals" in t and t["vals"].shape == (3, pr.ball.shape[1])
+    # row order is shuffled: match rows by their taken slot target and check values by slot
+    for i in range(3):
+        b = batch["ball"][i]; v = batch["vals"][i]
+        first = int(b[0][0])
+        expect = {1: [3.0, 4.0], 4: [0.5, 0.25], 6: [1.0]}[first]
+        got = [float(x) for x in v[:len(expect)]]
+        assert got == expect and np.isnan(v[len(expect):]).all()
+    # exclusion still filters vals with the rows
+    pr2 = PolicyRows(prefix, exclude={"deck:bbbb"})
+    assert pr2.n == 2 and pr2.vals.shape[0] == 2
+    # a pre-#496 extract (no ``means`` key) yields no vals at all -- not NaNs
+    prefix_old = _monolithic(tmp_path / "old", rows, with_means=False)
+    pr3 = PolicyRows(prefix_old)
+    assert pr3.vals is None and "vals" not in next(pr3.batches(8, np.random.default_rng(0)))

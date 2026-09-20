@@ -69,7 +69,7 @@ class PolicyRows:
         n = len(X) if not limit else min(int(limit), len(X))
         if n < 1:
             raise ValueError("policy rows: no rows")
-        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key"))
+        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key", "means"))
         if len(meta) != n:
             raise ValueError("policy rows: metadata shorter than the rows")
         keys = _deal_keys_of(meta, "policy rows")
@@ -83,6 +83,16 @@ class PolicyRows:
         meta = [meta[i] for i in idx]
         ball, mask, tgt = ballot_tensors(meta)
         self.ball, self.mask, self.tgt = ball, mask, tgt
+        # The search's per-candidate values (#496): carried only when EVERY kept row wrote a
+        # ``means`` list -- a pre-#496 extract has the key on no row and yields no ``vals``,
+        # which is a different claim from "the search had no preference" (NaN).  Same slot
+        # alignment as the chunked loader: ``ballot_value_tensor`` filters exactly as
+        # ``ballot_tensors`` does.  (Codex on the rebase PR: the monolithic loader dropped them.)
+        self.vals = None
+        if meta and all(isinstance(m.get("means"), list) for m in meta):
+            from .policy_prior import ballot_value_tensor
+            vals, _has = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
+            self.vals = np.asarray(vals, dtype=np.float32)
         self.n = int(len(idx))
         self.deal_keys = frozenset(m["deal_key"] for m in meta)
         self.deals = len(self.deal_keys)
@@ -100,7 +110,10 @@ class PolicyRows:
         perm = rng.permutation(self.n)
         for start in range(0, self.n, batch_size):
             idx = perm[start:start + batch_size]
-            yield {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
+            out = {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
+            if self.vals is not None:
+                out["vals"] = self.vals[idx]
+            yield out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:

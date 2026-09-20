@@ -78,7 +78,8 @@ VERIFY_KEYS = ("verification_triggers", "verification_worlds",
                "verification_attempts", "verification_rollouts")
 EXTRA_POLICY_WORK = ("value_evaluations", "value_batches", "continuation_plies",
                      "continuation_worlds", "continuation_sample_attempts",
-                     "continuation_capped_decisions") + VERIFY_KEYS
+                     "continuation_capped_decisions", "continuation_forced_decisions",
+                     "continuation_forced_worlds", "continuation_forced_value_evaluations") + VERIFY_KEYS
 SHORTLIST_COUNTS = ('decisions', 'forced', 'legal_actions', 'shortlisted_actions',
                     'cheap_worlds', 'cheap_evaluations', 'cheap_batches', 'terminal_afterstates')
 SHORTLIST_SAMPLER = ('sample_attempts', 'accepted_worlds', 'failed_worlds',
@@ -226,6 +227,9 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
                             continuation_worlds=inner.worlds,
                             continuation_sample_attempts=inner.sample_attempts,
                             continuation_capped_decisions=inner.legal_caps,
+                            continuation_forced_decisions=inner.forced_decisions,
+                            continuation_forced_worlds=inner.forced_worlds,
+                            continuation_forced_value_evaluations=inner.forced_value_evaluations,
                             value_evaluations=inner.value_evaluations,
                             value_batches=inner.value_batches)
     return {
@@ -352,7 +356,8 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                         'scope': 'completed inner decisions only; interrupted inner work unmeasured',
                         'completed_inner_work': {k: getattr(inner, k) for k in (
                             'decisions', 'worlds', 'sample_attempts', 'value_evaluations',
-                            'value_batches', 'legal_caps')},
+                            'value_batches', 'legal_caps', 'forced_decisions',
+                            'forced_worlds', 'forced_value_evaluations')},
                     }
                 raise
             telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)

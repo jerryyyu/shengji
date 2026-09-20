@@ -25,6 +25,9 @@ class PublicPVContinuation:
         self.legal_caps = 0
         self.sample_attempts = 0
         self.value_batches = 0
+        self.forced_decisions = 0
+        self.forced_worlds = 0
+        self.forced_value_evaluations = 0
 
     def begin_rollout(self):
         # Never touch the enclosing MC sampler. Do not seed from sampled hidden
@@ -52,6 +55,13 @@ class PublicPVContinuation:
         self.legal_caps += not record['legal_complete']
         self.sample_attempts += record['sample_attempts']
         self.value_batches += record['value_batches']
+        # Measure completed, genuinely forced decisions without skipping any
+        # sampling, validation, scoring or RNG work. A capped singleton is not
+        # evidence that the actor had only one legal action.
+        if record['legal_complete'] and record['actions'] == 1:
+            self.forced_decisions += 1
+            self.forced_worlds += record['worlds']
+            self.forced_value_evaluations += record['value_evaluations']
         return cards
 
 
@@ -79,7 +89,8 @@ must be supplied by the duel's shared heuristic, as in the existing DEV suite.
         self.rollout_phase = 'selection'
         self.phase_rollouts = self._empty_phases()
         for key in ('decisions', 'worlds', 'value_evaluations', 'legal_caps',
-                    'sample_attempts', 'value_batches'):
+                    'sample_attempts', 'value_batches', 'forced_decisions',
+                    'forced_worlds', 'forced_value_evaluations'):
             setattr(self.rollout_policy, key, 0)
         return super().decide_play(rnd, seat)
 

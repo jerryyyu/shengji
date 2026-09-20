@@ -633,7 +633,7 @@ def main(argv=None) -> int:
             'candidates': args.candidates, 'cap': CAP,
             'actor_public_resampling': True, 'terminal_score': 'attacker_points',
             'value_cutoff': False, 'exact_endgame': False,
-            'rng': 'independent seed*4+seat stream reset for each outer rollout',
+            'rng': 'sha256(root seed, actor seat, public history length, trick play count); independent per decision',
             'value_afterstate': 'heuristic completion of current trick',
         }
     (out / "recipe.json").write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n")

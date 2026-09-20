@@ -1,11 +1,13 @@
 """DEV MC-LCB with actor-public policy/value continuations to terminal score.
 
 Not registered for production. Root candidate selection and terminal utility
-remain the inherited MC-LCB algorithm. Inner sampling has an independent RNG;
-each outer rollout restarts the same continuation stream (common random
-numbers), so evaluating another candidate first cannot alter its simulation.
+remain the inherited MC-LCB algorithm. Inner sampling uses independent public
+turn-coordinate seeds (common random numbers), so evaluating another candidate
+first cannot alter its simulation or transmit another actor's private RNG use.
 """
 from __future__ import annotations
+
+import hashlib
 
 from ..ai.registry import REGISTRY
 from .policy_value_search import PolicyValueBot
@@ -28,6 +30,15 @@ class PublicPVContinuation:
         self.bot.sampler.rng.seed(self.seed)
 
     def decide_play(self, rnd, seat):
+        # Sampling attempts made by previous actors can depend on their private
+        # hands. Do not carry that RNG position into this actor's decision.
+        # The public turn coordinate gives common randomness across candidate
+        # branches without using outer hidden cards or candidate ordering.
+        coordinate = (self.seed, seat, len(rnd.history),
+                      len(rnd.trick.plays) if rnd.trick is not None else 0)
+        decision_seed = int.from_bytes(hashlib.sha256(
+            repr(coordinate).encode('ascii')).digest()[:16], 'big')
+        self.bot.sampler.rng.seed(decision_seed)
         # The inherited rollout marks clones trusted for the built-in heuristic.
         # Learned actions must pass normal follow validation in Round.play.
         rnd._trusted_rollout = False

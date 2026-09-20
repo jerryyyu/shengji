@@ -120,3 +120,25 @@ def test_harness_rejects_unmatched_control():
         '--control', 'mc-smart4'])
     with pytest.raises(ValueError, match='matched mc-lcb'):
         duel._validate_args(args)
+
+
+def test_nonbanker_hidden_kitty_and_prior_rng_consumption_are_invisible():
+    from shengji.ai.heuristic import HeuristicBot
+    rnd = state()
+    rnd.play(rnd.turn, HeuristicBot().decide_play(rnd, rnd.turn))
+    seat = rnd.turn
+    assert seat != rnd.banker
+    changed = copy.deepcopy(rnd)
+    other = next(s for s in range(4) if s != seat)
+    changed.buried[0], changed.hands[other][-1] = (
+        changed.hands[other][-1], changed.buried[0])
+    traces = []
+    bot = MCPolicyValueRollout(continuation(traces), seed=29)
+    first = bot.rollout_policy.decide_play(rnd, seat)
+    # Mimic a previous actor needing a different number of private sampling
+    # attempts. This must not influence the next actor at the same observation.
+    for _ in range(103):
+        bot.rollout_policy.bot.sampler.rng.random()
+    second = bot.rollout_policy.decide_play(changed, seat)
+    assert first == second
+    assert np.array_equal(traces[0], traces[1])

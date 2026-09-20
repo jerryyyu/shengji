@@ -137,3 +137,43 @@ def test_half_multiple_columns_round_trip_exactly():
     assert ok.tolist() == [True] * 5 + [False] * 2
     doubled = (pub[:, :5] * 2).astype(np.uint8)
     assert np.array_equal(doubled.astype(np.float32) * np.float32(0.5), pub[:, :5])
+
+
+def test_pack_dir_reaches_train_only_and_evaluate_still_parses(monkeypatch):
+    """Codex, #532: pack_dir had landed in the exec kwargs shared with evaluate(), which
+    does not take it, so the default evaluate CLI raised TypeError."""
+    from shengji.train import train_cwv
+    seen = {}
+    monkeypatch.setattr(train_cwv, "evaluate", lambda **kw: seen.setdefault("evaluate", kw))
+    monkeypatch.setattr(train_cwv, "train", lambda **kw: seen.setdefault("train", kw))
+    train_cwv.main(["evaluate", "--checkpoint", "c.pt", "--out", "o", "--data", "d"])
+    assert "evaluate" in seen and "pack_dir" not in seen["evaluate"]
+    train_cwv.main(["train", "--data", "d", "--out", "o", "--pack-dir", "p"])
+    assert seen["train"]["pack_dir"] == "p"
+
+
+def test_packed_search_labels_are_bound_to_the_sidecar_file_by_digest(prepared, tmp_path):
+    prep, _ = prepared
+    empty = tmp_path / "sidecar-empty"; empty.mkdir()
+    out = tmp_path / "pack-sc"
+    manifest = cwv_pack.build_pack(prep.block_store.entries, out, sidecar_dir=str(empty), classify_shards=3)
+    assert manifest["sidecar"] and all(s["sidecar_sha256"] is None for s in manifest["shards"])
+    # same (empty) sidecar: accepted; a sidecar that now HAS a file for a shard: refused
+    cwv_pack.CwvPackStore(prep.block_store.entries, out, sidecar_dir=str(empty))
+    changed = tmp_path / "sidecar-changed"; changed.mkdir()
+    shard = prep.block_store.entries[0][0]
+    np.savez(cwv_pack.sidecar_path(changed, shard.sha256), x=np.zeros(1))
+    with pytest.raises(cwv_pack.PackError, match="sidecar file for"):
+        cwv_pack.CwvPackStore(prep.block_store.entries, out, sidecar_dir=str(changed))
+
+
+def test_zero_column_groups_are_not_memory_mapped(prepared, tmp_path):
+    prep, _ = prepared
+    width = prep.block_store.block(0).public.shape[1]
+    out = tmp_path / "pack-allf32"
+    manifest = cwv_pack.build_pack(prep.block_store.entries, out, classify_shards=3,
+                                   force_float32=range(width))
+    assert manifest["half_cols"] == [] and len(manifest["f32_cols"]) == width
+    ps = cwv_pack.CwvPackStore(prep.block_store.entries, out)
+    for i in range(len(prep.block_store)):
+        assert np.array_equal(ps.block(i).public, prep.block_store.block(i).public)

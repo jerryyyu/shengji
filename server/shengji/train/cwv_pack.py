@@ -36,8 +36,10 @@ from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
 
 import numpy as np
 
+from ..harvest.common import sha256_file
 from .cwv_data import (CwvBlock, TrainDataError, gather, load_block, read_meta, check_meta)
 from .data import Residency, ShardRef
+from .search_mean_sidecar import sidecar_path
 
 PACK_SCHEMA = "shengji-cwv-pack-v1"
 HALF_MAX = 127.5       # the largest half-multiple a byte (value * 2) can hold
@@ -60,8 +62,21 @@ def classify_public(public: np.ndarray) -> np.ndarray:
     return ok.all(axis=0)
 
 
-def _memmap(path: Path, dtype, shape, mode: str) -> np.memmap:
-    return np.memmap(str(path), dtype=dtype, mode=mode, shape=tuple(int(s) for s in shape))
+def _memmap(path: Path, dtype, shape, mode: str) -> np.ndarray:
+    """A memmap, or an empty in-memory array when the shape has no bytes: a zero-column
+    group (every public column half, or every one float32) cannot be mapped."""
+    shape = tuple(int(s) for s in shape)
+    if any(s == 0 for s in shape):
+        return np.zeros(shape, dtype=dtype)
+    return np.memmap(str(path), dtype=dtype, mode=mode, shape=shape)
+
+
+def _sidecar_digest(sidecar_dir: str | None, sha256: str) -> str | None:
+    """sha256 of the shard's sidecar file, None when the run has no sidecar or the file is absent."""
+    if sidecar_dir is None:
+        return None
+    path = sidecar_path(sidecar_dir, sha256)
+    return sha256_file(path) if path.exists() else None
 
 
 def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLike, *,
@@ -167,14 +182,17 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
             raise PackError(f"{path}: {keys.size} deal keys / {clusters.size} clusters in one shard")
         shards_out.append({"sha256": shard.sha256, "label": shard.label, "offset": offset, "rows": n,
                            "nbytes": int(meta.get("nbytes") or 0), "deal_key": str(keys[0]),
-                           "cluster": str(clusters[0])})
+                           "cluster": str(clusters[0]),
+                           # the search labels baked for this shard come from THIS sidecar file
+                           "sidecar_sha256": _sidecar_digest(sidecar_dir, shard.sha256)})
         offset += n
         if (i + 1) % 1000 == 0 or i + 1 == len(entries):
             say(f"pack: {i + 1}/{len(entries)} shards, {offset} rows, {time.perf_counter() - started:.0f}s")
     if offset != rows_total:
         raise PackError(f"rows written {offset} != rows declared {rows_total}")
     for arr in arrays.values():
-        arr.flush()
+        if isinstance(arr, np.memmap):
+            arr.flush()
     manifest = {
         "schema": PACK_SCHEMA, "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "encoder": {"implementation_sha256": identity[0], "enc_version": identity[1]},
@@ -184,7 +202,9 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         "scalar_dtypes": {k: v.str for k, v in scalar_dtypes.items()},
         "string_dtypes": {k: v.str for k, v in str_dtypes.items()},
         "deal_key_dtype": np.dtype(sample.deal_key.dtype).str, "cluster_dtype": np.dtype(sample.cluster.dtype).str,
-        "sidecar": with_sidecar, "shards": shards_out,
+        "sidecar": with_sidecar,
+        "sidecar_dir": None if sidecar_dir is None else str(Path(sidecar_dir).resolve()),
+        "shards": shards_out,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     say(f"pack: done in {time.perf_counter() - started:.0f}s -> {out}")
@@ -223,6 +243,14 @@ class CwvPackStore:
                 raise PackError(f"{path}: encoder identity differs from the pack's")
             if int(meta["counts"]["encoded"]) != int(rec["rows"]) or int(meta.get("nbytes") or 0) != int(rec["nbytes"]):
                 raise PackError(f"{path}: rows/nbytes differ from the pack's record; rebuild the pack")
+            if sidecar_dir is not None:
+                # the baked search_mean_played column is only valid for the sidecar file it was
+                # built from: bind by digest, per shard (Codex, #532)
+                have = _sidecar_digest(sidecar_dir, shard.sha256)
+                if have != rec.get("sidecar_sha256"):
+                    raise PackError(f"{path}: sidecar file for {shard.label} differs from the one the pack "
+                                    f"baked ({(rec.get('sidecar_sha256') or 'absent')[:12]} vs {(have or 'absent')[:12]}); "
+                                    f"rebuild the pack with this sidecar")
             self.shards.append((rec, meta))
         keep_list = list(keep) if keep is not None else [None] * len(self.entries)
         if len(keep_list) != len(self.entries):

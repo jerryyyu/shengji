@@ -2665,13 +2665,13 @@ def main(argv: list[str] | None = None) -> int:
 
     exec_kw = dict(cache_dir=args.cache_dir, cache_workers=args.cache_workers,
                    eval_workers=args.eval_workers, resident_bytes=args.resident_bytes,
-                   pack_dir=args.pack_dir,
                    public_head=args.public_head, rank_limit=args.rank_limit,
                    bench_batch=args.bench_batch, eval_holdout=args.eval_holdout,
                    argv=full_argv, log=log)
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, arch=args.arch,
+                  pack_dir=args.pack_dir,   # train only: evaluate() has no pack path (Codex, #532)
                   device=args.device, epochs=args.epochs, seed=args.seed,
                   limit_clusters=args.limit_clusters, lr=args.lr,
                   weight_decay=args.weight_decay, batch_size=args.batch_size,

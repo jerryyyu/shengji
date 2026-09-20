@@ -1276,7 +1276,8 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
                    history: bool, witness_seed: int,
                    progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
-                   resident_bytes: int | None = None, sidecar_dir: str | None = None) -> Prepared:
+                   resident_bytes: int | None = None, sidecar_dir: str | None = None,
+                   pack_dir: str | None = None) -> Prepared:
     """Discover, verify, encode (the missing shard caches ``cache_workers``
     at a time) and index every store into one ``CwvBlockStore``."""
     stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
@@ -1313,8 +1314,16 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
                         kept.setdefault(key, None)
             for i in range(first, len(entries)):
                 keep[i] = set(kept)
-    block_store = CwvBlockStore(entries, residency=residency, resident_bytes=resident_bytes,
-                                keep=keep, history=history, sidecar_dir=sidecar_dir)
+    if pack_dir is not None:
+        # #531: the same blocks from the decoded pack -- no inflate, no pool; the cache
+        # metas above still validate every shard and the pack refuses any mismatch
+        from .cwv_pack import CwvPackStore
+        block_store: Any = CwvPackStore(entries, pack_dir, residency=residency,
+                                        resident_bytes=resident_bytes, keep=keep,
+                                        history=history, sidecar_dir=sidecar_dir)
+    else:
+        block_store = CwvBlockStore(entries, residency=residency, resident_bytes=resident_bytes,
+                                    keep=keep, history=history, sidecar_dir=sidecar_dir)
     rows = block_store.rows()
     counts["records_total"] = int(sum(rows))
     counts["deals_total"] = len(block_store.keys())

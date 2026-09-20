@@ -1477,6 +1477,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           rank_limit: int | None = None, cache_dir: str | None = None,
           cache_workers: int | None = None, eval_workers: int | None = None,
           resident_bytes: int | None = None, bench_batch: int = DEFAULTS["bench_batch"],
+          pack_dir: str | None = None,
           select_metric: str = DEFAULTS["select_metric"],
           val_rank_records: int = DEFAULTS["val_rank_records"], init: str | None = None,
           init_lr_scale: float = DEFAULTS["init_lr_scale"], init_exclude_exposed: bool = False,
@@ -1554,8 +1555,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                    if (target == "search-mean" or search_head) else None)
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
-                              residency=residency, version=enc_version, sidecar_dir=sidecar_dir)
+                              residency=residency, version=enc_version, sidecar_dir=sidecar_dir,
+                              pack_dir=pack_dir)
     store = prepared.block_store
+    if pack_dir is not None:
+        say(f"pack: blocks come from {Path(pack_dir).resolve()} (#531); the cache validated every shard")
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
     assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
@@ -2206,6 +2210,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             luna_bytes=0 if luna_prepared is None else luna_prepared.counts["decoded_bytes"]),
         "peak_memory": peak_memory(dev),
         "cache_dir": str(cache),
+        "pack_dir": None if not pack_dir else str(Path(pack_dir).resolve()),
         "cache_workers": workers,
         "eval_workers": eval_workers,
         "inference_benchmark": bench,
@@ -2525,6 +2530,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--resident-bytes", type=int, default=None,
                        help="residency budget for decoded shard blocks "
                             f"(default 40%% of physical memory = {default_resident_bytes()})")
+        p.add_argument("--pack-dir", default=None,
+                       help="decoded pack of this run's caches (scripts/build_cwv_pack.py, #531): "
+                            "blocks are memory-mapped slices instead of inflated shards; "
+                            "the cache is still validated and the batch sequence is identical")
         p.add_argument("--limit-clusters", type=int, default=None,
                        help="use only the first N deals of each data store")
         p.add_argument("--eval-luna", default=None,
@@ -2662,6 +2671,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, arch=args.arch,
+                  pack_dir=args.pack_dir,   # train only: evaluate() has no pack path (Codex, #532)
                   device=args.device, epochs=args.epochs, seed=args.seed,
                   limit_clusters=args.limit_clusters, lr=args.lr,
                   weight_decay=args.weight_decay, batch_size=args.batch_size,

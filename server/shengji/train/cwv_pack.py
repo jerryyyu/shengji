@@ -79,6 +79,19 @@ def _sidecar_digest(sidecar_dir: str | None, sha256: str) -> str | None:
     return sha256_file(path) if path.exists() else None
 
 
+def string_widths(paths: Sequence[str | os.PathLike]) -> dict[str, int]:
+    """The widest itemsize of each ``ROW_STRINGS`` member across ``paths`` (cache
+    ``.npz`` files), reading only those members."""
+    widths = {name: 0 for name in ROW_STRINGS}
+    for path in paths:
+        with np.load(path, allow_pickle=False) as z:
+            for name in ROW_STRINGS:
+                if name not in z.files:
+                    raise PackError(f"{path}: cache has no {name} member")
+                widths[name] = max(widths[name], int(z[name].dtype.itemsize))
+    return widths
+
+
 def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLike, *,
                sidecar_dir: str | None = None, classify_shards: int = 500,
                force_float32: Collection[int] = (),
@@ -114,16 +127,19 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         metas.append(meta)
     public_dim = None
     half_ok = None
-    widths: dict[str, int] = {}
     for (shard, path), _meta in list(zip(entries, metas))[:max(1, int(classify_shards))]:
         block = load_block(path, shard_sha256=shard.sha256, history=False)
         if public_dim is None:
             public_dim = int(block.public.shape[1])
         ok = classify_public(block.public)
         half_ok = ok if half_ok is None else (half_ok & ok)
-        for name in ROW_STRINGS:
-            widths[name] = max(widths.get(name, 0), int(getattr(block, name).dtype.itemsize))
     assert half_ok is not None and public_dim is not None
+    # The per-row string widths come from EVERY shard, not the classification sample:
+    # ``source_ref`` ends in the record's line index, so a later shard can be one
+    # character wider than anything in the first ``classify_shards`` (the 176k v5
+    # build failed at shard 1,001 on <U39 vs <U38, 2026-09-20).  Only the three
+    # string members are read here, so this pass is cheap.
+    widths = string_widths([path for _shard, path in entries])
     for c in force_float32:
         half_ok[int(c)] = False
     half_cols = np.flatnonzero(half_ok).astype(np.int64)

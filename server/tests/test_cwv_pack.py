@@ -177,3 +177,28 @@ def test_zero_column_groups_are_not_memory_mapped(prepared, tmp_path):
     ps = cwv_pack.CwvPackStore(prep.block_store.entries, out)
     for i in range(len(prep.block_store)):
         assert np.array_equal(ps.block(i).public, prep.block_store.block(i).public)
+
+
+def test_string_widths_come_from_every_shard_not_the_classification_sample(prepared, tmp_path):
+    """2026-09-20: the 176k build failed at shard 1,001 — ``source_ref`` there was <U39 and the
+    pack's dtype, taken from the first 500 shards, was <U38.  The widths now come from every
+    shard, so a pack built with classify_shards=1 carries the corpus-wide maximum."""
+    prep, _cache = prepared
+    entries = prep.block_store.entries
+    expected = {name: 0 for name in cwv_pack.ROW_STRINGS}
+    for _shard, path in entries:
+        with np.load(path, allow_pickle=False) as z:
+            for name in cwv_pack.ROW_STRINGS:
+                expected[name] = max(expected[name], int(z[name].dtype.itemsize))
+    assert cwv_pack.string_widths([p for _s, p in entries]) == expected
+    out = tmp_path / "narrow-sample"
+    manifest = cwv_pack.build_pack(entries, out, classify_shards=1)
+    for name in cwv_pack.ROW_STRINGS:
+        assert np.dtype(manifest["string_dtypes"][name]).itemsize == expected[name]
+    # synthetic: a later file wider than the first
+    a, b = tmp_path / "a.npz", tmp_path / "b.npz"
+    np.savez(a, source_ref=np.array(["x:1"]), record_sha256=np.array([b"0" * 64]), input_sha256=np.array([b"0" * 64]))
+    np.savez(b, source_ref=np.array(["x:12345"]), record_sha256=np.array([b"0" * 64]), input_sha256=np.array([b"0" * 64]))
+    assert cwv_pack.string_widths([a, b])["source_ref"] == np.array(["x:12345"]).dtype.itemsize
+    with pytest.raises(cwv_pack.PackError, match="no source_ref member"):
+        np.savez(tmp_path / "c.npz", other=np.zeros(1)); cwv_pack.string_widths([tmp_path / "c.npz"])

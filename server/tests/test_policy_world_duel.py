@@ -147,6 +147,7 @@ def test_policy_control_work_is_not_reported_as_mc_work():
 
 
 @pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
+                                        ('policy-heuristic-lookahead', 'mc-lcb'),
                                         ('policy-lookahead', 'policy-value'),
                                         ('policy-selective-mc', 'policy-value')])
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control):
@@ -187,6 +188,12 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
     assert fake_pool.kwargs["max_workers"] == 2
     recipe = json.loads((out / "recipe.json").read_text())
     assert recipe["control"] == control
+    if mode == 'policy-heuristic-lookahead':
+        assert recipe['policy']['class'] == 'PolicyHeuristicLookaheadBot'
+        assert recipe['policy']['extra_plies'] == 4
+        assert recipe['policy']['continuation_worlds'] == 0
+        assert recipe['policy']['verification'] is None
+        assert len(recipe['policy_heuristic_lookahead_module_sha256']) == 64
     if mode == 'policy-lookahead':
         assert recipe['policy']['class'] == 'PolicyLookaheadBot'
         assert recipe['policy']['extra_plies'] == 4
@@ -225,17 +232,22 @@ def test_verification_work_survives_mirrors_and_summary(monkeypatch):
     assert summary['control']['policy_work']['verification_rollouts'] == 0
 
 
-def test_selective_factory_uses_checked_evaluator(monkeypatch):
+@pytest.mark.parametrize('mode,cls', [
+    ('policy-selective-mc', duel.PolicySelectiveMCBot),
+    ('policy-heuristic-lookahead', duel.PolicyHeuristicLookaheadBot),
+])
+def test_selective_factory_uses_checked_evaluator(monkeypatch, mode, cls):
     sentinel = object()
     monkeypatch.setattr(duel, '_value_evaluator', lambda *a: sentinel)
     seen = {}
     def fake(p, s, **kwargs):
         seen.update(kwargs)
         return sentinel
-    monkeypatch.setattr(duel.PolicySelectiveMCBot, 'from_checkpoint', fake)
-    assert duel.make_policy('ck', 'sha', 4, 7, 'policy-selective-mc', 12) is sentinel
+    monkeypatch.setattr(cls, 'from_checkpoint', fake)
+    assert duel.make_policy('ck', 'sha', 4, 7, mode, 12) is sentinel
     assert seen['evaluator'] is sentinel
     assert seen['candidates'] == 12
+    assert seen['worlds'] == 4 and seen['seed'] == 7
 
 
 def test_continuation_and_verification_counters_do_not_overwrite_each_other(monkeypatch):

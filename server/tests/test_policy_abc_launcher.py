@@ -41,6 +41,48 @@ def test_world_scaling_fixed_recipe_and_no_full_screen():
         assert '--production-checkpoint' not in cmd
 
 
+def test_world_scaling_full_recipe():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.commands(*args, suite='world-scaling-screen', qualify=True)
+    arms = launcher.commands(*args, suite='world-scaling-screen')
+    assert len(arms) == 3
+    for (_, cmd), worlds in zip(arms, ('16', '32', '64')):
+        for flag, value in {'--worlds': worlds, '--candidates': '8', '--deals': '800',
+                            '--seed0': '625900000', '--workers': '12',
+                            '--checkpoint-sha256': launcher.CHECKPOINT,
+                            '--mode': 'policy-value', '--control': 'mc-lcb'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+
+
+def test_world_scaling_full_receipt(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert kw['seconds'] == 21600
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=800, complete=800, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.main(args + ['--suite', 'world-scaling-screen', '--qualify'])
+    assert not output.exists()
+    assert launcher.main(args + ['--suite', 'world-scaling-screen', '--run']) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert seen == ['W16_K8', 'W32_K8', 'W64_K8']
+    assert receipt['expected_pairs_per_arm'] == 800
+    assert receipt['total_arm_timeout_seconds'] == 64800
+    assert len(receipt['analysis']['primary']) == 3
+    assert len(receipt['analysis']['components']) == 2
+    assert not receipt['analysis']['optional_extension']
+    assert receipt['analysis']['bootstrap_seed'] == 20260920
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 @pytest.mark.parametrize('run', [False, True])
 def test_world_scaling_qualification_receipt_and_serial_run(monkeypatch, isolated_main,
                                                           capsys, run):

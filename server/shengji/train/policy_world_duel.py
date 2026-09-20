@@ -34,6 +34,7 @@ from ..harvest.rebuild import signed_level_utility
 from .policy_world_search import PolicyWorldBot
 from .policy_value_search import PolicyValueBot
 from .policy_selective_mc import PolicySelectiveMCBot
+from .policy_lookahead import PolicyLookaheadBot
 from ..ai.cwv_policy import CompleteWorldEvaluator
 from functools import lru_cache
 
@@ -50,9 +51,12 @@ def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8)
     kwargs = dict(worlds=worlds, cap=CAP, seed=seed)
     if mode == "policy":
         return PolicyWorldBot.from_checkpoint(checkpoint, checksum, **kwargs)
-    if mode not in ("policy-value", "policy-selective-mc"):
+    classes = {"policy-value": PolicyValueBot,
+               "policy-selective-mc": PolicySelectiveMCBot,
+               "policy-lookahead": PolicyLookaheadBot}
+    if mode not in classes:
         raise ValueError("unknown policy mode")
-    cls = PolicySelectiveMCBot if mode == "policy-selective-mc" else PolicyValueBot
+    cls = classes[mode]
     return cls.from_checkpoint(
         checkpoint, checksum, evaluator=_value_evaluator(checkpoint, checksum),
         candidates=candidates, **kwargs)
@@ -66,6 +70,9 @@ CAP = 4000
 CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world", "policy-value")
 VERIFY_KEYS = ("verification_triggers", "verification_worlds",
                "verification_attempts", "verification_rollouts")
+EXTRA_POLICY_WORK = ("value_evaluations", "value_batches", "continuation_plies",
+                     "continuation_worlds", "continuation_sample_attempts",
+                     "continuation_capped_decisions") + VERIFY_KEYS
 
 
 def _rss_kib() -> int:
@@ -169,6 +176,7 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
     if side == "policy":
         record = getattr(bot, "last_decision_record", None) or {}
         verification = record.get("verification", {})
+        continuation = record.get("continuation_work", {})
         return {
             "verification_triggers": int(verification.get("triggered", False)),
             "verification_worlds": int(verification.get("worlds", 0)),
@@ -179,6 +187,8 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
             "capped": bool(record.get("legal_complete") is False),
             "value_evaluations": int(record.get("value_evaluations", 0)),
             "value_batches": int(record.get("value_batches", 0)),
+            **{"continuation_" + key: int(continuation.get(key, 0))
+               for key in ("plies", "worlds", "sample_attempts", "capped_decisions")},
         }
     alloc = getattr(bot, "last_alloc", None) or {}
     record = getattr(bot, "last_decision_record", None) or {}
@@ -199,9 +209,8 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
 def _empty_side() -> dict[str, Any]:
     return {
         "seconds": [], "sample_attempts": 0, "worlds": 0,
-        **dict.fromkeys(VERIFY_KEYS, 0),
         "capped_decisions": 0, "decisions": 0,
-        "value_evaluations": 0, "value_batches": 0,
+        **{key: 0 for key in EXTRA_POLICY_WORK},
         "mc_last_alloc": {"decisions": 0, "short": 0,
                           "attempt_cap_hit": 0, "worlds": 0,
                           "attempts": 0, "rollouts": 0,
@@ -218,7 +227,7 @@ def _record_decision(side_record: dict[str, Any], seconds: float,
         side_record["sample_attempts"] += telemetry["sample_attempts"]
         side_record["worlds"] += telemetry["worlds"]
         side_record["capped_decisions"] += int(telemetry["capped"])
-        for key in ("value_evaluations", "value_batches") + VERIFY_KEYS:
+        for key in EXTRA_POLICY_WORK:
             side_record[key] += telemetry.get(key, 0)
     else:
         alloc = side_record["mc_last_alloc"]
@@ -314,8 +323,7 @@ def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
             for role in sides:
                 dst, src = sides[role], one["sides"][role]
                 dst["seconds"].extend(src["seconds"])
-                for key in ("sample_attempts", "worlds", "capped_decisions", "decisions",
-                            "value_evaluations", "value_batches") + VERIFY_KEYS:
+                for key in ("sample_attempts", "worlds", "capped_decisions", "decisions") + EXTRA_POLICY_WORK:
                     dst[key] += src[key]
                 for key, value in src["mc_last_alloc"].items():
                     dst["mc_last_alloc"][key] += value
@@ -424,15 +432,13 @@ def aggregate_records(records: Iterable[dict[str, Any]],
     policy = {"timing": stats("policy")}
     policy.update({key: int(sum(row_side(by_seed[s], "policy").get(key, 0)
                                 for s in expected))
-                   for key in ("sample_attempts", "worlds", "capped_decisions", "decisions",
-                               "value_evaluations", "value_batches") + VERIFY_KEYS})
+                   for key in ("sample_attempts", "worlds", "capped_decisions", "decisions") + EXTRA_POLICY_WORK})
     mc = {"timing": stats("control")}
     # Keep policy sampling separate from the legacy MC work fields. A
     # policy-only control performs zero MC worlds/rollouts, not zero work.
     mc["policy_work"] = {
         key: int(sum(row_side(by_seed[s], "control").get(key, 0) for s in expected))
-        for key in ("sample_attempts", "worlds", "capped_decisions",
-                    "value_evaluations", "value_batches") + VERIFY_KEYS}
+        for key in ("sample_attempts", "worlds", "capped_decisions") + EXTRA_POLICY_WORK}
     for key in ("decisions", "short", "attempt_cap_hit", "worlds", "attempts", "rollouts",
                 "report_worlds", "report_rollouts", "report_incomplete"):
         mc[key] = int(sum(row_side(by_seed[s], "control").get("mc_last_alloc", {})
@@ -469,7 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--worlds", type=int, default=4)
-    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-selective-mc"), default="policy")
+    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc"), default="policy")
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     return parser
@@ -510,7 +516,8 @@ def main(argv=None) -> int:
         "worlds": args.worlds, "cap": CAP, "control": args.control,
         "control_effective": full_control_config(args.control),
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
-                              "policy-selective-mc": "PolicySelectiveMCBot"}[args.mode],
+                              "policy-selective-mc": "PolicySelectiveMCBot",
+                              "policy-lookahead": "PolicyLookaheadBot"}[args.mode],
                     "mode": args.mode, "candidates": args.candidates if args.mode != "policy" else None,
                     "value_head": "outcome" if args.mode != "policy" else None,
                     "value_batch_size": 128 if args.mode != "policy" else None,
@@ -518,6 +525,8 @@ def main(argv=None) -> int:
                         "rollout_policy": "HeuristicBot", "utility": "root-team half-level",
                         "seed_offset": 1000000007, "exact_endgame": False}
                         if args.mode == "policy-selective-mc" else None),
+                    "extra_plies": 4 if args.mode == "policy-lookahead" else 0,
+                    "continuation_worlds": 1 if args.mode == "policy-lookahead" else 0,
                     "worlds": args.worlds,
                     "cap": CAP, "seed_formula": "seed*4+seat",
                     "declare_bury": "shared HeuristicBot"},
@@ -528,6 +537,7 @@ def main(argv=None) -> int:
         "policy_module_sha256": _sha256(policy_path),
         "policy_value_module_sha256": _sha256(Path(inspect.getfile(PolicyValueBot)).resolve()),
         "policy_selective_mc_module_sha256": _sha256(Path(inspect.getfile(PolicySelectiveMCBot)).resolve()),
+        "policy_lookahead_module_sha256": _sha256(Path(inspect.getfile(PolicyLookaheadBot)).resolve()),
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED},
         "runtime": {
             "python": sys.version,

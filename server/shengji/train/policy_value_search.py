@@ -27,6 +27,9 @@ class PolicyValueBot(PolicyWorldBot):
         self.candidates = candidates
         self.batch_size = batch_size
 
+    def _leaf(self, rnd, seat, hands, buried, action, world_index):
+        return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
+
     def _value_means(self, rnd, seat, actions, worlds):
         sums = np.zeros(len(actions), dtype=np.float64)
         pending, indices = [], []
@@ -44,9 +47,9 @@ class PolicyValueBot(PolicyWorldBot):
             pending.clear()
             indices.clear()
 
-        for hands, buried in worlds:
+        for world_index, (hands, buried) in enumerate(worlds):
             for index, action in enumerate(actions):
-                pending.append(afterstate(rnd, seat, hands, buried, action, finish_trick=True))
+                pending.append(self._leaf(rnd, seat, hands, buried, action, world_index))
                 indices.append(index)
                 if len(pending) == self.batch_size:
                     flush()

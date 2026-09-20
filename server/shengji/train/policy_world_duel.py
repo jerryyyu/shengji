@@ -310,7 +310,8 @@ def _prepare_round(game: Game, heuristic: HeuristicBot):
 
 
 def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
-              worlds: int, control_name: str, mode="policy", candidates=8, production=None) -> dict[str, Any]:
+              worlds: int, control_name: str, mode="policy", candidates=8, production=None,
+              progress=None) -> dict[str, Any]:
     """Play one mirror.  Only this function runs inside a worker."""
     signal.signal(signal.SIGALRM, _alarm_handler)
     side = {"policy": _empty_side(), "control": _empty_side()}
@@ -339,6 +340,9 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             seat = rnd.turn
             assert seat is not None
             role = roles[seat]
+            if progress is not None:
+                move = sum(s['decisions'] for s in side.values())
+                progress(dict(event='decision_start', move=move, seat=seat, role=role))
             decision_started = time.perf_counter()
             try:
                 cards, elapsed = _timed_play(bots[seat], rnd, seat)
@@ -365,6 +369,9 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             _record_decision(side[role], elapsed,
                              _decision_telemetry(bots[seat], telemetry_kind), telemetry_kind)
             rnd.play(seat, cards)
+            if progress is not None:
+                progress(dict(event='decision_complete', move=move, seat=seat,
+                              role=role, decision_seconds=elapsed))
         game.finish_round()
         utility = signed_level_utility(
             rnd.attacker_points, banker_seat=rnd.banker,
@@ -384,15 +391,23 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
 
 def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
               worlds: int = 4, control: str = "mc-lcb",
-              mode="policy", candidates=8, production=None) -> dict[str, Any]:
+              mode="policy", candidates=8, production=None, progress=None) -> dict[str, Any]:
     """Play both team-parity mirrors; any exception refuses the whole pair."""
     started = time.monotonic()
     mirrors = []
     sides = {"policy": _empty_side(), "control": _empty_side()}
     try:
         for parity in (0, 1):
+            extra = {}
+            if progress is not None:
+                progress(dict(event='mirror_start', mirror=parity))
+                extra['progress'] = lambda row, parity=parity: progress(dict(row, mirror=parity))
             one = _play_one(seed, parity, checkpoint, checkpoint_sha256,
-                            worlds, control, mode, candidates, production)
+                            worlds, control, mode, candidates, production, **extra)
+            if progress is not None:
+                progress(dict(event='mirror_refused' if one.get('error') else 'mirror_complete',
+                              mirror=parity, timeout=bool(one.get('timeout')),
+                              error_type=(one.get('error') or {}).get('type')))
             for role in sides:
                 dst, src = sides[role], one["sides"][role]
                 dst["seconds"].extend(src["seconds"])
@@ -454,9 +469,28 @@ def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
 
 
 def _worker_pair(args):
-    seed, checkpoint, checksum, worlds, control, mode, candidates, production = args
-    return play_pair(seed, checkpoint, checksum, worlds=worlds, control=control,
-                     mode=mode, candidates=candidates, production=production)
+    if len(args) not in (8, 9):
+        raise ValueError('worker pair requires eight recipe fields and optional progress path')
+    seed, checkpoint, checksum, worlds, control, mode, candidates, production = args[:8]
+    path = args[8] if len(args) == 9 else None
+    kwargs = dict(worlds=worlds, control=control, mode=mode,
+                  candidates=candidates, production=production)
+    if path is None:
+        return play_pair(seed, checkpoint, checksum, **kwargs)
+    started = time.monotonic()
+    # One exclusive file per seed: workers never share an append stream. Flush
+    # each event so a job-level stop retains progress; not power-loss durability.
+    with Path(path).open('x') as handle:
+        def emit(row):
+            handle.write(json.dumps(dict(row, schema='policy-duel-progress-v1',
+                seed=seed, elapsed_seconds=time.monotonic()-started)) + '\n')
+            handle.flush()
+        emit(dict(event='pair_start'))
+        result = play_pair(seed, checkpoint, checksum, progress=emit, **kwargs)
+        emit(dict(event='pair_refused' if result.get('error') else 'pair_complete',
+                  timeout=bool(result.get('timeout')),
+                  error_type=(result.get('error') or {}).get('type')))
+        return result
 
 
 def aggregate_records(records: Iterable[dict[str, Any]],
@@ -561,6 +595,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--deals", type=int, default=1)
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument('--progress', action='store_true',
+                        help='flush per-seed move/mirror progress (diagnostic, not scored rows)')
     parser.add_argument("--worlds", type=int, default=4)
     parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc", "mc-policy-value-rollout"), default="policy")
     parser.add_argument("--candidates", type=int, default=8)
@@ -613,6 +649,7 @@ def main(argv=None) -> int:
         "schema": SCHEMA, "checkpoint": str(checkpoint),
         "checkpoint_sha256": args.checkpoint_sha256.lower(),
         "seed0": args.seed0, "deals": args.deals, "workers": args.workers,
+        "progress_events": args.progress,
         "worlds": args.worlds, "cap": CAP, "control": args.control,
         "control_effective": effective_control,
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
@@ -671,6 +708,10 @@ def main(argv=None) -> int:
     pair_args = [(seed, str(checkpoint), args.checkpoint_sha256, args.worlds, args.control,
                   args.mode, args.candidates, production)
                  for seed in expected]
+    if args.progress:
+        progress_dir = out / 'progress'
+        progress_dir.mkdir()
+        pair_args = [args_ + (str(progress_dir / f'{args_[0]}.jsonl'),) for args_ in pair_args]
     ctx = mp.get_context("spawn")
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=ctx,
                              initializer=_worker_init,

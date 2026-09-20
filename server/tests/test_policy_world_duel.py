@@ -149,7 +149,8 @@ def test_policy_control_work_is_not_reported_as_mc_work():
 @pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
                                         ('policy-lookahead', 'policy-value'),
                                         ('policy-selective-mc', 'policy-value')])
-def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control):
+@pytest.mark.parametrize('progress', [False, True])
+def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control, progress):
     checkpoint = tmp_path / "checkpoint.bin"
     checkpoint.write_bytes(b"test-checkpoint")
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
@@ -174,6 +175,9 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
 
         def submit(self, fn, item):
             assert fn is duel._worker_pair
+            assert len(item) == (9 if progress else 8)
+            if progress:
+                assert item[-1] == str(tmp_path / 'out' / 'progress' / '9.jsonl')
             return Future(_row(item[0]))
 
     fake_pool = type("FakePoolState", (), {})()
@@ -183,9 +187,11 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
     assert duel.main(["--checkpoint", str(checkpoint), "--checkpoint-sha256", digest,
                       "--out", str(out), "--deals", "1", "--seed0", "9",
                       "--workers", "2", "--worlds", "3", "--control", control,
-                      "--mode", mode]) == 0
+                      "--mode", mode] + (['--progress'] if progress else [])) == 0
     assert fake_pool.kwargs["max_workers"] == 2
     recipe = json.loads((out / "recipe.json").read_text())
+    assert recipe['progress_events'] is progress
+    assert (out / 'progress').exists() is progress
     assert recipe["control"] == control
     if mode == 'policy-lookahead':
         assert recipe['policy']['class'] == 'PolicyLookaheadBot'

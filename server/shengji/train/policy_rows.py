@@ -69,7 +69,7 @@ class PolicyRows:
         n = len(X) if not limit else min(int(limit), len(X))
         if n < 1:
             raise ValueError("policy rows: no rows")
-        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key"))
+        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key", "means"))
         if len(meta) != n:
             raise ValueError("policy rows: metadata shorter than the rows")
         keys = _deal_keys_of(meta, "policy rows")
@@ -83,6 +83,16 @@ class PolicyRows:
         meta = [meta[i] for i in idx]
         ball, mask, tgt = ballot_tensors(meta)
         self.ball, self.mask, self.tgt = ball, mask, tgt
+        # The search's per-candidate values (#496): carried only when EVERY kept row wrote a
+        # ``means`` list -- a pre-#496 extract has the key on no row and yields no ``vals``,
+        # which is a different claim from "the search had no preference" (NaN).  Same slot
+        # alignment as the chunked loader: ``ballot_value_tensor`` filters exactly as
+        # ``ballot_tensors`` does.  (Codex on the rebase PR: the monolithic loader dropped them.)
+        self.vals = None
+        if meta and all(isinstance(m.get("means"), list) for m in meta):
+            from .policy_prior import ballot_value_tensor
+            vals, _has = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
+            self.vals = np.asarray(vals, dtype=np.float32)
         self.n = int(len(idx))
         self.deal_keys = frozenset(m["deal_key"] for m in meta)
         self.deals = len(self.deal_keys)
@@ -100,19 +110,34 @@ class PolicyRows:
         perm = rng.permutation(self.n)
         for start in range(0, self.n, batch_size):
             idx = perm[start:start + batch_size]
-            yield {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
+            out = {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
+            if self.vals is not None:
+                out["vals"] = self.vals[idx]
+            yield out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
         return _to_device(batch, device)
 
 
+def _pad2f(a: np.ndarray, width: int, fill: float) -> np.ndarray:
+    """Pad a (n, b) float array out to ``width`` columns with ``fill``."""
+    if a.shape[1] >= width:
+        return a[:, :width]
+    out = np.full((a.shape[0], width), fill, np.float32)
+    out[:, :a.shape[1]] = a
+    return out
+
+
 def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
     def t(v, dtype=None):
         v = torch.as_tensor(v) if not isinstance(v, torch.Tensor) else v
         return (v.to(dtype) if dtype is not None else v).to(device)
-    return {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
-            "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
+    out = {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
+           "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
+    if batch.get("vals") is not None:
+        out["vals"] = t(np.asarray(batch["vals"], dtype=np.float32))
+    return out
 
 
 class PolicyRowsStream:
@@ -183,7 +208,10 @@ class PolicyRowsStream:
         d = np.load(self.dir / c["file"])
         dk = d["deal_key"].astype(str)
         keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
-        return {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
+        out = {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
+        if "vals" in d.files:          # present only in post-#496 extracts
+            out["vals"] = d["vals"][keep]
+        return out
 
     def batches(self, batch_size: int, rng: np.random.Generator):
         """One pass: chunks in a fresh order, ``window`` at a time, rows shuffled within the window."""
@@ -193,6 +221,13 @@ class PolicyRowsStream:
             X = np.concatenate([p["X"] for p in parts]); Y = np.concatenate([p["Y"] for p in parts])
             ball = _pad_concat([p["ball"] for p in parts], -1); mask = np.concatenate([_pad2(p["mask"], ball.shape[1], False) for p in parts])
             tgt = np.concatenate([p["tgt"] for p in parts])
+            # `vals` is OPTIONAL: pre-#496 extracts (policy_rows_v7 and earlier) have none.
+            # Carry it only when EVERY chunk in the window has it -- fabricating NaNs for the
+            # chunks that do not would look like "the search had no preference here", which is
+            # a different claim from "this extract predates the field".
+            vals = None
+            if all("vals" in p for p in parts):
+                vals = np.concatenate([_pad2f(p["vals"], ball.shape[1], np.nan) for p in parts])
             perm = rng.permutation(len(X))
             for b in range(0, len(perm), batch_size):
                 if self.limit is not None and drawn >= self.limit:
@@ -201,7 +236,10 @@ class PolicyRowsStream:
                 if self.limit is not None:
                     idx = idx[:self.limit - drawn]          # the budget is exact, never a partial overshoot
                 drawn += len(idx)
-                yield {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+                out = {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+                if vals is not None:
+                    out["vals"] = vals[idx]
+                yield out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
@@ -233,7 +271,8 @@ def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=froz
     return PolicyRows(p, limit=limit, exclude=exclude, version=version)
 
 
-def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False):
+def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
+                  soft_targets: bool = False, soft_temperature: float = 1.0):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (#425
@@ -243,8 +282,14 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
         features = features.detach()
     logits = model.policy_logits(features)
     bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
-    lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"]) if listwise_weight > 0 \
-        else logits.sum() * 0.0
+    if listwise_weight <= 0:
+        lw = logits.sum() * 0.0
+    elif soft_targets:
+        from .policy_prior import listwise_loss_soft
+        lw = listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"], t["vals"],
+                                temperature=float(soft_temperature))
+    else:
+        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"])
     return bce, lw, logits
 
 

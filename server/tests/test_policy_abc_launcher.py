@@ -26,6 +26,47 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_cutoff_frozen_contrasts_and_qualification_only():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SUITE)
+    with pytest.raises(ValueError, match='required exactly'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SUITE, qualify=True,
+                          grid_checkpoint=Path('/grid'))
+    plan = launcher.commands(*args, suite=launcher.CUTOFF_SUITE, qualify=True)
+    assert len(plan) == 3
+    for (name, cmd), (_, worlds, mode, control) in zip(plan, launcher.CUTOFF_ARMS):
+        for flag, value in {'--worlds': '16', '--candidates': '8', '--deals': '1',
+            '--workers': '1', '--seed0': '626190000', '--cutoff-tricks': '1',
+            '--checkpoint-sha256': launcher.CHECKPOINT, '--mode': mode,
+            '--control': control}.items():
+            assert cmd[cmd.index(flag)+1] == value
+        assert '--progress' in cmd
+    assert [(cmd[cmd.index('--mode')+1], cmd[cmd.index('--control')+1])
+            for _, cmd in plan] == [('mc-levels-terminal', 'mc-lcb'),
+                ('mc-heuristic-cutoff', 'mc-levels-terminal'),
+                ('mc-pv-cutoff', 'mc-heuristic-cutoff')]
+
+
+def test_cutoff_receipt_and_hold_before_output(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', launcher.CUTOFF_SUITE, '--qualify']
+    assert launcher.main(call) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.CUTOFF_SOURCE
+    assert receipt['launch_hold'] is True
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['total_arm_timeout_seconds'] == 10800
+    assert receipt['expected_pairs_per_arm'] == 1
+    assert receipt['analysis']['stop_on_failure'] is True
+    with pytest.raises(RuntimeError, match='cutoff launch held'):
+        launcher.main(call + ['--run'])
+    assert not output.exists()
+    assert not any(path.exists() for path in launcher.LOCKS)
+
+
 def test_soft_rollout_uses_winning_inner_recipe_only():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     with pytest.raises(ValueError, match='qualification-only'):

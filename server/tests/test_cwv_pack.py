@@ -202,3 +202,14 @@ def test_string_widths_come_from_every_shard_not_the_classification_sample(prepa
     assert cwv_pack.string_widths([a, b])["source_ref"] == np.array(["x:12345"]).dtype.itemsize
     with pytest.raises(cwv_pack.PackError, match="no source_ref member"):
         np.savez(tmp_path / "c.npz", other=np.zeros(1)); cwv_pack.string_widths([tmp_path / "c.npz"])
+
+
+def test_pooled_decode_writes_the_same_pack_as_the_sequential_path(prepared, tmp_path):
+    """``workers`` only changes who decodes; the main process writes in entry order, so every
+    column file and the manifest (minus the build time) are byte-identical."""
+    prep, _cache = prepared
+    one = cwv_pack.build_pack(prep.block_store.entries, tmp_path / "w1", classify_shards=3, workers=1)
+    three = cwv_pack.build_pack(prep.block_store.entries, tmp_path / "w3", classify_shards=3, workers=3)
+    for f in sorted(p.name for p in (tmp_path / "w1").iterdir() if p.name != "manifest.json"):
+        assert (tmp_path / "w1" / f).read_bytes() == (tmp_path / "w3" / f).read_bytes(), f
+    assert {k: v for k, v in one.items() if k != "built"} == {k: v for k, v in three.items() if k != "built"}

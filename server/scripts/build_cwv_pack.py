@@ -31,6 +31,7 @@ def main(argv=None) -> int:
     p.add_argument("--search-mean-sidecar", default=None)
     p.add_argument("--classify-shards", type=int, default=500)
     p.add_argument("--force-float32", type=int, action="append", default=[])
+    p.add_argument("--workers", type=int, default=1, help="decode processes for pass 2 (1 = sequential)")
     a = p.parse_args(argv)
     say = lambda s: print(f"{time.strftime('%H:%M:%S')} {s}", flush=True)
     entries = []
@@ -44,7 +45,8 @@ def main(argv=None) -> int:
             entries.append((shard, str(cp)))
     say(f"{len(entries)} cached shards across {len(a.data)} stores")
     manifest = build_pack(entries, a.out, sidecar_dir=a.search_mean_sidecar,
-                          classify_shards=a.classify_shards, force_float32=a.force_float32, progress=say)
+                          classify_shards=a.classify_shards, force_float32=a.force_float32, progress=say,
+                          workers=a.workers)
     say(f"rows {manifest['rows']}, public {manifest['public_dim']} = {len(manifest['half_cols'])} byte + "
         f"{len(manifest['f32_cols'])} float32 columns")
     return 0

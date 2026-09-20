@@ -48,7 +48,16 @@ def _value_evaluator(checkpoint, checksum):
     return evaluator
 
 
-def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8):
+MODEL_MC_MODES = ('mc-pv-cutoff', 'mc-heuristic-cutoff', 'mc-levels-terminal')
+
+
+def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8, *, cutoff_tricks=1):
+    if mode in MODEL_MC_MODES:
+        from .mc_policy_value_cutoff import MCPolicyValueCutoff
+        continuation = make_policy(checkpoint, checksum, worlds, seed, 'policy-value', candidates)
+        return MCPolicyValueCutoff(continuation, evaluator=_value_evaluator(checkpoint, checksum),
+            seed=seed, cutoff_tricks=None if mode == 'mc-levels-terminal' else cutoff_tricks,
+            learned_continuation=mode == 'mc-pv-cutoff')
     if mode == "mc-policy-value-rollout":
         from .mc_policy_value_rollout import MCPolicyValueRollout
         continuation = make_policy(checkpoint, checksum, worlds, seed,
@@ -73,13 +82,15 @@ DECISION_TIMEOUT_SECONDS = 300
 BOOTSTRAP_REPLICATES = 10_000
 BOOTSTRAP_SEED = 20260919
 CAP = 4000
-CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world", "policy-value", "production-play")
+CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world", "policy-value", "production-play") + MODEL_MC_MODES
 VERIFY_KEYS = ("verification_triggers", "verification_worlds",
                "verification_attempts", "verification_rollouts")
 EXTRA_POLICY_WORK = ("value_evaluations", "value_batches", "continuation_plies",
                      "continuation_worlds", "continuation_sample_attempts",
                      "continuation_capped_decisions", "continuation_forced_decisions",
-                     "continuation_forced_worlds", "continuation_forced_value_evaluations") + VERIFY_KEYS
+                     "continuation_forced_worlds", "continuation_forced_value_evaluations",
+                     'leaf_started', 'leaf_completed', 'leaf_predicted', 'leaf_terminal',
+                     'leaf_continuation_plies') + VERIFY_KEYS
 SHORTLIST_COUNTS = ('decisions', 'forced', 'legal_actions', 'shortlisted_actions',
                     'cheap_worlds', 'cheap_evaluations', 'cheap_batches', 'terminal_afterstates')
 SHORTLIST_SAMPLER = ('sample_attempts', 'accepted_worlds', 'failed_worlds',
@@ -181,6 +192,14 @@ def _jsonable(value):
 
 def full_control_config(name: str, production=None) -> dict[str, Any]:
     """Bind every uppercase gameplay knob in addition to the named dose."""
+    if name in MODEL_MC_MODES:
+        config = full_control_config('mc-lcb')
+        config.update(requested=name, **{'class': 'MCPolicyValueCutoff'},
+                      rollout_policy='PublicPVContinuation' if name == 'mc-pv-cutoff' else 'HeuristicBot',
+                      utility='attacker-signed-levels; inherited root-team sign flip',
+                      cutoff='terminal' if name == 'mc-levels-terminal' else 'recipe.cutoff_tricks')
+        config['all_uppercase_attributes'].update(MARGIN=0., POINT_SHY_EPS=0., LEAD_MARGIN=None)
+        return config
     config = control_config(name, production)
     if name in ("policy-world", "policy-value"):
         return config
@@ -232,6 +251,11 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
                             continuation_forced_value_evaluations=inner.forced_value_evaluations,
                             value_evaluations=inner.value_evaluations,
                             value_batches=inner.value_batches)
+        learned_work.update({'leaf_' + key: value for key, value in
+                             getattr(bot, 'leaf_rollouts', {}).items()})
+        leaf_predictions = getattr(bot, 'leaf_rollouts', {}).get('predicted', 0)
+        learned_work['value_evaluations'] += leaf_predictions
+        learned_work['value_batches'] += leaf_predictions
     return {
         **learned_work,
         'shortlist_work': {
@@ -311,7 +335,7 @@ def _prepare_round(game: Game, heuristic: HeuristicBot):
 
 def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
               worlds: int, control_name: str, mode="policy", candidates=8, production=None,
-              progress=None) -> dict[str, Any]:
+              progress=None, cutoff_tricks=1) -> dict[str, Any]:
     """Play one mirror.  Only this function runs inside a worker."""
     signal.signal(signal.SIGALRM, _alarm_handler)
     side = {"policy": _empty_side(), "control": _empty_side()}
@@ -327,9 +351,13 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             role_seed = seed * 4 + seat
             if role == "policy":
                 bot = make_policy(checkpoint, checkpoint_sha256, worlds,
-                                  role_seed, mode, candidates)
+                                  role_seed, mode, candidates,
+                                  **({'cutoff_tricks': cutoff_tricks} if mode in MODEL_MC_MODES else {}))
             else:
                 bot = (make_policy(checkpoint, checkpoint_sha256, worlds, role_seed,
+                                   control_name, candidates, cutoff_tricks=cutoff_tricks)
+                       if control_name in MODEL_MC_MODES else
+                       make_policy(checkpoint, checkpoint_sha256, worlds, role_seed,
                                    "policy-value" if control_name == "policy-value" else "policy",
                                    candidates)
                        if control_name in ("policy-world", "policy-value")
@@ -362,6 +390,7 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                             'decisions', 'worlds', 'sample_attempts', 'value_evaluations',
                             'value_batches', 'legal_caps', 'forced_decisions',
                             'forced_worlds', 'forced_value_evaluations')},
+                        'leaf_work': dict(getattr(bots[seat], 'leaf_rollouts', {})),
                     }
                 raise
             telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)
@@ -391,7 +420,7 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
 
 def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
               worlds: int = 4, control: str = "mc-lcb",
-              mode="policy", candidates=8, production=None, progress=None) -> dict[str, Any]:
+              mode="policy", candidates=8, production=None, progress=None, cutoff_tricks=1) -> dict[str, Any]:
     """Play both team-parity mirrors; any exception refuses the whole pair."""
     started = time.monotonic()
     mirrors = []
@@ -399,6 +428,8 @@ def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
     try:
         for parity in (0, 1):
             extra = {}
+            if mode in MODEL_MC_MODES or control in MODEL_MC_MODES:
+                extra['cutoff_tricks'] = cutoff_tricks
             if progress is not None:
                 progress(dict(event='mirror_start', mirror=parity))
                 extra['progress'] = lambda row, parity=parity: progress(dict(row, mirror=parity))
@@ -448,7 +479,7 @@ def _refused(seed, sides, started, exc, *, timeout: bool) -> dict[str, Any]:
 
 
 def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
-                 control: str, mode="policy", candidates=8, production=None) -> None:
+                 control: str, mode="policy", candidates=8, production=None, cutoff_tricks=1) -> None:
     # Verify in every spawned process: a changed path cannot silently alter a
     # worker's model after the parent bound the recipe.
     if _sha256(Path(checkpoint)) != checkpoint_sha256:
@@ -460,8 +491,9 @@ def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
         pass
     # Loading once here validates the checkpoint before any pair starts. The
     # PolicyWorldBot factory's checked loader is cached per process.
-    make_policy(checkpoint, checkpoint_sha256, worlds, 0, mode, candidates)
-    control_config(control, production)
+    make_policy(checkpoint, checkpoint_sha256, worlds, 0, mode, candidates,
+                **({'cutoff_tricks': cutoff_tricks} if mode in MODEL_MC_MODES else {}))
+    full_control_config(control, production)
     if production is not None:
         if _sha256(Path(production.checkpoint)) != PRODUCTION_SHA256:
             raise ValueError('production checkpoint SHA256 mismatch in worker')
@@ -469,12 +501,14 @@ def _worker_init(checkpoint: str, checkpoint_sha256: str, worlds: int,
 
 
 def _worker_pair(args):
-    if len(args) not in (8, 9):
-        raise ValueError('worker pair requires eight recipe fields and optional progress path')
+    if len(args) not in (8, 9, 10):
+        raise ValueError('worker pair requires recipe fields, optional progress path and cutoff')
     seed, checkpoint, checksum, worlds, control, mode, candidates, production = args[:8]
-    path = args[8] if len(args) == 9 else None
+    path = args[8] if len(args) >= 9 else None
     kwargs = dict(worlds=worlds, control=control, mode=mode,
                   candidates=candidates, production=production)
+    if len(args) == 10:
+        kwargs['cutoff_tricks'] = args[9]
     if path is None:
         return play_pair(seed, checkpoint, checksum, **kwargs)
     started = time.monotonic()
@@ -598,7 +632,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--progress', action='store_true',
                         help='flush per-seed move/mirror progress (diagnostic, not scored rows)')
     parser.add_argument("--worlds", type=int, default=4)
-    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc", "mc-policy-value-rollout"), default="policy")
+    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc", "mc-policy-value-rollout") + MODEL_MC_MODES, default="policy")
+    parser.add_argument('--cutoff-tricks', type=int,
+                        help='completed tricks from root before value cutoff (default1 for cutoff modes)')
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     parser.add_argument('--production-checkpoint',
@@ -607,6 +643,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args) -> None:
+    cutoff_mode = args.mode in MODEL_MC_MODES
+    if args.control in MODEL_MC_MODES and not cutoff_mode:
+        raise ValueError('model MC controls require model MC arm')
+    if cutoff_mode and args.control not in ('mc-lcb',) + MODEL_MC_MODES:
+        raise ValueError('model MC requires mc-lcb or matched model MC control')
+    if args.cutoff_tricks is not None and (not cutoff_mode or not 1 <= args.cutoff_tricks <= 64):
+        raise ValueError('cutoff-tricks requires model MC mode and integer1..64')
     if args.mode == "mc-policy-value-rollout" and args.control != "mc-lcb":
         raise ValueError('MC rollout experiment requires matched mc-lcb control')
     if (args.control == 'production-play') != bool(args.production_checkpoint):
@@ -655,7 +698,8 @@ def main(argv=None) -> int:
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
                               "policy-selective-mc": "PolicySelectiveMCBot",
                               "policy-lookahead": "PolicyLookaheadBot",
-                              "mc-policy-value-rollout": "MCPolicyValueRollout"}[args.mode],
+                              "mc-policy-value-rollout": "MCPolicyValueRollout",
+                              **dict.fromkeys(MODEL_MC_MODES, 'MCPolicyValueCutoff')}[args.mode],
                     "mode": args.mode, "candidates": args.candidates if args.mode != "policy" else None,
                     "value_head": "outcome" if args.mode != "policy" else None,
                     "value_batch_size": 128 if args.mode != "policy" else None,
@@ -688,7 +732,7 @@ def main(argv=None) -> int:
             },
         },
     }
-    if args.mode == "mc-policy-value-rollout":
+    if args.mode == "mc-policy-value-rollout" or args.mode in MODEL_MC_MODES:
         from .mc_policy_value_rollout import MCPolicyValueRollout
         recipe['mc_rollout_module_sha256'] = _sha256(
             Path(inspect.getfile(MCPolicyValueRollout)).resolve())
@@ -701,6 +745,19 @@ def main(argv=None) -> int:
             'rng': 'inner base=int(sha256(ASCII mc-pv-continuation-v1:<root seed>)[:16], big); decision=int(sha256(ASCII repr((inner base, actor seat, public history length, trick play count)))[:16], big)',
             'value_afterstate': 'heuristic completion of current trick',
         }
+    if args.mode in MODEL_MC_MODES:
+        from .mc_policy_value_cutoff import MCPolicyValueCutoff
+        recipe['cutoff_tricks'] = args.cutoff_tricks or 1
+        recipe['mc_cutoff_module_sha256'] = _sha256(Path(inspect.getfile(MCPolicyValueCutoff)).resolve())
+        recipe['policy']['root_mc'] = full_control_config(args.mode)
+        recipe['policy']['rollout'].update(
+            **{'class': 'PublicPVContinuation' if args.mode == 'mc-pv-cutoff' else 'HeuristicBot'},
+            actor_public_resampling=args.mode == 'mc-pv-cutoff',
+            terminal_score='attacker signed levels',
+            value_cutoff=args.mode != 'mc-levels-terminal',
+            cutoff_tricks=None if args.mode == 'mc-levels-terminal' else recipe['cutoff_tricks'],
+            leaf_perspective='root team converted once to attackers',
+            report_uncertainty='sampled-world dispersion, not model error')
     (out / "recipe.json").write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n")
     expected = list(range(args.seed0, args.seed0 + args.deals))
     records = []
@@ -712,11 +769,15 @@ def main(argv=None) -> int:
         progress_dir = out / 'progress'
         progress_dir.mkdir()
         pair_args = [args_ + (str(progress_dir / f'{args_[0]}.jsonl'),) for args_ in pair_args]
+    if args.mode in MODEL_MC_MODES:
+        pair_args = [args_ + (() if args.progress else (None,)) + (args.cutoff_tricks or 1,)
+                     for args_ in pair_args]
     ctx = mp.get_context("spawn")
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=ctx,
                              initializer=_worker_init,
                              initargs=(str(checkpoint), args.checkpoint_sha256,
-                                       args.worlds, args.control, args.mode, args.candidates, production)) as pool, \
+                                       args.worlds, args.control, args.mode, args.candidates, production) +
+                                      ((args.cutoff_tricks or 1,) if args.mode in MODEL_MC_MODES else ())) as pool, \
             (out / "pairs.jsonl").open("x") as handle:
         futures = {pool.submit(_worker_pair, item): item[0] for item in pair_args}
         for future in as_completed(futures):

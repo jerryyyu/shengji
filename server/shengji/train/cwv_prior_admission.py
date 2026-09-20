@@ -106,6 +106,35 @@ def load_prior_checked(path: str, sha256: str):
     return _PRIORS[key]
 
 
+def prior_encoder_version(kind: str, net, payload) -> int:
+    """The encoder version the prior's rows must be built at, read from the prior itself
+    (#506 rows carry it; a joint value net declares it in ``config.enc_version``).  The
+    admission builds ``policy_prior.root_tensors``/``flat_input`` at THIS version: a v5
+    joint package (public 617 → 889-column rows) fed v2 rows (833) would fail at its first
+    wide decision, and a silent default to v2 is exactly the mismatch the bound width
+    check below refuses."""
+    from .policy_prior import ENC_VERSION, input_dim
+    if kind == "separate":
+        version = int(payload.get("enc_version", ENC_VERSION))
+        width = int(payload.get("input_dim", input_dim(version)))
+    elif kind == "separate-numpy":
+        version, width = int(net.enc_version), int(net.input_dim)
+    elif kind == "joint-numpy":
+        from ..ai.cwv_numpy import N_CARDS, PERSPECTIVE_DIM, WORLD_RECEIVERS
+        version = int(net.enc_version)
+        width = int(net.public_dim) + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+    elif kind == "joint":
+        from ..ai.cwv_numpy import N_CARDS, PERSPECTIVE_DIM, WORLD_RECEIVERS
+        version = int(net.config.enc_version)
+        width = int(net.config.public_dim) + WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+    else:
+        raise ValueError(f"unknown prior kind {kind!r}")
+    if width != input_dim(version):
+        raise ValueError(f"prior declares encoder v{version} but reads {width}-column rows; "
+                         f"v{version} root rows are {input_dim(version)} wide")
+    return version
+
+
 def root_clone(rnd, hands, buried):
     """The decision root with one sampled world substituted for the hidden
     hands: ``cwv_policy.afterstate``'s clone before any card is played."""
@@ -145,6 +174,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
         self.prior_config = prior
         self._prior_kind, self._prior_net, self._prior_payload = load_prior_checked(
             prior.checkpoint, prior.checkpoint_sha256)
+        self._prior_version = prior_encoder_version(self._prior_kind, self._prior_net, self._prior_payload)
         self._prior_diagnostics = None
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors, capture_full_legal_scores=False)
@@ -156,7 +186,8 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
     def _prior_scores(self, rnd, seat, actions, worlds):
         """``(worlds, actions)`` factorised prior scores: one root forward per world."""
         from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors   # torch-free module level
-        X = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat))
+        version = self._prior_version
+        X = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat, version), version)
                       for hands, buried in worlds]).astype(np.float32)
         log_odds = self._prior_log_odds(X)
         if log_odds.shape != (len(worlds), N_CARDS) or not np.isfinite(log_odds).all():
@@ -245,6 +276,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
             "ranking_basis": "prior-union-then-world-mean",
             "prior_checkpoint_sha256": cfg.checkpoint_sha256,
             "prior_kind": self._prior_kind,
+            "prior_encoder_version": self._prior_version,
         }
         return means
 

@@ -1154,20 +1154,60 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     ours_cfg = dict(config["model_config"])
     theirs_cfg = dict(metadata.get("model_config") or {})
     # #425: a policy-head net may warm-start from a headless incumbent: every
-    # trunk/head weight loads, the policy head alone starts fresh.  Any other
-    # configuration difference is still refused.
-    policy_fresh = (ours_cfg.get("policy_head") is True and "policy_head" not in theirs_cfg
-                    and {k: v for k, v in ours_cfg.items() if k != "policy_head"} == theirs_cfg)
-    if not policy_fresh and theirs_cfg != ours_cfg:
+    # trunk/head weight loads, the policy head alone starts fresh.
+    # Deeper residual trunk (Jerry 2026-09-20, capacity test on the gen-4 data):
+    # a ``residual`` mlp with MORE trunk blocks may warm-start from a shallower
+    # one of the same width/ffw/dropout/heads.  The incumbent's stem, blocks
+    # and final norm load into their positions; the added blocks are appended
+    # after the incumbent's last block, in front of the final norm, with their
+    # output projection ZEROED so each is an exact identity at step 0 — the
+    # deeper net computes the incumbent's function until the new blocks learn.
+    # Any other configuration difference is still refused.
+    core = lambda cfg: {k: v for k, v in cfg.items() if k not in ("policy_head", "trunk_layers")}
+    ours_depth = int(ours_cfg.get("trunk_layers", 2))
+    theirs_depth = int(theirs_cfg.get("trunk_layers", 2))
+    policy_fresh = ours_cfg.get("policy_head") is True and "policy_head" not in theirs_cfg
+    policy_same = bool(ours_cfg.get("policy_head", False)) == bool(theirs_cfg.get("policy_head", False))
+    deeper = (config["arch"] == "mlp" and ours_cfg.get("trunk_block") == "residual"
+              and ours_depth > theirs_depth)
+    if not (core(ours_cfg) == core(theirs_cfg) and (policy_fresh or policy_same)
+            and (ours_depth == theirs_depth or deeper)):
         raise TrainError(f"--init {init}: model configuration differs (theirs "
                          f"{metadata.get('model_config')}, ours {config['model_config']}); "
-                         "--hidden / --dropout / seq knobs must match")
+                         "--hidden / --dropout / seq knobs must match (a residual trunk may only "
+                         "warm-start from a SHALLOWER residual trunk of the same width)")
     theirs = source.state_dict()
     ours = model.state_dict()
-    expected = {k for k in ours if not (policy_fresh and k.startswith("policy_head."))}
+    blocks_added = 0
+    if deeper:
+        # trunk = Sequential(stem=0, blocks 1..L, LayerNorm L+1, ReLU); remap the
+        # incumbent's final norm to the deeper net's slot and leave the new block
+        # slots (theirs_depth+1 .. ours_depth) for the identity init below.
+        remapped = {}
+        for k, v in theirs.items():
+            if k.startswith("trunk."):
+                idx, rest = k.split(".", 2)[1], k.split(".", 2)[2]
+                idx = int(idx)
+                if idx == theirs_depth + 1:
+                    idx = ours_depth + 1
+                k = f"trunk.{idx}.{rest}"
+            remapped[k] = v
+        theirs = remapped
+        blocks_added = ours_depth - theirs_depth
+        new_block_prefixes = tuple(f"trunk.{i}." for i in range(theirs_depth + 1, ours_depth + 1))
+    else:
+        new_block_prefixes = ()
+    expected = {k for k in ours if not (policy_fresh and k.startswith("policy_head."))
+                and not k.startswith(new_block_prefixes)}
     if set(theirs) != expected or any(theirs[k].shape != ours[k].shape for k in expected):
         raise TrainError(f"--init {init}: parameter layout differs from this model")
-    model.load_state_dict(theirs, strict=not policy_fresh)
+    model.load_state_dict(theirs, strict=not (policy_fresh or deeper))
+    if deeper:
+        with torch.no_grad():
+            for i in range(theirs_depth + 1, ours_depth + 1):
+                block = model.trunk[i]
+                block.down.weight.zero_()
+                block.down.bias.zero_()
     aux_loaded = False
     if aux_head is not None and source_aux is not None:
         if source_aux.linear.in_features != aux_head.linear.in_features:
@@ -1183,6 +1223,8 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         "git": metadata.get("git"), "aux_points_head_loaded": aux_loaded,
         "aux_points_head_in_init": source_aux is not None,
         "policy_head_fresh": bool(policy_fresh),
+        "trunk_blocks_added": int(blocks_added),
+        "trunk_blocks_added_identity_init": bool(blocks_added),
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
         "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()

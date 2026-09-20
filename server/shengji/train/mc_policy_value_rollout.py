@@ -67,13 +67,30 @@ must be supplied by the duel's shared heuristic, as in the existing DEV suite.
         if self.EXACT_ENDGAME:
             raise ValueError('terminal-rollout experiment forbids exact endgame shortcut')
         self.rollout_policy = PublicPVContinuation(continuation, seed)
+        self.rollout_phase = 'selection'
+        self.phase_rollouts = self._empty_phases()
+
+    @staticmethod
+    def _empty_phases():
+        return {phase: {'started': 0, 'completed': 0}
+                for phase in ('selection', 'report')}
 
     def decide_play(self, rnd, seat):
+        self.rollout_phase = 'selection'
+        self.phase_rollouts = self._empty_phases()
         for key in ('decisions', 'worlds', 'value_evaluations', 'legal_caps',
                     'sample_attempts', 'value_batches'):
             setattr(self.rollout_policy, key, 0)
         return super().decide_play(rnd, seat)
 
     def _rollout(self, *args, **kwargs):
+        counts = self.phase_rollouts[self.rollout_phase]
+        counts['started'] += 1
         self.rollout_policy.begin_rollout()
-        return super()._rollout(*args, **kwargs)
+        value = super()._rollout(*args, **kwargs)
+        counts['completed'] += 1
+        return value
+
+    def _report_fold_gap(self, *args, **kwargs):
+        self.rollout_phase = 'report'
+        return super()._report_fold_gap(*args, **kwargs)

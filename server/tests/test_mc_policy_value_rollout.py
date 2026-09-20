@@ -42,6 +42,7 @@ def test_each_rollout_restarts_inner_stream_without_touching_root(monkeypatch):
     bot.rollout_policy.bot.sampler.rng.random()
     assert bot._rollout() == first
     assert bot.rng.getstate() == before
+    assert bot.phase_rollouts['selection'] == {'started': 2, 'completed': 2}
 
 
 def test_actor_public_inputs_and_action_ignore_outer_hidden_hands():
@@ -167,5 +168,21 @@ def test_timeout_keeps_partial_work_separate_from_completed_decisions(monkeypatc
     assert partial['complete'] is False
     assert partial['completed_inner_work']['decisions'] == 7
     assert partial['completed_inner_work']['worlds'] == 28
+    assert partial['mc_phase'] == 'selection'
     with pytest.raises(ValueError):
         duel.aggregate_records([row], [7])
+
+
+def test_phase_counts_distinguish_interrupted_report_rollout(monkeypatch):
+    bot = MCPolicyValueRollout(continuation(), seed=7)
+    monkeypatch.setattr(MCBot, '_rollout', lambda *a, **k: 50.)
+    assert bot._rollout() == 50.
+    def interrupted(*a, **k):
+        raise TimeoutError('report rollout interrupted')
+    monkeypatch.setattr(MCBot, '_rollout', interrupted)
+    monkeypatch.setattr(MCBot, '_report_fold_gap', lambda self, *a, **k: self._rollout())
+    with pytest.raises(TimeoutError):
+        bot._report_fold_gap()
+    assert bot.rollout_phase == 'report'
+    assert bot.phase_rollouts == {'selection': {'started': 1, 'completed': 1},
+                                 'report': {'started': 1, 'completed': 0}}

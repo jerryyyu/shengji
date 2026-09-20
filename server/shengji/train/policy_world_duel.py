@@ -346,6 +346,9 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                         'role': role, 'seat': seat,
                         'seconds': time.perf_counter() - decision_started,
                         'complete': False,
+                        'mc_phase': bots[seat].rollout_phase,
+                        'outer_rollouts_by_phase': {
+                            phase: dict(counts) for phase, counts in bots[seat].phase_rollouts.items()},
                         'scope': 'completed inner decisions only; interrupted inner work unmeasured',
                         'completed_inner_work': {k: getattr(inner, k) for k in (
                             'decisions', 'worlds', 'sample_attempts', 'value_evaluations',

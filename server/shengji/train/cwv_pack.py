@@ -129,12 +129,31 @@ def _decode_task(task: tuple) -> dict:
     return out
 
 
-def _ordered_pool(fn, tasks: Sequence[tuple], *, workers: int) -> Iterator[dict]:
-    """``fn`` over ``tasks`` in ``workers`` spawned processes, results in task order."""
+def _ordered_pool(fn, tasks: Sequence[tuple], *, workers: int, window: int | None = None) -> Iterator[dict]:
+    """``fn`` over ``tasks`` in ``workers`` spawned processes, results in task order, with
+    CONSUMER BACKPRESSURE: at most ``window`` (default ``4 * workers``) tasks are submitted
+    ahead of the one being yielded, so decoded shards in flight stay bounded however slowly
+    the writer drains them (Codex on #549: ``Pool.imap`` keeps every finished result).  A
+    task's exception propagates from the yield of its position; the pool is torn down by the
+    context manager on the way out."""
     import multiprocessing
+    from collections import deque
+    window = int(window if window is not None else 4 * max(1, int(workers)))
+    if window < 1:
+        raise ValueError("window must be >= 1")
     ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(processes=min(workers, max(1, len(tasks)))) as pool:
-        yield from pool.imap(fn, tasks, chunksize=8)
+    with ctx.Pool(processes=min(int(workers), max(1, len(tasks)))) as pool:
+        pending: deque = deque()
+        it = iter(tasks)
+        for task in it:
+            pending.append(pool.apply_async(fn, (task,)))
+            if len(pending) >= window:
+                break
+        while pending:
+            yield pending.popleft().get()
+            for task in it:
+                pending.append(pool.apply_async(fn, (task,)))
+                break
 
 
 def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLike, *,
@@ -218,7 +237,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
     tasks = [(path, shard.sha256, sidecar_dir, public_dim, half_cols, f32_cols,
               {k: v.str for k, v in str_dtypes.items()}) for shard, path in entries]
     decoded = (map(_decode_task, tasks) if int(workers) <= 1
-               else _ordered_pool(_decode_task, tasks, workers=int(workers)))
+               else _ordered_pool(_decode_task, tasks, workers=int(workers)))   # window = 4 * workers
     for i, (((shard, path), meta), dec) in enumerate(zip(zip(entries, metas), decoded)):
         n = dec["n"]
         if half_cols.size:

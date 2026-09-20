@@ -213,3 +213,61 @@ def test_pooled_decode_writes_the_same_pack_as_the_sequential_path(prepared, tmp
     for f in sorted(p.name for p in (tmp_path / "w1").iterdir() if p.name != "manifest.json"):
         assert (tmp_path / "w1" / f).read_bytes() == (tmp_path / "w3" / f).read_bytes(), f
     assert {k: v for k, v in one.items() if k != "built"} == {k: v for k, v in three.items() if k != "built"}
+
+
+def _touch_task(task):
+    """Pool worker for the backpressure witnesses: mark the task decoded, then return it."""
+    import time as _t
+    directory, index, delay = task
+    (Path(directory) / f"{index:04d}").write_text("")
+    _t.sleep(delay)
+    return {"index": index}
+
+
+def _raise_task(task):
+    directory, index, delay = task
+    if index == 3:
+        raise cwv_pack.PackError("shard 3 refused")
+    return {"index": index}
+
+
+def test_ordered_pool_bounds_decoded_work_under_a_stalled_consumer(tmp_path):
+    """Codex on #549: Pool.imap decodes every task ahead of the writer.  With the bounded
+    window, consuming ONE result and stalling leaves at most ``window`` tasks decoded."""
+    import time
+    tasks = [(str(tmp_path), i, 0.0) for i in range(64)]
+    gen = cwv_pack._ordered_pool(_touch_task, tasks, workers=3, window=6)
+    first = next(gen)
+    assert first == {"index": 0}
+    time.sleep(2.0)                                   # the stalled writer
+    decoded = len(list(tmp_path.iterdir()))
+    assert decoded <= 6 + 1, decoded                   # window, plus the one already yielded
+    rest = [r["index"] for r in gen]
+    assert rest == list(range(1, 64))                  # order preserved to the end
+    assert len(list(tmp_path.iterdir())) == 64
+    gen.close()
+
+
+def test_ordered_pool_propagates_a_task_failure_in_order_and_tears_down(tmp_path):
+    tasks = [(str(tmp_path), i, 0.0) for i in range(8)]
+    gen = cwv_pack._ordered_pool(_raise_task, tasks, workers=2, window=3)
+    assert [next(gen)["index"] for _ in range(3)] == [0, 1, 2]
+    with pytest.raises(cwv_pack.PackError, match="shard 3 refused"):
+        next(gen)
+    gen.close()
+
+
+def test_build_pack_refuses_a_bad_shard_on_the_sequential_path(prepared, tmp_path, monkeypatch):
+    """A per-shard refusal raised by _decode_task surfaces from build_pack as PackError (workers=1;
+    the pooled propagation is witnessed by test_ordered_pool_propagates_a_task_failure_in_order)."""
+    prep, _cache = prepared
+    real = cwv_pack._decode_task
+
+    def poisoned(task):
+        out = real(task)
+        if task[0] == prep.block_store.entries[-1][1]:
+            raise cwv_pack.PackError("poisoned last shard")
+        return out
+    monkeypatch.setattr(cwv_pack, "_decode_task", poisoned)
+    with pytest.raises(cwv_pack.PackError, match="poisoned"):
+        cwv_pack.build_pack(prep.block_store.entries, tmp_path / "bad", classify_shards=3, workers=1)

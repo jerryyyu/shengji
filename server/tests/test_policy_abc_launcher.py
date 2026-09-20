@@ -26,6 +26,64 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_pv_production_frozen_commands_and_full_run_refusal():
+    paths = (Path('/python'), Path('/soft'), Path('/out'))
+    kw = dict(suite='pv-production-qualify', production=Path('/prod.npz'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*paths, **kw)
+    [(name, cmd)] = launcher.commands(*paths, qualify=True, **kw)
+    assert name == 'SOFT_W16_K8'
+    for flag, value in {'--worlds': '16', '--candidates': '8', '--deals': '12',
+                        '--workers': '12', '--seed0': '625790000',
+                        '--checkpoint-sha256': launcher.CHECKPOINT,
+                        '--control': 'production-play', '--mode': 'policy-value',
+                        '--production-checkpoint': '/prod.npz'}.items():
+        assert cmd[cmd.index(flag) + 1] == value
+    with pytest.raises(ValueError, match='production checkpoint'):
+        launcher.commands(*paths, suite=kw['suite'], qualify=True)
+
+
+@pytest.mark.parametrize('run', [False, True])
+def test_pv_production_qualification_guarded(monkeypatch, isolated_main, tmp_path,
+                                            capsys, run):
+    import hashlib
+    args, output = isolated_main
+    production = tmp_path / 'prod.npz'
+    production.write_bytes(b'production')
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', 'pv-production-qualify', '--qualify',
+                   '--production-checkpoint', str(production)]
+    with pytest.raises(RuntimeError, match='production checkpoint mismatch'):
+        launcher.main(call)
+    assert not output.exists()
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256',
+                        hashlib.sha256(b'production').hexdigest())
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 3600
+        assert 'SHENGJI_FAST' not in kw['env']
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(call + (['--run'] if run else [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['checkpoint'] == launcher.CHECKPOINT
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['expected_pairs_per_arm'] == 12
+    assert receipt['move_timeout_seconds'] == 300
+    assert receipt['automatic_promotion'] is False
+    assert len(seen) == int(run)
+    assert output.exists() == run
+    assert not any(p.exists() for p in launcher.LOCKS)
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.main(args + ['--suite', 'pv-production-qualify'])
+
+
 def test_mc_pv_commands_are_qualification_only():
     kwargs = dict(suite='mc-pv-qualify', grid_checkpoint=Path('/g1'))
     with pytest.raises(ValueError, match='qualification-only'):

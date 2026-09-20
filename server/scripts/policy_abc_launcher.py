@@ -67,8 +67,15 @@ MC_PV_SEED = 625690000
 MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
+PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
+QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
+                             'pv-production-qualify')
+# Proposal and peer seed reservation: #436 comments5751361312/5751492758.
+# Qualification only: the 800-pair screen needs a separately reviewed runtime ceiling.
+PV_PRODUCTION_QUALIFY_SEED = 625790000
+PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
-          'joint-grid-screen', 'mc-pv-qualify')
+          'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -79,10 +86,10 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
-    if suite in ('search-followup', 'search-reference', 'mc-pv-qualify') and not qualify:
+    if suite in QUALIFICATION_ONLY_SUITES and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
-    if (suite == 'search-reference') != (production is not None):
-        raise ValueError('production checkpoint required exactly for search-reference')
+    if (suite in PRODUCTION_SUITES) != (production is not None):
+        raise ValueError('production checkpoint required exactly for production suites')
     if (suite in JOINT_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
@@ -90,6 +97,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
+                  'pv-production-qualify': ([('SOFT_W16_K8', 16, 'policy-value',
+                                             'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
                                         JOINT_GRID_QUALIFY_SEED if qualify else JOINT_GRID_SEED)}[suite]
     if suite in JOINT_SUITES:
@@ -191,15 +200,15 @@ def main(argv=None):
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--qualify', action='store_true',
-                        help='12 pairs/900s per arm; mc-pv-qualify uses 1 pair/3600s; no promotion')
+                        help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
-    if args.suite in ('search-followup', 'search-reference', 'mc-pv-qualify') and not args.qualify:
+    if args.suite in QUALIFICATION_ONLY_SUITES and not args.qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
-    if (args.suite == 'search-reference') != (args.production_checkpoint is not None):
-        raise ValueError('production checkpoint required exactly for search-reference')
+    if (args.suite in PRODUCTION_SUITES) != (args.production_checkpoint is not None):
+        raise ValueError('production checkpoint required exactly for production suites')
     if (args.suite in JOINT_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
@@ -207,6 +216,7 @@ def main(argv=None):
                   'strength-screen': REFERENCE_SOURCE,
                   'wk-screen': REFERENCE_SOURCE,
                   'joint-grid-screen': REFERENCE_SOURCE,
+                  'pv-production-qualify': REFERENCE_SOURCE,
                   'mc-pv-qualify': MC_PV_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
@@ -250,6 +260,8 @@ def main(argv=None):
     expected = QUALIFY_DEALS if args.qualify else DEALS
     if args.suite == 'mc-pv-qualify':
         seconds, expected = 3600, 1
+    if args.suite == 'pv-production-qualify':
+        seconds = PV_PRODUCTION_QUALIFY_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
@@ -274,6 +286,15 @@ def main(argv=None):
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
+    if args.suite == 'pv-production-qualify':
+        receipt.update(
+            seed_reservation='625790000:625790012; #436 comment5751492758',
+            expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=seconds, move_timeout_seconds=300,
+            analysis={'purpose': 'runtime/failure qualification, not strength inference',
+                      'qualification_rows_excluded': True, 'automatic_retry': False,
+                      'automatic_promotion': False,
+                      'full_screen': 'not implemented; runtime ceiling requires qualification evidence'})
     if args.suite == 'wk-screen':
         receipt.update(
             launch_hold=False,

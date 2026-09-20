@@ -43,7 +43,7 @@ def test_soft_rollout_uses_winning_inner_recipe_only():
         assert cmd[cmd.index(flag)+1] == value
 
 
-def test_soft_rollout_hold_and_receipt(monkeypatch, isolated_main, capsys):
+def test_soft_rollout_reviewed_receipt_and_bounded_launch(monkeypatch, isolated_main, capsys):
     args, output = isolated_main
     monkeypatch.setattr(launcher.subprocess, 'check_output',
         lambda cmd, **kw: launcher.MC_PV_SOURCE if 'rev-parse' in cmd else '')
@@ -51,15 +51,42 @@ def test_soft_rollout_hold_and_receipt(monkeypatch, isolated_main, capsys):
     assert launcher.main(call) == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt['source'] == launcher.MC_PV_SOURCE
-    assert receipt['launch_hold'] is True
+    assert receipt['launch_hold'] is False
+    assert receipt['seed_reservation'].endswith('peer confirmed on PR559')
     assert receipt['expected_pairs_per_arm'] == 1
     assert receipt['arm_timeout_seconds'] == 3600
     assert receipt['move_timeout_seconds'] == 300
     assert receipt['analysis']['automatic_promotion'] is False
     assert not output.exists()
-    with pytest.raises(RuntimeError, match='launch held'):
-        launcher.main(call + ['--run'])
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 3600
+        assert cmd[cmd.index('--deals')+1] == '1'
+        assert cmd[cmd.index('--workers')+1] == '1'
+        assert kwargs['env'].get('SHENGJI_FAST') is None
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm/'summary.json').write_text(json.dumps(dict(expected=1, complete=1, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(call + ['--run']) == 0
+    assert seen == ['SOFT_MC_PV_W16_K8']
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+def test_soft_rollout_still_refuses_busy_host(monkeypatch, isolated_main):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.MC_PV_SOURCE if 'rev-parse' in cmd else '')
+    def occupied(*args):
+        raise RuntimeError('occupied')
+    monkeypatch.setattr(launcher, 'resource_guard', occupied)
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **k: pytest.fail('launch'))
+    with pytest.raises(RuntimeError, match='occupied'):
+        launcher.main(args + ['--suite', launcher.SOFT_MC_SUITE, '--qualify', '--run'])
     assert not output.exists()
+    assert not any(p.exists() for p in launcher.LOCKS)
 
 
 def test_model_trio_commands():

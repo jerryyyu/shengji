@@ -415,8 +415,8 @@ def main(argv=None):
                       'automatic_retry': False, 'automatic_promotion': False})
     if args.suite == SOFT_MC_SUITE:
         receipt.update(
-            launch_hold=True,
-            seed_reservation='625690100:625690101; proposal, peer check required',
+            launch_hold=False,
+            seed_reservation='625690100:625690101; peer confirmed on PR559',
             expected_pairs_per_arm=1, workers=1,
             total_arm_timeout_seconds=3600, move_timeout_seconds=300,
             checkpoint_identities={'SOFT_MC_PV_W16_K8': CHECKPOINT},
@@ -429,8 +429,6 @@ def main(argv=None):
                 'automatic_retry': False, 'automatic_promotion': False,
                 'grid_rollouts': 'deferred by Jerry; not part of this suite'})
     print(json.dumps(receipt, indent=2))
-    if args.suite == SOFT_MC_SUITE and args.run:
-        raise RuntimeError('soft rollout launch held pending review and free Perf')
     if not args.run:
         return 0
     previous = signal.signal(signal.SIGTERM, interrupted)

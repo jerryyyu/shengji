@@ -26,6 +26,53 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_world_scaling_fixed_recipe_and_no_full_screen():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*args, suite='world-scaling-qualify')
+    arms = launcher.commands(*args, suite='world-scaling-qualify', qualify=True)
+    assert [name for name, _ in arms] == ['W16_K8', 'W32_K8', 'W64_K8']
+    for (_, cmd), worlds in zip(arms, (16, 32, 64)):
+        for flag, value in {'--worlds': str(worlds), '--candidates': '8',
+                            '--deals': '12', '--workers': '12', '--seed0': '625890000',
+                            '--checkpoint-sha256': launcher.CHECKPOINT,
+                            '--mode': 'policy-value', '--control': 'mc-lcb'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+        assert '--production-checkpoint' not in cmd
+
+
+@pytest.mark.parametrize('run', [False, True])
+def test_world_scaling_qualification_receipt_and_serial_run(monkeypatch, isolated_main,
+                                                          capsys, run):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 900
+        assert 'SHENGJI_FAST' not in kw['env']
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', 'world-scaling-qualify', '--qualify']
+    assert launcher.main(call + (['--run'] if run else [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['checkpoint'] == launcher.CHECKPOINT
+    assert receipt['total_arm_timeout_seconds'] == 2700
+    assert receipt['move_timeout_seconds'] == 300
+    assert receipt['automatic_promotion'] is False
+    assert receipt['analysis']['optional_extension'] is False
+    assert seen == (['W16_K8', 'W32_K8', 'W64_K8'] if run else [])
+    assert output.exists() == run
+    assert not any(p.exists() for p in launcher.LOCKS)
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.main(args + ['--suite', 'world-scaling-qualify'])
+
+
 def test_pv_production_frozen_commands_and_full_run_refusal():
     paths = (Path('/python'), Path('/soft'), Path('/out'))
     kw = dict(suite='pv-production-qualify', production=Path('/prod.npz'))

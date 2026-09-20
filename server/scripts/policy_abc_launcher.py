@@ -35,23 +35,32 @@ FOLLOWUP_SOURCE = '4976104af96d44f1ab7ca483ff823b849521d5de'
 FOLLOWUP_SEED = 625200000
 FOLLOWUP_ARMS = [('D', 4, 'policy-value', 'mc-lcb'),
                  ('E', 4, 'policy-selective-mc', 'policy-value')]
+REFERENCE_SOURCE = '75bc524a1580d8fe8d306b4977f1a6346a9d1027'
+PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747'
+REFERENCE_SEED = 625300000
+REFERENCE_ARMS = [('F', 4, 'policy-lookahead', 'policy-value'),
+                  ('G', 4, 'policy-value', 'production-play')]
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
-def commands(python, checkpoint, output, *, qualify=False, suite='abc'):
-    if suite not in ('abc', 'search-followup'):
+def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None):
+    if suite not in ('abc', 'search-followup', 'search-reference'):
         raise ValueError('unknown experiment suite')
-    if suite == 'search-followup' and not qualify:
-        raise ValueError('search-followup is qualification-only pending runtime review')
-    arms = ARMS if suite == 'abc' else FOLLOWUP_ARMS
-    seed = SEED if suite == 'abc' else FOLLOWUP_SEED
+    if suite != 'abc' and not qualify:
+        raise ValueError('search suites are qualification-only pending runtime review')
+    if (suite == 'search-reference') != (production is not None):
+        raise ValueError('production checkpoint required exactly for search-reference')
+    arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
+                  'search-reference': (REFERENCE_ARMS, REFERENCE_SEED)}[suite]
     return [(name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                    '--checkpoint', str(checkpoint), '--checkpoint-sha256', CHECKPOINT,
                    '--out', str(output / name), '--seed0', str(seed),
                    '--deals', str(QUALIFY_DEALS if qualify else DEALS), '--workers', str(WORKERS),
                    '--worlds', str(worlds), '--mode', mode, '--candidates', '8',
-                   '--control', control]) for name, worlds, mode, control in arms]
+                   '--control', control] + (['--production-checkpoint', str(production)]
+                       if control == 'production-play' else []))
+            for name, worlds, mode, control in arms]
 
 
 def busy_processes():
@@ -129,13 +138,17 @@ def main(argv=None):
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--run', action='store_true')
-    parser.add_argument('--suite', choices=('abc', 'search-followup'), default='abc')
+    parser.add_argument('--suite', choices=('abc', 'search-followup', 'search-reference'), default='abc')
+    parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs per arm, 900s/arm ceiling; never advances to full experiment')
     args = parser.parse_args(argv)
-    if args.suite == 'search-followup' and not args.qualify:
-        raise ValueError('search-followup is qualification-only pending runtime review')
-    source_sha = SOURCE if args.suite == 'abc' else FOLLOWUP_SOURCE
+    if args.suite != 'abc' and not args.qualify:
+        raise ValueError('search suites are qualification-only pending runtime review')
+    if (args.suite == 'search-reference') != (args.production_checkpoint is not None):
+        raise ValueError('production checkpoint required exactly for search-reference')
+    source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
+                  'search-reference': REFERENCE_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
@@ -145,6 +158,9 @@ def main(argv=None):
         raise RuntimeError(f'source must be clean frozen {source_sha} checkout')
     if hashlib.sha256(checkpoint.read_bytes()).hexdigest() != CHECKPOINT:
         raise RuntimeError('checkpoint mismatch')
+    production = args.production_checkpoint.resolve() if args.production_checkpoint else None
+    if production is not None and hashlib.sha256(production.read_bytes()).hexdigest() != PRODUCTION_SHA256:
+        raise RuntimeError('production checkpoint mismatch')
     if output.exists() or not output.parent.is_dir():
         raise RuntimeError('fresh output under existing parent required; never resume/overwrite')
     locks = LOCKS
@@ -161,7 +177,7 @@ def main(argv=None):
     # Resolving a venv interpreter symlink selects the system Python and loses
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
-                    qualify=args.qualify, suite=args.suite)
+                    qualify=args.qualify, suite=args.suite, production=production)
     seconds = QUALIFY_SECONDS if args.qualify else ARM_SECONDS
     expected = QUALIFY_DEALS if args.qualify else DEALS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
@@ -169,6 +185,9 @@ def main(argv=None):
                'engine': 'pure', 'arm_timeout_seconds': seconds,
                'mode': 'runtime-qualification' if args.qualify else 'experiment',
                'automatic_promotion': False}
+    if production is not None:
+        receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
+        receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
     print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0

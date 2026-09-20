@@ -67,9 +67,14 @@ MC_PV_SEED = 625690000
 MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
+MODEL_SUITE = 'model-w16-qualify'
+GRID_SUITES = JOINT_SUITES + (MODEL_SUITE,)
+MODEL_QUALIFY_SEED = 626090000
+MODEL_ARMS = [(name, 16, 'policy-value', 'mc-lcb') for name in
+              ('SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8')]
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
-                             'pv-production-qualify', 'world-scaling-qualify')
+                             'pv-production-qualify', 'world-scaling-qualify', MODEL_SUITE)
 WORLD_SCALING_QUALIFY_SEED = 625890000
 WORLD_SCALING_ARMS = [('W16_K8', 16, 'policy-value', 'mc-lcb'),
                       ('W32_K8', 32, 'policy-value', 'mc-lcb'),
@@ -80,13 +85,13 @@ PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
-          'world-scaling-qualify')
+          'world-scaling-qualify', MODEL_SUITE)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
-             grid_checkpoint=None):
+             grid_checkpoint=None, mlp_checkpoint=None):
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
@@ -95,9 +100,12 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('search suites are qualification-only pending runtime review')
     if (suite in PRODUCTION_SUITES) != (production is not None):
         raise ValueError('production checkpoint required exactly for production suites')
-    if (suite in JOINT_SUITES) != (grid_checkpoint is not None):
+    if (suite == MODEL_SUITE) != (mlp_checkpoint is not None):
+        raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
+    if (suite in GRID_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
-    arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
+    arms, seed = {MODEL_SUITE: (MODEL_ARMS, MODEL_QUALIFY_SEED),
+                  'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
@@ -107,7 +115,11 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
                                         JOINT_GRID_QUALIFY_SEED if qualify else JOINT_GRID_SEED)}[suite]
-    if suite in JOINT_SUITES:
+    if suite == MODEL_SUITE:
+        checkpoint_specs = ((checkpoint, CHECKPOINT),
+                            (mlp_checkpoint, JS_M1_CHECKPOINT_SHA256),
+                            (grid_checkpoint, GRID_CHECKPOINT_SHA256))
+    elif suite in JOINT_SUITES:
         checkpoint_specs = ((checkpoint, JS_M1_CHECKPOINT_SHA256),
                             (grid_checkpoint, GRID_CHECKPOINT_SHA256))
     else:
@@ -199,6 +211,8 @@ def main(argv=None):
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--python', type=Path, required=True)
     parser.add_argument('--checkpoint', type=Path, required=True)
+    parser.add_argument('--mlp-checkpoint', type=Path,
+                        help='JS-M1 checkpoint; required only for model-w16-qualify')
     parser.add_argument('--grid-checkpoint', type=Path,
                         help='JS-G1 checkpoint; required for joint-grid-screen or mc-pv-qualify')
     parser.add_argument('--out', type=Path, required=True)
@@ -215,9 +229,12 @@ def main(argv=None):
         raise ValueError('search suites are qualification-only pending runtime review')
     if (args.suite in PRODUCTION_SUITES) != (args.production_checkpoint is not None):
         raise ValueError('production checkpoint required exactly for production suites')
-    if (args.suite in JOINT_SUITES) != (args.grid_checkpoint is not None):
+    if (args.suite == MODEL_SUITE) != (args.mlp_checkpoint is not None):
+        raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
+    if (args.suite in GRID_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
-    source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
+    source_sha = {MODEL_SUITE: REFERENCE_SOURCE,
+                  'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
                   'strength-screen': REFERENCE_SOURCE,
                   'wk-screen': REFERENCE_SOURCE,
@@ -229,6 +246,7 @@ def main(argv=None):
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
     grid_checkpoint = args.grid_checkpoint.resolve() if args.grid_checkpoint else None
+    mlp_checkpoint = args.mlp_checkpoint.resolve() if args.mlp_checkpoint else None
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True)
     if head != source_sha or dirty:
@@ -237,6 +255,9 @@ def main(argv=None):
                          if args.suite in JOINT_SUITES else CHECKPOINT)
     if hashlib.sha256(checkpoint.read_bytes()).hexdigest() != checkpoint_sha256:
         raise RuntimeError('checkpoint mismatch')
+    if (mlp_checkpoint is not None
+            and hashlib.sha256(mlp_checkpoint.read_bytes()).hexdigest() != JS_M1_CHECKPOINT_SHA256):
+        raise RuntimeError('mlp checkpoint mismatch')
     if (grid_checkpoint is not None
             and hashlib.sha256(grid_checkpoint.read_bytes()).hexdigest() != GRID_CHECKPOINT_SHA256):
         raise RuntimeError('grid checkpoint mismatch')
@@ -260,7 +281,7 @@ def main(argv=None):
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
-                    grid_checkpoint=grid_checkpoint)
+                    grid_checkpoint=grid_checkpoint, mlp_checkpoint=mlp_checkpoint)
     seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
@@ -290,6 +311,19 @@ def main(argv=None):
                 'qualification_rows_excluded': True,
                 'optional_extension': False,
             })
+    if args.suite == MODEL_SUITE:
+        receipt.update(
+            checkpoint_identities=dict(zip((name for name, _ in plan),
+                (CHECKPOINT, JS_M1_CHECKPOINT_SHA256, GRID_CHECKPOINT_SHA256))),
+            seed_reservation='626090000:626090012; verify peer reservation before launch',
+            expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
+            comparison_scope='card play only; shared heuristic declare/bury',
+            analysis={'purpose': 'runtime/failure qualification, not strength inference',
+                      'qualification_rows_excluded': True, 'automatic_retry': False,
+                      'automatic_promotion': False,
+                      'full_screen': 'not implemented; freeze after runtime review',
+                      'contrast_scope': 'common MC-LCB opponent, not direct head-to-head'})
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'

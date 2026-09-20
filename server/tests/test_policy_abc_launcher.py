@@ -26,6 +26,69 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_model_trio_commands():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    extra = dict(suite=launcher.MODEL_SUITE, mlp_checkpoint=Path('/mlp'),
+                 grid_checkpoint=Path('/grid'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*args, **extra)
+    arms = launcher.commands(*args, qualify=True, **extra)
+    assert [n for n, _ in arms] == ['SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8']
+    for (_, cmd), path, sha in zip(arms, ('/soft', '/mlp', '/grid'),
+            (launcher.CHECKPOINT, launcher.JS_M1_CHECKPOINT_SHA256, launcher.GRID_CHECKPOINT_SHA256)):
+        for flag, value in {'--checkpoint': path, '--checkpoint-sha256': sha,
+                            '--worlds': '16', '--candidates': '8', '--deals': '12',
+                            '--workers': '12', '--seed0': '626090000',
+                            '--mode': 'policy-value', '--control': 'mc-lcb'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+
+
+@pytest.mark.parametrize('suite,mlp,grid', [
+    (launcher.MODEL_SUITE, None, '/grid'), (launcher.MODEL_SUITE, '/mlp', None),
+    ('abc', '/mlp', None)])
+def test_model_trio_argument_boundary(suite, mlp, grid):
+    with pytest.raises(ValueError, match='required exactly'):
+        launcher.commands(Path('/python'), Path('/soft'), Path('/out'), qualify=True,
+                          suite=suite, mlp_checkpoint=mlp, grid_checkpoint=grid)
+
+
+def test_model_trio_hashes_and_serial_receipt(monkeypatch, isolated_main, tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    mlp, grid = tmp_path / 'mlp', tmp_path / 'grid'
+    mlp.write_bytes(b'mlp'); grid.write_bytes(b'grid')
+    call = args + ['--suite', launcher.MODEL_SUITE, '--qualify', '--run',
+                   '--mlp-checkpoint', str(mlp), '--grid-checkpoint', str(grid)]
+    with pytest.raises(RuntimeError, match='mlp checkpoint mismatch'):
+        launcher.main(call)
+    assert not output.exists()
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256', hashlib.sha256(b'mlp').hexdigest())
+    with pytest.raises(RuntimeError, match='grid checkpoint mismatch'):
+        launcher.main(call)
+    assert not output.exists()
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256', hashlib.sha256(b'grid').hexdigest())
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 900
+        assert 'SHENGJI_FAST' not in kw['env']
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(call) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert seen == ['SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8']
+    assert list(receipt['checkpoint_identities'].values()) == [launcher.CHECKPOINT,
+        launcher.JS_M1_CHECKPOINT_SHA256, launcher.GRID_CHECKPOINT_SHA256]
+    assert receipt['total_arm_timeout_seconds'] == 2700
+    assert receipt['automatic_promotion'] is False
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_world_scaling_fixed_recipe_and_no_full_screen():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     with pytest.raises(ValueError, match='qualification-only'):

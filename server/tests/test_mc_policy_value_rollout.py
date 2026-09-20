@@ -33,6 +33,46 @@ def test_root_settings_unchanged():
     assert candidate.rollout_policy.bot.sampler.rng.getstate() != candidate.rng.getstate()
 
 
+@pytest.mark.parametrize('complete,actions,expected', [
+    (True, 1, 1), (False, 1, 0), (True, 2, 0)])
+def test_forced_work_counts_only_completed_uncapped_singletons(monkeypatch, complete, actions, expected):
+    bot = MCPolicyValueRollout(continuation(), seed=7)
+    inner = bot.rollout_policy
+    calls = []
+    def decide(rnd, seat):
+        calls.append(inner.bot.sampler.rng.random())
+        inner.bot.last_decision_record = dict(
+            worlds=4, sample_attempts=5, value_evaluations=8, value_batches=2,
+            legal_complete=complete, actions=actions)
+        return [123]
+    monkeypatch.setattr(inner.bot, 'decide_play', decide)
+    rnd = state()
+    assert inner.decide_play(rnd, rnd.turn) == [123]
+    assert len(calls) == 1  # No bypass of the original decision pipeline.
+    assert inner.forced_decisions == expected
+    assert inner.forced_worlds == 4 * expected
+    assert inner.forced_value_evaluations == 8 * expected
+    assert inner.decisions == 1 and inner.sample_attempts == 5
+    # Reset is per outer decision, not per simulated rollout.
+    inner.begin_rollout()
+    assert inner.forced_decisions == expected
+    monkeypatch.setattr(MCPolicyValueRollout.__bases__[0], 'decide_play', lambda *a: [])
+    bot.decide_play(rnd, rnd.turn)
+    assert inner.forced_decisions == inner.forced_worlds == inner.forced_value_evaluations == 0
+
+
+def test_failed_inner_decision_does_not_count_forced_work(monkeypatch):
+    bot = MCPolicyValueRollout(continuation(), seed=7)
+    def fail(*args):
+        raise RuntimeError('sampling refused')
+    monkeypatch.setattr(bot.rollout_policy.bot, 'decide_play', fail)
+    rnd = state()
+    with pytest.raises(RuntimeError, match='sampling refused'):
+        bot.rollout_policy.decide_play(rnd, rnd.turn)
+    assert bot.rollout_policy.decisions == 0
+    assert bot.rollout_policy.forced_decisions == 0
+
+
 def test_each_rollout_restarts_inner_stream_without_touching_root(monkeypatch):
     bot = MCPolicyValueRollout(continuation(), seed=7)
     before = bot.rng.getstate()
@@ -103,6 +143,9 @@ def test_harness_factory_and_work_accounting(monkeypatch):
     bot.rollout_policy.decisions = 100
     bot.rollout_policy.worlds = 400
     bot.rollout_policy.value_evaluations = 3200
+    bot.rollout_policy.forced_decisions = 30
+    bot.rollout_policy.forced_worlds = 120
+    bot.rollout_policy.forced_value_evaluations = 120
     side = duel._empty_side()
     duel._record_decision(side, 1., duel._decision_telemetry(bot, 'control'), 'control')
     assert side['continuation_plies'] == 100
@@ -114,6 +157,9 @@ def test_harness_factory_and_work_accounting(monkeypatch):
     summary = duel.aggregate_records([row], [7])
     assert summary['policy']['mc_last_alloc']['rollouts'] == 90
     assert summary['policy']['continuation_worlds'] == 400
+    assert summary['policy']['continuation_forced_decisions'] == 30
+    assert summary['policy']['continuation_forced_worlds'] == 120
+    assert summary['policy']['continuation_forced_value_evaluations'] == 120
 
 
 def test_harness_rejects_unmatched_control():
@@ -158,6 +204,9 @@ def test_timeout_keeps_partial_work_separate_from_completed_decisions(monkeypatc
     def refused(*args):
         bot.rollout_policy.decisions = 7
         bot.rollout_policy.worlds = 28
+        bot.rollout_policy.forced_decisions = 3
+        bot.rollout_policy.forced_worlds = 12
+        bot.rollout_policy.forced_value_evaluations = 12
         raise TimeoutError('injected decision timeout')
     monkeypatch.setattr(duel, '_timed_play', refused)
     row = duel.play_pair(7, 'unused', 'a' * 64, mode='mc-policy-value-rollout')
@@ -168,6 +217,9 @@ def test_timeout_keeps_partial_work_separate_from_completed_decisions(monkeypatc
     assert partial['complete'] is False
     assert partial['completed_inner_work']['decisions'] == 7
     assert partial['completed_inner_work']['worlds'] == 28
+    assert partial['completed_inner_work']['forced_decisions'] == 3
+    assert partial['completed_inner_work']['forced_worlds'] == 12
+    assert partial['completed_inner_work']['forced_value_evaluations'] == 12
     assert partial['mc_phase'] == 'selection'
     with pytest.raises(ValueError):
         duel.aggregate_records([row], [7])

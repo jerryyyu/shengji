@@ -92,6 +92,7 @@ class CWVBuryBot(CWVShortlistBot):
 
     def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
                  reuse_successors=True, bury_config=None, serving_budget_seconds=None,
+                 bury_evaluator=None,
                  **play_kwargs):
         if arm not in _ARMS:
             raise BuryPolicyError(f"unknown bury arm {arm!r}")
@@ -105,6 +106,11 @@ class CWVBuryBot(CWVShortlistBot):
         super().__init__(evaluator, seed=seed, config=config,
                          reuse_successors=reuse_successors, **play_kwargs)
         self.bury_arm = arm
+        # Research can hold bury fixed while changing the play evaluator.
+        # Leave ordinary instances unchanged; deadline factories reconstruct
+        # this immutable asset rather than serializing its model weights.
+        if bury_evaluator is not None:
+            self.bury_evaluator = bury_evaluator
         self.serving_budget_seconds = _serving_budget(serving_budget_seconds)
         self.bury_config = (CWVBuryConfig() if bury_config is None
                             else bury_config)
@@ -217,7 +223,8 @@ class CWVBuryBot(CWVShortlistBot):
                 model_worlds, model_attempts = _worlds(
                     model_bot, rnd, seat, self.bury_config.model_worlds, "model", **options)
                 model_values = score_bury_candidates(
-                    rnd, candidates, model_worlds, self.evaluator,
+                    rnd, candidates, model_worlds,
+                    getattr(self, "bury_evaluator", self.evaluator),
                     first_trick_policy=model_bot.rollout_policy, **options)
                 if not np.isfinite(model_values).all():
                     raise BuryPolicyError("model bury values must be finite")

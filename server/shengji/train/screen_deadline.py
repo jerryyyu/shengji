@@ -30,7 +30,21 @@ def validate_deadline(value):
 def _snapshot(wrapped):
     # Evaluators are immutable runtime assets, reconstructed through the factory
     # and shared per process; they must never cross the per-move IPC channel.
-    state = {k: v for k, v in vars(wrapped.bot).items() if k != "evaluator"}
+    bot_state = vars(wrapped.bot)
+    excluded = {"evaluator"}
+    # The served NumPy prior has MappingProxyType-backed arrays and is likewise
+    # factory-owned.  Torch priors remain in the checkpoint for compatibility;
+    # only this exact immutable runtime type is reconstructed on restart.
+    prior_net = bot_state.get("_prior_net")
+    if prior_net is not None:
+        from ..ai.cwv_prior_numpy import CWVNumpyPrior
+        if isinstance(prior_net, CWVNumpyPrior):
+            excluded.add("_prior_net")
+    # A fixed bury evaluator is an optional second immutable asset.  Its
+    # factory argument recreates it after a deadline-worker restart.
+    if "bury_evaluator" in bot_state:
+        excluded.add("bury_evaluator")
+    state = {k: v for k, v in bot_state.items() if k not in excluded}
     timing = {k: v for k, v in vars(wrapped).items() if k not in ("bot", "decisions")}
     defaults = {}
     for cls in reversed(type(wrapped.bot).__mro__):
@@ -76,6 +90,7 @@ def _phases(bot, send):
     install("_prior_scores", lambda args: mark("prior", len(args[2])))
     install("_means", lambda args: mark("ranking", len(args[2])))
     install("_report_fold_gap", lambda _: mark("report"))
+    install("_continuation_matrix", lambda _: mark("value-continuation"))
     try:
         mark("enumeration")
         yield

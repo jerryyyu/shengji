@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import time
 
 from ..ai.cwv_policy import shared_evaluator
 from ..ai.registry import make_bot
@@ -23,6 +24,8 @@ from .cwv_bury_policy import CWVBuryBot
 from .cwv_corrected_rollout import CWVCorrectedRolloutBot, CWVCorrectedRolloutBuryBot
 from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 from .cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
+from .cwv_truncated_search import CWVTruncatedSearchBot, CWVPriorTruncatedSearchBot
+from .cwv_bounded_puct import CWVBoundedPuctBot, PuctConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
@@ -124,6 +127,17 @@ class CwvTimedPolicy(TimedPolicy):
     """Attach the shortlist receipt, including forced singleton decisions."""
 
     def decide_play(self, rnd, seat):
+        if isinstance(self.bot, CWVBoundedPuctBot):
+            cpu, wall = time.process_time(), time.perf_counter()
+            try:
+                return self.bot.decide_play(rnd, seat)
+            finally:
+                self.decision_cpu_seconds += time.process_time() - cpu
+                self.decision_wall_seconds += time.perf_counter() - wall
+                record = self.bot.last_decision_record
+                if record:
+                    self.decisions.append(copy.deepcopy(record))
+            # PUCT has no MC incumbent/report; do not fabricate those fields.
         before = len(self.decisions)
         try:
             return super().decide_play(rnd, seat)
@@ -144,6 +158,9 @@ class CwvTimedPolicy(TimedPolicy):
             inner = getattr(self.bot, "last_double_shortlist", None)
             if inner is not None and len(self.decisions) > before:
                 self.decisions[-1]["cwv_double_shortlist"] = copy.deepcopy(inner)
+            record = getattr(self.bot, 'last_decision_record', None)
+            if record and 'value_continuation' in record and len(self.decisions) > before:
+                self.decisions[-1]['value_continuation'] = copy.deepcopy(record['value_continuation'])
 
 
 def _shortlist_config(config: dict) -> CWVShortlistConfig:
@@ -193,6 +210,41 @@ def _validate_wide_config(config):
 
 
 def make_side(config: dict, side: str, seed: int):
+    if 'release27_search' in config:
+        if config.get('decision_deadline') != DEADLINE_RECIPE:
+            raise ValueError('release27 search requires the 300s supervised play deadline')
+        if any(config.get(key) for key in ('bounded_puct', 'value_continuation',
+                'corrected_rollout', 'wide_tail', 'double_shortlist', 'throw_components',
+                'hybrid_bury', 'prior', 'report_tie_keeps_incumbent')):
+            raise ValueError('release27 search cannot mix legacy experiment recipes')
+        from .cwv_release27_search import make_release27_side
+        return make_release27_side(side=side, seed=seed, **config['release27_search'])
+    puct = config.get('bounded_puct')
+    if puct is not None:
+        if config.get('decision_deadline') != DEADLINE_RECIPE:
+            raise ValueError('bounded PUCT requires the 300s supervised play deadline')
+        if config.get('reuse_successors'):
+            raise ValueError('bounded PUCT does not implement successor reuse')
+        if (config['arm'] != 'learned' or config.get('baseline') != 'flat-shortlist'
+                or 'prior' not in config or config.get('value_head') not in (None, 'outcome')
+                or any(config.get(k) for k in ('value_continuation', 'corrected_rollout',
+                    'wide_tail', 'double_shortlist', 'throw_components', 'hybrid_bury',
+                    'report_tie_keeps_incumbent'))):
+            raise ValueError('bounded PUCT requires isolated outcome-head learned/prior baseline')
+        PuctConfig(**puct)
+    continuation = config.get('value_continuation')
+    if continuation is not None:
+        if (config['arm'] != 'learned' or config.get('baseline') != 'flat-shortlist'
+                or any(config.get(k) for k in ('corrected_rollout', 'wide_tail',
+                        'double_shortlist', 'throw_components', 'hybrid_bury',
+                        'report_tie_keeps_incumbent'))
+                or config.get('value_head') not in (None, 'outcome')):
+            raise ValueError('value continuation requires isolated outcome-head learned/flat-shortlist')
+        if (set(continuation) != {'tricks', 'baseline'}
+                or continuation['tricks'] not in ('full', 0, 1, 2)
+                or type(continuation['tricks']) is bool
+                or continuation['baseline'] not in ('mc', 'full')):
+            raise ValueError('invalid value continuation recipe')
     if (config.get("hybrid_bury")
             and (config["arm"] != "learned" or config.get("baseline") not in
                  ("flat-shortlist", "levels-shortlist")
@@ -226,7 +278,8 @@ def make_side(config: dict, side: str, seed: int):
         # #373: the value head rides in config.json and binds the ARM's evaluator
         # only; a flat-shortlist baseline built from the same config keeps the
         # checkpoint's own head (its evaluator is a separate cache entry).
-        head = config.get("value_head") if side == "arm" else None
+        head = ('outcome' if continuation is not None or puct is not None else
+                config.get("value_head") if side == "arm" else None)
         evaluator = shared_evaluator(config["checkpoint"], threads=1,
                                      max_batch=config.get(
                                          "batch_size",
@@ -242,7 +295,25 @@ def make_side(config: dict, side: str, seed: int):
             arm != "learned" or inner is not None or correction is not None
             or any(config.get(k) for k in ("throw_components", "hybrid_bury", "wide_tail"))):
         raise ValueError("prior admission requires the plain learned shortlist arm")
-    if side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
+    if puct is not None:
+        kwargs['prior'] = CWVPriorAdmissionConfig(**config['prior'])
+        if side == 'arm':
+            bot = CWVBoundedPuctBot(evaluator, **kwargs, puct_config=PuctConfig(**puct))
+        else:
+            bot = CWVPriorAdmissionBot(evaluator, **kwargs)
+    elif continuation is not None:
+        # Same admission on BOTH arms: isolate continuation from prior pruning.
+        truncated = side == 'arm' or continuation['baseline'] == 'full'
+        if 'prior' in config:
+            cls = CWVPriorTruncatedSearchBot if truncated else CWVPriorAdmissionBot
+            kwargs['prior'] = CWVPriorAdmissionConfig(**config['prior'])
+        else:
+            cls = CWVTruncatedSearchBot if truncated else CWVShortlistBot
+        if truncated:
+            horizon = continuation['tricks'] if side == 'arm' else 'full'
+            kwargs['continuation_tricks'] = None if horizon == 'full' else horizon
+        bot = cls(evaluator, **kwargs)
+    elif side == "arm" and "wide_tail" in config and config.get("hybrid_bury"):
         bot = CWVWideTailBuryBot(evaluator, **kwargs, arm="hybrid")
     elif side == "arm" and "wide_tail" in config:
         bot = CWVWideTailBot(evaluator, **kwargs,
@@ -301,6 +372,12 @@ def work_counters(bots):
         for key, value in getattr(bot, "corrected_rollout_counts", {}).items():
             name = "correction_" + key
             out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, 'continuation_totals', {}).items():
+            name = 'value_continuation_' + key
+            out[name] = out.get(name, 0) + int(value)
+        for key, value in getattr(bot, 'puct_totals', {}).items():
+            name = 'puct_' + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))
@@ -315,6 +392,21 @@ def work_counters(bots):
         - correction_sampled + correction_residual)
     out["continuation_rollouts"] = int(out["rollouts"])
     out["total_rollouts"] = int(out["rollouts"])
+    if any(hasattr(bot, 'puct_totals') for bot in bots):
+        out['cheap_evaluations'] += out.get('puct_model_rows', 0)
+        # A terminal tree leaf is not a full heuristic playout.
+        out.pop('full_rollout_accepted_worlds', None)
+    if any(hasattr(bot, 'continuation_totals') for bot in bots):
+        model_rows = out.get('value_continuation_model_rows', 0)
+        out['candidate_world_evaluations'] = out['rollouts']
+        out['rollouts'] -= model_rows
+        out['continuation_rollouts'] -= model_rows
+        out['total_rollouts'] -= model_rows
+        out['cheap_evaluations'] += model_rows
+        # A world can contain a mixture of terminal and learned candidate
+        # leaves. Retire the ambiguous world-count metric for this recipe;
+        # candidate-level terminal_rows and model_rows are exact instead.
+        out.pop('full_rollout_accepted_worlds', None)
     if any(hasattr(bot, "timeout_count") for bot in bots):
         out["decision_timeouts"] = sum(bot.timeout_count for bot in bots)
     if any(hasattr(bot, "double_shortlist_counts") for bot in bots):
@@ -322,6 +414,17 @@ def work_counters(bots):
         out["outer_continuation_rollouts"] = (
             out["total_rollouts"] - out["inner_continuation_rollouts"])
     return out
+
+
+def continuation_state_contract(config):
+    horizon = config['value_continuation']['tricks']
+    return {
+        'leaf_state': ('terminal' if horizon == 'full' else
+                       'immediate-afterstate-including-mid-trick' if horizon == 0 else
+                       'completed-trick-boundary'),
+        'training_bridge': 'one-engine-action-then-encode-no-trick-finisher',
+        'calibration': 'unqualified-on-search-selected-sampled-world-leaves',
+    }
 
 
 def _recipe(config):
@@ -344,9 +447,11 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout", "wide_tail", "prior"):
+                "hybrid_bury", "corrected_rollout", "wide_tail", "prior", "value_continuation", "bounded_puct", "release27_search"):
         if key in config:
             recipe[key] = config[key]
+    if 'value_continuation' in config:
+        recipe['continuation_state_contract'] = continuation_state_contract(config)
     return recipe
 
 
@@ -358,6 +463,8 @@ def _deadline_side(config, side, seed):
 def run_cluster(config, cluster):
     created = []
     deadline = config.get("decision_deadline")
+    if ('bounded_puct' in config or 'release27_search' in config) and deadline != DEADLINE_RECIPE:
+        raise ValueError('bounded PUCT requires the 300s supervised play deadline')
     if deadline is not None and deadline != DEADLINE_RECIPE:
         raise ValueError("unsupported screen decision deadline recipe")
     session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
@@ -408,6 +515,10 @@ def run_cluster(config, cluster):
         "seed": seed, "rank": rank, "recipe": _recipe(config),
         "records": [record for record, _ in rows],
         "timings": [timing for _, timing in rows],
+        "bury_records": [{"mirror": i // 4, "side": side,
+                          "record": copy.deepcopy(policy.last_bury_record)}
+                         for i, (side, policy) in enumerate(created)
+                         if getattr(policy, 'last_bury_record', None) is not None],
         "decision_traces": [{"mirror": i // 4, "side": side,
                              "decisions": policy.decisions}
                             for i, (side, policy) in enumerate(created)],
@@ -518,6 +629,41 @@ def summary_for(shards, config):
         result["work_caveat"] += (
             " Both sides use the full-completion CWV hybrid bury policy; this is "
             "not Fly 2s serving-budget parity.")
+    if 'value_continuation' in config:
+        result['value_continuation'] = config['value_continuation']
+        result['continuation_state_contract'] = continuation_state_contract(config)
+        result['arm_description'] = 'value-truncated selection and independent report; final signed levels'
+        result['baseline_description'] = config['value_continuation']['baseline'] + ' continuation; matched admission'
+        result['work_caveat'] += (' Legacy rollout counters are candidate-world evaluations, not full playouts. '
+                                  'Report uncertainty excludes model error. No strength claim from offline calibration.')
+    if 'bounded_puct' in config:
+        result['bounded_puct'] = config['bounded_puct']
+        result['arm_description'] = 'per-world policy-guided PUCT with outcome-value leaves'
+        result['baseline_description'] = (f"same checkpoint and prior; W{config['shortlist']['worlds']} "
+                                          'admission with MC selection/report')
+        result['work_caveat'] += ' PUCT simulations/model leaves are not terminal rollouts; determinization permits strategy fusion.'
+    if 'release27_search' in config:
+        mode = config['release27_search']['mode']
+        result['arm_description'] = f'{mode} search with independent outcome-value checkpoint'
+        result['baseline_description'] = 'frozen release27 M1/prior-v2 W32/N30/R300'
+        result['claim'] = 'exploratory paired DEV strength estimate; not confirmation or deployment'
+        result['hybrid_bury'] = dict(arm='hybrid', scope='both sides',
+                                    evaluator='frozen release27 M1', serving_budget_seconds=2.0)
+        result['bury_outcomes'] = {}
+        for side in ('arm', 'baseline'):
+            records = [entry['record'] for shard in shards
+                       for entry in shard.get('bury_records', []) if entry['side'] == side]
+            result['bury_outcomes'][side] = {
+                'decisions': len(records),
+                'budget_fallbacks': sum(r.get('reason') == 'budget' for r in records),
+                'error_fallbacks': sum(r.get('reason') == 'search-error' for r in records),
+                'completed': sum(r.get('schema') != 'cwv-bury-fallback-v1' for r in records),
+            }
+        result['bury_accounting_complete'] = (
+            sum(r['decisions'] for r in result['bury_outcomes'].values()) == 2 * len(shards))
+        result['work_caveat'] += (' Fixed M1 hybrid bury on both sides has a 2s wall budget; '
+            'hardware-dependent fallback incidence must be reported. Search uses sampled '
+            'hidden worlds; model predictions are not completed heuristic rollouts.')
     if "trump_ranks" in config:
         records = [record for shard in shards for record in shard["records"]]
         by_rank = {rank: 0 for rank in config["trump_ranks"]}
@@ -573,6 +719,14 @@ def main(argv=None):
                              "prunes decisions above --prior-threshold to the union of per-world top lists")
     parser.add_argument("--prior-threshold", type=int, default=10_000)
     parser.add_argument("--prior-top", type=int, default=256)
+    parser.add_argument('--value-continuation', choices=('0', '1', '2', 'full'),
+                        help='DEV: outcome-value selection and report after k tricks; full is levels control')
+    parser.add_argument('--continuation-baseline', choices=('mc', 'full'), default='mc',
+                        help='with value-continuation: point-MC or full heuristic signed-level control')
+    parser.add_argument('--puct-sweeps', type=int, help='DEV: balanced simulations per sampled world')
+    parser.add_argument('--puct-depth', type=int, default=8)
+    parser.add_argument('--puct-exploration', type=float, default=1.5)
+    parser.add_argument('--puct-widening', type=float, default=2.)
     parser.add_argument("--report-tie-keeps-incumbent", action="store_true",
                         help="#339 layer 1 on the ARM side only: an exact report-fold tie keeps "
                              "the incumbent (MCBot.REPORT_TIE_KEEPS_INCUMBENT); the baseline "
@@ -616,6 +770,28 @@ def main(argv=None):
         parser.error("SHENGJI_REQUIRE_VOIDS=1 is required")
     if args.arm == "learned" and not args.checkpoint:
         parser.error("learned requires --checkpoint")
+    if args.value_continuation is not None and (
+            args.arm != 'learned' or args.baseline != 'flat-shortlist'
+            or args.value_head not in (None, 'outcome')
+            or args.corrected_rollout or args.wide_tail or args.inner_mode
+            or args.hybrid_bury or args.throw_components or args.report_tie_keeps_incumbent):
+        parser.error('value continuation requires isolated outcome-head learned/flat-shortlist')
+    if args.puct_sweeps is not None:
+        if args.decision_deadline != 300:
+            parser.error('bounded PUCT requires --decision-deadline 300')
+        if args.reuse_successors:
+            parser.error('bounded PUCT does not implement successor reuse')
+        if (args.arm != 'learned' or args.baseline != 'flat-shortlist' or not args.prior_checkpoint
+                or args.value_head not in (None, 'outcome') or args.value_continuation
+                or args.corrected_rollout or args.wide_tail or args.inner_mode
+                or args.hybrid_bury or args.throw_components or args.report_tie_keeps_incumbent):
+            parser.error('bounded PUCT requires isolated outcome-head learned/prior baseline')
+        try:
+            puct_recipe = PuctConfig(sweeps=args.puct_sweeps, depth=args.puct_depth,
+                batch_size=args.batch_size, exploration=args.puct_exploration,
+                widening=args.puct_widening)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.arm != "learned" and args.checkpoint:
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
@@ -680,10 +856,11 @@ def _run_screen(args, trump_ranks):
     checkpoint_sha = None
     checkpoint_recipe = None
     if args.arm == "learned":
+        requested_head = 'outcome' if args.puct_sweeps is not None else args.value_head
         evaluator = shared_evaluator(
             checkpoint, threads=1, max_batch=args.batch_size,
             encoding=args.encoding,
-            **({"value_head": args.value_head} if args.value_head else {}))
+            **({"value_head": requested_head} if requested_head else {}))
         checkpoint_sha = evaluator.checkpoint_sha256
         checkpoint_recipe = evaluator.identity()
     shortlist = CWVShortlistConfig(
@@ -720,6 +897,15 @@ def _run_screen(args, trump_ranks):
         config["prior"] = asdict(CWVPriorAdmissionConfig(
             checkpoint=str(Path(args.prior_checkpoint).resolve()), checkpoint_sha256=prior_sha,
             threshold=args.prior_threshold, top=args.prior_top))
+    if args.value_continuation is not None:
+        config['value_continuation'] = {
+            'tricks': ('full' if args.value_continuation == 'full' else int(args.value_continuation)),
+            'baseline': args.continuation_baseline,
+        }
+    if args.puct_sweeps is not None:
+        config['bounded_puct'] = asdict(PuctConfig(sweeps=args.puct_sweeps,
+            depth=args.puct_depth, batch_size=args.batch_size,
+            exploration=args.puct_exploration, widening=args.puct_widening))
     if args.report_tie_keeps_incumbent:
         config["report_tie_keeps_incumbent"] = True
     if args.value_head is not None:

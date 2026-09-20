@@ -26,6 +26,62 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_mc_pv_commands_are_qualification_only():
+    kwargs = dict(suite='mc-pv-qualify', grid_checkpoint=Path('/g1'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(Path('/python'), Path('/m1'), Path('/out'), **kwargs)
+    arms = launcher.commands(Path('/python'), Path('/m1'), Path('/out'),
+                             qualify=True, **kwargs)
+    assert [name for name, _ in arms] == ['JS_M1_MC_PV_W1_K8', 'JS_G1_MC_PV_W1_K8']
+    for (_, cmd), model, checksum in zip(arms, ['/m1', '/g1'],
+            [launcher.JS_M1_CHECKPOINT_SHA256, launcher.GRID_CHECKPOINT_SHA256]):
+        for key, value in {'--deals': '1', '--workers': '1', '--worlds': '1',
+                           '--candidates': '8', '--seed0': '625690000',
+                           '--mode': 'mc-policy-value-rollout', '--control': 'mc-lcb',
+                           '--checkpoint': model, '--checkpoint-sha256': checksum}.items():
+            assert cmd[cmd.index(key) + 1] == value
+
+
+@pytest.mark.parametrize('run', [False, True])
+def test_mc_pv_main_frozen_qualification(monkeypatch, isolated_main, tmp_path, capsys, run):
+    import hashlib
+    args, output = isolated_main
+    grid = tmp_path / 'grid'
+    grid.write_bytes(b'grid')
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256', hashlib.sha256(b'fixture').hexdigest())
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256', hashlib.sha256(b'grid').hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.MC_PV_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 3600
+        assert kw['env']['OMP_NUM_THREADS'] == '1'
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=1, complete=1, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', 'mc-pv-qualify', '--qualify', '--grid-checkpoint', str(grid)]
+    assert launcher.main(call + (['--run'] if run else [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.MC_PV_SOURCE
+    assert receipt['expected_pairs_per_arm'] == 1
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['move_timeout_seconds'] == 300
+    assert receipt['automatic_promotion'] is False
+    assert len(seen) == (2 if run else 0)
+    assert output.exists() == run
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+def test_summary_aggregation_error_refuses(tmp_path):
+    path = tmp_path / 'summary.json'
+    path.write_text(json.dumps(dict(expected=1, complete=1, errors=[], aggregation_error='bad')))
+    with pytest.raises(RuntimeError):
+        launcher.validate_summary(path, expected=1)
+
+
 @pytest.mark.parametrize('qualify', [False, True])
 def test_wk_commands(qualify):
     arms = launcher.commands(Path('/python'), Path('/model'), Path('/output'),

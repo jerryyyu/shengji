@@ -1896,9 +1896,33 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             sums["policy_rows"] += int(vals[6])
             pending = None
             finite_all = None
-        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window,
-                                      decode_workers=decode_workers):
+        # Where an epoch's wall goes (2026-09-20, Jerry: measure before optimising).  Host
+        # wall per stage: batch_wait = time blocked inside iter_batches (decode + gather +
+        # worker wait), to_device = tensors_of, policy_wait = the root batch fetch + its
+        # tensors, sync = the loss flushes (the .item()/.tolist() that wait for the device),
+        # step = everything else in the iteration (forward, losses, backward, optimiser
+        # step -- host time; device work not yet awaited lands in the next sync).  The
+        # key ends in "secs" so the exact-reproducibility comparison strips it.
+        stage = {"batch_wait": 0.0, "to_device": 0.0, "policy_wait": 0.0, "step": 0.0, "sync": 0.0}
+
+        def timed_batches(gen):
+            while True:
+                t_w = time.perf_counter()
+                try:
+                    raw = next(gen)
+                except StopIteration:
+                    stage["batch_wait"] += time.perf_counter() - t_w
+                    return
+                stage["batch_wait"] += time.perf_counter() - t_w
+                yield raw
+
+        for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size, rng=rng,
+                                                        window=window,
+                                                        decode_workers=decode_workers))):
+            t_iter = time.perf_counter()
             t = tensors_of(raw, dev)
+            t_dev = time.perf_counter()
+            stage["to_device"] += t_dev - t_iter
             s_logits = None
             if search_head:
                 logits, aux, s_logits = forward_batch_heads(model, t, aux_head)
@@ -1939,13 +1963,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             if policy_iter is not None:
                 # #425: one root batch per value batch, ALWAYS forwarded (the twin
                 # runs the same batches with the loss weighted 0).
+                t_p = time.perf_counter()
                 try:
                     p_batch = next(policy_iter)
                 except StopIteration:
                     policy_iter = policy_data.batches(policy_batch, policy_rng)
                     p_batch = next(policy_iter)
                 from .policy_rows import policy_losses
-                p_bce, p_lw, _ = policy_losses(model, policy_data.tensors(p_batch, dev),
+                p_tensors = policy_data.tensors(p_batch, dev)
+                stage["policy_wait"] += time.perf_counter() - t_p
+                p_bce, p_lw, _ = policy_losses(model, p_tensors,
                                                listwise_weight=float(policy_listwise_weight),
                                                detach=bool(policy_detach))
                 b_r = int(len(p_batch["x"]))
@@ -1968,9 +1995,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
             pending = contrib if pending is None else pending + contrib
             batches += 1
+            stage["step"] += time.perf_counter() - t_dev
             if batches % sync_every == 0:
+                t_s = time.perf_counter()
                 flush()
+                stage["sync"] += time.perf_counter() - t_s
+        t_s = time.perf_counter()
         flush()
+        stage["sync"] += time.perf_counter() - t_s
+        # policy_wait happens inside the iteration, so take it back out of step
+        stage["step"] -= stage["policy_wait"]
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}
@@ -1989,6 +2023,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             train_metrics["policy_bce"] = sums["policy_bce"] / n_r if n_r else None
             train_metrics["policy_listwise"] = sums["policy_listwise"] / n_r if n_r else None
         train_secs = round(time.perf_counter() - t0, 3)
+        stage["other"] = max(0.0, train_secs - sum(stage.values()))
+        stage["total"] = train_secs
+        train_metrics["stage_secs"] = {k: round(v, 3) for k, v in stage.items()}
+        say("epoch %02d train stages: " % epoch + ", ".join(
+            "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
+            for k, v in stage.items() if k != "total"))
         val_metrics = validate()
         secs = round(time.perf_counter() - t0, 3)
         epoch_rows.append({"epoch": epoch, "train": train_metrics, "val": val_metrics,

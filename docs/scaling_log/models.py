@@ -91,6 +91,8 @@ M = [
  "","","+0.0184 [+0.0007, +0.0360]","M1 (#373): ten shared windows +0.0184 (nominal); CONFIRMED on TEN fresh seeds +0.0212 [+0.0036, +0.0387] (five: +0.0244); search head worse"),
 ("M1-v5: M1's recipe with encoder v5 (banker's own burial restored), 176k","541b8df3","2026-09-19","v5",330,"3e-4","176k","25,388,708","0.59762","0.0307",
  "","","5w -0.0071 [-0.0306, +0.0164]","M1's recipe at encoder v5 (kitty fix): offline twin null (val_ce +0.0002); v31 vs M1 (both + prior v3) 5w null, MDE80 0.034, ties 67%"),
+("JS-M1-v5: JS-M1's recipe (policy head w 0.2, all root rows) at encoder v5","13396527","2026-09-20","v5",330,"3e-4","176k","25,388,708","0.59691","0.0305",
+ "","","","JS-M1's recipe at encoder v5 with v5 policy rows (#506): val_ce +0.0012 vs JS-M1, test regret 0.0897 vs 0.0901, policy top-64 within 0.004: twin null"),
 ("grid S-d4 on 176k (4 residual layers)","0c40c591","2026-09-13","v2",330,"3e-4","176k","25,388,708","0.60636","0.0337",
  "","","5w +0.0104 [-0.0121, +0.0329]","S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended"),
 ("grid S-d2 (2 residual layers)","fa657ec8","2026-09-13","v2",436,"3e-4","144k","20,939,532","0.60929","0.0374",

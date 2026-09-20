@@ -26,6 +26,69 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_soft_rollout_uses_winning_inner_recipe_only():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*args, suite=launcher.SOFT_MC_SUITE)
+    with pytest.raises(ValueError, match='required exactly'):
+        launcher.commands(*args, suite=launcher.SOFT_MC_SUITE, qualify=True,
+                          grid_checkpoint=Path('/grid'))
+    arms = launcher.commands(*args, suite=launcher.SOFT_MC_SUITE, qualify=True)
+    assert [name for name, _ in arms] == ['SOFT_MC_PV_W16_K8']
+    cmd = arms[0][1]
+    for flag, value in {'--checkpoint-sha256': launcher.CHECKPOINT,
+        '--worlds': '16', '--candidates': '8', '--deals': '1', '--workers': '1',
+        '--seed0': '625690100', '--mode': 'mc-policy-value-rollout',
+        '--control': 'mc-lcb'}.items():
+        assert cmd[cmd.index(flag)+1] == value
+
+
+def test_soft_rollout_reviewed_receipt_and_bounded_launch(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.MC_PV_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', launcher.SOFT_MC_SUITE, '--qualify']
+    assert launcher.main(call) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.MC_PV_SOURCE
+    assert receipt['launch_hold'] is False
+    assert receipt['seed_reservation'].endswith('peer confirmed on PR559')
+    assert receipt['expected_pairs_per_arm'] == 1
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['move_timeout_seconds'] == 300
+    assert receipt['analysis']['automatic_promotion'] is False
+    assert not output.exists()
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 3600
+        assert cmd[cmd.index('--deals')+1] == '1'
+        assert cmd[cmd.index('--workers')+1] == '1'
+        assert kwargs['env'].get('SHENGJI_FAST') is None
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm/'summary.json').write_text(json.dumps(dict(expected=1, complete=1, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(call + ['--run']) == 0
+    assert seen == ['SOFT_MC_PV_W16_K8']
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+def test_soft_rollout_still_refuses_busy_host(monkeypatch, isolated_main):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.MC_PV_SOURCE if 'rev-parse' in cmd else '')
+    def occupied(*args):
+        raise RuntimeError('occupied')
+    monkeypatch.setattr(launcher, 'resource_guard', occupied)
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **k: pytest.fail('launch'))
+    with pytest.raises(RuntimeError, match='occupied'):
+        launcher.main(args + ['--suite', launcher.SOFT_MC_SUITE, '--qualify', '--run'])
+    assert not output.exists()
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_model_trio_commands():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     extra = dict(suite=launcher.MODEL_SUITE, mlp_checkpoint=Path('/mlp'),

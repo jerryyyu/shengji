@@ -35,6 +35,7 @@ from .policy_world_search import PolicyWorldBot
 from .policy_value_search import PolicyValueBot
 from .policy_selective_mc import PolicySelectiveMCBot
 from .policy_lookahead import PolicyLookaheadBot
+from .policy_heuristic_lookahead import PolicyHeuristicLookaheadBot
 from .production_play_control import ProductionPlayControl, SHA256 as PRODUCTION_SHA256
 from ..ai.cwv_policy import CompleteWorldEvaluator
 from functools import lru_cache
@@ -54,7 +55,8 @@ def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8)
         return PolicyWorldBot.from_checkpoint(checkpoint, checksum, **kwargs)
     classes = {"policy-value": PolicyValueBot,
                "policy-selective-mc": PolicySelectiveMCBot,
-               "policy-lookahead": PolicyLookaheadBot}
+               "policy-lookahead": PolicyLookaheadBot,
+               "policy-heuristic-lookahead": PolicyHeuristicLookaheadBot}
     if mode not in classes:
         raise ValueError("unknown policy mode")
     cls = classes[mode]
@@ -512,7 +514,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--worlds", type=int, default=4)
-    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc"), default="policy")
+    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc", "policy-heuristic-lookahead"), default="policy")
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     parser.add_argument('--production-checkpoint',
@@ -565,7 +567,8 @@ def main(argv=None) -> int:
         "control_effective": effective_control,
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
                               "policy-selective-mc": "PolicySelectiveMCBot",
-                              "policy-lookahead": "PolicyLookaheadBot"}[args.mode],
+                              "policy-lookahead": "PolicyLookaheadBot",
+                              "policy-heuristic-lookahead": "PolicyHeuristicLookaheadBot"}[args.mode],
                     "mode": args.mode, "candidates": args.candidates if args.mode != "policy" else None,
                     "value_head": "outcome" if args.mode != "policy" else None,
                     "value_batch_size": 128 if args.mode != "policy" else None,
@@ -573,7 +576,7 @@ def main(argv=None) -> int:
                         "rollout_policy": "HeuristicBot", "utility": "root-team half-level",
                         "seed_offset": 1000000007, "exact_endgame": False}
                         if args.mode == "policy-selective-mc" else None),
-                    "extra_plies": 4 if args.mode == "policy-lookahead" else 0,
+                    "extra_plies": 4 if args.mode in ("policy-lookahead", "policy-heuristic-lookahead") else 0,
                     "continuation_worlds": 1 if args.mode == "policy-lookahead" else 0,
                     "worlds": args.worlds,
                     "cap": CAP, "seed_formula": "seed*4+seat",
@@ -586,6 +589,7 @@ def main(argv=None) -> int:
         "policy_value_module_sha256": _sha256(Path(inspect.getfile(PolicyValueBot)).resolve()),
         "policy_selective_mc_module_sha256": _sha256(Path(inspect.getfile(PolicySelectiveMCBot)).resolve()),
         "policy_lookahead_module_sha256": _sha256(Path(inspect.getfile(PolicyLookaheadBot)).resolve()),
+        "policy_heuristic_lookahead_module_sha256": _sha256(Path(inspect.getfile(PolicyHeuristicLookaheadBot)).resolve()),
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED},
         "runtime": {
             "python": sys.version,

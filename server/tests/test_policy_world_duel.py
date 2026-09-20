@@ -107,6 +107,30 @@ def test_value_factory_uses_checked_evaluator(monkeypatch):
     assert seen['worlds'] == 4
 
 
+def test_lookahead_factory_and_continuation_accounting(monkeypatch):
+    from types import SimpleNamespace
+    evaluator = object()
+    monkeypatch.setattr(duel, '_value_evaluator', lambda *a: evaluator)
+    def factory(p, s, **kwargs):
+        assert kwargs['evaluator'] is evaluator
+        assert kwargs['worlds'] == 4 and kwargs['candidates'] == 8
+        return SimpleNamespace(last_decision_record={
+            'worlds': 4, 'sample_attempts': 4, 'legal_complete': True,
+            'value_evaluations': 32, 'value_batches': 1,
+            'continuation_work': {'plies': 128, 'worlds': 128,
+                                  'sample_attempts': 130, 'capped_decisions': 2}})
+    monkeypatch.setattr(duel.PolicyLookaheadBot, 'from_checkpoint', factory)
+    bot = duel.make_policy('ck', 'sha', 4, 7, 'policy-lookahead', 8)
+    row = _row(7)
+    duel._record_decision(row['sides']['policy'], .1,
+                          duel._decision_telemetry(bot, 'policy'), 'policy')
+    result = duel.aggregate_records([row], [7])['policy']
+    assert result['worlds'] == 4
+    assert result['continuation_worlds'] == result['continuation_plies'] == 128
+    assert result['continuation_sample_attempts'] == 130
+    assert result['continuation_capped_decisions'] == 2
+
+
 def test_policy_control_work_is_not_reported_as_mc_work():
     from types import SimpleNamespace
     bot = SimpleNamespace(last_decision_record={
@@ -123,6 +147,7 @@ def test_policy_control_work_is_not_reported_as_mc_work():
 
 
 @pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
+                                        ('policy-lookahead', 'policy-value'),
                                         ('policy-selective-mc', 'policy-value')])
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control):
     checkpoint = tmp_path / "checkpoint.bin"
@@ -162,6 +187,13 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
     assert fake_pool.kwargs["max_workers"] == 2
     recipe = json.loads((out / "recipe.json").read_text())
     assert recipe["control"] == control
+    if mode == 'policy-lookahead':
+        assert recipe['policy']['class'] == 'PolicyLookaheadBot'
+        assert recipe['policy']['extra_plies'] == 4
+        assert recipe['policy']['continuation_worlds'] == 1
+        assert recipe['policy']['verification'] is None
+        assert recipe['control_effective']['class'] == 'PolicyValueBot'
+        assert len(recipe['policy_lookahead_module_sha256']) == 64
     if mode == 'policy-selective-mc':
         assert recipe['policy']['verification']['worlds'] == 8
         assert recipe['policy']['verification']['gap'] == .1
@@ -204,3 +236,30 @@ def test_selective_factory_uses_checked_evaluator(monkeypatch):
     assert duel.make_policy('ck', 'sha', 4, 7, 'policy-selective-mc', 12) is sentinel
     assert seen['evaluator'] is sentinel
     assert seen['candidates'] == 12
+
+
+def test_continuation_and_verification_counters_do_not_overwrite_each_other(monkeypatch):
+    from types import SimpleNamespace
+    def fake(*args):
+        sides = {role: duel._empty_side() for role in ('policy', 'control')}
+        bot = SimpleNamespace(last_decision_record={
+            'worlds': 4, 'sample_attempts': 5, 'legal_complete': True,
+            'continuation_work': {'plies': 6, 'worlds': 6, 'sample_attempts': 7,
+                                  'capped_decisions': 2},
+            'verification': {'triggered': True, 'worlds': 8,
+                             'sample_attempts': 9, 'rollouts': 16}})
+        for role in sides:
+            duel._record_decision(sides[role], .1,
+                                 duel._decision_telemetry(bot, 'policy'), 'policy')
+        return {'sides': sides, 'utility': 0}
+    monkeypatch.setattr(duel, '_play_one', fake)
+    row = duel.play_pair(7, 'ck', 'sha', mode='policy-lookahead', control='policy-value')
+    summary = duel.aggregate_records([row], [7])
+    for work in (summary['policy'], summary['control']['policy_work']):
+        assert work['worlds'] == 8
+        assert work['continuation_worlds'] == 12
+        assert work['continuation_sample_attempts'] == 14
+        assert work['continuation_capped_decisions'] == 4
+        assert work['verification_worlds'] == 16
+        assert work['verification_rollouts'] == 32
+    assert summary['control']['mc_decisions'] == 0

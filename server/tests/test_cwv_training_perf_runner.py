@@ -214,3 +214,38 @@ def test_packing_invalid_recipe_refused_in_dry_run(runner, args, extra):
     with pytest.raises(ValueError):
         runner.main()
     assert not out.exists()
+
+
+def test_policy_budget_counts_decompressed_arrays_even_with_row_limit(runner, tmp_path, monkeypatch):
+    import zipfile
+    prefix = tmp_path/'rows'
+    Path(str(prefix)+'.meta.jsonl').write_text('{}\n')
+    with zipfile.ZipFile(str(prefix)+'.npz', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('X.npy', b'0'*10000)
+    assert Path(str(prefix)+'.npz').stat().st_size < 1000
+    monkeypatch.setattr(runner, 'POLICY_INPUT_BYTES', 1000)
+    with pytest.raises(ValueError, match='byte budget'):
+        runner.check_policy_input_budget(dict(policy_rows=str(prefix), policy_rows_limit=1))
+
+
+def test_policy_budget_refuses_full_manifest_without_opening_chunks(runner, tmp_path):
+    (tmp_path/'manifest.json').write_text(json.dumps({'chunks': [{'file': 'absent.npz'}]*17}))
+    with pytest.raises(ValueError, match='1..16'):
+        runner.check_policy_input_budget(dict(policy_rows=str(tmp_path)))
+
+
+def test_policy_budget_small_chunked_and_eval_inputs(runner, tmp_path):
+    import zipfile
+    rows = tmp_path/'chunks'
+    rows.mkdir()
+    with zipfile.ZipFile(rows/'one.npz', 'w') as archive:
+        archive.writestr('X.npy', b'fixture')
+    (rows/'manifest.json').write_text(json.dumps({'chunks': [{'file': 'one.npz'}]}))
+    evaluation = tmp_path/'eval'
+    with zipfile.ZipFile(str(evaluation)+'.npz', 'w') as archive:
+        archive.writestr('X.npy', b'fixture')
+    Path(str(evaluation)+'.meta.jsonl').write_text('{}\n')
+    runner.check_policy_input_budget(dict(policy_rows=str(rows), policy_eval=str(evaluation)))
+    (rows/'manifest.json').write_text(json.dumps({'chunks': [{'file': '../eval.npz'}]}))
+    with pytest.raises(ValueError, match='directly inside'):
+        runner.check_policy_input_budget(dict(policy_rows=str(rows)))

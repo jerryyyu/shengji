@@ -439,7 +439,7 @@ def main(argv=None):
                 'grid_rollouts': 'deferred by Jerry; not part of this suite'})
     if args.suite == CUTOFF_SUITE:
         receipt.update(
-            launch_hold=True,
+            launch_hold=False,
             seed_reservation='626190000:626190001; within peer reservation on #436/comment5752536484',
             expected_pairs_per_arm=1, workers=1,
             total_arm_timeout_seconds=10800, move_timeout_seconds=300,
@@ -458,8 +458,6 @@ def main(argv=None):
     print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0
-    if args.suite == CUTOFF_SUITE:
-        raise RuntimeError('cutoff launch held pending recipe review and seed reservation')
     previous = signal.signal(signal.SIGTERM, interrupted)
     acquired = []
     try:

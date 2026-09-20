@@ -48,7 +48,8 @@ def test_cutoff_frozen_contrasts_and_qualification_only():
                 ('mc-pv-cutoff', 'mc-heuristic-cutoff')]
 
 
-def test_cutoff_receipt_and_hold_before_output(monkeypatch, isolated_main, capsys):
+@pytest.mark.parametrize('fail_at', [None, 0, 1])
+def test_cutoff_reviewed_launch_and_stop_on_failure(monkeypatch, isolated_main, capsys, fail_at):
     args, output = isolated_main
     monkeypatch.setattr(launcher.subprocess, 'check_output',
         lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
@@ -56,7 +57,7 @@ def test_cutoff_receipt_and_hold_before_output(monkeypatch, isolated_main, capsy
     assert launcher.main(call) == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt['source'] == launcher.CUTOFF_SOURCE
-    assert receipt['launch_hold'] is True
+    assert receipt['launch_hold'] is False
     assert receipt['arm_timeout_seconds'] == 3600
     assert receipt['total_arm_timeout_seconds'] == 10800
     assert receipt['expected_pairs_per_arm'] == 1
@@ -64,9 +65,29 @@ def test_cutoff_receipt_and_hold_before_output(monkeypatch, isolated_main, capsy
     assert 'candidate own trick' in receipt['cutoff_semantics']
     assert 'sampled MC world' in receipt['leaf_information']
     assert '5752536484' in receipt['seed_reservation']
-    with pytest.raises(RuntimeError, match='cutoff launch held'):
-        launcher.main(call + ['--run'])
     assert not output.exists()
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 3600
+        assert kwargs['env'].get('SHENGJI_FAST') is None
+        assert '--progress' in cmd
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        if len(seen)-1 == fail_at:
+            (arm/'partial.txt').write_text('preserved')
+            raise RuntimeError('qualification refused')
+        (arm/'summary.json').write_text(json.dumps(dict(expected=1, complete=1, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    if fail_at is None:
+        assert launcher.main(call + ['--run']) == 0
+    else:
+        with pytest.raises(RuntimeError, match='qualification refused'):
+            launcher.main(call + ['--run'])
+        assert (output/seen[-1]/'partial.txt').read_text() == 'preserved'
+    expected_count = 3 if fail_at is None else fail_at + 1
+    assert seen == [arm[0] for arm in launcher.CUTOFF_ARMS[:expected_count]]
     assert not any(path.exists() for path in launcher.LOCKS)
 
 

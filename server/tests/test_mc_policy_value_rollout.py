@@ -28,6 +28,9 @@ def test_root_settings_unchanged():
         if key.isupper() and not key.startswith('_'):
             assert getattr(candidate, key) == getattr(control, key), key
     assert candidate.rng.getstate() == control.rng.getstate()
+    assert candidate.rollout_policy.bot.sampler.rng.getstate() != candidate.rng.getstate()
+    candidate.rollout_policy.begin_rollout()
+    assert candidate.rollout_policy.bot.sampler.rng.getstate() != candidate.rng.getstate()
 
 
 def test_each_rollout_restarts_inner_stream_without_touching_root(monkeypatch):

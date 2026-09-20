@@ -16,7 +16,9 @@ from .policy_value_search import PolicyValueBot
 class PublicPVContinuation:
     def __init__(self, bot: PolicyValueBot, seed: int):
         self.bot = bot
-        self.seed = seed
+        self.seed = int.from_bytes(hashlib.sha256(
+            f'mc-pv-continuation-v1:{seed}'.encode('ascii')).digest()[:16], 'big')
+        self.bot.sampler.rng.seed(self.seed)
         self.decisions = 0
         self.worlds = 0
         self.value_evaluations = 0

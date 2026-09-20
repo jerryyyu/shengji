@@ -71,6 +71,10 @@ PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
                              'pv-production-qualify', 'world-scaling-qualify')
 WORLD_SCALING_QUALIFY_SEED = 625890000
+WORLD_SCALING_SCREEN_SEED = 625900000
+# 12-pair cloud qualification85.79/93.00/105.86s;800 linear <=1.97h/arm.
+# Six hours is a conservative failure ceiling, not an ETA or retry grant.
+WORLD_SCALING_SCREEN_SECONDS = 21600
 WORLD_SCALING_ARMS = [('W16_K8', 16, 'policy-value', 'mc-lcb'),
                       ('W32_K8', 32, 'policy-value', 'mc-lcb'),
                       ('W64_K8', 64, 'policy-value', 'mc-lcb')]
@@ -80,7 +84,7 @@ PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
-          'world-scaling-qualify')
+          'world-scaling-qualify', 'world-scaling-screen')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -91,6 +95,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if suite == 'world-scaling-screen' and qualify:
+        raise ValueError('world-scaling-screen is full-screen only')
     if suite in QUALIFICATION_ONLY_SUITES and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (suite in PRODUCTION_SUITES) != (production is not None):
@@ -103,6 +109,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
                   'world-scaling-qualify': (WORLD_SCALING_ARMS, WORLD_SCALING_QUALIFY_SEED),
+                  'world-scaling-screen': (WORLD_SCALING_ARMS, WORLD_SCALING_SCREEN_SEED),
                   'pv-production-qualify': ([('SOFT_W16_K8', 16, 'policy-value',
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
@@ -208,6 +215,8 @@ def main(argv=None):
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if args.suite == 'world-scaling-screen' and args.qualify:
+        raise ValueError('world-scaling-screen is full-screen only')
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
@@ -224,6 +233,7 @@ def main(argv=None):
                   'joint-grid-screen': REFERENCE_SOURCE,
                   'pv-production-qualify': REFERENCE_SOURCE,
                   'world-scaling-qualify': REFERENCE_SOURCE,
+                  'world-scaling-screen': REFERENCE_SOURCE,
                   'mc-pv-qualify': MC_PV_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
@@ -269,6 +279,8 @@ def main(argv=None):
         seconds, expected = 3600, 1
     if args.suite == 'pv-production-qualify':
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
+    if args.suite == 'world-scaling-screen':
+        seconds = WORLD_SCALING_SCREEN_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
@@ -316,6 +328,26 @@ def main(argv=None):
                       'prospective_intervals': 'joint deal bootstrap; 97.5% per contrast (two-contrast adjustment)',
                       'contrast_scope': 'common MC-LCB opponent, not direct head-to-head',
                       'optional_extension': False})
+    if args.suite == 'world-scaling-screen':
+        receipt.update(
+            mode='strength-screen',
+            seed_reservation='625900000:625900800; #436 comment5751848334',
+            qualification_evidence='PR550 comment5752000029; all three12-pair arms clean',
+            expected_pairs_per_arm=DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
+            comparison_scope='card play only; shared heuristic declare/bury',
+            analysis={
+                'primary': ['W16_K8 minus MC-LCB', 'W32_K8 minus MC-LCB', 'W64_K8 minus MC-LCB'],
+                'primary_intervals': '98.333333% each; Bonferroni three-primary family',
+                'components': ['W32_K8 minus W16_K8', 'W64_K8 minus W16_K8'],
+                'component_intervals': '97.5% each; Bonferroni two-component family',
+                'unit': 'deal with both seat mirrors averaged; jointly resampled across arms',
+                'bootstrap_seed': 20260920, 'bootstrap_replicates': 10000,
+                'confirmation': 'W16_K8 vs MC-LCB on fresh deals confirms earlier selected setting',
+                'qualification_rows_excluded': True, 'optional_extension': False,
+                'automatic_retry': False,
+                'contrast_scope': 'common MC-LCB opponent; not direct candidate head-to-head',
+                'decision_rule': 'positive adjusted lower bound; null is not equivalence'})
     if args.suite == 'wk-screen':
         receipt.update(
             launch_hold=False,

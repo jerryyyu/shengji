@@ -49,6 +49,11 @@ def _value_evaluator(checkpoint, checksum):
 
 
 def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8):
+    if mode == "mc-policy-value-rollout":
+        from .mc_policy_value_rollout import MCPolicyValueRollout
+        continuation = make_policy(checkpoint, checksum, worlds, seed,
+                                   "policy-value", candidates)
+        return MCPolicyValueRollout(continuation, seed=seed)
     kwargs = dict(worlds=worlds, cap=CAP, seed=seed)
     if mode == "policy":
         return PolicyWorldBot.from_checkpoint(checkpoint, checksum, **kwargs)
@@ -213,7 +218,18 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
     counts = shortlist.get('counts', {})
     sampler = shortlist.get('cheap_sampler_delta', {})
     prior = shortlist.get('prior_admission', {})
+    from .mc_policy_value_rollout import MCPolicyValueRollout
+    learned_work = {}
+    if isinstance(bot, MCPolicyValueRollout):
+        inner = bot.rollout_policy
+        learned_work = dict(continuation_plies=inner.decisions,
+                            continuation_worlds=inner.worlds,
+                            continuation_sample_attempts=inner.sample_attempts,
+                            continuation_capped_decisions=inner.legal_caps,
+                            value_evaluations=inner.value_evaluations,
+                            value_batches=inner.value_batches)
     return {
+        **learned_work,
         'shortlist_work': {
             **{k: int(counts.get(k, 0)) for k in SHORTLIST_COUNTS},
             **{'cheap_' + k: int(sampler.get(k, 0)) for k in SHORTLIST_SAMPLER},
@@ -256,6 +272,8 @@ def _record_decision(side_record: dict[str, Any], seconds: float,
         for key in EXTRA_POLICY_WORK:
             side_record[key] += telemetry.get(key, 0)
     else:
+        for key in EXTRA_POLICY_WORK:
+            side_record[key] += telemetry.get(key, 0)
         for key in SHORTLIST_WORK:
             side_record['shortlist_work'][key] += telemetry.get('shortlist_work', {}).get(key, 0)
         alloc = side_record["mc_last_alloc"]
@@ -292,6 +310,7 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
     """Play one mirror.  Only this function runs inside a worker."""
     signal.signal(signal.SIGALRM, _alarm_handler)
     side = {"policy": _empty_side(), "control": _empty_side()}
+    interrupted = None
     try:
         game = Game(random.Random(seed))
         heuristic = HeuristicBot()
@@ -316,7 +335,26 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
             seat = rnd.turn
             assert seat is not None
             role = roles[seat]
-            cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            decision_started = time.perf_counter()
+            try:
+                cards, elapsed = _timed_play(bots[seat], rnd, seat)
+            except Exception:
+                from .mc_policy_value_rollout import MCPolicyValueRollout
+                if isinstance(bots[seat], MCPolicyValueRollout):
+                    inner = bots[seat].rollout_policy
+                    interrupted = {
+                        'role': role, 'seat': seat,
+                        'seconds': time.perf_counter() - decision_started,
+                        'complete': False,
+                        'mc_phase': bots[seat].rollout_phase,
+                        'outer_rollouts_by_phase': {
+                            phase: dict(counts) for phase, counts in bots[seat].phase_rollouts.items()},
+                        'scope': 'completed inner decisions only; interrupted inner work unmeasured',
+                        'completed_inner_work': {k: getattr(inner, k) for k in (
+                            'decisions', 'worlds', 'sample_attempts', 'value_evaluations',
+                            'value_batches', 'legal_caps')},
+                    }
+                raise
             telemetry_kind = ("policy" if isinstance(bots[seat], PolicyWorldBot)
                               else "control")
             _record_decision(side[role], elapsed,
@@ -331,9 +369,11 @@ def _play_one(seed: int, parity: int, checkpoint: str, checkpoint_sha256: str,
                 "max_rss_kib": _rss_kib()}
     except TimeoutError as exc:
         return {"sides": side, "max_rss_kib": _rss_kib(), "timeout": True,
+                "interrupted_decision": interrupted,
                 "error": {"type": type(exc).__name__, "message": str(exc)}}
     except Exception as exc:
         return {"sides": side, "max_rss_kib": _rss_kib(), "timeout": False,
+                "interrupted_decision": interrupted,
                 "error": {"type": type(exc).__name__, "message": str(exc)}}
 
 
@@ -363,6 +403,7 @@ def play_pair(seed: int, checkpoint: str, checkpoint_sha256: str, *,
                     "sides": sides, "max_rss_kib": one.get("max_rss_kib", _rss_kib()),
                     "elapsed_seconds": time.monotonic() - started,
                     "timeout": bool(one.get("timeout")), "error": one["error"],
+                    "interrupted_decision": one.get("interrupted_decision"),
                 }
             mirrors.append(one["utility"])
         return {
@@ -464,6 +505,10 @@ def aggregate_records(records: Iterable[dict[str, Any]],
                 "total_seconds": float(seconds.sum())}
 
     policy = {"timing": stats("policy")}
+    policy["mc_last_alloc"] = {
+        key: int(sum(row_side(by_seed[s], "policy").get("mc_last_alloc", {}).get(key, 0)
+                     for s in expected))
+        for key in _empty_side()["mc_last_alloc"]}
     policy.update({key: int(sum(row_side(by_seed[s], "policy").get(key, 0)
                                 for s in expected))
                    for key in ("sample_attempts", "worlds", "capped_decisions", "decisions") + EXTRA_POLICY_WORK})
@@ -512,7 +557,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--worlds", type=int, default=4)
-    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc"), default="policy")
+    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc", "mc-policy-value-rollout"), default="policy")
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     parser.add_argument('--production-checkpoint',
@@ -521,6 +566,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args) -> None:
+    if args.mode == "mc-policy-value-rollout" and args.control != "mc-lcb":
+        raise ValueError('MC rollout experiment requires matched mc-lcb control')
     if (args.control == 'production-play') != bool(args.production_checkpoint):
         raise ValueError('production-checkpoint is required exactly for production-play')
     if not (1 <= args.deals <= 4000):
@@ -565,7 +612,8 @@ def main(argv=None) -> int:
         "control_effective": effective_control,
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
                               "policy-selective-mc": "PolicySelectiveMCBot",
-                              "policy-lookahead": "PolicyLookaheadBot"}[args.mode],
+                              "policy-lookahead": "PolicyLookaheadBot",
+                              "mc-policy-value-rollout": "MCPolicyValueRollout"}[args.mode],
                     "mode": args.mode, "candidates": args.candidates if args.mode != "policy" else None,
                     "value_head": "outcome" if args.mode != "policy" else None,
                     "value_batch_size": 128 if args.mode != "policy" else None,
@@ -598,6 +646,19 @@ def main(argv=None) -> int:
             },
         },
     }
+    if args.mode == "mc-policy-value-rollout":
+        from .mc_policy_value_rollout import MCPolicyValueRollout
+        recipe['mc_rollout_module_sha256'] = _sha256(
+            Path(inspect.getfile(MCPolicyValueRollout)).resolve())
+        recipe['policy']['root_mc'] = effective_control
+        recipe['policy']['rollout'] = {
+            'class': 'PolicyValueBot', 'worlds': args.worlds,
+            'candidates': args.candidates, 'cap': CAP,
+            'actor_public_resampling': True, 'terminal_score': 'attacker_points',
+            'value_cutoff': False, 'exact_endgame': False,
+            'rng': 'inner base=int(sha256(ASCII mc-pv-continuation-v1:<root seed>)[:16], big); decision=int(sha256(ASCII repr((inner base, actor seat, public history length, trick play count)))[:16], big)',
+            'value_afterstate': 'heuristic completion of current trick',
+        }
     (out / "recipe.json").write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n")
     expected = list(range(args.seed0, args.seed0 + args.deals))
     records = []

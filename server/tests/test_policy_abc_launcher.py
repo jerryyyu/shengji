@@ -26,6 +26,71 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_cutoff_frozen_contrasts_and_qualification_only():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SUITE)
+    with pytest.raises(ValueError, match='required exactly'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SUITE, qualify=True,
+                          grid_checkpoint=Path('/grid'))
+    plan = launcher.commands(*args, suite=launcher.CUTOFF_SUITE, qualify=True)
+    assert len(plan) == 3
+    for (name, cmd), (_, worlds, mode, control) in zip(plan, launcher.CUTOFF_ARMS):
+        for flag, value in {'--worlds': '16', '--candidates': '8', '--deals': '1',
+            '--workers': '1', '--seed0': '626190000', '--cutoff-tricks': '1',
+            '--checkpoint-sha256': launcher.CHECKPOINT, '--mode': mode,
+            '--control': control}.items():
+            assert cmd[cmd.index(flag)+1] == value
+        assert '--progress' in cmd
+    assert [(cmd[cmd.index('--mode')+1], cmd[cmd.index('--control')+1])
+            for _, cmd in plan] == [('mc-levels-terminal', 'mc-lcb'),
+                ('mc-heuristic-cutoff', 'mc-levels-terminal'),
+                ('mc-pv-cutoff', 'mc-heuristic-cutoff')]
+
+
+@pytest.mark.parametrize('fail_at', [None, 0, 1])
+def test_cutoff_reviewed_launch_and_stop_on_failure(monkeypatch, isolated_main, capsys, fail_at):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', launcher.CUTOFF_SUITE, '--qualify']
+    assert launcher.main(call) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.CUTOFF_SOURCE
+    assert receipt['launch_hold'] is False
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['total_arm_timeout_seconds'] == 10800
+    assert receipt['expected_pairs_per_arm'] == 1
+    assert receipt['analysis']['stop_on_failure'] is True
+    assert 'candidate own trick' in receipt['cutoff_semantics']
+    assert 'sampled MC world' in receipt['leaf_information']
+    assert '5752536484' in receipt['seed_reservation']
+    assert not output.exists()
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 3600
+        assert kwargs['env'].get('SHENGJI_FAST') is None
+        assert '--progress' in cmd
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        if len(seen)-1 == fail_at:
+            (arm/'partial.txt').write_text('preserved')
+            raise RuntimeError('qualification refused')
+        (arm/'summary.json').write_text(json.dumps(dict(expected=1, complete=1, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    if fail_at is None:
+        assert launcher.main(call + ['--run']) == 0
+    else:
+        with pytest.raises(RuntimeError, match='qualification refused'):
+            launcher.main(call + ['--run'])
+        assert (output/seen[-1]/'partial.txt').read_text() == 'preserved'
+    expected_count = 3 if fail_at is None else fail_at + 1
+    assert seen == [arm[0] for arm in launcher.CUTOFF_ARMS[:expected_count]]
+    assert not any(path.exists() for path in launcher.LOCKS)
+
+
 def test_soft_rollout_uses_winning_inner_recipe_only():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     with pytest.raises(ValueError, match='qualification-only'):

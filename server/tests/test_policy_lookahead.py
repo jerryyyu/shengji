@@ -59,3 +59,48 @@ def test_real_continuation_preserves_hidden_information_and_original_state():
     assert first.last_decision_record['continuation_work']['worlds'] == 16
     assert all(len(leaf.history) == len(rnd.history) + 2 for leaf in first_eval.leaves)
     assert [r.hands for r in first_eval.leaves] == [r.hands for r in second_eval.leaves]
+
+
+@pytest.mark.parametrize('mutation', ['root_hand', 'kitty'])
+def test_continuation_actor_does_not_see_root_world_hidden_cards(monkeypatch, mutation):
+    """Root privacy alone cannot detect privileged information at later actors."""
+    from shengji.ai.heuristic import HeuristicBot
+    leaf = state()
+    root = leaf.turn
+    leaf.play(root, HeuristicBot().decide_play(leaf, root))
+    actor = leaf.turn
+    assert actor != root and actor != leaf.banker
+    changed = copy.deepcopy(leaf)
+    if mutation == 'root_hand':
+        other = next(s for s in range(4) if s not in (actor, root))
+        changed.hands[root][-1], changed.hands[other][-1] = (
+            changed.hands[other][-1], changed.hands[root][-1])
+    else:
+        changed.buried[0], changed.hands[root][-1] = (
+            changed.hands[root][-1], changed.buried[0])
+    assert changed.hands[root] != leaf.hands[root]
+    assert changed.hands[actor] == leaf.hands[actor]
+    # Inject the two counterfactuals at the continuation boundary. The outer
+    # root's supplied hands/kitty are deliberately absent; only the actor's
+    # information may determine the policy input and submitted action.
+    monkeypatch.setattr(PolicyValueBot, '_leaf',
+                        lambda self, rnd, *args: copy.deepcopy(rnd))
+    observed = []
+    def predict(x):
+        observed.append(x.copy())
+        return np.tile(np.arange(54), (len(x), 1))
+    actions = []
+    from shengji.train.policy_world_search import PolicyWorldBot
+    original = PolicyWorldBot.decide_play
+    def capture(self, rnd, seat):
+        assert seat == actor
+        cards = original(self, rnd, seat)
+        actions.append(cards)
+        return cards
+    monkeypatch.setattr(PolicyWorldBot, 'decide_play', capture)
+    bot = PolicyLookaheadBot(predict, evaluator=object(), extra_plies=1, seed=29)
+    bot._leaf(leaf, root, None, None, None, 0)
+    bot._leaf(changed, root, None, None, None, 0)
+    assert len(observed) == 2
+    assert np.array_equal(observed[0], observed[1])
+    assert actions[0] == actions[1]

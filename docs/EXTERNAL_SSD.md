@@ -17,7 +17,7 @@ the inventory is the list.
 
 | path | what | verification | size |
 |---|---|---|---|
-| `shengji-backup/2026-09-13/` | the training-output tree as of 09-13 (older runs' checkpoints and receipts), as tars | the checksum files inside `train-out-cwv-tars/` (see that directory) | part of 99 GB |
+| `shengji-backup/2026-09-13/` | the training-output tree as of 09-13 (older runs' checkpoints and receipts), as tars | `train-out-cwv-tars/SHA256SUMS.verified` — that file IS the sha256 list (one line per tar); run `shasum -a 256 -c SHA256SUMS.verified` there | part of 99 GB |
 | `shengji-backup/2026-09-18/` | full backup of the Mini's `train-out/cwv` and `~/shengji-archive` as of 09-18 | `SHA256SUMS.txt` (verified by read-back on 09-18: `SHA256SUMS.verified`, `README.md`) | part of 99 GB |
 | `shengji-pack/v5-176k/` | FAILED first build of the decoded pack (PackError at shard 1,001, string width); incomplete, no manifest | **UNVERIFIED and incomplete** — no checksum of any kind; kept only until Jerry decides | 29 GB |
 | `shengji-pack/v5-176k-r2/` | the decoded pack of the 176k v5 corpus (#531/#532/#549), built 2026-09-20 in 879 s | **no checksum file of the pack's own bytes.** `manifest.json` binds the encoder identity and the sha256 of every SOURCE cache shard — it certifies inputs, not the output bytes. The evidence that the pack is right is the trainer: an epoch from this pack produced tensors equal to the cache path's (#542, 2026-09-20). Rebuildable from the caches. | 29 GB |

@@ -61,6 +61,9 @@ def test_cutoff_receipt_and_hold_before_output(monkeypatch, isolated_main, capsy
     assert receipt['total_arm_timeout_seconds'] == 10800
     assert receipt['expected_pairs_per_arm'] == 1
     assert receipt['analysis']['stop_on_failure'] is True
+    assert 'candidate own trick' in receipt['cutoff_semantics']
+    assert 'sampled MC world' in receipt['leaf_information']
+    assert '5752536484' in receipt['seed_reservation']
     with pytest.raises(RuntimeError, match='cutoff launch held'):
         launcher.main(call + ['--run'])
     assert not output.exists()

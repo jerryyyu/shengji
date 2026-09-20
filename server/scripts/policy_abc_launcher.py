@@ -440,10 +440,12 @@ def main(argv=None):
     if args.suite == CUTOFF_SUITE:
         receipt.update(
             launch_hold=True,
-            seed_reservation='626190000:626190001; proposal pending peer confirmation',
+            seed_reservation='626190000:626190001; within peer reservation on #436/comment5752536484',
             expected_pairs_per_arm=1, workers=1,
             total_arm_timeout_seconds=10800, move_timeout_seconds=300,
             cutoff_tricks=1, progress_events=True,
+            cutoff_semantics='T1 completes the candidate own trick, not one additional trick',
+            leaf_information='complete sampled MC world, not true hidden game state',
             comparison_scope='card play only; shared heuristic declare/bury',
             analysis={'purpose': 'runtime qualification only, not strength inference',
                       'contrasts': ['levels objective', 'value cutoff', 'learned continuation'],
@@ -451,7 +453,8 @@ def main(argv=None):
                       'outer': 'N30 selection/R300 report LCB',
                       'qualification_rows_excluded': True,
                       'automatic_retry': False, 'automatic_promotion': False,
-                      'stop_on_failure': True, 'grid_rollouts': False})
+                      'stop_on_failure': True, 'grid_rollouts': False,
+                      'interpretation': 'rollout quality; not standalone public-only leaf prediction'})
     print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0

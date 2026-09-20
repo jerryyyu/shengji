@@ -40,19 +40,32 @@ PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431
 REFERENCE_SEED = 625300000
 REFERENCE_ARMS = [('F', 4, 'policy-lookahead', 'policy-value'),
                   ('G', 4, 'policy-value', 'production-play')]
+# Jerry directly approved this exact screen in the Codex thread on Sept 20 UTC.
+# Claude confirmed the window free on #521. Never reuse qualification rows.
+STRENGTH_SEED = 625400000
+STRENGTH_ARMS = [('PV', 4, 'policy-value', 'mc-lcb'),
+                 ('PV_MC', 4, 'policy-selective-mc', 'mc-lcb'),
+                 ('PV_TREE', 4, 'policy-lookahead', 'mc-lcb')]
+# D's 12-pair MC-LCB qualification took 80s (~89min/800 linear).
+# Allow 3h/arm for added tree work and tails; this is not a runtime promise.
+STRENGTH_ARM_SECONDS = 10800
+SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None):
-    if suite not in ('abc', 'search-followup', 'search-reference'):
+    if suite not in SUITES:
         raise ValueError('unknown experiment suite')
-    if suite != 'abc' and not qualify:
+    if suite == 'strength-screen' and qualify:
+        raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if suite in ('search-followup', 'search-reference') and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (suite == 'search-reference') != (production is not None):
         raise ValueError('production checkpoint required exactly for search-reference')
     arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
-                  'search-reference': (REFERENCE_ARMS, REFERENCE_SEED)}[suite]
+                  'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
+                  'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED)}[suite]
     return [(name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                    '--checkpoint', str(checkpoint), '--checkpoint-sha256', CHECKPOINT,
                    '--out', str(output / name), '--seed0', str(seed),
@@ -138,17 +151,21 @@ def main(argv=None):
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--run', action='store_true')
-    parser.add_argument('--suite', choices=('abc', 'search-followup', 'search-reference'), default='abc')
+    parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs per arm, 900s/arm ceiling; never advances to full experiment')
     args = parser.parse_args(argv)
-    if args.suite != 'abc' and not args.qualify:
+    if args.suite == 'strength-screen':
+        if args.qualify:
+            raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if args.suite in ('search-followup', 'search-reference') and not args.qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (args.suite == 'search-reference') != (args.production_checkpoint is not None):
         raise ValueError('production checkpoint required exactly for search-reference')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
-                  'search-reference': REFERENCE_SOURCE}[args.suite]
+                  'search-reference': REFERENCE_SOURCE,
+                  'strength-screen': REFERENCE_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
@@ -178,13 +195,30 @@ def main(argv=None):
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production)
-    seconds = QUALIFY_SECONDS if args.qualify else ARM_SECONDS
+    seconds = (STRENGTH_ARM_SECONDS if args.suite == 'strength-screen'
+               else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
     expected = QUALIFY_DEALS if args.qualify else DEALS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
                'mode': 'runtime-qualification' if args.qualify else 'experiment',
                'automatic_promotion': False}
+    if args.suite == 'strength-screen':
+        receipt.update(
+            mode='strength-screen', launch_hold=False,
+            seed_reservation='625400000:625400800; peer confirmed on PR521',
+            authorization='Jerry direct Codex-thread approval, 2026-09-20 UTC',
+            comparison_scope='card play only; shared heuristic declare/bury',
+            total_arm_timeout_seconds=len(plan) * seconds,
+            analysis={
+                'primary': 'paired signed-level advantage against MC-LCB per arm',
+                'unit': 'deal with both seat mirrors averaged',
+                'component_contrasts': ['PV_MC minus PV', 'PV_TREE minus PV'],
+                'familywise_intervals': 'two-sided 98.333333% per primary contrast (Bonferroni, three arms)',
+                'descriptive_intervals': 'two-sided 95%; component contrasts exploratory',
+                'qualification_rows_excluded': True,
+                'optional_extension': False,
+            })
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'

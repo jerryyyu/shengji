@@ -11,6 +11,9 @@ measures those older optimizations instead and cannot attribute a packing gain.
 Use a dedicated recipe cache, not a fleet-wide cache: inventory checks traverse
 the entire supplied directory. Bounds remain two epochs / 128 DEV clusters;
 this does not by itself qualify full-corpus throughput or downstream strength.
+Policy artifacts are independently bounded at 16 chunks and 256 MiB total
+compressed + declared uncompressed array + flat metadata bytes, because a
+per-pass policy_rows_limit does not bound startup verification.
 """
 from __future__ import annotations
 
@@ -23,6 +26,50 @@ import resource
 import subprocess
 import sys
 import time
+import zipfile
+
+
+POLICY_INPUT_BYTES = 256 * 1024**2
+
+
+def check_policy_input_budget(kw):
+    """Bound startup verification too, using file/ZIP metadata, not row limits.
+
+    No array decode, full hashing, corpus sampling, or input mutation. Normal
+    training loaders still perform all schema/hash/exposure validation later.
+    """
+    total = 0
+    for key in ('policy_rows', 'policy_eval'):
+        if not kw.get(key):
+            continue
+        root = Path(kw[key])
+        if key == 'policy_rows' and root.is_dir():
+            manifest = root/'manifest.json'
+            if manifest.stat().st_size > 1024**2:
+                raise ValueError('policy input manifest exceeds qualification budget')
+            chunks = json.loads(manifest.read_text()).get('chunks', [])
+            if not 1 <= len(chunks) <= 16:
+                raise ValueError('qualification requires 1..16 policy chunks, not full corpus')
+            paths = []
+            for chunk in chunks:
+                path = (root/chunk['file']).resolve()
+                if path.parent != root.resolve():
+                    raise ValueError('policy chunk must be directly inside its artifact directory')
+                paths.append(path)
+        else:
+            paths = [Path(str(root)+'.npz')]
+            total += Path(str(root)+'.meta.jsonl').stat().st_size
+        for path in paths:
+            total += path.stat().st_size
+            if total > POLICY_INPUT_BYTES:
+                raise ValueError('policy inputs exceed qualification byte budget')
+            with zipfile.ZipFile(path) as archive:
+                members = archive.infolist()
+                if len(members) > 128:
+                    raise ValueError('policy archive exceeds qualification member budget')
+                total += sum(member.file_size for member in members)
+            if total > POLICY_INPUT_BYTES:
+                raise ValueError('policy inputs exceed qualification byte budget')
 
 
 def recipe(path):
@@ -36,6 +83,7 @@ def recipe(path):
         raise ValueError("provide a shared prewarmed cache_dir and existing public_head")
     if kw.get("target", "realised") != "realised":
         raise ValueError("qualification holds the target fixed at realised")
+    check_policy_input_budget(kw)
     return kw
 
 

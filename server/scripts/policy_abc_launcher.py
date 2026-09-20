@@ -40,7 +40,7 @@ PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431
 REFERENCE_SEED = 625300000
 REFERENCE_ARMS = [('F', 4, 'policy-lookahead', 'policy-value'),
                   ('G', 4, 'policy-value', 'production-play')]
-# Jerry directly approved this exact screen in the Codex thread on Sept 20.
+# Jerry directly approved this exact screen in the Codex thread on Sept 20 UTC.
 # Claude confirmed the window free on #521. Never reuse qualification rows.
 STRENGTH_SEED = 625400000
 STRENGTH_ARMS = [('PV', 4, 'policy-value', 'mc-lcb'),
@@ -207,7 +207,7 @@ def main(argv=None):
         receipt.update(
             mode='strength-screen', launch_hold=False,
             seed_reservation='625400000:625400800; peer confirmed on PR521',
-            authorization='Jerry direct Codex-thread approval, 2026-09-20',
+            authorization='Jerry direct Codex-thread approval, 2026-09-20 UTC',
             comparison_scope='card play only; shared heuristic declare/bury',
             total_arm_timeout_seconds=len(plan) * seconds,
             analysis={

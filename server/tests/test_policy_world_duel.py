@@ -52,7 +52,7 @@ def test_aggregate_refuses_nonfinite_or_timeout_rows(row):
 
 
 def test_injected_fast_pair_smoke(monkeypatch):
-    def fast(seed, parity, checkpoint, checksum, worlds, control, mode, candidates):
+    def fast(seed, parity, checkpoint, checksum, worlds, control, mode, candidates, production):
         return {"utility": float(1 if parity == 0 else -1),
                 "sides": {"policy": duel._empty_side(),
                           "control": duel._empty_side()}}
@@ -74,10 +74,10 @@ def test_worker_pair_keeps_keyword_only_configuration(monkeypatch):
         return {"seed": args[0]}
 
     monkeypatch.setattr(duel, "play_pair", fake)
-    assert duel._worker_pair((4, "ck", "sha", 8, "mc-smart4", "policy-value", 12)) == {"seed": 4}
+    assert duel._worker_pair((4, "ck", "sha", 8, "mc-smart4", "policy-value", 12, None)) == {"seed": 4}
     assert seen == {"args": (4, "ck", "sha"),
                     "kwargs": {"worlds": 8, "control": "mc-smart4",
-                               "mode": "policy-value", "candidates": 12}}
+                               "mode": "policy-value", "candidates": 12, "production": None}}
 
 
 def test_value_work_survives_decision_pair_summary():

@@ -49,7 +49,12 @@ STRENGTH_ARMS = [('PV', 4, 'policy-value', 'mc-lcb'),
 # D's 12-pair MC-LCB qualification took 80s (~89min/800 linear).
 # Allow 3h/arm for added tree work and tails; this is not a runtime promise.
 STRENGTH_ARM_SECONDS = 10800
-SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen')
+WK_SEED = 625500000
+WK_QUALIFY_SEED = 625490000
+WK_ARMS = [('W4_K8', 4, 'policy-value', 'mc-lcb'),
+           ('W16_K8', 16, 'policy-value', 'mc-lcb'),
+           ('W4_K16', 4, 'policy-value', 'mc-lcb')]
+SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -65,12 +70,14 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('production checkpoint required exactly for search-reference')
     arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
-                  'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED)}[suite]
+                  'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
+                  'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED)}[suite]
     return [(name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                    '--checkpoint', str(checkpoint), '--checkpoint-sha256', CHECKPOINT,
                    '--out', str(output / name), '--seed0', str(seed),
                    '--deals', str(QUALIFY_DEALS if qualify else DEALS), '--workers', str(WORKERS),
-                   '--worlds', str(worlds), '--mode', mode, '--candidates', '8',
+                   '--worlds', str(worlds), '--mode', mode, '--candidates',
+                   '16' if suite == 'wk-screen' and name == 'W4_K16' else '8',
                    '--control', control] + (['--production-checkpoint', str(production)]
                        if control == 'production-play' else []))
             for name, worlds, mode, control in arms]
@@ -165,7 +172,8 @@ def main(argv=None):
         raise ValueError('production checkpoint required exactly for search-reference')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
-                  'strength-screen': REFERENCE_SOURCE}[args.suite]
+                  'strength-screen': REFERENCE_SOURCE,
+                  'wk-screen': REFERENCE_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
@@ -195,7 +203,7 @@ def main(argv=None):
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production)
-    seconds = (STRENGTH_ARM_SECONDS if args.suite == 'strength-screen'
+    seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
     expected = QUALIFY_DEALS if args.qualify else DEALS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
@@ -222,6 +230,22 @@ def main(argv=None):
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
+    if args.suite == 'wk-screen':
+        receipt.update(
+            launch_hold=False,
+            authorization='Jerry direct Codex-thread approval: Yea lets test that, 2026-09-20',
+            comparison_scope='card play only; shared heuristic declare/bury',
+            total_arm_timeout_seconds=len(plan) * seconds,
+            analysis={
+                'primary': 'paired signed-level advantage against MC-LCB per arm',
+                'unit': 'deal with both seat mirrors averaged',
+                'component_contrasts': ['W16_K8 minus W4_K8', 'W4_K16 minus W4_K8'],
+                'familywise_intervals': '98.333333% per primary contrast (Bonferroni, three arms)',
+                'component_intervals': '97.5% per component contrast (Bonferroni, two contrasts)',
+                'descriptive_intervals': '95%; no optional extension',
+                'qualification_rows_excluded': True,
+                'optional_extension': False,
+            })
     print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0

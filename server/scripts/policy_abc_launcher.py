@@ -67,6 +67,9 @@ MC_PV_SEED = 625690000
 MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
+SOFT_MC_SUITE = 'soft-mc-pv-qualify'
+MC_SUITES = ('mc-pv-qualify', SOFT_MC_SUITE)
+SOFT_MC_SEED = 625690100
 MODEL_SUITE = 'model-w16-qualify'
 GRID_SUITES = JOINT_SUITES + (MODEL_SUITE,)
 MODEL_QUALIFY_SEED = 626090000
@@ -74,7 +77,8 @@ MODEL_ARMS = [(name, 16, 'policy-value', 'mc-lcb') for name in
               ('SOFT_W16_K8', 'JS_M1_W16_K8', 'JS_G1_W16_K8')]
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
-                             'pv-production-qualify', 'world-scaling-qualify', MODEL_SUITE)
+                             'pv-production-qualify', 'world-scaling-qualify', MODEL_SUITE,
+                             SOFT_MC_SUITE)
 WORLD_SCALING_QUALIFY_SEED = 625890000
 WORLD_SCALING_ARMS = [('W16_K8', 16, 'policy-value', 'mc-lcb'),
                       ('W32_K8', 32, 'policy-value', 'mc-lcb'),
@@ -85,7 +89,7 @@ PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
-          'world-scaling-qualify', MODEL_SUITE)
+          'world-scaling-qualify', MODEL_SUITE, SOFT_MC_SUITE)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -105,6 +109,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
     if (suite in GRID_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     arms, seed = {MODEL_SUITE: (MODEL_ARMS, MODEL_QUALIFY_SEED),
+                  SOFT_MC_SUITE: ([('SOFT_MC_PV_W16_K8', 16,
+                                     'mc-policy-value-rollout', 'mc-lcb')], SOFT_MC_SEED),
                   'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
@@ -129,8 +135,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         plan.append((name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                             '--checkpoint', str(arm_checkpoint), '--checkpoint-sha256', arm_hash,
                             '--out', str(output / name), '--seed0', str(seed),
-                            '--deals', str(1 if suite == 'mc-pv-qualify' else QUALIFY_DEALS if qualify else DEALS),
-                            '--workers', str(1 if suite == 'mc-pv-qualify' else WORKERS),
+                            '--deals', str(1 if suite in MC_SUITES else QUALIFY_DEALS if qualify else DEALS),
+                            '--workers', str(1 if suite in MC_SUITES else WORKERS),
                             '--worlds', str(worlds), '--mode', mode, '--candidates',
                             '16' if suite == 'wk-screen' and name == 'W4_K16' else '8',
                             '--control', control] + (['--production-checkpoint', str(production)]
@@ -234,6 +240,7 @@ def main(argv=None):
     if (args.suite in GRID_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
     source_sha = {MODEL_SUITE: REFERENCE_SOURCE,
+                  SOFT_MC_SUITE: MC_PV_SOURCE,
                   'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
                   'strength-screen': REFERENCE_SOURCE,
@@ -286,7 +293,7 @@ def main(argv=None):
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
     expected = QUALIFY_DEALS if args.qualify else DEALS
-    if args.suite == 'mc-pv-qualify':
+    if args.suite in MC_SUITES:
         seconds, expected = 3600, 1
     if args.suite == 'pv-production-qualify':
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
@@ -406,7 +413,24 @@ def main(argv=None):
             analysis={'purpose': 'full-game runtime and failure qualification, not strength inference',
                       'qualification_rows_excluded': True,
                       'automatic_retry': False, 'automatic_promotion': False})
+    if args.suite == SOFT_MC_SUITE:
+        receipt.update(
+            launch_hold=True,
+            seed_reservation='625690100:625690101; proposal, peer check required',
+            expected_pairs_per_arm=1, workers=1,
+            total_arm_timeout_seconds=3600, move_timeout_seconds=300,
+            checkpoint_identities={'SOFT_MC_PV_W16_K8': CHECKPOINT},
+            comparison_scope='card play only; shared heuristic declare/bury',
+            analysis={
+                'purpose': 'runtime/refusal qualification, not strength inference',
+                'inner': 'actor-public soft8ecd W16/K8 policy/value choices',
+                'outer': 'unchanged MC-LCB N30/R300, terminal round scoring',
+                'qualification_rows_excluded': True,
+                'automatic_retry': False, 'automatic_promotion': False,
+                'grid_rollouts': 'deferred by Jerry; not part of this suite'})
     print(json.dumps(receipt, indent=2))
+    if args.suite == SOFT_MC_SUITE and args.run:
+        raise RuntimeError('soft rollout launch held pending review and free Perf')
     if not args.run:
         return 0
     previous = signal.signal(signal.SIGTERM, interrupted)

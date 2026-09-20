@@ -177,3 +177,97 @@ def test_zero_column_groups_are_not_memory_mapped(prepared, tmp_path):
     ps = cwv_pack.CwvPackStore(prep.block_store.entries, out)
     for i in range(len(prep.block_store)):
         assert np.array_equal(ps.block(i).public, prep.block_store.block(i).public)
+
+
+def test_string_widths_come_from_every_shard_not_the_classification_sample(prepared, tmp_path):
+    """2026-09-20: the 176k build failed at shard 1,001 — ``source_ref`` there was <U39 and the
+    pack's dtype, taken from the first 500 shards, was <U38.  The widths now come from every
+    shard, so a pack built with classify_shards=1 carries the corpus-wide maximum."""
+    prep, _cache = prepared
+    entries = prep.block_store.entries
+    expected = {name: 0 for name in cwv_pack.ROW_STRINGS}
+    for _shard, path in entries:
+        with np.load(path, allow_pickle=False) as z:
+            for name in cwv_pack.ROW_STRINGS:
+                expected[name] = max(expected[name], int(z[name].dtype.itemsize))
+    assert cwv_pack.string_widths([p for _s, p in entries]) == expected
+    out = tmp_path / "narrow-sample"
+    manifest = cwv_pack.build_pack(entries, out, classify_shards=1)
+    for name in cwv_pack.ROW_STRINGS:
+        assert np.dtype(manifest["string_dtypes"][name]).itemsize == expected[name]
+    # synthetic: a later file wider than the first
+    a, b = tmp_path / "a.npz", tmp_path / "b.npz"
+    np.savez(a, source_ref=np.array(["x:1"]), record_sha256=np.array([b"0" * 64]), input_sha256=np.array([b"0" * 64]))
+    np.savez(b, source_ref=np.array(["x:12345"]), record_sha256=np.array([b"0" * 64]), input_sha256=np.array([b"0" * 64]))
+    assert cwv_pack.string_widths([a, b])["source_ref"] == np.array(["x:12345"]).dtype.itemsize
+    with pytest.raises(cwv_pack.PackError, match="no source_ref member"):
+        np.savez(tmp_path / "c.npz", other=np.zeros(1)); cwv_pack.string_widths([tmp_path / "c.npz"])
+
+
+def test_pooled_decode_writes_the_same_pack_as_the_sequential_path(prepared, tmp_path):
+    """``workers`` only changes who decodes; the main process writes in entry order, so every
+    column file and the manifest (minus the build time) are byte-identical."""
+    prep, _cache = prepared
+    one = cwv_pack.build_pack(prep.block_store.entries, tmp_path / "w1", classify_shards=3, workers=1)
+    three = cwv_pack.build_pack(prep.block_store.entries, tmp_path / "w3", classify_shards=3, workers=3)
+    for f in sorted(p.name for p in (tmp_path / "w1").iterdir() if p.name != "manifest.json"):
+        assert (tmp_path / "w1" / f).read_bytes() == (tmp_path / "w3" / f).read_bytes(), f
+    assert {k: v for k, v in one.items() if k != "built"} == {k: v for k, v in three.items() if k != "built"}
+
+
+def _touch_task(task):
+    """Pool worker for the backpressure witnesses: mark the task decoded, then return it."""
+    import time as _t
+    directory, index, delay = task
+    (Path(directory) / f"{index:04d}").write_text("")
+    _t.sleep(delay)
+    return {"index": index}
+
+
+def _raise_task(task):
+    directory, index, delay = task
+    if index == 3:
+        raise cwv_pack.PackError("shard 3 refused")
+    return {"index": index}
+
+
+def test_ordered_pool_bounds_decoded_work_under_a_stalled_consumer(tmp_path):
+    """Codex on #549: Pool.imap decodes every task ahead of the writer.  With the bounded
+    window, consuming ONE result and stalling leaves at most ``window`` tasks decoded."""
+    import time
+    tasks = [(str(tmp_path), i, 0.0) for i in range(64)]
+    gen = cwv_pack._ordered_pool(_touch_task, tasks, workers=3, window=6)
+    first = next(gen)
+    assert first == {"index": 0}
+    time.sleep(2.0)                                   # the stalled writer
+    decoded = len(list(tmp_path.iterdir()))
+    assert decoded <= 6 + 1, decoded                   # window, plus the one already yielded
+    rest = [r["index"] for r in gen]
+    assert rest == list(range(1, 64))                  # order preserved to the end
+    assert len(list(tmp_path.iterdir())) == 64
+    gen.close()
+
+
+def test_ordered_pool_propagates_a_task_failure_in_order_and_tears_down(tmp_path):
+    tasks = [(str(tmp_path), i, 0.0) for i in range(8)]
+    gen = cwv_pack._ordered_pool(_raise_task, tasks, workers=2, window=3)
+    assert [next(gen)["index"] for _ in range(3)] == [0, 1, 2]
+    with pytest.raises(cwv_pack.PackError, match="shard 3 refused"):
+        next(gen)
+    gen.close()
+
+
+def test_build_pack_refuses_a_bad_shard_on_the_sequential_path(prepared, tmp_path, monkeypatch):
+    """A per-shard refusal raised by _decode_task surfaces from build_pack as PackError (workers=1;
+    the pooled propagation is witnessed by test_ordered_pool_propagates_a_task_failure_in_order)."""
+    prep, _cache = prepared
+    real = cwv_pack._decode_task
+
+    def poisoned(task):
+        out = real(task)
+        if task[0] == prep.block_store.entries[-1][1]:
+            raise cwv_pack.PackError("poisoned last shard")
+        return out
+    monkeypatch.setattr(cwv_pack, "_decode_task", poisoned)
+    with pytest.raises(cwv_pack.PackError, match="poisoned"):
+        cwv_pack.build_pack(prep.block_store.entries, tmp_path / "bad", classify_shards=3, workers=1)

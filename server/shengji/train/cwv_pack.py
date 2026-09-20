@@ -79,8 +79,85 @@ def _sidecar_digest(sidecar_dir: str | None, sha256: str) -> str | None:
     return sha256_file(path) if path.exists() else None
 
 
+def string_widths(paths: Sequence[str | os.PathLike]) -> dict[str, int]:
+    """The widest itemsize of each ``ROW_STRINGS`` member across ``paths`` (cache
+    ``.npz`` files), reading only those members."""
+    widths = {name: 0 for name in ROW_STRINGS}
+    for path in paths:
+        with np.load(path, allow_pickle=False) as z:
+            for name in ROW_STRINGS:
+                if name not in z.files:
+                    raise PackError(f"{path}: cache has no {name} member")
+                widths[name] = max(widths[name], int(z[name].dtype.itemsize))
+    return widths
+
+
+def _decode_task(task: tuple) -> dict:
+    """Pool worker (or plain map): one cache shard decoded and cast to the pack's column
+    layout; every refusal a shard can raise is raised here, in entry order."""
+    path, shard_sha256, sidecar_dir, public_dim, half_cols, f32_cols, str_dtype_strs = task
+    block = load_block(path, shard_sha256=shard_sha256, history=False, sidecar_dir=sidecar_dir)
+    n = block.n
+    if int(block.public.shape[1]) != public_dim:
+        raise PackError(f"{path}: public width {block.public.shape[1]} != {public_dim}")
+    out: dict = {"n": n, "world": np.ascontiguousarray(block.world)}
+    if half_cols.size:
+        doubled = block.public[:, half_cols].astype(np.float64) * 2.0
+        bad = ~((doubled == np.round(doubled)) & (doubled >= 0.0) & (doubled <= 255.0)).all(axis=0)
+        if bad.any():
+            raise PackError(f"{path}: public column(s) {half_cols[bad].tolist()} are not "
+                            f"half-multiples in [0, {HALF_MAX}]; rebuild with force_float32")
+        out["public_half"] = doubled.astype(np.uint8)
+    if f32_cols.size:
+        out["public_f32"] = np.ascontiguousarray(block.public[:, f32_cols])
+    out["scalars"] = {name: np.ascontiguousarray(getattr(block, name)) for name in SCALARS}
+    strings = {}
+    for name in ROW_STRINGS:
+        col = getattr(block, name)
+        want = np.dtype(str_dtype_strs[name])
+        if col.dtype.itemsize > want.itemsize:
+            raise PackError(f"{path}: {name} wider ({col.dtype}) than the pack's {want}")
+        strings[name] = col.astype(want)
+    out["strings"] = strings
+    if sidecar_dir is not None:
+        out["search_mean_played"] = np.ascontiguousarray(block.search_mean_played)
+    keys = np.unique(block.deal_key)
+    clusters = np.unique(block.cluster)
+    if keys.size != 1 or clusters.size != 1:
+        raise PackError(f"{path}: {keys.size} deal keys / {clusters.size} clusters in one shard")
+    out["deal_key"], out["cluster"] = str(keys[0]), str(clusters[0])
+    return out
+
+
+def _ordered_pool(fn, tasks: Sequence[tuple], *, workers: int, window: int | None = None) -> Iterator[dict]:
+    """``fn`` over ``tasks`` in ``workers`` spawned processes, results in task order, with
+    CONSUMER BACKPRESSURE: at most ``window`` (default ``4 * workers``) tasks are submitted
+    ahead of the one being yielded, so decoded shards in flight stay bounded however slowly
+    the writer drains them (Codex on #549: ``Pool.imap`` keeps every finished result).  A
+    task's exception propagates from the yield of its position; the pool is torn down by the
+    context manager on the way out."""
+    import multiprocessing
+    from collections import deque
+    window = int(window if window is not None else 4 * max(1, int(workers)))
+    if window < 1:
+        raise ValueError("window must be >= 1")
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(processes=min(int(workers), max(1, len(tasks)))) as pool:
+        pending: deque = deque()
+        it = iter(tasks)
+        for task in it:
+            pending.append(pool.apply_async(fn, (task,)))
+            if len(pending) >= window:
+                break
+        while pending:
+            yield pending.popleft().get()
+            for task in it:
+                pending.append(pool.apply_async(fn, (task,)))
+                break
+
+
 def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLike, *,
-               sidecar_dir: str | None = None, classify_shards: int = 500,
+               sidecar_dir: str | None = None, classify_shards: int = 500, workers: int = 1,
                force_float32: Collection[int] = (),
                progress: Callable[[str], None] | None = None) -> dict:
     """Write the pack of ``entries`` (``(ShardRef, cache path)`` in store order) to ``out_dir``.
@@ -114,16 +191,19 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         metas.append(meta)
     public_dim = None
     half_ok = None
-    widths: dict[str, int] = {}
     for (shard, path), _meta in list(zip(entries, metas))[:max(1, int(classify_shards))]:
         block = load_block(path, shard_sha256=shard.sha256, history=False)
         if public_dim is None:
             public_dim = int(block.public.shape[1])
         ok = classify_public(block.public)
         half_ok = ok if half_ok is None else (half_ok & ok)
-        for name in ROW_STRINGS:
-            widths[name] = max(widths.get(name, 0), int(getattr(block, name).dtype.itemsize))
     assert half_ok is not None and public_dim is not None
+    # The per-row string widths come from EVERY shard, not the classification sample:
+    # ``source_ref`` ends in the record's line index, so a later shard can be one
+    # character wider than anything in the first ``classify_shards`` (the 176k v5
+    # build failed at shard 1,001 on <U39 vs <U38, 2026-09-20).  Only the three
+    # string members are read here, so this pass is cheap.
+    widths = string_widths([path for _shard, path in entries])
     for c in force_float32:
         half_ok[int(c)] = False
     half_cols = np.flatnonzero(half_ok).astype(np.int64)
@@ -149,40 +229,31 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         arrays[name] = _memmap(out / f"{name}.bin", str_dtypes[name], (rows_total,), "w+")
     if with_sidecar:
         arrays["search_mean_played"] = _memmap(out / "search_mean_played.f32", np.float32, (rows_total,), "w+")
-    # ---- pass 2: decode every shard once and append
+    # ---- pass 2: decode every shard once and append (decode in ``workers`` processes when
+    # asked; the main process writes in entry order either way, so the pack is a function
+    # of its inputs and ``workers`` — the first real 176k build ran 0.18 s/shard single-process)
     shards_out = []
     offset = 0
-    for i, ((shard, path), meta) in enumerate(zip(entries, metas)):
-        block = load_block(path, shard_sha256=shard.sha256, history=False, sidecar_dir=sidecar_dir)
-        n = block.n
-        if int(block.public.shape[1]) != public_dim:
-            raise PackError(f"{path}: public width {block.public.shape[1]} != {public_dim}")
+    tasks = [(path, shard.sha256, sidecar_dir, public_dim, half_cols, f32_cols,
+              {k: v.str for k, v in str_dtypes.items()}) for shard, path in entries]
+    decoded = (map(_decode_task, tasks) if int(workers) <= 1
+               else _ordered_pool(_decode_task, tasks, workers=int(workers)))   # window = 4 * workers
+    for i, (((shard, path), meta), dec) in enumerate(zip(zip(entries, metas), decoded)):
+        n = dec["n"]
         if half_cols.size:
-            doubled = block.public[:, half_cols].astype(np.float64) * 2.0
-            bad = ~((doubled == np.round(doubled)) & (doubled >= 0.0) & (doubled <= 255.0)).all(axis=0)
-            if bad.any():
-                raise PackError(f"{path}: public column(s) {half_cols[bad].tolist()} are not "
-                                f"half-multiples in [0, {HALF_MAX}]; rebuild with force_float32")
-            arrays["public_half"][offset:offset + n] = doubled.astype(np.uint8)
+            arrays["public_half"][offset:offset + n] = dec["public_half"]
         if f32_cols.size:
-            arrays["public_f32"][offset:offset + n] = block.public[:, f32_cols]
-        arrays["world"][offset:offset + n] = block.world
+            arrays["public_f32"][offset:offset + n] = dec["public_f32"]
+        arrays["world"][offset:offset + n] = dec["world"]
         for name in SCALARS:
-            arrays[name][offset:offset + n] = getattr(block, name)
+            arrays[name][offset:offset + n] = dec["scalars"][name]
         for name in ROW_STRINGS:
-            col = getattr(block, name)
-            if col.dtype.itemsize > str_dtypes[name].itemsize:
-                raise PackError(f"{path}: {name} wider ({col.dtype}) than the pack's {str_dtypes[name]}")
-            arrays[name][offset:offset + n] = col.astype(str_dtypes[name])
+            arrays[name][offset:offset + n] = dec["strings"][name]
         if with_sidecar:
-            arrays["search_mean_played"][offset:offset + n] = block.search_mean_played
-        keys = np.unique(block.deal_key)
-        clusters = np.unique(block.cluster)
-        if keys.size != 1 or clusters.size != 1:
-            raise PackError(f"{path}: {keys.size} deal keys / {clusters.size} clusters in one shard")
+            arrays["search_mean_played"][offset:offset + n] = dec["search_mean_played"]
         shards_out.append({"sha256": shard.sha256, "label": shard.label, "offset": offset, "rows": n,
-                           "nbytes": int(meta.get("nbytes") or 0), "deal_key": str(keys[0]),
-                           "cluster": str(clusters[0]),
+                           "nbytes": int(meta.get("nbytes") or 0), "deal_key": dec["deal_key"],
+                           "cluster": dec["cluster"],
                            # the search labels baked for this shard come from THIS sidecar file
                            "sidecar_sha256": _sidecar_digest(sidecar_dir, shard.sha256)})
         offset += n

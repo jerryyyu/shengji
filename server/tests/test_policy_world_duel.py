@@ -148,7 +148,11 @@ def test_policy_control_work_is_not_reported_as_mc_work():
 
 @pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
                                         ('policy-lookahead', 'policy-value'),
-                                        ('policy-selective-mc', 'policy-value')])
+                                        ('policy-selective-mc', 'policy-value'),
+                                        ('mc-pv-cutoff', 'mc-lcb'),
+                                        ('mc-pv-cutoff', 'mc-heuristic-cutoff'),
+                                        ('mc-heuristic-cutoff', 'mc-levels-terminal'),
+                                        ('mc-levels-terminal', 'mc-lcb')])
 @pytest.mark.parametrize('progress', [False, True])
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control, progress):
     checkpoint = tmp_path / "checkpoint.bin"
@@ -175,9 +179,11 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
 
         def submit(self, fn, item):
             assert fn is duel._worker_pair
-            assert len(item) == (9 if progress else 8)
+            assert len(item) == (10 if mode in duel.MODEL_MC_MODES else 9 if progress else 8)
             if progress:
-                assert item[-1] == str(tmp_path / 'out' / 'progress' / '9.jsonl')
+                assert item[8] == str(tmp_path / 'out' / 'progress' / '9.jsonl')
+            if mode in duel.MODEL_MC_MODES:
+                assert item[9] == 2
             return Future(_row(item[0]))
 
     fake_pool = type("FakePoolState", (), {})()
@@ -187,12 +193,20 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
     assert duel.main(["--checkpoint", str(checkpoint), "--checkpoint-sha256", digest,
                       "--out", str(out), "--deals", "1", "--seed0", "9",
                       "--workers", "2", "--worlds", "3", "--control", control,
-                      "--mode", mode] + (['--progress'] if progress else [])) == 0
+                      "--mode", mode] + (['--progress'] if progress else []) +
+                      (['--cutoff-tricks', '2'] if mode in duel.MODEL_MC_MODES else [])) == 0
     assert fake_pool.kwargs["max_workers"] == 2
     recipe = json.loads((out / "recipe.json").read_text())
     assert recipe['progress_events'] is progress
     assert (out / 'progress').exists() is progress
     assert recipe["control"] == control
+    if mode in duel.MODEL_MC_MODES:
+        assert fake_pool.kwargs['initargs'][-1] == 2
+        assert recipe['cutoff_tricks'] == 2
+        assert recipe['policy']['rollout']['terminal_score'] == 'attacker signed levels'
+        assert recipe['policy']['rollout']['value_cutoff'] is (mode != 'mc-levels-terminal')
+        assert recipe['policy']['root_mc']['all_uppercase_attributes']['MARGIN'] == 0
+        assert recipe['policy']['root_mc']['all_uppercase_attributes']['POINT_SHY_EPS'] == 0
     if mode == 'policy-lookahead':
         assert recipe['policy']['class'] == 'PolicyLookaheadBot'
         assert recipe['policy']['extra_plies'] == 4

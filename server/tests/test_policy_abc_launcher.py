@@ -26,6 +26,54 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_strength_commands_share_fresh_deals_and_mc_lcb():
+    arms = launcher.commands(Path('/python'), Path('/model'), Path('/output'),
+                             suite='strength-screen')
+    assert [name for name, _ in arms] == ['PV', 'PV_MC', 'PV_TREE']
+    assert [cmd[cmd.index('--mode')+1] for _, cmd in arms] == [
+        'policy-value', 'policy-selective-mc', 'policy-lookahead']
+    for _, cmd in arms:
+        for key, value in {'--seed0': '625400000', '--deals': '800',
+                           '--control': 'mc-lcb', '--worlds': '4',
+                           '--candidates': '8', '--workers': '12'}.items():
+            assert cmd[cmd.index(key)+1] == value
+        assert '--production-checkpoint' not in cmd
+    assert launcher.STRENGTH_SEED >= launcher.REFERENCE_SEED + launcher.QUALIFY_DEALS
+
+
+@pytest.mark.parametrize('extra', [[], ['--qualify']])
+def test_strength_run_hold_before_io(extra):
+    with pytest.raises(ValueError, match='launch hold'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+                       '--checkpoint', '/missing', '--out', '/missing',
+                       '--suite', 'strength-screen', '--run'] + extra)
+
+
+def test_strength_cannot_relabel_as_qualification():
+    with pytest.raises(ValueError, match='not qualification'):
+        launcher.commands(Path('/python'), Path('/model'), Path('/output'),
+                          suite='strength-screen', qualify=True)
+
+
+def test_strength_preflight_retains_hold_and_analysis(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
+    assert launcher.main(args + ['--suite', 'strength-screen']) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['mode'] == 'held-strength-proposal'
+    assert receipt['launch_hold'] is True
+    assert receipt['seed_reservation'] == 'pending-peer-confirmation'
+    assert receipt['arm_timeout_seconds'] == 10800
+    assert receipt['total_arm_timeout_seconds'] == 32400
+    assert receipt['analysis']['qualification_rows_excluded'] is True
+    assert receipt['analysis']['optional_extension'] is False
+    assert not output.exists()
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 @pytest.mark.parametrize('patch', [{'complete': 799}, {'errors': ['failed']}, {'expected': 799}])
 def test_partial_results_refused(tmp_path, patch):
     path = tmp_path / 'summary.json'

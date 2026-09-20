@@ -54,6 +54,38 @@ def test_wk_preflight_budget_and_no_launch(monkeypatch, isolated_main, capsys, q
     assert not output.exists()
 
 
+def test_wk_refuses_production_before_io():
+    with pytest.raises(ValueError, match='production checkpoint required exactly'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+                       '--checkpoint', '/missing', '--out', '/missing',
+                       '--suite', 'wk-screen', '--production-checkpoint', '/missing'])
+
+
+@pytest.mark.parametrize('qualify', [False, True])
+def test_wk_run_exact_serial_work(monkeypatch, isolated_main, qualify):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    expected = 12 if qualify else 800
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == (900 if qualify else 10800)
+        assert cmd[cmd.index('--deals')+1] == str(expected)
+        assert cmd[cmd.index('--workers')+1] == '12'
+        assert cmd[cmd.index('--control')+1] == 'mc-lcb'
+        assert kwargs['env'].get('SHENGJI_FAST') is None
+        arm = Path(cmd[cmd.index('--out')+1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm/'summary.json').write_text(json.dumps(dict(expected=expected, complete=expected, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(args + ['--suite', 'wk-screen', '--run'] +
+                         (['--qualify'] if qualify else [])) == 0
+    assert seen == ['W4_K8', 'W16_K8', 'W4_K16']
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_strength_commands_share_fresh_deals_and_mc_lcb():
     arms = launcher.commands(Path('/python'), Path('/model'), Path('/output'),
                              suite='strength-screen')

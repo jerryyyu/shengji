@@ -69,13 +69,18 @@ MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
-                             'pv-production-qualify')
+                             'pv-production-qualify', 'world-scaling-qualify')
+WORLD_SCALING_QUALIFY_SEED = 625890000
+WORLD_SCALING_ARMS = [('W16_K8', 16, 'policy-value', 'mc-lcb'),
+                      ('W32_K8', 32, 'policy-value', 'mc-lcb'),
+                      ('W64_K8', 64, 'policy-value', 'mc-lcb')]
 # Proposal and peer seed reservation: #436 comments5751361312/5751492758.
 # Qualification only: the 800-pair screen needs a separately reviewed runtime ceiling.
 PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
-          'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify')
+          'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
+          'world-scaling-qualify')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -97,6 +102,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
+                  'world-scaling-qualify': (WORLD_SCALING_ARMS, WORLD_SCALING_QUALIFY_SEED),
                   'pv-production-qualify': ([('SOFT_W16_K8', 16, 'policy-value',
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
@@ -217,6 +223,7 @@ def main(argv=None):
                   'wk-screen': REFERENCE_SOURCE,
                   'joint-grid-screen': REFERENCE_SOURCE,
                   'pv-production-qualify': REFERENCE_SOURCE,
+                  'world-scaling-qualify': REFERENCE_SOURCE,
                   'mc-pv-qualify': MC_PV_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
@@ -295,6 +302,20 @@ def main(argv=None):
                       'qualification_rows_excluded': True, 'automatic_retry': False,
                       'automatic_promotion': False,
                       'full_screen': 'not implemented; runtime ceiling requires qualification evidence'})
+    if args.suite == 'world-scaling-qualify':
+        receipt.update(
+            seed_reservation='625890000:625890012; proposed on #436; verify peer reservation before launch',
+            expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
+            comparison_scope='card play only; shared heuristic declare/bury',
+            analysis={'purpose': 'runtime/failure qualification, not strength inference',
+                      'qualification_rows_excluded': True, 'automatic_retry': False,
+                      'automatic_promotion': False,
+                      'full_screen': 'not implemented; freeze after runtime review',
+                      'prospective_primary_contrasts': ['W32_K8 minus W16_K8', 'W64_K8 minus W16_K8'],
+                      'prospective_intervals': 'joint deal bootstrap; 97.5% per contrast (two-contrast adjustment)',
+                      'contrast_scope': 'common MC-LCB opponent, not direct head-to-head',
+                      'optional_extension': False})
     if args.suite == 'wk-screen':
         receipt.update(
             launch_hold=False,

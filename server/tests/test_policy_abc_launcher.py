@@ -41,6 +41,45 @@ def test_wk_commands(qualify):
 
 
 @pytest.mark.parametrize('qualify', [False, True])
+def test_joint_grid_commands_pin_both_models(qualify):
+    m1 = Path('/js-m1.pt')
+    g1 = Path('/js-g1.pt')
+    arms = launcher.commands(Path('/python'), m1, Path('/output'),
+                             suite='joint-grid-screen', qualify=qualify,
+                             grid_checkpoint=g1)
+    assert [name for name, _ in arms] == ['JS_M1_W4_K8', 'JS_G1_W4_K8']
+    for (_, cmd), checkpoint, checksum in zip(
+            arms, [m1, g1], [launcher.JS_M1_CHECKPOINT_SHA256,
+                             launcher.GRID_CHECKPOINT_SHA256]):
+        assert cmd[cmd.index('--checkpoint') + 1] == str(checkpoint)
+        assert cmd[cmd.index('--checkpoint-sha256') + 1] == checksum
+        for key, value in {'--worlds': '4', '--mode': 'policy-value',
+                           '--candidates': '8', '--control': 'mc-lcb',
+                           '--seed0': '625590000' if qualify else '625600000',
+                           '--deals': '12' if qualify else '800'}.items():
+            assert cmd[cmd.index(key) + 1] == value
+        assert '--grid-checkpoint' not in cmd
+
+
+def test_joint_grid_requires_grid_checkpoint_exactly():
+    with pytest.raises(ValueError, match='grid checkpoint required exactly'):
+        launcher.commands(Path('/python'), Path('/model'), Path('/output'),
+                          suite='joint-grid-screen')
+    with pytest.raises(ValueError, match='grid checkpoint required exactly'):
+        launcher.commands(Path('/python'), Path('/model'), Path('/output'),
+                          suite='wk-screen', grid_checkpoint=Path('/grid'))
+
+
+def test_main_rejects_omitted_or_extraneous_grid_checkpoint(isolated_main, tmp_path):
+    args, output = isolated_main
+    with pytest.raises(ValueError, match='grid checkpoint required exactly'):
+        launcher.main(args + ['--suite', 'joint-grid-screen'])
+    with pytest.raises(ValueError, match='grid checkpoint required exactly'):
+        launcher.main(args + ['--grid-checkpoint', str(tmp_path / 'grid')])
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('qualify', [False, True])
 def test_wk_preflight_budget_and_no_launch(monkeypatch, isolated_main, capsys, qualify):
     args, output = isolated_main
     monkeypatch.setattr(launcher.subprocess, 'check_output',
@@ -83,6 +122,87 @@ def test_wk_run_exact_serial_work(monkeypatch, isolated_main, qualify):
     assert launcher.main(args + ['--suite', 'wk-screen', '--run'] +
                          (['--qualify'] if qualify else [])) == 0
     assert seen == ['W4_K8', 'W16_K8', 'W4_K16']
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+@pytest.mark.parametrize('qualify', [False, True])
+def test_joint_grid_preflight_and_hashes(monkeypatch, isolated_main, tmp_path, capsys, qualify):
+    args, output = isolated_main
+    grid = tmp_path / 'grid-model'
+    grid.write_bytes(b'grid-fixture')
+    import hashlib
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256',
+                        hashlib.sha256(b'fixture').hexdigest())
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256',
+                        hashlib.sha256(b'grid-fixture').hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    monkeypatch.setattr(launcher, 'run_arm',
+                        lambda *a, **kw: pytest.fail('launch'))
+    assert launcher.main(args + ['--suite', 'joint-grid-screen',
+                                 '--grid-checkpoint', str(grid)] +
+                         (['--qualify'] if qualify else [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['checkpoint'] == launcher.JS_M1_CHECKPOINT_SHA256
+    assert receipt['grid_checkpoint'] == launcher.GRID_CHECKPOINT_SHA256
+    assert receipt['checkpoint_identities']['JS_G1_W4_K8'] == launcher.GRID_CHECKPOINT_SHA256
+    assert receipt['arm_timeout_seconds'] == (900 if qualify else 10800)
+    assert receipt['analysis']['primary_intervals'].startswith('two-sided adjusted 97.5%')
+    assert receipt['analysis']['matched_intervals'].startswith('two-sided 95%')
+    assert receipt['analysis']['optional_extension'] is False
+    assert not output.exists()
+
+
+def test_joint_grid_hash_drift_refuses_before_output(monkeypatch, isolated_main, tmp_path):
+    args, output = isolated_main
+    grid = tmp_path / 'grid-model'
+    grid.write_bytes(b'grid-fixture')
+    import hashlib
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256',
+                        hashlib.sha256(b'fixture').hexdigest())
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256', '0' * 64)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    with pytest.raises(RuntimeError, match='grid checkpoint mismatch'):
+        launcher.main(args + ['--suite', 'joint-grid-screen',
+                              '--grid-checkpoint', str(grid)])
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('qualify', [False, True])
+def test_joint_grid_run_uses_both_models_and_serial_guards(monkeypatch, isolated_main,
+                                                            tmp_path, qualify):
+    args, output = isolated_main
+    grid = tmp_path / 'grid-model'
+    grid.write_bytes(b'grid-fixture')
+    import hashlib
+    m1_hash = hashlib.sha256(b'fixture').hexdigest()
+    g1_hash = hashlib.sha256(b'grid-fixture').hexdigest()
+    monkeypatch.setattr(launcher, 'JS_M1_CHECKPOINT_SHA256', m1_hash)
+    monkeypatch.setattr(launcher, 'GRID_CHECKPOINT_SHA256', g1_hash)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    expected = 12 if qualify else 800
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == (900 if qualify else 10800)
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append((arm.name, cmd[cmd.index('--checkpoint') + 1],
+                     cmd[cmd.index('--checkpoint-sha256') + 1]))
+        assert cmd[cmd.index('--deals') + 1] == str(expected)
+        assert cmd[cmd.index('--control') + 1] == 'mc-lcb'
+        arm.mkdir()
+        (arm / 'summary.json').write_text(
+            json.dumps(dict(expected=expected, complete=expected, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(args + ['--suite', 'joint-grid-screen', '--run',
+                                 '--grid-checkpoint', str(grid)] +
+                         (['--qualify'] if qualify else [])) == 0
+    assert seen == [
+        ('JS_M1_W4_K8', str(tmp_path / 'model'), m1_hash),
+        ('JS_G1_W4_K8', str(grid), g1_hash)]
     assert not any(p.exists() for p in launcher.LOCKS)
 
 

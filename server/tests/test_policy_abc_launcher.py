@@ -26,6 +26,62 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_cutoff_strength_screen_recipe_and_hold():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    plan = launcher.commands(*args, suite=launcher.CUTOFF_SCREEN)
+    assert len(plan) == 2
+    assert [name for name, _ in plan] == ['VALUE_T1_VS_TERMINAL', 'MODEL_T1_VS_TERMINAL']
+    for (_, cmd), mode in zip(plan, ['mc-heuristic-cutoff', 'mc-pv-cutoff']):
+        for flag, value in {'--deals': '48', '--workers': '12', '--worlds': '16',
+                            '--candidates': '8', '--seed0': '626200000',
+                            '--control': 'mc-levels-terminal', '--mode': mode,
+                            '--cutoff-tricks': '1'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SCREEN, qualify=True)
+
+
+def test_cutoff_strength_screen_receipt(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
+    assert launcher.main(args + ['--suite', launcher.CUTOFF_SCREEN]) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['launch_hold'] is False
+    assert receipt['expected_pairs_per_arm'] == 48
+    assert receipt['arm_timeout_seconds'] == 43200
+    assert receipt['total_arm_timeout_seconds'] == 86400
+    assert receipt['analysis']['bootstrap_replicates'] == 10000
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_cutoff_strength_guarded_run(monkeypatch, isolated_main, failure):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert kw['seconds'] == 43200
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        arm = Path(cmd[cmd.index('--out') + 1])
+        arm.mkdir()
+        seen.append(arm.name)
+        (arm / 'summary.json').write_text(json.dumps(dict(
+            expected=48, complete=47 if failure else 48, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', launcher.CUTOFF_SCREEN, '--run']
+    if failure:
+        with pytest.raises(RuntimeError):
+            launcher.main(call)
+    else:
+        assert launcher.main(call) == 0
+    assert seen == (['VALUE_T1_VS_TERMINAL'] if failure else [
+        'VALUE_T1_VS_TERMINAL', 'MODEL_T1_VS_TERMINAL'])
+    assert not any(p.exists() for p in launcher.LOCKS)
+    assert (output / seen[0] / 'summary.json').exists()
+
+
 def test_cutoff_frozen_contrasts_and_qualification_only():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     with pytest.raises(ValueError, match='qualification-only'):

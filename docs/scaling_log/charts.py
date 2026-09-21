@@ -10,7 +10,8 @@ REC={"8k":1168124,"16k":2341808,"48k":7043156,"72k":10559236,"96k":14077520,
      "128k":18764912,"144k":20939532,"176k":25388708,
      "192k":27602516,
      "224k":32032200,
-     "256k":36463068}   # counts.records (TOTAL) for every entry -- gen-2 briefly used
+     "256k":36463068,
+     "336k":47535516}   # counts.records (TOTAL) for every entry -- gen-2 briefly used
                         # counts.records.encoded (31,872,200), a different field from every
                         # other row; muse caught it on #491.
 R=[]

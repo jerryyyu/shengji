@@ -9,7 +9,7 @@ import numpy as np
 
 from .policy_world_compare import _read
 
-REFERENCE_SHA256 = '0ecec6b862291f893a1e2c2d98d1df017d2af23fc57a643b9dbc03f98533ba86'
+REFERENCE_SHA256 = 'dd95e7d40bc92cf2218f0203d18f9ecfb6f82082004c31c5dc52807fea984707'
 SEED0 = 625800000
 DEALS = 800
 
@@ -37,7 +37,7 @@ def readout(directory, qualification_recipe):
     return dict(deals=DEALS, seed0=SEED0, mean=float(values.mean()), ci95=interval,
         bootstrap_seed=20260920, bootstrap_replicates=10000,
         positive=interval[0] > 0, qualification_recipe_sha256=REFERENCE_SHA256,
-        estimand='soft W16/K8 minus production-play; signed levels, mirrored deal means',
+        estimand='soft W64/K8 minus production-play; signed levels, mirrored deal means',
         interpretation='Single primary approximate percentile-bootstrap interval. '
             'Qualification excluded. No optional extension. Null is not equivalence. '
             'Card play only, not full Fly package or deployment approval.')

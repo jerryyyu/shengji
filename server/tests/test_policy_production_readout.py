@@ -9,7 +9,7 @@ from shengji.train import policy_production_readout as reader
 
 @pytest.fixture
 def fixture(monkeypatch, tmp_path):
-    reference = dict(seed0=625790000, deals=12, checkpoint='old-path',
+    reference = dict(seed0=625790000, deals=12, worlds=64, checkpoint='old-path',
                      checkpoint_sha256='soft', control_effective={'checkpoint': 'old', 'recipe': 'pinned'})
     path = tmp_path / 'recipe.json'
     path.write_text(json.dumps(reference))
@@ -25,9 +25,10 @@ def test_readout_pinned_bootstrap(fixture):
     assert result['ci95'] == [1, 1]
     assert result['positive']
     assert result['bootstrap_seed'] == 20260920
+    assert result['estimand'].startswith('soft W64/K8 minus production-play')
 
 
-@pytest.mark.parametrize('key,value', [('seed0', 625790000), ('deals', 12),
+@pytest.mark.parametrize('key,value', [('seed0', 625790000), ('deals', 12), ('worlds', 16),
     ('checkpoint_sha256', 'different'), ('workers', 99)])
 def test_recipe_drift_refused(fixture, key, value):
     path, actual = fixture
@@ -45,7 +46,7 @@ def test_reference_hash_refused(fixture):
 
 def test_real_rows_missing_mirror_and_timeout_refused(monkeypatch, tmp_path):
     recipe = dict(schema='policy-world-duel-v1', seed0=reader.SEED0, deals=800,
-        checkpoint_sha256='soft', worlds=16, cap=4000, control='production-play',
+        checkpoint_sha256='soft', worlds=64, cap=4000, control='production-play',
         control_effective={}, policy={}, decision_timeout_seconds=300,
         source_git_sha='source', harness_sha256='harness', policy_module_sha256='policy', runtime={})
     ref = tmp_path / 'qualification.json'

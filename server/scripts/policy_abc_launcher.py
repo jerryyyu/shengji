@@ -67,12 +67,13 @@ MC_PV_SEED = 625690000
 MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_PRODUCTION_SUITE = 'joint-production-qualify'
+JOINT_PRODUCTION_SCREEN = 'joint-production-screen'
 JOINT_PRODUCTION_SEED = 626290000
 JOINT_PRODUCTION_ARMS = [('JS_M1_W64_K8', 64, 'policy-value', 'production-play'),
                          ('JS_G1_W64_K8', 64, 'policy-value', 'production-play')]
-JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify', JOINT_PRODUCTION_SUITE)
+JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify', 'pv-production-screen',
-                     JOINT_PRODUCTION_SUITE)
+                     JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
                              'pv-production-qualify', JOINT_PRODUCTION_SUITE)
 # Proposal and peer seed reservation: #436 comments5751361312/5751492758.
@@ -85,7 +86,7 @@ PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
-          JOINT_PRODUCTION_SUITE)
+          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -94,7 +95,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
              grid_checkpoint=None, production_worlds=16):
     if production_worlds not in (16, 64):
         raise ValueError('production worlds must be 16 or 64')
-    if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE):
+    if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
@@ -102,9 +103,9 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('joint-production-qualify requires explicit --production-worlds 64')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
-    if suite == 'pv-production-screen' and qualify:
+    if suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN) and qualify:
         raise ValueError('pv-production-screen is full-screen only')
-    if suite == 'pv-production-screen' and production_worlds != 64:
+    if suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN) and production_worlds != 64:
         raise ValueError('pv-production-screen requires explicit --production-worlds 64')
     if suite in QUALIFICATION_ONLY_SUITES and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
@@ -114,6 +115,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('grid checkpoint required exactly for joint-model suites')
     arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
                   JOINT_PRODUCTION_SUITE: (JOINT_PRODUCTION_ARMS, JOINT_PRODUCTION_SEED),
+                  JOINT_PRODUCTION_SCREEN: (JOINT_PRODUCTION_ARMS, PV_PRODUCTION_SCREEN_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
@@ -228,13 +230,13 @@ def main(argv=None):
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
     production_worlds = args.production_worlds
-    if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE):
+    if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
     if args.suite == JOINT_PRODUCTION_SUITE and production_worlds != 64:
         raise ValueError('joint-production-qualify requires explicit --production-worlds 64')
-    if args.suite == 'pv-production-screen' and args.qualify:
+    if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN) and args.qualify:
         raise ValueError('pv-production-screen is full-screen only')
-    if args.suite == 'pv-production-screen' and production_worlds != 64:
+    if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN) and production_worlds != 64:
         raise ValueError('pv-production-screen requires explicit --production-worlds 64')
     if args.suite == 'strength-screen':
         if args.qualify:
@@ -247,6 +249,7 @@ def main(argv=None):
         raise ValueError('grid checkpoint required exactly for joint-model suites')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   JOINT_PRODUCTION_SUITE: REFERENCE_SOURCE,
+                  JOINT_PRODUCTION_SCREEN: REFERENCE_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
                   'strength-screen': REFERENCE_SOURCE,
                   'wk-screen': REFERENCE_SOURCE,
@@ -298,7 +301,7 @@ def main(argv=None):
         seconds, expected = 3600, 1
     if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE):
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
-    if args.suite == 'pv-production-screen':
+    if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN):
         seconds = PV_PRODUCTION_SCREEN_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
@@ -393,7 +396,7 @@ def main(argv=None):
                 'qualification_rows_excluded': True,
                 'optional_extension': False,
             })
-    if args.suite == JOINT_PRODUCTION_SUITE:
+    if args.suite in (JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN):
         receipt.update(
             checkpoint=JS_M1_CHECKPOINT_SHA256,
             grid_checkpoint=GRID_CHECKPOINT_SHA256,
@@ -406,6 +409,21 @@ def main(argv=None):
                       'qualification_rows_excluded': True, 'automatic_retry': False,
                       'automatic_promotion': False,
                       'full_screen': 'not enabled; requires qualification evidence and runtime review'})
+        if args.suite == JOINT_PRODUCTION_SCREEN:
+            receipt.update(
+                mode='strength-screen', expected_pairs_per_arm=DEALS,
+                seed_reservation='625800000:625800800; matched window, #436 comment5755077257',
+                qualification_evidence='PR570 comment5756493934; M1/G1 each12 clean pairs,107.47s/120.06s',
+                analysis={
+                    'primaries': 'M1 and G1 W64/K8 minus production-play paired signed levels',
+                    'unit': 'deal with both seat mirrors averaged',
+                    'interval': 'two-sided97.5% per primary, Bonferroni two comparisons;10000 resamples',
+                    'bootstrap_seed': 20260921,
+                    'model_contrast': 'G1 minus M1, exploratory95%, matched common-opponent not direct duel',
+                    'reader': 'shengji.train.policy_joint_production_readout',
+                    'qualification_rows_excluded': True, 'optional_extension': False,
+                    'automatic_retry': False, 'automatic_promotion': False,
+                    'decision_rule': 'superiority requires lower bound above zero; null is not equivalence'})
     if args.suite == 'mc-pv-qualify':
         receipt.update(
             checkpoint=JS_M1_CHECKPOINT_SHA256,

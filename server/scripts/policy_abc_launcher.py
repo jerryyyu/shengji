@@ -67,25 +67,37 @@ MC_PV_SEED = 625690000
 MC_PV_ARMS = [('JS_M1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb'),
               ('JS_G1_MC_PV_W1_K8', 1, 'mc-policy-value-rollout', 'mc-lcb')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify')
-PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify')
+PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify', 'pv-production-screen')
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
                              'pv-production-qualify')
 # Proposal and peer seed reservation: #436 comments5751361312/5751492758.
 # Qualification only: the 800-pair screen needs a separately reviewed runtime ceiling.
 PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
+# Cloud qualification: 12 pairs/110.26s => ~2.04h linear for800.
+# Six hours allows tails; a failure ceiling, not an ETA or retry permission.
+PV_PRODUCTION_SCREEN_SECONDS = 21600
+PV_PRODUCTION_SCREEN_SEED = 625800000
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
-          'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify')
+          'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen')
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
-             grid_checkpoint=None):
+             grid_checkpoint=None, production_worlds=16):
+    if production_worlds not in (16, 64):
+        raise ValueError('production worlds must be 16 or 64')
+    if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen'):
+        raise ValueError('W64 production comparison is limited to production qualification or screen')
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
+    if suite == 'pv-production-screen' and qualify:
+        raise ValueError('pv-production-screen is full-screen only')
+    if suite == 'pv-production-screen' and production_worlds != 64:
+        raise ValueError('pv-production-screen requires explicit --production-worlds 64')
     if suite in QUALIFICATION_ONLY_SUITES and not qualify:
         raise ValueError('search suites are qualification-only pending runtime review')
     if (suite in PRODUCTION_SUITES) != (production is not None):
@@ -97,8 +109,10 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
-                  'pv-production-qualify': ([('SOFT_W16_K8', 16, 'policy-value',
+                  'pv-production-qualify': ([(f'SOFT_W{production_worlds}_K8', production_worlds, 'policy-value',
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
+                  'pv-production-screen': ([('SOFT_W64_K8', 64, 'policy-value',
+                                            'production-play')], PV_PRODUCTION_SCREEN_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
                                         JOINT_GRID_QUALIFY_SEED if qualify else JOINT_GRID_SEED)}[suite]
     if suite in JOINT_SUITES:
@@ -199,9 +213,18 @@ def main(argv=None):
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
+    parser.add_argument('--production-worlds', type=int, choices=(16, 64), default=16,
+                        help='W64 qualification or fullscreen arm; fullscreen requires explicit 64')
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    production_worlds = args.production_worlds
+    if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen'):
+        raise ValueError('W64 production comparison is limited to production qualification or screen')
+    if args.suite == 'pv-production-screen' and args.qualify:
+        raise ValueError('pv-production-screen is full-screen only')
+    if args.suite == 'pv-production-screen' and production_worlds != 64:
+        raise ValueError('pv-production-screen requires explicit --production-worlds 64')
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
@@ -217,6 +240,7 @@ def main(argv=None):
                   'wk-screen': REFERENCE_SOURCE,
                   'joint-grid-screen': REFERENCE_SOURCE,
                   'pv-production-qualify': REFERENCE_SOURCE,
+                  'pv-production-screen': REFERENCE_SOURCE,
                   'mc-pv-qualify': MC_PV_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
@@ -253,7 +277,7 @@ def main(argv=None):
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
-                    grid_checkpoint=grid_checkpoint)
+                    grid_checkpoint=grid_checkpoint, production_worlds=production_worlds)
     seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
@@ -262,6 +286,8 @@ def main(argv=None):
         seconds, expected = 3600, 1
     if args.suite == 'pv-production-qualify':
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
+    if args.suite == 'pv-production-screen':
+        seconds = PV_PRODUCTION_SCREEN_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
@@ -288,6 +314,7 @@ def main(argv=None):
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
     if args.suite == 'pv-production-qualify':
         receipt.update(
+            production_worlds=production_worlds,
             seed_reservation='625790000:625790012; #436 comment5751492758',
             expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
             total_arm_timeout_seconds=seconds, move_timeout_seconds=300,
@@ -295,6 +322,23 @@ def main(argv=None):
                       'qualification_rows_excluded': True, 'automatic_retry': False,
                       'automatic_promotion': False,
                       'full_screen': 'not implemented; runtime ceiling requires qualification evidence'})
+    if args.suite == 'pv-production-screen':
+        receipt.update(
+            mode='strength-screen',
+            production_worlds=production_worlds,
+            seed_reservation='625800000:625800800; #436 comment5751492758',
+            qualification_evidence='PR553 comment5754787486;12 clean pairs/110.26s',
+            expected_pairs_per_arm=DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=seconds, move_timeout_seconds=300,
+            analysis={
+                'primary': 'soft W64/K8 minus production-play paired signed-level mean',
+                'unit': 'deal with both seat mirrors averaged',
+                'interval': 'two-sided95% paired deal bootstrap;10000 resamples',
+                'bootstrap_seed': 20260920,
+                'qualification_rows_excluded': True,
+                'optional_extension': False, 'automatic_retry': False,
+                'decision_rule': 'superiority requires lower bound above zero; null is not equivalence',
+                'scope': 'direct card-play comparison, not full Fly package or latency'})
     if args.suite == 'wk-screen':
         receipt.update(
             launch_hold=False,

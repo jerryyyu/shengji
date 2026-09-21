@@ -26,6 +26,78 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_w64_production_qualification_and_screen_only():
+    paths = (Path('/python'), Path('/soft'), Path('/out'))
+    [(name, cmd)] = launcher.commands(*paths, suite='pv-production-qualify',
+        qualify=True, production=Path('/prod'), production_worlds=64)
+    assert name == 'SOFT_W64_K8'
+    for flag, value in {'--worlds': '64', '--candidates': '8', '--deals': '12',
+                        '--seed0': '625790000', '--control': 'production-play'}.items():
+        assert cmd[cmd.index(flag) + 1] == value
+    [(name, cmd)] = launcher.commands(*paths, suite='pv-production-screen',
+        production=Path('/prod'), production_worlds=64)
+    assert name == 'SOFT_W64_K8'
+    assert cmd[cmd.index('--worlds') + 1] == '64'
+    with pytest.raises(ValueError, match='requires explicit --production-worlds 64'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+            '--checkpoint', '/missing', '--out', '/missing',
+            '--suite', 'pv-production-screen'])
+    with pytest.raises(ValueError, match='requires explicit --production-worlds 64'):
+        launcher.commands(*paths, suite='pv-production-screen', production=Path('/prod'))
+    with pytest.raises(ValueError, match='limited to production qualification or screen'):
+        launcher.commands(*paths, suite='wk-screen', production_worlds=64)
+
+
+def test_pv_production_screen_recipe():
+    kw = dict(suite='pv-production-screen', production=Path('/prod'), production_worlds=64)
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.commands(*args, qualify=True, **kw)
+    arms = launcher.commands(*args, **kw)
+    assert len(arms) == 1
+    cmd = arms[0][1]
+    for flag, value in {'--seed0': '625800000', '--deals': '800', '--worlds': '64',
+                        '--candidates': '8', '--workers': '12', '--mode': 'policy-value',
+                        '--control': 'production-play', '--checkpoint-sha256': launcher.CHECKPOINT}.items():
+        assert cmd[cmd.index(flag) + 1] == value
+
+
+def test_pv_production_screen_guarded_run(monkeypatch, isolated_main, tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    prod = tmp_path / 'prod'
+    prod.write_bytes(b'prod')
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(b'prod').hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    call = args + ['--suite', 'pv-production-screen', '--production-checkpoint', str(prod),
+                   '--production-worlds', '64']
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.main(call + ['--qualify'])
+    assert not output.exists()
+    seen = []
+    def fake(cmd, **kw):
+        assert kw['seconds'] == 21600
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append(arm.name)
+        arm.mkdir()
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=800, complete=800, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    assert launcher.main(call + ['--run']) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert seen == ['SOFT_W64_K8']
+    assert receipt['expected_pairs_per_arm'] == 800
+    assert receipt['total_arm_timeout_seconds'] == 21600
+    assert receipt['production_worlds'] == 64
+    assert receipt['qualification_evidence'] == 'PR553 comment5754787486;12 clean pairs/110.26s'
+    assert receipt['commands'][0][0] == 'SOFT_W64_K8'
+    assert receipt['analysis']['bootstrap_seed'] == 20260920
+    assert receipt['analysis']['qualification_rows_excluded'] is True
+    assert not receipt['analysis']['optional_extension']
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_pv_production_frozen_commands_and_full_run_refusal():
     paths = (Path('/python'), Path('/soft'), Path('/out'))
     kw = dict(suite='pv-production-qualify', production=Path('/prod.npz'))

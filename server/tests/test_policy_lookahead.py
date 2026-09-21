@@ -91,3 +91,35 @@ def test_heuristic_leaf_uses_no_policy_inference_and_exactly_one_extra_trick():
     assert actual.hands == expected.hands and actual.attacker_points == expected.attacker_points
     assert len(actual.history) == len(rnd.history)+2
     assert bot._continuation_work == dict(plies=4, worlds=0, sample_attempts=0, capped_decisions=0)
+
+
+def test_each_heuristic_actor_reads_only_its_own_hand(monkeypatch):
+    """Guard decision-time access, not engine validation of the returned action."""
+    from shengji.ai.heuristic import HeuristicBot
+    rnd = state(); seat = rnd.turn
+    original = HeuristicBot.decide_play
+    actors = []
+    class OwnHandOnly:
+        def __init__(self, hands, actor):
+            self.hands, self.actor = hands, actor
+        def __getitem__(self, key):
+            assert type(key) is int and key == self.actor, 'read another player hand'
+            return self.hands[key]
+        def __iter__(self):
+            raise AssertionError('iterated hidden hands')
+    def guarded(bot, leaf, actor):
+        hands = leaf.hands
+        leaf.hands = OwnHandOnly(hands, actor)
+        try:
+            result = original(bot, leaf, actor)
+            actors.append(actor)
+            return result
+        finally:
+            leaf.hands = hands
+    action = original(HeuristicBot(), rnd, seat)
+    monkeypatch.setattr(HeuristicBot, 'decide_play', guarded)
+    bot = PolicyLookaheadBot(None, evaluator=object(), continuation_policy='heuristic',
+                             continuation_worlds=0)
+    bot._leaf(rnd, seat, rnd.hands, rnd.buried, action, 0)
+    assert len(actors) == 7  # three current-trick replies and four extra-trick plays
+    assert set(actors) == {0, 1, 2, 3}

@@ -72,6 +72,7 @@ CONTROL_NAMES = ("mc-lcb", "mc-smart4", "policy-world", "policy-value", "product
 VERIFY_KEYS = ("verification_triggers", "verification_worlds",
                "verification_attempts", "verification_rollouts")
 EXTRA_POLICY_WORK = ("value_evaluations", "value_batches", "continuation_plies",
+                     "world_diversity_decisions", "unique_worlds", "duplicate_worlds",
                      "continuation_worlds", "continuation_sample_attempts",
                      "continuation_capped_decisions") + VERIFY_KEYS
 SHORTLIST_COUNTS = ('decisions', 'forced', 'legal_actions', 'shortlisted_actions',
@@ -192,6 +193,7 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
         record = getattr(bot, "last_decision_record", None) or {}
         verification = record.get("verification", {})
         continuation = record.get("continuation_work", {})
+        diversity = record.get("world_diversity")
         return {
             "verification_triggers": int(verification.get("triggered", False)),
             "verification_worlds": int(verification.get("worlds", 0)),
@@ -199,6 +201,11 @@ def _decision_telemetry(bot, side: str) -> dict[str, Any]:
             "verification_rollouts": int(verification.get("rollouts", 0)),
             "sample_attempts": int(record.get("sample_attempts", 0)),
             "worlds": int(record.get("worlds", 0)),
+            # Sums of per-decision distinct deals, NOT globally unique worlds
+            # or effective sample size. Coverage=0 means unmeasured, not zero.
+            "world_diversity_decisions": int(diversity is not None),
+            "unique_worlds": int((diversity or {}).get("unique_worlds", 0)),
+            "duplicate_worlds": int((diversity or {}).get("duplicate_worlds", 0)),
             "capped": bool(record.get("legal_complete") is False),
             "value_evaluations": int(record.get("value_evaluations", 0)),
             "value_batches": int(record.get("value_batches", 0)),

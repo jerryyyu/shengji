@@ -102,10 +102,11 @@ class CWVNumpyConfig:
 
 
 def _frozen(array: np.ndarray) -> np.ndarray:
-    """A C-contiguous, read-only copy (what ``_readonly`` produces; used on unpickle)."""
-    out = np.array(array, copy=True, order="C")
-    out.setflags(write=False)
-    return out
+    """A bytes-backed, C-contiguous, immutable copy (as ``_readonly`` builds; used on
+    unpickle).  ``frombuffer`` over ``bytes`` cannot be made writable again."""
+    array = np.asarray(array)
+    raw = np.ascontiguousarray(array).tobytes()
+    return np.frombuffer(raw, dtype=array.dtype).reshape(array.shape)
 
 
 def _readonly(value: np.ndarray, shape: tuple[int, ...], label: str) -> np.ndarray:

@@ -88,3 +88,38 @@ def test_policy_arm_plays_one_cluster_through_the_deadline_worker(registered, pa
     assert "pv-search-decision-v1" in schemas and schemas <= {"pv-search-decision-v1", "pv-search-fallback-v1"}
     assert all(isinstance(d["played"], list) and d["played"] for d in decisions)
     assert not any("cwv_shortlist" in d for d in decisions)
+    assert all(d["deadline"]["timed_out"] is False for d in decisions)   # outer 300 s never fired
+    buries = [d for t in arm for d in t["bury_decisions"]]
+    assert buries and {d["schema"] for d in buries} == {"cwv-bury-policy-v1"}
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["arm"] == "policy" and registered in summary["arm_description"]
+
+
+def test_policy_arm_internal_budget_fallbacks_are_countable(package, tmp_path, monkeypatch):
+    """Internal play/bury budget fallbacks (2 s / 3 s in production) must be visible in
+    the traces as the bot's own fallback records, distinct from the outer 300 s deadline."""
+    import json
+    from dataclasses import asdict
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    path, sha = package
+    for key, value in dict(CKPT=path, SHA256=sha, BURY_ARM="hybrid", SERVING_BUDGET_SECONDS="1e-9",
+                           BURY_SERVING_BUDGET_SECONDS="1e-9", **{k.upper(): v for k, v in SMALL.items()},
+                           **{"BURY_" + k.upper(): v for k, v in asdict(BURY).items()}).items():
+        monkeypatch.setenv("SHENGJI_PV_" + key, str(value))
+    name, = register_pv_search_policies(**pv.pv_env_recipe())
+    try:
+        out = tmp_path / "pvfb"
+        screen.main(["--arm", "policy", "--arm-policy", name, "--out", str(out),
+                     "--clusters", "1", "--workers", "1", "--seed0", "1", "--decision-deadline", "300"])
+        shard, = [json.loads(p.read_text()) for p in out.glob("cluster-*.json")]
+        arm = [t for t in shard["decision_traces"] if t["side"] == "arm"]
+        plays = [d for t in arm for d in t["decisions"]]
+        buries = [d for t in arm for d in t["bury_decisions"]]
+        assert plays and {d["schema"] for d in plays} == {"pv-search-fallback-v1"}
+        assert {d["reason"] for d in plays} == {"budget"}
+        assert all(d["deadline"]["timed_out"] is False for d in plays)
+        assert buries and {d["schema"] for d in buries} == {"cwv-bury-fallback-v1"}
+        assert {d["reason"] for d in buries} == {"budget"}
+        assert json.loads((out / "summary.json").read_text())["arm"] == "policy"
+    finally:
+        REGISTRY.pop(name, None)

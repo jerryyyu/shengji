@@ -307,6 +307,9 @@ def test_served_bots_pickle_and_behave_identically_after_unpickling(package):
     for name in type(revived._prior_net)._PROXIED:                 # joint MLP or standalone prior
         proxy = getattr(revived._prior_net, name)
         assert type(proxy).__name__ == "mappingproxy" and all(not a.flags.writeable for a in proxy.values())
+        for array in proxy.values():                               # bytes-backed: cannot be re-opened
+            with pytest.raises(ValueError):
+                array.setflags(write=True)
     np.testing.assert_array_equal(revived._prior_log_odds(X), prior_bot._prior_log_odds(X))
     model = pickle.loads(pickle.dumps(bot.evaluator.model)) if hasattr(bot.evaluator, "model") else None
     if model is not None:

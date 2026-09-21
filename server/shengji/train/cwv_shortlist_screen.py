@@ -435,7 +435,8 @@ def run_cluster(config, cluster):
         "records": [record for record, _ in rows],
         "timings": [timing for _, timing in rows],
         "decision_traces": [{"mirror": i // 4, "side": side,
-                             "decisions": policy.decisions}
+                             "decisions": policy.decisions,
+                             "bury_decisions": getattr(policy, "bury_decisions", [])}
                             for i, (side, policy) in enumerate(created)],
     }
 

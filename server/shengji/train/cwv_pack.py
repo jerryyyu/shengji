@@ -453,5 +453,6 @@ class CwvPackStore:
                     rng.shuffle(idx)
                 for b0 in range(0, rows.size, batch_size):
                     sl = idx[b0:b0 + batch_size]
-                    yield gather(blocks, which[sl], rows[sl])
+                    yield gather(blocks, which[sl], rows[sl],
+                                 include_metadata=include_metadata)
             del blocks, which, rows

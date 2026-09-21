@@ -1979,6 +1979,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
 
         loader_iter_kw = {
             "rng": rng, "window": window, "decode_workers": decode_workers,
+            "include_metadata": False,
         }
         if loader_stage is not None:
             loader_iter_kw["stage_secs"] = loader_stage

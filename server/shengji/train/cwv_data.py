@@ -1017,12 +1017,13 @@ class CwvBlockStore:
 
     def iter_batches(self, mask_fn: Callable[[CwvBlock], np.ndarray], batch_size: int, *,
                      rng: np.random.Generator | None = None, window: int = 64,
-                     decode_workers: int = 0,
+                     decode_workers: int = 0, include_metadata: bool = True,
                      stage_secs: dict[str, float] | None = None,
                      ) -> Iterator[dict[str, np.ndarray]]:
         """Batches over the rows ``mask_fn`` selects, gathered from the
         resident blocks of each window; the batch sequence is a function of
-        ``rng`` alone.
+        ``rng`` alone. Optimizer batches may omit provenance strings with
+        ``include_metadata=False``; evaluation retains them by default.
 
         When ``stage_secs`` is supplied, it accumulates host wall time in five
         buckets: ``setup`` (order, windows and pool construction), ``decode``
@@ -1127,7 +1128,8 @@ class CwvBlockStore:
                             started = start_stage()
                             try:
                                 sl = idx[b0:b0 + batch_size]
-                                batch = gather(blocks, which[sl], rows[sl])
+                                batch = gather(blocks, which[sl], rows[sl],
+                                               include_metadata=include_metadata)
                             finally:
                                 finish_stage("gather", started)
                             yield batch
@@ -1153,11 +1155,14 @@ _SCALAR_DTYPES = {"perspective": np.uint8, "target": np.int64, "utility": np.flo
 _STRING_COLUMNS = ("deal_key", "source_ref", "input_sha256")
 
 
-def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
+def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray, *,
+           include_metadata: bool = True
            ) -> dict[str, np.ndarray]:
     """Rows ``rows[j]`` of ``blocks[which[j]]`` as one batch (the wide arrays
     over anonymous mmaps); with history blocks the events come padded as
-    float32 ``history`` ``[b, L, 64]`` plus a boolean ``history_mask``."""
+    float32 ``history`` ``[b, L, 64]`` plus a boolean ``history_mask``.
+    ``include_metadata=False`` omits only the three provenance strings;
+    numeric fields, row order, optional targets and history are unchanged."""
     which = np.asarray(which, dtype=np.int64)
     rows = np.asarray(rows, dtype=np.int64)
     b = len(rows)
@@ -1174,7 +1179,8 @@ def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
                 if blocks and all(name in block.optional for block in blocks)]
     for name in optional:
         out[name] = np.empty(b, dtype=np.float32)
-    strings: dict[str, list] = {name: [None] * b for name in _STRING_COLUMNS}
+    string_columns = _STRING_COLUMNS if include_metadata else ()
+    strings: dict[str, list] = {name: [None] * b for name in string_columns}
     history = bool(blocks) and all(block.history for block in blocks)
     parts = []
     lengths = np.ones(b, dtype=np.int64)
@@ -1188,14 +1194,14 @@ def gather(blocks: Sequence[CwvBlock], which: np.ndarray, rows: np.ndarray
             out[name][pos] = getattr(block, name)[sel]
         for name in optional:
             out[name][pos] = getattr(block, name)[sel]
-        for name in _STRING_COLUMNS:
+        for name in string_columns:
             column = getattr(block, name)[sel]
             for p, value in zip(pos.tolist(), column.tolist()):
                 strings[name][p] = value
         if history:
             lengths[pos] = block.history_lengths[sel]
         parts.append((block, pos, sel))
-    for name in _STRING_COLUMNS:
+    for name in string_columns:
         out[name] = np.asarray(strings[name], dtype=str)
     if history:
         length = max(int(lengths.max()) if b else 1, 1)

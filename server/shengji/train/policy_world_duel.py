@@ -54,10 +54,13 @@ def make_policy(checkpoint, checksum, worlds, seed, mode="policy", candidates=8)
         return PolicyWorldBot.from_checkpoint(checkpoint, checksum, **kwargs)
     classes = {"policy-value": PolicyValueBot,
                "policy-selective-mc": PolicySelectiveMCBot,
-               "policy-lookahead": PolicyLookaheadBot}
+               "policy-lookahead": PolicyLookaheadBot,
+               "policy-heuristic-lookahead": PolicyLookaheadBot}
     if mode not in classes:
         raise ValueError("unknown policy mode")
     cls = classes[mode]
+    if mode == "policy-heuristic-lookahead":
+        kwargs.update(continuation_policy="heuristic", continuation_worlds=0)
     return cls.from_checkpoint(
         checkpoint, checksum, evaluator=_value_evaluator(checkpoint, checksum),
         candidates=candidates, **kwargs)
@@ -519,7 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--worlds", type=int, default=4)
-    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-selective-mc"), default="policy")
+    parser.add_argument("--mode", choices=("policy", "policy-value", "policy-lookahead", "policy-heuristic-lookahead", "policy-selective-mc"), default="policy")
     parser.add_argument("--candidates", type=int, default=8)
     parser.add_argument("--control", choices=CONTROL_NAMES, default="mc-lcb")
     parser.add_argument('--production-checkpoint',
@@ -572,7 +575,8 @@ def main(argv=None) -> int:
         "control_effective": effective_control,
         "policy": {"class": {"policy": "PolicyWorldBot", "policy-value": "PolicyValueBot",
                               "policy-selective-mc": "PolicySelectiveMCBot",
-                              "policy-lookahead": "PolicyLookaheadBot"}[args.mode],
+                              "policy-lookahead": "PolicyLookaheadBot",
+                              "policy-heuristic-lookahead": "PolicyLookaheadBot"}[args.mode],
                     "mode": args.mode, "candidates": args.candidates if args.mode != "policy" else None,
                     "value_head": "outcome" if args.mode != "policy" else None,
                     "value_batch_size": 128 if args.mode != "policy" else None,
@@ -580,7 +584,7 @@ def main(argv=None) -> int:
                         "rollout_policy": "HeuristicBot", "utility": "root-team half-level",
                         "seed_offset": 1000000007, "exact_endgame": False}
                         if args.mode == "policy-selective-mc" else None),
-                    "extra_plies": 4 if args.mode == "policy-lookahead" else 0,
+                    "extra_plies": 4 if args.mode in ("policy-lookahead", "policy-heuristic-lookahead") else 0,
                     "continuation_worlds": 1 if args.mode == "policy-lookahead" else 0,
                     "worlds": args.worlds,
                     "cap": CAP, "seed_formula": "seed*4+seat",
@@ -605,6 +609,9 @@ def main(argv=None) -> int:
             },
         },
     }
+    if args.mode == "policy-heuristic-lookahead":
+        recipe["policy"]["continuation_policy"] = "HeuristicBot"
+        recipe["policy"]["leaf_boundary"] = "current trick plus one additional completed trick or terminal"
     (out / "recipe.json").write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n")
     expected = list(range(args.seed0, args.seed0 + args.deals))
     records = []

@@ -26,6 +26,23 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_w64_production_qualification_only():
+    paths = (Path('/python'), Path('/soft'), Path('/out'))
+    [(name, cmd)] = launcher.commands(*paths, suite='pv-production-qualify',
+        qualify=True, production=Path('/prod'), production_worlds=64)
+    assert name == 'SOFT_W64_K8'
+    for flag, value in {'--worlds': '64', '--candidates': '8', '--deals': '12',
+                        '--seed0': '625790000', '--control': 'production-play'}.items():
+        assert cmd[cmd.index(flag) + 1] == value
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.commands(*paths, suite='pv-production-screen',
+            production=Path('/prod'), production_worlds=64)
+    with pytest.raises(ValueError, match='qualification-only'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+            '--checkpoint', '/missing', '--out', '/missing',
+            '--suite', 'pv-production-screen', '--production-worlds', '64'])
+
+
 def test_pv_production_screen_recipe():
     kw = dict(suite='pv-production-screen', production=Path('/prod'))
     args = (Path('/python'), Path('/soft'), Path('/out'))

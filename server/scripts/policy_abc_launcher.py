@@ -85,7 +85,11 @@ BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
-             grid_checkpoint=None):
+             grid_checkpoint=None, production_worlds=16):
+    if production_worlds not in (16, 64):
+        raise ValueError('production worlds must be 16 or 64')
+    if production_worlds != 16 and suite != 'pv-production-qualify':
+        raise ValueError('W64 production comparison is qualification-only until readout is pinned')
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
     if suite == 'strength-screen' and qualify:
@@ -103,7 +107,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
-                  'pv-production-qualify': ([('SOFT_W16_K8', 16, 'policy-value',
+                  'pv-production-qualify': ([(f'SOFT_W{production_worlds}_K8', production_worlds, 'policy-value',
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
                   'pv-production-screen': ([('SOFT_W16_K8', 16, 'policy-value',
                                             'production-play')], PV_PRODUCTION_SCREEN_SEED),
@@ -207,9 +211,13 @@ def main(argv=None):
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
+    parser.add_argument('--production-worlds', type=int, choices=(16, 64), default=16,
+                        help='W64 qualification only; full screen requires a newly pinned readout')
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if args.production_worlds != 16 and args.suite != 'pv-production-qualify':
+        raise ValueError('W64 production comparison is qualification-only until readout is pinned')
     if args.suite == 'pv-production-screen' and args.qualify:
         raise ValueError('pv-production-screen is full-screen only')
     if args.suite == 'strength-screen':
@@ -264,7 +272,7 @@ def main(argv=None):
     # the venv's dependencies. Make the path absolute without dereferencing it.
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
-                    grid_checkpoint=grid_checkpoint)
+                    grid_checkpoint=grid_checkpoint, production_worlds=args.production_worlds)
     seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
@@ -301,6 +309,7 @@ def main(argv=None):
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
     if args.suite == 'pv-production-qualify':
         receipt.update(
+            production_worlds=args.production_worlds,
             seed_reservation='625790000:625790012; #436 comment5751492758',
             expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
             total_arm_timeout_seconds=seconds, move_timeout_seconds=300,

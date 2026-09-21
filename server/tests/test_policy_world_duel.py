@@ -32,6 +32,16 @@ def test_parser_defaults_and_control_contracts():
     assert policy['rollout_policy'] is None
 
 
+def test_cli_world_budget_allows_256_and_rejects_257():
+    args = duel.build_parser().parse_args(
+        ["--checkpoint", "model.pt", "--checkpoint-sha256", "a" * 64,
+         "--out", "out", "--seed0", "10", "--worlds", "256"])
+    duel._validate_args(args)
+    args.worlds = 257
+    with pytest.raises(ValueError, match=r"\[1,256\]"):
+        duel._validate_args(args)
+
+
 @pytest.mark.parametrize("rows", [
     [_row(1)],
     [_row(1), _row(1)],

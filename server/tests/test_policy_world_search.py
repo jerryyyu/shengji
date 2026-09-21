@@ -178,6 +178,20 @@ def test_invalid_predictions_refuse(output):
         bot.scores(rnd,rnd.turn,[(rnd.hands[rnd.turn][0],)],worlds)
 
 
-@pytest.mark.parametrize('worlds',[0,True,129,1.5])
+def test_world_budget_allows_256():
+    assert PolicyWorldBot(None, worlds=256).worlds == 256
+
+
+def test_batched_scores_accepts_256_world_rows():
+    rnd = state(); seat = rnd.turn
+    seed_bot = PolicyWorldBot(None, worlds=1, seed=31)
+    one_world, _ = seed_bot._worlds(rnd, seat)
+    bot = PolicyWorldBot(lambda x: np.ones((len(x), 54)), worlds=256)
+    scores = bot.scores(rnd, seat, [(rnd.hands[seat][0],)], one_world * 256)
+    assert scores.shape == (256, 1)
+    assert np.all(scores == 1)
+
+
+@pytest.mark.parametrize('worlds',[0,True,257,1.5])
 def test_world_budget_is_bounded(worlds):
     with pytest.raises(ValueError): PolicyWorldBot(None,worlds=worlds)

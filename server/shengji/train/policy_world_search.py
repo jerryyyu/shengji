@@ -28,8 +28,8 @@ class PolicyWorldBot(HeuristicBot):
 
     def __init__(self, predict, *, worlds=4, cap=4000, seed=0):
         super().__init__()
-        if type(worlds) is not int or not 1 <= worlds <= 128:
-            raise ValueError('worlds must be an integer in [1,128]')
+        if type(worlds) is not int or not 1 <= worlds <= 256:
+            raise ValueError('worlds must be an integer in [1,256]')
         if type(cap) is not int or cap < 1:
             raise ValueError('cap must be positive')
         self.predict = predict

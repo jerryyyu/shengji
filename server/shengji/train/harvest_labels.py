@@ -422,7 +422,7 @@ def code_identity() -> dict:
     environment switches (``harvest.trajectory.environment_identity``)."""
     from ..ai import mcbot, registry
     from ..harvest import legal
-    from ..engine import combos, fast
+    from ..engine import fast
 
     def short(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
@@ -447,7 +447,7 @@ def code_identity() -> dict:
         "legal_sha256_16": short(Path(legal.__file__)),
         "labels_sha256_16": short(Path(__file__)),
         "ballot": mcbot._ballot_identity(probe),
-        "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+        "fast_engine": fast.active(),
         "env": environment_identity(),
         "python": sys.version.split()[0],
     }

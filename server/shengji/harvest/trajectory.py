@@ -1855,14 +1855,14 @@ def environment_identity() -> dict:
     resolved values are the module's constants, not a fresh look at
     ``os.environ``."""
     from ..ai import mcbot
-    from ..engine import combos, fast
+    from ..engine import fast
     return {
         "raw": {name: os.environ.get(name) for name in ENV_IDENTITY_KEYS},
         "resolved": {
             "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
             "uniform_deal": bool(mcbot.UNIFORM_DEAL),
             "physical_fills": bool(mcbot.PHYSICAL_FILLS),
-            "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+            "fast_engine": fast.active(),
             "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         },
     }
@@ -1884,7 +1884,7 @@ def _env_drift(old: dict | None, new: dict) -> list[str]:
 
 def identity(config: dict) -> dict:
     from ..engine.ballot import mc_ballot
-    from ..engine import combos, fast
+    from ..engine import fast
     repo = SERVER.parent
     probe = make_trajectory_bot(config, seed=0, explore_rng=random.Random(0))
     fast_path = getattr(getattr(fast, "_fast", None), "__file__", None)
@@ -1898,7 +1898,7 @@ def identity(config: dict) -> dict:
         "mcbot_sha256_16": _digest(SERVER / "shengji" / "ai" / "mcbot.py"),
         "registry_sha256_16": _digest(SERVER / "shengji" / "ai" / "registry.py"),
         "legal_sha256_16": _digest(SERVER / "shengji" / "harvest" / "legal.py"),
-        "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+        "fast_engine": fast.active(),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "env": environment_identity(),
         "ballot": str(mc_ballot(probe)),

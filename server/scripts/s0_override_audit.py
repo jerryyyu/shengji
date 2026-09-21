@@ -136,8 +136,8 @@ def choose_report_dose(detailed: list[dict]) -> dict:
 
 
 def preflight(out: str, allow_dirty: bool) -> tuple[str, bool]:
-    if os.environ.get("SHENGJI_FAST") != "1":
-        raise RuntimeError("set SHENGJI_FAST=1")
+    if os.environ.get("SHENGJI_FAST", "1") == "0":
+        raise RuntimeError("SHENGJI_FAST=0 opts out of the compiled engine this audit requires")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise RuntimeError("set SHENGJI_REQUIRE_VOIDS=1")
     from shengji.engine import combos, fast

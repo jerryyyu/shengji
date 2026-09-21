@@ -124,7 +124,7 @@ def main(argv=None):
             evaluator.enc_version != 2 or evaluator.effective_encoding != "mlp-static"):
         parser.error(f"{args.optimization} requires a v2 MLP checkpoint")
     native_active = bool(fast.HAVE_FAST and Round.play is fast._fast.round_play)
-    if os.environ.get("SHENGJI_FAST") == "1" and not native_active:
+    if os.environ.get("SHENGJI_FAST", "1") != "0" and not native_active:
         raise RuntimeError("compiled play route requested but not active")
     recipe = CWVShortlistConfig(worlds=32)
     arm_key = {"prepared-lead": "prepared", "fused-static": "fused",

@@ -45,7 +45,16 @@ class TimedPolicy:
             self.decision_cpu_seconds += time.process_time() - cpu
             self.decision_wall_seconds += time.perf_counter() - wall
             rec = self.bot.last_decision_record
-            if rec:
+            if rec and "candidates" not in rec:
+                # A served policy with its own record (release 29's pv-search
+                # `pv-search-decision-v1` / `pv-search-fallback-v1`): keep the
+                # scalar receipt, not the MC shortlist shape.
+                self.decisions.append({
+                    "seat": seat, "trick": len(rnd.history), "played": rec.get("played"),
+                    **{k: v for k, v in rec.items()
+                       if k != "played" and isinstance(v, (str, int, float, bool, type(None)))},
+                })
+            elif rec:
                 challenger = rec.get("report_candidate_index")
                 learned = rec.get("learned_search", {})
                 self.decisions.append({

@@ -59,3 +59,32 @@ def test_screen_and_queue_refuse_mismatched_policy_options(registered, tmp_path)
                     "--seeds", "1", "--workers", "1"])
     with pytest.raises(SystemExit):
         queue.main(["--out", str(tmp_path / "q2"), "--name", "Q", "--seeds", "1", "--workers", "1"])
+
+
+def test_policy_arm_plays_one_cluster_through_the_deadline_worker(registered, package, tmp_path, monkeypatch):
+    """End to end, as the lane runs it: one cluster (both mirrors) with the served pv-search
+    bot as the arm under the 300 s deadline worker.  The worker pickles the bot state per
+    move and the timed wrapper records the pv-search receipt (lane v34pv aborted on both)."""
+    import json
+    from dataclasses import asdict
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    # the spawned worker registers the name from SHENGJI_PV_* at import, as the lane/server do
+    path, sha = package
+    for key, value in dict(CKPT=path, SHA256=sha, BURY_ARM="hybrid", **{k.upper(): v for k, v in SMALL.items()},
+                           **{"BURY_" + k.upper(): v for k, v in asdict(BURY).items()}).items():
+        monkeypatch.setenv("SHENGJI_PV_" + key, str(value))
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe())) == [registered]
+    out = tmp_path / "pv"
+    screen.main(["--arm", "policy", "--arm-policy", registered, "--out", str(out),
+                 "--clusters", "1", "--workers", "1", "--seed0", "1", "--decision-deadline", "300"])
+    shards = sorted(out.glob("**/*.json"))
+    assert shards and not (out / "failure.json").exists()
+    traces = [s for s in (json.loads(p.read_text()) for p in shards)
+              if isinstance(s, dict) and s.get("schema") == "cwv-shortlist-shard-v1"]
+    assert len(traces) == 1
+    arm = [t for t in traces[0]["decision_traces"] if t["side"] == "arm"]
+    decisions = [d for t in arm for d in t["decisions"]]
+    schemas = {d.get("schema") for d in decisions}
+    assert "pv-search-decision-v1" in schemas and schemas <= {"pv-search-decision-v1", "pv-search-fallback-v1"}
+    assert all(isinstance(d["played"], list) and d["played"] for d in decisions)
+    assert not any("cwv_shortlist" in d for d in decisions)

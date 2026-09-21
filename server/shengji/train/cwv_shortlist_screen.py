@@ -473,6 +473,9 @@ def _arm_description(config):
                 "report worlds")
     if arm == "identity":
         return "production identity control"
+    if arm == "policy":
+        identity = config["arm_policy_identity"]
+        return f"served registry policy {config['arm_policy']} ({identity['bot_class']})"
     raise ValueError(f"unsupported CWV shortlist arm: {arm!r}")
 
 

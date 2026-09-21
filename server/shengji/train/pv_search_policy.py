@@ -142,6 +142,10 @@ class PVSearchBot(PolicyValueBot):
         self.serving_budget_seconds = _serving_budget(config.serving_budget_seconds)
         self.seed = seed
         self.last_play_record = None
+        # The screen's duel reads the production search-time counter off every side
+        # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
+        # seconds of `decide_play`, as `MCBot.search_secs`.
+        self.search_secs = 0.0
 
     # -- the two harness hooks that serving changes -------------------------
 
@@ -238,8 +242,14 @@ class PVSearchBot(PolicyValueBot):
         return list(admitted[winner])
 
     def decide_play(self, rnd, seat):
-        self.last_decision_record = None
         started = time.perf_counter()
+        try:
+            return self._decide_play(rnd, seat, started)
+        finally:
+            self.search_secs += time.perf_counter() - started
+
+    def _decide_play(self, rnd, seat, started):
+        self.last_decision_record = None
         anchor = HeuristicBot.decide_play(self, rnd, seat)
         if self.serving_budget_seconds is None:
             return self._search(rnd, seat, anchor, started)

@@ -26,6 +26,55 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_joint_production_qualification_commands_and_refusals():
+    args = (Path('/python'), Path('/m1'), Path('/out'))
+    kw = dict(suite='joint-production-qualify', qualify=True,
+              production=Path('/prod'), grid_checkpoint=Path('/g1'), production_worlds=64)
+    arms = launcher.commands(*args, **kw)
+    assert [name for name, _ in arms] == ['JS_M1_W64_K8', 'JS_G1_W64_K8']
+    for (_, cmd), path, sha in zip(arms, ['/m1', '/g1'],
+            [launcher.JS_M1_CHECKPOINT_SHA256, launcher.GRID_CHECKPOINT_SHA256]):
+        for flag, value in {'--checkpoint': path, '--checkpoint-sha256': sha,
+                '--seed0': '626290000', '--deals': '12', '--workers': '12',
+                '--worlds': '64', '--candidates': '8', '--mode': 'policy-value',
+                '--control': 'production-play', '--production-checkpoint': '/prod'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+    for change in ({'qualify': False}, {'production_worlds': 16},
+                   {'production': None}, {'grid_checkpoint': None}):
+        with pytest.raises(ValueError):
+            launcher.commands(*args, **{**kw, **change})
+
+
+def test_joint_production_qualification_receipt(monkeypatch, isolated_main, tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    grid, prod = tmp_path / 'grid', tmp_path / 'prod'
+    grid.write_bytes(b'grid-fixture')
+    prod.write_bytes(b'production-fixture')
+    for name, data in [('JS_M1_CHECKPOINT_SHA256', b'fixture'),
+                       ('GRID_CHECKPOINT_SHA256', grid.read_bytes()),
+                       ('PRODUCTION_SHA256', prod.read_bytes())]:
+        monkeypatch.setattr(launcher, name, hashlib.sha256(data).hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
+    assert launcher.main(args + ['--suite', 'joint-production-qualify', '--qualify',
+        '--production-worlds', '64', '--grid-checkpoint', str(grid),
+        '--production-checkpoint', str(prod)]) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['source'] == launcher.REFERENCE_SOURCE
+    assert receipt['checkpoint'] == launcher.JS_M1_CHECKPOINT_SHA256
+    assert receipt['checkpoint_identities'] == {
+        'JS_M1_W64_K8': launcher.JS_M1_CHECKPOINT_SHA256,
+        'JS_G1_W64_K8': launcher.GRID_CHECKPOINT_SHA256}
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['total_arm_timeout_seconds'] == 7200
+    assert receipt['expected_pairs_per_arm'] == 12
+    assert receipt['automatic_promotion'] is False
+    assert receipt['analysis']['automatic_retry'] is False
+    assert not output.exists()
+
+
 def test_w64_production_qualification_and_screen_only():
     paths = (Path('/python'), Path('/soft'), Path('/out'))
     [(name, cmd)] = launcher.commands(*paths, suite='pv-production-qualify',

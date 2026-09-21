@@ -101,6 +101,13 @@ class CWVNumpyConfig:
             raise CWVNumpyError("public_dim/enc_version identity mismatch")
 
 
+def _frozen(array: np.ndarray) -> np.ndarray:
+    """A C-contiguous, read-only copy (what ``_readonly`` produces; used on unpickle)."""
+    out = np.array(array, copy=True, order="C")
+    out.setflags(write=False)
+    return out
+
+
 def _readonly(value: np.ndarray, shape: tuple[int, ...], label: str) -> np.ndarray:
     array = np.asarray(value)
     if array.dtype != np.float32 or array.shape != shape or not np.all(np.isfinite(array)):
@@ -220,6 +227,28 @@ class CWVNumpyMLP:
         clone.original_checkpoint_sha256 = self.original_checkpoint_sha256
         clone.package_sha256 = getattr(self, "package_sha256", None)
         return clone
+
+    # Pickle support: the screen's deadline worker sends the bot state (``vars(bot)``)
+    # over IPC per move, and the server's turn snapshot deep-copies it.  Mapping proxies
+    # deep-copy (above) but do not pickle, so pickle the plain dicts and rebuild the
+    # read-only proxies on load; the bytes-backed arrays come back read-only via
+    # ``_readonly``/``frombuffer`` semantics being re-established here.
+    _PROXIED = ("_weights", "_math_weights")
+
+    def __getstate__(self):
+        state = dict(vars(self))
+        for name in self._PROXIED:
+            state[name] = dict(state[name])
+        return state
+
+    def __setstate__(self, state):
+        state = dict(state)
+        for name in self._PROXIED:
+            state[name] = MappingProxyType({k: _frozen(v) for k, v in state[name].items()})
+        slots = state.get("_grid_slots")
+        if slots is not None:
+            state["_grid_slots"] = _frozen(slots)
+        vars(self).update(state)
 
     @property
     def source_checkpoint_sha256(self):

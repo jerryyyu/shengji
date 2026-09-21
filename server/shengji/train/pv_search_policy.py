@@ -94,6 +94,15 @@ class NumpyPriorPredict:
     def __call__(self, X):
         return CWVPriorAdmissionBot._prior_log_odds(self, X)
 
+    def __reduce__(self):
+        # The NumPy models hold read-only MappingProxyType weights, which deep-copy
+        # (the server's turn snapshot) but do not pickle (the screen's deadline
+        # worker sends the bot state over IPC per move).  Pickle as the hash-pinned
+        # (path, sha256) pair: unpickling reloads through `load_prior_checked`'s
+        # per-process cache, so the model is identical and the hash is re-checked
+        # in any process that has not seen it.
+        return (NumpyPriorPredict, (self.path, self.sha256))
+
 
 @dataclass(frozen=True)
 class PVSearchConfig:

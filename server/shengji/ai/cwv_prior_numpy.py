@@ -19,7 +19,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from .cwv_numpy import CWVNumpyError, PACKAGE_MAX_BYTES, _gelu_exact, _readonly
+from .cwv_numpy import CWVNumpyError, PACKAGE_MAX_BYTES, _frozen, _gelu_exact, _readonly
 
 PRIOR_PACKAGE_SCHEMA = "shengji-policy-prior-numpy-v1"
 SOURCE_SCHEMA = "shengji-policy-prior-v1"
@@ -63,6 +63,22 @@ class CWVNumpyPrior:
             setattr(clone, name, value if name in ("_weights", "_math")
                     else copy.deepcopy(value, memo))
         return clone
+
+    # Pickle support (the screen's deadline worker sends ``vars(bot)`` over IPC per
+    # move): proxies pickle as plain dicts and are rebuilt read-only on load.
+    _PROXIED = ("_weights", "_math")
+
+    def __getstate__(self):
+        state = dict(vars(self))
+        for name in self._PROXIED:
+            state[name] = dict(state[name])
+        return state
+
+    def __setstate__(self, state):
+        state = dict(state)
+        for name in self._PROXIED:
+            state[name] = MappingProxyType({k: _frozen(v) for k, v in state[name].items()})
+        vars(self).update(state)
 
     def log_odds(self, X) -> np.ndarray:
         x = np.asarray(X)

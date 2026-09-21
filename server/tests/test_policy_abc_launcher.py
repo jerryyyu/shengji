@@ -26,14 +26,15 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
-def test_gen4_qualification_commands_refuse_promotion():
+@pytest.mark.parametrize('generation,seed', [(4, '626390000'), (3, '626490000')])
+def test_gen4_qualification_commands_refuse_promotion(generation, seed):
     args = (Path('/python'), Path('/gen4'), Path('/out'))
-    kw = dict(suite='gen4-production-qualify', qualify=True,
+    kw = dict(suite=f'gen{generation}-production-qualify', qualify=True,
               production=Path('/prod'), production_worlds=64)
     [(name, cmd)] = launcher.commands(*args, **kw)
-    assert name == 'GEN4_W64_K8'
-    for flag, value in {'--checkpoint-sha256': launcher.GEN4_CHECKPOINT_SHA256,
-            '--seed0': '626390000', '--deals': '12', '--workers': '12',
+    assert name == f'GEN{generation}_W64_K8'
+    for flag, value in {'--checkpoint-sha256': getattr(launcher, f'GEN{generation}_CHECKPOINT_SHA256'),
+            '--seed0': seed, '--deals': '12', '--workers': '12',
             '--worlds': '64', '--candidates': '8', '--control': 'production-play',
             '--mode': 'policy-value'}.items():
         assert cmd[cmd.index(flag) + 1] == value
@@ -43,20 +44,22 @@ def test_gen4_qualification_commands_refuse_promotion():
             launcher.commands(*args, **{**kw, **change})
 
 
-def test_gen4_qualification_receipt(monkeypatch, isolated_main, tmp_path, capsys):
+@pytest.mark.parametrize('generation', [3, 4])
+def test_gen4_qualification_receipt(monkeypatch, isolated_main, tmp_path, capsys, generation):
     import hashlib
     args, output = isolated_main
     prod = tmp_path / 'prod'
     prod.write_bytes(b'production-fixture')
-    monkeypatch.setattr(launcher, 'GEN4_CHECKPOINT_SHA256', hashlib.sha256(b'fixture').hexdigest())
+    hash_name = f'GEN{generation}_CHECKPOINT_SHA256'
+    monkeypatch.setattr(launcher, hash_name, hashlib.sha256(b'fixture').hexdigest())
     monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
     monkeypatch.setattr(launcher.subprocess, 'check_output',
         lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
     monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
-    assert launcher.main(args + ['--suite', 'gen4-production-qualify', '--qualify',
+    assert launcher.main(args + ['--suite', f'gen{generation}-production-qualify', '--qualify',
         '--production-worlds', '64', '--production-checkpoint', str(prod)]) == 0
     receipt = json.loads(capsys.readouterr().out)
-    assert receipt['checkpoint'] == launcher.GEN4_CHECKPOINT_SHA256
+    assert receipt['checkpoint'] == getattr(launcher, hash_name)
     assert receipt['expected_pairs_per_arm'] == 12
     assert receipt['arm_timeout_seconds'] == receipt['total_arm_timeout_seconds'] == 3600
     assert receipt['analysis']['automatic_promotion'] is False

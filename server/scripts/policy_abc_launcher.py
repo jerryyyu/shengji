@@ -71,6 +71,13 @@ SOFT_MC_SUITE = 'soft-mc-pv-qualify'
 CUTOFF_SUITE = 'soft-mc-cutoff-qualify'
 CUTOFF_SOURCE = '9c886f8a715bfa2b4e58a2312a27d5cb40f12589'
 CUTOFF_SEED = 626190000
+CUTOFF_SCREEN = 'soft-mc-cutoff-screen'
+CUTOFF_SCREEN_SEED = 626200000
+CUTOFF_SCREEN_DEALS = 48
+CUTOFF_SCREEN_SECONDS = 43200
+CUTOFF_SCREEN_ARMS = [
+    ('VALUE_T1_VS_TERMINAL', 16, 'mc-heuristic-cutoff', 'mc-levels-terminal'),
+    ('MODEL_T1_VS_TERMINAL', 16, 'mc-pv-cutoff', 'mc-levels-terminal')]
 CUTOFF_ARMS = [('LEVELS_OBJECTIVE', 16, 'mc-levels-terminal', 'mc-lcb'),
                ('VALUE_CUTOFF_T1', 16, 'mc-heuristic-cutoff', 'mc-levels-terminal'),
                ('LEARNED_CUTOFF_T1', 16, 'mc-pv-cutoff', 'mc-heuristic-cutoff')]
@@ -95,7 +102,7 @@ PV_PRODUCTION_QUALIFY_SEED = 625790000
 PV_PRODUCTION_QUALIFY_SECONDS = 3600
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify',
-          'world-scaling-qualify', MODEL_SUITE, SOFT_MC_SUITE, CUTOFF_SUITE)
+          'world-scaling-qualify', MODEL_SUITE, SOFT_MC_SUITE, CUTOFF_SUITE, CUTOFF_SCREEN)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -104,6 +111,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
              grid_checkpoint=None, mlp_checkpoint=None):
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
+    if suite == CUTOFF_SCREEN and qualify:
+        raise ValueError('cutoff screen is full-screen only')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
     if suite in QUALIFICATION_ONLY_SUITES and not qualify:
@@ -114,7 +123,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
     if (suite in GRID_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
-    arms, seed = {CUTOFF_SUITE: (CUTOFF_ARMS, CUTOFF_SEED),
+    arms, seed = {CUTOFF_SCREEN: (CUTOFF_SCREEN_ARMS, CUTOFF_SCREEN_SEED),
+                  CUTOFF_SUITE: (CUTOFF_ARMS, CUTOFF_SEED),
                   MODEL_SUITE: (MODEL_ARMS, MODEL_QUALIFY_SEED),
                   SOFT_MC_SUITE: ([('SOFT_MC_PV_W16_K8', 16,
                                      'mc-policy-value-rollout', 'mc-lcb')], SOFT_MC_SEED),
@@ -142,13 +152,14 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
         plan.append((name, [str(python), '-B', '-m', 'shengji.train.policy_world_duel',
                             '--checkpoint', str(arm_checkpoint), '--checkpoint-sha256', arm_hash,
                             '--out', str(output / name), '--seed0', str(seed),
-                            '--deals', str(1 if suite in MC_SUITES else QUALIFY_DEALS if qualify else DEALS),
+                            '--deals', str(CUTOFF_SCREEN_DEALS if suite == CUTOFF_SCREEN else
+                                           1 if suite in MC_SUITES else QUALIFY_DEALS if qualify else DEALS),
                             '--workers', str(1 if suite in MC_SUITES else WORKERS),
                             '--worlds', str(worlds), '--mode', mode, '--candidates',
                             '16' if suite == 'wk-screen' and name == 'W4_K16' else '8',
                             '--control', control] + (['--production-checkpoint', str(production)]
                                 if control == 'production-play' else []) +
-                            (['--progress', '--cutoff-tricks', '1'] if suite == CUTOFF_SUITE else [])))
+                            (['--progress', '--cutoff-tricks', '1'] if suite in (CUTOFF_SUITE, CUTOFF_SCREEN) else [])))
     return plan
 
 
@@ -236,6 +247,11 @@ def main(argv=None):
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if args.suite == CUTOFF_SCREEN:
+        if args.qualify:
+            raise ValueError('cutoff screen is full-screen only')
+        if args.run:
+            raise RuntimeError('cutoff screen launch held pending seed clearance and review')
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
@@ -247,7 +263,7 @@ def main(argv=None):
         raise ValueError('mlp checkpoint required exactly for model-w16-qualify')
     if (args.suite in GRID_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-grid-screen or mc-pv-qualify')
-    source_sha = {CUTOFF_SUITE: CUTOFF_SOURCE,
+    source_sha = {CUTOFF_SCREEN: CUTOFF_SOURCE, CUTOFF_SUITE: CUTOFF_SOURCE,
                   MODEL_SUITE: REFERENCE_SOURCE,
                   SOFT_MC_SUITE: MC_PV_SOURCE,
                   'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
@@ -304,6 +320,8 @@ def main(argv=None):
     expected = QUALIFY_DEALS if args.qualify else DEALS
     if args.suite in MC_SUITES:
         seconds, expected = 3600, 1
+    if args.suite == CUTOFF_SCREEN:
+        seconds, expected = CUTOFF_SCREEN_SECONDS, CUTOFF_SCREEN_DEALS
     if args.suite == 'pv-production-qualify':
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
@@ -455,6 +473,24 @@ def main(argv=None):
                       'automatic_retry': False, 'automatic_promotion': False,
                       'stop_on_failure': True, 'grid_rollouts': False,
                       'interpretation': 'rollout quality; not standalone public-only leaf prediction'})
+    if args.suite == CUTOFF_SCREEN:
+        receipt.update(
+            launch_hold=True, expected_pairs_per_arm=CUTOFF_SCREEN_DEALS, workers=WORKERS,
+            seed_reservation='626200000:626200048; proposed, peer clearance pending',
+            total_arm_timeout_seconds=2 * CUTOFF_SCREEN_SECONDS, move_timeout_seconds=300,
+            cutoff_tricks=1, comparison_scope='card play only; shared heuristic declare/bury',
+            leaf_information='complete sampled MC world, never true hidden game state',
+            analysis={
+                'primary': 'each treatment minus heuristic terminal-level MC, paired signed levels',
+                'family': 'two primaries; two-sided 97.5% Bonferroni intervals',
+                'bootstrap_seed': 20260921, 'bootstrap_replicates': 10000,
+                'unit': 'both seat mirrors averaged per deal',
+                'component': 'model minus value-only common-opponent deal differences; exploratory 95%',
+                'interpretation': 'component contrast is not a direct duel; not point-utility MC-LCB',
+                'inner': 'soft8ecd actor-public W16/K8; T1 completes candidate own trick',
+                'outer': 'N30 selection/R300 report LCB',
+                'qualification_rows_excluded': True, 'optional_extension': False,
+                'automatic_retry': False, 'automatic_promotion': False, 'grid_rollouts': False})
     print(json.dumps(receipt, indent=2))
     if not args.run:
         return 0

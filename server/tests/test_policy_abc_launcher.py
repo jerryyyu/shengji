@@ -26,6 +26,39 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_cutoff_strength_screen_recipe_and_hold():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    plan = launcher.commands(*args, suite=launcher.CUTOFF_SCREEN)
+    assert len(plan) == 2
+    assert [name for name, _ in plan] == ['VALUE_T1_VS_TERMINAL', 'MODEL_T1_VS_TERMINAL']
+    for (_, cmd), mode in zip(plan, ['mc-heuristic-cutoff', 'mc-pv-cutoff']):
+        for flag, value in {'--deals': '48', '--workers': '12', '--worlds': '16',
+                            '--candidates': '8', '--seed0': '626200000',
+                            '--control': 'mc-levels-terminal', '--mode': mode,
+                            '--cutoff-tricks': '1'}.items():
+            assert cmd[cmd.index(flag) + 1] == value
+    with pytest.raises(ValueError, match='full-screen only'):
+        launcher.commands(*args, suite=launcher.CUTOFF_SCREEN, qualify=True)
+    with pytest.raises(RuntimeError, match='launch held'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+            '--checkpoint', '/missing', '--out', '/missing',
+            '--suite', launcher.CUTOFF_SCREEN, '--run'])
+
+
+def test_cutoff_strength_screen_receipt(monkeypatch, isolated_main, capsys):
+    args, output = isolated_main
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.CUTOFF_SOURCE if 'rev-parse' in cmd else '')
+    assert launcher.main(args + ['--suite', launcher.CUTOFF_SCREEN]) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['launch_hold'] is True
+    assert receipt['expected_pairs_per_arm'] == 48
+    assert receipt['arm_timeout_seconds'] == 43200
+    assert receipt['total_arm_timeout_seconds'] == 86400
+    assert receipt['analysis']['bootstrap_replicates'] == 10000
+    assert not output.exists()
+
+
 def test_cutoff_frozen_contrasts_and_qualification_only():
     args = (Path('/python'), Path('/soft'), Path('/out'))
     with pytest.raises(ValueError, match='qualification-only'):

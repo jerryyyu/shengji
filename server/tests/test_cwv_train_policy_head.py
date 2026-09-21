@@ -93,6 +93,23 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     assert meta["policy_head"]["rows"]["npz_sha256"] == block["rows"]["npz_sha256"]
     lo = model.policy_logits(model.features_flat(torch.zeros(1, 833)))
     assert lo.shape == (1, 54) and torch.isfinite(lo).all()
+    # Instrumentation must not alter the actual joint-training result. The
+    # zero-policy-weight twin below tests a different objective, so it cannot
+    # establish timing-on/off reproducibility.
+    untimed = train_cwv.train(
+        out=tmp_path / "joint_untimed", policy_head=True, policy_rows=policy_rows,
+        policy_eval=policy_rows, policy_weight=1.0, policy_listwise_weight=1.0,
+        policy_batch_fraction=0.5, init=str(tmp_path / "base" / "best.pt"),
+        init_exclude_exposed=True, loader_stage_timing=False, **kw)
+    untimed_model, _, _ = consumer_load(tmp_path / "joint_untimed" / "best.pt")
+    assert model.state_dict().keys() == untimed_model.state_dict().keys()
+    for name, tensor in model.state_dict().items():
+        assert torch.equal(tensor, untimed_model.state_dict()[name]), name
+    assert "loader_stage_secs" not in untimed["epochs"][0]["train"]
+    for name, value in tr.items():
+        if not name.endswith("secs"):
+            assert untimed["epochs"][0]["train"][name] == value, name
+    assert untimed["epochs"][0]["val"]["policy"] == val
     # a headless run cannot warm-start from a policy-head net (layout differs)
     with pytest.raises(train_cwv.TrainError):
         train_cwv.train(out=tmp_path / "back", init=str(tmp_path / "joint" / "best.pt"),

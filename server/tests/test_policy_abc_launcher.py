@@ -26,6 +26,44 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_gen4_qualification_commands_refuse_promotion():
+    args = (Path('/python'), Path('/gen4'), Path('/out'))
+    kw = dict(suite='gen4-production-qualify', qualify=True,
+              production=Path('/prod'), production_worlds=64)
+    [(name, cmd)] = launcher.commands(*args, **kw)
+    assert name == 'GEN4_W64_K8'
+    for flag, value in {'--checkpoint-sha256': launcher.GEN4_CHECKPOINT_SHA256,
+            '--seed0': '626390000', '--deals': '12', '--workers': '12',
+            '--worlds': '64', '--candidates': '8', '--control': 'production-play',
+            '--mode': 'policy-value'}.items():
+        assert cmd[cmd.index(flag) + 1] == value
+    for change in ({'qualify': False}, {'production_worlds': 16},
+                   {'production': None}, {'grid_checkpoint': Path('/unneeded')}):
+        with pytest.raises(ValueError):
+            launcher.commands(*args, **{**kw, **change})
+
+
+def test_gen4_qualification_receipt(monkeypatch, isolated_main, tmp_path, capsys):
+    import hashlib
+    args, output = isolated_main
+    prod = tmp_path / 'prod'
+    prod.write_bytes(b'production-fixture')
+    monkeypatch.setattr(launcher, 'GEN4_CHECKPOINT_SHA256', hashlib.sha256(b'fixture').hexdigest())
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.REFERENCE_SOURCE if 'rev-parse' in cmd else '')
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
+    assert launcher.main(args + ['--suite', 'gen4-production-qualify', '--qualify',
+        '--production-worlds', '64', '--production-checkpoint', str(prod)]) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['checkpoint'] == launcher.GEN4_CHECKPOINT_SHA256
+    assert receipt['expected_pairs_per_arm'] == 12
+    assert receipt['arm_timeout_seconds'] == receipt['total_arm_timeout_seconds'] == 3600
+    assert receipt['analysis']['automatic_promotion'] is False
+    assert receipt['analysis']['automatic_retry'] is False
+    assert not output.exists()
+
+
 def test_joint_production_qualification_commands_and_refusals():
     args = (Path('/python'), Path('/m1'), Path('/out'))
     kw = dict(suite='joint-production-qualify', qualify=True,

@@ -174,6 +174,9 @@ def test_world_scaling_qualification_receipt_and_serial_run(
     receipt = json.loads((output / 'launch-plan.json').read_text()
                          if run else capsys.readouterr().out)
     assert receipt['source'] == launcher.PRODUCTION_WORLD_SCALING_SOURCE
+    assert receipt['source'] == '8e814f777b979b4854c2e5bfa3bfb3f792276278'
+    assert receipt['analysis']['world_diversity'] == (
+        'per-decision distinct sampled deals; duplicates keep their weight; not ESS')
     assert receipt['arm_timeout_seconds'] == 3600
     assert receipt['total_arm_timeout_seconds'] == 10800
     assert receipt['expected_pairs_per_arm'] == 12

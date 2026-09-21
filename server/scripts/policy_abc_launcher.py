@@ -38,7 +38,7 @@ FOLLOWUP_ARMS = [('D', 4, 'policy-value', 'mc-lcb'),
 REFERENCE_SOURCE = '75bc524a1580d8fe8d306b4977f1a6346a9d1027'
 # Bounded W256 runtime delta based on REFERENCE_SOURCE; the frozen 75bc runner
 # itself accepts worlds only through 128.
-PRODUCTION_WORLD_SCALING_SOURCE = '1718290aa1495f501a0d9597a882d1cdcbc2122d'
+PRODUCTION_WORLD_SCALING_SOURCE = '8e814f777b979b4854c2e5bfa3bfb3f792276278'
 PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747'
 JS_M1_CHECKPOINT_SHA256 = 'a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38'
 GRID_CHECKPOINT_SHA256 = '9ee9fedb38950aa3630cf246d3eca0608f4dce516650182522ce69e7a0960cf0'
@@ -366,6 +366,7 @@ def main(argv=None):
             total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
             analysis={'purpose': 'runtime/failure qualification, not strength inference',
                       'runtime_source_base': REFERENCE_SOURCE,
+                      'world_diversity': 'per-decision distinct sampled deals; duplicates keep their weight; not ESS',
                       'qualification_rows_excluded': True,
                       'future_full_strength_screens': 'qualification rows excluded',
                       'automatic_retry': False, 'automatic_promotion': False,

@@ -124,6 +124,72 @@ def test_w64_production_qualification_and_screen_only():
         launcher.commands(*paths, suite='wk-screen', production_worlds=64)
 
 
+def test_world_scaling_qualification_commands_and_refusals():
+    paths = (Path('/python'), Path('/soft'), Path('/out'))
+    kw = dict(suite='production-world-scaling-qualify', qualify=True,
+              production=Path('/prod'))
+    arms = launcher.commands(*paths, **kw)
+    assert [name for name, _ in arms] == [
+        'SOFT_W64_K8', 'SOFT_W128_K8', 'SOFT_W256_K8']
+    for name, cmd in arms:
+        assert cmd[cmd.index('--seed0') + 1] == '626590000'
+        assert cmd[cmd.index('--deals') + 1] == '12'
+        assert cmd[cmd.index('--workers') + 1] == '12'
+        assert cmd[cmd.index('--candidates') + 1] == '8'
+        assert cmd[cmd.index('--mode') + 1] == 'policy-value'
+        assert cmd[cmd.index('--control') + 1] == 'production-play'
+        assert cmd[cmd.index('--production-checkpoint') + 1] == '/prod'
+    assert [cmd[cmd.index('--worlds') + 1] for _, cmd in arms] == ['64', '128', '256']
+    for change in ({'qualify': False}, {'production': None},
+                   {'production_worlds': 64}, {'grid_checkpoint': Path('/grid')}):
+        with pytest.raises(ValueError):
+            launcher.commands(*paths, **{**kw, **change})
+
+
+@pytest.mark.parametrize('run', [False, True])
+def test_world_scaling_qualification_receipt_and_serial_run(
+        monkeypatch, isolated_main, tmp_path, capsys, run):
+    import hashlib
+    args, output = isolated_main
+    production = tmp_path / 'prod'
+    production.write_bytes(b'production-fixture')
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256',
+                        hashlib.sha256(production.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+        lambda cmd, **kw: launcher.PRODUCTION_WORLD_SCALING_SOURCE
+        if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kwargs):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kwargs['seconds'] == 3600
+        arm = Path(cmd[cmd.index('--out') + 1])
+        seen.append((arm.name, cmd[cmd.index('--worlds') + 1]))
+        arm.mkdir()
+        (arm / 'summary.json').write_text(
+            json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', 'production-world-scaling-qualify', '--qualify',
+                   '--production-checkpoint', str(production)]
+    assert launcher.main(call + (['--run'] if run else [])) == 0
+    receipt = json.loads((output / 'launch-plan.json').read_text()
+                         if run else capsys.readouterr().out)
+    assert receipt['source'] == launcher.PRODUCTION_WORLD_SCALING_SOURCE
+    assert receipt['arm_timeout_seconds'] == 3600
+    assert receipt['total_arm_timeout_seconds'] == 10800
+    assert receipt['expected_pairs_per_arm'] == 12
+    assert receipt['workers'] == 12
+    assert receipt['seed_reservation'] == '626590000:626590012; peer confirmed #436 comment5760888715'
+    assert receipt['authorization'] == 'User direct authorization to use idle Perf for #577'
+    assert receipt['analysis']['qualification_rows_excluded'] is True
+    assert receipt['analysis']['full_screen'] == 'not implemented; qualification only'
+    assert receipt['analysis']['readout'].startswith('unavailable pending')
+    assert receipt['automatic_promotion'] is False
+    assert seen == ([('SOFT_W64_K8', '64'), ('SOFT_W128_K8', '128'),
+                     ('SOFT_W256_K8', '256')] if run else [])
+    assert output.exists() == run
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_pv_production_screen_recipe():
     kw = dict(suite='pv-production-screen', production=Path('/prod'), production_worlds=64)
     args = (Path('/python'), Path('/soft'), Path('/out'))

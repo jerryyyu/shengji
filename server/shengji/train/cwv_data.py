@@ -1017,18 +1017,44 @@ class CwvBlockStore:
 
     def iter_batches(self, mask_fn: Callable[[CwvBlock], np.ndarray], batch_size: int, *,
                      rng: np.random.Generator | None = None, window: int = 64,
-                     decode_workers: int = 0
+                     decode_workers: int = 0,
+                     stage_secs: dict[str, float] | None = None,
                      ) -> Iterator[dict[str, np.ndarray]]:
         """Batches over the rows ``mask_fn`` selects, gathered from the
         resident blocks of each window; the batch sequence is a function of
-        ``rng`` alone."""
-        order = np.arange(len(self.entries))
-        if rng is not None:
-            rng.shuffle(order)
-        batch_size = max(1, int(batch_size))
-        groups = self.windows(order, window)
-        pool = (ProcessPoolExecutor(max_workers=int(decode_workers))
-                if int(decode_workers) > 0 and len(groups) > 1 else None)
+        ``rng`` alone.
+
+        When ``stage_secs`` is supplied, it accumulates host wall time in five
+        buckets: ``setup`` (order, windows and pool construction), ``decode``
+        (submission, residency admission and decode/future waits), ``prepare``
+        (masking and row-index shuffling), ``gather`` (including batch index
+        selection and the indices attached by ``gather``), and ``cleanup``
+        (window reference release and pool shutdown).
+        Each measured region ends before yielding a batch, so time suspended
+        at a consumer yield is never attributed to the loader.
+        """
+        if stage_secs is not None:
+            for name in ("setup", "decode", "prepare", "gather", "cleanup"):
+                stage_secs.setdefault(name, 0.0)
+
+        def start_stage() -> float | None:
+            return time.perf_counter() if stage_secs is not None else None
+
+        def finish_stage(name: str, started: float | None) -> None:
+            if started is not None:
+                stage_secs[name] += time.perf_counter() - started
+
+        started = start_stage()
+        try:
+            order = np.arange(len(self.entries))
+            if rng is not None:
+                rng.shuffle(order)
+            batch_size = max(1, int(batch_size))
+            groups = self.windows(order, window)
+            pool = (ProcessPoolExecutor(max_workers=int(decode_workers))
+                    if int(decode_workers) > 0 and len(groups) > 1 else None)
+        finally:
+            finish_stage("setup", started)
         # Decode the window's shards concurrently and wait for them. Lookahead
         # was tried first and bought nothing: it can only hide decode behind the
         # consumer, and the consumer is far cheaper than the decode. The batch
@@ -1064,29 +1090,61 @@ class CwvBlockStore:
             return {i: pool.submit(decode_arrays, self.decode_task(i)) for i in todo}
         try:
             for group in groups:
-                pending = submit(group)
-                blocks = [self.block(i, pinned=group,
-                                     decoded=(pending.pop(i).result() if i in pending else None))
-                          for i in group]
-                which_parts: list[np.ndarray] = []
-                row_parts: list[np.ndarray] = []
-                for j, block in enumerate(blocks):
-                    sel = np.flatnonzero(mask_fn(block))
-                    which_parts.append(np.full(sel.size, j, dtype=np.int64))
-                    row_parts.append(sel.astype(np.int64))
-                which = np.concatenate(which_parts) if which_parts else np.zeros(0, np.int64)
-                rows = np.concatenate(row_parts) if row_parts else np.zeros(0, np.int64)
-                if rows.size:
-                    idx = np.arange(rows.size)
-                    if rng is not None:
-                        rng.shuffle(idx)
-                    for b0 in range(0, rows.size, batch_size):
-                        sl = idx[b0:b0 + batch_size]
-                        yield gather(blocks, which[sl], rows[sl])
-                del blocks, which, rows
+                started = start_stage()
+                try:
+                    pending = submit(group)
+                    blocks = [self.block(i, pinned=group,
+                                         decoded=(pending.pop(i).result()
+                                                  if i in pending else None))
+                              for i in group]
+                finally:
+                    finish_stage("decode", started)
+
+                started = start_stage()
+                try:
+                    which_parts: list[np.ndarray] = []
+                    row_parts: list[np.ndarray] = []
+                    for j, block in enumerate(blocks):
+                        sel = np.flatnonzero(mask_fn(block))
+                        which_parts.append(np.full(sel.size, j, dtype=np.int64))
+                        row_parts.append(sel.astype(np.int64))
+                    which = (np.concatenate(which_parts)
+                             if which_parts else np.zeros(0, np.int64))
+                    rows = (np.concatenate(row_parts)
+                            if row_parts else np.zeros(0, np.int64))
+                    if rows.size:
+                        idx = np.arange(rows.size)
+                        if rng is not None:
+                            rng.shuffle(idx)
+                    else:
+                        idx = np.zeros(0, np.int64)
+                finally:
+                    finish_stage("prepare", started)
+
+                try:
+                    if rows.size:
+                        for b0 in range(0, rows.size, batch_size):
+                            started = start_stage()
+                            try:
+                                sl = idx[b0:b0 + batch_size]
+                                batch = gather(blocks, which[sl], rows[sl])
+                            finally:
+                                finish_stage("gather", started)
+                            yield batch
+                            del batch
+                finally:
+                    started = start_stage()
+                    try:
+                        del blocks, which, rows, idx
+                    finally:
+                        finish_stage("cleanup", started)
         finally:
-            if pool is not None:
-                pool.shutdown(cancel_futures=True)
+            started = start_stage()
+            try:
+                if pool is not None:
+                    pool.shutdown(cancel_futures=True)
+            finally:
+                finish_stage("cleanup", started)
 
 
 _SCALAR_DTYPES = {"perspective": np.uint8, "target": np.int64, "utility": np.float32,

@@ -887,6 +887,34 @@ def _register_cwv_bury_from_env() -> None:
                               bury_config=config, serving_budget_seconds=budget, **recipe)
 
 
+def register_pv_search_policies(checkpoint: str, *, sha256: str, **recipe) -> list[str]:
+    """The production wrapper for the policy/value search (`train.pv_search_policy`)
+    as a registry policy: ``pv-search-<ckpt8>-w<W>-k<K>-r<recipe8>``.  The factory
+    is type-guarded at the registry boundary, as the shortlist is."""
+    from ..train.pv_search_policy import pv_registry_entries
+
+    entries = pv_registry_entries(checkpoint, sha256=sha256, **recipe)
+    REGISTRY.update(entries)
+    return sorted(entries)
+
+
+def _register_pv_search_from_env() -> None:
+    """``SHENGJI_PV_CKPT`` + ``SHENGJI_PV_SHA256`` (+ the ``_WORLDS`` / ``_CANDIDATES`` /
+    ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs) register
+    the pv-search policy at import, so a spawned worker resolves the same name
+    the parent did (`train.pv_search_policy.pv_env_recipe`)."""
+    import os
+    import sys
+    if not os.environ.get("SHENGJI_PV_CKPT"):
+        return
+    module = sys.modules.get("shengji.train.pv_search_policy")
+    if module is not None and not hasattr(module, "pv_env_recipe"):
+        return
+    from ..train.pv_search_policy import pv_env_recipe
+    recipe = pv_env_recipe()
+    register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
+
+
 def _register_netroll_from_env() -> None:
     """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
     the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
@@ -900,4 +928,5 @@ def _register_netroll_from_env() -> None:
 
 _register_netroll_from_env()
 _register_cwv_shortlist_from_env()
+_register_pv_search_from_env()
 _register_cwv_bury_from_env()

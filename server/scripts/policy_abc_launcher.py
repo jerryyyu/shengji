@@ -44,6 +44,10 @@ JS_G1_CHECKPOINT_SHA256 = GRID_CHECKPOINT_SHA256
 GEN4_CHECKPOINT_SHA256 = '3f83bfb7cac5580ec2711c856c5a26cba68670ea3bcdd595040ffa0216a4de7e'
 GEN4_PRODUCTION_SUITE = 'gen4-production-qualify'
 GEN4_QUALIFY_SEED = 626390000
+GEN3_CHECKPOINT_SHA256 = 'd2514e6e2c71dcef1331174f29e6aaf73941b18fc32c241b6f3cb6afae9ef72f'
+GEN3_PRODUCTION_SUITE = 'gen3-production-qualify'
+GEN3_QUALIFY_SEED = 626490000
+GEN_PRODUCTION_SUITES = (GEN4_PRODUCTION_SUITE, GEN3_PRODUCTION_SUITE)
 REFERENCE_SEED = 625300000
 REFERENCE_ARMS = [('F', 4, 'policy-lookahead', 'policy-value'),
                   ('G', 4, 'policy-value', 'production-play')]
@@ -76,9 +80,9 @@ JOINT_PRODUCTION_ARMS = [('JS_M1_W64_K8', 64, 'policy-value', 'production-play')
                          ('JS_G1_W64_K8', 64, 'policy-value', 'production-play')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify', 'pv-production-screen',
-                     JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, GEN4_PRODUCTION_SUITE)
+                     JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, *GEN_PRODUCTION_SUITES)
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
-                             'pv-production-qualify', JOINT_PRODUCTION_SUITE, GEN4_PRODUCTION_SUITE)
+                             'pv-production-qualify', JOINT_PRODUCTION_SUITE, *GEN_PRODUCTION_SUITES)
 # Proposal and peer seed reservation: #436 comments5751361312/5751492758.
 # Qualification only: the 800-pair screen needs a separately reviewed runtime ceiling.
 PV_PRODUCTION_QUALIFY_SEED = 625790000
@@ -89,7 +93,7 @@ PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
-          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, GEN4_PRODUCTION_SUITE)
+          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, *GEN_PRODUCTION_SUITES)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
@@ -98,11 +102,11 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
              grid_checkpoint=None, production_worlds=16):
     if production_worlds not in (16, 64):
         raise ValueError('production worlds must be 16 or 64')
-    if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, GEN4_PRODUCTION_SUITE):
+    if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, *GEN_PRODUCTION_SUITES):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
     if suite not in SUITES:
         raise ValueError('unknown experiment suite')
-    if suite in (JOINT_PRODUCTION_SUITE, GEN4_PRODUCTION_SUITE) and production_worlds != 64:
+    if suite in (JOINT_PRODUCTION_SUITE, *GEN_PRODUCTION_SUITES) and production_worlds != 64:
         raise ValueError('joint-production-qualify requires explicit --production-worlds 64')
     if suite == 'strength-screen' and qualify:
         raise ValueError('strength-screen is a full-screen proposal, not qualification')
@@ -120,6 +124,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   JOINT_PRODUCTION_SUITE: (JOINT_PRODUCTION_ARMS, JOINT_PRODUCTION_SEED),
                   JOINT_PRODUCTION_SCREEN: (JOINT_PRODUCTION_ARMS, PV_PRODUCTION_SCREEN_SEED),
                   GEN4_PRODUCTION_SUITE: ([('GEN4_W64_K8', 64, 'policy-value', 'production-play')], GEN4_QUALIFY_SEED),
+                  GEN3_PRODUCTION_SUITE: ([('GEN3_W64_K8', 64, 'policy-value', 'production-play')], GEN3_QUALIFY_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
                   'strength-screen': (STRENGTH_ARMS, STRENGTH_SEED),
                   'wk-screen': (WK_ARMS, WK_QUALIFY_SEED if qualify else WK_SEED),
@@ -135,6 +140,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                             (grid_checkpoint, GRID_CHECKPOINT_SHA256))
     elif suite == GEN4_PRODUCTION_SUITE:
         checkpoint_specs = ((checkpoint, GEN4_CHECKPOINT_SHA256),)
+    elif suite == GEN3_PRODUCTION_SUITE:
+        checkpoint_specs = ((checkpoint, GEN3_CHECKPOINT_SHA256),)
     else:
         checkpoint_specs = ((checkpoint, CHECKPOINT),) * len(arms)
     plan = []
@@ -236,9 +243,9 @@ def main(argv=None):
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
     production_worlds = args.production_worlds
-    if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, GEN4_PRODUCTION_SUITE):
+    if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, *GEN_PRODUCTION_SUITES):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
-    if args.suite in (JOINT_PRODUCTION_SUITE, GEN4_PRODUCTION_SUITE) and production_worlds != 64:
+    if args.suite in (JOINT_PRODUCTION_SUITE, *GEN_PRODUCTION_SUITES) and production_worlds != 64:
         raise ValueError('joint-production-qualify requires explicit --production-worlds 64')
     if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN) and args.qualify:
         raise ValueError('pv-production-screen is full-screen only')
@@ -257,6 +264,7 @@ def main(argv=None):
                   JOINT_PRODUCTION_SUITE: REFERENCE_SOURCE,
                   JOINT_PRODUCTION_SCREEN: REFERENCE_SOURCE,
                   GEN4_PRODUCTION_SUITE: REFERENCE_SOURCE,
+                  GEN3_PRODUCTION_SUITE: REFERENCE_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
                   'strength-screen': REFERENCE_SOURCE,
                   'wk-screen': REFERENCE_SOURCE,
@@ -276,6 +284,8 @@ def main(argv=None):
                          if args.suite in JOINT_SUITES else CHECKPOINT)
     if args.suite == GEN4_PRODUCTION_SUITE:
         checkpoint_sha256 = GEN4_CHECKPOINT_SHA256
+    if args.suite == GEN3_PRODUCTION_SUITE:
+        checkpoint_sha256 = GEN3_CHECKPOINT_SHA256
     if hashlib.sha256(checkpoint.read_bytes()).hexdigest() != checkpoint_sha256:
         raise RuntimeError('checkpoint mismatch')
     if (grid_checkpoint is not None
@@ -308,7 +318,7 @@ def main(argv=None):
     expected = QUALIFY_DEALS if args.qualify else DEALS
     if args.suite == 'mc-pv-qualify':
         seconds, expected = 3600, 1
-    if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE, GEN4_PRODUCTION_SUITE):
+    if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE, *GEN_PRODUCTION_SUITES):
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
     if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN):
         seconds = PV_PRODUCTION_SCREEN_SECONDS
@@ -336,11 +346,14 @@ def main(argv=None):
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
-    if args.suite == GEN4_PRODUCTION_SUITE:
+    if args.suite in GEN_PRODUCTION_SUITES:
+        gen3 = args.suite == GEN3_PRODUCTION_SUITE
         receipt.update(
-            checkpoint=GEN4_CHECKPOINT_SHA256, production_worlds=64,
-            seed_reservation='626390000:626390012; proposed, confirm before launch',
-            authorization='Jerry direct Codex-thread request: add gen4 arm to W64 comparison',
+            checkpoint=checkpoint_sha256, production_worlds=64,
+            seed_reservation=('626490000:626490012' if gen3 else '626390000:626390012')
+                + '; proposed, confirm before launch',
+            authorization='Jerry direct Codex-thread request: add '
+                + ('gen3' if gen3 else 'gen4') + ' arm to W64 comparison',
             expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
             total_arm_timeout_seconds=seconds, move_timeout_seconds=300,
             analysis={'purpose': 'runtime/failure qualification, not strength inference',

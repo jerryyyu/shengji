@@ -52,8 +52,8 @@ def main(argv=None):
         parser.add_argument('--' + key, type=Path, required=True)
     parser.add_argument('--run', action='store_true')
     args = parser.parse_args(argv)
-    # The release gate is shared with the four-model reader. Currently refuses
-    # before reading qualifications/models or probing the host, even for --run.
+    # The release gate is shared with the four-model reader. Any unfrozen pin
+    # refuses before qualification/model reads or host probes, even for --run.
     evidence = qualification_gate(args.joint_qualification, args.gen4_qualification,
                                   args.gen3_qualification)
     plan = packet(args.python.absolute(), args.gen4_checkpoint.resolve(),

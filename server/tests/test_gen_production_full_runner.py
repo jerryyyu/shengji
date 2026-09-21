@@ -27,6 +27,8 @@ def args_for(root):
 
 @pytest.mark.parametrize('run', [False, True])
 def test_unfrozen_gate_precedes_io_and_host_probe(runner, tmp_path, monkeypatch, run):
+    from shengji.train import policy_four_model_readout as reader
+    monkeypatch.setitem(reader.QUALIFICATION_HASHES, 'GEN3_W64_K8', None)
     monkeypatch.setattr(runner.subprocess, 'check_output', lambda *a, **k: pytest.fail('host probe'))
     with pytest.raises(RuntimeError, match='launch held'):
         runner.main(args_for(tmp_path) + (['--run'] if run else []))
@@ -35,7 +37,7 @@ def test_unfrozen_gate_precedes_io_and_host_probe(runner, tmp_path, monkeypatch,
 
 @pytest.fixture
 def released(runner, tmp_path, monkeypatch):
-    # Synthetic released gate only; real constants remain unset.
+    # Synthetic gate; real qualification files are never read by this fixture.
     monkeypatch.setattr(runner, 'qualification_gate', lambda *a: {'fixture': True})
     monkeypatch.setattr(runner.sys, 'platform', 'linux')
     sup = runner.supervisor

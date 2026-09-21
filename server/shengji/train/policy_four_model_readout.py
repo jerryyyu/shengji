@@ -1,4 +1,4 @@
-"""Held complete four-model production comparison; never analyze a subset.
+"""Frozen complete four-model production comparison; never analyze a subset.
 
 GEN4/GEN3 qualification identities must be frozen in a reviewed release after
 qualification. No CLI override, inferred digest, or partial-family fallback.
@@ -17,8 +17,8 @@ from .policy_world_compare import _read
 QUALIFICATION_HASHES = {
     'JS_M1_W64_K8': '1cc1bac4671cefedcec432658cacb4e97768448eaa814f0792762fcdeb203152',
     'JS_G1_W64_K8': 'a93bf124b4bafc08b68b13f178bb1ebb7d8f1d160fb46eb19f2da0b8e67065e0',
-    'GEN4_W64_K8': None,
-    'GEN3_W64_K8': None,
+    'GEN4_W64_K8': '83f302a83696188ae325e00a18e11def69e9bf3aaf2af2a9de93a41968271a48',
+    'GEN3_W64_K8': '9ce25df9088531479a4e0133ea2a8f194c2d2aa654120afa325eb0ccf756541a',
 }
 BOOTSTRAP_SEED, REPLICATES = 20260921, 10000
 

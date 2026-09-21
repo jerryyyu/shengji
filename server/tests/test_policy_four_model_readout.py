@@ -6,7 +6,8 @@ import pytest
 from shengji.train import policy_four_model_readout as reader
 
 
-def test_unfrozen_release_refuses_before_io():
+def test_unfrozen_release_refuses_before_io(monkeypatch):
+    monkeypatch.setitem(reader.QUALIFICATION_HASHES, 'GEN3_W64_K8', None)
     with pytest.raises(ValueError, match='readout held'):
         reader.readout('/missing', '/missing', '/missing', '/missing')
 

@@ -527,8 +527,8 @@ def _validate_args(args) -> None:
         raise ValueError("deals must be in [1,4000]")
     if not (1 <= args.workers <= 16):
         raise ValueError("workers must be in [1,16]")
-    if not (1 <= args.worlds <= 128):
-        raise ValueError("worlds must be in [1,128]")
+    if not (1 <= args.worlds <= 256):
+        raise ValueError("worlds must be in [1,256]")
     if not (1 <= args.candidates <= 512):
         raise ValueError("candidates must be in [1,512]")
     if (len(args.checkpoint_sha256) != 64

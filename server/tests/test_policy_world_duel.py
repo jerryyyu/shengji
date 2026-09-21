@@ -158,6 +158,7 @@ def test_policy_control_work_is_not_reported_as_mc_work():
 
 @pytest.mark.parametrize('mode,control', [('policy', 'mc-smart4'),
                                         ('policy-lookahead', 'policy-value'),
+                                        ('policy-heuristic-lookahead', 'policy-value'),
                                         ('policy-selective-mc', 'policy-value')])
 def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_path, mode, control):
     checkpoint = tmp_path / "checkpoint.bin"
@@ -209,8 +210,48 @@ def test_cli_writes_recipe_pair_and_summary_with_injected_pool(monkeypatch, tmp_
         assert recipe['policy']['verification']['gap'] == .1
         assert recipe['control_effective']['class'] == 'PolicyValueBot'
         assert recipe['control_effective']['candidates'] == 'same as arm'
+    if mode == 'policy-heuristic-lookahead':
+        assert recipe['policy']['extra_plies'] == 4
+        assert recipe['policy']['continuation_worlds'] == 0
+        assert recipe['policy']['continuation_policy'] == 'HeuristicBot'
+        assert recipe['policy']['verification'] is None
     assert json.loads((out / "summary.json").read_text())["complete"] == 1
     assert len((out / "pairs.jsonl").read_text().splitlines()) == 1
+
+
+def test_heuristic_lookahead_factory_has_no_continuation_worlds(monkeypatch):
+    seen = {}
+    sentinel = object()
+    monkeypatch.setattr(duel, '_value_evaluator', lambda *a: sentinel)
+    def factory(*args, **kw):
+        seen.update(kw)
+        return sentinel
+    monkeypatch.setattr(duel.PolicyLookaheadBot, 'from_checkpoint', factory)
+    assert duel.make_policy('ck', 'sha', 64, 7, 'policy-heuristic-lookahead', 8) is sentinel
+    assert seen['worlds'] == 64 and seen['candidates'] == 8
+    assert seen['continuation_policy'] == 'heuristic' and seen['continuation_worlds'] == 0
+
+
+def test_real_heuristic_continuation_pair_reaches_summary(monkeypatch):
+    """Exercise real games/leaf construction; cheap fake network, not strength evidence."""
+    import numpy as np
+    class Evaluator:
+        def score(self, leaves, seat):
+            return np.zeros(len(leaves))
+    def factory(checkpoint, checksum, worlds, seed, mode='policy', candidates=8):
+        return duel.PolicyLookaheadBot(lambda x: np.zeros((len(x), 54)),
+            evaluator=Evaluator(), worlds=1, candidates=1, cap=16, seed=seed,
+            continuation_policy='heuristic', continuation_worlds=0)
+    monkeypatch.setattr(duel, 'make_policy', factory)
+    monkeypatch.setattr(duel, 'make_control', lambda *a, **kw: factory(None, None, 1, 0))
+    row = duel.play_pair(625091991, 'fake', 'fake', worlds=1,
+                        mode='policy-heuristic-lookahead', control='policy-value', candidates=1)
+    assert not row.get('error') and not row.get('timeout')
+    result = duel.aggregate_records([row], [625091991])
+    assert result['complete'] == 1 and not result.get('errors')
+    assert result['policy']['continuation_plies'] > 0
+    assert result['policy']['continuation_worlds'] == 0
+    assert result['policy']['continuation_sample_attempts'] == 0
 
 
 def test_verification_work_survives_mirrors_and_summary(monkeypatch):

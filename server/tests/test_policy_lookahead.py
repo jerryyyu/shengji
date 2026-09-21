@@ -26,7 +26,8 @@ def test_terminal_leaf_never_calls_continuation(monkeypatch):
     assert bot._continuation_work == {}
 
 
-def test_real_continuation_preserves_hidden_information_and_original_state():
+@pytest.mark.parametrize('continuation', ['policy', 'heuristic'])
+def test_real_continuation_preserves_hidden_information_and_original_state(continuation):
     rnd = state()
     seat = rnd.turn
     changed = copy.deepcopy(rnd)
@@ -45,8 +46,10 @@ def test_real_continuation_preserves_hidden_information_and_original_state():
         inputs.append(x.copy())
         return np.tile(np.arange(54), (len(x), 1))
     first_eval, second_eval = Evaluator(), Evaluator()
-    first = PolicyLookaheadBot(predict, evaluator=first_eval, worlds=2, candidates=2, seed=21)
-    second = PolicyLookaheadBot(predict, evaluator=second_eval, worlds=2, candidates=2, seed=21)
+    kw = dict(continuation_policy=continuation,
+              continuation_worlds=1 if continuation == 'policy' else 0)
+    first = PolicyLookaheadBot(predict, evaluator=first_eval, worlds=2, candidates=2, seed=21, **kw)
+    second = PolicyLookaheadBot(predict, evaluator=second_eval, worlds=2, candidates=2, seed=21, **kw)
     before = copy.deepcopy(rnd.hands)
     action = first.decide_play(rnd, seat)
     expected_inputs = inputs[:]
@@ -56,6 +59,35 @@ def test_real_continuation_preserves_hidden_information_and_original_state():
     assert all(np.array_equal(a, b) for a, b in zip(inputs, expected_inputs))
     assert rnd.hands == before
     assert first.last_decision_record['continuation_work']['plies'] == 16
-    assert first.last_decision_record['continuation_work']['worlds'] == 16
+    assert first.last_decision_record['continuation_work']['worlds'] == (16 if continuation == 'policy' else 0)
     assert all(len(leaf.history) == len(rnd.history) + 2 for leaf in first_eval.leaves)
     assert [r.hands for r in first_eval.leaves] == [r.hands for r in second_eval.leaves]
+
+
+@pytest.mark.parametrize('kwargs', [dict(continuation_policy='other'),
+    dict(continuation_policy='heuristic'),
+    dict(continuation_policy='heuristic', continuation_worlds=False)])
+def test_continuation_recipe_refuses_unused_or_invalid_worlds(kwargs):
+    with pytest.raises(ValueError):
+        PolicyLookaheadBot(None, evaluator=object(), **kwargs)
+
+
+def test_heuristic_leaf_uses_no_policy_inference_and_exactly_one_extra_trick():
+    from shengji.ai.heuristic import HeuristicBot
+    rnd = state(); seat = rnd.turn
+    def forbidden(_):
+        raise AssertionError('heuristic continuation must not call policy head')
+    bot = PolicyLookaheadBot(forbidden, evaluator=object(), continuation_policy='heuristic',
+                             continuation_worlds=0)
+    action = HeuristicBot().decide_play(rnd, seat)
+    expected = PolicyValueBot(None, evaluator=object())._leaf(
+        rnd, seat, rnd.hands, rnd.buried, action, 0)
+    for _ in range(4):
+        if expected.phase != 'play':
+            break
+        actor = expected.turn
+        expected.play(actor, HeuristicBot().decide_play(expected, actor))
+    actual = bot._leaf(rnd, seat, rnd.hands, rnd.buried, action, 0)
+    assert actual.hands == expected.hands and actual.attacker_points == expected.attacker_points
+    assert len(actual.history) == len(rnd.history)+2
+    assert bot._continuation_work == dict(plies=4, worlds=0, sample_attempts=0, capped_decisions=0)

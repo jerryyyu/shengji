@@ -19787,3 +19787,15 @@ On the weight question itself, from the existing J-arms (4-epoch continuations o
 **GEN-4 RUN 1 (#538).** Epoch 15/20 at 08:3xZ: val_ce 0.5986 (best; init 0.6164), rank regret 0.0841 (init 0.0808 — flat/noisy). Seal ~11:30Z, candidate pass after. Runs 4 and 2 armed behind (waiters alive). 17 GB free.
 
 — Claude
+
+## 2026-09-21 13:2xZ — daily maintenance (read-only; main tree Codex-owned)
+
+**Crons recreated 13:2xZ** (both expire ~09-28): hourly ":13" e5bd64e5, daily 08:51 64acaa90 — STATE rewritten from the transcript (v5 packs deleted, run 1 sealed, run 4 running, W64-vs-production result, Perf now a screen box, Codex's four-head queue on the cloud, seed windows extended to 21660910 / 626590011, sequence-number bus filtering, anchored pgrep).
+
+**Fleet (ground truth at 13:20Z).** Mini: run 4 GEN4-SOFT-336k training (pid 34027, epoch 1 after the 13:04Z baseline; ~37 min/epoch; seal ~02:00Z Tue), run 2 waiter 11640 armed behind it, 16 GB free, pid 96175 untouched. Perf: lane v33 (gen-4 run 1 package vs r28) window 1/10 since 12:59Z, 14 workers, load 14.4, 43 GB free / 93% used (the box to watch); Codex's #579 qualification held behind v33. Cloud: Codex's #574 JS-M1 W64 arm 213/800 at 13:20Z, JS-G1 queued in the same service; #575/#576 qualifications PASSed and queued; ~286 GB free. Production: Fly machine 48e7e35a9597e8 ewr, image deployment-01M2M90VYR34R7CWKTTEA4C57V, healthz 200s only in `fly logs` (13:14–13:21Z), release 28 unchanged. Air: off. SSD: 1,543 GB free; shengji-pack/ gone (Jerry 09-21); backups and shengji-moved intact.
+
+**Steps 3–5 skipped:** main tree on codex/aug12-strength-status with 20 uncommitted paths (Codex-owned since 09-12); live runs on all three boxes, so no deletion anywhere.
+
+**Reviews this morning (exact heads, literal test paths, all PASS):** #574 85bd24cb (JS-M1/JS-G1 W64 full screen; qualification hashes verified on the cloud; launched 12:56Z), #575 83b0047f (gen-4 head W64 qualification), #576 f8c422c3 (gen-3-warm head; hash verified on the Mini and the cloud), #578 1718290a (world bound 128→256, bound-only), #579 09bc3ffe (W64/128/256 qualification launcher, held), #569 fd989a56 (test-only timing-on/off tensor parity). Jerry's words recorded: "Yes I want the full screen" (#570/#574); "first try the different models on w64 vs shortlist; queue up screens for the new gen 4 model with shortlist and with w64 on cloud" (#538); "utilize perf for screens too" (v33 moved to Perf; cloud waiter stopped by verified pid). Host split posted on #577: Perf = my package lanes, cloud = Codex's W64 arms. #577 reconciled: worlds first, information-set depth second, PUCT last and gated on policy-head strength; gen-5 improvement loop (train on W64 PV-search values) to be filed after run 4.
+
+— Claude

@@ -75,6 +75,13 @@ JOINT_PRODUCTION_SEED = 626290000
 JOINT_PRODUCTION_ARMS = [('JS_M1_W64_K8', 64, 'policy-value', 'production-play'),
                          ('JS_G1_W64_K8', 64, 'policy-value', 'production-play')]
 PRODUCTION_WORLD_SCALING_SUITE = 'production-world-scaling-qualify'
+WIDE_SCREEN = 'production-world-scaling-screen'
+# Release only after exact packet review and seed/host reconciliation.
+WIDE_SCREEN_HOLD = True
+WIDE_SCREEN_SEED = 626600000
+# Qualification94/114/146s for12pairs => ~1.7/2.1/2.7h per800.
+# Six hours/arm provides tail headroom; not an ETA or retry authority.
+WIDE_SCREEN_SECONDS = 21600
 PRODUCTION_WORLD_SCALING_SEED = 626590000
 PRODUCTION_WORLD_SCALING_ARMS = [('SOFT_W64_K8', 64, 'policy-value', 'production-play'),
                                  ('SOFT_W128_K8', 128, 'policy-value', 'production-play'),
@@ -82,7 +89,7 @@ PRODUCTION_WORLD_SCALING_ARMS = [('SOFT_W64_K8', 64, 'policy-value', 'production
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify', 'pv-production-screen',
                      JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN,
-                     PRODUCTION_WORLD_SCALING_SUITE)
+                     PRODUCTION_WORLD_SCALING_SUITE, WIDE_SCREEN)
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
                              'pv-production-qualify', JOINT_PRODUCTION_SUITE,
                              PRODUCTION_WORLD_SCALING_SUITE)
@@ -96,13 +103,25 @@ PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
-          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, PRODUCTION_WORLD_SCALING_SUITE)
+          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, PRODUCTION_WORLD_SCALING_SUITE,
+          WIDE_SCREEN)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
              grid_checkpoint=None, production_worlds=16):
+    if suite == WIDE_SCREEN:
+        if qualify:
+            raise ValueError('wide-world screen is full-screen only')
+        # Reuse the qualified command exactly, changing only fresh seed/count.
+        plan = commands(python, checkpoint, output, qualify=True,
+                        suite=PRODUCTION_WORLD_SCALING_SUITE, production=production,
+                        grid_checkpoint=grid_checkpoint, production_worlds=production_worlds)
+        for _, cmd in plan:
+            cmd[cmd.index('--seed0') + 1] = str(WIDE_SCREEN_SEED)
+            cmd[cmd.index('--deals') + 1] = str(DEALS)
+        return plan
     if suite == PRODUCTION_WORLD_SCALING_SUITE and production_worlds != 16:
         raise ValueError('production-world-scaling-qualify has fixed W64/W128/W256 arms')
     if suite != PRODUCTION_WORLD_SCALING_SUITE and production_worlds not in (16, 64):
@@ -236,6 +255,8 @@ def main(argv=None):
                         help='JS-G1 checkpoint; required for joint-model suites')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--qualification', type=Path,
+                        help='sealed wide-world qualification root; required only for its full screen')
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--production-worlds', type=int, choices=(16, 64), default=16,
@@ -243,6 +264,13 @@ def main(argv=None):
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if (args.suite == WIDE_SCREEN) != (args.qualification is not None):
+        raise ValueError('qualification root required exactly for wide-world full screen')
+    if args.suite == WIDE_SCREEN:
+        if args.qualify or args.production_worlds != 16:
+            raise ValueError('wide-world screen is full-screen only with fixed worlds')
+        if args.run and WIDE_SCREEN_HOLD:
+            raise RuntimeError('wide-world launch held pending review and seed/host reconciliation')
     production_worlds = args.production_worlds
     if args.suite == PRODUCTION_WORLD_SCALING_SUITE and production_worlds != 16:
         raise ValueError('production-world-scaling-qualify has fixed W64/W128/W256 arms')
@@ -275,7 +303,8 @@ def main(argv=None):
                   'pv-production-qualify': REFERENCE_SOURCE,
                   'pv-production-screen': REFERENCE_SOURCE,
                   'mc-pv-qualify': MC_PV_SOURCE,
-                  PRODUCTION_WORLD_SCALING_SUITE: PRODUCTION_WORLD_SCALING_SOURCE}[args.suite]
+                  PRODUCTION_WORLD_SCALING_SUITE: PRODUCTION_WORLD_SCALING_SOURCE,
+                  WIDE_SCREEN: PRODUCTION_WORLD_SCALING_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
@@ -312,6 +341,9 @@ def main(argv=None):
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
                     grid_checkpoint=grid_checkpoint, production_worlds=production_worlds)
+    if args.suite == WIDE_SCREEN:
+        from shengji.train.policy_wide_world_readout import validate_qualification
+        validate_qualification(args.qualification)
     seconds = (STRENGTH_ARM_SECONDS if args.suite in ('strength-screen', 'wk-screen',
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
@@ -323,6 +355,8 @@ def main(argv=None):
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
     if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN):
         seconds = PV_PRODUCTION_SCREEN_SECONDS
+    if args.suite == WIDE_SCREEN:
+        seconds = WIDE_SCREEN_SECONDS
     receipt = {'source': source_sha, 'checkpoint': CHECKPOINT, 'commands': plan,
                'suite': args.suite,
                'engine': 'pure', 'arm_timeout_seconds': seconds,
@@ -347,6 +381,18 @@ def main(argv=None):
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
+    if args.suite == WIDE_SCREEN:
+        receipt.update(mode='strength-screen', launch_hold=WIDE_SCREEN_HOLD,
+            qualification=str(args.qualification.resolve()),
+            seed_reservation='626600000:626600800; proposed #577, reconcile before release',
+            expected_pairs_per_arm=DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan)*seconds, move_timeout_seconds=300,
+            analysis={'primaries': ['W128 minus W64', 'W256 minus W64'],
+                'interval': 'Bonferroni97.5%; matched common-opponent, not direct duels',
+                'reader': 'shengji.train.policy_wide_world_readout',
+                'bootstrap_seed': 20260921, 'bootstrap_replicates': 10000,
+                'qualification_rows_excluded': True, 'optional_extension': False,
+                'automatic_retry': False, 'automatic_promotion': False})
     if args.suite == 'pv-production-qualify':
         receipt.update(
             production_worlds=production_worlds,
@@ -491,6 +537,10 @@ def main(argv=None):
             run_arm(cmd, env=env, cwd=source / 'server', log=output / f'{name}.log',
                     seconds=seconds)
             validate_summary(output / name / 'summary.json', expected=expected)
+        if args.suite == WIDE_SCREEN:
+            from shengji.train.policy_wide_world_readout import readout
+            result = readout(output, args.qualification)
+            (output / 'readout.json').write_text(json.dumps(result, indent=2) + '\n')
         return 0
     finally:
         for path in reversed(acquired):

@@ -36,6 +36,9 @@ FOLLOWUP_SEED = 625200000
 FOLLOWUP_ARMS = [('D', 4, 'policy-value', 'mc-lcb'),
                  ('E', 4, 'policy-selective-mc', 'policy-value')]
 REFERENCE_SOURCE = '75bc524a1580d8fe8d306b4977f1a6346a9d1027'
+# Bounded W256 runtime delta based on REFERENCE_SOURCE; the frozen 75bc runner
+# itself accepts worlds only through 128.
+PRODUCTION_WORLD_SCALING_SOURCE = '8e814f777b979b4854c2e5bfa3bfb3f792276278'
 PRODUCTION_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747'
 JS_M1_CHECKPOINT_SHA256 = 'a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38'
 GRID_CHECKPOINT_SHA256 = '9ee9fedb38950aa3630cf246d3eca0608f4dce516650182522ce69e7a0960cf0'
@@ -71,11 +74,18 @@ JOINT_PRODUCTION_SCREEN = 'joint-production-screen'
 JOINT_PRODUCTION_SEED = 626290000
 JOINT_PRODUCTION_ARMS = [('JS_M1_W64_K8', 64, 'policy-value', 'production-play'),
                          ('JS_G1_W64_K8', 64, 'policy-value', 'production-play')]
+PRODUCTION_WORLD_SCALING_SUITE = 'production-world-scaling-qualify'
+PRODUCTION_WORLD_SCALING_SEED = 626590000
+PRODUCTION_WORLD_SCALING_ARMS = [('SOFT_W64_K8', 64, 'policy-value', 'production-play'),
+                                 ('SOFT_W128_K8', 128, 'policy-value', 'production-play'),
+                                 ('SOFT_W256_K8', 256, 'policy-value', 'production-play')]
 JOINT_SUITES = ('joint-grid-screen', 'mc-pv-qualify', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
 PRODUCTION_SUITES = ('search-reference', 'pv-production-qualify', 'pv-production-screen',
-                     JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
+                     JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN,
+                     PRODUCTION_WORLD_SCALING_SUITE)
 QUALIFICATION_ONLY_SUITES = ('search-followup', 'search-reference', 'mc-pv-qualify',
-                             'pv-production-qualify', JOINT_PRODUCTION_SUITE)
+                             'pv-production-qualify', JOINT_PRODUCTION_SUITE,
+                             PRODUCTION_WORLD_SCALING_SUITE)
 # Proposal and peer seed reservation: #436 comments5751361312/5751492758.
 # Qualification only: the 800-pair screen needs a separately reviewed runtime ceiling.
 PV_PRODUCTION_QUALIFY_SEED = 625790000
@@ -86,14 +96,16 @@ PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
 SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
-          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN)
+          JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, PRODUCTION_WORLD_SCALING_SUITE)
 BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
         'train_cwv.py', 'policy_head_vs_heuristic')
 
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
              grid_checkpoint=None, production_worlds=16):
-    if production_worlds not in (16, 64):
+    if suite == PRODUCTION_WORLD_SCALING_SUITE and production_worlds != 16:
+        raise ValueError('production-world-scaling-qualify has fixed W64/W128/W256 arms')
+    if suite != PRODUCTION_WORLD_SCALING_SUITE and production_worlds not in (16, 64):
         raise ValueError('production worlds must be 16 or 64')
     if production_worlds == 64 and suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
@@ -122,6 +134,8 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                   'mc-pv-qualify': (MC_PV_ARMS, MC_PV_SEED),
                   'pv-production-qualify': ([(f'SOFT_W{production_worlds}_K8', production_worlds, 'policy-value',
                                              'production-play')], PV_PRODUCTION_QUALIFY_SEED),
+                  PRODUCTION_WORLD_SCALING_SUITE: (PRODUCTION_WORLD_SCALING_ARMS,
+                                                   PRODUCTION_WORLD_SCALING_SEED),
                   'pv-production-screen': ([('SOFT_W64_K8', 64, 'policy-value',
                                             'production-play')], PV_PRODUCTION_SCREEN_SEED),
                   'joint-grid-screen': (JOINT_GRID_ARMS,
@@ -225,11 +239,15 @@ def main(argv=None):
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--production-worlds', type=int, choices=(16, 64), default=16,
-                        help='W64 qualification or fullscreen arm; fullscreen requires explicit 64')
+                        help='Single-arm budget; full screen requires64; omit for fixed world-scaling suite')
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
     production_worlds = args.production_worlds
+    if args.suite == PRODUCTION_WORLD_SCALING_SUITE and production_worlds != 16:
+        raise ValueError('production-world-scaling-qualify has fixed W64/W128/W256 arms')
+    if args.suite != PRODUCTION_WORLD_SCALING_SUITE and production_worlds not in (16, 64):
+        raise ValueError('production worlds must be 16 or 64')
     if production_worlds == 64 and args.suite not in ('pv-production-qualify', 'pv-production-screen', JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN):
         raise ValueError('W64 production comparison is limited to production qualification or screen')
     if args.suite == JOINT_PRODUCTION_SUITE and production_worlds != 64:
@@ -256,7 +274,8 @@ def main(argv=None):
                   'joint-grid-screen': REFERENCE_SOURCE,
                   'pv-production-qualify': REFERENCE_SOURCE,
                   'pv-production-screen': REFERENCE_SOURCE,
-                  'mc-pv-qualify': MC_PV_SOURCE}[args.suite]
+                  'mc-pv-qualify': MC_PV_SOURCE,
+                  PRODUCTION_WORLD_SCALING_SUITE: PRODUCTION_WORLD_SCALING_SOURCE}[args.suite]
     if sys.platform != 'linux':
         raise RuntimeError('Linux supervisor required')
     source, checkpoint, output = (p.resolve() for p in (args.source, args.checkpoint, args.out))
@@ -299,7 +318,8 @@ def main(argv=None):
     expected = QUALIFY_DEALS if args.qualify else DEALS
     if args.suite == 'mc-pv-qualify':
         seconds, expected = 3600, 1
-    if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE):
+    if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE,
+                      PRODUCTION_WORLD_SCALING_SUITE):
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
     if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN):
         seconds = PV_PRODUCTION_SCREEN_SECONDS
@@ -337,6 +357,21 @@ def main(argv=None):
                       'qualification_rows_excluded': True, 'automatic_retry': False,
                       'automatic_promotion': False,
                       'full_screen': 'not implemented; runtime ceiling requires qualification evidence'})
+    if args.suite == PRODUCTION_WORLD_SCALING_SUITE:
+        receipt.update(
+            production_worlds=[64, 128, 256],
+            seed_reservation='626590000:626590012; peer confirmed #436 comment5760888715',
+            authorization='User direct authorization to use idle Perf for #577',
+            expected_pairs_per_arm=QUALIFY_DEALS, workers=WORKERS,
+            total_arm_timeout_seconds=len(plan) * seconds, move_timeout_seconds=300,
+            analysis={'purpose': 'runtime/failure qualification, not strength inference',
+                      'runtime_source_base': REFERENCE_SOURCE,
+                      'world_diversity': 'per-decision distinct sampled deals; duplicates keep their weight; not ESS',
+                      'qualification_rows_excluded': True,
+                      'future_full_strength_screens': 'qualification rows excluded',
+                      'automatic_retry': False, 'automatic_promotion': False,
+                      'full_screen': 'not implemented; qualification only',
+                      'readout': 'unavailable pending qualification and separately reviewed W256 reader'})
     if args.suite == 'pv-production-screen':
         receipt.update(
             mode='strength-screen',

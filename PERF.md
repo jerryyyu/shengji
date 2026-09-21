@@ -152,6 +152,24 @@ new strength experiment, not a performance-only patch.
 
 ## Rules
 
+### Training batch provenance copies (PR460, updated 2026-09-21)
+
+Optimizer batches request `include_metadata=False` from either the cache or
+packed store. Gathering omits only `deal_key`, `source_ref`, and `input_sha256`;
+split selection still runs on the original blocks. Other callers retain those
+columns by default. Numeric inputs, optional targets, history and RNG order are
+unchanged. Tests compare mixed policy/value training with omission enabled and
+disabled for both store backends, including exact checkpoint tensors.
+
+Historical September16 synthetic gather probe: two resident8192-row blocks,
+batch4096, seed4,50 iterations per ABBA arm; median full6.302/6.305ms versus
+lean3.425/3.478ms, gathered storage14,307,328 versus10,522,624bytes. This is not
+an epoch-speed claim: strings depend on the corpus, and decode/device work is
+excluded. Preserve the real-batch measurement discussion on PR460; actual
+joint-corpus throughput and MPS quality qualification remain outstanding.
+
+### Optimization acceptance
+
 - Every optimization ships with a differential test (identical seeded
   histories, optimized vs reference path) — correctness of generated
   data outranks speed, always.

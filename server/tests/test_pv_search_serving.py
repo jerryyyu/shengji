@@ -228,3 +228,50 @@ def test_search_error_falls_back_and_is_labelled(package, monkeypatch):
     monkeypatch.setattr(strict, "_value_means", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     with pytest.raises(RuntimeError, match="boom"):
         strict.decide_play(copy.deepcopy(rnd), seat)
+
+
+# ------------------------------------ the deadline after the final value batch
+
+class _ClockedEvaluator:
+    """Finite zeros; advances a mocked clock so the LAST value batch crosses the deadline."""
+    backend = "numpy"
+    max_batch = 128
+
+    def __init__(self, clock, advance_to):
+        self.clock, self.advance_to = clock, advance_to
+        self.calls = 0
+
+    def score(self, positions, seat, **kwargs):
+        self.calls += 1
+        self.clock[0] = self.advance_to
+        return np.zeros(len(positions))
+
+
+@pytest.mark.parametrize("advance_to,expect", [(2.0, "fallback"), (0.5, "decision")])
+def test_final_value_batch_crossing_the_deadline_is_a_fallback(monkeypatch, advance_to, expect):
+    """Codex's witness on #585: W1/K1, batch 128, 1 s budget, zero policy logits; the one
+    value batch returns after the deadline.  Expiry must be classified once control returns:
+    heuristic fallback, RNG restored, nothing published as complete work."""
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    evaluator = _ClockedEvaluator(clock, advance_to)
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=1, candidates=1, cap=400,
+                               batch_size=128, serving_budget_seconds=1.0)
+    bot = pv.PVSearchBot(lambda X: np.zeros((len(X), 54)), evaluator=evaluator, version=2,
+                         config=config, checkpoint="/dev/null", seed=41)
+    rnd = _play_state()
+    seat = rnd.turn
+    anchor = HeuristicBot().decide_play(copy.deepcopy(rnd), seat)
+    before = bot.sampler.rng.getstate()
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert evaluator.calls == 1
+    if expect == "fallback":
+        assert played == list(anchor)
+        assert record["schema"] == pv.FALLBACK_SCHEMA and record["reason"] == "budget"
+        assert record["work_complete"] is False and record["elapsed_seconds"] == 2.0
+        assert bot.sampler.rng.getstate() == before
+    else:
+        assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"] is True
+        assert record["value_batches"] == 1 and record["played"] == played
+        assert bot.sampler.rng.getstate() != before        # the search consumed the stream

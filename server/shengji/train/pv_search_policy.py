@@ -177,6 +177,10 @@ class PVSearchBot(PolicyValueBot):
             batches += 1
             pending.clear()
             indices.clear()
+            if check_budget is not None:
+                # post-score check: a batch that ran past the deadline must not
+                # be published as complete work
+                check_budget()
 
         for world_index, (hands, buried) in enumerate(worlds):
             for index, action in enumerate(actions):
@@ -204,6 +208,8 @@ class PVSearchBot(PolicyValueBot):
         chosen = chosen[:self.candidates]
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
+        if check_budget is not None:
+            check_budget()   # pre-success: nothing past the deadline is published
         winner = self._select(rnd, seat, admitted, means)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),

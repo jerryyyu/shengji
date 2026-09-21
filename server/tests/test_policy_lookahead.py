@@ -15,13 +15,17 @@ def test_bounds(kwargs):
         PolicyLookaheadBot(None, evaluator=object(), **kwargs)
 
 
-def test_terminal_leaf_never_calls_continuation(monkeypatch):
+@pytest.mark.parametrize('continuation', ['policy', 'heuristic'])
+def test_terminal_leaf_never_calls_continuation(monkeypatch, continuation):
     from types import SimpleNamespace
+    from shengji.ai.heuristic import HeuristicBot
     terminal = SimpleNamespace(phase='round_end')
     monkeypatch.setattr(PolicyValueBot, '_leaf', lambda *a: terminal)
-    def forbidden(x):
+    def forbidden(*args):
         raise AssertionError('terminal continuation must not invoke policy')
-    bot = PolicyLookaheadBot(forbidden, evaluator=object())
+    monkeypatch.setattr(HeuristicBot, 'decide_play', forbidden)
+    bot = PolicyLookaheadBot(forbidden, evaluator=object(), continuation_policy=continuation,
+                             continuation_worlds=1 if continuation == 'policy' else 0)
     assert bot._leaf(None, 0, None, None, None, 0) is terminal
     assert bot._continuation_work == {}
 
@@ -72,9 +76,14 @@ def test_continuation_recipe_refuses_unused_or_invalid_worlds(kwargs):
         PolicyLookaheadBot(None, evaluator=object(), **kwargs)
 
 
-def test_heuristic_leaf_uses_no_policy_inference_and_exactly_one_extra_trick():
+@pytest.mark.parametrize('offset', range(4))
+def test_heuristic_leaf_uses_no_policy_inference_and_exactly_one_extra_trick(offset):
     from shengji.ai.heuristic import HeuristicBot
-    rnd = state(); seat = rnd.turn
+    rnd = state()
+    for _ in range(offset):
+        rnd.play(rnd.turn, HeuristicBot().decide_play(rnd, rnd.turn))
+    seat = rnd.turn
+    before = copy.deepcopy(rnd)
     def forbidden(_):
         raise AssertionError('heuristic continuation must not call policy head')
     bot = PolicyLookaheadBot(forbidden, evaluator=object(), continuation_policy='heuristic',
@@ -89,8 +98,56 @@ def test_heuristic_leaf_uses_no_policy_inference_and_exactly_one_extra_trick():
         expected.play(actor, HeuristicBot().decide_play(expected, actor))
     actual = bot._leaf(rnd, seat, rnd.hands, rnd.buried, action, 0)
     assert actual.hands == expected.hands and actual.attacker_points == expected.attacker_points
+    assert actual.history == expected.history and actual.turn == expected.turn
+    assert rnd.hands == before.hands and rnd.history == before.history
     assert len(actual.history) == len(rnd.history)+2
     assert bot._continuation_work == dict(plies=4, worlds=0, sample_attempts=0, capped_decisions=0)
+
+
+def test_heuristic_continuation_stops_at_early_terminal(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.ai.heuristic import HeuristicBot
+    leaf = SimpleNamespace(phase='play', turn=2)
+    def play(actor, cards):
+        assert actor == 2 and cards == [7]
+        leaf.phase = 'round_end'
+    leaf.play = play
+    monkeypatch.setattr(PolicyValueBot, '_leaf', lambda *args: leaf)
+    monkeypatch.setattr(HeuristicBot, 'decide_play', lambda *args: [7])
+    bot = PolicyLookaheadBot(None, evaluator=object(), continuation_policy='heuristic',
+                             continuation_worlds=0)
+    assert bot._leaf(None, 0, None, None, None, 0) is leaf
+    assert bot._continuation_work == dict(plies=1, worlds=0, sample_attempts=0, capped_decisions=0)
+
+
+def test_heuristic_continuation_failure_propagates(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.ai.heuristic import HeuristicBot
+    monkeypatch.setattr(PolicyValueBot, '_leaf',
+                        lambda *args: SimpleNamespace(phase='play', turn=2))
+    def fail(*args):
+        raise RuntimeError('continuation failed')
+    monkeypatch.setattr(HeuristicBot, 'decide_play', fail)
+    bot = PolicyLookaheadBot(None, evaluator=object(), continuation_policy='heuristic',
+                             continuation_worlds=0)
+    with pytest.raises(RuntimeError, match='continuation failed'):
+        bot._leaf(None, 0, None, None, None, 0)
+    assert bot._continuation_work == {}
+
+
+def test_heuristic_work_resets_per_root_decision():
+    class Evaluator:
+        def score(self, leaves, seat):
+            return np.zeros(len(leaves))
+    def predict(x):
+        return np.zeros((len(x), 54))
+    bot = PolicyLookaheadBot(predict, evaluator=Evaluator(), worlds=2, candidates=2,
+                             continuation_policy='heuristic', continuation_worlds=0)
+    rnd = state()
+    for _ in range(2):
+        bot.decide_play(rnd, rnd.turn)
+        assert bot.last_decision_record['continuation_work'] == dict(
+            plies=16, worlds=0, sample_attempts=0, capped_decisions=0)
 
 
 def test_each_heuristic_actor_reads_only_its_own_hand(monkeypatch):

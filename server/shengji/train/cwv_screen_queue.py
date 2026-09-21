@@ -18,8 +18,11 @@ from . import cwv_shortlist_screen as screen
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--checkpoint-sha256", required=True)
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--checkpoint-sha256")
+    parser.add_argument("--arm-policy",
+                        help="screen a served bot by registry name instead of a checkpoint "
+                             "(release 29 confirmation: the policy/value search + bury vs production)")
     parser.add_argument("--out", type=Path, required=True,
                         help="fresh queue root, distinct from any reference-encoding run")
     parser.add_argument("--name", required=True, help="window directory prefix")
@@ -60,10 +63,17 @@ def main(argv=None):
     for name in (args.name, args.cost_order_name or args.name):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
             parser.error("window names must be simple alphanumeric prefixes")
-    if not re.fullmatch(r"[0-9a-f]{64}", args.checkpoint_sha256):
-        parser.error("checkpoint-sha256 must be a full lowercase SHA256")
-    if args.checkpoint.suffix != ".pt":
-        parser.error("this path requires a .pt checkpoint and the Torch backend")
+    if args.arm_policy:
+        if args.checkpoint is not None or args.checkpoint_sha256 or args.prior_checkpoint is not None \
+                or args.value_head is not None or args.throw_components or args.report_tie_keeps_incumbent:
+            parser.error("--arm-policy screens the served bot as registered; no checkpoint options apply")
+    else:
+        if args.checkpoint is None or not args.checkpoint_sha256:
+            parser.error("--checkpoint and --checkpoint-sha256 are required without --arm-policy")
+        if not re.fullmatch(r"[0-9a-f]{64}", args.checkpoint_sha256):
+            parser.error("checkpoint-sha256 must be a full lowercase SHA256")
+        if args.checkpoint.suffix != ".pt":
+            parser.error("this path requires a .pt checkpoint and the Torch backend")
     if args.cost_order_name and args.cost_order_root is None:
         parser.error("cost-order-name requires cost-order-root")
 
@@ -71,11 +81,28 @@ def main(argv=None):
     # A source/recipe change is refused by the existing per-window config binding.
     with screen.screen_output_lock(args.out):
         for index, seed in enumerate(args.seeds):
+            output = args.out / f"{args.name}-{seed}"
+            if args.arm_policy:
+                command = [
+                    "--arm", "policy", "--arm-policy", args.arm_policy,
+                    "--baseline", "production", "--trump-ranks", args.trump_ranks,
+                    "--clusters", str(args.clusters), "--workers", str(args.workers),
+                    "--seed0", str(seed), "--out", str(output),
+                    "--decision-deadline", str(args.decision_deadline),
+                ]
+                if args.cost_order_root is not None:
+                    prior = args.cost_order_root / f"{args.cost_order_name or args.name}-{seed}"
+                    command += ["--cost-order-from", str(prior)]
+                print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume (policy {args.arm_policy})",
+                      flush=True)
+                result = screen.main(command)
+                if result != 0:
+                    return result
+                continue
             with args.checkpoint.open("rb") as handle:
                 actual_sha = hashlib.file_digest(handle, "sha256").hexdigest()
             if actual_sha != args.checkpoint_sha256:
                 raise ValueError("queue checkpoint SHA256 mismatch")
-            output = args.out / f"{args.name}-{seed}"
             command = [
                 "--arm", "learned", "--checkpoint", str(args.checkpoint.resolve()),
                 "--worlds", "32", "--selection-worlds", "30",

@@ -34,16 +34,22 @@ the soft-action head 8ecd4fea (gen-3-warm's recipe with the search's values as t
 exported as ONE NumPy package `/data/models/soft-8ecd4fea.npz` (sha256 `ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`; schema v2 with
 the policy head), 64 sampled worlds, 8 admitted candidates, value head in place of playouts,
 cap 4,000, batch 128, a 3 s cooperative play budget (heuristic anchor on expiry), heuristic
-declare and bury. Release-28 env keys are retained so the rollback is one line: `SHENGJI_BOT`
-back to `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`.
+declare, and release 27/28's value-guided HYBRID bury on this package's value head
+(`pv_search_policy.PVSearchBuryBot`, the same `CWVBuryMixin` the shortlist ships; 32/32/32/4,
+2 s bury budget; Jerry: "we should use value guided hybrid"). Served name
+`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`. Release-28 env keys are retained
+so the rollback is one line: `SHENGJI_BOT` back to
+`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`.
 
 Evidence: vs the release-28 package in card play, 800 matched deals, one pre-registered primary,
 **+0.086 [+0.042, +0.131]** (#553, 2026-09-21, atlas row 45); world scaling W16/W32/W64 vs MC-LCB
 +0.123/+0.158/+0.187 with W64−W16 positive (#555); the four-model family at W64 (#583) showed
 no head superior to another, soft holding the largest point estimate. Not measured: the
-served bot as a package on fresh seeds (the confirmation screen the gate lists) — Jerry chose
-to launch on the 800-deal read; and bury, which is the heuristic here where release 28 ran the
-value-guided hybrid bury.
+served bot vs release 28 as deployed — Jerry (2026-09-21 ~18:0x ET): "You can do a new screen if
+needed vs prod with bury" → lane v34pv on Perf: the shortlist screen's new `--arm policy`
+(`cwv_shortlist_screen`/`cwv_screen_queue`) runs the SERVED bot by registry name — both
+sides exactly as the fly.toml registers them (pv-search + hybrid bury; release 28 + hybrid
+bury) — against the same MC control on five fresh windows, paired per seed.
 
 Preconditions, in order:
 1. #585 merged (511ee670) and this release PR merged: smoke extended to the mode, `/healthz`

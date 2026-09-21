@@ -50,7 +50,9 @@ def _pv_search_health() -> dict | None:
         return {"sha256": file_sha256(path),
                 "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
                 "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
-                "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS")}
+                "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS"),
+                "bury_arm": os.environ.get("SHENGJI_PV_BURY_ARM") or "heuristic",
+                "bury_budget_seconds": os.environ.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS")}
     except Exception as exc:                # noqa: BLE001 - health must answer
         return {"error": f"{type(exc).__name__}: {exc}"}
 

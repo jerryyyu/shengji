@@ -21,11 +21,12 @@ module adds only what serving needs and nothing that changes the decision:
   ``pv-search-fallback-v1`` record -- never a partial search result;
 * a registry name that pins the recipe: ``pv-search-<ckpt8>-w<W>-k<K>-r<recipe8>``.
 
-Declare and bury stay heuristic (`HeuristicBot`), exactly as in every screen
-that measured this design (card play only; shared heuristic declare/bury).  The
-value-guided hybrid bury of release 27/28 is NOT composed here; that is a
-separate change with its own witness.  Nothing in this module deploys anything:
-registration happens only when ``SHENGJI_PV_CKPT`` is set.
+Declare stays heuristic.  Bury is heuristic in `PVSearchBot` (as in every screen
+that measured this design) and, in `PVSearchBuryBot`, the value-guided bury arms
+of release 27/28 (`cwv_bury_policy.CWVBuryMixin`: heuristic / mc / hybrid) on the
+same package's value head -- Jerry 2026-09-21: "we should use value guided hybrid".
+Nothing in this module deploys anything: registration happens only when
+``SHENGJI_PV_CKPT`` is set.
 """
 from __future__ import annotations
 
@@ -46,6 +47,8 @@ from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_prior import flat_input, root_tensors
 from .policy_value_search import PolicyValueBot
+from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
+                              CWVBuryMixin, _serving_budget as _bury_budget)
 
 SCHEMA = "pv-search-recipe-v1"
 RECORD_SCHEMA = "pv-search-decision-v1"
@@ -257,6 +260,30 @@ class PVSearchBot(PolicyValueBot):
             return list(anchor)
 
 
+class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
+    """`PVSearchBot` with a DEV bury arm from `CWVBuryMixin` (release 27/28's
+    value-guided bury on this package's value head).  The bury budget is its own
+    knob, separate from the play budget; the fallback restores the play sampler's
+    RNG, the only stream this bot owns."""
+
+    def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
+                 checkpoint: str, seed: int = 0, bury_arm: str = "hybrid",
+                 bury_config: CWVBuryConfig | None = None, bury_serving_budget_seconds=None):
+        if bury_arm not in BURY_ARMS:
+            raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
+        super().__init__(predict, evaluator=evaluator, version=version, config=config,
+                         checkpoint=checkpoint, seed=seed)
+        self.bury_arm = bury_arm
+        self.bury_config = CWVBuryConfig() if bury_config is None else bury_config
+        if not isinstance(self.bury_config, CWVBuryConfig):
+            raise TypeError("bury_config must be a CWVBuryConfig")
+        self.bury_serving_budget_seconds = _bury_budget(bury_serving_budget_seconds)
+        self.last_bury_record = None
+
+    def _bury_rng(self):
+        return self.sampler.rng
+
+
 def _require_pv_search(bot, name: str):
     """REFUSE anything that is not the production wrapper under a pv-search name."""
     if not isinstance(bot, PVSearchBot):
@@ -268,7 +295,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        candidates: int = DEFAULTS["candidates"], cap: int = DEFAULTS["cap"],
                        batch_size: int = DEFAULTS["batch_size"], seed: int = DEFAULTS["seed"],
                        serving_budget_seconds=None, threads: int | None = 1,
-                       name: str | None = None) -> PVSearchBot:
+                       name: str | None = None, bury_arm: str | None = None,
+                       bury_config: CWVBuryConfig | None = None,
+                       bury_serving_budget_seconds=None) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package."""
     path = str(checkpoint)
@@ -284,8 +313,14 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     evaluator = shared_evaluator(path, threads=threads, max_batch=config.batch_size, encoding=ENCODING)
     if getattr(evaluator, "backend", None) != "numpy":
         raise PVSearchPolicyError("pv-search requires the numpy evaluator backend")
-    bot = PVSearchBot(predict, evaluator=evaluator, version=predict.version, config=config,
-                      checkpoint=path, seed=int(seed))
+    if bury_arm is None:
+        bot = PVSearchBot(predict, evaluator=evaluator, version=predict.version, config=config,
+                          checkpoint=path, seed=int(seed))
+    else:
+        bot = PVSearchBuryBot(predict, evaluator=evaluator, version=predict.version, config=config,
+                              checkpoint=path, seed=int(seed), bury_arm=bury_arm,
+                              bury_config=bury_config,
+                              bury_serving_budget_seconds=bury_serving_budget_seconds)
     if name is not None:
         bot.policy_name = name
     return bot
@@ -294,8 +329,12 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
 def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["worlds"],
                         candidates: int = DEFAULTS["candidates"], cap: int = DEFAULTS["cap"],
                         batch_size: int = DEFAULTS["batch_size"], seed: int = DEFAULTS["seed"],
-                        serving_budget_seconds=None) -> dict:
-    """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`."""
+                        serving_budget_seconds=None, bury_arm: str | None = None,
+                        bury_config: CWVBuryConfig | None = None,
+                        bury_serving_budget_seconds=None) -> dict:
+    """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
+    With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
+    bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
     from ..ai.cwv_policy import checkpoint_id
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
@@ -304,14 +343,37 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     if ckpt8 != sha256[:8]:
         raise PVSearchPolicyError(f"pv-search package on disk is {ckpt8}, bound SHA256 says {sha256[:8]}")
     name = pv_policy_name(ckpt8, config)
+    bury_identity = None
+    if bury_arm is not None:
+        if bury_arm not in BURY_ARMS:
+            raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
+        bconfig = CWVBuryConfig() if bury_config is None else bury_config
+        if type(bconfig) is not CWVBuryConfig:
+            raise TypeError("bury_config must be a CWVBuryConfig")
+        bbudget = _bury_budget(bury_serving_budget_seconds)
+        bury_identity = {"schema": "cwv-bury-recipe-v1", "play_policy": name,
+                         "checkpoint_sha256": sha256, "arm": bury_arm,
+                         "config": asdict(bconfig), "fallback": "raise"}
+        if bbudget is not None:
+            bury_identity.update(fallback="heuristic-on-error-or-budget", serving_budget_seconds=bbudget)
+        encoded = json.dumps(bury_identity, sort_keys=True, separators=(",", ":")).encode()
+        name = f"{name}-bury-{bury_arm}-{hashlib.sha256(encoded).hexdigest()[:12]}"
+        bury_config, bury_serving_budget_seconds = bconfig, bbudget
 
     def factory(**kw):
-        return _require_pv_search(
+        bot = _require_pv_search(
             make_pv_search_bot(checkpoint, sha256=sha256, worlds=config.worlds,
                                candidates=config.candidates, cap=config.cap,
                                batch_size=config.batch_size, seed=int(kw.get("seed", seed)),
-                               serving_budget_seconds=config.serving_budget_seconds, name=name),
+                               serving_budget_seconds=config.serving_budget_seconds, name=name,
+                               bury_arm=bury_arm, bury_config=bury_config,
+                               bury_serving_budget_seconds=bury_serving_budget_seconds),
             name)
+        if bury_identity is not None:
+            if not isinstance(bot, PVSearchBuryBot):
+                raise PVSearchPolicyError(f"policy {name!r} built {type(bot).__name__}, not PVSearchBuryBot")
+            bot.bury_recipe_identity = {**bury_identity, "config": dict(bury_identity["config"])}
+        return bot
     return {name: factory}
 
 
@@ -334,4 +396,18 @@ def pv_env_recipe(environ=None) -> dict:
     raw = env.get(ENV_PREFIX + "SERVING_BUDGET_SECONDS")
     if raw not in (None, ""):
         recipe["serving_budget_seconds"] = float(raw)
+    arm = env.get(ENV_PREFIX + "BURY_ARM")
+    if arm:
+        if arm not in BURY_ARMS:
+            raise PVSearchPolicyError(f"unknown bury arm {arm!r}")
+        values = asdict(CWVBuryConfig())
+        for key in values:
+            raw = env.get(ENV_PREFIX + "BURY_" + key.upper())
+            if raw not in (None, ""):
+                values[key] = int(raw)
+        recipe["bury_arm"] = arm
+        recipe["bury_config"] = CWVBuryConfig(**values)
+        raw = env.get(ENV_PREFIX + "BURY_SERVING_BUDGET_SECONDS")
+        if raw not in (None, ""):
+            recipe["bury_serving_budget_seconds"] = float(raw)
     return recipe

@@ -250,8 +250,6 @@ def main(argv=None):
     if args.suite == CUTOFF_SCREEN:
         if args.qualify:
             raise ValueError('cutoff screen is full-screen only')
-        if args.run:
-            raise RuntimeError('cutoff screen launch held pending seed clearance and review')
     if args.suite == 'strength-screen':
         if args.qualify:
             raise ValueError('strength-screen is a full-screen proposal, not qualification')
@@ -475,8 +473,9 @@ def main(argv=None):
                       'interpretation': 'rollout quality; not standalone public-only leaf prediction'})
     if args.suite == CUTOFF_SCREEN:
         receipt.update(
-            launch_hold=True, expected_pairs_per_arm=CUTOFF_SCREEN_DEALS, workers=WORKERS,
-            seed_reservation='626200000:626200048; proposed, peer clearance pending',
+            launch_hold=False, expected_pairs_per_arm=CUTOFF_SCREEN_DEALS, workers=WORKERS,
+            authorization='Jerry direct Codex-thread approval, 2026-09-21 UTC',
+            seed_reservation='626200000:626200048; peer clearance on PR566/comment5754634119',
             total_arm_timeout_seconds=2 * CUTOFF_SCREEN_SECONDS, move_timeout_seconds=300,
             cutoff_tricks=1, comparison_scope='card play only; shared heuristic declare/bury',
             leaf_information='complete sampled MC world, never true hidden game state',

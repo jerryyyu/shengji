@@ -146,6 +146,34 @@ def test_world_scaling_qualification_commands_and_refusals():
             launcher.commands(*paths, **{**kw, **change})
 
 
+def test_wide_full_changes_only_seed_and_count():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    qualified = launcher.commands(*args, suite=launcher.PRODUCTION_WORLD_SCALING_SUITE,
+                                  qualify=True, production=Path('/prod'))
+    full = launcher.commands(*args, suite=launcher.WIDE_SCREEN, production=Path('/prod'))
+    for (name, cmd), (other, ref) in zip(full, qualified):
+        assert name == other
+        assert cmd[cmd.index('--deals')+1] == '800'
+        assert cmd[cmd.index('--seed0')+1] == '626600000'
+        ref[ref.index('--deals')+1] = '800'
+        ref[ref.index('--seed0')+1] = '626600000'
+        assert cmd == ref
+    for change in ({'qualify': True}, {'production': None},
+                   {'production_worlds': 64}, {'grid_checkpoint': Path('/grid')}):
+        with pytest.raises(ValueError):
+            launcher.commands(*args, **{**dict(suite=launcher.WIDE_SCREEN,
+                production=Path('/prod')), **change})
+
+
+def test_wide_launch_hold_precedes_side_effects(isolated_main, monkeypatch):
+    monkeypatch.setattr(launcher, 'WIDE_SCREEN_HOLD', True)
+    args, output = isolated_main
+    with pytest.raises(RuntimeError, match='launch held'):
+        launcher.main(args + ['--suite', launcher.WIDE_SCREEN, '--run',
+                             '--qualification', '/not-read-while-held'])
+    assert not output.exists()
+
+
 @pytest.mark.parametrize('run', [False, True])
 def test_world_scaling_qualification_receipt_and_serial_run(
         monkeypatch, isolated_main, tmp_path, capsys, run):

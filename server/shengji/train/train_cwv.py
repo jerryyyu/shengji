@@ -1975,7 +1975,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
 
         for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size, rng=rng,
                                                         window=window,
-                                                        decode_workers=decode_workers))):
+                                                        decode_workers=decode_workers,
+                                                        include_metadata=False))):
             t_iter = time.perf_counter()
             t = tensors_of(raw, dev)
             t_dev = time.perf_counter()

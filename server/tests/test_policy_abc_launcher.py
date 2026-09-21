@@ -165,7 +165,8 @@ def test_wide_full_changes_only_seed_and_count():
                 production=Path('/prod')), **change})
 
 
-def test_wide_launch_hold_precedes_side_effects(isolated_main):
+def test_wide_launch_hold_precedes_side_effects(isolated_main, monkeypatch):
+    monkeypatch.setattr(launcher, 'WIDE_SCREEN_HOLD', True)
     args, output = isolated_main
     with pytest.raises(RuntimeError, match='launch held'):
         launcher.main(args + ['--suite', launcher.WIDE_SCREEN, '--run',

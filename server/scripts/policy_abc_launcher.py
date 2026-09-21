@@ -76,8 +76,9 @@ JOINT_PRODUCTION_ARMS = [('JS_M1_W64_K8', 64, 'policy-value', 'production-play')
                          ('JS_G1_W64_K8', 64, 'policy-value', 'production-play')]
 PRODUCTION_WORLD_SCALING_SUITE = 'production-world-scaling-qualify'
 WIDE_SCREEN = 'production-world-scaling-screen'
-# Release only after exact packet review and seed/host reconciliation.
-WIDE_SCREEN_HOLD = True
+# PR589 review5768432397 clears source/seeds/Cloud; Jerry authorized world
+# scaling and Cloud/Perf use in the operator thread. No recipe changes.
+WIDE_SCREEN_HOLD = False
 WIDE_SCREEN_SEED = 626600000
 # Qualification94/114/146s for12pairs => ~1.7/2.1/2.7h per800.
 # Six hours/arm provides tail headroom; not an ETA or retry authority.

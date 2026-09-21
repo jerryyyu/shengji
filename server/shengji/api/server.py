@@ -38,6 +38,23 @@ def _fast_active() -> bool:
         return False
 
 
+def _pv_search_health() -> dict | None:
+    """The served policy/value-search package (#585), by the SHA256 of the file on disk;
+    ``None`` unless the pv-search mode is configured."""
+    path = os.environ.get("SHENGJI_PV_CKPT")
+    if not path:
+        return None
+    try:
+        from ..ai.cwv_policy import file_sha256
+        from ..train.pv_search_policy import DEFAULTS
+        return {"sha256": file_sha256(path),
+                "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
+                "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
+                "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS")}
+    except Exception as exc:                # noqa: BLE001 - health must answer
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _prior_health() -> dict | None:
     """The served policy prior, by the SHA256 of the file actually on disk.
 
@@ -1589,7 +1606,8 @@ async def healthz() -> dict:
             "fast": _fast_active(),
             # The served policy prior (#435), or null: a deploy that binds a
             # prior must show its SHA256 here, and a rollback must show null.
-            "prior": _prior_health()}
+            "prior": _prior_health(),
+            "pv_search": _pv_search_health()}
 
 
 from .debug import register_debug  # noqa: E402

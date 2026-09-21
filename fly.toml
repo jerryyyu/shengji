@@ -18,7 +18,25 @@ primary_region = 'ewr'
   # Prior-only rollback: remove the four SHENGJI_CWV_PRIOR_* lines and set
   # SHENGJI_BOT to the prior-less JS-M1 name the registry prints. Full rollback:
   # release 27 (M1 + prior v2; fly.toml of main 55f0029c..d31bd428) or release 24.
-  SHENGJI_BOT = 'mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff'
+  # RELEASE 29 (Jerry 2026-09-21 ~17:4x ET: "I'm good to launch soft with w64 to prod"): the
+  # policy/value search (#585) with the soft-action head 8ecd4fea exported as ONE NumPy package
+  # soft-8ecd4fea.npz (schema v2 with the policy head): 64 sampled worlds, 8 admitted candidates,
+  # value head in place of playouts; heuristic declare/bury. Evidence: +0.086 [+0.042, +0.131] vs
+  # the release-28 package in card play on 800 matched deals (#553; atlas row 45); the four-model
+  # family (#583) showed no head superior, soft has the largest point estimate. Rollback: set
+  # SHENGJI_BOT back to the release-28 name below (its env keys are kept for exactly that).
+  SHENGJI_BOT = 'pv-search-ccade130-w64-k8-r8bc573be'
+  SHENGJI_PV_CKPT = '/data/models/soft-8ecd4fea.npz'
+  SHENGJI_PV_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
+  SHENGJI_PV_WORLDS = '64'
+  SHENGJI_PV_CANDIDATES = '8'
+  SHENGJI_PV_CAP = '4000'
+  SHENGJI_PV_BATCH_SIZE = '128'
+  # Cooperative play budget (heuristic anchor on expiry); single-thread W64/K8 measured 0.05 s
+  # mean / 0.09 s max on the Mini, so 3 s is a ceiling, not an ETA.
+  SHENGJI_PV_SERVING_BUDGET_SECONDS = '3'
+  # Release-28 keys retained for the one-line rollback (they register the shortlist name; unused otherwise).
+  # RELEASE 28 name: mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff
   SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/js-m1-0d17fd03.npz'
   SHENGJI_CWV_PRIOR_CKPT = '/data/models/js-m1-0d17fd03.npz'
   SHENGJI_CWV_PRIOR_SHA256 = '0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747'

@@ -346,6 +346,8 @@ import subprocess
 import sys
 import time
 import weakref
+
+import numpy as np
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
@@ -750,6 +752,143 @@ def trajectory_class(base_cls: type) -> type:
     return cls
 
 
+#: The pv-search value head's units: the EXPECTED SIGNED LEVEL of the acting team on the
+#: half-integer #214 scale (``rl.value_afterstate.category_signed_level``: a +0.5 takeover,
+#: +1.5 for 120-159 points, -1.5 for a 40-79 defence, -3.5 for zero points), i.e. what
+#: ``cwv_numpy_evaluator`` returns -- NOT the PT0 integer utility (``cwv_data.pt0_level``,
+#: where +0.5 and +1.5 both map to +1).  Consumers convert explicitly; nothing here does.
+PV_VALUE_UNITS = "expected-signed-level-half-integer"
+
+
+class PVTrajectoryMixin:
+    """Root exploration and ballot capture over ``PVSearchBot`` (#592).
+
+    The two hooks are ``_legal`` (the scored set) and ``_admit`` (the priced
+    candidates).  The exploration draw is sampled from the FULL legal set (the
+    same ``sample_off_ballot`` stream as the MC mixin), forced into the scored
+    set so the policy head scores it, then appended to the admitted ballot so
+    the value head prices it like any other candidate.  ``production_ballot``
+    is the admission WITHOUT the draw (the served bot's own list; no
+    ``--knob``/``--widen`` exists for this mode).  ``last_legal`` is the
+    harvester's bounded listing (``LEGAL_CAP``, default 256) with the whole
+    ballot force-included -- NOT the search's 4,000-cap scored set, which is
+    labelled by ``legal_complete``/``legal_count`` in the record.
+    """
+
+    EXPLORE_RATE = 0.0
+    EXPLORE_K = 0
+    LEGAL_CAP: int | None = DEFAULT_CAP
+    WIDEN: tuple[str, ...] = ()
+
+    def _trajectory_init(self, explore_rng: random.Random, production_probe=None) -> None:
+        self.explore_rng = explore_rng
+        self.production_probe = None
+        self.explore_opportunities = 0
+        self.explore_fired = 0
+        self.explore_added = 0
+        self.explore_pool_skipped = 0
+        self.widen_added = 0
+        self.short_search_decisions = 0
+        self.zero_world_decisions = 0
+        self.search_calls = 0
+        self.rollouts = 0
+        self._trajectory_reset()
+
+    def _trajectory_reset(self) -> None:
+        self.last_ballot = None
+        self.last_production_ballot = None
+        self.last_widening = None
+        self.last_exploration = None
+        self.last_legal = None
+        self._draw_keys: set = set()
+        self._forced_draw_keys: set = set()
+
+    def decide_play(self, rnd, seat):
+        self._trajectory_reset()
+        return super().decide_play(rnd, seat)
+
+    def _legal(self, rnd, seat, must_include):
+        if self.last_legal is not None:
+            raise TrajectoryError("PVSearchBot._legal was consulted twice in one decision; "
+                                  "the exploration draw would be repeated")
+        must_include = [list(a) for a in must_include]
+        exploration = None
+        if self.EXPLORE_RATE > 0 and self.EXPLORE_K > 0:
+            self.explore_opportunities += 1
+            if self.explore_rng.random() < self.EXPLORE_RATE:
+                added, pool_count = sample_off_ballot(rnd, seat, self.EXPLORE_K, self.explore_rng,
+                                                      exclude=must_include)
+                exploration = {"rate": float(self.EXPLORE_RATE),
+                               "added": [list(a) for a in added], "pool_count": pool_count}
+                self.explore_fired += 1
+                self.explore_added += len(added)
+                if pool_count is None:
+                    self.explore_pool_skipped += 1
+                self._draw_keys = {action_key(a) for a in added}
+                must_include.extend(list(a) for a in added)
+        self.last_exploration = exploration
+        # The search's scored set is enumerated exactly as served (anchor forced in). A draw
+        # that is already in that set competes for admission on its own score, as production
+        # would rank it; only a draw MISSING from the capped set is appended here and masked
+        # out of the admission, so production's list is never changed by exploration
+        # (Codex HOLDs on #597).
+        legal = super()._legal(rnd, seat, [list(a) for a in must_include if action_key(a) not in self._draw_keys])
+        self._forced_draw_keys = set()
+        if self._draw_keys:
+            present = {action_key(a) for a in legal.actions}
+            missing = [list(a) for a in must_include if action_key(a) in self._draw_keys and action_key(a) not in present]
+            if missing:
+                if legal.complete:
+                    raise TrajectoryError("a legal exploration draw is missing from a complete enumeration")
+                self._forced_draw_keys = {action_key(a) for a in missing}
+                legal = LegalSet(kind=legal.kind, actions=[list(a) for a in legal.actions] + missing,
+                                 count=legal.count, complete=legal.complete)
+        return legal
+
+    def _admit(self, rnd, seat, actions, preferences, anchor_index):
+        # Production's admission is taken over the scored set WITHOUT the draw: the draw's
+        # preferences are masked out of the ranking so a high-scoring draw can never
+        # displace one of production's own top-K (Codex HOLD on #597); it is then
+        # appended, so the ballot is production's list plus the draw, priced like the rest.
+        draw = [i for i, a in enumerate(actions) if action_key(a) in self._draw_keys]
+        forced = [i for i, a in enumerate(actions) if action_key(a) in getattr(self, "_forced_draw_keys", set())]
+        masked = preferences
+        if forced:
+            masked = np.array(preferences, dtype=np.float64, copy=True)
+            masked[forced] = -np.inf
+            if anchor_index in forced:
+                raise TrajectoryError("the exploration draw cannot be the anchor")
+        base = [int(i) for i in super()._admit(rnd, seat, actions, masked, anchor_index)]
+        # a forced (masked) draw can only reach the base list as filler when fewer than K
+        # scored actions exist; production's admission over the served scored set is the rest
+        base = [i for i in base if i not in forced]
+        chosen = list(base)
+        for i in draw:                       # every draw is priced: appended unless admitted already
+            if i not in chosen:
+                chosen.append(i)
+        self.last_production_ballot = [list(actions[i]) for i in base]
+        self.last_ballot = [list(actions[i]) for i in chosen]
+        self.last_legal = enumerate_legal(rnd, seat, cap=self.LEGAL_CAP, must_include=self.last_ballot)
+        self.search_calls += 1
+        return chosen
+
+
+_PV_TRAJECTORY_CLASSES: dict[type, type] = {}
+
+
+def pv_trajectory_class(base_cls: type) -> type:
+    cls = _PV_TRAJECTORY_CLASSES.get(base_cls)
+    if cls is None:
+        cls = type(f"PVTrajectory_{base_cls.__name__}", (PVTrajectoryMixin, base_cls), {})
+        _PV_TRAJECTORY_CLASSES[base_cls] = cls
+    return cls
+
+
+def _is_pv_search(bot) -> bool:
+    from ..train.pv_search_policy import PVSearchBot
+    return isinstance(bot, PVSearchBot)
+
+
 def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     """The registry policy, built by name with its seed forwarded, re-classed
     onto the mixin (over the ``Knobs_`` subclass when ``config["knobs"]`` is
@@ -760,6 +899,15 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     ``_candidates`` list, never the overridden class's (module docstring).
     """
     bot = make_bot(config["policy"], seed=seed)
+    if _is_pv_search(bot):
+        if config.get("knobs") or config.get("widen") or config.get("capture_full_legal_scores"):
+            raise TrajectoryError("the pv-search data policy takes no --knob, --widen or full-legal capture")
+        bot.__class__ = pv_trajectory_class(type(bot))
+        bot._trajectory_init(explore_rng)
+        bot.EXPLORE_RATE = float(config["explore_rate"])
+        bot.EXPLORE_K = int(config["explore_k"])
+        bot.LEGAL_CAP = config["cap"]
+        return bot
     if not isinstance(bot, MCBot):
         raise TrajectoryError(
             f"policy {config['policy']!r} is not an MCBot search policy: it "
@@ -901,6 +1049,44 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         sha = getattr(probe.evaluator, "checkpoint_sha256", None)
         if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
             raise TrajectoryError("full-legal score capture requires a checkpoint SHA256")
+    if _is_pv_search(probe):
+        if knobs or widen or capture_full_legal_scores or select_worlds is not None or report_worlds is not None:
+            raise TrajectoryError("the pv-search data policy takes no --knob, --widen, --select-worlds, "
+                                  "--report-worlds or full-legal capture: its recipe is the registry name")
+        if getattr(probe, "bury_serving_budget_seconds", None) is not None:
+            raise TrajectoryError("serving-fallback bury policies are not scientific data teachers")
+        registered = {"worlds": int(probe.worlds), "candidates": int(probe.candidates),
+                      "cap": int(probe.cap), "batch_size": int(probe.batch_size)}
+        config = {
+            "policy": policy,
+            "policy_class": type(probe).__name__,
+            "trajectory_class": pv_trajectory_class(type(probe)).__name__,
+            "knobs": {}, "widen": [],
+            "round_mix": str(round_mix),
+            "seed0": int(seed0),
+            "explore_rate": float(explore_rate),
+            "explore_k": int(explore_k),
+            "cap": None if cap is None else int(cap),
+            "work": {"select_worlds": None, "report_worlds": None,
+                     "registered": registered, "effective": dict(registered), "production": True},
+            "policy_flags": {
+                "search": "pv-search",
+                "worlds": registered["worlds"], "candidates": registered["candidates"],
+                "cap": registered["cap"],
+                "package_sha256": str(probe.checkpoint_sha256),
+                "encoder_version": int(probe.version),
+                "value_units": PV_VALUE_UNITS,
+                "value_source": "model-bootstrap leaf values after the candidate's trick, mean over the sampled worlds",
+                "level_objective": None,
+                "mc_bury": False,
+            },
+        }
+        bury_identity = getattr(probe, "bury_recipe_identity", None)
+        if bury_identity is not None:
+            config["bury_policy"] = json.loads(canonical_json(bury_identity))
+            config["policy_flags"]["mc_bury"] = bury_identity["arm"] != "heuristic"
+        config["run_id"] = run_id_for(config)
+        return config
     if not isinstance(probe, MCBot):
         raise TrajectoryError(
             f"policy {policy!r} is not an MCBot search policy: it has no "
@@ -1183,6 +1369,74 @@ def action_values_from_record(rec: dict) -> dict:
     }
 
 
+def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dict, dict]:
+    """``allocation`` / ``preference`` / ``action_values`` for a
+    ``pv-search-decision-v1`` record (#592, Codex's adapter requirements):
+
+    * the ballot is the record's ``admitted`` cards in admission order and
+      ``played_index`` is the position of ``selected_index`` in
+      ``admitted_indices`` -- never the legal index;
+    * ``selection_worlds`` is W per candidate (every candidate is priced in
+      every sampled world; W is a sampled-world count, not MC visits);
+    * ``action_values.means`` are the value head's mean bootstrap values
+      after the candidate's trick, ``PV_VALUE_UNITS``, acting-team
+      perspective -- not completed returns and not paired MC evidence, so
+      ``paired_se`` is absent and ``preference.tau`` is None (the softmax is
+      the uniform "no paired evidence" case of ``preference_from_evidence``);
+      the policy log-odds of the admitted candidates ride along.
+    """
+    admitted = [list(a) for a in rec["admitted"]]
+    if [action_key(a) for a in admitted] != [action_key(b) for b in ballot]:
+        raise TrajectoryError("pv-search record admitted a different ballot than the mixin captured")
+    k = len(admitted)
+    indices = [int(i) for i in rec["admitted_indices"]]
+    if len(indices) != k or int(rec["selected_index"]) not in indices:
+        raise TrajectoryError("pv-search record indices are not aligned with its ballot")
+    played = indices.index(int(rec["selected_index"]))
+    if action_key(admitted[played]) != action_key(rec["played"]):
+        raise TrajectoryError("pv-search played_index does not map to the played cards")
+    means = [float(m) for m in rec["value_means"]]
+    if len(means) != k:
+        raise TrajectoryError("value_means are not aligned with the ballot")
+    worlds = int(rec["worlds"])
+    total = worlds * k
+    allocation = {
+        "kind": ALLOCATION_KIND,
+        "weights": [1.0 / k] * k if k else [],
+        "counter": "fixed-design work split: every admitted candidate priced in every sampled world (pv-search)",
+        "selection_worlds": [worlds] * k,
+        "report_worlds": [0] * k,
+        "total_worlds": total,
+        "played_index": played,
+        "raw_winner_index": None,
+        "report_candidate_index": None,
+        "reason": None,
+        "searched": True,
+        "work": {"complete": bool(rec.get("work_complete", True)),
+                 "value_evaluations": _finite(rec.get("value_evaluations")),
+                 "value_batches": _finite(rec.get("value_batches")),
+                 "sample_attempts": _finite(rec.get("sample_attempts")),
+                 "scored_actions": _finite(rec.get("actions")),
+                 "legal_complete": bool(rec.get("legal_complete", False)),
+                 "legal_count": _finite(rec.get("legal_count"))},
+    }
+    preference = preference_from_evidence(means, [math.inf] * k, played, [])
+    action_values = {
+        "kind": ACTION_VALUES_KIND,
+        "perspective": "acting-team",
+        "means": [_finite(m) for m in means],
+        "paired_se": [None] * k,
+        "eligible_indices": list(range(k)),
+        "raw_winner_index": None,
+        "report": None,
+        "units": PV_VALUE_UNITS,
+        "value_source": "pv-search: model-bootstrap leaf values after the candidate's trick, mean over the sampled worlds",
+        "worlds": worlds,
+        "policy_log_odds": [_finite(v) for v in rec.get("policy_log_odds_admitted", [])],
+    }
+    return allocation, preference, action_values
+
+
 def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
                  seat: int, prefix: list[dict], action: list[str], bot,
                  cap: int | None, stats: Counter) -> dict:
@@ -1211,6 +1465,15 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         allocation = point_mass_allocation("single_candidate")
         preference = point_mass_preference()
         action_values = None
+    elif rec.get("schema") == "pv-search-decision-v1":
+        stats["searched"] += 1
+        allocation, preference, action_values = pv_fields_from_record(rec, ballot)
+        if action_key(rec["played"]) != action_key(action):
+            raise TrajectoryError("decision record played a different action")
+        if rec.get("work_complete") is False:
+            stats["incomplete_work"] += 1
+    elif rec.get("schema") == "pv-search-fallback-v1":
+        raise TrajectoryError("a pv-search fallback is not data: the data policy carries no serving budget")
     else:
         stats["searched"] += 1
         allocation = allocation_from_record(rec, ballot)

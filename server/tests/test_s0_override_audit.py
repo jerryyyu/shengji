@@ -3,7 +3,7 @@
 Split out of ``test_s0_protocol.py`` on 2026-09-05 when the S0 campaign
 scripts were removed.  ``scripts/s0_override_audit.py`` stays because it is
 the predeclared DEV calibration that chose ``S0_REPORT_WORLDS`` (see the
-comment in ``shengji/ai/registry.py``), and CORRECTNESS.md names
+comment in ``shengji/ai/registry.py``), and docs_archive/correctness-through-2026-09-22.md names
 ``tests/data/s0_override_audit.v1.json`` as the immutable asset.
 """
 from __future__ import annotations

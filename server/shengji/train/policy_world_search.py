@@ -15,7 +15,6 @@ from ..ai.memory import Memory
 from ..ai.cwv_policy import sample_worlds
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import CWVPriorAdmissionBot, load_prior_checked, root_clone
-from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
 
 
 def world_diversity(worlds):
@@ -77,6 +76,7 @@ class PolicyWorldBot(HeuristicBot):
 
     def scores(self, rnd, seat, actions, worlds):
         """Batch each sampled state once; never encode the live hidden world."""
+        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
         x = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat))
                       for hands, buried in worlds]).astype(np.float32)
         logits = np.asarray(self.predict(x), dtype=np.float64)

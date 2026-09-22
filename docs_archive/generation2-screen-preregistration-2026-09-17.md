@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `GENERATION2_SCREEN_PREREGISTRATION.md` unchanged below this line. Outcome: generation 2 (61625eec) was screened as pre-registered; as a standalone head it is resolvably worse than SmartBot (-0.0684 [-0.0818, -0.0546] perfect-information, -0.1133 public-information) and the generation loop is recorded as unresolved (#421; gen-3-warm null in play, the dissociation finding). The document is kept as written, for the record of what was fixed before the number existed.
+
 # Generation-2 screen: pre-registration
 
 **Written 2026-09-17 11:1x ET, while generation 2 is at epoch 5 of 20 and its weights do not

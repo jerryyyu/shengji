@@ -1,0 +1,238 @@
+{
+ "baseline": [
+  {
+   "release": 29,
+   "status": "superseded",
+   "since": "2026-09-22 00:29 ET \u2192 09:13 ET",
+   "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
+   "head": "8ecd4fea",
+   "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026)",
+   "recipe": "policy/value search: policy head admits 8 of the legal actions over 64 sampled worlds, value head prices them, no playouts; value-guided hybrid bury on the same package; 3 s / 2 s budgets",
+   "evidence": [
+    {
+     "what": "card play vs the release-28 package, 800 matched deals, one primary",
+     "point": 0.086,
+     "lo": 0.042,
+     "hi": 0.131,
+     "ref": "#553, atlas row 45"
+    },
+    {
+     "what": "same search on fresh deals (ladder base arm)",
+     "point": 0.122,
+     "lo": 0.079,
+     "hi": 0.164,
+     "ref": "#589, row 52"
+    },
+    {
+     "what": "served bot vs release 28 as served, five clean windows",
+     "point": 0.049,
+     "lo": 0.003,
+     "hi": 0.095,
+     "ref": "lane v34pv, row 51"
+    }
+   ],
+   "caveats": [
+    "W128 and W256 not shown to help (both primaries vs W64 span zero, rows 53\u201354)",
+    "about 6% of banker burys fell back to the heuristic (#606, diagnostic-set rate)"
+   ]
+  },
+  {
+   "release": 30,
+   "status": "production",
+   "since": "2026-09-22 09:13 ET",
+   "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
+   "head": "8ecd4fea",
+   "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
+   "recipe": "release 29 + #607: the hybrid bury keeps the incumbent once instead of refusing when the generator repeats it",
+   "evidence": [
+    {
+     "what": "serving smoke on the exact package, 40 server turns (bury 0.14 s, plays 0.04\u20130.09 s)",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "release30/smoke-release30.json"
+    },
+    {
+     "what": "/healthz after deploy: the release-29 name, pv_search block, rooms 0",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "09:13 ET"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M34KWRW4XWJWC6DCCYENFXTF (sha256:ea40b4d44b3f\u2026), main 4e006561 (#607); fly.toml unchanged; rollback = the release-29 image",
+    "strength evidence is release 29's: the fix changes only the ~6% of banker burys that used to fall back to the heuristic (diagnostic-set rate); no new screen yet",
+    "Jerry 09-22 09:3x ET: every screen from here compares against release 30"
+   ]
+  }
+ ],
+ "screens": [
+  {
+   "id": "v34r5",
+   "date": "2026-09-22",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "gen-4 run 4 head (423836c7) served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument": "ten 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "23960910..24360910 + 24460910..24860910 (ten windows)",
+   "point": 0.0228,
+   "lo": -0.002,
+   "hi": 0.0477,
+   "eta": "",
+   "note": "Sealed 13:58 ET. A matched-window, COMMON-OPPONENT contrast: each served policy is screened against the same MC-LCB opponents on the same seeds and the arms are differenced, so this is a summary-level estimate, NOT a direct duel and not paired served-vs-served inference. CROSSES ZERO (lower bound -0.002): no resolved difference between run 4's head and production's in served form, and equivalence is NOT established. I2 0%, tau 0, ties 49.7% vs 50.3%. Latency, as the MEAN OF THE TEN PER-WINDOW quantiles (vol_re.py averages window quantiles; it does not pool decision samples): candidate p50 0.10 s / p95 0.16 s, control 0.10 / 0.16. The five-window interim was +0.019 [-0.017, +0.055]. A rough power projection conditional on this effect and variance puts the lower bound near zero around 24 windows total, i.e. about 14 more (~6 h of Perf); that is a projection, not guaranteed resolution, and any extension is a new decision, not queued. Archive readouts/v34r5-run4-vs-r30/ with SHA256SUMS.",
+   "archive": "",
+   "instrument_kind": "windows",
+   "confidence": 0.95
+  },
+  {
+   "id": "depth-screen",
+   "date": "2026-09-22",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "soft head 8ecd4fea with four extra plies of lookahead, one completed trick or terminal (heuristic continuation; policy continuation with 1 world)",
+   "comparator": "release-30 card-play control (frozen identifier production-pv-r29: pv-search W64/K8, 3 s budget; identical to release 30's card play since #607 changes only the hybrid bury and this harness uses shared heuristic bury)",
+   "vs": 30,
+   "form": "card play",
+   "instrument": "260 mirrored deals \u00d7 3 arms, joint bootstrap, two primaries at Bonferroni 97.5%",
+   "seeds": "626710000..626710259",
+   "eta": "",
+   "note": "Codex screen, launched 09:11:55 ET, sealed 12:1x ET; I reproduced the readout exactly with the pinned reader at 2a5c6983 and Codex re-verified the archived copy. Neither depth primary resolves a gain. The current-trick arm's per-deal utilities agree exactly with the production control on all 260 deals (interval [0, 0]): that is OUTCOME agreement, not proof that every decision was identical, so it bounds harness-introduced differences rather than proving none. Cost per decision against the current-trick arm: heuristic continuation 1.26x (0.217 s mean), policy continuation 17.4x (2.99 s mean, 8.10 s p95 against production's 3 s serving budget). 0 fallbacks on every arm. Archive readouts/codex-depth-screen-20260922/ with SHA256SUMS.",
+   "archive": "",
+   "instrument_kind": "matched-deals",
+   "family": "two primaries vs production at Bonferroni 97.5% each (four extra plies, two continuation policies); the current-trick arm is a 95% null-control diagnostic; component contrasts exploratory",
+   "results": [
+    {
+     "arm": "EXTRA_TRICK_HEURISTIC",
+     "label": "four extra plies (one completed trick or terminal), heuristic continuation, vs production",
+     "role": "primary",
+     "confidence": 0.975,
+     "point": -0.0692,
+     "lo": -0.15,
+     "hi": 0.0115
+    },
+    {
+     "arm": "EXTRA_TRICK_POLICY",
+     "label": "four extra plies (one completed trick or terminal), policy continuation (1 world), vs production",
+     "role": "primary",
+     "confidence": 0.975,
+     "point": 0.0096,
+     "lo": -0.0769,
+     "hi": 0.0981
+    },
+    {
+     "arm": "CURRENT_TRICK",
+     "label": "current trick only (the Torch current-trick baseline; the frozen production control is the NumPy implementation), vs production",
+     "role": "diagnostic",
+     "confidence": 0.95,
+     "point": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    }
+   ]
+  }
+ ],
+ "context_screens": [
+  {
+   "id": "v34r4",
+   "date": "2026-09-22",
+   "status": "sealed",
+   "candidate": "gen-4 run 4 head served (release-29 form)",
+   "comparator": "release 28 as served",
+   "form": "served bot",
+   "instrument": "ten 520-cluster windows",
+   "point": 0.042,
+   "lo": 0.015,
+   "hi": 0.068,
+   "note": "beats the OLD production; not a contrast with release 29",
+   "ref": "row 55",
+   "instrument_kind": "windows",
+   "confidence": 0.95
+  },
+  {
+   "id": "v34pv",
+   "date": "2026-09-22",
+   "status": "sealed",
+   "candidate": "release-29 candidate served",
+   "comparator": "release 28 as served",
+   "form": "served bot",
+   "instrument": "five clean windows",
+   "point": 0.049,
+   "lo": 0.003,
+   "hi": 0.095,
+   "note": "the release gate read",
+   "ref": "row 51",
+   "instrument_kind": "windows",
+   "confidence": 0.95
+  }
+ ],
+ "models": [
+  {
+   "name": "soft head (release 29)",
+   "ck": "8ecd4fea",
+   "date": "2026-09-19",
+   "recipe": "gen-3-warm's recipe, search values as the policy target (T=1, w=1), 256k",
+   "val_ce": 0.5976,
+   "regret": null,
+   "status": "production"
+  },
+  {
+   "name": "gen-4 run 1",
+   "ck": "3f83bfb7",
+   "date": "2026-09-21",
+   "recipe": "JS-M1 warm start, hard targets, all 20 stores (336k)",
+   "val_ce": 0.59697,
+   "regret": 0.0797,
+   "status": "sealed"
+  },
+  {
+   "name": "gen-4 run 4",
+   "ck": "423836c7",
+   "date": "2026-09-22",
+   "recipe": "soft targets on all 20 stores (336k), JS-M1 warm start",
+   "val_ce": 0.599,
+   "regret": 0.08,
+   "status": "sealed \u00b7 v34r5 running"
+  },
+  {
+   "name": "gen-4 run 3",
+   "ck": "",
+   "date": "2026-09-22",
+   "recipe": "grid trunk d3 c44 warm from JS-G1, soft targets, all 20 stores",
+   "val_ce": 0.5658,
+   "regret": null,
+   "status": "training \u00b7 epoch 5/20 (val_ce so far) \u00b7 seal ~03:30 ET 09-23"
+  },
+  {
+   "name": "gen-4 run 2",
+   "ck": "",
+   "date": "",
+   "recipe": "residual depth 6, soft targets, all 20 stores",
+   "val_ce": null,
+   "regret": null,
+   "status": "armed behind run 3"
+  }
+ ],
+ "data": [
+  {
+   "name": "runPV1",
+   "box": "cloud",
+   "seed0": 23260910,
+   "status": "stopped 05:34 ET: 15,078/16,000 clusters, 922 failed on #606; unresumable; regeneration runPV1r planned after the depth screen \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+  },
+  {
+   "name": "runPV2",
+   "box": "Perf",
+   "seed0": 23276910,
+   "status": "stopped 08:39 ET at 13,043/16,000 (13,043 sealed shards) to free Perf for v34r5; regeneration runPV2r planned on cloud \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+  }
+ ],
+ "history": {
+  "page": "https://claude.ai/code/artifact/cfccd7fc-e9c6-4c30-915c-2cdf310c2db2",
+  "atlas": "https://claude.ai/code/artifact/8bb3e7d8-38c3-4488-acc2-4736ec11038f",
+  "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
+ }
+}

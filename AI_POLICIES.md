@@ -17,7 +17,10 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 29 (2026-09-22 00:29 ET): **the policy/value search with the
+The current live Fly snapshot is release 30 (2026-09-22 09:13 ET; release 29's recipe, same package and served
+name, with the hybrid-bury fix #607 — the bury keeps the heuristic incumbent once instead of refusing the
+decision, which had silently fallen back to the heuristic on ~6% of banker burys on the diagnostic capture set — 24 of
+400 deals; the production-traffic rate is unmeasured): **the policy/value search with the
 soft-action head 8ecd4fea as ONE package** (`soft-8ecd4fea.npz`; the policy head admits 8 of the legal
 actions over 64 sampled worlds, the value head prices them, no playouts; value-guided hybrid bury on
 the same package). Release 28 (JS-M1 as one package inside the MC shortlist) is the one-line rollback.

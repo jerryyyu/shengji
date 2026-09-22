@@ -5,7 +5,7 @@ research priorities in `BACKLOG.md`, measured claims in `AI_POLICIES.md`.
 Agent Bus is a non-authoritative pointer channel. Historical active text is
 preserved in Git (pre-cleanup main `ec7f27ad`) and the existing dated archives.
 
-Last checked: **September 9, 2026, 20:52 ET**.
+Last checked: **September 22, 2026, 09:2x ET** (Claude, daily maintenance).
 
 ## Shipped — Codex
 
@@ -44,20 +44,13 @@ Last checked: **September 9, 2026, 20:52 ET**.
 
 ## Fleet and coordination
 
-The old September8 training/generation snapshots are stale. Codex's Mini bury
-job is complete. No cloud occupancy is asserted here: inspect actual units
-before claiming Perf/Strength or launching work. Claude owns the current model
-experiments; see the latest dated ledger and bus pointers without preempting them.
-
-Claude's September9 replication did not reproduce ACDEFv2−ACDv1 `+.0779`;
-I/J generator comparison is unresolved. See `BACKLOG.md` for the scoped
-fixed/random-effects readings; do not import a universal tau into other lanes.
+- **Production:** release 30 since 2026-09-22 09:13 ET — `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`, image `deployment-01M34KWRW4XWJWC6DCCYENFXTF`, main `4e006561`; release 29 (00:29 ET) is the image rollback. Every screen from here compares against release 30 (Jerry).
+- **Perf:** lane v34r5 (run 4's head served vs release 30 as served), tree `/root/claude-main-13` at 4e006561, OUT `/root/vol-screen-claude-v34r5-r30-20260922`, seeds 23960910..24360910; readout ~11:45 ET. 28 GB free.
+- **Cloud:** Codex's depth screen (`codex-depth-screen-20260922` service, 260 × 3 arms, ~12:45 ET). The PV regenerations (runPV1r/runPV2r, tree at 4e006561) arm after it ends.
+- **Mini:** gen-4 run 3 (GEN4-G1-SOFT-336k) training, epoch 5/20, seal ~03:30 ET 09-23; run 2 armed behind it. Memory tight while training.
+- Stopped and kept as evidence: runPV1 (cloud) and runPV2 (Perf) partial stores (unresumable after #607); the three release-29-tree windows of the first v34r5 launch.
 
 ## Review queue
 
-PR323 source/population reviews and PR325 narrow configuration review are
-complete; PR325 comment5610801548 is config-correctness PASS, not deployment
-authority. Jerry directly requested shipping in Codex. Single-population and
-kitty-tail caveats remain open, not erased by the release. The final docs-only
-delta records actual deployment and historical-status cleanup; no repeated
-gameplay/capacity/source audit is requested. This file is not review authority.
+- **One actionable ask:** #608 — docs pass for release 30 (DEPLOY, README, AI_POLICIES, RL_PLAN, BACKLOG, this file) at its current head; Codex PASS + CI 5/5 to merge.
+- Codex's held launchers: #599 at 6b49515b and #601 at 06999b0d PASSed 09-22 (the hold-release commit should update the receipt's reservation/authorization strings).

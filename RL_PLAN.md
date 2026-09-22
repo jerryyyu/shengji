@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-Last reconciled: **2026-09-22 (release 29: the policy/value search with the soft head is
+Last reconciled: **2026-09-22 09:4x ET (release 30: the policy/value search with the soft head is
 production)**. This document owns the research architecture, the estimands and the decision
 tree. `BACKLOG.md` owns priority; live compute and review asks are in `HANDOFF_ACTIVE.md`;
 policy names and deployment state are in `AI_POLICIES.md`; immutable receipts and verdicts are
@@ -11,10 +11,13 @@ the shortlist-era screens) are summarised once below and live in `docs_archive/`
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator. Production is release 29: the soft head
+correct engine and a reproducible evaluator. Production is release 30 (release 29's recipe with the
+hybrid-bury fix #607): the soft head
 `8ecd4fea` served as one NumPy package, its policy head admitting eight candidates over 64
 sampled worlds and its value head pricing them, no Monte Carlo playouts in play, value-guided
-hybrid bury. The champion for every strength claim is therefore the served release-29 bot,
+hybrid bury. The champion for every strength claim is therefore the served release-30 bot
+(release 29's recipe with the fixed hybrid bury; release 29's reads below are the labeled
+historical evidence, not a served-package equivalence — the bury behaviour changed),
 and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
 direction, recorded on #436). Historical MC-LCB results keep their original labels; MC-LCB is
 no longer the prospective control.
@@ -47,14 +50,14 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 
 ## Current program
 
-0. **Production is release 29** (2026-09-22). Evidence chain, in order: the soft head alone
+0. **Production is release 30** (2026-09-22; release 29 + the #607 bury fix, same name and package). Evidence chain, in order: the soft head alone
    beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
    W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
    vs the release-28 package in card play
    +0.086 [+0.042, +0.131] on 800 matched deals and +0.122 on fresh deals; served with hybrid
    bury vs release 28 as served +0.049 [+0.003, +0.095] over five clean windows (narrow, I²
    49%; a common-opponent, summary-level read, not paired served-vs-served inference). Rollback is one `SHENGJI_BOT` line. The next production claim needs a served-bot
-   contrast against release 29 on the same design.
+   contrast against release 30 on the same design (release 29's numbers are historical evidence).
 1. **The generation loop (gen-4, #538).** Four runs on the full 20-store corpus, order
    1 → 4 → 3 → 2: run 1 (JS-M1 extended, hard targets) sealed and null as a package, positive
    but not separable from the family in the W64 search; run 4 (soft targets) sealed 09-22
@@ -75,8 +78,10 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
    depth (one extra trick, heuristic or policy) completed its 3 × 12-pair qualification on the
    cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
    current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
-   claim; a 260-pair strength screen (~3.5 h) needs Jerry's word and is not armed.
-4. **What would change production next:** a head that beats release 29 on the served-bot
+   claim; the 260-pair strength screen (~3.5 h) is approved and RUNNING on cloud since 2026-09-22
+   09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
+   `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
+4. **What would change production next:** a head that beats release 30 on the served-bot
    design, or a search change whose served contrast clears zero. Nothing else.
 
 ## What the scaling work taught (models)

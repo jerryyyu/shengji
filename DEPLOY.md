@@ -13,7 +13,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 29, the policy/value search with hybrid bury
+  Fly configuration selects release 30 (release 29's recipe with the #607 bury fix), the policy/value search with hybrid bury
   `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
@@ -26,7 +26,33 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 29 — the policy/value search with the soft head (pv-search W64/K8 + hybrid bury), deployed 2026-09-22 00:29 ET
+## Current production: release 30 — release 29 + the hybrid-bury fix (#607), deployed 2026-09-22 09:13 ET
+
+Release **30**, image `registry.fly.io/shengji:deployment-01M34KWRW4XWJWC6DCCYENFXTF` (digest
+`sha256:ea40b4d44b3fd74f6baf7f3178005973711a86eba075caecf9f1d3c2e117b0c0`), deployed with
+`fly deploy --ha=false` from main `4e006561` (#607) on machine `48e7e35a9597e8`, on Jerry's word
+2026-09-22 09:0x ET ("Yes let's release as 30 for the fix"; one idle room dropped on his word).
+Same `fly.toml`, same package, same served name as release 29
+(`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`; the bury identity digest is
+config-only). What changed: `CWVBuryMixin._bury_candidates` keeps the heuristic incumbent once and
+drops the candidate generator's copy of it instead of raising `bury candidate generator duplicated
+incumbent` (#606) — on the diagnostic capture set 6% of banker burys hit that refusal, which under the
+2 s bury budget was a silent heuristic fallback (`cwv-bury-fallback-v1` / `search-error`) in releases
+27–29 and, with budgets unset, the hard failure that stopped data generation runPV1. The candidate set
+the value head scores is unchanged on every other deal.
+
+Preconditions as they were met: serving smoke on the exact package with this `fly.toml` on the fixed
+tree (40 server turns through `_paced_bot_step` / `_commit_bot_turn`, bury 0.14 s, plays 0.04–0.09 s,
+receipt `release30/smoke-release30.json`); Codex PASS on #607 at 74303cd6; CI 5/5; deploy; `/healthz`
+shows the name above, `pv_search` = {sha256 ccade130…, worlds 64, candidates 8, budget 3, bury hybrid,
+bury budget 2}, rooms 0. Strength evidence is release 29's (below); no new screen for the fix itself.
+
+Rollback: the release-29 image (`deployment-01M33NZERJS18A0G2NNG7S5FJ8`, `fly deploy --image …`),
+then release 28 by the one-line `SHENGJI_BOT` change. Watch: `cwv-bury-fallback-v1` records — the expectation to check is that their reason is
+`budget` only; any `search-error` reason (an unrelated exception still takes the generic fallback) is a finding to
+investigate; `pv-search-fallback-v1`, stale-turn discards, decision wall p50/p95.
+
+## Release 29 — the policy/value search with the soft head (pv-search W64/K8 + hybrid bury), deployed 2026-09-22 00:29 ET; superseded by release 30 (same name, same package)
 
 Release **29**, image `registry.fly.io/shengji:deployment-01M33NZERJS18A0G2NNG7S5FJ8` (digest
 `sha256:e3ddf6cd62c9da582086bb8171a79d30eb2c2c4df85b0c965a26b972d2f159b0`), deployed with

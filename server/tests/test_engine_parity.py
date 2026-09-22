@@ -1,6 +1,6 @@
 """A/A parity guards: optimizations must never change game outcomes.
 
-Two layers (PERF.md rule: correctness of generated data outranks speed):
+Two layers (docs_archive/perf-through-2026-09-22.md rule: correctness of generated data outranks speed):
 1. Optimized-vs-reference: every cached/fast-path primitive must equal
    its uncached/validated reference on the same inputs.
 2. Golden histories: full seeded rounds must reproduce byte-identical

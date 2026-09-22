@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `RESEARCH_PRINCIPLES.md` unchanged below this line. Superseded by `AGENTS.md` (execution discipline), `PROTOCOL.md` (the evidence protocol) and `BACKLOG.md` (what is queued); the durable rules it stated live in those three.
+
 # Research principles
 
 This document records the durable rules for choosing Shengji research. It is

@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `W32_FLY_SERVING.md` unchanged below this line. The serving record now lives in `DEPLOY.md` (releases, gates, rollbacks, `/healthz`) and in `server/shengji/train/pv_search_policy.py` / `cwv_shortlist_policy.py` docstrings for the served modes; release 28 is the deployed package, release 29 (pv-search) is prepared.
+
 # W32 serving
 
 Implementation and engineering measurements for the NumPy serving path.

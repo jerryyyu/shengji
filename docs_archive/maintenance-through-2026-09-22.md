@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `MAINTENANCE.md` unchanged below this line. The daily routine is the hourly tick and the daily 08:51 job (Claude) plus `CODEX_WORKFLOW.md`; `AGENTS.md` carries the standing rules.
+
 # Daily maintenance routine
 
 Last rewritten: 2026-08-12. This is the canonical checklist, not proof that a

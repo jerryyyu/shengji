@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `PERF.md` unchanged below this line. Engine/search speed is tracked on issue #208 and on the scaling page (`docs/scaling_log/`); the shipped optimisations it recorded stand (2.849x decision-preserving, then 1.344x from v2 inference), and the per-decision latencies of the served modes are in `DEPLOY.md` and the search atlas.
+
 # PERF.md — engine/search speed: rules, baselines, shipped results
 
 Durable record only. General engine/runner performance work is tracked in

@@ -2,7 +2,7 @@
 
 Postmortems for correctness and operational failures. One file per
 incident, newest first. Numbers are assigned on publication to `main`; INC-20..22
-were written locally as 13..15 and renumbered when published. `CORRECTNESS.md` keeps the one-line index and
+were written locally as 13..15 and renumbered when published. `docs_archive/correctness-through-2026-09-22.md` (archived 2026-09-22) keeps the one-line index and
 the rules these incidents produced; this folder keeps the reasoning.
 
 **Severity levels**

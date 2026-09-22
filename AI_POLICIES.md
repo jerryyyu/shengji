@@ -9,8 +9,8 @@ a run log or policy registry duplicate.
 - Current priorities and review gates: `BACKLOG.md` and `HANDOFF_ACTIVE.md`
 - Research architecture and model lineage: `RL_PLAN.md`
 - Immutable verdicts, hashes, and reviewer corrections: `HANDOFF_REVIEW.md`
-- Engine and sampler contracts: `CORRECTNESS.md`
-- Runtime performance and deployment: `PERF.md` and `DEPLOY.md`
+- Engine and sampler contracts: `server/tests/` and `incidents/` (ledger archived at `docs_archive/correctness-through-2026-09-22.md`)
+- Runtime performance and deployment: `DEPLOY.md` and issue #208 (the speed record is archived at `docs_archive/perf-through-2026-09-22.md`)
 
 Historical detail remains in Git history and `docs_archive/`. Do not append
 dated status blocks here.
@@ -489,6 +489,6 @@ when the design calls for it.
 | production config | `fly.toml` |
 | model/belief/teacher design | `RL_PLAN.md` |
 | immutable evidence and review corrections | `HANDOFF_REVIEW.md` |
-| engine/sampler contract | `CORRECTNESS.md` |
-| performance and deployment | `PERF.md`, `DEPLOY.md` |
+| engine/sampler contract | `server/tests/`, `incidents/` (archived ledger `docs_archive/correctness-through-2026-09-22.md`) |
+| performance and deployment | `DEPLOY.md`, issue #208 (archived record `docs_archive/perf-through-2026-09-22.md`) |
 | old policy/toggle ledger | Git history and `docs_archive/` |

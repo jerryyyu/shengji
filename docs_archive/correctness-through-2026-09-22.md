@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `CORRECTNESS.md` unchanged below this line. Engine correctness is enforced by the test suite (`server/tests/test_invariants.py`, `test_engine_parity.py`, `test_fast_parity.py`, the seed-window and voids gates) and recorded in `incidents/` (index in `incidents/README.md`); the house rules it listed are in `AI_POLICIES.md`.
+
 # CORRECTNESS.md — engine correctness: tracking, validation, incident log
 
 (Named CORRECTNESS rather than SAFETY to avoid ambiguity — this is about

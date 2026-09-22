@@ -72,7 +72,7 @@ M = [
 ("gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe","3f83bfb7","2026-09-21","v2",330,"3e-4","336k","47,535,516","0.59697","",
  "","","5w -0.0072 [-0.0379, +0.0235]","gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud"),
 ("gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start","423836c7","2026-09-22","v2",330,"3e-4","336k","47,535,516","0.59900","",
- "","","","gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf"),
+ "","","5w +0.0368 [-0.0054, +0.0791]","gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",
@@ -310,8 +310,9 @@ POLICY_VS_SMART_PUBLIC = {
 #:   "served bot" -- the same search wrapped for serving with the value-guided hybrid bury vs
 #:                   release 28 AS SERVED (its own bury), 520-cluster mirrored windows, 300 s cap,
 #:                   DL random effects over the clean windows (lane v34pv; atlas row 51).
-#: No head is shown superior to another: every pairwise contrast spans zero.  Add the run-4
-#: served read (lane v34r4) and Codex's W128/W256 ladder arms when they seal.
+#: No head is shown superior to another: every pairwise contrast spans zero.  The run-4 served
+#: read (lane v34r4, seeds 22860910..23260910, five windows; ten-window extension running) is in;
+#: Codex's W128/W256 ladder arms are read against W64 (rows 53-54), not production, so they stay out.
 W64_SEARCH_VS_PRODUCTION = [
     ("8ecd4fea", "card play", "+0.086 [+0.042, +0.131]"),   # soft (row 45), 95%
     ("9ee9fedb", "card play", "+0.057 [+0.007, +0.111]"),   # JS-G1 (row 48), family 98.75%
@@ -319,6 +320,7 @@ W64_SEARCH_VS_PRODUCTION = [
     ("a5248cc5", "card play", "+0.029 [-0.025, +0.082]"),   # JS-M1, production's own head (row 47)
     ("d2514e6e", "card play", "+0.024 [-0.030, +0.078]"),   # gen-3-warm, the soft head's hard twin (row 50)
     ("8ecd4fea", "served bot", "+0.049 [+0.003, +0.095]"),  # soft served w/ hybrid bury vs r28 served, 5 clean windows (row 51)
+    ("423836c7", "served bot", "+0.037 [-0.005, +0.079]"),  # gen-4 run 4 served w/ hybrid bury vs r28 served, 5 windows, lane v34r4 (row 55)
 ]
 W64_FORMS = {"card play": "the head as the W64/K8 search, card play only, 800 matched deals vs the deployed package",
              "served bot": "the same search served with hybrid bury vs release 28 as served, five clean 520-cluster windows"}

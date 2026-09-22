@@ -210,8 +210,8 @@ body.recent-only [data-tr].pre-cut{display:none}
   <div><b>&minus;0.0036</b><span>last full data doubling</span></div>
   <div><b>&minus;0.0376</b><span>encoder v1 &rarr; v2, same data</span></div>
   <div><b>+0.41</b><span>loss vs search correlation</span></div>
-  <div><b>1 of 36</b><span>models above the leader</span></div>
-  <div><b>33 of 69</b><span>no search number yet</span></div>
+  <div><b>1 of 37</b><span>models above the leader</span></div>
+  <div><b>32 of 69</b><span>no search number yet</span></div>
   <div><b>50.0%</b><span>encoder v3 win rate, 260 pairs</span></div>
 </div>
 
@@ -487,11 +487,12 @@ encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
 5 windows  -0.0072 [-0.0379, +0.0235]
 gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud</title></circle>
-<circle cx="663.0" cy="280.9" r="4.4" class="pt pt2 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+<circle cx="663.0" cy="280.9" r="4.4" class="pt pt2 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
 trained 2026-09-22
 encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59900
-gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf</title></circle>
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
 <circle cx="267.7" cy="91.5" r="4.4" class="pt pt9 hollow hit" tabindex="0" data-t="KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs  (3ca2ec90)&#10;trained 2026-09-19&#10;encoder v5 | width 330 | lr 3e-4 | 24k clusters&#10;val_ce 0.70088&#10;v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale" data-tr="2026-09-19"><title>KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs  (3ca2ec90)
 trained 2026-09-19
 encoder v5 | width 330 | lr 3e-4 | 24k clusters
@@ -1239,10 +1240,19 @@ val_ce 0.59650
 gen-3-warm (#421): first WARM START; PERFECT-INFO head read +0.0993 (relabelled 09-19); in play NULL vs production, MDE80 0.031
 
 GENERATION 3, WARM-STARTED = the first rung in the loop that was not trained from fresh random weights (Jerry 09-18: &quot;train gen3 with warm up and including all self play data&quot;). EXACTLY ONE VARIABLE CHANGES from the gen-3 it replaces: --init from JS-M1 a5248cc5, plus the exposure flag it forces. Same 15 corpora, same seed, same architecture, same lr, same epochs, same policy rows -- so gen-3-warm minus gen-3-from-scratch WOULD isolate initialisation -- but gen-3-from-scratch was never trained (this run replaced it), so no matched from-scratch control exists; gen-1 and gen-2 differ from this run in corpus as well as initialisation and are NOT that control. All four weight groups inherit (trunk 28 tensors, value head, search head, policy head) plus aux; nothing frozen; --init-lr-scale at the 1.0 default. 653,532 params, parameter-matched with JS-M1, gen-1 and gen-2, NOT compute-matched. EXPOSURE: 0 deals excluded and that is CORRECT -- the split is a stable sha256(seed|deal_key) rank, so JS-M1's fit deals land in train, its selection-only deals may stay in val, its test deals stay in test; the held-out sets are NOT reduced. Consequence to carry with the result: this run's val/test contains deals JS-M1 never fit on, so its val_ce is even less comparable across generations than the others; the FIXED external holdouts remain the comparable instrument. THE RUN IS UNSEALED: the process was SIGKILLed during the candidate pass (I had started two 10 GB rsyncs against a 16 GB machine and weighed I/O but not that phase's memory profile), so all 19 epochs completed and best.pt at epoch 15 survived, but there is NO RECEIPT. UNDER PERFECT INFORMATION -- relabelled 2026-09-19 after Codex's audit, confirmed from source: the head-alone harness fed root_tensors(live round), whose world block carries all four hands and the burial, so these reads are upper bounds under privilege and NOT public-policy strength -- the head reads +0.0993 [+0.0856, +0.1126] vs SmartBot on 8,000 fresh deals -- and UNDER PUBLIC INFORMATION (09-19, K=8 worlds through production's sampler per decision, 8,000 deals, seed0 20000, receipt e4aca0dc) +0.0463 [+0.0334, +0.0593], under half the privileged figure and still above zero -- six times JS-M1's +0.0159 measured the same way (a ratio between two PRIVILEGED margins against SmartBot, not a statement about playing strength), where gen-2 -- the same data kind trained from scratch -- is -0.0684, resolvably WORSE than SmartBot. Read across the ladder: from scratch gen-1 -0.0093 and gen-2 -0.0684, warm-started +0.0993. That is CONSISTENT with initialisation mattering more than data, but it is not an isolation: the from-scratch rungs sit on smaller corpora and the matched gen-3-from-scratch has not been run. IN PLAY, HOWEVER, IT IS A NULL. Lane v28 on perf, sealed 2026-09-18 18:14 ET, 5 paired windows x 520 clusters, seeds 17260910..17660910, capped 300 s, threshold 1,000, arm and control on the SAME tree (/root/claude-main-8 @ bf70cb81) and host, both checkpoints verified BY HASH, run as two phases on shared seeds so the contrast is paired. gen-3-warm minus PRODUCTION: levels +0.0109 [-0.0106, +0.0323] on the normal, RE SE 0.01094, tau 0, Q 2.37/4df, I2 0%, MDE80 0.0307 -- CROSSES ZERO. Five windows are FOUR degrees of freedom, so the honest interval is t(4): [-0.0195, +0.0413], which crosses zero more widely and does not change the verdict. Attacker points +0.0728, SE 0.2363, MDE80 0.6620; levels and points AGREE IN SIGN, and points carries 0.32x the level scale's signal-to-noise. Triage: the level point +0.0109 is below the +0.015 extension line, so this is NOT extended to ten windows. Paired-difference ties 66.7% on levels against 22.0% on points -- the tie rate still dominates and is still the thing worth attacking. READING: a SIX-FOLD improvement in the policy head as a standalone player did not produce a resolvable gain in play at MDE80 0.031. That dissociation is the result. It is consistent with two other measurements from the same day -- top-64 shortlist recall does not predict standalone play, and the same head used as MC's ROLLOUT policy is -0.1769 [-0.2200, -0.1319], resolvably WORSE than the heuristic it replaces. The head is being improved on an axis the search does not currently convert. Readout archived at ~/shengji-archive/2026-09-13/readouts/v28-gen3warm-vs-prod-20260918.txt with SHA256SUMS. LANE v29 THEN ISOLATED THE PRIOR, because v28 changed the value net AND the prior together and could not say whether a better prior buys anything. Both arms run PRODUCTION'S value net (a5248cc5); only the admission prior differs -- gen-3-warm d2514e6e against release 28's own. Cloud, sealed 2026-09-19 03:10 ET, 5 paired windows x 520 clusters, fresh seeds 17760910..18160910 so no deal is reused from v28. Levels +0.0020 [-0.0002, +0.0042], RE SE 0.00112, tau 0, Q 1.82/4df, I2 0%, MDE80 0.0031; t(4) [-0.0011, +0.0051]. Attacker points +0.0446, SE 0.0276, both scales AGREE IN SIGN. NULL -- and this lane is roughly TEN TIMES more sensitive than v28 (MDE80 0.0031 against 0.0307), so it is not a shrug but a tight bound: swapping in a head six times better as a standalone player moves play by at most ~0.005 levels. THE MECHANISM IS IN THE TIE RATE: 2,580 of 2,600 paired deals -- 99.2% -- are IDENTICAL. Changing only the prior changes almost no game at all, which is what makes the interval so narrow and is itself the finding: the shortlist the prior admits already contains what the search needs, so a better prior is inframarginal. Readout archived at ~/shengji-archive/2026-09-13/readouts/v29-prior-isolation-20260919.txt with SHA256SUMS.</title></circle>
-<line x1="621.7" y1="287.6" x2="621.7" y2="219.7" class="ci ci5"/>
-<line x1="616.7" y1="287.6" x2="626.7" y2="287.6" class="ci ci5"/>
-<line x1="616.7" y1="219.7" x2="626.7" y2="219.7" class="ci ci5"/>
-<circle cx="621.7" cy="253.6" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)&#10;trained 2026-09-21&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59697&#10;5 windows  -0.0072 [-0.0379, +0.0235]&#10;gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud" data-tr="2026-09-21"><title>gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)
+<line x1="618.2" y1="251.6" x2="618.2" y2="158.2" class="ci ci5"/>
+<line x1="613.2" y1="251.6" x2="623.2" y2="251.6" class="ci ci5"/>
+<line x1="613.2" y1="158.2" x2="623.2" y2="158.2" class="ci ci5"/>
+<circle cx="618.2" cy="205.0" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+trained 2026-09-22
+encoder v2 | width 330 | lr 3e-4 | 336k clusters
+val_ce 0.59900
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
+<line x1="625.2" y1="287.6" x2="625.2" y2="219.7" class="ci ci5"/>
+<line x1="620.2" y1="287.6" x2="630.2" y2="287.6" class="ci ci5"/>
+<line x1="620.2" y1="219.7" x2="630.2" y2="219.7" class="ci ci5"/>
+<circle cx="625.2" cy="253.6" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)&#10;trained 2026-09-21&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59697&#10;5 windows  -0.0072 [-0.0379, +0.0235]&#10;gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud" data-tr="2026-09-21"><title>gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)
 trained 2026-09-21
 encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
@@ -1526,11 +1536,12 @@ encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
 5 windows  -0.0072 [-0.0379, +0.0235]
 gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud</title></circle>
-<circle cx="284.7" cy="243.4" r="3.6" class="pt ptx hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+<circle cx="284.7" cy="243.4" r="3.6" class="pt ptx hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
 trained 2026-09-22
 encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59900
-gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf</title></circle>
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
 <circle cx="284.7" cy="81.9" r="3.6" class="pt ptx hit" tabindex="0" data-t="KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs  (3ca2ec90)&#10;trained 2026-09-19&#10;encoder v5 | width 330 | lr 3e-4 | 24k clusters&#10;val_ce 0.70088&#10;v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale" data-tr="2026-09-19"><title>KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs  (3ca2ec90)
 trained 2026-09-19
 encoder v5 | width 330 | lr 3e-4 | 24k clusters
@@ -2118,10 +2129,19 @@ val_ce 0.60830
 vs MC-LCB  +0.0500 [+0.004, +0.095]
 vs leader  -0.0760 [-0.125, -0.028]
 worst screened</title></circle>
-<line x1="263.7" y1="261.6" x2="263.7" y2="205.8" class="ci ci5"/>
-<line x1="258.7" y1="261.6" x2="268.7" y2="261.6" class="ci ci5"/>
-<line x1="258.7" y1="205.8" x2="268.7" y2="205.8" class="ci ci5"/>
-<circle cx="263.7" cy="233.7" r="4.8" class="pt pt7 hit" tabindex="0" data-t="grid S-d4 (4 residual layers)  (f88b54cb)&#10;trained 2026-09-12&#10;encoder v2 | width 330 | lr 3e-4 | 144k clusters&#10;val_ce 0.60570&#10;5 windows  +0.0108 [-0.0144, +0.0360]&#10;grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]&#10;&#10;OWN-CONTROL READOUT 09-13 13:2x ET (Air, five windows, S-d4 minus volVOL-144k, the same 144k corpus at depth 2): -0.0049 [-0.0299, +0.0201], tau 0.0121, I2 18%, MDE80 0.0357 -- crosses zero; depth 4 residual does not play differently from depth 2 on its own corpus at this precision. EARLIER: FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play" data-tr="2026-09-12"><title>grid S-d4 (4 residual layers)  (f88b54cb)
+<line x1="260.2" y1="251.6" x2="260.2" y2="158.2" class="ci ci5"/>
+<line x1="255.2" y1="251.6" x2="265.2" y2="251.6" class="ci ci5"/>
+<line x1="255.2" y1="158.2" x2="265.2" y2="158.2" class="ci ci5"/>
+<circle cx="260.2" cy="205.0" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+trained 2026-09-22
+encoder v2 | width 330 | lr 3e-4 | 336k clusters
+val_ce 0.59900
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
+<line x1="267.2" y1="261.6" x2="267.2" y2="205.8" class="ci ci5"/>
+<line x1="262.2" y1="261.6" x2="272.2" y2="261.6" class="ci ci5"/>
+<line x1="262.2" y1="205.8" x2="272.2" y2="205.8" class="ci ci5"/>
+<circle cx="267.2" cy="233.7" r="4.8" class="pt pt7 hit" tabindex="0" data-t="grid S-d4 (4 residual layers)  (f88b54cb)&#10;trained 2026-09-12&#10;encoder v2 | width 330 | lr 3e-4 | 144k clusters&#10;val_ce 0.60570&#10;5 windows  +0.0108 [-0.0144, +0.0360]&#10;grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]&#10;&#10;OWN-CONTROL READOUT 09-13 13:2x ET (Air, five windows, S-d4 minus volVOL-144k, the same 144k corpus at depth 2): -0.0049 [-0.0299, +0.0201], tau 0.0121, I2 18%, MDE80 0.0357 -- crosses zero; depth 4 residual does not play differently from depth 2 on its own corpus at this precision. EARLIER: FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play" data-tr="2026-09-12"><title>grid S-d4 (4 residual layers)  (f88b54cb)
 trained 2026-09-12
 encoder v2 | width 330 | lr 3e-4 | 144k clusters
 val_ce 0.60570
@@ -2129,10 +2149,10 @@ val_ce 0.60570
 grid S d4 residual, 610,704 params at the h512 budget; five windows not large (MDE80 0.0360); vs its own control vol144k -0.0049 [-0.0299, +0.0201]
 
 OWN-CONTROL READOUT 09-13 13:2x ET (Air, five windows, S-d4 minus volVOL-144k, the same 144k corpus at depth 2): -0.0049 [-0.0299, +0.0201], tau 0.0121, I2 18%, MDE80 0.0357 -- crosses zero; depth 4 residual does not play differently from depth 2 on its own corpus at this precision. EARLIER: FIVE windows sealed 09-13 07:20 ET on the Air lane (seeds 13260910..13660910 vs vol96k): +0.0108 [-0.0144, +0.0360], tau 0.0116, MDE80 0.0360 -- crosses zero (not large), point BELOW the +0.015 extension line so NOT extended; the programme-best val_ce does not show up as play at this precision. ARCHITECTURE GRID row S, cell d4: --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the depth-2 h512 budget; same 144k corpus and recipe as volVOL-144k (0.61912); best epoch 13/16; the best val_ce of the programme (previous 0.60661) AND regret@4 0.0344 below the leader's 0.0381; offline only, val_ce does not order play</title></circle>
-<line x1="270.7" y1="259.0" x2="270.7" y2="209.3" class="ci ci5"/>
-<line x1="265.7" y1="259.0" x2="275.7" y2="259.0" class="ci ci5"/>
-<line x1="265.7" y1="209.3" x2="275.7" y2="209.3" class="ci ci5"/>
-<circle cx="270.7" cy="234.1" r="4.8" class="pt pt7 hit" tabindex="0" data-t="grid S-d4 on 176k (4 residual layers)  (0c40c591)&#10;trained 2026-09-13&#10;encoder v2 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.60636&#10;5 windows  +0.0104 [-0.0121, +0.0329]&#10;S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended&#10;&#10;FIVE windows sealed 09-13 15:12 ET on the cloud lane v5 (seeds 13260910..13660910 vs vol96k): +0.0000, +0.0067, +0.0029, +0.0231, +0.0173 (SE ~0.025); random effects +0.0104 [-0.0121, +0.0329], tau 0, Q 0.59/4, MDE80 0.0322 -- crosses zero (not large), point below the +0.015 extension line so NOT extended; the programme-best regret@4 does not show up as play at this precision, same as S-d4 at 144k (+0.0108). Offline: ARCHITECTURE GRID row S, cell d4 on the 176k corpus (Jerry 09-13 02:2x ET: a depth training with all of our data): volNEW-176k argv verbatim + --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the h512 budget; sealed 09-13 11:39 ET (seal check vs the volNEW-176k receipt: same 176,000 clusters / 25,388,708 records / split seed, config differs only in the depth fields); best epoch 17/20; val_ce 0.60636 is 0.0207 below volNEW-176k (0.62703, depth 2, same corpus) and 0.0007 ABOVE S-d4 at 144k (0.60570): at this parameter budget the extra 32k clusters (runK + runL, hybrid-bury teacher) buy nothing offline; regret@4 0.0337 and recall@4 0.726 are the best of the programme (leader 0.0381 / 0.683); the depth-only twin of Run A (A-d4-2h-176k, two heads, training from 11:49 ET); five windows vs vol96k on the cloud lane v5 from 12:2x ET" data-tr="2026-09-13"><title>grid S-d4 on 176k (4 residual layers)  (0c40c591)
+<line x1="274.2" y1="259.0" x2="274.2" y2="209.3" class="ci ci5"/>
+<line x1="269.2" y1="259.0" x2="279.2" y2="259.0" class="ci ci5"/>
+<line x1="269.2" y1="209.3" x2="279.2" y2="209.3" class="ci ci5"/>
+<circle cx="274.2" cy="234.1" r="4.8" class="pt pt7 hit" tabindex="0" data-t="grid S-d4 on 176k (4 residual layers)  (0c40c591)&#10;trained 2026-09-13&#10;encoder v2 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.60636&#10;5 windows  +0.0104 [-0.0121, +0.0329]&#10;S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended&#10;&#10;FIVE windows sealed 09-13 15:12 ET on the cloud lane v5 (seeds 13260910..13660910 vs vol96k): +0.0000, +0.0067, +0.0029, +0.0231, +0.0173 (SE ~0.025); random effects +0.0104 [-0.0121, +0.0329], tau 0, Q 0.59/4, MDE80 0.0322 -- crosses zero (not large), point below the +0.015 extension line so NOT extended; the programme-best regret@4 does not show up as play at this precision, same as S-d4 at 144k (+0.0108). Offline: ARCHITECTURE GRID row S, cell d4 on the 176k corpus (Jerry 09-13 02:2x ET: a depth training with all of our data): volNEW-176k argv verbatim + --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the h512 budget; sealed 09-13 11:39 ET (seal check vs the volNEW-176k receipt: same 176,000 clusters / 25,388,708 records / split seed, config differs only in the depth fields); best epoch 17/20; val_ce 0.60636 is 0.0207 below volNEW-176k (0.62703, depth 2, same corpus) and 0.0007 ABOVE S-d4 at 144k (0.60570): at this parameter budget the extra 32k clusters (runK + runL, hybrid-bury teacher) buy nothing offline; regret@4 0.0337 and recall@4 0.726 are the best of the programme (leader 0.0381 / 0.683); the depth-only twin of Run A (A-d4-2h-176k, two heads, training from 11:49 ET); five windows vs vol96k on the cloud lane v5 from 12:2x ET" data-tr="2026-09-13"><title>grid S-d4 on 176k (4 residual layers)  (0c40c591)
 trained 2026-09-13
 encoder v2 | width 330 | lr 3e-4 | 176k clusters
 val_ce 0.60636
@@ -2140,28 +2160,28 @@ val_ce 0.60636
 S-d4 cell on all the data: no CE gain over S-d4 at 144k (+0.0007), 0.0207 below volNEW-176k; five windows 09-13 not large (MDE80 0.0322), not extended
 
 FIVE windows sealed 09-13 15:12 ET on the cloud lane v5 (seeds 13260910..13660910 vs vol96k): +0.0000, +0.0067, +0.0029, +0.0231, +0.0173 (SE ~0.025); random effects +0.0104 [-0.0121, +0.0329], tau 0, Q 0.59/4, MDE80 0.0322 -- crosses zero (not large), point below the +0.015 extension line so NOT extended; the programme-best regret@4 does not show up as play at this precision, same as S-d4 at 144k (+0.0108). Offline: ARCHITECTURE GRID row S, cell d4 on the 176k corpus (Jerry 09-13 02:2x ET: a depth training with all of our data): volNEW-176k argv verbatim + --trunk-layers 4 --trunk-block residual --hidden 330, 610,704 params = the h512 budget; sealed 09-13 11:39 ET (seal check vs the volNEW-176k receipt: same 176,000 clusters / 25,388,708 records / split seed, config differs only in the depth fields); best epoch 17/20; val_ce 0.60636 is 0.0207 below volNEW-176k (0.62703, depth 2, same corpus) and 0.0007 ABOVE S-d4 at 144k (0.60570): at this parameter budget the extra 32k clusters (runK + runL, hybrid-bury teacher) buy nothing offline; regret@4 0.0337 and recall@4 0.726 are the best of the programme (leader 0.0381 / 0.683); the depth-only twin of Run A (A-d4-2h-176k, two heads, training from 11:49 ET); five windows vs vol96k on the cloud lane v5 from 12:2x ET</title></circle>
-<line x1="277.7" y1="272.0" x2="277.7" y2="224.1" class="ci ci5"/>
-<line x1="272.7" y1="272.0" x2="282.7" y2="272.0" class="ci ci5"/>
-<line x1="272.7" y1="224.1" x2="282.7" y2="224.1" class="ci ci5"/>
-<circle cx="277.7" cy="248.0" r="4.8" class="pt pt7 hit" tabindex="0" data-t="JS-M1-v5: JS-M1's recipe (policy head w 0.2, all root rows) at encoder v5  (13396527)&#10;trained 2026-09-20&#10;encoder v5 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.59691&#10;5 windows  -0.0021 [-0.0238, +0.0195]&#10;v32: as ONE package vs production on 5 fresh paired windows: null, MDE80 0.031, 65.6% ties; offline twin of JS-M1; v5 line closed (Jerry 09-20)" data-tr="2026-09-20"><title>JS-M1-v5: JS-M1's recipe (policy head w 0.2, all root rows) at encoder v5  (13396527)
+<line x1="281.2" y1="272.0" x2="281.2" y2="224.1" class="ci ci5"/>
+<line x1="276.2" y1="272.0" x2="286.2" y2="272.0" class="ci ci5"/>
+<line x1="276.2" y1="224.1" x2="286.2" y2="224.1" class="ci ci5"/>
+<circle cx="281.2" cy="248.0" r="4.8" class="pt pt7 hit" tabindex="0" data-t="JS-M1-v5: JS-M1's recipe (policy head w 0.2, all root rows) at encoder v5  (13396527)&#10;trained 2026-09-20&#10;encoder v5 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.59691&#10;5 windows  -0.0021 [-0.0238, +0.0195]&#10;v32: as ONE package vs production on 5 fresh paired windows: null, MDE80 0.031, 65.6% ties; offline twin of JS-M1; v5 line closed (Jerry 09-20)" data-tr="2026-09-20"><title>JS-M1-v5: JS-M1's recipe (policy head w 0.2, all root rows) at encoder v5  (13396527)
 trained 2026-09-20
 encoder v5 | width 330 | lr 3e-4 | 176k clusters
 val_ce 0.59691
 5 windows  -0.0021 [-0.0238, +0.0195]
 v32: as ONE package vs production on 5 fresh paired windows: null, MDE80 0.031, 65.6% ties; offline twin of JS-M1; v5 line closed (Jerry 09-20)</title></circle>
-<line x1="284.7" y1="279.5" x2="284.7" y2="227.5" class="ci ci5"/>
-<line x1="279.7" y1="279.5" x2="289.7" y2="279.5" class="ci ci5"/>
-<line x1="279.7" y1="227.5" x2="289.7" y2="227.5" class="ci ci5"/>
-<circle cx="284.7" cy="253.5" r="4.8" class="pt pt7 hit" tabindex="0" data-t="M1-v5: M1's recipe with encoder v5 (banker's own burial restored), 176k  (541b8df3)&#10;trained 2026-09-19&#10;encoder v5 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.59762&#10;5 windows  -0.0071 [-0.0306, +0.0164]&#10;M1's recipe at encoder v5 (kitty fix): offline twin null (val_ce +0.0002); v31 vs M1 (both + prior v3) 5w null, MDE80 0.034, ties 67%" data-tr="2026-09-19"><title>M1-v5: M1's recipe with encoder v5 (banker's own burial restored), 176k  (541b8df3)
+<line x1="288.2" y1="279.5" x2="288.2" y2="227.5" class="ci ci5"/>
+<line x1="283.2" y1="279.5" x2="293.2" y2="279.5" class="ci ci5"/>
+<line x1="283.2" y1="227.5" x2="293.2" y2="227.5" class="ci ci5"/>
+<circle cx="288.2" cy="253.5" r="4.8" class="pt pt7 hit" tabindex="0" data-t="M1-v5: M1's recipe with encoder v5 (banker's own burial restored), 176k  (541b8df3)&#10;trained 2026-09-19&#10;encoder v5 | width 330 | lr 3e-4 | 176k clusters&#10;val_ce 0.59762&#10;5 windows  -0.0071 [-0.0306, +0.0164]&#10;M1's recipe at encoder v5 (kitty fix): offline twin null (val_ce +0.0002); v31 vs M1 (both + prior v3) 5w null, MDE80 0.034, ties 67%" data-tr="2026-09-19"><title>M1-v5: M1's recipe with encoder v5 (banker's own burial restored), 176k  (541b8df3)
 trained 2026-09-19
 encoder v5 | width 330 | lr 3e-4 | 176k clusters
 val_ce 0.59762
 5 windows  -0.0071 [-0.0306, +0.0164]
 M1's recipe at encoder v5 (kitty fix): offline twin null (val_ce +0.0002); v31 vs M1 (both + prior v3) 5w null, MDE80 0.034, ties 67%</title></circle>
-<line x1="291.7" y1="287.6" x2="291.7" y2="219.7" class="ci ci5"/>
-<line x1="286.7" y1="287.6" x2="296.7" y2="287.6" class="ci ci5"/>
-<line x1="286.7" y1="219.7" x2="296.7" y2="219.7" class="ci ci5"/>
-<circle cx="291.7" cy="253.6" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)&#10;trained 2026-09-21&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59697&#10;5 windows  -0.0072 [-0.0379, +0.0235]&#10;gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud" data-tr="2026-09-21"><title>gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)
+<line x1="295.2" y1="287.6" x2="295.2" y2="219.7" class="ci ci5"/>
+<line x1="290.2" y1="287.6" x2="300.2" y2="287.6" class="ci ci5"/>
+<line x1="290.2" y1="219.7" x2="300.2" y2="219.7" class="ci ci5"/>
+<circle cx="295.2" cy="253.6" r="4.8" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)&#10;trained 2026-09-21&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59697&#10;5 windows  -0.0072 [-0.0379, +0.0235]&#10;gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud" data-tr="2026-09-21"><title>gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe  (3f83bfb7)
 trained 2026-09-21
 encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
@@ -2789,11 +2809,12 @@ encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
 5 windows  -0.0072 [-0.0379, +0.0235]
 gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud</title></circle>
-<circle cx="657.6" cy="262.1" r="4.2" class="pt pt1 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+<circle cx="657.6" cy="262.1" r="4.2" class="pt pt1 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
 trained 2026-09-22
 encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59900
-gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf</title></circle>
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
 <text x="395.4" y="361.0" class="slope s2 am">&#8722;0.0479 in one day</text>
 <line x1="413.4" y1="356.8" x2="668.0" y2="356.8" class="ref"/>
 <text x="668.0" y="348.8" class="reft" text-anchor="end">programme best, unbeaten since 14 Sep</text>
@@ -2846,7 +2867,7 @@ gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 
 
 <section>
   <h2 class="sec">4 &middot; Effect against the leader, by training day</h2>
-  <p class="cap">The same question on the only measurement that matters. 36 charted models have such a number; 33 do not. Above the line beats the leader.</p>
+  <p class="cap">The same question on the only measurement that matters. 37 charted models have such a number; 32 do not. Above the line beats the leader.</p>
   <div class="figure"><svg viewBox="0 0 880 430">
 <line x1="84" y1="338.0" x2="674" y2="338.0" class="grid"/>
 <text x="73" y="342.0" class="ax ar">-0.12</text>
@@ -2895,7 +2916,7 @@ gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 
 <text x="624.8" y="387" class="axs am">09-21</text>
 <text x="624.8" y="403" class="axs am">1</text>
 <text x="657.6" y="387" class="axs am">09-22</text>
-<text x="657.6" y="403" class="axs am">&#8212;</text>
+<text x="657.6" y="403" class="axs am">1</text>
 <text x="379" y="422" class="axl am">the day the model was trained</text>
 <text x="17" y="198" class="axl am" transform="rotate(-90 17 198)">effect vs the leader</text>
 <line x1="48.9" y1="125.8" x2="48.9" y2="66.8" class="ci ci2"/>
@@ -3260,6 +3281,15 @@ encoder v2 | width 330 | lr 3e-4 | 336k clusters
 val_ce 0.59697
 5 windows  -0.0072 [-0.0379, +0.0235]
 gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud</title></circle>
+<line x1="657.6" y1="124.1" x2="657.6" y2="-33.7" class="ci ci5"/>
+<line x1="651.6" y1="124.1" x2="663.6" y2="124.1" class="ci ci5"/>
+<line x1="651.6" y1="-33.7" x2="663.6" y2="-33.7" class="ci ci5"/>
+<circle cx="657.6" cy="45.3" r="5" class="pt pt7 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+trained 2026-09-22
+encoder v2 | width 330 | lr 3e-4 | 336k clusters
+val_ce 0.59900
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
 <text x="696" y="44" class="lgh">INSTRUMENT</text>
 <circle cx="702" cy="64" r="5" class="pt pt3"/><text x="715" y="68" class="lg">one 520-deal window</text>
 <circle cx="702" cy="86" r="5" class="pt pt2"/><text x="715" y="90" class="lg">ten windows</text>
@@ -3275,7 +3305,7 @@ gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v
 <text x="696" y="272" class="lgs">asked with a better</text>
 <text x="696" y="288" class="lgs">instrument.</text>
 <text x="696" y="304" class="lgs"></text>
-<text x="696" y="320" class="lgs">33 of 69 models have</text>
+<text x="696" y="320" class="lgs">32 of 69 models have</text>
 <text x="696" y="336" class="lgs">no point here at all.</text>
 </svg></div>
   <p class="cap">The 10 September cluster is the instrument changing, not the models improving:
@@ -3291,31 +3321,31 @@ gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v
   no playouts. One bar per arm, grouped by the form of the comparison: <b>card play</b> (the search alone vs the deployed
   JS&#8209;M1 package, 800 matched deals, a common opponent, not direct duels) and <b>served bot</b> (the same search served with
   the value&#8209;guided hybrid bury vs release 28 as served, five clean 520&#8209;cluster windows). Green clears zero; grey crosses it.</p>
-  <div class="figure"><svg viewBox="0 0 960 364">
-<line x1="210.6" y1="34" x2="210.6" y2="306" class="grid"/>
-<text x="210.6" y="325" class="ax am">-0.06</text>
-<line x1="261.4" y1="34" x2="261.4" y2="306" class="grid"/>
-<text x="261.4" y="325" class="ax am">-0.04</text>
-<line x1="312.1" y1="34" x2="312.1" y2="306" class="grid"/>
-<text x="312.1" y="325" class="ax am">-0.02</text>
-<line x1="362.9" y1="34" x2="362.9" y2="306" class="grid zero"/>
-<text x="362.9" y="325" class="ax am">+0.00</text>
-<line x1="413.6" y1="34" x2="413.6" y2="306" class="grid"/>
-<text x="413.6" y="325" class="ax am">+0.02</text>
-<line x1="464.4" y1="34" x2="464.4" y2="306" class="grid"/>
-<text x="464.4" y="325" class="ax am">+0.04</text>
-<line x1="515.1" y1="34" x2="515.1" y2="306" class="grid"/>
-<text x="515.1" y="325" class="ax am">+0.06</text>
-<line x1="565.9" y1="34" x2="565.9" y2="306" class="grid"/>
-<text x="565.9" y="325" class="ax am">+0.08</text>
-<line x1="616.6" y1="34" x2="616.6" y2="306" class="grid"/>
-<text x="616.6" y="325" class="ax am">+0.10</text>
-<line x1="667.3" y1="34" x2="667.3" y2="306" class="grid"/>
-<text x="667.3" y="325" class="ax am">+0.12</text>
-<line x1="718.1" y1="34" x2="718.1" y2="306" class="grid"/>
-<text x="718.1" y="325" class="ax am">+0.14</text>
+  <div class="figure"><svg viewBox="0 0 960 398">
+<line x1="210.6" y1="34" x2="210.6" y2="340" class="grid"/>
+<text x="210.6" y="359" class="ax am">-0.06</text>
+<line x1="261.4" y1="34" x2="261.4" y2="340" class="grid"/>
+<text x="261.4" y="359" class="ax am">-0.04</text>
+<line x1="312.1" y1="34" x2="312.1" y2="340" class="grid"/>
+<text x="312.1" y="359" class="ax am">-0.02</text>
+<line x1="362.9" y1="34" x2="362.9" y2="340" class="grid zero"/>
+<text x="362.9" y="359" class="ax am">+0.00</text>
+<line x1="413.6" y1="34" x2="413.6" y2="340" class="grid"/>
+<text x="413.6" y="359" class="ax am">+0.02</text>
+<line x1="464.4" y1="34" x2="464.4" y2="340" class="grid"/>
+<text x="464.4" y="359" class="ax am">+0.04</text>
+<line x1="515.1" y1="34" x2="515.1" y2="340" class="grid"/>
+<text x="515.1" y="359" class="ax am">+0.06</text>
+<line x1="565.9" y1="34" x2="565.9" y2="340" class="grid"/>
+<text x="565.9" y="359" class="ax am">+0.08</text>
+<line x1="616.6" y1="34" x2="616.6" y2="340" class="grid"/>
+<text x="616.6" y="359" class="ax am">+0.10</text>
+<line x1="667.3" y1="34" x2="667.3" y2="340" class="grid"/>
+<text x="667.3" y="359" class="ax am">+0.12</text>
+<line x1="718.1" y1="34" x2="718.1" y2="340" class="grid"/>
+<text x="718.1" y="359" class="ax am">+0.14</text>
 <text x="362.9" y="22" class="reft am">production parity</text>
-<text x="491" y="348" class="axl am">signed level utility per round vs production (above zero beats it)</text>
+<text x="491" y="382" class="axl am">signed level utility per round vs production (above zero beats it)</text>
 <text x="10" y="55.0" class="grp">card play</text>
 <line x1="469.4" y1="85.0" x2="695.3" y2="85.0" class="ci ci2"/>
 <line x1="469.4" y1="79.0" x2="469.4" y2="91.0" class="ci ci2"/>
@@ -3390,6 +3420,17 @@ val_ce 0.59760
 soft target (#496); served as the W64/K8 pv-search vs r28 (v34pv): 5w +0.049 clears zero narrowly; shortlist package (v30) 5w +0.0039 null</title></circle>
 <text x="222" y="293.0" class="row" text-anchor="end">soft-target</text>
 <text x="758.0" y="293.0" class="lab" text-anchor="start">+0.049 [+0.003, +0.095]</text>
+<line x1="350.2" y1="323.0" x2="563.3" y2="323.0" class="ci ci3"/>
+<line x1="350.2" y1="317.0" x2="350.2" y2="329.0" class="ci ci3"/>
+<line x1="563.3" y1="317.0" x2="563.3" y2="329.0" class="ci ci3"/>
+<circle cx="456.7" cy="323.0" r="5.4" class="pt pt1 hit" tabindex="0" data-t="gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)&#10;trained 2026-09-22&#10;encoder v2 | width 330 | lr 3e-4 | 336k clusters&#10;val_ce 0.59900&#10;5 windows  +0.0368 [-0.0054, +0.0791]&#10;gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running" data-tr="2026-09-22"><title>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start  (423836c7)
+trained 2026-09-22
+encoder v2 | width 330 | lr 3e-4 | 336k clusters
+val_ce 0.59900
+5 windows  +0.0368 [-0.0054, +0.0791]
+gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</title></circle>
+<text x="222" y="327.0" class="row" text-anchor="end">gen-4 run 4</text>
+<text x="758.0" y="327.0" class="lab" text-anchor="start">+0.037 [&#8722;0.005, +0.079]</text>
 </svg></div>
   <p class="cap">Card play: the soft head&#8217;s bar is its single pre&#8209;registered primary at 95%; the other four are the four&#8209;model family at
   98.75% per primary, and every pairwise contrast between heads spans zero, so no head is shown superior. Served bot: DL random effects
@@ -3630,7 +3671,7 @@ soft target (#496); served as the W64/K8 pv-search vs r28 (v34pv): 5w +0.049 cle
   bold when it is a multi-window readout, and every other measurement of that model sits underneath in small
   type. The badge names the instrument, and the interval must be read with that instrument&#8217;s power:
   <b>10w</b> is ten independent 520-cluster windows against vol96k (bit-identical weights to the deployed leader),
-  DerSimonian&#8211;Laird random effects, 95% interval, MDE80 about 0.023 on this page. A cell badged <b>5w</b> is a readout at that many windows, fewer than ten (MDE80 about 0.033): a null there means not large, never no effect (15 arms so far).
+  DerSimonian&#8211;Laird random effects, 95% interval, MDE80 about 0.023 on this page. A cell badged <b>5w</b> is a readout at that many windows, fewer than ten (MDE80 about 0.033): a null there means not large, never no effect (16 arms so far).
   <b>1w paired</b> is one 520-cluster window against the W32 leader on identical deals, 95% paired interval,
   MDE80 about 0.070: its &#8220;resolves&#8221; verdicts were overturned when the same arms got ten windows and are
   marked superseded. <b>1w MC&#8209;LCB</b> is one window against the old production bot, not the leader, so its
@@ -3673,7 +3714,7 @@ soft target (#496); served as the W64/K8 pv-search vs r28 (v34pv): 5w +0.049 cle
 <tr class="hit" tabindex="0" data-tr="2026-09-18" data-t="gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)  d2514e6e&#10;gen-3-warm (#421): first WARM START; PERFECT-INFO head read +0.0993 (relabelled 09-19); in play NULL vs production, MDE80 0.031&#10;&#10;GENERATION 3, WARM-STARTED = the first rung in the loop that was not trained from fresh random weights (Jerry 09-18: &quot;train gen3 with warm up and including all self play data&quot;). EXACTLY ONE VARIABLE CHANGES from the gen-3 it replaces: --init from JS-M1 a5248cc5, plus the exposure flag it forces. Same 15 corpora, same seed, same architecture, same lr, same epochs, same policy rows -- so gen-3-warm minus gen-3-from-scratch WOULD isolate initialisation -- but gen-3-from-scratch was never trained (this run replaced it), so no matched from-scratch control exists; gen-1 and gen-2 differ from this run in corpus as well as initialisation and are NOT that control. All four weight groups inherit (trunk 28 tensors, value head, search head, policy head) plus aux; nothing frozen; --init-lr-scale at the 1.0 default. 653,532 params, parameter-matched with JS-M1, gen-1 and gen-2, NOT compute-matched. EXPOSURE: 0 deals excluded and that is CORRECT -- the split is a stable sha256(seed|deal_key) rank, so JS-M1&#x27;s fit deals land in train, its selection-only deals may stay in val, its test deals stay in test; the held-out sets are NOT reduced. Consequence to carry with the result: this run&#x27;s val/test contains deals JS-M1 never fit on, so its val_ce is even less comparable across generations than the others; the FIXED external holdouts remain the comparable instrument. THE RUN IS UNSEALED: the process was SIGKILLed during the candidate pass (I had started two 10 GB rsyncs against a 16 GB machine and weighed I/O but not that phase&#x27;s memory profile), so all 19 epochs completed and best.pt at epoch 15 survived, but there is NO RECEIPT. UNDER PERFECT INFORMATION -- relabelled 2026-09-19 after Codex&#x27;s audit, confirmed from source: the head-alone harness fed root_tensors(live round), whose world block carries all four hands and the burial, so these reads are upper bounds under privilege and NOT public-policy strength -- the head reads +0.0993 [+0.0856, +0.1126] vs SmartBot on 8,000 fresh deals -- and UNDER PUBLIC INFORMATION (09-19, K=8 worlds through production&#x27;s sampler per decision, 8,000 deals, seed0 20000, receipt e4aca0dc) +0.0463 [+0.0334, +0.0593], under half the privileged figure and still above zero -- six times JS-M1&#x27;s +0.0159 measured the same way (a ratio between two PRIVILEGED margins against SmartBot, not a statement about playing strength), where gen-2 -- the same data kind trained from scratch -- is -0.0684, resolvably WORSE than SmartBot. Read across the ladder: from scratch gen-1 -0.0093 and gen-2 -0.0684, warm-started +0.0993. That is CONSISTENT with initialisation mattering more than data, but it is not an isolation: the from-scratch rungs sit on smaller corpora and the matched gen-3-from-scratch has not been run. IN PLAY, HOWEVER, IT IS A NULL. Lane v28 on perf, sealed 2026-09-18 18:14 ET, 5 paired windows x 520 clusters, seeds 17260910..17660910, capped 300 s, threshold 1,000, arm and control on the SAME tree (/root/claude-main-8 @ bf70cb81) and host, both checkpoints verified BY HASH, run as two phases on shared seeds so the contrast is paired. gen-3-warm minus PRODUCTION: levels +0.0109 [-0.0106, +0.0323] on the normal, RE SE 0.01094, tau 0, Q 2.37/4df, I2 0%, MDE80 0.0307 -- CROSSES ZERO. Five windows are FOUR degrees of freedom, so the honest interval is t(4): [-0.0195, +0.0413], which crosses zero more widely and does not change the verdict. Attacker points +0.0728, SE 0.2363, MDE80 0.6620; levels and points AGREE IN SIGN, and points carries 0.32x the level scale&#x27;s signal-to-noise. Triage: the level point +0.0109 is below the +0.015 extension line, so this is NOT extended to ten windows. Paired-difference ties 66.7% on levels against 22.0% on points -- the tie rate still dominates and is still the thing worth attacking. READING: a SIX-FOLD improvement in the policy head as a standalone player did not produce a resolvable gain in play at MDE80 0.031. That dissociation is the result. It is consistent with two other measurements from the same day -- top-64 shortlist recall does not predict standalone play, and the same head used as MC&#x27;s ROLLOUT policy is -0.1769 [-0.2200, -0.1319], resolvably WORSE than the heuristic it replaces. The head is being improved on an axis the search does not currently convert. Readout archived at ~/shengji-archive/2026-09-13/readouts/v28-gen3warm-vs-prod-20260918.txt with SHA256SUMS. LANE v29 THEN ISOLATED THE PRIOR, because v28 changed the value net AND the prior together and could not say whether a better prior buys anything. Both arms run PRODUCTION&#x27;S value net (a5248cc5); only the admission prior differs -- gen-3-warm d2514e6e against release 28&#x27;s own. Cloud, sealed 2026-09-19 03:10 ET, 5 paired windows x 520 clusters, fresh seeds 17760910..18160910 so no deal is reused from v28. Levels +0.0020 [-0.0002, +0.0042], RE SE 0.00112, tau 0, Q 1.82/4df, I2 0%, MDE80 0.0031; t(4) [-0.0011, +0.0051]. Attacker points +0.0446, SE 0.0276, both scales AGREE IN SIGN. NULL -- and this lane is roughly TEN TIMES more sensitive than v28 (MDE80 0.0031 against 0.0307), so it is not a shrug but a tight bound: swapping in a head six times better as a standalone player moves play by at most ~0.005 levels. THE MECHANISM IS IN THE TIE RATE: 2,580 of 2,600 paired deals -- 99.2% -- are IDENTICAL. Changing only the prior changes almost no game at all, which is what makes the interval so narrow and is itself the finding: the shortlist the prior admits already contains what the search needs, so a better prior is inframarginal. Readout archived at ~/shengji-archive/2026-09-13/readouts/v29-prior-isolation-20260919.txt with SHA256SUMS." title="tap for the full record"><td><b>gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)</b><br><span class="mono null">d2514e6e</span></td><td class="n">2026-09-18</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">256k</td><td class="n">36,239,068</td><td class="n">0.59650</td><td class="n">&mdash;</td><td class="n pos"><b>+0.0109 [&#8209;0.0106, +0.0323] <span class="pill inst">5w</span></b></td><td class="null note">gen-3-warm (#421): first WARM START; PERFECT-INFO head read +0.0993 (relabelled 09-19); in play NULL vs production, MDE80 0.031</td></tr>
 <tr class="" data-tr="2026-09-19"><td><b>soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0</b><br><span class="mono null">8ecd4fea</span></td><td class="n">2026-09-19</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">256k</td><td class="n">36,239,068</td><td class="n">0.59760</td><td class="n">&mdash;</td><td class="n pos"><b>+0.0489 [+0.0033, +0.0945] <span class="pill inst">5w</span></b></td><td class="null note">soft target (#496); served as the W64/K8 pv-search vs r28 (v34pv): 5w +0.049 clears zero narrowly; shortlist package (v30) 5w +0.0039 null</td></tr>
 <tr class="" data-tr="2026-09-21"><td><b>gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe</b><br><span class="mono null">3f83bfb7</span></td><td class="n">2026-09-21</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">336k</td><td class="n">47,535,516</td><td class="n">0.59697</td><td class="n">&mdash;</td><td class="n null"><b>&#8209;0.0072 [&#8209;0.0379, +0.0235] <span class="pill inst">5w</span></b></td><td class="null note">gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud</td></tr>
-<tr class="" data-tr="2026-09-22"><td><b>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start</b><br><span class="mono null">423836c7</span></td><td class="n">2026-09-22</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">336k</td><td class="n">47,535,516</td><td class="n">0.59900</td><td class="n">&mdash;</td><td class="n null">&mdash;</td><td class="null note">gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf</td></tr>
+<tr class="" data-tr="2026-09-22"><td><b>gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start</b><br><span class="mono null">423836c7</span></td><td class="n">2026-09-22</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">336k</td><td class="n">47,535,516</td><td class="n">0.59900</td><td class="n">&mdash;</td><td class="n pos"><b>+0.0368 [&#8209;0.0054, +0.0791] <span class="pill inst">5w</span></b></td><td class="null note">gen-4 run 4 (#538): soft head on the full corpus; rank regret 0.0800 flat; served as the pv-search vs r28 (v34r4): 5w +0.037 crosses zero; ext running</td></tr>
 <tr class="" data-tr="2026-09-19"><td><b>KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs</b><br><span class="mono null">3ca2ec90</span></td><td class="n">2026-09-19</td><td>v5</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">24k</td><td class="n">3,387,384</td><td class="n">0.70088</td><td class="n">0.0187</td><td class="n null">&mdash;</td><td class="null note">v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale</td></tr>
 <tr class="" data-tr="2026-09-19"><td><b>KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)</b><br><span class="mono null">970695e8</span></td><td class="n">2026-09-19</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">24k</td><td class="n">3,387,384</td><td class="n">0.70130</td><td class="n">0.0186</td><td class="n null">&mdash;</td><td class="null note">twin control for KITTY-v5-pilot; its own split (limit 1600 clusters per corpus x 15), not comparable to the 176k rows</td></tr>
 <tr class="hit" tabindex="0" data-tr="2026-09-17" data-t="gen-2: gen-1&#x27;s recipe with runJS2 and runJS3 added (the first run the #421 gating rule permits)  61625eec&#10;gen-2 (#421): 20.5% self-play; vs production NULL, MDE80 0.031, point negative; vs gen-1 also null: sampling alone does not compound&#10;&#10;GENERATION 2 = the first run the #421 gating rule permits. gen-1&#x27;s recipe unchanged with runJS2 and runJS3 added: 48,000 clusters of JS-M1-teacher self-play across runJS1-3, so 224,000 deals and 32,032,200 value records against gen-1&#x27;s 192,000 and 27,602,516. The new corpus is 20.5% of the policy set against gen-1&#x27;s 7.9% -- 2.6x the dilution, and the first rung where the pre-registered rule says a screen can resolve a plausible effect. Trained on the Mini 09-17 07:07 -&gt; 14:36 ET, early-stopped at best epoch 8 of 11 run (JS-M1 17 of 20, gen-1 14 of 17): more rows per epoch, so patience on val_ce fires sooner. 653,532 params, parameter-matched with JS-M1 and gen-1, NOT compute-matched. val_ce 0.60998 IS CHARTED BUT MEASURED ON ITS OWN SPLIT (hollow dot, off the fitted lines), for the same reason as gen-1: the new corpora added ~10% of themselves to val, so val is 22,400 deals here against gen-1&#x27;s 19,200 and JS-M1&#x27;s 17,600. The monotone rise 0.59573 -&gt; 0.60060 -&gt; 0.60998 is measured on three nested, growing sets and the auxiliary points MAE rises with it (11.66 -&gt; 11.85 -&gt; 12.03) for three different models, which is the signature of set composition rather than model quality; on the FIXED holdouts the ordering does not hold (luna 0.84967 -&gt; 0.84962 -&gt; 0.84181, gen-2 best). OFFLINE, on the four FIXED external holdouts (identical rows, candidate digests verified equal), this is the FIRST generation to move in one direction -- top-1 roomlog 0.4656 -&gt; 0.4755 -&gt; 0.4796, luna 0.4567 -&gt; 0.4552 -&gt; 0.4664, highn 0.3746 -&gt; 0.3788 -&gt; 0.3793, best of the three on three of four; ranking regret roomlog 0.0705 and luna 0.0776, both best. gen-1 by contrast was a wash with no consistent direction. NO INTERVALS ARE ATTACHED to those point estimates and none should be quoted. The AUXILIARY points head degraded (roomlog MAE 14.590 -&gt; 14.827, luna 16.884 -&gt; 17.767) but the PRIMARY outcome head -- the one the search plays with -- is mixed, best of the three on luna (0.8418) and between the other two on roomlog; an earlier note of mine said the value head got worse, which named the wrong head. IN PLAY, SEALED 2026-09-18 00:11 ET under the pre-registration merged as #488 BEFORE these weights existed (lane v27 on the Mini, 15 windows x 520 clusters, seeds 16760910..17160910, capped 300 s, threshold 1,000, all three arms on the SAME tree and host so the contrasts are paired). BOTH CONTRASTS ARE NULL AND BOTH POINTS ARE NEGATIVE. CONTROL B, gen-2 minus PRODUCTION (the cumulative contrast, and the only one the triage rule reads): levels -0.0035 [-0.0252, +0.0183], RE SE 0.0111, tau 0, Q 0.29/4df, I2 0%, MDE80 0.0311 -- CROSSES ZERO; attacker points -0.3122, SE 0.2339, t(4) [-0.9615, +0.3371], p 0.254. CONTROL A, gen-2 minus GEN-1 (the #421 rule-2 incremental contrast): levels -0.0087 [-0.0301, +0.0126], tau 0, Q 0.10/4df, MDE80 0.0305; attacker points -0.4712, SE 0.2313, t(4) [-1.1133, +0.1709], p 0.111. THE POINTS INTERVALS ARE t(4), NOT NORMAL, AND THE DIFFERENCE DECIDES THE READING: on a normal approximation control A&#x27;s points read [-0.9245, -0.0179] and would have EXCLUDED zero, i.e. gen-2 resolvably WORSE than gen-1; five windows give four degrees of freedom, and the correct t(4) interval crosses zero at p 0.111. Nothing here is resolvable. The pre-registered points hypothesis required the interval to exclude zero in the POSITIVE direction; it does not. Levels and points AGREE IN SIGN on both contrasts, which gen-1&#x27;s two designs did not. Triage: control B&#x27;s level point -0.0035 is far below the +0.015 extension line, so this is NOT extended to ten windows. Tie rates are unchanged and still dominate: 65.2% of paired deals tie on levels against 17.2% on points. READING, per #421 rule 4: this is the FIRST INFORMATIVE NULL -- the first rung at or above 20% new-teacher share -- so the question moves from &#x27;is the corpus big enough&#x27; to whether the TEACHER must be STRONGER rather than merely more sampled. Readout archived at ~/shengji-archive/2026-09-13/readouts/v27-gen2-readout.txt." title="tap for the full record"><td><b>gen-2: gen-1's recipe with runJS2 and runJS3 added (the first run the #421 gating rule permits)</b><br><span class="mono null">61625eec</span></td><td class="n">2026-09-17</td><td>v2</td><td class="n">330</td><td class="n">3e&#8209;4</td><td class="n">224k</td><td class="n">32,032,200</td><td class="n">0.60998</td><td class="n">&mdash;</td><td class="n null"><b>&#8209;0.0035 [&#8209;0.0252, +0.0183] <span class="pill inst">5w</span></b></td><td class="null note">gen-2 (#421): 20.5% self-play; vs production NULL, MDE80 0.031, point negative; vs gen-1 also null: sampling alone does not compound</td></tr>

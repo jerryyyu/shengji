@@ -150,12 +150,38 @@ def known_widths():
     return {int(k) for k in re.findall(r"(\d+)\s*:", par)}
 
 
+def served_search_reads():
+    """models.W64_SEARCH_VS_PRODUCTION as (ck, form, text) triples (empty if the file has none)."""
+    g = {}
+    exec(compile(open(MODELS).read(), str(MODELS), "exec"), g)
+    return list(g.get("W64_SEARCH_VS_PRODUCTION", []))
+
+
 def check_data(rows, table_only, series):
     """Every row well-formed; refuse to render inconsistent data."""
     errs = []
     for r in rows:
         if len(r["note"]) > NOTE_LIMIT:
             errs.append(f"{r['ck']}: note is {len(r['note'])} chars (> {NOTE_LIMIT}); move the history into RECORD")
+    # A "served bot" read of the policy/value search (chart 4b) changes the whole search, not just
+    # the head; the mc/w32/ten cells are the shortlist-proposer instrument (charts 1b/2b/4 and
+    # their counts), so the same figure in one of them confounds model-only conclusions with a
+    # search-recipe change (Codex HOLD on #603).
+    for ck, form, txt in served_search_reads():
+        if form != "served bot":
+            continue
+        pt = float(re.match(r"\s*([-+][\d.]+)", txt).group(1))
+        for r in rows:
+            if r["ck"] != ck:
+                continue
+            for f in ("mc", "w32", "ten"):
+                try:
+                    cell = parse_cell(r[f], f) if r[f] else None
+                except ValueError:
+                    continue
+                if cell is not None and abs(cell[0] - pt) < 6e-4:      # chart 4b texts are 3-decimal, cells 4-decimal
+                    errs.append(f"{ck}: the served pv-search read {txt.strip()} is in the {f!r} cell; it belongs to chart 4b only "
+                                "(the mc/w32/ten cells are the shortlist-proposer instrument)")
     seen = set()
     widths = known_widths()
     for r in rows:

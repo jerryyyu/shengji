@@ -147,11 +147,12 @@ def test_policy_rows_extract_reads_the_pv_means(data_policy, tmp_path):
     assert with_means, "no policy row carries the search's means"
 
 
-def test_a_high_scoring_draw_never_displaces_productions_admission(data_policy, monkeypatch):
-    """Codex's deterministic witness on #597: anchor S2, normal H2, forced draw DX with
-    preferences [0, 1, 99] at K=2 must give production_ballot [S2, H2] and ballot
-    [S2, H2, DX] -- the draw is appended, never admitted in place of a top-K candidate;
-    without a draw the same scores admit [S2, DX] (DX wins on score, as production would)."""
+def test_a_draw_never_changes_productions_admission(data_policy, monkeypatch):
+    """Codex's witnesses on #597.  (a) A draw that is ALREADY in the served scored set
+    competes on its own score exactly as production ranks it: anchor S2, H2, DX with
+    preferences [0, 1, 99] at K=2 admits [S2, DX] with or without the draw, and the ballot is
+    [S2, DX].  (b) A draw MISSING from the capped set is appended and masked: production's
+    admission stays [S2, H2] and the ballot is [S2, H2, DX]."""
     import numpy as np
     from types import SimpleNamespace
     from shengji.ai.registry import make_bot
@@ -161,21 +162,45 @@ def test_a_high_scoring_draw_never_displaces_productions_admission(data_policy, 
     actions = [["S2"], ["H2"], ["DX"]]
     prefs = np.array([0.0, 1.0, 99.0])
 
-    def fresh(draw):
+    def fresh(draw, forced):
         bot = make_bot(data_policy, seed=1)
         bot.__class__ = trajectory.pv_trajectory_class(type(bot))
         bot._trajectory_init(random.Random(0))
         bot.candidates = 2
         bot._draw_keys = {action_key(["DX"])} if draw else set()
+        bot._forced_draw_keys = {action_key(["DX"])} if forced else set()
         return bot
 
-    with_draw = fresh(True)
-    assert with_draw._admit(None, 0, actions, prefs, 0) == [0, 1, 2]
-    assert with_draw.last_production_ballot == [["S2"], ["H2"]]
-    assert with_draw.last_ballot == [["S2"], ["H2"], ["DX"]]
-    no_draw = fresh(False)
+    no_draw = fresh(False, False)
     assert no_draw._admit(None, 0, actions, prefs, 0) == [0, 2]
-    assert no_draw.last_production_ballot == [["S2"], ["DX"]] == no_draw.last_ballot
+    in_set = fresh(True, False)                                   # (a) present in the scored set
+    assert in_set._admit(None, 0, actions, prefs, 0) == [0, 2]
+    assert in_set.last_production_ballot == [["S2"], ["DX"]] == in_set.last_ballot
+    forced = fresh(True, True)                                    # (b) forced in, masked
+    assert forced._admit(None, 0, actions, prefs, 0) == [0, 1, 2]
+    assert forced.last_production_ballot == [["S2"], ["H2"]]
+    assert forced.last_ballot == [["S2"], ["H2"], ["DX"]]
+
+
+def test_a_missing_draw_is_forced_into_a_capped_scored_set_only(data_policy, monkeypatch):
+    """_legal enumerates the served scored set (anchor only) and appends a draw only when
+    the capped set lacks it; a complete enumeration lacking a legal draw refuses."""
+    from types import SimpleNamespace
+    from shengji.ai.registry import make_bot
+    bot = make_bot(data_policy, seed=1)
+    bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+    bot._trajectory_init(random.Random(0))
+    bot.EXPLORE_RATE, bot.EXPLORE_K = 1.0, 1
+    monkeypatch.setattr(trajectory, "sample_off_ballot", lambda rnd, seat, k, rng, exclude: ([["DX"]], 5))
+    seen = {}
+    def fake_legal(self, rnd, seat, must_include):
+        seen["must_include"] = [list(a) for a in must_include]
+        return SimpleNamespace(kind="lead", actions=[["S2"], ["H2"]], count=9, complete=False)
+    monkeypatch.setattr(pv.PVSearchBot, "_legal", fake_legal)          # the served layer under the mixin
+    legal = bot._legal(None, 0, [["S2"]])
+    assert seen["must_include"] == [["S2"]]                        # the served scored set: anchor only
+    assert [list(a) for a in legal.actions] == [["S2"], ["H2"], ["DX"]] and legal.complete is False
+    assert bot._forced_draw_keys == {action_key(["DX"])} and bot.last_exploration["added"] == [["DX"]]
 
 
 def test_value_units_are_the_half_integer_signed_level_not_pt0():

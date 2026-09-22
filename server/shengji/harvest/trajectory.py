@@ -801,6 +801,7 @@ class PVTrajectoryMixin:
         self.last_exploration = None
         self.last_legal = None
         self._draw_keys: set = set()
+        self._forced_draw_keys: set = set()
 
     def decide_play(self, rnd, seat):
         self._trajectory_reset()
@@ -826,8 +827,23 @@ class PVTrajectoryMixin:
                 self._draw_keys = {action_key(a) for a in added}
                 must_include.extend(list(a) for a in added)
         self.last_exploration = exploration
-        # the search's scored set (its own cap), the draw forced in
-        return super()._legal(rnd, seat, must_include)
+        # The search's scored set is enumerated exactly as served (anchor forced in). A draw
+        # that is already in that set competes for admission on its own score, as production
+        # would rank it; only a draw MISSING from the capped set is appended here and masked
+        # out of the admission, so production's list is never changed by exploration
+        # (Codex HOLDs on #597).
+        legal = super()._legal(rnd, seat, [list(a) for a in must_include if action_key(a) not in self._draw_keys])
+        self._forced_draw_keys = set()
+        if self._draw_keys:
+            present = {action_key(a) for a in legal.actions}
+            missing = [list(a) for a in must_include if action_key(a) in self._draw_keys and action_key(a) not in present]
+            if missing:
+                if legal.complete:
+                    raise TrajectoryError("a legal exploration draw is missing from a complete enumeration")
+                self._forced_draw_keys = {action_key(a) for a in missing}
+                legal = LegalSet(kind=legal.kind, actions=[list(a) for a in legal.actions] + missing,
+                                 count=legal.count, complete=legal.complete)
+        return legal
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
         # Production's admission is taken over the scored set WITHOUT the draw: the draw's
@@ -835,18 +851,19 @@ class PVTrajectoryMixin:
         # displace one of production's own top-K (Codex HOLD on #597); it is then
         # appended, so the ballot is production's list plus the draw, priced like the rest.
         draw = [i for i, a in enumerate(actions) if action_key(a) in self._draw_keys]
+        forced = [i for i, a in enumerate(actions) if action_key(a) in getattr(self, "_forced_draw_keys", set())]
         masked = preferences
-        if draw:
+        if forced:
             masked = np.array(preferences, dtype=np.float64, copy=True)
-            masked[draw] = -np.inf
-            if anchor_index in draw:
+            masked[forced] = -np.inf
+            if anchor_index in forced:
                 raise TrajectoryError("the exploration draw cannot be the anchor")
         base = [int(i) for i in super()._admit(rnd, seat, actions, masked, anchor_index)]
-        # a masked draw can only reach the base list as filler when fewer than K non-draw
-        # actions exist; production's admission over the draw-less set is the rest
-        base = [i for i in base if i not in draw]
+        # a forced (masked) draw can only reach the base list as filler when fewer than K
+        # scored actions exist; production's admission over the served scored set is the rest
+        base = [i for i in base if i not in forced]
         chosen = list(base)
-        for i in draw:
+        for i in draw:                       # every draw is priced: appended unless admitted already
             if i not in chosen:
                 chosen.append(i)
         self.last_production_ballot = [list(actions[i]) for i in base]

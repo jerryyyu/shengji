@@ -45,7 +45,6 @@ from ..ai.memory import Memory
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
-from .policy_prior import flat_input, root_tensors
 from .policy_value_search import PolicyValueBot
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -151,7 +150,9 @@ class PVSearchBot(PolicyValueBot):
 
     def scores(self, rnd, seat, actions, worlds):
         """As the harness, with the package's encoder version threaded through."""
-        from .policy_prior import CARD_INDEX, N_CARDS
+        # lazy: policy_prior -> harvest.rebuild -> registry -> (env registration) -> this module
+        # is a cycle when the rows extractor is imported first with SHENGJI_PV_* set
+        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
         x = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat, self.version),
                                  self.version)
                       for hands, buried in worlds]).astype(np.float32)

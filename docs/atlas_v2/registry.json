@@ -250,7 +250,7 @@
    "box": "cloud",
    "seed0": 23292910,
    "clusters": "16,000 (armed)",
-   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. Two guards, after Codex found the first version racy (#613): each store waits for its predecessor's DONE line, then takes an atomic mkdir lock held for the run. Cloud keeps runPV3 and runPV4."
+   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. Queue guards, after Codex found two races on #613: a store waits for its predecessor's DONE line, then takes an atomic mkdir lock held for the run; on Perf it also yields to the whole SCREEN LANE \u2014 the lane's own atomic lock and its supervisor process \u2014 because a lane runs its windows one at a time and a child-only scan would start in the gap between them. Dry runs write a throwaway seed registry, so they neither pollute the corpus registry nor collide with themselves. ARBITRATION IS START-TIME ONLY: whoever starts first holds the box, so a screen launched while a store is running waits for it (up to ~3.4 h) unless the store is stopped, and --resume continues it. New screens still need coordinating rather than relying on the gates."
   },
   {
    "name": "runPV4",
@@ -264,7 +264,7 @@
    "box": "Perf",
    "seed0": 23324910,
    "clusters": "16,000 (armed)",
-   "status": "Moved to Perf at 17:5x ET after Jerry approved the belief-evidence cleanup (Codex freed ~261 GiB; Perf now 288 GB). Armed behind lane v34r1; first store on that box."
+   "status": "Moved to Perf at 17:5x ET after Jerry approved the belief-evidence cleanup (Codex freed ~261 GiB; Perf now 288 GB). Armed behind lane v34r1; first store on that box. Yields to the running lane v34r1 by the screen lock and supervisor, not just by its workers."
   },
   {
    "name": "runPV6",

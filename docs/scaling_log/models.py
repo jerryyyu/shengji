@@ -71,6 +71,8 @@ M = [
  "","","5w +0.0489 [+0.0033, +0.0945]","soft target (#496); served as the W64/K8 pv-search vs r28 (v34pv): 5w +0.049 clears zero narrowly; shortlist package (v30) 5w +0.0039 null"),
 ("gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe","3f83bfb7","2026-09-21","v2",330,"3e-4","336k","47,535,516","0.59697","",
  "","","5w -0.0072 [-0.0379, +0.0235]","gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud"),
+("gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start","423836c7","2026-09-22","v2",330,"3e-4","336k","47,535,516","0.59900","",
+ "","","","gen-4 run 4 (#538): soft head on the full corpus; best epoch 17/20; rank regret 0.0800 (init 0.0808) flat; served pv-search screen v34r4 on Perf"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",

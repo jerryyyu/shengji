@@ -61,11 +61,13 @@ class PolicyValueBot(PolicyWorldBot):
 
     def decide_play(self, rnd, seat):
         self.last_decision_record = None
+        self.last_world_diversity = None
         started = time.perf_counter()
         anchor = HeuristicBot().decide_play(rnd, seat)
         legal = enumerate_legal(rnd, seat, cap=self.cap, must_include=[anchor])
         actions = list(legal.actions)
         worlds, attempts = self._worlds(rnd, seat)
+        diversity = self.last_world_diversity
         preferences = self.scores(rnd, seat, actions, worlds).mean(axis=0)
         # The anchor occupies one slot. Ties follow enumeration order. Compare
         # card multisets because the heuristic need not return canonical order.
@@ -82,6 +84,7 @@ class PolicyValueBot(PolicyWorldBot):
         self.last_decision_record = {
             'schema': 'policy-admit-value-mean-v1', 'worlds': len(worlds),
             'sample_attempts': attempts, 'actions': len(actions), 'cap': self.cap,
+            'world_diversity': diversity,
             'legal_count': legal.count, 'legal_complete': legal.complete,
             'admitted_indices': chosen, 'value_means': means.tolist(),
             'selected_index': chosen[winner], 'value_batches': batches,

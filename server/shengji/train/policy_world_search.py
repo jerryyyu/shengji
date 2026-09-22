@@ -17,6 +17,18 @@ from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import CWVPriorAdmissionBot, load_prior_checked, root_clone
 
 
+def world_diversity(worlds):
+    """Count distinct sampled deals, not independent samples or effective size.
+
+    Seat ownership and buried cards matter; within-hand ordering does not.
+    Keep repeated worlds in scoring with their original multiplicity. This
+    diagnostic never inspects the actual hidden deal or changes sampler RNG.
+    """
+    unique = len({(tuple(tuple(sorted(hand)) for hand in hands),
+                   tuple(sorted(buried))) for hands, buried in worlds})
+    return {'unique_worlds': unique, 'duplicate_worlds': len(worlds) - unique}
+
+
 class PolicyWorldBot(HeuristicBot):
     """Heuristic declare/bury; batched mean policy scores for card play.
 
@@ -35,6 +47,7 @@ class PolicyWorldBot(HeuristicBot):
         self.worlds, self.cap = worlds, cap
         self.sampler = MCBot(seed=seed)
         self.last_decision_record = None
+        self.last_world_diversity = None
 
     @classmethod
     def from_checkpoint(cls, path, sha256, **kwargs):
@@ -46,6 +59,7 @@ class PolicyWorldBot(HeuristicBot):
         return cls(adapter._prior_log_odds, **kwargs)
 
     def _worlds(self, rnd, seat):
+        self.last_world_diversity = None
         mem = Memory(rnd, seat, own_kitty=getattr(self.sampler, 'BANKER_KITTY', True))
         # Production owns attempt bounds, conservation checks, and canonical
         # card ordering. Do not duplicate its private sampler pipeline here.
@@ -57,6 +71,7 @@ class PolicyWorldBot(HeuristicBot):
         if any(rnd.ordering.eff_suit(c) in mem.voids[s]
                for hands, _ in worlds for s in range(4) if s != seat for c in hands[s]):
             raise RuntimeError('policy world sampling violates public voids')
+        self.last_world_diversity = world_diversity(worlds)
         return worlds, attempts
 
     def scores(self, rnd, seat, actions, worlds):
@@ -75,6 +90,7 @@ class PolicyWorldBot(HeuristicBot):
 
     def decide_play(self, rnd, seat):
         self.last_decision_record = None
+        self.last_world_diversity = None
         start = time.perf_counter()
         fallback = super().decide_play(rnd, seat)
         legal = enumerate_legal(rnd, seat, cap=self.cap, must_include=[fallback])
@@ -86,6 +102,7 @@ class PolicyWorldBot(HeuristicBot):
         self.last_decision_record = {
             'schema': 'policy-world-mean-v1', 'worlds':len(sampled),
             'sample_attempts':attempts, 'actions':len(actions), 'cap':self.cap,
+            'world_diversity': self.last_world_diversity,
             'legal_count':legal.count, 'legal_complete':legal.complete,
             'selected_index':index, 'selected_mean_score':float(means[index]),
             'seconds':time.perf_counter()-start,

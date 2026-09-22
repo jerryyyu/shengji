@@ -26,6 +26,188 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_depth_fixed_qualification_and_hold(monkeypatch):
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    kw = dict(suite=launcher.DEPTH_SUITE, qualify=True, production=Path('/prod'))
+    plan = launcher.commands(*args, **kw)
+    assert [n for n, _ in plan] == [a[0] for a in launcher.DEPTH_ARMS]
+    for (_, cmd), mode in zip(plan, ('policy-value', 'policy-heuristic-lookahead', 'policy-lookahead')):
+        for flag, value in {'--worlds': '64', '--candidates': '8', '--deals': '12',
+                            '--workers': '6', '--seed0': '626700000', '--mode': mode,
+                            '--control': 'production-pv-r29', '--production-checkpoint': '/prod'}.items():
+            assert cmd[cmd.index(flag)+1] == value
+    for change in ({'qualify': False}, {'production': None}, {'production_worlds': 64}):
+        with pytest.raises(ValueError):
+            launcher.commands(*args, **{**kw, **change})
+    assert launcher.DEPTH_HOLD is False
+    monkeypatch.setattr(launcher, 'DEPTH_HOLD', True)
+    with pytest.raises(RuntimeError, match='held pending'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+                       '--checkpoint', '/missing', '--out', '/missing',
+                       '--suite', launcher.DEPTH_SUITE, '--qualify', '--run'])
+
+
+def test_depth_import_origin_guard(monkeypatch, tmp_path):
+    expected = [str(tmp_path / 'server/shengji/train' / name)
+                for name in ('policy_world_duel.py', 'policy_lookahead.py')]
+    monkeypatch.setattr(launcher.subprocess, 'check_output', lambda *a, **kw: json.dumps(expected))
+    launcher.verify_depth_import(Path('/python'), tmp_path, {})
+    expected[1] = '/wrong/policy_lookahead.py'
+    with pytest.raises(RuntimeError, match='outside frozen'):
+        launcher.verify_depth_import(Path('/python'), tmp_path, {})
+
+
+def test_depth_screen_released_changes_only_population_and_hold_still_refuses(monkeypatch):
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    original = launcher.commands(*args, suite=launcher.DEPTH_SUITE, qualify=True,
+                                 production=Path('/prod'))
+    screen = launcher.commands(*args, suite=launcher.DEPTH_SCREEN, production=Path('/prod'))
+    for (name, old), (new_name, new) in zip(original, screen):
+        assert name == new_name
+        old[old.index('--seed0')+1] = '626710000'
+        old[old.index('--deals')+1] = '260'
+        assert old == new
+    assert launcher.DEPTH_SCREEN_HOLD is False
+    monkeypatch.setattr(launcher, 'DEPTH_SCREEN_HOLD', True)
+    with pytest.raises(RuntimeError, match='budget approval'):
+        launcher.main(['--source', '/missing', '--python', '/missing', '--checkpoint', '/missing',
+                       '--out', '/missing', '--suite', launcher.DEPTH_SCREEN, '--run'])
+    with pytest.raises(ValueError, match='full-screen'):
+        launcher.commands(*args, suite=launcher.DEPTH_SCREEN, qualify=True)
+
+
+@pytest.fixture
+def depth_screen_main(monkeypatch, isolated_main, tmp_path):
+    import hashlib
+    args, output = isolated_main
+    prod = tmp_path / 'prod'
+    prod.write_bytes(b'production')
+    monkeypatch.setattr(launcher, 'DEPTH_PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher, 'verify_depth_import', lambda *a: None)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+                        lambda cmd, **kw: launcher.DEPTH_SCREEN_SOURCE if 'rev-parse' in cmd else '')
+    recipes = {name: dict(source_git_sha=launcher.DEPTH_SCREEN_SOURCE,
+                         checkpoint_sha256=launcher.CHECKPOINT, seed0=626710000, deals=260,
+                         worlds=64, workers=6, control='production-pv-r29', decision_timeout_seconds=300,
+                         policy=dict(mode=mode, candidates=8),
+                         control_effective=dict(checkpoint_sha256=launcher.DEPTH_PRODUCTION_SHA256))
+               for name, _, mode, _ in launcher.DEPTH_ARMS}
+    freeze = tmp_path / 'recipes.json'
+    freeze.write_text(json.dumps(recipes))
+    return (args + ['--suite', launcher.DEPTH_SCREEN, '--production-checkpoint', str(prod),
+                    '--depth-recipes', str(freeze)], output, freeze)
+
+
+def test_depth_screen_dry_plan_and_recipe_refusal(monkeypatch, depth_screen_main, capsys):
+    args, output, freeze = depth_screen_main
+    monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
+    assert launcher.main(args) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt['launch_hold'] is False
+    assert receipt['authorization'] == 'Jerry approved multi-ply screen 2026-09-22; #599'
+    assert receipt['total_arm_timeout_seconds'] == 21600
+    assert receipt['expected_pairs_per_arm'] == 260
+    assert not output.exists()
+    recipes = json.loads(freeze.read_text())
+    recipes['CURRENT_TRICK']['seed0'] += 1
+    freeze.write_text(json.dumps(recipes))
+    with pytest.raises(ValueError, match='disagrees'):
+        launcher.main(args)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('failure', [None, 'arm', 'readout'])
+def test_depth_screen_terminal_preserves_artifacts(monkeypatch, depth_screen_main, failure):
+    args, output, freeze = depth_screen_main
+    monkeypatch.setattr(launcher, 'DEPTH_SCREEN_HOLD', False)  # Test-only release.
+    seen = []
+    def run(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == launcher.DEPTH_SCREEN_SECONDS[len(seen)]
+        arm = Path(cmd[cmd.index('--out')+1])
+        arm.mkdir()
+        seen.append(arm.name)
+        (arm / 'partial.txt').write_text('preserve')
+        if failure == 'arm' and len(seen) == 2:
+            raise RuntimeError('arm failure')
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=260, complete=260, errors=[])))
+    def reader(python, source, out, recipes, env):
+        assert recipes == json.loads(freeze.read_text())
+        (out / 'readout.json').write_text(json.dumps({'family_complete': failure != 'readout'}))
+        if failure == 'readout':
+            raise RuntimeError('readout failure')
+    monkeypatch.setattr(launcher, 'run_arm', run)
+    monkeypatch.setattr(launcher, 'depth_screen_readout', reader)
+    if failure:
+        with pytest.raises(RuntimeError, match='failure'):
+            launcher.main(args + ['--run'])
+    else:
+        assert launcher.main(args + ['--run']) == 0
+    terminal = json.loads((output / 'terminal.json').read_text())
+    assert terminal['status'] == ('refused' if failure else 'complete')
+    assert len(seen) == (2 if failure == 'arm' else 3)
+    assert terminal['completed_arms'] == [a[0] for a in launcher.DEPTH_ARMS[:1 if failure == 'arm' else 3]]
+    assert (output / seen[-1] / 'partial.txt').read_text() == 'preserve'
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
+@pytest.mark.parametrize('complete', [False, True])
+def test_depth_reader_subprocess_preserves_diagnostic(monkeypatch, tmp_path, complete):
+    def fake(cmd, **kw):
+        assert cmd[-2] == str(tmp_path / 'source/server/shengji/train/policy_depth_readout.py')
+        assert json.loads(kw['input']) == {'frozen': 'test'}
+        assert kw['timeout'] == 120
+        return json.dumps(dict(family_complete=complete))
+    monkeypatch.setattr(launcher.subprocess, 'check_output', fake)
+    if complete:
+        launcher.depth_screen_readout(Path('/python'), tmp_path / 'source', tmp_path, {'frozen': 'test'}, {})
+    else:
+        with pytest.raises(RuntimeError, match='unclean'):
+            launcher.depth_screen_readout(Path('/python'), tmp_path / 'source', tmp_path, {'frozen': 'test'}, {})
+    assert json.loads((tmp_path / 'readout.json').read_text())['family_complete'] == complete
+
+
+@pytest.mark.parametrize('fail_second', [False, True])
+def test_depth_terminal_and_stop_on_failure(monkeypatch, isolated_main, tmp_path, fail_second):
+    import hashlib
+    args, output = isolated_main
+    prod = tmp_path / 'prod'
+    prod.write_bytes(b'production')
+    monkeypatch.setattr(launcher, 'DEPTH_PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher, 'DEPTH_HOLD', False)
+    monkeypatch.setattr(launcher, 'verify_depth_import', lambda *a: None)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+                        lambda cmd, **kw: launcher.DEPTH_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 3600
+        assert kw['env']['SHENGJI_REQUIRE_VOIDS'] == '1'
+        assert 'SHENGJI_FAST' not in kw['env']
+        arm = Path(cmd[cmd.index('--out')+1])
+        arm.mkdir()
+        seen.append(arm.name)
+        if fail_second and len(seen) == 2:
+            (arm / 'partial.txt').write_text('retained')
+            raise subprocess.TimeoutExpired(cmd, 3600)
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', launcher.DEPTH_SUITE, '--qualify', '--run',
+                   '--production-checkpoint', str(prod)]
+    if fail_second:
+        with pytest.raises(subprocess.TimeoutExpired):
+            launcher.main(call)
+    else:
+        assert launcher.main(call) == 0
+    terminal = json.loads((output / 'terminal.json').read_text())
+    assert terminal['status'] == ('refused' if fail_second else 'complete')
+    assert terminal['completed_arms'] == [a[0] for a in launcher.DEPTH_ARMS[:1 if fail_second else 3]]
+    assert len(seen) == (2 if fail_second else 3)
+    if fail_second:
+        assert (output / 'EXTRA_TRICK_HEURISTIC/partial.txt').read_text() == 'retained'
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_joint_production_qualification_commands_and_refusals():
     args = (Path('/python'), Path('/m1'), Path('/out'))
     kw = dict(suite='joint-production-qualify', qualify=True,

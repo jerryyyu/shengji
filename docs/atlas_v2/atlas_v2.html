@@ -1,0 +1,94 @@
+<title>Shengji Atlas v2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+:root{--bg:#f6f4ee;--ink:#1c1b18;--sub:#6a665b;--rule:#d9d4c7;--card:#fffdf8;--accent:#8a3d2a;--good:#2f6b3a;--bad:#a23b2c;--null:#7a7468;--wait:#4d5f8a;--chipbg:#eee9dd}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#161512;--ink:#ebe6da;--sub:#a49e90;--rule:#3a372f;--card:#1f1d18;--accent:#e0866c;--good:#7cc287;--bad:#e08a7a;--null:#9b958a;--wait:#9fb0dc;--chipbg:#2a2721}}
+:root[data-theme="dark"]{--bg:#161512;--ink:#ebe6da;--sub:#a49e90;--rule:#3a372f;--card:#1f1d18;--accent:#e0866c;--good:#7cc287;--bad:#e08a7a;--null:#9b958a;--wait:#9fb0dc;--chipbg:#2a2721}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;margin:0}
+main{max-width:1120px;margin:0 auto;padding:32px 24px 64px}
+h1{font:600 40px/1.1 Fraunces,Georgia,serif;margin:0 0 6px;text-wrap:balance}
+h2{font:600 22px/1.2 Fraunces,Georgia,serif;margin:40px 0 12px;text-wrap:balance}
+h4{margin:12px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub)}
+.lede{color:var(--sub);max-width:70ch}
+.sub,small{color:var(--sub)} .small{font-size:13px}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--rule);padding:16px 18px} .card.production{border-left:4px solid var(--accent)}
+.card ul{margin:4px 0 0 18px;padding:0} .card header{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--chipbg);font-size:12px;letter-spacing:.03em}
+.chip.production,.chip.sealed{color:var(--good)} .chip.running,.chip.pending{color:var(--wait)} .chip.planned{color:var(--sub)}
+.good{color:var(--good)} .bad{color:var(--bad)} .null{color:var(--null)} .wait{color:var(--wait)}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14px} th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--rule)} th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--sub)} td.num,th.num{text-align:right;white-space:nowrap}
+.figure{background:var(--card);border:1px solid var(--rule);padding:12px}
+svg .zero{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3} svg .tick{stroke:var(--rule)} svg .lab{fill:var(--ink);font:12px "IBM Plex Sans",sans-serif} svg .sub{fill:var(--sub);font:11px "IBM Plex Sans",sans-serif} svg .name{font-weight:500} svg .name.ctx{fill:var(--sub)}
+svg .ci{stroke-width:3} svg .ci.good{stroke:var(--good)} svg .ci.null{stroke:var(--null)} svg .ci.bad{stroke:var(--bad)} svg .ci.ctx{opacity:.55}
+svg .pt.good{fill:var(--good)} svg .pt.null{fill:var(--null)} svg .pt.bad{fill:var(--bad)} svg .pt.ctx{opacity:.55} svg .pt.pending{fill:none;stroke:var(--wait);stroke-width:1.5}
+.foot{margin-top:40px;color:var(--sub);font-size:13px;border-top:1px solid var(--rule);padding-top:12px}
+a{color:var(--accent)}
+</style>
+<main>
+<h1>Shengji Atlas v2</h1>
+<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> (29, then 30). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="https://claude.ai/code/artifact/8bb3e7d8-38c3-4488-acc2-4736ec11038f">old atlas</a> and the <a href="https://claude.ai/code/artifact/cfccd7fc-e9c6-4c30-915c-2cdf310c2db2">old scaling page</a>, frozen.</p>
+
+<h2>Production baseline</h2>
+<div class="cards"><article class="card superseded"><header><span class="chip superseded">release 29 · superseded</span> <span class="sub">2026-09-22 00:29 ET → 09:13 ET</span></header><p class="mono small">pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e</p><p>policy/value search: policy head admits 8 of the legal actions over 64 sampled worlds, value head prices them, no playouts; value-guided hybrid bury on the same package; 3 s / 2 s budgets</p><p class="sub">head 8ecd4fea · package soft-8ecd4fea.npz (sha256 ccade130…)</p><h4>Evidence</h4><ul><li>card play vs the release-28 package, 800 matched deals, one primary: <b class="num">+0.086 [+0.042, +0.131]</b> <span class="sub">(#553, atlas row 45)</span></li><li>same search on fresh deals (ladder base arm): <b class="num">+0.122 [+0.079, +0.164]</b> <span class="sub">(#589, row 52)</span></li><li>served bot vs release 28 as served, five clean windows: <b class="num">+0.049 [+0.003, +0.095]</b> <span class="sub">(lane v34pv, row 51)</span></li></ul><h4>Caveats</h4><ul class="sub"><li>W128 and W256 not shown to help (both primaries vs W64 span zero, rows 53–54)</li><li>about 6% of banker burys fell back to the heuristic (#606, diagnostic-set rate)</li></ul></article>
+<article class="card production"><header><span class="chip production">release 30 · production</span> <span class="sub">2026-09-22 09:13 ET</span></header><p class="mono small">pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e</p><p>release 29 + #607: the hybrid bury keeps the incumbent once instead of refusing when the generator repeats it</p><p class="sub">head 8ecd4fea · package soft-8ecd4fea.npz (sha256 ccade130…), unchanged</p><h4>Evidence</h4><ul><li>serving smoke on the exact package, 40 server turns (bury 0.14 s, plays 0.04–0.09 s): <b class="num">PASS</b> <span class="sub">(release30/smoke-release30.json)</span></li><li>/healthz after deploy: the release-29 name, pv_search block, rooms 0: <b class="num">PASS</b> <span class="sub">(09:13 ET)</span></li></ul><h4>Caveats</h4><ul class="sub"><li>image deployment-01M34KWRW4XWJWC6DCCYENFXTF (sha256:ea40b4d44b3f…), main 4e006561 (#607); fly.toml unchanged; rollback = the release-29 image</li><li>strength evidence is release 29&#x27;s: the fix changes only the ~6% of banker burys that used to fall back to the heuristic (diagnostic-set rate); no new screen yet</li><li>Jerry 09-22 09:3x ET: every screen from here compares against release 30</li></ul></article></div>
+
+<h2>Screens against the current release</h2>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Context rows (lighter) are reads against release 28, kept so the baseline's own margin stays visible next to the new contrasts.</p>
+<div class="figure"><svg viewBox="0 0 980 262" width="100%" role="img" aria-label="Screens against the current production release, point and 95% interval">
+<line x1="506.5" y1="28" x2="506.5" y2="232" class="zero"/>
+<text x="506.5" y="22" class="lab" text-anchor="middle">production parity</text>
+<line x1="330.0" y1="232" x2="330.0" y2="238" class="tick"/><text x="330.0" y="252" class="lab" text-anchor="middle">-0.06</text>
+<line x1="388.8" y1="232" x2="388.8" y2="238" class="tick"/><text x="388.8" y="252" class="lab" text-anchor="middle">-0.04</text>
+<line x1="447.6" y1="232" x2="447.6" y2="238" class="tick"/><text x="447.6" y="252" class="lab" text-anchor="middle">-0.02</text>
+<line x1="565.3" y1="232" x2="565.3" y2="238" class="tick"/><text x="565.3" y="252" class="lab" text-anchor="middle">+0.02</text>
+<line x1="624.1" y1="232" x2="624.1" y2="238" class="tick"/><text x="624.1" y="252" class="lab" text-anchor="middle">+0.04</text>
+<line x1="682.9" y1="232" x2="682.9" y2="238" class="tick"/><text x="682.9" y="252" class="lab" text-anchor="middle">+0.06</text>
+<line x1="741.8" y1="232" x2="741.8" y2="238" class="tick"/><text x="741.8" y="252" class="lab" text-anchor="middle">+0.08</text>
+<line x1="800.6" y1="232" x2="800.6" y2="238" class="tick"/><text x="800.6" y="252" class="lab" text-anchor="middle">+0.10</text>
+<text x="320" y="72.0" class="lab name main" text-anchor="end">v34r5 · gen-4 run 4 head (423836c7) served as …</text>
+<text x="320" y="86.0" class="sub" text-anchor="end">vs release 30 as served</text>
+<rect x="501.5" y="63.0" width="10" height="10" class="pt pending" transform="rotate(45 506.5 68.0)"/>
+<text x="838" y="72.0" class="lab">running</text>
+<text x="320" y="116.0" class="lab name main" text-anchor="end">depth-screen · soft head 8ecd4fea with one extra tric…</text>
+<text x="320" y="130.0" class="sub" text-anchor="end">vs release-30 card-play control (frozen ide</text>
+<rect x="501.5" y="107.0" width="10" height="10" class="pt pending" transform="rotate(45 506.5 112.0)"/>
+<text x="838" y="116.0" class="lab">running</text>
+<text x="320" y="160.0" class="lab name ctx" text-anchor="end">v34r4 · gen-4 run 4 head served (release-29 fo…</text>
+<text x="320" y="174.0" class="sub" text-anchor="end">vs release 28 as served</text>
+<line x1="550.6" y1="156.0" x2="706.5" y2="156.0" class="ci good ctx"/>
+<circle cx="630.0" cy="156.0" r="5" class="pt good ctx"/>
+<text x="838" y="160.0" class="lab num">+0.042 [+0.015, +0.068]</text>
+<text x="320" y="204.0" class="lab name ctx" text-anchor="end">v34pv · release-29 candidate served</text>
+<text x="320" y="218.0" class="sub" text-anchor="end">vs release 28 as served</text>
+<line x1="515.3" y1="200.0" x2="785.9" y2="200.0" class="ci good ctx"/>
+<circle cx="650.6" cy="200.0" r="5" class="pt good ctx"/>
+<text x="838" y="204.0" class="lab num">+0.049 [+0.003, +0.095]</text>
+</svg></div>
+<div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>
+<tr><td class="mono">v34r5</td><td>gen-4 run 4 head (423836c7) served as pv-search W64/K8 + hybrid bury</td><td>release 30 as served</td><td>served bot · 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects</td><td class="mono">23960910..24360910 (5), ext 24460910..24860910</td><td class="num">—<br><span class="chip wait">pending</span></td><td><span class="chip running">running</span><br><small>relaunched 09:17 ET on the release-30 tree 4e006561 (Perf); ~11:45 ET for five windows</small></td><td>a matched-window, common-opponent contrast against release 30 (each served policy vs the same MC-LCB opponents on the same seeds; not direct duels) — what lane v34r4 could not give; both arms carry release 30&#x27;s served bury</td></tr>
+<tr><td class="mono">depth-screen</td><td>soft head 8ecd4fea with one extra trick of lookahead (heuristic continuation; policy continuation with 1 world)</td><td>release-30 card-play control (frozen identifier production-pv-r29: pv-search W64/K8, 3 s budget; identical to release 30&#x27;s card play since #607 changes only the hybrid bury and this harness uses shared heuristic bury)</td><td>card play · 260 mirrored deals × 3 arms, joint bootstrap, two primaries at Bonferroni 97.5%</td><td class="mono">626710000..626710259</td><td class="num">—<br><span class="chip wait">pending</span></td><td><span class="chip running">running</span><br><small>Codex launched 09:11:55 ET on cloud (service codex-depth-screen-20260922, launcher aa80652b, runtime 06999b0d); first arm sealed 260/260; ~12:45 ET; 6 h ceiling</small></td><td>Codex packet #599/#601, PASSed 09-22 09:1x ET; reader policy_depth_readout</td></tr>
+</tbody></table></div>
+<h4>Context · how the baseline was established (vs release 28)</h4>
+<div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>
+<tr><td class="mono">v34r4</td><td>gen-4 run 4 head served (release-29 form)</td><td>release 28 as served</td><td>served bot · ten 520-cluster windows</td><td class="mono"></td><td class="num">+0.042 [+0.015, +0.068]<br><span class="chip good">clears zero</span></td><td><span class="chip sealed">sealed</span></td><td>beats the OLD production; not a contrast with release 29 · row 55</td></tr>
+<tr><td class="mono">v34pv</td><td>release-29 candidate served</td><td>release 28 as served</td><td>served bot · five clean windows</td><td class="mono"></td><td class="num">+0.049 [+0.003, +0.095]<br><span class="chip good">clears zero</span></td><td><span class="chip sealed">sealed</span></td><td>the release gate read · row 51</td></tr>
+</tbody></table></div>
+
+<h2>Models of the era</h2>
+<p class="sub">val_ce is calibration; the search consumes ranking, so rank regret and the screens above are what decide.</p>
+<div class="tablewrap"><table><thead><tr><th>model</th><th>checkpoint</th><th>date</th><th>recipe</th><th class="num">val_ce</th><th class="num">rank regret</th><th>status</th></tr></thead><tbody>
+<tr><td>soft head (release 29)</td><td class="mono">8ecd4fea</td><td class="mono">2026-09-19</td><td>gen-3-warm&#x27;s recipe, search values as the policy target (T=1, w=1), 256k</td><td class="num">0.5976</td><td class="num">—</td><td>production</td></tr>
+<tr><td>gen-4 run 1</td><td class="mono">3f83bfb7</td><td class="mono">2026-09-21</td><td>JS-M1 warm start, hard targets, all 20 stores (336k)</td><td class="num">0.5970</td><td class="num">0.0797</td><td>sealed</td></tr>
+<tr><td>gen-4 run 4</td><td class="mono">423836c7</td><td class="mono">2026-09-22</td><td>soft targets on all 20 stores (336k), JS-M1 warm start</td><td class="num">0.5990</td><td class="num">0.0800</td><td>sealed · v34r5 running</td></tr>
+<tr><td>gen-4 run 3</td><td class="mono">—</td><td class="mono">2026-09-22</td><td>grid trunk d3 c44 warm from JS-G1, soft targets, all 20 stores</td><td class="num">0.5658</td><td class="num">—</td><td>training · epoch 5/20 (val_ce so far) · seal ~03:30 ET 09-23</td></tr>
+<tr><td>gen-4 run 2</td><td class="mono">—</td><td class="mono">—</td><td>residual depth 6, soft targets, all 20 stores</td><td class="num">—</td><td class="num">—</td><td>armed behind run 3</td></tr>
+</tbody></table></div>
+
+<h2>Data generation on the search</h2>
+<div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>status</th></tr></thead><tbody><tr><td class="mono">runPV1</td><td>cloud</td><td class="mono">23260910</td><td>stopped 05:34 ET: 15,078/16,000 clusters, 922 failed on #606; unresumable; regeneration runPV1r planned after the depth screen · regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561</td></tr><tr><td class="mono">runPV2</td><td>Perf</td><td class="mono">23276910</td><td>stopped 08:39 ET at 12,925/16,000 to free Perf for v34r5; regeneration runPV2r planned on cloud · regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561</td></tr></tbody></table></div>
+
+<p class="foot">Built 2026-09-22 09:38 EDT from registry.json by build_v2.py · 2 screens vs the current release, 2 context reads, 5 models · rows 1–55 and every pre-release-29 model live there, frozen</p>
+</main>

@@ -113,8 +113,16 @@ class CWVBuryMixin:
         # super call, not a reconstructed/canonicalised equivalent.
         candidates[0] = list(incumbent)
         keys = [tuple(sorted(candidate)) for candidate in candidates]
+        # bury_candidates() builds its ballot around the SOURCE bot's own incumbent.
+        # When that differs from this wrapper's incumbent (the play bot's heuristic),
+        # the wrapper's action may already sit in the ballot -- 6% of diagnostic deals
+        # (#606) -- and refusing the decision made every data-gen cluster on such a
+        # deal fail and every served bury on it fall back to the heuristic.  The
+        # candidate SET is the same either way: keep the literal incumbent at slot 0
+        # and drop the generator's copy, preserving the order of the rest.
         if keys[0] in keys[1:]:
-            raise BuryPolicyError("bury candidate generator duplicated incumbent")
+            candidates = [candidates[0]] + [c for c, k in zip(candidates[1:], keys[1:]) if k != keys[0]]
+            keys = [keys[0]] + [k for k in keys[1:] if k != keys[0]]
         if len(set(keys)) != len(keys):
             raise BuryPolicyError("bury candidate generator returned duplicates")
         return candidates

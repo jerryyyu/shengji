@@ -275,3 +275,42 @@ def test_final_value_batch_crossing_the_deadline_is_a_fallback(monkeypatch, adva
         assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"] is True
         assert record["value_batches"] == 1 and record["played"] == played
         assert bot.sampler.rng.getstate() != before        # the search consumed the stream
+
+
+# ---------------------------------------- pickling (the screen's deadline worker IPC)
+
+def test_served_bots_pickle_and_behave_identically_after_unpickling(package):
+    """`screen_deadline._snapshot` pickles the bot state (``vars(bot)`` minus the evaluator)
+    per move; the NumPy packages hold read-only mapping-proxy weights that deep-copy but
+    did not pickle (lane v34pv aborted on it).  Both served bots' states must round-trip,
+    the revived models must stay read-only, and their forwards must be bit-identical."""
+    import pickle
+    from shengji.ai.cwv_policy import shared_evaluator
+    from shengji.train.cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
+
+    def snapshot(bot):
+        return {k: v for k, v in vars(bot).items() if k != "evaluator"}   # what the worker sends
+
+    path, sha = package
+    bot = pv.make_pv_search_bot(path, sha256=sha, seed=5, **SMALL)
+    X = np.zeros((2, 833), dtype=np.float32)
+    predict = pickle.loads(pickle.dumps(bot.predict))
+    assert isinstance(predict, pv.NumpyPriorPredict) and predict.sha256 == sha and predict.version == 2
+    np.testing.assert_array_equal(predict(X), bot.predict(X))
+    state = pickle.loads(pickle.dumps(snapshot(bot)))
+    assert state["predict"].sha256 == sha
+    prior_bot = CWVPriorAdmissionBot(shared_evaluator(path, threads=1, max_batch=16, encoding="mlp-static"),
+                                     seed=1, prior=CWVPriorAdmissionConfig(path, sha))
+    revived = CWVPriorAdmissionBot.__new__(CWVPriorAdmissionBot)
+    vars(revived).update(pickle.loads(pickle.dumps(snapshot(prior_bot))))
+    assert revived._prior_kind == prior_bot._prior_kind and revived._prior_net is not prior_bot._prior_net
+    for name in type(revived._prior_net)._PROXIED:                 # joint MLP or standalone prior
+        proxy = getattr(revived._prior_net, name)
+        assert type(proxy).__name__ == "mappingproxy" and all(not a.flags.writeable for a in proxy.values())
+        for array in proxy.values():                               # bytes-backed: cannot be re-opened
+            with pytest.raises(ValueError):
+                array.setflags(write=True)
+    np.testing.assert_array_equal(revived._prior_log_odds(X), prior_bot._prior_log_odds(X))
+    model = pickle.loads(pickle.dumps(bot.evaluator.model)) if hasattr(bot.evaluator, "model") else None
+    if model is not None:
+        assert all(not a.flags.writeable for a in model._weights.values())

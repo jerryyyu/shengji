@@ -82,38 +82,21 @@ def _worlds(bot: Any, rnd: Any, seat: int, count: int, label: str, check_budget=
     return worlds, attempts
 
 
-class CWVBuryBot(CWVShortlistBot):
-    """CWVShortlistBot with an explicitly selected DEV bury arm.
-
-    ``MC_BURY`` remains false.  The independent helper bots own all bury
-    sampling and rollout counters, so the inherited bot's play RNG and state
-    are not consumed by this wrapper.
+class CWVBuryMixin:
+    """The DEV bury arms (heuristic / mc / hybrid) as a mixin over ANY play bot
+    that exposes ``self.evaluator`` (a complete-world value evaluator) and
+    ``self.seed``, and whose next ``decide_bury`` in the MRO is the heuristic
+    incumbent.  The concrete classes are `CWVBuryBot` (the shortlist, release
+    27/28) and `pv_search_policy.PVSearchBuryBot` (the policy/value search,
+    release 29); the bury search itself is identical in both -- the independent
+    helper bots own all bury sampling and rollout counters, so the play bot's
+    RNG and state are not consumed.  The class must set ``bury_arm``,
+    ``bury_config`` and ``bury_serving_budget_seconds`` before the first call;
+    ``_bury_rng`` names the RNG whose state the budget fallback restores.
     """
 
-    def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
-                 reuse_successors=True, bury_config=None, serving_budget_seconds=None,
-                 **play_kwargs):
-        if arm not in _ARMS:
-            raise BuryPolicyError(f"unknown bury arm {arm!r}")
-        if config is None:
-            config = CWVShortlistConfig(
-                worlds=32, selection_worlds=30, alternatives=4,
-                batch_size=128, uniform=False)
-        # ``play_kwargs`` reach the play class next in the MRO (the prior
-        # admission bot's ``prior=``, `cwv_prior_admission.CWVPriorBuryBot`);
-        # the plain shortlist accepts none, so a stray key still fails loudly.
-        super().__init__(evaluator, seed=seed, config=config,
-                         reuse_successors=reuse_successors, **play_kwargs)
-        self.bury_arm = arm
-        self.serving_budget_seconds = _serving_budget(serving_budget_seconds)
-        self.bury_config = (CWVBuryConfig() if bury_config is None
-                            else bury_config)
-        if not isinstance(self.bury_config, CWVBuryConfig):
-            raise TypeError("bury_config must be a CWVBuryConfig")
-        # Explicitly document the invariant even if a future parent changes a
-        # class default: this wrapper must never enter MCBot's bury search.
-        if self.MC_BURY:
-            raise BuryPolicyError("CWV bury wrapper requires MC_BURY == False")
+    def _bury_rng(self):
+        return self.rng
 
     def _source_bot(self):
         bot = make_bot("mc-s0-report-lcb",
@@ -142,7 +125,7 @@ class CWVBuryBot(CWVShortlistBot):
         return None if snapshot is None else dict(snapshot())
 
     def decide_bury(self, rnd, seat):
-        if self.serving_budget_seconds is None:
+        if self.bury_serving_budget_seconds is None:
             return self._decide_bury(rnd, seat)
         # Only valid banker decisions can fall back. Never hide a bad caller
         # or return an unchecked action to the engine.
@@ -153,10 +136,11 @@ class CWVBuryBot(CWVShortlistBot):
         incumbent = list(super().decide_bury(rnd, seat))
         if len(incumbent) != 8 or Counter(incumbent) - Counter(rnd.hands[seat]):
             raise BuryPolicyError("heuristic fallback is not a legal eight-card bury")
-        before = self.rng.getstate()
+        rng = self._bury_rng()
+        before = rng.getstate()
 
         def check_budget():
-            if time.perf_counter() - started >= self.serving_budget_seconds:
+            if time.perf_counter() - started >= self.bury_serving_budget_seconds:
                 raise BuryBudgetExceeded("bury serving budget expired")
 
         try:
@@ -166,13 +150,13 @@ class CWVBuryBot(CWVShortlistBot):
             # Synchronous unwind: no abandoned worker/thread, no partially
             # scored choice, and no partial evidence mislabeled as MC targets.
             # BaseException (cancellation/interrupt) is deliberately not caught.
-            self.rng.setstate(before)
+            rng.setstate(before)
             self.last_bury_record = {
                 "schema": "cwv-bury-fallback-v1", "arm": self.bury_arm,
                 "action": list(incumbent),
                 "reason": "budget" if isinstance(exc, BuryBudgetExceeded) else "search-error",
                 "error_class": type(exc).__name__,
-                "budget_seconds": self.serving_budget_seconds,
+                "budget_seconds": self.bury_serving_budget_seconds,
                 "elapsed_seconds": time.perf_counter() - started,
                 "work_complete": False,
             }
@@ -302,6 +286,41 @@ class CWVBuryBot(CWVShortlistBot):
             },
         }
         return list(candidates[picked])
+
+
+class CWVBuryBot(CWVBuryMixin, CWVShortlistBot):
+    """CWVShortlistBot with an explicitly selected DEV bury arm (`CWVBuryMixin`).
+
+    ``MC_BURY`` remains false.  ``serving_budget_seconds`` is kept as the
+    public name of the bury budget for the shipped records and tests;
+    ``bury_serving_budget_seconds`` is the same value under the mixin's name.
+    """
+
+    def __init__(self, evaluator, *, seed=0, config=None, arm="heuristic",
+                 reuse_successors=True, bury_config=None, serving_budget_seconds=None,
+                 **play_kwargs):
+        if arm not in _ARMS:
+            raise BuryPolicyError(f"unknown bury arm {arm!r}")
+        if config is None:
+            config = CWVShortlistConfig(
+                worlds=32, selection_worlds=30, alternatives=4,
+                batch_size=128, uniform=False)
+        # ``play_kwargs`` reach the play class next in the MRO (the prior
+        # admission bot's ``prior=``, `cwv_prior_admission.CWVPriorBuryBot`);
+        # the plain shortlist accepts none, so a stray key still fails loudly.
+        super().__init__(evaluator, seed=seed, config=config,
+                         reuse_successors=reuse_successors, **play_kwargs)
+        self.bury_arm = arm
+        self.serving_budget_seconds = _serving_budget(serving_budget_seconds)
+        self.bury_serving_budget_seconds = self.serving_budget_seconds
+        self.bury_config = (CWVBuryConfig() if bury_config is None
+                            else bury_config)
+        if not isinstance(self.bury_config, CWVBuryConfig):
+            raise TypeError("bury_config must be a CWVBuryConfig")
+        # Explicitly document the invariant even if a future parent changes a
+        # class default: this wrapper must never enter MCBot's bury search.
+        if self.MC_BURY:
+            raise BuryPolicyError("CWV bury wrapper requires MC_BURY == False")
 
 
 def trajectory_bury_record(raw: dict) -> dict:
@@ -462,7 +481,7 @@ def bury_env_recipe(environ=None):
 
 
 __all__ = [
-    "BuryPolicyError", "CWVBuryConfig", "CWVBuryBot", "MODEL_WORLDS",
+    "BuryPolicyError", "CWVBuryConfig", "CWVBuryBot", "CWVBuryMixin", "MODEL_WORLDS",
     "SELECTION_WORLDS", "SHORTLIST_ALTERNATIVES", "make_cwv_bury_bot",
     "bury_registry_entries", "bury_env_recipe",
 ]

@@ -33,9 +33,25 @@ class TimedPolicy:
         self.bot = bot
         self.decision_cpu_seconds = self.decision_wall_seconds = 0.0
         self.decisions = []
+        self.bury_decisions = []        # bury receipts, apart from the play traces
 
     def __getattr__(self, name):
         return getattr(self.bot, name)
+
+    def decide_bury(self, rnd, seat):
+        """Bury through the wrapped bot; a bot that publishes a bury record (the served
+        CWV bury arms: ``cwv-bury-policy-v1`` / ``cwv-bury-fallback-v1``) leaves its
+        scalar receipt in ``decisions`` so internal bury fallbacks are countable."""
+        try:
+            return self.bot.decide_bury(rnd, seat)
+        finally:
+            rec = getattr(self.bot, "last_bury_record", None)
+            if rec:
+                self.bury_decisions.append({
+                    "seat": seat, "phase": "bury",
+                    **{k: v for k, v in rec.items()
+                       if isinstance(v, (str, int, float, bool, type(None)))},
+                })
 
     def decide_play(self, rnd, seat):
         cpu, wall = time.process_time(), time.perf_counter()
@@ -45,7 +61,16 @@ class TimedPolicy:
             self.decision_cpu_seconds += time.process_time() - cpu
             self.decision_wall_seconds += time.perf_counter() - wall
             rec = self.bot.last_decision_record
-            if rec:
+            if rec and "candidates" not in rec:
+                # A served policy with its own record (release 29's pv-search
+                # `pv-search-decision-v1` / `pv-search-fallback-v1`): keep the
+                # scalar receipt, not the MC shortlist shape.
+                self.decisions.append({
+                    "seat": seat, "trick": len(rnd.history), "played": rec.get("played"),
+                    **{k: v for k, v in rec.items()
+                       if k != "played" and isinstance(v, (str, int, float, bool, type(None)))},
+                })
+            elif rec:
                 challenger = rec.get("report_candidate_index")
                 learned = rec.get("learned_search", {})
                 self.decisions.append({

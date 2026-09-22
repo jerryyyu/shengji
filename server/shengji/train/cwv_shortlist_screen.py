@@ -33,7 +33,7 @@ from .screen_deadline import DeadlineSession, RECIPE as DEADLINE_RECIPE, latency
 BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
-ARMS = ("learned", "uniform", "production", "identity")
+ARMS = ("learned", "uniform", "production", "identity", "policy")
 
 
 class CWVWideTailBuryBot(CWVBuryBot, CWVWideTailBot):
@@ -192,6 +192,20 @@ def _validate_wide_config(config):
             raise ValueError("hybrid-bury requires the default wide-tail recipe")
 
 
+def _policy_identity(bot) -> dict:
+    """What a registry-built bot pins: its name, class and package hashes (and bury recipe)."""
+    identity = {"policy_name": getattr(bot, "policy_name", None), "bot_class": type(bot).__name__}
+    for key in ("checkpoint_sha256", "cwv_checkpoint_sha256", "cwv_prior_sha256", "version",
+                "bury_arm", "bury_recipe_identity"):
+        value = getattr(bot, key, None)
+        if value is not None:
+            identity[key] = value
+    config = getattr(bot, "config", None)
+    if config is not None and hasattr(config, "__dataclass_fields__"):
+        identity["config"] = asdict(config)
+    return identity
+
+
 def make_side(config: dict, side: str, seed: int):
     if (config.get("hybrid_bury")
             and (config["arm"] != "learned" or config.get("baseline") not in
@@ -207,6 +221,17 @@ def make_side(config: dict, side: str, seed: int):
                   or (side == "baseline" and config.get("baseline") == "levels-shortlist")
                   else None)
     arm = config["arm"]
+    if side == "arm" and arm == "policy":
+        # A served bot, by its registry name (release 29: the policy/value search with
+        # its bury arm, `pv-search-...-bury-hybrid-...`; or release 28's shortlist name).
+        # Workers register the name from the SHENGJI_* environment at import, exactly
+        # as the game server does; the identity recorded at configuration time must
+        # match what the worker builds.
+        bot = make_bot(config["arm_policy"], seed=seed)
+        identity = _policy_identity(bot)
+        if identity != config["arm_policy_identity"]:
+            raise ValueError("registry policy identity changed between configuration and worker")
+        return bot
     flat_baseline = side == "baseline" and config.get("baseline") == "flat-shortlist"
     shortlist_baseline = (side == "baseline" and
                           config.get("baseline") in ("flat-shortlist", "levels-shortlist"))
@@ -344,7 +369,8 @@ def _recipe(config):
     if "trump_ranks" in config:
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
-                "hybrid_bury", "corrected_rollout", "wide_tail", "prior"):
+                "hybrid_bury", "corrected_rollout", "wide_tail", "prior",
+                "arm_policy", "arm_policy_identity"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -409,7 +435,8 @@ def run_cluster(config, cluster):
         "records": [record for record, _ in rows],
         "timings": [timing for _, timing in rows],
         "decision_traces": [{"mirror": i // 4, "side": side,
-                             "decisions": policy.decisions}
+                             "decisions": policy.decisions,
+                             "bury_decisions": getattr(policy, "bury_decisions", [])}
                             for i, (side, policy) in enumerate(created)],
     }
 
@@ -447,6 +474,9 @@ def _arm_description(config):
                 "report worlds")
     if arm == "identity":
         return "production identity control"
+    if arm == "policy":
+        identity = config["arm_policy_identity"]
+        return f"served registry policy {config['arm_policy']} ({identity['bot_class']})"
     raise ValueError(f"unsupported CWV shortlist arm: {arm!r}")
 
 
@@ -549,6 +579,9 @@ def summary_for(shards, config):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", choices=ARMS, required=True)
+    parser.add_argument("--arm-policy",
+                        help="with --arm policy: the registry name of the served bot to screen "
+                             "(registered from the SHENGJI_* environment, as the server does)")
     parser.add_argument("--checkpoint")
     parser.add_argument("--decision-deadline", type=float, default=300,
                         help="300s total play deadline (default); 0 explicitly selects legacy uncapped policy")
@@ -616,6 +649,14 @@ def main(argv=None):
         parser.error("SHENGJI_REQUIRE_VOIDS=1 is required")
     if args.arm == "learned" and not args.checkpoint:
         parser.error("learned requires --checkpoint")
+    if (args.arm == "policy") != bool(args.arm_policy):
+        parser.error("--arm policy requires --arm-policy, and --arm-policy requires --arm policy")
+    if args.arm == "policy" and (args.prior_checkpoint is not None or args.hybrid_bury
+                                 or args.inner_mode is not None or args.value_head is not None
+                                 or args.wide_tail or args.throw_components
+                                 or args.corrected_rollout is not None
+                                 or args.baseline != "production"):
+        parser.error("--arm policy screens the served bot as registered; no shortlist options apply")
     if args.arm != "learned" and args.checkpoint:
         parser.error("--checkpoint is only valid for learned")
     if args.reuse_successors and args.arm != "learned":
@@ -748,6 +789,10 @@ def _run_screen(args, trump_ranks):
             config["double_shortlist"]["reuse_successors"] = True
     if args.baseline != "production":
         config["baseline"] = args.baseline
+    if args.arm == "policy":
+        probe = make_bot(args.arm_policy, seed=0)
+        config["arm_policy"] = args.arm_policy
+        config["arm_policy_identity"] = _policy_identity(probe)
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)

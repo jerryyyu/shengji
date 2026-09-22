@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tomllib
 
-from shengji.train.cwv_bury_policy import bury_env_recipe
+from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
 from shengji.train.cwv_shortlist import resolved_recipe, shortlist_policy_name
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
@@ -39,7 +39,28 @@ def test_fly_bury_name_matches_recipe_and_preserves_play():
         serving_budget_seconds=budget)
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True,
         separators=(",", ":")).encode()).hexdigest()[:12]
-    assert env["SHENGJI_BOT"] == identity["play_policy"] + "-bury-hybrid-" + digest
+    # Release 29 serves the policy/value search (pv-search, #585) with the hybrid bury; the
+    # release-28 name below stays registered by the retained keys as the one-line rollback.
+    release28 = identity["play_policy"] + "-bury-hybrid-" + digest
+    assert release28 == "mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff"
+    assert env["SHENGJI_BOT"] != release28
+    from shengji.train import pv_search_policy as pv
+    pv_recipe = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_")}
+    assert pv_recipe["SHENGJI_PV_CKPT"] == "/data/models/soft-8ecd4fea.npz"
+    assert len(pv_recipe["SHENGJI_PV_SHA256"]) == 64
+    play = pv.pv_policy_name(pv_recipe["SHENGJI_PV_SHA256"][:8], pv.PVSearchConfig(
+        checkpoint_sha256=pv_recipe["SHENGJI_PV_SHA256"], worlds=int(pv_recipe["SHENGJI_PV_WORLDS"]),
+        candidates=int(pv_recipe["SHENGJI_PV_CANDIDATES"]), cap=int(pv_recipe["SHENGJI_PV_CAP"]),
+        batch_size=int(pv_recipe["SHENGJI_PV_BATCH_SIZE"]),
+        serving_budget_seconds=float(pv_recipe["SHENGJI_PV_SERVING_BUDGET_SECONDS"])))
+    pv_identity = dict(schema="cwv-bury-recipe-v1", play_policy=play,
+                       checkpoint_sha256=pv_recipe["SHENGJI_PV_SHA256"], arm="hybrid",
+                       config=vars(CWVBuryConfig()), fallback="heuristic-on-error-or-budget",
+                       serving_budget_seconds=float(pv_recipe["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"]))
+    pv_digest = hashlib.sha256(json.dumps(pv_identity, sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()[:12]
+    assert env["SHENGJI_BOT"] == play + "-bury-hybrid-" + pv_digest
+    assert pv_recipe["SHENGJI_PV_BURY_ARM"] == "hybrid"
     assert env["SHENGJI_CWV_SHORTLIST_CKPT"] == env["SHENGJI_CWV_PRIOR_CKPT"] == "/data/models/js-m1-0d17fd03.npz"
     assert env["SHENGJI_CWV_PRIOR_SHA256"] == PRIOR_PACKAGE_SHA
     assert env["SHENGJI_MODEL_SEARCH_CONCURRENCY"] == "1"

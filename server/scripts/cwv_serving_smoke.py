@@ -65,6 +65,11 @@ def build_production_bot(env: dict[str, str]):
     play = shortlist_env_recipe(env)
     if play is not None:
         registry.register_cwv_shortlist_policies(play[0], play[1], **play[2])
+    if env.get("SHENGJI_PV_CKPT"):
+        # the policy/value search mode (#585): one package as value net and prior
+        from shengji.train.pv_search_policy import pv_env_recipe
+        recipe = pv_env_recipe(env)
+        registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
     name = env["SHENGJI_BOT"]
     if name not in registry.REGISTRY:
         raise SystemExit(f"SHENGJI_BOT {name!r} is not registered by this env: the server would not boot with it")

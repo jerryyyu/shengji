@@ -9,6 +9,7 @@ a run log or policy registry duplicate.
 - Current priorities and review gates: `BACKLOG.md` and `HANDOFF_ACTIVE.md`
 - Research architecture and model lineage: `RL_PLAN.md`
 - Immutable verdicts, hashes, and reviewer corrections: `HANDOFF_REVIEW.md`
+- What each production change actually bought: the ladder table below
 - Engine and sampler contracts: `server/tests/` and `incidents/` (ledger archived at `docs_archive/correctness-through-2026-09-22.md`)
 - Runtime performance and deployment: `DEPLOY.md` and issue #208 (the speed record is archived at `docs_archive/perf-through-2026-09-22.md`)
 
@@ -174,6 +175,31 @@ confirmation measured
 matched extra-work null was `-0.019043 +/- 0.068270`. This establishes the
 registered one-round policy—not arbitrary extra search—as the only confirmed
 and deployed strength gain.
+
+## The ladder: every production change and what it measured
+
+One row per production change, each measured **against the policy it replaced**, on that era's
+instrument. The numbers are signed levels per round unless the row says otherwise. They are NOT
+additive and NOT on one scale: the opponents, deal populations, designs and budgets differ by era,
+so this is a chain of relative reads, not a cumulative total. Five of the eight changes measured a
+resolved gain; three shipped for cost, maintainability or correctness with no strength claim.
+
+| # | change | what it replaced | measured effect | instrument | reading |
+|---:|---|---|---|---|---|
+| 1 | **MC-LCB report rule** (`mc-s0-report-lcb`) | `mc-strong` N=30 argmax | **+0.338 ± 0.068** | 2,048 fresh clusters | The one-round nominate-then-confirm rule, not extra search: the matched extra-work null was −0.019 ± 0.068. |
+| 2 | **W32/K4 shortlist** (release 22) | MC-LCB alone | **+0.139 [+0.065, +0.217]** | 256 rank-2 deals, paired | The first learned win: the value net chose what deserved search, the search still decided. 3.53× wall, engineered to 2.849× bit-identically. |
+| 3 | **Hybrid bury** (release 22) | heuristic bury | **+0.036 [+0.012, +0.060]** utility | 1,976 fixed deals | Model-scored heuristic candidates, MC selection. The trial was the RESEARCH recipe, with no deadline and no fallback; the deployed arm adds a 2 s cooperative budget and heuristic fallback, and that serving modification was not what this number measured. Versus MC-only bury it was unresolved. Kitty-bonus tail risk is not removed. |
+| 4 | **M1 value net** | the release-24 shortlist package (the standing capped control) | **+0.021 [+0.004, +0.039]** | ten 520-cluster windows on deals no other arm used | The one confirmed model gain of the shortlist era (MDE80 0.025). Width, depth and the last data doubling inside the shortlist bought nothing in play. |
+| 5 | **Policy prior v2** (release 27) | hand-written prior | −0.0003 [−0.0017, +0.0012] | paired vs M1 | No resolved difference. Shipped to bound the wide tail above 1,000 legal actions, not for strength. |
+| 6 | **JS-M1 as one package** (release 28) | M1 + separate prior | +0.006 [−0.016, +0.028] | paired vs release 27 | No resolved difference, and not an equivalence result. Shipped as cost and maintainability: one file is both prior and value net. |
+| 7 | **Policy/value search, soft head** (release 29) | the release-28 package | **+0.086 [+0.042, +0.131]** card play; **+0.049 [+0.003, +0.095]** as served | 800 matched deals, one pre-registered primary; five clean 520-cluster windows | The head IS the search: its policy admits 8 of the legal actions over 64 sampled worlds, its value head prices them, no playouts. Versus MC-LCB in the ladder +0.187 [+0.144, +0.231]. The served read is a common-opponent summary-level estimate, not paired served-vs-served inference, and its lower bound is near zero. |
+| 8 | **Hybrid-bury fix** (release 30) | release 29 | not measured | — | Correctness: the bury stopped refusing its own decision and silently falling back to the heuristic on ~6% of banker burys on the diagnostic capture set (24 of 400; the production-traffic rate is unmeasured). No strength claim. |
+
+**Not taken.** More worlds beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024
+[−0.033, +0.081]), K16, bounded PUCT, learned continuations, adaptive allocation, and every
+warm-started generation as a shortlist package (v33 −0.007 [−0.038, +0.024]) all failed to clear
+zero against their own parent. Receipts for rows 1–6 are in the condensed shortlist-era section
+below and the linked run records; rows 7–8 in `DEPLOY.md`, the scaling page and the search atlas.
 
 ## Callable policy families
 

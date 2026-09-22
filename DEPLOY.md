@@ -13,11 +13,10 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects W32 play plus hybrid bury
-  `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`, using the
-  A+C+D+E+F2 v2 model with N=30 selection and R=300 report checking.
-  Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` and removes
-  the two `SHENGJI_CWV_BURY_*` settings. A deploy that binds the policy prior
+  Fly configuration selects release 29, the policy/value search with hybrid bury
+  `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
+  `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
+  `fly.toml` so the rollback is one line. A deploy that binds the policy prior
   (`SHENGJI_CWV_PRIOR_CKPT`, optional `_SHA256` pin, `_THRESHOLD`, `_TOP`;
   #435) serves a name ending `-prior-<sha8>` and reports the prior's SHA256
   under `prior` in `/healthz`; prior-only rollback removes the four
@@ -27,85 +26,52 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Release 29 plan — the policy/value search with the soft head (pv-search, #585), Jerry's go 2026-09-21 ~17:4x ET
+## Current production: release 29 — the policy/value search with the soft head (pv-search W64/K8 + hybrid bury), deployed 2026-09-22 00:29 ET
 
-Jerry: "I'm good to launch soft with w64 to prod." Served bot `pv-search-ccade130-w64-k8-r8bc573be`:
-the soft-action head 8ecd4fea (gen-3-warm's recipe with the search's values as the policy target)
-exported as ONE NumPy package `/data/models/soft-8ecd4fea.npz` (sha256 `ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`; schema v2 with
-the policy head), 64 sampled worlds, 8 admitted candidates, value head in place of playouts,
-cap 4,000, batch 128, a 3 s cooperative play budget (heuristic anchor on expiry), heuristic
-declare, and release 27/28's value-guided HYBRID bury on this package's value head
-(`pv_search_policy.PVSearchBuryBot`, the same `CWVBuryMixin` the shortlist ships; 32/32/32/4,
-2 s bury budget; Jerry: "we should use value guided hybrid"). Served name
-`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`. Release-28 env keys are retained
-so the rollback is one line: `SHENGJI_BOT` back to
-`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`.
+Release **29**, image `registry.fly.io/shengji:deployment-01M33NZERJS18A0G2NNG7S5FJ8` (digest
+`sha256:e3ddf6cd62c9da582086bb8171a79d30eb2c2c4df85b0c965a26b972d2f159b0`), deployed with
+`fly deploy --ha=false` from main `292ee6e6` (#588) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-22 00:2x ET ("yea lets deploy 29"; W64 kept after the W64/128/256 ladder's
+pre-registered contrasts both spanned zero).
 
-Evidence: vs the release-28 package in card play, 800 matched deals, one pre-registered primary,
-**+0.086 [+0.042, +0.131]** (#553, 2026-09-21, atlas row 45); world scaling W16/W32/W64 vs MC-LCB
-+0.123/+0.158/+0.187 with W64−W16 positive (#555); the four-model family at W64 (#583) showed
-no head superior to another, soft holding the largest point estimate. Not measured: the
-served bot vs release 28 as deployed — Jerry (2026-09-21 ~18:0x ET): "You can do a new screen if
-needed vs prod with bury" → lane v34pv on Perf: the shortlist screen's new `--arm policy`
-(`cwv_shortlist_screen`/`cwv_screen_queue`) runs the SERVED bot by registry name — both
-sides exactly as the fly.toml registers them (pv-search + hybrid bury; release 28 + hybrid
-bury) — against the same MC control on five fresh windows, paired per seed.
+Served bot `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`: the soft-action head
+8ecd4fea (gen-3-warm's recipe with the search's values as the policy target) exported as ONE NumPy
+package `/data/models/soft-8ecd4fea.npz` (sha256 `ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`,
+schema v2 with the policy head, verified on the volume). Per play decision: heuristic anchor; 64 sampled
+worlds through production's sampler; the policy head ranks the capped legal set (4,000) and admits 8 with
+the anchor pinned; the value head prices each admitted action's afterstate in every world; the highest
+mean plays. No playouts. 3 s cooperative play budget (heuristic anchor on expiry, `pv-search-fallback-v1`).
+Heuristic declare. Bury: release 27/28's value-guided HYBRID arm on this package's value head
+(`PVSearchBuryBot`; 32/32/32/4; 2 s budget, heuristic fallback). Release-28 env keys retained.
 
-Preconditions, in order:
-1. #585 merged (511ee670) and this release PR merged: smoke extended to the mode, `/healthz`
-   `pv_search` block, fly.toml env.
-2. `scripts/cwv_serving_smoke.py` PASS on the exact package with this fly.toml — DONE
-   2026-09-21 ~18:0x ET on the Mini: 40 server turns (1 bury, 39 plays) through
-   `_paced_bot_step` / `_commit_bot_turn`, `PVSearchBot`, play turns 0.063 s mean / 0.088 s
-   max single-threaded (receipt `release29/smoke-release29.json`; files ccade130 / 0d17fd03).
-3. Package SHA256-verified on the volume (`sha256sum /data/models/soft-8ecd4fea.npz`).
-4. `fly deploy --ha=false`; `/healthz` shows `bot` = the pv-search name and `pv_search.sha256`
-   = the package hash; then the first live room's log must show a bot `bury` event and
-   `model_search` `completed` events with `pv-search-decision-v1` records (`/healthz` cannot
-   see a bot-turn failure — release 25).
-5. Watch: `pv-search-fallback-v1` records (budget or search-error), stale-turn discards, decision
-   wall p50/p95 vs release 28's 0.9 / 1.7 s.
+Live health after the deploy (`/healthz`): `bot` = the name above, `rooms` 0,
+`pv_search` = {sha256 ccade130…, worlds 64, candidates 8, budget_seconds 3, bury_arm hybrid,
+bury_budget_seconds 2}. First live room AFBZ (opened 04:30:42Z with three bots, host seat taken over):
+round complete at 04:32:41Z, 126 s; bot bury at seat 1 (0.64 s); 70 bot play searches completed,
+p50 0.24 s / p90 0.35 s / max 0.38 s; 69 `pv-search-decision-v1` records; 0 fallbacks, 0 deadline
+timeouts, 0 stale discards; attackers 15, banker team won. Release 28's live numbers were 0.9 / 1.7 s.
 
-## Release 29 plan — the policy/value search with the soft head (pv-search, #585), Jerry's go 2026-09-21 ~17:4x ET
+Evidence (all on the search atlas and the scaling page): card play vs the release-28 package, 800
+matched deals, one pre-registered primary **+0.086 [+0.042, +0.131]** (#553; row 45); the same search on
+fresh deals +0.122 [+0.079, +0.164] (#589 ladder base arm; W128−W64 +0.024 [−0.034, +0.083] and
+W256−W64 +0.024 [−0.033, +0.081], neither clear of zero: nothing above 64 worlds is shown to help);
+the four-model family at W64 (#583): no head superior, soft the largest point; **the served bot vs
+release 28 as served (lane v34pv, Perf, five clean 520-cluster windows, 300 s cap): +0.049
+[+0.003, +0.095]**, clears zero narrowly (DL random effects, I² 49%; one window inside a training corpus
+excluded and reported at −0.006). No strength claim beyond those intervals.
 
-Jerry: "I'm good to launch soft with w64 to prod." Served bot `pv-search-ccade130-w64-k8-r8bc573be`:
-the soft-action head 8ecd4fea (gen-3-warm's recipe with the search's values as the policy target)
-exported as ONE NumPy package `/data/models/soft-8ecd4fea.npz` (sha256 `ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`; schema v2 with
-the policy head), 64 sampled worlds, 8 admitted candidates, value head in place of playouts,
-cap 4,000, batch 128, a 3 s cooperative play budget (heuristic anchor on expiry), heuristic
-declare, and release 27/28's value-guided HYBRID bury on this package's value head
-(`pv_search_policy.PVSearchBuryBot`, the same `CWVBuryMixin` the shortlist ships; 32/32/32/4,
-2 s bury budget; Jerry: "we should use value guided hybrid"). Served name
-`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`. Release-28 env keys are retained
-so the rollback is one line: `SHENGJI_BOT` back to
-`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`.
+Preconditions as they were met: package exported and SHA256-verified on the volume (09-21); smoke on
+the exact package through `_paced_bot_step` / `_commit_bot_turn` (40 turns, PASS, `release29/`);
+confirmation screen (v34pv) sealed 09-22 02:10Z; Jerry's go; deploy; `/healthz`; first live room.
 
-Evidence: vs the release-28 package in card play, 800 matched deals, one pre-registered primary,
-**+0.086 [+0.042, +0.131]** (#553, 2026-09-21, atlas row 45); world scaling W16/W32/W64 vs MC-LCB
-+0.123/+0.158/+0.187 with W64−W16 positive (#555); the four-model family at W64 (#583) showed
-no head superior to another, soft holding the largest point estimate. Not measured: the
-served bot vs release 28 as deployed — Jerry (2026-09-21 ~18:0x ET): "You can do a new screen if
-needed vs prod with bury" → lane v34pv on Perf: the shortlist screen's new `--arm policy`
-(`cwv_shortlist_screen`/`cwv_screen_queue`) runs the SERVED bot by registry name — both
-sides exactly as the fly.toml registers them (pv-search + hybrid bury; release 28 + hybrid
-bury) — against the same MC control on five fresh windows, paired per seed.
+Rollback (one line): `SHENGJI_BOT` back to
+`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` (release 28; its keys
+are still in `fly.toml`), then `fly deploy --ha=false`; release 27 next; image rollback below.
 
-Preconditions, in order:
-1. #585 merged (511ee670) and this release PR merged: smoke extended to the mode, `/healthz`
-   `pv_search` block, fly.toml env.
-2. `scripts/cwv_serving_smoke.py` PASS on the exact package with this fly.toml — DONE
-   2026-09-21 ~18:0x ET on the Mini: 40 server turns (1 bury, 39 plays) through
-   `_paced_bot_step` / `_commit_bot_turn`, `PVSearchBot`, play turns 0.063 s mean / 0.088 s
-   max single-threaded (receipt `release29/smoke-release29.json`; files ccade130 / 0d17fd03).
-3. Package SHA256-verified on the volume (`sha256sum /data/models/soft-8ecd4fea.npz`).
-4. `fly deploy --ha=false`; `/healthz` shows `bot` = the pv-search name and `pv_search.sha256`
-   = the package hash; then the first live room's log must show a bot `bury` event and
-   `model_search` `completed` events with `pv-search-decision-v1` records (`/healthz` cannot
-   see a bot-turn failure — release 25).
-5. Watch: `pv-search-fallback-v1` records (budget or search-error), stale-turn discards, decision
-   wall p50/p95 vs release 28's 0.9 / 1.7 s.
+Watch list: `pv-search-fallback-v1` records (budget or search-error), stale-turn discards, decision wall
+p50/p95; the run-4 head served the same way (lane v34r4) reads out 2026-09-22 ~01:50 ET.
 
-## Current production: release 28 — JS-M1, the from-scratch joint net, as ONE package (#425 / #435), deployed 2026-09-16 00:5x ET
+## Release 28 — JS-M1, the from-scratch joint net, as ONE package (#425 / #435), deployed 2026-09-16 00:5x ET; the one-line rollback for release 29
 
 Release **28**, image `registry.fly.io/shengji:deployment-01M2M90VYR34R7CWKTTEA4C57V`
 (digest `sha256:c6927dbafb81d55ce823070b6df7ceea4ddfce8a07992139b46afe9f098866ff`), deployed
@@ -132,10 +98,10 @@ main `d31bd428`) or release **24** (image `deployment-01M2BGBXE7JXWYBEVWNMG2YM5A
 `SHENGJI_CWV_PRIOR_*` settings and set `SHENGJI_BOT` to the prior-less JS-M1 name the
 registry prints; `/healthz` must then show `"prior": null`.
 
-## Prepared, NOT deployed: the `pv-search` bot mode (policy/value search, #553 evidence)
+## The `pv-search` bot mode (policy/value search) — production since release 29
 
 The head-driven search that beat the deployed package in card play (soft 8ecd4fea head, W64/K8,
-+0.086 [+0.042, +0.131] on 800 matched deals, 2026-09-21; atlas row 45) exists as a production bot
++0.086 [+0.042, +0.131] on 800 matched deals, 2026-09-21; atlas row 45) is the production bot
 mode: `train/pv_search_policy.py`, registered as `pv-search-<ckpt8>-w<W>-k<K>-r<recipe8>` when
 `SHENGJI_PV_CKPT` is set. It is the screened design unchanged (`train/policy_value_search.py`),
 served from ONE NumPy package as both value evaluator and policy prior, without Torch.
@@ -149,23 +115,16 @@ Env (all under `[env]`, alongside — not replacing — the release-28 keys unti
     SHENGJI_PV_SERVING_BUDGET_SECONDS = '<seconds>'  # cooperative play budget; expiry plays the heuristic anchor
 
 What it does per card-play decision: heuristic anchor first; W sampled worlds through production's
-sampler (void-checked); the policy head ranks every legal action and admits K with the anchor
+sampler (void-checked); the policy head ranks the capped legal listing (cap 4,000, the anchor forced in) and admits K with the anchor
 pinned; the value head scores each admitted action's afterstate (current trick finished
-heuristically) in every world; the highest mean plays. Declare and bury are the heuristic, as in
-every screen that measured this design — the release-27/28 value-guided hybrid bury is NOT
-composed here yet. On budget expiry or any search error the sampler RNG is restored and the anchor
+heuristically) in every world; the highest mean plays. Declare is the heuristic; bury is the release-27/28 value-guided hybrid arm on the same package
+(`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`, `SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`). On budget expiry or any search error the sampler RNG is restored and the anchor
 plays with a `pv-search-fallback-v1` record; otherwise the record is `pv-search-decision-v1`
 (carries `played`, the admitted indices, value means, work counts).
 
-Before any release of this mode, in order (none done yet):
-1. A package for the served head exported with `scripts/export_cwv_numpy.py` and SHA256-verified on the volume.
-2. Latency on the Fly machine class (shared-cpu-1x, 512 MB): W64 measured 186 ms mean / 337 ms p95 a
-   decision on a 16-core box; the served number is unknown until measured — set the budget from it.
-3. `scripts/cwv_serving_smoke.py` extended to build this mode from the fly.toml env and driven
-   through `_paced_bot_step` / `_commit_bot_turn` (the release-25 rule; `tests/test_pv_search_serving.py`
-   does this on a tiny package, the smoke must do it on the real one).
-4. The five-window package screen of the served bot against release 28 on fresh seeds (the
-   confirmation), then Jerry's explicit go; rollback is `SHENGJI_BOT` back to the release-28 name.
+The release gate for this mode (package on the volume, smoke on the exact package, the served-bot
+confirmation screen, Jerry's go, `/healthz` and the first live room) was met for release 29; see the
+record above. A future head in this mode repeats the same gate with its own package.
 
 ## Release 28 plan as approved (kept for the record)
 

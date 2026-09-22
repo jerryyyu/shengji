@@ -7,38 +7,41 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + a learned-model-guided Monte Carlo AI + FastAPI
 multiplayer server + React web UI with Mandarin voice announcements.
 
-## The production bot — release 28 (2026-09-16)
+## The production bot — release 29 (2026-09-22)
 
-![Release 28: one JS-M1 package proposes, production's Monte Carlo search decides](docs/visuals/js-m1-one-package.svg)
+![Release 29: one soft-head package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
 
-One checkpoint, **JS-M1** (`a5248cc5`, served as the NumPy package
-`js-m1-0d17fd03.npz`), does two jobs on every play decision:
+One checkpoint, the **soft-action head** (`8ecd4fea`, served as the NumPy package
+`soft-8ecd4fea.npz`), is the whole play search:
 
-1. **Prior (policy head).** When a position has more than 1,000 legal actions
-   (wide throw follows), the policy head scores the actions once per sampled
-   world; the union of each world's top 256 plus production's own anchors
-   (about 600 actions, median) is all that goes forward. Below 1,000 actions
-   nothing is pruned.
-2. **Proposer (value head).** The admitted actions are scored across 32 shared
-   sampled hidden worlds; the four best plus the incumbent form the shortlist.
-3. **Decider (unchanged Monte Carlo search).** Production's MC-LCB search plays
-   the shortlist out in 30 sampled worlds with heuristic rollouts, applies its
-   lower-bound rule and re-checks the winner on a 300-world report fold. The
-   net proposes; the search decides.
+1. **Sample.** 64 hidden worlds consistent with the public information, through
+   production's sampler.
+2. **Admit (policy head).** The policy head scores the capped legal listing (up
+   to 4,000 actions, the heuristic's play always forced in) in every world; the
+   heuristic's play plus the seven best others are admitted.
+3. **Price (value head).** Each admitted play is applied, the current trick
+   finished heuristically, and the value head prices the afterstate in every
+   world; the highest mean plays. No playouts, no lower-bound rule, no report
+   fold: about 0.25 s a decision on Fly against release 28's 0.9 s.
 
-Bury is hybrid: heuristic candidates, scored by the same package, MC selection
-with four alternatives, a 2 s budget with heuristic fallback. Declares are
-heuristic. The engine runs the compiled fast path.
+Bury is hybrid: heuristic candidates, scored by the same package's value head, MC
+selection with four alternatives, a 2 s budget with heuristic fallback. Declares
+are heuristic. The engine runs the compiled fast path.
 
 What the evidence says (details and provenance in
 [AI_POLICIES.md](AI_POLICIES.md#production-contract), readouts in the
 [scaling log](docs/scaling_log/) and the search atlas):
 
-- JS-M1 is M1's recipe (a residual-trunk MLP on the afterstate encoding)
-  trained from scratch on all 20.3M root decisions with a policy head at
-  weight 0.2. Offline it beats M1 on the outcome head (val CE 0.5957 vs 0.5975)
-  and its head is non-inferior to the separate prior on four of five strata, so
-  one net can do both jobs without giving up either.
+- **The head-driven search beats what production played, in card play:** +0.086
+  [+0.042, +0.131] signed levels per round against the release-28 package on 800
+  matched deals, and +0.122 [+0.079, +0.164] on fresh deals. More worlds beyond 64
+  are not shown to help (W128−W64 +0.024 [−0.034, +0.083]).
+- **Served against release 28 as served** (both bots with their own bury, five
+  clean 520-deal windows, 300 s cap): +0.049 [+0.003, +0.095], clear of zero but
+  narrowly, with real spread between windows. That is the number the deploy rests
+  on; it is not a large effect.
+- Within the family of heads at W64 (soft, JS-M1, JS-G1, gen-4 run 1, gen-3-warm)
+  no head is shown superior to another; the soft head has the largest point.
 - **Release 28 shipped for maintainability, not for strength.** One checkpoint
   and one file replace two, so there is a single artifact to export, gate,
   version and roll back. In play it read `+0.0057 [−0.0163, +0.0277]` signed

@@ -209,8 +209,27 @@ class PVSearchBot(PolicyValueBot):
 
     # -- the decision ---------------------------------------------------------
 
+    # -- the two data-generation hooks (#592): the scored set and the admission -------
+    # Serving never overrides them; a trajectory mixin widens the scored set with its
+    # exploration draw and appends the draw to the admitted ballot, so the value head
+    # prices it like any other candidate.
+
+    def _legal(self, rnd, seat, must_include):
+        """The scored set: the capped legal enumeration (``self.cap``, labelled by
+        ``legal_complete``/``legal_count`` -- never exhaustive by assumption) with
+        ``must_include`` forced in."""
+        return enumerate_legal(rnd, seat, cap=self.cap, must_include=list(must_include))
+
+    def _admit(self, rnd, seat, actions, preferences, anchor_index):
+        """Indices (into ``actions``) the value head prices: the anchor first, then the
+        policy's best scores, ``self.candidates`` in all."""
+        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
+        chosen = [anchor_index]
+        chosen.extend(i for i in ranked if i != anchor_index)
+        return chosen[:self.candidates]
+
     def _search(self, rnd, seat, anchor, started, check_budget=None):
-        legal = enumerate_legal(rnd, seat, cap=self.cap, must_include=[anchor])
+        legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
         worlds, attempts = self._worlds(rnd, seat, check_budget)
         if check_budget is not None:
@@ -218,10 +237,10 @@ class PVSearchBot(PolicyValueBot):
         preferences = self.scores(rnd, seat, actions, worlds).mean(axis=0)
         anchor_key = tuple(sorted(anchor))
         anchor_index = next(i for i, a in enumerate(actions) if tuple(sorted(a)) == anchor_key)
-        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
-        chosen = [anchor_index]
-        chosen.extend(i for i in ranked if i != anchor_index)
-        chosen = chosen[:self.candidates]
+        chosen = [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
+        if not chosen or chosen[0] != anchor_index or len(set(chosen)) != len(chosen) \
+                or any(not 0 <= i < len(actions) for i in chosen):
+            raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
         if check_budget is not None:
@@ -232,6 +251,14 @@ class PVSearchBot(PolicyValueBot):
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
             "cap": self.cap, "legal_count": legal.count, "legal_complete": legal.complete,
             "admitted_indices": chosen, "value_means": means.tolist(),
+            # the admitted candidates' cards in admission order (played_index in a
+            # trajectory record = admitted_indices.index(selected_index), never the
+            # legal index), their policy log-odds, and the log-odds of the scored set's
+            # first entries -- the harvester's bounded listing is the same enumeration
+            # order (its cap 256 <= this cap), so the two align by position
+            "admitted": [list(a) for a in admitted],
+            "policy_log_odds_admitted": [float(preferences[i]) for i in chosen],
+            "policy_log_odds_listing": [float(v) for v in preferences[:min(len(actions), 256)]],
             "selected_index": chosen[winner], "value_batches": batches,
             "value_evaluations": len(worlds) * len(admitted),
             "anchor_selected": winner == 0, "encoder_version": self.version,

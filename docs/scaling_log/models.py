@@ -298,6 +298,29 @@ POLICY_VS_SMART_PUBLIC = {
     "9ee9fedb": "-0.0267 [-0.0399, -0.0128]",   # JS-G1: below SmartBot; 0.028 below its perfect-info +0.0014.  ALL SIX IN.
 }
 
+#: EVERY policy/value-search comparison against PRODUCTION (chart 4b), one entry per arm,
+#: grouped by the FORM of the comparison:
+#:   "card play"  -- the head IS the W64/K8 search (policy admits 8 over 64 sampled worlds, value
+#:                   prices them, no playouts) vs the deployed JS-M1 shortlist package in card play
+#:                   only (shared heuristic declare/bury), 800 matched deals, seeds 625800000..,
+#:                   common opponent (Codex #553 / #574 / #583; atlas rows 45, 47-50).  The soft
+#:                   head's single primary at 95%; the four-model family at 98.75% per primary.
+#:   "served bot" -- the same search wrapped for serving with the value-guided hybrid bury vs
+#:                   release 28 AS SERVED (its own bury), 520-cluster mirrored windows, 300 s cap,
+#:                   DL random effects over the clean windows (lane v34pv; atlas row 51).
+#: No head is shown superior to another: every pairwise contrast spans zero.  Add the run-4
+#: served read (lane v34r4) and Codex's W128/W256 ladder arms when they seal.
+W64_SEARCH_VS_PRODUCTION = [
+    ("8ecd4fea", "card play", "+0.086 [+0.042, +0.131]"),   # soft (row 45), 95%
+    ("9ee9fedb", "card play", "+0.057 [+0.007, +0.111]"),   # JS-G1 (row 48), family 98.75%
+    ("3f83bfb7", "card play", "+0.056 [+0.001, +0.111]"),   # gen-4 run 1 (row 49), family 98.75%
+    ("a5248cc5", "card play", "+0.029 [-0.025, +0.082]"),   # JS-M1, production's own head (row 47)
+    ("d2514e6e", "card play", "+0.024 [-0.030, +0.078]"),   # gen-3-warm, the soft head's hard twin (row 50)
+    ("8ecd4fea", "served bot", "+0.049 [+0.003, +0.095]"),  # soft served w/ hybrid bury vs r28 served, 5 clean windows (row 51)
+]
+W64_FORMS = {"card play": "the head as the W64/K8 search, card play only, 800 matched deals vs the deployed package",
+             "served bot": "the same search served with hybrid bury vs release 28 as served, five clean 520-cluster windows"}
+
 POLICY_VS_SMART = {
     "8ecd4fea": "+0.1006 [+0.0864, +0.1153]",   # PERFECT-INFO; soft target, w=1.0: same as gen-3-warm
     "d2514e6e": "+0.0993 [+0.0856, +0.1126]",   # PERFECT-INFO; gen-3-warm: 6x JS-M1 under the same privilege

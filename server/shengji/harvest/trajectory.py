@@ -346,6 +346,8 @@ import subprocess
 import sys
 import time
 import weakref
+
+import numpy as np
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
@@ -750,7 +752,12 @@ def trajectory_class(base_cls: type) -> type:
     return cls
 
 
-PV_VALUE_UNITS = "signed-level-utility-pt0"
+#: The pv-search value head's units: the EXPECTED SIGNED LEVEL of the acting team on the
+#: half-integer #214 scale (``rl.value_afterstate.category_signed_level``: a +0.5 takeover,
+#: +1.5 for 120-159 points, -1.5 for a 40-79 defence, -3.5 for zero points), i.e. what
+#: ``cwv_numpy_evaluator`` returns -- NOT the PT0 integer utility (``cwv_data.pt0_level``,
+#: where +0.5 and +1.5 both map to +1).  Consumers convert explicitly; nothing here does.
+PV_VALUE_UNITS = "expected-signed-level-half-integer"
 
 
 class PVTrajectoryMixin:
@@ -823,15 +830,25 @@ class PVTrajectoryMixin:
         return super()._legal(rnd, seat, must_include)
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
-        base = [int(i) for i in super()._admit(rnd, seat, actions, preferences, anchor_index)]
+        # Production's admission is taken over the scored set WITHOUT the draw: the draw's
+        # preferences are masked out of the ranking so a high-scoring draw can never
+        # displace one of production's own top-K (Codex HOLD on #597); it is then
+        # appended, so the ballot is production's list plus the draw, priced like the rest.
+        draw = [i for i, a in enumerate(actions) if action_key(a) in self._draw_keys]
+        masked = preferences
+        if draw:
+            masked = np.array(preferences, dtype=np.float64, copy=True)
+            masked[draw] = -np.inf
+            if anchor_index in draw:
+                raise TrajectoryError("the exploration draw cannot be the anchor")
+        base = [int(i) for i in super()._admit(rnd, seat, actions, masked, anchor_index)]
+        # a masked draw can only reach the base list as filler when fewer than K non-draw
+        # actions exist; production's admission over the draw-less set is the rest
+        base = [i for i in base if i not in draw]
         chosen = list(base)
-        if self._draw_keys:
-            have = {action_key(actions[i]) for i in chosen}
-            for i, a in enumerate(actions):
-                k = action_key(a)
-                if k in self._draw_keys and k not in have:
-                    chosen.append(i)
-                    have.add(k)
+        for i in draw:
+            if i not in chosen:
+                chosen.append(i)
         self.last_production_ballot = [list(actions[i]) for i in base]
         self.last_ballot = [list(actions[i]) for i in chosen]
         self.last_legal = enumerate_legal(rnd, seat, cap=self.LEGAL_CAP, must_include=self.last_ballot)

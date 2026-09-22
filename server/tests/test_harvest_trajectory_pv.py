@@ -61,7 +61,7 @@ def test_pv_records_carry_the_admitted_ballot_and_priced_values(data_policy, tmp
         assert r["allocation"]["selection_worlds"] == [SMALL["worlds"]] * k
         assert action_key(r["ballot"][r["allocation"]["played_index"]]) == action_key(r["action"])
         av = r["action_values"]
-        assert av["units"] == trajectory.PV_VALUE_UNITS and av["perspective"] == "acting-team"
+        assert av["units"] == trajectory.PV_VALUE_UNITS == "expected-signed-level-half-integer" and av["perspective"] == "acting-team"
         assert len(av["means"]) == k == len(av["policy_log_odds"]) and av["eligible_indices"] == list(range(k))
         assert r["preference"]["tau"] is None and len(r["preference"]["means"]) == k
         assert r["legal_actions_count"] >= len(r["legal_actions"])
@@ -145,3 +145,45 @@ def test_policy_rows_extract_reads_the_pv_means(data_policy, tmp_path):
     rows = [json.loads(l) for l in meta.read_text().splitlines() if l.strip()]
     with_means = [r for r in rows if isinstance(r.get("means"), list) and any(v is not None and v == v for v in r["means"])]
     assert with_means, "no policy row carries the search's means"
+
+
+def test_a_high_scoring_draw_never_displaces_productions_admission(data_policy, monkeypatch):
+    """Codex's deterministic witness on #597: anchor S2, normal H2, forced draw DX with
+    preferences [0, 1, 99] at K=2 must give production_ballot [S2, H2] and ballot
+    [S2, H2, DX] -- the draw is appended, never admitted in place of a top-K candidate;
+    without a draw the same scores admit [S2, DX] (DX wins on score, as production would)."""
+    import numpy as np
+    from types import SimpleNamespace
+    from shengji.ai.registry import make_bot
+    monkeypatch.setattr(trajectory, "enumerate_legal",
+                        lambda rnd, seat, cap, must_include: SimpleNamespace(actions=[list(a) for a in must_include],
+                                                                             count=len(must_include), complete=True))
+    actions = [["S2"], ["H2"], ["DX"]]
+    prefs = np.array([0.0, 1.0, 99.0])
+
+    def fresh(draw):
+        bot = make_bot(data_policy, seed=1)
+        bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+        bot._trajectory_init(random.Random(0))
+        bot.candidates = 2
+        bot._draw_keys = {action_key(["DX"])} if draw else set()
+        return bot
+
+    with_draw = fresh(True)
+    assert with_draw._admit(None, 0, actions, prefs, 0) == [0, 1, 2]
+    assert with_draw.last_production_ballot == [["S2"], ["H2"]]
+    assert with_draw.last_ballot == [["S2"], ["H2"], ["DX"]]
+    no_draw = fresh(False)
+    assert no_draw._admit(None, 0, actions, prefs, 0) == [0, 2]
+    assert no_draw.last_production_ballot == [["S2"], ["DX"]] == no_draw.last_ballot
+
+
+def test_value_units_are_the_half_integer_signed_level_not_pt0():
+    """+0.5 (a takeover) is +0.5 on the evaluator's scale and +1 on PT0; the record must say
+    which one it carries and must never be the converted one."""
+    from shengji.rl.value_afterstate import category_signed_level, signed_level_category
+    from shengji.train.cwv_data import pt0_level
+    takeover = category_signed_level(signed_level_category(80, True))
+    assert takeover == 0.5 and pt0_level(takeover) == 1.0
+    assert trajectory.PV_VALUE_UNITS == "expected-signed-level-half-integer"
+    assert "pt0" not in trajectory.PV_VALUE_UNITS

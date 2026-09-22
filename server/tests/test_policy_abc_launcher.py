@@ -26,7 +26,7 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
-def test_depth_fixed_qualification_and_hold():
+def test_depth_fixed_qualification_and_hold(monkeypatch):
     args = (Path('/python'), Path('/soft'), Path('/out'))
     kw = dict(suite=launcher.DEPTH_SUITE, qualify=True, production=Path('/prod'))
     plan = launcher.commands(*args, **kw)
@@ -39,6 +39,8 @@ def test_depth_fixed_qualification_and_hold():
     for change in ({'qualify': False}, {'production': None}, {'production_worlds': 64}):
         with pytest.raises(ValueError):
             launcher.commands(*args, **{**kw, **change})
+    assert launcher.DEPTH_HOLD is False
+    monkeypatch.setattr(launcher, 'DEPTH_HOLD', True)
     with pytest.raises(RuntimeError, match='held pending'):
         launcher.main(['--source', '/missing', '--python', '/missing',
                        '--checkpoint', '/missing', '--out', '/missing',

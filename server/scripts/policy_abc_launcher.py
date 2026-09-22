@@ -105,7 +105,7 @@ PV_PRODUCTION_SCREEN_SEED = 625800000
 DEPTH_SUITE = 'depth-production-qualify'
 DEPTH_SOURCE = '594404e309c8d82bdc0405f0c089126c415dd178'
 DEPTH_PRODUCTION_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
-DEPTH_HOLD = True  # release only after source/launcher review and seed reservation
+DEPTH_HOLD = False  # #599/#601 PASS; Jerry's cloud multi-ply request, reserved seeds
 DEPTH_SEED = 626700000
 DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-pv-r29'),
               ('EXTRA_TRICK_HEURISTIC', 64, 'policy-heuristic-lookahead', 'production-pv-r29'),
@@ -417,7 +417,10 @@ def main(argv=None):
                        control='production-pv-r29', control_budget_seconds=3.0,
                        treatment_budget_seconds=300,
                        workers=6, move_timeout_seconds=300,
-                       seed_reservation='626700000:626700012; pending peer reconciliation',
+                       seed_reservation='626700000:626700012; confirmed on PR590 and PR599',
+                       authorization='Jerry direct Codex-thread request for cloud multi-ply tests',
+                       runtime_review='PR601 comment5771383781 at594404e3',
+                       launcher_review='PR599 comment5771387563 at3374323e; hold-only release',
                        total_arm_timeout_seconds=3*seconds,
                        automatic_retry=False, strength_claim=False)
     if args.suite == WIDE_SCREEN:

@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-09-16 (release 28: JS-M1 joint model as one package)**. This file is the prioritized
+Last reconciled: **2026-09-22 09:2x ET (release 30: the policy/value search with the soft head, plus the hybrid-bury fix)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -24,24 +24,23 @@ shared-control windows are nominal, and only fresh held-out deals confirm.
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **LIVE** | **Release 28: JS-M1 one package — Claude** | Deployed 2026-09-16 00:5x ET after the identity gate (2,207/2,208 + 1 near-tie), the server-path smoke and a live bot round. Rollback release 27 / 24. | Ten-window extension and five fresh windows vs release 27; production room logs (bury/play phase timings now logged). | Any regression → rollback to release 27; no recipe change without a new go. |
-| **RUNNING** | **runJS1 corpus — Perf** | 32,000 rounds with JS-M1 as teacher (own head as prior at 1,000, hybrid bury), 16 workers, started 09-15 23:10 ET, about 20 clusters/min. | A generation-1 training run on the new corpus vs JS-M1 (same recipe, new data): the search→data→model loop's first measured link. | Offline gates (val CE, policy-head non-inferiority) then the in-play screen. |
-| **RUNNING** | **JS-G1 — Mini** | G1's grid trunk from scratch with the policy head on all 20.3M root rows; the value curve tracks plain G1 (0.5495 at seal) so far. | Both #425 gates, then in play as one net vs JS-M1 at matched wall (G1 alone was 5.9× MC-LCB wall). | Same gates as JS-M1. |
-| **P1** | **Search with the heads — Codex, #436** | Bounded PUCT lost (−0.62 levels/round at 2× wall); root reuse, compact expansions, root warmup, truncated-value and prior-guided continuations are merged or under review as opt-in research arms against a frozen release-27 control. | A matched-control read showing any of them beats the shortlist at equal wall. | Paired DEV screens first; five capped windows before any claim. |
-| **P2** | **Bury latency — Claude** | Locally bury is 0.10–0.15 s and the banker's opening lead 0.4–0.65 s; production decisions queue behind one search worker. Phase telemetry on `model_search` events landed (#450). | The production split of bury vs play wall from the new events; then a bury screen at 16 candidates / 16 worlds if bury is the visible wait. | Bury screen vs the hybrid recipe; no default change without it. |
-| **P2** | **Docs cleanup** | 2026-09-22: six more top-level docs archived to `docs_archive/` (research principles, W32 Fly serving, PERF, MAINTENANCE, CORRECTNESS, the gen-2 pre-registration), links updated. Done 2026-09-16: README rewritten around release 28 with the pipeline diagram (`docs/visuals/js-m1-one-package.svg`); the two PT-Luna design docs and TEACHER_TOKEN_EFFICIENCY.md live in `docs_archive/` (stubs removed, Jerry's ask). HANDOFF_ACTIVE.md stays until its consumers (AGENTS.md, tooling) migrate; RESEARCH_PRINCIPLES.md was archived 2026-09-22 with AGENTS.md and README re-pointed at AI_POLICIES.md (the evidence standard). | Consumer migration for the two remaining files. | Nothing else deleted. |
-| **CLOSED** | **BELIEF R4/R5, PT-Sol/Luna, D64, Direct-Q, V11** | Retained as lessons and datasets. | — | — |
+| **LIVE** | **Release 30: pv-search W64/K8 + hybrid bury, soft head 8ecd4fea — Claude** | Release 29 deployed 2026-09-22 00:29 ET on the served confirmation (+0.049 [+0.003, +0.095], five clean windows); release 30 at 09:13 ET = the same name/package with the #607 bury fix (the duplicated-incumbent refusal that silently fell back to the heuristic on ~6% of banker burys, diagnostic-set rate). | First live rooms on release 30: bury fallback records should be budget-only; play p50/p95. | Rollback = the release-29 image, then release 28's one-line name. |
+| **RUNNING** | **Lane v34r5 — run 4's head served vs RELEASE 30 as served — Perf** | Relaunched 09:17 ET on tree 4e006561 after Jerry's rule "all screens compare vs v30"; seeds 23960910..24360910, five windows then triage. | The head-to-head that v34r4 (run 4 vs release 28, +0.042 [+0.015, +0.068] at ten windows) could not give. | Extend to ten only if the point exceeds +0.015. |
+| **RUNNING** | **Depth screen — Codex, cloud** | 260 mirrored deals × 3 arms (current trick; one extra trick with heuristic continuation; with policy continuation) vs the release-30 card-play control; Jerry approved; launched ~09:05 ET, ~3.5 h, 6 h ceiling. | Two depth-vs-production primaries at Bonferroni 97.5%. | Reader `policy_depth_readout`; #599/#601 PASSed. |
+| **RUNNING** | **Gen-4 run 3 — Mini** | Grid trunk d3 c44 warm from JS-G1, soft targets, all 20 stores; 78 min/epoch; epoch 5/20 val_ce 0.5658. | Seal ~03:30 ET 09-23, then its served lane vs release 30 and Codex's W64 card-play arm. | Run 2 (depth 6, soft) armed behind it. |
+| **P1** | **Data generation on the search (#592) — cloud** | runPV1/runPV2 stopped on #606 (unresumable after #607; kept as evidence). Fresh regenerations runPV1r/runPV2r on a 4e006561 tree, same seeds, recorded seed-window overlap, scripts ready. | Two 32,000-round stores as the gen-5 corpus. | Behind the depth screen on cloud; Perf needs the storage move before another store. |
+| **P1** | **Atlas v2 (#604) — Claude** | Built 09-22: one registry feeds the page; every screen read against the current release; old page/atlas frozen. | Move `registry.json` + `build_v2.py` under `docs/atlas_v2/` with `--check` and tests (PR). | Codex review like the page PRs. |
+| **P2** | **Perf storage (#592)** | 28 GB free; 356 GB of August belief evidence in Codex's `/opt` and `cloud-archive` namespaces is the lever; corpora stay. | Jerry/Codex decide the move to the SSD with verification. | Never delete evidence. |
+| **P2** | **Jev (TypeSafe) — Claude** | Harness merged (#593); live screen vs SmartBot 31/100, −0.47 [−0.65, −0.27]. | Advice mode (policies + search values as context) if Jerry wants it. | Call ceiling on every live run. |
+| **CLOSED** | **BELIEF R4/R5, PT-Sol/Luna, D64, Direct-Q, V11, encoder v5, the shortlist-package generations** | Retained as lessons and datasets; v5 closed 09-20 (v32 null), warm generations inside the shortlist null (v33). | — | — |
 
 ## Immediate sequence
 
-1. Read runJS1 when it seals (about 09-16 midday); train generation 1 on it
-   with JS-M1's recipe; compare offline against JS-M1, then in play.
-2. Read JS-G1 at seal (about 09-16 07:00 ET): both gates, then the one-net screen.
-3. Extend JS-M1 in play to ten windows and five fresh seeds; record on #425/#435.
-4. Read the first production days of release 28 from the room logs (phase
-   timings, fallbacks, timeouts); if bury is the visible wait, screen a lighter
-   bury recipe.
-5. Finish the docs cleanup once Codex answers on the deletion list.
+1. Read lane v34r5 at five windows (~11:45 ET): run 4 vs release 30, served form; extend only on the triage rule.
+2. Read Codex's depth screen when its three arms seal (~12:45 ET); record on the atlas v2.
+3. Arm runPV1r then runPV2r on cloud after the depth screen ends; read the first store's manifest.
+4. Seal gen-4 run 3 (~03:30 ET 09-23): receipt, atlas v2 row, its served lane vs release 30.
+5. Land the atlas v2 generator in the repo (#604) and close the docs pass for release 30 (#608).
 
 ## Entry criteria for new scientific lanes
 

@@ -143,7 +143,10 @@ def baseline_cards():
                    f'<p class="mono small">{esc(b["bot"])}</p><p>{esc(b["recipe"])}</p><p class="sub">head {esc(b["head"])} · package {esc(b["package"])}</p>'
                    f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></article>')
     return "\n".join(out)
-data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td><td class="mono">{d["seed0"]}</td><td>{esc(d["status"])}</td></tr>' for d in R["data"])
+data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
+                    f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
+                    f'<td class="mono">{esc(d.get("clusters", ""))}</td><td>{esc(d["status"])}</td></tr>'
+                    for d in R["data"])
 built = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
 
 page = f'''<title>Shengji Atlas v2</title>
@@ -194,7 +197,7 @@ a{{color:var(--accent)}}
 {models_table()}
 
 <h2>Data generation on the search</h2>
-<div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>status</th></tr></thead><tbody>{data_rows}</tbody></table></div>
+<div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>clusters</th><th>status</th></tr></thead><tbody>{data_rows}</tbody></table></div>
 
 <p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(R["screens"])} screens vs the current release, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
 </main>

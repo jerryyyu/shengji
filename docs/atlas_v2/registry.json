@@ -221,13 +221,64 @@
    "name": "runPV1",
    "box": "cloud",
    "seed0": 23260910,
-   "status": "stopped 05:34 ET: 15,078/16,000 clusters, 922 failed on #606; unresumable; regeneration runPV1r planned after the depth screen \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+   "clusters": "15,078 / 16,000",
+   "status": "STOPPED 05:34 ET, no manifest: 922 clusters failed on the hybrid-bury duplicated-incumbent refusal (#606). Kept untouched as evidence and unresumable by design, since the fix (#607) changes the source-tree identity the harvest stamps into every run."
   },
   {
    "name": "runPV2",
    "box": "Perf",
    "seed0": 23276910,
-   "status": "stopped 08:39 ET at 13,043/16,000 (13,043 sealed shards) to free Perf for v34r5; regeneration runPV2r planned on cloud \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+   "clusters": "13,043 / 16,000",
+   "status": "STOPPED 08:39 ET to free Perf for lane v34r5; same #606 fate ahead of it. Sealed shards kept untouched as evidence, unresumable for the same reason."
+  },
+  {
+   "name": "runPV1r",
+   "box": "cloud",
+   "seed0": 23260910,
+   "clusters": "16,000 / 16,000",
+   "status": "COMPLETE 15:42 ET on the release-30 tree (4e006561): 0 failed, manifest sealed with 16,000 shards, wall 201 min, 9.5 GB. The same recipe on the same decks that failed 922 clusters before the fix. Replays runPV1's decks and records the overlap in its manifest."
+  },
+  {
+   "name": "runPV2r",
+   "box": "cloud",
+   "seed0": 23276910,
+   "clusters": "running",
+   "status": "Started 15:42 ET behind the idle gate; replays runPV2's decks. At ~14,200 of 16,000 clusters, sealing about 19:05 ET, after which runPV3 takes the cloud chain."
+  },
+  {
+   "name": "runPV3",
+   "box": "cloud",
+   "seed0": 23292910,
+   "clusters": "16,000 (armed)",
+   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. Queue guards, after Codex found two races on #613: a store waits for its predecessor's DONE line, then takes an atomic mkdir lock held for the run; on Perf it also yields to the whole SCREEN LANE \u2014 the lane's own atomic lock and its supervisor process \u2014 because a lane runs its windows one at a time and a child-only scan would start in the gap between them. Dry runs write a throwaway seed registry, so they neither pollute the corpus registry nor collide with themselves. ARBITRATION IS START-TIME ONLY: whoever starts first holds the box, so a screen launched while a store is running waits for it (up to ~3.4 h) unless the store is stopped, and --resume continues it. New screens still need coordinating rather than relying on the gates."
+  },
+  {
+   "name": "runPV4",
+   "box": "cloud",
+   "seed0": 23308910,
+   "clusters": "16,000 (armed)",
+   "status": "Chained behind runPV3 on cloud by the predecessor guard and the atomic lock; starts about 22:30 ET, completes about 02:00 ET Wednesday."
+  },
+  {
+   "name": "runPV5",
+   "box": "Perf",
+   "seed0": 23324910,
+   "clusters": "16,000 (held)",
+   "status": "HELD, re-arm pending: the waiter was stopped at 18:38 ET so lane v34r3 (run 3's head, sealed 16:31 ET) could take Perf \u2014 screens supersede data generation, and with start-time-only arbitration that ordering has to be made rather than assumed. Re-armed once v34r3 holds the screen lock, so it starts about 23:00 ET."
+  },
+  {
+   "name": "runPV6",
+   "box": "Perf",
+   "seed0": 23340910,
+   "clusters": "16,000 (held)",
+   "status": "HELD with runPV5 and chained behind it; starts about 02:30 ET Wednesday, so the four stores complete about 06:00 ET."
+  },
+  {
+   "name": "(Perf disk)",
+   "box": "Perf",
+   "seed0": 0,
+   "clusters": "unblocked",
+   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf now has 288 GB free and hosts runPV5 and runPV6 as well as the screens."
   }
  ],
  "history": {

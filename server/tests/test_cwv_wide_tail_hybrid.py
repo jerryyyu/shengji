@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.train import cwv_shortlist_screen as S
-from shengji.train.cwv_bury_policy import CWVBuryBot, CWVBuryConfig
+from shengji.train.cwv_bury_policy import CWVBuryBot, CWVBuryConfig, CWVBuryMixin
 from shengji.train.cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 
 
@@ -46,7 +46,8 @@ def test_hybrid_wide_factory_uses_bury_first_mro_and_flat_bury_baseline(monkeypa
     assert type(arm) is S.CWVWideTailBuryBot
     assert type(baseline) is CWVBuryBot
     assert S.CWVWideTailBuryBot.__bases__ == (CWVBuryBot, CWVWideTailBot)
-    assert S.CWVWideTailBuryBot.__mro__[1:3] == (CWVBuryBot, CWVWideTailBot)
+    # bury-first: the bury search (CWVBuryMixin, extracted for pv-search in #588) precedes the wide tail
+    assert S.CWVWideTailBuryBot.__mro__[1:4] == (CWVBuryBot, CWVBuryMixin, CWVWideTailBot)
     assert arm.decide_bury.__func__ is CWVBuryBot.decide_bury
     assert arm._candidates.__func__ is CWVWideTailBot._candidates
     assert baseline.decide_bury.__func__ is CWVBuryBot.decide_bury

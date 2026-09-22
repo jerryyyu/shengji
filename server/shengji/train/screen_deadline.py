@@ -31,7 +31,7 @@ def _snapshot(wrapped):
     # Evaluators are immutable runtime assets, reconstructed through the factory
     # and shared per process; they must never cross the per-move IPC channel.
     state = {k: v for k, v in vars(wrapped.bot).items() if k != "evaluator"}
-    timing = {k: v for k, v in vars(wrapped).items() if k not in ("bot", "decisions")}
+    timing = {k: v for k, v in vars(wrapped).items() if k not in ("bot", "decisions", "bury_decisions")}
     defaults = {}
     for cls in reversed(type(wrapped.bot).__mro__):
         defaults.update({k: v for k, v in vars(cls).items()
@@ -113,6 +113,7 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
                     bots[index] = factory(*spec)
                 wrapped = bots[index]
                 wrapped.decisions.clear()
+                wrapped.bury_decisions.clear()
                 if method == "register":
                     result = None
                 elif method == "decide_play":
@@ -122,7 +123,8 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
                         result = wrapped.decide_play(*args, **kwargs)
                 else:
                     result = getattr(wrapped, method)(*args, **kwargs)
-                conn.send((request, "result", (result, _snapshot(wrapped), wrapped.decisions)))
+                traces = wrapped.bury_decisions if method == "decide_bury" else wrapped.decisions
+                conn.send((request, "result", (result, _snapshot(wrapped), traces)))
             except Exception:
                 conn.send((request, "error", traceback.format_exc()))
     except (EOFError, BrokenPipeError):
@@ -231,6 +233,7 @@ class DeadlinePolicy:
     def __init__(self, session, index):
         self.session, self.index = session, index
         self.decisions = []
+        self.bury_decisions = []
         self.decision_wall_seconds = 0.0
         self.timeout_count = 0
 
@@ -245,7 +248,9 @@ class DeadlinePolicy:
         return self.session.call(self.index, "decide_declare", (rnd, seat), {"final": final})[0]
 
     def decide_bury(self, rnd, seat):
-        return self.session.call(self.index, "decide_bury", (rnd, seat), {})[0]
+        result, traces, _, _ = self.session.call(self.index, "decide_bury", (rnd, seat), {})
+        self.bury_decisions.extend(dict(t) for t in traces)   # bury receipts (see TimedPolicy)
+        return result
 
     def decide_play(self, rnd, seat):
         started = time.monotonic()

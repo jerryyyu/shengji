@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from .heuristic import HeuristicBot
+from .jev_bot import JevBot
 from .legacy_b3f8f61 import MCBotPreFix
 from .mcbot import MCBot, MCSmartRoll
 from .smart import SmartBot
@@ -83,6 +84,9 @@ class MCNull(MCBot):
 REGISTRY: dict[str, type] = {
     "heuristic": HeuristicBot,
     "smart": SmartBot,
+    # TypeSafe Jev chooses the play (declare/bury heuristic); needs TYPESAFE_API_KEY and
+    # SHENGJI_JEV_MAX_CALLS at decision time, else it plays the heuristic and says so.
+    "jev": JevBot,
     "mc": MCBot,  # determinized Monte Carlo; ~30ms/decision (N=10 worlds)
     "mc-strong": type("MCStrong", (MCBot,), {"N_DETERMINIZATIONS": 30}),
     "mc-lite": type("MCLite", (MCBot,), {"N_DETERMINIZATIONS": 5}),

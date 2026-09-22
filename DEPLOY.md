@@ -25,7 +25,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   `/healthz` must then show `"prior": null`. `mc-s0-report-lcb` is the broader W32
   play-policy rollback; `smart` and `heuristic`
   are cheaper difficulty choices, not strength-equivalent replacements. See
-  `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
+  `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
 ## Release 29 plan — the policy/value search with the soft head (pv-search, #585), Jerry's go 2026-09-21 ~17:4x ET
 
@@ -298,7 +298,7 @@ The loaded NumPy package was verified as `fd6bb411` (source `3cd27716`, encoder
 v2), with no Torch import; public health passed with the exact W32 policy.
 Explicit engineering rooms still require a creator access code and remain
 excluded from ordinary training logs.
-See `W32_FLY_SERVING.md` for measured latency and test status.
+See `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived 2026-09-22) for the measured latency and test status through release 28.
 
 The pre-deploy **release 19** rollback image is
 `registry.fly.io/shengji:deployment-01M0P8VNX2C49XMVHFWFNNAPC2`, manifest

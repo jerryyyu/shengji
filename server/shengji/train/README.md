@@ -3,7 +3,7 @@
 As of September 9, W32 shortlist is deployed; the older prior/value root-search
 experiment described first below remains research-only. Deployment state and
 the selected model belong in [AI_POLICIES.md](../../../AI_POLICIES.md) and
-[W32_FLY_SERVING.md](../../../W32_FLY_SERVING.md).
+[docs_archive/w32-fly-serving-through-2026-09-22.md](../../../docs_archive/w32-fly-serving-through-2026-09-22.md) (archived 2026-09-22; the live record is `DEPLOY.md`).
 
 `search_inference.py` consumes the existing `ValuePriorNet` checkpoint;
 `search_policy.py` plugs it into the production MC-LCB selection/report split.

@@ -1,5 +1,5 @@
 # cython: language_level=3, boundscheck=False, wraparound=False
-"""Cython hot-path kernels for combos.py / legal.py (PERF.md #2+#3).
+"""Cython hot-path kernels for combos.py / legal.py (docs_archive/perf-through-2026-09-22.md #2+#3).
 
 Cards are u8 ids (index into fast.ID2CODE, 54 codes sorted lexicographically)
 INTERNALLY only; every public function takes and returns str card codes —
@@ -12,7 +12,7 @@ legal.beats (and helpers), including order sensitivity: Counter insertion
 order == first occurrence in the input list, pop(0)/pop() consumption,
 first-longest-run tie-break, the stable final sort, and defensive copies
 of cached tractor runs. Memo semantics follow the CALLER-ORDER contract
-(CORRECTNESS.md incident 08-03): keys are ``tuple(cards)`` in the exact
+(docs_archive/correctness-through-2026-09-22.md incident 08-03): keys are ``tuple(cards)`` in the exact
 input order — greedy/backtracking splits are order-dependent when distinct
 codes share a level, so anagram orders may NOT share a cache entry — and
 the cache dicts are the SAME ``ordering._dcache`` / ``ordering._trcache``

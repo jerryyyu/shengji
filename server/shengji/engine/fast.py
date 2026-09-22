@@ -1,4 +1,4 @@
-"""Fast-path routing for the engine hot loop (prototype, PERF.md #2+#3).
+"""Fast-path routing for the engine hot loop (prototype, docs_archive/perf-through-2026-09-22.md #2+#3).
 
 The compiled kernels in ``_fast`` (Cython) work on u8 card ids; this module
 owns the str<->int boundary so NOTHING outside sees int cards:

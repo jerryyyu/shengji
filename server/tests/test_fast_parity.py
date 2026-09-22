@@ -1,4 +1,4 @@
-"""Cython fast-path vs pure-Python parity (PERF.md #2+#3 prototype).
+"""Cython fast-path vs pure-Python parity (docs_archive/perf-through-2026-09-22.md #2+#3 prototype).
 
 Extends the test_engine_parity.py pattern: the compiled kernels in
 shengji/engine/_fast must reproduce combos._decompose_uncached and

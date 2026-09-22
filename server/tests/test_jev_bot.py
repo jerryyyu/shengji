@@ -59,19 +59,24 @@ def test_options_encode_every_legal_play_with_a_stable_key_and_the_incumbent(mon
     assert rec["confidence"] == 0.7 and rec["usage"]["input_tokens"] == 100 and rec["options"] >= 2
 
 
-def test_state_never_leaks_other_hands_or_the_kitty():
+def test_state_is_invariant_to_hidden_hands_and_the_kitty():
+    """Perturbation invariance: reshuffling every card the seat cannot see (the three
+    other hands and the kitty) among those holders leaves the encoded state identical."""
     game, rnd = _prepared(11)
     seat = rnd.turn
-    state = J.encode_state(rnd, seat)
-    text = json.dumps(state)
-    mine = set(rnd.hands[seat])
-    for other in range(4):
-        if other == seat:
-            continue
-        private = [c for c in rnd.hands[other] if c not in mine and rnd.deck.count(c) == 1]
-        for c in private:
-            assert c + " (" not in text, f"card {c} of seat {other} leaked"
-    assert "kitty" not in text.lower() or "kitty's points" in text.lower()
+    before = json.dumps(J.encode_state(rnd, seat), sort_keys=True)
+    hidden = [c for s in range(4) if s != seat for c in rnd.hands[s]] + list(rnd.buried)
+    rng = random.Random(5)
+    for _ in range(3):
+        rng.shuffle(hidden)
+        pos = 0
+        for s in range(4):
+            if s == seat:
+                continue
+            n = len(rnd.hands[s]); rnd.hands[s] = hidden[pos:pos + n]; pos += n
+        rnd.buried = hidden[pos:]
+        assert json.dumps(J.encode_state(rnd, seat), sort_keys=True) == before
+    state = json.loads(before)
     assert state["me"]["seat"] == seat and state["current_trick"]["note"] == "you lead this trick"
     assert sum(len(v) for v in state["my_hand_by_suit_high_to_low"].values()) == len(rnd.hands[seat])
     assert sum(state["cards_not_yet_seen_by_suit"].values()) == 108 - len(rnd.hands[seat])
@@ -183,3 +188,44 @@ def test_harness_dry_run_writes_decisions_rounds_and_summary(tmp_path):
     assert {d["schema"] for d in decisions} <= {"jev-decision-v1"}
     assert all(d["seat"] in (0, 2) for d in decisions if d["flip"] == 0)
     assert all(d["seat"] in (1, 3) for d in decisions if d["flip"] == 1)
+
+
+def test_dry_run_keeps_a_paid_opponent_inside_the_boundary(tmp_path, monkeypatch):
+    """--dry-run --opponent jev with credentials and a ceiling present: no live transport is
+    ever constructed, one shared budget, opponent decisions recorded with side=opponent."""
+    from scripts.jev_harness import main
+    monkeypatch.setenv(J.API_KEY_ENV, "k")
+    monkeypatch.setenv(J.MAX_CALLS_ENV, "1")
+    def boom(*a, **k):
+        raise AssertionError("live transport constructed in a dry run")
+    monkeypatch.setattr(J, "TypeSafeHTTP", boom)
+    assert main(["--clusters", "1", "--dry-run", "--opponent", "jev", "--out", str(tmp_path / "r"),
+                 "--seed0", "321", "--max-calls", "50"]) == 0
+    decisions = [json.loads(l) for l in (tmp_path / "r" / "decisions.jsonl").read_text().splitlines()]
+    sides = {d["side"] for d in decisions}
+    assert sides == {"candidate", "opponent"}
+    summary = json.loads((tmp_path / "r" / "summary.json").read_text())
+    assert summary["budget"]["max_calls"] == 50 and summary["budget"]["calls"] == 50   # one ceiling for all seats
+    assert summary["budget"]["fallbacks"]["ceiling"] > 0
+    assert all(d["schema"] in ("jev-decision-v1", "jev-fallback-v1") for d in decisions)
+
+
+def test_harness_refuses_a_non_empty_output_and_preserves_it(tmp_path):
+    from scripts.jev_harness import main
+    out = tmp_path / "r"; out.mkdir()
+    (out / "decisions.jsonl").write_text("sentinel\n")
+    assert main(["--clusters", "1", "--dry-run", "--out", str(out)]) == 3
+    assert (out / "decisions.jsonl").read_text() == "sentinel\n" and not (out / "summary.json").exists()
+
+
+def test_trace_payloads_records_exactly_what_was_sent(tmp_path):
+    from scripts.jev_harness import main
+    assert main(["--clusters", "1", "--dry-run", "--trace-payloads", "--out", str(tmp_path / "r")]) == 0
+    decisions = [json.loads(l) for l in (tmp_path / "r" / "decisions.jsonl").read_text().splitlines()]
+    traced = [d for d in decisions if "payload" in d]
+    assert traced and all(set(d["payload"]) == {"state", "questions"} for d in traced)
+    d = traced[0]
+    assert d["choice"] in d["payload"]["questions"]["play"]["criteria"]
+    assert d["payload"]["state"]["me"]["seat"] == d["seat"]
+    plain = [json.loads(l) for l in (tmp_path / "r" / "decisions.jsonl").read_text().splitlines() if "forced" in l]
+    assert all("payload" not in d for d in plain)                     # forced singles send nothing

@@ -59,8 +59,9 @@ RULES = (
     "also takes the buried kitty's points times a multiplier). Trump = the trump suit, every "
     "card of the trump rank, and both jokers (BJ big joker highest, then LJ). A trick is won by "
     "the highest play in the led suit unless trump is played; followers must follow the led "
-    "suit and shape (pair for pair, tractor for tractor) while they can. Playing more cards than "
-    "the lead (a throw) is only legal when every part would win."
+    "suit and shape (pair for pair, tractor for tractor) while they can. A lead of several "
+    "components at once (a throw) is legal only when every component would beat what the other "
+    "players hold in that suit; followers cannot throw."
 )
 
 
@@ -255,7 +256,7 @@ class JevBot(HeuristicBot):
 
     def __init__(self, seed: int = 0, *, ask=None, budget: JevBudget | None = None,
                  max_options: int = DEFAULT_OPTIONS, history_tricks: int = 6,
-                 model: str | None = None):
+                 model: str | None = None, keep_payload: bool = False):
         if not (1 <= int(max_options) <= MAX_OPTIONS):
             raise ValueError(f"max_options must be in 1..{MAX_OPTIONS}")
         self.seed = seed
@@ -264,6 +265,8 @@ class JevBot(HeuristicBot):
         self.max_options = int(max_options)
         self.history_tricks = history_tricks
         self.model = model
+        self.keep_payload = keep_payload      # retain the state/questions sent (harness --trace-payloads)
+        self.last_payload = None
         self.last_decision_record = None
         self.calls = 0
         self.search_secs = 0.0
@@ -286,6 +289,7 @@ class JevBot(HeuristicBot):
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         started = time.perf_counter()
         self.last_decision_record = None
+        self.last_payload = None
         incumbent = HeuristicBot.decide_play(self, rnd, seat)
         try:
             return self._jev_play(rnd, seat, incumbent, started)
@@ -321,6 +325,8 @@ class JevBot(HeuristicBot):
         questions = {"play": {"type": "choice",
                               "instructions": INSTRUCTIONS.format(seat=seat, team=team),
                               "criteria": options}}
+        if self.keep_payload:
+            self.last_payload = {"state": state, "questions": questions}
         response = self.ask(state, questions)
         self.calls += 1
         answer = (response or {}).get("answers", {}).get("play") or {}

@@ -6,13 +6,18 @@
 Seats Jev at 0+2 and the opponent (default ``smart``) at 1+3, then mirrors the
 same deal with the seats swapped -- the evaluation protocol's pairing, so the
 two flips of a cluster share a deck.  Every Jev decision is written to
-``decisions.jsonl`` (state sent, options offered, answer, probabilities,
-confidence, usage, or the fallback reason) and every round to
-``rounds.jsonl``; ``summary.json`` carries the totals.
+``decisions.jsonl`` (answer, probabilities, confidence, usage, the heuristic
+incumbent, or the fallback reason; with ``--trace-payloads`` also the exact
+state and questions sent) and every round to ``rounds.jsonl``;
+``summary.json`` carries the totals.
 
-Spend: ``--max-calls`` is a hard ceiling shared by both Jev seats; a decision
-past it is played by the heuristic and counted as a fallback.  A live run
-without a ceiling refuses to start.
+Spend boundary: ``--max-calls`` is ONE hard ceiling shared by every Jev seat in
+the run -- a paid opponent (``--opponent jev``) is built through the same
+factory, so it shares the mock in a dry run and the ceiling live, and its
+decisions are recorded with ``side: "opponent"``.  A decision past the ceiling
+is played by the heuristic and counted as a fallback.  A live run without a
+ceiling, and any run into a non-empty output directory, refuses to start
+before a single request is sent.
 """
 from __future__ import annotations
 
@@ -58,8 +63,14 @@ def main(argv=None) -> int:
     ap.add_argument("--max-options", type=int, default=120)
     ap.add_argument("--model", default=None)
     ap.add_argument("--dry-run", action="store_true", help="mock answers, no API, no key needed")
+    ap.add_argument("--trace-payloads", action="store_true",
+                    help="also write the exact state and questions sent per decision (large)")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
+
+    if args.out.exists() and any(args.out.iterdir()):
+        print(f"REFUSING: output {args.out} is not empty (results are never truncated; pick a fresh directory)")
+        return 3
 
     if args.dry_run:
         budget = JevBudget(args.max_calls or 10 ** 9)
@@ -77,17 +88,22 @@ def main(argv=None) -> int:
     rounds, started = [], time.time()
 
     def jev(seed):
-        return JevBot(seed=seed, ask=ask, budget=budget, max_options=args.max_options, model=args.model)
+        return JevBot(seed=seed, ask=ask, budget=budget, max_options=args.max_options, model=args.model,
+                      keep_payload=args.trace_payloads)
+
+    def build(name, seed):
+        # every paid seat goes through the same factory: same mock in a dry run, same ceiling live
+        return jev(seed) if name == "jev" else make_bot(name, seed=seed)
 
     for c in range(args.clusters):
         seed = args.seed0 + c
         for flip in (0, 1):
             a1, a2 = jev(seed), jev(seed + 500_000)
-            b1, b2 = make_bot(args.opponent, seed=seed + 1_000_000), make_bot(args.opponent, seed=seed + 1_500_000)
+            b1, b2 = build(args.opponent, seed + 1_000_000), build(args.opponent, seed + 1_500_000)
             pol = [a1, b1, a2, b2] if flip == 0 else [b1, a1, b2, a2]
             jev_seats = (0, 2) if flip == 0 else (1, 3)
             game = Game(random.Random(seed))
-            recorder = _Recorder(pol, jev_seats, dec_fh, seed, flip)
+            recorder = _Recorder(pol, jev_seats, dec_fh, seed, flip, trace=args.trace_payloads)
             log = play_round(game, recorder.policies)
             won = int(log.winner_team == (0 if flip == 0 else 1))
             rec = {"seed": seed, "flip": flip, "jev_seats": list(jev_seats), "won": won,
@@ -100,8 +116,9 @@ def main(argv=None) -> int:
             print(f"cluster {c} flip {flip}: {'WON' if won else 'lost'} as {rec['jev_role']}, "
                   f"attacker points {log.attacker_points}, calls so far {budget.calls}/{budget.max_calls}", flush=True)
     dec_fh.close(); rnd_fh.close()
-    conf = [d["confidence"] for d in _read(args.out / "decisions.jsonl") if d.get("confidence") is not None]
-    agree = [d["agrees_with_heuristic"] for d in _read(args.out / "decisions.jsonl") if "agrees_with_heuristic" in d]
+    cand = [d for d in _read(args.out / "decisions.jsonl") if d.get("side") == "candidate"]
+    conf = [d["confidence"] for d in cand if d.get("confidence") is not None]
+    agree = [d["agrees_with_heuristic"] for d in cand if "agrees_with_heuristic" in d]
     summary = {
         "opponent": args.opponent, "clusters": args.clusters, "seed0": args.seed0, "dry_run": args.dry_run,
         "model": args.model, "rounds": len(rounds), "wins": sum(r["won"] for r in rounds),
@@ -123,12 +140,13 @@ def _read(path):
 class _Recorder:
     """Wrap the Jev seats so every decision record lands in the JSONL."""
 
-    def __init__(self, policies, jev_seats, fh, seed, flip):
-        self.count, self.fallbacks = 0, {}
-        self.policies = [self._wrap(p, s, fh, seed, flip) if s in jev_seats else p
+    def __init__(self, policies, jev_seats, fh, seed, flip, trace=False):
+        self.count, self.fallbacks, self.trace = 0, {}, trace
+        self.policies = [self._wrap(p, s, fh, seed, flip, "candidate" if s in jev_seats else "opponent")
+                         if isinstance(p, JevBot) else p
                          for s, p in enumerate(policies)]
 
-    def _wrap(self, bot, seat, fh, seed, flip):
+    def _wrap(self, bot, seat, fh, seed, flip, side):
         rec = self
         class Wrapped:
             def __getattr__(self, name):
@@ -140,8 +158,12 @@ class _Recorder:
             def decide_play(self, rnd, s):
                 cards = bot.decide_play(rnd, s)
                 r = dict(bot.last_decision_record or {})
-                r.update(seed=seed, flip=flip, seat=s, trick=len(rnd.history))
+                r.update(seed=seed, flip=flip, seat=s, trick=len(rnd.history), side=side)
+                if rec.trace and bot.last_payload is not None:
+                    r["payload"] = bot.last_payload
                 fh.write(json.dumps(r) + "\n")
+                if side == "opponent":
+                    return cards
                 rec.count += 1
                 if r.get("schema") == "jev-fallback-v1":
                     rec.fallbacks[r["reason"]] = rec.fallbacks.get(r["reason"], 0) + 1

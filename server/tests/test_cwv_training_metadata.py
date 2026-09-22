@@ -79,14 +79,30 @@ def test_iter_batches_keeps_rng_order_and_default_metadata(store_type):
 
 
 @pytest.mark.parametrize('packed', [False, True])
-def test_real_joint_training_matches_with_and_without_metadata(packed, store_dir, policy_rows,
+@pytest.mark.parametrize('soft', [False, True])
+def test_real_joint_training_matches_with_and_without_metadata(packed, soft, store_dir, policy_rows,
                                                               tmp_path, monkeypatch):
     """Actual mixed policy/value trainer, not a surrogate optimizer update."""
     import torch
     from shengji.train import train_cwv
+    from shengji.train import policy_rows as policy_module
     from shengji.ai.cwv_policy import load_cwv_checkpoint
     store_type = CwvPackStore if packed else D.CwvBlockStore
     original = store_type.iter_batches
+    original_loss = policy_module.policy_losses
+    soft_batches = []
+    def checked_loss(model, tensors, **kwargs):
+        if soft:
+            assert kwargs['soft_targets'] is True
+            vals = tensors['vals']
+            # Prove the real loss sees a nontrivial soft ballot, rather than
+            # merely enabling a flag whose rows all fall back to hard labels.
+            finite = torch.isfinite(vals)
+            varied = ((vals.masked_fill(~finite, -torch.inf).max(dim=1).values
+                       - vals.masked_fill(~finite, torch.inf).min(dim=1).values) > 0)
+            soft_batches.append(bool(((finite.sum(dim=1) >= 2) & varied).any()))
+        return original_loss(model, tensors, **kwargs)
+    monkeypatch.setattr(policy_module, 'policy_losses', checked_loss)
     train_kw = {}
     if packed:
         cache = tmp_path / 'cache'
@@ -97,6 +113,7 @@ def test_real_joint_training_matches_with_and_without_metadata(packed, store_dir
         train_kw = {'cache_dir': cache, 'pack_dir': str(pack)}
     models, receipts, auxiliaries = [], [], []
     for include in (True, False):
+        soft_batches.clear()
         calls = []
         def batches(self, *args, **kwargs):
             # Only override explicit optimizer opt-out; evaluation keeps metadata.
@@ -111,8 +128,11 @@ def test_real_joint_training_matches_with_and_without_metadata(packed, store_dir
             n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1,
             bench_batch=32, val_rank_records=50, encoder_version=2,
             policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
+            policy_soft_targets=soft, policy_soft_temperature=1.0,
             aux_points=True, **train_kw, **THIRDS))
         assert calls, 'the actual optimizer iterator must exercise this option'
+        if soft:
+            assert any(soft_batches), 'soft training must consume varied finite search values'
         model, meta, _ = load_cwv_checkpoint(out / 'best.pt')
         models.append(model.state_dict())
         aux = meta.get('aux_points_head')

@@ -18,9 +18,9 @@
 <rect x="42" y="112" width="120" height="30" rx="4" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.2"/>
 <rect x="50" y="120" width="120" height="30" rx="4" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.2"/>
 <rect x="58" y="128" width="120" height="30" rx="4" fill="#ffffff" stroke="#3b4f63" stroke-width="1.5"/>
-<text x="118" y="147" class="sm" text-anchor="middle">hidden hands, world 1…64</text>
+<text x="118" y="147" class="sm" text-anchor="middle">hidden hands ×64</text>
 <text x="100" y="184" class="mut" text-anchor="middle">production's sampler,</text>
-<text x="100" y="198" class="mut" text-anchor="middle">void-checked, kitty aware</text>
+<text x="100" y="198" class="mut" text-anchor="middle">void- and kitty-aware</text>
 <circle cx="100" cy="228" r="6" fill="#1e2833"/>
 <text x="100" y="250" class="mut" text-anchor="middle">the real position</text>
 </g>
@@ -43,7 +43,7 @@
 <text x="540" y="148" text-anchor="middle" class="mut">finished heuristically</text>
 <text x="540" y="172" text-anchor="middle">value head prices the</text>
 <text x="540" y="188" text-anchor="middle">afterstate in all 64 worlds</text>
-<text x="540" y="214" text-anchor="middle" class="big">512 forwards, batches of 128</text>
+<text x="540" y="214" text-anchor="middle" class="big">512 forwards, batch 128</text>
 <text x="540" y="232" text-anchor="middle" class="mut">signed level utility, acting team</text>
 </g>
 <!-- mean -->

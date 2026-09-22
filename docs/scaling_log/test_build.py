@@ -699,3 +699,29 @@ def test_the_w64_search_chart_draws_every_arm_grouped_by_form_with_the_right_ver
     ys = sorted(float(y) for y in _re.findall(r'<text x="[\d.]+" y="([\d.]+)" class="lab" text-anchor="start"', svg))
     assert len(ys) == len(arms) and all(b - a >= 30 for a, b in zip(ys, ys[1:])), ys
     assert 'class="lgs"' not in svg                     # no in-chart legend to collide with
+
+
+def test_a_served_search_read_is_refused_in_a_proposer_cell(data):
+    """Codex HOLD on #603: a served-bot read of the policy/value search (chart 4b) placed in a
+    row's ten/w32/mc cell would put that head on the shortlist-proposer axes (charts 1b/2b/4)
+    and change their counts, confounding model-only conclusions with a search-recipe change.
+    The build refuses the mix, and no row on the page carries one."""
+    rows, table_only, series = data
+    served = [(ck, txt) for ck, form, txt in build.served_search_reads() if form == "served bot"]
+    assert served                                                  # the page has served reads
+    page, c = _render(rows, table_only, series)                    # and none of them sits in a cell
+    ck, txt = served[-1]
+    for field in ("ten", "w32"):
+        rows2 = copy.deepcopy(rows)
+        row = next(x for x in rows2 if x["ck"] == ck)
+        m, lo, hi = (float(g) for g in re.match(r"\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)", txt).groups())
+        row[field] = ("5w " if field == "ten" else "") + "%+.4f [%+.4f, %+.4f]" % (m, lo, hi)   # cells are 4-decimal
+        errs = build.check_data(rows2, table_only, series)
+        assert any("belongs to chart 4b only" in e for e in errs), errs
+        with pytest.raises(SystemExit):
+            _render(rows2, table_only, series)
+    # a different figure in the same cell (a package screen) is the proposer instrument and renders
+    rows3 = copy.deepcopy(rows)
+    next(x for x in rows3 if x["ck"] == ck)["ten"] = "5w +0.0011 [-0.0300, +0.0322]"
+    page3, c3 = _render(rows3, table_only, series)
+    assert c3["five_total"] >= c["five_total"]

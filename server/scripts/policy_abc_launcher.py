@@ -102,7 +102,16 @@ PV_PRODUCTION_QUALIFY_SECONDS = 3600
 # Six hours allows tails; a failure ceiling, not an ETA or retry permission.
 PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
-SUITES = ('abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
+DEPTH_SUITE = 'depth-production-qualify'
+DEPTH_SOURCE = '689260aedd01caaab9095cfca37cf40923a48640'
+DEPTH_HOLD = True  # release only after source/launcher review and seed reservation
+DEPTH_SEED = 626700000
+DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-play'),
+              ('EXTRA_TRICK_HEURISTIC', 64, 'policy-heuristic-lookahead', 'production-play'),
+              ('EXTRA_TRICK_POLICY', 64, 'policy-lookahead', 'production-play')]
+PRODUCTION_SUITES += (DEPTH_SUITE,)
+QUALIFICATION_ONLY_SUITES += (DEPTH_SUITE,)
+SUITES = (DEPTH_SUITE, 'abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
           JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, PRODUCTION_WORLD_SCALING_SUITE,
           WIDE_SCREEN)
@@ -146,6 +155,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
     if (suite in JOINT_SUITES) != (grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-model suites')
     arms, seed = {'abc': (ARMS, SEED), 'search-followup': (FOLLOWUP_ARMS, FOLLOWUP_SEED),
+                  DEPTH_SUITE: (DEPTH_ARMS, DEPTH_SEED),
                   JOINT_PRODUCTION_SUITE: (JOINT_PRODUCTION_ARMS, JOINT_PRODUCTION_SEED),
                   JOINT_PRODUCTION_SCREEN: (JOINT_PRODUCTION_ARMS, PV_PRODUCTION_SCREEN_SEED),
                   'search-reference': (REFERENCE_ARMS, REFERENCE_SEED),
@@ -171,7 +181,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                             '--checkpoint', str(arm_checkpoint), '--checkpoint-sha256', arm_hash,
                             '--out', str(output / name), '--seed0', str(seed),
                             '--deals', str(1 if suite == 'mc-pv-qualify' else QUALIFY_DEALS if qualify else DEALS),
-                            '--workers', str(1 if suite == 'mc-pv-qualify' else WORKERS),
+                            '--workers', str(6 if suite == DEPTH_SUITE else 1 if suite == 'mc-pv-qualify' else WORKERS),
                             '--worlds', str(worlds), '--mode', mode, '--candidates',
                             '16' if suite == 'wk-screen' and name == 'W4_K16' else '8',
                             '--control', control] + (['--production-checkpoint', str(production)]
@@ -213,6 +223,19 @@ def validate_summary(path, *, expected=DEALS):
     if (summary.get('expected') != expected or summary.get('complete') != expected
             or summary.get('errors') != [] or summary.get('aggregation_error') is not None):
         raise RuntimeError(f'arm did not seal all {expected} clean pairs')
+
+
+def verify_depth_import(python, source, env):
+    probe = ('import json, shengji.train.policy_world_duel as d; '
+             'import shengji.train.policy_lookahead as l; '
+             'print(json.dumps([d.__file__, l.__file__]))')
+    paths = json.loads(subprocess.check_output(
+        [str(python), '-B', '-c', probe], cwd=source / 'server', env=env,
+        text=True, timeout=30))
+    expected = [source / 'server/shengji/train' / name
+                for name in ('policy_world_duel.py', 'policy_lookahead.py')]
+    if [Path(p).resolve() for p in paths] != [p.resolve() for p in expected]:
+        raise RuntimeError('depth runtime imported outside frozen source')
 
 
 def stop_owned_group(process):
@@ -265,6 +288,8 @@ def main(argv=None):
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if args.suite == DEPTH_SUITE and args.run and DEPTH_HOLD:
+        raise RuntimeError('depth qualification held pending review and seed/host reconciliation')
     if (args.suite == WIDE_SCREEN) != (args.qualification is not None):
         raise ValueError('qualification root required exactly for wide-world full screen')
     if args.suite == WIDE_SCREEN:
@@ -295,6 +320,7 @@ def main(argv=None):
     if (args.suite in JOINT_SUITES) != (args.grid_checkpoint is not None):
         raise ValueError('grid checkpoint required exactly for joint-model suites')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
+                  DEPTH_SUITE: DEPTH_SOURCE,
                   JOINT_PRODUCTION_SUITE: REFERENCE_SOURCE,
                   JOINT_PRODUCTION_SCREEN: REFERENCE_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
@@ -342,6 +368,8 @@ def main(argv=None):
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
                     grid_checkpoint=grid_checkpoint, production_worlds=production_worlds)
+    if args.suite == DEPTH_SUITE:
+        verify_depth_import(args.python.absolute(), source, env)
     if args.suite == WIDE_SCREEN:
         from shengji.train.policy_wide_world_readout import validate_qualification
         validate_qualification(args.qualification)
@@ -352,7 +380,7 @@ def main(argv=None):
     if args.suite == 'mc-pv-qualify':
         seconds, expected = 3600, 1
     if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE,
-                      PRODUCTION_WORLD_SCALING_SUITE):
+                      PRODUCTION_WORLD_SCALING_SUITE, DEPTH_SUITE):
         seconds = PV_PRODUCTION_QUALIFY_SECONDS
     if args.suite in ('pv-production-screen', JOINT_PRODUCTION_SCREEN):
         seconds = PV_PRODUCTION_SCREEN_SECONDS
@@ -382,6 +410,12 @@ def main(argv=None):
     if production is not None:
         receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
+    if args.suite == DEPTH_SUITE:
+        receipt.update(launch_hold=DEPTH_HOLD, expected_pairs_per_arm=12,
+                       workers=6, move_timeout_seconds=300,
+                       seed_reservation='626700000:626700012; pending peer reconciliation',
+                       total_arm_timeout_seconds=3*seconds,
+                       automatic_retry=False, strength_claim=False)
     if args.suite == WIDE_SCREEN:
         receipt.update(mode='strength-screen', launch_hold=WIDE_SCREEN_HOLD,
             qualification=str(args.qualification.resolve()),
@@ -525,6 +559,8 @@ def main(argv=None):
         return 0
     previous = signal.signal(signal.SIGTERM, interrupted)
     acquired = []
+    created_output = False
+    completed_arms = []
     try:
         for path in locks:
             path.mkdir()
@@ -532,17 +568,30 @@ def main(argv=None):
             (path / 'pid').write_text(str(os.getpid()) + '\n')
         resource_guard(output.parent)
         output.mkdir()
+        created_output = True
         (output / 'launch-plan.json').write_text(json.dumps(receipt, indent=2) + '\n')
         for name, cmd in plan:
             resource_guard(output.parent)
             run_arm(cmd, env=env, cwd=source / 'server', log=output / f'{name}.log',
                     seconds=seconds)
             validate_summary(output / name / 'summary.json', expected=expected)
+            completed_arms.append(name)
+        if args.suite == DEPTH_SUITE:
+            (output / 'terminal.json').write_text(json.dumps(
+                {'status': 'complete', 'completed_arms': completed_arms,
+                 'automatic_promotion': False}) + '\n')
         if args.suite == WIDE_SCREEN:
             from shengji.train.policy_wide_world_readout import readout
             result = readout(output, args.qualification)
             (output / 'readout.json').write_text(json.dumps(result, indent=2) + '\n')
         return 0
+    except BaseException as exc:
+        if args.suite == DEPTH_SUITE and created_output:
+            (output / 'terminal.json').write_text(json.dumps(
+                {'status': 'refused', 'completed_arms': completed_arms,
+                 'error_type': type(exc).__name__, 'error': str(exc),
+                 'automatic_retry': False}) + '\n')
+        raise
     finally:
         for path in reversed(acquired):
             # No recursive deletion; a changed lock must be inspected manually.

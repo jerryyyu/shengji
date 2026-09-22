@@ -26,6 +26,76 @@ def test_frozen_commands():
     assert arms[2][1][arms[2][1].index('--control') + 1] == 'policy-world'
 
 
+def test_depth_fixed_qualification_and_hold():
+    args = (Path('/python'), Path('/soft'), Path('/out'))
+    kw = dict(suite=launcher.DEPTH_SUITE, qualify=True, production=Path('/prod'))
+    plan = launcher.commands(*args, **kw)
+    assert [n for n, _ in plan] == [a[0] for a in launcher.DEPTH_ARMS]
+    for (_, cmd), mode in zip(plan, ('policy-value', 'policy-heuristic-lookahead', 'policy-lookahead')):
+        for flag, value in {'--worlds': '64', '--candidates': '8', '--deals': '12',
+                            '--workers': '6', '--seed0': '626700000', '--mode': mode,
+                            '--control': 'production-play'}.items():
+            assert cmd[cmd.index(flag)+1] == value
+    for change in ({'qualify': False}, {'production': None}, {'production_worlds': 64}):
+        with pytest.raises(ValueError):
+            launcher.commands(*args, **{**kw, **change})
+    with pytest.raises(RuntimeError, match='held pending'):
+        launcher.main(['--source', '/missing', '--python', '/missing',
+                       '--checkpoint', '/missing', '--out', '/missing',
+                       '--suite', launcher.DEPTH_SUITE, '--qualify', '--run'])
+
+
+def test_depth_import_origin_guard(monkeypatch, tmp_path):
+    expected = [str(tmp_path / 'server/shengji/train' / name)
+                for name in ('policy_world_duel.py', 'policy_lookahead.py')]
+    monkeypatch.setattr(launcher.subprocess, 'check_output', lambda *a, **kw: json.dumps(expected))
+    launcher.verify_depth_import(Path('/python'), tmp_path, {})
+    expected[1] = '/wrong/policy_lookahead.py'
+    with pytest.raises(RuntimeError, match='outside frozen'):
+        launcher.verify_depth_import(Path('/python'), tmp_path, {})
+
+
+@pytest.mark.parametrize('fail_second', [False, True])
+def test_depth_terminal_and_stop_on_failure(monkeypatch, isolated_main, tmp_path, fail_second):
+    import hashlib
+    args, output = isolated_main
+    prod = tmp_path / 'prod'
+    prod.write_bytes(b'production')
+    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher, 'DEPTH_HOLD', False)
+    monkeypatch.setattr(launcher, 'verify_depth_import', lambda *a: None)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+                        lambda cmd, **kw: launcher.DEPTH_SOURCE if 'rev-parse' in cmd else '')
+    seen = []
+    def fake(cmd, **kw):
+        assert all(p.is_dir() for p in launcher.LOCKS)
+        assert kw['seconds'] == 3600
+        assert kw['env']['SHENGJI_REQUIRE_VOIDS'] == '1'
+        assert 'SHENGJI_FAST' not in kw['env']
+        arm = Path(cmd[cmd.index('--out')+1])
+        arm.mkdir()
+        seen.append(arm.name)
+        if fail_second and len(seen) == 2:
+            (arm / 'partial.txt').write_text('retained')
+            raise subprocess.TimeoutExpired(cmd, 3600)
+        (arm / 'summary.json').write_text(json.dumps(dict(expected=12, complete=12, errors=[])))
+    monkeypatch.setattr(launcher, 'run_arm', fake)
+    call = args + ['--suite', launcher.DEPTH_SUITE, '--qualify', '--run',
+                   '--production-checkpoint', str(prod)]
+    if fail_second:
+        with pytest.raises(subprocess.TimeoutExpired):
+            launcher.main(call)
+    else:
+        assert launcher.main(call) == 0
+    terminal = json.loads((output / 'terminal.json').read_text())
+    assert terminal['status'] == ('refused' if fail_second else 'complete')
+    assert terminal['completed_arms'] == [a[0] for a in launcher.DEPTH_ARMS[:1 if fail_second else 3]]
+    assert len(seen) == (2 if fail_second else 3)
+    if fail_second:
+        assert (output / 'EXTRA_TRICK_HEURISTIC/partial.txt').read_text() == 'retained'
+    assert not any(p.exists() for p in launcher.LOCKS)
+
+
 def test_joint_production_qualification_commands_and_refusals():
     args = (Path('/python'), Path('/m1'), Path('/out'))
     kw = dict(suite='joint-production-qualify', qualify=True,

@@ -250,35 +250,35 @@
    "box": "cloud",
    "seed0": 23292910,
    "clusters": "16,000 (armed)",
-   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. All DRYRUN clean; armed behind the same idle gate, so they self-sequence and yield to any screen."
+   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. Two guards, after Codex found the first version racy (#613): each store waits for its predecessor's DONE line, then takes an atomic mkdir lock held for the run. Cloud keeps runPV3 and runPV4."
   },
   {
    "name": "runPV4",
    "box": "cloud",
    "seed0": 23308910,
    "clusters": "16,000 (armed)",
-   "status": "Queued behind runPV3."
+   "status": "Chained behind runPV3 on cloud by the predecessor guard and the atomic lock."
   },
   {
    "name": "runPV5",
-   "box": "cloud",
+   "box": "Perf",
    "seed0": 23324910,
    "clusters": "16,000 (armed)",
-   "status": "Queued behind runPV4."
+   "status": "Moved to Perf at 17:5x ET after Jerry approved the belief-evidence cleanup (Codex freed ~261 GiB; Perf now 288 GB). Armed behind lane v34r1; first store on that box."
   },
   {
    "name": "runPV6",
-   "box": "cloud",
+   "box": "Perf",
    "seed0": 23340910,
    "clusters": "16,000 (armed)",
-   "status": "Queued behind runPV5; the four finish about 09:00 ET Wednesday, taking the release-30 corpus to six stores and 96,000 clusters."
+   "status": "Moved to Perf with runPV5 and chained behind it. Splitting the four stores across both boxes takes the tail from about 09:00 ET Wednesday to about 03:20 ET."
   },
   {
-   "name": "(Perf)",
+   "name": "(Perf disk)",
    "box": "Perf",
    "seed0": 0,
-   "clusters": "blocked",
-   "status": "No new store can start on Perf: 27 GB free against a ~9.5 GB store and a 30 GB gate. The lever is 356 GB of August belief evidence in Codex's namespaces (#592), which is Jerry's and Codex's call; until then Perf runs screens only."
+   "clusters": "unblocked",
+   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf now has 288 GB free and hosts runPV5 and runPV6 as well as the screens."
   }
  ],
  "history": {

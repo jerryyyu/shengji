@@ -119,10 +119,15 @@ def main(argv=None) -> int:
     cand = [d for d in _read(args.out / "decisions.jsonl") if d.get("side") == "candidate"]
     conf = [d["confidence"] for d in cand if d.get("confidence") is not None]
     agree = [d["agrees_with_heuristic"] for d in cand if "agrees_with_heuristic" in d]
+    per_cluster = {}
+    for r in rounds:
+        per_cluster[r["seed"]] = per_cluster.get(r["seed"], 0.0) + r["level_utility"] / 2   # per-round scale
+    interval = _cluster_bootstrap(list(per_cluster.values()), random.Random(20260921))
     summary = {
         "opponent": args.opponent, "clusters": args.clusters, "seed0": args.seed0, "dry_run": args.dry_run,
         "model": args.model, "rounds": len(rounds), "wins": sum(r["won"] for r in rounds),
         "mean_level_utility": statistics.mean(r["level_utility"] for r in rounds) if rounds else None,
+        "level_utility_ci95_cluster_bootstrap": interval,      # mean per-round utility, deals resampled
         "jev_decisions": sum(r["decisions"] for r in rounds),
         "mean_confidence": statistics.mean(conf) if conf else None,
         "agreement_with_heuristic": (sum(agree) / len(agree)) if agree else None,
@@ -131,6 +136,15 @@ def main(argv=None) -> int:
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     return 0
+
+
+def _cluster_bootstrap(values, rng, replicates=1000):
+    """95% interval of the mean, resampling whole clusters (both mirrors of a deal together)."""
+    if len(values) < 2:
+        return None
+    n = len(values)
+    means = sorted(sum(values[rng.randrange(n)] for _ in range(n)) / n for _ in range(replicates))
+    return [means[int(0.025 * replicates)], means[int(0.975 * replicates) - 1]]
 
 
 def _read(path):

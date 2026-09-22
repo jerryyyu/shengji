@@ -49,7 +49,7 @@ when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
-0. **Production is the JS-M1 joint model as one package (release 28, 2026-09-16).**
+0. **Production is the policy/value search with the soft head (release 29, 2026-09-22): the head admits 8 candidates over 64 sampled worlds and its value head prices them, no MC playouts in play; release 28 (JS-M1 as one package inside the MC shortlist, 2026-09-16) is the rollback.** The release-28 design, kept for the record:
    The deployed design: the value head ranks the exhaustive legal set on 32
    sampled worlds; above 1,000 legal actions the same network's policy head
    prunes to the union of per-world top-256 plus production's anchors; the

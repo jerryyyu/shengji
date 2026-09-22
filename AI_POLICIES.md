@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-16 (release 28: JS-M1 joint model as one package)**. This file defines the current callable-policy
+Last reconciled: **2026-09-22 (release 29: the policy/value search with the soft head, pv-search W64/K8 + hybrid bury)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -17,22 +17,31 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 28: **the JS-M1 joint model as ONE
-package** (value net + its own policy head as the admission prior + hybrid bury).
+The current live Fly snapshot is release 29 (2026-09-22 00:29 ET): **the policy/value search with the
+soft-action head 8ecd4fea as ONE package** (`soft-8ecd4fea.npz`; the policy head admits 8 of the legal
+actions over 64 sampled worlds, the value head prices them, no playouts; value-guided hybrid bury on
+the same package). Release 28 (JS-M1 as one package inside the MC shortlist) is the one-line rollback.
 
 The current selection is:
 
 ```toml
-SHENGJI_BOT = "mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff"
-SHENGJI_CWV_SHORTLIST_CKPT = "/data/models/js-m1-0d17fd03.npz"
-SHENGJI_CWV_PRIOR_CKPT = "/data/models/js-m1-0d17fd03.npz"
-SHENGJI_CWV_PRIOR_SHA256 = "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747"
-SHENGJI_CWV_PRIOR_THRESHOLD = "1000"
-SHENGJI_CWV_PRIOR_TOP = "256"
-SHENGJI_CWV_BURY_ARM = "hybrid"
-SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS = "2"
+SHENGJI_BOT = "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e"
+SHENGJI_PV_CKPT = "/data/models/soft-8ecd4fea.npz"
+SHENGJI_PV_SHA256 = "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75"
+SHENGJI_PV_WORLDS = "64"
+SHENGJI_PV_CANDIDATES = "8"
+SHENGJI_PV_CAP = "4000"
+SHENGJI_PV_BATCH_SIZE = "128"
+SHENGJI_PV_SERVING_BUDGET_SECONDS = "3"
+SHENGJI_PV_BURY_ARM = "hybrid"
+SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = "2"
 SHENGJI_FAST = "1"
 ```
+
+(The release-28 keys — `SHENGJI_CWV_SHORTLIST_CKPT`, `SHENGJI_CWV_PRIOR_*`, `SHENGJI_CWV_BURY_*` — stay in
+`fly.toml` so that setting `SHENGJI_BOT` back to
+`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` is the whole rollback.)
+
 
 The name is derived by the registry from that environment (the package SHA, the
 W32/N30/R300 recipe digest, the prior SHA and the bury identity); it is never
@@ -67,6 +76,23 @@ decision wall; threshold 1,000 versus 10,000 read `−0.0006 [−0.0026, +0.0014
 paired (no resolved difference) at 0.72× that arm's wall with no decision over
 9.9 s in those five windows. Twenty fresh windows of the M1 family pooled `+0.0140 [+0.0026, +0.0254]`
 against release 24.
+
+### The soft head in the policy/value search (release 29)
+
+`8ecd4fea`: gen-3-warm's recipe (JS-M1 warm-started on the 256k afterstate corpus, residual trunk,
+outcome + search-mean + points heads) with the SEARCH'S PER-CANDIDATE VALUES as the policy target
+(soft targets, T=1.0, w=1.0) instead of the played action. Served as one NumPy package
+(`soft-8ecd4fea.npz`, sha256 ccade130…) that is both the admission policy and the value evaluator of
+the W64/K8 search (`train/pv_search_policy.py`). Evidence, in the order it was gathered: the head alone
+beats SmartBot under public information (+0.052 [+0.039, +0.067]); as the whole search it beats
+MC-LCB at every world budget (W64/K8 +0.187 [+0.144, +0.231]); vs the release-28 package in card play
++0.086 [+0.042, +0.131] on 800 matched deals and +0.122 [+0.079, +0.164] on fresh deals; more worlds
+beyond 64 not shown to help (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]);
+no head in the W64 family (JS-M1, JS-G1, gen-4 run 1, gen-3-warm) shown superior to it or to each
+other; served with hybrid bury vs release 28 as served (five clean windows, 300 s cap) +0.049
+[+0.003, +0.095] — clear of zero narrowly, I² 49%. Released 2026-09-22 on that read. Standing caveat: the
+served contrast is a summary-level read against the screen's common MC-LCB opponents, not deal-paired
+inference, and its lower bound is near zero.
 
 ### JS-M1 — the joint model (release 28)
 
@@ -378,7 +404,7 @@ production claims.
 
 | lane | conclusion for policy work |
 |---|---|
-| **RLCB** | The confirmed MC-LCB search; still the screen baseline. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model). |
+| **RLCB** | The confirmed MC-LCB search; still the screen baseline. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
 | **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
 | **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |
@@ -475,7 +501,7 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- Release 27 is the immediate rollback for release 28, release 24 the next;
+- Release 28 is the immediate rollback for release 29 (one `SHENGJI_BOT` line), release 27 the next;
   `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use
   the image rollback in `DEPLOY.md`.
 

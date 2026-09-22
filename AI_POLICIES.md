@@ -79,6 +79,8 @@ against release 24.
 
 ### The soft head in the policy/value search (release 29)
 
+![Release 29: the policy/value search as one package](docs/visuals/pv-search-one-package.svg)
+
 `8ecd4fea`: gen-3-warm's recipe (JS-M1 warm-started on the 256k afterstate corpus, residual trunk,
 outcome + search-mean + points heads) with the SEARCH'S PER-CANDIDATE VALUES as the policy target
 (soft targets, T=1.0, w=1.0) instead of the played action. Served as one NumPy package
@@ -95,6 +97,8 @@ served contrast is a summary-level read against the screen's common MC-LCB oppon
 inference, and its lower bound is near zero.
 
 ### JS-M1 — the joint model (release 28)
+
+![Release 28: one JS-M1 package proposes inside the MC shortlist](docs/visuals/js-m1-one-package.svg)
 
 `a5248cc5`: M1's recipe (residual d4 trunk, 176k afterstate corpus, outcome +
 search-mean + points heads) trained from scratch for 20 epochs with a 54-card

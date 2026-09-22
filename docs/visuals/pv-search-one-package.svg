@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="Release 29: one soft-head package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices each candidate's afterstate in every world, the highest mean plays; hybrid bury uses the same package.">
+<rect x="0" y="0" width="1000" height="400" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:12px;fill:#1e2833}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}.mut{fill:#65727f;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.06em;fill:#65727f}.big{font-size:13px;font-weight:600}</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker></defs>
+<!-- column headers -->
+<text x="90" y="22" class="hdr" text-anchor="middle">64 SAMPLED WORLDS</text>
+<text x="300" y="22" class="hdr" text-anchor="middle">POLICY HEAD · ADMIT 8</text>
+<text x="540" y="22" class="hdr" text-anchor="middle">VALUE HEAD · PRICE 8 × 64</text>
+<text x="770" y="22" class="hdr" text-anchor="middle">MEAN OVER WORLDS</text>
+<text x="945" y="22" class="hdr" text-anchor="middle">PLAY</text>
+<!-- the one package spanning the two heads -->
+<rect x="206" y="34" width="440" height="36" rx="6" fill="#d6ecea" stroke="#117a75" stroke-width="1.5"/>
+<text x="426" y="50" class="big" text-anchor="middle" fill="#117a75">ONE NUMPY PACKAGE  soft-8ecd4fea.npz  (sha256 ccade130…)</text>
+<text x="426" y="64" class="mut" text-anchor="middle">shared trunk · policy head + value head · no Torch, no playouts on the server</text>
+<!-- worlds column -->
+<g>
+<rect x="34" y="96" width="112" height="30" rx="4" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.2"/>
+<rect x="42" y="104" width="112" height="30" rx="4" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.2"/>
+<rect x="50" y="112" width="112" height="30" rx="4" fill="#dfe5ec" stroke="#3b4f63" stroke-width="1.2"/>
+<rect x="58" y="120" width="112" height="30" rx="4" fill="#ffffff" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="114" y="139" text-anchor="middle">hidden hands, world 1…64</text>
+<text x="90" y="176" class="mut" text-anchor="middle">production's sampler,</text>
+<text x="90" y="190" class="mut" text-anchor="middle">void-checked, kitty aware</text>
+<circle cx="90" cy="230" r="7" fill="#1e2833"/><text x="90" y="256" class="mut" text-anchor="middle">the real position</text>
+</g>
+<!-- admit -->
+<g>
+<rect x="216" y="96" width="168" height="120" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.5"/>
+<text x="300" y="116" text-anchor="middle" class="big">every legal action</text>
+<text x="300" y="132" text-anchor="middle" class="mut">(capped at 4,000; median 8)</text>
+<text x="300" y="154" text-anchor="middle">scored in every world,</text>
+<text x="300" y="170" text-anchor="middle">log-odds summed per action;</text>
+<text x="300" y="192" text-anchor="middle" class="big">heuristic anchor + 7 best → 8</text>
+<text x="300" y="208" text-anchor="middle" class="mut">the anchor is always admitted</text>
+</g>
+<!-- price -->
+<g>
+<rect x="450" y="96" width="180" height="120" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.5"/>
+<text x="540" y="116" text-anchor="middle" class="big">each admitted play</text>
+<text x="540" y="132" text-anchor="middle" class="mut">applied; the trick finished heuristically</text>
+<text x="540" y="154" text-anchor="middle">value head prices the</text>
+<text x="540" y="170" text-anchor="middle">afterstate in all 64 worlds</text>
+<text x="540" y="192" text-anchor="middle" class="big">512 forwards, one batch of 128</text>
+<text x="540" y="208" text-anchor="middle" class="mut">signed level utility, acting team</text>
+</g>
+<!-- mean -->
+<g>
+<rect x="700" y="96" width="140" height="120" rx="6" fill="#ffffff" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="770" y="120" text-anchor="middle" class="big">8 means</text>
+<line x1="716" y1="140" x2="824" y2="140" stroke="#d5dae0"/>
+<text x="770" y="160" text-anchor="middle">argmax</text>
+<text x="770" y="184" text-anchor="middle" class="mut">no lower bound, no report</text>
+<text x="770" y="198" text-anchor="middle" class="mut">fold, no Monte Carlo playouts</text>
+</g>
+<!-- play -->
+<g>
+<rect x="900" y="126" width="90" height="60" rx="30" fill="#f3e7cc" stroke="#a8741c" stroke-width="1.5"/>
+<text x="945" y="152" text-anchor="middle" class="big">played</text>
+<text x="945" y="168" text-anchor="middle" class="mut">≈0.25 s on Fly</text>
+</g>
+<!-- arrows -->
+<line x1="172" y1="156" x2="210" y2="156" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="384" y1="156" x2="446" y2="156" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="630" y1="156" x2="696" y2="156" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="840" y1="156" x2="896" y2="156" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<!-- fallback + budget -->
+<text x="500" y="246" class="mut" text-anchor="middle">3 s cooperative budget: on expiry, or any search error, the sampler's RNG is restored and the heuristic anchor plays (pv-search-fallback-v1); otherwise pv-search-decision-v1.</text>
+<!-- bury row -->
+<rect x="34" y="272" width="956" height="84" rx="6" fill="#f7f8f9" stroke="#d5dae0"/>
+<text x="60" y="292" class="hdr">BURY · VALUE-GUIDED HYBRID, THE SAME PACKAGE</text>
+<text x="60" y="314">heuristic candidates (32) → each scored by the package's value head on 32 model worlds → MC selection over 32 worlds with 4 alternatives → 2 s budget, heuristic fallback.</text>
+<text x="60" y="332" class="mut">Declare stays heuristic. Release 27/28's bury arm unchanged; only the value net behind it is now the soft head.</text>
+<text x="60" y="348" class="mut">Evidence: card play vs the release-28 package +0.086 [+0.042, +0.131]; served vs release 28 as served +0.049 [+0.003, +0.095] (five clean windows). Rollback: one line, SHENGJI_BOT back to the release-28 name.</text>
+<text x="990" y="392" class="mut" text-anchor="end">release 29 · 2026-09-22 · docs/visuals/pv-search-one-package.svg</text>
+</svg>

@@ -9,10 +9,7 @@ multiplayer server + React web UI with Mandarin voice announcements.
 
 ## The production bot — release 29 (2026-09-22)
 
-![Release 28: one JS-M1 package proposes, production's Monte Carlo search decides](docs/visuals/js-m1-one-package.svg)
-
-*(The diagram shows release 28, the one-line rollback; release 29 removes the Monte Carlo search
-from play entirely.)*
+![Release 29: one soft-head package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
 
 One checkpoint, the **soft-action head** (`8ecd4fea`, served as the NumPy package
 `soft-8ecd4fea.npz`), is the whole play search:

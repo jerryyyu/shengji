@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import random
 
+import pytest
+
 import numpy as np
 
 from shengji.engine.game import Game
@@ -277,3 +279,29 @@ def test_sample_underfill_and_wrong_seat_refuse(monkeypatch):
         lambda *_args, **_kwargs: ([], 32))
     with np.testing.assert_raises(BuryPolicyError):
         bot.decide_bury(rnd, rnd.banker)
+
+
+def test_generator_copy_of_the_wrapper_incumbent_is_dropped_not_refused(monkeypatch):
+    """#606: bury_candidates() builds its ballot around the SOURCE bot's incumbent; when
+    the play bot's heuristic incumbent differs and is already in that ballot, the
+    decision used to be refused -- a hard failure for a data teacher (runPV1: 922 of
+    16,000 clusters) and a silent heuristic fallback under a serving budget.  The
+    candidate set is the same either way: keep the literal incumbent at slot 0, drop
+    the generator's copy (any card order), keep the order of the rest.  A genuine
+    repeat elsewhere in the ballot is still refused."""
+    rnd = _bury_state(13)
+    hand = rnd.hands[rnd.banker]
+    incumbent = list(SmartBot().decide_bury(rnd, rnd.banker))
+    other, third = list(hand[8:16]), list(hand[16:24])
+    assert sorted(other) != sorted(incumbent) and sorted(third) != sorted(incumbent)
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.make_bot",
+                        lambda _name, *, seed: _Helper(seed))
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.bury_candidates",
+                        lambda _rnd, _bot: [other, list(reversed(incumbent)), third])
+    bot = make_cwv_bury_bot(_Evaluator(), seed=17, arm="mc",
+                            bury_config=CWVBuryConfig(max_candidates=64))
+    assert bot._bury_candidates(rnd, incumbent) == [incumbent, third]
+    monkeypatch.setattr("shengji.train.cwv_bury_policy.bury_candidates",
+                        lambda _rnd, _bot: [other, third, list(third)])
+    with pytest.raises(BuryPolicyError, match="returned duplicates"):
+        bot._bury_candidates(rnd, incumbent)

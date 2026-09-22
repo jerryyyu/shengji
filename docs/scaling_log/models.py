@@ -298,6 +298,21 @@ POLICY_VS_SMART_PUBLIC = {
     "9ee9fedb": "-0.0267 [-0.0399, -0.0128]",   # JS-G1: below SmartBot; 0.028 below its perfect-info +0.0014.  ALL SIX IN.
 }
 
+#: The heads INSIDE the W64/K8 policy/value search against PRODUCTION (chart 4b): the head is
+#: the whole search (its policy admits 8 candidates over 64 sampled worlds, its value head prices
+#: them, no playouts) against the deployed JS-M1 shortlist package in CARD PLAY (shared heuristic
+#: declare/bury), 800 matched deals on seeds 625800000.. (Codex #553 / #574 / #583; atlas rows
+#: 45, 47-50).  "mean [lo, hi]" at the interval each result was pre-registered at: the soft head's
+#: single primary at 95%, the four-model family at 98.75% per primary.  Common-opponent contrasts,
+#: not direct duels, and no head is shown superior to another (every pairwise contrast spans zero).
+HEADS_IN_W64_SEARCH_VS_PRODUCTION = {
+    "8ecd4fea": "+0.086 [+0.042, +0.131]",   # soft target (row 45), 95%; the served form is chart 4's +0.049
+    "9ee9fedb": "+0.057 [+0.007, +0.111]",   # JS-G1 (row 48), family 98.75%
+    "3f83bfb7": "+0.056 [+0.001, +0.111]",   # gen-4 run 1 (row 49), family 98.75%
+    "a5248cc5": "+0.029 [-0.025, +0.082]",   # JS-M1, production's own head (row 47), family 98.75%
+    "d2514e6e": "+0.024 [-0.030, +0.078]",   # gen-3-warm, the soft head's hard-target twin (row 50)
+}
+
 POLICY_VS_SMART = {
     "8ecd4fea": "+0.1006 [+0.0864, +0.1153]",   # PERFECT-INFO; soft target, w=1.0: same as gen-3-warm
     "d2514e6e": "+0.0993 [+0.0856, +0.1126]",   # PERFECT-INFO; gen-3-warm: 6x JS-M1 under the same privilege

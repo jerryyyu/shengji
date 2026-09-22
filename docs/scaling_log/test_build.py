@@ -667,3 +667,26 @@ def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(da
         assert dot.group(1) == want, (
             f"{name} [{lo:+.4f}, {hi:+.4f}] should be drawn as {kind[want]}, "
             f"is drawn as {kind[dot.group(1)]}")
+
+
+def test_the_w64_heads_chart_draws_every_measured_head_with_the_right_verdict(data):
+    """Jerry 2026-09-21: chart 4 'does not show the PVsearch vs prod'.  Chart 4b is the heads
+    INSIDE the W64/K8 search vs the deployed package; it must draw every entry of
+    HEADS_IN_W64_SEARCH_VS_PRODUCTION, with its interval text, and mark clears-zero as a beat."""
+    rows, table_only, series = data
+    page, c = _render(*data)
+    svg = _svgs(page)["4b heads in the W64 search vs production"]
+    import re as _re
+    ns = {}
+    exec(open(Path(__file__).with_name("models.py")).read(), ns)
+    heads = ns["HEADS_IN_W64_SEARCH_VS_PRODUCTION"]
+    assert heads and "production parity" in svg
+    for ck, txt in heads.items():
+        m, lo, hi = (float(g) for g in _re.match(r'\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)', txt).groups())
+        name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
+        dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
+        assert dot, f"{name} ({ck}) is not drawn on chart 4b"
+        want = "2" if lo > 0 else ("3" if hi < 0 else "1")
+        assert dot.group(1) == want, f"{name} [{lo:+.3f}, {hi:+.3f}] drawn as pt{dot.group(1)}, expected pt{want}"
+        assert ("%+.3f" % m).replace("-", "&#8722;") in svg, f"{name}: interval text missing"
+    assert svg.count('class="pt pt') == len(heads)

@@ -43,15 +43,21 @@ SHENGJI_FAST = "1"
 `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` is the whole rollback.)
 
 
-The name is derived by the registry from that environment (the package SHA, the
-W32/N30/R300 recipe digest, the prior SHA and the bury identity); it is never
-hand-written. `/healthz` reports the policy name and the prior's on-disk SHA,
-threshold and top. The server source fallback is `mc` when `SHENGJI_BOT` is
-absent. Rollbacks, in order of proximity: release 27 (M1 + separate prior v2,
-two packages), release 24 (`fd6bb411` + hybrid bury), `mc-s0-report-lcb`.
-Changing the checkpoint, the prior threshold/top, N/R work, ballot, sampler,
-continuation or confidence rule is a new policy and needs fresh evidence.
-Release records, images and the exact rollback environments are in `DEPLOY.md`.
+The name is derived by the registry from that environment (the package SHA256,
+the W64/K8 recipe digest — worlds, candidates, cap 4,000, batch, budget — and the
+bury identity); it is never hand-written. `/healthz` reports the policy name and,
+under `pv_search`, the package's on-disk SHA256, worlds, candidates, budgets and
+bury arm (the `prior` block belongs to the retained release-28 keys, not to the
+active decision path). The server source fallback is `mc` when `SHENGJI_BOT` is
+absent. Rollbacks, in order of proximity: release 28 (JS-M1 as one package inside
+the MC shortlist; one `SHENGJI_BOT` line), release 27 (M1 + separate prior v2),
+release 24 (`fd6bb411` + hybrid bury), `mc-s0-report-lcb`. Changing the package,
+the world count, the admitted-candidate count, the cap, the sampler or the bury
+arm is a new policy and needs fresh evidence. Release records, images and the
+exact rollback environments are in `DEPLOY.md`.
+
+The two sections below describe the release-27/28 decision path (the shortlist
+with policy-prior admission). They are the rollback's contract, not release 29's.
 
 ### Policy prior admission — deployed (releases 27 and 28)
 

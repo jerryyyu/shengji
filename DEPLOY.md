@@ -115,7 +115,7 @@ Env (all under `[env]`, alongside — not replacing — the release-28 keys unti
     SHENGJI_PV_SERVING_BUDGET_SECONDS = '<seconds>'  # cooperative play budget; expiry plays the heuristic anchor
 
 What it does per card-play decision: heuristic anchor first; W sampled worlds through production's
-sampler (void-checked); the policy head ranks every legal action and admits K with the anchor
+sampler (void-checked); the policy head ranks the capped legal listing (cap 4,000, the anchor forced in) and admits K with the anchor
 pinned; the value head scores each admitted action's afterstate (current trick finished
 heuristically) in every world; the highest mean plays. Declare is the heuristic; bury is the release-27/28 value-guided hybrid arm on the same package
 (`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`, `SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`). On budget expiry or any search error the sampler RNG is restored and the anchor

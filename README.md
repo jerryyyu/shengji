@@ -16,8 +16,9 @@ One checkpoint, the **soft-action head** (`8ecd4fea`, served as the NumPy packag
 
 1. **Sample.** 64 hidden worlds consistent with the public information, through
    production's sampler.
-2. **Admit (policy head).** The policy head scores every legal action in every
-   world; the heuristic's play plus the seven best others are admitted.
+2. **Admit (policy head).** The policy head scores the capped legal listing (up
+   to 4,000 actions, the heuristic's play always forced in) in every world; the
+   heuristic's play plus the seven best others are admitted.
 3. **Price (value head).** Each admitted play is applied, the current trick
    finished heuristically, and the value head prices the afterstate in every
    world; the highest mean plays. No playouts, no lower-bound rule, no report

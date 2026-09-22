@@ -26,8 +26,8 @@
 <!-- admit -->
 <g>
 <rect x="216" y="96" width="168" height="120" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.5"/>
-<text x="300" y="116" text-anchor="middle" class="big">every legal action</text>
-<text x="300" y="132" text-anchor="middle" class="mut">(capped at 4,000; median 8)</text>
+<text x="300" y="116" text-anchor="middle" class="big">the capped legal listing</text>
+<text x="300" y="132" text-anchor="middle" class="mut">(up to 4,000 + the forced anchor; median 8)</text>
 <text x="300" y="154" text-anchor="middle">scored in every world,</text>
 <text x="300" y="170" text-anchor="middle">log-odds summed per action;</text>
 <text x="300" y="192" text-anchor="middle" class="big">heuristic anchor + 7 best → 8</text>

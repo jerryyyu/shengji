@@ -37,6 +37,7 @@ def _costs(rows):
         counts['timing'] = {
             'mean_seconds': float(times.mean()) if len(times) else None,
             'p95_seconds': float(np.quantile(times, .95)) if len(times) else None,
+            'p99_seconds': float(np.quantile(times, .99)) if len(times) else None,
             'max_seconds': float(times.max()) if len(times) else None,
             'total_seconds': float(times.sum()),
         }

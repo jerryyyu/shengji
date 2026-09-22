@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from shengji.train.policy_depth_readout import ARMS, MODES, WORK_KEYS, compare_records, readout
+from shengji.train.policy_depth_readout import ARMS, MODES, WORK_KEYS, _costs, compare_records, readout
 
 
 def records():
@@ -99,6 +99,25 @@ def test_saved_screen_reconstructs_statistics_and_costs(tmp_path):
     assert cost['max_process_rss_kib'] == 1234
     assert cost['wall_seconds'] == 12.
     assert result['primaries_vs_production'][ARMS[2]]['mean'] == .5
+
+
+def test_latency_tail_quantiles_pool_decisions_not_pair_quantiles():
+    rows = []
+    for times in ([0.], [1., 2., 3., 100.]):
+        sides = {}
+        for role in ('policy', 'control'):
+            sides[role] = dict.fromkeys(WORK_KEYS, 0)
+            sides[role].update(seconds=times, decisions=len(times))
+        rows.append(dict(sides=sides, max_rss_kib=1234, error=None, timeout=False))
+    costs = _costs(rows)
+    for role in ('policy', 'control'):
+        timing = costs[role]['timing']
+        assert timing['mean_seconds'] == pytest.approx(21.2)
+        assert timing['p95_seconds'] == pytest.approx(80.6)
+        assert timing['p99_seconds'] == pytest.approx(96.12)
+        assert timing['max_seconds'] == 100.
+    for role in ('policy', 'control'):
+        assert _costs([])[role]['timing']['p99_seconds'] is None
 
 
 @pytest.mark.parametrize('defect', ['recipe', 'source', 'missing_summary', 'failed_summary',

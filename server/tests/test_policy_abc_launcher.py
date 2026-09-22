@@ -104,7 +104,7 @@ def test_depth_screen_dry_plan_and_recipe_refusal(monkeypatch, depth_screen_main
     assert launcher.main(args) == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt['launch_hold'] is False
-    assert receipt['authorization'] == 'PENDING'
+    assert receipt['authorization'] == 'Jerry approved multi-ply screen 2026-09-22; #599'
     assert receipt['total_arm_timeout_seconds'] == 21600
     assert receipt['expected_pairs_per_arm'] == 260
     assert not output.exists()

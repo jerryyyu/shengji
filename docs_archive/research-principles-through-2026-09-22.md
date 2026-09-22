@@ -1,4 +1,4 @@
-> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `RESEARCH_PRINCIPLES.md` unchanged below this line. Superseded by `AGENTS.md` (execution discipline), `PROTOCOL.md` (the evidence protocol) and `BACKLOG.md` (what is queued); the durable rules it stated live in those three.
+> **ARCHIVED 2026-09-22** (Jerry: "lets archive ... lets keep a high bar for these top level file quality and updates"). Moved from `RESEARCH_PRINCIPLES.md` unchanged below this line. The durable rules it stated are carried by `AGENTS.md` (execution discipline, evidence and refusal rules) and `AI_POLICIES.md` (the evidence standard: every strength claim goes through `scripts/evaluate.py` with a bar, read against the deployed control); the doctrine itself is retained verbatim below.
 
 # Research principles
 

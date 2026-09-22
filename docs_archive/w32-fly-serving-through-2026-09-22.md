@@ -87,8 +87,8 @@ Bury-only rollback restores `mc-shortlist-fd6bb411-w32-r55d379a3` **and removes
 bury registration/budget settings together**. Preserve the model and volume.
 Pre-bury image is release21 at digest
 `4a68a54058d028dd2444270d1f83b51dcc8623c627043e68ea8058594d41f54b`.
-Full W32 play rollback to MC-LCB is a different intervention. See [DEPLOY.md](DEPLOY.md)
-for occupancy, monitoring and rollback rules; see the [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md)
+Full W32 play rollback to MC-LCB is a different intervention. See [DEPLOY.md](../DEPLOY.md)
+for occupancy, monitoring and rollback rules; see the [bury report](value-guided-bury-dev-2026-09-08.md)
 for source reviews, complete evidence and statistical limitations.
 
 ## What runs

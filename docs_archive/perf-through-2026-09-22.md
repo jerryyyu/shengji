@@ -13,7 +13,7 @@ baseline moves (replace the row and date it).
 
 Current serving note: Fly release 22 is W32 PLAY with HYBRID BURY, a 2-second
 cooperative budget and heuristic fallback. Research and serving boundaries
-are recorded in [AI_POLICIES.md](AI_POLICIES.md#hybrid-bury-integration--deployed).
+are recorded in [AI_POLICIES.md](../AI_POLICIES.md#hybrid-bury-integration--deployed).
 
 ## Measured baselines (latest first)
 
@@ -89,7 +89,7 @@ selection or model math. A real tiny training test checks the emitted receipt
 against the old expression. Full candidate-report batching and early immutable
 model-ready publication remain separate future work.
 
-The fresh [13-rank screen](server/runs/cwv_rank_diverse_dev_20260906.md)
+The fresh [13-rank screen](../server/runs/cwv_rank_diverse_dev_20260906.md)
 completed 260 pairs in 22m53s at 13.89 mean cores. Its 4.745× production
 decision cost includes 12,575.60s ranking wall (about 80%). The most expensive
 1% of ranking decisions consumed 59.16% of that ranking time, with a 382.55s

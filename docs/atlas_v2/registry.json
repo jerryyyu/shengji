@@ -221,13 +221,64 @@
    "name": "runPV1",
    "box": "cloud",
    "seed0": 23260910,
-   "status": "stopped 05:34 ET: 15,078/16,000 clusters, 922 failed on #606; unresumable; regeneration runPV1r planned after the depth screen \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+   "clusters": "15,078 / 16,000",
+   "status": "STOPPED 05:34 ET, no manifest: 922 clusters failed on the hybrid-bury duplicated-incumbent refusal (#606). Kept untouched as evidence and unresumable by design, since the fix (#607) changes the source-tree identity the harvest stamps into every run."
   },
   {
    "name": "runPV2",
    "box": "Perf",
    "seed0": 23276910,
-   "status": "stopped 08:39 ET at 13,043/16,000 (13,043 sealed shards) to free Perf for v34r5; regeneration runPV2r planned on cloud \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+   "clusters": "13,043 / 16,000",
+   "status": "STOPPED 08:39 ET to free Perf for lane v34r5; same #606 fate ahead of it. Sealed shards kept untouched as evidence, unresumable for the same reason."
+  },
+  {
+   "name": "runPV1r",
+   "box": "cloud",
+   "seed0": 23260910,
+   "clusters": "16,000 / 16,000",
+   "status": "COMPLETE 15:42 ET on the release-30 tree (4e006561): 0 failed, manifest sealed with 16,000 shards, wall 201 min, 9.5 GB. The same recipe on the same decks that failed 922 clusters before the fix. Replays runPV1's decks and records the overlap in its manifest."
+  },
+  {
+   "name": "runPV2r",
+   "box": "cloud",
+   "seed0": 23276910,
+   "clusters": "running",
+   "status": "Started 15:42 ET behind the idle gate; replays runPV2's decks. Expected sealed ~19:05 ET."
+  },
+  {
+   "name": "runPV3",
+   "box": "cloud",
+   "seed0": 23292910,
+   "clusters": "16,000 (armed)",
+   "status": "Jerry 17:1x ET asked for 64,000 more clusters. Four 16k stores rather than one 64k run: a manifest is all-or-nothing on the seal, so four stores bound the blast radius and give resume granularity and one seed window each. All DRYRUN clean; armed behind the same idle gate, so they self-sequence and yield to any screen."
+  },
+  {
+   "name": "runPV4",
+   "box": "cloud",
+   "seed0": 23308910,
+   "clusters": "16,000 (armed)",
+   "status": "Queued behind runPV3."
+  },
+  {
+   "name": "runPV5",
+   "box": "cloud",
+   "seed0": 23324910,
+   "clusters": "16,000 (armed)",
+   "status": "Queued behind runPV4."
+  },
+  {
+   "name": "runPV6",
+   "box": "cloud",
+   "seed0": 23340910,
+   "clusters": "16,000 (armed)",
+   "status": "Queued behind runPV5; the four finish about 09:00 ET Wednesday, taking the release-30 corpus to six stores and 96,000 clusters."
+  },
+  {
+   "name": "(Perf)",
+   "box": "Perf",
+   "seed0": 0,
+   "clusters": "blocked",
+   "status": "No new store can start on Perf: 27 GB free against a ~9.5 GB store and a 30 GB gate. The lever is 356 GB of August belief evidence in Codex's namespaces (#592), which is Jerry's and Codex's call; until then Perf runs screens only."
   }
  ],
  "history": {

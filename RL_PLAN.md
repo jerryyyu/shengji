@@ -78,7 +78,9 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
    depth (one extra trick, heuristic or policy) completed its 3 × 12-pair qualification on the
    cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
    current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
-   claim; a 260-pair strength screen (~3.5 h) needs Jerry's word and is not armed.
+   claim; the 260-pair strength screen (~3.5 h) is approved and RUNNING on cloud since 2026-09-22
+   09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
+   `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
 4. **What would change production next:** a head that beats release 30 on the served-bot
    design, or a search change whose served contrast clears zero. Nothing else.
 

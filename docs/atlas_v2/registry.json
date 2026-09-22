@@ -125,7 +125,7 @@
     },
     {
      "arm": "CURRENT_TRICK",
-     "label": "current trick only (the release-30 search re-run), vs production",
+     "label": "current trick only (the Torch current-trick baseline; the frozen production control is the NumPy implementation), vs production",
      "role": "diagnostic",
      "confidence": 0.95,
      "point": null,

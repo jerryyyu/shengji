@@ -46,10 +46,20 @@ def test_a_multi_arm_family_has_one_slot_per_arm_with_its_own_coverage():
     for r in slots:
         assert f'{fam["id"]} · {r["arm"]}' in page                # one chart row and one table line per arm
     assert "point and 95% interval" not in page                    # no blanket coverage label
-    # partial primaries are refused; a mis-declared confidence is refused
+    # a family is populated as a whole and only once sealed (Codex HOLD on #609, narrowed)
     bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
     f["results"][0].update(point=0.01, lo=-0.01, hi=0.03)
-    assert any("no partial primary results" in e for e in mod.check_registry(bad))
+    assert any("populated together" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
+    for r in f["results"]:
+        if r["role"] == "primary": r.update(point=0.01, lo=-0.01, hi=0.03)      # both primaries, diagnostic unread
+    assert any("populated together" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
+    for r in f["results"]: r.update(point=0.01, lo=-0.01, hi=0.03)              # all read, but status running
+    assert f["status"] != "sealed" and any("publishable only once the family is sealed" in e for e in mod.check_registry(bad))
+    ok = copy.deepcopy(reg); f = next(s for s in ok["screens"] if "results" in s); f["status"] = "sealed"
+    for r in f["results"]: r.update(point=0.01, lo=-0.01, hi=0.03)
+    assert mod.check_registry(ok) == []
     bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s); f["results"][0]["confidence"] = 0.9
     assert any("confidence must be declared" in e for e in mod.check_registry(bad))
 

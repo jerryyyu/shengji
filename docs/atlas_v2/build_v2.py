@@ -50,9 +50,12 @@ def check_registry(reg):
                 errs.append(f"{s['id']}/{r['arm']}: confidence must be declared (0.95, 0.975 or 0.9875)")
         if "results" in s:
             rs = s["results"]
-            if any(r.get("point") is not None for r in rs) and not all(r.get("point") is not None for r in rs if r.get("role") == "primary"):
-                errs.append(f"{s['id']}: a multi-arm family is read as a whole; no partial primary results")
-            if s.get("status") == "sealed" and any(r.get("point") is None for r in rs):
+            read = [r.get("point") is not None for r in rs]
+            if any(read) and not all(read):
+                errs.append(f"{s['id']}: a multi-arm family is read as a whole; every declared slot (primaries and diagnostics) is populated together or not at all")
+            if any(read) and s.get("status") != "sealed":
+                errs.append(f"{s['id']}: a family's strength reads are publishable only once the family is sealed (status is {s.get('status')!r})")
+            if s.get("status") == "sealed" and not all(read):
                 errs.append(f"{s['id']}: sealed family with an unread arm")
         elif s.get("status") == "sealed" and s.get("point") is None:
             errs.append(f"{s['id']}: sealed without a read")

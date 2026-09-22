@@ -83,7 +83,7 @@
    "lo": -0.002,
    "hi": 0.0477,
    "eta": "",
-   "note": "Sealed 13:58 ET. CROSSES ZERO (lower bound -0.002): no resolved difference between run 4's head and production's in served form, and equivalence is NOT established. I2 0%, tau 0, ties 49.7% vs 50.3%, candidate latency p50 0.10 s / p95 0.16 s against control 0.10 / 0.16. The five-window interim was +0.019 [-0.017, +0.055]. Resolving this effect would need about 24 windows (~6 h of Perf); not queued. Archive readouts/v34r5-run4-vs-r30/ with SHA256SUMS.",
+   "note": "Sealed 13:58 ET. A matched-window, COMMON-OPPONENT contrast: each served policy is screened against the same MC-LCB opponents on the same seeds and the arms are differenced, so this is a summary-level estimate, NOT a direct duel and not paired served-vs-served inference. CROSSES ZERO (lower bound -0.002): no resolved difference between run 4's head and production's in served form, and equivalence is NOT established. I2 0%, tau 0, ties 49.7% vs 50.3%. Latency, as the MEAN OF THE TEN PER-WINDOW quantiles (vol_re.py averages window quantiles; it does not pool decision samples): candidate p50 0.10 s / p95 0.16 s, control 0.10 / 0.16. The five-window interim was +0.019 [-0.017, +0.055]. A rough power projection conditional on this effect and variance puts the lower bound near zero around 24 windows total, i.e. about 14 more (~6 h of Perf); that is a projection, not guaranteed resolution, and any extension is a new decision, not queued. Archive readouts/v34r5-run4-vs-r30/ with SHA256SUMS.",
    "archive": "",
    "instrument_kind": "windows",
    "confidence": 0.95

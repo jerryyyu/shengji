@@ -53,7 +53,7 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
    vs the release-28 package in card play
    +0.086 [+0.042, +0.131] on 800 matched deals and +0.122 on fresh deals; served with hybrid
    bury vs release 28 as served +0.049 [+0.003, +0.095] over five clean windows (narrow, I²
-   49%). Rollback is one `SHENGJI_BOT` line. The next production claim needs a served-bot
+   49%; a common-opponent, summary-level read, not paired served-vs-served inference). Rollback is one `SHENGJI_BOT` line. The next production claim needs a served-bot
    contrast against release 29 on the same design.
 1. **The generation loop (gen-4, #538).** Four runs on the full 20-store corpus, order
    1 → 4 → 3 → 2: run 1 (JS-M1 extended, hard targets) sealed and null as a package, positive
@@ -72,9 +72,10 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
    gain beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]: not
    equivalence bounds, unresolved); K8 not K16; the T1 value cutoff is a gain over terminal-level MC
    while a learned continuation adds nothing at 68× the cost; bounded PUCT lost at 2× wall;
-   depth (one extra trick, heuristic or policy) is being qualified on the cloud against a frozen
-   release-29 card-play control under the existing authorization (12 pairs per arm; two arms
-   sealed, the policy-extra arm live at publication); no full screen is authorized.
+   depth (one extra trick, heuristic or policy) completed its 3 × 12-pair qualification on the
+   cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
+   current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
+   claim; a 260-pair strength screen (~3.5 h) needs Jerry's word and is not armed.
 4. **What would change production next:** a head that beats release 29 on the served-bot
    design, or a search change whose served contrast clears zero. Nothing else.
 

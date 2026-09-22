@@ -42,9 +42,9 @@
 <text x="540" y="134" text-anchor="middle" class="mut">applied; the current trick</text>
 <text x="540" y="148" text-anchor="middle" class="mut">finished heuristically</text>
 <text x="540" y="172" text-anchor="middle">value head prices the</text>
-<text x="540" y="188" text-anchor="middle">afterstate in all 64 worlds</text>
-<text x="540" y="214" text-anchor="middle" class="big">512 forwards, batch 128</text>
-<text x="540" y="232" text-anchor="middle" class="mut">signed level utility, acting team</text>
+<text x="540" y="188" text-anchor="middle">afterstate in each of the 64 worlds</text>
+<text x="540" y="214" text-anchor="middle" class="big">up to 512 leaf evaluations</text>
+<text x="540" y="232" text-anchor="middle" class="mut">batches of 128; terminal leaves bypass the net</text>
 </g>
 <!-- mean -->
 <g>
@@ -76,7 +76,7 @@
 <text x="54" y="352">heuristic candidates (32) → each scored by the package's value head on 32 model worlds</text>
 <text x="54" y="368">→ MC selection over 32 worlds with 4 alternatives → 2 s budget, heuristic fallback.</text>
 <text x="54" y="390" class="mut">Declare stays heuristic. Release 27/28's bury arm is unchanged; only the value net behind it is now the soft head.</text>
-<text x="54" y="410" class="mut">Evidence: card play vs the release-28 package +0.086 [+0.042, +0.131]; served vs release 28 as served +0.049 [+0.003, +0.095], five clean windows.</text>
+<text x="54" y="410" class="mut">Evidence: card play vs the release-28 package +0.086 [+0.042, +0.131]; served vs release 28 as served +0.049 [+0.003, +0.095] (five clean windows, common-opponent read).</text>
 <text x="54" y="422" class="mut">Rollback: one line, SHENGJI_BOT back to the release-28 name.</text>
 <text x="966" y="456" class="mut" text-anchor="end">release 29 · 2026-09-22 · docs/visuals/pv-search-one-package.svg</text>
 </svg>

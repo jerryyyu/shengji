@@ -1,7 +1,7 @@
 """Suite-wide switches.
 
 SHENGJI_FAST=1 routes the whole suite (incl. golden histories) through the
-Cython fast path — the differential gate for the PERF.md #2+#3 prototype:
+Cython fast path — the differential gate for the docs_archive/perf-through-2026-09-22.md #2+#3 prototype:
 
     SHENGJI_FAST=1 uv run python -m pytest tests/ -q
 

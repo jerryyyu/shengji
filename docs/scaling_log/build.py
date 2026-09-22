@@ -201,11 +201,13 @@ def render_charts(rows, table_only, series):
          "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
          "POLICY_VS_SMART": g_models.get("POLICY_VS_SMART", {}),
          "POLICY_VS_SMART_PUBLIC": g_models.get("POLICY_VS_SMART_PUBLIC", {}),
+         "W64_SEARCH_VS_PRODUCTION": g_models.get("W64_SEARCH_VS_PRODUCTION", []),
+         "W64_FORMS": g_models.get("W64_FORMS", {}),
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):
         exec(open(HERE / "charts.py").read(), g)
-    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6", "g7")]
+    svgs = [open(OUT_DIR / f"{n}.svg").read().strip() for n in ("g1", "h2", "g3", "h4", "g5", "g6", "g7", "g8")]
     counts = json.load(open(OUT_DIR / "_counts.json"))
     return svgs, counts
 
@@ -347,7 +349,8 @@ def long_day(iso):
 
 
 CHART_NAMES = ("1 data vs CE", "1b data vs leader", "2 width vs CE", "2b width vs leader",
-               "3 by training day", "4 leader effect by day", "5 policy vs SmartBot by day")
+               "3 by training day", "4 leader effect by day", "4b heads in the W64 search vs production",
+               "5 policy vs SmartBot by day")
 
 
 def leader_chart_eligible(r):

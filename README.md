@@ -57,7 +57,7 @@ What the evidence says (details and provenance in
   because of it.
 
 Rollbacks and release records: [DEPLOY.md](DEPLOY.md). The serving path
-(packages, gate, smoke, `/healthz`): [W32_FLY_SERVING.md](W32_FLY_SERVING.md).
+(packages, gate, smoke, `/healthz`): `DEPLOY.md` (the engineering record through release 28 is archived at [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md)).
 What comes next: [BACKLOG.md](BACKLOG.md) and [RL_PLAN.md](RL_PLAN.md).
 
 ## Quick start
@@ -152,12 +152,12 @@ as policies.
 | `AI_POLICIES.md` | the production contract, every measured policy and durable conclusion |
 | `RL_PLAN.md` | decision tree, key learnings, measurement rules |
 | `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
-| `DEPLOY.md` / `W32_FLY_SERVING.md` | release records and rollbacks; the NumPy serving path and its gates |
-| `PERF.md` | engine/search speed rules, dated baselines, shipped optimisations |
-| `CORRECTNESS.md` / `incidents/` | validation suite, house rules, postmortems |
+| `DEPLOY.md` | release records, rollbacks, the served modes and their gates |
+| issue #208 / `docs/scaling_log/` | engine/search speed (the dated record through 2026-09-22 is archived at `docs_archive/perf-through-2026-09-22.md`) |
+| `incidents/` / `server/tests/` | postmortems and the validation suite (the correctness ledger through 2026-09-22 is archived at `docs_archive/correctness-through-2026-09-22.md`) |
 | `docs/scaling_log/` | every value model, its offline metrics and screen results (built from `models.py`) |
-| `AGENTS.md` / `CODEX_WORKFLOW.md` / `MAINTENANCE.md` | execution discipline, the Codex setup, the daily routine |
-| `RESEARCH_PRINCIPLES.md` | scientific doctrine, estimands and evidence boundaries |
+| `AGENTS.md` / `CODEX_WORKFLOW.md` | execution discipline and the Codex setup (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
+| `AI_POLICIES.md` | the evidence standard for every strength claim; the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md` |
 | `HANDOFF_ACTIVE.md` / `HANDOFF_REVIEW.md` | current gate summary; the append-only review ledger on `main` |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
 | `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |

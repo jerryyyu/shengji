@@ -25,7 +25,46 @@ clients hold WebSockets to it. That drives every deployment rule below.
   `/healthz` must then show `"prior": null`. `mc-s0-report-lcb` is the broader W32
   play-policy rollback; `smart` and `heuristic`
   are cheaper difficulty choices, not strength-equivalent replacements. See
-  `W32_FLY_SERVING.md` for the rollout boundary and `AI_POLICIES.md` for evidence.
+  `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
+
+## Release 29 plan — the policy/value search with the soft head (pv-search, #585), Jerry's go 2026-09-21 ~17:4x ET
+
+Jerry: "I'm good to launch soft with w64 to prod." Served bot `pv-search-ccade130-w64-k8-r8bc573be`:
+the soft-action head 8ecd4fea (gen-3-warm's recipe with the search's values as the policy target)
+exported as ONE NumPy package `/data/models/soft-8ecd4fea.npz` (sha256 `ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`; schema v2 with
+the policy head), 64 sampled worlds, 8 admitted candidates, value head in place of playouts,
+cap 4,000, batch 128, a 3 s cooperative play budget (heuristic anchor on expiry), heuristic
+declare, and release 27/28's value-guided HYBRID bury on this package's value head
+(`pv_search_policy.PVSearchBuryBot`, the same `CWVBuryMixin` the shortlist ships; 32/32/32/4,
+2 s bury budget; Jerry: "we should use value guided hybrid"). Served name
+`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`. Release-28 env keys are retained
+so the rollback is one line: `SHENGJI_BOT` back to
+`mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`.
+
+Evidence: vs the release-28 package in card play, 800 matched deals, one pre-registered primary,
+**+0.086 [+0.042, +0.131]** (#553, 2026-09-21, atlas row 45); world scaling W16/W32/W64 vs MC-LCB
++0.123/+0.158/+0.187 with W64−W16 positive (#555); the four-model family at W64 (#583) showed
+no head superior to another, soft holding the largest point estimate. Not measured: the
+served bot vs release 28 as deployed — Jerry (2026-09-21 ~18:0x ET): "You can do a new screen if
+needed vs prod with bury" → lane v34pv on Perf: the shortlist screen's new `--arm policy`
+(`cwv_shortlist_screen`/`cwv_screen_queue`) runs the SERVED bot by registry name — both
+sides exactly as the fly.toml registers them (pv-search + hybrid bury; release 28 + hybrid
+bury) — against the same MC control on five fresh windows, paired per seed.
+
+Preconditions, in order:
+1. #585 merged (511ee670) and this release PR merged: smoke extended to the mode, `/healthz`
+   `pv_search` block, fly.toml env.
+2. `scripts/cwv_serving_smoke.py` PASS on the exact package with this fly.toml — DONE
+   2026-09-21 ~18:0x ET on the Mini: 40 server turns (1 bury, 39 plays) through
+   `_paced_bot_step` / `_commit_bot_turn`, `PVSearchBot`, play turns 0.063 s mean / 0.088 s
+   max single-threaded (receipt `release29/smoke-release29.json`; files ccade130 / 0d17fd03).
+3. Package SHA256-verified on the volume (`sha256sum /data/models/soft-8ecd4fea.npz`).
+4. `fly deploy --ha=false`; `/healthz` shows `bot` = the pv-search name and `pv_search.sha256`
+   = the package hash; then the first live room's log must show a bot `bury` event and
+   `model_search` `completed` events with `pv-search-decision-v1` records (`/healthz` cannot
+   see a bot-turn failure — release 25).
+5. Watch: `pv-search-fallback-v1` records (budget or search-error), stale-turn discards, decision
+   wall p50/p95 vs release 28's 0.9 / 1.7 s.
 
 ## Release 29 plan — the policy/value search with the soft head (pv-search, #585), Jerry's go 2026-09-21 ~17:4x ET
 
@@ -298,7 +337,7 @@ The loaded NumPy package was verified as `fd6bb411` (source `3cd27716`, encoder
 v2), with no Torch import; public health passed with the exact W32 policy.
 Explicit engineering rooms still require a creator access code and remain
 excluded from ordinary training logs.
-See `W32_FLY_SERVING.md` for measured latency and test status.
+See `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived 2026-09-22) for the measured latency and test status through release 28.
 
 The pre-deploy **release 19** rollback image is
 `registry.fly.io/shengji:deployment-01M0P8VNX2C49XMVHFWFNNAPC2`, manifest

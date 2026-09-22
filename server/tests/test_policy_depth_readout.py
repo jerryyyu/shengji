@@ -1,8 +1,9 @@
 from copy import deepcopy
+import json
 
 import pytest
 
-from shengji.train.policy_depth_readout import ARMS, compare_records
+from shengji.train.policy_depth_readout import ARMS, MODES, WORK_KEYS, compare_records, readout
 
 
 def records():
@@ -62,3 +63,76 @@ def test_no_partial_or_unclean_family_inference(defect):
 def test_refuse_invalid_or_qualification_seed_declaration(seeds):
     with pytest.raises(ValueError):
         compare_records(records(), seeds)
+
+
+def saved_screen(tmp_path):
+    frozen = {}
+    data = records()
+    for arm, mode in zip(ARMS, MODES):
+        recipe = dict(seed0=10, deals=4, control='production-pv-r29', worlds=64,
+                      policy=dict(mode=mode, candidates=8),
+                      control_effective={'checkpoint_sha256': 'frozen-test-model'},
+                      source_git_sha='frozen-test-source', decision_timeout_seconds=300)
+        frozen[arm] = deepcopy(recipe)
+        path = tmp_path / arm
+        path.mkdir()
+        for row in data[arm]:
+            row['max_rss_kib'] = 1234
+            row['sides'] = {role: dict.fromkeys(WORK_KEYS, 0) for role in ('policy', 'control')}
+            for side in row['sides'].values():
+                side.update(seconds=[.1, .3], decisions=2, sample_attempts=5, worlds=4)
+        (path / 'recipe.json').write_text(json.dumps(recipe))
+        (path / 'pairs.jsonl').write_text('\n'.join(map(json.dumps, data[arm])) + '\n')
+        (path / 'summary.json').write_text(json.dumps(dict(expected=4, complete=4,
+                                                          errors=[], wall_seconds=12.)))
+    return frozen
+
+
+def test_saved_screen_reconstructs_statistics_and_costs(tmp_path):
+    frozen = saved_screen(tmp_path)
+    result = readout(tmp_path, frozen, replicates=100)
+    assert result['family_complete']
+    cost = result['costs'][ARMS[2]]
+    assert cost['policy']['timing']['mean_seconds'] == pytest.approx(.2)
+    assert cost['policy']['sample_attempts'] == 20
+    assert cost['policy']['worlds'] == 16
+    assert cost['max_process_rss_kib'] == 1234
+    assert cost['wall_seconds'] == 12.
+    assert result['primaries_vs_production'][ARMS[2]]['mean'] == .5
+
+
+@pytest.mark.parametrize('defect', ['recipe', 'source', 'missing_summary', 'failed_summary',
+                                  'partial_json', 'missing_rows', 'costs', 'counter'])
+def test_artifact_boundary_withholds_estimates(tmp_path, defect):
+    frozen = saved_screen(tmp_path)
+    path = tmp_path / ARMS[2]
+    if defect in ('recipe', 'source'):
+        recipe = deepcopy(frozen[ARMS[2]])
+        recipe['worlds' if defect == 'recipe' else 'source_git_sha'] = 'changed'
+        (path / 'recipe.json').write_text(json.dumps(recipe))
+    elif defect == 'missing_summary':
+        (path / 'summary.json').unlink()
+    elif defect == 'failed_summary':
+        (path / 'summary.json').write_text(json.dumps(dict(expected=4, complete=4,
+                                                          errors=['failure'], wall_seconds=12.)))
+    elif defect == 'partial_json':
+        (path / 'pairs.jsonl').write_text('{')
+    else:
+        rows = [json.loads(line) for line in (path / 'pairs.jsonl').read_text().splitlines()]
+        if defect == 'missing_rows':
+            rows.pop()
+        elif defect == 'costs':
+            rows[0]['sides']['policy']['seconds'][0] = float('nan')
+        else:
+            rows[0]['sides']['policy']['worlds'] = -1
+        (path / 'pairs.jsonl').write_text('\n'.join(map(json.dumps, rows)))
+    result = readout(tmp_path, frozen, replicates=100)
+    assert not result['family_complete']
+    assert 'primaries_vs_production' not in result
+
+
+def test_frozen_family_cannot_mix_controls(tmp_path):
+    frozen = saved_screen(tmp_path)
+    frozen[ARMS[1]]['control_effective']['checkpoint_sha256'] = 'another-model'
+    with pytest.raises(ValueError, match='inconsistent'):
+        readout(tmp_path, frozen)

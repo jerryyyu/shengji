@@ -3,6 +3,7 @@ warm start from a headless incumbent, matched twin, and consumer loading."""
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -57,7 +58,7 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     joint = train_cwv.train(out=tmp_path / "joint", policy_head=True, policy_rows=policy_rows,
                             policy_eval=policy_rows, policy_weight=1.0, policy_listwise_weight=1.0,
                             policy_batch_fraction=0.5, init=str(tmp_path / "base" / "best.pt"),
-                            init_exclude_exposed=True, **kw)
+                            init_exclude_exposed=True, loader_stage_timing=True, **kw)
     assert joint["model"]["config"]["policy_head"] is True
     assert joint["init"]["policy_head_fresh"] is True and joint["init"]["aux_points_head_loaded"] is True
     block = joint["policy_head"]
@@ -75,6 +76,14 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     assert set(joint["population"]["train"]) <= fit and len(fit) == 1
     tr = joint["epochs"][0]["train"]
     assert tr["policy_rows"] > 0 and tr["policy_bce"] > 0 and tr["policy_listwise"] >= 0
+    # Joint policy work is consumer time, not cache-loader time. Verify the
+    # opt-in receipt on the mixed root/value path, not just value-only training.
+    loader = tr["loader_stage_secs"]
+    assert set(loader) == {"setup", "decode", "prepare", "gather", "cleanup"}
+    assert all(math.isfinite(v) and v >= 0.0 for v in loader.values())
+    assert sum(loader.values()) <= tr["stage_secs"]["batch_wait"] + 0.01
+    saved = json.loads((tmp_path / "joint" / "metrics.json").read_text())
+    assert saved["epochs"][0]["train"]["loader_stage_secs"] == loader
     val = joint["epochs"][0]["val"]["policy"]
     assert val["top64"] and all(0.0 <= v <= 1.0 for v in val["top64"].values()) and val["deals"]
     assert "policy_head" in joint["consumer"]["heads"]
@@ -84,6 +93,23 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
     assert meta["policy_head"]["rows"]["npz_sha256"] == block["rows"]["npz_sha256"]
     lo = model.policy_logits(model.features_flat(torch.zeros(1, 833)))
     assert lo.shape == (1, 54) and torch.isfinite(lo).all()
+    # Instrumentation must not alter the actual joint-training result. The
+    # zero-policy-weight twin below tests a different objective, so it cannot
+    # establish timing-on/off reproducibility.
+    untimed = train_cwv.train(
+        out=tmp_path / "joint_untimed", policy_head=True, policy_rows=policy_rows,
+        policy_eval=policy_rows, policy_weight=1.0, policy_listwise_weight=1.0,
+        policy_batch_fraction=0.5, init=str(tmp_path / "base" / "best.pt"),
+        init_exclude_exposed=True, loader_stage_timing=False, **kw)
+    untimed_model, _, _ = consumer_load(tmp_path / "joint_untimed" / "best.pt")
+    assert model.state_dict().keys() == untimed_model.state_dict().keys()
+    for name, tensor in model.state_dict().items():
+        assert torch.equal(tensor, untimed_model.state_dict()[name]), name
+    assert "loader_stage_secs" not in untimed["epochs"][0]["train"]
+    for name, value in tr.items():
+        if not name.endswith("secs"):
+            assert untimed["epochs"][0]["train"][name] == value, name
+    assert untimed["epochs"][0]["val"]["policy"] == val
     # a headless run cannot warm-start from a policy-head net (layout differs)
     with pytest.raises(train_cwv.TrainError):
         train_cwv.train(out=tmp_path / "back", init=str(tmp_path / "joint" / "best.pt"),
@@ -94,6 +120,7 @@ def test_joint_net_trains_from_a_headless_incumbent_and_the_twin_matches_steps(
                            policy_eval=policy_rows, policy_weight=0.0, policy_batch_fraction=0.5,
                            init=str(tmp_path / "base" / "best.pt"), init_exclude_exposed=True, **kw)
     assert twin["policy_head"]["twin"] is True
+    assert "loader_stage_secs" not in twin["epochs"][0]["train"]
     assert twin["epochs"][0]["train"]["policy_rows"] == tr["policy_rows"]
     assert twin["epochs"][0]["train"]["rows"] == tr["rows"] and twin["epochs"][0]["train"]["batches"] == tr["batches"]
     tw, _, _ = consumer_load(tmp_path / "twin" / "best.pt")

@@ -1521,6 +1521,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           dropout: float = DEFAULTS["dropout"], aux_points: bool = False,
           aux_weight: float = DEFAULTS["aux_weight"], n_boot: int = DEFAULTS["n_boot"],
           window: int = DEFAULTS["window"], decode_workers: int = DEFAULTS["decode_workers"],
+          loader_stage_timing: bool = False,
           seq_kind: str = DEFAULTS["seq_kind"],
           seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
           seq_heads: int = DEFAULTS["seq_heads"],
@@ -1544,6 +1545,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
+    if loader_stage_timing and pack_dir is not None:
+        raise TrainError("--loader-stage-timing is not supported with --pack-dir")
     holdouts = parse_holdouts(eval_holdout)
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
@@ -1961,6 +1964,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         # step -- host time; device work not yet awaited lands in the next sync).  The
         # key ends in "secs" so the exact-reproducibility comparison strips it.
         stage = {"batch_wait": 0.0, "to_device": 0.0, "policy_wait": 0.0, "step": 0.0, "sync": 0.0}
+        loader_stage = {} if loader_stage_timing else None
 
         def timed_batches(gen):
             while True:
@@ -1973,10 +1977,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 stage["batch_wait"] += time.perf_counter() - t_w
                 yield raw
 
-        for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size, rng=rng,
-                                                        window=window,
-                                                        decode_workers=decode_workers,
-                                                        include_metadata=False))):
+        loader_iter_kw = {
+            "rng": rng, "window": window, "decode_workers": decode_workers,
+            "include_metadata": False,
+        }
+        if loader_stage is not None:
+            loader_iter_kw["stage_secs"] = loader_stage
+        for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size,
+                                                        **loader_iter_kw))):
             t_iter = time.perf_counter()
             t = tensors_of(raw, dev)
             t_dev = time.perf_counter()
@@ -2094,6 +2102,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         stage["other"] = max(0.0, train_secs - sum(stage.values()))
         stage["total"] = train_secs
         train_metrics["stage_secs"] = {k: round(v, 3) for k, v in stage.items()}
+        if loader_stage is not None:
+            train_metrics["loader_stage_secs"] = {
+                k: round(v, 3) for k, v in loader_stage.items()
+            }
         say("epoch %02d train stages: " % epoch + ", ".join(
             "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
             for k, v in stage.items() if k != "total"))
@@ -2656,6 +2668,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "(default 6, measured 2026-09-07 on the A+C+D store: epoch "
                         "316.2s at 0 vs 243.7s at 6 with val_ce identical; 0 = in "
                         "this process; the batch sequence is identical either way)")
+    t.add_argument("--loader-stage-timing", action="store_true",
+                   help="persist cache-loader stage wall time per training epoch "
+                        "(incompatible with --pack-dir)")
     t.add_argument("--seq-kind", choices=SEQ_KINDS, default=DEFAULTS["seq_kind"])
     t.add_argument("--seq-width", type=int, default=DEFAULTS["seq_width"])
     t.add_argument("--seq-layers", type=int, default=DEFAULTS["seq_layers"])
@@ -2754,6 +2769,7 @@ def main(argv: list[str] | None = None) -> int:
                   test_fraction=args.test_fraction, hidden=args.hidden, dropout=args.dropout,
                   aux_points=args.aux_points, aux_weight=args.aux_weight, n_boot=args.n_boot,
                   window=args.window, decode_workers=args.decode_workers,
+                  loader_stage_timing=args.loader_stage_timing,
                   seq_kind=args.seq_kind, seq_width=args.seq_width,
                   seq_layers=args.seq_layers, seq_heads=args.seq_heads,
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,

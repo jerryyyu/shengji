@@ -67,7 +67,7 @@ M = [
  "","","5w +0.0136 [-0.0085, +0.0357]","gen-1 (#425): +16k clusters of JS-M1-teacher self-play; paired vs production on fresh seeds is a NULL at MDE80 0.032; 0.94x its decision wall"),
 ("gen-3-warm: JS-M1 WARM-STARTED on runJS1-5 (the first generation not trained from scratch)","d2514e6e","2026-09-18","v2",330,"3e-4","256k","36,239,068","0.59650","",
  "","","5w +0.0109 [-0.0106, +0.0323]","gen-3-warm (#421): first WARM START; PERFECT-INFO head read +0.0993 (relabelled 09-19); in play NULL vs production, MDE80 0.031"),
-("soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0","8ecd4fea","2026-09-19","v2",330,"3e-4","256k","36,239,068","0.59760","",
+("soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0","8ecd4fea","2026-09-19","v2",330,"3e-4","256k","36,239,068","0.59760","5w +0.0489 [+0.0033, +0.0945] served",
  "","","5w +0.0039 [-0.0296, +0.0374]","soft target (#496): search values + w=1.0; public-info head +0.0522, paired vs gen-3-warm null; v30 vs prod 5w null (MDE80 0.048), ties 66%"),
 ("gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe","3f83bfb7","2026-09-21","v2",330,"3e-4","336k","47,535,516","0.59697","",
  "","","5w -0.0072 [-0.0379, +0.0235]","gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud"),

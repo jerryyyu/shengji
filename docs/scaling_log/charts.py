@@ -528,53 +528,66 @@ _w144_worst=max(_w144,key=lambda d:d["ce"]); _w144_best=min(_w144,key=lambda d:d
 _w144_span=_w144_worst["ce"]-_w144_best["ce"]
 _lr14=[BYCK[c] for c in SERIES["width_lr1e4_96k"]]; _lr14_best=min(_lr14,key=lambda d:d["ce"])
 
-# ---- chart 4b (g8): the heads INSIDE the W64/K8 search vs production.  Jerry 2026-09-21: chart 4
-# "does not show the PVsearch vs prod" -- chart 4 is one served/package screen per checkpoint;
-# this is the other route to play, the head driving the search itself, one bar per head.
+# ---- chart 4b (g8): every policy/value-search comparison vs production, grouped by form.
+# Jerry 2026-09-21: chart 4 "does not show the PVsearch vs prod" -> "yeaa add it"; then "fix
+# occlusion and include all the PVsearch comparisons vs prod" (the first cut drew a legend on
+# top of the interval texts).  Layout: names on the left, bars in the middle, the interval
+# text alone on the right, a header row per form; the caption carries the reading guide.
 import re as _re
-_H8 = {}
-for _ck, _txt in (globals().get("HEADS_IN_W64_SEARCH_VS_PRODUCTION") or {}).items():
+_E8 = []
+for _ck, _form, _txt in (globals().get("W64_SEARCH_VS_PRODUCTION") or []):
     _m = _re.match(r'\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)\s*\]', str(_txt))
     if not _m:
-        raise SystemExit("chart 4b: HEADS_IN_W64_SEARCH_VS_PRODUCTION[%s] is not 'm [lo, hi]': %r" % (_ck, _txt))
-    _H8[_ck] = tuple(float(g) for g in _m.groups())
-if not _H8:
-    raise SystemExit("chart 4b: HEADS_IN_W64_SEARCH_VS_PRODUCTION reached charts.py empty; the builder is not forwarding it.")
-_P8 = sorted(((d, _H8[d["ck"]]) for d in R if d["ck"] in _H8), key=lambda z: -z[1][0])
-W8, H8 = 880, 60 + 44 * max(1, len(_P8)) + 70
-L8, R8, T8, B8 = 250, 250, 40, 64
+        raise SystemExit("chart 4b: W64_SEARCH_VS_PRODUCTION[%s, %s] is not 'm [lo, hi]': %r" % (_ck, _form, _txt))
+    _dd = next((d for d in R if d["ck"] == _ck), None)
+    if _dd is None:
+        continue          # a test fixture may swap in rows without this checkpoint (as chart 7)
+    _E8.append((_dd, _form, tuple(float(g) for g in _m.groups())))
+if not (globals().get("W64_SEARCH_VS_PRODUCTION") or []):
+    raise SystemExit("chart 4b: W64_SEARCH_VS_PRODUCTION reached charts.py empty; the builder is not forwarding it.")
+_FORMS8 = []
+for _, _f, _ in _E8:
+    if _f not in _FORMS8: _FORMS8.append(_f)
+_LAYOUT8 = []                                  # ("head", form) | ("row", entry), sorted by point within a form
+for _f in _FORMS8:
+    _LAYOUT8.append(("head", _f))
+    _LAYOUT8.extend(("row", e) for e in sorted((e for e in _E8 if e[1] == _f), key=lambda e: -e[2][0]))
+_ROWH8 = 34
+W8 = 960
+L8, R8, T8, B8 = 236, 214, 34, 58
+H8 = T8 + _ROWH8 * len(_LAYOUT8) + B8
 x0, x1, y0, y1 = L8, W8 - R8, T8, H8 - B8
-_v8 = [v for _, t in _P8 for v in t] or [0.0]
+_v8 = [v for _, _, t in _E8 for v in t] or [0.0]
 XLO8, XHI8 = min(min(_v8) - 0.02, -0.04), max(max(_v8) + 0.02, 0.10)
 X8 = lambda v: x0 + (v - XLO8) / (XHI8 - XLO8) * (x1 - x0)
-Y8 = lambda i: y0 + (i + 0.5) / max(1, len(_P8)) * (y1 - y0)
 s = ['<svg viewBox="0 0 %d %d">' % (W8, H8)]
 _t = math.floor(XLO8 / 0.02) * 0.02
 while _t <= XHI8 + 1e-9:
     s.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" class="grid%s"/>' % (X8(_t), y0, X8(_t), y1, " zero" if abs(_t) < 1e-9 else ""))
-    s.append('<text x="%.1f" y="%d" class="ax am">%+.2f</text>' % (X8(_t), y1 + 21, _t))
+    s.append('<text x="%.1f" y="%d" class="ax am">%+.2f</text>' % (X8(_t), y1 + 19, _t))
     _t += 0.02
-s.append('<text x="%.1f" y="%d" class="reft am">production parity</text>' % (X8(0), y0 - 14))
-s.append('<text x="%d" y="%d" class="axl am">head as the W64/K8 search vs the deployed package, card play (levels/round)</text>' % ((x0 + x1) / 2, y1 + 48))
-for _i, (_d, (_m, _lo, _hi)) in enumerate(_P8):
-    _y = Y8(_i)
+s.append('<text x="%.1f" y="%d" class="reft am">production parity</text>' % (X8(0), y0 - 12))
+s.append('<text x="%d" y="%d" class="axl am">signed level utility per round vs production (above zero beats it)</text>' % ((x0 + x1) / 2, y1 + 42))
+_n8 = 0
+for _k, (_kind, _item) in enumerate(_LAYOUT8):
+    _y = y0 + (_k + 0.5) * _ROWH8
+    if _kind == "head":
+        s.append('<text x="%d" y="%.1f" class="grp">%s</text>' % (x0 - 226, _y + 4, esc(_item)))
+        continue
+    _d, _f, (_m, _lo, _hi) = _item
+    _n8 += 1
     _cls = "ci2" if _lo > 0 else ("ci1" if _hi < 0 else "ci3")
     s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X8(_lo), _y, X8(_hi), _y, _cls))
     for _e in (_lo, _hi):
         s.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="ci %s"/>' % (X8(_e), _y - 6, X8(_e), _y + 6, _cls))
     _pt = "pt2" if _lo > 0 else ("pt3" if _hi < 0 else "pt1")
     s.append(dot(X8(_m), _y, 5.4, "pt " + _pt, _d))
-    s.append('<text x="%d" y="%.1f" class="row" text-anchor="end">%s</text>' % (x0 - 14, _y + 4, esc(_d["n"].split(":")[0][:30])))
-    s.append('<text x="%d" y="%.1f" class="lab am">%s</text>' % (x0 - 14 - 0, _y + 18, ""))
+    s.append('<text x="%d" y="%.1f" class="row" text-anchor="end">%s</text>' % (x0 - 14, _y + 4, esc(_d["n"].split(":")[0][:26])))
     s.append('<text x="%.1f" y="%.1f" class="lab" text-anchor="start">%s [%s, %s]</text>'
              % (x1 + 12, _y + 4, fmt_signed(_m, 3), fmt_signed(_lo, 3), fmt_signed(_hi, 3)))
-lx = x1 + 12
-_ly = y1 + 4 - 15 * 7
-for _i, _t2 in enumerate(["the head IS the search:", "policy admits 8, value", "prices them on 64 worlds,", "no playouts; vs the", "deployed JS-M1 package,", "800 matched deals, common", "opponent, not direct duels"]):
-    s.append('<text x="%d" y="%d" class="lgs">%s</text>' % (lx, _ly + _i * 15, _t2))
 s.append('</svg>')
 open(OUT + "/g8.svg", "w").write("\n".join(s))
-print("W64-heads-vs-production chart built")
+print("W64-search-vs-production chart built:", _n8, "arms in", len(_FORMS8), "forms")
 
 open(OUT+"/_counts.json","w").write(__import__("json").dumps(dict(
     sizes_all=len(_sizes_all), sizes_with_leader=len(_sizes_ld), min_leader_records=_min_ld_rec,

@@ -201,7 +201,8 @@ def render_charts(rows, table_only, series):
          "OWN_SPLIT": {r["ck"] for r in rows if r.get("own_split")},
          "POLICY_VS_SMART": g_models.get("POLICY_VS_SMART", {}),
          "POLICY_VS_SMART_PUBLIC": g_models.get("POLICY_VS_SMART_PUBLIC", {}),
-         "HEADS_IN_W64_SEARCH_VS_PRODUCTION": g_models.get("HEADS_IN_W64_SEARCH_VS_PRODUCTION", {}),
+         "W64_SEARCH_VS_PRODUCTION": g_models.get("W64_SEARCH_VS_PRODUCTION", []),
+         "W64_FORMS": g_models.get("W64_FORMS", {}),
          "RECORD": {r["ck"]: r.get("record", "") for r in rows if r.get("record")},
          "PARAMS": {r["ck"]: r["params"] for r in rows if r.get("params")}}
     with contextlib.redirect_stdout(io.StringIO()):

@@ -669,24 +669,33 @@ def test_the_policy_vs_smartbot_chart_has_points_and_marks_who_beats_smartbot(da
             f"is drawn as {kind[dot.group(1)]}")
 
 
-def test_the_w64_heads_chart_draws_every_measured_head_with_the_right_verdict(data):
-    """Jerry 2026-09-21: chart 4 'does not show the PVsearch vs prod'.  Chart 4b is the heads
-    INSIDE the W64/K8 search vs the deployed package; it must draw every entry of
-    HEADS_IN_W64_SEARCH_VS_PRODUCTION, with its interval text, and mark clears-zero as a beat."""
+def test_the_w64_search_chart_draws_every_arm_grouped_by_form_with_the_right_verdict(data):
+    """Jerry 2026-09-21: chart 4 'does not show the PVsearch vs prod'; then 'include all the
+    PVsearch comparisons vs prod' and 'fix occlusion'.  Chart 4b draws every entry of
+    W64_SEARCH_VS_PRODUCTION under a header per form, marks clears-zero as a beat, prints each
+    interval, and keeps the interval texts clear of the names and of each other."""
     rows, table_only, series = data
     page, c = _render(*data)
     svg = _svgs(page)["4b heads in the W64 search vs production"]
     import re as _re
     ns = {}
     exec(open(Path(__file__).with_name("models.py")).read(), ns)
-    heads = ns["HEADS_IN_W64_SEARCH_VS_PRODUCTION"]
-    assert heads and "production parity" in svg
-    for ck, txt in heads.items():
+    arms = ns["W64_SEARCH_VS_PRODUCTION"]
+    assert arms and "production parity" in svg
+    forms = []
+    for _, f, _ in arms:
+        if f not in forms: forms.append(f)
+    heads = _re.findall(r'class="grp">([^<]*)</text>', svg)
+    assert heads == forms, f"form headers {heads} != {forms}"
+    assert svg.count('class="pt pt') == len(arms)
+    for ck, form, txt in arms:
         m, lo, hi = (float(g) for g in _re.match(r'\s*([-+][\d.]+)\s*\[\s*([-+][\d.]+),\s*([-+][\d.]+)', txt).groups())
         name = next(r["n"].split(":")[0] for r in rows if r["ck"] == ck)
-        dot = _re.search(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
-        assert dot, f"{name} ({ck}) is not drawn on chart 4b"
         want = "2" if lo > 0 else ("3" if hi < 0 else "1")
-        assert dot.group(1) == want, f"{name} [{lo:+.3f}, {hi:+.3f}] drawn as pt{dot.group(1)}, expected pt{want}"
+        dots = _re.findall(r'class="pt pt(\d) hit"[^>]*data-t="%s' % _re.escape(name[:10]), svg)
+        assert want in dots, f"{name} ({form}) [{lo:+.3f}, {hi:+.3f}] not drawn as pt{want}: {dots}"
         assert ("%+.3f" % m).replace("-", "&#8722;") in svg, f"{name}: interval text missing"
-    assert svg.count('class="pt pt') == len(heads)
+    # occlusion: every text on the right column sits at one x and on its own row (34 px pitch)
+    ys = sorted(float(y) for y in _re.findall(r'<text x="[\d.]+" y="([\d.]+)" class="lab" text-anchor="start"', svg))
+    assert len(ys) == len(arms) and all(b - a >= 30 for a, b in zip(ys, ys[1:])), ys
+    assert 'class="lgs"' not in svg                     # no in-chart legend to collide with

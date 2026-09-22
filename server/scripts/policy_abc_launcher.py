@@ -103,12 +103,13 @@ PV_PRODUCTION_QUALIFY_SECONDS = 3600
 PV_PRODUCTION_SCREEN_SECONDS = 21600
 PV_PRODUCTION_SCREEN_SEED = 625800000
 DEPTH_SUITE = 'depth-production-qualify'
-DEPTH_SOURCE = '689260aedd01caaab9095cfca37cf40923a48640'
+DEPTH_SOURCE = '594404e309c8d82bdc0405f0c089126c415dd178'
+DEPTH_PRODUCTION_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
 DEPTH_HOLD = True  # release only after source/launcher review and seed reservation
 DEPTH_SEED = 626700000
-DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-play'),
-              ('EXTRA_TRICK_HEURISTIC', 64, 'policy-heuristic-lookahead', 'production-play'),
-              ('EXTRA_TRICK_POLICY', 64, 'policy-lookahead', 'production-play')]
+DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-pv-r29'),
+              ('EXTRA_TRICK_HEURISTIC', 64, 'policy-heuristic-lookahead', 'production-pv-r29'),
+              ('EXTRA_TRICK_POLICY', 64, 'policy-lookahead', 'production-pv-r29')]
 PRODUCTION_SUITES += (DEPTH_SUITE,)
 QUALIFICATION_ONLY_SUITES += (DEPTH_SUITE,)
 SUITES = (DEPTH_SUITE, 'abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
@@ -185,7 +186,7 @@ def commands(python, checkpoint, output, *, qualify=False, suite='abc', producti
                             '--worlds', str(worlds), '--mode', mode, '--candidates',
                             '16' if suite == 'wk-screen' and name == 'W4_K16' else '8',
                             '--control', control] + (['--production-checkpoint', str(production)]
-                                if control == 'production-play' else [])))
+                                if control in ('production-play', 'production-pv-r29') else [])))
     return plan
 
 
@@ -348,7 +349,8 @@ def main(argv=None):
             and hashlib.sha256(grid_checkpoint.read_bytes()).hexdigest() != GRID_CHECKPOINT_SHA256):
         raise RuntimeError('grid checkpoint mismatch')
     production = args.production_checkpoint.resolve() if args.production_checkpoint else None
-    if production is not None and hashlib.sha256(production.read_bytes()).hexdigest() != PRODUCTION_SHA256:
+    production_sha = DEPTH_PRODUCTION_SHA256 if args.suite == DEPTH_SUITE else PRODUCTION_SHA256
+    if production is not None and hashlib.sha256(production.read_bytes()).hexdigest() != production_sha:
         raise RuntimeError('production checkpoint mismatch')
     if output.exists() or not output.parent.is_dir():
         raise RuntimeError('fresh output under existing parent required; never resume/overwrite')
@@ -408,10 +410,12 @@ def main(argv=None):
                 'optional_extension': False,
             })
     if production is not None:
-        receipt['production_checkpoint_sha256'] = PRODUCTION_SHA256
+        receipt['production_checkpoint_sha256'] = production_sha
         receipt['comparison_scope'] = 'card play only; shared heuristic declare/bury, not Fly latency'
     if args.suite == DEPTH_SUITE:
         receipt.update(launch_hold=DEPTH_HOLD, expected_pairs_per_arm=12,
+                       control='production-pv-r29', control_budget_seconds=3.0,
+                       treatment_budget_seconds=300,
                        workers=6, move_timeout_seconds=300,
                        seed_reservation='626700000:626700012; pending peer reconciliation',
                        total_arm_timeout_seconds=3*seconds,

@@ -34,7 +34,7 @@ def test_depth_fixed_qualification_and_hold():
     for (_, cmd), mode in zip(plan, ('policy-value', 'policy-heuristic-lookahead', 'policy-lookahead')):
         for flag, value in {'--worlds': '64', '--candidates': '8', '--deals': '12',
                             '--workers': '6', '--seed0': '626700000', '--mode': mode,
-                            '--control': 'production-play'}.items():
+                            '--control': 'production-pv-r29', '--production-checkpoint': '/prod'}.items():
             assert cmd[cmd.index(flag)+1] == value
     for change in ({'qualify': False}, {'production': None}, {'production_worlds': 64}):
         with pytest.raises(ValueError):
@@ -61,7 +61,7 @@ def test_depth_terminal_and_stop_on_failure(monkeypatch, isolated_main, tmp_path
     args, output = isolated_main
     prod = tmp_path / 'prod'
     prod.write_bytes(b'production')
-    monkeypatch.setattr(launcher, 'PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
+    monkeypatch.setattr(launcher, 'DEPTH_PRODUCTION_SHA256', hashlib.sha256(prod.read_bytes()).hexdigest())
     monkeypatch.setattr(launcher, 'DEPTH_HOLD', False)
     monkeypatch.setattr(launcher, 'verify_depth_import', lambda *a: None)
     monkeypatch.setattr(launcher.subprocess, 'check_output',

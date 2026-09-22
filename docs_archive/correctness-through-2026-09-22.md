@@ -256,8 +256,8 @@ safely refused.
 
 | date | incident | class | caught by |
 |---|---|---|---|
-| 08-30 | Value V2 capacity compared batch-shaped raw logits even though production seals canonical PPB predictions, spending one score-free admission on a false mismatch | artifact-altitude mismatch / wasted capacity | typed failure receipt plus refusal-vocabulary hash inversion ([INC-15](incidents/INC-20260830-15-v2-capacity-artifact-altitude.md)) |
-| 08-29 | BELIEF R4 applied one-shot confirmatory provenance, reconstruction and verification before establishing a cheap positive learning signal; late pipeline defects delayed the first scientific answer | confirmatory-before-exploratory / compute and review waste | terminal critical-path and recovery audit ([INC-14](incidents/INC-20260829-14-r4-confirmatory-before-signal.md)) |
+| 08-30 | Value V2 capacity compared batch-shaped raw logits even though production seals canonical PPB predictions, spending one score-free admission on a false mismatch | artifact-altitude mismatch / wasted capacity | typed failure receipt plus refusal-vocabulary hash inversion ([INC-15](../incidents/INC-20260830-22-v2-capacity-artifact-altitude.md)) |
+| 08-29 | BELIEF R4 applied one-shot confirmatory provenance, reconstruction and verification before establishing a cheap positive learning signal; late pipeline defects delayed the first scientific answer | confirmatory-before-exploratory / compute and review waste | terminal critical-path and recovery audit ([INC-14](../incidents/INC-20260829-21-r4-confirmatory-before-signal.md)) |
 | 08-01 | exhaustive-follows change collapsed deployed net to Elo 798 | ballot mismatch | pool anomaly |
 | 08-02 | tournament chunk workers disagreed on pairing indices (one pairing ran 3x, two never ran) | hash-ordered set iteration | result audit |
 | 08-02 | MCBot default flip silently widened RL play-time follow ballots | shared-helper config leak | Jerry's question |

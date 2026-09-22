@@ -109,8 +109,8 @@ DEPTH_HOLD = False  # #599/#601 PASS; Jerry's cloud multi-ply request, reserved 
 DEPTH_SEED = 626700000
 DEPTH_SCREEN = 'depth-production-screen'
 DEPTH_SCREEN_SOURCE = '06999b0d958abe448bd29a803c7a1f3952051743'
-DEPTH_SCREEN_HOLD = True  # Budget approval, seeds and consolidated review pending.
-DEPTH_SCREEN_SEED = 626710000  # PROPOSED, NOT RESERVED.
+DEPTH_SCREEN_HOLD = False  # Jerry approved; Claude PASS #599/#601 and cloud handoff.
+DEPTH_SCREEN_SEED = 626710000  # Reserved: #436 comment5771579396.
 DEPTH_SCREEN_DEALS = 260
 DEPTH_SCREEN_SECONDS = (1800, 1800, 18000)  # New screen ceilings, not qualification changes.
 DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-pv-r29'),
@@ -456,8 +456,8 @@ def main(argv=None):
                'mode': 'runtime-qualification' if args.qualify else 'experiment',
                'automatic_promotion': False}
     if args.suite == DEPTH_SCREEN:
-        receipt.update(launch_hold=DEPTH_SCREEN_HOLD, authorization='PENDING',
-            seed_reservation='PROPOSED 626710000:626710260; NOT RESERVED',
+        receipt.update(launch_hold=DEPTH_SCREEN_HOLD, authorization='Jerry approved multi-ply screen 2026-09-22; #599',
+            seed_reservation='RESERVED 626710000:626710260; #436 comment5771579396',
             expected_pairs_per_arm=DEPTH_SCREEN_DEALS, workers=6,
             arm_timeout_seconds=dict(zip((n for n, _ in plan), DEPTH_SCREEN_SECONDS)),
             total_arm_timeout_seconds=sum(DEPTH_SCREEN_SECONDS),

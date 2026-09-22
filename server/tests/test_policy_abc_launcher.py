@@ -57,7 +57,7 @@ def test_depth_import_origin_guard(monkeypatch, tmp_path):
         launcher.verify_depth_import(Path('/python'), tmp_path, {})
 
 
-def test_depth_screen_is_held_and_changes_only_population():
+def test_depth_screen_released_changes_only_population_and_hold_still_refuses(monkeypatch):
     args = (Path('/python'), Path('/soft'), Path('/out'))
     original = launcher.commands(*args, suite=launcher.DEPTH_SUITE, qualify=True,
                                  production=Path('/prod'))
@@ -67,7 +67,8 @@ def test_depth_screen_is_held_and_changes_only_population():
         old[old.index('--seed0')+1] = '626710000'
         old[old.index('--deals')+1] = '260'
         assert old == new
-    assert launcher.DEPTH_SCREEN_HOLD is True
+    assert launcher.DEPTH_SCREEN_HOLD is False
+    monkeypatch.setattr(launcher, 'DEPTH_SCREEN_HOLD', True)
     with pytest.raises(RuntimeError, match='budget approval'):
         launcher.main(['--source', '/missing', '--python', '/missing', '--checkpoint', '/missing',
                        '--out', '/missing', '--suite', launcher.DEPTH_SCREEN, '--run'])
@@ -102,7 +103,7 @@ def test_depth_screen_dry_plan_and_recipe_refusal(monkeypatch, depth_screen_main
     monkeypatch.setattr(launcher, 'run_arm', lambda *a, **kw: pytest.fail('launch'))
     assert launcher.main(args) == 0
     receipt = json.loads(capsys.readouterr().out)
-    assert receipt['launch_hold'] is True
+    assert receipt['launch_hold'] is False
     assert receipt['authorization'] == 'PENDING'
     assert receipt['total_arm_timeout_seconds'] == 21600
     assert receipt['expected_pairs_per_arm'] == 260

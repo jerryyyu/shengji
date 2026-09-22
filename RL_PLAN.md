@@ -11,7 +11,8 @@ the shortlist-era screens) are summarised once below and live in `docs_archive/`
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator. Production is release 29: the soft head
+correct engine and a reproducible evaluator. Production is release 30 (release 29's recipe with the
+hybrid-bury fix #607): the soft head
 `8ecd4fea` served as one NumPy package, its policy head admitting eight candidates over 64
 sampled worlds and its value head pricing them, no Monte Carlo playouts in play, value-guided
 hybrid bury. The champion for every strength claim is therefore the served release-29 bot,
@@ -47,7 +48,7 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 
 ## Current program
 
-0. **Production is release 29** (2026-09-22). Evidence chain, in order: the soft head alone
+0. **Production is release 30** (2026-09-22; release 29 + the #607 bury fix, same name and package). Evidence chain, in order: the soft head alone
    beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
    W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
    vs the release-28 package in card play

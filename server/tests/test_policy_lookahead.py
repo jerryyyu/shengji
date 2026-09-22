@@ -180,3 +180,54 @@ def test_each_heuristic_actor_reads_only_its_own_hand(monkeypatch):
     bot._leaf(rnd, seat, rnd.hands, rnd.buried, action, 0)
     assert len(actors) == 7  # three current-trick replies and four extra-trick plays
     assert set(actors) == {0, 1, 2, 3}
+
+
+def test_each_policy_continuation_actor_cannot_read_hidden_cards(monkeypatch):
+    """Guard the simulated actor, not just hidden twins at the outer root.
+
+    Hand sizes are public; other hand contents and a nonbanker's kitty are not.
+    The policy must resample before encoding complete-world model inputs.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.train.policy_world_search import PolicyWorldBot
+    rnd = state()
+    seat = rnd.turn
+    original = PolicyWorldBot.decide_play
+    actors, inputs = [], []
+
+    class CountOnly:
+        def __init__(self, cards):
+            self.count = len(cards)
+
+        def __len__(self):
+            return self.count
+
+        def __iter__(self):
+            raise AssertionError('continuation inspected hidden card contents')
+
+        def __getitem__(self, index):
+            raise AssertionError('continuation indexed hidden cards')
+
+    def guarded(bot, leaf, actor):
+        hands, buried = leaf.hands, leaf.buried
+        leaf.hands = [hand if player == actor else CountOnly(hand)
+                      for player, hand in enumerate(hands)]
+        leaf.buried = buried if actor == leaf.banker else CountOnly(buried)
+        try:
+            result = original(bot, leaf, actor)
+            actors.append(actor)
+            return result
+        finally:
+            leaf.hands, leaf.buried = hands, buried
+
+    def predict(x):
+        inputs.append(x.copy())
+        return np.tile(np.arange(54), (len(x), 1))
+
+    monkeypatch.setattr(PolicyWorldBot, 'decide_play', guarded)
+    bot = PolicyLookaheadBot(predict, evaluator=object(), continuation_worlds=1)
+    action = HeuristicBot().decide_play(rnd, seat)
+    bot._leaf(rnd, seat, rnd.hands, rnd.buried, action, 0)
+    assert len(actors) == len(inputs) == 4
+    assert set(actors) == {0, 1, 2, 3}
+    assert bot._continuation_work['worlds'] == 4

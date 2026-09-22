@@ -107,12 +107,18 @@ DEPTH_SOURCE = '594404e309c8d82bdc0405f0c089126c415dd178'
 DEPTH_PRODUCTION_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
 DEPTH_HOLD = False  # #599/#601 PASS; Jerry's cloud multi-ply request, reserved seeds
 DEPTH_SEED = 626700000
+DEPTH_SCREEN = 'depth-production-screen'
+DEPTH_SCREEN_SOURCE = '06999b0d958abe448bd29a803c7a1f3952051743'
+DEPTH_SCREEN_HOLD = True  # Budget approval, seeds and consolidated review pending.
+DEPTH_SCREEN_SEED = 626710000  # PROPOSED, NOT RESERVED.
+DEPTH_SCREEN_DEALS = 260
+DEPTH_SCREEN_SECONDS = (1800, 1800, 18000)  # New screen ceilings, not qualification changes.
 DEPTH_ARMS = [('CURRENT_TRICK', 64, 'policy-value', 'production-pv-r29'),
               ('EXTRA_TRICK_HEURISTIC', 64, 'policy-heuristic-lookahead', 'production-pv-r29'),
               ('EXTRA_TRICK_POLICY', 64, 'policy-lookahead', 'production-pv-r29')]
-PRODUCTION_SUITES += (DEPTH_SUITE,)
+PRODUCTION_SUITES += (DEPTH_SUITE, DEPTH_SCREEN)
 QUALIFICATION_ONLY_SUITES += (DEPTH_SUITE,)
-SUITES = (DEPTH_SUITE, 'abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
+SUITES = (DEPTH_SUITE, DEPTH_SCREEN, 'abc', 'search-followup', 'search-reference', 'strength-screen', 'wk-screen',
           'joint-grid-screen', 'mc-pv-qualify', 'pv-production-qualify', 'pv-production-screen',
           JOINT_PRODUCTION_SUITE, JOINT_PRODUCTION_SCREEN, PRODUCTION_WORLD_SCALING_SUITE,
           WIDE_SCREEN)
@@ -122,6 +128,16 @@ BUSY = ('shengji.harvest.trajectory', 'cwv_screen_queue', 'policy_world_duel',
 
 def commands(python, checkpoint, output, *, qualify=False, suite='abc', production=None,
              grid_checkpoint=None, production_worlds=16):
+    if suite == DEPTH_SCREEN:
+        if qualify:
+            raise ValueError('depth screen is full-screen only')
+        plan = commands(python, checkpoint, output, qualify=True, suite=DEPTH_SUITE,
+                        production=production, grid_checkpoint=grid_checkpoint,
+                        production_worlds=production_worlds)
+        for _, cmd in plan:
+            cmd[cmd.index('--seed0') + 1] = str(DEPTH_SCREEN_SEED)
+            cmd[cmd.index('--deals') + 1] = str(DEPTH_SCREEN_DEALS)
+        return plan
     if suite == WIDE_SCREEN:
         if qualify:
             raise ValueError('wide-world screen is full-screen only')
@@ -253,6 +269,23 @@ def stop_owned_group(process):
     process.wait()
 
 
+def depth_screen_readout(python, source, output, recipes, env):
+    """Use the pinned runtime's reader, never the supervisor checkout's imports."""
+    probe = ('import json,sys,pathlib; '
+             'import shengji.train.policy_depth_readout as r; '
+             'assert pathlib.Path(r.__file__).resolve() == '
+             'pathlib.Path(sys.argv[1]).resolve(); '
+             'print(json.dumps(r.readout(sys.argv[2], json.load(sys.stdin))))')
+    result = json.loads(subprocess.check_output(
+        [str(python), '-B', '-c', probe,
+         str(source / 'server/shengji/train/policy_depth_readout.py'), str(output)],
+        input=json.dumps(recipes), env=env, cwd=source / 'server', text=True, timeout=120))
+    (output / 'readout.json').write_text(json.dumps(result, indent=2) + '\n')
+    if not result.get('family_complete'):
+        raise RuntimeError('depth readout incomplete or unclean; preserve diagnostic')
+    return result
+
+
 def interrupted(signum, _frame):
     raise SystemExit(128 + signum)
 
@@ -282,6 +315,8 @@ def main(argv=None):
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--qualification', type=Path,
                         help='sealed wide-world qualification root; required only for its full screen')
+    parser.add_argument('--depth-recipes', type=Path,
+                        help='independently reviewed frozen recipe map; depth screen only')
     parser.add_argument('--suite', choices=SUITES, default='abc')
     parser.add_argument('--production-checkpoint', type=Path)
     parser.add_argument('--production-worlds', type=int, choices=(16, 64), default=16,
@@ -289,6 +324,12 @@ def main(argv=None):
     parser.add_argument('--qualify', action='store_true',
                         help='12 pairs/900s per arm; MC uses 1 pair/3600s, PV production 12/3600s; no promotion')
     args = parser.parse_args(argv)
+    if args.suite == DEPTH_SCREEN and args.run and DEPTH_SCREEN_HOLD:
+        raise RuntimeError('depth screen held pending budget approval, seeds and review')
+    if (args.suite == DEPTH_SCREEN) != (args.depth_recipes is not None):
+        raise ValueError('frozen depth recipes required exactly for depth screen')
+    if args.suite == DEPTH_SCREEN and args.qualify:
+        raise ValueError('depth screen is full-screen only')
     if args.suite == DEPTH_SUITE and args.run and DEPTH_HOLD:
         raise RuntimeError('depth qualification held pending review and seed/host reconciliation')
     if (args.suite == WIDE_SCREEN) != (args.qualification is not None):
@@ -322,6 +363,7 @@ def main(argv=None):
         raise ValueError('grid checkpoint required exactly for joint-model suites')
     source_sha = {'abc': SOURCE, 'search-followup': FOLLOWUP_SOURCE,
                   DEPTH_SUITE: DEPTH_SOURCE,
+                  DEPTH_SCREEN: DEPTH_SCREEN_SOURCE,
                   JOINT_PRODUCTION_SUITE: REFERENCE_SOURCE,
                   JOINT_PRODUCTION_SCREEN: REFERENCE_SOURCE,
                   'search-reference': REFERENCE_SOURCE,
@@ -349,7 +391,7 @@ def main(argv=None):
             and hashlib.sha256(grid_checkpoint.read_bytes()).hexdigest() != GRID_CHECKPOINT_SHA256):
         raise RuntimeError('grid checkpoint mismatch')
     production = args.production_checkpoint.resolve() if args.production_checkpoint else None
-    production_sha = DEPTH_PRODUCTION_SHA256 if args.suite == DEPTH_SUITE else PRODUCTION_SHA256
+    production_sha = DEPTH_PRODUCTION_SHA256 if args.suite in (DEPTH_SUITE, DEPTH_SCREEN) else PRODUCTION_SHA256
     if production is not None and hashlib.sha256(production.read_bytes()).hexdigest() != production_sha:
         raise RuntimeError('production checkpoint mismatch')
     if output.exists() or not output.parent.is_dir():
@@ -370,8 +412,26 @@ def main(argv=None):
     plan = commands(args.python.absolute(), checkpoint, output,
                     qualify=args.qualify, suite=args.suite, production=production,
                     grid_checkpoint=grid_checkpoint, production_worlds=production_worlds)
-    if args.suite == DEPTH_SUITE:
+    if args.suite in (DEPTH_SUITE, DEPTH_SCREEN):
         verify_depth_import(args.python.absolute(), source, env)
+    frozen_depth_recipes = None
+    if args.suite == DEPTH_SCREEN:
+        frozen_depth_recipes = json.loads(args.depth_recipes.read_text())
+        if set(frozen_depth_recipes) != {name for name, _ in plan}:
+            raise ValueError('depth frozen recipe map must name all three arms')
+        for name, cmd in plan:
+            recipe = frozen_depth_recipes[name]
+            if (recipe.get('source_git_sha') != source_sha
+                    or recipe.get('checkpoint_sha256') != CHECKPOINT
+                    or recipe.get('seed0') != DEPTH_SCREEN_SEED
+                    or recipe.get('deals') != DEPTH_SCREEN_DEALS
+                    or recipe.get('worlds') != 64 or recipe.get('workers') != 6
+                    or recipe.get('control') != 'production-pv-r29'
+                    or recipe.get('decision_timeout_seconds') != 300
+                    or recipe.get('policy', {}).get('mode') != cmd[cmd.index('--mode')+1]
+                    or recipe.get('policy', {}).get('candidates') != 8
+                    or recipe.get('control_effective', {}).get('checkpoint_sha256') != production_sha):
+                raise ValueError(f'{name}: frozen depth recipe disagrees with screen command')
     if args.suite == WIDE_SCREEN:
         from shengji.train.policy_wide_world_readout import validate_qualification
         validate_qualification(args.qualification)
@@ -379,6 +439,8 @@ def main(argv=None):
                                                        'joint-grid-screen') and not args.qualify
                else QUALIFY_SECONDS if args.qualify else ARM_SECONDS)
     expected = QUALIFY_DEALS if args.qualify else DEALS
+    if args.suite == DEPTH_SCREEN:
+        expected = DEPTH_SCREEN_DEALS
     if args.suite == 'mc-pv-qualify':
         seconds, expected = 3600, 1
     if args.suite in ('pv-production-qualify', JOINT_PRODUCTION_SUITE,
@@ -393,6 +455,18 @@ def main(argv=None):
                'engine': 'pure', 'arm_timeout_seconds': seconds,
                'mode': 'runtime-qualification' if args.qualify else 'experiment',
                'automatic_promotion': False}
+    if args.suite == DEPTH_SCREEN:
+        receipt.update(launch_hold=DEPTH_SCREEN_HOLD, authorization='PENDING',
+            seed_reservation='PROPOSED 626710000:626710260; NOT RESERVED',
+            expected_pairs_per_arm=DEPTH_SCREEN_DEALS, workers=6,
+            arm_timeout_seconds=dict(zip((n for n, _ in plan), DEPTH_SCREEN_SECONDS)),
+            total_arm_timeout_seconds=sum(DEPTH_SCREEN_SECONDS),
+            control_budget_seconds=3.0, treatment_budget_seconds=300,
+            automatic_retry=False, frozen_depth_recipes=frozen_depth_recipes,
+            analysis={'reader': 'shengji.train.policy_depth_readout',
+                      'primary_intervals': 'two depth-vs-production contrasts, Bonferroni97.5%',
+                      'component_contrasts': 'exploratory matched common-opponent95%, not direct duels',
+                      'qualification_rows_excluded': True, 'optional_extension': False})
     if args.suite == 'strength-screen':
         receipt.update(
             mode='strength-screen', launch_hold=False,
@@ -577,13 +651,15 @@ def main(argv=None):
         output.mkdir()
         created_output = True
         (output / 'launch-plan.json').write_text(json.dumps(receipt, indent=2) + '\n')
-        for name, cmd in plan:
+        for arm_index, (name, cmd) in enumerate(plan):
             resource_guard(output.parent)
             run_arm(cmd, env=env, cwd=source / 'server', log=output / f'{name}.log',
-                    seconds=seconds)
+                    seconds=DEPTH_SCREEN_SECONDS[arm_index] if args.suite == DEPTH_SCREEN else seconds)
             validate_summary(output / name / 'summary.json', expected=expected)
             completed_arms.append(name)
-        if args.suite == DEPTH_SUITE:
+        if args.suite == DEPTH_SCREEN:
+            depth_screen_readout(args.python.absolute(), source, output, frozen_depth_recipes, env)
+        if args.suite in (DEPTH_SUITE, DEPTH_SCREEN):
             (output / 'terminal.json').write_text(json.dumps(
                 {'status': 'complete', 'completed_arms': completed_arms,
                  'automatic_promotion': False}) + '\n')
@@ -593,7 +669,7 @@ def main(argv=None):
             (output / 'readout.json').write_text(json.dumps(result, indent=2) + '\n')
         return 0
     except BaseException as exc:
-        if args.suite == DEPTH_SUITE and created_output:
+        if args.suite in (DEPTH_SUITE, DEPTH_SCREEN) and created_output:
             (output / 'terminal.json').write_text(json.dumps(
                 {'status': 'refused', 'completed_arms': completed_arms,
                  'error_type': type(exc).__name__, 'error': str(exc),

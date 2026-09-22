@@ -93,7 +93,7 @@ outcome + search-mean + points heads) with the SEARCH'S PER-CANDIDATE VALUES as 
 (`soft-8ecd4fea.npz`, sha256 ccade130…) that is both the admission policy and the value evaluator of
 the W64/K8 search (`train/pv_search_policy.py`). Evidence, in the order it was gathered: the head alone
 beats SmartBot under public information (+0.052 [+0.039, +0.067]); as the whole search it beats
-MC-LCB at every world budget (W64/K8 +0.187 [+0.144, +0.231]); vs the release-28 package in card play
+MC-LCB at W16, W32 and W64 in the ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses); vs the release-28 package in card play
 +0.086 [+0.042, +0.131] on 800 matched deals and +0.122 [+0.079, +0.164] on fresh deals; more worlds
 beyond 64 not shown to help (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]);
 no head in the W64 family (JS-M1, JS-G1, gen-4 run 1, gen-3-warm) shown superior to it or to each
@@ -268,19 +268,21 @@ under public information; the soft target (the search's own values as the policy
 ingredient with the largest point estimate in the head-driven search, with no head in the W64
 family shown superior to another; corpus seeds are decks and are excluded from screens per model.
 
-**Search.** Worlds are the lever up to 64 and flat beyond (W128−W64 +0.024 [−0.034, +0.083]);
-K8 not K16; the value head replaces playouts outright (W64/K8 +0.187 vs MC-LCB, +0.086 vs the
+**Search.** Worlds were the lever through 64 and the ladder shows no resolved gain beyond
+(W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]; unresolved, not equivalence);
+K8 not K16; the value head replaces playouts outright (W64/K8 +0.187 vs MC-LCB in the ladder, +0.086 vs the
 release-28 package in card play); a T1 value cutoff beats terminal-level MC while learned
-continuations and bounded PUCT lose or add nothing at large cost multiples; served contrasts
-are smaller than card-play contrasts (+0.049 vs +0.086 for the same search) and the deploy
-gate is the served design.
+continuations and bounded PUCT lose or add nothing at large cost multiples; the served read
+(+0.049, a common-opponent summary-level estimate, not paired served-vs-served inference) is
+smaller than the card-play read (+0.086, different deals and design), with no measured cause;
+the deploy gate is the served design.
 
 ## Current scientific conclusions
 
 | lane | conclusion for policy work |
 |---|---|
-| **RLCB** | The confirmed MC-LCB search; still the screen baseline. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
-| **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at every world budget, the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow). Worlds flat past 64; no head in the W64 family shown superior; the next production claim needs a served contrast against release 29. |
+| **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21 (from 2026-09-22 every new search comparison is against production W64/K8, Jerry's direction on #436). Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
+| **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; the next production claim needs a served contrast against release 29. |
 | **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
 | **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |

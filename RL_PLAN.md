@@ -14,8 +14,10 @@ Build a Shengji policy that is demonstrably stronger than what production plays,
 correct engine and a reproducible evaluator. Production is release 29: the soft head
 `8ecd4fea` served as one NumPy package, its policy head admitting eight candidates over 64
 sampled worlds and its value head pricing them, no Monte Carlo playouts in play, value-guided
-hybrid bury. The champion for every strength claim is therefore the served release-29 bot;
-the MC-LCB search remains the yardstick for search-recipe screens.
+hybrid bury. The champion for every strength claim is therefore the served release-29 bot,
+and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
+direction, recorded on #436). Historical MC-LCB results keep their original labels; MC-LCB is
+no longer the prospective control.
 
 Evidence labels:
 
@@ -47,7 +49,8 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 
 0. **Production is release 29** (2026-09-22). Evidence chain, in order: the soft head alone
    beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
-   every world budget (W64/K8 +0.187 [+0.144, +0.231]); vs the release-28 package in card play
+   W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
+   vs the release-28 package in card play
    +0.086 [+0.042, +0.131] on 800 matched deals and +0.122 on fresh deals; served with hybrid
    bury vs release 28 as served +0.049 [+0.003, +0.095] over five clean windows (narrow, I²
    49%). Rollback is one `SHENGJI_BOT` line. The next production claim needs a served-bot
@@ -61,14 +64,17 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 2. **Gen-5: data from the search itself (#592).** The release-29 search generates the next
    corpus (`harvest.trajectory` over the pv-search bot: the admitted ballot, the value head's
    means as the soft policy target in their own units, the outcome as the value target, an
-   exploration draw from the full legal set that never displaces production's admission).
+   exploration draw from the full legal set that must never displace production's admission;
+   reviewed on #597, merging on CI).
    Decisions taken: W64/K8, explore rate 0.1, two stores then a read, MC-LCB stores leave the
    training mix for the SSD after run 2. Data generation yields the boxes to screens.
-3. **Search scaling (#577).** Worlds are the lever up to 64 and flat beyond it (W128−W64 and
-   W256−W64 both span zero); K8 not K16; the T1 value cutoff is a gain over terminal-level MC
+3. **Search scaling (#577).** Worlds were the lever through 64; the ladder shows no resolved
+   gain beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]: not
+   equivalence bounds, unresolved); K8 not K16; the T1 value cutoff is a gain over terminal-level MC
    while a learned continuation adds nothing at 68× the cost; bounded PUCT lost at 2× wall;
-   depth (one extra trick, heuristic or policy) is qualified against a frozen release-29 card-play
-   control and held pending Jerry's word.
+   depth (one extra trick, heuristic or policy) is being qualified on the cloud against a frozen
+   release-29 card-play control under the existing authorization (12 pairs per arm; two arms
+   sealed, the policy-extra arm live at publication); no full screen is authorized.
 4. **What would change production next:** a head that beats release 29 on the served-bot
    design, or a search change whose served contrast clears zero. Nothing else.
 
@@ -107,9 +113,11 @@ Every row is on the scaling page with its receipt; these are the conclusions.
   the value pricing, not the prior.
 - **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
   and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
-- **Served contrasts are smaller than card-play contrasts** (+0.049 served vs +0.086 card
-  play for the same search): declare, bury and the opponent mix dilute the play effect. The
-  deploy gate is the served design.
+- **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs
+  +0.086 [+0.042, +0.131] in card play, on different deals and designs). The served number is
+  a common-opponent, summary-level random-effects estimate, not paired served-vs-served
+  inference; own declare and bury and the opponent mix are possible explanations for the
+  difference, not a measured cause. The deploy gate is the served design.
 
 ## Search and teacher strategy
 

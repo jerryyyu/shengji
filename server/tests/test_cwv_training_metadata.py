@@ -1,4 +1,5 @@
 """Training may omit provenance strings, never tensors or batch ordering."""
+import json
 import numpy as np
 import pytest
 
@@ -94,7 +95,7 @@ def test_real_joint_training_matches_with_and_without_metadata(packed, store_dir
             version=2, history=False, witness_seed=7, cache_workers=1)
         build_pack(prepared.block_store.entries, pack, classify_shards=3)
         train_kw = {'cache_dir': cache, 'pack_dir': str(pack)}
-    models, receipts = [], []
+    models, receipts, auxiliaries = [], [], []
     for include in (True, False):
         calls = []
         def batches(self, *args, **kwargs):
@@ -109,12 +110,29 @@ def test_real_joint_training_matches_with_and_without_metadata(packed, store_dir
             arch='mlp', device='cpu', epochs=1, seed=7, batch_size=64,
             n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1,
             bench_batch=32, val_rank_records=50, encoder_version=2,
-            policy_head=True, policy_rows=policy_rows, **train_kw, **THIRDS))
+            policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
+            aux_points=True, **train_kw, **THIRDS))
         assert calls, 'the actual optimizer iterator must exercise this option'
-        model, _, _ = load_cwv_checkpoint(out / 'best.pt')
+        model, meta, _ = load_cwv_checkpoint(out / 'best.pt')
         models.append(model.state_dict())
+        aux = meta.get('aux_points_head')
+        assert aux is not None
+        auxiliaries.append(aux)
+        # Reopen the terminal producer outputs: an epoch/checkpoint alone is
+        # not a completed end-to-end run, and final evaluation must be kept.
+        saved = json.loads((out / 'receipt.json').read_text())
+        metrics = json.loads((out / 'metrics.json').read_text())
+        assert saved['final'] == metrics['final'] == receipts[-1]['final']
+        assert saved['exposure'] == receipts[-1]['exposure']
     assert models[0].keys() == models[1].keys()
     for name in models[0]:
         assert torch.equal(models[0][name], models[1][name]), name
     assert receipts[0]['population'] == receipts[1]['population']
     assert receipts[0]['exposure'] == receipts[1]['exposure']
+    assert auxiliaries[0] == auxiliaries[1]
+    assert receipts[0]['epochs'][0]['val']['policy'] == receipts[1]['epochs'][0]['val']['policy']
+    # Throughput is deliberately not an equivalence target. Every reported
+    # quality headline, including candidate ranking and points, is.
+    for name, value in receipts[0]['headline_numbers'].items():
+        if name != 'forward_positions_per_second_cpu_1024':
+            assert value == receipts[1]['headline_numbers'][name], name

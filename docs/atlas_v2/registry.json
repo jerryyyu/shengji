@@ -84,7 +84,9 @@
    "hi": null,
    "eta": "relaunched 09:17 ET on the release-30 tree 4e006561 (Perf); ~11:45 ET for five windows",
    "note": "a matched-window, common-opponent contrast against release 30 (each served policy vs the same MC-LCB opponents on the same seeds; not direct duels) \u2014 what lane v34r4 could not give; both arms carry release 30's served bury",
-   "archive": ""
+   "archive": "",
+   "instrument_kind": "windows",
+   "confidence": 0.95
   },
   {
    "id": "depth-screen",
@@ -97,12 +99,40 @@
    "form": "card play",
    "instrument": "260 mirrored deals \u00d7 3 arms, joint bootstrap, two primaries at Bonferroni 97.5%",
    "seeds": "626710000..626710259",
-   "point": null,
-   "lo": null,
-   "hi": null,
    "eta": "Codex launched 09:11:55 ET on cloud (service codex-depth-screen-20260922, launcher aa80652b, runtime 06999b0d); first arm sealed 260/260; ~12:45 ET; 6 h ceiling",
    "note": "Codex packet #599/#601, PASSed 09-22 09:1x ET; reader policy_depth_readout",
-   "archive": ""
+   "archive": "",
+   "instrument_kind": "matched-deals",
+   "family": "two primaries vs production, Bonferroni 97.5% each; the current-trick arm is a 95% diagnostic; component contrasts exploratory",
+   "results": [
+    {
+     "arm": "EXTRA_TRICK_HEURISTIC",
+     "label": "one extra trick, heuristic continuation, vs production",
+     "role": "primary",
+     "confidence": 0.975,
+     "point": null,
+     "lo": null,
+     "hi": null
+    },
+    {
+     "arm": "EXTRA_TRICK_POLICY",
+     "label": "one extra trick, policy continuation (1 world), vs production",
+     "role": "primary",
+     "confidence": 0.975,
+     "point": null,
+     "lo": null,
+     "hi": null
+    },
+    {
+     "arm": "CURRENT_TRICK",
+     "label": "current trick only (the release-30 search re-run), vs production",
+     "role": "diagnostic",
+     "confidence": 0.95,
+     "point": null,
+     "lo": null,
+     "hi": null
+    }
+   ]
   }
  ],
  "context_screens": [
@@ -118,7 +148,9 @@
    "lo": 0.015,
    "hi": 0.068,
    "note": "beats the OLD production; not a contrast with release 29",
-   "ref": "row 55"
+   "ref": "row 55",
+   "instrument_kind": "windows",
+   "confidence": 0.95
   },
   {
    "id": "v34pv",
@@ -132,7 +164,9 @@
    "lo": 0.003,
    "hi": 0.095,
    "note": "the release gate read",
-   "ref": "row 51"
+   "ref": "row 51",
+   "instrument_kind": "windows",
+   "confidence": 0.95
   }
  ],
  "models": [
@@ -193,7 +227,7 @@
    "name": "runPV2",
    "box": "Perf",
    "seed0": 23276910,
-   "status": "stopped 08:39 ET at 12,925/16,000 to free Perf for v34r5; regeneration runPV2r planned on cloud \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
+   "status": "stopped 08:39 ET at 13,043/16,000 (13,043 sealed shards) to free Perf for v34r5; regeneration runPV2r planned on cloud \u00b7 regeneration on cloud waits behind the depth screen (~12:45 ET), tree claude-main-12 at 4e006561"
   }
  ],
  "history": {

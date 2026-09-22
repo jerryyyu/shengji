@@ -7,6 +7,17 @@ HERE = Path(__file__).resolve().parent
 R = json.loads((HERE / "registry.json").read_text())
 
 
+INSTRUMENT_KINDS = {"windows", "matched-deals", "ladder"}
+
+
+def results_of(s):
+    """A screen's result slots: one per arm for a family (``results``), else the row itself."""
+    if "results" in s:
+        return [dict(r, arm=r.get("arm", "?")) for r in s["results"]]
+    return [{"arm": "-", "label": "", "role": "primary", "confidence": s.get("confidence", 0.95),
+             "point": s.get("point"), "lo": s.get("lo"), "hi": s.get("hi")}]
+
+
 def check_registry(reg):
     """Invariants: one production baseline; every screen names a comparator that is a baseline release
     and a form; every read is a proper interval around its point; a served-bot read never carries a
@@ -21,17 +32,29 @@ def check_registry(reg):
             errs.append(f"{s['id']}: comparator release {s.get('vs')!r} is not a registered baseline")
         if s.get("form") not in ("served bot", "card play"):
             errs.append(f"{s['id']}: form must be 'served bot' or 'card play'")
-        if s.get("form") == "served bot" and "deal" in s.get("instrument", "") and "window" not in s.get("instrument", ""):
-            errs.append(f"{s['id']}: a served-bot read must be a window instrument")
         if s.get("status") not in ("planned", "running", "restarting", "sealed", "stopped"):
             errs.append(f"{s['id']}: unknown status {s.get('status')!r}")
     for s in reg["screens"] + reg["context_screens"]:
-        p, lo, hi = s.get("point"), s.get("lo"), s.get("hi")
-        if (p is None) != (lo is None) or (p is None) != (hi is None):
-            errs.append(f"{s['id']}: point, lo and hi must be given together")
-        elif p is not None and not (lo <= p <= hi):
-            errs.append(f"{s['id']}: interval [{lo}, {hi}] does not contain the point {p}")
-        if s.get("status") == "sealed" and p is None:
+        # the instrument is an explicit typed field on EVERY row (context rows included), never inferred
+        if s.get("instrument_kind") not in INSTRUMENT_KINDS or not s.get("instrument"):
+            errs.append(f"{s['id']}: instrument_kind must be one of {sorted(INSTRUMENT_KINDS)} with a non-empty instrument text")
+        if s.get("form") == "served bot" and s.get("instrument_kind") != "windows":
+            errs.append(f"{s['id']}: a served-bot read must use the 'windows' instrument")
+        for r in results_of(s):
+            p, lo, hi = r.get("point"), r.get("lo"), r.get("hi")
+            if (p is None) != (lo is None) or (p is None) != (hi is None):
+                errs.append(f"{s['id']}/{r['arm']}: point, lo and hi must be given together")
+            elif p is not None and not (lo <= p <= hi):
+                errs.append(f"{s['id']}/{r['arm']}: interval [{lo}, {hi}] does not contain the point {p}")
+            if r.get("confidence") not in (0.95, 0.975, 0.9875):
+                errs.append(f"{s['id']}/{r['arm']}: confidence must be declared (0.95, 0.975 or 0.9875)")
+        if "results" in s:
+            rs = s["results"]
+            if any(r.get("point") is not None for r in rs) and not all(r.get("point") is not None for r in rs if r.get("role") == "primary"):
+                errs.append(f"{s['id']}: a multi-arm family is read as a whole; no partial primary results")
+            if s.get("status") == "sealed" and any(r.get("point") is None for r in rs):
+                errs.append(f"{s['id']}: sealed family with an unread arm")
+        elif s.get("status") == "sealed" and s.get("point") is None:
             errs.append(f"{s['id']}: sealed without a read")
     for m in reg["models"]:
         if m.get("val_ce") is not None and not (0.3 < m["val_ce"] < 1.0):
@@ -49,33 +72,39 @@ def verdict(lo, hi):
     return ("crosses zero", "chip null")
 
 # ---------- forest chart (screens vs 29/30 + context vs 28, one row each) ----------
-rows = [(s["id"], s["candidate"], s["comparator"], s["point"], s["lo"], s["hi"], s["status"], "main") for s in R["screens"]]
-rows += [(s["id"], s["candidate"], s["comparator"], s["point"], s["lo"], s["hi"], s["status"], "ctx") for s in R["context_screens"]]
+def _chart_rows(items, kind):
+    out = []
+    for s in items:
+        for r in results_of(s):
+            tag = s["id"] if r["arm"] == "-" else f"{s['id']} · {r['arm']}"
+            out.append((tag, r["label"] or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
+    return out
+rows = _chart_rows(R["screens"], "main") + _chart_rows(R["context_screens"], "ctx")
 W, LEFT, RIGHT, ROWH, TOP = 980, 330, 150, 44, 46
 H = TOP + ROWH * len(rows) + 40
 lo_all = min([r[4] for r in rows if r[4] is not None] + [-0.05]); hi_all = max([r[5] for r in rows if r[5] is not None] + [0.10])
 lo_all, hi_all = min(lo_all, -0.02) - 0.01, hi_all + 0.01
 def X(v): return LEFT + (v - lo_all) / (hi_all - lo_all) * (W - LEFT - RIGHT)
-svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Screens against the current production release, point and 95% interval">']
+svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Screens against the current production release: point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">']
 svg.append(f'<line x1="{X(0):.1f}" y1="{TOP-18}" x2="{X(0):.1f}" y2="{H-30}" class="zero"/>')
 svg.append(f'<text x="{X(0):.1f}" y="{TOP-24}" class="lab" text-anchor="middle">production parity</text>')
 for t in [round(lo_all + i*0.02, 2) for i in range(int((hi_all-lo_all)/0.02)+1)]:
     if abs(t) < 1e-9: continue
     svg.append(f'<line x1="{X(t):.1f}" y1="{H-30}" x2="{X(t):.1f}" y2="{H-24}" class="tick"/><text x="{X(t):.1f}" y="{H-10}" class="lab" text-anchor="middle">{t:+.2f}</text>')
-for i, (rid, cand, comp, p, lo, hi, st, kind) in enumerate(rows):
+for i, (rid, cand, comp, p, lo, hi, st, kind, conf, role) in enumerate(rows):
     y = TOP + i * ROWH + ROWH/2
-    name = f"{rid} · {cand[:38]}{'…' if len(cand) > 38 else ''}"
+    name = f"{rid} · {cand[:34]}{'…' if len(cand) > 34 else ''}"
     svg.append(f'<text x="{LEFT-10}" y="{y+4}" class="lab name {kind}" text-anchor="end">{esc(name)}</text>')
-    svg.append(f'<text x="{LEFT-10}" y="{y+18}" class="sub" text-anchor="end">vs {esc(comp[:40])}</text>')
+    svg.append(f'<text x="{LEFT-10}" y="{y+18}" class="sub" text-anchor="end">vs {esc(comp[:34])} · {conf*100:g}% {esc(role)}</text>')
     if p is None:
         svg.append(f'<rect x="{X(0)-5:.1f}" y="{y-5}" width="10" height="10" class="pt pending" transform="rotate(45 {X(0):.1f} {y})"/>')
-        svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab">{esc(st)}</text>')
+        svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab">{esc(st)} · {conf*100:g}%</text>')
         continue
     cls = "good" if lo > 0 else ("bad" if hi < 0 else "null")
     if kind == "ctx": cls += " ctx"
     svg.append(f'<line x1="{X(lo):.1f}" y1="{y}" x2="{X(hi):.1f}" y2="{y}" class="ci {cls}"/>')
     svg.append(f'<circle cx="{X(p):.1f}" cy="{y}" r="5" class="pt {cls}"/>')
-    svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab num">{esc(iv(p, lo, hi))}</text>')
+    svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab num">{esc(iv(p, lo, hi))} ({conf*100:g}%)</text>')
 svg.append("</svg>")
 SVG = "\n".join(svg)
 
@@ -83,10 +112,15 @@ SVG = "\n".join(svg)
 def screens_table(items, ctx=False):
     out = ['<div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>']
     for s in items:
-        v, cls = verdict(s["lo"], s["hi"])
+        cells = []
+        for r in results_of(s):
+            v, cls = verdict(r["lo"], r["hi"])
+            lab = "" if r["arm"] == "-" else f'<span class="sub">{esc(r["arm"])} · {r["confidence"]*100:g}% {esc(r.get("role",""))}</span><br>'
+            cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))} <span class="{cls}">{v}</span>')
+        fam = f'<br><small>{esc(s["family"])}</small>' if s.get("family") else ""
         out.append(f'<tr><td class="mono">{esc(s["id"])}</td><td>{esc(s["candidate"])}</td><td>{esc(s["comparator"])}</td>'
-                   f'<td>{esc(s["form"])} · {esc(s["instrument"])}</td><td class="mono">{esc(s.get("seeds",""))}</td>'
-                   f'<td class="num">{esc(iv(s["point"], s["lo"], s["hi"]))}<br><span class="{cls}">{v}</span></td>'
+                   f'<td>{esc(s["form"])} · {esc(s["instrument"])} <span class="sub">[{esc(s["instrument_kind"])}]</span>{fam}</td><td class="mono">{esc(s.get("seeds",""))}</td>'
+                   f'<td class="num">{"<br>".join(cells)}</td>'
                    f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td>'
                    f'<td>{esc(s["note"])}{(" · " + esc(s["ref"])) if s.get("ref") else ""}</td></tr>')
     out.append("</tbody></table></div>")
@@ -146,7 +180,7 @@ a{{color:var(--accent)}}
 <div class="cards">{baseline_cards()}</div>
 
 <h2>Screens against the current release</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Context rows (lighter) are reads against release 28, kept so the baseline's own margin stays visible next to the new contrasts.</p>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. Context rows (lighter) are reads against release 28, kept so the baseline's own margin stays visible next to the new contrasts.</p>
 <div class="figure">{SVG}</div>
 {screens_table(R["screens"])}
 <h4>Context · how the baseline was established (vs release 28)</h4>

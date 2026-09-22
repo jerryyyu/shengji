@@ -48,8 +48,9 @@ shows the name above, `pv_search` = {sha256 ccade130…, worlds 64, candidates 8
 bury budget 2}, rooms 0. Strength evidence is release 29's (below); no new screen for the fix itself.
 
 Rollback: the release-29 image (`deployment-01M33NZERJS18A0G2NNG7S5FJ8`, `fly deploy --image …`),
-then release 28 by the one-line `SHENGJI_BOT` change. Watch: `cwv-bury-fallback-v1` records should
-now be rare (budget only); `pv-search-fallback-v1`, stale-turn discards, decision wall p50/p95.
+then release 28 by the one-line `SHENGJI_BOT` change. Watch: `cwv-bury-fallback-v1` records — the expectation to check is that their reason is
+`budget` only; any `search-error` reason (an unrelated exception still takes the generic fallback) is a finding to
+investigate; `pv-search-fallback-v1`, stale-turn discards, decision wall p50/p95.
 
 ## Release 29 — the policy/value search with the soft head (pv-search W64/K8 + hybrid bury), deployed 2026-09-22 00:29 ET; superseded by release 30 (same name, same package)
 

@@ -37,6 +37,26 @@ def test_refuses_alias_and_existing_output(tmp_path):
         mod.plan('relative', '/omit', '/retain', '/python', tmp_path / 'fresh')
 
 
+def test_soft_reference_changes_only_policy_targets(tmp_path):
+    args = ('/data', '/omit', '/retain', '/python', tmp_path / 'fresh')
+    hard = mod.plan(*args)
+    soft = mod.plan(*args, recipe='gen4-run4-soft')
+    assert soft['status'] == 'HELD_NOT_ARMED'
+    assert soft['reference_recipe'] == 'gen4-run4-soft'
+    for before, after in zip(hard['arms'], soft['arms']):
+        expected = list(before['argv'])
+        expected[expected.index('--policy-rows') + 1] = '/data/fl-pilot/policy_rows_v10'
+        expected[expected.index('--policy-weight') + 1] = '1.0'
+        at = expected.index('--init')
+        expected[at:at] = ['--policy-soft-targets', '--policy-soft-temperature', '1.0']
+        assert after['argv'] == expected
+        assert after['environment'] == before['environment']
+        assert after['cwd'] == before['cwd']
+    assert not (tmp_path / 'fresh').exists()
+    with pytest.raises(ValueError, match='unknown reference'):
+        mod.plan(*args, recipe='unknown')
+
+
 def test_exact_optimizer_delta_only():
     source = 'prefix\n' + mod.NEEDLE + '\nsuffix\n'
     patch = mod.retained_metadata_patch(source)
@@ -47,7 +67,8 @@ def test_exact_optimizer_delta_only():
             mod.retained_metadata_patch(bad)
 
 
-def test_cli_prints_only_and_refuses_run(tmp_path):
+@pytest.mark.parametrize('recipe', ['gen4-run1', 'gen4-run4-soft'])
+def test_cli_prints_only_and_refuses_run(tmp_path, recipe):
     tree = tmp_path / 'source'
     trainer = tree / 'server/shengji/train/train_cwv.py'
     trainer.parent.mkdir(parents=True)
@@ -55,7 +76,7 @@ def test_cli_prints_only_and_refuses_run(tmp_path):
     out = tmp_path / 'output'
     argv = [sys.executable, str(SPEC.origin), '--base', str(tmp_path / 'data'),
             '--omitted-source', str(tree), '--retained-source', str(tmp_path / 'retained'),
-            '--python', '/nonexistent-trainer-python', '--output', str(out)]
+            '--python', '/nonexistent-trainer-python', '--output', str(out), '--recipe', recipe]
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert 'HELD_NOT_ARMED' in result.stdout

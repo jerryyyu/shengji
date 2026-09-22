@@ -1,6 +1,6 @@
 """Print the held #569 actual-corpus command set; never execute or write it.
 
-Reference: gen4_run1, not the live soft-target run4. Release still requires
+References: gen4_run1 (default), or explicit gen4_run4 soft targets. Release still requires
 an exclusive Mini slot, reviewed source twins, input identity checks and
 host/resource guards. This planner deliberately has no --run mode.
 """
@@ -28,7 +28,9 @@ def retained_metadata_patch(source):
         tofile='b/server/shengji/train/train_cwv.py'))
 
 
-def plan(base, omitted_source, retained_source, python, output):
+def plan(base, omitted_source, retained_source, python, output, *, recipe='gen4-run1'):
+    if recipe not in ('gen4-run1', 'gen4-run4-soft'):
+        raise ValueError('unknown reference recipe')
     paths = [Path(p) for p in (base, omitted_source, retained_source, python, output)]
     if not all(p.is_absolute() for p in paths):
         raise ValueError('all paths must be absolute')
@@ -56,6 +58,11 @@ def plan(base, omitted_source, retained_source, python, output):
                str(base / 'fl-pilot/policy_rows_v3_eval'), '--policy-weight', '0.2',
                '--policy-listwise-weight', '1.0', '--policy-batch-fraction', '0.25', '--init',
                str(base / 'train-out/cwv/JS-M1-policy-w0.2-full/best.pt'), '--init-exclude-exposed']
+    if recipe == 'gen4-run4-soft':
+        common[common.index('--policy-rows') + 1] = str(base / 'fl-pilot/policy_rows_v10')
+        common[common.index('--policy-weight') + 1] = '1.0'
+        at = common.index('--init')
+        common[at:at] = ['--policy-soft-targets', '--policy-soft-temperature', '1.0']
     arms = []
     for name, source, timing in [('attribution', omitted_source, True),
                                  ('metadata-retained', retained_source, False),
@@ -66,7 +73,8 @@ def plan(base, omitted_source, retained_source, python, output):
         arms.append(dict(name=name, cwd=str(source / 'server'), environment=env,
                          argv=common + (['--loader-stage-timing'] if timing else [])
                          + ['--out', str(output / name)]))
-    return dict(status='HELD_NOT_ARMED', reference_source=SOURCE_HEAD, init_sha256=INIT_SHA256,
+    return dict(status='HELD_NOT_ARMED', reference_recipe=recipe,
+                reference_source=SOURCE_HEAD, init_sha256=INIT_SHA256,
                 arms=arms, retained_source_delta='optimizer include_metadata False -> True only',
                 completion='All three processes complete normally, including final candidate pass/holdouts.',
                 measurement='Report setup/train/validation/final evaluation/total wall, memory, exposures, '
@@ -79,10 +87,12 @@ def plan(base, omitted_source, retained_source, python, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--recipe', choices=('gen4-run1', 'gen4-run4-soft'), default='gen4-run1')
     for key in ('base', 'omitted-source', 'retained-source', 'python', 'output'):
         parser.add_argument('--' + key, required=True)
     args = parser.parse_args()
-    result = plan(args.base, args.omitted_source, args.retained_source, args.python, args.output)
+    result = plan(args.base, args.omitted_source, args.retained_source, args.python, args.output,
+                  recipe=args.recipe)
     trainer = Path(args.omitted_source) / 'server/shengji/train/train_cwv.py'
     result['retained_metadata_patch'] = retained_metadata_patch(trainer.read_text())
     print(json.dumps(result, indent=2))

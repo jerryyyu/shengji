@@ -46,19 +46,31 @@ def test_a_multi_arm_family_has_one_slot_per_arm_with_its_own_coverage():
     for r in slots:
         assert f'{fam["id"]} · {r["arm"]}' in page                # one chart row and one table line per arm
     assert "point and 95% interval" not in page                    # no blanket coverage label
-    # a family is populated as a whole and only once sealed (Codex HOLD on #609, narrowed)
-    bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
-    f["results"][0].update(point=0.01, lo=-0.01, hi=0.03)
+    # A family is populated as a whole and only once sealed (Codex HOLD on #609, narrowed).
+    # Each state is built explicitly so the test does not depend on whether the committed
+    # registry's family happens to be read yet.
+    def family(reg_copy):
+        return next(s for s in reg_copy["screens"] if "results" in s)
+
+    def set_family(reg_copy, status, read_arms):
+        f = family(reg_copy); f["status"] = status
+        for r in f["results"]:
+            if r["arm"] in read_arms: r.update(point=0.01, lo=-0.01, hi=0.03)
+            else: r.update(point=None, lo=None, hi=None)
+        return f
+
+    all_arms = [r["arm"] for r in family(copy.deepcopy(reg))["results"]]
+    bad = copy.deepcopy(reg); set_family(bad, "sealed", all_arms[:1])           # one slot read
     assert any("populated together" in e for e in mod.check_registry(bad))
-    bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
-    for r in f["results"]:
-        if r["role"] == "primary": r.update(point=0.01, lo=-0.01, hi=0.03)      # both primaries, diagnostic unread
+    bad = copy.deepcopy(reg); f = family(bad)
+    primaries = [r["arm"] for r in f["results"] if r["role"] == "primary"]
+    set_family(bad, "sealed", primaries)                                        # both primaries, diagnostic unread
     assert any("populated together" in e for e in mod.check_registry(bad))
-    bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s)
-    for r in f["results"]: r.update(point=0.01, lo=-0.01, hi=0.03)              # all read, but status running
-    assert f["status"] != "sealed" and any("publishable only once the family is sealed" in e for e in mod.check_registry(bad))
-    ok = copy.deepcopy(reg); f = next(s for s in ok["screens"] if "results" in s); f["status"] = "sealed"
-    for r in f["results"]: r.update(point=0.01, lo=-0.01, hi=0.03)
+    bad = copy.deepcopy(reg); set_family(bad, "running", all_arms)              # all read, still running
+    assert any("publishable only once the family is sealed" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); set_family(bad, "sealed", [])                     # sealed with nothing read
+    assert any("sealed family with an unread arm" in e for e in mod.check_registry(bad))
+    ok = copy.deepcopy(reg); set_family(ok, "sealed", all_arms)                 # the publishable state
     assert mod.check_registry(ok) == []
     bad = copy.deepcopy(reg); f = next(s for s in bad["screens"] if "results" in s); f["results"][0]["confidence"] = 0.9
     assert any("confidence must be declared" in e for e in mod.check_registry(bad))

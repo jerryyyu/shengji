@@ -127,9 +127,24 @@ interface GameState {
     new_levels: [string, string];
     game_over: boolean;
   } | null;
-  message: string | null;         // transient info line ("Alice declared Hearts", "Throw failed, forced to S3", ...)
+  message: string | null;         // transient info line ("Alice declared Hearts", "Throw failed \u2014 forced to play S3+S3", ...)
+  notice: {                       // outlives `message`; null when there is none
+    id: number;                   // bumps per notice, so a client dismissal binds to one notice
+    kind: "failed_throw";
+    seat: number;
+    attempted: string[];          // what the player tried to throw
+    forced: string[];             // what the engine made them play instead
+  } | null;
 }
 ```
+
+`message` is cleared by the very next play at the table, which with bots is about
+0.7 s. A `notice` survives eight further plays, the rest of the current trick plus
+the next one, so a refused throw can still be read after the fact. It carries the
+ATTEMPTED cards, which `message` never did, and never the opposing card that beat
+the throw: that is hidden information the thrower has not earned by throwing. A
+client may dismiss a notice early; dismissal is per-viewer and is never sent to the
+server, so one player dismissing does not blank it for anyone else.
 
 
 ## Flow

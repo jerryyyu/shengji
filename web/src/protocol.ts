@@ -150,6 +150,23 @@ export interface GameState {
   // round_end / game_over
   round_result: RoundResult | null;
   message: string | null;
+  /** A notice outlives `message`, which the very next play clears. Today the
+   *  only kind is a refused throw: the player needs to see WHAT they threw,
+   *  and with bots the clearing play lands about 0.7 s later. The client may
+   *  dismiss it early; that is per-viewer and never told to the server. */
+  notice: Notice | null;
+}
+
+export interface Notice {
+  /** Bumps per notice, so a dismissal applies to one notice, not the slot. */
+  id: number;
+  kind: "failed_throw";
+  seat: number;
+  /** What the player tried to throw. */
+  attempted: string[];
+  /** What the engine forced instead. Never the card that beat it: that is
+   *  hidden information the thrower has not earned by throwing. */
+  forced: string[];
 }
 
 export interface EventMsg {

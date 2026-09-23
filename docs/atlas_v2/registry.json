@@ -188,8 +188,8 @@
    "point": null,
    "lo": null,
    "hi": null,
-   "eta": "armed to fire when run 2 seals (~12:00 ET 09-23), then queues behind whatever holds Perf",
-   "note": "The CAPACITY test, and the cleanest pair in the set: run 2 is identical to run 4 in corpus, warm start, objective and heads, differing only in trunk depth 6 versus 4, so this lane isolates capacity where run 3's moved two things at once. Jerry asked for it on 2026-09-23. Armed by a waiter that reads the checkpoint id off run 2's SEAL line, exports and hash-verifies the package on Perf, DRYRUNs the lane and only then arms it; it refuses if run 2 exits non-zero or if the exporter's checkpoint disagrees with the SEAL line."
+   "eta": "armed to fire when run 2 seals (about 06:45 ET 09-23), then waits for the Perf corpus chain to finish",
+   "note": "The CAPACITY test, and the cleanest pair in the set: run 2 is identical to run 4 in corpus, warm start, objective and heads, differing only in trunk depth 6 versus 4, so this lane isolates capacity where run 3's moved two things at once. Jerry asked for it on 2026-09-23. Armed by a waiter that reads the checkpoint id off run 2's SEAL line, exports and hash-verifies the package on Perf, DRYRUNs the lane and only then arms it; it refuses if run 2 exits non-zero, if the exporter's checkpoint disagrees with the SEAL line, or if the arming step cannot show a live supervisor pid on Perf. The lane itself starts only after the Perf corpus chain has reached a terminal line and no data-generation waiter is left alive, because checking a peer's lock and then taking a different one is not mutual exclusion (Codex, #617)."
   }
  ],
  "context_screens": [
@@ -270,7 +270,7 @@
    "recipe": "run 4 with ONE change \u2014 capacity: residual trunk at DEPTH 6 instead of 4; soft targets, warm start and corpus as run 4",
    "val_ce": null,
    "regret": null,
-   "status": "training since 2026-09-22 16:31 ET (started automatically on run 3's DONE line); about an hour per epoch, epoch 12 of 20 at 01:3x ET, seal about 12:00 ET 09-23; its served screen (lane v34r2) is pre-armed"
+   "status": "training since 2026-09-22 16:31 ET (started automatically on run 3's DONE line); about 35 min per epoch, epoch 15 of 20 at 03:3x ET 09-23 with its best val_ce 0.5992 at epoch 14, so it seals about 06:45 ET unless early stopping (patience 3 on val_ce) fires first; its served screen (lane v34r2) is pre-armed"
   }
  ],
  "data": [
@@ -299,8 +299,8 @@
    "name": "runPV2r",
    "box": "cloud",
    "seed0": 23276910,
-   "clusters": "running",
-   "status": "Started 15:42 ET behind the idle gate; replays runPV2's decks. At ~14,200 of 16,000 clusters, sealing about 19:05 ET, after which runPV3 takes the cloud chain."
+   "clusters": "16,000 / 16,000",
+   "status": "SEALED 19:04 ET on cloud: 0 failed, manifest written, wall 201.9 min, 9.5 GB. Replays runPV2's decks and records the overlap in its manifest; runPV3 took the atomic lock 4.5 min later."
   },
   {
    "name": "runPV3",
@@ -313,29 +313,36 @@
    "name": "runPV4",
    "box": "cloud",
    "seed0": 23308910,
-   "clusters": "running",
-   "status": "Running on cloud since 22:33 ET holding the atomic lock; seals about 02:00 ET."
+   "clusters": "16,000 / 16,000",
+   "status": "SEALED 01:55 ET on cloud: 0 failed, manifest written, wall 202.8 min, 9.5 GB. Last of the four cloud stores; cloud has held no datagen lock since."
   },
   {
    "name": "runPV5",
    "box": "Perf",
    "seed0": 23324910,
-   "clusters": "running",
-   "status": "Running on Perf since 23:23 ET, two minutes after lane v34r3 released the screen lock \u2014 the lane-level gate behaving as intended. Seals about 02:50 ET."
+   "clusters": "16,000 / 16,000",
+   "status": "SEALED 03:07 ET on Perf: 0 failed, manifest written, wall 224.2 min, 9.5 GB. Started 23:23 ET, two minutes after lane v34r3 released the screen lock \u2014 the lane-level gate behaving as intended."
   },
   {
    "name": "runPV6",
    "box": "Perf",
    "seed0": 23340910,
-   "clusters": "16,000 (queued)",
-   "status": "Armed on Perf behind runPV5; starts about 02:50 ET and completes the six-store set about 06:20 ET."
+   "clusters": "running",
+   "status": "Running on Perf since 03:08 ET, 52 s after runPV5's DONE line, holding the atomic lock. At about 2,900 of 16,000 at 03:47 ET, sealing about 06:45 ET and completing the six-store set."
   },
   {
    "name": "(Perf disk)",
    "box": "Perf",
    "seed0": 0,
    "clusters": "unblocked",
-   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf now has 288 GB free and hosts runPV5 and runPV6 as well as the screens."
+   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf has 275 GB free with runPV5 resident and runPV6 running."
+  },
+  {
+   "name": "(corpus total)",
+   "box": "cloud + Perf",
+   "seed0": "",
+   "clusters": "80,000 / 96,000",
+   "status": "The five sealed stores hold 80,000 deals, 160,000 rounds, 11,013,268 records, 10,853,268 play decisions and 160,000 bury records, with incomplete_work 0 in every manifest. That counter means no RECORDED SEARCH was left incomplete; it says nothing about legal-action enumeration caps, which are a separate limit. Every decision carries a full search label: in each manifest search_calls, searched and decisions are the same number and short_searches, zero_world, single_candidate and tractor_locked are all zero, so no search fell back or was truncated by a budget. Exploration fired on 10.00% of opportunities, and on 2.29% of decisions the played action belonged to the exploration-added set. That second figure is what the explore_played counter literally measures, membership in exploration.added; it is NOT an action-change rate, since an exploration candidate may also be one the served policy would have chosen, and its complement does not establish an on-policy fraction. runPV6 closes the set at 96,000 deals and about 13.2M records. Gen-4 trained on 336,000 deals / 47.5M records, of which 7.80M carry no search mean at all."
   }
  ],
  "history": {

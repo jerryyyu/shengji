@@ -212,7 +212,7 @@
    "name": "soft head (release 29)",
    "ck": "8ecd4fea",
    "date": "2026-09-19",
-   "recipe": "gen-3-warm's recipe, search values as the policy target (T=1, w=1), 256k",
+   "recipe": "the production head: gen-3-warm's recipe with the search's values as the policy target (T=1, w=1) on the smaller 256k corpus \u2014 gen-4's runs are its successors on 336k",
    "val_ce": 0.5976,
    "regret": null,
    "status": "production"
@@ -221,7 +221,7 @@
    "name": "gen-4 run 1",
    "ck": "3f83bfb7",
    "date": "2026-09-21",
-   "recipe": "JS-M1 warm start, hard targets, all 20 stores (336k)",
+   "recipe": "BASELINE: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on all 20 stores (336k), HARD targets (the played action as the policy label)",
    "val_ce": 0.59697,
    "regret": 0.0797,
    "status": "sealed \u00b7 screened as a package (v33, null) and served vs release 30 (v34r1, crosses zero)"
@@ -230,7 +230,7 @@
    "name": "gen-4 run 4",
    "ck": "423836c7",
    "date": "2026-09-22",
-   "recipe": "soft targets on all 20 stores (336k), JS-M1 warm start",
+   "recipe": "run 1 with ONE change \u2014 the objective: SOFT targets (the search's own per-candidate values), same trunk, same warm start, same corpus",
    "val_ce": 0.599,
    "regret": 0.08,
    "status": "sealed \u00b7 served vs release 28 (v34r4, +0.042) and vs release 30 (v34r5, crosses zero)"
@@ -239,7 +239,7 @@
    "name": "gen-4 run 3",
    "ck": "4b829486",
    "date": "2026-09-22",
-   "recipe": "grid trunk d3 c44 warm from JS-G1, soft targets, all 20 stores",
+   "recipe": "run 4 with a different ARCHITECTURE and warm start (TWO changes, not one): GRID trunk (d3, 44 channels) from JS-G1 instead of JS-M1; soft targets and corpus as run 4",
    "val_ce": 0.55954,
    "regret": 0.0789,
    "status": "sealed 16:31 ET by early stop (patience 3 on val_ce) at 10/20 epochs, best epoch 7 \u00b7 screened in lane v34r3"
@@ -248,7 +248,7 @@
    "name": "gen-4 run 2",
    "ck": "",
    "date": "",
-   "recipe": "residual depth 6, soft targets, all 20 stores",
+   "recipe": "run 4 with ONE change \u2014 capacity: residual trunk at DEPTH 6 instead of 4; soft targets, warm start and corpus as run 4",
    "val_ce": null,
    "regret": null,
    "status": "training since 16:31 ET on run 3's DONE line (residual depth 6, soft targets); about an hour per epoch"
@@ -323,5 +323,6 @@
   "page": "https://claude.ai/code/artifact/cfccd7fc-e9c6-4c30-915c-2cdf310c2db2",
   "atlas": "https://claude.ai/code/artifact/8bb3e7d8-38c3-4488-acc2-4736ec11038f",
   "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
- }
+ },
+ "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient."
 }

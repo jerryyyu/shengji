@@ -19863,3 +19863,29 @@ On the weight question itself, from the existing J-arms (4-epoch continuations o
 **Open for Jerry:** the Perf storage move (#592, 356 GB of August belief evidence in Codex's namespaces); whether to extend v34r5 by ~14 windows; the gen-5 warm-start decision (#421, paired design filed, recommended after run 3 seals ~04:10 ET 09-23); Jev advice mode.
 
 — Claude
+
+## 2026-09-23 01:4xZ — run 3 seals early and is screening; run 1's served read is a null; the 64k corpus runs on both boxes; one self-inflicted stall
+
+**Run 3 SEALED 16:31 ET by its own early stop** (`GEN4-G1-SOFT-336k`, grid trunk d3 c44, soft targets, all 20 stores, warm from JS-G1): 10 of 20 epochs, patience 3 on `val_ce`, best epoch 7, checkpoint **4b829486**, wall 16.27 h. val_ce **0.55954** against run 1's 0.59697 and run 4's 0.59900 — the largest offline step of the generation — but rank regret **0.0789** against 0.0797 / 0.0800 / 0.0808 (init): the same flat band as every warm generation. **Run 2 started automatically** on run 3's DONE line at 16:31 ET (`GEN4-JSM1-d6-SOFT-336k`, residual depth 6, soft) and is at epoch 6/20, ~60 min/epoch.
+
+**Selection-metric finding, raised on #542, not acted on.** Selection is `val_ce`; the search consumes RANKING. Run 3's epoch 2 had the run's best rank regret (0.0754) while epoch 7 was selected for cross-entropy (0.0789). That 0.0035 gap is larger than the entire run-1/run-4/init spread we are spending 10-window screens to resolve. Proposed order: export and screen run 3's epoch-2 checkpoint against the same comparator (one lane, no retrain); only then consider `--select-metric` on rank regret; explicitly NOT re-picking checkpoints from old epoch tables, which is selection on the test surface.
+
+**Served screens against RELEASE 30** (Perf, tree 4e006561, both arms on the release-30 bury; common MC-LCB control per window, summary-level, not direct duels):
+- **v34r5 (run 4, soft), TEN windows: +0.0228 [−0.0020, +0.0477]** — crosses zero, lower bound −0.002. I² 0%, tau 0, MDE80 0.0355. Near-miss is not a win; equivalence not established. Resolving is a conditional projection of ~24 windows (~14 more, ~6 h Perf); not queued.
+- **v34r1 (run 1, HARD targets), five windows: −0.0054 [−0.0498, +0.0390]** — crosses zero; point below the +0.015 triage line so the lane STOPS at five. Archive `readouts/v34r1-run1-vs-r30/`.
+- Read together, run 4 (+0.023) and run 1 (−0.005) are **consistent with** the soft-target story and do **NOT** establish it: separate common-opponent screens at different doses, not a paired head-to-head (Codex concurred).
+- **v34r3 (run 3) RUNNING** since 20:13 ET, package `gen4grid-ad8db7ee` from 4b829486, seeds 25460910..25860910, reads ~23:15 ET. Run 3 varies trunk AND warm start together, so its read is not attributable to one ingredient.
+
+**Data generation (#592).** runPV1r sealed 15:42 ET (16,000/16,000, **0 failed**, manifest, 201 min) and runPV2r 19:04 ET — the #607 fix verified end to end on the real entry point, against 922 failures pre-fix. Jerry asked for **64,000 more clusters on Perf**; Perf could not hold them (27 GB free, ~38 GB needed, 30 GB gate), so four 16k stores were armed on cloud — four rather than one run because a manifest is all-or-nothing and runPV1 lost a whole store. After Jerry approved the belief cleanup (Codex freed ~261 GiB; **Perf now 288 GB**), runPV5/runPV6 moved to Perf and runPV3/runPV4 stayed on cloud. Sealed PV corpus now 32,000 deals / 64,000 rounds / ~4.34M decisions; six stores ≈ 96,000 deals by ~06:15 ET, against the 336,000-deal (47.5M-record) gen-4 corpus.
+
+**Queue guards, after two Codex race findings on #613.** (1) Siblings all launched together when their predecessor ended: fixed with a predecessor-DONE guard plus an atomic `mkdir` lock held for the run. (2) On Perf the idle scan saw only screen CHILDREN, so a store could start in the gap between a lane's windows: fixed by yielding to the lane's own lock and supervisor. Also fixed the cause of repeated dry-run seed bumps — the DRYRUN was registering in the shared corpus registry and colliding with itself; it now uses a scratch registry. Arbitration remains **start-time only**: whoever starts first holds the box, so new screens still need coordinating.
+
+**Self-inflicted stall, recorded.** I scp'd patched pv3/pv4 scripts at 22:03Z over waiters armed at 21:49Z; bash resumes an edited script at its old byte offset, so runPV3 falsely refused on a completed predecessor. Idle time **4 min 30 s** (DONE 23:04:36Z, refusal 23:05:52Z, restart 23:09:06Z) — I first reported "~1 h" and Codex's timestamp check corrected me. Recovery: stop by verified pid, DRYRUN, re-arm from disk. Rule reaffirmed and saved: never copy over a live waiter; and when a guard fires on a condition the files contradict, suspect a mid-flight edit before the guard.
+
+**Space (Jerry's ask).** Mini 37 → 43 GB (206 more worktrees removed, each clean, head contained in main, no open handles; 62 earlier); cloud 259 GB; Perf 288 GB; SSD 1.5 TB free. `traj-out` (222 GB) and the decode cache (23 GB) are open inputs to run 2 and were left alone; the sanctioned MC-LCB move to the SSD triggers after run 2 seals.
+
+**Merged:** #613 (corpus table, Perf unblock, guards) e96f9dae; #614 (run 1 read, run 3 sealed, v34r3 running) a5746e26. Open: #615 (what gen-4 runs 1–4 mean, as deltas from the run-1 baseline — Jerry's ask), CI 5/5 awaiting verdict.
+
+**Open for Jerry:** the #542 selection-metric question; whether to pre-register a larger dose for run 4 vs release 30; Jev advice mode; #604 (close or keep for a model-scaling chart).
+
+— Claude

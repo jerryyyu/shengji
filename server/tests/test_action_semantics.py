@@ -311,3 +311,56 @@ def test_pure_and_fast_agree_on_PHYSICAL_cards_not_just_shape():
         assert [sorted(r) for r in p_run] == [sorted(r) for r in f_run], (
             f"{hand}: engines enumerate different PHYSICAL tractors — "
             f"pure {p_run} vs fast {f_run}")
+
+
+def test_failed_throw_notice_outlives_the_message_and_names_the_attempt():
+    """`message` is gone by the next play; the NOTICE is what the player reads.
+
+    A failed throw is the one event a player most needs to re-read, and with
+    bots the next play lands about 0.7 s later, which clears `message`.  The
+    notice therefore survives further plays and carries the ATTEMPTED cards,
+    which `message` never did -- it only ever named the forced component.
+    """
+    rnd = _failed_throw_round()
+    rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
+
+    assert rnd.message == "Throw failed — forced to play D7+D7"
+    n = rnd.notice
+    assert n is not None
+    assert n["kind"] == "failed_throw" and n["seat"] == 0
+    assert n["forced"] == ["D7", "D7"]
+    assert sorted(n["attempted"]) == ["C7", "C7", "D7", "D7", "H7", "H7"]
+    # The beating card is hidden information the thrower has not earned:
+    # it must not travel with the notice under any key.
+    assert "LJ" not in repr(n)
+
+    # the very next play clears `message` but keeps the notice
+    rnd.play(1, ["LJ", "LJ"])  # the forced lead is a pair, so the follow is two
+    assert rnd.message is None
+    assert rnd.notice is n
+
+
+def test_failed_throw_notice_expires_after_its_budget_of_plays():
+    rnd = _failed_throw_round()
+    rnd.hands[1] = ["LJ", "LJ", "S2", "S3", "S4", "S5", "S6", "S9"]
+    rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
+    assert rnd.notice is not None
+    for i in range(Round.NOTICE_PLAYS - 1):
+        rnd.trick = Trick(leader=1)
+        rnd.turn = 1
+        rnd.play(1, [rnd.hands[1][-1]])
+        assert rnd.notice is not None, f"cleared early after {i + 1} plays"
+    rnd.trick = Trick(leader=1)
+    rnd.turn = 1
+    rnd.play(1, [rnd.hands[1][-1]])
+    assert rnd.notice is None
+
+
+def test_rollout_clones_do_not_build_notices():
+    """MC rollouts replay throws in the millions; a notice per failed throw
+    there is pure allocation and never reaches a player."""
+    rnd = _failed_throw_round()
+    rnd._trusted_rollout = True
+    rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
+    assert rnd.message == "Throw failed — forced to play D7+D7"
+    assert rnd.notice is None

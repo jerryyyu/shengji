@@ -70,9 +70,13 @@ M = [
 ("soft-target: gen-3-warm's recipe with the search's per-candidate VALUES as the policy target, w=1.0","8ecd4fea","2026-09-19","v2",330,"3e-4","256k","36,239,068","0.59760","",
  "","","5w +0.0039 [-0.0296, +0.0374]","soft target (#496); shortlist package vs r28 (v30) 5w +0.0039 null; served pv-search vs r28 (v34pv, chart 4b) +0.049 clears zero narrowly"),
 ("gen-4 run 1: JS-M1 WARM-STARTED on ALL 20 stores (runA..runL + runJS1-10), gen-3-warm's recipe","3f83bfb7","2026-09-21","v2",330,"3e-4","336k","47,535,516","0.59697","",
- "","","5w -0.0072 [-0.0379, +0.0235]","gen-4 run 1 (#538): 1.9x JS-M1 records; rank regret 0.0797 (init 0.0808) flat; v33 vs prod 5w NULL (MDE80 0.044), ties 63%; W64 arm on the cloud"),
+ "","","5w -0.0072 [-0.0379, +0.0235]","gen-4 run 1 (#538): HARD targets, the gen-4 baseline; rank regret 0.0797 flat; served vs r30 (v34r1) 5w -0.005 crosses zero"),
 ("gen-4 run 4: SOFT targets (T=1.0, w=1.0) on ALL 20 stores, JS-M1 warm start","423836c7","2026-09-22","v2",330,"3e-4","336k","47,535,516","0.59900","",
- "","","","gen-4 run 4 (#538): soft head, all 20 stores; rank regret 0.0800 flat; served pv-search vs r28 (v34r4, 4b) 10w +0.042 clears zero; no package screen"),
+ "","","","gen-4 run 4 (#538): SOFT targets, one change vs run 1; served vs r28 (v34r4) 10w +0.042; vs r30 (v34r5) 10w +0.023 crosses zero"),
+("gen-4 run 3: GRID trunk (d3, 44 ch) warm from JS-G1, soft targets, all 20 stores","4b829486","2026-09-22","v2",330,"3e-4","336k","47,535,516","0.55954","",
+ "","","","gen-4 run 3 (#538): grid trunk + JS-G1 warm start, TWO changes vs run 4; early stop 10/20; served vs r30 (v34r3) 5w +0.004 crosses zero"),
+("gen-4 run 2: residual trunk at DEPTH 6, soft targets, JS-M1 warm start, all 20 stores","23ad5c3f","2026-09-23","v2",330,"3e-4","336k","47,535,516","0.59740","",
+ "","","","gen-4 run 2 (#538): residual DEPTH 6, one change vs run 4; served vs r30 (v34r2) 5w +0.0095 crosses zero; ~5% slower p50 than the control"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",
@@ -316,6 +320,13 @@ POLICY_VS_SMART_PUBLIC = {
 #: No head is shown superior to another: every pairwise contrast spans zero.  The run-4 served
 #: read (lane v34r4, seeds 22860910..23260910 + 23460910..23860910, ten windows, +0.042 [+0.015, +0.068]) is in;
 #: Codex's W128/W256 ladder arms are read against W64 (rows 53-54), not production, so they stay out.
+#: SCREENS AGAINST RELEASE 30 STAY OUT TOO, and for the same reason: this list is read against
+#: release 28 as served, so mixing a release-30 comparator into it would repeat exactly the
+#: instrument mix Codex held #603 on.  The four gen-4 heads screened against release 30 -- run 1
+#: -0.005, run 4 +0.023 over ten windows, run 3 +0.004, run 2 +0.0095, all crossing zero -- live in
+#: Atlas v2 (docs/atlas_v2/registry.json), which is the ground truth for the release-29 era onward.
+#: The model rows above carry each head's release-30 read in their note so this file stays readable
+#: on its own, per Jerry 2026-09-23: keep committing the scaling log for new model and search runs.
 W64_SEARCH_VS_PRODUCTION = [
     ("8ecd4fea", "card play", "+0.086 [+0.042, +0.131]"),   # soft (row 45), 95%
     ("9ee9fedb", "card play", "+0.057 [+0.007, +0.111]"),   # JS-G1 (row 48), family 98.75%

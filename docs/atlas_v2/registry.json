@@ -133,6 +133,44 @@
      "hi": 0.0
     }
    ]
+  },
+  {
+   "id": "v34r1",
+   "date": "2026-09-22",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "gen-4 run 1 head (HARD targets, 3f83bfb7) served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "24960910..25360910",
+   "confidence": 0.95,
+   "point": -0.0054,
+   "lo": -0.0498,
+   "hi": 0.039,
+   "eta": "",
+   "note": "The contrast that isolates the TRAINING OBJECTIVE: run 1 (hard targets) and run 4 (soft targets) share the corpus, the warm start and the served form. Crosses zero, so run 1's head is not shown better or worse than production's; point -0.005 is below the +0.015 triage line so the lane stops at five windows. Read WITH run 4's +0.0228 the ordering is consistent with the soft-target story but does NOT establish it: two separate common-opponent screens at different doses, not a paired head-to-head. Archive readouts/v34r1-run1-vs-r30/."
+  },
+  {
+   "id": "v34r3",
+   "date": "2026-09-22",
+   "status": "running",
+   "box": "Perf",
+   "candidate": "gen-4 run 3 head (GRID trunk, soft targets, warm from JS-G1; 4b829486) served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "25460910..25860910",
+   "confidence": 0.95,
+   "point": null,
+   "lo": null,
+   "hi": null,
+   "eta": "took Perf at 20:13 ET when lane v34r1 sealed; reads about 23:00 ET",
+   "note": "The first screen of a different TRUNK and warm start (grid d3 c44 from JS-G1) in the served form."
   }
  ],
  "context_screens": [
@@ -186,7 +224,7 @@
    "recipe": "JS-M1 warm start, hard targets, all 20 stores (336k)",
    "val_ce": 0.59697,
    "regret": 0.0797,
-   "status": "sealed"
+   "status": "sealed \u00b7 screened as a package (v33, null) and served vs release 30 (v34r1, crosses zero)"
   },
   {
    "name": "gen-4 run 4",
@@ -195,16 +233,16 @@
    "recipe": "soft targets on all 20 stores (336k), JS-M1 warm start",
    "val_ce": 0.599,
    "regret": 0.08,
-   "status": "sealed \u00b7 v34r5 running"
+   "status": "sealed \u00b7 served vs release 28 (v34r4, +0.042) and vs release 30 (v34r5, crosses zero)"
   },
   {
    "name": "gen-4 run 3",
-   "ck": "",
+   "ck": "4b829486",
    "date": "2026-09-22",
    "recipe": "grid trunk d3 c44 warm from JS-G1, soft targets, all 20 stores",
-   "val_ce": 0.5658,
-   "regret": null,
-   "status": "training \u00b7 epoch 5/20 (val_ce so far) \u00b7 seal ~03:30 ET 09-23"
+   "val_ce": 0.55954,
+   "regret": 0.0789,
+   "status": "sealed 16:31 ET by early stop (patience 3 on val_ce) at 10/20 epochs, best epoch 7 \u00b7 screened in lane v34r3"
   },
   {
    "name": "gen-4 run 2",
@@ -213,7 +251,7 @@
    "recipe": "residual depth 6, soft targets, all 20 stores",
    "val_ce": null,
    "regret": null,
-   "status": "armed behind run 3"
+   "status": "training since 16:31 ET on run 3's DONE line (residual depth 6, soft targets); about an hour per epoch"
   }
  ],
  "data": [

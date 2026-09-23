@@ -143,6 +143,7 @@ def baseline_cards():
                    f'<p class="mono small">{esc(b["bot"])}</p><p>{esc(b["recipe"])}</p><p class="sub">head {esc(b["head"])} · package {esc(b["package"])}</p>'
                    f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></article>')
     return "\n".join(out)
+models_note = ('<p class="lede small">' + esc(R["models_note"]) + "</p>") if R.get("models_note") else ""
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
                     f'<td class="mono">{esc(d.get("clusters", ""))}</td><td>{esc(d["status"])}</td></tr>'
@@ -194,6 +195,7 @@ a{{color:var(--accent)}}
 
 <h2>Models of the era</h2>
 <p class="sub">val_ce is calibration; the search consumes ranking, so rank regret and the screens above are what decide.</p>
+{models_note}
 {models_table()}
 
 <h2>Data generation on the search</h2>

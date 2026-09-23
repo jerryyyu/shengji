@@ -175,7 +175,7 @@
   {
    "id": "v34r2",
    "date": "2026-09-23",
-   "status": "planned",
+   "status": "running",
    "box": "Perf",
    "candidate": "gen-4 run 2 head (residual trunk at DEPTH 6, soft targets) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
@@ -188,7 +188,7 @@
    "point": null,
    "lo": null,
    "hi": null,
-   "eta": "armed to fire when run 2 seals (about 06:45 ET 09-23), then waits for the Perf corpus chain to finish",
+   "eta": "started 07:22 ET, 32 s after run 2's seal: the waiter exported package gen4deep-10374d3a.npz from the SEAL line's checkpoint, verified its sha256 on Perf, dry-ran the lane and armed it; five windows then five, about 7 h",
    "note": "The CAPACITY test, and the cleanest pair in the set: run 2 is identical to run 4 in corpus, warm start, objective and heads, differing only in trunk depth 6 versus 4, so this lane isolates capacity where run 3's moved two things at once. Jerry asked for it on 2026-09-23. Armed by a waiter that reads the checkpoint id off run 2's SEAL line, exports and hash-verifies the package on Perf, DRYRUNs the lane and only then arms it; it refuses if run 2 exits non-zero, if the exporter's checkpoint disagrees with the SEAL line, or if the arming step cannot show a live supervisor pid on Perf. The lane itself starts only after the Perf corpus chain has reached a terminal line and no data-generation waiter is left alive, because checking a peer's lock and then taking a different one is not mutual exclusion (Codex, #617)."
   }
  ],
@@ -265,12 +265,12 @@
   },
   {
    "name": "gen-4 run 2",
-   "ck": "",
-   "date": "",
+   "ck": "23ad5c3f",
+   "date": "2026-09-23",
    "recipe": "run 4 with ONE change \u2014 capacity: residual trunk at DEPTH 6 instead of 4; soft targets, warm start and corpus as run 4",
-   "val_ce": null,
-   "regret": null,
-   "status": "training since 2026-09-22 16:31 ET (started automatically on run 3's DONE line); about 35 min per epoch, epoch 15 of 20 at 03:3x ET 09-23 with its best val_ce 0.5992 at epoch 14, so it seals about 06:45 ET unless early stopping (patience 3 on val_ce) fires first; its served screen (lane v34r2) is pre-armed"
+   "val_ce": 0.5974,
+   "regret": 0.0802,
+   "status": "sealed 07:22 ET at 20 of 20 epochs, best epoch 17, wall 14.84 h; held-out test cross-entropy 0.59798 and rank regret 0.08195 \u00b7 served vs release 30 (lane v34r2) RUNNING since 07:22 ET"
   }
  ],
  "data": [
@@ -327,22 +327,22 @@
    "name": "runPV6",
    "box": "Perf",
    "seed0": 23340910,
-   "clusters": "running",
-   "status": "Running on Perf since 03:08 ET, 52 s after runPV5's DONE line, holding the atomic lock. At about 2,900 of 16,000 at 03:47 ET, sealing about 06:45 ET and completing the six-store set."
+   "clusters": "16,000 / 16,000",
+   "status": "SEALED 07:00 ET on Perf: 0 failed, manifest written, 9.5 GB. Completes the six-store set, and no data-generation waiter remains armed on either box."
   },
   {
    "name": "(Perf disk)",
    "box": "Perf",
    "seed0": 0,
    "clusters": "unblocked",
-   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf has 275 GB free with runPV5 resident and runPV6 running."
+   "status": "Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf has 267 GB free holding runPV5 and runPV6, and cloud has 238 GB free holding the other four stores."
   },
   {
    "name": "(corpus total)",
    "box": "cloud + Perf",
    "seed0": "",
-   "clusters": "80,000 / 96,000",
-   "status": "The five sealed stores hold 80,000 deals, 160,000 rounds, 11,013,268 records, 10,853,268 play decisions and 160,000 bury records, with incomplete_work 0 in every manifest. That counter means no RECORDED SEARCH was left incomplete; it says nothing about legal-action enumeration caps, which are a separate limit. Every decision carries a full search label: in each manifest search_calls, searched and decisions are the same number and short_searches, zero_world, single_candidate and tractor_locked are all zero, so no search fell back or was truncated by a budget. Exploration fired on 10.00% of opportunities, and on 2.29% of decisions the played action belonged to the exploration-added set. That second figure is what the explore_played counter literally measures, membership in exploration.added; it is NOT an action-change rate, since an exploration candidate may also be one the served policy would have chosen, and its complement does not establish an on-policy fraction. runPV6 closes the set at 96,000 deals and about 13.2M records. Gen-4 trained on 336,000 deals / 47.5M records, of which 7.80M carry no search mean at all."
+   "clusters": "96,000 / 96,000",
+   "status": "COMPLETE. The six sealed stores hold 96,000 deals, 192,000 rounds, 13,218,576 records, 13,026,576 play decisions and 192,000 bury records, with incomplete_work 0 in every manifest. That counter means no RECORDED SEARCH was left incomplete; it says nothing about legal-action enumeration caps, which are a separate limit. Every decision carries a full search label: in each manifest search_calls, searched and decisions are the same number and short_searches, zero_world, single_candidate and tractor_locked are all zero. All six ran the #607 bury fix with zero bury failures, against the 922 clusters the first attempt lost. Exploration fired on 10.00% of opportunities, and on 2.29% of decisions the played action belonged to the exploration-added set \u2014 what the explore_played counter literally measures, membership in exploration.added, NOT an action-change rate, since an exploration candidate may also be one the served policy would have chosen. Gen-4 trained on 336,000 deals / 47.5M records, of which 7.80M carry no search mean at all."
   }
  ],
  "history": {

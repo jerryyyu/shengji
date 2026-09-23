@@ -213,7 +213,7 @@ class Round:
         self._require(seat, "play")
         assert self.trick is not None and self.ordering is not None
         self.message = None
-        self._age_notice()
+        pending_notice = None
         if not self.trick.plays:
             others = [self.hands[s] for s in range(4) if s != seat]
             attempted = list(cards)
@@ -223,8 +223,9 @@ class Round:
                 # A throw was refused and downgraded.  Record WHAT WAS ATTEMPTED
                 # and what the engine forced -- never which opponent card would
                 # have beaten it, which is hidden information the thrower has
-                # not earned by throwing.
-                self._set_notice(seat, attempted, list(cards))
+                # not earned by throwing.  Held until the play is accepted, so
+                # a rejected play neither sets nor ages a notice.
+                pending_notice = (seat, attempted, list(cards))
         elif not getattr(self, "_trusted_rollout", False):
             # Rollout fast path (perf audit 2026-08-02): heuristic follows
             # are legal by construction; skip re-validation ONLY inside MC
@@ -233,6 +234,15 @@ class Round:
             lead = self.trick.plays[0].cards
             validate_follow(cards, self.hands[seat], lead, self.ordering)
         self._remove(seat, cards)
+        # ONLY AN ACCEPTED MOVE AGES A NOTICE (Codex, #621).  Validation raises
+        # on an illegal play and leaves turn and trick untouched, so aging at
+        # the top of play() let a player spend the whole notice budget on eight
+        # rejected follows while the table had not moved at all.  Past _remove
+        # the play is committed, so this is the first point where a notice has
+        # really got one play older.
+        self._age_notice()
+        if pending_notice is not None:
+            self._set_notice(*pending_notice)
         self.trick.plays.append(TrickPlay(seat, list(cards)))
         if getattr(self, "_trusted_rollout", False):
             played = self.trick.plays[-1].cards

@@ -40,7 +40,7 @@ import pytest
 
 from shengji.engine.cards import Ordering
 from shengji.engine.combos import decompose, find_tractor_runs
-from shengji.engine.legal import validate_lead
+from shengji.engine.legal import IllegalPlay, validate_lead
 from shengji.engine.round import Round, Trick
 
 #: trump suit H, trump rank 7 => S7/D7/C7 tie at level 12; H7 is above them;
@@ -364,3 +364,40 @@ def test_rollout_clones_do_not_build_notices():
     rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
     assert rnd.message == "Throw failed — forced to play D7+D7"
     assert rnd.notice is None
+
+
+def test_rejected_plays_do_not_age_the_notice():
+    """A refused play leaves turn and trick untouched, so it must not spend the
+    notice's budget.  The first version aged at the top of `play`, so eight
+    rejected follows erased a notice while the table had not moved (Codex, #621).
+    """
+    rnd = _failed_throw_round()
+    rnd.hands[1] = ["LJ", "LJ", "S9"]
+    rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
+    n = rnd.notice
+    assert n is not None
+    before = rnd._notice_plays_left
+
+    for _ in range(Round.NOTICE_PLAYS + 4):
+        # a singleton follow to a pair lead: the card is owned, the play is not legal
+        with pytest.raises(IllegalPlay):
+            rnd.play(1, ["S9"])
+        assert rnd.notice is n, "a rejected play erased the notice"
+        assert rnd._notice_plays_left == before, "a rejected play aged the notice"
+
+    # and the first ACCEPTED play still ages it exactly once
+    rnd.play(1, ["LJ", "LJ"])
+    assert rnd.notice is n
+    assert rnd._notice_plays_left == before - 1
+
+
+def test_a_rejected_lead_neither_sets_nor_ages_a_notice():
+    rnd = _failed_throw_round()
+    rnd.play(0, ["C7", "C7", "D7", "D7", "H7", "H7"])
+    n, before = rnd.notice, rnd._notice_plays_left
+    rnd.trick = Trick(leader=1)
+    rnd.turn = 1
+    with pytest.raises(Exception):
+        rnd.play(1, ["S9"])  # seat 1 does not hold S9 in this fixture
+    assert rnd.notice is n
+    assert rnd._notice_plays_left == before

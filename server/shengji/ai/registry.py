@@ -919,6 +919,40 @@ def _register_pv_search_from_env() -> None:
     register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
 
 
+def register_exploit_policies(checkpoint: str, *, sha256: str, **recipe) -> list[str]:
+    """The exploitability probe's attacker (`train.exploit_policy`) as a registry
+    policy: ``<pv-search name>-exploit-<recipe12>``.  It is a DIAGNOSTIC, never a
+    served arm; it is here so the existing screen harness can run it with no new
+    instrument (#625)."""
+    from ..train.exploit_policy import exploit_registry_entries
+
+    entries = exploit_registry_entries(checkpoint, sha256=sha256, **recipe)
+    REGISTRY.update(entries)
+    return sorted(entries)
+
+
+def _register_exploit_from_env() -> None:
+    """``SHENGJI_EXPLOIT_FLOOR`` (+ ``_TEMPERATURE`` / ``_SCOPE``) on top of the
+    ``SHENGJI_PV_*`` recipe registers the exploiter arm at import.
+
+    WITHOUT ``SHENGJI_EXPLOIT_FLOOR`` THIS DOES NOTHING, which is the point: the
+    probe is inert in every process that has not deliberately asked for it, so
+    no served path can reach it by accident.
+    """
+    import os
+    import sys
+    if not os.environ.get("SHENGJI_EXPLOIT_FLOOR") or not os.environ.get("SHENGJI_PV_CKPT"):
+        return
+    module = sys.modules.get("shengji.train.exploit_policy")
+    if module is not None and not hasattr(module, "exploit_env_recipe"):
+        return
+    from ..train.exploit_policy import exploit_env_recipe
+    from ..train.pv_search_policy import pv_env_recipe
+    recipe = pv_env_recipe()
+    recipe.update(exploit_env_recipe())
+    register_exploit_policies(recipe.pop("checkpoint"), **recipe)
+
+
 def _register_netroll_from_env() -> None:
     """``SHENGJI_NETROLL_CKPT`` (+ ``_TRICKS``/``_STAGES``/``_RECEIPT``) registers
     the net-rollout arms (``mc-netroll-<ckpt8>-k<K>[-all]`` and their
@@ -933,4 +967,5 @@ def _register_netroll_from_env() -> None:
 _register_netroll_from_env()
 _register_cwv_shortlist_from_env()
 _register_pv_search_from_env()
+_register_exploit_from_env()
 _register_cwv_bury_from_env()

@@ -384,9 +384,18 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        serving_budget_seconds=None, threads: int | None = 1,
                        name: str | None = None, bury_arm: str | None = None,
                        bury_config: CWVBuryConfig | None = None,
-                       bury_serving_budget_seconds=None) -> PVSearchBot:
+                       bury_serving_budget_seconds=None,
+                       bot_factory=None) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
-    hash-pinned, encoder version read from the package."""
+    hash-pinned, encoder version read from the package.
+
+    ``bot_factory`` substitutes the constructor for a DIAGNOSTIC subclass so a
+    probe does not have to restate the package pinning, the evaluator setup or
+    the backend check -- restating them is how a diagnostic ends up measuring
+    something subtly different from what serves (#625).  Serving passes None and
+    reaches exactly the classes below; whatever a factory returns is checked to
+    be the class serving would have built, so it can only ever be a subclass.
+    """
     path = str(checkpoint)
     if not path.lower().endswith(".npz"):
         raise PVSearchPolicyError("pv-search serves a NumPy package (.npz); Torch checkpoints are not served")
@@ -400,14 +409,19 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     evaluator = shared_evaluator(path, threads=threads, max_batch=config.batch_size, encoding=ENCODING)
     if getattr(evaluator, "backend", None) != "numpy":
         raise PVSearchPolicyError("pv-search requires the numpy evaluator backend")
+    expected = PVSearchBot if bury_arm is None else PVSearchBuryBot
+    build = expected if bot_factory is None else bot_factory
     if bury_arm is None:
-        bot = PVSearchBot(predict, evaluator=evaluator, version=predict.version, config=config,
-                          checkpoint=path, seed=int(seed))
+        bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
+                    checkpoint=path, seed=int(seed))
     else:
-        bot = PVSearchBuryBot(predict, evaluator=evaluator, version=predict.version, config=config,
-                              checkpoint=path, seed=int(seed), bury_arm=bury_arm,
-                              bury_config=bury_config,
-                              bury_serving_budget_seconds=bury_serving_budget_seconds)
+        bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
+                    checkpoint=path, seed=int(seed), bury_arm=bury_arm,
+                    bury_config=bury_config,
+                    bury_serving_budget_seconds=bury_serving_budget_seconds)
+    if not isinstance(bot, expected):
+        raise PVSearchPolicyError(
+            f"bot_factory built {type(bot).__name__}, not a {expected.__name__}")
     if name is not None:
         bot.policy_name = name
     return bot
@@ -418,7 +432,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         batch_size: int = DEFAULTS["batch_size"], seed: int = DEFAULTS["seed"],
                         serving_budget_seconds=None, bury_arm: str | None = None,
                         bury_config: CWVBuryConfig | None = None,
-                        bury_serving_budget_seconds=None) -> dict:
+                        bury_serving_budget_seconds=None, bot_factory=None) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
     bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
@@ -454,7 +468,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                batch_size=config.batch_size, seed=int(kw.get("seed", seed)),
                                serving_budget_seconds=config.serving_budget_seconds, name=name,
                                bury_arm=bury_arm, bury_config=bury_config,
-                               bury_serving_budget_seconds=bury_serving_budget_seconds),
+                               bury_serving_budget_seconds=bury_serving_budget_seconds,
+                               bot_factory=bot_factory),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):

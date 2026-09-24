@@ -1,4 +1,7 @@
-"""Bounded, paired W32-versus-LLM benchmark (#355).
+"""Bounded, paired production-policy-versus-LLM benchmark (#355).
+
+Use --baseline production-w64 for release 30's pinned PV-search package and
+recipe. The default shortlist-w32 preserves historical runs, not current prod.
 
 The command is deliberately a dry-run unless ``--run`` is supplied.  A run
 uses one prepared private root per seed, then replays that root for all four
@@ -20,11 +23,11 @@ import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from shengji.ai import env
-from shengji.ai.registry import make_bot, register_cwv_bury_policies
+from shengji.ai.registry import make_bot, register_cwv_bury_policies, register_pv_search_policies
 from shengji.engine.cards import RANKS
 from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
-from shengji.luna.benchmark_games import play_mirror
+from shengji.luna.benchmark_games import play_mirror, RecordedSetupPolicy, fallback_summary
 from shengji.luna.benchmark_transport import BenchmarkTransport
 from shengji.luna.canonical import canonical_json_bytes
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
@@ -34,6 +37,33 @@ from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
 SCHEMA = "w32-llm-benchmark-v1"
 MODEL_NAMES = {"sol": "gpt-5.6-sol", "luna": "gpt-5.6-luna"}
 INFORMATION_MODES = ("actor-only", "perfect")
+PRODUCTION_W64_SHA256 = "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75"
+PRODUCTION_W64_POLICY = "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e"
+
+
+def _registered_production_w64(checkpoint_id, *, register=register_pv_search_policies):
+    """Release-30 recipe, independent of ambient training/serving overrides.
+
+    This is a frozen production snapshot, not an automatically moving target.
+    The caller has already hashed the package; registry factories verify it too.
+    """
+    if (checkpoint_id["sha256"] != PRODUCTION_W64_SHA256
+            or Path(checkpoint_id["path"]).suffix.lower() != ".npz"):
+        raise BenchmarkRefusal("production-w64 requires the pinned release-30 NumPy package")
+    recipe = dict(sha256=PRODUCTION_W64_SHA256, worlds=64, candidates=8,
+                  cap=4000, batch_size=128, seed=0, serving_budget_seconds=3.0,
+                  bury_arm="hybrid", bury_config=CWVBuryConfig(),
+                  bury_serving_budget_seconds=2.0)
+    names = register(checkpoint_id["path"], **recipe)
+    if list(names) != [PRODUCTION_W64_POLICY]:
+        raise BenchmarkRefusal("registered production-w64 policy differs from release 30")
+    return PRODUCTION_W64_POLICY, {
+        "baseline": "production-w64", "release": 30,
+        "checkpoint": checkpoint_id["path"],
+        **{key: _json_safe(vars(value)) if key == "bury_config" else value
+           for key, value in recipe.items()},
+        "registered_names": list(names),
+    }
 
 
 class BenchmarkRefusal(ValueError):
@@ -266,6 +296,10 @@ def _summary(rows: Sequence[Mapping[str, object]], *, arm: str, seed: int) -> di
                 "source_row_sha256": prior.get("source_row_sha256"),
             })
     return {"arm": arm, "complete_mirrors": len(complete),
+            "planned_mirrors": len(rows),
+            "baseline_play": fallback_summary([event for row in rows
+                                                for event in row.get("events", ())]),
+            "mirrors_missing_play_telemetry": sum("baseline_play" not in row for row in rows),
             "complete_deal_pairs": len(paired), "paired_signed_levels": paired,
             "paired_signed_level_mean": statistics.fmean(paired) if paired else None,
             "deal_cluster_ci95": _bootstrap(paired, seed=seed),
@@ -407,6 +441,7 @@ def _restore_game(root: Mapping[str, object], seed: int, game_factory: Callable[
 
 
 def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
+                  baseline: str = "shortlist-w32",
                   seeds: Sequence[int], models: Sequence[str] = ("sol", "luna"),
                   information: Sequence[str] = INFORMATION_MODES,
                   wall_seconds: float = 1800.0, token_limit: int | None = None,
@@ -417,10 +452,13 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                   prepare_fn=env.prepare_round, baseline_factory=None,
                   register_fn=register_cwv_bury_policies,
                   recipe_reader=bury_env_recipe,
+                  pv_register_fn=register_pv_search_policies,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
     if run and (type(token_limit) is not int or token_limit <= 0):
         raise BenchmarkRefusal("--run requires a positive --soft-token-limit")
+    if baseline not in ("shortlist-w32", "production-w64"):
+        raise BenchmarkRefusal("unknown baseline")
     checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
     information = tuple(information)
@@ -434,8 +472,12 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     output_path = Path(output).expanduser().resolve()
     if output_path.exists() or output_path.is_symlink():
         raise BenchmarkRefusal("output must be a fresh path")
-    baseline_name, baseline_recipe = _registered_baseline(
-        checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
+    if baseline == "production-w64":
+        baseline_name, baseline_recipe = _registered_production_w64(
+            checkpoint_id, register=pv_register_fn)
+    else:
+        baseline_name, baseline_recipe = _registered_baseline(
+            checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
     if policy != baseline_name:
         raise BenchmarkRefusal(
             f"requested policy {policy!r} is not the registered baseline {baseline_name!r}")
@@ -452,6 +494,8 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
               "information": list(information), "wall_seconds": wall_seconds,
               "soft_token_limit": token_limit, "run": bool(run),
               "baseline_recipe": baseline_recipe, "source": source,
+              "timeout_seconds": timeout_seconds,
+              "fallback_reporting": "warn-on-any-fallback-or-missing-record; retain all outcomes",
               "claim": "benchmark execution only; runtime production parity is not claimed"}
     if continuation is not None:
         config["continue_from"] = {
@@ -473,10 +517,13 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     roots: dict[int, object] = {}
     root_hashes: dict[int, str] = {}
     setup_failures: dict[int, str] = {}
+    setup_telemetry = {}
     if continuation is not None:
         # Imported roots are already dealt/buried.  In particular, do not
         # invoke baseline setup or prepare_round on this path.
         for seed in seeds:
+            setup_telemetry[str(seed)] = {"status": "imported-unknown",
+                                         "warning": True}
             root = continuation["roots"][seed]
             try:
                 roots[seed] = _restore_game(root, seed, game_factory)
@@ -498,19 +545,23 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                           "error": error})
     else:
         for index, seed in enumerate(seeds):
+            bury_events = []
             game = game_factory(random.Random(seed))
             rank_index = index % len(RANKS)
             game.level_idx = [rank_index, rank_index]
             game.banker = seed % 4
             try:
                 budget.check("deal setup")
-                setup = [baseline_fn(seat, seed) for seat in range(4)]
+                setup = [RecordedSetupPolicy(baseline_fn(seat, seed), bury_events)
+                         for seat in range(4)]
                 prepare_fn(game, setup)
                 root = _root_snapshot(game, seed, rank_index)
                 root_sha = _sha(root)
                 receipt = {"schema": "w32-llm-benchmark-setup-v1", "seed": seed,
                            "banker": seed % 4, "rank_index": rank_index,
                            "policy": policy, "root_sha256": root_sha,
+                           "baseline_bury": fallback_summary(bury_events),
+                           "bury_events": bury_events,
                            "bury": [_json_safe(getattr(bot, "bury_recipe_identity", None))
                                     for bot in setup]}
                 _publish(output_path / f"root-{seed}.json", root)
@@ -521,7 +572,9 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                 setup_failures[seed] = error
                 _publish(output_path / f"setup-{seed}.error.json",
                          {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
-                          "error": error})
+                          "error": error, "bury_events": bury_events})
+            finally:
+                setup_telemetry[str(seed)] = fallback_summary(bury_events)
 
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
@@ -589,6 +642,8 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                             # retained even if this whole-mirror retry succeeds.
                             source = continuation["source_rows"][key]
                             row["prior_attempt"] = {
+                                "baseline_play": prior_row.get("baseline_play"),
+                                "events": list(prior_row.get("events", ())),
                                 "complete": prior_row.get("complete") is True,
                                 "error": prior_row.get("error"),
                                 "calls": list(prior_row.get("calls", ())),
@@ -624,6 +679,7 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                          "wall_seconds": time.monotonic() - budget.started},
               "prior": prior_meta,
               "setup_failures": setup_failures}
+    report["baseline_setup_by_seed"] = setup_telemetry
     _publish(output_path / "result.json", report)
     return report
 
@@ -632,6 +688,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--policy", required=True)
+    parser.add_argument("--baseline", choices=("shortlist-w32", "production-w64"),
+                        default="shortlist-w32",
+                        help="production-w64 pins release 30; shortlist-w32 is historical")
     parser.add_argument("--output", "--out", dest="output", required=True)
     parser.add_argument("--seeds", nargs="+", required=True)
     parser.add_argument("--models", default="sol,luna")
@@ -653,6 +712,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         result = run_benchmark(
             checkpoint=args.checkpoint, policy=args.policy, output=args.output,
+            baseline=args.baseline,
             seeds=args.seeds, models=_parse_csv(args.models, label="models"),
             information=_parse_csv(args.information, label="information"),
             wall_seconds=args.wall_seconds, token_limit=args.token_limit,

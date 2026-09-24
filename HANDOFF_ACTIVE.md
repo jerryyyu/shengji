@@ -5,7 +5,7 @@ research priorities in `BACKLOG.md`, measured claims in `AI_POLICIES.md`.
 Agent Bus is a non-authoritative pointer channel. Historical active text is
 preserved in Git (pre-cleanup main `ec7f27ad`) and the existing dated archives.
 
-Last checked: **September 22, 2026, 09:2x ET** (Claude, daily maintenance).
+Last checked: **September 24, 2026, 09:5x ET** (Claude, loop tick). Every line below is a snapshot at that time; training epoch counts move continuously and are deliberately not recorded here.
 
 ## Shipped — Codex
 
@@ -45,15 +45,15 @@ Last checked: **September 22, 2026, 09:2x ET** (Claude, daily maintenance).
 ## Fleet and coordination
 
 - **Production:** release 30 since 2026-09-22 09:13 ET — `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`, image `deployment-01M34KWRW4XWJWC6DCCYENFXTF`, main 4e006561 (#607). Rollback = the release-29 image `deployment-01M33NZERJS18A0G2NNG7S5FJ8`. Every screen compares against release 30.
-- **Mini:** gen-5 **arm B** (`GEN5-PROD-SOFT-withMCLCB-432k`, shortlist + PV + MC-LCB, 26 corpora, 48.2M rows) training since 2026-09-23 19:04 ET, epoch 16/20. Two jobs armed on its seal: **arm C** takes the Mini (30 corpora, 496,000 deals, 55.1M rows — Jerry 09-24 asked for MC-LCB to be included, so it is the biggest-corpus model rather than the matched-size diagnostic), and a waiter exports arm B's head and arms **lane v35b** on Perf (seeds 26960910..27360910).
+- **Mini:** gen-5 **arm B** (`GEN5-PROD-SOFT-withMCLCB-432k`, shortlist + PV + MC-LCB, 26 corpora, 48.2M rows) **sealed 2026-09-24 09:47 ET** at checkpoint `c5f6ac52`, rc=0, wall 52,999 s. Its two armed successors both fired on that seal: **arm C** (`GEN5-PROD-SOFT-allPV-plusMCLCB-496k`, 30 corpora, 496,000 deals, 55.1M rows — Jerry 09-24 asked for MC-LCB to be included, so it is the biggest-corpus model rather than the matched-size diagnostic) took the Mini and is now training; the other exported arm B's head as `gen5b-5f875ec6.npz` and armed **lane v35b** on Perf (seeds 26960910..27360910).
 - **Cloud:** the **W128 deeper-teacher tranche** (Jerry 09-24). runPVD1 sealed 06:46 ET (16,000 clusters, 0 failed, `w128-k8` identity in its manifest, 1.96x the per-cluster cost of W64); runPVD2 running, ~13:30 ET. Fresh seed block 23440910..23600909; the runPV1..10 reservation is fully consumed.
-- **Perf:** idle, no locks, reserved for lane v35b.
+- **Perf:** running **lane v35b** since 09:48 ET (supervisor pid 2787167; candidate `pv-search-5f875ec6-w64-k8-r47bac530-bury-hybrid-15783d52708f` vs the release-30 comparator), holding the host and screen locks for the length of the lane. Note when reading `/root` by hand: several stale lock artifacts from earlier months sit alongside the live ones (`.codex-screen-lane.lock`, `.screenlock-scr-enc2`, `screenq.lock`); only `/root/.claude-host.lock` and `/root/.claude-screen.lock` with a current mtime are active reservations.
 - **Corpora:** ten sealed PV stores, 160,000 deals / 22,028,452 records, `incomplete_work` 0 and zero bury failures across all ten. Stores live on the SSD (`~/shengji-ssd`, a space-free symlink — the real mount word-splits `--data`); **cache and policy rows stay on the Mini**, because epochs re-stream both while stores are read once at startup and once by the CPU-bound candidate pass.
 - Kept as evidence, not corpus: the runPV1 and runPV2 partials (unresumable after #607, `source_tree_sha256` drift).
 
 ## Review queue
 
-- **No actionable ask is outstanding.** The previous entry named #608, the release-30 docs pass; that merged on 2026-09-22 with a Codex PASS, and the line survived here for two days. A merged PR listed as an open ask is worse than no list, because it is the entry a reader trusts.
-- **Mine, open:** #630 (exploitability step 2: one batching loop with opt-in per-world capture) — mid-CI at 4f2d60f0 after a merge of main; the earlier head failed the review-ledger guard, not the diff.
+- **#608 is closed** — the release-30 docs pass merged on 2026-09-22 with a Codex PASS, and the line survived here for two days afterwards. A merged PR listed as an open ask is worse than no list, because it is the entry a reader trusts.
+- **Mine, merged since:** #630 (exploitability step 2: one batching loop with opt-in per-world capture) — Codex PASS at 4f2d60f0, CI 5/5, squashed to main as `338f78f3` on 2026-09-24. Nothing of mine is open except this refresh.
 - **Codex's holds stand** on #625: design confirmed, but no wiring, compute or merge authority. Their selective-depth follow-up (#577) needs a pre-registered pair count from a deal-level MDE before any confirmatory sample.
 

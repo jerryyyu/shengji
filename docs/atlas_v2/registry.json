@@ -207,6 +207,24 @@
    "lo": -0.0962,
    "hi": -0.025,
    "note": "Sealed 21:24 ET. CLEARS ZERO, and NEGATIVE: arm A's head is WORSE than release 30 served at this dose. The first resolved served read in this series -- the four gen-4 heads all crossed zero. Every one of the five windows is negative (-0.0654, -0.0298, -0.0856, -0.0519, -0.0731), I2 0%, tau 0, Q 1.11/4df, MDE80 +0.0509; ties 51.6% candidate vs 50.2% control; latency equal only at the precision shown: the window-average quantiles are candidate p50 0.0979 s / p95 0.1588 s against the control's 0.0975 / 0.1582, so about 0.4% apart, which is not the same as equal. WHAT IT DOES AND DOES NOT SAY: arm A differs from the production head in ONE way, the corpus it was retrained on -- shortlist + PV with the MC-LCB family removed -- so on this instrument removing MC-LCB and retraining made the served player worse. It does NOT isolate whether the loss is caused by dropping MC-LCB or by adding PV, because arm A changes the corpus as a whole. Arm B, the same warm start and recipe WITH MC-LCB restored, is the contrast that separates them and is training now. A matched-window common-opponent contrast, not a direct duel. Recomputed with the pinned reader; archive readouts/v35a-gen5armA-vs-r30/ with SHA256SUMS."
+  },
+  {
+   "id": "v35b",
+   "date": "2026-09-24",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "gen-5 arm B head (the production head retrained on SHORTLIST + PV + MC-LCB, 26 corpora / 432,000 deals; c5f6ac52) served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "26960910..27360910",
+   "confidence": 0.95,
+   "point": 0.0116,
+   "lo": -0.0242,
+   "hi": 0.0475,
+   "note": "Lane DONE 12:07 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35b-gen5armB-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive at this dose: arm B has NOT demonstrated a gain over release 30, and equivalence is NOT established (MDE80 +0.0512). Windows +0.0125, -0.0048, +0.0298, -0.0077, +0.0269; tau 0, Q 0.73/4df, I2 0%, RE SE 0.01829; ties 50.1% candidate vs 49.8% control. WHAT IT DOES SAY, read against v35a: arm A and arm B differ in EXACTLY ONE THING, whether the MC-LCB family is in the corpus, and arm A read -0.0606 [-0.0962, -0.0250], resolved and negative, while arm B does not. The two intervals do not overlap. Restoring MC-LCB removed arm A's loss. This is a COMMON-OPPONENT, SUMMARY-LEVEL comparison of two separate screens on DIFFERENT seed windows, not a duel between the arms, so it does not isolate the pair; the one-variable training design is what carries the inference, not the screen."
   }
  ],
  "context_screens": [
@@ -297,6 +315,15 @@
    "val_ce": 0.6377,
    "regret": null,
    "status": "sealed 19:02 ET, early stop at 12 of 20 epochs, best epoch 9, wall 6.66 h; held-out test cross-entropy 0.6369 * served vs release 30 (v35a): -0.0606 [-0.0962, -0.0250], WORSE, clears zero"
+  },
+  {
+   "name": "gen-5 arm B",
+   "ck": "c5f6ac52",
+   "date": "2026-09-24",
+   "recipe": "arm A with ONE change -- the MC-LCB family is BACK in the corpus: the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + PV + MC-LCB, 26 corpora, 432,000 deals, 48,175,828 policy rows, soft targets T=1.0 w=1.0, same trunk and objective as arm A",
+   "val_ce": 0.6124,
+   "regret": null,
+   "status": "sealed 09:47 ET 09-24, early stop at 16 of 20 epochs, best epoch 13, wall 14.7 h * val_ce is NOT comparable to arm A's or to gen 4: validation splits are drawn from the TRAINING corpora and the corpora differ. Comparable surfaces are the four fixed holdouts and the served screen. Holdouts vs arm A: roomlog regret 0.0686 (A 0.0726), luna 0.0781 (0.0858), highn 0.1041 (0.1063), pt1 0.0409 (0.0312); rank top-1 higher on all four. Served vs release 30 (v35b): +0.0116 [-0.0242, +0.0475], crosses zero, inconclusive"
   }
  ],
  "data": [

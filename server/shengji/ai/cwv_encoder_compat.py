@@ -84,6 +84,13 @@ def history_import_move_identity(current, paths):
 #: ``notice``, ``NOTICE_PLAYS``, ``_set_notice`` and ``_age_notice`` to ``Round``.
 #: The encoder never reads any of them, and #634 is what happened because the guard
 #: cannot tell: a tree at main refused the package production serves.
+#: Encoder versions for which the equivalence above is actually PROVEN by the
+#: differential in tests/test_encoder_round_compat.py.  v6 is deliberately
+#: absent: it cannot be widened from a v1 tensor, so that harness never encodes
+#: it, and an allowance is not extended to a version nothing demonstrated
+#: (Codex, #635).  A v6 checkpoint therefore still refuses, which is correct.
+PROVEN_VERSIONS = (1, 2, 4, 5)
+
 ROUND_EQUIVALENT_SOURCES = {
     "2ec9c5677e80449560f69abac53db271710cf8a64b2afe7ae15949698d3a4e95":
         "02e7831ec58c224dc1eee83cab465c9e4b3002e1f52eff03125cd84809c2432c",
@@ -107,13 +114,15 @@ def round_notice_identity(current, paths=None):
     """
     del paths                      # signature parity with the migration above
     try:
+        version = current.get("enc_version", 1)
+        if version not in PROVEN_VERSIONS:
+            return None                # fail closed: unproven version, no allowance
         sources = dict(current["source_sha256s"])
         legacy = ROUND_EQUIVALENT_SOURCES.get(sources.get("round"))
         if legacy is None:
             return None
         sources["round"] = legacy
         parts = [current["identity_schema"], current["afterstate_schema"]]
-        version = current.get("enc_version", 1)
         if version != 1:
             parts.append(f"enc_version:{version}")
         payload = "|".join(parts + [f"{name}:{sha}" for name, sha in sorted(sources.items())])

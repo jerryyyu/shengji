@@ -87,26 +87,57 @@ def _load_legacy_round():
     return module
 
 
-VERSIONS = (1, 2, 4, 5, 6)          # every version whose identity hashes round.py
+# EXPLICIT VERSION MATRIX, FAIL CLOSED (Codex, #635).  The first version of this
+# discovered encodable versions with a bare try/except and SILENTLY DROPPED v6 --
+# the same silent-narrowing failure that nearly let #633's gates report six empty
+# passes.  Coverage is declared here, and a version that stops behaving as
+# declared fails the suite rather than quietly leaving the matrix.
+PROVEN_VERSIONS = (1, 2, 4, 5)
+
+#: v6 is NOT reachable through this harness for a documented ENGINE reason, not
+#: an incidental error, and that reason is asserted below.  Because it is
+#: unproven here, the allowance REFUSES it outright rather than inheriting a
+#: guarantee nothing established.  If v6 becomes widenable this test fails and
+#: the matrix has to be extended deliberately.
+UNREACHABLE_VERSIONS = {6: "cannot be widened from a v1 tensor"}
 
 
-def _encodable_versions():
-    from shengji.train.policy_prior import flat_input, root_tensors
+def _sample_round(seed=99260924):
+    import random
+
     from shengji.ai.env import prepare_round
     from shengji.ai.heuristic import HeuristicBot
     from shengji.engine.game import Game
-    import random
 
-    game = Game(random.Random(99260924))
-    rnd = prepare_round(game, [HeuristicBot() for _ in range(4)])
-    ok = []
-    for v in VERSIONS:
-        try:
-            flat_input(root_tensors(rnd, rnd.turn, v), v)
-            ok.append(v)
-        except Exception:                            # noqa: BLE001
-            pass
-    return tuple(ok)
+    return prepare_round(Game(random.Random(seed)), [HeuristicBot() for _ in range(4)])
+
+
+def test_every_proven_version_really_encodes():
+    """No silent drops: every declared version must work, or the suite fails."""
+    from shengji.train.policy_prior import flat_input, root_tensors
+
+    rnd = _sample_round()
+    for v in PROVEN_VERSIONS:
+        assert flat_input(root_tensors(rnd, rnd.turn, v), v).size, f"v{v} empty"
+
+
+@pytest.mark.parametrize("version,reason", sorted(UNREACHABLE_VERSIONS.items()))
+def test_unreachable_versions_fail_for_the_stated_reason(version, reason):
+    """A declared exclusion, not a swallowed exception."""
+    from shengji.train.policy_prior import flat_input, root_tensors
+
+    rnd = _sample_round()
+    with pytest.raises(Exception) as excinfo:                     # noqa: PT011
+        flat_input(root_tensors(rnd, rnd.turn, version), version)
+    assert reason in str(excinfo.value), (
+        f"v{version} now fails for a different reason: {excinfo.value}")
+
+
+def test_the_allowance_refuses_a_version_it_cannot_prove():
+    """Fail closed: an unproven version must not inherit the allowance."""
+    current = dict(local_encoder_identity(2))
+    for version in UNREACHABLE_VERSIONS:
+        assert compat.round_notice_identity(dict(current, enc_version=version)) is None
 
 
 def _trace(seed, versions, *, legacy=False, script=None, limit=60):
@@ -148,8 +179,7 @@ def _trace(seed, versions, *, legacy=False, script=None, limit=60):
 @pytest.mark.parametrize("seed", [98260924, 98260925, 98260926])
 def test_both_revisions_encode_identical_tensors(seed):
     """The load-bearing proof: release 30's Round and this one, same deals."""
-    versions = _encodable_versions()
-    assert versions, "no encoder version could be exercised"
+    versions = PROVEN_VERSIONS
 
     live, script = _trace(seed, versions)
     old, replayed = _trace(seed, versions, legacy=True, script=script)
@@ -167,7 +197,7 @@ def test_both_revisions_encode_identical_tensors(seed):
 
 def test_distinct_states_were_actually_compared():
     """Guard against the defect this test had: one object counted many times."""
-    versions = _encodable_versions()
+    versions = PROVEN_VERSIONS
     live, _ = _trace(98260924, versions)
     distinct = {a[versions[0]].tobytes() for _, a in live}
     assert len(distinct) >= 20, (
@@ -188,7 +218,7 @@ def test_the_notice_state_itself_does_not_move_the_tensors():
     from shengji.engine.game import Game
     from shengji.train.policy_prior import flat_input, root_tensors
 
-    versions = _encodable_versions()
+    versions = PROVEN_VERSIONS
     game = Game(random.Random(98260927))
     bots = [HeuristicBot() for _ in range(4)]
     rnd = prepare_round(game, bots)
@@ -207,6 +237,59 @@ def test_the_notice_state_itself_does_not_move_the_tensors():
     aged = {v: flat_input(root_tensors(rnd, seat, v), v) for v in versions}
     for v in versions:
         assert before[v].tobytes() == aged[v].tobytes(), f"v{v} moved while the notice aged"
+
+
+def test_a_REAL_failed_throw_encodes_the_same_under_both_revisions():
+    """A forced throw, exercised for real, in BOTH revisions (Codex, #635).
+
+    Heuristic bots never attempt a losing throw -- I searched 130 deals and
+    found none -- so setting `notice` by hand was the only coverage this file
+    had, and that never exercises the ENGINE path that produces it. This builds
+    the situation deterministically: the leader holds two cards of a plain suit
+    and an opponent holds the ace, so the throw fails and the engine forces the
+    lowest card.
+
+    The current revision records a notice; release 30 has no such concept. The
+    forced play and the encoder's view of the resulting state must match anyway.
+    """
+    import random
+
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine import game as game_module
+    from shengji.train.policy_prior import flat_input, root_tensors
+
+    def run(legacy):
+        original = game_module.Round
+        if legacy:
+            game_module.Round = _load_legacy_round().Round
+        try:
+            rnd = prepare_round(game_module.Game(random.Random(98260924)),
+                                [HeuristicBot() for _ in range(4)])
+            seat = rnd.turn
+            suit = next(c for c in "SHDC" if c != rnd.ordering.trump_suit)
+            throw = [f"{suit}5", f"{suit}6"]
+            rnd.hands[seat] = list(throw) + rnd.hands[seat][:6]
+            rnd.hands[(seat + 1) % 4] = [f"{suit}A"] + rnd.hands[(seat + 1) % 4][:7]
+            rnd.play(seat, throw)
+            played = [list(p.cards) for p in rnd.trick.plays]
+            after = {v: flat_input(root_tensors(rnd, rnd.turn, v), v)
+                     for v in PROVEN_VERSIONS}
+            return played, after, getattr(rnd, "notice", None)
+        finally:
+            game_module.Round = original
+
+    live_played, live_after, notice = run(False)
+    old_played, old_after, old_notice = run(True)
+
+    assert notice is not None and notice["kind"] == "failed_throw", (
+        "the throw did not actually fail; this test would prove nothing")
+    assert notice["attempted"] == [f"{s}" for s in notice["attempted"]]
+    assert old_notice is None, "release 30 should have no notice concept"
+    assert live_played == old_played, "the forced play itself diverged"
+    for v in PROVEN_VERSIONS:
+        assert live_after[v].tobytes() == old_after[v].tobytes(), (
+            f"v{v} differs after a real failed throw")
 
 
 # -- it must still refuse everything else ------------------------------------

@@ -176,9 +176,21 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("policy world sampling violates public voids")
         return worlds, attempts
 
-    def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
+    def _score_leaves(self, rnd, seat, actions, worlds, check_budget=None, capture=None):
+        """The ONE scoring and batching loop; serving's accumulator, unchanged.
+
+        ``capture``, when given, is a (worlds x actions) array whose cells are
+        filled with the same leaf scores the accumulator receives.  It is purely
+        additive: the sequential ``np.add.at`` accumulation, the batch
+        boundaries, the evaluator call order and both budget checks are exactly
+        what they were before this method existed, so a diagnostic that needs
+        per-world values cannot alter what serving computes (Codex, #625).
+
+        Default serving passes ``capture=None`` and allocates no matrix.
+        """
         sums = np.zeros(len(actions), dtype=np.float64)
         pending, indices = [], []
+        cells = [] if capture is not None else None
         batches = 0
 
         def flush():
@@ -191,6 +203,10 @@ class PVSearchBot(PolicyValueBot):
             if scores.shape != (len(pending),) or not np.isfinite(scores).all():
                 raise ValueError("value evaluator requires one finite root-team score per leaf")
             np.add.at(sums, indices, scores)
+            if cells is not None:
+                for (world_index, index), score in zip(cells, scores):
+                    capture[world_index, index] = score
+                cells.clear()
             batches += 1
             pending.clear()
             indices.clear()
@@ -203,10 +219,34 @@ class PVSearchBot(PolicyValueBot):
             for index, action in enumerate(actions):
                 pending.append(self._leaf(rnd, seat, hands, buried, action, world_index))
                 indices.append(index)
+                if cells is not None:
+                    cells.append((world_index, index))
                 if len(pending) == self.batch_size:
                     flush()
         flush()
+        return sums, batches
+
+    def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
+        sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
         return sums / len(worlds), batches
+
+    def value_matrix(self, rnd, seat, actions, worlds, check_budget=None):
+        """``(matrix, sums, batches)`` for the exploitability probe (#625).
+
+        ``matrix[w, a]`` is the value of action ``a`` in world ``w``; ``sums`` is
+        serving's own accumulator over the same scores, so a control arm that
+        claims served parity reduces with ``sums / len(worlds)`` rather than
+        re-summing the matrix -- reordering a float sum changes its result, and
+        near-ties are where that stops being cosmetic.
+
+        Nothing calls this on a served path.
+        """
+        matrix = np.full((len(worlds), len(actions)), np.nan, dtype=np.float64)
+        sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget,
+                                           capture=matrix)
+        if not np.isfinite(matrix).all():
+            raise PVSearchPolicyError("value matrix has unfilled cells")
+        return matrix, sums, batches
 
     # -- the decision ---------------------------------------------------------
 

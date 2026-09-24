@@ -561,7 +561,11 @@ def test_day_axis_labels_cannot_occlude_their_neighbours(data):
     """'none vs leader' (14 mono chars, ~84 px) sat under a ~45 px tick pitch and ran into the
     labels either side.  Both label rows must fit the pitch they are centred in."""
     page, c = _render(*data)
-    pitch = (674 - 84) / len(c["days"])          # frame x0/x1 for the two day charts
+    # Once one row cannot hold them, alternate days drop to a SECOND row, so the pitch a label
+    # must live in is twice the tick pitch.  Every day stays labelled either way -- that is a
+    # separate invariant with its own test (charts.py: _DAY_STAGGER).
+    tick = (674 - 84) / len(c["days"])
+    pitch = tick * (2 if 5 * 10.0 * 0.6 > tick else 1)
     for name in ("3 by training day", "4 leader effect by day"):
         svg = _svgs(page)[name]
         for cls, px in (("ax am", 11.5), ("axs am", 10.0)):

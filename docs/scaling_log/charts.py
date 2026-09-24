@@ -213,9 +213,16 @@ print("charts 1 and 3 rebuilt with clickable dots")
 # list this line replaced.
 DAYS=sorted({d["tr"] for d in R})
 # day-axis tick labels ("MM-DD", 5 mono chars): 11.5 px while the pitch holds them, the 10 px
-# size once the axis carries enough days that 34.5 px no longer fits (18 days on 09-22)
+# size once the axis carries enough days that 34.5 px no longer fits (18 days on 09-22), and
+# and then STAGGERED ONTO TWO ROWS once even 30 px no longer fits (22 days on 09-24, pitch 29.5).
+# Downsizing alone was always going to run out -- days accumulate forever and the frame does not.
+# Staggering rather than thinning because EVERY DAY MUST STAY LABELLED: dropping a day from this
+# axis was a real bug once (a blank val_ce deleted the whole day), and there is a test holding it.
+# Alternate days drop to a second row, so each row's effective pitch is twice the tick pitch.
 _DAY_PITCH=(674-84)/len(DAYS)
 _DAY_LABEL_CLASS="ax am" if 5*11.5*0.6<=_DAY_PITCH else "axs am"
+_DAY_LABEL_PX=11.5 if _DAY_LABEL_CLASS=="ax am" else 10.0
+_DAY_STAGGER=5*_DAY_LABEL_PX*0.6>_DAY_PITCH   # two rows once one row cannot hold them
 W,H=880,440; L,Rm,T,B=84,206,30,64
 x0,x1,y0,y1=L,W-Rm,T,H-B
 YLO,YHI=0.540,0.740
@@ -227,7 +234,8 @@ for v in YT:
     s.append('<text x="%d" y="%.1f" class="ax ar">%.2f</text>'%(x0-11,YD(v)+4,v))
 for i,d in enumerate(DAYS):
     n=sum(1 for r in ONSCALE if r["tr"]==d)
-    s.append('<text x="%.1f" y="%d" class="%s">%s</text>'%(XD(i),y1+21,_DAY_LABEL_CLASS,d[5:]))
+    s.append('<text x="%.1f" y="%d" class="%s">%s</text>'%(
+        XD(i),y1+21+(12 if _DAY_STAGGER and i%2 else 0),_DAY_LABEL_CLASS,d[5:]))
     # the count alone: "%d models" ran ~52 px against a ~45 px tick pitch and collided with
     # its neighbours.  The legend says what the number means.
     s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(XD(i),y1+37,n if n else "no CE"))
@@ -379,7 +387,8 @@ for d in SCR:
     if e: byday.setdefault(d["tr"],[]).append((d,e))
 for i,dd in enumerate(DAYS):
     n=len(byday.get(dd,[]))
-    s.append('<text x="%.1f" y="%d" class="%s">%s</text>'%(XE(i),y1+21,_DAY_LABEL_CLASS,dd[5:]))
+    s.append('<text x="%.1f" y="%d" class="%s">%s</text>'%(
+        XE(i),y1+21+(12 if _DAY_STAGGER and i%2 else 0),_DAY_LABEL_CLASS,dd[5:]))
     # bare count; "none vs leader" ran ~76 px against a ~45 px pitch.  Legend carries the sense.
     s.append('<text x="%.1f" y="%d" class="axs am">%s</text>'%(XE(i),y1+37,n if n else "&#8212;"))
 s.append('<text x="%d" y="%d" class="axl am">the day the model was trained</text>'%((x0+x1)/2,y1+56))

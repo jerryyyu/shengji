@@ -206,7 +206,7 @@
    "point": -0.0606,
    "lo": -0.0962,
    "hi": -0.025,
-   "note": "Sealed 21:24 ET. CLEARS ZERO, and NEGATIVE: arm A's head is WORSE than release 30 served at this dose. The first resolved served read in this series -- the four gen-4 heads all crossed zero. Every one of the five windows is negative (-0.0654, -0.0298, -0.0856, -0.0519, -0.0731), I2 0%, tau 0, Q 1.11/4df, MDE80 +0.0509; ties 51.6% candidate vs 50.2% control; latency identical at p50 0.10 s / p95 0.16 s. WHAT IT DOES AND DOES NOT SAY: arm A differs from the production head in ONE way, the corpus it was retrained on -- shortlist + PV with the MC-LCB family removed -- so on this instrument removing MC-LCB and retraining made the served player worse. It does NOT isolate whether the loss is caused by dropping MC-LCB or by adding PV, because arm A changes the corpus as a whole. Arm B, the same warm start and recipe WITH MC-LCB restored, is the contrast that separates them and is training now. A matched-window common-opponent contrast, not a direct duel. Recomputed with the pinned reader; archive readouts/v35a-gen5armA-vs-r30/ with SHA256SUMS."
+   "note": "Sealed 21:24 ET. CLEARS ZERO, and NEGATIVE: arm A's head is WORSE than release 30 served at this dose. The first resolved served read in this series -- the four gen-4 heads all crossed zero. Every one of the five windows is negative (-0.0654, -0.0298, -0.0856, -0.0519, -0.0731), I2 0%, tau 0, Q 1.11/4df, MDE80 +0.0509; ties 51.6% candidate vs 50.2% control; latency equal only at the precision shown: the window-average quantiles are candidate p50 0.0979 s / p95 0.1588 s against the control's 0.0975 / 0.1582, so about 0.4% apart, which is not the same as equal. WHAT IT DOES AND DOES NOT SAY: arm A differs from the production head in ONE way, the corpus it was retrained on -- shortlist + PV with the MC-LCB family removed -- so on this instrument removing MC-LCB and retraining made the served player worse. It does NOT isolate whether the loss is caused by dropping MC-LCB or by adding PV, because arm A changes the corpus as a whole. Arm B, the same warm start and recipe WITH MC-LCB restored, is the contrast that separates them and is training now. A matched-window common-opponent contrast, not a direct duel. Recomputed with the pinned reader; archive readouts/v35a-gen5armA-vs-r30/ with SHA256SUMS."
   }
  ],
  "context_screens": [
@@ -294,7 +294,7 @@
    "ck": "9f4c9658",
    "date": "2026-09-23",
    "recipe": "the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + PV only, NO MC-LCB: 16 stores, 256,000 deals, soft targets, same trunk and objective",
-   "val_ce": 0.6378,
+   "val_ce": 0.6377,
    "regret": null,
    "status": "sealed 19:02 ET, early stop at 12 of 20 epochs, best epoch 9, wall 6.66 h; held-out test cross-entropy 0.6369 * served vs release 30 (v35a): -0.0606 [-0.0962, -0.0250], WORSE, clears zero"
   }

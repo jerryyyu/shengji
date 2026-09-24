@@ -432,7 +432,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         batch_size: int = DEFAULTS["batch_size"], seed: int = DEFAULTS["seed"],
                         serving_budget_seconds=None, bury_arm: str | None = None,
                         bury_config: CWVBuryConfig | None = None,
-                        bury_serving_budget_seconds=None) -> dict:
+                        bury_serving_budget_seconds=None, bot_factory=None) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
     bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
@@ -468,7 +468,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                batch_size=config.batch_size, seed=int(kw.get("seed", seed)),
                                serving_budget_seconds=config.serving_budget_seconds, name=name,
                                bury_arm=bury_arm, bury_config=bury_config,
-                               bury_serving_budget_seconds=bury_serving_budget_seconds),
+                               bury_serving_budget_seconds=bury_serving_budget_seconds,
+                               bot_factory=bot_factory),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):

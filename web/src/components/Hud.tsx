@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { GameState, Phase } from "../protocol";
+import type { GameState, Notice, Phase } from "../protocol";
 import { conn } from "../ws";
-import { SUIT_SYMBOL } from "./Card";
+import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -72,6 +72,40 @@ function LeaveButton() {
   );
 }
 
+function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
+  // Dismissal is keyed by the notice id, not by a boolean: the next failed
+  // throw must appear even if you dismissed the last one.
+  const [dismissed, setDismissed] = useState<number | null>(null);
+  if (dismissed === notice.id) return null;
+  const who = notice.seat === state.you
+    ? "You"
+    : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
+  return (
+    <div className="hud-notice" role="status" aria-live="polite">
+      <div className="hud-notice-body">
+        <b>Throw failed.</b>{" "}
+        {who} threw{" "}
+        <span className="hud-notice-cards">
+          {notice.attempted.map(shortLabel).join(" ")}
+        </span>{" "}
+        and had to play{" "}
+        <span className="hud-notice-cards forced">
+          {notice.forced.map(shortLabel).join(" ")}
+        </span>
+        .
+      </div>
+      <button
+        className="hud-notice-close"
+        onClick={() => setDismissed(notice.id)}
+        aria-label="Dismiss this notice"
+        title="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export default function Hud({ state }: { state: GameState }) {
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
@@ -133,7 +167,12 @@ export default function Hud({ state }: { state: GameState }) {
           <LeaveButton />
         </div>
       </div>
-      {state.message ? (
+      {state.notice ? (
+        <NoticeBanner notice={state.notice} state={state} key={state.notice.id} />
+      ) : null}
+      {/* `message` restates the notice for one play; showing both would
+          double up, so the notice wins while it is on screen. */}
+      {state.message && !state.notice ? (
         <div className="hud-message" key={state.message}>
           {state.message}
         </div>

@@ -72,6 +72,14 @@ class Round:
         self.kitty_bonus = 0
         self.last_trick_winner: int | None = None
         self.message: str | None = None
+        # A NOTICE outlives `message`.  `message` is cleared by the very next
+        # play at the table, which with bots is ~0.7 s -- long enough to miss
+        # entirely, and a failed throw is exactly the event a player needs to
+        # read twice.  A notice survives NOTICE_PLAYS further plays (the rest
+        # of this trick plus the next one) and the client may dismiss it early.
+        self.notice: dict | None = None
+        self._notice_plays_left = 0
+        self._notice_seq = 0
 
     # ------------------------------------------------------------------ teams
     def is_attacker(self, seat: int) -> bool:
@@ -178,15 +186,46 @@ class Round:
         self.trick = Trick(leader=seat)
         self.turn = seat
 
+    # ----------------------------------------------------------------- notices
+    # The rest of the current trick plus the whole next one: long enough that a
+    # player who looked away still sees it, short enough that it never becomes
+    # furniture.  A client may dismiss it sooner; that is per-viewer and never
+    # reaches the server, so one player dismissing does not blank it for others.
+    NOTICE_PLAYS = 8
+
+    def _set_notice(self, seat: int, attempted: list[str], forced: list[str]) -> None:
+        if getattr(self, "_trusted_rollout", False):
+            return  # rollout clones replay millions of throws; no notice churn
+        self._notice_seq += 1
+        self.notice = {"id": self._notice_seq, "kind": "failed_throw",
+                       "seat": seat, "attempted": attempted, "forced": forced}
+        self._notice_plays_left = self.NOTICE_PLAYS
+
+    def _age_notice(self) -> None:
+        if self.notice is None:
+            return
+        self._notice_plays_left -= 1
+        if self._notice_plays_left <= 0:
+            self.notice = None
+
     # ------------------------------------------------------------------- play
     def play(self, seat: int, cards: list[str]) -> None:
         self._require(seat, "play")
         assert self.trick is not None and self.ordering is not None
         self.message = None
+        pending_notice = None
         if not self.trick.plays:
             others = [self.hands[s] for s in range(4) if s != seat]
+            attempted = list(cards)
             cards, msg = validate_lead(cards, self.hands[seat], others, self.ordering)
             self.message = msg
+            if msg is not None and list(cards) != attempted:
+                # A throw was refused and downgraded.  Record WHAT WAS ATTEMPTED
+                # and what the engine forced -- never which opponent card would
+                # have beaten it, which is hidden information the thrower has
+                # not earned by throwing.  Held until the play is accepted, so
+                # a rejected play neither sets nor ages a notice.
+                pending_notice = (seat, attempted, list(cards))
         elif not getattr(self, "_trusted_rollout", False):
             # Rollout fast path (perf audit 2026-08-02): heuristic follows
             # are legal by construction; skip re-validation ONLY inside MC
@@ -195,6 +234,15 @@ class Round:
             lead = self.trick.plays[0].cards
             validate_follow(cards, self.hands[seat], lead, self.ordering)
         self._remove(seat, cards)
+        # ONLY AN ACCEPTED MOVE AGES A NOTICE (Codex, #621).  Validation raises
+        # on an illegal play and leaves turn and trick untouched, so aging at
+        # the top of play() let a player spend the whole notice budget on eight
+        # rejected follows while the table had not moved at all.  Past _remove
+        # the play is committed, so this is the first point where a notice has
+        # really got one play older.
+        self._age_notice()
+        if pending_notice is not None:
+            self._set_notice(*pending_notice)
         self.trick.plays.append(TrickPlay(seat, list(cards)))
         if getattr(self, "_trusted_rollout", False):
             played = self.trick.plays[-1].cards

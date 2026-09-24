@@ -450,6 +450,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "game_over": result.game_over,
         } if result else None),
         "message": rnd.message,
+        "notice": rnd.notice,
     }
 
 

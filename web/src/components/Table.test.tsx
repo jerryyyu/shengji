@@ -53,6 +53,7 @@ function makeState({
     kitty_count: 8,
     round_result: null,
     message: null,
+    notice: null,
   };
 }
 

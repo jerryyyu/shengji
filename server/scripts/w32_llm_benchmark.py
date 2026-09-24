@@ -27,7 +27,7 @@ from shengji.ai.registry import make_bot, register_cwv_bury_policies, register_p
 from shengji.engine.cards import RANKS
 from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
-from shengji.luna.benchmark_games import play_mirror
+from shengji.luna.benchmark_games import play_mirror, RecordedSetupPolicy, fallback_summary
 from shengji.luna.benchmark_transport import BenchmarkTransport
 from shengji.luna.canonical import canonical_json_bytes
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
@@ -296,6 +296,10 @@ def _summary(rows: Sequence[Mapping[str, object]], *, arm: str, seed: int) -> di
                 "source_row_sha256": prior.get("source_row_sha256"),
             })
     return {"arm": arm, "complete_mirrors": len(complete),
+            "planned_mirrors": len(rows),
+            "baseline_play": fallback_summary([event for row in rows
+                                                for event in row.get("events", ())]),
+            "mirrors_missing_play_telemetry": sum("baseline_play" not in row for row in rows),
             "complete_deal_pairs": len(paired), "paired_signed_levels": paired,
             "paired_signed_level_mean": statistics.fmean(paired) if paired else None,
             "deal_cluster_ci95": _bootstrap(paired, seed=seed),
@@ -490,6 +494,8 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
               "information": list(information), "wall_seconds": wall_seconds,
               "soft_token_limit": token_limit, "run": bool(run),
               "baseline_recipe": baseline_recipe, "source": source,
+              "timeout_seconds": timeout_seconds,
+              "fallback_reporting": "warn-on-any-fallback-or-missing-record; retain all outcomes",
               "claim": "benchmark execution only; runtime production parity is not claimed"}
     if continuation is not None:
         config["continue_from"] = {
@@ -511,10 +517,13 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     roots: dict[int, object] = {}
     root_hashes: dict[int, str] = {}
     setup_failures: dict[int, str] = {}
+    setup_telemetry = {}
     if continuation is not None:
         # Imported roots are already dealt/buried.  In particular, do not
         # invoke baseline setup or prepare_round on this path.
         for seed in seeds:
+            setup_telemetry[str(seed)] = {"status": "imported-unknown",
+                                         "warning": True}
             root = continuation["roots"][seed]
             try:
                 roots[seed] = _restore_game(root, seed, game_factory)
@@ -536,19 +545,23 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                           "error": error})
     else:
         for index, seed in enumerate(seeds):
+            bury_events = []
             game = game_factory(random.Random(seed))
             rank_index = index % len(RANKS)
             game.level_idx = [rank_index, rank_index]
             game.banker = seed % 4
             try:
                 budget.check("deal setup")
-                setup = [baseline_fn(seat, seed) for seat in range(4)]
+                setup = [RecordedSetupPolicy(baseline_fn(seat, seed), bury_events)
+                         for seat in range(4)]
                 prepare_fn(game, setup)
                 root = _root_snapshot(game, seed, rank_index)
                 root_sha = _sha(root)
                 receipt = {"schema": "w32-llm-benchmark-setup-v1", "seed": seed,
                            "banker": seed % 4, "rank_index": rank_index,
                            "policy": policy, "root_sha256": root_sha,
+                           "baseline_bury": fallback_summary(bury_events),
+                           "bury_events": bury_events,
                            "bury": [_json_safe(getattr(bot, "bury_recipe_identity", None))
                                     for bot in setup]}
                 _publish(output_path / f"root-{seed}.json", root)
@@ -559,7 +572,9 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                 setup_failures[seed] = error
                 _publish(output_path / f"setup-{seed}.error.json",
                          {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
-                          "error": error})
+                          "error": error, "bury_events": bury_events})
+            finally:
+                setup_telemetry[str(seed)] = fallback_summary(bury_events)
 
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
@@ -627,6 +642,8 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                             # retained even if this whole-mirror retry succeeds.
                             source = continuation["source_rows"][key]
                             row["prior_attempt"] = {
+                                "baseline_play": prior_row.get("baseline_play"),
+                                "events": list(prior_row.get("events", ())),
                                 "complete": prior_row.get("complete") is True,
                                 "error": prior_row.get("error"),
                                 "calls": list(prior_row.get("calls", ())),
@@ -662,6 +679,7 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                          "wall_seconds": time.monotonic() - budget.started},
               "prior": prior_meta,
               "setup_failures": setup_failures}
+    report["baseline_setup_by_seed"] = setup_telemetry
     _publish(output_path / "result.json", report)
     return report
 

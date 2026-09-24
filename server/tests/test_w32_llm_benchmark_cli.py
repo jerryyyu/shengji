@@ -125,6 +125,36 @@ def test_production_recipe_matches_real_registry_identity(monkeypatch):
     assert recipe["registered_names"] == [name]
 
 
+def test_summary_keeps_failed_mirror_fallbacks_and_flags_legacy_rows():
+    summary = benchmark._summary([
+        {"seed": 1, "flip": 0, "complete": False, "baseline_play": {},
+         "events": [{"side": "baseline", "policy_record": {
+             "schema": "pv-search-fallback-v1", "reason": "budget"}}]},
+        {"seed": 1, "flip": 1, "complete": True, "signed_levels": 1},
+    ], arm="sol-perfect", seed=1)
+    assert summary["complete_deal_pairs"] == 0
+    assert summary["baseline_play"]["fallbacks"] == 1
+    assert summary["mirrors_missing_play_telemetry"] == 1
+
+
+def test_setup_bury_fallback_is_in_sealed_report(tmp_path):
+    class BuryPolicy(FakePolicy):
+        def decide_bury(self, *_args):
+            self.last_bury_record = {"schema": "cwv-bury-fallback-v1", "reason": "budget"}
+            return []
+    output, config = wiring(tmp_path, run=True, seeds=[7])
+    prepare = config["prepare_fn"]
+    def setup(game, policies):
+        policies[0].decide_bury(None, 0)
+        return prepare(game, policies)
+    config.update(prepare_fn=setup, bot_factory=lambda *a, **k: BuryPolicy(),
+                  runner=lambda *a, **k: {"complete": False, "calls": []})
+    report = benchmark.run_benchmark(**config)
+    assert report["baseline_setup_by_seed"]["7"]["fallbacks"] == 1
+    receipt = json.loads((output / "setup-7.json").read_text())
+    assert receipt["baseline_bury"]["reasons"] == {"budget": 1}
+
+
 @pytest.mark.parametrize("limit", [None, 0, -1, True, 1.5])
 def test_run_requires_positive_integer_token_ceiling_before_any_work(tmp_path, monkeypatch, limit):
     output, config = wiring(tmp_path, run=True, token_limit=limit)

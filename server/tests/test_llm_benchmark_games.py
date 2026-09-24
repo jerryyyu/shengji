@@ -7,6 +7,8 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.cards import Ordering
 from shengji.engine.game import Game
 from shengji.luna.benchmark_games import play_mirror
+from shengji.luna.benchmark_games import _RecordedPolicy, RecordedSetupPolicy, fallback_summary
+import pytest
 
 
 def planner(packet):
@@ -57,3 +59,45 @@ def test_expiry_retains_failure_without_scoring_or_playing():
     assert not row["complete"]
     assert "signed_levels" not in row and row["events"] == []
     assert row["error"] == "TimeoutError: benchmark deadline"
+
+
+def test_fallback_metadata_is_copied_without_private_search_state():
+    class Bot:
+        def decide_play(self, rnd, seat):
+            self.last_decision_record = {"schema": "pv-search-fallback-v1",
+                "reason": "budget", "hands": ["SECRET"], "work_complete": False}
+            return ["C3"]
+    bot, events = Bot(), []
+    assert _RecordedPolicy(bot, 1, lambda: None, events).decide_play(None, 1) == ["C3"]
+    bot.last_decision_record["reason"] = "changed"
+    assert "hands" not in events[0]["policy_record"]
+    summary = fallback_summary(events)
+    assert summary["attempted_decisions"] == summary["fallbacks"] == 1
+    assert summary["reasons"] == {"budget": 1}
+    assert summary["warning"]
+
+
+def test_failed_decision_retains_attempt_and_does_not_reuse_stale_record():
+    class Bot:
+        last_decision_record = {"schema": "pv-search-fallback-v1", "reason": "budget"}
+        def decide_play(self, rnd, seat):
+            raise RuntimeError("broken")
+    events = []
+    with pytest.raises(RuntimeError):
+        _RecordedPolicy(Bot(), 1, lambda: None, events).decide_play(None, 1)
+    assert events[0]["error"] == "RuntimeError: broken"
+    summary = fallback_summary(events)
+    assert summary["attempted_decisions"] == summary["missing_records"] == 1
+    assert summary["fallbacks"] == 0
+
+
+def test_bury_is_recorded_separately_and_planner_events_not_counted():
+    class Bot:
+        def decide_bury(self, rnd, seat):
+            self.last_bury_record = {"schema": "cwv-bury-fallback-v1", "reason": "search-error"}
+            return ["C3"]
+    events = []
+    assert RecordedSetupPolicy(Bot(), events).decide_bury(None, 0) == ["C3"]
+    events.append({"side": "planner", "policy_record": None})
+    assert fallback_summary(events)["reasons"] == {"search-error": 1}
+    assert fallback_summary(events)["attempted_decisions"] == 1

@@ -1,4 +1,7 @@
-"""Bounded, paired W32-versus-LLM benchmark (#355).
+"""Bounded, paired production-policy-versus-LLM benchmark (#355).
+
+Use --baseline production-w64 for release 30's pinned PV-search package and
+recipe. The default shortlist-w32 preserves historical runs, not current prod.
 
 The command is deliberately a dry-run unless ``--run`` is supplied.  A run
 uses one prepared private root per seed, then replays that root for all four
@@ -20,7 +23,7 @@ import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from shengji.ai import env
-from shengji.ai.registry import make_bot, register_cwv_bury_policies
+from shengji.ai.registry import make_bot, register_cwv_bury_policies, register_pv_search_policies
 from shengji.engine.cards import RANKS
 from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
@@ -34,6 +37,33 @@ from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
 SCHEMA = "w32-llm-benchmark-v1"
 MODEL_NAMES = {"sol": "gpt-5.6-sol", "luna": "gpt-5.6-luna"}
 INFORMATION_MODES = ("actor-only", "perfect")
+PRODUCTION_W64_SHA256 = "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75"
+PRODUCTION_W64_POLICY = "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e"
+
+
+def _registered_production_w64(checkpoint_id, *, register=register_pv_search_policies):
+    """Release-30 recipe, independent of ambient training/serving overrides.
+
+    This is a frozen production snapshot, not an automatically moving target.
+    The caller has already hashed the package; registry factories verify it too.
+    """
+    if (checkpoint_id["sha256"] != PRODUCTION_W64_SHA256
+            or Path(checkpoint_id["path"]).suffix.lower() != ".npz"):
+        raise BenchmarkRefusal("production-w64 requires the pinned release-30 NumPy package")
+    recipe = dict(sha256=PRODUCTION_W64_SHA256, worlds=64, candidates=8,
+                  cap=4000, batch_size=128, seed=0, serving_budget_seconds=3.0,
+                  bury_arm="hybrid", bury_config=CWVBuryConfig(),
+                  bury_serving_budget_seconds=2.0)
+    names = register(checkpoint_id["path"], **recipe)
+    if list(names) != [PRODUCTION_W64_POLICY]:
+        raise BenchmarkRefusal("registered production-w64 policy differs from release 30")
+    return PRODUCTION_W64_POLICY, {
+        "baseline": "production-w64", "release": 30,
+        "checkpoint": checkpoint_id["path"],
+        **{key: _json_safe(vars(value)) if key == "bury_config" else value
+           for key, value in recipe.items()},
+        "registered_names": list(names),
+    }
 
 
 class BenchmarkRefusal(ValueError):
@@ -407,6 +437,7 @@ def _restore_game(root: Mapping[str, object], seed: int, game_factory: Callable[
 
 
 def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
+                  baseline: str = "shortlist-w32",
                   seeds: Sequence[int], models: Sequence[str] = ("sol", "luna"),
                   information: Sequence[str] = INFORMATION_MODES,
                   wall_seconds: float = 1800.0, token_limit: int | None = None,
@@ -417,10 +448,13 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                   prepare_fn=env.prepare_round, baseline_factory=None,
                   register_fn=register_cwv_bury_policies,
                   recipe_reader=bury_env_recipe,
+                  pv_register_fn=register_pv_search_policies,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
     if run and (type(token_limit) is not int or token_limit <= 0):
         raise BenchmarkRefusal("--run requires a positive --soft-token-limit")
+    if baseline not in ("shortlist-w32", "production-w64"):
+        raise BenchmarkRefusal("unknown baseline")
     checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
     information = tuple(information)
@@ -434,8 +468,12 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     output_path = Path(output).expanduser().resolve()
     if output_path.exists() or output_path.is_symlink():
         raise BenchmarkRefusal("output must be a fresh path")
-    baseline_name, baseline_recipe = _registered_baseline(
-        checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
+    if baseline == "production-w64":
+        baseline_name, baseline_recipe = _registered_production_w64(
+            checkpoint_id, register=pv_register_fn)
+    else:
+        baseline_name, baseline_recipe = _registered_baseline(
+            checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
     if policy != baseline_name:
         raise BenchmarkRefusal(
             f"requested policy {policy!r} is not the registered baseline {baseline_name!r}")
@@ -632,6 +670,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--policy", required=True)
+    parser.add_argument("--baseline", choices=("shortlist-w32", "production-w64"),
+                        default="shortlist-w32",
+                        help="production-w64 pins release 30; shortlist-w32 is historical")
     parser.add_argument("--output", "--out", dest="output", required=True)
     parser.add_argument("--seeds", nargs="+", required=True)
     parser.add_argument("--models", default="sol,luna")
@@ -653,6 +694,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         result = run_benchmark(
             checkpoint=args.checkpoint, policy=args.policy, output=args.output,
+            baseline=args.baseline,
             seeds=args.seeds, models=_parse_csv(args.models, label="models"),
             information=_parse_csv(args.information, label="information"),
             wall_seconds=args.wall_seconds, token_limit=args.token_limit,

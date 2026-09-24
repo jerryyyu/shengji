@@ -63,6 +63,68 @@ def test_dry_run_plans_four_arms_without_constructing_transport(tmp_path):
     assert not output.exists()
 
 
+def test_production_w64_records_exact_recipe_and_sol_arms(tmp_path, monkeypatch):
+    output, config = wiring(tmp_path, baseline="production-w64", models=("sol",),
+                            policy=benchmark.PRODUCTION_W64_POLICY)
+    identity = {"path": str(tmp_path / "prod.npz"),
+                "sha256": benchmark.PRODUCTION_W64_SHA256}
+    monkeypatch.setattr(benchmark, "_checkpoint_identity", lambda _: identity)
+    monkeypatch.setenv("SHENGJI_PV_WORLDS", "256")
+    monkeypatch.setenv("SHENGJI_PV_BURY_CANDIDATES", "1")
+    calls = []
+    def register(path, **recipe):
+        calls.append((path, recipe))
+        return [benchmark.PRODUCTION_W64_POLICY]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not use old registration or construct a provider")
+    config.update(pv_register_fn=register, register_fn=forbidden,
+                  transport_factory=forbidden)
+    result = benchmark.run_benchmark(**config)
+    assert result["planned_arms"] == ["sol-actor-only", "sol-perfect"]
+    assert result["planned_mirrors"] == 8
+    recipe = result["config"]["baseline_recipe"]
+    assert recipe["release"] == 30
+    assert recipe["sha256"] == identity["sha256"]
+    assert (recipe["worlds"], recipe["candidates"], recipe["cap"],
+            recipe["batch_size"]) == (64, 8, 4000, 128)
+    assert recipe["serving_budget_seconds"] == 3.0
+    assert recipe["bury_serving_budget_seconds"] == 2.0
+    assert recipe["bury_arm"] == "hybrid"
+    assert recipe["bury_config"] == vars(CWVBuryConfig())
+    assert len(calls) == 1 and calls[0][0] == identity["path"]
+    assert benchmark.MODEL_NAMES["sol"] == "gpt-5.6-sol"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("sha,suffix", [("0" * 64, ".npz"),
+                                        (benchmark.PRODUCTION_W64_SHA256, ".pt")])
+def test_production_w64_rejects_wrong_package_before_registration(sha, suffix):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid package must not register")
+    with pytest.raises(benchmark.BenchmarkRefusal, match="pinned release-30"):
+        benchmark._registered_production_w64(
+            {"path": "model" + suffix, "sha256": sha}, register=forbidden)
+
+
+def test_production_w64_refuses_recipe_name_drift():
+    with pytest.raises(benchmark.BenchmarkRefusal, match="differs from release 30"):
+        benchmark._registered_production_w64(
+            {"path": "prod.npz", "sha256": benchmark.PRODUCTION_W64_SHA256},
+            register=lambda *a, **k: ["different-policy"])
+
+
+def test_production_recipe_matches_real_registry_identity(monkeypatch):
+    from shengji.ai import cwv_policy
+    from shengji.train.pv_search_policy import pv_registry_entries
+    # Exercise real recipe/name construction without loading or playing a model.
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda _: "ccade130")
+    name, recipe = benchmark._registered_production_w64(
+        {"path": "prod.npz", "sha256": benchmark.PRODUCTION_W64_SHA256},
+        register=lambda *a, **kw: sorted(pv_registry_entries(*a, **kw)))
+    assert name == benchmark.PRODUCTION_W64_POLICY
+    assert recipe["registered_names"] == [name]
+
+
 @pytest.mark.parametrize("limit", [None, 0, -1, True, 1.5])
 def test_run_requires_positive_integer_token_ceiling_before_any_work(tmp_path, monkeypatch, limit):
     output, config = wiring(tmp_path, run=True, token_limit=limit)

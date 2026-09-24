@@ -349,8 +349,17 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     # out of the Torch training module without changing model inputs. Keep
     # actual new source hashes in new checkpoints; accept a legacy full
     # identity only while the extracted computation is still identical.
-    from .cwv_encoder_compat import history_import_move_identity
+    from .cwv_encoder_compat import (history_import_move_identity,
+                                     round_notice_identity)
     legacy = history_import_move_identity(current, AFTERSTATE_SOURCE_PATHS)
+    if legacy is not None and legacy in declared:
+        return legacy
+    # A second named migration: engine/round.py gained UI-only state the encoder
+    # never reads (#621), which moved this identity and made a tree at main refuse
+    # the package production serves (#634).  Accepted for ONE named source pair,
+    # proven tensor-identical by a differential test; every other drift still
+    # refuses here, including a further change to round.py itself.
+    legacy = round_notice_identity(current)
     if legacy is not None and legacy in declared:
         return legacy
     drifted = sorted(

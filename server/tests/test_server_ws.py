@@ -1190,3 +1190,104 @@ def test_reattaching_clears_a_stale_writer_error(client):
                          "name": "jerry", "token": tok})
             _drain(b, "room")
             assert seat.writer_error is None, "stale error survived a reattach"
+
+
+# ------------------------------- writer exit reason (#628 follow-up)
+def test_cancellation_is_recorded_but_not_an_error(client):
+    """The whole point of the follow-up: cancellation must be DISTINGUISHABLE
+    from 'never exited', while still not being reported as an error."""
+    from shengji.api import server as srv
+    import time as _t
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+        assert seat.writer_exit is None, "a live writer must read as None"
+
+        seat.writer.cancel()
+        _t.sleep(0.25)
+        assert seat.writer_exit == "cancelled", seat.writer_exit
+        assert seat.writer_error is None, \
+            "cancellation must not be recorded as an error"
+
+
+def test_cancellation_still_propagates(client):
+    """Recording must not swallow CancelledError: the task must still end up
+    cancelled, or every caller awaiting it hangs."""
+    from shengji.api import server as srv
+    import time as _t
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+        task = seat.writer
+        task.cancel()
+        _t.sleep(0.25)
+        assert task.cancelled(), \
+            "CancelledError was swallowed; the task did not end up cancelled"
+
+
+def test_an_exception_exit_is_distinguishable_from_cancellation(client):
+    from shengji.api import server as srv
+
+    calls = {"n": 0}
+    real = srv._writer
+
+    async def flaky(ws, queue, seat=None):
+        class OneShot:
+            async def send_json(self, payload):
+                calls["n"] += 1
+                if calls["n"] == 2:
+                    raise RuntimeError("transient send failure")
+                return await ws.send_json(payload)
+        return await real(OneShot(), queue, seat)
+
+    keep = srv._writer
+    srv._writer = flaky
+    try:
+        with client.websocket_connect("/ws") as a:
+            a.send_json({"type": "create_room", "name": "jerry"})
+            _drain(a, "resume", tries=2, timeout=1.0)
+            seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+            with pytest.raises(AssertionError):
+                _drain(a, "room", tries=2, timeout=1.0)
+            assert seat.writer_exit == "error", seat.writer_exit
+            assert "transient send failure" in (seat.writer_error or "")
+    finally:
+        srv._writer = keep
+
+
+def test_none_now_means_still_running(client):
+    """The property that makes the instrument two-sided: with a healthy
+    socket, BOTH fields stay None, so None is evidence rather than ambiguity."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+            _drain(a, "room")
+        assert seat.writer_exit is None
+        assert seat.writer_error is None
+        assert not seat.writer.done(), "writer still running"
+
+
+def test_reattach_clears_the_exit_reason(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        tok = _drain(a, "resume")["token"]
+        code = list(srv.rooms)[0]
+        seat = srv.rooms[code].seats[0]
+        _drain(a, "room")
+        seat.writer_exit = "cancelled"
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "jerry", "token": tok})
+            _drain(b, "room")
+            assert seat.writer_exit is None, "stale exit reason survived reattach"

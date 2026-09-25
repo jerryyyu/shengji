@@ -225,6 +225,24 @@
    "lo": -0.0242,
    "hi": 0.0475,
    "note": "Lane DONE 12:07 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35b-gen5armB-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive at this dose: arm B has NOT demonstrated a gain over release 30, and equivalence is NOT established (MDE80 +0.0512). Windows +0.0125, -0.0048, +0.0298, -0.0077, +0.0269; tau 0, Q 0.73/4df, I2 0%, RE SE 0.01829; ties 50.1% candidate vs 49.8% control. WHAT IT DOES SAY, read against v35a: arm A and arm B differ in EXACTLY ONE THING, whether the MC-LCB family is in the corpus, and arm A read -0.0606 [-0.0962, -0.0250], resolved and negative, while arm B does not. The two intervals do not overlap. Restoring MC-LCB removed arm A's loss. This is a COMMON-OPPONENT, SUMMARY-LEVEL comparison of two separate screens on DIFFERENT seed windows, not a duel between the arms, so it does not isolate the pair; the one-variable training design is what carries the inference, not the screen."
+  },
+  {
+   "id": "v35c",
+   "date": "2026-09-25",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "gen-5 arm C head (the production head retrained on EVERY corpus we own -- shortlist + all ten PV stores + MC-LCB, 30 corpora / 496,000 deals; 1fb1a381) served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "27460910..27860910",
+   "confidence": 0.95,
+   "point": -0.0031,
+   "lo": -0.0385,
+   "hi": 0.0322,
+   "note": "Lane DONE 11:26 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35c-gen5armC-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive, and the point is very slightly NEGATIVE. Windows +0.0356, +0.0154, -0.0269, -0.0173, -0.0250; tau 0, Q 1.96/4df, I2 0%, RE SE 0.01803, MDE80 +0.0505; ties 50.2% candidate vs 50.7% control; latency p50/p95 0.10/0.16 both arms, candidate max 1.16 s against the control's 0.79 s. WHAT THIS CLOSES: arm C trains on EVERY deal we own -- 64,000 more deals and 6.9M more rows than arm B -- and buys NOTHING served. Gen 5's three served reads are now -0.0606 (arm A, resolved negative), +0.0116 (arm B, crosses zero) and -0.0031 (arm C, crosses zero). The offline holdouts said the same thing first: arm C was MIXED against arm B, not better. MORE DATA OF THE SAME KIND IS NOT THE LEVER. A matched-window common-opponent contrast, not a direct duel."
   }
  ],
  "context_screens": [
@@ -332,7 +350,7 @@
    "recipe": "EVERY DEAL WE OWN: the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + ALL TEN PV STORES + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, soft targets T=1.0 w=1.0, same trunk and objective as arms A and B. Jerry 09-24 asked for MC-LCB to be included, so this is the biggest-corpus model rather than the matched-size diagnostic that would have separated volume from composition",
    "val_ce": 0.6202,
    "regret": null,
-   "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * NOT SCREENED: Perf is the only screen box and is contended with the exploitability run, so no served read exists and no strength claim is made. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654"
+   "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * SCREENED (lane v35c, 11:26 ET 09-25): -0.0031 [-0.0385, +0.0322] vs release 30 as served, CROSSES ZERO and very slightly negative -- every deal we own bought nothing served. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654"
   }
  ],
  "data": [

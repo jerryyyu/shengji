@@ -38,8 +38,8 @@
   },
   {
    "release": 30,
-   "status": "production",
-   "since": "2026-09-22 09:13 ET",
+   "status": "superseded",
+   "since": "2026-09-22 09:13 ET \u2192 2026-09-25 12:51 ET",
    "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
    "head": "8ecd4fea",
    "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
@@ -64,6 +64,44 @@
     "image deployment-01M34KWRW4XWJWC6DCCYENFXTF (sha256:ea40b4d44b3f\u2026), main 4e006561 (#607); fly.toml unchanged; rollback = the release-29 image",
     "strength evidence is release 29's: the fix changes only the ~6% of banker burys that used to fall back to the heuristic (diagnostic-set rate); no new screen yet",
     "Jerry 09-22 09:3x ET: every screen from here compares against release 30"
+   ]
+  },
+  {
+   "release": 31,
+   "status": "production",
+   "since": "2026-09-25 12:51 ET",
+   "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
+   "head": "8ecd4fea",
+   "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
+   "recipe": "release 30 with NO model, package or serving change: #638 adds an optional start_level to create_room, so the room's creator picks the rank both teams begin at. The victory condition is untouched, so a higher level is simply a shorter game.",
+   "evidence": [
+    {
+     "what": "serving smoke on the MERGED tree against the volume packages (SHA-verified ccade130\u2026 and 0d17fd03\u2026), 40 server turns through _paced_bot_step/_commit_bot_turn (bury 0.122 s, plays 0.025\u20130.078 s), receipt passed: true",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "smoke-release31.json"
+    },
+    {
+     "what": "/healthz after deploy: bot name, prior SHA and every pv_search field UNCHANGED from release 30, rooms 0",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "12:51 ET"
+    },
+    {
+     "what": "live acceptance without starting a game (so no round_start enters the human corpus): level 10 echoed \"10\", ordinary create echoed \"2\", level \"1\" refused with bad_start_level",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "12:52 ET"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M3CQK3KMH55NDZRED6PDJ6XW (sha256:cfef8361237b\u2026), main 8a6e55f1 (#638); fly.toml unchanged; rollback = the release-30 image, a pure CODE rollback since every SHENGJI_* key matches",
+    "NO strength claim and no new screen: the served policy is byte-identical to releases 29 and 30, so release 30's evidence carries over unaltered rather than being restated here",
+    "'every screen compares against release 30' is unchanged as a rule \u2014 the comparator is the same served bot",
+    "the load-bearing fix was not the option: Game.start_round fell back to RANKS[0] for round 1 (no banker yet), so setting team levels alone would have DEALT round 1 at rank 2 while the HUD and round_start log advertised the chosen level; the fallback now follows level_idx and is bit-identical at the default"
    ]
   }
  ],

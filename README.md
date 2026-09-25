@@ -7,7 +7,11 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + a learned-model-guided Monte Carlo AI + FastAPI
 multiplayer server + React web UI with Mandarin voice announcements.
 
-## The production bot — release 30 (2026-09-22; release 29's recipe with the hybrid-bury fix #607)
+## The production bot — release 31 (2026-09-25; the SAME bot as releases 29/30)
+
+Release 31 (#638) changed no model, package or serving configuration — it added the create-room
+starting level. The bot below has been unchanged since release 29; release 30 was the hybrid-bury
+fix (#607).
 
 ![Release 29: one soft-head package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
 

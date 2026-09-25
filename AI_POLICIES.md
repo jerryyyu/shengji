@@ -18,7 +18,9 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 30 (2026-09-22 09:13 ET; release 29's recipe, same package and served
+The current live Fly snapshot is release 31 (2026-09-25 12:51 ET). Release 31 changed NO model, package or
+serving configuration — it added the create-room starting level (#638) — so every strength statement below is
+release 30's and carries over unchanged. Release 30 (2026-09-22 09:13 ET) was release 29's recipe, same package and served
 name, with the hybrid-bury fix #607 — the bury keeps the heuristic incumbent once instead of refusing the
 decision, which had silently fallen back to the heuristic on ~6% of banker burys on the diagnostic capture set — 24 of
 400 deals; the production-traffic rate is unmeasured): **the policy/value search with the

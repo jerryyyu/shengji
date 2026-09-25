@@ -536,6 +536,45 @@ def enqueue(seat: Seat, payload: dict) -> None:
             pass
 
 
+def _record_writer_exit(seat: "Seat", task: asyncio.Task) -> None:
+    """Terminal, AUTHORITATIVE record of how a writer task ended.
+
+    The in-body handlers cannot cover every case: a task cancelled before its
+    coroutine takes its first step never runs the body at all, so it ends
+    done() and cancelled() while the handler has recorded nothing (Codex, P2
+    on #641). This callback fires for every completed task regardless, and
+    reads the outcome from the TASK ITSELF rather than from whether some
+    except clause happened to execute.
+
+    Ownership-guarded for the same reason `_still_owns` is: a displaced
+    writer must not stamp the seat the new socket already claimed.
+    """
+    if seat.writer is not task:
+        return
+    if seat.writer_exit is not None:
+        return                      # the body already recorded it, with detail
+    if task.cancelled():
+        seat.writer_exit = "cancelled"
+        return
+    error = task.exception()
+    if error is not None:           # body re-raised, or failed before its try
+        seat.writer_exit = "error"
+        seat.writer_error = f"{type(error).__name__}: {error}"
+        logging.warning("websocket writer failed for seat %r: %s",
+                        seat.name, seat.writer_error)
+    else:
+        seat.writer_exit = "returned"
+
+
+def _start_writer(seat: "Seat", ws: WebSocket) -> asyncio.Task:
+    """Spawn a seat's writer and attach its terminal record in ONE place, so
+    no spawn path can exist without the diagnostic."""
+    task = asyncio.create_task(_writer(ws, seat.queue, seat))
+    seat.writer = task
+    task.add_done_callback(lambda finished, s=seat: _record_writer_exit(s, finished))
+    return task
+
+
 def _still_owns(seat: "Seat | None") -> bool:
     """Is the calling writer still this seat's CURRENT writer?
 
@@ -1628,7 +1667,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer_error = None      # fresh socket, fresh writer
     seat.writer_exit = None
-    seat.writer = asyncio.create_task(_writer(ws, seat.queue, seat))
+    _start_writer(seat, ws)
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
     enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state
     return seat.gen

@@ -1084,3 +1084,109 @@ def test_web_and_engine_rank_lists_agree():
     assert match, "RANKS literal not found in protocol.ts"
     web_ranks = json.loads("[" + match.group(1).replace("\n", " ") + "]")
     assert web_ranks == RANKS, f"web {web_ranks} != engine {RANKS}"
+
+
+# ------------------------------------------- writer observability (#628)
+def test_a_dead_writer_leaves_every_other_signal_saying_healthy(client):
+    """The #628 signature, reproduced: kill ONLY the writer and the reader sees
+    exactly `saw []` while the seat still reports connected and the queue grows.
+
+    This is what makes the failure mode so hard to see, and it is the reason
+    the writer must not exit silently."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        code = list(srv.rooms)[0]
+        seat = srv.rooms[code].seats[0]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+            _drain(a, "room")
+
+        seat.writer.cancel()                 # nothing else changes
+        assert seat.connected, "seat still reports connected"
+
+        a.send_json({"type": "start_game"})
+        with pytest.raises(AssertionError) as caught:
+            _drain(a, "state", tries=2, timeout=1.0)
+        assert "saw []" in str(caught.value), str(caught.value)
+        assert seat.queue.qsize() > 0, "frames were produced but never written"
+
+
+def test_one_send_failure_is_recorded_and_logged_not_swallowed(client, caplog):
+    """A single raise from send_json ends the writer. That is unchanged. What
+    must NOT happen is it ending with no trace at all."""
+    import logging as _logging
+    from shengji.api import server as srv
+
+    calls = {"n": 0}
+    real_writer_body = srv._writer
+
+    async def flaky(ws, queue, seat=None):
+        class OneShotFlaky:
+            async def send_json(self, payload):
+                calls["n"] += 1
+                if calls["n"] == 2:
+                    raise RuntimeError("transient send failure")
+                return await ws.send_json(payload)
+        return await real_writer_body(OneShotFlaky(), queue, seat)
+
+    monkeypatched = srv._writer
+    srv._writer = flaky
+    try:
+        with caplog.at_level(_logging.WARNING):
+            with client.websocket_connect("/ws") as a:
+                a.send_json({"type": "create_room", "name": "jerry"})
+                _drain(a, "resume", tries=2, timeout=1.0)
+                code = list(srv.rooms)[0]
+                seat = srv.rooms[code].seats[0]
+                with pytest.raises(AssertionError):
+                    _drain(a, "room", tries=2, timeout=1.0)
+
+                assert seat.writer.done(), "writer exited (unchanged behaviour)"
+                assert seat.connected, "seat still reports connected"
+                # The point of the change:
+                assert seat.writer_error is not None, \
+                    "writer died with NO record -- this is the #628 blind spot"
+                assert "transient send failure" in seat.writer_error
+                assert any("websocket writer stopped" in r.message
+                           for r in caplog.records), \
+                    "writer death was not logged"
+    finally:
+        srv._writer = monkeypatched
+
+
+def test_ordinary_cancellation_is_not_recorded_as_an_error(client):
+    """Displacement and detach cancel the writer as a matter of course. That is
+    not an error and must not be reported as one, or the new signal is noise."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        code = list(srv.rooms)[0]
+        seat = srv.rooms[code].seats[0]
+        seat.writer.cancel()
+        import time as _t
+        _t.sleep(0.2)
+        assert seat.writer_error is None, \
+            f"cancellation recorded as an error: {seat.writer_error!r}"
+
+
+def test_reattaching_clears_a_stale_writer_error(client):
+    """A previous socket's failure must not haunt the next one."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        tok = _drain(a, "resume")["token"]
+        code = list(srv.rooms)[0]
+        seat = srv.rooms[code].seats[0]
+        _drain(a, "room")
+        seat.writer_error = "stale: from an earlier socket"
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "jerry", "token": tok})
+            _drain(b, "room")
+            assert seat.writer_error is None, "stale error survived a reattach"

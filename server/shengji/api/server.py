@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import random
 import string
 import time
@@ -112,6 +113,10 @@ class Seat:
     connected: bool = False
     queue: asyncio.Queue | None = None   # outbound messages; writer task drains
     writer: asyncio.Task | None = None
+    # Why this seat's writer stopped, if it stopped on an exception. A dead
+    # writer is otherwise INVISIBLE: the seat stays connected, enqueue keeps
+    # accepting, and the client simply never receives another frame (#628).
+    writer_error: str | None = None
     last_seen: float = 0.0               # loop time of last disconnect
     # Connection GENERATION. A dropped socket's `finally` can run long after a
     # newer socket has resumed the seat; without this the old cleanup detaches
@@ -525,12 +530,34 @@ def enqueue(seat: Seat, payload: dict) -> None:
             pass
 
 
-async def _writer(ws: WebSocket, queue: asyncio.Queue) -> None:
+async def _writer(ws: WebSocket, queue: asyncio.Queue,
+                  seat: "Seat | None" = None) -> None:
+    """Drain one seat's outbound queue to its socket.
+
+    The writer still EXITS on an exception -- that behaviour is unchanged, and
+    restarting it is a separate question. What changes is that it no longer
+    exits silently. A swallowed exception here mutes the seat permanently while
+    every other signal still says healthy: `connected` stays True, `enqueue`
+    keeps accepting, and the queue just grows. That left #628 unfalsifiable
+    from a log, because the one failure mode that explains the symptom is also
+    the one that leaves no trace.
+
+    CancelledError is deliberately NOT caught: it is a BaseException, so an
+    ordinary displacement or detach still unwinds silently and is not an error.
+    """
     try:
         while True:
             await ws.send_json(await queue.get())
-    except Exception:
-        pass
+    except Exception as error:
+        detail = f"{type(error).__name__}: {error}"
+        if seat is not None:
+            seat.writer_error = detail
+        logging.warning(
+            "websocket writer stopped for seat %r after %d queued frames: %s",
+            getattr(seat, "name", None),
+            queue.qsize(),
+            detail,
+        )
 
 
 async def broadcast(room: Room) -> None:
@@ -1565,7 +1592,8 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.ws, seat.connected = ws, True
     seat.left_at = None
     seat.queue = asyncio.Queue(maxsize=128)
-    seat.writer = asyncio.create_task(_writer(ws, seat.queue))
+    seat.writer_error = None      # fresh socket, fresh writer
+    seat.writer = asyncio.create_task(_writer(ws, seat.queue, seat))
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
     enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state
     return seat.gen

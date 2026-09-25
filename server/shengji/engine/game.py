@@ -24,9 +24,15 @@ class RoundResult:
 
 
 class Game:
-    def __init__(self, rng: random.Random | None = None):
+    def __init__(self, rng: random.Random | None = None,
+                 start_level: str = RANKS[0]):
         self.rng = rng or random.Random()
-        self.level_idx = [0, 0]  # per team (seats 0+2 = team 0, 1+3 = team 1)
+        if start_level not in RANKS:
+            raise ValueError(f"unknown start level: {start_level!r}")
+        start = RANKS.index(start_level)
+        # Both teams start level, so the choice shortens the game without
+        # handing either side a head start.
+        self.level_idx = [start, start]  # per team (seats 0+2 = team 0, 1+3 = team 1)
         self.banker: int | None = None
         self.round: Round | None = None
         self.round_no = 0
@@ -39,7 +45,10 @@ class Game:
 
     def start_round(self) -> Round:
         assert not self.game_over
-        trump_rank = RANKS[self.level_idx[self.banker % 2]] if self.banker is not None else RANKS[0]
+        # Round 1 has no banker yet. The fallback must follow the configured
+        # start level, not RANKS[0] -- otherwise a room created at level 8
+        # would be DEALT at trump rank 2 while the HUD showed "Lv 8".
+        trump_rank = RANKS[self.level_idx[self.banker % 2 if self.banker is not None else 0]]
         self.round = Round(trump_rank, self.banker, self.rng)
         self.round_no += 1
         self.result = None

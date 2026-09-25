@@ -15,7 +15,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 
 | type | fields | when |
 |------|--------|------|
-| `create_room` | `name` (player display name) | anytime before joining |
+| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
 | `join_room` | `room` (4-letter code), `name`, optional `seat` | lobby, OR mid-game to claim a bot's seat |
 | `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
 | `chat` | `text` (<=300 chars) | after joining |
@@ -43,10 +43,19 @@ between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
-lobby instead of retrying).
+lobby instead of retrying), and `"bad_start_level"` (`create_room` carried a
+`start_level` that is not a known rank). An unknown `start_level` is REFUSED,
+never coerced to `"2"`: silently downgrading it would hand the player a game
+their own lobby misdescribes. No room is created, and the socket stays usable.
 
-### `{type: "room", room: string, you: number, host: number, players: RoomPlayer[]}`
+### `{type: "room", room: string, you: number, host: number, start_level: string, players: RoomPlayer[]}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
+
+`start_level` is the rank BOTH teams begin at, fixed when the room was created
+and echoed to everyone so a joiner knows what game they are taking a seat in.
+The victory condition is unchanged — a team still wins by successfully
+DEFENDING at `A` — so a higher start level is simply a shorter game. Starting
+at `"A"` is legal and means the first successful defence ends it.
 
 ### Trick plays carry a `shape`
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RoomMsg } from "../protocol";
 import { conn } from "../ws";
+import { DEFAULT_START_LEVEL } from "../testPolicy";
 import MuteButton from "./MuteButton";
 
 export default function Room({ room }: { room: RoomMsg }) {
@@ -30,6 +31,13 @@ export default function Room({ room }: { room: RoomMsg }) {
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>
         </button>
+        {room.start_level !== DEFAULT_START_LEVEL ? (
+          // Joiners pick a seat before the first deal; the level the creator
+          // chose changes what game they are agreeing to play.
+          <span className="chip start-level-marker">
+            Starts at {room.start_level}
+          </span>
+        ) : null}
         {room.experimental_policy === "w32" ? (
           <span className="chip experimental-marker">Experimental W32</span>
         ) : null}

@@ -9,12 +9,21 @@ export interface HandCard {
 
 export type Phase = "deal" | "declare" | "bury" | "play" | "round_end" | "game_over";
 
+/** Ranks a game is played at, low to high. A team climbs through these, so the
+ *  same list is the set of levels a room can be started at.
+ *  Mirrors RANKS in server/shengji/engine/cards.py -- keep in sync. */
+export const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10",
+                      "J", "Q", "K", "A"] as const;
+export type Rank = (typeof RANKS)[number];
+
 // ---------- Client -> Server ----------
 
 export type ClientMsg =
   | {
       type: "create_room";
       name: string;
+      /** Rank both teams start at. Omit for the standard game (2). */
+      start_level?: Rank;
       /** Experimental W32 is available only through the guarded lobby UI. */
       test_policy?: "w32";
       test_access_key?: string;
@@ -55,6 +64,8 @@ export interface RoomMsg {
   you: number;
   host: number;
   players: RoomPlayer[];
+  /** Rank both teams start at, fixed when the room was created. */
+  start_level: Rank;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
 }
@@ -200,6 +211,7 @@ export type ErrorCode =
   | "seat_unavailable"
   | "seat_reserved"
   | "test_room_unavailable"
+  | "bad_start_level"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

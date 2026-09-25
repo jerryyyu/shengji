@@ -5,7 +5,7 @@ import pytest
 import shengji.ai.env as ai_env
 from shengji.ai.env import FullGameCutoff, evaluate, play_game, play_round
 from shengji.ai.heuristic import HeuristicBot
-from shengji.engine.cards import total_points
+from shengji.engine.cards import RANKS, total_points
 from shengji.engine.game import Game
 
 
@@ -176,3 +176,60 @@ def test_mirrored_evaluation_returns_no_partial_score_on_cutoff(monkeypatch):
                  mirrored=True, max_rounds=3)
 
     assert calls == [(91, 3), (91, 3)]
+
+
+# ------------------------------------------------ configurable start level
+def test_default_game_still_starts_at_two():
+    """The no-argument constructor must be bit-identical to the old one."""
+    g = Game()
+    assert g.level_idx == [0, 0]
+    assert g.levels == ("2", "2")
+
+
+def test_start_level_sets_both_teams():
+    """Both teams start level: the choice shortens the game, it does not
+    hand either side a head start."""
+    g = Game(start_level="8")
+    assert g.levels == ("8", "8")
+    assert g.level_idx[0] == g.level_idx[1]
+
+
+def test_first_round_is_dealt_at_the_chosen_level():
+    """Round 1 has no banker, so start_round used to fall back to RANKS[0].
+    That dealt trump rank 2 while `levels` advertised the chosen level."""
+    g = Game(start_level="J")
+    g.banker = None
+    rnd = g.start_round()
+    assert rnd.trump_rank == "J", (
+        "round 1 dealt at %r but the game says %r" % (rnd.trump_rank, g.levels[0]))
+
+
+def test_first_round_with_a_banker_also_uses_the_chosen_level():
+    g = Game(start_level="9")
+    g.banker = 1
+    assert g.start_round().trump_rank == "9"
+
+
+def test_every_rank_is_a_legal_start_level():
+    for r in RANKS:
+        assert Game(start_level=r).levels == (r, r)
+
+
+def test_unknown_start_level_is_refused():
+    for bad in ["1", "14", "a", "", "Joker", 8, None]:
+        with pytest.raises(ValueError):
+            Game(start_level=bad)
+
+
+def test_a_game_started_at_ace_can_be_won_in_one_defence():
+    """Starting at A is legal and means the first successful defence ends it.
+    Guards the A_INDEX clamp against an off-by-one at the boundary."""
+    g = Game(start_level="A")
+    g.banker = 0
+    rnd = g.start_round()
+    rnd.phase = "round_end"
+    rnd.banker = 0
+    rnd.attacker_points = 0          # defenders hold
+    result = g.finish_round()
+    assert result.winner_team == 0
+    assert result.game_over and g.game_over

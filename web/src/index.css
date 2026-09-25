@@ -356,6 +356,7 @@ button {
 }
 
 .field input,
+.field select,
 .room-input {
   background: #10131a;
   border: 1px solid var(--panel-edge);
@@ -367,8 +368,34 @@ button {
 }
 
 .field input:focus,
+.field select:focus,
 .room-input:focus {
   border-color: var(--team0);
+}
+
+.field select {
+  /* Native chrome ignores the dark panel; draw our own caret instead. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+                    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+/* Some platforms render the popup with system colors unless told otherwise. */
+.field select option {
+  background: #10131a;
+  color: var(--text);
+}
+
+.field-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
 }
 
 .divider {
@@ -1621,8 +1648,13 @@ button {
   }
 
   .field input,
+  .field select,
   .room-input {
     padding: 8px 12px;
+  }
+
+  .field select {
+    padding-right: 30px;
   }
 
   .btn.big {

@@ -20,6 +20,7 @@ import secrets
 
 from ..ai.heuristic import HeuristicBot
 from ..ai.registry import make_bot
+from ..engine.cards import RANKS
 from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
@@ -133,6 +134,9 @@ class Room:
     seats: list[Seat] = field(default_factory=list)
     host: int = 0
     game: Game | None = None
+    # Rank both teams start at. Chosen by the creator; applied when the game
+    # starts, so it is visible in the lobby before anyone commits to a seat.
+    start_level: str = RANKS[0]
     ready: set[int] = field(default_factory=set)  # seats confirming round end
     chat_seq: int = 0            # monotonic per-room chat id
     chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
@@ -457,6 +461,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
 def room_json(room: Room, seat: int) -> dict:
     return {
         "type": "room", "room": room.code, "you": seat, "host": room.host,
+        "start_level": room.start_level,
         **({"experimental_policy": room.experimental_policy}
            if room.experimental_policy else {}),
         "ready": sorted(room.ready),
@@ -1179,7 +1184,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if room.game:
             raise IllegalPlay("Game already started.")
         validate_human_evaluation_start(room)
-        room.game = Game()
+        room.game = Game(start_level=room.start_level)
         room.game.start_round()
         room.index_round()
         _log_round_start(room)
@@ -1258,7 +1263,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         await send(ws, {"type": "error", "code": "test_room_unavailable",
                                         "message": str(error)})
                         continue
-                    room = Room(code=new_code(), **options)
+                    # Absent means "the standard game"; PRESENT AND WRONG is
+                    # refused rather than coerced, so a client sending a level
+                    # this server does not know cannot silently get a game at
+                    # rank 2 while its own UI claims otherwise.
+                    start_level = msg.get("start_level")
+                    if start_level is None:
+                        start_level = RANKS[0]
+                    elif start_level not in RANKS:
+                        await send(ws, {"type": "error", "code": "bad_start_level",
+                                        "message": "Unknown starting level."})
+                        continue
+                    room = Room(code=new_code(), start_level=start_level, **options)
                     rooms[room.code] = room
                     # Through _attach like every other path: hand-rolling the
                     # queue/writer here skipped the generation bump AND the

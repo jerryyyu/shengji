@@ -1,8 +1,9 @@
-import type { RoomSeats, ServerMsg } from "../protocol";
+import type { Rank, RoomSeats, ServerMsg } from "../protocol";
+import { RANKS } from "../protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
-import { createRoomPayload } from "../testPolicy";
+import { DEFAULT_START_LEVEL, createRoomPayload } from "../testPolicy";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -25,6 +26,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     () => new URLSearchParams(window.location.search).get("test_shortlist") === "1",
   );
   const [w32Selected, setW32Selected] = useState(false);
+  const [startLevel, setStartLevel] = useState<Rank>(DEFAULT_START_LEVEL);
   const [testAccessKey, setTestAccessKey] = useState("");
   const [roomCode, setRoomCode] = useState(
     () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
@@ -91,7 +93,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const create = () => {
     if (!ready || !testReady) return;
     const trimmed = name.trim();
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey,
+                                      startLevel);
     if (!payload) return;
     saveName(trimmed);
     clearInvite();
@@ -102,7 +105,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const playBots = () => {
     if (status !== "open" || !testReady) return;
     const trimmed = name.trim() || "Player";
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey,
+                                      startLevel);
     if (!payload) return;
     saveName(trimmed);
     clearSavedRoom();
@@ -210,6 +214,24 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             placeholder="e.g. Jerry"
             onChange={(e) => setName(e.target.value)}
           />
+        </label>
+
+        <label className="field">
+          <span className="field-label">Starting level</span>
+          <select
+            value={startLevel}
+            onChange={(e) => setStartLevel(e.target.value as Rank)}
+          >
+            {RANKS.map((r) => (
+              <option key={r} value={r}>
+                {r === DEFAULT_START_LEVEL ? `${r} (full game)` : r}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">
+            Both teams start here and still race to Ace — a higher level makes
+            a shorter game. Only the room's creator sets this.
+          </span>
         </label>
 
         {testControlsVisible ? (

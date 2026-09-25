@@ -1002,3 +1002,85 @@ def test_play_shape_distinguishes_tractor_from_two_pair_throw():
     assert play_shape(["S5", "S5", "H9", "H9"], o) == "throw"
     # Three consecutive pairs remain a tractor.
     assert play_shape(["S5", "S5", "S6", "S6", "S7", "S7"], o) == "tractor"
+
+
+# ------------------------------------------- starting level (create_room)
+def test_room_defaults_to_level_two(client):
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        m = _drain(a, "room")
+        assert m["start_level"] == "2"
+
+
+def test_create_room_honours_the_chosen_start_level(client):
+    """End to end: the picked level must reach the DEALT round, not just the
+    room record."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry", "start_level": "10"})
+        m = _drain(a, "room")
+        assert m["start_level"] == "10"
+        code = m["room"]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+            _drain(a, "room")
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        game = srv.rooms[code].game
+        assert game is not None
+        assert game.levels == ("10", "10")
+        assert game.round is not None
+        assert game.round.trump_rank == "10", "dealt at a different rank"
+
+
+def test_unknown_start_level_is_refused_and_creates_no_room(client):
+    """Coercing to 2 would hand the player a game their own UI misdescribes."""
+    from shengji.api import server as srv
+
+    before = set(srv.rooms)
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry", "start_level": "1"})
+        m = _drain(a, "error")
+        assert m["code"] == "bad_start_level"
+    assert set(srv.rooms) == before, "a refused create still left a room behind"
+
+
+def test_refused_start_level_leaves_the_socket_usable(client):
+    """The handler `continue`s; the same connection must still be able to
+    create a room afterwards."""
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry", "start_level": "Z"})
+        assert _drain(a, "error")["code"] == "bad_start_level"
+        a.send_json({"type": "create_room", "name": "jerry"})
+        assert _drain(a, "room")["start_level"] == "2"
+
+
+@pytest.mark.parametrize("bad", [1, 8, None, ["8"], {"r": "8"}, True])
+def test_non_string_start_levels_are_refused(client, bad):
+    """`None` is the one value that means "unspecified" -- everything else
+    that is not a known rank is an error, including a bare int 8."""
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry", "start_level": bad})
+        m = _drain(a, "room" if bad is None else "error")
+        if bad is None:
+            assert m["start_level"] == "2"
+        else:
+            assert m["code"] == "bad_start_level"
+
+
+def test_web_and_engine_rank_lists_agree():
+    """protocol.ts hand-mirrors RANKS. Drift would let the lobby offer a level
+    the server refuses (or hide one it accepts)."""
+    import json
+    import pathlib
+    import re
+
+    from shengji.engine.cards import RANKS
+
+    src = (pathlib.Path(__file__).resolve().parents[2]
+           / "web" / "src" / "protocol.ts").read_text()
+    match = re.search(r"export const RANKS = \[(.*?)\] as const;", src, re.S)
+    assert match, "RANKS literal not found in protocol.ts"
+    web_ranks = json.loads("[" + match.group(1).replace("\n", " ") + "]")
+    assert web_ranks == RANKS, f"web {web_ranks} != engine {RANKS}"

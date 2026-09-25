@@ -324,6 +324,15 @@
    "val_ce": 0.6124,
    "regret": null,
    "status": "sealed 09:47 ET 09-24, early stop at 16 of 20 epochs, best epoch 13, wall 14.7 h * val_ce is NOT comparable to arm A's or to gen 4: validation splits are drawn from the TRAINING corpora and the corpora differ. Comparable surfaces are the four fixed holdouts and the served screen. Holdouts vs arm A: roomlog regret 0.0686 (A 0.0726), luna 0.0781 (0.0858), highn 0.1041 (0.1063), pt1 0.0409 (0.0312); rank top-1 higher on all four. Served vs release 30 (v35b): +0.0116 [-0.0242, +0.0475], crosses zero, inconclusive"
+  },
+  {
+   "name": "gen-5 arm C",
+   "ck": "1fb1a381",
+   "date": "2026-09-24",
+   "recipe": "EVERY DEAL WE OWN: the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + ALL TEN PV STORES + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, soft targets T=1.0 w=1.0, same trunk and objective as arms A and B. Jerry 09-24 asked for MC-LCB to be included, so this is the biggest-corpus model rather than the matched-size diagnostic that would have separated volume from composition",
+   "val_ce": 0.6202,
+   "regret": null,
+   "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * NOT SCREENED: Perf is the only screen box and is contended with the exploitability run, so no served read exists and no strength claim is made. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654"
   }
  ],
  "data": [

@@ -1,4 +1,4 @@
-"""Narrow compatibility for the Torch-free public-history source move.
+"""Narrow compatibility for source moves that provably do not change tensors.
 
 This is not a general source-drift exception. New checkpoints hash the actual
 new closure. Old full-closure identities are accepted only if restoring the
@@ -71,4 +71,61 @@ def history_import_move_identity(current, paths):
         payload = "|".join(parts + [f"{name}:{sha}" for name, sha in sorted(sources.items())])
         return hashlib.sha256(payload.encode("ascii")).hexdigest()
     except (OSError, KeyError, SyntaxError, TypeError, ValueError):
+        return None
+
+
+#: ROUND REVISIONS PROVEN ENCODING-EQUIVALENT, newest tree source -> the source it
+#: replaces, as sha256 of ``engine/round.py``.  A pair earns its place here ONLY by
+#: a differential tensor test that encodes the same states under BOTH revisions and
+#: asserts the bytes are identical (tests/test_encoder_round_compat.py); it is not
+#: earned by reading the diff and judging it harmless.
+#:
+#: 02e7831e -> 2ec9c567 is the failed-throw notice (#621, 4ab306e2): +48 lines adding
+#: ``notice``, ``NOTICE_PLAYS``, ``_set_notice`` and ``_age_notice`` to ``Round``.
+#: The encoder never reads any of them, and #634 is what happened because the guard
+#: cannot tell: a tree at main refused the package production serves.
+#: Encoder versions for which the equivalence above is actually PROVEN by the
+#: differential in tests/test_encoder_round_compat.py.  v6 is deliberately
+#: absent: it cannot be widened from a v1 tensor, so that harness never encodes
+#: it, and an allowance is not extended to a version nothing demonstrated
+#: (Codex, #635).  A v6 checkpoint therefore still refuses, which is correct.
+PROVEN_VERSIONS = (1, 2, 4, 5)
+
+ROUND_EQUIVALENT_SOURCES = {
+    "2ec9c5677e80449560f69abac53db271710cf8a64b2afe7ae15949698d3a4e95":
+        "02e7831ec58c224dc1eee83cab465c9e4b3002e1f52eff03125cd84809c2432c",
+}
+
+
+def round_notice_identity(current, paths=None):
+    """The exact legacy identity when ``round.py`` is the only drifted source.
+
+    WHY THIS IS NOT A PIN.  ``cwv_data.PUBLISHED_SOURCE_SHA256`` would also fix
+    #634, in one line, by pinning ``round``'s digest forever -- and that is why it
+    is the wrong tool: it would blind the identity to EVERY future change to
+    ``round.py``, including one that really does move the tensors.  This accepts
+    one named pair and nothing else.
+
+    WHY IT CANNOT LEAK.  The legacy identity is rebuilt from the CURRENT source
+    digests with only ``round`` substituted, so if any other source has also
+    drifted the rebuilt hash simply will not equal what the checkpoint declared
+    and the caller refuses as before.  The narrowing is structural, not a check
+    somebody has to remember to write.
+    """
+    del paths                      # signature parity with the migration above
+    try:
+        version = current.get("enc_version", 1)
+        if version not in PROVEN_VERSIONS:
+            return None                # fail closed: unproven version, no allowance
+        sources = dict(current["source_sha256s"])
+        legacy = ROUND_EQUIVALENT_SOURCES.get(sources.get("round"))
+        if legacy is None:
+            return None
+        sources["round"] = legacy
+        parts = [current["identity_schema"], current["afterstate_schema"]]
+        if version != 1:
+            parts.append(f"enc_version:{version}")
+        payload = "|".join(parts + [f"{name}:{sha}" for name, sha in sorted(sources.items())])
+        return hashlib.sha256(payload.encode("ascii")).hexdigest()
+    except (AttributeError, KeyError, TypeError, ValueError):
         return None

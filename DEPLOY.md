@@ -26,7 +26,47 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 30 — release 29 + the hybrid-bury fix (#607), deployed 2026-09-22 09:13 ET
+## Current production: release 31 — the create-room starting level (#638), deployed 2026-09-25 12:51 ET
+
+Release **31**, image `registry.fly.io/shengji:deployment-01M3CQK3KMH55NDZRED6PDJ6XW` (digest
+`sha256:cfef8361237bc39f42abdee9915f9d47d84f8731709147848972c4e267a7e663`), deployed with
+`fly deploy --ha=false` from main `8a6e55f1` (#638) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-25 12:3x ET ("can you get start level reviewed in PR and then deploy?").
+
+**NO model, package or configuration change.** Same `fly.toml`, same package, same prior, same served
+name as releases 29 and 30 (`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`). Release
+30's strength evidence carries over unaltered and there is no new screen, because nothing the search
+does changed.
+
+What changed: `create_room` accepts an optional `start_level`, so the room's creator picks the rank
+BOTH teams begin at. The victory condition is untouched — a team still wins by successfully DEFENDING
+at A — so a higher start level is simply a shorter game. The lobby offers a **Starting level**
+dropdown and the room screen shows a chip when it is not the default.
+
+The load-bearing part is not the option. `Game.start_round` takes the trump rank from the banker's
+team level, but round 1 has no banker yet and fell back to `RANKS[0]`. Setting the team levels alone
+would therefore have DEALT every first round at rank 2 while the HUD, the lobby chip and the
+`round_start` log record all advertised the chosen level. The fallback now follows `level_idx` and is
+bit-identical at the default. An unrecognised `start_level` is REFUSED with a new `bad_start_level`
+error rather than coerced to 2, so a client cannot be handed a game its own UI misdescribes.
+
+Preconditions as they were met: Codex PASS on #638 at the exact head `63504087`; CI 5/5; serving smoke
+run on the MERGED tree against the real volume packages — `soft-8ecd4fea.npz` (`ccade130…`) and
+`js-m1-0d17fd03.npz` (`0d17fd03…`) both fetched from the Fly volume and SHA-verified against
+`fly.toml` — PASS with 40 server turns through `_paced_bot_step` / `_commit_bot_turn`, bury 0.122 s,
+plays 0.025–0.078 s, receipt `passed: true`. That witness was run specifically because this change
+touches `Game.start_round`, which is on the live serving path. Deploy; `/healthz` then showed the bot
+name, prior SHA and every `pv_search` field UNCHANGED from release 30, rooms 0.
+
+Live acceptance against production, deliberately WITHOUT starting a game (so no `round_start` is
+written and the human corpus is not contaminated): a create at level 10 echoed `start_level` `"10"`;
+an ordinary create echoed `"2"`; a create at `"1"` was refused with `bad_start_level`.
+
+Rollback: the release-30 image (`deployment-01M34KWRW4XWJWC6DCCYENFXTF`, `fly deploy --image …`).
+Because no serving configuration changed, that rollback is purely a code rollback; the package, prior
+and every `SHENGJI_*` key are identical on both sides.
+
+## Release 30 — release 29 + the hybrid-bury fix (#607), deployed 2026-09-22 09:13 ET; superseded by release 31 (same name, same package)
 
 Release **30**, image `registry.fly.io/shengji:deployment-01M34KWRW4XWJWC6DCCYENFXTF` (digest
 `sha256:ea40b4d44b3fd74f6baf7f3178005973711a86eba075caecf9f1d3c2e117b0c0`), deployed with

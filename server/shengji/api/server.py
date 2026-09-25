@@ -117,6 +117,12 @@ class Seat:
     # writer is otherwise INVISIBLE: the seat stays connected, enqueue keeps
     # accepting, and the client simply never receives another frame (#628).
     writer_error: str | None = None
+    # How the writer exited, if it exited at all: None means it is STILL
+    # RUNNING, "cancelled" means a routine displacement or detach, "error"
+    # means see writer_error. Without this, a None writer_error was ambiguous
+    # between "never died" and "died by cancellation", so it ruled nothing out
+    # (Codex, reviewing #640).
+    writer_exit: str | None = None
     last_seen: float = 0.0               # loop time of last disconnect
     # Connection GENERATION. A dropped socket's `finally` can run long after a
     # newer socket has resumed the seat; without this the old cleanup detaches
@@ -530,6 +536,62 @@ def enqueue(seat: Seat, payload: dict) -> None:
             pass
 
 
+def _record_writer_exit(seat: "Seat", task: asyncio.Task) -> None:
+    """Terminal, AUTHORITATIVE record of how a writer task ended.
+
+    The in-body handlers cannot cover every case: a task cancelled before its
+    coroutine takes its first step never runs the body at all, so it ends
+    done() and cancelled() while the handler has recorded nothing (Codex, P2
+    on #641). This callback fires for every completed task regardless, and
+    reads the outcome from the TASK ITSELF rather than from whether some
+    except clause happened to execute.
+
+    Ownership-guarded for the same reason `_still_owns` is: a displaced
+    writer must not stamp the seat the new socket already claimed.
+    """
+    if seat.writer is not task:
+        return
+    if seat.writer_exit is not None:
+        return                      # the body already recorded it, with detail
+    if task.cancelled():
+        seat.writer_exit = "cancelled"
+        return
+    error = task.exception()
+    if error is not None:           # body re-raised, or failed before its try
+        seat.writer_exit = "error"
+        seat.writer_error = f"{type(error).__name__}: {error}"
+        logging.warning("websocket writer failed for seat %r: %s",
+                        seat.name, seat.writer_error)
+    else:
+        seat.writer_exit = "returned"
+
+
+def _start_writer(seat: "Seat", ws: WebSocket) -> asyncio.Task:
+    """Spawn a seat's writer and attach its terminal record in ONE place, so
+    no spawn path can exist without the diagnostic."""
+    task = asyncio.create_task(_writer(ws, seat.queue, seat))
+    seat.writer = task
+    task.add_done_callback(lambda finished, s=seat: _record_writer_exit(s, finished))
+    return task
+
+
+def _still_owns(seat: "Seat | None") -> bool:
+    """Is the calling writer still this seat's CURRENT writer?
+
+    _attach displaces an old socket by cancelling its writer and then resetting
+    the seat's fields. The cancelled writer's handler runs afterwards, so
+    without this check a displaced writer stamps "cancelled" onto the seat that
+    the NEW socket has already claimed -- reporting a dead writer for a
+    perfectly healthy connection.
+    """
+    if seat is None:
+        return False
+    try:
+        return seat.writer is asyncio.current_task()
+    except RuntimeError:          # no running loop
+        return False
+
+
 async def _writer(ws: WebSocket, queue: asyncio.Queue,
                   seat: "Seat | None" = None) -> None:
     """Drain one seat's outbound queue to its socket.
@@ -542,16 +604,27 @@ async def _writer(ws: WebSocket, queue: asyncio.Queue,
     from a log, because the one failure mode that explains the symptom is also
     the one that leaves no trace.
 
-    CancelledError is deliberately NOT caught: it is a BaseException, so an
-    ordinary displacement or detach still unwinds silently and is not an error.
+    Cancellation is recorded but NOT logged and NOT treated as an error: a
+    displacement or detach cancels the writer as a matter of course. It is
+    recorded anyway so that `writer_exit is None` carries real information --
+    it means the writer is still running. Before this, a writer that died by
+    cancellation was indistinguishable from one that never died, so a quiet
+    seat ruled nothing out (Codex, reviewing #640).
     """
     try:
         while True:
             await ws.send_json(await queue.get())
+    except asyncio.CancelledError:
+        # Record, then RE-RAISE. Swallowing this would break cancellation for
+        # every caller that awaits the task.
+        if _still_owns(seat):
+            seat.writer_exit = "cancelled"
+        raise
     except Exception as error:
         detail = f"{type(error).__name__}: {error}"
-        if seat is not None:
+        if _still_owns(seat):
             seat.writer_error = detail
+            seat.writer_exit = "error"
         logging.warning(
             "websocket writer stopped for seat %r after %d queued frames: %s",
             getattr(seat, "name", None),
@@ -1593,7 +1666,8 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.left_at = None
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer_error = None      # fresh socket, fresh writer
-    seat.writer = asyncio.create_task(_writer(ws, seat.queue, seat))
+    seat.writer_exit = None
+    _start_writer(seat, ws)
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
     enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state
     return seat.gen

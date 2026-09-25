@@ -1190,3 +1190,216 @@ def test_reattaching_clears_a_stale_writer_error(client):
                          "name": "jerry", "token": tok})
             _drain(b, "room")
             assert seat.writer_error is None, "stale error survived a reattach"
+
+
+# ------------------------------- writer exit reason (#628 follow-up)
+def _cancel_scenario(pre_step: bool):
+    """Drive a writer to cancellation ENTIRELY inside one event loop.
+
+    These assertions are about cancellation timing, so they must not cancel
+    across threads: TestClient runs the server loop in another thread, and
+    asyncio.Task.cancel() is not thread-safe. Doing it that way made this test
+    pass, fail, pass on three identical runs -- a flake of exactly the kind
+    #628 is about, which is not something to add to this suite.
+    """
+    import asyncio as _asyncio
+    from shengji.api import server as srv
+
+    async def scenario():
+        seat = srv.Seat(name="jerry")
+        seat.queue = _asyncio.Queue()
+
+        class Idle:
+            async def send_json(self, payload):
+                await _asyncio.sleep(3600)
+
+        task = srv._start_writer(seat, Idle())
+        if pre_step:
+            await _asyncio.sleep(0)       # let the body reach its first await
+        task.cancel()
+        try:
+            await task
+        except _asyncio.CancelledError:
+            pass
+        await _asyncio.sleep(0)           # let the done-callback run
+        return seat, task
+
+    return _asyncio.run(scenario())
+
+
+def test_cancellation_is_recorded_but_not_an_error():
+    """Cancellation must be DISTINGUISHABLE from 'never exited', while still
+    not being reported as an error."""
+    seat, _ = _cancel_scenario(pre_step=True)
+    assert seat.writer_exit == "cancelled", seat.writer_exit
+    assert seat.writer_error is None, \
+        "cancellation must not be recorded as an error"
+
+
+def test_cancellation_still_propagates():
+    """Recording must not swallow CancelledError: the task must still end up
+    cancelled, or every caller awaiting it hangs."""
+    _, task = _cancel_scenario(pre_step=True)
+    assert task.cancelled(), \
+        "CancelledError was swallowed; the task did not end up cancelled"
+
+
+def test_a_live_writer_reads_as_none():
+    """The property that makes the instrument two-sided, at the unit level."""
+    import asyncio as _asyncio
+    from shengji.api import server as srv
+
+    async def scenario():
+        seat = srv.Seat(name="jerry")
+        seat.queue = _asyncio.Queue()
+
+        class Idle:
+            async def send_json(self, payload):
+                await _asyncio.sleep(3600)
+
+        task = srv._start_writer(seat, Idle())
+        await _asyncio.sleep(0)
+        live = (seat.writer_exit, seat.writer_error, task.done())
+        task.cancel()
+        try:
+            await task
+        except _asyncio.CancelledError:
+            pass
+        return live
+
+    exit_reason, error, done = scenario_result = _asyncio.run(scenario())
+    assert exit_reason is None and error is None and not done, scenario_result
+
+
+def test_an_exception_exit_is_distinguishable_from_cancellation(client):
+    from shengji.api import server as srv
+
+    calls = {"n": 0}
+    real = srv._writer
+
+    async def flaky(ws, queue, seat=None):
+        class OneShot:
+            async def send_json(self, payload):
+                calls["n"] += 1
+                if calls["n"] == 2:
+                    raise RuntimeError("transient send failure")
+                return await ws.send_json(payload)
+        return await real(OneShot(), queue, seat)
+
+    keep = srv._writer
+    srv._writer = flaky
+    try:
+        with client.websocket_connect("/ws") as a:
+            a.send_json({"type": "create_room", "name": "jerry"})
+            _drain(a, "resume", tries=2, timeout=1.0)
+            seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+            with pytest.raises(AssertionError):
+                _drain(a, "room", tries=2, timeout=1.0)
+            assert seat.writer_exit == "error", seat.writer_exit
+            assert "transient send failure" in (seat.writer_error or "")
+    finally:
+        srv._writer = keep
+
+
+def test_none_now_means_still_running(client):
+    """The property that makes the instrument two-sided: with a healthy
+    socket, BOTH fields stay None, so None is evidence rather than ambiguity."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        seat = srv.rooms[list(srv.rooms)[0]].seats[0]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+            _drain(a, "room")
+        assert seat.writer_exit is None
+        assert seat.writer_error is None
+        assert not seat.writer.done(), "writer still running"
+
+
+def test_reattach_clears_the_exit_reason(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        tok = _drain(a, "resume")["token"]
+        code = list(srv.rooms)[0]
+        seat = srv.rooms[code].seats[0]
+        _drain(a, "room")
+        seat.writer_exit = "cancelled"
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code,
+                         "name": "jerry", "token": tok})
+            _drain(b, "room")
+            assert seat.writer_exit is None, "stale exit reason survived reattach"
+
+
+def test_cancel_before_the_first_step_is_still_recorded():
+    """Codex's P2 on #641: a task cancelled before its coroutine takes its
+    first step never runs the body, so no except clause fires. The task is
+    done() and cancelled() while an in-body record would say nothing.
+
+    This is the case that would have made `writer_exit is None` a LIE -- it
+    would have read 'still running' for a writer that was already dead.
+    """
+    import asyncio as _asyncio
+    from shengji.api import server as srv
+
+    async def scenario():
+        seat = srv.Seat(name="jerry")
+        seat.queue = _asyncio.Queue()
+
+        class NeverSends:
+            async def send_json(self, payload):   # never reached
+                raise AssertionError("body should not have run")
+
+        task = srv._start_writer(seat, NeverSends())
+        task.cancel()                    # BEFORE the coroutine ever steps
+        try:
+            await task
+        except _asyncio.CancelledError:
+            pass
+        await _asyncio.sleep(0)          # let the done-callback run
+        return seat, task
+
+    seat, task = _asyncio.run(scenario())
+    assert task.done() and task.cancelled(), "precondition: cancelled before first step"
+    assert seat.writer_exit == "cancelled", (
+        "a writer that died before its first step read as %r -- "
+        "'still running' for a dead writer" % (seat.writer_exit,))
+
+
+def test_a_displaced_writer_does_not_stamp_the_new_socket():
+    """The terminal callback is ownership-guarded too, not just the handler."""
+    import asyncio as _asyncio
+    from shengji.api import server as srv
+
+    async def scenario():
+        seat = srv.Seat(name="jerry")
+        seat.queue = _asyncio.Queue()
+
+        class Idle:
+            async def send_json(self, payload):
+                await _asyncio.sleep(3600)
+
+        old = srv._start_writer(seat, Idle())
+        await _asyncio.sleep(0)
+        new = srv._start_writer(seat, Idle())   # displaces; seat.writer is now `new`
+        old.cancel()
+        try:
+            await old
+        except _asyncio.CancelledError:
+            pass
+        await _asyncio.sleep(0)
+        new.cancel()
+        try:
+            await new
+        except _asyncio.CancelledError:
+            pass
+        return seat
+
+    seat = _asyncio.run(scenario())
+    # `new` owned the seat when it was cancelled, so "cancelled" is correct
+    # here; what must NOT happen is `old` writing it while `new` was live.
+    assert seat.writer_exit == "cancelled"

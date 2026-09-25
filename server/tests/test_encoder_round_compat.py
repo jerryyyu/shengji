@@ -292,6 +292,96 @@ def test_a_REAL_failed_throw_encodes_the_same_under_both_revisions():
             f"v{v} differs after a real failed throw")
 
 
+def test_a_REJECTED_play_reconstructs_identically_in_both_revisions():
+    """The reconstruction path, which is where #621's own bug lived.
+
+    Codex, #635: the forced-throw test covers the direct transition only. The
+    harder case is a play the engine REFUSES. #621 originally aged the notice
+    BEFORE validation, so eight rejected follows erased it; the fix moved the
+    ageing past `_remove` and routed the set through `pending_notice`. That
+    makes rejection the one path where the notice bookkeeping touches state
+    reconstruction, and therefore the one most able to diverge from release 30.
+
+    So: set a live notice with a REAL failed throw, then have the next seat
+    attempt an illegal play, and require that both revisions reconstruct the
+    same state -- same hands, same trick, same tensors -- and that the current
+    revision's notice survives the rejection untouched.
+    """
+    import random
+
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine import game as game_module
+    from shengji.train.policy_prior import flat_input, root_tensors
+
+    def run(legacy):
+        original = game_module.Round
+        if legacy:
+            game_module.Round = _load_legacy_round().Round
+        try:
+            rnd = prepare_round(game_module.Game(random.Random(98260924)),
+                                [HeuristicBot() for _ in range(4)])
+            seat = rnd.turn
+            suit = next(c for c in "SHDC" if c != rnd.ordering.trump_suit)
+            throw = [f"{suit}5", f"{suit}6"]
+            rnd.hands[seat] = list(throw) + rnd.hands[seat][:6]
+            rnd.hands[(seat + 1) % 4] = [f"{suit}A"] + rnd.hands[(seat + 1) % 4][:7]
+            rnd.play(seat, throw)                      # fails, forces the lowest
+
+            follower = rnd.turn
+            hands_before = [list(h) for h in rnd.hands]
+            trick_before = [(p.seat, list(p.cards)) for p in rnd.trick.plays]
+            before = {v: flat_input(root_tensors(rnd, follower, v), v)
+                      for v in PROVEN_VERSIONS}
+            notice_before = dict(rnd.notice) if getattr(rnd, "notice", None) else None
+            left_before = getattr(rnd, "_notice_plays_left", None)
+
+            rejected = 0
+            for attempt in (["ZZ"], [f"{suit}2", f"{suit}3"], []):
+                try:
+                    rnd.play(follower, list(attempt))
+                except Exception:                      # noqa: BLE001 - rejection is the point
+                    rejected += 1
+
+            after = {v: flat_input(root_tensors(rnd, follower, v), v)
+                     for v in PROVEN_VERSIONS}
+            return {
+                "rejected": rejected,
+                "hands_same": [list(h) for h in rnd.hands] == hands_before,
+                "trick_same": [(p.seat, list(p.cards)) for p in rnd.trick.plays] == trick_before,
+                "before": before, "after": after,
+                "notice_before": notice_before, "notice_after":
+                    dict(rnd.notice) if getattr(rnd, "notice", None) else None,
+                "left_before": left_before,
+                "left_after": getattr(rnd, "_notice_plays_left", None),
+            }
+        finally:
+            game_module.Round = original
+
+    live, old = run(False), run(True)
+
+    assert live["rejected"] >= 2, "the illegal attempts were not actually refused"
+    assert live["rejected"] == old["rejected"], "the revisions refused different attempts"
+
+    for side, label in ((live, "current"), (old, "release 30")):
+        assert side["hands_same"], f"{label} mutated a hand on a REJECTED play"
+        assert side["trick_same"], f"{label} mutated the trick on a REJECTED play"
+        for v in PROVEN_VERSIONS:
+            assert side["before"][v].tobytes() == side["after"][v].tobytes(), (
+                f"{label} v{v} moved across a rejected play")
+
+    # the notice must survive rejection untouched -- the exact #621 defect
+    assert live["notice_before"] is not None
+    assert live["notice_after"] == live["notice_before"], "a rejected play changed the notice"
+    assert live["left_after"] == live["left_before"], "a rejected play aged the notice"
+    assert old["notice_before"] is None and old["notice_after"] is None
+
+    # and the two revisions agree on the reconstructed state
+    for v in PROVEN_VERSIONS:
+        assert live["after"][v].tobytes() == old["after"][v].tobytes(), (
+            f"v{v} differs after a rejected play")
+
+
 # -- it must still refuse everything else ------------------------------------
 
 def test_a_second_drifted_source_still_refuses():

@@ -1371,7 +1371,17 @@ def test_cancel_before_the_first_step_is_still_recorded():
 
 
 def test_a_displaced_writer_does_not_stamp_the_new_socket():
-    """The terminal callback is ownership-guarded too, not just the handler."""
+    """The old writer must not record onto a seat the NEW socket owns.
+
+    The assertion has to land WHILE the new writer is still live. Asserting
+    only at the end cannot detect the bug: the new writer's own cancellation
+    also writes "cancelled", so a displaced writer that wrongly stamped would
+    produce an identical final value (Codex, nonblocking on #641).
+
+    Callback dispatch is asynchronous, so this also witnesses that the old
+    task genuinely COMPLETED -- its callback has had its chance to run -- and
+    only then checks that the field is still untouched.
+    """
     import asyncio as _asyncio
     from shengji.api import server as srv
 
@@ -1385,21 +1395,43 @@ def test_a_displaced_writer_does_not_stamp_the_new_socket():
 
         old = srv._start_writer(seat, Idle())
         await _asyncio.sleep(0)
-        new = srv._start_writer(seat, Idle())   # displaces; seat.writer is now `new`
+        new = srv._start_writer(seat, Idle())   # displaces: seat.writer is `new`
+        assert seat.writer is new
+
         old.cancel()
         try:
             await old
         except _asyncio.CancelledError:
             pass
-        await _asyncio.sleep(0)
+        for _ in range(5):                      # let callbacks actually dispatch
+            await _asyncio.sleep(0)
+
+        # The witness, taken while `new` is still LIVE.
+        witness = {
+            "old_done": old.done(),
+            "old_cancelled": old.cancelled(),
+            "new_done": new.done(),
+            "writer_exit": seat.writer_exit,
+            "writer_error": seat.writer_error,
+        }
+
         new.cancel()
         try:
             await new
         except _asyncio.CancelledError:
             pass
-        return seat
+        for _ in range(5):
+            await _asyncio.sleep(0)
+        return witness, seat
 
-    seat = _asyncio.run(scenario())
-    # `new` owned the seat when it was cancelled, so "cancelled" is correct
-    # here; what must NOT happen is `old` writing it while `new` was live.
+    witness, seat = _asyncio.run(scenario())
+
+    # The old task really finished, so its callback ran and declined to record.
+    assert witness["old_done"] and witness["old_cancelled"], witness
+    assert not witness["new_done"], witness
+    assert witness["writer_exit"] is None, (
+        "a DISPLACED writer stamped the seat the new socket owns: %r" % (witness,))
+    assert witness["writer_error"] is None, witness
+
+    # And once the owner itself is cancelled, the record appears normally.
     assert seat.writer_exit == "cancelled"

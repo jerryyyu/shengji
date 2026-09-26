@@ -219,7 +219,13 @@ RECORD = {
         "Jerry's call, and the offline metric has failed to predict the served read for every gen-4 head; "
         "arm C was the first time the two agreed.",
     "8ecd4fea":
-        "EXPLOITABILITY PROBE (#625 step 4, lane x36a, sealed 2026-09-25 22:10 ET). This head served as "
+        "EXPLOITABILITY PROBE (#625 step 4, lane x36a, sealed 2026-09-25 22:10 ET). METHOD CORRECTION 09-26: "
+        "this run does NOT bear on MC-LCB's exploitability. The attacker's belief model is a SELF-model -- "
+        "it scores the opponent's observed play with the attacker's OWN policy head, never modelling the "
+        "opponent -- and conditions only on the current trick (at most two cards). Diagnostic on 163 "
+        "decisions: weights move (ESS median 0.63) but change the chosen action only 8.6% of the time. "
+        "The null is explained by the instrument. Whether MC-LCB is exploitable by a real opponent model "
+        "is UNTESTED. ORIGINAL RECORD FOLLOWS. This head served as "
         "the W64/K8 search was run as a belief-reweighting ATTACKER -- the same package with its world "
         "prior reweighted by per-decision log-likelihoods -- against a CONTROL that is the same package "
         "with the reweighting short-circuited at floor>=1 (served parity). Twenty 520-cluster mirrored "

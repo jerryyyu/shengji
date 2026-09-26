@@ -146,11 +146,21 @@ export default function Hud({ state }: { state: GameState }) {
           <span className="chip level-chip team0" title="Team seats 0 & 2">
             <span className="team-dot t0" />
             Lv {state.levels[0]}
+            {state.games_won[0] ? (
+              <span className="games-won" title="Games won">
+                ★{state.games_won[0]}
+              </span>
+            ) : null}
           </span>
           <TrumpChip state={state} />
           <span className="chip level-chip team1" title="Team seats 1 & 3">
             <span className="team-dot t1" />
             Lv {state.levels[1]}
+            {state.games_won[1] ? (
+              <span className="games-won" title="Games won">
+                ★{state.games_won[1]}
+              </span>
+            ) : null}
           </span>
         </div>
 

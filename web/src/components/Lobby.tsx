@@ -216,24 +216,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           />
         </label>
 
-        <label className="field">
-          <span className="field-label">Starting level</span>
-          <select
-            value={startLevel}
-            onChange={(e) => setStartLevel(e.target.value as Rank)}
-          >
-            {RANKS.map((r) => (
-              <option key={r} value={r}>
-                {r === DEFAULT_START_LEVEL ? `${r} (full game)` : r}
-              </option>
-            ))}
-          </select>
-          <span className="field-hint">
-            Both teams start here and still race to Ace — a higher level makes
-            a shorter game. Only the room's creator sets this.
-          </span>
-        </label>
-
         {testControlsVisible ? (
           <div className="experimental-controls">
             <label>
@@ -268,6 +250,19 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         <button className="btn primary big" disabled={!ready || !testReady} onClick={create}>
           Create room
         </button>
+
+        <div className="start-level-row">
+          <span className="field-label">Starting level</span>
+          <select
+            aria-label="Starting level"
+            value={startLevel}
+            onChange={(e) => setStartLevel(e.target.value as Rank)}
+          >
+            {RANKS.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="divider">
           <span>or join</span>

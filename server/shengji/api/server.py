@@ -443,6 +443,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
+        "games_won": list(game.games_won),
         "banker": banker,
         "trump": trump,
         "turn": rnd.turn,
@@ -761,7 +762,8 @@ def _log_round_end(room: Room) -> None:
                    kitty=r.kitty_cards, kitty_points=r.kitty_points,
                    winner_team=r.winner_team, level_change=r.level_change,
                    new_levels=list(r.new_levels), next_banker=r.next_banker,
-                   game_over=r.game_over)
+                   game_over=r.game_over, games_won=list(r.games_won),
+                   point_scored=r.point_scored)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1299,7 +1301,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if room.game:
             raise IllegalPlay("Game already started.")
         validate_human_evaluation_start(room)
-        room.game = Game(start_level=room.start_level)
+        # games_to_win=None: a table keeps playing. Holding A scores a
+        # point and the levels restart, rather than ending the session.
+        room.game = Game(start_level=room.start_level, games_to_win=None)
         room.game.start_round()
         room.index_round()
         _log_round_start(room)

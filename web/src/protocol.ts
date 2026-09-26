@@ -132,6 +132,9 @@ export interface RoundResult {
   level_change: number;
   next_banker: number;
   new_levels: [string, string];
+  games_won: [number, number];
+  /** True on the round that took a team past A. */
+  point_scored: boolean;
   game_over: boolean;
 }
 
@@ -146,6 +149,9 @@ export interface GameState {
   players: StatePlayer[];
   hand: HandCard[];
   levels: [string, string];
+  /** Games won by each team. A team wins one by holding A; the levels
+   *  then restart and play continues. NOT card points. */
+  games_won: [number, number];
   banker: number | null;
   trump: Trump | null;
   turn: number | null; // whose action is awaited (bury/play); null during deal/declare

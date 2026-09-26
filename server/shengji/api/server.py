@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketState
 
 import os
 import secrets
@@ -534,6 +535,16 @@ def enqueue(seat: Seat, payload: dict) -> None:
             seat.queue.put_nowait(payload)
         except asyncio.QueueEmpty:
             pass
+
+
+def _peer_still_connected(ws: WebSocket) -> bool:
+    """Is this socket still connected from the server's point of view?
+
+    Used to tell an ordinary disconnect apart from a real error: a
+    RuntimeError raised while the peer is still CONNECTED is ours, not the
+    network's.
+    """
+    return getattr(ws, "client_state", None) is WebSocketState.CONNECTED
 
 
 def _record_writer_exit(seat: "Seat", task: asyncio.Task) -> None:
@@ -1632,6 +1643,19 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     enqueue(me, {"type": "error", "message": "Invalid request."})
     except WebSocketDisconnect:
         pass
+    except RuntimeError:
+        # Starlette raises RuntimeError("WebSocket is not connected"), NOT
+        # WebSocketDisconnect, when the peer is already gone at the moment of
+        # a receive. That escaped as an ASGI traceback for what is an ordinary
+        # disconnect (#639).
+        #
+        # Narrow on the SOCKET STATE, not on the message text: matching the
+        # string would silently stop working the day starlette rewords it, and
+        # would also swallow a genuine bug of ours that happened to be a
+        # RuntimeError. If the socket is still CONNECTED this is not a
+        # disconnect, so it must keep propagating.
+        if _peer_still_connected(ws):
+            raise
     finally:
         if room is not None and me is not None:
             async with room.lock:

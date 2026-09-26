@@ -1435,3 +1435,65 @@ def test_a_displaced_writer_does_not_stamp_the_new_socket():
 
     # And once the owner itself is cancelled, the record appears normally.
     assert seat.writer_exit == "cancelled"
+
+
+# --------------------------------- disconnect vs a real RuntimeError (#639)
+class _FakeSocket:
+    """Minimal websocket that raises RuntimeError on the first receive."""
+
+    def __init__(self, state, message='WebSocket is not connected. Need to call "accept" first.'):
+        from starlette.websockets import WebSocketState
+        self.client_state = state
+        self.application_state = WebSocketState.CONNECTED
+        self._message = message
+        self.accepted = False
+
+    async def accept(self):
+        self.accepted = True
+
+    async def receive_json(self):
+        raise RuntimeError(self._message)
+
+    async def send_json(self, payload):
+        return None
+
+    async def close(self, code=1000):
+        return None
+
+
+def test_a_runtimeerror_from_a_gone_peer_is_treated_as_a_disconnect():
+    """#639: starlette raises RuntimeError, not WebSocketDisconnect, when the
+    peer is already gone. That escaped as an ASGI traceback for what is an
+    ordinary disconnect."""
+    import asyncio as _asyncio
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    sock = _FakeSocket(WebSocketState.DISCONNECTED)
+    _asyncio.run(srv.ws_endpoint(sock))      # must NOT raise
+    assert sock.accepted
+
+
+def test_a_runtimeerror_while_still_connected_keeps_propagating():
+    """The narrowing must not swallow a genuine bug of ours. A RuntimeError
+    raised while the socket is still CONNECTED is not a disconnect."""
+    import asyncio as _asyncio
+    import pytest as _pytest
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    sock = _FakeSocket(WebSocketState.CONNECTED, message="genuine bug in our code")
+    with _pytest.raises(RuntimeError, match="genuine bug"):
+        _asyncio.run(srv.ws_endpoint(sock))
+
+
+def test_the_discriminator_is_state_not_message_text():
+    """Matching the message string would break silently the day starlette
+    rewords it, and would swallow same-worded bugs."""
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    connected = _FakeSocket(WebSocketState.CONNECTED)
+    assert srv._peer_still_connected(connected) is True
+    for state in (WebSocketState.DISCONNECTED, WebSocketState.CONNECTING):
+        assert srv._peer_still_connected(_FakeSocket(state)) is False

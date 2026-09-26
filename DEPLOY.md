@@ -13,7 +13,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 30 (release 29's recipe with the #607 bury fix), the policy/value search with hybrid bury
+  Fly configuration selects release 33 (release 29's recipe with the #607 bury fix; releases 30–33 changed only game rules and UI), the policy/value search with hybrid bury
   `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
@@ -26,7 +26,65 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 31 — the create-room starting level (#638), deployed 2026-09-25 12:51 ET
+## Current production: release 33 — the starting level moves into the room screen (#646), deployed 2026-09-26 11:50 ET
+
+Release **33**, image `registry.fly.io/shengji:deployment-01M3F6FPRBXCK5Q4BDA0CET5A8` (digest
+`sha256:1ff39d9c57d667a01b7de7ded27d64bcf29d94afce308ea9d7d0c7d809f44315`), deployed with
+`fly deploy --ha=false` from main `681431e6` (#646) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-26 ("start level selector should be in the room screen, not Home Screen").
+
+**NO model, package or configuration change.** Same `fly.toml`, package, prior and served name as
+releases 29–32 (`pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`); the strength
+evidence carries over and every screen still compares against release 30.
+
+What changed: the **Starting level** dropdown left the lobby's create-room form and lives in the
+room screen. A new `set_start_level` message is host-only, validated against `RANKS` (an unknown
+rank is refused with "Unknown starting level."), and refused once `room.game` exists — `Game()`
+reads the level exactly once at `start_game`, so a later change would make the HUD lie for the rest
+of the session. Joiners see the chosen level as a "Starts at" chip. `create_room` still accepts
+`start_level` (the protocol is unchanged); the web client simply no longer sends it.
+
+Preconditions as they were met: Codex PASS on #646 at the exact head `6fd1d822` (a re-review — the
+first PASS at `0135d9a4` was voided by a test-only fix for a CI timing assumption: the refusal is
+queued behind the card-by-card deal broadcasts, and the test's 40-message window was too small on a
+loaded runner); CI 5/5; serving smoke on the MERGED tree against the SHA-verified volume packages
+(`soft-8ecd4fea.npz` `ccade130…`, `js-m1-0d17fd03.npz` `0d17fd03…`) — PASS, 40 server turns
+through `_paced_bot_step` / `_commit_bot_turn`, bury 0.131 s, plays 0.028–0.082 s, receipt
+`passed: true`. `/healthz` after the deploy: bot name, prior SHA and every `pv_search` field
+UNCHANGED from release 30, rooms 0.
+
+Live acceptance against production, deliberately WITHOUT starting a game (no `round_start` is
+written, so the human corpus stays clean): the host created a room at the default `"2"`, set `"10"`
+and the room frame echoed `"10"`; a joiner's room frame carried `"10"` and its own `set_start_level`
+was refused ("Only the host can set the starting level."); the host's `"1"` was refused ("Unknown
+starting level."). Both sockets left; the room expires on `ROOM_TTL`.
+
+Rollback: the release-32 image (`deployment-01M3F1Q968BKYT8CD9GGE7XYMX`, `fly deploy --image …`), a
+pure code rollback — package, prior and every `SHENGJI_*` key are identical on both sides. Note that
+rolling back past release 32 also reverts the Ace rule below.
+
+## Release 32 — a table plays on past Ace (#644), deployed 2026-09-26 10:2x ET; superseded by release 33 (same name, same package)
+
+Image `registry.fly.io/shengji:deployment-01M3F1Q968BKYT8CD9GGE7XYMX`, `fly deploy --ha=false` from
+main `38441557` (#644 plus the diagnostic-only #640–#643 and #645), 0 rooms at deploy time, on
+Jerry's word 2026-09-26 ("Deploy 644"). **NO model, package or configuration change.**
+
+The rule change (Jerry: "after ace, it should go up one point and continue back to 2"): a team that
+successfully defends at A now scores a **game** — `games_won` is tallied, both team levels reset to
+the room's starting level, and the table plays on. Rooms run with `games_to_win=None` (open-ended);
+the engine default stays `1`, so `play_game` and every offline harness still stop at the first game
+exactly as before. `round_result` carries `games_won` and `point_scored`; the round-end modal says
+"wins the game" and shows the tally; the HUD shows ★ games won. Also in this release: the
+create-room selector lost its hint text and labels the default plainly as "2".
+
+Preconditions as met: Codex PASS on #644 at its exact head; CI 5/5; serving smoke on the merged tree
+against the SHA-verified volume packages — PASS, 40 server turns, bury 0.117 s, plays 0.024–0.075 s;
+`/healthz` unchanged from release 30, rooms 0; live acceptance without starting a game.
+
+Rollback: the release-31 image (`deployment-01M3CQK3KMH55NDZRED6PDJ6XW`) — a code rollback that also
+restores the one-game-and-stop behaviour.
+
+## Release 31 — the create-room starting level (#638), deployed 2026-09-25 12:51 ET; superseded by release 32 (same name, same package)
 
 Release **31**, image `registry.fly.io/shengji:deployment-01M3CQK3KMH55NDZRED6PDJ6XW` (digest
 `sha256:cfef8361237bc39f42abdee9915f9d47d84f8731709147848972c4e267a7e663`), deployed with

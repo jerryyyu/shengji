@@ -73,8 +73,11 @@ def effective_baseline_budget(policy: str) -> tuple[int, int]:
     For the default opponent these are 30/300, identical to the constants, so
     the historical path is unchanged.
     """
-    cls = duel.base_policy_class(policy)
-    return (int(cls.N_DETERMINIZATIONS), int(cls.REPORT_FOLD_WORLDS))
+    cls = duel.base_policy_class(policy, require_mc=False)
+    n, r, _rule = duel._mc_budget(cls)
+    # A non-MC opponent (SmartBot, the heuristic, a served search) has no
+    # world budget; record zero work rather than inventing one.
+    return (n or 0, r or 0)
 
 
 def base_policy_of(config: dict) -> str:
@@ -790,7 +793,7 @@ def _run_screen(args, trump_ranks):
     # Fail CLOSED on an unusable opponent, at configuration time rather than
     # inside a worker twenty minutes in. base_policy_class raises for anything
     # that is not a registered MCBot subclass.
-    duel.base_policy_class(args.baseline_policy)
+    duel.base_policy_class(args.baseline_policy, require_mc=False)
     config = {
         "schema": "cwv-shortlist-config-v1", "arm": args.arm,
         "base_policy": args.baseline_policy,

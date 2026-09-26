@@ -309,3 +309,46 @@ def test_the_default_constants_and_the_registry_cannot_drift_apart():
     effective = screen.effective_baseline_budget(DEFAULT_BASE_POLICY)
     assert effective == (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS), (
         "the duplicated constants no longer match the default policy's registry recipe")
+
+
+# ---------------- any registry policy can be the exploited party (#625, Jerry 09-26)
+def test_a_plain_baseline_accepts_a_non_mc_opponent():
+    from shengji.oracle import screen as duel
+    for name in ("smart", "heuristic"):
+        cfg = duel.build_config(arm="none", base_policy=name)
+        assert cfg["base_policy"] == name
+        eff = cfg["work"]["effective"]
+        assert eff["n_determinizations"] is None, "a non-MC opponent has no world budget"
+        assert cfg["work"]["registered"]["report_rule"] == "none"
+
+
+def test_subclassing_arms_still_require_an_mc_base():
+    """The constraint is SCOPED, not removed: oracle and knobs arms subclass the
+    base class and must still refuse a non-MC one."""
+    import pytest
+    from shengji.oracle import screen as duel
+    for arm in ("value", "knobs"):
+        with pytest.raises(duel.OracleScreenError, match="not a registered MCBot"):
+            duel.build_config(arm=arm, base_policy="smart")
+
+
+def test_the_default_baseline_config_is_unchanged():
+    from shengji.oracle import screen as duel
+    cfg = duel.build_config(arm="none")
+    eff = cfg["work"]["effective"]
+    assert (eff["n_determinizations"], eff["report_fold_worlds"], eff["report_rule"]) == (30, 300, "lcb")
+
+
+def test_a_non_mc_opponent_builds_through_the_real_baseline_path():
+    """Not just config: the bot make_side_bot actually constructs."""
+    from shengji.oracle import screen as duel
+    from shengji.ai.smart import SmartBot
+    cfg = duel.build_config(arm="none", base_policy="smart")
+    bot = duel.make_side_bot(cfg, "baseline", seed=3)
+    assert isinstance(bot, SmartBot)
+
+
+def test_shortlist_screen_records_zero_work_for_a_non_mc_opponent():
+    import shengji.train.cwv_shortlist_screen as screen
+    assert screen.effective_baseline_budget("smart") == (0, 0)
+    assert screen.effective_baseline_budget("mc-lite") == (5, 0)

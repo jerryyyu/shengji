@@ -865,15 +865,34 @@ def _oracle_class(arm: str, base_cls: type) -> type:
     return type(name, mixins + (base_cls,), {})
 
 
-def base_policy_class(base_policy: str) -> type:
+def base_policy_class(base_policy: str, *, require_mc: bool = True) -> type:
+    """The registry class behind ``base_policy``.
+
+    ``require_mc`` is the constraint that the ORACLE and KNOBS arms need: they
+    are built by subclassing the base class, so it must be an MCBot. A plain
+    baseline (``arm="none"``) or a registry-policy arm never subclasses it, so
+    for those any registered policy is a legal opponent -- SmartBot, the
+    heuristic, a served pv-search name. That is what lets the exploitability
+    probe exploit something other than the MC family (#625, Jerry 09-26).
+    """
     factory = REGISTRY.get(base_policy)
     if factory is None:
         raise OracleScreenError(f"unknown base policy {base_policy!r}")
-    if not (inspect.isclass(factory) and issubclass(factory, MCBot)):
+    if require_mc and not (inspect.isclass(factory) and issubclass(factory, MCBot)):
         raise OracleScreenError(
             f"base policy {base_policy!r} is not a registered MCBot class; "
             "the oracle arms subclass the production class itself")
     return factory
+
+
+def _mc_budget(cls) -> tuple[int | None, int | None, str]:
+    """(N_DETERMINIZATIONS, REPORT_FOLD_WORLDS, REPORT_RULE) of a class, or
+    (None, None, "none") for a policy that does no MC work at all. Recorded,
+    never guessed: a non-MC opponent has no world budget to report."""
+    n = getattr(cls, "N_DETERMINIZATIONS", None)
+    r = getattr(cls, "REPORT_FOLD_WORLDS", None)
+    rule = getattr(cls, "REPORT_RULE", "none")
+    return (None if n is None else int(n), None if r is None else int(r), str(rule))
 
 
 def knob_defaults() -> dict:
@@ -1181,7 +1200,10 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
     refuses before any round runs; it lands in ``knobs.overrides``."""
     if arm not in ARMS:
         raise OracleScreenError(f"arm must be one of {ARMS}, got {arm!r}")
-    base_cls = base_policy_class(base_policy)
+    # Only an arm that SUBCLASSES the base needs it to be an MCBot.
+    subclasses_base = arm in ORACLE_ARMS or arm in (KNOBS_ARM, WORK_ARM)
+    base_cls = base_policy_class(base_policy, require_mc=subclasses_base)
+    n_det, r_fold, r_rule = _mc_budget(base_cls)
     k = dict(knob_defaults())
     k.update(knobs or {})
     overrides = (knob_overrides if knob_overrides is not None
@@ -1194,9 +1216,9 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
     else:
         k["overrides"] = {}
     registered = {
-        "n_determinizations": int(base_cls.N_DETERMINIZATIONS),
-        "report_fold_worlds": int(base_cls.REPORT_FOLD_WORLDS),
-        "report_rule": str(base_cls.REPORT_RULE),
+        "n_determinizations": n_det,
+        "report_fold_worlds": r_fold,
+        "report_rule": r_rule,
     }
     effective = dict(registered)
     if select_worlds is not None:

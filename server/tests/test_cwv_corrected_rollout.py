@@ -176,7 +176,7 @@ def test_the_baseline_bot_is_built_from_the_recorded_identity():
     src = inspect.getsource(screen)
     assert 'make_bot("mc-s0-report-lcb"' not in src, \
         "the baseline bot is hardcoded again; the recorded identity can now lie"
-    assert 'make_bot(config["base_policy"]' in src
+    assert 'make_bot(base_policy_of(config)' in src
 
 
 def test_an_unusable_opponent_fails_closed_at_configuration():
@@ -203,3 +203,44 @@ def test_the_queue_omits_the_flag_by_default():
     import inspect
     src = inspect.getsource(q)
     assert 'if args.baseline_policy else []' in src, "the flag must be opt-in"
+
+
+# ---------------------------- the weak control must actually BE weak (#645 P2)
+def _baseline_bot(policy):
+    """Build the baseline side through the REAL path and hand back the bot, so
+    these assert instantiated budgets rather than reading the source."""
+    import shengji.train.cwv_shortlist_screen as screen
+    config = {"base_policy": policy, "arm": "policy", "production_multiplier": 1,
+              "arm_policy": None, "baseline": "production"}
+    return screen.make_side(config, "baseline", seed=1)
+
+
+def test_a_weak_opponent_keeps_its_registry_budget():
+    """Codex P2: make_side stamped N=30/R=300 over every baseline, which would
+    have erased the weakness the positive control exists to create -- a screen
+    REPORTING mc-lite while playing a production-strength opponent."""
+    from shengji.ai.registry import REGISTRY
+    for policy, expected in (("mc-lite", REGISTRY["mc-lite"].N_DETERMINIZATIONS),
+                             ("mc", REGISTRY["mc"].N_DETERMINIZATIONS)):
+        bot = _baseline_bot(policy)
+        assert bot.N_DETERMINIZATIONS == expected, (
+            "%s played at N=%s, not its registry N=%s -- the weak control was "
+            "silently strengthened" % (policy, bot.N_DETERMINIZATIONS, expected))
+
+
+def test_mc_lite_is_actually_weaker_than_the_default_baseline():
+    """If the two ended up at the same budget the control would be no control."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    weak = _baseline_bot("mc-lite").N_DETERMINIZATIONS
+    default = _baseline_bot(DEFAULT_BASE_POLICY).N_DETERMINIZATIONS
+    assert weak < default, "mc-lite N=%s is not below the default N=%s" % (weak, default)
+
+
+def test_the_default_baseline_budget_is_unchanged():
+    """The historical path must still be stamped with the production budget."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    bot = _baseline_bot(DEFAULT_BASE_POLICY)
+    assert bot.N_DETERMINIZATIONS == screen.BASELINE_SELECT_WORLDS
+    assert bot.REPORT_FOLD_WORLDS == screen.BASELINE_REPORT_WORLDS

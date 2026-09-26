@@ -60,6 +60,17 @@ def screen_output_lock(output: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def base_policy_of(config: dict) -> str:
+    """The opponent this config names.
+
+    A config written before --baseline-policy has no key, and the baseline it
+    played WAS the default -- so defaulting here reproduces what those runs
+    actually did rather than guessing at it. Every config written from now on
+    carries the key, so a missing one can only mean "older than the flag".
+    """
+    return config.get("base_policy") or duel.DEFAULT_BASE_POLICY
+
+
 def rank_for(config: dict, cluster: int) -> str:
     """Return the configured rank for a cluster, preserving legacy rank 2."""
     ranks = config.get("trump_ranks") or (RANK,)
@@ -237,10 +248,23 @@ def make_side(config: dict, side: str, seed: int):
                           config.get("baseline") in ("flat-shortlist", "levels-shortlist"))
     if (side == "baseline" and not shortlist_baseline) or arm in ("identity", "production"):
         # Build from the identity the config RECORDS, not from a second literal
-        # that happens to match it. The summary reports config["base_policy"];
+        # that happens to match it. The summary reports base_policy_of(config);
         # a duplicated constant here meant the reported baseline and the bot
         # actually played could diverge silently the moment either moved.
-        bot = make_bot(config["base_policy"], seed=seed)
+        bot = make_bot(base_policy_of(config), seed=seed)
+        if base_policy_of(config) != duel.DEFAULT_BASE_POLICY:
+            # A NON-DEFAULT opponent keeps its registry recipe. Forcing
+            # N=30/R=300 here would erase exactly the property a weak control
+            # exists to provide: mc-lite is N=5 and mc is N=10, and stamping
+            # the production budget over them would have produced a screen
+            # that REPORTED a weak opponent while playing a strong one
+            # (Codex, P2 on #645, with a runtime witness).
+            #
+            # The cost is that the two sides are no longer work-matched. That
+            # is acceptable here and nowhere else: these are DEV screens that
+            # already record equal_work_strength_claim false, and a positive
+            # control is a question about STRENGTH, not about equal work.
+            return bot
         if side == "arm" and arm == "production":
             multiplier = int(config["production_multiplier"])
             bot.N_DETERMINIZATIONS = BASELINE_SELECT_WORLDS * multiplier
@@ -399,7 +423,7 @@ def run_cluster(config, cluster):
         return wrapped
 
     rank = rank_for(config, cluster)
-    base = duel.build_config(arm="none", base_policy=config["base_policy"],
+    base = duel.build_config(arm="none", base_policy=base_policy_of(config),
                              select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
     seed = config["seed0"] + cluster
@@ -486,7 +510,7 @@ def _arm_description(config):
 
 
 def summary_for(shards, config):
-    base = duel.build_config(arm="none", base_policy=config["base_policy"],
+    base = duel.build_config(arm="none", base_policy=base_policy_of(config),
                              select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
     result = duel.summarize(

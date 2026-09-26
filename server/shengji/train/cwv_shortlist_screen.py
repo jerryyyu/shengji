@@ -60,7 +60,7 @@ def screen_output_lock(output: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def effective_baseline_budget(policy: str) -> tuple[int, int]:
+def effective_baseline_budget(policy: str) -> tuple[int | None, int | None]:
     """The (select, report) worlds the baseline ACTUALLY plays at.
 
     Read from the registry class, because that is what make_bot builds. The
@@ -73,8 +73,14 @@ def effective_baseline_budget(policy: str) -> tuple[int, int]:
     For the default opponent these are 30/300, identical to the constants, so
     the historical path is unchanged.
     """
-    cls = duel.base_policy_class(policy)
-    return (int(cls.N_DETERMINIZATIONS), int(cls.REPORT_FOLD_WORLDS))
+    cls = duel.base_policy_class(policy, require_mc=False)
+    n, r, _rule = duel._mc_budget(cls)
+    # A non-MC opponent (SmartBot, the heuristic, a served search) has no world
+    # budget, and the ABSENCE must be passed on as None: build_config treats a
+    # given select_worlds as an override and refuses one below 1, so coercing
+    # None to 0 made every non-MC opponent unrunnable through run_cluster and
+    # summary_for (Codex P1 on #647; the smoke never took this path).
+    return (n, r)
 
 
 def base_policy_of(config: dict) -> str:
@@ -790,7 +796,7 @@ def _run_screen(args, trump_ranks):
     # Fail CLOSED on an unusable opponent, at configuration time rather than
     # inside a worker twenty minutes in. base_policy_class raises for anything
     # that is not a registered MCBot subclass.
-    duel.base_policy_class(args.baseline_policy)
+    duel.base_policy_class(args.baseline_policy, require_mc=False)
     config = {
         "schema": "cwv-shortlist-config-v1", "arm": args.arm,
         "base_policy": args.baseline_policy,

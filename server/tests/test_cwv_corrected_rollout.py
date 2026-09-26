@@ -309,3 +309,90 @@ def test_the_default_constants_and_the_registry_cannot_drift_apart():
     effective = screen.effective_baseline_budget(DEFAULT_BASE_POLICY)
     assert effective == (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS), (
         "the duplicated constants no longer match the default policy's registry recipe")
+
+
+# ---------------- any registry policy can be the exploited party (#625, Jerry 09-26)
+def test_a_plain_baseline_accepts_a_non_mc_opponent():
+    from shengji.oracle import screen as duel
+    for name in ("smart", "heuristic"):
+        cfg = duel.build_config(arm="none", base_policy=name)
+        assert cfg["base_policy"] == name
+        eff = cfg["work"]["effective"]
+        assert eff["n_determinizations"] is None, "a non-MC opponent has no world budget"
+        assert cfg["work"]["registered"]["report_rule"] == "none"
+
+
+def test_subclassing_arms_still_require_an_mc_base():
+    """The constraint is SCOPED, not removed: oracle and knobs arms subclass the
+    base class and must still refuse a non-MC one."""
+    import pytest
+    from shengji.oracle import screen as duel
+    for arm in ("value", "knobs"):
+        with pytest.raises(duel.OracleScreenError, match="not a registered MCBot"):
+            duel.build_config(arm=arm, base_policy="smart")
+
+
+def test_the_default_baseline_config_is_unchanged():
+    from shengji.oracle import screen as duel
+    cfg = duel.build_config(arm="none")
+    eff = cfg["work"]["effective"]
+    assert (eff["n_determinizations"], eff["report_fold_worlds"], eff["report_rule"]) == (30, 300, "lcb")
+
+
+def test_a_non_mc_opponent_builds_through_the_real_baseline_path():
+    """Not just config: the bot make_side_bot actually constructs."""
+    from shengji.oracle import screen as duel
+    from shengji.ai.smart import SmartBot
+    cfg = duel.build_config(arm="none", base_policy="smart")
+    bot = duel.make_side_bot(cfg, "baseline", seed=3)
+    assert isinstance(bot, SmartBot)
+
+
+def test_shortlist_screen_records_no_budget_for_a_non_mc_opponent():
+    """None, not 0: an absent budget must stay absent all the way down."""
+    import shengji.train.cwv_shortlist_screen as screen
+    assert screen.effective_baseline_budget("smart") == (None, None)
+    assert screen.effective_baseline_budget("mc-lite") == (5, 0)
+
+
+@pytest.mark.parametrize("policy", ["smart", "heuristic"])
+def test_a_non_mc_opponent_survives_the_exact_helper_to_build_config_sequence(policy):
+    """Codex P1 on #647: the helper returned (0, 0) and run_cluster/summary_for
+    handed that to build_config as explicit overrides, which refuses
+    select_worlds < 1 -- so no non-MC opponent could run at all, while the
+    registry-acceptance tests stayed green. This is the sequence Codex ran."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle import screen as duel
+    select_worlds, report_worlds = screen.effective_baseline_budget(policy)
+    cfg = duel.build_config(arm="none", base_policy=policy,
+                           select_worlds=select_worlds, report_worlds=report_worlds)
+    assert cfg["work"]["effective"]["n_determinizations"] is None
+    assert cfg["work"]["production"], "no override may be recorded for an absent budget"
+
+
+@pytest.mark.parametrize("policy", ["smart", "heuristic"])
+def test_run_cluster_and_summary_for_build_a_non_mc_baseline_config(monkeypatch, policy):
+    """The two REAL call sites, not the helper in isolation: each must reach a
+    built config for a non-MC opponent. build_config is wrapped, not replaced,
+    so a refusal inside it is the failure this test exists to catch."""
+    import shengji.train.cwv_shortlist_screen as screen
+    built = []
+    real = screen.duel.build_config
+
+    def wrapped(**kwargs):
+        cfg = real(**kwargs)
+        built.append((kwargs, cfg))
+        raise RuntimeError("stop after the config is built")
+
+    monkeypatch.setattr(screen.duel, "build_config", wrapped)
+    config = {"base_policy": policy, "arm": "policy", "arm_policy": None,
+              "baseline": "production", "production_multiplier": 1, "seed0": 1,
+              "clusters": 1, "target_wall_multiplier": 1}
+    for call in (lambda: screen.run_cluster(config, 0), lambda: screen.summary_for([], config)):
+        with pytest.raises(RuntimeError, match="stop after"):
+            call()
+    assert len(built) == 2, "both call sites must have reached build_config"
+    for kwargs, cfg in built:
+        assert kwargs["base_policy"] == policy
+        assert kwargs["select_worlds"] is None and kwargs["report_worlds"] is None
+        assert cfg["work"]["effective"]["n_determinizations"] is None

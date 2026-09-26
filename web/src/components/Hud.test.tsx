@@ -33,6 +33,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     ],
     hand: [],
     levels: ["2", "2"],
+    games_won: [0, 0],
     banker: 0,
     trump: null,
     turn: 0,

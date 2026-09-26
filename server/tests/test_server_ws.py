@@ -1563,3 +1563,62 @@ def test_the_discriminator_is_state_not_message_text():
         sock = _FakeSocket(state)
         assert sock.client_state is WebSocketState.CONNECTED, "the misleading combination"
         assert srv._receive_is_legal(sock) is False
+
+
+def test_a_room_plays_on_past_ace_and_keeps_score(client):
+    """A table must not end at A: it scores a game and restarts. Rooms pass
+    games_to_win=None, unlike the engine default that evaluation relies on."""
+    from shengji.api import server as srv
+    from shengji.engine.game import A_INDEX
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        game = srv.rooms[code].game
+        assert game.games_to_win is None, "a room must not end at one game"
+
+        game.level_idx = [A_INDEX, A_INDEX]
+        rnd = game.round
+        rnd.phase = "round_end"
+        rnd.banker = 0
+        rnd.attacker_points = 0          # banker team holds A
+        result = game.finish_round()
+
+        assert result.point_scored and result.games_won == (1, 0)
+        assert not result.game_over and not game.game_over
+        assert game.levels == ("2", "2"), "levels restart for the next game"
+
+
+def test_the_state_payload_carries_games_won(client):
+    with client.websocket_connect("/ws") as a:
+        _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        st = _drain(a, "state")
+        assert st["games_won"] == [0, 0], st.get("games_won")
+
+
+def test_round_result_payload_carries_the_scoring_fields(client):
+    """Codex P2 on #644: the modal reads round_result, so omitting the new
+    fields there left the UI saying '+levels' on a game win and reset."""
+    from shengji.api import server as srv
+    from shengji.engine.game import A_INDEX
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        room = srv.rooms[code]
+        game = room.game
+        game.level_idx = [A_INDEX, A_INDEX]
+        rnd = game.round
+        rnd.phase = "round_end"
+        rnd.banker = 0
+        rnd.attacker_points = 0
+        game.finish_round()
+
+        payload = srv.state_for(room, 0)["round_result"]
+        assert payload["point_scored"] is True
+        assert payload["games_won"] == [1, 0]
+        assert payload["new_levels"] == ["2", "2"], payload["new_levels"]
+        assert payload["game_over"] is False

@@ -41,6 +41,7 @@ function makeState({
     ],
     hand: [],
     levels: ["2", "2"],
+    games_won: [0, 0],
     banker: phase === "bury" ? 1 : 0,
     trump: null,
     turn,

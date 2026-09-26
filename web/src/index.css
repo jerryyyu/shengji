@@ -357,6 +357,7 @@ button {
 
 .field input,
 .field select,
+.start-level-row select,
 .room-input {
   background: #10131a;
   border: 1px solid var(--panel-edge);
@@ -369,11 +370,13 @@ button {
 
 .field input:focus,
 .field select:focus,
+.start-level-row select:focus,
 .room-input:focus {
   border-color: var(--team0);
 }
 
-.field select {
+.field select,
+.start-level-row select {
   /* Native chrome ignores the dark panel; draw our own caret instead. */
   appearance: none;
   -webkit-appearance: none;
@@ -387,7 +390,8 @@ button {
 }
 
 /* Some platforms render the popup with system colors unless told otherwise. */
-.field select option {
+.field select option,
+.start-level-row select option {
   background: #10131a;
   color: var(--text);
 }
@@ -396,6 +400,26 @@ button {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-dim);
+}
+
+/* Compact inline row: the primary buttons stay above it, so the fastest path
+   to a game is unobstructed and the option is still one glance away. */
+.start-level-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.start-level-row select {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.games-won {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--gold, #d9a441);
 }
 
 .divider {

@@ -6,7 +6,7 @@ import shengji.ai.env as ai_env
 from shengji.ai.env import FullGameCutoff, evaluate, play_game, play_round
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.cards import RANKS, total_points
-from shengji.engine.game import Game
+from shengji.engine.game import A_INDEX, Game
 
 
 def fake_round(banker: int, attacker_points: int):
@@ -233,3 +233,78 @@ def test_a_game_started_at_ace_can_be_won_in_one_defence():
     result = g.finish_round()
     assert result.winner_team == 0
     assert result.game_over and g.game_over
+
+
+# ------------------------------------------ holding A scores a game (#638)
+def _hold_at_ace(game, banker=0):
+    """Drive one round in which the banker team defends successfully at A."""
+    game.banker = banker
+    game.level_idx = [A_INDEX, A_INDEX]
+    rnd = game.start_round()
+    rnd.phase = "round_end"
+    rnd.banker = banker
+    rnd.attacker_points = 0          # defenders hold
+    return game.finish_round()
+
+
+def test_default_still_ends_the_game_at_ace():
+    """The DEFAULT must be bit-identical to the old behaviour: evaluation and
+    data generation loop until game_over and raise if it never arrives."""
+    g = Game()
+    r = _hold_at_ace(g)
+    assert r.game_over and g.game_over
+    assert r.games_won == (1, 0)
+    # and the final levels are NOT reset -- the last result of every historical
+    # game reports A, which the logs and evaluation both read.
+    assert r.new_levels == ("A", "A")
+    assert g.levels == ("A", "A")
+
+
+def test_a_table_keeps_playing_and_restarts_at_the_start_level():
+    g = Game(games_to_win=None)
+    r = _hold_at_ace(g)
+    assert r.point_scored
+    assert r.games_won == (1, 0)
+    assert not r.game_over and not g.game_over, "a table must not end"
+    assert g.levels == ("2", "2"), "levels restart"
+    assert r.new_levels == ("2", "2")
+
+
+def test_a_room_restarts_at_ITS_start_level_not_always_two():
+    """A room that chose 8 for a short game should get another short game,
+    not be dropped back to a full one."""
+    g = Game(start_level="8", games_to_win=None)
+    _hold_at_ace(g)
+    assert g.levels == ("8", "8")
+
+
+def test_games_accumulate_across_restarts():
+    g = Game(games_to_win=None)
+    _hold_at_ace(g, banker=0)
+    _hold_at_ace(g, banker=1)
+    _hold_at_ace(g, banker=1)
+    assert g.games_won == [1, 2], g.games_won
+    assert not g.game_over
+
+
+def test_attackers_winning_at_ace_still_only_take_the_deal():
+    """Unchanged rule: only DEFENDING at A scores."""
+    g = Game(games_to_win=None)
+    g.banker = 0
+    g.level_idx = [A_INDEX, A_INDEX]
+    rnd = g.start_round()
+    rnd.phase = "round_end"
+    rnd.banker = 0
+    rnd.attacker_points = 80          # attackers take it
+    r = g.finish_round()
+    assert not r.point_scored
+    assert r.games_won == (0, 0)
+    assert g.levels == ("A", "A"), "no restart, no level change past A"
+
+
+def test_a_longer_match_ends_only_at_its_target():
+    g = Game(games_to_win=2)
+    r1 = _hold_at_ace(g)
+    assert not r1.game_over and g.levels == ("2", "2")
+    r2 = _hold_at_ace(g)
+    assert r2.game_over and r2.games_won == (2, 0)

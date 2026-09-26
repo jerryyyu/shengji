@@ -322,6 +322,51 @@ class Row:
     successor: Any = None          # the afterstate Round (not stored)
 
 
+#: ``action_values.units`` of the pv-search producer (``harvest.trajectory.PV_VALUE_UNITS``,
+#: kept as a literal here because that module is heavy and imports this one's callers):
+#: the acting team's EXPECTED SIGNED LEVEL on the half-integer #214 scale.  The mcbot
+#: producers (shortlist, MC-LCB, runs A..L) write no ``units`` and mean expected attacker
+#: POINTS (``mcbot._score`` with ``LEVEL_OBJECTIVE = False``).
+PV_VALUE_UNITS = "expected-signed-level-half-integer"
+POINTS_VALUE_UNITS = "expected-attacker-points"
+#: One level bracket is worth 40 points in ``mcbot._score``'s LEVEL_OBJECTIVE scale
+#: (``40.0 * (bracket + deal) + 0.2 * p``), so a half-integer-level mean times 40 is on the
+#: same scale as a points mean.  Empirically the two corpora then agree: the soft target at
+#: T=1 has median top-1 0.55 on points rows and ~0.59 on PV rows scaled this way, against
+#: 0.17 unscaled (#649).
+POINTS_PER_LEVEL = 40.0
+VALUE_UNITS_SCALE = {POINTS_VALUE_UNITS: 1.0, PV_VALUE_UNITS: POINTS_PER_LEVEL}
+
+
+def value_units(record: Mapping[str, Any]) -> str:
+    """The units of ``record["action_values"].means``: ``POINTS_VALUE_UNITS`` when the
+    producer wrote none, otherwise the recorded tag.  Refuses a tag it cannot scale, so a
+    new producer cannot slip half-level (or any other) values under a points temperature
+    again -- that is exactly how the 16 PV corpora came to teach a uniform policy target
+    (#649)."""
+    values = record.get("action_values")
+    units = values.get("units") if isinstance(values, dict) else None
+    if units is None:
+        return POINTS_VALUE_UNITS
+    if units not in VALUE_UNITS_SCALE:
+        raise TrainDataError(f"unknown_value_units: {units!r}")
+    return str(units)
+
+
+def search_means_points(record: Mapping[str, Any]
+                        ) -> tuple[list[int], list[float], str] | None:
+    """``search_means`` on the POINTS scale: ``(ballot indices, means x scale, units)``,
+    where the scale is ``VALUE_UNITS_SCALE[units]``.  This is what a consumer with a
+    points-calibrated temperature must read; ``search_means`` itself is the raw record."""
+    units = value_units(record)
+    got = search_means(record)
+    if got is None:
+        return None
+    indices, means = got
+    scale = VALUE_UNITS_SCALE[units]
+    return indices, [m * scale for m in means], units
+
+
 def search_means(record: Mapping[str, Any]) -> tuple[list[int], list[float]] | None:
     """``(ballot indices, means)`` of the record's per-candidate search means
     (``action_values.means`` aligned with ``eligible_indices``, acting-team

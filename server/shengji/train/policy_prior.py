@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from collections import Counter
 import json
 import random
 import sys
@@ -117,6 +118,11 @@ def deal_fraction(rnd) -> float:
 
 # ----------------------------------------------------------------- extraction
 
+def _value_units_scale() -> dict:
+    from .cwv_data import VALUE_UNITS_SCALE   # local: cwv_data is heavy (import cycle)
+    return VALUE_UNITS_SCALE
+
+
 def _shard_rows(args: tuple) -> list[tuple]:
     path, lo, hi, thin, seed, version = args
     rng = random.Random(f"{seed}|{path}")
@@ -162,18 +168,27 @@ def _shard_rows(args: tuple) -> list[tuple]:
         # predicate filter both together and keeps them in step by construction.
         raw_ballot = rec.get("ballot", []) or []
         means_raw = [float("nan")] * len(raw_ballot)
-        from .cwv_data import search_means   # local: cwv_data is a heavier module, and a
-        got = search_means(rec)              # top-level import here risks an import cycle
+        # ON THE POINTS SCALE, whatever the producer wrote: the soft target's temperature
+        # is calibrated on points, and the pv-search stores record half-integer LEVELS,
+        # whose within-decision gaps (~0.02) softmax to a uniform target at T=1 -- the 16
+        # PV corpora taught the policy head "all candidates are equal" (#649).  An unknown
+        # units tag refuses the whole extract rather than being scaled by guess.
+        from .cwv_data import search_means_points, value_units   # local: cwv_data is a
+        units = value_units(rec)             # heavier module, and a top-level import here
+        got = search_means_points(rec)       # risks an import cycle
         if got is not None:
-            for _i, _m in zip(*got):
+            for _i, _m in zip(got[0], got[1]):
                 means_raw[_i] = _m
+        else:
+            units = NO_SEARCH_VALUES         # counted apart: a row the search never scored has no units
         rows.append((x, y, n_legal, [cards_to_idx(a) for a in legal],
                      [cards_to_idx(a) for a in raw_ballot], cards_to_idx(rec["action"]),
-                     bool(rec.get("legal_actions_complete", True)), deal, key, means_raw))
+                     bool(rec.get("legal_actions_complete", True)), deal, key, means_raw, units))
     return rows
 
 
 CHUNK_SCHEMA = "shengji-policy-rows-chunked-v1"
+NO_SEARCH_VALUES = "no-search-values"   # manifest value_units key for rows without a usable mean
 
 
 def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
@@ -190,9 +205,13 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
                         vals=vals, has_vals=has_vals)
     with open(path, "rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
+    # units are counted HERE, over the rows this chunk persists: a count taken as rows
+    # are read includes the tail the max_rows cap discards (Codex P2 on #650)
+    units = Counter(m.get("units", NO_SEARCH_VALUES) for m in meta)
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
             "rows_with_ballot_target": int((tgt >= 0).sum()),
-            "rows_with_search_values": int(has_vals.sum()), "sha256": sha}
+            "rows_with_search_values": int(has_vals.sum()), "sha256": sha,
+            "value_units": dict(units)}
 
 
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
@@ -226,10 +245,10 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
             raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
-            for x, y, n, legal, ballot, taken, complete, deal, key, means_raw in got:
+            for x, y, n, legal, ballot, taken, complete, deal, key, means_raw, units in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
-                             "deal": deal, "deal_key": key, "means": means_raw})
+                             "deal": deal, "deal_key": key, "means": means_raw, "units": units})
             if out_dir is not None:
                 # Flush full chunks as they fill; the LAST chunk may be partial so the
                 # limit is met the moment total + buffered reaches it (bounded memory:
@@ -261,7 +280,11 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                     "deals": sum(c["deals"] for c in chunks),
                     "split": {"lo": lo, "hi": hi, "thin": thin, "seed": seed, "max_rows": max_rows},
                     "corpora": [str(Path(c).resolve()) for c in corpora],
-                    "deal_key_schema": "shengji-value-deal-key-v1"}
+                    "deal_key_schema": "shengji-value-deal-key-v1",
+                    # the producers' value units, by row, and the scale each was brought to
+                    # the points scale with -- so a composed set can show what it mixed (#649)
+                    "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
+                    "value_units_scale": dict(_value_units_scale()), "values_scale": "points"}
         with open(out_dir / "manifest.json", "w") as fh:
             json.dump(manifest, fh, indent=1)
         return {"rows": total, "chunks": len(chunks), "dir": str(out_dir)}

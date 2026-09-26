@@ -83,6 +83,8 @@ M = [
  "","","","gen-5 arm B (#538): arm A with MC-LCB RESTORED, the only change; served vs r30 (v35b) 5w +0.0116 [-0.0242, +0.0475], crosses zero"),
 ("gen-5 arm C: the PRODUCTION head on EVERY corpus we own (shortlist + all ten PV + MC-LCB)","1fb1a381","2026-09-24","v2",330,"3e-4","496k","55,123,440","0.62020","",
  "","","","gen-5 arm C (#538): all 30 corpora, every deal we own; served vs r30 (v35c) 5w -0.0031 [-0.0385, +0.0322], crosses zero"),
+("GEN5 arm D (arm C's corpus, warm from gen-4 run 4)","759c1bdd","2026-09-26","v2",330,"3e-4","496k","55,123,440","0.61882","",
+ "","","","gen-5 arm D: one variable vs arm C, the --init checkpoint (gen-4 run 4); holdouts lower on 2 of 4; NOT screened"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",
@@ -194,6 +196,28 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "759c1bdd":
+        "GENERATION 5, ARM D -- THE WARM START, NOT THE CORPUS. Sealed 2026-09-26 02:39 ET, rc=0, wall "
+        "46,246 s (within 3 minutes of arm C's 46,083 s), best epoch 8 of 11. EXACTLY ONE VARIABLE vs arm "
+        "C: the --init checkpoint. Same 30 corpora, same 496,000 deals, same 55,123,440 composed rows, "
+        "same recipe, same knobs, same seed. Arm C starts from the production head 8ecd4fea; arm D starts "
+        "from GEN4-SOFT-336k (423836c7), gen-4 run 4, the strongest gen-4 head by the fixed holdouts. "
+        "FOUR FIXED HOLDOUTS, rank_regret, lower is better -- arm D vs arm C: roomlog 0.06537 vs 0.06815 "
+        "(D better by 0.00278), pt1 0.02885 vs 0.03846 (D better by 0.00962), luna 0.08346 vs 0.08219 "
+        "(C better by 0.00127), highn 0.10518 vs 0.10509 (C better by 0.00009). So arm D is lower on two "
+        "of four and its two improvements are the larger ones, pt1 by about a quarter in relative terms. "
+        "NO SUPERIORITY CLAIM: these are point estimates with no interval, a two-of-four split is not a "
+        "difference test, and the highn gap of 0.00009 is a real but minuscule difference that is NOT "
+        "being called a tie. READING RULE: val_ce (0.61882) is comparable neither to gen 4 nor between "
+        "gen-5 arms, because each arm's split is drawn from its own training corpus; the comparable "
+        "surfaces are these four holdouts and a served screen. WHAT THIS DOES NOT ISOLATE: the warm start "
+        "ONLY, and it is NOT a clean transfer experiment -- gen-4 run 4 was itself trained on shortlist "
+        "corpora that are also in arm D's mix, so arm D makes a second pass over data its initialisation "
+        "already saw. That is a confound for any claim about transfer; it is not a confound for 'does "
+        "starting from our best gen-4 head beat starting from production on the same corpus', because arm "
+        "C differs in nothing else. NOT SCREENED: whether it earns a served read against release 30 is "
+        "Jerry's call, and the offline metric has failed to predict the served read for every gen-4 head; "
+        "arm C was the first time the two agreed.",
     "8ecd4fea":
         "EXPLOITABILITY PROBE (#625 step 4, lane x36a, sealed 2026-09-25 22:10 ET). This head served as "
         "the W64/K8 search was run as a belief-reweighting ATTACKER -- the same package with its world "

@@ -1665,7 +1665,12 @@ def test_the_start_level_is_fixed_once_the_game_starts(client):
         a.send_json({"type": "start_game"})
         _drain(a, "state")
         a.send_json({"type": "set_start_level", "start_level": "K"})
-        assert "fixed" in _drain(a, "error")["message"].lower()
+        # The refusal shares the seat's FIFO queue with the card-by-card deal
+        # broadcasts (one state per DEAL_DELAY, ~108 for a full deal). On a
+        # loaded CI runner the handler ran behind 40+ of them and the default
+        # 40-message window read "no error" (2026-09-26); the window must
+        # cover the whole deal, not the runner's idea of prompt.
+        assert "fixed" in _drain(a, "error", tries=400)["message"].lower()
         assert srv.rooms[code].start_level == "2"
         assert srv.rooms[code].game.levels == ("2", "2")
 

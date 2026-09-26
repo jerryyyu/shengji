@@ -1622,3 +1622,80 @@ def test_round_result_payload_carries_the_scoring_fields(client):
         assert payload["games_won"] == [1, 0]
         assert payload["new_levels"] == ["2", "2"], payload["new_levels"]
         assert payload["game_over"] is False
+
+
+# ------------------------------ the host sets the level in the ROOM (Jerry 09-26)
+def test_host_sets_the_start_level_in_the_room_and_everyone_sees_it(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(host, "room")["room"]
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "join_room", "room": code, "name": "robin"})
+            _drain(guest, "room")
+            _drain(host, "room")                      # the join broadcast
+            host.send_json({"type": "set_start_level", "start_level": "9"})
+            assert _drain(host, "room")["start_level"] == "9"
+            assert _drain(guest, "room")["start_level"] == "9", \
+                "a joiner must see the level the host picked"
+            assert srv.rooms[code].start_level == "9"
+
+
+def test_only_the_host_can_set_the_start_level(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(host, "room")["room"]
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "join_room", "room": code, "name": "robin"})
+            _drain(guest, "room")
+            guest.send_json({"type": "set_start_level", "start_level": "9"})
+            assert "host" in _drain(guest, "error")["message"].lower()
+            assert srv.rooms[code].start_level == "2", "a guest changed the level"
+
+
+def test_the_start_level_is_fixed_once_the_game_starts(client):
+    """Game() reads the level exactly once at start_game; a later change would
+    make the HUD lie for the rest of the session."""
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        for _ in range(3):
+            _drain(a, "room")
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        a.send_json({"type": "set_start_level", "start_level": "K"})
+        # The refusal shares the seat's FIFO queue with the card-by-card deal
+        # broadcasts (one state per DEAL_DELAY, ~108 for a full deal). On a
+        # loaded CI runner the handler ran behind 40+ of them and the default
+        # 40-message window read "no error" (2026-09-26); the window must
+        # cover the whole deal, not the runner's idea of prompt.
+        assert "fixed" in _drain(a, "error", tries=400)["message"].lower()
+        assert srv.rooms[code].start_level == "2"
+        assert srv.rooms[code].game.levels == ("2", "2")
+
+
+def test_an_unknown_room_level_is_refused_not_coerced(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        a.send_json({"type": "set_start_level", "start_level": "1"})
+        assert "unknown" in _drain(a, "error")["message"].lower()
+        assert srv.rooms[code].start_level == "2"
+
+
+def test_the_room_level_reaches_the_dealt_round(client):
+    """End to end: the level set in the room must be what round 1 is DEALT at."""
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        for _ in range(3):
+            _drain(a, "room")
+        a.send_json({"type": "set_start_level", "start_level": "J"})
+        _drain(a, "room")
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        game = srv.rooms[code].game
+        assert game.levels == ("J", "J")
+        assert game.round.trump_rank == "J", "dealt at a different rank than shown"

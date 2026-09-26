@@ -1,9 +1,8 @@
-import type { Rank, RoomSeats, ServerMsg } from "../protocol";
-import { RANKS } from "../protocol";
+import type { RoomSeats, ServerMsg } from "../protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
-import { DEFAULT_START_LEVEL, createRoomPayload } from "../testPolicy";
+import { createRoomPayload } from "../testPolicy";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -26,7 +25,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     () => new URLSearchParams(window.location.search).get("test_shortlist") === "1",
   );
   const [w32Selected, setW32Selected] = useState(false);
-  const [startLevel, setStartLevel] = useState<Rank>(DEFAULT_START_LEVEL);
   const [testAccessKey, setTestAccessKey] = useState("");
   const [roomCode, setRoomCode] = useState(
     () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
@@ -93,8 +91,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const create = () => {
     if (!ready || !testReady) return;
     const trimmed = name.trim();
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey,
-                                      startLevel);
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
     saveName(trimmed);
     clearInvite();
@@ -105,8 +102,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const playBots = () => {
     if (status !== "open" || !testReady) return;
     const trimmed = name.trim() || "Player";
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey,
-                                      startLevel);
+    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
     saveName(trimmed);
     clearSavedRoom();
@@ -250,19 +246,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         <button className="btn primary big" disabled={!ready || !testReady} onClick={create}>
           Create room
         </button>
-
-        <div className="start-level-row">
-          <span className="field-label">Starting level</span>
-          <select
-            aria-label="Starting level"
-            value={startLevel}
-            onChange={(e) => setStartLevel(e.target.value as Rank)}
-          >
-            {RANKS.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
 
         <div className="divider">
           <span>or join</span>

@@ -244,3 +244,68 @@ def test_the_default_baseline_budget_is_unchanged():
     bot = _baseline_bot(DEFAULT_BASE_POLICY)
     assert bot.N_DETERMINIZATIONS == screen.BASELINE_SELECT_WORLDS
     assert bot.REPORT_FOLD_WORLDS == screen.BASELINE_REPORT_WORLDS
+
+
+def _captured_build_config_kwargs(monkeypatch, policy):
+    """Capture what summary_for hands to build_config, at the REAL call site."""
+    import shengji.train.cwv_shortlist_screen as screen
+    seen = {}
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop after the config is built")
+
+    monkeypatch.setattr(screen.duel, "build_config", spy)
+    config = {"base_policy": policy, "arm": "policy", "arm_policy": None,
+              "baseline": "production", "production_multiplier": 1, "seed0": 1}
+    try:
+        screen.summary_for([], config)
+    except RuntimeError:
+        pass
+    return seen
+
+
+def test_summary_records_the_budget_the_bot_actually_plays(monkeypatch):
+    """The reported P2: summary_for built metadata with the production
+    constants while a weak opponent played its own smaller budget, so
+    work.effective said N=30/R=300 for a bot running N=5/R=0."""
+    seen = _captured_build_config_kwargs(monkeypatch, "mc-lite")
+    assert seen, "build_config was never called"
+    bot = _baseline_bot("mc-lite")
+    assert (seen["select_worlds"], seen["report_worlds"]) == \
+        (bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS), (
+            "summary recorded (%s, %s) for a bot playing (%s, %s)"
+            % (seen["select_worlds"], seen["report_worlds"],
+               bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS))
+
+
+def test_summary_budget_is_unchanged_for_the_default_opponent(monkeypatch):
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    seen = _captured_build_config_kwargs(monkeypatch, DEFAULT_BASE_POLICY)
+    assert (seen["select_worlds"], seen["report_worlds"]) == \
+        (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS)
+
+
+def test_recorded_budget_matches_the_bot_that_actually_plays():
+    """The invariant behind both #645 P2s: metadata and bot must come from the
+    same place. Recording N=30/R=300 while mc-lite plays N=5/R=0 is the summary
+    lying about the run."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    for policy in ("mc-lite", "mc", DEFAULT_BASE_POLICY):
+        select, report = screen.effective_baseline_budget(policy)
+        bot = _baseline_bot(policy)
+        assert (bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS) == (select, report), (
+            "%s: recorded (%s, %s) but the bot plays (%s, %s)"
+            % (policy, select, report, bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS))
+
+
+def test_the_default_constants_and_the_registry_cannot_drift_apart():
+    """BASELINE_SELECT_WORLDS/REPORT_WORLDS duplicate the default policy's own
+    recipe. They agree today; this fails the moment either moves alone."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    effective = screen.effective_baseline_budget(DEFAULT_BASE_POLICY)
+    assert effective == (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS), (
+        "the duplicated constants no longer match the default policy's registry recipe")

@@ -60,6 +60,23 @@ def screen_output_lock(output: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def effective_baseline_budget(policy: str) -> tuple[int, int]:
+    """The (select, report) worlds the baseline ACTUALLY plays at.
+
+    Read from the registry class, because that is what make_bot builds. The
+    metadata recorded in the summary must come from the same place as the bot
+    -- recording BASELINE_SELECT_WORLDS while a weak opponent plays its own
+    smaller budget is the summary lying about the run (Codex, second P2 on
+    #645, with a runtime witness showing mc-lite at N=5/R=0 while work.effective
+    said N=30/R=300).
+
+    For the default opponent these are 30/300, identical to the constants, so
+    the historical path is unchanged.
+    """
+    cls = duel.base_policy_class(policy)
+    return (int(cls.N_DETERMINIZATIONS), int(cls.REPORT_FOLD_WORLDS))
+
+
 def base_policy_of(config: dict) -> str:
     """The opponent this config names.
 
@@ -423,9 +440,11 @@ def run_cluster(config, cluster):
         return wrapped
 
     rank = rank_for(config, cluster)
-    base = duel.build_config(arm="none", base_policy=base_policy_of(config),
-                             select_worlds=BASELINE_SELECT_WORLDS,
-                             report_worlds=BASELINE_REPORT_WORLDS)
+    policy = base_policy_of(config)
+    select_worlds, report_worlds = effective_baseline_budget(policy)
+    base = duel.build_config(arm="none", base_policy=policy,
+                             select_worlds=select_worlds,
+                             report_worlds=report_worlds)
     seed = config["seed0"] + cluster
     games = []
 
@@ -510,9 +529,11 @@ def _arm_description(config):
 
 
 def summary_for(shards, config):
-    base = duel.build_config(arm="none", base_policy=base_policy_of(config),
-                             select_worlds=BASELINE_SELECT_WORLDS,
-                             report_worlds=BASELINE_REPORT_WORLDS)
+    policy = base_policy_of(config)
+    select_worlds, report_worlds = effective_baseline_budget(policy)
+    base = duel.build_config(arm="none", base_policy=policy,
+                             select_worlds=select_worlds,
+                             report_worlds=report_worlds)
     result = duel.summarize(
         [record for shard in shards for record in shard["records"]], base,
         seed0=config["seed0"], replicates=1000)

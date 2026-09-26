@@ -60,6 +60,34 @@ def screen_output_lock(output: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def effective_baseline_budget(policy: str) -> tuple[int, int]:
+    """The (select, report) worlds the baseline ACTUALLY plays at.
+
+    Read from the registry class, because that is what make_bot builds. The
+    metadata recorded in the summary must come from the same place as the bot
+    -- recording BASELINE_SELECT_WORLDS while a weak opponent plays its own
+    smaller budget is the summary lying about the run (Codex, second P2 on
+    #645, with a runtime witness showing mc-lite at N=5/R=0 while work.effective
+    said N=30/R=300).
+
+    For the default opponent these are 30/300, identical to the constants, so
+    the historical path is unchanged.
+    """
+    cls = duel.base_policy_class(policy)
+    return (int(cls.N_DETERMINIZATIONS), int(cls.REPORT_FOLD_WORLDS))
+
+
+def base_policy_of(config: dict) -> str:
+    """The opponent this config names.
+
+    A config written before --baseline-policy has no key, and the baseline it
+    played WAS the default -- so defaulting here reproduces what those runs
+    actually did rather than guessing at it. Every config written from now on
+    carries the key, so a missing one can only mean "older than the flag".
+    """
+    return config.get("base_policy") or duel.DEFAULT_BASE_POLICY
+
+
 def rank_for(config: dict, cluster: int) -> str:
     """Return the configured rank for a cluster, preserving legacy rank 2."""
     ranks = config.get("trump_ranks") or (RANK,)
@@ -236,7 +264,24 @@ def make_side(config: dict, side: str, seed: int):
     shortlist_baseline = (side == "baseline" and
                           config.get("baseline") in ("flat-shortlist", "levels-shortlist"))
     if (side == "baseline" and not shortlist_baseline) or arm in ("identity", "production"):
-        bot = make_bot("mc-s0-report-lcb", seed=seed)
+        # Build from the identity the config RECORDS, not from a second literal
+        # that happens to match it. The summary reports base_policy_of(config);
+        # a duplicated constant here meant the reported baseline and the bot
+        # actually played could diverge silently the moment either moved.
+        bot = make_bot(base_policy_of(config), seed=seed)
+        if base_policy_of(config) != duel.DEFAULT_BASE_POLICY:
+            # A NON-DEFAULT opponent keeps its registry recipe. Forcing
+            # N=30/R=300 here would erase exactly the property a weak control
+            # exists to provide: mc-lite is N=5 and mc is N=10, and stamping
+            # the production budget over them would have produced a screen
+            # that REPORTED a weak opponent while playing a strong one
+            # (Codex, P2 on #645, with a runtime witness).
+            #
+            # The cost is that the two sides are no longer work-matched. That
+            # is acceptable here and nowhere else: these are DEV screens that
+            # already record equal_work_strength_claim false, and a positive
+            # control is a question about STRENGTH, not about equal work.
+            return bot
         if side == "arm" and arm == "production":
             multiplier = int(config["production_multiplier"])
             bot.N_DETERMINIZATIONS = BASELINE_SELECT_WORLDS * multiplier
@@ -395,8 +440,11 @@ def run_cluster(config, cluster):
         return wrapped
 
     rank = rank_for(config, cluster)
-    base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
-                             report_worlds=BASELINE_REPORT_WORLDS)
+    policy = base_policy_of(config)
+    select_worlds, report_worlds = effective_baseline_budget(policy)
+    base = duel.build_config(arm="none", base_policy=policy,
+                             select_worlds=select_worlds,
+                             report_worlds=report_worlds)
     seed = config["seed0"] + cluster
     games = []
 
@@ -481,8 +529,11 @@ def _arm_description(config):
 
 
 def summary_for(shards, config):
-    base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
-                             report_worlds=BASELINE_REPORT_WORLDS)
+    policy = base_policy_of(config)
+    select_worlds, report_worlds = effective_baseline_budget(policy)
+    base = duel.build_config(arm="none", base_policy=policy,
+                             select_worlds=select_worlds,
+                             report_worlds=report_worlds)
     result = duel.summarize(
         [record for shard in shards for record in shard["records"]], base,
         seed0=config["seed0"], replicates=1000)
@@ -627,6 +678,11 @@ def main(argv=None):
                         help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist", "levels-shortlist"),
                         default="production")
+    parser.add_argument("--baseline-policy", default=duel.DEFAULT_BASE_POLICY,
+                        help="registry name of the opponent the arm plays against. Must be a "
+                             "registered MCBot subclass -- the oracle arms subclass the baseline "
+                             "class itself, so SmartBot and the heuristic are NOT usable here. "
+                             "Default reproduces the historical baseline exactly.")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -731,8 +787,13 @@ def _run_screen(args, trump_ranks):
         worlds=args.worlds, selection_worlds=args.selection_worlds,
         alternatives=args.alternatives, batch_size=args.batch_size,
         uniform=args.arm == "uniform")
+    # Fail CLOSED on an unusable opponent, at configuration time rather than
+    # inside a worker twenty minutes in. base_policy_class raises for anything
+    # that is not a registered MCBot subclass.
+    duel.base_policy_class(args.baseline_policy)
     config = {
         "schema": "cwv-shortlist-config-v1", "arm": args.arm,
+        "base_policy": args.baseline_policy,
         "checkpoint": checkpoint, "checkpoint_sha256": checkpoint_sha,
         "checkpoint_recipe": checkpoint_recipe,
         "encoding": args.encoding,

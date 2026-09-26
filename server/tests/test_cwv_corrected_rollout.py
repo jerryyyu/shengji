@@ -165,3 +165,147 @@ def test_full_admission_to_report_path_without_method_stubs():
     assert bot.shortlist_counts['cheap_evaluations'] > 0
     assert bot.corrected_rollout_counts['model_evaluations'] == 2 * len(record['candidates'])
     assert round_signature(rnd) == before
+
+
+# ------------------------------------------- the opponent is configurable (#625)
+def test_the_baseline_bot_is_built_from_the_recorded_identity():
+    """The summary reports config['base_policy']; the bot must come from THAT,
+    not a second literal that merely happens to match it today."""
+    import shengji.train.cwv_shortlist_screen as screen
+    import inspect
+    src = inspect.getsource(screen)
+    assert 'make_bot("mc-s0-report-lcb"' not in src, \
+        "the baseline bot is hardcoded again; the recorded identity can now lie"
+    assert 'make_bot(base_policy_of(config)' in src
+
+
+def test_an_unusable_opponent_fails_closed_at_configuration():
+    """SmartBot and the heuristic are NOT usable: the oracle arms subclass the
+    baseline class. That must be refused before a worker starts, not inside one."""
+    import pytest
+    from shengji.oracle.screen import base_policy_class, OracleScreenError
+    for name in ("smart", "heuristic"):
+        with pytest.raises(OracleScreenError, match="not a registered MCBot"):
+            base_policy_class(name)
+
+
+def test_weak_mc_opponents_are_available_for_a_positive_control():
+    """The exploitability probe needs a WEAKER opponent to tell 'hard to
+    exploit' apart from 'this attack does nothing'."""
+    from shengji.oracle.screen import base_policy_class
+    for name in ("mc", "mc-lite"):
+        assert base_policy_class(name) is not None
+
+
+def test_the_queue_omits_the_flag_by_default():
+    """Default must put the historical argv on the wire, byte for byte."""
+    import shengji.train.cwv_screen_queue as q
+    import inspect
+    src = inspect.getsource(q)
+    assert 'if args.baseline_policy else []' in src, "the flag must be opt-in"
+
+
+# ---------------------------- the weak control must actually BE weak (#645 P2)
+def _baseline_bot(policy):
+    """Build the baseline side through the REAL path and hand back the bot, so
+    these assert instantiated budgets rather than reading the source."""
+    import shengji.train.cwv_shortlist_screen as screen
+    config = {"base_policy": policy, "arm": "policy", "production_multiplier": 1,
+              "arm_policy": None, "baseline": "production"}
+    return screen.make_side(config, "baseline", seed=1)
+
+
+def test_a_weak_opponent_keeps_its_registry_budget():
+    """Codex P2: make_side stamped N=30/R=300 over every baseline, which would
+    have erased the weakness the positive control exists to create -- a screen
+    REPORTING mc-lite while playing a production-strength opponent."""
+    from shengji.ai.registry import REGISTRY
+    for policy, expected in (("mc-lite", REGISTRY["mc-lite"].N_DETERMINIZATIONS),
+                             ("mc", REGISTRY["mc"].N_DETERMINIZATIONS)):
+        bot = _baseline_bot(policy)
+        assert bot.N_DETERMINIZATIONS == expected, (
+            "%s played at N=%s, not its registry N=%s -- the weak control was "
+            "silently strengthened" % (policy, bot.N_DETERMINIZATIONS, expected))
+
+
+def test_mc_lite_is_actually_weaker_than_the_default_baseline():
+    """If the two ended up at the same budget the control would be no control."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    weak = _baseline_bot("mc-lite").N_DETERMINIZATIONS
+    default = _baseline_bot(DEFAULT_BASE_POLICY).N_DETERMINIZATIONS
+    assert weak < default, "mc-lite N=%s is not below the default N=%s" % (weak, default)
+
+
+def test_the_default_baseline_budget_is_unchanged():
+    """The historical path must still be stamped with the production budget."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    bot = _baseline_bot(DEFAULT_BASE_POLICY)
+    assert bot.N_DETERMINIZATIONS == screen.BASELINE_SELECT_WORLDS
+    assert bot.REPORT_FOLD_WORLDS == screen.BASELINE_REPORT_WORLDS
+
+
+def _captured_build_config_kwargs(monkeypatch, policy):
+    """Capture what summary_for hands to build_config, at the REAL call site."""
+    import shengji.train.cwv_shortlist_screen as screen
+    seen = {}
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop after the config is built")
+
+    monkeypatch.setattr(screen.duel, "build_config", spy)
+    config = {"base_policy": policy, "arm": "policy", "arm_policy": None,
+              "baseline": "production", "production_multiplier": 1, "seed0": 1}
+    try:
+        screen.summary_for([], config)
+    except RuntimeError:
+        pass
+    return seen
+
+
+def test_summary_records_the_budget_the_bot_actually_plays(monkeypatch):
+    """The reported P2: summary_for built metadata with the production
+    constants while a weak opponent played its own smaller budget, so
+    work.effective said N=30/R=300 for a bot running N=5/R=0."""
+    seen = _captured_build_config_kwargs(monkeypatch, "mc-lite")
+    assert seen, "build_config was never called"
+    bot = _baseline_bot("mc-lite")
+    assert (seen["select_worlds"], seen["report_worlds"]) == \
+        (bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS), (
+            "summary recorded (%s, %s) for a bot playing (%s, %s)"
+            % (seen["select_worlds"], seen["report_worlds"],
+               bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS))
+
+
+def test_summary_budget_is_unchanged_for_the_default_opponent(monkeypatch):
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    seen = _captured_build_config_kwargs(monkeypatch, DEFAULT_BASE_POLICY)
+    assert (seen["select_worlds"], seen["report_worlds"]) == \
+        (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS)
+
+
+def test_recorded_budget_matches_the_bot_that_actually_plays():
+    """The invariant behind both #645 P2s: metadata and bot must come from the
+    same place. Recording N=30/R=300 while mc-lite plays N=5/R=0 is the summary
+    lying about the run."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    for policy in ("mc-lite", "mc", DEFAULT_BASE_POLICY):
+        select, report = screen.effective_baseline_budget(policy)
+        bot = _baseline_bot(policy)
+        assert (bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS) == (select, report), (
+            "%s: recorded (%s, %s) but the bot plays (%s, %s)"
+            % (policy, select, report, bot.N_DETERMINIZATIONS, bot.REPORT_FOLD_WORLDS))
+
+
+def test_the_default_constants_and_the_registry_cannot_drift_apart():
+    """BASELINE_SELECT_WORLDS/REPORT_WORLDS duplicate the default policy's own
+    recipe. They agree today; this fails the moment either moves alone."""
+    import shengji.train.cwv_shortlist_screen as screen
+    from shengji.oracle.screen import DEFAULT_BASE_POLICY
+    effective = screen.effective_baseline_budget(DEFAULT_BASE_POLICY)
+    assert effective == (screen.BASELINE_SELECT_WORLDS, screen.BASELINE_REPORT_WORLDS), (
+        "the duplicated constants no longer match the default policy's registry recipe")

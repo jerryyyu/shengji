@@ -194,6 +194,28 @@ SERIES = {
 # RECORD (shown in the detail panel when its dot or table row is tapped).  Verbatim text.
 NOTE_LIMIT = 150
 RECORD = {
+    "8ecd4fea":
+        "EXPLOITABILITY PROBE (#625 step 4, lane x36a, sealed 2026-09-25 22:10 ET). This head served as "
+        "the W64/K8 search was run as a belief-reweighting ATTACKER -- the same package with its world "
+        "prior reweighted by per-decision log-likelihoods -- against a CONTROL that is the same package "
+        "with the reweighting short-circuited at floor>=1 (served parity). Twenty 520-cluster mirrored "
+        "windows, 10,400 deal-pairs, arms interleaved per seed, seeds 27960910..29860910. Result: "
+        "-0.0069 [-0.0248, +0.0109] per-round signed level utility, RE SE 0.00909, tau 0, I2 0.0%, "
+        "Q 14.11/19df, MDE80 0.0255 against a pre-registered 0.0255. CROSSES ZERO -- inconclusive as to "
+        "direction; the negative point is NOT a finding that the attacker is worse. What it establishes "
+        "is the upper bound it was designed for: any gain from this attack is at most +0.0109, against a "
+        "typical per-round utility of +0.13 to +0.19. WHO WAS EXPLOITED: the baseline is "
+        "mc-s0-report-lcb, NOT the current served policy -- the harness passes --baseline production and "
+        "that name resolves to the release-28-era W32 play policy. So this reads as 'belief reweighting "
+        "does not help a PV searcher beat MC-LCB more than a plain PV searcher does', and says nothing "
+        "about how exploitable release 30/31 is as an opponent; the contrast is still valid because both "
+        "arms face the identical baseline. COST: attacker decision latency p95 0.80 s vs control 0.15 s "
+        "(max 2.13 vs 1.02) for no detected gain. Tie rate 49.5% vs 50.0% -- close, but rounded means, "
+        "not called identical. There is NO positive control: a weak-opponent run (SmartBot or shortlist) "
+        "would be needed to distinguish 'MC-LCB is hard to exploit' from 'this attack does nothing to "
+        "anyone', and the harness has no flag to vary the baseline. All 40 windows complete, 0 refused, "
+        "arm identities confirmed distinct. Archived at "
+        "~/shengji-archive/2026-09-13/readouts/x36a-exploit-vs-control/ with SHA256SUMS.",
     "1fb1a381":
         "GENERATION 5, ARM C -- EVERY DEAL WE OWN. The production head 8ecd4fea retrained on SHORTLIST + ALL TEN PV STORES + MC-LCB: 30 corpora, 496,000 deals, 55,123,440 policy rows, soft targets T=1.0 w=1.0, same trunk, objective and seed as arms A and B. Jerry 2026-09-24 asked for MC-LCB to be included, and that choice has a cost worth stating: arm C is therefore the BIGGEST-CORPUS model, not the matched-size diagnostic that would have separated volume from composition. Sealed 22:35:58 ET, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs), val_ce 0.6202. NOT SCREENED: Perf is the only screen box and is contended with the pre-registered exploitability run, so there is no served read and NO STRENGTH CLAIM is made here. val_ce is comparable neither to arm A (0.6377) nor arm B (0.6124) -- validation splits are drawn from the training corpora and the corpora differ (the reading rule recorded on #538 before any gen-5 number existed), which is why this checkpoint is in OWN_SPLIT and drawn hollow. THE COMPARABLE SURFACE IS THE FOUR FIXED HOLDOUTS, and there arm C is MIXED against arm B rather than better: roomlog rank regret 0.0682 against 0.0686 and pt1 0.0385 against 0.0409, but luna 0.0822 against 0.0781 and highn 0.1051 against 0.1041; rank top-1 0.471 / 0.460 / 0.385 / 0.654. Reading that plainly: adding the four newer PV stores, 64,000 more deals and 6.9M more rows over arm B, did not buy a clear offline gain on the surface where the two ARE comparable. SERVED READ, lane v35c on Perf, five 520-cluster mirrored windows, fresh seeds 27460910..27860910: -0.0031 [-0.0385, +0.0322] against release 30 as served. CROSSES ZERO, and the point is very slightly NEGATIVE. Windows +0.0356, +0.0154, -0.0269, -0.0173, -0.0250; tau 0, Q 1.96/4df, I2 0%, RE SE 0.01803, MDE80 +0.0505; ties 50.2% candidate against 50.7% control; latency p50/p95 0.10/0.16 on both arms, candidate max 1.16 s against the control's 0.79 s. SO THE ANSWER IS NO: every deal we own bought NOTHING served, and the offline holdouts said it first. Gen 5's three served reads are -0.0606 (arm A, resolved negative), +0.0116 (arm B, crosses zero) and -0.0031 (arm C, crosses zero) -- more data of the same kind is not the lever, and the one thing the generation did establish is that removing MC-LCB cost us and restoring it recovered. A matched-window common-opponent contrast, not a duel. Readout archived at ~/shengji-archive/2026-09-13/readouts/v35c-gen5armC-vs-r30 with SHA256SUMS.",
     "9f4c9658":

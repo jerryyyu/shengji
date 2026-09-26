@@ -1435,3 +1435,131 @@ def test_a_displaced_writer_does_not_stamp_the_new_socket():
 
     # And once the owner itself is cancelled, the record appears normally.
     assert seat.writer_exit == "cancelled"
+
+
+# --------------------------------- disconnect vs a real RuntimeError (#639)
+def _starlette_socket_after_a_failed_send():
+    """Drive a REAL starlette WebSocket into the state #639 happens in.
+
+    A send that fails with OSError sets application_state = DISCONNECTED and
+    raises WebSocketDisconnect, but leaves client_state at CONNECTED. The next
+    receive_json then raises the exact #639 RuntimeError. This is the
+    transition, not a mock of it (Codex, P2 on #643)."""
+    import asyncio as _asyncio
+    from starlette.websockets import WebSocket, WebSocketState
+
+    async def scenario():
+        async def receive():
+            return {"type": "websocket.connect"}
+
+        async def send(message):
+            if message["type"] == "websocket.send":
+                raise OSError("broken pipe")
+
+        ws = WebSocket({"type": "websocket", "path": "/ws", "headers": []},
+                       receive, send)
+        await ws.accept()
+        assert ws.application_state is WebSocketState.CONNECTED
+        try:
+            await ws.send_json({"hello": 1})
+        except Exception:
+            pass
+        return ws
+
+    return _asyncio.run(scenario())
+
+
+def test_a_failed_send_leaves_client_state_lying_about_the_connection():
+    """The trap: after a failed send the socket is NOT receivable, yet
+    client_state still says CONNECTED. Anything keying off client_state reports
+    healthy for exactly the socket that is about to raise."""
+    from starlette.websockets import WebSocketState
+
+    ws = _starlette_socket_after_a_failed_send()
+    assert ws.application_state is WebSocketState.DISCONNECTED
+    assert ws.client_state is WebSocketState.CONNECTED, \
+        "if starlette ever fixes this, the helper choice should be revisited"
+
+
+def test_the_helper_reads_the_state_that_actually_gates_receive():
+    """Regression for the P2: _receive_is_legal must be False here. Reading
+    client_state returns True and the #639 traceback escapes anyway."""
+    from shengji.api import server as srv
+
+    ws = _starlette_socket_after_a_failed_send()
+    assert srv._receive_is_legal(ws) is False
+
+
+def test_that_state_really_does_raise_the_639_runtimeerror():
+    """Ties the helper to the actual failure: a receive in this state raises
+    the exact error #639 is about."""
+    import asyncio as _asyncio
+
+    ws = _starlette_socket_after_a_failed_send()
+    with pytest.raises(RuntimeError, match="not connected"):
+        _asyncio.run(ws.receive_json())
+
+
+class _FakeSocket:
+    """Minimal websocket that raises RuntimeError on the first receive."""
+
+    def __init__(self, state, message='WebSocket is not connected. Need to call "accept" first.'):
+        from starlette.websockets import WebSocketState
+        # application_state is the field that gates receive, so it is the one
+        # under test; client_state is pinned CONNECTED precisely because that
+        # is the misleading combination a failed send produces.
+        self.application_state = state
+        self.client_state = WebSocketState.CONNECTED
+        self._message = message
+        self.accepted = False
+
+    async def accept(self):
+        self.accepted = True
+
+    async def receive_json(self):
+        raise RuntimeError(self._message)
+
+    async def send_json(self, payload):
+        return None
+
+    async def close(self, code=1000):
+        return None
+
+
+def test_a_runtimeerror_from_a_gone_peer_is_treated_as_a_disconnect():
+    """#639: starlette raises RuntimeError, not WebSocketDisconnect, when the
+    peer is already gone. That escaped as an ASGI traceback for what is an
+    ordinary disconnect."""
+    import asyncio as _asyncio
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    sock = _FakeSocket(WebSocketState.DISCONNECTED)
+    _asyncio.run(srv.ws_endpoint(sock))      # must NOT raise
+    assert sock.accepted
+
+
+def test_a_runtimeerror_while_still_connected_keeps_propagating():
+    """The narrowing must not swallow a genuine bug of ours. A RuntimeError
+    raised while the socket is still CONNECTED is not a disconnect."""
+    import asyncio as _asyncio
+    import pytest as _pytest
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    sock = _FakeSocket(WebSocketState.CONNECTED, message="genuine bug in our code")
+    with _pytest.raises(RuntimeError, match="genuine bug"):
+        _asyncio.run(srv.ws_endpoint(sock))
+
+
+def test_the_discriminator_is_state_not_message_text():
+    """Matching the message string would break silently the day starlette
+    rewords it, and would swallow same-worded bugs."""
+    from starlette.websockets import WebSocketState
+    from shengji.api import server as srv
+
+    assert srv._receive_is_legal(_FakeSocket(WebSocketState.CONNECTED)) is True
+    for state in (WebSocketState.DISCONNECTED, WebSocketState.CONNECTING):
+        sock = _FakeSocket(state)
+        assert sock.client_state is WebSocketState.CONNECTED, "the misleading combination"
+        assert srv._receive_is_legal(sock) is False

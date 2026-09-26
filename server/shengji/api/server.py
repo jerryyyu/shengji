@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketState
 
 import os
 import secrets
@@ -534,6 +535,20 @@ def enqueue(seat: Seat, payload: dict) -> None:
             seat.queue.put_nowait(payload)
         except asyncio.QueueEmpty:
             pass
+
+
+def _receive_is_legal(ws: WebSocket) -> bool:
+    """Would starlette still allow a receive on this socket?
+
+    It must be APPLICATION_STATE, not client_state. starlette's
+    receive_text/bytes/json all gate on application_state and raise
+    'WebSocket is not connected' from it, and a send that fails with OSError
+    sets application_state = DISCONNECTED while leaving client_state at
+    CONNECTED. Checking client_state therefore reports "still connected" for
+    exactly the socket that is about to raise (Codex, P2 on #643, reproduced
+    against real starlette).
+    """
+    return getattr(ws, "application_state", None) is WebSocketState.CONNECTED
 
 
 def _record_writer_exit(seat: "Seat", task: asyncio.Task) -> None:
@@ -1351,7 +1366,17 @@ async def ws_endpoint(ws: WebSocket) -> None:
     my_gen = 0              # connection generation this socket owns
     try:
         while True:
-            msg = await ws.receive_json()
+            try:
+                msg = await ws.receive_json()
+            except RuntimeError:
+                # starlette raises RuntimeError, not WebSocketDisconnect, when
+                # the peer is already gone (#639). Scoped to the RECEIVE so a
+                # RuntimeError from anything else in this loop still escapes,
+                # and gated on whether a receive was legal at all -- not on the
+                # message text, which would break silently on a reword.
+                if _receive_is_legal(ws):
+                    raise
+                break
             if not isinstance(msg, dict):
                 continue
             t = msg.get("type")

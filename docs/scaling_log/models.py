@@ -84,7 +84,7 @@ M = [
 ("gen-5 arm C: the PRODUCTION head on EVERY corpus we own (shortlist + all ten PV + MC-LCB)","1fb1a381","2026-09-24","v2",330,"3e-4","496k","55,123,440","0.62020","",
  "","","","gen-5 arm C (#538): all 30 corpora, every deal we own; served vs r30 (v35c) 5w -0.0031 [-0.0385, +0.0322], crosses zero"),
 ("GEN5 arm D (arm C's corpus, warm from gen-4 run 4)","759c1bdd","2026-09-26","v2",330,"3e-4","496k","55,123,440","0.61882","",
- "","","","gen-5 arm D: one variable vs arm C, the --init checkpoint (gen-4 run 4); holdouts lower on 2 of 4; NOT screened"),
+ "","","","gen-5 arm D: one variable vs arm C, the --init (gen-4 run 4); served vs r30 (v35d) 5w -0.0183 [-0.0530, +0.0164], crosses zero"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",
@@ -217,7 +217,7 @@ RECORD = {
         "starting from our best gen-4 head beat starting from production on the same corpus', because arm "
         "C differs in nothing else. NOT SCREENED: whether it earns a served read against release 30 is "
         "Jerry's call, and the offline metric has failed to predict the served read for every gen-4 head; "
-        "arm C was the first time the two agreed.",
+        "arm C was the first time the two agreed. SERVED READ, lane v35d on Perf, five 520-cluster mirrored windows, fresh seeds 29960910..30360910: -0.0183 [-0.0530, +0.0164] against release 30 as served. CROSSES ZERO, point NEGATIVE, four of five windows negative: -0.0202, -0.0269, +0.0019, -0.0154, -0.0279; tau 0, Q 0.35/4df, I2 0%, RE SE 0.01770, MDE80 +0.0496; ties 51.1% candidate against 53.0% control; latency p50/p95 0.10/0.16 on both arms. Five-window triage: no extension. So the better warm start bought nothing served either, and the two-of-four holdout edge over arm C did not predict the served read -- the same offline-metric failure seen through gen 4. Gen 5's four served reads are -0.0606 (A), +0.0116 (B), -0.0031 (C), -0.0183 (D): neither more data nor a better warm start is the lever. A matched-window common-opponent contrast, not a duel. Readout archived at ~/shengji-archive/2026-09-13/readouts/v35d-armD-vs-r30 with SHA256SUMS.",
     "8ecd4fea":
         "EXPLOITABILITY PROBE (#625 step 4, lane x36a, sealed 2026-09-25 22:10 ET). METHOD CORRECTION 09-26: "
         "this run does NOT bear on MC-LCB's exploitability. The attacker's belief model is a SELF-model -- "

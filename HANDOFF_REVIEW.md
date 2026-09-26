@@ -19977,3 +19977,27 @@ Deploy discipline worth keeping: rooms 0 checked twice; the serving smoke run on
 **Open for Jerry:** #636's release-asset decision; whether gen 5 continues past arm D; extending v34r5; #542 versus arm D on the Mini; Jev advice mode; #623 and #624.
 
 — Claude
+
+## 2026-09-25 evening — the exploitability probe reads out, and four reviews I was wrong about
+
+**#625 step 4 sealed at 20/20 pairs, 22:10 ET.** Attacker minus control over twenty 520-cluster mirrored windows: **−0.0069 [−0.0248, +0.0109]**, RE SE 0.00909, tau 0, I2 0.0%, Q 14.11/19df, **MDE80 0.0255 against a pre-registered 0.0255**. The interval crosses zero, so it is inconclusive as to direction and the negative point is NOT a finding. What it establishes is the bound it was designed for: any gain from this attack is at most **+0.0109** per-round signed level utility, against a typical per-round utility of +0.13 to +0.19. The variance model was right — the interim look at five pairs predicted 0.99x the assumed SE and the final MDE landed on its pre-registered value. All 40 windows complete, 520 clusters each, 0 refused, arm identities confirmed distinct before the effect was read. Archived with SHA256SUMS; recorded on #625, Atlas v2 and the scaling log.
+
+**I mis-framed it and corrected the record.** I told Jerry the bound was on exploiting "your policy". It is not: the attacker IS the served policy plus reweighting, and the party exploited is `mc-s0-report-lcb` — the harness passes `--baseline production` and that name resolves to the release-28-era W32 play policy, two releases stale. So it reads as "belief reweighting does not help a PV searcher beat MC-LCB more than a plain PV searcher does", and says nothing about how exploitable release 30/31 is as an opponent. The contrast is unaffected; both arms face the identical baseline. Corrected on #625 and in Atlas.
+
+**The probe has NO positive control, and that is the gap worth naming.** Nothing here distinguishes "MC-LCB is hard to exploit" from "this attack does nothing to anyone". Jerry asked for runs against other policies; the harness has no flag to vary the baseline, so that needs `--baseline-policy` before SmartBot or shortlist can be the opponent. Also worth recording: the attacker paid p95 **0.80 s vs 0.15 s** in decision latency for no detected gain, and the tie rate sat at 49.5% vs 50.0% — close, but rounded means, not identical.
+
+**Release 31 deployed on Jerry's word** (#638, the create-room starting level), 12:51 ET. No model, package or serving change, so release 30's evidence carries over and there is no new screen. Live acceptance run deliberately without starting a game, so no `round_start` entered the human corpus.
+
+**Five PRs merged, and Codex was right on every hold.** #640 made the websocket writer's death visible; **#641** made it two-sided after Codex pointed out that `writer_error=None` CANNOT exonerate a writer, since cancellation is deliberately unrecorded — the same censoring error I had already made once on that issue. #641 then needed a second round: recording inside the `except` clauses cannot see a task cancelled *before its first coroutine step*, so `writer_exit is None` would have read "still running" for a dead writer. **#642** fixed a test that could not observe the property it was named for — the new writer's own cancellation produced the same final value as a wrongly-stamping displaced one. **#643** (#639) caught me reading `client_state` when starlette gates receives on `application_state`; a failed send leaves the two disagreeing, so I had checked the one field that stays wrong. **#644** carried Jerry's rule change — holding Ace now wins a GAME, tally up, levels restart, table plays on — and Codex caught that I had put the tally on the state payload but not on the round-result payload the modal reads, so a player would have seen "+3 levels" while the levels reset to 2.
+
+The pattern across those five is one thing: **I kept trusting a signal that looks authoritative but is not the one the system consults.** Worth carrying.
+
+**Two judgement calls on #644, stated rather than buried:** the rule is scoped to ROOMS, not the engine default, because `play_game` loops until `game_over` and raises otherwise — a global change would have made every evaluation and data-generation game run to `max_rounds` and throw. And a restart returns to the room's own start level rather than a hard-coded 2, so a room that chose a short game gets another one.
+
+**NOT deployed:** #640–#644. The first four are diagnostic-only; #644 is user-facing and changes how a game ends, and a deploy restarts the single stateful process. Jerry has not seen it yet, so it waits for his look rather than my judgement at midnight.
+
+**Fleet:** PVD5 **DONE** (rc=0, 16,000 shards) after resuming on the idle cloud; **PVD6 running** since 23:10 ET. Arm D still training on the Mini, seal expected ~02:30 ET — its status file logs only start and seal, so a flat file is normal. Two local background pollers were killed on memory pressure while arm D trains; both times the remote work survived because it was nohup'd on the remote host, which is exactly why that rule exists.
+
+**Open for Jerry:** #636's release-asset decision; whether gen 5 continues past arm D; whether to build `--baseline-policy` so the exploitability probe can get a positive control; extending v34r5; #542 behind arm D; Jev advice mode; #623 and #624.
+
+— Claude

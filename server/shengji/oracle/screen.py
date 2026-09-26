@@ -1320,12 +1320,14 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
     timing = {
         "cluster": cluster, "seed": seed, "mirror": mirror,
         "wall_secs": round(wall, 4),
-        "arm_search_secs": round(a1.search_secs + a2.search_secs, 4),
+        # A non-MC side (SmartBot, the heuristic; legal since #647) has no
+        # search clock at all: 0.0 is the literal truth, not a default.
+        "arm_search_secs": round(sum(getattr(b, "search_secs", 0.0) for b in (a1, a2)), 4),
         "arm_prior_secs": round(
             sum(getattr(b, "oracle_prior_secs", 0.0) for b in (a1, a2)), 4),
         "arm_wide_secs": round(
             sum(getattr(b, "oracle_wide_secs", 0.0) for b in (a1, a2)), 4),
-        "baseline_search_secs": round(b1.search_secs + b2.search_secs, 4),
+        "baseline_search_secs": round(sum(getattr(b, "search_secs", 0.0) for b in (b1, b2)), 4),
     }
     return record, timing
 

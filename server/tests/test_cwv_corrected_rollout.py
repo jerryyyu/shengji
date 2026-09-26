@@ -396,3 +396,38 @@ def test_run_cluster_and_summary_for_build_a_non_mc_baseline_config(monkeypatch,
         assert kwargs["base_policy"] == policy
         assert kwargs["select_worlds"] is None and kwargs["report_worlds"] is None
         assert cfg["work"]["effective"]["n_determinizations"] is None
+
+
+@pytest.mark.parametrize("opponent", ["smart", "heuristic"])
+def test_a_non_mc_opponent_runs_through_the_screens_real_entry_point(tmp_path, monkeypatch, opponent):
+    """THE ACTUAL LANE PATH, not a helper: screen.main with --baseline-policy
+    <non-MC>, one cluster, the default 300 s deadline (so decisions go through
+    the deadline worker and the timed wrapper). x36c aborted at its first
+    decision on 2026-09-26 because TimedPolicy read `last_decision_record`
+    bare and SmartBot has none; every earlier test stopped at build_config
+    or went through play_round, so none of them could have seen it."""
+    import json
+    import shengji.train.cwv_shortlist_screen as screen
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    screen.main(["--arm", "policy", "--arm-policy", "heuristic",
+                 "--baseline-policy", opponent, "--clusters", "1", "--workers", "1",
+                 "--seed0", "7", "--out", str(tmp_path)])
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["complete"] and summary["completed_clusters"] == 1
+    assert summary["config"]["base_policy"] == opponent
+    shards = list(tmp_path.glob("shard-*.json")) or list(tmp_path.glob("cluster-*.json"))
+    assert shards, sorted(p.name for p in tmp_path.iterdir())
+    shard = json.loads(shards[0].read_text())
+    assert len(shard["records"]) == 2
+    # Both sides are non-MC here. The deadline session still writes its own
+    # per-decision receipt (elapsed, fallback, forced); what must NOT appear is
+    # a fabricated MC record -- no candidates, no selection_N, no incumbent.
+    mc_keys = {"candidates", "selection_N", "incumbent", "challenger", "report_worlds"}
+    for trace in shard["decision_traces"]:
+        assert trace["decisions"], "the deadline receipts must still be recorded"
+        for d in trace["decisions"]:
+            assert "deadline" in d and not (mc_keys & set(d)), d
+    for timing in shard["timings"]:
+        assert timing["arm_search_secs"] == 0.0 and timing["baseline_search_secs"] == 0.0
+    work = shard["records"][0]["work"]
+    assert work["baseline"]["rollouts"] == 0 and work["baseline"]["searches"] == 0

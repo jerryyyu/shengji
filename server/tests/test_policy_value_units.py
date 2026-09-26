@@ -131,3 +131,25 @@ def test_the_extract_refuses_a_store_with_units_it_cannot_scale(store_dir, tmp_p
     with pytest.raises(TrainDataError, match="unknown_value_units"):
         pp.extract(tmp_path / "rows", [str(tmp_path / "odd")], lo=0.0, hi=1.01, thin=1.0,
                    max_rows=400, workers=1, chunk_rows=100)
+
+
+def test_manifest_units_count_the_rows_the_cap_persisted_not_the_rows_read(store_dir, tmp_path):  # noqa: F811
+    """Codex P2 on #650: with max_rows below the rows available, the count taken while
+    reading included the discarded tail.  Every count must add up to the rows on disk."""
+    stamped = _restamped_store(store_dir, tmp_path / "pv", PV_VALUE_UNITS)
+    out = tmp_path / "rows"
+    summary = pp.extract(out, [str(tmp_path / "pv")], lo=0.0, hi=1.01, thin=1.0, max_rows=25,
+                         workers=1, chunk_rows=10)
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert summary["rows"] == manifest["rows"] == 25 < stamped, "the cap must actually bite"
+    assert sum(manifest["value_units"].values()) == 25
+    for chunk in manifest["chunks"]:
+        assert sum(chunk["value_units"].values()) == chunk["rows"]
+        z = np.load(out / chunk["file"])
+        assert chunk["value_units"].get(PV_VALUE_UNITS, 0) == int(z["has_vals"].sum())
+    total = {}
+    for chunk in manifest["chunks"]:
+        for k, v in chunk["value_units"].items():
+            total[k] = total.get(k, 0) + v
+    assert total == manifest["value_units"]
+

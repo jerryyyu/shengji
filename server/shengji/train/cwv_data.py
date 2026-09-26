@@ -329,11 +329,13 @@ class Row:
 #: POINTS (``mcbot._score`` with ``LEVEL_OBJECTIVE = False``).
 PV_VALUE_UNITS = "expected-signed-level-half-integer"
 POINTS_VALUE_UNITS = "expected-attacker-points"
-#: One level bracket is worth 40 points in ``mcbot._score``'s LEVEL_OBJECTIVE scale
-#: (``40.0 * (bracket + deal) + 0.2 * p``), so a half-integer-level mean times 40 is on the
-#: same scale as a points mean.  Empirically the two corpora then agree: the soft target at
-#: T=1 has median top-1 0.55 on points rows and ~0.59 on PV rows scaled this way, against
-#: 0.17 unscaled (#649).
+#: A SCALE CALIBRATION for the soft target's temperature, not an exact conversion: expected
+#: signed level is not a linear function of expected points (the brackets are a step function
+#: and the expectation does not commute with it), so no constant converts one into the other
+#: exactly.  40 is the bracket width ``mcbot._score`` uses under LEVEL_OBJECTIVE
+#: (``40.0 * (bracket + deal) + 0.2 * p``), i.e. the points scale's own "one level", and it is
+#: what makes the two producers' targets comparably peaked at T=1: median top-1 0.55 on points
+#: rows and 0.53 on PV rows scaled this way (12 real shards), against 0.17 unscaled (#649).
 POINTS_PER_LEVEL = 40.0
 VALUE_UNITS_SCALE = {POINTS_VALUE_UNITS: 1.0, PV_VALUE_UNITS: POINTS_PER_LEVEL}
 
@@ -355,9 +357,10 @@ def value_units(record: Mapping[str, Any]) -> str:
 
 def search_means_points(record: Mapping[str, Any]
                         ) -> tuple[list[int], list[float], str] | None:
-    """``search_means`` on the POINTS scale: ``(ballot indices, means x scale, units)``,
-    where the scale is ``VALUE_UNITS_SCALE[units]``.  This is what a consumer with a
-    points-calibrated temperature must read; ``search_means`` itself is the raw record."""
+    """``search_means`` brought to the points TEMPERATURE scale: ``(ballot indices,
+    means x scale, units)`` with ``scale = VALUE_UNITS_SCALE[units]``.  A consumer with a
+    points-calibrated temperature reads this; it is a calibration of spread, not a claim
+    that the scaled numbers are expected points.  ``search_means`` itself is the raw record."""
     units = value_units(record)
     got = search_means(record)
     if got is None:

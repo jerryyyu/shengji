@@ -205,9 +205,13 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
                         vals=vals, has_vals=has_vals)
     with open(path, "rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
+    # units are counted HERE, over the rows this chunk persists: a count taken as rows
+    # are read includes the tail the max_rows cap discards (Codex P2 on #650)
+    units = Counter(m.get("units", NO_SEARCH_VALUES) for m in meta)
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
             "rows_with_ballot_target": int((tgt >= 0).sum()),
-            "rows_with_search_values": int(has_vals.sum()), "sha256": sha}
+            "rows_with_search_values": int(has_vals.sum()), "sha256": sha,
+            "value_units": dict(units)}
 
 
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
@@ -234,7 +238,6 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     X, Y, meta = [], [], []
     chunks: list[dict] = []
     total = 0
-    units_seen: Counter = Counter()
     out_dir = Path(out) if chunk_rows else None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -244,9 +247,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
             for x, y, n, legal, ballot, taken, complete, deal, key, means_raw, units in got:
                 X.append(x); Y.append(y)
-                units_seen[units] += 1
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
-                             "deal": deal, "deal_key": key, "means": means_raw})
+                             "deal": deal, "deal_key": key, "means": means_raw, "units": units})
             if out_dir is not None:
                 # Flush full chunks as they fill; the LAST chunk may be partial so the
                 # limit is met the moment total + buffered reaches it (bounded memory:
@@ -281,8 +283,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                     "deal_key_schema": "shengji-value-deal-key-v1",
                     # the producers' value units, by row, and the scale each was brought to
                     # the points scale with -- so a composed set can show what it mixed (#649)
-                    "value_units": dict(units_seen), "value_units_scale": dict(_value_units_scale()),
-                    "values_scale": "points"}
+                    "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
+                    "value_units_scale": dict(_value_units_scale()), "values_scale": "points"}
         with open(out_dir / "manifest.json", "w") as fh:
             json.dump(manifest, fh, indent=1)
         return {"rows": total, "chunks": len(chunks), "dir": str(out_dir)}

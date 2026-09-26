@@ -20001,3 +20001,31 @@ The pattern across those five is one thing: **I kept trusting a signal that look
 **Open for Jerry:** #636's release-asset decision; whether gen 5 continues past arm D; whether to build `--baseline-policy` so the exploitability probe can get a positive control; extending v34r5; #542 behind arm D; Jev advice mode; #623 and #624.
 
 — Claude
+
+## 2026-09-26 morning — daily maintenance, and a flag that had to be told the truth twice
+
+**Daily maintenance (09:2x ET).** Fleet truth established four ways per step 1 rather than from one filter: all three hosts idle. Cloud's three python processes looked like activity and are 41-day-old system daemons. Step 2 found no open column-one markers on the canonical ledger; live review traffic is on the bus and PR reviews, handled through sequence 2102. Worth recording for whoever runs this next: the routine says to read the WORKING-TREE ledger first, but that tree sits on a Codex branch, so its copy is Aug-era (PR #191). The canonical ledger is origin/main's.
+
+Step 3 found the real staleness. `HANDOFF_ACTIVE.md` still claimed arm C "is now training", runPVD2 running and Perf running lane v35b — two days out of date. Rewritten to current fleet truth (`473d4a75`), with two things made explicit rather than left to trust: arm D is NOT screened and carries a warm-start-only confound, and the exploitability probe has NO positive control.
+
+**Gen 5 closed out.** Arm D `759c1bdd` sealed 02:39 ET, rc=0, wall 46,246 s — within three minutes of arm C's. On the four fixed holdouts its rank_regret is lower on two (roomlog −0.0028, pt1 −0.0096) and higher on two (luna +0.0013, highn +0.0001). No superiority claim: point estimates with no interval, two-of-four is not a difference test, and the 0.00009 highn gap is minuscule but real, not a tie. Recorded in Atlas (9 models) and the scaling log (77 rows). Four arms, no lever found.
+
+**PVD5 and PVD6 both completed** on the idle cloud (16,000 shards each, rc=0), so the W128 tranche is six sealed stores, ~96,000 deals. I did NOT queue a seventh: there is no PVD7 script, nothing trains on W128 yet, and generating more of a corpus with no training plan is waste given gen 5's answer. The point of W128 was a DEEPER TEACHER — a different variable — and six stores may already be enough to train that arm.
+
+**#645 took three rounds and Codex was right every time.** Jerry asked for exploitability runs against other policies. Building that surfaced three things.
+
+First, a latent defect: the baseline bot was built from a hardcoded `make_bot("mc-s0-report-lcb")` while the summary reported `config["base_policy"]` from a SEPARATE default constant. They agreed only because two literals matched. That is how I was misled reading x36a — I trusted `base_policy` in the summary and was lucky it was true.
+
+Second, SmartBot is **not reachable** as an opponent and I verified that against the live registry rather than assuming: `base_policy_class` refuses anything that is not a registered MCBot, because the oracle arms subclass the baseline class. 19 valid base policies; smart, heuristic and jev all refused. The usable weak arms are mc-lite (N=5) and mc (N=10).
+
+Third, Codex found the same "recorded value is not the played value" defect TWICE more. `make_side` stamped N=30/R=300 over every baseline, which would have erased exactly the weakness a positive control exists to create — a screen REPORTING a weak opponent while playing a strong one. Then `summary_for`/`run_cluster` built metadata with the same constants, so work.effective would have said N=30/R=300 for a bot running N=5/R=0.
+
+**And my first parity test for that second P2 was VACUOUS.** It called the helper and the bot directly, never touching `summary_for`, so reverting the reported defect left it green. I caught it only because I ran the negative check. The real test captures what `summary_for` hands to `build_config` at the actual call site. That is three vacuous tests this session, and the pattern is specific: **when I write a test for a defect someone else found, I tend to test my fix rather than their failure.**
+
+**CI also caught 16 tests I broke** on that PR — `config["base_policy"]` raised KeyError for every config predating the flag. My own error was running the wrong files locally: the corrected-rollout tests, not the shortlist-screen tests for the module I actually changed. My local green was real and irrelevant.
+
+Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is a pre-registration decision for Jerry.
+
+**Open for Jerry:** #636's artifact decision; whether arm D gets a served screen; mc-lite vs mc for the positive control; whether to train the W128 deeper-teacher arm on the six stores; whether to deploy #644 (merged, user-facing, unseen by him); extending v34r5; Jev advice mode; #623 and #624.
+
+— Claude

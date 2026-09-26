@@ -407,6 +407,15 @@
    "val_ce": 0.6202,
    "regret": null,
    "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * SCREENED (lane v35c, 11:26 ET 09-25): -0.0031 [-0.0385, +0.0322] vs release 30 as served, CROSSES ZERO and very slightly negative -- every deal we own bought nothing served. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654"
+  },
+  {
+   "name": "gen-5 arm D",
+   "ck": "759c1bdd",
+   "date": "2026-09-26",
+   "recipe": "THE WARM START, NOT THE CORPUS: arm C's corpus EXACTLY -- shortlist + all ten PV stores + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, same trunk, objective, knobs and seed -- with ONE variable changed, the --init checkpoint. Arm C starts from the production head 8ecd4fea; arm D starts from GEN4-SOFT-336k (423836c7), gen-4 run 4, the strongest gen-4 head by the fixed holdouts.",
+   "val_ce": 0.61882,
+   "regret": null,
+   "status": "sealed 02:39:31 ET 09-26, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 46,246 s -- within 3 minutes of arm C's 46,083 s. NOT SCREENED. FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm D vs arm C: roomlog 0.06537 vs 0.06815, pt1 0.02885 vs 0.03846, luna 0.08346 vs 0.08219, highn 0.10518 vs 0.10509. Lower on TWO of four, and the two improvements are the larger ones (pt1 by about a quarter in relative terms). NO SUPERIORITY CLAIM: point estimates with no interval, two-of-four is not a difference test, and the highn gap of 0.00009 is minuscule but REAL -- it is not being called a tie. val_ce 0.61882 is comparable neither to gen 4 nor to arm A (0.6377), arm B (0.6124) or arm C (0.6202), because each arm's validation split is drawn from its own training corpus; the comparable surfaces are these four holdouts and a served screen. CONFOUND TO CARRY AT READOUT: this isolates the WARM START only and is NOT a clean transfer experiment, because gen-4 run 4 was itself trained on shortlist corpora that are also in arm D's mix, so arm D makes a second pass over data its initialisation already saw. That does not confound the question actually asked -- does starting from our best gen-4 head beat starting from production on the same corpus -- because arm C differs in nothing else. Whether it earns a served read is open; the offline metric failed to predict the served read for every gen-4 head, and arm C was the first time the two agreed."
   }
  ],
  "data": [

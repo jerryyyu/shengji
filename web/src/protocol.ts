@@ -29,6 +29,8 @@ export type ClientMsg =
       test_access_key?: string;
     }
   | { type: "add_bot" }
+  /** Host only, before the game starts: the rank both teams begin at. */
+  | { type: "set_start_level"; start_level: Rank }
   | { type: "remove_bot" }
   | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase

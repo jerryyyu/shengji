@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { RoomMsg } from "../protocol";
+import type { Rank, RoomMsg } from "../protocol";
+import { RANKS } from "../protocol";
 import { conn } from "../ws";
-import { DEFAULT_START_LEVEL } from "../testPolicy";
 import MuteButton from "./MuteButton";
 
 export default function Room({ room }: { room: RoomMsg }) {
@@ -31,13 +31,28 @@ export default function Room({ room }: { room: RoomMsg }) {
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>
         </button>
-        {room.start_level !== DEFAULT_START_LEVEL ? (
-          // Joiners pick a seat before the first deal; the level the creator
+        {isHost ? (
+          <div className="start-level-row">
+            <span className="field-label">Starting level</span>
+            <select
+              aria-label="Starting level"
+              value={room.start_level}
+              onChange={(e) =>
+                conn.send({ type: "set_start_level", start_level: e.target.value as Rank })
+              }
+            >
+              {RANKS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          // Joiners pick a seat before the first deal; the level the host
           // chose changes what game they are agreeing to play.
           <span className="chip start-level-marker">
             Starts at {room.start_level}
           </span>
-        ) : null}
+        )}
         {room.experimental_policy === "w32" ? (
           <span className="chip experimental-marker">Experimental W32</span>
         ) : null}

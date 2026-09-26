@@ -1295,6 +1295,19 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if room.game:
             raise IllegalPlay("Game already started.")
         room.seats.pop()
+    elif t == "set_start_level":
+        # Jerry 09-26: the selector lives in the room screen, not the lobby.
+        # Host-only, and only while no game exists -- Game() reads the level
+        # exactly once at start_game, so a change after that would be a lie
+        # the HUD tells for the rest of the session.
+        if seat != room.host:
+            raise IllegalPlay("Only the host can set the starting level.")
+        if room.game:
+            raise IllegalPlay("The starting level is fixed once the game has started.")
+        level = msg.get("start_level")
+        if level not in RANKS:
+            raise IllegalPlay("Unknown starting level.")
+        room.start_level = level
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")

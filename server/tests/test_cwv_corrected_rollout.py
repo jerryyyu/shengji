@@ -165,3 +165,41 @@ def test_full_admission_to_report_path_without_method_stubs():
     assert bot.shortlist_counts['cheap_evaluations'] > 0
     assert bot.corrected_rollout_counts['model_evaluations'] == 2 * len(record['candidates'])
     assert round_signature(rnd) == before
+
+
+# ------------------------------------------- the opponent is configurable (#625)
+def test_the_baseline_bot_is_built_from_the_recorded_identity():
+    """The summary reports config['base_policy']; the bot must come from THAT,
+    not a second literal that merely happens to match it today."""
+    import shengji.train.cwv_shortlist_screen as screen
+    import inspect
+    src = inspect.getsource(screen)
+    assert 'make_bot("mc-s0-report-lcb"' not in src, \
+        "the baseline bot is hardcoded again; the recorded identity can now lie"
+    assert 'make_bot(config["base_policy"]' in src
+
+
+def test_an_unusable_opponent_fails_closed_at_configuration():
+    """SmartBot and the heuristic are NOT usable: the oracle arms subclass the
+    baseline class. That must be refused before a worker starts, not inside one."""
+    import pytest
+    from shengji.oracle.screen import base_policy_class, OracleScreenError
+    for name in ("smart", "heuristic"):
+        with pytest.raises(OracleScreenError, match="not a registered MCBot"):
+            base_policy_class(name)
+
+
+def test_weak_mc_opponents_are_available_for_a_positive_control():
+    """The exploitability probe needs a WEAKER opponent to tell 'hard to
+    exploit' apart from 'this attack does nothing'."""
+    from shengji.oracle.screen import base_policy_class
+    for name in ("mc", "mc-lite"):
+        assert base_policy_class(name) is not None
+
+
+def test_the_queue_omits_the_flag_by_default():
+    """Default must put the historical argv on the wire, byte for byte."""
+    import shengji.train.cwv_screen_queue as q
+    import inspect
+    src = inspect.getsource(q)
+    assert 'if args.baseline_policy else []' in src, "the flag must be opt-in"

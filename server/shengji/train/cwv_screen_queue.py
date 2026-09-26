@@ -28,6 +28,9 @@ def main(argv=None):
     parser.add_argument("--name", required=True, help="window directory prefix")
     parser.add_argument("--seeds", type=int, nargs="+", required=True)
     parser.add_argument("--clusters", type=int, default=520)
+    parser.add_argument("--baseline-policy", default=None,
+                        help="registry name of the opponent both sides play against. Must be a "
+                             "registered MCBot subclass. Omit for the historical baseline.")
     parser.add_argument("--workers", type=int, required=True)
     parser.add_argument("--decision-deadline", type=int, choices=(0, 300), default=300,
                         help="300s total per play; 0 explicitly selects legacy uncapped policy")
@@ -86,6 +89,8 @@ def main(argv=None):
                 command = [
                     "--arm", "policy", "--arm-policy", args.arm_policy,
                     "--baseline", "production", "--trump-ranks", args.trump_ranks,
+                    *(["--baseline-policy", args.baseline_policy]
+                      if args.baseline_policy else []),
                     "--clusters", str(args.clusters), "--workers", str(args.workers),
                     "--seed0", str(seed), "--out", str(output),
                     "--decision-deadline", str(args.decision_deadline),
@@ -109,6 +114,8 @@ def main(argv=None):
                 "--alternatives", "4", "--report-worlds", "300",
                 "--batch-size", "128", "--encoding", args.encoding,
                 "--reuse-successors", "--baseline", "production",
+                *(["--baseline-policy", args.baseline_policy]
+                  if args.baseline_policy else []),
                 "--trump-ranks", args.trump_ranks,
                 "--clusters", str(args.clusters), "--workers", str(args.workers),
                 "--seed0", str(seed), "--out", str(output),

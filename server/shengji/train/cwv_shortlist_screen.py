@@ -236,7 +236,11 @@ def make_side(config: dict, side: str, seed: int):
     shortlist_baseline = (side == "baseline" and
                           config.get("baseline") in ("flat-shortlist", "levels-shortlist"))
     if (side == "baseline" and not shortlist_baseline) or arm in ("identity", "production"):
-        bot = make_bot("mc-s0-report-lcb", seed=seed)
+        # Build from the identity the config RECORDS, not from a second literal
+        # that happens to match it. The summary reports config["base_policy"];
+        # a duplicated constant here meant the reported baseline and the bot
+        # actually played could diverge silently the moment either moved.
+        bot = make_bot(config["base_policy"], seed=seed)
         if side == "arm" and arm == "production":
             multiplier = int(config["production_multiplier"])
             bot.N_DETERMINIZATIONS = BASELINE_SELECT_WORLDS * multiplier
@@ -395,7 +399,8 @@ def run_cluster(config, cluster):
         return wrapped
 
     rank = rank_for(config, cluster)
-    base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
+    base = duel.build_config(arm="none", base_policy=config["base_policy"],
+                             select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
     seed = config["seed0"] + cluster
     games = []
@@ -481,7 +486,8 @@ def _arm_description(config):
 
 
 def summary_for(shards, config):
-    base = duel.build_config(arm="none", select_worlds=BASELINE_SELECT_WORLDS,
+    base = duel.build_config(arm="none", base_policy=config["base_policy"],
+                             select_worlds=BASELINE_SELECT_WORLDS,
                              report_worlds=BASELINE_REPORT_WORLDS)
     result = duel.summarize(
         [record for shard in shards for record in shard["records"]], base,
@@ -627,6 +633,11 @@ def main(argv=None):
                         help="reuse exact inner successor leaves and evaluator inputs")
     parser.add_argument("--baseline", choices=("production", "flat-shortlist", "levels-shortlist"),
                         default="production")
+    parser.add_argument("--baseline-policy", default=duel.DEFAULT_BASE_POLICY,
+                        help="registry name of the opponent the arm plays against. Must be a "
+                             "registered MCBot subclass -- the oracle arms subclass the baseline "
+                             "class itself, so SmartBot and the heuristic are NOT usable here. "
+                             "Default reproduces the historical baseline exactly.")
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed0", type=int, required=True)
@@ -731,8 +742,13 @@ def _run_screen(args, trump_ranks):
         worlds=args.worlds, selection_worlds=args.selection_worlds,
         alternatives=args.alternatives, batch_size=args.batch_size,
         uniform=args.arm == "uniform")
+    # Fail CLOSED on an unusable opponent, at configuration time rather than
+    # inside a worker twenty minutes in. base_policy_class raises for anything
+    # that is not a registered MCBot subclass.
+    duel.base_policy_class(args.baseline_policy)
     config = {
         "schema": "cwv-shortlist-config-v1", "arm": args.arm,
+        "base_policy": args.baseline_policy,
         "checkpoint": checkpoint, "checkpoint_sha256": checkpoint_sha,
         "checkpoint_recipe": checkpoint_recipe,
         "encoding": args.encoding,

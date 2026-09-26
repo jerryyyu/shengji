@@ -60,7 +60,14 @@ class TimedPolicy:
         finally:
             self.decision_cpu_seconds += time.process_time() - cpu
             self.decision_wall_seconds += time.perf_counter() - wall
-            rec = self.bot.last_decision_record
+            # A policy without a decision record (SmartBot, the heuristic) is a
+            # legal opponent since #647 and leaves NO trace, on purpose: its
+            # time is still counted above, and the summary reports its world
+            # budget as None rather than inventing one. Reading the attribute
+            # bare aborted the first any-policy lane at its first decision
+            # (x36c, 2026-09-26): the smoke went through play_round, never
+            # through this wrapper.
+            rec = getattr(self.bot, "last_decision_record", None)
             if rec and "candidates" not in rec:
                 # A served policy with its own record (release 29's pv-search
                 # `pv-search-decision-v1` / `pv-search-fallback-v1`): keep the

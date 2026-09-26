@@ -1596,3 +1596,29 @@ def test_the_state_payload_carries_games_won(client):
         a.send_json({"type": "start_game"})
         st = _drain(a, "state")
         assert st["games_won"] == [0, 0], st.get("games_won")
+
+
+def test_round_result_payload_carries_the_scoring_fields(client):
+    """Codex P2 on #644: the modal reads round_result, so omitting the new
+    fields there left the UI saying '+levels' on a game win and reset."""
+    from shengji.api import server as srv
+    from shengji.engine.game import A_INDEX
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        _drain(a, "state")
+        room = srv.rooms[code]
+        game = room.game
+        game.level_idx = [A_INDEX, A_INDEX]
+        rnd = game.round
+        rnd.phase = "round_end"
+        rnd.banker = 0
+        rnd.attacker_points = 0
+        game.finish_round()
+
+        payload = srv.state_for(room, 0)["round_result"]
+        assert payload["point_scored"] is True
+        assert payload["games_won"] == [1, 0]
+        assert payload["new_levels"] == ["2", "2"], payload["new_levels"]
+        assert payload["game_over"] is False

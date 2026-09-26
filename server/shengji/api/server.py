@@ -465,6 +465,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "next_banker": result.next_banker,
             "new_levels": list(result.new_levels),
             "game_over": result.game_over,
+            "games_won": list(result.games_won),
+            "point_scored": result.point_scored,
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,

@@ -73,10 +73,29 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
             {total} <span className="result-note">(80 needed)</span>
           </span>
 
-          <span className="result-label">Level change</span>
-          <span className="result-value">+{result.level_change}</span>
+          <span className="result-label">
+            {result.point_scored ? "Result" : "Level change"}
+          </span>
+          <span className="result-value">
+            {result.point_scored
+              ? `${teamName(result.winner_team, state)} wins the game`
+              : `+${result.level_change}`}
+          </span>
 
-          <span className="result-label">New levels</span>
+          {result.point_scored ? (
+            <>
+              <span className="result-label">Games won</span>
+              <span className="result-value">
+                <span className="team-dot t0" /> {result.games_won[0]}
+                <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
+                {result.games_won[1]}
+              </span>
+            </>
+          ) : null}
+
+          <span className="result-label">
+            {result.point_scored ? "Levels restart at" : "New levels"}
+          </span>
           <span className="result-value">
             <span className="team-dot t0" /> {result.new_levels[0]}
             <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
@@ -87,7 +106,9 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
         </div>
 
         <p className="result-verdict">
-          {total >= 80
+          {result.point_scored
+            ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
+            : total >= 80
             ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
             : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
         </p>

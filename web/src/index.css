@@ -1715,10 +1715,11 @@ button {
     box-shadow: none;
   }
 
-  .kitty-chip,
-  .mute-btn {
-    display: none;             /* neither is a mid-trick decision; both stay on desktop */
+  .kitty-chip {
+    display: none;             /* not a mid-trick decision; stays on desktop */
   }
+  /* The mute toggle STAYS: it is the only way to silence announcements on a phone,
+     in the Room screen as well as the table (Codex, #652 review). Compact, not gone. */
 
   /* --- Your tagline: shown only while it says something (your turn / ready) --- */
   .you-tagline {

@@ -317,6 +317,24 @@
    "lo": -0.053,
    "hi": 0.0164,
    "note": "Lane DONE 12:50 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35d-armD-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive, point NEGATIVE, four of five windows negative. Windows -0.0202, -0.0269, +0.0019, -0.0154, -0.0279; tau 0, Q 0.35/4df, I2 0%, RE SE 0.01770, MDE80 +0.0496; ties 51.1% candidate vs 53.0% control; latency p50/p95 0.10/0.16 both arms, candidate max 0.51 s vs the control's 1.39 s. Five-window triage: point below +0.015, no extension. WHAT THIS CLOSES: the warm start from our best gen-4 head, on the same 496k-deal corpus as arm C, bought nothing served either -- and the offline holdouts (lower rank_regret on two of four vs arm C) did not predict it, the same failure of the offline metric seen through gen 4. Gen 5's four served reads: -0.0606 (A, resolved negative), +0.0116 (B), -0.0031 (C), -0.0183 (D), the last three crossing zero. NEITHER MORE DATA NOR A BETTER WARM START IS THE LEVER. The lane's names carry a g5c prefix while loading gen5d-3566db7e.npz (a label slip in the launcher; the config.json records the package). A matched-window common-opponent contrast, not a direct duel."
+  },
+  {
+   "id": "x36c",
+   "date": "2026-09-27",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "the exploitability ATTACKER (production package soft-8ecd4fea as pv-search W64/K8 + hybrid bury, belief floor 0.0: the same 64 sampled worlds reweighted by the TRUE opponent model's likelihood of every observed play in the round -- opponent = SmartBot, scope round, K=1, eps 0.1)",
+   "comparator": "the CONTROL: the same class, package and recipe with belief floor 1.0 (uniform weights = serving's own reducer), both arms playing SmartBot as the exploited party",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "twenty 520-cluster mirrored windows (10,400 deal-pairs), 300 s cap, arms interleaved per seed; DL random effects; PRE-REGISTERED at 20 windows / MDE80 0.0255 with one interim look at the VARIANCE only",
+   "seeds": "30460910..31360910",
+   "confidence": 0.95,
+   "point": -0.249,
+   "lo": -0.2734,
+   "hi": -0.2246,
+   "note": "THE POSITIVE CONTROL for #625, pre-registered before launch (opponent = opponent model = smart, scope round, K=1, eps 0.1; 10 interleaved windows x 520 mirrored clusters; one variance-only look at five pairs). Lane DONE 00:46 ET 09-27, 10/10 pairs, zero decision timeouts; recomputed with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/x36c-smart-positive-control with SHA256SUMS. CLEARS ZERO, NEGATIVE: the attacker is a quarter of a level per round WORSE than the control against the weakest registry policy -- ten of ten windows negative (-0.20..-0.28), tau 0, Q 3.96/9df, I2 0%, RE SE 0.01245, MDE80 0.0349; per-round means vs SmartBot control +0.55..+0.62, attacker +0.30..+0.38; ties 46.1% attacker vs 34.9% control; attacker latency p50 1.07 s / p95 3.05 s vs control 0.09 / 0.15. WHAT IT MEANS: the instrument is HARMFUL, not weak. Reweighting a fixed 64 worlds by a deterministic opponent's eps-smoothed likelihood over ~20 observed plays collapses the posterior onto ~3 worlds (ESS ratio median 0.048 in the #647 smoke) that mismatched least -- confident and wrong -- and the value head then scores over three noisy worlds. NOTHING about SmartBot's or MC-LCB's exploitability follows; x36a's null was a milder dose of the same instrument and is no longer readable as a bound. A working instrument needs evidence-conditioned SAMPLING (keep N surviving worlds) or a tempered, ESS-floored likelihood that refuses to reweight below the floor, validated on the smoke (ESS >= ~0.5 and a head-alone win vs SmartBot) before any lane. mc-lite / production / shortlist runs are OFF until then. Both arms are the same class over the same package; this is a same-window paired contrast of the belief floor, not a strength screen."
   }
  ],
  "context_screens": [

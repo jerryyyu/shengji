@@ -5,7 +5,29 @@ research priorities in `BACKLOG.md`, measured claims in `AI_POLICIES.md`.
 Agent Bus is a non-authoritative pointer channel. Historical active text is
 preserved in Git (pre-cleanup main `ec7f27ad`) and the existing dated archives.
 
-Last checked: **September 26, 2026, 09:2x ET** (Claude, daily maintenance). Every line below is a snapshot at that time; training epoch counts move continuously and are deliberately not recorded here.
+Last checked: **September 28, 2026, 09:3x ET** (Claude, daily maintenance). Every line below is a snapshot at that time.
+
+## Fleet and production — 2026-09-28 09:3x ET (Claude)
+
+- **Production: release 35** (2026-09-28 01:49 ET, image `deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN`, main `b6b510e6`).
+  Served bot unchanged since release 29: `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`, package
+  `soft-8ecd4fea.npz` (`ccade130…`), prior `js-m1-0d17fd03.npz`. Releases 31–35 were UI/rules/CI only (see `DEPLOY.md`).
+  Rollback = the release-34 image. `/healthz` at 09:21 ET: ok, rooms 0.
+- **Fleet: Mini, Perf and cloud all IDLE**; nothing armed, nothing queued. Last jobs: v35f (arm F served screen, Perf,
+  sealed 09-27 20:24 ET), x36c (exploitability positive control, cloud, sealed 09-27 00:46 ET), arm F training (Mini,
+  sealed 09-27 11:22 ET), Codex's Sol/PT-Sol 40-round benchmark (Mini, done 09-26 21:45 ET).
+- **Gen 5 is closed** (five one-variable arms, none a lever at MDE80 ≈ 0.05); **the exploitability instrument is diagnosed**
+  (belief reweighting harms; the opponent model is correct; the loss is estimator variance). Both in `AI_POLICIES.md`,
+  Atlas v2 and the scaling log.
+- **CI package gate** (#654): the production package is fetched from the `serving-packages` release by hash on every
+  push and the served-bot load is required; nothing binary in git.
+- **Open PRs of mine: none.** Codex's 30 open `codex/*` PRs are theirs to close out.
+- Human traffic: rooms YKKO/DKRF/MHIC (09-26), YVCX/YAQX/PEFK (09-27/28) exist on the volume; the ignored local cache was
+  refreshed read-only this pass (see the fetch manifest); no corpus merge.
+
+**The one actionable ask (Jerry):** choose the training line's next step — my recommendation is a units-aware sidecar
+for the pv-search stores' W64 search means, a retrain of arm C's recipe, an export of the SEARCH-MEAN head and a served
+screen — or park the line; and choose close-or-build on #625.
 
 ## Shipped — Codex
 

@@ -18,9 +18,9 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 31 (2026-09-25 12:51 ET). Release 31 changed NO model, package or
-serving configuration — it added the create-room starting level (#638) — so every strength statement below is
-release 30's and carries over unchanged. Release 30 (2026-09-22 09:13 ET) was release 29's recipe, same package and served
+The current live Fly snapshot is release 35 (2026-09-28 01:49 ET). Releases 31–35 changed NO model, package or
+serving configuration — the starting level (#638/#646), the play-on-past-Ace game rule (#644) and the phone table
+(#652/#653) — so every strength statement below is release 30's and carries over unchanged. Release 30 (2026-09-22 09:13 ET) was release 29's recipe, same package and served
 name, with the hybrid-bury fix #607 — the bury keeps the heuristic incumbent once instead of refusing the
 decision, which had silently fallen back to the heuristic on ~6% of banker burys on the diagnostic capture set — 24 of
 400 deals; the production-traffic rate is unmeasured): **the policy/value search with the
@@ -196,6 +196,25 @@ resolved gain; three shipped for cost, maintainability or correctness with no st
 | 6 | **JS-M1 as one package** (release 28) | M1 + separate prior | +0.006 [−0.016, +0.028] | paired vs release 27 | No resolved difference, and not an equivalence result. Shipped as cost and maintainability: one file is both prior and value net. |
 | 7 | **Policy/value search, soft head** (release 29) | the release-28 package | **+0.086 [+0.042, +0.131]** card play; **+0.049 [+0.003, +0.095]** as served | 800 matched deals, one pre-registered primary; five clean 520-cluster windows | The head IS the search: its policy admits 8 of the legal actions over 64 sampled worlds, its value head prices them, no playouts. Versus MC-LCB in the ladder +0.187 [+0.144, +0.231]. The served read is a common-opponent summary-level estimate, not paired served-vs-served inference, and its lower bound is near zero. |
 | 8 | **Hybrid-bury fix** (release 30) | release 29 | not measured | — | Correctness: the bury stopped refusing its own decision and silently falling back to the heuristic on ~6% of banker burys on the diagnostic capture set (24 of 400; the production-traffic rate is unmeasured). No strength claim. |
+
+**Gen 5, not taken (2026-09-24 → 09-27).** Five one-variable retrains of the production head, each screened
+as served against release 30 on fresh windows (five 520-cluster mirrored windows, common MC-LCB control, DL random
+effects, MDE80 ≈ 0.05): arm A (MC-LCB corpora dropped) **−0.061 [−0.096, −0.025]**, resolved and negative; arm B
+(MC-LCB restored) +0.012 [−0.024, +0.048]; arm C (every corpus we own, 496k deals) −0.003 [−0.039, +0.032]; arm D
+(arm C warm-started from the best gen-4 head) −0.018 [−0.053, +0.016]; arm F (arm C with the #649 policy-target
+units fix) +0.010 [−0.025, +0.045]. Corpus volume, composition, warm start and policy targets are not levers at
+this MDE. #649 found the 16 pv-search corpora had taught the policy head a uniform target (half-level means under a
+points-calibrated temperature); #650 fixed the extract, and the fix moved neither the holdouts nor the served read,
+because the served search uses the policy head only to admit candidates and the value head decides. The search-mean
+head has never been served and is the one untried lever inside this architecture. Full record: Atlas v2 and the
+scaling log.
+
+**Exploitability, not established (#625).** A belief-reweighting attacker (the search's own 64 worlds reweighted by
+an opponent model's likelihood of the observed plays) is HARMFUL, not weak: the positive control against SmartBot read
+**−0.249 [−0.273, −0.225]** (ten of ten windows). Diagnostics on real deals: the opponent model is correct (99.8–100%
+of SmartBot's plays reproduced from the true hands), the loss is estimator variance (the posterior collapses to ~2 of 64
+worlds), and candidate margins (~0.02 half-levels) sit far below estimate noise (~0.5). The earlier x36a null against
+MC-LCB is therefore not a bound on anything. A best response needs the opponent inside the rollout continuation.
 
 **Not taken.** More worlds beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024
 [−0.033, +0.081]), K16, bounded PUCT, learned continuations, adaptive allocation, and every

@@ -104,6 +104,19 @@ export function setMuted(m: boolean): void {
   muted = m;
   localStorage.setItem(MUTE_KEY, m ? "1" : "0");
   if (m) queue.length = 0;
+  for (const cb of muteListeners) cb(m);
+}
+
+// Every mute control on screen (the HUD chip, the phone's `…` menu, the Room
+// screen's toggle) reads ONE source of truth. Each used to hold its own
+// useState(isMuted()) snapshot, so two mounted controls drifted apart the
+// moment one was tapped: rotate a phone after muting and the other control
+// showed the old state, and its first tap was a no-op (Codex, #653 review).
+const muteListeners = new Set<(m: boolean) => void>();
+
+export function subscribeMuted(cb: (m: boolean) => void): () => void {
+  muteListeners.add(cb);
+  return () => { muteListeners.delete(cb); };
 }
 
 // Bump when clips are regenerated so browsers refetch instead of using

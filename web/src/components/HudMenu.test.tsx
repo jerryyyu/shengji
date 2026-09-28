@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import HudMenu from "./HudMenu";
+import MuteButton from "./MuteButton";
+import { isMuted, setMuted } from "../audio";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); } } }));
@@ -81,5 +83,27 @@ describe("the phone overflow menu (#651)", () => {
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     v.unmount();
+  });
+});
+
+describe("mute state is shared between controls (Codex, #653)", () => {
+  it("toggling the HUD chip updates the menu's Sound row, and vice versa", () => {
+    setMuted(false);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(<><MuteButton /><HudMenu room="ABCD" kittyCount={8} /></>));
+    const chip = () => host.querySelector<HTMLButtonElement>(".mute-btn")!;
+    act(() => btn(host).click());
+    const sound = () => rows(host)[1] as HTMLButtonElement;
+    expect(sound().getAttribute("aria-checked")).toBe("true");
+    act(() => chip().click());                       // mute from the chip...
+    expect(isMuted()).toBe(true);
+    expect(sound().getAttribute("aria-checked")).toBe("false");   // ...the menu row follows
+    expect(sound().textContent).toContain("off");
+    act(() => sound().click());                      // unmute from the menu...
+    expect(isMuted()).toBe(false);
+    expect(chip().textContent).toBe("🔊");            // ...the chip follows, and it was ONE tap
+    act(() => root.unmount());
   });
 });

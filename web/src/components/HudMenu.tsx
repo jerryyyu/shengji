@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { isMuted, setMuted } from "../audio";
+import { useMuted } from "../useMuted";
 import { conn } from "../ws";
 
 /** The phone's `…` overflow (#651): kitty count, sound, invite link and leave —
@@ -10,7 +10,7 @@ import { conn } from "../ws";
  * menu open until it fires or times out. */
 export default function HudMenu({ room, kittyCount }: { room: string; kittyCount: number }) {
   const [open, setOpen] = useState(false);
-  const [muted, setLocalMuted] = useState(isMuted());
+  const [muted, toggleSound] = useMuted();
   const [armed, setArmed] = useState(false);
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -38,8 +38,6 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
     setArmed(false);
     if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
   };
-
-  const toggleSound = () => { setMuted(!muted); setLocalMuted(!muted); };
 
   const copyInvite = () => {
     navigator.clipboard.writeText(`${window.location.origin}/?room=${room}`)

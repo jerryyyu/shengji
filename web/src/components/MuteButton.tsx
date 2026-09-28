@@ -1,12 +1,7 @@
-import { useState } from "react";
-import { isMuted, setMuted } from "../audio";
+import { useMuted } from "../useMuted";
 
 export default function MuteButton() {
-  const [muted, setLocal] = useState(isMuted());
-  const toggle = () => {
-    setMuted(!muted);
-    setLocal(!muted);
-  };
+  const [muted, toggle] = useMuted();
   return (
     <button
       className="mute-btn"

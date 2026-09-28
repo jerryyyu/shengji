@@ -160,6 +160,14 @@ class Room:
     deal_task: asyncio.Task | None = None
     watchdog_task: asyncio.Task | None = None
     cleanup_task: asyncio.Task | None = None
+    # How the room's deal/bot tasks ENDED, keyed by attribute name (#628).
+    # ``run_deal`` and ``pump_bots`` are the only producers of state frames
+    # between start_game and the first human turn; a task that died on an
+    # exception was otherwise silent (no handler, no done callback; asyncio
+    # reports an unretrieved exception only at garbage collection, which the
+    # test fixture's cancel-on-teardown never reaches). Absent key: the task
+    # was never spawned or is still running -- read the task for which.
+    task_exits: dict[str, str] = field(default_factory=dict)
     # Ordinary rooms use LOG_DIR.  A reviewed human evaluation must provide a
     # different root plus an immutable server-only identity; no websocket path
     # can construct one yet.
@@ -729,7 +737,7 @@ async def advance_if_all_ready(room: Room) -> bool:
     game.start_round()
     room.index_round()
     _log_round_start(room)
-    room.deal_task = asyncio.create_task(run_deal(room))
+    _spawn_room_task(room, "deal_task", run_deal(room))
     return True
 
 
@@ -1156,7 +1164,36 @@ def kick_bots(room: Room) -> None:
     seat = current_actor(room)
     if seat is not None and room.seats[seat].is_bot:
         if room.bot_task is None or room.bot_task.done():
-            room.bot_task = asyncio.create_task(pump_bots(room))
+            _spawn_room_task(room, "bot_task", pump_bots(room))
+
+
+# ---------------------------------------------------------------- room tasks
+def _record_room_task_exit(room: "Room", attr: str, task: asyncio.Task) -> None:
+    """Terminal record of how a room task ended, from the TASK ITSELF (the
+    same design as ``_record_writer_exit``); ownership-guarded so a replaced
+    task does not stamp its successor's slot."""
+    if getattr(room, attr, None) is not task:
+        return
+    if task.cancelled():
+        room.task_exits[attr] = "cancelled"
+        return
+    error = task.exception()
+    if error is not None:
+        room.task_exits[attr] = f"error: {type(error).__name__}: {error}"
+        logging.warning("room %s %s failed: %s: %s", room.code, attr,
+                        type(error).__name__, error)
+    else:
+        room.task_exits[attr] = "returned"
+
+
+def _spawn_room_task(room: "Room", attr: str, coro) -> asyncio.Task:
+    """Spawn ``coro`` as ``room.<attr>`` with its terminal record attached in
+    ONE place, so no spawn path can exist without the diagnostic (#628)."""
+    task = asyncio.create_task(coro)
+    setattr(room, attr, task)
+    room.task_exits.pop(attr, None)
+    task.add_done_callback(lambda finished, r=room, a=attr: _record_room_task_exit(r, a, finished))
+    return task
 
 
 # ---------------------------------------------------------------- deal task
@@ -1322,7 +1359,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.game.start_round()
         room.index_round()
         _log_round_start(room)
-        room.deal_task = asyncio.create_task(run_deal(room))
+        _spawn_room_task(room, "deal_task", run_deal(room))
         if room.watchdog_task is None or room.watchdog_task.done():
             room.watchdog_task = asyncio.create_task(watchdog(room))
     elif game is None or rnd is None:

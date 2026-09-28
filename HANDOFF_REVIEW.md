@@ -20138,3 +20138,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement.
 
 — Claude
+
+### 2026-09-28 16:3x ET — tick: #628 reopened after Codex's audit (Claude)
+
+- #628 had been CLOSED since 09-25 19:23 ET by #640's "Closes" keyword at merge; #640 was an instrument, not a fix, and the flake recurred 09-27 with it silent. My 09-28 notes said "stays open" without reading the state; Codex's bus audit (seq 2132) caught it. Reopened with the record (five CI occurrences, cause not established, #640/#657 diagnostics only) and retitled to the corrected failure point (mid-deal, not the first frame).
+- Fleet: Mini, Perf, cloud idle; nothing armed. Production release 35, rooms 0. Open PRs mine: none. Remaining lane issues (#531, #411, #421, #436) are parked on Mini/cloud jobs or Jerry's decisions.
+- Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement.
+
+— Claude

@@ -20120,3 +20120,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Crons: hourly 8f2fc006 and daily 4688d1e8 (recreated 09-28 06:3x, so it expires ~10-05, not 09-29 as the tick text says).
 
 — Claude
+
+### 2026-09-28 13:3x ET — #656 merged: candidate-pass cache (#542 lever 4b) (Claude)
+
+- #656 (`2e3280aa`): the test candidate pass memoises each shard's worker output under `<cache>/candidate-pass/<digest24>.npz`, keyed on encoder implementation + version, flavour, want_search, per-shard cap, shard bytes and selected deals; task-order merge; hits recorded as `shards_from_cache` in the ranking block of metrics.json. Codex P1 at the first head (planning loaded every hit before the first yield) fixed at 906965f3: meta-only planning, yield-time loads, 2×workers miss window. Codex PASS at 906965f3, CI 5/5, REST squash.
+- Baseline the saving will be read against: arms C/D/F test pass 2,887–2,957 s. The box on #542 stays unticked until a real run reports its hits and secs.
+- Fleet: Mini, Perf, cloud idle; nothing armed. Production release 35, rooms 0. Open PRs mine: none.
+- Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement (multi-hour Mini job).
+
+— Claude

@@ -87,11 +87,48 @@ def _drain(ws, want, tries=40, timeout=5.0):
             # Do NOT wait for the blocked reader: joining it is what turned a
             # bounded read back into a hang.
             raise AssertionError(
-                f"no {want!r} within {timeout}s; saw {seen}") from None
+                f"no {want!r} within {timeout}s; saw {seen}; "
+                f"server: {_server_snapshot()}") from None
         seen.append(m.get("type"))
         if m.get("type") == want:
             return m
-    raise AssertionError(f"no {want!r} in {tries} messages; saw {seen}")
+    raise AssertionError(f"no {want!r} in {tries} messages; saw {seen}; "
+                         f"server: {_server_snapshot()}")
+
+
+def _task_state(task, recorded):
+    """One word per task, so the timeout message reads at a glance."""
+    if task is None:
+        return "never"
+    if not task.done():
+        return "running"
+    return recorded or ("cancelled" if task.cancelled() else "done-unrecorded")
+
+
+def _server_snapshot():
+    """Server-side state at the moment a read times out (#628): which room
+    task or writer stopped producing frames, and how it ended. A timeout with
+    every task running and every writer alive is a different bug from one
+    whose deal task died on an exception, and the message must say which."""
+    from shengji.api import server as srv
+
+    rooms = []
+    for code, room in list(srv.rooms.items()):
+        rnd = room.round
+        seats = []
+        for seat in room.seats:
+            seats.append(
+                f"{seat.name}:{'bot' if seat.is_bot else 'human'}"
+                f"{'/connected' if seat.connected else ''}"
+                f"/writer={_task_state(seat.writer, seat.writer_exit)}"
+                f"{'/' + seat.writer_error if seat.writer_error else ''}"
+                f"/queued={seat.queue.qsize() if seat.queue is not None else '-'}")
+        rooms.append(
+            f"{code}: phase={getattr(rnd, 'phase', None)} "
+            f"deal_task={_task_state(room.deal_task, room.task_exits.get('deal_task'))} "
+            f"bot_task={_task_state(room.bot_task, room.task_exits.get('bot_task'))} "
+            f"seats=[{', '.join(seats)}]")
+    return "; ".join(rooms) or "no rooms"
 
 
 def _room_with_bots(ws, name="jerry"):
@@ -1699,3 +1736,83 @@ def test_the_room_level_reaches_the_dealt_round(client):
         game = srv.rooms[code].game
         assert game.levels == ("J", "J")
         assert game.round.trump_rank == "J", "dealt at a different rank than shown"
+
+
+# ------------------------------------------------------------------ #628 room tasks
+def test_a_deal_task_that_dies_is_recorded_and_named_in_the_timeout(client, caplog):
+    """The real start_game path spawns the deal task. If it raises, the seat's
+    reader sees exactly the #628 signature (no state within 5 s, saw []) --
+    and the message now says WHY, and a warning is logged."""
+    import logging as _logging
+    from shengji.api import server as srv
+
+    async def doomed(room):
+        raise RuntimeError("deal exploded")
+    real = srv.run_deal
+    srv.run_deal = doomed
+    try:
+        with caplog.at_level(_logging.WARNING):
+            with client.websocket_connect("/ws") as a:
+                code = _room_with_bots(a)
+                a.send_json({"type": "start_game"})
+                # The start handler broadcasts once itself; every frame after
+                # that is the deal task's. This is the CI failure's shape: a
+                # first state, then nothing (test_server_ws.py:271, #628).
+                _drain(a, "state", tries=60)
+                with pytest.raises(AssertionError) as info:
+                    _drain(a, "state", tries=400, timeout=1.0)
+                msg = str(info.value)
+                assert "within 1.0s" in msg                 # timed out, not exhausted
+                assert f"{code}: phase=deal" in msg
+                assert "deal_task=error: RuntimeError: deal exploded" in msg
+                assert "bot_task=never" in msg
+                assert "writer=running" in msg
+                room = srv.rooms[code]
+                assert room.task_exits["deal_task"] == "error: RuntimeError: deal exploded"
+                assert any("deal_task failed: RuntimeError: deal exploded" in r.message
+                           for r in caplog.records), "deal task death was not logged"
+    finally:
+        srv.run_deal = real
+
+
+def test_a_cancelled_deal_task_is_recorded_without_a_warning(client, caplog):
+    import logging as _logging
+    import time as _t
+    from shengji.api import server as srv
+
+    with caplog.at_level(_logging.WARNING):
+        with client.websocket_connect("/ws") as a:
+            code = _room_with_bots(a)
+            a.send_json({"type": "start_game"})
+            _drain(a, "state", tries=60)
+            room = srv.rooms[code]
+            room.deal_task.cancel()
+            _t.sleep(0.3)
+            assert room.task_exits.get("deal_task") == "cancelled"
+            assert not any("deal_task" in r.message for r in caplog.records)
+            # Frames already queued before the cancel still drain; read past
+            # that backlog to the read that times out, which is the one that
+            # carries the snapshot.
+            message = None
+            for _ in range(400):
+                try:
+                    _drain(a, "state", tries=1, timeout=1.0)
+                except AssertionError as failure:
+                    message = str(failure)
+                    break
+            assert message is not None, "frames kept arriving after the deal task was cancelled"
+            assert "within 1.0s" in message
+            assert "deal_task=cancelled" in message
+
+
+def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
+    """The real path, unmodified: once play begins, the deal task has RETURNED
+    and the bot task exists, both recorded by the same callback."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        assert room.deal_task.done()
+        assert room.task_exits.get("deal_task") == "returned"
+        assert room.bot_task is not None
+        assert srv.rooms[code] is room

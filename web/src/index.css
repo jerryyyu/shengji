@@ -727,6 +727,11 @@ button {
   color: var(--team1);
 }
 
+.points-bar,
+.hud-more {
+  display: none; /* phone only (#651); desktop keeps the chips */
+}
+
 .points-target {
   color: var(--text-dim);
   font-size: 12px;
@@ -1715,11 +1720,100 @@ button {
     box-shadow: none;
   }
 
-  .kitty-chip {
-    display: none;             /* not a mid-trick decision; stays on desktop */
+  /* Kitty, sound, invite and leave move into the `…` overflow (HudMenu); the chips
+     they replace are hidden HERE ONLY -- `.hud-bar .mute-btn`, not `.mute-btn`, so the
+     Room screen keeps its own toggle (Codex, #652 review). The menu's Sound row is the
+     table's mute on a phone. */
+  .kitty-chip,
+  .hud-bar .mute-btn,
+  .hud-bar .leave-btn {
+    display: none;
   }
-  /* The mute toggle STAYS: it is the only way to silence announcements on a phone,
-     in the Room screen as well as the table (Codex, #652 review). Compact, not gone. */
+
+  .hud-more {
+    display: block;
+    position: relative;
+  }
+
+  .hud-more-btn {
+    min-width: 30px;
+    min-height: 26px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-edge);
+    background: rgba(16, 19, 26, 0.82);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .hud-more-btn[aria-expanded="true"] {
+    border-color: var(--gold);
+  }
+
+  .hud-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 12;
+    min-width: 168px;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-edge);
+    background: rgba(10, 12, 17, 0.96);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .hud-menu-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    min-height: 34px;           /* touch target */
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text);
+    font: 500 13px inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .hud-menu-row[aria-disabled="true"] { cursor: default; }
+  .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+  .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+  .hud-menu-row.leave.armed { color: var(--gold); }
+  .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+  /* points read as a bar under the number */
+  .points-chip {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding-bottom: 5px;
+  }
+
+  .points-bar {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+  }
+
+  .points-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--team1);
+    transition: width 0.5s ease;
+  }
 
   /* --- Your tagline: shown only while it says something (your turn / ready) --- */
   .you-tagline {

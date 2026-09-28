@@ -31,7 +31,7 @@ class _Result:
 
 def _pass(monkeypatch, head, entries, batched):
     monkeypatch.setenv("SHENGJI_CWV_BATCHED_PUBLIC", "1" if batched else "0")
-    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, workers: [_Result(entries)])
+    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, **kw: [_Result(entries)])
     calls = []
 
     def counting(model, obs, device, **kw):
@@ -74,7 +74,7 @@ def test_a_wrong_row_count_from_the_head_is_refused(monkeypatch):
     _model, entries = _entries(widths=(2, 3))
     head = _head()
     monkeypatch.setenv("SHENGJI_CWV_BATCHED_PUBLIC", "1")
-    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, workers: [_Result(entries)])
+    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, **kw: [_Result(entries)])
     monkeypatch.setattr(cwv_eval, "public_values", lambda model, obs, device, **kw: np.zeros(1))
     with pytest.raises(ValueError, match="one value per candidate row"):
         cwv_eval.candidate_pass([("shard", None)], score_fn=None, score_many_fn=None,

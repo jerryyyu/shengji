@@ -18,12 +18,15 @@
 
 from __future__ import annotations
 
+import collections
 import hashlib
+import itertools
 import json
 import math
 import multiprocessing
 import os
 import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
@@ -368,15 +371,198 @@ def _candidate_task(task: tuple) -> ShardResult:
                        decision_obs=decision, search=search)
 
 
-def iter_shard_results(tasks: Sequence[tuple], *, workers: int) -> Iterator[ShardResult]:
-    """``ShardResult`` per task (completion order), ``workers`` processes."""
-    if workers <= 1 or len(tasks) <= 1:
-        for task in tasks:
-            yield _candidate_task(task)
+CANDIDATE_PASS_SCHEMA = "shengji-cwv-candidate-pass-shard-v1"
+_SEARCH_ARRAYS = ("public", "world", "perspective", "terminal", "terminal_level",
+                  "successor_points", "successor_ply", "means")
+_SEARCH_HISTORY = ("history_cards", "history_meta")
+
+
+def candidate_task_digest(task: tuple) -> str:
+    """Identity of one worker task's output (issue #542 lever 4b): the
+    encoder implementation and version, the flavour, whether search records
+    are wanted and how many per shard, the shard's bytes and the selected
+    deals.  Anything ``_candidate_task`` reads that could change its output
+    is in here; the scorers are NOT (they run in the parent, per run)."""
+    shard, selected, want_search, per_shard_limit, history, version = task
+    h = hashlib.sha256()
+    h.update(json.dumps({
+        "schema": CANDIDATE_PASS_SCHEMA,
+        "encoder": cwv_encoder_identity(version)["implementation_sha256"],
+        "enc_version": int(version), "history": bool(history),
+        "want_search": bool(want_search), "per_shard_limit": int(per_shard_limit),
+        "shard": shard.sha256, "selected": None if selected is None else sorted(selected),
+    }, sort_keys=True).encode("ascii"))
+    return h.hexdigest()
+
+
+def candidate_task_cache_path(cache_dir: str | os.PathLike, task: tuple) -> Path:
+    return Path(cache_dir) / "candidate-pass" / f"{candidate_task_digest(task)[:24]}.npz"
+
+
+def save_shard_result(result: ShardResult, path: str | os.PathLike, *, digest: str,
+                      version: int) -> None:
+    """Persist one worker's ``ShardResult`` (flat arrays + record offsets),
+    atomically; ``load_shard_result`` returns an equal object."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entries = result.search
+    widths = np.asarray([int(e["means"].size) for e in entries], dtype=np.int64)
+    offsets = np.zeros(len(entries) + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(widths)
+    history = bool(entries) and "history_offsets" in entries[0]
+
+    def cat(name, dtype, shape):
+        if entries:
+            return np.concatenate([np.asarray(e[name]) for e in entries])
+        return np.zeros((0, *shape), dtype=dtype)
+
+    arrays = {
+        "public": cat("public", np.float32, (public_dim(version),)),
+        "world": cat("world", np.uint8, (WORLD_RECEIVERS, N_CARDS)),
+        "perspective": cat("perspective", np.uint8, ()),
+        "terminal": cat("terminal", bool, ()),
+        "terminal_level": cat("terminal_level", np.float64, ()),
+        "successor_points": cat("successor_points", np.float32, ()),
+        "successor_ply": cat("successor_ply", np.int32, ()),
+        "means": cat("means", np.float64, ()),
+        "offsets": offsets,
+        "role_attacker": np.asarray([bool(e["role_attacker"]) for e in entries], dtype=bool),
+        "search_source_ref": np.asarray([e["source_ref"] for e in entries], dtype=str),
+        "search_deal_key": np.asarray([e["deal_key"] for e in entries], dtype=str),
+        "source_ref": np.asarray(list(result.source_ref), dtype=str),
+        "deal_key": np.asarray(list(result.deal_key), dtype=str),
+        "decision_obs": np.asarray(result.decision_obs, dtype=np.float32),
+    }
+    if history:
+        lengths = np.concatenate([np.diff(e["history_offsets"]) for e in entries])
+        h_off = np.zeros(int(offsets[-1]) + 1, dtype=np.int64)
+        h_off[1:] = np.cumsum(lengths)
+        arrays["history_offsets"] = h_off
+        arrays["history_cards"] = cat("history_cards", np.uint8, (N_CARDS,))
+        arrays["history_meta"] = cat("history_meta", np.uint8, (HISTORY_META_DIM,))
+    meta = {"schema": CANDIDATE_PASS_SCHEMA, "digest": digest, "label": result.label,
+            "records": int(len(result.source_ref)), "search_records": int(len(entries)),
+            "candidates": int(offsets[-1]), "history": history}
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "wb") as fh:
+        np.savez_compressed(fh, meta=np.asarray(json.dumps(meta, sort_keys=True)), **arrays)
+    os.replace(tmp, path)
+
+
+def _read_shard_meta(path: Path) -> dict | None:
+    """The ``meta`` member of a saved shard result, reading nothing else;
+    None when the file is missing or not a readable archive."""
+    if not path.is_file():
+        return None
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            return json.loads(str(npz["meta"]))
+    except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
+        return None
+
+
+def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | None:
+    """The ``ShardResult`` saved at ``path`` if it carries ``digest``;
+    None when the file is missing, unreadable, or another task's."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            meta = json.loads(str(npz["meta"]))
+            if meta.get("schema") != CANDIDATE_PASS_SCHEMA or meta.get("digest") != digest:
+                return None
+            arrays = {name: npz[name] for name in npz.files if name != "meta"}
+    except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
+        return None
+    offsets = arrays["offsets"]
+    history = "history_offsets" in arrays
+    search: list[dict] = []
+    for r in range(int(offsets.size - 1)):
+        lo, hi = int(offsets[r]), int(offsets[r + 1])
+        entry = {name: arrays[name][lo:hi] for name in _SEARCH_ARRAYS}
+        entry["role_attacker"] = bool(arrays["role_attacker"][r])
+        entry["source_ref"] = str(arrays["search_source_ref"][r])
+        entry["deal_key"] = str(arrays["search_deal_key"][r])
+        if history:
+            o = arrays["history_offsets"][lo:hi + 1]
+            entry["history_offsets"] = o - o[0]
+            entry["history_cards"] = arrays["history_cards"][o[0]:o[-1]]
+            entry["history_meta"] = arrays["history_meta"][o[0]:o[-1]]
+        search.append(entry)
+    return ShardResult(label=str(meta.get("label", "")),
+                       source_ref=[str(x) for x in arrays["source_ref"].tolist()],
+                       deal_key=[str(x) for x in arrays["deal_key"].tolist()],
+                       decision_obs=arrays["decision_obs"], search=search)
+
+
+def iter_shard_results(tasks: Sequence[tuple], *, workers: int,
+                       cache_dir: str | os.PathLike | None = None,
+                       on_cached: Callable[[ShardResult], None] | None = None
+                       ) -> Iterator[ShardResult]:
+    """``ShardResult`` per task, in TASK order, ``workers`` processes.
+
+    With ``cache_dir`` (issue #542 lever 4b) a task whose result is on disk
+    under its ``candidate_task_digest`` is loaded in this process AS IT IS
+    YIELDED and reported through ``on_cached``; only the misses go to the
+    workers, and each miss is saved as it arrives.  Planning reads only the
+    ``meta`` member of each file, so the pass holds one shard's tensors at a
+    time (plus the pool's in-flight results), never the whole split.  The
+    scorers never see the difference: a loaded result is equal to the
+    worker's, and the order is the task order whether a shard was cached or
+    rebuilt."""
+    plan: list[tuple[tuple, Path | None, str | None, bool]] = []
+    for task in tasks:
+        if cache_dir is None:
+            plan.append((task, None, None, False))
+            continue
+        digest = candidate_task_digest(task)
+        path = Path(cache_dir) / "candidate-pass" / f"{digest[:24]}.npz"
+        meta = _read_shard_meta(path)
+        hit = bool(meta) and meta.get("schema") == CANDIDATE_PASS_SCHEMA \
+            and meta.get("digest") == digest
+        plan.append((task, path, digest, hit))
+    misses = [item[0] for item in plan if not item[3]]
+
+    def merge(rebuilt: Iterator[ShardResult]) -> Iterator[ShardResult]:
+        for task, path, digest, hit in plan:
+            if hit:
+                result = load_shard_result(path, digest=digest)
+                if result is None:        # changed under us since planning
+                    result = _candidate_task(task)
+                    save_shard_result(result, path, digest=digest, version=int(task[5]))
+                elif on_cached:
+                    on_cached(result)
+                yield result
+                continue
+            result = next(rebuilt)
+            if path is not None:
+                save_shard_result(result, path, digest=digest, version=int(task[5]))
+            yield result
+
+    if workers <= 1 or len(misses) <= 1:
+        yield from merge(map(_candidate_task, misses))
         return
     ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(processes=min(workers, len(tasks))) as pool:
-        yield from pool.imap_unordered(_candidate_task, tasks)
+    with ctx.Pool(processes=min(workers, len(misses))) as pool:
+        yield from merge(_bounded_rebuilds(pool, misses, window=2 * workers))
+
+
+def _bounded_rebuilds(pool, tasks: Sequence[tuple], *, window: int) -> Iterator[ShardResult]:
+    """``_candidate_task`` over ``tasks`` in task order with at most
+    ``window`` results outstanding (in flight or finished and not yet
+    consumed) -- ``Pool.imap`` keeps every finished-but-unconsumed result,
+    which on a slow early shard grows without bound."""
+    window = max(1, int(window))
+    queue = iter(tasks)
+    pending: collections.deque = collections.deque()
+    for task in itertools.islice(queue, window):
+        pending.append(pool.apply_async(_candidate_task, (task,)))
+    while pending:
+        result = pending.popleft().get()
+        for task in itertools.islice(queue, 1):
+            pending.append(pool.apply_async(_candidate_task, (task,)))
+        yield result
 
 
 def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
@@ -386,10 +572,12 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                    history: bool, want_search: bool = True,
                    progress: Callable[[str], None] | None = None,
                    version: int = ENC_VERSION,
-                   score_many_fn: Callable[[Sequence[dict]], list[np.ndarray]] | None = None
-                   ) -> dict:
+                   score_many_fn: Callable[[Sequence[dict]], list[np.ndarray]] | None = None,
+                   cache_dir: str | os.PathLike | None = None) -> dict:
     """Run the workers over ``shard_keys`` (``(shard, selected deal keys or
-    None)``) and score what they return.
+    None)``) and score what they return.  With ``cache_dir`` the workers'
+    output is memoised per shard (``iter_shard_results``); the returned
+    ``cached_shards`` counts the shards served from disk.
 
     ``score_fn(candidates) -> expected PT0 level per candidate`` is the CWV
     net (None skips it); the public head scores the afterstate's public
@@ -418,7 +606,14 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
     n_candidates = 0
     widths: list[int] = []
     done = 0
-    for result in iter_shard_results(tasks, workers=workers):
+    cached = 0
+
+    def note_cached(_result):
+        nonlocal cached
+        cached += 1
+
+    for result in iter_shard_results(tasks, workers=workers, cache_dir=cache_dir,
+                                     on_cached=note_cached):
         done += 1
         n_rows += len(result.source_ref)
         for ref, key in zip(result.source_ref, result.deal_key):
@@ -485,9 +680,10 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
         if progress and (done % 200 == 0 or done == len(tasks)):
             progress(f"candidate pass: {done}/{len(tasks)} shards, rows={n_rows} "
                      f"search_records={len(clusters)} candidates={n_candidates} "
-                     f"({round(time.perf_counter() - started, 1)}s)")
+                     f"cached={cached} ({round(time.perf_counter() - started, 1)}s)")
     return {
         "rows": n_rows,
+        "cached_shards": cached,
         "search_records": len(clusters),
         "candidates": n_candidates,
         "candidates_per_record": (float(np.mean(widths)) if widths else None),

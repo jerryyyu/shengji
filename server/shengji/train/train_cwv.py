@@ -753,6 +753,7 @@ def ranking_block(pass_result: Mapping[str, Any], *, n_boot: int, seed: int) -> 
         "candidates": int(pass_result["candidates"]),
         "candidates_per_record": pass_result["candidates_per_record"],
         "rows_rebuilt": int(pass_result["rows"]),
+        "shards_from_cache": pass_result.get("cached_shards"),
         "secs": pass_result["secs"],
         "rank_limit": pass_result["rank_limit"],
         "search_means": "action_values.means over eligible_indices (acting-team "
@@ -2132,7 +2133,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                        else cwv_score_many_fn(model, dev)), public_head=public_model,
         prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
         workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
-        version=enc_version)
+        version=enc_version, cache_dir=cache)
     note = _public_head_note(public_info, config=config, split=split)
     metric_kw = dict(n_boot=n_boot, seed=seed)
     ev_val = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
@@ -2432,7 +2433,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         pass_result = candidate_pass(
             shard_keys, score_fn=cwv_score_fn(model, dev), public_head=public_model,
             prior=prior, device=dev, workers=eval_workers, rank_limit=rank_limit,
-            history=history, progress=say, version=enc_version)
+            history=history, progress=say, version=enc_version, cache_dir=cache)
         ev = run_eval(model, store, mask_fn, dev, batch_size=batch_size, aux_head=aux_head)
         data_public, data_check = public_comparison(pass_result, public_info)
         metrics = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),

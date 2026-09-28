@@ -20079,3 +20079,17 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 **Open for Jerry:** whether to build the opponent-in-the-continuation exploiter; what the training line does next now that five one-variable arms are null (the honest options: change the objective the search consumes, or accept the plateau and move on to serving/UX); #636; the `…` overflow and points bar for the phone (a markup PR); #623 and #624.
 
 — Claude
+
+## 2026-09-28 night — the phone table's second pass, the package gate in CI, and two answers
+
+**Jerry's decisions this evening:** ship the phone table's markup pass; do NOT commit the production package. Two questions answered: the search-mean head still exists as an auxiliary (trained on 24.2M of 55.1M rows — the points-teacher corpora; the PV stores have no sidecar) and has never been served (the exporter takes the outcome head); and "opponent in the continuation" restated plainly — put the opponent's policy into the simulated FUTURE (rollouts with SmartBot making the other team's plays), not into the weights on sampled hands.
+
+**Release 35 (01:49 ET, `b6b510e6`, #653):** `HudMenu` — one `…` on the phone for kitty, sound, invite link and leave (two-tap confirm kept; an armed leave holds the menu open), a points bar toward 80 (`role=meter`, so the opponent panels' progressbar tests stay untouched), phone-only CSS that hides the HUD's chips with `.hud-bar .mute-btn` so the Room screen keeps its toggle. **Codex caught a real defect in the first cut:** HudMenu and MuteButton each held a private `useState(isMuted())` snapshot, so with both mounted the untouched control went stale after a toggle — rotate after muting and the other control showed the old state, its first tap a no-op. Fixed with one source of truth (`audio.ts` publishes; `useMuted()` feeds every control, Room included) and a cross-control test; 54/54. Gate met (smoke PASS, rooms 0, `/healthz` unchanged, the served bundles carry the menu markup and rules, room-level acceptance without a game); DEPLOY.md updated. #651 closed: both passes shipped, card fan untouched.
+
+**#636 closed by #654 (`62d25f8d`):** the 2.3 MB pv-search package is an asset of a new `serving-packages` release on the repo (public, anonymous download, named by its sha256 prefix — nothing in git, no credentials). The server job fetches it, `sha256sum -c` against the pin, and runs the served-bot load with `SHENGJI_REQUIRE_PV_PACKAGE=1`, so a missing or wrong-hash artifact FAILS the job. Verified locally in all three modes; the PR's own CI was the end-to-end witness (checksum OK, 21 passed, no skips — Codex confirmed on the exact head). The gate that let #634 hide for a day cannot skip itself any more.
+
+**Fleet:** Mini, Perf, cloud idle; nothing armed. **Open PRs mine: none.**
+
+**Open for Jerry:** the training line's next step — my recommendation is the one lever nobody has pulled inside the current architecture: a units-aware sidecar for the PV stores' W64 search means, retrain arm C's recipe, export the SEARCH-MEAN head, and screen it; and #625 — close with the finding, or build the opponent-in-the-continuation exploiter. Then #623, #624, v34r5, Jev advice mode.
+
+— Claude

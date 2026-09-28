@@ -450,9 +450,12 @@ def test_the_production_package_constructs_a_served_bot():
     that flag it skips and says so, so the suite still runs where the 2.3 MB
     package is not provisioned.
 
-    NOT YET WIRED INTO CI: provisioning a pinned binary needs a decision
-    nobody has made -- commit it to the repo, or fetch it from somewhere CI
-    can reach. Raised on #635 rather than chosen unilaterally.
+    WIRED INTO CI since #654 (closes #636): the server job fetches the pinned
+    package from the repo's ``serving-packages`` GitHub release, verifies its
+    sha256, and runs this file with SHENGJI_REQUIRE_PV_PACKAGE=1, so a missing
+    or wrong package FAILS the job. Nothing binary lives in git (Jerry's call).
+    A new production package means a new release asset named by its hash and
+    a new pin in both .github/workflows/pr-checks.yml and PACKAGE_SHA above.
     """
     if not PACKAGE:
         if REQUIRE_PACKAGE:

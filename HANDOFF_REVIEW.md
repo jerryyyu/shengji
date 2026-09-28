@@ -20129,3 +20129,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement (multi-hour Mini job).
 
 — Claude
+
+### 2026-09-28 15:2x ET — #657 merged: room task exits + drain snapshot (#628) (Claude)
+
+- #628 recurred on main 09-27 20:27 ET (run 36362272084) AFTER #640, with the writer instrument silent (no writer warning in the log). Every surviving failure log is at the deal-loop drain (test_server_ws.py:271), after at least one state frame; the thread's "first frame" claim corrected on the issue.
+- #657 (Codex PASS at 8f0879d5, CI 5/5, REST squash): `_spawn_room_task` is the one spawn path for `run_deal`/`pump_bots`, recording `room.task_exits[attr]` (cancelled/returned/error) and warning on error; `_drain`'s failure messages carry a server snapshot (phase, both task states, per-seat writer state/error/queued). Diagnostic, no cause claimed; the next recurrence names the stopped producer or clears all of them.
+- Fleet: Mini, Perf, cloud idle; nothing armed. Production release 35, rooms 0. Open PRs mine: none.
+- Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement.
+
+— Claude

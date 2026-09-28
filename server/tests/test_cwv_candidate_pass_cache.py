@@ -187,3 +187,63 @@ def test_the_trainer_reports_the_hits_in_its_receipt(store_dir, luna, tmp_path, 
     assert on_disk["final"]["test"]["ranking"]["shards_from_cache"] == rw["shards_from_cache"]
     # same weights (same seed, same data), so the same candidate values and agreement
     assert rc["scorers"]["cwv"] == rw["scorers"]["cwv"]
+
+
+def test_hits_are_loaded_one_at_a_time_as_they_are_yielded(store_dir, tmp_path, monkeypatch):
+    """Codex P1 on #656: planning must not load (and retain) every cached shard
+    before the first result is yielded.  Loads happen at yield time, one per
+    yielded hit, so a 49,600-shard pass holds one shard's tensors at a time."""
+    shard_keys = _shard_keys(store_dir)
+    assert len(shard_keys) >= 2
+    _run(shard_keys, tmp_path / "cache")           # warm every shard
+    tasks = [(shard, None, True, 1 << 30, False, cwv_eval.ENC_VERSION) for shard, _k in shard_keys]
+
+    real_load = cwv_eval.load_shard_result
+    loads = []
+
+    def counting(path, *, digest):
+        loads.append(path)
+        return real_load(path, digest=digest)
+    monkeypatch.setattr(cwv_eval, "load_shard_result", counting)
+    _forbid_worker(monkeypatch)
+
+    it = cwv_eval.iter_shard_results(tasks, workers=1, cache_dir=tmp_path / "cache")
+    assert loads == []                              # a generator: nothing until asked
+    first = next(it)
+    assert len(loads) == 1                          # planning read meta only; one load per yield
+    assert first.decision_obs.shape[0] == len(first.source_ref)
+    second = next(it)
+    assert len(loads) == 2
+    assert second.source_ref != first.source_ref
+    rest = list(it)
+    assert len(loads) == len(shard_keys) == 2 + len(rest)
+
+
+def test_the_pool_window_bounds_outstanding_results(monkeypatch):
+    """The ordered miss stream never has more than ``window`` results submitted
+    and not yet consumed, whatever the task count and however slow the consumer."""
+    outstanding = {"now": 0, "peak": 0}
+
+    class Future:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            outstanding["now"] -= 1
+            return self.value
+
+    class Pool:
+        def apply_async(self, fn, args):
+            outstanding["now"] += 1
+            outstanding["peak"] = max(outstanding["peak"], outstanding["now"])
+            return Future(fn(*args))
+
+    monkeypatch.setattr(cwv_eval, "_candidate_task", lambda task: ("built", task))
+    tasks = [("task", i) for i in range(1000)]
+    seen = []
+    for result in cwv_eval._bounded_rebuilds(Pool(), tasks, window=6):
+        seen.append(result)
+        assert outstanding["now"] <= 6
+    assert seen == [("built", t) for t in tasks]          # task order, nothing lost
+    assert outstanding["peak"] == 6                       # the window is used, not exceeded
+    assert outstanding["now"] == 0

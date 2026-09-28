@@ -18,7 +18,9 @@
 
 from __future__ import annotations
 
+import collections
 import hashlib
+import itertools
 import json
 import math
 import multiprocessing
@@ -447,6 +449,18 @@ def save_shard_result(result: ShardResult, path: str | os.PathLike, *, digest: s
     os.replace(tmp, path)
 
 
+def _read_shard_meta(path: Path) -> dict | None:
+    """The ``meta`` member of a saved shard result, reading nothing else;
+    None when the file is missing or not a readable archive."""
+    if not path.is_file():
+        return None
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            return json.loads(str(npz["meta"]))
+    except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
+        return None
+
+
 def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | None:
     """The ``ShardResult`` saved at ``path`` if it carries ``digest``;
     None when the file is missing, unreadable, or another task's."""
@@ -489,27 +503,37 @@ def iter_shard_results(tasks: Sequence[tuple], *, workers: int,
     """``ShardResult`` per task, in TASK order, ``workers`` processes.
 
     With ``cache_dir`` (issue #542 lever 4b) a task whose result is on disk
-    under its ``candidate_task_digest`` is loaded in this process and
-    reported through ``on_cached``; only the misses go to the workers, and
-    each miss is saved as it arrives.  The scorers never see the
-    difference: a loaded result is equal to the worker's, and the order is
-    the task order whether a shard was cached or rebuilt."""
-    plan: list[tuple[tuple, Path | None, str | None, ShardResult | None]] = []
+    under its ``candidate_task_digest`` is loaded in this process AS IT IS
+    YIELDED and reported through ``on_cached``; only the misses go to the
+    workers, and each miss is saved as it arrives.  Planning reads only the
+    ``meta`` member of each file, so the pass holds one shard's tensors at a
+    time (plus the pool's in-flight results), never the whole split.  The
+    scorers never see the difference: a loaded result is equal to the
+    worker's, and the order is the task order whether a shard was cached or
+    rebuilt."""
+    plan: list[tuple[tuple, Path | None, str | None, bool]] = []
     for task in tasks:
         if cache_dir is None:
-            plan.append((task, None, None, None))
+            plan.append((task, None, None, False))
             continue
         digest = candidate_task_digest(task)
         path = Path(cache_dir) / "candidate-pass" / f"{digest[:24]}.npz"
-        plan.append((task, path, digest, load_shard_result(path, digest=digest)))
-    misses = [item[0] for item in plan if item[3] is None]
+        meta = _read_shard_meta(path)
+        hit = bool(meta) and meta.get("schema") == CANDIDATE_PASS_SCHEMA \
+            and meta.get("digest") == digest
+        plan.append((task, path, digest, hit))
+    misses = [item[0] for item in plan if not item[3]]
 
     def merge(rebuilt: Iterator[ShardResult]) -> Iterator[ShardResult]:
         for task, path, digest, hit in plan:
-            if hit is not None:
-                if on_cached:
-                    on_cached(hit)
-                yield hit
+            if hit:
+                result = load_shard_result(path, digest=digest)
+                if result is None:        # changed under us since planning
+                    result = _candidate_task(task)
+                    save_shard_result(result, path, digest=digest, version=int(task[5]))
+                elif on_cached:
+                    on_cached(result)
+                yield result
                 continue
             result = next(rebuilt)
             if path is not None:
@@ -521,7 +545,24 @@ def iter_shard_results(tasks: Sequence[tuple], *, workers: int,
         return
     ctx = multiprocessing.get_context("spawn")
     with ctx.Pool(processes=min(workers, len(misses))) as pool:
-        yield from merge(pool.imap(_candidate_task, misses))
+        yield from merge(_bounded_rebuilds(pool, misses, window=2 * workers))
+
+
+def _bounded_rebuilds(pool, tasks: Sequence[tuple], *, window: int) -> Iterator[ShardResult]:
+    """``_candidate_task`` over ``tasks`` in task order with at most
+    ``window`` results outstanding (in flight or finished and not yet
+    consumed) -- ``Pool.imap`` keeps every finished-but-unconsumed result,
+    which on a slow early shard grows without bound."""
+    window = max(1, int(window))
+    queue = iter(tasks)
+    pending: collections.deque = collections.deque()
+    for task in itertools.islice(queue, window):
+        pending.append(pool.apply_async(_candidate_task, (task,)))
+    while pending:
+        result = pending.popleft().get()
+        for task in itertools.islice(queue, 1):
+            pending.append(pool.apply_async(_candidate_task, (task,)))
+        yield result
 
 
 def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,

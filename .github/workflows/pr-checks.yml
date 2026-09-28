@@ -66,6 +66,26 @@ jobs:
           tests/test_structured_bury.py
           tests/test_report_world_reuse.py
           tests/test_mc_benchmark_normalization.py
+      # #636: the served bot must still CONSTRUCT from the real production package on this
+      # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches
+      # it from the repo's `serving-packages` release by tag and verifies the sha256 pinned
+      # here and in the test. A missing or wrong-hash asset FAILS the job -- a required gate
+      # that skips itself is indistinguishable from one that passes (#633, #634).
+      - name: Fetch the pinned production package
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/soft-8ecd4fea.npz
+          PACKAGE_SHA256: ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/soft-8ecd4fea.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/soft-8ecd4fea.npz" | sha256sum -c -
+      - name: Load the production package on this tree
+        env:
+          SHENGJI_FAST: "1"
+          SHENGJI_REQUIRE_PV_PACKAGE: "1"
+          SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/soft-8ecd4fea.npz
+        run: uv run pytest -q tests/test_encoder_round_compat.py
 
   import-walk:
     runs-on: ubuntu-latest

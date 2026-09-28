@@ -1646,6 +1646,114 @@ button {
     font-size: 12px;
   }
 
+  /* ============ #651: a quieter phone table ============
+     Jerry 2026-09-27: "it's busy with all the bots on the board and stuff"; the
+     card fan is fine.  Everything below is phone-only and changes no markup:
+     the seats become one-line labels, the chrome loses what is not a mid-trick
+     decision, and messages pass instead of parking.  Desktop is untouched. */
+
+  /* --- Seats: one lozenge each -- name, count, badges; no box, no card backs --- */
+  .opponent {
+    flex-direction: row;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 11px 4px 9px;
+    border: 0;
+    border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
+    border-radius: 999px;
+    background: rgba(8, 20, 14, 0.6);
+  }
+
+  .opponent.team0 { border-left-color: var(--team0); }
+  .opponent.team1 { border-left-color: var(--team1); }
+
+  .opponent.on-turn {
+    border-left-color: var(--gold);
+    box-shadow: 0 0 0 1.5px var(--gold), 0 0 16px 2px var(--gold-soft);
+  }
+
+  .back-stack,
+  .back-stack .card.stacked:first-child,
+  .bot-tag,          /* every seat but yours is a bot at most tables; the tag is noise */
+  .bot-banter,
+  .bot-progress {
+    display: none;
+  }
+
+  .opp-cards { gap: 0; }
+
+  .card-count::before {
+    content: "\00b7";           /* "Bot 1 · 8" */
+    margin: 0 6px 0 0;
+    color: var(--text-dim);
+  }
+
+  .opponent.on-turn .card-count { color: var(--gold); }
+
+  .thinking,
+  .their-turn {
+    font-size: 11px;
+  }
+
+  /* left/right seats sit at the table edge, level with the trick's side slots */
+  .opponent.pos-left,
+  .opponent.pos-right {
+    top: 40%;
+  }
+
+  /* --- HUD: the three team/trump chips read as ONE strip --- */
+  .hud-bar .hud-group:nth-child(2) {
+    gap: 0;
+    background: rgba(8, 20, 14, 0.7);
+    border-radius: 999px;
+    padding: 0 4px;
+  }
+
+  .hud-bar .hud-group:nth-child(2) .chip {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .kitty-chip {
+    display: none;             /* not a mid-trick decision; stays on desktop */
+  }
+  /* The mute toggle STAYS: it is the only way to silence announcements on a phone,
+     in the Room screen as well as the table (Codex, #652 review). Compact, not gone. */
+
+  /* --- Your tagline: shown only while it says something (your turn / ready) --- */
+  .you-tagline {
+    display: none;
+  }
+
+  .you-tagline.on-turn {
+    display: flex;
+  }
+
+  /* --- Action bar: one button; a disabled Clear is not information --- */
+  .action-bar .btn.subtle:disabled {
+    display: none;
+  }
+
+  /* --- Messages pass over the felt instead of holding a line in the chrome --- */
+  .hud {
+    position: relative;
+  }
+
+  .hud-message {
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgba(8, 20, 14, 0.8);
+    white-space: nowrap;
+    z-index: 11;
+    animation: hud-message-pass 3.2s ease forwards;
+  }
+
   /* --- Lobby / Room fit in 360px-tall viewports --- */
   .panel {
     padding: 16px 22px;
@@ -2077,3 +2185,16 @@ button.room-chip:hover::after { opacity: 1; }
 .seat-who { font-size: 13px; opacity: 0.8; }
 .seat-team { font-size: 11px; opacity: 0.55; letter-spacing: 0.06em; }
 .seat-take { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+
+/* #651: a phone-only message toast; the element remounts per message (key=message),
+   so the animation restarts for each new line and the last one fades out. */
+@keyframes hud-message-pass {
+  0% { opacity: 0; transform: translate(-50%, -4px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-message { animation: none; }
+}

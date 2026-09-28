@@ -71,7 +71,7 @@ def test_candidate_pass_prefers_the_batched_scorer_and_keeps_record_order(monkey
         decision_obs = np.zeros((0, 1), dtype=np.float32)
         search = entries
 
-    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, workers: [Result()])
+    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, **kw: [Result()])
     monkeypatch.setattr(cwv_eval, "candidate_agreement",
                         lambda scores, means: {"n": int(scores.size), "first": float(scores[0])})
 
@@ -100,7 +100,7 @@ def test_batched_scorer_refuses_a_wrong_count(monkeypatch):
         decision_obs = np.zeros((0, 1), dtype=np.float32)
         search = entries
 
-    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, workers: [Result()])
+    monkeypatch.setattr(cwv_eval, "iter_shard_results", lambda tasks, **kw: [Result()])
     with pytest.raises(ValueError, match="one score array per record"):
         cwv_eval.candidate_pass([("shard", None)], score_fn=None,
                                 score_many_fn=lambda batch: [], public_head=None, prior=None,

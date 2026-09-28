@@ -13,7 +13,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 33 (release 29's recipe with the #607 bury fix; releases 30–33 changed only game rules and UI), the policy/value search with hybrid bury
+  Fly configuration selects release 34 (release 29's recipe with the #607 bury fix; releases 30–34 changed only game rules and UI), the policy/value search with hybrid bury
   `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
@@ -26,7 +26,35 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 33 — the starting level moves into the room screen (#646), deployed 2026-09-26 11:50 ET
+## Current production: release 34 — a quieter phone table (#652, #651), deployed 2026-09-27 20:22 ET
+
+Release **34**, image `registry.fly.io/shengji:deployment-01M3JP62AR34FH5929FQC9GK7P` (digest
+`sha256:896c13bdf61074fc20873db841b526d15162f272fb3489c8d023ea8265094591`), deployed with
+`fly deploy --ha=false` from main `eaea3a80` (#652) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-27 ("can you apply a few options? i think the card layout is fine btw
+its busy with all the bots on the board and stuff").
+
+**NO model, package or configuration change.** Same `fly.toml`, package, prior and served name as
+releases 29–33; every screen still compares against release 30. No server change at all: the diff
+is phone-only CSS inside the existing `@media (max-height: 500px)` branch of `web/src/index.css`.
+
+What changed on a landscape phone: each opponent is one lozenge (name, `· count`, badges; team
+colour as a left rule; card-back stacks, the BOT tag, the banter line and the progress bar hidden;
+the seat on turn gets a gold ring); the level/trump/level chips read as one strip and the kitty chip
+is hidden; the "Player" tagline shows only while it says something (your turn / ready); a disabled
+Clear is hidden; the HUD message is a toast over the felt that fades after ~3 s. The mute toggle
+STAYS (Codex's review: it is the only way to silence announcements on a phone). Desktop untouched.
+
+Preconditions as met: Codex PASS on #652 at the exact head `799eafac` (one round: the first cut hid
+the mute toggle); CI 5/5; serving smoke on the MERGED tree against the SHA-verified volume packages
+(`ccade130…`, `0d17fd03…`) — PASS, 40 server turns, bury 0.118 s; `/healthz` after the deploy
+unchanged from release 30, rooms 0; live acceptance without starting a game: the served CSS bundle
+carries the new `hud-message-pass` rule, and the room-level flow (host sets, joiner sees, joiner and
+unknown level refused) still passes.
+
+Rollback: the release-33 image (`deployment-01M3F6FPRBXCK5Q4BDA0CET5A8`), a pure code rollback.
+
+## Release 33 — the starting level moves into the room screen (#646), deployed 2026-09-26 11:50 ET; superseded by release 34 (same name, same package)
 
 Release **33**, image `registry.fly.io/shengji:deployment-01M3F6FPRBXCK5Q4BDA0CET5A8` (digest
 `sha256:1ff39d9c57d667a01b7de7ded27d64bcf29d94afce308ea9d7d0c7d809f44315`), deployed with

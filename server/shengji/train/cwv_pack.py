@@ -24,7 +24,7 @@ per-window row shuffle -- so the batch sequence, and therefore training, is iden
 (tests/test_cwv_pack.py asserts bitwise-identical batches and checkpoints).
 
 History (seq) caches are not packed: they are ragged and the seq arch is not the trained
-recipe.  A pack built with a sidecar carries ``search_mean_played`` per row.
+recipe.  A pack built with a sidecar carries ``search_mean_played`` and ``search_level_played`` per row.
 """
 from __future__ import annotations
 
@@ -121,6 +121,7 @@ def _decode_task(task: tuple) -> dict:
     out["strings"] = strings
     if sidecar_dir is not None:
         out["search_mean_played"] = np.ascontiguousarray(block.search_mean_played)
+        out["search_level_played"] = np.ascontiguousarray(block.search_level_played)
     keys = np.unique(block.deal_key)
     clusters = np.unique(block.cluster)
     if keys.size != 1 or clusters.size != 1:
@@ -229,6 +230,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         arrays[name] = _memmap(out / f"{name}.bin", str_dtypes[name], (rows_total,), "w+")
     if with_sidecar:
         arrays["search_mean_played"] = _memmap(out / "search_mean_played.f32", np.float32, (rows_total,), "w+")
+        arrays["search_level_played"] = _memmap(out / "search_level_played.f32", np.float32, (rows_total,), "w+")
     # ---- pass 2: decode every shard once and append (decode in ``workers`` processes when
     # asked; the main process writes in entry order either way, so the pack is a function
     # of its inputs and ``workers`` — the first real 176k build ran 0.18 s/shard single-process)
@@ -251,6 +253,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
             arrays[name][offset:offset + n] = dec["strings"][name]
         if with_sidecar:
             arrays["search_mean_played"][offset:offset + n] = dec["search_mean_played"]
+            arrays["search_level_played"][offset:offset + n] = dec["search_level_played"]
         shards_out.append({"sha256": shard.sha256, "label": shard.label, "offset": offset, "rows": n,
                            "nbytes": int(meta.get("nbytes") or 0), "deal_key": dec["deal_key"],
                            "cluster": dec["cluster"],
@@ -359,6 +362,11 @@ class CwvPackStore:
             self._arr[name] = _memmap(self.dir / f"{name}.bin", np.dtype(m["string_dtypes"][name]), (rows,), "r")
         if m.get("sidecar"):
             self._arr["search_mean_played"] = _memmap(self.dir / "search_mean_played.f32", np.float32, (rows,), "r")
+            level = self.dir / "search_level_played.f32"
+            if not level.is_file():
+                raise PackError(f"{self.dir}: pack has search_mean_played but no search_level_played; "
+                                "it predates sidecar v3 -- rebuild the pack")
+            self._arr["search_level_played"] = _memmap(level, np.float32, (rows,), "r")
 
     # -- the CwvBlockStore surface ---------------------------------------------------
     def __len__(self) -> int:
@@ -401,8 +409,9 @@ class CwvPackStore:
         m = self.manifest
         arrays["deal_key"] = np.full(n, rec["deal_key"], dtype=np.dtype(m["deal_key_dtype"]))
         arrays["cluster"] = np.full(n, rec["cluster"], dtype=np.dtype(m["cluster_dtype"]))
-        if "search_mean_played" in self._arr:
-            arrays["search_mean_played"] = np.asarray(self._arr["search_mean_played"][lo:hi])
+        for name in ("search_mean_played", "search_level_played"):
+            if name in self._arr:
+                arrays[name] = np.asarray(self._arr[name][lo:hi])
         block = CwvBlock(arrays, meta, self.entries[i][1])
         if self.keep_idx[i] is not None:
             block = block.subset(self.keep_idx[i])

@@ -1874,10 +1874,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     search_head_block = None
     if search_head:
         from .search_mean_sidecar import ELIGIBLE_LEVEL_OBJECTIVE, manifest_sha256
-        from .search_mean_target import ESTIMAND
+        from .search_mean_target import ESTIMAND, LEVEL_ESTIMAND
         search_head_block = {
             "weight": float(search_head_weight), "sidecar_dir": str(search_mean_sidecar),
             "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
+            "level_estimand": LEVEL_ESTIMAND,
             "estimand": ESTIMAND, "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
             "value_head": model_cfg.value_head,
             "note": "#373: a second 204-class head on the same trunk, trained on the "
@@ -1989,7 +1990,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             if target == "search-mean" and "search_mean_played" in t:
                 from .search_mean_target import soft_targets
                 probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                           t["target"])
+                                           t["target"], level=t.get("search_level_played"))
                 ce = nn.functional.cross_entropy(logits, probs)
                 sums["search_rows"] = sums.get("search_rows", 0) + int(used.sum().item())
             else:
@@ -2007,8 +2008,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 # to it (no realised one-hot leaks into this head).
                 from .search_mean_target import soft_targets
                 s_probs, s_used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                               t["target"])
+                                               t["target"], level=t.get("search_level_played"))
                 n_used = int(s_used.sum().item())
+                if "search_level_played" in t:
+                    n_level = int((s_used & torch.isfinite(t["search_level_played"])).sum().item())
+                    sums["search_head_level_rows"] = sums.get("search_head_level_rows", 0) + n_level
                 if n_used:
                     s_loss = nn.functional.cross_entropy(s_logits[s_used], s_probs[s_used])
                     total = total + float(search_head_weight) * s_loss
@@ -2081,6 +2085,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if search_head:
             n_used = int(sums.get("search_head_rows", 0))
             train_metrics["search_head_rows"] = n_used
+            train_metrics["search_head_level_rows"] = int(sums.get("search_head_level_rows", 0))
             train_metrics["search_head_cross_entropy"] = (
                 sums.get("search_head_ce", 0.0) / n_used if n_used else None)
         if aux_head is not None:

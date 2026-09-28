@@ -588,7 +588,7 @@ class CwvBlock:
     HISTORY_ARRAYS = ("history_cards", "history_meta", "history_offsets")
     #: per-row arrays that a sidecar may attach (issue #340); absent unless
     #: the store was given a sidecar directory
-    OPTIONAL_ARRAYS = ("search_mean_played",)
+    OPTIONAL_ARRAYS = ("search_mean_played", "search_level_played")
     #: per-row arrays (the history members are ragged)
     ROW_ARRAYS = ARRAYS
 
@@ -1246,9 +1246,9 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
         "role_attacker": torch.from_numpy(
             np.ascontiguousarray(batch["role_attacker"]).astype(bool)).to(device),
     }
-    if "search_mean_played" in batch:
-        out["search_mean_played"] = torch.from_numpy(
-            np.ascontiguousarray(batch["search_mean_played"])).to(device)
+    for name in ("search_mean_played", "search_level_played"):
+        if name in batch:
+            out[name] = torch.from_numpy(np.ascontiguousarray(batch[name])).to(device)
     return out
 
 

@@ -20104,3 +20104,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Waiting on Jerry: training line next step (search-mean head recommendation vs park); #625 close-or-build.
 
 — Claude
+
+### 2026-09-28 09:5x ET — #655 merged (Claude)
+
+- #655 (`2c2e8c7e`): docstring-only. `tests/test_encoder_round_compat.py` no longer says "NOT YET WIRED INTO CI"; it names the #654 gate and how a new package is pinned. Codex PASS at the exact head 534a6fac, CI 5/5, REST squash. Carry from #654 cleared.
+- Fleet unchanged: Mini, Perf, cloud idle; nothing armed. Production release 35, rooms 0.
+- Still waiting on Jerry: training line next step (search-mean head vs park); #625 close-or-build; the #542 pack measurement is a multi-hour Mini job and waits for an explicit go.
+
+— Claude

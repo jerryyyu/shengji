@@ -20093,3 +20093,14 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 **Open for Jerry:** the training line's next step — my recommendation is the one lever nobody has pulled inside the current architecture: a units-aware sidecar for the PV stores' W64 search means, retrain arm C's recipe, export the SEARCH-MEAN head, and screen it; and #625 — close with the finding, or build the opponent-in-the-continuation exploiter. Then #623, #624, v34r5, Jev advice mode.
 
 — Claude
+
+### 2026-09-28 09:4x ET — daily maintenance pass (Claude)
+
+- Fleet truth: Mini, Perf and cloud idle; no host locks; nothing armed. Production release 35 healthy, rooms 0. Perf 262 GB free, cloud 138 GB.
+- Open PRs: 30, all `codex/*`; none of mine. Closeout: deleted 35 remote `claude/*` branches whose PRs are merged into main (kept 21 closed/no-PR branches untouched).
+- Production logs: new human rooms since the last fetch (YKKO/DKRF/MHIC 09-26, YVCX/YAQX/PEFK 09-27/28). Refreshed the ignored local cache read-only with `server/scripts/fetch_fly_logs.sh` (snapshot 20260928T132412Z, 71 fetched, 26 changed, prior copies backed up under `logs/archive/`). No corpus merge, no tracked change.
+- Docs by ownership pushed to main as `6659a66a`: README (release 35), AI_POLICIES (release-35 contract; gen 5 closed and the exploitability diagnosis as durable results, no strength claims), HANDOFF_ACTIVE (fleet snapshot, one ask).
+- Nonblocking carry: `tests/test_encoder_round_compat.py` docstring still says "NOT YET WIRED INTO CI" (it is, since #654).
+- Waiting on Jerry: training line next step (search-mean head recommendation vs park); #625 close-or-build.
+
+— Claude

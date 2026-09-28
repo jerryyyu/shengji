@@ -3,6 +3,7 @@ import type { GameState, Notice, Phase } from "../protocol";
 import { conn } from "../ws";
 import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
+import HudMenu from "./HudMenu";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -168,6 +169,17 @@ export default function Hud({ state }: { state: GameState }) {
           <span className="chip points-chip" title="Points captured by the attacking team">
             <span className="points-big">{state.attacker_points}</span>
             <span className="points-target">/ 80</span>
+            {/* the phone draws progress to 80 as a bar under the number (#651); hidden on desktop */}
+            <span
+              className="points-bar"
+              role="meter"
+              aria-label="Attacker points toward 80"
+              aria-valuemin={0}
+              aria-valuemax={80}
+              aria-valuenow={Math.min(80, state.attacker_points)}
+            >
+              <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
+            </span>
           </span>
           <span className="chip kitty-chip" title="Kitty (face-down)">
             <span className="kitty-icon" />
@@ -175,6 +187,7 @@ export default function Hud({ state }: { state: GameState }) {
           </span>
           <MuteButton />
           <LeaveButton />
+          <HudMenu room={state.room} kittyCount={state.kitty_count} />
         </div>
       </div>
       {state.notice ? (

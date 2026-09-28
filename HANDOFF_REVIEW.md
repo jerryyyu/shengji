@@ -20112,3 +20112,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Still waiting on Jerry: training line next step (search-mean head vs park); #625 close-or-build; the #542 pack measurement is a multi-hour Mini job and waits for an explicit go.
 
 — Claude
+
+### 2026-09-28 10:4x ET — hourly tick: #542 lever 4b corrected (Claude)
+
+- Fleet: Mini, Perf, cloud idle; nothing armed. Production release 35, rooms 0. Inbox empty. Open PRs mine: none. Atlas and scaling log need no entry.
+- #542: my 09-26 claim that lever 4b was already implemented was wrong in scope. `ensure_candidate_set` memoises the 51 s VALIDATION candidate set (hit confirmed on arms D and F from arm C's file). The TEST candidate pass is not cached: arms C/D/F each re-encoded the same 49,600 shards, 2,887–2,957 s (~49 min) per run. Comment posted, lever line in the body carries the measurement, box stays unticked.
+- Crons: hourly 8f2fc006 and daily 4688d1e8 (recreated 09-28 06:3x, so it expires ~10-05, not 09-29 as the tick text says).
+
+— Claude

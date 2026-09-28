@@ -13,7 +13,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 34 (release 29's recipe with the #607 bury fix; releases 30–34 changed only game rules and UI), the policy/value search with hybrid bury
+  Fly configuration selects release 35 (release 29's recipe with the #607 bury fix; releases 30–35 changed only game rules and UI), the policy/value search with hybrid bury
   `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
@@ -26,7 +26,34 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 34 — a quieter phone table (#652, #651), deployed 2026-09-27 20:22 ET
+## Current production: release 35 — the phone table's overflow menu and points bar (#653, #651), deployed 2026-09-28 01:49 ET
+
+Release **35**, image `registry.fly.io/shengji:deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN` (digest
+`sha256:d94f79cc8653252c2e4820b814bf21d82f1d12b40c9b797100e2c675b26fae03`), deployed with
+`fly deploy --ha=false` from main `b6b510e6` (#653) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-28 ("Yes ship phone table pass").
+
+**NO model, package or configuration change.** Same `fly.toml`, package, prior and served name as
+releases 29–34; every screen still compares against release 30. Web only: no server change.
+
+What changed on a landscape phone: kitty count, sound, invite link and leave live under one `…`
+button (`HudMenu`; leave keeps its two-tap confirm and an armed leave holds the menu open); the
+points chip carries a thin bar toward 80. Mute state now has ONE source of truth (`audio.ts`
+publishes changes; a shared `useMuted()` hook feeds the HUD chip, the phone menu and the Room
+screen's toggle) — Codex's review caught that two mounted controls each kept a private snapshot,
+so rotating a phone after muting showed the wrong state and the first tap was a no-op. Desktop
+keeps every chip; the menu and bar are hidden there.
+
+Preconditions as met: Codex PASS on #653 at the exact head `39793d45` (one round: the shared mute
+state); CI 5/5; serving smoke on the MERGED tree against the SHA-verified volume packages
+(`ccade130…`, `0d17fd03…`) — PASS, 40 server turns, bury 0.119 s; `/healthz` after the deploy
+unchanged from release 30, rooms 0; live acceptance without starting a game: the served JS bundle
+carries `hud-more-btn`, the CSS bundle carries the `hud-menu` rules, and the room-level flow
+(host sets, joiner sees, joiner and unknown level refused) still passes.
+
+Rollback: the release-34 image (`deployment-01M3JP62AR34FH5929FQC9GK7P`), a pure code rollback.
+
+## Release 34 — a quieter phone table (#652, #651), deployed 2026-09-27 20:22 ET; superseded by release 35 (same name, same package)
 
 Release **34**, image `registry.fly.io/shengji:deployment-01M3JP62AR34FH5929FQC9GK7P` (digest
 `sha256:896c13bdf61074fc20873db841b526d15162f272fb3489c8d023ea8265094591`), deployed with

@@ -20156,3 +20156,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Production release 35, rooms 0. Open PRs mine: none.
 
 — Claude
+
+### 2026-09-28 22:3x ET — SMV3 retrain running; #660 merged (Claude)
+
+- Sidecar v3 built 21:05–21:10 ET: 240,000 files (21.7M signed-level rows from the 10 pv-search stores, 9.1M points rows from runJS6..10) + 256,000 v2 hard-linked = 496,000. DRYRUN ok on `smv3w` (ba998a5e). `GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3` started 21:11 ET on the Mini (arm F's recipe, one change: sidecar v3).
+- #660 merged (Codex PASS at 8e28df7c, CI 5/5): the single-head target receipt names both estimands. Open PRs mine: none.
+- Data gen: runSL1 7,168 / runSL2 7,178 shards at 22:30 ET (~42/min), seals ~02:00 ET; runSL3/runSL4 armed behind.
+- Test audit filed as #661 (no duplicate tests to speak of; four production modules kept alive only by tests; Jerry's call). Artifacts archived with SHA256SUMS.
+
+— Claude

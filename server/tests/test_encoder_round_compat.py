@@ -482,3 +482,54 @@ def test_a_foreign_identity_is_still_refused():
     with pytest.raises(CWVCheckpointMismatch):
         verify_checkpoint_identity({"encoder": {"implementation_sha256": "9" * 64,
                                                 "enc_version": 2}})
+
+
+# -- the TRAINER's loader must apply the same allowance (2026-09-29) ------------
+
+def _trainer_checkpoint(tmp_path, identity):
+    """A checkpoint shaped the way the trainer writes one: schema, arch, model
+    config, hidden-hands declaration and an encoder identity block."""
+    import torch
+    from shengji.rl.value_checkpoint import save_checkpoint
+    from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+    from shengji.train.train_cwv import CHECKPOINT_METADATA_SCHEMA, arch_of
+
+    torch.manual_seed(0)
+    cfg = ValueModelConfig(architecture="mlp", width=8, feedforward_width=16,
+                           attention_heads=1, enc_version=2, public_dim=561)
+    path = tmp_path / f"{identity[:8]}.pt"
+    save_checkpoint(path, ValueNetwork(cfg), metadata={
+        "schema": CHECKPOINT_METADATA_SCHEMA, "arch": arch_of(cfg),
+        "model_config": cfg.payload(), "sees_hidden_hands": True,
+        "encoder": {"implementation_sha256": identity, "enc_version": 2}})
+    return path
+
+
+def test_the_trainer_loader_accepts_the_release_30_identity(tmp_path):
+    """The serving loader accepted release 30's identity since #634; the TRAINER's
+    loader did not, so a warm start from the production head refused on every tree
+    at main -- discovered 2026-09-29 three hours into a run, after the cache rebuild.
+    Same allowance, same one named pair, through the real trainer entry point."""
+    from shengji.train.train_cwv import TrainError, load_cwv_checkpoint
+
+    model, metadata, aux = load_cwv_checkpoint(_trainer_checkpoint(tmp_path, RELEASE_30_IDENTITY))
+    assert metadata["encoder"]["implementation_sha256"] == RELEASE_30_IDENTITY
+    assert aux is None and model.config.enc_version == 2
+    # the current identity loads too, and a foreign one still refuses
+    load_cwv_checkpoint(_trainer_checkpoint(tmp_path, local_encoder_identity(2)["implementation_sha256"]))
+    with pytest.raises(TrainError, match="differs from this build"):
+        load_cwv_checkpoint(_trainer_checkpoint(tmp_path, "9" * 64))
+
+
+PRODUCTION_CHECKPOINT = os.environ.get("SHENGJI_PRODUCTION_CWV_CHECKPOINT")
+
+
+@pytest.mark.skipif(not PRODUCTION_CHECKPOINT or not pathlib.Path(PRODUCTION_CHECKPOINT or "").is_file(),
+                    reason="set SHENGJI_PRODUCTION_CWV_CHECKPOINT to the 8ecd4fea .pt to run the real load")
+def test_the_real_production_checkpoint_warm_starts_through_the_trainer_loader():
+    from shengji.train.train_cwv import load_cwv_checkpoint
+
+    assert _sha(pathlib.Path(PRODUCTION_CHECKPOINT)).startswith("8ecd4fea")
+    model, metadata, _aux = load_cwv_checkpoint(PRODUCTION_CHECKPOINT)
+    assert metadata["encoder"]["implementation_sha256"] == RELEASE_30_IDENTITY
+    assert model.config.search_head is True and model.config.policy_head is True

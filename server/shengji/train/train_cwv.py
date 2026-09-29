@@ -486,10 +486,20 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     # checkpoints predate the field).
     declared = bind_encoder_version(metadata, model.config, path=path)
     want = cwv_encoder_identity(declared)
-    from ..ai.cwv_encoder_compat import history_import_move_identity
+    from ..ai.cwv_encoder_compat import history_import_move_identity, round_notice_identity
     from .cwv_data import CWV_SOURCE_PATHS
     accepted = {want["implementation_sha256"]}
     legacy = history_import_move_identity(want, CWV_SOURCE_PATHS)
+    if legacy is not None:
+        accepted.add(legacy)
+    # The same named allowance the serving loader applies (cwv_policy
+    # .verify_checkpoint_identity): engine/round.py gained UI-only state the
+    # encoder never reads (#621), proven tensor-identical by the differential
+    # in tests/test_encoder_round_compat.py.  Without it the trainer refused to
+    # WARM-START from the production head on any tree at main (2026-09-29,
+    # after a three-hour cache rebuild), while serving accepted the same
+    # checkpoint.  One named pair; every other drift still refuses here.
+    legacy = round_notice_identity(want)
     if legacy is not None:
         accepted.add(legacy)
     if enc.get("implementation_sha256") not in accepted:

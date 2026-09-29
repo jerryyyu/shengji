@@ -209,7 +209,7 @@ because the served search uses the policy head only to admit candidates and the 
 head has never been served and is the one untried lever inside this architecture. Full record: Atlas v2 and the
 scaling log.
 
-**Exploitability, not established (#625).** A belief-reweighting attacker (the search's own 64 worlds reweighted by
+**Exploitability, not established (#625, closed 2026-09-28 on Jerry's call).** A belief-reweighting attacker (the search's own 64 worlds reweighted by
 an opponent model's likelihood of the observed plays) is HARMFUL, not weak: the positive control against SmartBot read
 **−0.249 [−0.273, −0.225]** (ten of ten windows). Diagnostics on real deals: the opponent model is correct (99.8–100%
 of SmartBot's plays reproduced from the true hands), the loss is estimator variance (the posterior collapses to ~2 of 64

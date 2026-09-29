@@ -47,6 +47,12 @@ from ..rl.value_afterstate import (MAX_SIGNED_LEVEL_UTILITY, MIN_SIGNED_LEVEL_UT
 TARGET_KINDS = ("realised", "search-mean")
 ESTIMAND = ("ramp utility of the search's expected attacker points, ramp(E[p]); "
             "a surrogate for, not an estimate of, the expected level utility")
+#: the pv-search rows' estimand (sidecar v3 ``search_level_played``): the search's mean
+#: over its sampled worlds of the served value head's expected signed level after the
+#: candidate's trick -- a bootstrap of that head, taken as the target directly
+LEVEL_ESTIMAND = ("the pv-search producer's expected signed level (a bootstrap of the "
+                  "served value head over 64 sampled worlds), taken directly as the "
+                  "two-point target on the half-integer support; no ramp")
 #: the only producer objective whose search mean is an expected-points mean
 PRODUCER_LEVEL_OBJECTIVE = False
 
@@ -68,24 +74,35 @@ def _category(signed: torch.Tensor) -> torch.Tensor:
     return torch.where(signed < 0, neg, pos).round().to(torch.int64)
 
 
-def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torch.Tensor
-                 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """``(probs [b, 204], used [b])``: two-point ramp targets where a mean
+def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torch.Tensor,
+                 level: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    """``(probs [b, 204], used [b])``: two-point targets where a search value
     exists and maps inside the support, the one-hot realised target elsewhere.
 
     ``mean`` is the acting team's signed expected attacker points (the
     producer's ``LEVEL_OBJECTIVE = False`` score); ``role_attacker`` restores
-    the attacker perspective before the ramp and re-signs the utility."""
+    the attacker perspective before the ramp and re-signs the utility.
+    ``level`` (optional, NaN where absent) is the acting team's expected SIGNED
+    LEVEL on the half-integer support, the pv-search producer's mean: it is
+    the target directly, no ramp, and it takes precedence over ``mean`` on a
+    row that carries both.  Both estimands share the head's support; they are
+    not the same quantity (``ramp(E[p])`` vs ``E[level]`` under the served
+    head's bootstrap), and the receipt names both."""
     b = realised.shape[0]
     probs = torch.zeros((b, OUTCOME_CLASSES), dtype=torch.float32, device=realised.device)
     probs[torch.arange(b, device=realised.device), realised] = 1.0
     sign = torch.where(role_attacker, 1.0, -1.0).to(torch.float32)
     expected_points = sign * mean.to(torch.float32)
     signed = sign * ramp_utility(expected_points)
+    have = torch.isfinite(mean)
+    if level is not None:
+        direct = torch.isfinite(level)
+        signed = torch.where(direct, level.to(torch.float32), signed)
+        have = have | direct
     lo = torch.floor(signed - 0.5) + 0.5
     hi = lo + 1.0
     frac = (signed - lo).clamp(0.0, 1.0)
-    used = (torch.isfinite(mean) & (lo >= MIN_SIGNED_LEVEL_UTILITY)
+    used = (have & (lo >= MIN_SIGNED_LEVEL_UTILITY)
             & (hi <= MAX_SIGNED_LEVEL_UTILITY))
     if bool(used.any()):
         idx = torch.nonzero(used, as_tuple=False).squeeze(1)

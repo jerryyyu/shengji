@@ -1861,13 +1861,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         target_block = {"kind": "realised"}
     else:
         from .search_mean_sidecar import ELIGIBLE_LEVEL_OBJECTIVE, manifest_sha256
-        from .search_mean_target import ESTIMAND
+        from .search_mean_target import ESTIMAND, LEVEL_ESTIMAND
         target_block = {"kind": target, "sidecar_dir": str(search_mean_sidecar),
                         "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
                         "estimand": ESTIMAND,
+                        "level_estimand": LEVEL_ESTIMAND,
                         "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
-                        "note": "surrogate: ramp(E[p]) of the search's expected attacker "
-                                "points, training stores only; the search mean is the "
+                        "note": "two estimands on one support (sidecar v3, #658): points rows "
+                                "train on the surrogate ramp(E[p]) of the search's expected "
+                                "attacker points; signed-level rows (pv-search) on the bootstrap "
+                                "expected level directly. Training stores only; the points mean is the "
                                 "selection mean refined by the report fold's relative gap, "
                                 "not a 330-world absolute mean; val/test/holdout metrics "
                                 "use the realised outcome"}

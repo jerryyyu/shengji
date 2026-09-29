@@ -20175,3 +20175,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Data gen: runSL1 15,606 / runSL2 15,860 shards at 01:50 ET; seals imminent, runSL3/runSL4 armed behind.
 
 — Claude
+
+### 2026-09-29 08:3x ET — runSL1/runSL2 SEALED; SMV3 at epoch 4 (Claude)
+
+- **runSL1 (cloud, seed0 33260910) DONE 08:20 ET** and **runSL2 (Perf, seed0 33276910) DONE 08:11 ET**: 16,000 clusters each, 0 failed, `incomplete_work` 0. Records 2,210,024 / 2,217,720 (plays 2,178,024 / 2,185,720; bury 32,000 each); exploration fired on 10.0% of opportunities and changed the played action 0.22% (4,699 / 4,641 of ~2.18M); rollouts 1.33G each; wall 12.65 h / 12.48 h; 10–11 GB each. Policy `mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7`, level_objective False (points producer). runSL3 (cloud) and runSL4 (Perf) started 08:21 / 08:12 ET on the DONE lines; seals ~21:00 ET.
+- SMV3 retrain: epoch 4 val_ce 0.6260 (best so far), rank_regret 0.0574; ~51 min/epoch; seal ~14:30–15:00 ET.
+- Note for the record: my ETAs overnight counted two files per cluster (a JSONL shard plus a JSON sidecar); the corrected rate was ~21 clusters/min.
+
+— Claude

@@ -20146,3 +20146,13 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Waiting on Jerry: training line next step; #625 close-or-build; a go for the #542 pack measurement.
 
 — Claude
+
+### 2026-09-28 21:0x ET — Jerry's decisions: #625 closed, search-mean retrain, shortlist data gen (Claude)
+
+- **#625 CLOSED** on Jerry's word ("I'm okay to close exploitability"); record at close on the issue.
+- **Training line (Jerry: "retrain with search mean sidecar", contain not replace):** #658 (`199c8450`) = sidecar v3 with units per row; the 16 pv-search stores' signed-level means feed the search-mean head directly (no ramp), v2 files still attach. Codex PASS at d50ae3dc, CI 5/5. Nonblocking nit (single-head `--target search-mean` receipt names only ramp) → follow-up PR. Chain `fl-pilot/claude_smv3_chain.sh` ARMED on the Mini behind `fl-pilot/smv3.go`: link 256k v2 + build 240k v3 sidecars → DRYRUN → train `GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3` (arm F's recipe, one change: sidecar v3; tree `smv3w` at the merged head). Then export outcome AND search-mean heads from one checkpoint, screen both vs release 30.
+- **Data gen (Jerry: "more data gen", "shortlist policy?"):** recommended and armed ROLLOUT-labelled data (arm A's resolved −0.061 when the rollout corpora were dropped; a pv-search mean is a bootstrap of the value head). Recipe = runJS's shortlist priced by the production head 8ecd4fea with its own prior (policy `mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7`, level_objective False), release-30 trees (the 09-26 tree refuses the checkpoint on the encoder-identity guard; shortlist loader has no compat allowance). runSL1 (cloud, 33260910) and runSL2 (Perf, 33276910) started 19:41 ET at ~40 shards/min → seal ~02:00 ET; runSL3/runSL4 armed behind them. Block runSL1..10 = 33260910..33420909 reserved; #659 (`ba998a5e`) records the four windows in `runs/seed_windows.json`.
+- **Test audit (Jerry: duplicate tests, per @steipete's post):** mechanical scan of 2,063 server tests: 0 exact duplicate bodies, 12 literal-variants, 2 near pairs, 12 assertion-free (all real on reading), web suite clean. Real finding: 39 public defs referenced only from tests; four whole modules (point_banking, point_flow, point_context, pilot_folds; 906 src lines / 969 test lines) have no non-test importer. Per-test coverage subsumption run in progress on the Mini (`fl-pilot/test_audit_cov.log`); the go file waits for it.
+- Production release 35, rooms 0. Open PRs mine: none.
+
+— Claude

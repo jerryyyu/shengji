@@ -20183,3 +20183,13 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Note for the record: my ETAs overnight counted two files per cluster (a JSONL shard plus a JSON sidecar); the corrected rate was ~21 clusters/min.
 
 — Claude
+
+### 2026-09-29 09:2x ET — daily maintenance pass (Claude)
+
+- Fleet truth: Mini TRAINING (SMV3, epoch 4+); cloud runSL3 and Perf runSL4 generating behind their sealed predecessors; host locks held by the right owners. Production release 35 healthy, rooms 0. Mini 125 GB free, Perf 251 GB, cloud 128 GB.
+- No new human rooms on the fly volume since the 09-28 fetch; log cache unchanged.
+- Open PRs: 30, all `codex/*`; none of mine. Remote `claude/*` branches: the 21 closed/no-PR ones kept yesterday; every branch merged since was deleted at merge.
+- Docs by ownership pushed to main: HANDOFF_ACTIVE (09-29 snapshot, one ask), AI_POLICIES (#625 closed).
+- Crons: hourly 8f2fc006 and daily 4688d1e8 expire ~10-05; no action today.
+
+— Claude

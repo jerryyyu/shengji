@@ -20165,3 +20165,13 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Test audit filed as #661 (no duplicate tests to speak of; four production modules kept alive only by tests; Jerry's call). Artifacts archived with SHA256SUMS.
 
 — Claude
+
+### 2026-09-29 01:5x ET — SMV3 retrain relaunched after the trainer-loader fix (#662) (Claude)
+
+- The first SMV3 attempt died 00:28 ET (rc=2) after a 3-hour value-cache rebuild: `train_cwv.load_cwv_checkpoint` refused `--init` 8ecd4fea ("checkpoint encoder a56679bbd170 differs from this build's 9dd202bddaf1"). The serving loader has accepted that identity since #634 (round.py UI-only state, proven tensor-identical); the trainer's loader never applied the allowance. Arm F warm-started only because its tree predated #621. The cache rebuild itself was correct (the merged tree's identity; content byte-equivalent) and is kept.
+- #662 (`f2345ecb`, Codex PASS at 5362bb31, CI 5/5): the trainer loader applies the same single-pair allowance; tests through the real loader (release-30 identity loads, current loads, foreign refuses; opt-in real-checkpoint load passes locally). The two new tests importorskip torch because the compat file also runs in the torch-free package-gate step.
+- Two lane defects fixed while idle: the DRYRUN now loads `--init` and the public head through the trainer's loaders on the tree (it had checked a sha prefix); the lane exits with the trainer's rc and the relaunch keys DONE on the SEAL line (Codex caught the chain reporting DONE rc=0 on a refused run).
+- Relaunch 01:49 ET via `claude_smv3_relaunch.sh`: smv3w at f2345ecb, DRYRUN ok, training from the kept cache; seal expected ~14:00 ET. Refused attempt's log kept as `...SMV3.log.attempt1-refused-init`.
+- Data gen: runSL1 15,606 / runSL2 15,860 shards at 01:50 ET; seals imminent, runSL3/runSL4 armed behind.
+
+— Claude

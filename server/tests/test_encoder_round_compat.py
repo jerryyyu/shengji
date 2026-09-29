@@ -489,7 +489,7 @@ def test_a_foreign_identity_is_still_refused():
 def _trainer_checkpoint(tmp_path, identity):
     """A checkpoint shaped the way the trainer writes one: schema, arch, model
     config, hidden-hands declaration and an encoder identity block."""
-    import torch
+    torch = pytest.importorskip("torch")   # the package-gate step runs this file torch-free
     from shengji.rl.value_checkpoint import save_checkpoint
     from shengji.rl.value_model import ValueModelConfig, ValueNetwork
     from shengji.train.train_cwv import CHECKPOINT_METADATA_SCHEMA, arch_of
@@ -510,6 +510,7 @@ def test_the_trainer_loader_accepts_the_release_30_identity(tmp_path):
     loader did not, so a warm start from the production head refused on every tree
     at main -- discovered 2026-09-29 three hours into a run, after the cache rebuild.
     Same allowance, same one named pair, through the real trainer entry point."""
+    pytest.importorskip("torch")           # the trainer's loader is a torch path
     from shengji.train.train_cwv import TrainError, load_cwv_checkpoint
 
     model, metadata, aux = load_cwv_checkpoint(_trainer_checkpoint(tmp_path, RELEASE_30_IDENTITY))
@@ -527,6 +528,7 @@ PRODUCTION_CHECKPOINT = os.environ.get("SHENGJI_PRODUCTION_CWV_CHECKPOINT")
 @pytest.mark.skipif(not PRODUCTION_CHECKPOINT or not pathlib.Path(PRODUCTION_CHECKPOINT or "").is_file(),
                     reason="set SHENGJI_PRODUCTION_CWV_CHECKPOINT to the 8ecd4fea .pt to run the real load")
 def test_the_real_production_checkpoint_warm_starts_through_the_trainer_loader():
+    pytest.importorskip("torch")
     from shengji.train.train_cwv import load_cwv_checkpoint
 
     assert _sha(pathlib.Path(PRODUCTION_CHECKPOINT)).startswith("8ecd4fea")

@@ -199,6 +199,9 @@ def test_trainer_uses_the_search_mean_target_only_where_a_mean_exists(store_dir,
     assert searched["target"]["sidecar_manifest_sha256"] == sc.manifest_sha256(side)
     assert searched["target"]["producer_level_objective"] is False
     assert "ramp" in searched["target"]["estimand"]
+    # the single-head path consumes signed-level rows too (sidecar v3): the receipt names both
+    assert "bootstrap" in searched["target"]["level_estimand"]
+    assert "two estimands" in searched["target"]["note"]
     ep = searched["epochs"][0]["train"]
     assert 0 < ep["search_mean_rows"] <= ep["rows"]
     # a different target trains different weights; the comparable numbers stay realised

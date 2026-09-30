@@ -13,8 +13,8 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 35 (release 29's recipe with the #607 bury fix; releases 30–35 changed only game rules and UI), the policy/value search with hybrid bury
-  `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` (`SHENGJI_PV_*`;
+  Fly configuration selects release 36 (release 29's search recipe with the #607 bury fix on the gen-5 SMV3 outcome head; releases 30–35 changed only game rules and UI), the policy/value search with hybrid bury
+  `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
   (`SHENGJI_CWV_PRIOR_CKPT`, optional `_SHA256` pin, `_THRESHOLD`, `_TOP`;
@@ -26,7 +26,54 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 35 — the phone table's overflow menu and points bar (#653, #651), deployed 2026-09-28 01:49 ET
+## Current production: release 36 — the gen-5 SMV3 outcome head in the release-30 search (#666, #663), deployed 2026-09-30 11:53 ET
+
+Release **36**, image `registry.fly.io/shengji:deployment-01M3SG9NVC1AC3PNPEH5Y34N0D` (digest
+`sha256:064d73f54f77d0996baa8a1ab11d1530724d8f57e23c4e4667a175e37362f76b`), deployed with
+`fly deploy --ha=false` from main `30318531` (#666) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-09-30 11:4x ET ("Let's deploy").
+
+**THE FIRST MODEL CHANGE SINCE RELEASE 30.** Served bot
+`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`: the gen-5 SMV3 **outcome** head
+(run `GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3`, checkpoint 3e89e86f: arm F's recipe with ONE
+change, the search-mean sidecar v3 of #658, so the auxiliary search-mean head trained on 48.85M rows
+instead of 24.2M) exported as ONE NumPy package `/data/models/smv3out-491ee4bf.npz` (sha256
+`491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670`, schema v2 with the policy head,
+verified on the volume). The search, bury, budgets and prior are release 30's: 64 worlds, 8 admitted
+candidates, 3 s play budget, hybrid bury at 2 s, JS-M1 prior `0d17fd03…`. The value function is still
+the game-outcome head; the search-mean head served as the value function read NEGATIVE (v36b) and is
+not shipped.
+
+Evidence (#663; Atlas v2): the SMV3 outcome head as served vs release 30 as served, each vs the common
+MC-LCB control on five 520-cluster mirrored windows, DL random effects — v36a (Perf, seeds
+31960910..32360910) **+0.0361 [+0.0015, +0.0707]**, 5/5 windows positive; the PREDECLARED fresh
+confirmation v36a2 (seeds 33660910..34060910, the read of record alone) **+0.0393 [+0.0033, +0.0752]**,
+5/5 positive. Package-level common-control evidence, not a paired duel; sign established, size
+uncertain at MDE80 ≈ 0.05. Policy head alone vs SmartBot on 8,000 mirrored deals: +0.3157 (release-30
+head +0.1006). Offline (rank regret on the fixed holdouts, SMV3 vs arm F): roomlog 0.0655 / 0.0683,
+pt1 0.0337 / 0.0409, luna 0.0855 / 0.0868, highn 0.1054 / 0.1032.
+
+Preconditions as met: Codex PASS on #666 at the exact head `373361a7` (code/package-binding review; the
+required package tests 22 passed against the release asset); CI 5/5 (the #654 package gate repinned
+to `smv3out-491ee4bf.npz` on the `serving-packages` release); package on the volume, sha256 verified
+on the machine; serving smoke on the MERGED tree `30318531` against the SHA-verified volume packages
+(`491ee4bf…`, `0d17fd03…`) — PASS, 40 server turns through `_paced_bot_step` / `_commit_bot_turn`,
+bury 0.123 s, plays 0.02–0.08 s, receipt `smoke-release36.json`; `/healthz` after the deploy: `bot`
+the name above, `pv_search.sha256` `491ee4bf…`, worlds 64, candidates 8, budgets 3 / 2, prior
+`0d17fd03…`, rooms 0; live acceptance without starting a game (room-level flow: host sets, joiner
+sees, joiner and unknown level refused) PASS.
+
+Rollback (one line, keeps the model choice explicit): in `fly.toml` restore the three release-30 lines
+kept as the comment directly above (`SHENGJI_BOT` `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e`,
+`SHENGJI_PV_CKPT` `/data/models/soft-8ecd4fea.npz`, `SHENGJI_PV_SHA256` `ccade130…`; the package stays on
+the volume) and `fly deploy --ha=false`; or the release-35 image `deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN`
+(same three settings baked in). Every screen from here compares against **release 36**; screens
+predeclared against release 30 before this deploy (v36c) read out as declared.
+
+Watch list: `pv-search-fallback-v1` records, stale-turn discards, decision wall p50/p95, bury seconds;
+the first live room's log.
+
+## Release 35 — the phone table's overflow menu and points bar (#653, #651), deployed 2026-09-28 01:49 ET; superseded by release 36 (new package)
 
 Release **35**, image `registry.fly.io/shengji:deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN` (digest
 `sha256:d94f79cc8653252c2e4820b814bf21d82f1d12b40c9b797100e2c675b26fae03`), deployed with

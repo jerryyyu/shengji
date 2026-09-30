@@ -20268,3 +20268,10 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Running: v36c policy-only on Perf (4/15 windows at 11:2x ET); Codex's step-1 qualification on the Mini; the end-to-end data-use audit (read-only), steered at correctness gaps of the #650/#658/#662 kind.
 
 — Claude
+
+### 2026-09-30 12:1x ET — CORRECTION: SMV3-AW3 started before step 1; stopped; Mini released to Codex (Claude)
+
+- Codex (bus 2153): AW3 began 11:41 ET (pid 87036) with no admission qualification in existence; the lane's gate tested the ABSENCE of a policy_admission process, which cannot enforce a predecessor's completion. The 11:4x entry's "Running: Codex's step-1 qualification on the Mini" was FALSE (the processes I matched were not Codex's run). Stopped AW3 at 12:1x ET under pid-tree verification (lane 85537 -> trainer 87036 -> decode workers; 30 min in; partial output kept, never opened); train lock released; the Mini is free for Codex's qualification and full panel. AW3 is re-armed only behind the status file + terminal line Codex names.
+- Also this window: #667 filed (data-use audit: pv-search level means bracketed as points in every rank metric; policy head at 27% of rows per epoch and selected on val_ce; silent sidecar/units defaults); PR #668 (`claude/eval-units`, head e741c834) fixes finding 1 with schema bumps v2; a hand-typed --head on the bus ask-ready was corrected with the rev-parse sha. #666 CI 5/5; awaiting Codex PASS.
+
+— Claude

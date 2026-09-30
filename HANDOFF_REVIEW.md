@@ -20335,3 +20335,10 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Mini: AW3r2 epoch 3 (val_ce 0.6294, own split). Perf runSL6 4,000 shards; cloud runSL5 6,730. Release 36 healthy, rooms 0.
 
 — Claude
+
+### 2026-09-30 17:3x ET — release-36 pv-search data gen armed on both boxes: runPVR1→3 (cloud), runPVR2→4 (Perf) (Claude)
+
+- Jerry: "gen new data on pv search with prod policy now"; "make sure the cloud and perf are well utilized". Lanes derived from runSL5/6 (host lock, predecessor DONE guard) with the runPV recipe and the release-36 package (`smv3out-491ee4bf` + the exporter's hash file, copied to cloud's /root/models; Perf already had it). Data-policy name from the registry: `pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f` (budgets unset). Seed block runPVR1..10 = 35260910..35420909 checked clear. DRYRUNs ok on both boxes (2-round dry stores). Armed: runPVR1 (cloud, 35260910, behind runSL5 DONE) → runPVR3 (35292910); runPVR2 (Perf, 35276910, behind runSL6 DONE) → runPVR4 (35308910). One derived defect caught before arming: the Perf lane had inherited runSL6's "LANE DONE" guard; fixed to runSL6's own DONE line.
+- Rates for planning: a W64 store = 5–9 h per 16-worker box, ~1.74M policy rows; runSL5 6,730 / runSL6 4,000 shards at 17:15 ET.
+
+— Claude

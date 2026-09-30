@@ -25,9 +25,20 @@ primary_region = 'ewr'
   # the release-28 package in card play on 800 matched deals (#553; atlas row 45); the four-model
   # family (#583) showed no head superior, soft has the largest point estimate. Rollback: set
   # SHENGJI_BOT back to the release-28 name below (its env keys are kept for exactly that).
-  SHENGJI_BOT = 'pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e'
-  SHENGJI_PV_CKPT = '/data/models/soft-8ecd4fea.npz'
-  SHENGJI_PV_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
+  # RELEASE 36 (Jerry 2026-09-30 11:4x ET: "Let's deploy"): the SAME search, bury and budgets on the
+  # gen-5 SMV3 OUTCOME head (run 3e89e86f: arm F's recipe with ONE change, the search-mean sidecar v3,
+  # #658) exported as ONE NumPy package smv3out-491ee4bf.npz. Evidence (#663): as served vs release 30
+  # as served, each vs the common MC-LCB control, five windows +0.0361 [+0.0015, +0.0707] (v36a) and the
+  # predeclared fresh confirmation +0.0393 [+0.0033, +0.0752] (v36a2, 5/5 windows positive). The
+  # value function is still the game-outcome head; the search-mean head served as the value function
+  # read NEGATIVE (v36b) and is not shipped. Rollback: the release-30 line below (its package stays on
+  # the volume) or the release-35 image.
+  # RELEASE 30 name: pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e
+  #   SHENGJI_PV_CKPT = '/data/models/soft-8ecd4fea.npz'
+  #   SHENGJI_PV_SHA256 = 'ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75'
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25'
+  SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
+  SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'
   SHENGJI_PV_CANDIDATES = '8'
   SHENGJI_PV_CAP = '4000'

@@ -20204,3 +20204,14 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Open PRs mine: none. Production release 35, rooms 0.
 
 — Claude
+
+### 2026-09-29 23:4x ET — v36a / v36b READ; v36a2 confirmation armed; head ladder running (Claude)
+
+- **v36a (SMV3 OUTCOME head `smv3out-491ee4bf` as served vs release 30, Perf, seeds 31960910..32360910): +0.0361 [+0.0015, +0.0707]**, 5/5 windows positive (+0.0490, +0.0606, +0.0183, +0.0394, +0.0135), tau 0, Q 1.03/4df, RE SE 0.01766, MDE80 0.0494; ties 50.6% vs 50.7%; latency p50/p95 0.10/0.16 both arms. CLEARS ZERO on five windows, lower bound 0.0015: exploratory triage, not confirmation.
+- **v36b (SMV3 SEARCH-MEAN head `smv3sm-d05b8bc5` as served vs release 30, cloud, seeds 32460910..32860910): −0.0523 [−0.0905, −0.0140]**, 5/5 negative (−0.0115, −0.0481, −0.0750, −0.1135, −0.0125), tau 0.020, I2 20%, MDE80 0.0547. CLEARS ZERO NEGATIVE: the played-action search-mean target, served as the value function, is worse than production. No extension.
+- Both recomputed with `fl-pilot/vol_re.py` from the sealed summaries; archived flat with SHA256SUMS at `~/shengji-archive/2026-09-13/readouts/v36a-smv3out-vs-r30/` and `.../v36b-smv3sm-vs-r30/`. Package-level evidence each vs the common MC-LCB control on its own windows (Codex, #663).
+- **v36a2 ARMED on Perf 23:3x ET** (predeclared before acting on the read): same package/recipe/tree on five NEW registry-checked windows 33660910..34060910; read of record = ten-window RE over v36a + v36a2; effect worth acting on = lower bound above zero at ten windows. ~2.4 h.
+- Head ladder (cloud, tree ac1e4320): gen3soft control on this tree +0.1006 [+0.0864, +0.1153] vs the archived 09-18 read +0.099 [+0.086, +0.113] — same scale; gen5a..f running, ~13 min each.
+- Atlas v2 + scaling log entries for SMV3 (3e89e86f) and the two screens: next.
+
+— Claude

@@ -438,7 +438,7 @@ def test_the_release_30_identity_is_still_accepted():
 
 REQUIRE_PACKAGE = os.environ.get("SHENGJI_REQUIRE_PV_PACKAGE") == "1"
 PACKAGE = os.environ.get("SHENGJI_PV_PACKAGE_PATH")
-PACKAGE_SHA = "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75"
+PACKAGE_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 
 
 def test_the_production_package_constructs_a_served_bot():
@@ -526,7 +526,7 @@ PRODUCTION_CHECKPOINT = os.environ.get("SHENGJI_PRODUCTION_CWV_CHECKPOINT")
 
 
 @pytest.mark.skipif(not PRODUCTION_CHECKPOINT or not pathlib.Path(PRODUCTION_CHECKPOINT or "").is_file(),
-                    reason="set SHENGJI_PRODUCTION_CWV_CHECKPOINT to the 8ecd4fea .pt to run the real load")
+                    reason="set SHENGJI_PRODUCTION_CWV_CHECKPOINT to the release-30 8ecd4fea .pt to run the real load")
 def test_the_real_production_checkpoint_warm_starts_through_the_trainer_loader():
     pytest.importorskip("torch")
     from shengji.train.train_cwv import load_cwv_checkpoint

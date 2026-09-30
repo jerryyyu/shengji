@@ -73,18 +73,18 @@ jobs:
       # that skips itself is indistinguishable from one that passes (#633, #634).
       - name: Fetch the pinned production package
         env:
-          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/soft-8ecd4fea.npz
-          PACKAGE_SHA256: ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/smv3out-491ee4bf.npz
+          PACKAGE_SHA256: 491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/soft-8ecd4fea.npz "$PACKAGE_URL"
-          echo "$PACKAGE_SHA256  /tmp/shengji-packages/soft-8ecd4fea.npz" | sha256sum -c -
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/smv3out-491ee4bf.npz" | sha256sum -c -
       - name: Load the production package on this tree
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
-          SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/soft-8ecd4fea.npz
+          SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
         run: uv run pytest -q tests/test_encoder_round_compat.py
 
   import-walk:

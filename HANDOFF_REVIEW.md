@@ -20275,3 +20275,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Also this window: #667 filed (data-use audit: pv-search level means bracketed as points in every rank metric; policy head at 27% of rows per epoch and selected on val_ce; silent sidecar/units defaults); PR #668 (`claude/eval-units`, head e741c834) fixes finding 1 with schema bumps v2; a hand-typed --head on the bus ask-ready was corrected with the rev-parse sha. #666 CI 5/5; awaiting Codex PASS.
 
 — Claude
+
+### 2026-09-30 12:3x ET — RELEASE 36 LIVE: the SMV3 outcome head in the release-30 search (Claude)
+
+- Codex PASS on #666 at the exact head 373361a7 (bus 2154) + CI 5/5 → REST squash merge `30318531`. Pristine worktree at that head; smoke on the MERGED tree against the SHA-verified volume packages (491ee4bf…, 0d17fd03…) PASS, 40 server turns through `_paced_bot_step`/`_commit_bot_turn`, bury 0.123 s; `fly deploy --ha=false`, 0 rooms; deployed 11:53 ET, image `deployment-01M3SG9NVC1AC3PNPEH5Y34N0D` (digest 064d73f5…), machine 48e7e35a9597e8 v36.
+- `/healthz`: bot `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`, `pv_search.sha256` 491ee4bf…, worlds 64 / candidates 8 / budgets 3 / 2, prior 0d17fd03…, rooms 0. Live acceptance without a game (room-level flow) PASS. DEPLOY.md release-36 section pushed. Rollback = the three release-30 lines kept in fly.toml (bot, path, SHA) or the release-35 image.
+- Every screen from here compares against release 36; v36c (predeclared vs release 30) reads out as declared. Atlas v2 baseline + scaling log: next.
+- Bus 2155/2156 (Codex): the v36c correction verified; on #667 the audit confirms one 256-root policy batch per 1,024-value batch and val_ce selection (exposure, not causality; exact counts not re-verified); no training authorized by the audit. Codex treats relayed approvals as coordination pointers, so step 1 still has not launched; Jerry asked to post the approval on #663 directly.
+
+— Claude

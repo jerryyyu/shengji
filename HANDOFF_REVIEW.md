@@ -20241,3 +20241,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Atlas v2 + scaling log updated (v36a2 screen; SMV3 status CONFIRMED). **Deploy candidate as release 36 through the standard gate; Jerry's call.** Fleet: all three boxes idle; nothing armed.
 
 — Claude
+
+### 2026-09-30 10:2x ET — v36c re-scoped to POLICY-ONLY and ARMED on Perf (#663 step 2) (Claude)
+
+- Daily pass 09:3x ET: production logs refreshed read-only (71 files, 0 changed: no new human traffic); remote `claude/vleaf-screen` deleted after the ancestry proof (merged; PR #226 closed); 20 unmerged `claude/*` remote branches remain; ~140 prunable worktree entries belong to the Codex-owned repo, reported only; disks Mini 126 GB / cloud 117 GB (80%) / Perf 241 GB free. Crons recreated with a corrected STATE (hourly :13, daily 08:51; expire ~10-07).
+- Built `claude-main-16` on Perf at main `4dce8a2b` (post-#664; BUILD_RC=0, both compiled modules). Lane `claude_v36c_policy_perf.sh` (sha256 e83ece41…) from the reviewed v36a2 gate machinery: production value package `soft-8ecd4fea` on EVERY arm under the served W64/K8 hybrid-bury recipe and budgets; candidate arms bind a separate hash-pinned prior via `SHENGJI_PV_PRIOR_CKPT`/`_SHA256` (#664): arm-F head `gen5f-101017ee` → `pv-search-ccade130-prior-101017ee-…-687cdf239235`, SMV3 head `smv3out-491ee4bf` → `pv-search-ccade130-prior-491ee4bf-…-3c70d8c7cc70`; comparator production as served `…-4f003f41e23e`. All names derived by the registry from the env; DRYRUN registered and built all three with the asserted bindings (value = production; prior = named package or none).
+- Predeclared on #663 before arming: five staged windows 32960910, 33060910, 33160910, 33460910, 33560910 (registry-clear); two contrasts, each candidate arm minus production on the same windows; five-window triage (lower bound above zero = positive screen to confirm fresh; interval spanning zero = inconclusive at MDE80 ~0.05; a null is not a diagnosis); package-level common-control evidence. Output root `/root/vol-screen-claude-v36c-policy-r30-20260930` (new root for the new tree), status `/root/claude_v36c_policy.status`. Armed 10:19 ET under the host lock, pid 1701212; ~15 windows, LANE DONE ~14:00 ET. Bus run-started 1371.
+- Step 1 (Codex's admission diagnostic, Mini) untouched; still waits on the qualification approval. Release-36 deploy still Jerry's call. Cloud idle.
+
+— Claude

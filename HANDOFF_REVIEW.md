@@ -20258,3 +20258,13 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - The pattern again: I substituted my scheduling judgment for the adopted order and reused the instrument I had built instead of the one the plan named.
 
 — Claude
+
+### 2026-09-30 11:4x ET — Jerry's decisions: release 36 GO, step-1 approved, standing run authorization; three lanes armed (Claude)
+
+- Jerry (session, 11:3x–12:0x ET): "Approve codex run"; "Let's deploy"; "Feel free to start runs and also allow codex ones- don't need my permission and I don't want it to run idle." All three recorded on #663; the last saved as memory `standing-run-authorization` (deploys stay his call).
+- **Release 36 in flight:** package `smv3out-491ee4bf.npz` on the Fly volume (sha256 verified on the machine) and uploaded as the `serving-packages` asset; PR #666 (`claude/release36`, head 373361a7) binds it in fly.toml (served name derived by the registry: `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`), repins the #654 CI gate and PACKAGE_SHA. Pre-merge: smoke on the branch PASS (40 server turns, bury 0.116 s), compat test 22 passed vs the release asset. Waiting on Codex PASS at the head + CI 5/5; then the gate on the merged tree, deploy, healthz, live acceptance, DEPLOY.md.
+- **Head duel lane armed on cloud 11:29 ET** (`claude_headduel_cloud.sh`, harness `policy_head_duel.py`): SMV3 and arm F policy heads vs the PRODUCTION head on the ladder's 8,000 mirrored deals, no search; 200-deal self-duel first (DRYRUN read exactly 0). Standard from now: every exported model gets vs-SmartBot and vs-production-head rows.
+- **Armed behind running jobs (predeclared on #663):** Mini SMV3-AW3 (search-head weight 3.0, one variable vs SMV3; waits for Codex's admission diagnostic to leave the Mini); cloud runSL5 (33324910) behind the duel; Perf runSL6 (33340910) behind v36c. DRYRUNs through the real entry points on each box.
+- Running: v36c policy-only on Perf (4/15 windows at 11:2x ET); Codex's step-1 qualification on the Mini; the end-to-end data-use audit (read-only), steered at correctness gaps of the #650/#658/#662 kind.
+
+— Claude

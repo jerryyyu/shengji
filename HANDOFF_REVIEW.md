@@ -20302,3 +20302,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Fleet: Mini AW3r2 at epoch 0 (init val_ce 0.6299 on its own split); Perf runSL6 started 14:00 ET behind v36c; cloud runSL5 ~2,400 shard files. Release 36 healthy, rooms 0.
 
 — Claude
+
+### 2026-09-30 14:3x ET — #667 actions: PBF1 armed behind AW3r2's SEAL, runSL1..4 copying for SL4; #669 rev 3 (Claude)
+
+- Jerry: "make actions on our GitHub issue based on the audit findings." Under the standing authorization: **SMV3-PBF1** (`--policy-batch-fraction 1.0`, ONE variable vs SMV3; finding 3) armed on the Mini behind AW3r2's terminal line (SEAL, or DONE rc!=0), never an absence test; DRYRUN ok at low priority. **SMV3-SL4** data prep started: runSL1..4 (4 × 16,000 clusters, ~41 GB) copying to `~/shengji-ssd/shengji-sl/` at nice 19 with per-store verification (16,000 shards + manifest + run.json); then sidecar v3 build, units-fixed policy-row extraction, composition, lane armed behind PBF1. Finding 1's val/test re-read under #668 queued for the Mini after the chain. Table on #667; chain on #663.
+- #669: Codex HOLD (2165) — global visited set refused an acyclic diamond; fixed at 55c7507d (cycle = repeat on the active path; validated cache), diamond-accepted / cycle-refused tests; PR body rev 3; re-review asked.
+- Fleet: Mini AW3r2 epoch 1 running; Perf runSL6 (~300 shards); cloud runSL5 (~2,700). Release 36 healthy.
+
+— Claude

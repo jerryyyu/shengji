@@ -389,6 +389,24 @@
    "lo": -0.0905,
    "hi": -0.014,
    "note": "Lane DONE 23:13 ET 09-29; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36b-smv3sm-vs-r30 with SHA256SUMS. CLEARS ZERO, NEGATIVE, 5/5 windows negative: -0.0115, -0.0481, -0.0750, -0.1135, -0.0125; tau 0.020, Q 5.02/4df, I2 20%, RE SE 0.01952, MDE80 +0.0547; ties 53.2% candidate vs 52.2% control; latency p50/p95 0.09/0.16 vs 0.09/0.17. No extension. WHAT THIS SETTLES: the search-mean head as trained here (target = the search's value of the PLAYED action only, ramp(E[points]) on rollout rows and the pv-search bootstrap level directly on pv rows) is a WORSE served value function than the outcome head trained on the realised result, at this MDE. It does not settle the all-candidate target (#663 step 4), which needs its own input/target contract first. Package-level evidence vs the common control on its own windows, not a paired duel, and not the same windows as v36a."
+  },
+  {
+   "id": "v36a2",
+   "date": "2026-09-30",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "gen-5 SMV3 OUTCOME head (3e89e86f) as smv3out-491ee4bf.npz served as pv-search W64/K8 + hybrid bury -- the PREDECLARED fresh confirmation of v36a, same package/recipe/tree",
+   "comparator": "release 30 as served",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "33660910..34060910",
+   "confidence": 0.95,
+   "point": 0.0393,
+   "lo": 0.0033,
+   "hi": 0.0752,
+   "note": "CONFIRMATION READ OF RECORD (v36a2 alone; predeclared on #663 before v36a was acted on, and revised on Codex's point that a pooled interval would inherit v36a's positive-screen selection). Lane DONE 01:52 ET 09-30; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36a2-smv3out-vs-r30-confirmation with SHA256SUMS. CLEARS ZERO on five NEW windows: +0.0192, +0.0317, +0.0250, +0.0096, +0.1115 (5/5 positive); tau 0.0086, Q 4.18/4df, I2 4%, RE SE 0.01836, MDE80 +0.0514; ties 49.1% candidate vs 50.4% control; latency p50/p95 0.10/0.16 on both arms. Descriptive only: pooled ten windows v36a + v36a2 +0.0377 [+0.0130, +0.0623], tau 0, all ten positive. WHAT THIS ESTABLISHES: the first retrain since gen 3 to clear zero as served AND survive an independent predeclared confirmation, at ~0.03-0.04 of a level per round against the common control. Package-level, common-control evidence, not a paired duel; the sign is established, the size is uncertain at this MDE. The one variable vs arm F is the search-mean auxiliary head's data (sidecar v3), so the gain came through the shared trunk; the mechanism is not identified (#663 steps 1 and 3). Deploy candidate for the standard pre-deploy gate as release 36; Jerry's call."
   }
  ],
  "context_screens": [
@@ -523,7 +541,7 @@
    "recipe": "THE SEARCH-MEAN HEAD'S DATA, NOT THE CORPUS: arm F's recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, production-head warm start 8ecd4fea, seed 1, units-fixed policy targets) with ONE variable changed -- sidecar v3 (#658), so the search-mean head trains on 48.85M rows (17.35M of them the 16 pv-search stores' signed-level means, taken as the two-point target directly, no ramp) instead of 24.2M. Jerry 09-28: 'retrain with search mean sidecar' -- contain, not replace; the export decides which head is served. Tree f2345ecb (#662 applied the #634 round allowance to the trainer loader; the first attempt died on it after a 3-hour cache rebuild).",
    "val_ce": 0.6205,
    "regret": null,
-   "status": "sealed 20:36 ET 09-29, rc=0, early stop at 16 of 20 epochs, best epoch 13, wall=67596s (arm F: 44,869 s / 11 / 8). Outcome head val rank_regret 0.0569; search-mean head val rank_regret 0.0590 on the same candidate set. FOUR FIXED HOLDOUTS (rank_regret, outcome head), SMV3 vs arm F: roomlog 0.0655 vs 0.0683, pt1 0.0337 vs 0.0409, luna 0.0855 vs 0.0868, highn 0.1054 vs 0.1032 -- three slightly better, one worse; point estimates, no interval. TWO EXPORTS from the one checkpoint: smv3out-491ee4bf.npz (outcome head) and smv3sm-d05b8bc5.npz (search-mean head). * SCREENED as served vs release 30: OUTCOME head (v36a) +0.0361 [+0.0015, +0.0707], clears zero on five windows, fresh five-window confirmation v36a2 armed (read of record = ten-window RE); SEARCH-MEAN head (v36b) -0.0523 [-0.0905, -0.0140], clears zero NEGATIVE on five windows. val_ce 0.6205 comparable to arm F's 0.6215 only loosely (same corpus, own split)."
+   "status": "sealed 20:36 ET 09-29, rc=0, early stop at 16 of 20 epochs, best epoch 13, wall=67596s (arm F: 44,869 s / 11 / 8). Outcome head val rank_regret 0.0569; search-mean head val rank_regret 0.0590 on the same candidate set. FOUR FIXED HOLDOUTS (rank_regret, outcome head), SMV3 vs arm F: roomlog 0.0655 vs 0.0683, pt1 0.0337 vs 0.0409, luna 0.0855 vs 0.0868, highn 0.1054 vs 0.1032 -- three slightly better, one worse; point estimates, no interval. TWO EXPORTS from the one checkpoint: smv3out-491ee4bf.npz (outcome head) and smv3sm-d05b8bc5.npz (search-mean head). * SCREENED as served vs release 30: OUTCOME head (v36a) +0.0361 [+0.0015, +0.0707] on five windows, CONFIRMED on five fresh predeclared windows (v36a2, the read of record) +0.0393 [+0.0033, +0.0752]; descriptive pooled ten +0.0377 [+0.0130, +0.0623]; SEARCH-MEAN head (v36b) -0.0523 [-0.0905, -0.0140], clears zero NEGATIVE on five windows. val_ce 0.6205 comparable to arm F's 0.6215 only loosely (same corpus, own split)."
   }
  ],
  "data": [

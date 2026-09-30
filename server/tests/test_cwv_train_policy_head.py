@@ -298,3 +298,62 @@ def test_chunked_extraction_stops_at_the_limit_and_the_stream_refuses_tampered_c
     json.dump(man, open(d100 / "manifest.json", "w"))
     with pytest.raises(ValueError, match="not row-aligned"):
         PolicyRowsStream(d100)
+
+
+def test_the_rows_stream_refuses_undeclared_non_points_search_values(store_dir, tmp_path):  # noqa: F811
+    """#667 finding 5 / the #649 shape: an extract whose manifest counts non-points search values
+    must declare values_scale "points" (the #650 calibration); a pre-#650 extract with no
+    value_units is a points-producer extract and is taken as assumed-points; a composed
+    directory is checked part by part and an unreadable part refuses."""
+    import json
+    from shengji.train.policy_rows import PolicyRowsStream
+    chunked = tmp_path / "chunked"
+    pp.extract(chunked, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=200, workers=1, chunk_rows=64)
+    man_path = chunked / "manifest.json"; man = json.load(open(man_path))
+    stream = PolicyRowsStream(chunked)
+    assert stream.identity["values_scale"] in ("points", "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)")
+    bad = dict(man); bad["value_units"] = {"expected-signed-level-half-integer": 5, "no-search-values": 1}
+    bad.pop("values_scale", None); man_path.write_text(json.dumps(bad))
+    with pytest.raises(ValueError, match="non-points search values with no values_scale"):
+        PolicyRowsStream(chunked)
+    fixed = dict(bad); fixed["values_scale"] = "points"; man_path.write_text(json.dumps(fixed))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    composed = dict(man); composed["composed_from"] = [{"tag": "x", "dir": str(tmp_path / "nowhere")}]
+    man_path.write_text(json.dumps(composed))
+    with pytest.raises(ValueError, match="no readable manifest"):
+        PolicyRowsStream(chunked)
+    composed["composed_from"] = [{"tag": "x", "dir": str(chunked)}]      # a part that is itself -> a cycle
+    man_path.write_text(json.dumps(composed))
+    with pytest.raises(ValueError, match="composition cycle"):
+        PolicyRowsStream(chunked)
+    # an EXPLICIT non-points scale is refused, never downgraded to assumed-points (Codex HOLD on #669)
+    explicit = dict(man); explicit["values_scale"] = "signed-level"; man_path.write_text(json.dumps(explicit))
+    with pytest.raises(ValueError, match="declares values_scale='signed-level'"):
+        PolicyRowsStream(chunked)
+    # nested composition: chunked -> mid -> leaf, where only the LEAF is the un-fixed extract
+    import shutil
+    leaf = tmp_path / "leaf"; mid = tmp_path / "mid"
+    for d in (leaf, mid):
+        d.mkdir(); shutil.copy(chunked / "manifest.json", d / "manifest.json")
+    leaf_man = dict(man); leaf_man["value_units"] = {"expected-signed-level-half-integer": 9}
+    leaf_man.pop("values_scale", None)          # the un-fixed extract: non-points units, no declared scale
+    (leaf / "manifest.json").write_text(json.dumps(leaf_man))
+    mid_man = dict(man); mid_man["composed_from"] = [{"tag": "leaf", "dir": str(leaf)}]
+    (mid / "manifest.json").write_text(json.dumps(mid_man))
+    top = dict(man); top["composed_from"] = [{"tag": "mid", "dir": str(mid)}]; man_path.write_text(json.dumps(top))
+    with pytest.raises(ValueError, match="non-points search values with no values_scale"):
+        PolicyRowsStream(chunked)
+    leaf_man["values_scale"] = "points"; (leaf / "manifest.json").write_text(json.dumps(leaf_man))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    # a DIAMOND (top -> A, B; both -> the same leaf) is acyclic and accepted (Codex HOLD on #669);
+    # a TRUE cycle (A -> B -> A) is refused with the path named
+    a, b = tmp_path / "a", tmp_path / "b"
+    for d in (a, b):
+        d.mkdir(); (d / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "leaf", "dir": str(leaf)}]}))
+    top["composed_from"] = [{"tag": "a", "dir": str(a)}, {"tag": "b", "dir": str(b)}]; man_path.write_text(json.dumps(top))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    (a / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "b", "dir": str(b)}]}))
+    (b / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "a", "dir": str(a)}]}))
+    with pytest.raises(ValueError, match="composition cycle at .* -> "):
+        PolicyRowsStream(chunked)
+    man_path.write_text(json.dumps(man))

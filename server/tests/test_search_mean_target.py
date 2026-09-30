@@ -268,16 +268,54 @@ def test_a_points_row_under_a_null_or_true_flag_is_refused_at_build(tmp_path):
     rows = [json.loads(l) for l in shard.read_text().splitlines()]
     del rows[0]["action_values"]["units"]                        # a points row (no tag) ...
     shard.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    # ... is refused on its UNITS first (#667: the producer declares signed-level units, so an
+    # untagged row cannot be read as points), whatever the level_objective flag says
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side")
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side2", level_objective=True)
+    # with no units declaration the flag refusals are the ones that fire
+    run = json.loads((tmp_path / "untagged" / "run.json").read_text())
+    declared = dict(run["config"]["policy_flags"])
+    del run["config"]["policy_flags"]["value_units"]
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
     with pytest.raises(sc.SidecarError, match="no level_objective flag"):   # ... under a null flag
         sc.build_sidecar(shard, tmp_path / "side")
     with pytest.raises(sc.SidecarError, match="LEVEL_OBJECTIVE=True"):
         sc.build_sidecar(shard, tmp_path / "side2", level_objective=True)
-    counts = sc.build_sidecar(shard, tmp_path / "side3", level_objective=False)
+    run["config"]["policy_flags"] = declared
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
+    # #667 finding 5: the producer DECLARES signed-level units, so an untagged row is refused even
+    # under an explicit level_objective=False -- "no tag means points" only holds for a producer that
+    # does not say otherwise.
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side3", level_objective=False)
+    # A producer with NO value_units declaration keeps the old reading: mixed units, both kept.
+    run = json.loads((tmp_path / "untagged" / "run.json").read_text())
+    del run["config"]["policy_flags"]["value_units"]
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
+    counts = sc.build_sidecar(shard, tmp_path / "side4", level_objective=False)
     assert counts["points_rows"] == 1 and counts["level_rows"] == 1   # mixed units, both kept
     arrays = {"record_sha256": np.asarray([b"a" * 64, b"b" * 64], dtype="S64")}
-    sc.attach_search_means(arrays, counts["shard_sha256"], tmp_path / "side3")
+    assert sc.attach_search_means(arrays, counts["shard_sha256"], tmp_path / "side4") is True
     assert arrays["search_mean_played"][0] == pytest.approx(-0.493) and np.isnan(arrays["search_level_played"][0])
     assert arrays["search_level_played"][1] == pytest.approx(1.25) and np.isnan(arrays["search_mean_played"][1])
+
+
+def test_sidecar_coverage_refuses_a_missing_file_by_store_and_attach_reports_it(tmp_path):
+    """#667 / the #658 failure: a shard without a sidecar file attached all-NaN columns and its rows
+    silently left the search-mean head.  attach now says whether the file existed, and the
+    coverage check refuses a training set with any missing file, naming the store and the count."""
+    shard = _write_run(tmp_path, False)
+    counts = sc.build_sidecar(shard, tmp_path / "side")
+    have, missing = counts["shard_sha256"], "f" * 64
+    arrays = {"record_sha256": np.asarray([b"a" * 64], dtype="S64")}
+    assert sc.attach_search_means(arrays, missing, tmp_path / "side") is False
+    assert np.isnan(arrays["search_mean_played"]).all()          # the silent shape, now reported
+    ok = sc.check_sidecar_coverage(tmp_path / "side", [("runX", have), ("runX", have)])
+    assert ok == {"runX": {"shards": 2, "missing": 0}}
+    with pytest.raises(sc.SidecarError, match=r"runY: 1/2 missing \(first ffffffffffff\)"):
+        sc.check_sidecar_coverage(tmp_path / "side", [("runX", have), ("runY", have), ("runY", missing)])
 
 
 def test_an_unknown_units_tag_is_refused(tmp_path):
@@ -351,3 +389,46 @@ def test_trainer_search_head_learns_pv_style_level_rows(store_dir, luna, tmp_pat
     assert "bootstrap" in out["search_head"]["level_estimand"]
     on_disk = json.loads((tmp_path / "twohead" / "metrics.json").read_text())
     assert on_disk["epochs"][0]["train"]["search_head_level_rows"] == ep["search_head_level_rows"]
+
+
+def test_sidecar_coverage_is_keyed_on_the_store_identity_over_two_real_stores(store_dir, other_dir, tmp_path):  # noqa: F811
+    """Codex HOLD on #669: coverage must aggregate per STORE (ShardRef.store), not per shard label,
+    or the receipt fragments one store into many rows and two stores with the same relative shard
+    names cross-combine.  Two real stores; sidecars built for one only; the refusal names the
+    other store by its root with the count of its shards."""
+    from shengji.train.data import discover_store
+    a, b = discover_store(store_dir), discover_store(other_dir)
+    side = tmp_path / "side"
+    for sh in a.shards:
+        sc.build_sidecar(sh.path, side, level_objective=False)
+    pairs = [(sh.store, sh.sha256) for st in (a, b) for sh in st.shards]
+    labels = {sh.label for st in (a, b) for sh in st.shards}
+    assert len(labels) < len(pairs) or labels & {sh.label for sh in b.shards}   # relative names collide across stores
+    with pytest.raises(sc.SidecarError) as err:
+        sc.check_sidecar_coverage(side, pairs)
+    msg = str(err.value)
+    assert b.root in msg and f"{len(b.shards)}/{len(b.shards)} missing" in msg
+    assert a.root not in msg                                            # the covered store is not named
+    for sh in b.shards:
+        sc.build_sidecar(sh.path, side, level_objective=False)
+    got = sc.check_sidecar_coverage(side, pairs)
+    assert got == {a.root: {"shards": len(a.shards), "missing": 0}, b.root: {"shards": len(b.shards), "missing": 0}}
+
+
+def test_the_legacy_search_means_counter_aggregates_under_one_key_across_warm_and_new_caches():
+    """Codex HOLD on #669: cached shard metadata written before the rename says search_means;
+    a warm-only or mixed cache must total under the canonical key, without a rebuild."""
+    from shengji.train.cwv_data import _merge_counts, canonical_counts
+    old = {"records": 7, "encoded": 7, "search_means": {"present": 5, "absent": 2}}
+    new = {"records": 4, "encoded": 4, "action_values_means_2plus": {"present": 3, "absent": 1}}
+    total: dict = {}
+    for meta_counts in (old, new):
+        _merge_counts(total, {"records": canonical_counts(meta_counts)})
+    assert total["records"]["action_values_means_2plus"] == {"present": 8, "absent": 3}
+    assert "search_means" not in total["records"] and total["records"]["records"] == 11
+    warm: dict = {}
+    _merge_counts(warm, {"records": canonical_counts(old)})
+    assert warm["records"]["action_values_means_2plus"] == {"present": 5, "absent": 2}
+    both = canonical_counts({"search_means": {"present": 1, "absent": 0},
+                             "action_values_means_2plus": {"present": 2, "absent": 5}})
+    assert both == {"action_values_means_2plus": {"present": 3, "absent": 5}}

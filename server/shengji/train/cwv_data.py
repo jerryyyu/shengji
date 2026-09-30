@@ -634,7 +634,10 @@ class CwvBlock:
 
 def _fresh_counts() -> dict:
     return {"records": 0, "encoded": 0, "skipped": {k: 0 for k in SKIP_REASONS},
-            "search_means": {k: 0 for k in SEARCH_KEYS},
+            # records whose action_values carry >= 2 finite means (the candidate-pass /
+            # rank-metric eligibility); NOT the sidecar's preference.means[played], which
+            # is what the search-mean head trains on (its count is epochs[].train.search_head_rows)
+            "action_values_means_2plus": {k: 0 for k in SEARCH_KEYS},
             "reference_checked": 0,
             "world_witness": {"records": 0, "trials": 0, "world_changed": 0,
                               "public_changed": 0, "inconclusive": 0}}
@@ -712,7 +715,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         scalars["input_sha256"].append(row.input_sha256)
         scalars["has_search_means"].append(bool(row.search_means))
         scalars["n_search"].append(len(row.search_means))
-        counts["search_means"]["present" if row.search_means else "absent"] += 1
+        counts["action_values_means_2plus"]["present" if row.search_means else "absent"] += 1
         counts["encoded"] += 1
         if progress and counts["encoded"] % 5000 == 0:
             progress({"label": shard.label, "records": counts["records"],
@@ -1308,6 +1311,25 @@ class Prepared:
     cache_files: list[dict] = field(default_factory=list)
 
 
+LEGACY_COUNT_KEYS = {"search_means": "action_values_means_2plus"}   # #667: renamed at the write site
+
+
+def canonical_counts(counts: Mapping) -> dict:
+    """Cached shard metadata written before the rename still says ``search_means``; a
+    warm or mixed cache must aggregate under ONE key (Codex HOLD on #669).  Folds each
+    legacy key into its canonical name, summing when both are present; never rebuilds."""
+    out: dict = {}
+    for key, value in counts.items():
+        name = LEGACY_COUNT_KEYS.get(key, key)
+        if isinstance(value, Mapping):
+            _merge_counts(out.setdefault(name, {}), value)
+        elif name in out and not isinstance(value, str):
+            out[name] = out[name] + value
+        else:
+            out[name] = value
+    return out
+
+
 def _merge_counts(total: dict, counts: Mapping) -> None:
     for key, value in counts.items():
         if isinstance(value, Mapping):
@@ -1345,7 +1367,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             meta, rebuilt = next(built_iter)
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
-            _merge_counts(counts, {"records": meta["counts"]})
+            _merge_counts(counts, {"records": canonical_counts(meta["counts"])})
             path = str(cache_path(cache_dir, shard.sha256, history=history,
                                   version=version))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
@@ -1385,7 +1407,7 @@ __all__ = [
     "Row", "assert_split_by_deal", "bridge_record", "build_cache", "cache_path",
     "check_witness", "collate", "compact_history", "cwv_encoder_identity", "deal_assignment",
     "ensure_caches", "expand_history", "expected_levels", "gather", "load_block",
-    "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means",
+    "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means", "canonical_counts",
     "split_deals", "split_mask", "SplitSelector", "target_category", "tensors_of", "tensors_rows",
     "world_conservation", "world_witness", "LEVEL_SUPPORT", "PT0_SUPPORT",
 ]

@@ -140,6 +140,61 @@ def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
     return out
 
 
+def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
+    """The scale the soft targets were built on, refused when it is not declared
+    and the rows are not all points (#667 finding 5).  An extract before #650
+    carries no ``value_units`` and no ``values_scale``: a points-producer extract,
+    taken as ``assumed-points``.  Any PRESENT ``values_scale`` other than
+    ``"points"`` is refused outright (an explicit declaration is never downgraded
+    to a default; Codex HOLD on #669).  One whose ``value_units`` names a
+    non-points family must say ``values_scale: "points"`` (the #650 temperature
+    calibration), otherwise it is exactly the uniform-target extract of #649.
+    A COMPOSED directory (``composed_from``) is validated down to its leaves,
+    recursively; a cycle is a repeat on the ACTIVE recursion path (a leaf shared
+    by two parts, a diamond, is validated once and accepted; Codex HOLD on #669);
+    a part that cannot be read is a refusal."""
+    from .policy_prior import NO_SEARCH_VALUES
+    declared = False
+    active: list[str] = []          # the recursion PATH: a repeat here is a cycle
+    validated: set[str] = set()     # leaves already checked: a shared leaf (a diamond) is not a cycle
+
+    def visit(where: str, m: Mapping[str, Any], depth: int) -> None:
+        nonlocal declared
+        key = str(Path(where).resolve())
+        if key in active:
+            raise ValueError(f"policy rows stream: composition cycle at {where} "
+                             f"(path {' -> '.join(active + [key])})")
+        if key in validated:
+            return
+        if depth > 8:
+            raise ValueError(f"policy rows stream: composition nested deeper than 8 at {where}")
+        active.append(key)
+        scale = m.get("values_scale")
+        if scale is not None and scale != "points":
+            raise ValueError(f"policy rows stream: {where} declares values_scale={scale!r}; only "
+                             f"'points' (the #650 calibration) is a scale the soft targets accept")
+        units = m.get("value_units") or {}
+        non_points = {k: v for k, v in units.items()
+                      if k not in ("expected-attacker-points", NO_SEARCH_VALUES) and v}
+        if scale == "points":
+            declared = True
+        elif non_points:
+            raise ValueError(f"policy rows stream: {where} carries {non_points} rows of non-points "
+                             f"search values with no values_scale -- the un-fixed extract of #649 "
+                             f"(uniform soft targets); re-extract with the units fix (#650)")
+        for part in m.get("composed_from") or []:
+            d = Path(part["dir"]) if isinstance(part, Mapping) and part.get("dir") else None
+            if d is None or not (d / "manifest.json").is_file():
+                raise ValueError(f"policy rows stream: composed part {part!r} of {where} has no "
+                                 "readable manifest; the scale of its means cannot be verified")
+            visit(str(d), json.load(open(d / "manifest.json")), depth + 1)
+        active.pop()
+        validated.add(key)
+
+    visit(str(directory), man, 0)
+    return "points" if declared else "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)"
+
+
 class PolicyRowsStream:
     """Root rows from a chunked extraction (``policy_prior.extract --chunk-rows``):
     the manifest is read once (deal keys per chunk for the exposure rule), and
@@ -164,6 +219,7 @@ class PolicyRowsStream:
         self.chunks = man["chunks"]
         if not self.chunks:
             raise ValueError("policy rows stream: no chunks")
+        self.values_scale = _check_values_scale(man, self.dir)
         self.exclude = frozenset(exclude)
         self.window = max(1, int(window))
         self.limit = None if not limit else int(limit)
@@ -198,6 +254,7 @@ class PolicyRowsStream:
         self.identity = {"schema": SCHEMA, "format": CHUNK_SCHEMA, "prefix": str(self.dir.resolve()),
                          "npz_sha256": _digest(verified), "chunks_verified": len(verified),
                          "rows_available": int(man["rows"]), "rows_read": int(man["rows"]), "rows_used": rows_used,
+                         "values_scale": self.values_scale,
                          "rows_excluded": int(man["rows"]) - rows_used, "rows_per_pass": min(rows_used, self.limit or rows_used),
                          "deals": self.deals, "deals_excluded": len(excluded), "chunks": len(self.chunks),
                          "window_chunks": self.window, "deal_key_schema": "shengji-value-deal-key-v1",

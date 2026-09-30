@@ -32,7 +32,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 
@@ -106,12 +106,22 @@ def _policy_flags(payload) -> dict | None:
     return None
 
 
-def record_units_code(record: Mapping[str, Any]) -> int:
-    """The units of ``record["action_values"].means`` as a ``units_code``: points when
-    the producer wrote no tag, the tag otherwise; refuses a tag it cannot place."""
+def record_units_code(record: Mapping[str, Any], producer_units: str | None = None) -> int:
+    """The units of ``record["action_values"].means`` as a ``units_code``: the record's
+    tag when it has one (refusing a tag it cannot place); without a tag, POINTS -- but
+    ONLY when the producer does not declare otherwise.  ``producer_units`` is the run's
+    ``policy_flags.value_units``: a producer that declares signed-level units and writes
+    an untagged row is refused, because "no tag means points" is exactly how the level
+    means of #649 would be bracketed as points on the value side (#667 finding 5)."""
     values = record.get("action_values")
     units = values.get("units") if isinstance(values, dict) else None
     if units is None:
+        if producer_units is not None:
+            if producer_units not in UNITS_CODE:
+                raise SidecarError(f"unknown producer value units {producer_units!r}")
+            if UNITS_CODE[producer_units] != UNITS_POINTS:
+                raise SidecarError(f"untagged action_values under a producer that declares "
+                                   f"value_units={producer_units!r}; refusing to read it as points")
         return UNITS_POINTS
     if units not in UNITS_CODE:
         raise SidecarError(f"unknown value units {units!r}")
@@ -128,9 +138,18 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
     POINTS row under a producer whose flag is not ``False`` is refused, because
     its mean's meaning is then unknown.  ``units_override`` (tests) stamps every
     kept row with that code instead of reading the record's tag."""
+    producer_units: str | None = None
+    try:
+        flags = producer_flags(shard_path)
+    except SidecarError:
+        if level_objective is None:
+            raise
+        flags = {}                       # an explicit flag and no run.json: tests only
     if level_objective is None:
-        flag = producer_flags(shard_path).get("level_objective")
+        flag = flags.get("level_objective")
         level_objective = bool(flag) if isinstance(flag, bool) else None
+    if flags.get("value_units") is not None:
+        producer_units = str(flags["value_units"])
     sha = shard_sha256(shard_path)
     out = sidecar_path(out_dir, sha)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -155,7 +174,8 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
             value = values[played]
             if value is None or not np.isfinite(value):
                 continue
-            code = record_units_code(record) if units_override is None else int(units_override)
+            code = (record_units_code(record, producer_units) if units_override is None
+                    else int(units_override))
             if code == UNITS_POINTS and level_objective is not ELIGIBLE_LEVEL_OBJECTIVE:
                 raise SidecarError(
                     f"{shard_path}: a points-units row under producer LEVEL_OBJECTIVE="
@@ -180,9 +200,13 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
             "level_rows": int(sum(1 for c in codes if c == UNITS_SIGNED_LEVEL))}
 
 
-def attach_search_means(arrays: dict, shard_sha: str, out_dir: str | os.PathLike) -> None:
+def attach_search_means(arrays: dict, shard_sha: str, out_dir: str | os.PathLike) -> bool:
     """Add ``search_mean_played`` (points rows) and ``search_level_played``
     (signed-level rows) -- float32, NaN where absent -- to a block's arrays.
+    Returns whether the shard's sidecar file existed: a missing file attaches
+    all-NaN columns (the block still trains its other heads), so the CALLER
+    must decide whether a missing sidecar is acceptable; ``check_sidecar_coverage``
+    refuses a training set with any missing file before the first epoch (#667).
 
     Refuses a v2 sidecar from a producer whose score is not an expected-points
     mean, or one written before the producer flag existed.  A v3 sidecar
@@ -219,6 +243,35 @@ def attach_search_means(arrays: dict, shard_sha: str, out_dir: str | os.PathLike
                 means[i] = value
     arrays["search_mean_played"] = means
     arrays["search_level_played"] = levels
+    return path.exists()
+
+
+def check_sidecar_coverage(out_dir: str | os.PathLike,
+                           shards: "Iterable[tuple[str, str]]") -> dict:
+    """Refuse a training set whose sidecar directory lacks a file for ANY shard.
+
+    ``shards`` are ``(store identity, shard sha256)`` -- the STORE ROOT (``ShardRef.store``),
+    never the shard's own label, so the counts are per store and cannot fragment or
+    cross-combine (Codex HOLD on #669).  Returns per-store counts
+    ``{label: {"shards": n, "missing": m}}`` for the receipt.  #658 found the
+    search-mean head silently training on 24.2M of 55.1M rows because 16 stores
+    had no sidecar files and ``attach_search_means`` returned NaN for them; a
+    missing file is now a refusal with the store named, never a quiet mask."""
+    per: dict[str, dict] = {}
+    first_missing: dict[str, str] = {}
+    for label, sha in shards:
+        entry = per.setdefault(str(label), {"shards": 0, "missing": 0})
+        entry["shards"] += 1
+        if not sidecar_path(out_dir, sha).exists():
+            entry["missing"] += 1
+            first_missing.setdefault(str(label), sha)
+    bad = {k: v for k, v in per.items() if v["missing"]}
+    if bad:
+        detail = "; ".join(f"{k}: {v['missing']}/{v['shards']} missing (first {first_missing[k][:12]})"
+                           for k, v in sorted(bad.items()))
+        raise SidecarError(f"{out_dir}: sidecar coverage incomplete -- {detail}; build the "
+                           f"sidecars for these stores or drop them from --data")
+    return per
 
 
 def manifest_sha256(out_dir: str | os.PathLike) -> str:

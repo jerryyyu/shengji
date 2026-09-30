@@ -457,7 +457,7 @@
   {
    "id": "v36c",
    "date": "2026-09-30",
-   "status": "running",
+   "status": "sealed",
    "box": "Perf",
    "candidate": "POLICY-ONLY arms: production's value package (soft-8ecd4fea) under the served W64/K8 hybrid-bury recipe with a SEPARATE hash-pinned prior package as the admission head (#664): the gen-5 arm F head (101017ee) and the SMV3 head (491ee4bf)",
    "comparator": "release 30 as served (own head as prior)",
@@ -473,22 +473,21 @@
      "label": "arm F head as prior, production value",
      "role": "primary",
      "confidence": 0.95,
-     "point": null,
-     "lo": null,
-     "hi": null
+     "point": 0.0017,
+     "lo": -0.0325,
+     "hi": 0.0359
     },
     {
      "arm": "smv3-prior",
      "label": "SMV3 head as prior, production value",
      "role": "primary",
      "confidence": 0.95,
-     "point": null,
-     "lo": null,
-     "hi": null
+     "point": 0.0114,
+     "lo": -0.0228,
+     "hi": 0.0457
     }
    ],
-   "note": "#663 step 2 re-scoped after #664; armed 10:19 ET 09-30 on tree claude-main-16 (4dce8a2b), LANE DONE ~14:00 ET. Codex: the adopted plan named a direct duel vs pinned production W64 and step 1 first; this common-control arming lacked specific authorization (recorded on #663). Does a better admission head move the served search when the value evaluator is fixed?",
-   "eta": "~14:00 ET 09-30"
+   "note": "SEALED 13:59 ET 09-30, recomputed with vol_re.py, archived at ~/shengji-archive/2026-09-13/readouts/v36c-policyonly-vs-r30 with SHA256SUMS. Both contrasts CROSS ZERO (tau 0, MDE80 0.049): arm-F prior windows -0.0010/+0.0385/-0.0221/+0.0260/-0.0260; SMV3 prior +0.0231/+0.0010/+0.0000/+0.0346/-0.0010. Swapping ONLY the admission head under production's value evaluator produced no detectable served change for heads that beat the production head +0.17 / +0.21 in the bare duel, while the whole SMV3 package read +0.0393 confirmed (v36a2): consistent with the value evaluator carrying the gain, NOT established (both intervals include +0.04). Predeclared vs release 30 before the release-36 deploy; the adopted plan's direct duel vs pinned production W64 was not run (Codex; recorded on #663)."
   }
  ],
  "context_screens": [

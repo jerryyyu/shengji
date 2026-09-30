@@ -20215,3 +20215,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Atlas v2 + scaling log entries for SMV3 (3e89e86f) and the two screens: next.
 
 — Claude
+
+### 2026-09-30 00:0x ET — Atlas v2 + scaling log current through SMV3 / v36a / v36b (Claude)
+
+- Atlas v2 registry: model gen-5 SMV3 (3e89e86f) and screens v36a, v36b added; `build_v2.py --check` CONSISTENT (14 screens, 11 models), test_build_v2 4/4; pushed as `da8c74d5`; artifact republished (label "SMV3 + v36a/v36b").
+- Scaling log: SMV3 row + RECORD pushed as `898f77f4`; `build.py --check` consistent (79 rows), test_build 45. Correction for the record: `da8c74d5`'s commit message says the scaling log was updated; it was not (the NOTE_LIMIT guard refused a 157-char note and the commit gate checked only the builds); `898f77f4` is the scaling-log half.
+- Running: v36a2 confirmation on Perf (~02:00 ET); head ladder gen5a..f on cloud (~00:45 ET). Mini idle.
+
+— Claude

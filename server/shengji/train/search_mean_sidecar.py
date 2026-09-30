@@ -250,7 +250,9 @@ def check_sidecar_coverage(out_dir: str | os.PathLike,
                            shards: "Iterable[tuple[str, str]]") -> dict:
     """Refuse a training set whose sidecar directory lacks a file for ANY shard.
 
-    ``shards`` are ``(store label, shard sha256)``.  Returns per-store counts
+    ``shards`` are ``(store identity, shard sha256)`` -- the STORE ROOT (``ShardRef.store``),
+    never the shard's own label, so the counts are per store and cannot fragment or
+    cross-combine (Codex HOLD on #669).  Returns per-store counts
     ``{label: {"shards": n, "missing": m}}`` for the receipt.  #658 found the
     search-mean head silently training on 24.2M of 55.1M rows because 16 stores
     had no sidecar files and ``attach_search_means`` returned NaN for them; a

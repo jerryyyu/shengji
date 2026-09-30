@@ -322,7 +322,27 @@ def test_the_rows_stream_refuses_undeclared_non_points_search_values(store_dir, 
     man_path.write_text(json.dumps(composed))
     with pytest.raises(ValueError, match="no readable manifest"):
         PolicyRowsStream(chunked)
-    composed["composed_from"] = [{"tag": "x", "dir": str(chunked)}]      # a readable part: its own manifest
+    composed["composed_from"] = [{"tag": "x", "dir": str(chunked)}]      # a part that is itself -> a cycle
     man_path.write_text(json.dumps(composed))
-    PolicyRowsStream(chunked)
+    with pytest.raises(ValueError, match="composition cycle"):
+        PolicyRowsStream(chunked)
+    # an EXPLICIT non-points scale is refused, never downgraded to assumed-points (Codex HOLD on #669)
+    explicit = dict(man); explicit["values_scale"] = "signed-level"; man_path.write_text(json.dumps(explicit))
+    with pytest.raises(ValueError, match="declares values_scale='signed-level'"):
+        PolicyRowsStream(chunked)
+    # nested composition: chunked -> mid -> leaf, where only the LEAF is the un-fixed extract
+    import shutil
+    leaf = tmp_path / "leaf"; mid = tmp_path / "mid"
+    for d in (leaf, mid):
+        d.mkdir(); shutil.copy(chunked / "manifest.json", d / "manifest.json")
+    leaf_man = dict(man); leaf_man["value_units"] = {"expected-signed-level-half-integer": 9}
+    leaf_man.pop("values_scale", None)          # the un-fixed extract: non-points units, no declared scale
+    (leaf / "manifest.json").write_text(json.dumps(leaf_man))
+    mid_man = dict(man); mid_man["composed_from"] = [{"tag": "leaf", "dir": str(leaf)}]
+    (mid / "manifest.json").write_text(json.dumps(mid_man))
+    top = dict(man); top["composed_from"] = [{"tag": "mid", "dir": str(mid)}]; man_path.write_text(json.dumps(top))
+    with pytest.raises(ValueError, match="non-points search values with no values_scale"):
+        PolicyRowsStream(chunked)
+    leaf_man["values_scale"] = "points"; (leaf / "manifest.json").write_text(json.dumps(leaf_man))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
     man_path.write_text(json.dumps(man))

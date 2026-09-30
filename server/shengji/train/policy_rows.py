@@ -143,31 +143,47 @@ def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
 def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
     """The scale the soft targets were built on, refused when it is not declared
     and the rows are not all points (#667 finding 5).  An extract before #650
-    carries no ``value_units`` at all: it is a points-producer extract and is
-    taken as ``assumed-points``.  One whose ``value_units`` names a non-points
-    family must say ``values_scale: "points"`` (the #650 temperature calibration),
-    otherwise it is exactly the uniform-target extract of #649.  A COMPOSED
-    directory (``composed_from``) is checked part by part; a part that cannot
-    be read is a refusal, not a pass."""
+    carries no ``value_units`` and no ``values_scale``: a points-producer extract,
+    taken as ``assumed-points``.  Any PRESENT ``values_scale`` other than
+    ``"points"`` is refused outright (an explicit declaration is never downgraded
+    to a default; Codex HOLD on #669).  One whose ``value_units`` names a
+    non-points family must say ``values_scale: "points"`` (the #650 temperature
+    calibration), otherwise it is exactly the uniform-target extract of #649.
+    A COMPOSED directory (``composed_from``) is validated down to its leaves,
+    recursively, with a cycle guard; a part that cannot be read is a refusal."""
     from .policy_prior import NO_SEARCH_VALUES
-    manifests = [(str(directory), man)]
-    for part in man.get("composed_from") or []:
-        d = Path(part["dir"]) if isinstance(part, Mapping) and part.get("dir") else None
-        if d is None or not (d / "manifest.json").is_file():
-            raise ValueError(f"policy rows stream: composed part {part!r} has no readable manifest; "
-                             "the scale of its means cannot be verified")
-        manifests.append((str(d), json.load(open(d / "manifest.json"))))
     declared = False
-    for where, m in manifests:
+    seen: set[str] = set()
+
+    def visit(where: str, m: Mapping[str, Any], depth: int) -> None:
+        nonlocal declared
+        key = str(Path(where).resolve())
+        if key in seen:
+            raise ValueError(f"policy rows stream: composition cycle at {where}")
+        seen.add(key)
+        if depth > 8:
+            raise ValueError(f"policy rows stream: composition nested deeper than 8 at {where}")
+        scale = m.get("values_scale")
+        if scale is not None and scale != "points":
+            raise ValueError(f"policy rows stream: {where} declares values_scale={scale!r}; only "
+                             f"'points' (the #650 calibration) is a scale the soft targets accept")
         units = m.get("value_units") or {}
         non_points = {k: v for k, v in units.items()
                       if k not in ("expected-attacker-points", NO_SEARCH_VALUES) and v}
-        if m.get("values_scale") == "points":
+        if scale == "points":
             declared = True
         elif non_points:
             raise ValueError(f"policy rows stream: {where} carries {non_points} rows of non-points "
                              f"search values with no values_scale -- the un-fixed extract of #649 "
                              f"(uniform soft targets); re-extract with the units fix (#650)")
+        for part in m.get("composed_from") or []:
+            d = Path(part["dir"]) if isinstance(part, Mapping) and part.get("dir") else None
+            if d is None or not (d / "manifest.json").is_file():
+                raise ValueError(f"policy rows stream: composed part {part!r} of {where} has no "
+                                 "readable manifest; the scale of its means cannot be verified")
+            visit(str(d), json.load(open(d / "manifest.json")), depth + 1)
+
+    visit(str(directory), man, 0)
     return "points" if declared else "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)"
 
 

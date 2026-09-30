@@ -1311,6 +1311,25 @@ class Prepared:
     cache_files: list[dict] = field(default_factory=list)
 
 
+LEGACY_COUNT_KEYS = {"search_means": "action_values_means_2plus"}   # #667: renamed at the write site
+
+
+def canonical_counts(counts: Mapping) -> dict:
+    """Cached shard metadata written before the rename still says ``search_means``; a
+    warm or mixed cache must aggregate under ONE key (Codex HOLD on #669).  Folds each
+    legacy key into its canonical name, summing when both are present; never rebuilds."""
+    out: dict = {}
+    for key, value in counts.items():
+        name = LEGACY_COUNT_KEYS.get(key, key)
+        if isinstance(value, Mapping):
+            _merge_counts(out.setdefault(name, {}), value)
+        elif name in out and not isinstance(value, str):
+            out[name] = out[name] + value
+        else:
+            out[name] = value
+    return out
+
+
 def _merge_counts(total: dict, counts: Mapping) -> None:
     for key, value in counts.items():
         if isinstance(value, Mapping):
@@ -1348,7 +1367,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             meta, rebuilt = next(built_iter)
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
-            _merge_counts(counts, {"records": meta["counts"]})
+            _merge_counts(counts, {"records": canonical_counts(meta["counts"])})
             path = str(cache_path(cache_dir, shard.sha256, history=history,
                                   version=version))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
@@ -1388,7 +1407,7 @@ __all__ = [
     "Row", "assert_split_by_deal", "bridge_record", "build_cache", "cache_path",
     "check_witness", "collate", "compact_history", "cwv_encoder_identity", "deal_assignment",
     "ensure_caches", "expand_history", "expected_levels", "gather", "load_block",
-    "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means",
+    "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means", "canonical_counts",
     "split_deals", "split_mask", "SplitSelector", "target_category", "tensors_of", "tensors_rows",
     "world_conservation", "world_witness", "LEVEL_SUPPORT", "PT0_SUPPORT",
 ]

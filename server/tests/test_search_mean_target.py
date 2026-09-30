@@ -389,3 +389,46 @@ def test_trainer_search_head_learns_pv_style_level_rows(store_dir, luna, tmp_pat
     assert "bootstrap" in out["search_head"]["level_estimand"]
     on_disk = json.loads((tmp_path / "twohead" / "metrics.json").read_text())
     assert on_disk["epochs"][0]["train"]["search_head_level_rows"] == ep["search_head_level_rows"]
+
+
+def test_sidecar_coverage_is_keyed_on_the_store_identity_over_two_real_stores(store_dir, other_dir, tmp_path):  # noqa: F811
+    """Codex HOLD on #669: coverage must aggregate per STORE (ShardRef.store), not per shard label,
+    or the receipt fragments one store into many rows and two stores with the same relative shard
+    names cross-combine.  Two real stores; sidecars built for one only; the refusal names the
+    other store by its root with the count of its shards."""
+    from shengji.train.data import discover_store
+    a, b = discover_store(store_dir), discover_store(other_dir)
+    side = tmp_path / "side"
+    for sh in a.shards:
+        sc.build_sidecar(sh.path, side, level_objective=False)
+    pairs = [(sh.store, sh.sha256) for st in (a, b) for sh in st.shards]
+    labels = {sh.label for st in (a, b) for sh in st.shards}
+    assert len(labels) < len(pairs) or labels & {sh.label for sh in b.shards}   # relative names collide across stores
+    with pytest.raises(sc.SidecarError) as err:
+        sc.check_sidecar_coverage(side, pairs)
+    msg = str(err.value)
+    assert b.root in msg and f"{len(b.shards)}/{len(b.shards)} missing" in msg
+    assert a.root not in msg                                            # the covered store is not named
+    for sh in b.shards:
+        sc.build_sidecar(sh.path, side, level_objective=False)
+    got = sc.check_sidecar_coverage(side, pairs)
+    assert got == {a.root: {"shards": len(a.shards), "missing": 0}, b.root: {"shards": len(b.shards), "missing": 0}}
+
+
+def test_the_legacy_search_means_counter_aggregates_under_one_key_across_warm_and_new_caches():
+    """Codex HOLD on #669: cached shard metadata written before the rename says search_means;
+    a warm-only or mixed cache must total under the canonical key, without a rebuild."""
+    from shengji.train.cwv_data import _merge_counts, canonical_counts
+    old = {"records": 7, "encoded": 7, "search_means": {"present": 5, "absent": 2}}
+    new = {"records": 4, "encoded": 4, "action_values_means_2plus": {"present": 3, "absent": 1}}
+    total: dict = {}
+    for meta_counts in (old, new):
+        _merge_counts(total, {"records": canonical_counts(meta_counts)})
+    assert total["records"]["action_values_means_2plus"] == {"present": 8, "absent": 3}
+    assert "search_means" not in total["records"] and total["records"]["records"] == 11
+    warm: dict = {}
+    _merge_counts(warm, {"records": canonical_counts(old)})
+    assert warm["records"]["action_values_means_2plus"] == {"present": 5, "absent": 2}
+    both = canonical_counts({"search_means": {"present": 1, "absent": 0},
+                             "action_values_means_2plus": {"present": 2, "absent": 5}})
+    assert both == {"action_values_means_2plus": {"present": 3, "absent": 5}}

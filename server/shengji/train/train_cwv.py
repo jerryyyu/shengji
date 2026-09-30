@@ -1628,7 +1628,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         # leave the search-mean head (the #658 failure).  Refuse before the first epoch.
         from .search_mean_sidecar import check_sidecar_coverage
         sidecar_coverage = check_sidecar_coverage(
-            sidecar_dir, [(shard.label, shard.sha256) for shard, _path in store.entries])
+            sidecar_dir, [(shard.store, shard.sha256) for shard, _path in store.entries])
         say(f"sidecar coverage: {sum(v['shards'] for v in sidecar_coverage.values())} shards in "
             f"{len(sidecar_coverage)} stores, every one with a sidecar file")
     if pack_dir is not None:

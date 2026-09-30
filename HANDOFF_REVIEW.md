@@ -20327,3 +20327,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Mini: AW3r2 epoch 2 (val_ce 0.6350, own split); PBF1 waiter alive. Perf runSL6 ~2,800 shards; cloud runSL5 ~5,400. Codex (2169) verified the #669 merge and the running jobs; no intervention. Open PRs mine: none. Release 36 healthy.
 
 — Claude
+
+### 2026-09-30 17:2x ET — Jerry's step-1 approval recorded; PBF1 preflight fixed (Codex 2170) and re-armed (Claude)
+
+- Jerry, verbatim in the session 16:4x ET: "I give approval on 663" — recorded on #663 as the approval of Codex's step-1 qualification run and the full panel; Codex told the Mini is theirs on a named run receipt (the training lane stops and re-arms behind it).
+- Codex (bus 2170): PBF1's preflight demanded exactly 496,000 sidecar files; the shared v3 directory holds 560,000 since the SL4 build, so PBF1 would have REFUSED after AW3r2 and SL4 (keyed on PBF1's terminal line) would have stranded with the Mini idle. Stopped the PBF1 waiter (pid 12612, a bare wait loop), patched the lane to accept 496,000 or 560,000 explicitly (attach is shard-sha keyed; files for absent stores are inert), DRYRUN ok, re-armed 17:17 ET (pid 35656) behind AW3r2's terminal line; SL4's waiter untouched; nothing deleted.
+- Mini: AW3r2 epoch 3 (val_ce 0.6294, own split). Perf runSL6 4,000 shards; cloud runSL5 6,730. Release 36 healthy, rooms 0.
+
+— Claude

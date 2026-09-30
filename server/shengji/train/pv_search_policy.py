@@ -122,8 +122,12 @@ def recipe_digest(config: PVSearchConfig) -> str:
     return hashlib.sha256(encoded).hexdigest()[:8]
 
 
-def pv_policy_name(ckpt8: str, config: PVSearchConfig) -> str:
-    return f"pv-search-{ckpt8}-w{config.worlds}-k{config.candidates}-r{recipe_digest(config)}"
+def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None) -> str:
+    """``pv-search-<value pkg>-w..``; with a SEPARATE prior package (#663 step 2: a policy
+    scorer swapped while the value evaluator stays fixed) the name also carries the
+    prior's id, so the two identities can never be mistaken for one package."""
+    prior = f"-prior-{prior8}" if prior8 else ""
+    return f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}-r{recipe_digest(config)}"
 
 
 class PVSearchBot(PolicyValueBot):
@@ -385,9 +389,16 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        name: str | None = None, bury_arm: str | None = None,
                        bury_config: CWVBuryConfig | None = None,
                        bury_serving_budget_seconds=None,
-                       bot_factory=None) -> PVSearchBot:
+                       bot_factory=None, prior_checkpoint: str | None = None,
+                       prior_sha256: str | None = None) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
+
+    ``prior_checkpoint`` + ``prior_sha256`` (both or neither) bind a SEPARATE
+    hash-pinned package as the policy prior while ``checkpoint`` stays the value
+    evaluator: the policy-isolation arm of #663 (each scorer on its own trunk;
+    production's value, recipe, bury and budgets fixed).  Both packages must
+    declare the same encoder version; a mismatch refuses at construction.
 
     ``bot_factory`` substitutes the constructor for a DIAGNOSTIC subclass so a
     probe does not have to restate the package pinning, the evaluator setup or
@@ -405,7 +416,21 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds))
+    if (prior_checkpoint is None) != (prior_sha256 is None):
+        raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
     predict = NumpyPriorPredict(path, sha256)
+    if prior_checkpoint is not None:
+        prior_path = str(prior_checkpoint)
+        if not prior_path.lower().endswith(".npz"):
+            raise PVSearchPolicyError("the prior package must be a NumPy package (.npz)")
+        prior_actual = file_sha256(prior_path)
+        if prior_actual != prior_sha256:
+            raise PVSearchPolicyError(f"prior package SHA256 mismatch: {prior_actual[:8]} != {prior_sha256[:8]}")
+        prior_predict = NumpyPriorPredict(prior_path, prior_sha256)
+        if int(prior_predict.version) != int(predict.version):
+            raise PVSearchPolicyError(f"prior package is encoder v{prior_predict.version}, the value "
+                                      f"package v{predict.version}; they must agree")
+        predict = prior_predict
     evaluator = shared_evaluator(path, threads=threads, max_batch=config.batch_size, encoding=ENCODING)
     if getattr(evaluator, "backend", None) != "numpy":
         raise PVSearchPolicyError("pv-search requires the numpy evaluator backend")
@@ -422,6 +447,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     if not isinstance(bot, expected):
         raise PVSearchPolicyError(
             f"bot_factory built {type(bot).__name__}, not a {expected.__name__}")
+    bot.prior_checkpoint = None if prior_checkpoint is None else str(prior_checkpoint)
+    bot.prior_sha256 = prior_sha256
     if name is not None:
         bot.policy_name = name
     return bot
@@ -432,7 +459,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         batch_size: int = DEFAULTS["batch_size"], seed: int = DEFAULTS["seed"],
                         serving_budget_seconds=None, bury_arm: str | None = None,
                         bury_config: CWVBuryConfig | None = None,
-                        bury_serving_budget_seconds=None, bot_factory=None) -> dict:
+                        bury_serving_budget_seconds=None, bot_factory=None,
+                        prior_checkpoint: str | None = None,
+                        prior_sha256: str | None = None) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
     bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
@@ -443,7 +472,14 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
         raise PVSearchPolicyError(f"pv-search package on disk is {ckpt8}, bound SHA256 says {sha256[:8]}")
-    name = pv_policy_name(ckpt8, config)
+    prior8 = None
+    if (prior_checkpoint is None) != (prior_sha256 is None):
+        raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
+    if prior_checkpoint is not None:
+        prior8 = checkpoint_id(prior_checkpoint)
+        if prior8 != prior_sha256[:8]:
+            raise PVSearchPolicyError(f"prior package on disk is {prior8}, bound SHA256 says {prior_sha256[:8]}")
+    name = pv_policy_name(ckpt8, config, prior8)
     bury_identity = None
     if bury_arm is not None:
         if bury_arm not in BURY_ARMS:
@@ -455,6 +491,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
         bury_identity = {"schema": "cwv-bury-recipe-v1", "play_policy": name,
                          "checkpoint_sha256": sha256, "arm": bury_arm,
                          "config": asdict(bconfig), "fallback": "raise"}
+        if prior_sha256 is not None:
+            bury_identity["prior_sha256"] = prior_sha256
         if bbudget is not None:
             bury_identity.update(fallback="heuristic-on-error-or-budget", serving_budget_seconds=bbudget)
         encoded = json.dumps(bury_identity, sort_keys=True, separators=(",", ":")).encode()
@@ -469,7 +507,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                serving_budget_seconds=config.serving_budget_seconds, name=name,
                                bury_arm=bury_arm, bury_config=bury_config,
                                bury_serving_budget_seconds=bury_serving_budget_seconds,
-                               bot_factory=bot_factory),
+                               bot_factory=bot_factory, prior_checkpoint=prior_checkpoint,
+                               prior_sha256=prior_sha256),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -480,9 +519,11 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
 
 
 def pv_env_recipe(environ=None) -> dict:
-    """``SHENGJI_PV_CKPT`` + ``_SHA256`` (both required: an unpinned package is refused)
-    and the optional ``_WORLDS`` / ``_CANDIDATES`` / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` /
-    ``_SERVING_BUDGET_SECONDS`` knobs, as keyword arguments for `pv_registry_entries`."""
+    """``SHENGJI_PV_CKPT`` + ``_SHA256`` (both required: an unpinned package is refused),
+    the optional ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair (a separate hash-pinned policy
+    prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
+    / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs, as keyword
+    arguments for `pv_registry_entries`."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:
@@ -491,6 +532,14 @@ def pv_env_recipe(environ=None) -> dict:
     if not sha256 or len(sha256) != 64:
         raise PVSearchPolicyError("SHENGJI_PV_SHA256 must be the package's full sha256")
     recipe = dict(checkpoint=checkpoint, sha256=sha256)
+    prior_ckpt = env.get(ENV_PREFIX + "PRIOR_CKPT")
+    prior_sha = env.get(ENV_PREFIX + "PRIOR_SHA256")
+    if bool(prior_ckpt) != bool(prior_sha):
+        raise PVSearchPolicyError("SHENGJI_PV_PRIOR_CKPT and SHENGJI_PV_PRIOR_SHA256 go together")
+    if prior_ckpt:
+        if len(prior_sha) != 64:
+            raise PVSearchPolicyError("SHENGJI_PV_PRIOR_SHA256 must be the prior package's full sha256")
+        recipe.update(prior_checkpoint=prior_ckpt, prior_sha256=prior_sha)
     for key in ("worlds", "candidates", "cap", "batch_size", "seed"):
         raw = env.get(ENV_PREFIX + key.upper())
         if raw not in (None, ""):

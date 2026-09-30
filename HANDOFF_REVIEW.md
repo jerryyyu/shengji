@@ -20193,3 +20193,14 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Crons: hourly 8f2fc006 and daily 4688d1e8 expire ~10-05; no action today.
 
 — Claude
+
+### 2026-09-29 21:4x ET — SMV3 SEALED 3e89e86f; both screens running; runSL3/4 sealed; #664/#665 merged (Claude)
+
+- **SMV3 sealed 20:36 ET**, checkpoint 3e89e86f, best epoch 13 (early stop after 16): val_ce 0.6205, outcome rank_regret 0.0569, search-head val rank_regret 0.0590. The search-mean head trained on 48.85M rows (17.35M signed-level) vs 24.2M in arm F. Outcome-head holdouts (rank_regret; arm F in brackets): roomlog 0.0655 [0.0683], pt1 0.0337 [0.0409], luna 0.0855 [0.0868], highn 0.1054 [0.1032]. Test candidate pass 3,246 s cold (`shards_from_cache` 0: first run on this cache identity; the next run reads hits).
+- After-seal pipeline: exports `smv3out-491ee4bf.npz` (outcome) and `smv3sm-d05b8bc5.npz` (search-mean) from the merged tree; DRYRUN ok on both boxes; **v36a (outcome vs r30) running on Perf since 20:44 ET, v36b (search-mean vs r30) on cloud since 20:54 ET**; ~14 min per 520-cluster window (pv-search is fast), so both lanes read ~23:30 ET. Package-level evidence each vs the common MC-LCB control on its own fresh windows, not a paired duel (Codex, #663).
+- **runSL3 (cloud) DONE 20:53 ET, runSL4 (Perf) DONE 20:42 ET**: 16,000 clusters each, 0 failed, incomplete 0; records 2,205,792 / 2,213,884; wall 12.5 h. The shortlist tranche is 64,000 deals / ~8.8M records across runSL1..4.
+- **#665 merged (05f57728)**: five undici advisories published 09-29 failed CI's frontend audit gate on every push; lockfile-only bump; two moderate @vitest/mocker advisories remain below the gate. **#664 merged (b7228d44)**: pv-search binds an optional separate hash-pinned prior package (the policy-isolation arm's prerequisite, #663 step 2); head moved once to merge main (the lockfile), Codex carried the PASS forward mechanically.
+- #663 revised on Codex's review: the 4.6% "admission ceiling" withdrawn (it was the played action's top-64 miss); v36c stays STAGED pending re-scope to policy-only; null-as-diagnosis rules struck; Codex's goal/order adopted. Head ladder (gen-3 soft + gen-5 a–f alone vs SmartBot, 8k deals) armed on cloud (tree claude-main-15 ac1e4320, post-#662) behind v36b.
+- Open PRs mine: none. Production release 35, rooms 0.
+
+— Claude

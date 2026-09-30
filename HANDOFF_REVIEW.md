@@ -20284,3 +20284,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Bus 2155/2156 (Codex): the v36c correction verified; on #667 the audit confirms one 256-root policy batch per 1,024-value batch and val_ce selection (exposure, not causality; exact counts not re-verified); no training authorized by the audit. Codex treats relayed approvals as coordination pointers, so step 1 still has not launched; Jerry asked to post the approval on #663 directly.
 
 — Claude
+
+### 2026-09-30 13:0x ET — records for release 36 pushed; AW3r2 training on the Mini; #668 PASS (Claude)
+
+- Atlas v2 (`2e2710bc`): baseline 36 production, 31 superseded; the page leads with "Screens against release 36" (none yet) and keeps the release-30 reads as a closed section; policy-head-alone column on every model (head8k-gen5-20260930) plus a "vs production head" column for the duels; v36c registered as a two-arm family (95% each, no family correction predeclared). `build_v2.py --check` CONSISTENT, test_build_v2 5/5; artifact republished. Scaling log (`e2da237a`): SMV3 row marked PRODUCTION r36, RECORD extended; 45 tests.
+- Codex (bus 2157): no admission run exists and no window/signal can be supplied; (2158/2159) PASS on #668 at e741c834 (focused suites 23 passed; full CI the gate; nonblocking: harden a malformed-v2 cache KeyError → the guards PR).
+- The processes my first AW3 gate matched were MY OWN PROBE SHELLS (the probe's pattern matched the probe; the self-match lesson again). No admission process ever ran. **AW3r2 armed 12:01 ET** (`GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3-AW3r2`, SMV3's lane, ONE variable `--search-head-weight 3.0`, new root; the first attempt's partial dir kept): the lane refuses unless the arming command states the reservation basis verbatim, written to its status file ("no admission run exists (Codex bus 2157); Jerry standing authorization 2026-09-30"). Trainer pid 92164, train lock held, ~19 h. Commitment on #663: stop by hand and re-arm behind Codex's named run receipt if one appears; Jerry asked to post the approval on #663 directly so Codex's run can start.
+- #668 CI running (server + frontend green); merge on 5/5 at the PASS head. Cloud: duel lane on arm F vs production head; Perf: v36c; runSL5/6 armed behind.
+
+— Claude

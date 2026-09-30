@@ -60,9 +60,10 @@ from shengji.train.cwv_data import deal_key  # noqa: E402
 
 # 1 ---------------------------------------------------------- rank regret
 
-def _entry(means, role_attacker, terminal=None):
+def _entry(means, role_attacker, terminal=None, units_code=0):
     k = len(means)
     return {
+        "units_code": int(units_code),
         "public": np.zeros((k, PUBLIC_DIM), np.float32),
         "world": np.zeros((k, WORLD_RECEIVERS, N_CARDS), np.uint8),
         "perspective": np.full(k, 1 if role_attacker else 0, np.uint8),
@@ -549,3 +550,68 @@ def test_warm_start_refuses_or_excludes_ancestral_exposure(store_dir, other_dir,
     # exclusion without --init is refused up front
     with pytest.raises(train_v0.TrainError, match="needs --init"):
         train_cwv.build_config(data=["x"], init_exclude_exposed=True)
+
+
+# 9 ------------------------------------------- search-mean UNITS (#667)
+
+def test_a_signed_level_record_is_not_bracketed_as_points():
+    """A pv-search record's means are the acting team's expected signed level
+    already (RANK_SCALE); bracketing them as points sent every candidate to the
+    same level (round(0.3) -> 0 points), which is what #667 found in a third of
+    every rank metric.  A points record still goes through the bracket."""
+    level = _entry([0.3, -0.2, 0.55], True, units_code=1)
+    points = _entry([150, 30, 85], True, units_code=0)
+    cands = cwv_eval.CandidateSet.concatenate([level, points], {"schema": cwv_eval.CANDIDATE_SET_SCHEMA},
+                                              history=False)
+    ml = cands.means_level()
+    assert ml[:3].tolist() == [0.3, -0.2, 0.55]                      # pass-through, no collapse
+    assert ml[3:].tolist() == [_level(150, True), _level(30, True), _level(85, True)]
+    assert cands.units_counts() == {"points": 1, "signed-level": 1}
+    assert cwv_eval.level_of_search_mean(0.3, True, 1) == 0.3
+    assert cwv_eval.level_of_search_mean(0.3, False, 1) == 0.3       # already team-signed
+    with pytest.raises(cwv_eval.EvalError):
+        cwv_eval.level_of_search_mean(0.3, True, 7)
+
+
+def test_points_regret_averages_over_points_records_only():
+    """rank_regret_points is a POINTS quantity; a level-unit record must not be
+    averaged into it, and the receipt says how many records each family has."""
+    level = _entry([0.3, -0.2], True, units_code=1)
+    points = _entry([150, 30], True, units_code=0)
+    cands = cwv_eval.CandidateSet.concatenate([level, points], {"schema": cwv_eval.CANDIDATE_SET_SCHEMA},
+                                              history=False)
+    inverted = cwv_eval.rank_metrics(np.asarray([0.0, 1.0, 0.0, 1.0]), cands)
+    assert inverted["rank_regret_points"] == pytest.approx(150 - 30)     # the points record alone
+    assert inverted["rank_regret_points_records"] == 1
+    assert inverted["rank_records_by_units"] == {"points": 1, "signed-level": 1}
+    # the level record's own regret is on RANK_SCALE: 0.3 - (-0.2)
+    assert inverted["rank_regret"] == pytest.approx(np.mean([0.3 - (-0.2), _level(150, True) - _level(30, True)]))
+    only_level = cwv_eval.CandidateSet.concatenate([level], {"schema": cwv_eval.CANDIDATE_SET_SCHEMA},
+                                                   history=False)
+    assert cwv_eval.rank_metrics(np.asarray([0.0, 1.0]), only_level)["rank_regret_points"] is None
+    assert cwv_eval._no_rank()["rank_records_by_units"] == {"points": 0, "signed-level": 0}
+
+
+def test_units_code_survives_the_candidate_pass_cache_and_the_candidate_set_file(tmp_path):
+    """The per-shard cache and the persisted candidate set both carry the code,
+    and a v1 file (no units) is a cache MISS, not a silent points default."""
+    e = _entry([0.3, -0.2], False, units_code=1)
+    e.update({"successor_points": np.zeros(2, np.float32), "successor_ply": np.zeros(2, np.int32)})
+    result = cwv_eval.ShardResult(label="s", source_ref=["r"], deal_key=["deck:x"],
+                                  decision_obs=np.zeros((1, cwv_eval.obs_dim(2)), np.float32), search=[e])
+    path = tmp_path / "shard.npz"
+    cwv_eval.save_shard_result(result, path, digest="d" * 64, version=2)
+    back = cwv_eval.load_shard_result(path, digest="d" * 64)
+    assert back is not None and back.search[0]["units_code"] == 1
+    cands = cwv_eval.CandidateSet.concatenate([e], {"schema": cwv_eval.CANDIDATE_SET_SCHEMA}, history=False)
+    cands.save(tmp_path / "cands.npz")
+    assert cwv_eval.CandidateSet.load(tmp_path / "cands.npz").units_code.tolist() == [1]
+    assert cwv_eval.CANDIDATE_PASS_SCHEMA.endswith("v2") and cwv_eval.CANDIDATE_SET_SCHEMA.endswith("v2")
+
+
+def test_units_code_is_read_from_the_record_tag():
+    """The code comes from the record's own action_values.units through
+    cwv_data.value_units: no tag is points, the pv tag is signed level."""
+    from shengji.train.cwv_data import PV_VALUE_UNITS, value_units
+    assert cwv_eval.UNITS_CODE[value_units({"action_values": {"means": [0.1, 0.2]}})] == 0
+    assert cwv_eval.UNITS_CODE[value_units({"action_values": {"units": PV_VALUE_UNITS}})] == 1

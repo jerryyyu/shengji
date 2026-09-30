@@ -63,8 +63,19 @@ from .cwv_data import (
     iter_records,
     pt0_level,
     search_means,
+    value_units,
+    PV_VALUE_UNITS,
+    POINTS_VALUE_UNITS,
 )
 from .model import ValuePriorNet
+
+#: Per-record code of the units ``action_values.means`` are recorded in (#667): the points
+#: producers (shortlist, MC-LCB, the labelled holdouts) write final attacker POINTS, the
+#: pv-search producers write the EXPECTED SIGNED LEVEL (half-integer support), which is
+#: already ``RANK_SCALE``.  Bracketing a level mean as points (``round(0.3) -> 0`` points ->
+#: one level for every candidate) is how a third of every rank metric became noise.
+UNITS_CODE = {POINTS_VALUE_UNITS: 0, PV_VALUE_UNITS: 1}
+UNITS_NAME = {0: "points", 1: "signed-level"}
 
 PUBLIC_CHECKPOINT_PREFIX = "shengji-train-v0-checkpoint-v"
 SCORERS = ("cwv", "public_head", "stratified_prior")
@@ -363,6 +374,7 @@ def _candidate_task(task: tuple) -> ShardResult:
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["units_code"] = UNITS_CODE[value_units(record)]
         scored["source_ref"] = str(record["source_ref"])
         scored["deal_key"] = key
         search.append(scored)
@@ -371,7 +383,7 @@ def _candidate_task(task: tuple) -> ShardResult:
                        decision_obs=decision, search=search)
 
 
-CANDIDATE_PASS_SCHEMA = "shengji-cwv-candidate-pass-shard-v1"
+CANDIDATE_PASS_SCHEMA = "shengji-cwv-candidate-pass-shard-v2"   # v2: per-record units_code (#667)
 _SEARCH_ARRAYS = ("public", "world", "perspective", "terminal", "terminal_level",
                   "successor_points", "successor_ply", "means")
 _SEARCH_HISTORY = ("history_cards", "history_meta")
@@ -427,6 +439,7 @@ def save_shard_result(result: ShardResult, path: str | os.PathLike, *, digest: s
         "means": cat("means", np.float64, ()),
         "offsets": offsets,
         "role_attacker": np.asarray([bool(e["role_attacker"]) for e in entries], dtype=bool),
+        "units_code": np.asarray([int(e["units_code"]) for e in entries], dtype=np.uint8),
         "search_source_ref": np.asarray([e["source_ref"] for e in entries], dtype=str),
         "search_deal_key": np.asarray([e["deal_key"] for e in entries], dtype=str),
         "source_ref": np.asarray(list(result.source_ref), dtype=str),
@@ -482,6 +495,7 @@ def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | 
         lo, hi = int(offsets[r]), int(offsets[r + 1])
         entry = {name: arrays[name][lo:hi] for name in _SEARCH_ARRAYS}
         entry["role_attacker"] = bool(arrays["role_attacker"][r])
+        entry["units_code"] = int(arrays["units_code"][r])
         entry["source_ref"] = str(arrays["search_source_ref"][r])
         entry["deal_key"] = str(arrays["search_deal_key"][r])
         if history:
@@ -737,17 +751,17 @@ def candidate_tensors(entry: Mapping[str, np.ndarray], device: torch.device | st
 # ``search_facing_metrics`` is that code; ``train_cwv`` calls it from the
 # per-epoch validation, from the final val/test pass and from ``evaluate``.
 
-CANDIDATE_SET_SCHEMA = "shengji-cwv-candidate-set-v1"
+CANDIDATE_SET_SCHEMA = "shengji-cwv-candidate-set-v2"   # v2: per-record units_code (#667)
 SEARCH_MEANS_SCALE = ("acting-team-signed final attacker points averaged over the search's "
                       "worlds (MCBot mc-s0-report-lcb; sign flipped for a defender)")
 RANK_SCALE = ("#214 half-integer signed level (category_signed_level) for the acting seat's "
               "team: the scale the search's leaf consumes (cwv_policy / cwv_puct score "
               "positions by probabilities @ category_signed_level support)")
 RANK_REGRET_DEFINITION = (
-    "rank_regret = U(E[points])_best - U(E[points])_pick: the level-bracket transform "
-    "(level_of_search_mean) of the search's MEAN points per candidate, an MC-ranking proxy "
-    "-- NOT E[U] (the mean of per-world levels, which the records do not carry); "
-    "rank_regret_points is the untransformed mean-points regret")
+    "rank_regret = L_best - L_pick on RANK_SCALE per record, with L the level-bracket transform "
+    "(level_of_search_mean) of a POINTS producer's MEAN points per candidate (an MC-ranking proxy, "
+    "NOT E[U]) or the pv-search producer's expected signed level taken as recorded (#667); "
+    "rank_regret_points is the untransformed mean-points regret over the POINTS-unit records only")
 #: the k of the top-k ranking metrics.  ``cwv_shortlist`` keeps
 #: ``alternatives = 4`` net-ranked actions plus production's incumbent and
 #: hands that SET to the unchanged MC-LCB search, so the SHAPE the shortlist
@@ -832,10 +846,19 @@ CONSUMERS = {
 }
 
 
-def level_of_search_mean(mean: float, root_is_attacker: bool) -> float:
-    """The signed level of one search mean (``SEARCH_MEANS_SCALE``): the
-    mean's attacker points rounded to the integer bracket
-    ``signed_level_category`` maps, from the acting team's perspective."""
+def level_of_search_mean(mean: float, root_is_attacker: bool, units_code: int = 0) -> float:
+    """The signed level of one search mean on ``RANK_SCALE``.  A POINTS mean
+    (``units_code`` 0, ``SEARCH_MEANS_SCALE``) is the mean's attacker points
+    rounded to the integer bracket ``signed_level_category`` maps, from the
+    acting team's perspective.  A SIGNED-LEVEL mean (``units_code`` 1, the
+    pv-search producers' ``expected-signed-level-half-integer``) is already the
+    acting team's expected signed level and passes through unchanged (#667:
+    bracketing it as points collapsed every candidate to one level)."""
+    code = int(units_code)
+    if code == 1:
+        return float(mean)
+    if code != 0:
+        raise EvalError(f"unknown search-mean units code {units_code!r}")
     points = float(mean) if root_is_attacker else -float(mean)
     points = int(min(max(round(points), 0), 4_120))
     return category_signed_level(signed_level_category(points, bool(root_is_attacker)))
@@ -858,13 +881,14 @@ class CandidateSet:
     deal_key: np.ndarray          # [records] str
     role_attacker: np.ndarray     # [records] bool
     source_ref: np.ndarray        # [records] str
+    units_code: np.ndarray        # [records] uint8 (UNITS_CODE of the record's means, #667)
     meta: dict
     history_cards: np.ndarray | None = None
     history_meta: np.ndarray | None = None
     history_offsets: np.ndarray | None = None   # [n + 1]
 
     ARRAYS = ("public", "world", "perspective", "terminal", "terminal_level", "means",
-              "offsets", "deal_key", "role_attacker", "source_ref")
+              "offsets", "deal_key", "role_attacker", "source_ref", "units_code")
     HISTORY_ARRAYS = ("history_cards", "history_meta", "history_offsets")
 
     @property
@@ -880,12 +904,20 @@ class CandidateSet:
         return self.history_offsets is not None
 
     def means_level(self) -> np.ndarray:
-        """Every candidate's search mean on the level scale (``RANK_SCALE``)."""
+        """Every candidate's search mean on the level scale (``RANK_SCALE``),
+        bracketed by each RECORD's own units (#667)."""
         widths = np.diff(self.offsets)
         attacker = np.repeat(self.role_attacker.astype(bool), widths)
-        return np.asarray([level_of_search_mean(m, bool(a))
-                           for m, a in zip(self.means.tolist(), attacker.tolist())],
+        codes = np.repeat(self.units_code.astype(int), widths)
+        return np.asarray([level_of_search_mean(m, bool(a), int(c))
+                           for m, a, c in zip(self.means.tolist(), attacker.tolist(),
+                                              codes.tolist())],
                           dtype=np.float64)
+
+    def units_counts(self) -> dict:
+        """Records per units family, by name: what each rank metric literally averages over."""
+        codes = self.units_code.astype(int)
+        return {name: int((codes == code).sum()) for code, name in sorted(UNITS_NAME.items())}
 
     def batch_entry(self, lo: int, hi: int) -> dict:
         """Rows ``lo:hi`` as a ``candidate_tensors`` entry."""
@@ -952,6 +984,7 @@ class CandidateSet:
             deal_key=np.asarray([e["deal_key"] for e in entries], dtype=str),
             role_attacker=np.asarray([bool(e["role_attacker"]) for e in entries], dtype=bool),
             source_ref=np.asarray([e["source_ref"] for e in entries], dtype=str),
+            units_code=np.asarray([int(e["units_code"]) for e in entries], dtype=np.uint8),
             meta=dict(meta))
         if history:
             lengths = [np.diff(e["history_offsets"]) for e in entries]
@@ -998,6 +1031,7 @@ def _candidate_set_task(task: tuple) -> list[dict]:
         except ValueAfterstateError:
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["units_code"] = UNITS_CODE[value_units(record)]
         scored["source_ref"] = str(record["source_ref"])
         scored["deal_key"] = key
         entries.append(scored)
@@ -1136,8 +1170,10 @@ def _rank_ks(ks: Sequence[int] | None) -> tuple[int, ...]:
 
 
 def _no_rank(ks: Sequence[int] | None = None) -> dict:
-    out = {"rank_records": 0, "rank_candidates": 0, "rank_regret": None,
-           "rank_regret_points": None, "rank_top1": None, "rank_regret_max": None,
+    out = {"rank_records": 0, "rank_candidates": 0,
+           "rank_records_by_units": {name: 0 for _c, name in sorted(UNITS_NAME.items())},
+           "rank_regret": None, "rank_regret_points": None, "rank_regret_points_records": 0,
+           "rank_top1": None, "rank_regret_max": None,
            "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
            "rank_at_k_definition": RANK_AT_K_DEFINITION}
     ks = _rank_ks(ks)
@@ -1238,6 +1274,7 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet, *,
     mean_level = cands.means_level()
     regret = np.empty(n)
     regret_pts = np.empty(n)
+    is_points = cands.units_code.astype(int) == 0
     top1 = np.empty(n)
     spread = np.empty(n)
     regret_k = {k: np.empty(n) for k in ks}
@@ -1273,7 +1310,11 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet, *,
             recall_k[k][r] = hit
     out = {
         "rank_records": int(n), "rank_candidates": int(cands.candidates),
-        "rank_regret": float(regret.mean()), "rank_regret_points": float(regret_pts.mean()),
+        "rank_records_by_units": cands.units_counts(),
+        "rank_regret": float(regret.mean()),
+        # points regret is a points quantity: averaged over the POINTS-unit records only (#667)
+        "rank_regret_points": float(regret_pts[is_points].mean()) if is_points.any() else None,
+        "rank_regret_points_records": int(is_points.sum()),
         "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),
         "rank_scale": RANK_SCALE, "rank_regret_definition": RANK_REGRET_DEFINITION,
         "rank_at_k_definition": RANK_AT_K_DEFINITION, "rank_ks": list(ks),
@@ -1568,6 +1609,7 @@ def holdout_candidate_entries(rows: Sequence[Mapping[str, Any]], *, history: boo
             counts["action_failed"] += 1
             continue
         scored["means"] = np.asarray(values, dtype=np.float64)
+        scored["units_code"] = UNITS_CODE[value_units(record)]
         scored["source_ref"] = str(record["source_ref"])
         scored["deal_key"] = deal_key(list(record["deck"])) if isinstance(record.get("deck"), list) \
             else f"ref:{record['source_ref']}"

@@ -539,6 +539,12 @@
     "lo": 0.0864,
     "hi": 0.1153,
     "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   },
+   "head_vs_prod": {
+    "point": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "ref": "headduel-20260930: the production head against itself, 200 deals, the design's symmetry check (exactly 0 by construction)"
    }
   },
   {
@@ -650,6 +656,12 @@
     "lo": 0.2237,
     "hi": 0.2522,
     "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   },
+   "head_vs_prod": {
+    "point": 0.1738,
+    "lo": 0.16,
+    "hi": 0.1874,
+    "ref": "headduel-20260930 (paired duel vs the release-30 head 8ecd4fea on the same 8,000 mirrored deals, both heads argmax of the summed card log-odds, no search)"
    }
   },
   {
@@ -665,6 +677,12 @@
     "lo": 0.3016,
     "hi": 0.3296,
     "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   },
+   "head_vs_prod": {
+    "point": 0.2067,
+    "lo": 0.1932,
+    "hi": 0.2204,
+    "ref": "headduel-20260930 (paired duel vs the release-30 head 8ecd4fea on the same 8,000 mirrored deals, both heads argmax of the summed card log-odds, no search)"
    }
   }
  ],
@@ -809,5 +827,5 @@
   "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
  },
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
- "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals vs SmartBot (seed0 20000, the 09-18 ladder's harness); standard for every exported model from 2026-09-30, together with a paired duel against the production head on the same deals (column 'vs production head'; the first reads are running)."
+ "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read."
 }

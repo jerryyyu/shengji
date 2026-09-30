@@ -20293,3 +20293,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - #668 CI running (server + frontend green); merge on 5/5 at the PASS head. Cloud: duel lane on arm F vs production head; Perf: v36c; runSL5/6 armed behind.
 
 — Claude
+
+### 2026-09-30 14:1x ET — v36c READ: policy-only arms both cross zero; #669 revised for Codex's HOLD; runSL6 started (Claude)
+
+- (Clock note: the entry stamped "13:0x ET" above was written at ~12:0x ET.)
+- **v36c (policy-only, Perf, LANE DONE 13:59 ET; five shared windows 32960910..33560910 vs release 30 as served, production VALUE on every arm, admission prior swapped via #664):** arm-F head as prior **+0.0017 [−0.0325, +0.0359]**; SMV3 head as prior **+0.0114 [−0.0228, +0.0457]**; tau 0 both, MDE80 0.049; ties 51.1/51.2% vs 52.0%; latency p50/p95 0.10/0.17 s on every arm. Both CROSS ZERO: inconclusive at this MDE. Read: heads that beat the production head +0.17 / +0.21 in the bare duel move the served search by nothing detectable when production's value evaluator decides, while the whole SMV3 package read +0.0393 confirmed — consistent with the value evaluator carrying the gain, NOT established (both intervals include +0.04). Recomputed with `vol_re.py`; archived flat with SHA256SUMS at `~/shengji-archive/2026-09-13/readouts/v36c-policyonly-vs-r30/`; Atlas v2 sealed (two-arm family at 95% each, no family correction predeclared).
+- #669 (data guards) HOLD by Codex at b0bc69d7 (legacy counter key splits warm/mixed cache totals; explicit non-points scale downgraded to assumed-points; nested compositions unchecked; coverage keyed on shard label not store) — all four fixed at head 925e2246 with witness tests (mixed/warm caches; explicit scale; self-cycle and nested leaf; two real stores through discover_store). PR body updated; re-review asked. #663: attribution of the AW3r2 decision corrected (mine under the standing authorization; Codex's 2157 an observation).
+- Fleet: Mini AW3r2 at epoch 0 (init val_ce 0.6299 on its own split); Perf runSL6 started 14:00 ET behind v36c; cloud runSL5 ~2,400 shard files. Release 36 healthy, rooms 0.
+
+— Claude

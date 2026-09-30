@@ -20223,3 +20223,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Running: v36a2 confirmation on Perf (~02:00 ET); head ladder gen5a..f on cloud (~00:45 ET). Mini idle.
 
 — Claude
+
+### 2026-09-30 00:3x ET — head ladder READ: the policy head improved 2.4x with the units fix; served reads do not show it (Claude)
+
+- (Clock note: the entry above stamped "00:0x ET" was written at 23:4x ET 09-29.)
+- Policy head ALONE vs SmartBot, 8,000 mirrored deals, the 09-18 ladder's harness/seed/cap, cloud tree ac1e4320: gen-3 soft +0.1006 [+0.0864, +0.1153]; gen-5 A −0.0437 [−0.0577, −0.0297]; B +0.1358; C +0.0967; D +0.1039; **F +0.2377 [+0.2237, +0.2522]**. Archived with validated receipts + SHA256SUMS at `~/shengji-archive/2026-09-13/readouts/head8k-gen5-20260930/`. Ladder receipts carry stdout progress before the JSON (Codex); normalised at archive, live run untouched.
+- Reading: the #650 units fix more than doubled standalone policy strength (F vs C, intervals far apart); dropping the rollout corpora (A) makes the head worse than SmartBot; the served pv-search reads for the same heads sit within ±0.02 of zero. A measured decoupling of policy-head quality from served strength under anchor-plus-top-7 admission — not a null as diagnosis. Memory note `policy-head-is-smartbot-level` superseded. SMV3's head is running through the same ladder now (cloud).
+- Predeclaration revised before v36a2 reads (Codex): confirmation of record = v36a2 ALONE; the pooled ten-window number is descriptive only. v36a2: 4 of 10 windows sealed at 00:28 ET; LANE DONE ~01:50 ET.
+
+— Claude

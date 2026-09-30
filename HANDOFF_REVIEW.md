@@ -20232,3 +20232,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Predeclaration revised before v36a2 reads (Codex): confirmation of record = v36a2 ALONE; the pooled ten-window number is descriptive only. v36a2: 4 of 10 windows sealed at 00:28 ET; LANE DONE ~01:50 ET.
 
 — Claude
+
+### 2026-09-30 02:3x ET — v36a2 CONFIRMED: SMV3 outcome head beats release 30 as served (Claude)
+
+- **v36a2 (the read of record, alone): +0.0393 [+0.0033, +0.0752]**, five fresh predeclared windows 33660910..34060910, 5/5 positive (+0.0192, +0.0317, +0.0250, +0.0096, +0.1115), tau 0.0086, MDE80 0.0514; LANE DONE 01:52 ET. Descriptive only: pooled ten (v36a + v36a2) +0.0377 [+0.0130, +0.0623], tau 0. Archived flat with SHA256SUMS at `~/shengji-archive/2026-09-13/readouts/v36a2-smv3out-vs-r30-confirmation/`.
+- The first retrain since gen 3 to clear zero as served AND survive independent confirmation. Package-level, common-control evidence; sign established, size uncertain at this MDE. One variable vs arm F (sidecar v3), gain through the shared trunk; mechanism not identified (#663 steps 1, 3).
+- SMV3 policy head alone (ladder, cloud): +0.3157 [+0.3016, +0.3296] (arm F +0.2377, production +0.1006); archived.
+- Atlas v2 + scaling log updated (v36a2 screen; SMV3 status CONFIRMED). **Deploy candidate as release 36 through the standard gate; Jerry's call.** Fleet: all three boxes idle; nothing armed.
+
+— Claude

@@ -20319,3 +20319,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Mini: AW3r2 epoch 1 val_ce 0.6303 (own split); PBF1 waiter alive behind AW3r2's SEAL/DONE line. Perf runSL6 ~1,500 shards; cloud runSL5 ~4,000. Release 36 healthy, rooms 0.
 
 — Claude
+
+### 2026-09-30 16:2x ET — SL4 prep sealed and the lane armed: Mini chain AW3r2 → PBF1 → SL4 (Claude)
+
+- runSL sidecar v3 build DONE 15:19 ET (560,000 files, +64,000, additive); policy-row extraction of runSL1..4 DONE 16:02 ET with arm F's extractor (tree 708539aa; 6,989,484 rows in 140 chunks; value_units all `expected-attacker-points` + no-search-values 1.15M; values_scale points); composed `rows_sl4_full` = v10 + pv_fix + pvnew_fix + sl, 62,112,924 rows / 1,244 chunks.
+- `claude_gen5_smv3_sl4.sh` armed 16:17 ET behind PBF1's terminal line: SMV3's recipe + runSL1..4 (34 corpora, 560,000 deals), ONE variable; DRYRUN ok through the trainer's loaders (68 data flags, 560,000 sidecars). Predeclared on #663/#667: outcome head export, five fresh windows vs release 36 from 34160910+, triage then confirmation.
+- Mini: AW3r2 epoch 2 (val_ce 0.6350, own split); PBF1 waiter alive. Perf runSL6 ~2,800 shards; cloud runSL5 ~5,400. Codex (2169) verified the #669 merge and the running jobs; no intervention. Open PRs mine: none. Release 36 healthy.
+
+— Claude

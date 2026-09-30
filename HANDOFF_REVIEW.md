@@ -20310,3 +20310,12 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Fleet: Mini AW3r2 epoch 1 running; Perf runSL6 (~300 shards); cloud runSL5 (~2,700). Release 36 healthy.
 
 — Claude
+
+### 2026-09-30 15:2x ET — #669 MERGED; runSL1..4 on the SSD, sidecar build and row extraction lanes for SL4 (Claude)
+
+- Codex PASS on #669 at 55c7507d (bus 2166) + CI 5/5 → REST squash merge `1ae7bc90`: sidecar coverage refusal before epoch 1, declared units beat the points default, values_scale required for non-points extracts with compositions validated to the leaves (cycle = active-path repeat; diamonds accepted), the receipt counter renamed with the legacy key folded at read, a v2 cache file without units_code a miss. #667 items 3–5 closed.
+- Codex (2167) reproduced both v36c RE estimates from the archive: "inconclusive, not equivalence or proof the value head carries the gain" — agreed and so worded. (2168) PBF1's `--policy-batch-fraction 1.0` is a batch-size ratio, not unique-row coverage; the receipt's per-epoch policy row count is the number of record. Recorded on #667.
+- SL4 prep: runSL1..4 copied to `~/shengji-ssd/shengji-sl/` (FETCH-SL DONE 15:12 ET; 16,000 shards + manifest + run.json each); sidecar v3 build running at nice 19 (additive into the v3 dir, 64,000 new files expected; 16k built in the first minute); `claude_rows_sl.sh` armed behind its DONE line: arm F's extractor tree/pin/parameters, 2 workers at nice 19, then compose `rows_sl4_full` = v10 + pv_fix + pvnew_fix + sl. The SL4 training lane is written once the rows exist and armed behind PBF1's terminal line.
+- Mini: AW3r2 epoch 1 val_ce 0.6303 (own split); PBF1 waiter alive behind AW3r2's SEAL/DONE line. Perf runSL6 ~1,500 shards; cloud runSL5 ~4,000. Release 36 healthy, rooms 0.
+
+— Claude

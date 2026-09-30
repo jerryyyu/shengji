@@ -62,7 +62,18 @@ def check_registry(reg):
     for m in reg["models"]:
         if m.get("val_ce") is not None and not (0.3 < m["val_ce"] < 1.0):
             errs.append(f"{m['name']}: val_ce {m['val_ce']} out of range")
+        for key in ("head_alone", "head_vs_prod"):
+            h = m.get(key)
+            if h is None:
+                continue
+            if not all(k in h for k in ("point", "lo", "hi", "ref")) or not (h["lo"] <= h["point"] <= h["hi"]):
+                errs.append(f"{m['name']}: {key} must carry point, lo, hi (lo <= point <= hi) and a ref")
     return errs
+
+
+def production_release(reg):
+    """The one production baseline's release number (checked above)."""
+    return [b for b in reg["baseline"] if b["status"] == "production"][0]["release"]
 
 esc = lambda s: html.escape(str(s if s is not None else ""))
 def iv(p, lo, hi):
@@ -82,7 +93,11 @@ def _chart_rows(items, kind):
             tag = s["id"] if r["arm"] == "-" else f"{s['id']} · {r['arm']}"
             out.append((tag, r["label"] or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
     return out
-rows = _chart_rows(R["screens"], "main") + _chart_rows(R["context_screens"], "ctx")
+PROD = production_release(R)
+SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
+SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
+EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
+rows = _chart_rows(SCREENS_NOW, "main") + _chart_rows(SCREENS_EARLIER, "prev") + _chart_rows(R["context_screens"], "ctx")
 W, LEFT, RIGHT, ROWH, TOP = 980, 330, 150, 44, 46
 H = TOP + ROWH * len(rows) + 40
 lo_all = min([r[4] for r in rows if r[4] is not None] + [-0.05]); hi_all = max([r[5] for r in rows if r[5] is not None] + [0.10])
@@ -105,6 +120,7 @@ for i, (rid, cand, comp, p, lo, hi, st, kind, conf, role) in enumerate(rows):
         continue
     cls = "good" if lo > 0 else ("bad" if hi < 0 else "null")
     if kind == "ctx": cls += " ctx"
+    if kind == "prev": cls += " prev"
     svg.append(f'<line x1="{X(lo):.1f}" y1="{y}" x2="{X(hi):.1f}" y2="{y}" class="ci {cls}"/>')
     svg.append(f'<circle cx="{X(p):.1f}" cy="{y}" r="5" class="pt {cls}"/>')
     svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab num">{esc(iv(p, lo, hi))} ({conf*100:g}%)</text>')
@@ -128,11 +144,15 @@ def screens_table(items, ctx=False):
                    f'<td>{esc(s["note"])}{(" · " + esc(s["ref"])) if s.get("ref") else ""}</td></tr>')
     out.append("</tbody></table></div>")
     return "\n".join(out)
+def _head(h):
+    if not h: return "—"
+    return f'<span title="{esc(h["ref"])}">{esc(iv(h["point"], h["lo"], h["hi"]))}</span>'
 def models_table():
-    out = ['<div class="tablewrap"><table><thead><tr><th>model</th><th>checkpoint</th><th>date</th><th>recipe</th><th class="num">val_ce</th><th class="num">rank regret</th><th>status</th></tr></thead><tbody>']
+    out = ['<div class="tablewrap"><table><thead><tr><th>model</th><th>checkpoint</th><th>date</th><th>recipe</th><th class="num">val_ce</th><th class="num">rank regret</th><th class="num">policy head alone vs SmartBot</th><th class="num">vs production head</th><th>status</th></tr></thead><tbody>']
     for m in R["models"]:
         out.append(f'<tr><td>{esc(m["name"])}</td><td class="mono">{esc(m["ck"]) or "—"}</td><td class="mono">{esc(m["date"]) or "—"}</td><td>{esc(m["recipe"])}</td>'
-                   f'<td class="num">{("%.4f" % m["val_ce"]) if m["val_ce"] is not None else "—"}</td><td class="num">{("%.4f" % m["regret"]) if m["regret"] is not None else "—"}</td><td>{esc(m["status"])}</td></tr>')
+                   f'<td class="num">{("%.4f" % m["val_ce"]) if m["val_ce"] is not None else "—"}</td><td class="num">{("%.4f" % m["regret"]) if m["regret"] is not None else "—"}</td>'
+                   f'<td class="num">{_head(m.get("head_alone"))}</td><td class="num">{_head(m.get("head_vs_prod"))}</td><td>{esc(m["status"])}</td></tr>')
     out.append("</tbody></table></div>"); return "\n".join(out)
 def baseline_cards():
     out = []
@@ -144,6 +164,15 @@ def baseline_cards():
                    f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></article>')
     return "\n".join(out)
 models_note = ('<p class="lede small">' + esc(R["models_note"]) + "</p>") if R.get("models_note") else ""
+head_note = ('<p class="sub small">' + esc(R["head_ladder_note"]) + "</p>") if R.get("head_ladder_note") else ""
+def earlier_sections():
+    out = []
+    for rel in EARLIER_RELEASES:
+        items = [s for s in SCREENS_EARLIER if s["vs"] == rel]
+        out.append(f'<h4>Screens against release {rel} · {len(items)} reads, a closed comparator</h4>' + screens_table(items))
+    return "\n".join(out)
+now_block = screens_table(SCREENS_NOW) if SCREENS_NOW else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>'
+
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
                     f'<td class="mono">{esc(d.get("clusters", ""))}</td><td>{esc(d["status"])}</td></tr>'
@@ -175,33 +204,36 @@ table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{text-align:le
 .figure{{background:var(--card);border:1px solid var(--rule);padding:12px}}
 svg .zero{{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}} svg .tick{{stroke:var(--rule)}} svg .lab{{fill:var(--ink);font:12px "IBM Plex Sans",sans-serif}} svg .sub{{fill:var(--sub);font:11px "IBM Plex Sans",sans-serif}} svg .name{{font-weight:500}} svg .name.ctx{{fill:var(--sub)}}
 svg .ci{{stroke-width:3}} svg .ci.good{{stroke:var(--good)}} svg .ci.null{{stroke:var(--null)}} svg .ci.bad{{stroke:var(--bad)}} svg .ci.ctx{{opacity:.55}}
+svg .ci.prev{{opacity:.8}} svg .pt.prev{{opacity:.8}}
 svg .pt.good{{fill:var(--good)}} svg .pt.null{{fill:var(--null)}} svg .pt.bad{{fill:var(--bad)}} svg .pt.ctx{{opacity:.55}} svg .pt.pending{{fill:none;stroke:var(--wait);stroke-width:1.5}}
 .foot{{margin-top:40px;color:var(--sub);font-size:13px;border-top:1px solid var(--rule);padding-top:12px}}
 a{{color:var(--accent)}}
 </style>
 <main>
 <h1>Shengji Atlas v2</h1>
-<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> (29, then 30). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
+<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> (29, then 30, now <b>{PROD}</b>). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
 
 <h2>Production baseline</h2>
 <div class="cards">{baseline_cards()}</div>
 
-<h2>Screens against the current release</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. Context rows (lighter) are reads against release 28, kept so the baseline's own margin stays visible next to the new contrasts.</p>
+<h2>Screens against release {PROD} (the current production)</h2>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart lists the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
-{screens_table(R["screens"])}
+{now_block}
+{earlier_sections()}
 <h4>Context · how the baseline was established (vs release 28)</h4>
 {screens_table(R["context_screens"], ctx=True)}
 
 <h2>Models of the era</h2>
 <p class="sub">val_ce is calibration; the search consumes ranking, so rank regret and the screens above are what decide.</p>
 {models_note}
+{head_note}
 {models_table()}
 
 <h2>Data generation on the search</h2>
 <div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>clusters</th><th>status</th></tr></thead><tbody>{data_rows}</tbody></table></div>
 
-<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(R["screens"])} screens vs the current release, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
+<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(SCREENS_NOW)} screens vs release {PROD}, {len(SCREENS_EARLIER)} vs the era's earlier releases, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
 </main>
 '''
 def _stable(p):
@@ -218,7 +250,7 @@ if __name__ == "__main__":
     if "--check" in sys.argv:
         if not out.exists() or _stable(out.read_text()) != _stable(page):
             print("OUT OF DATE: atlas_v2.html differs from registry.json; run build_v2.py"); sys.exit(1)
-        print(f"CONSISTENT: {len(R['screens'])} screens vs the current release, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
+        print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {PROD}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
     else:
         out.write_text(page)
         print("built", out, len(page), "bytes;", len(rows), "chart rows")

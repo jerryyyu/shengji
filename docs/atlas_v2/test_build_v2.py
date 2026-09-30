@@ -81,3 +81,24 @@ def test_every_screen_reaches_the_chart_and_the_table():
     for s in reg["screens"] + reg["context_screens"]:
         assert page.count(s["id"]) >= 2, s["id"]          # chart label + table cell
         assert s["instrument_kind"] in page
+
+
+def test_the_page_splits_screens_by_comparator_release_and_carries_the_head_ladder():
+    """After release 36 the page leads with the reads against the CURRENT production release and keeps
+    the earlier comparators as closed sections; every model row carries its policy-head-alone read."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
+    prod = mod.production_release(reg)
+    page = (HERE / "atlas_v2.html").read_text()
+    assert f"Screens against release {prod} (the current production)" in page
+    for rel in sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}):
+        assert f"Screens against release {rel}" in page
+    assert "policy head alone vs SmartBot" in page
+    with_ladder = [m for m in reg["models"] if m.get("head_alone")]
+    assert with_ladder, "no model carries a head_alone read"
+    for m in with_ladder:
+        assert mod.iv(m["head_alone"]["point"], m["head_alone"]["lo"], m["head_alone"]["hi"]) in page
+    bad = copy.deepcopy(reg); bad["models"][-1]["head_alone"] = {"point": 0.3, "lo": 0.31, "hi": 0.32, "ref": "x"}
+    assert any("head_alone" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg)
+    for b in bad["baseline"]: b["status"] = "superseded"
+    assert any("exactly one production baseline" in e for e in mod.check_registry(bad))

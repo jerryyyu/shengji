@@ -68,8 +68,8 @@
   },
   {
    "release": 31,
-   "status": "production",
-   "since": "2026-09-25 12:51 ET",
+   "status": "superseded",
+   "since": "2026-09-25 12:51 ET \u2192 2026-09-30 11:53 ET",
    "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
    "head": "8ecd4fea",
    "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
@@ -101,7 +101,53 @@
     "image deployment-01M3CQK3KMH55NDZRED6PDJ6XW (sha256:cfef8361237b\u2026), main 8a6e55f1 (#638); fly.toml unchanged; rollback = the release-30 image, a pure CODE rollback since every SHENGJI_* key matches",
     "NO strength claim and no new screen: the served policy is byte-identical to releases 29 and 30, so release 30's evidence carries over unaltered rather than being restated here",
     "'every screen compares against release 30' is unchanged as a rule \u2014 the comparator is the same served bot",
-    "the load-bearing fix was not the option: Game.start_round fell back to RANKS[0] for round 1 (no banker yet), so setting team levels alone would have DEALT round 1 at rank 2 while the HUD and round_start log advertised the chosen level; the fallback now follows level_idx and is bit-identical at the default"
+    "the load-bearing fix was not the option: Game.start_round fell back to RANKS[0] for round 1 (no banker yet), so setting team levels alone would have DEALT round 1 at rank 2 while the HUD and round_start log advertised the chosen level; the fallback now follows level_idx and is bit-identical at the default",
+    "releases 32\u201335 (the Ace rule, the room-screen level, two phone passes) kept this package byte-identical; superseded by release 36, the first MODEL change since release 30"
+   ]
+  },
+  {
+   "release": 36,
+   "status": "production",
+   "since": "2026-09-30 11:53 ET",
+   "bot": "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
+   "head": "3e89e86f",
+   "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), the gen-5 SMV3 OUTCOME head; prior js-m1-0d17fd03.npz unchanged",
+   "recipe": "release 30's search, bury, budgets and prior (W64/K8, hybrid bury, 3 s / 2 s) on the gen-5 SMV3 checkpoint: arm F's recipe with ONE change, the search-mean sidecar v3 (#658), so the auxiliary search-mean head trained on 48.85M rows instead of 24.2M and moved the shared trunk. The value function is still the game-outcome head; the search-mean head served as the value function read negative (v36b) and is not shipped. Jerry 2026-09-30: \"Let's deploy\".",
+   "evidence": [
+    {
+     "what": "v36a: the SMV3 outcome head as served vs release 30 as served, each vs the common MC-LCB control, five 520-cluster windows (Perf, seeds 31960910..32360910), 5/5 positive",
+     "point": 0.0361,
+     "lo": 0.0015,
+     "hi": 0.0707,
+     "ref": "v36a"
+    },
+    {
+     "what": "v36a2: the PREDECLARED fresh confirmation, five new windows (33660910..34060910), the read of record alone, 5/5 positive",
+     "point": 0.0393,
+     "lo": 0.0033,
+     "hi": 0.0752,
+     "ref": "v36a2"
+    },
+    {
+     "what": "serving smoke on the MERGED tree 30318531 against the SHA-verified volume packages (491ee4bf\u2026 and 0d17fd03\u2026), 40 server turns through _paced_bot_step/_commit_bot_turn (bury 0.123 s, plays 0.02\u20130.08 s), receipt passed: true",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "smoke-release36.json"
+    },
+    {
+     "what": "/healthz after deploy: bot = the name above, pv_search.sha256 491ee4bf\u2026, worlds 64, candidates 8, budgets 3 / 2, prior 0d17fd03\u2026, rooms 0; live room-level acceptance without starting a game PASS",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "11:54 ET"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M3SG9NVC1AC3PNPEH5Y34N0D (sha256:064d73f54f77\u2026), main 30318531 (#666); Codex PASS at the exact head 373361a7; CI 5/5 with the #654 package gate repinned to the serving-packages asset smv3out-491ee4bf.npz",
+    "package-level common-control evidence on two independent five-window sets, not a paired duel: the sign is established, the size is uncertain at MDE80 \u2248 0.05 (somewhere in +0.003..+0.075 of a level per round)",
+    "every screen from here compares against release 36; v36c (predeclared against release 30 before this deploy) reads out as declared",
+    "rollback: the three release-30 lines kept as a comment in fly.toml (SHENGJI_BOT, SHENGJI_PV_CKPT, SHENGJI_PV_SHA256; the package stays on the volume) + fly deploy --ha=false, or the release-35 image deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN"
    ]
   }
  ],
@@ -407,6 +453,42 @@
    "lo": 0.0033,
    "hi": 0.0752,
    "note": "CONFIRMATION READ OF RECORD (v36a2 alone; predeclared on #663 before v36a was acted on, and revised on Codex's point that a pooled interval would inherit v36a's positive-screen selection). Lane DONE 01:52 ET 09-30; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36a2-smv3out-vs-r30-confirmation with SHA256SUMS. CLEARS ZERO on five NEW windows: +0.0192, +0.0317, +0.0250, +0.0096, +0.1115 (5/5 positive); tau 0.0086, Q 4.18/4df, I2 4%, RE SE 0.01836, MDE80 +0.0514; ties 49.1% candidate vs 50.4% control; latency p50/p95 0.10/0.16 on both arms. Descriptive only: pooled ten windows v36a + v36a2 +0.0377 [+0.0130, +0.0623], tau 0, all ten positive. WHAT THIS ESTABLISHES: the first retrain since gen 3 to clear zero as served AND survive an independent predeclared confirmation, at ~0.03-0.04 of a level per round against the common control. Package-level, common-control evidence, not a paired duel; the sign is established, the size is uncertain at this MDE. The one variable vs arm F is the search-mean auxiliary head's data (sidecar v3), so the gain came through the shared trunk; the mechanism is not identified (#663 steps 1 and 3). Deploy candidate for the standard pre-deploy gate as release 36; Jerry's call."
+  },
+  {
+   "id": "v36c",
+   "date": "2026-09-30",
+   "status": "running",
+   "box": "Perf",
+   "candidate": "POLICY-ONLY arms: production's value package (soft-8ecd4fea) under the served W64/K8 hybrid-bury recipe with a SEPARATE hash-pinned prior package as the admission head (#664): the gen-5 arm F head (101017ee) and the SMV3 head (491ee4bf)",
+   "comparator": "release 30 as served (own head as prior)",
+   "vs": 30,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows shared by all three arms, 300 s cap, common MC-LCB control per window; DL random effects per contrast",
+   "seeds": "32960910, 33060910, 33160910, 33460910, 33560910",
+   "family": "two contrasts, each candidate arm minus production on the same windows, read separately at 95% (no family correction was predeclared; say so when reading); five-window triage, not confirmation",
+   "results": [
+    {
+     "arm": "armF-prior",
+     "label": "arm F head as prior, production value",
+     "role": "primary",
+     "confidence": 0.95,
+     "point": null,
+     "lo": null,
+     "hi": null
+    },
+    {
+     "arm": "smv3-prior",
+     "label": "SMV3 head as prior, production value",
+     "role": "primary",
+     "confidence": 0.95,
+     "point": null,
+     "lo": null,
+     "hi": null
+    }
+   ],
+   "note": "#663 step 2 re-scoped after #664; armed 10:19 ET 09-30 on tree claude-main-16 (4dce8a2b), LANE DONE ~14:00 ET. Codex: the adopted plan named a direct duel vs pinned production W64 and step 1 first; this common-control arming lacked specific authorization (recorded on #663). Does a better admission head move the served search when the value evaluator is fixed?",
+   "eta": "~14:00 ET 09-30"
   }
  ],
  "context_screens": [
@@ -451,7 +533,13 @@
    "recipe": "the production head: gen-3-warm's recipe with the search's values as the policy target (T=1, w=1) on the smaller 256k corpus \u2014 gen-4's runs are its successors on 336k",
    "val_ce": 0.5976,
    "regret": null,
-   "status": "production"
+   "status": "production",
+   "head_alone": {
+    "point": 0.1006,
+    "lo": 0.0864,
+    "hi": 0.1153,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-4 run 1",
@@ -496,7 +584,13 @@
    "recipe": "the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + PV only, NO MC-LCB: 16 stores, 256,000 deals, soft targets, same trunk and objective",
    "val_ce": 0.6377,
    "regret": null,
-   "status": "sealed 19:02 ET, early stop at 12 of 20 epochs, best epoch 9, wall 6.66 h; held-out test cross-entropy 0.6369 * served vs release 30 (v35a): -0.0606 [-0.0962, -0.0250], WORSE, clears zero"
+   "status": "sealed 19:02 ET, early stop at 12 of 20 epochs, best epoch 9, wall 6.66 h; held-out test cross-entropy 0.6369 * served vs release 30 (v35a): -0.0606 [-0.0962, -0.0250], WORSE, clears zero",
+   "head_alone": {
+    "point": -0.0437,
+    "lo": -0.0577,
+    "hi": -0.0297,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-5 arm B",
@@ -505,7 +599,13 @@
    "recipe": "arm A with ONE change -- the MC-LCB family is BACK in the corpus: the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + PV + MC-LCB, 26 corpora, 432,000 deals, 48,175,828 policy rows, soft targets T=1.0 w=1.0, same trunk and objective as arm A",
    "val_ce": 0.6124,
    "regret": null,
-   "status": "sealed 09:47 ET 09-24, early stop at 16 of 20 epochs, best epoch 13, wall 14.7 h * val_ce is NOT comparable to arm A's or to gen 4: validation splits are drawn from the TRAINING corpora and the corpora differ. Comparable surfaces are the four fixed holdouts and the served screen. Holdouts vs arm A: roomlog regret 0.0686 (A 0.0726), luna 0.0781 (0.0858), highn 0.1041 (0.1063), pt1 0.0409 (0.0312); rank top-1 higher on all four. Served vs release 30 (v35b): +0.0116 [-0.0242, +0.0475], crosses zero, inconclusive"
+   "status": "sealed 09:47 ET 09-24, early stop at 16 of 20 epochs, best epoch 13, wall 14.7 h * val_ce is NOT comparable to arm A's or to gen 4: validation splits are drawn from the TRAINING corpora and the corpora differ. Comparable surfaces are the four fixed holdouts and the served screen. Holdouts vs arm A: roomlog regret 0.0686 (A 0.0726), luna 0.0781 (0.0858), highn 0.1041 (0.1063), pt1 0.0409 (0.0312); rank top-1 higher on all four. Served vs release 30 (v35b): +0.0116 [-0.0242, +0.0475], crosses zero, inconclusive",
+   "head_alone": {
+    "point": 0.1358,
+    "lo": 0.1215,
+    "hi": 0.1499,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-5 arm C",
@@ -514,7 +614,13 @@
    "recipe": "EVERY DEAL WE OWN: the PRODUCTION head (gen-3 soft, 8ecd4fea) retrained on SHORTLIST + ALL TEN PV STORES + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, soft targets T=1.0 w=1.0, same trunk and objective as arms A and B. Jerry 09-24 asked for MC-LCB to be included, so this is the biggest-corpus model rather than the matched-size diagnostic that would have separated volume from composition",
    "val_ce": 0.6202,
    "regret": null,
-   "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * SCREENED (lane v35c, 11:26 ET 09-25): -0.0031 [-0.0385, +0.0322] vs release 30 as served, CROSSES ZERO and very slightly negative -- every deal we own bought nothing served. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654"
+   "status": "sealed 22:35:58 ET 09-24, early stop at 11 of 20 epochs, best epoch 8, wall 46,083 s (9.68 h of epochs) * SCREENED (lane v35c, 11:26 ET 09-25): -0.0031 [-0.0385, +0.0322] vs release 30 as served, CROSSES ZERO and very slightly negative -- every deal we own bought nothing served. val_ce is NOT comparable to arm A's 0.6377 or arm B's 0.6124 -- validation splits come from the training corpora and the corpora differ (#538 reading rule). On the four fixed holdouts, which ARE comparable, it is MIXED against arm B rather than better: roomlog regret 0.0682 (B 0.0686), pt1 0.0385 (0.0409), but luna 0.0822 (0.0781) and highn 0.1051 (0.1041); top-1 0.471 / 0.460 / 0.385 / 0.654",
+   "head_alone": {
+    "point": 0.0967,
+    "lo": 0.0824,
+    "hi": 0.1114,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-5 arm D",
@@ -523,7 +629,13 @@
    "recipe": "THE WARM START, NOT THE CORPUS: arm C's corpus EXACTLY -- shortlist + all ten PV stores + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, same trunk, objective, knobs and seed -- with ONE variable changed, the --init checkpoint. Arm C starts from the production head 8ecd4fea; arm D starts from GEN4-SOFT-336k (423836c7), gen-4 run 4, the strongest gen-4 head by the fixed holdouts.",
    "val_ce": 0.61882,
    "regret": null,
-   "status": "sealed 02:39:31 ET 09-26, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 46,246 s -- within 3 minutes of arm C's 46,083 s. * SCREENED (lane v35d, 12:50 ET 09-26): -0.0183 [-0.0530, +0.0164] vs release 30 as served, CROSSES ZERO, point negative, four of five windows negative, MDE80 0.0496 -- the better warm start bought nothing served, and the two-of-four holdout edge did not predict it. FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm D vs arm C: roomlog 0.06537 vs 0.06815, pt1 0.02885 vs 0.03846, luna 0.08346 vs 0.08219, highn 0.10518 vs 0.10509. Lower on TWO of four, and the two improvements are the larger ones (pt1 by about a quarter in relative terms). NO SUPERIORITY CLAIM: point estimates with no interval, two-of-four is not a difference test, and the highn gap of 0.00009 is minuscule but REAL -- it is not being called a tie. val_ce 0.61882 is comparable neither to gen 4 nor to arm A (0.6377), arm B (0.6124) or arm C (0.6202), because each arm's validation split is drawn from its own training corpus; the comparable surfaces are these four holdouts and a served screen. CONFOUND TO CARRY AT READOUT: this isolates the WARM START only and is NOT a clean transfer experiment, because gen-4 run 4 was itself trained on shortlist corpora that are also in arm D's mix, so arm D makes a second pass over data its initialisation already saw. That does not confound the question actually asked -- does starting from our best gen-4 head beat starting from production on the same corpus -- because arm C differs in nothing else. Whether it earns a served read is open; the offline metric failed to predict the served read for every gen-4 head, and arm C was the first time the two agreed."
+   "status": "sealed 02:39:31 ET 09-26, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 46,246 s -- within 3 minutes of arm C's 46,083 s. * SCREENED (lane v35d, 12:50 ET 09-26): -0.0183 [-0.0530, +0.0164] vs release 30 as served, CROSSES ZERO, point negative, four of five windows negative, MDE80 0.0496 -- the better warm start bought nothing served, and the two-of-four holdout edge did not predict it. FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm D vs arm C: roomlog 0.06537 vs 0.06815, pt1 0.02885 vs 0.03846, luna 0.08346 vs 0.08219, highn 0.10518 vs 0.10509. Lower on TWO of four, and the two improvements are the larger ones (pt1 by about a quarter in relative terms). NO SUPERIORITY CLAIM: point estimates with no interval, two-of-four is not a difference test, and the highn gap of 0.00009 is minuscule but REAL -- it is not being called a tie. val_ce 0.61882 is comparable neither to gen 4 nor to arm A (0.6377), arm B (0.6124) or arm C (0.6202), because each arm's validation split is drawn from its own training corpus; the comparable surfaces are these four holdouts and a served screen. CONFOUND TO CARRY AT READOUT: this isolates the WARM START only and is NOT a clean transfer experiment, because gen-4 run 4 was itself trained on shortlist corpora that are also in arm D's mix, so arm D makes a second pass over data its initialisation already saw. That does not confound the question actually asked -- does starting from our best gen-4 head beat starting from production on the same corpus -- because arm C differs in nothing else. Whether it earns a served read is open; the offline metric failed to predict the served read for every gen-4 head, and arm C was the first time the two agreed.",
+   "head_alone": {
+    "point": 0.1039,
+    "lo": 0.0898,
+    "hi": 0.118,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-5 arm F",
@@ -532,7 +644,13 @@
    "recipe": "THE POLICY TARGETS, NOT THE CORPUS: arm C's corpus EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows), the production-head warm start 8ecd4fea, seed 1, tree c183f9dd, with ONE variable changed -- the two pv-search row families re-extracted with the #650 units fix, so the soft policy target on PV rows is peaked (entropy 0.674 / top-1 0.534) instead of uniform (0.999 / 0.17). Jerry 09-27: 'yea can we re extract it to try the alternative and retrain'.",
    "val_ce": 0.6215,
    "regret": null,
-   "status": "sealed 11:22 ET 09-27, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 44,869 s (arm C: 46,083 s / 11 / 8). FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm F vs arm C: roomlog 0.06825 vs 0.06815, pt1 0.04087 vs 0.03846, luna 0.08677 vs 0.08219, highn 0.10319 vs 0.10509 -- three slightly worse, one better; point estimates, no interval. val miss_at_64 0.04579 vs 0.04788 (same value corpus, so comparable). * SCREENED (lane v35f, 20:24 ET 09-27): +0.0098 [-0.0250, +0.0445] vs release 30 as served, CROSSES ZERO, on top of arm C's -0.0031 -- fixing the targets moved neither the holdouts nor the served read. val_ce 0.6215 is comparable to arm C's 0.6202 only loosely (same corpus, own split)."
+   "status": "sealed 11:22 ET 09-27, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 44,869 s (arm C: 46,083 s / 11 / 8). FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm F vs arm C: roomlog 0.06825 vs 0.06815, pt1 0.04087 vs 0.03846, luna 0.08677 vs 0.08219, highn 0.10319 vs 0.10509 -- three slightly worse, one better; point estimates, no interval. val miss_at_64 0.04579 vs 0.04788 (same value corpus, so comparable). * SCREENED (lane v35f, 20:24 ET 09-27): +0.0098 [-0.0250, +0.0445] vs release 30 as served, CROSSES ZERO, on top of arm C's -0.0031 -- fixing the targets moved neither the holdouts nor the served read. val_ce 0.6215 is comparable to arm C's 0.6202 only loosely (same corpus, own split).",
+   "head_alone": {
+    "point": 0.2377,
+    "lo": 0.2237,
+    "hi": 0.2522,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   },
   {
    "name": "gen-5 SMV3 (search-mean sidecar v3)",
@@ -541,7 +659,13 @@
    "recipe": "THE SEARCH-MEAN HEAD'S DATA, NOT THE CORPUS: arm F's recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, production-head warm start 8ecd4fea, seed 1, units-fixed policy targets) with ONE variable changed -- sidecar v3 (#658), so the search-mean head trains on 48.85M rows (17.35M of them the 16 pv-search stores' signed-level means, taken as the two-point target directly, no ramp) instead of 24.2M. Jerry 09-28: 'retrain with search mean sidecar' -- contain, not replace; the export decides which head is served. Tree f2345ecb (#662 applied the #634 round allowance to the trainer loader; the first attempt died on it after a 3-hour cache rebuild).",
    "val_ce": 0.6205,
    "regret": null,
-   "status": "sealed 20:36 ET 09-29, rc=0, early stop at 16 of 20 epochs, best epoch 13, wall=67596s (arm F: 44,869 s / 11 / 8). Outcome head val rank_regret 0.0569; search-mean head val rank_regret 0.0590 on the same candidate set. FOUR FIXED HOLDOUTS (rank_regret, outcome head), SMV3 vs arm F: roomlog 0.0655 vs 0.0683, pt1 0.0337 vs 0.0409, luna 0.0855 vs 0.0868, highn 0.1054 vs 0.1032 -- three slightly better, one worse; point estimates, no interval. TWO EXPORTS from the one checkpoint: smv3out-491ee4bf.npz (outcome head) and smv3sm-d05b8bc5.npz (search-mean head). * SCREENED as served vs release 30: OUTCOME head (v36a) +0.0361 [+0.0015, +0.0707] on five windows, CONFIRMED on five fresh predeclared windows (v36a2, the read of record) +0.0393 [+0.0033, +0.0752]; descriptive pooled ten +0.0377 [+0.0130, +0.0623]; SEARCH-MEAN head (v36b) -0.0523 [-0.0905, -0.0140], clears zero NEGATIVE on five windows. val_ce 0.6205 comparable to arm F's 0.6215 only loosely (same corpus, own split)."
+   "status": "PRODUCTION as release 36 since 2026-09-30 11:53 ET (the outcome-head package smv3out-491ee4bf) \u00b7 sealed 20:36 ET 09-29, rc=0, early stop at 16 of 20 epochs, best epoch 13, wall=67596s (arm F: 44,869 s / 11 / 8). Outcome head val rank_regret 0.0569; search-mean head val rank_regret 0.0590 on the same candidate set. FOUR FIXED HOLDOUTS (rank_regret, outcome head), SMV3 vs arm F: roomlog 0.0655 vs 0.0683, pt1 0.0337 vs 0.0409, luna 0.0855 vs 0.0868, highn 0.1054 vs 0.1032 -- three slightly better, one worse; point estimates, no interval. TWO EXPORTS from the one checkpoint: smv3out-491ee4bf.npz (outcome head) and smv3sm-d05b8bc5.npz (search-mean head). * SCREENED as served vs release 30: OUTCOME head (v36a) +0.0361 [+0.0015, +0.0707] on five windows, CONFIRMED on five fresh predeclared windows (v36a2, the read of record) +0.0393 [+0.0033, +0.0752]; descriptive pooled ten +0.0377 [+0.0130, +0.0623]; SEARCH-MEAN head (v36b) -0.0523 [-0.0905, -0.0140], clears zero NEGATIVE on five windows. val_ce 0.6205 comparable to arm F's 0.6215 only loosely (same corpus, own split).",
+   "head_alone": {
+    "point": 0.3157,
+    "lo": 0.3016,
+    "hi": 0.3296,
+    "ref": "head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)"
+   }
   }
  ],
  "data": [
@@ -684,5 +808,6 @@
   "atlas": "https://claude.ai/code/artifact/8bb3e7d8-38c3-4488-acc2-4736ec11038f",
   "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
  },
- "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient."
+ "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
+ "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals vs SmartBot (seed0 20000, the 09-18 ladder's harness); standard for every exported model from 2026-09-30, together with a paired duel against the production head on the same deals (column 'vs production head'; the first reads are running)."
 }

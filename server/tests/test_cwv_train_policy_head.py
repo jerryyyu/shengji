@@ -345,4 +345,15 @@ def test_the_rows_stream_refuses_undeclared_non_points_search_values(store_dir, 
         PolicyRowsStream(chunked)
     leaf_man["values_scale"] = "points"; (leaf / "manifest.json").write_text(json.dumps(leaf_man))
     assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    # a DIAMOND (top -> A, B; both -> the same leaf) is acyclic and accepted (Codex HOLD on #669);
+    # a TRUE cycle (A -> B -> A) is refused with the path named
+    a, b = tmp_path / "a", tmp_path / "b"
+    for d in (a, b):
+        d.mkdir(); (d / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "leaf", "dir": str(leaf)}]}))
+    top["composed_from"] = [{"tag": "a", "dir": str(a)}, {"tag": "b", "dir": str(b)}]; man_path.write_text(json.dumps(top))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    (a / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "b", "dir": str(b)}]}))
+    (b / "manifest.json").write_text(json.dumps({**man, "composed_from": [{"tag": "a", "dir": str(a)}]}))
+    with pytest.raises(ValueError, match="composition cycle at .* -> "):
+        PolicyRowsStream(chunked)
     man_path.write_text(json.dumps(man))

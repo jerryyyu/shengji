@@ -150,19 +150,25 @@ def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
     non-points family must say ``values_scale: "points"`` (the #650 temperature
     calibration), otherwise it is exactly the uniform-target extract of #649.
     A COMPOSED directory (``composed_from``) is validated down to its leaves,
-    recursively, with a cycle guard; a part that cannot be read is a refusal."""
+    recursively; a cycle is a repeat on the ACTIVE recursion path (a leaf shared
+    by two parts, a diamond, is validated once and accepted; Codex HOLD on #669);
+    a part that cannot be read is a refusal."""
     from .policy_prior import NO_SEARCH_VALUES
     declared = False
-    seen: set[str] = set()
+    active: list[str] = []          # the recursion PATH: a repeat here is a cycle
+    validated: set[str] = set()     # leaves already checked: a shared leaf (a diamond) is not a cycle
 
     def visit(where: str, m: Mapping[str, Any], depth: int) -> None:
         nonlocal declared
         key = str(Path(where).resolve())
-        if key in seen:
-            raise ValueError(f"policy rows stream: composition cycle at {where}")
-        seen.add(key)
+        if key in active:
+            raise ValueError(f"policy rows stream: composition cycle at {where} "
+                             f"(path {' -> '.join(active + [key])})")
+        if key in validated:
+            return
         if depth > 8:
             raise ValueError(f"policy rows stream: composition nested deeper than 8 at {where}")
+        active.append(key)
         scale = m.get("values_scale")
         if scale is not None and scale != "points":
             raise ValueError(f"policy rows stream: {where} declares values_scale={scale!r}; only "
@@ -182,6 +188,8 @@ def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
                 raise ValueError(f"policy rows stream: composed part {part!r} of {where} has no "
                                  "readable manifest; the scale of its means cannot be verified")
             visit(str(d), json.load(open(d / "manifest.json")), depth + 1)
+        active.pop()
+        validated.add(key)
 
     visit(str(directory), man, 0)
     return "points" if declared else "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)"

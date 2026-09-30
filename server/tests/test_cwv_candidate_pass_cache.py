@@ -247,3 +247,17 @@ def test_the_pool_window_bounds_outstanding_results(monkeypatch):
     assert seen == [("built", t) for t in tasks]          # task order, nothing lost
     assert outstanding["peak"] == 6                       # the window is used, not exceeded
     assert outstanding["now"] == 0
+
+
+def test_a_v2_schema_file_without_the_units_column_is_a_miss_not_a_crash(tmp_path):
+    """Codex on #668: a file that claims the v2 schema but lacks units_code must miss, never KeyError."""
+    import json
+    import numpy as np
+    from shengji.train import cwv_eval
+    path = tmp_path / "shard.npz"
+    meta = {"schema": cwv_eval.CANDIDATE_PASS_SCHEMA, "digest": "d" * 64, "label": "s", "records": 0,
+            "search_records": 0, "candidates": 0, "history": False}
+    np.savez_compressed(path, meta=np.asarray(json.dumps(meta)), offsets=np.zeros(1, np.int64),
+                        source_ref=np.asarray([], dtype=str), deal_key=np.asarray([], dtype=str),
+                        decision_obs=np.zeros((0, cwv_eval.obs_dim(2)), np.float32))
+    assert cwv_eval.load_shard_result(path, digest="d" * 64) is None

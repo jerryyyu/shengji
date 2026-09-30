@@ -634,7 +634,10 @@ class CwvBlock:
 
 def _fresh_counts() -> dict:
     return {"records": 0, "encoded": 0, "skipped": {k: 0 for k in SKIP_REASONS},
-            "search_means": {k: 0 for k in SEARCH_KEYS},
+            # records whose action_values carry >= 2 finite means (the candidate-pass /
+            # rank-metric eligibility); NOT the sidecar's preference.means[played], which
+            # is what the search-mean head trains on (its count is epochs[].train.search_head_rows)
+            "action_values_means_2plus": {k: 0 for k in SEARCH_KEYS},
             "reference_checked": 0,
             "world_witness": {"records": 0, "trials": 0, "world_changed": 0,
                               "public_changed": 0, "inconclusive": 0}}
@@ -712,7 +715,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         scalars["input_sha256"].append(row.input_sha256)
         scalars["has_search_means"].append(bool(row.search_means))
         scalars["n_search"].append(len(row.search_means))
-        counts["search_means"]["present" if row.search_means else "absent"] += 1
+        counts["action_values_means_2plus"]["present" if row.search_means else "absent"] += 1
         counts["encoded"] += 1
         if progress and counts["encoded"] % 5000 == 0:
             progress({"label": shard.label, "records": counts["records"],

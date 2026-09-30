@@ -1622,6 +1622,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                               residency=residency, version=enc_version, sidecar_dir=sidecar_dir,
                               pack_dir=pack_dir)
     store = prepared.block_store
+    sidecar_coverage = None
+    if sidecar_dir is not None:
+        # #667: a shard without a sidecar file attaches all-NaN columns and its rows silently
+        # leave the search-mean head (the #658 failure).  Refuse before the first epoch.
+        from .search_mean_sidecar import check_sidecar_coverage
+        sidecar_coverage = check_sidecar_coverage(
+            sidecar_dir, [(shard.label, shard.sha256) for shard, _path in store.entries])
+        say(f"sidecar coverage: {sum(v['shards'] for v in sidecar_coverage.values())} shards in "
+            f"{len(sidecar_coverage)} stores, every one with a sidecar file")
     if pack_dir is not None:
         say(f"pack: blocks come from {Path(pack_dir).resolve()} (#531); the cache validated every shard")
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
@@ -1874,6 +1883,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         from .search_mean_target import ESTIMAND, LEVEL_ESTIMAND
         target_block = {"kind": target, "sidecar_dir": str(search_mean_sidecar),
                         "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
+                        "sidecar_coverage": sidecar_coverage,
                         "estimand": ESTIMAND,
                         "level_estimand": LEVEL_ESTIMAND,
                         "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
@@ -1891,6 +1901,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         search_head_block = {
             "weight": float(search_head_weight), "sidecar_dir": str(search_mean_sidecar),
             "sidecar_manifest_sha256": manifest_sha256(search_mean_sidecar),
+            "sidecar_coverage": sidecar_coverage,
             "level_estimand": LEVEL_ESTIMAND,
             "estimand": ESTIMAND, "producer_level_objective": ELIGIBLE_LEVEL_OBJECTIVE,
             "value_head": model_cfg.value_head,

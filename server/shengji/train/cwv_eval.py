@@ -488,6 +488,8 @@ def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | 
             arrays = {name: npz[name] for name in npz.files if name != "meta"}
     except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
         return None
+    if "units_code" not in arrays:
+        return None                      # a v2-schema file without the column is a miss, not a crash
     offsets = arrays["offsets"]
     history = "history_offsets" in arrays
     search: list[dict] = []

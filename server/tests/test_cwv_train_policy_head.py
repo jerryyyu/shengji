@@ -298,3 +298,31 @@ def test_chunked_extraction_stops_at_the_limit_and_the_stream_refuses_tampered_c
     json.dump(man, open(d100 / "manifest.json", "w"))
     with pytest.raises(ValueError, match="not row-aligned"):
         PolicyRowsStream(d100)
+
+
+def test_the_rows_stream_refuses_undeclared_non_points_search_values(store_dir, tmp_path):  # noqa: F811
+    """#667 finding 5 / the #649 shape: an extract whose manifest counts non-points search values
+    must declare values_scale "points" (the #650 calibration); a pre-#650 extract with no
+    value_units is a points-producer extract and is taken as assumed-points; a composed
+    directory is checked part by part and an unreadable part refuses."""
+    import json
+    from shengji.train.policy_rows import PolicyRowsStream
+    chunked = tmp_path / "chunked"
+    pp.extract(chunked, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=200, workers=1, chunk_rows=64)
+    man_path = chunked / "manifest.json"; man = json.load(open(man_path))
+    stream = PolicyRowsStream(chunked)
+    assert stream.identity["values_scale"] in ("points", "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)")
+    bad = dict(man); bad["value_units"] = {"expected-signed-level-half-integer": 5, "no-search-values": 1}
+    bad.pop("values_scale", None); man_path.write_text(json.dumps(bad))
+    with pytest.raises(ValueError, match="non-points search values with no values_scale"):
+        PolicyRowsStream(chunked)
+    fixed = dict(bad); fixed["values_scale"] = "points"; man_path.write_text(json.dumps(fixed))
+    assert PolicyRowsStream(chunked).identity["values_scale"] == "points"
+    composed = dict(man); composed["composed_from"] = [{"tag": "x", "dir": str(tmp_path / "nowhere")}]
+    man_path.write_text(json.dumps(composed))
+    with pytest.raises(ValueError, match="no readable manifest"):
+        PolicyRowsStream(chunked)
+    composed["composed_from"] = [{"tag": "x", "dir": str(chunked)}]      # a readable part: its own manifest
+    man_path.write_text(json.dumps(composed))
+    PolicyRowsStream(chunked)
+    man_path.write_text(json.dumps(man))

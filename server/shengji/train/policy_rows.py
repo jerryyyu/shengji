@@ -140,6 +140,37 @@ def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
     return out
 
 
+def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
+    """The scale the soft targets were built on, refused when it is not declared
+    and the rows are not all points (#667 finding 5).  An extract before #650
+    carries no ``value_units`` at all: it is a points-producer extract and is
+    taken as ``assumed-points``.  One whose ``value_units`` names a non-points
+    family must say ``values_scale: "points"`` (the #650 temperature calibration),
+    otherwise it is exactly the uniform-target extract of #649.  A COMPOSED
+    directory (``composed_from``) is checked part by part; a part that cannot
+    be read is a refusal, not a pass."""
+    from .policy_prior import NO_SEARCH_VALUES
+    manifests = [(str(directory), man)]
+    for part in man.get("composed_from") or []:
+        d = Path(part["dir"]) if isinstance(part, Mapping) and part.get("dir") else None
+        if d is None or not (d / "manifest.json").is_file():
+            raise ValueError(f"policy rows stream: composed part {part!r} has no readable manifest; "
+                             "the scale of its means cannot be verified")
+        manifests.append((str(d), json.load(open(d / "manifest.json"))))
+    declared = False
+    for where, m in manifests:
+        units = m.get("value_units") or {}
+        non_points = {k: v for k, v in units.items()
+                      if k not in ("expected-attacker-points", NO_SEARCH_VALUES) and v}
+        if m.get("values_scale") == "points":
+            declared = True
+        elif non_points:
+            raise ValueError(f"policy rows stream: {where} carries {non_points} rows of non-points "
+                             f"search values with no values_scale -- the un-fixed extract of #649 "
+                             f"(uniform soft targets); re-extract with the units fix (#650)")
+    return "points" if declared else "assumed-points (no value_units in the manifest: a pre-#650 extract of points producers)"
+
+
 class PolicyRowsStream:
     """Root rows from a chunked extraction (``policy_prior.extract --chunk-rows``):
     the manifest is read once (deal keys per chunk for the exposure rule), and
@@ -164,6 +195,7 @@ class PolicyRowsStream:
         self.chunks = man["chunks"]
         if not self.chunks:
             raise ValueError("policy rows stream: no chunks")
+        self.values_scale = _check_values_scale(man, self.dir)
         self.exclude = frozenset(exclude)
         self.window = max(1, int(window))
         self.limit = None if not limit else int(limit)
@@ -198,6 +230,7 @@ class PolicyRowsStream:
         self.identity = {"schema": SCHEMA, "format": CHUNK_SCHEMA, "prefix": str(self.dir.resolve()),
                          "npz_sha256": _digest(verified), "chunks_verified": len(verified),
                          "rows_available": int(man["rows"]), "rows_read": int(man["rows"]), "rows_used": rows_used,
+                         "values_scale": self.values_scale,
                          "rows_excluded": int(man["rows"]) - rows_used, "rows_per_pass": min(rows_used, self.limit or rows_used),
                          "deals": self.deals, "deals_excluded": len(excluded), "chunks": len(self.chunks),
                          "window_chunks": self.window, "deal_key_schema": "shengji-value-deal-key-v1",

@@ -268,16 +268,54 @@ def test_a_points_row_under_a_null_or_true_flag_is_refused_at_build(tmp_path):
     rows = [json.loads(l) for l in shard.read_text().splitlines()]
     del rows[0]["action_values"]["units"]                        # a points row (no tag) ...
     shard.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    # ... is refused on its UNITS first (#667: the producer declares signed-level units, so an
+    # untagged row cannot be read as points), whatever the level_objective flag says
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side")
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side2", level_objective=True)
+    # with no units declaration the flag refusals are the ones that fire
+    run = json.loads((tmp_path / "untagged" / "run.json").read_text())
+    declared = dict(run["config"]["policy_flags"])
+    del run["config"]["policy_flags"]["value_units"]
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
     with pytest.raises(sc.SidecarError, match="no level_objective flag"):   # ... under a null flag
         sc.build_sidecar(shard, tmp_path / "side")
     with pytest.raises(sc.SidecarError, match="LEVEL_OBJECTIVE=True"):
         sc.build_sidecar(shard, tmp_path / "side2", level_objective=True)
-    counts = sc.build_sidecar(shard, tmp_path / "side3", level_objective=False)
+    run["config"]["policy_flags"] = declared
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
+    # #667 finding 5: the producer DECLARES signed-level units, so an untagged row is refused even
+    # under an explicit level_objective=False -- "no tag means points" only holds for a producer that
+    # does not say otherwise.
+    with pytest.raises(sc.SidecarError, match="untagged action_values under a producer that declares"):
+        sc.build_sidecar(shard, tmp_path / "side3", level_objective=False)
+    # A producer with NO value_units declaration keeps the old reading: mixed units, both kept.
+    run = json.loads((tmp_path / "untagged" / "run.json").read_text())
+    del run["config"]["policy_flags"]["value_units"]
+    (tmp_path / "untagged" / "run.json").write_text(json.dumps(run))
+    counts = sc.build_sidecar(shard, tmp_path / "side4", level_objective=False)
     assert counts["points_rows"] == 1 and counts["level_rows"] == 1   # mixed units, both kept
     arrays = {"record_sha256": np.asarray([b"a" * 64, b"b" * 64], dtype="S64")}
-    sc.attach_search_means(arrays, counts["shard_sha256"], tmp_path / "side3")
+    assert sc.attach_search_means(arrays, counts["shard_sha256"], tmp_path / "side4") is True
     assert arrays["search_mean_played"][0] == pytest.approx(-0.493) and np.isnan(arrays["search_level_played"][0])
     assert arrays["search_level_played"][1] == pytest.approx(1.25) and np.isnan(arrays["search_mean_played"][1])
+
+
+def test_sidecar_coverage_refuses_a_missing_file_by_store_and_attach_reports_it(tmp_path):
+    """#667 / the #658 failure: a shard without a sidecar file attached all-NaN columns and its rows
+    silently left the search-mean head.  attach now says whether the file existed, and the
+    coverage check refuses a training set with any missing file, naming the store and the count."""
+    shard = _write_run(tmp_path, False)
+    counts = sc.build_sidecar(shard, tmp_path / "side")
+    have, missing = counts["shard_sha256"], "f" * 64
+    arrays = {"record_sha256": np.asarray([b"a" * 64], dtype="S64")}
+    assert sc.attach_search_means(arrays, missing, tmp_path / "side") is False
+    assert np.isnan(arrays["search_mean_played"]).all()          # the silent shape, now reported
+    ok = sc.check_sidecar_coverage(tmp_path / "side", [("runX", have), ("runX", have)])
+    assert ok == {"runX": {"shards": 2, "missing": 0}}
+    with pytest.raises(sc.SidecarError, match=r"runY: 1/2 missing \(first ffffffffffff\)"):
+        sc.check_sidecar_coverage(tmp_path / "side", [("runX", have), ("runY", have), ("runY", missing)])
 
 
 def test_an_unknown_units_tag_is_refused(tmp_path):

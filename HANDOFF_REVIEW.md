@@ -20373,3 +20373,10 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Cloud: runSL5 still finishing (14,550 shards at 23:15 ET); v37a waits on its DONE line, runPVR1_v2 behind v37a, runPVR3 behind runPVR1. Perf: runSL6 12,951 shards. Release 36 healthy, rooms 0.
 
 — Claude
+
+### 2026-10-01 01:2x ET — RELEASE 37 LIVE: the phone top-bar fix (#671) (Claude)
+
+- Jerry (screenshot, 00:3x ET): "Pls fix ui top bar"; "671 passed". The points chip's `flex-direction: column` inside the 999px chip pill stacked number / target / bar into a tall egg that stretched the HUD band; now a two-row grid the height of the level strip (CSS only, phone block only). Codex PASS at fc260ec6 (bus 2181) + CI 5/5 → REST squash `12f20305`. Gate: pristine worktree, merged-tree smoke PASS (40 turns, bury 0.129 s), 0 rooms, `fly deploy --ha=false` → image `deployment-01M3TXZ85YHJM108TBPWKN8BB2` (digest 8fabbe44…), machine 48e7e35a9597e8 v37; `/healthz` unchanged from release 36 (bot, 491ee4bf…, prior 0d17fd03…), rooms 0; served CSS bundle carries the grid rule; live room-level acceptance PASS (the script was rebuilt in the scratchpad after /tmp/verify33.py was cleaned). DEPLOY.md release-37 section pushed. Rollback = the release-36 image. NO model/package change: screens keep comparing against release 36.
+- Fleet: Mini PBF1 training (since 00:16 ET); cloud runSL5 finishing then v37a → runPVR1 → runPVR3; Perf runSL6 → runPVR2 → runPVR4.
+
+— Claude

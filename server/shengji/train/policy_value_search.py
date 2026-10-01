@@ -24,6 +24,33 @@ were):
   worlds and is not already admitted, at most ``FORCED_EXTRA_SLOTS`` extra
   slots.  The search then prices the realised fallback next to the throw
   (71% of refused throws had never admitted the forced card, #676).
+
+Optional selection rule (#676 E, #677 strategy 2; OFF BY DEFAULT, and while off
+`_select` is the plain ``argmax`` it always was):
+
+* ``tiebreak_points`` -- after the value means over the admitted candidates,
+  the near-set is every candidate within ``tiebreak_epsilon`` of the best mean.
+  UNITS: the served evaluator's score is the expected SIGNED LEVEL for the
+  root team (its support is ``rl.value_afterstate.category_signed_level``:
+  half-integer levels, one level = 40 points), so the default epsilon 0.02 is
+  0.02 of a level, the #676 figure (43% of the 846 last-position point dumps
+  in 2,000 self-play rounds sat within 0.02 of a zero-point alternative; 4.5%
+  of decisions had every candidate within 0.005; #677's HK over H7 was a
+  0.000806 preference).  When the near-set has at least two members, each
+  member's leaf is rebuilt (`_leaf`: `afterstate(..., finish_trick=True)`,
+  the same heuristic finisher the value head scored) in every sampled world
+  and the resolved trick's points are read off the leaf (the engine's own
+  ``Trick.points``, signed + when the trick's winner is on the root team and
+  - when it is not; the last trick's kitty bonus is left to the value head).
+  The finisher's
+  follows depend on the world's hidden hands, so the criterion is the sum over
+  the sampled worlds.  The member with the most root-team points wins; on an
+  exact points tie the original argmax stands (then admission order).  The
+  record carries ``tiebreak_applied`` (the selection moved off the argmax),
+  ``tiebreak_near_set`` (admitted positions, ascending) and
+  ``tiebreak_points`` (the mean signed points per member, in that order; empty
+  when the near-set had one member and nothing was rebuilt).  Nothing runs
+  when the near-set is a singleton; no model is consulted.
 """
 from __future__ import annotations
 
@@ -45,6 +72,9 @@ FORCED_EXTRA_SLOTS = 2
 FORCED_BUDGET_STRIDE = 16
 ADMISSION_DEFAULTS = dict(admission_diversity=False, max_per_structure=2,
                           admit_forced_single=False, forced_min_fraction=0.25)
+#: `tiebreak_points`: epsilon in the value head's units (signed levels, see the
+#: module docstring); 0.02 of a level is #676's near-tie figure.
+TIEBREAK_DEFAULTS = dict(tiebreak_points=False, tiebreak_epsilon=0.02)
 
 
 def structure_key(rnd, action):
@@ -89,6 +119,8 @@ class PolicyValueBot(PolicyWorldBot):
                  max_per_structure=ADMISSION_DEFAULTS["max_per_structure"],
                  admit_forced_single=ADMISSION_DEFAULTS["admit_forced_single"],
                  forced_min_fraction=ADMISSION_DEFAULTS["forced_min_fraction"],
+                 tiebreak_points=TIEBREAK_DEFAULTS["tiebreak_points"],
+                 tiebreak_epsilon=TIEBREAK_DEFAULTS["tiebreak_epsilon"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -113,6 +145,14 @@ class PolicyValueBot(PolicyWorldBot):
         self.forced_min_fraction = float(forced_min_fraction)
         self._admission_context = (None, None)
         self._diversity_skipped, self._forced_added, self._forced_detail = [], [], []
+        if type(tiebreak_points) is not bool:
+            raise ValueError('tiebreak_points must be a bool')
+        if type(tiebreak_epsilon) not in (int, float) or not np.isfinite(tiebreak_epsilon) \
+                or tiebreak_epsilon < 0:
+            raise ValueError('tiebreak_epsilon must be a finite non-negative number')
+        self.tiebreak_points = tiebreak_points
+        self.tiebreak_epsilon = float(tiebreak_epsilon)
+        self._tiebreak = None
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -143,8 +183,50 @@ class PolicyValueBot(PolicyWorldBot):
         flush()
         return sums / len(worlds), batches
 
-    def _select(self, rnd, seat, admitted, means):
-        return int(np.argmax(means))  # anchor retained on an exact value tie
+    def _select(self, rnd, seat, admitted, means, worlds=None):
+        winner = int(np.argmax(means))  # anchor retained on an exact value tie
+        if not self.tiebreak_points:
+            return winner
+        return self._select_by_points(rnd, seat, admitted, means, worlds, winner)
+
+    # -- selection: the optional epsilon tie-break by trick points -------------
+
+    def _trick_points(self, rnd, seat, hands, buried, action, world_index):
+        """The points of ``action``'s trick as the engine resolves it under the
+        SAME leaf the value head scored (`_leaf`), signed for the root team:
+        + when the trick's winner is the root team, - when it is the other."""
+        leaf = self._leaf(rnd, seat, hands, buried, action, world_index)
+        trick = leaf.last_trick
+        if len(leaf.history) != len(rnd.history) + 1 or trick is None or trick.winner is None:
+            raise RuntimeError('tie-break leaf did not resolve exactly the current trick')
+        ours = rnd.is_attacker(trick.winner) == rnd.is_attacker(seat)
+        return int(trick.points) if ours else -int(trick.points)
+
+    def _select_by_points(self, rnd, seat, admitted, means, worlds, argmax):
+        """The module docstring's rule.  ``worlds`` are the sampled worlds the
+        means were taken over; the near-set's leaves are rebuilt in each."""
+        if worlds is None:
+            raise ValueError('tiebreak_points needs the sampled worlds')
+        means = np.asarray(means, dtype=np.float64)
+        near = [int(i) for i in np.flatnonzero(means >= means[argmax] - self.tiebreak_epsilon)]
+        self._tiebreak = {'tiebreak_applied': False, 'tiebreak_near_set': near,
+                          'tiebreak_points': []}
+        if len(near) < 2:
+            return argmax
+        sums = {i: 0 for i in near}
+        for world_index, (hands, buried) in enumerate(worlds):
+            for i in near:
+                sums[i] += self._trick_points(rnd, seat, hands, buried, admitted[i], world_index)
+        # most points first; the argmax breaks an exact tie, then admission order
+        winner = min(near, key=lambda i: (-sums[i], i != argmax, i))
+        self._tiebreak['tiebreak_points'] = [sums[i] / len(worlds) for i in near]
+        self._tiebreak['tiebreak_applied'] = winner != argmax
+        return winner
+
+    def _tiebreak_record(self):
+        if not self.tiebreak_points:
+            return {}
+        return dict(self._tiebreak)
 
     # -- admission ------------------------------------------------------------
 
@@ -293,7 +375,7 @@ class PolicyValueBot(PolicyWorldBot):
         chosen = self._admission(rnd, seat, actions, preferences, anchor_index, worlds)
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds)
-        winner = self._select(rnd, seat, admitted, means)
+        winner = self._select(rnd, seat, admitted, means, worlds=worlds)
         self.last_decision_record = {
             'schema': 'policy-admit-value-mean-v1', 'worlds': len(worlds),
             'sample_attempts': attempts, 'actions': len(actions), 'cap': self.cap,
@@ -303,5 +385,6 @@ class PolicyValueBot(PolicyWorldBot):
             'value_evaluations': len(worlds) * len(admitted),
             'seconds': time.perf_counter() - started,
             **self._admission_record(),
+            **self._tiebreak_record(),
         }
         return list(admitted[winner])

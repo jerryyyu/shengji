@@ -440,3 +440,62 @@ def test_deadline_firing_inside_the_forced_extras_loop_is_a_clean_fallback(monke
     record = bot.last_decision_record
     assert record["schema"] == pv.RECORD_SCHEMA and record["forced_single_added"] == [actions.index(["C10"])]
     assert bot.sampler.rng.getstate() != before
+
+
+def test_both_forced_slots_plus_an_exploration_draw_pass_the_budget_guard():
+    """#687 stacking found: the served candidate-budget guard counted the harvest
+    mixin's exploration draw, so on the DATA path (no serving budget, no fallback)
+    K=8 + 2 forced extras + 1 forced-in draw = 11 raised PVSearchPolicyError.  The
+    guard now bounds the PRODUCTION ballot at the admission boundary (K + the
+    forced extras), before the mixin appends its draw; the record then goes
+    through the real harvest path."""
+    from collections import Counter as _Counter
+    from shengji.harvest import trajectory
+    from shengji.harvest.common import action_key
+    rnd = state(); seat = rnd.turn
+    actions = enumerate_legal(rnd, seat, cap=4000).actions
+    throws = [i for i, a in enumerate(actions) if len(a) >= 2
+              and len(decompose(list(a), rnd.ordering).components) >= 2
+              and forced_lead(rnd, seat, a) is not None]
+    distinct, seen = [], set()
+    for i in throws:
+        f = tuple(forced_lead(rnd, seat, actions[i]))
+        if f not in seen:
+            seen.add(f); distinct.append(i)
+        if len(distinct) == 5:
+            break
+    real = [sorted(h) for h in rnd.hands]
+    for draw_seed in range(1, 20):           # a draw that lands OUTSIDE the ballot
+        bot = _trajectory_bot(1.0, 1, admit_forced_single=True)
+        import random as _random
+        bot.explore_rng = _random.Random(draw_seed)
+        bot._worlds = lambda *a, **k: ([(real, sorted(rnd.buried))], 1)
+        crafted_preferences(bot, rnd, seat, distinct)
+        action = bot.decide_play(copy.deepcopy(rnd), seat)      # raised on f78ecbe1
+        record = bot.last_decision_record
+        assert len(record["forced_single_added"]) == module.FORCED_EXTRA_SLOTS
+        if len(record["admitted_indices"]) == 8 + module.FORCED_EXTRA_SLOTS + 1:
+            break
+    else:
+        pytest.fail("no draw seed put the exploration draw outside the ballot")
+    production = bot.last_production_ballot
+    assert len(production) == 8 + module.FORCED_EXTRA_SLOTS
+    assert len(bot.last_ballot) == len(production) + 1 == len(record["admitted"])
+    assert bot.last_ballot[:len(production)] == production
+    assert [action_key(a) for a in bot.last_ballot] == [action_key(a) for a in record["admitted"]]
+    stats = _Counter()
+    fields = trajectory._play_fields({}, "run", 0, 0, rnd, seat, [], action, bot, 256, stats)
+    assert stats["searched"] == 1 and fields["production_ballot"] == production
+    assert fields["exploration"]["added"] == bot.last_ballot[len(production):]
+    assert len(fields["action_values"]["means"]) == len(bot.last_ballot)
+    # the guard still bounds the PRODUCTION ballot: a hook that over-admits is refused
+    class Over(pv.PVSearchBot):
+        def _admit(self, rnd_, seat_, actions_, preferences, anchor_index):
+            base = super()._admit(rnd_, seat_, actions_, preferences, anchor_index)
+            return base + [i for i in range(len(actions_)) if i not in base][:module.FORCED_EXTRA_SLOTS + 1]
+    with pytest.raises(pv.PVSearchPolicyError, match="candidate budget"):
+        over = served(admit_forced_single=True)
+        over.__class__ = Over
+        over._worlds = lambda *a, **k: ([(real, sorted(rnd.buried))], 1)
+        crafted_preferences(over, rnd, seat, distinct)
+        over.decide_play(copy.deepcopy(rnd), seat)

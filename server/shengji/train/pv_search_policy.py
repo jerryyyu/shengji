@@ -367,7 +367,16 @@ class PVSearchBot(PolicyValueBot):
         if not chosen or chosen[0] != anchor_index or len(set(chosen)) != len(chosen) \
                 or any(not 0 <= i < len(actions) for i in chosen):
             raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
-        if len(chosen) > self.candidates + FORCED_EXTRA_SLOTS:
+        # The candidate budget bounds what PRODUCTION admits (K plus the forced
+        # extras).  The harvest mixin appends its exploration draw AFTER the
+        # production ballot (keyed in ``_draw_keys``); on the data path there is
+        # no serving budget and so no fallback, so counting the draw here raised
+        # on a full ballot (#680 at f78ecbe1, found stacking #687).  Draws are
+        # excluded from the count; everything else -- a hook override's extras
+        # included -- is bounded.
+        draw_keys = getattr(self, "_draw_keys", None) or ()
+        budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
+        if len(budgeted) > self.candidates + FORCED_EXTRA_SLOTS:
             raise PVSearchPolicyError("admission exceeded the candidate budget")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)

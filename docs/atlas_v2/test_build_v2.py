@@ -12,9 +12,30 @@ def _load():
     return mod
 
 
-def test_committed_page_matches_the_registry():
+def test_check_builds_from_the_registry_and_reports_consistent():
+    """The page is built, not tracked (#688): --check must pass with no atlas_v2.html on disk."""
     r = subprocess.run([sys.executable, str(HERE / "build_v2.py"), "--check"], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.startswith("CONSISTENT:") and "atlas_v2.html == registry.json" in r.stdout
+
+
+def test_check_catches_a_stale_built_page_and_a_broken_registry(tmp_path):
+    """A stale local page and a registry that breaks an invariant both fail --check."""
+    import shutil
+    for name in ("build_v2.py", "registry.json"):
+        shutil.copy(HERE / name, tmp_path / name)
+    (tmp_path / "atlas_v2.html").write_text("<title>stale</title>")
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py"), "--check"], capture_output=True, text=True)
+    assert r.returncode == 1 and "OUT OF DATE" in r.stdout, r.stdout + r.stderr
+    (tmp_path / "atlas_v2.html").unlink()
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py")], capture_output=True, text=True)
+    assert r.returncode == 0 and (tmp_path / "atlas_v2.html").exists(), r.stdout + r.stderr
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py"), "--check"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.startswith("CONSISTENT:"), r.stdout + r.stderr
+    reg = json.loads((tmp_path / "registry.json").read_text()); reg["screens"][0]["vs"] = 99
+    (tmp_path / "registry.json").write_text(json.dumps(reg))
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py"), "--check"], capture_output=True, text=True)
+    assert r.returncode == 1 and "REGISTRY ERRORS" in r.stdout, r.stdout + r.stderr
 
 
 def test_registry_invariants_hold_and_the_checks_bite():
@@ -42,7 +63,7 @@ def test_a_multi_arm_family_has_one_slot_per_arm_with_its_own_coverage():
     fam = next(s for s in reg["screens"] if "results" in s)
     slots = mod.results_of(fam)
     assert [r["role"] for r in slots].count("primary") == 2 and all(r["confidence"] == 0.975 for r in slots if r["role"] == "primary")
-    page = (HERE / "atlas_v2.html").read_text()
+    page = mod.page                                               # a fresh build; the page is not tracked
     for r in slots:
         assert f'{fam["id"]} · {r["arm"]}' in page                # one chart row and one table line per arm
     assert "point and 95% interval" not in page                    # no blanket coverage label
@@ -77,7 +98,7 @@ def test_a_multi_arm_family_has_one_slot_per_arm_with_its_own_coverage():
 
 
 def test_every_screen_reaches_the_chart_and_the_table():
-    reg = json.loads((HERE / "registry.json").read_text()); page = (HERE / "atlas_v2.html").read_text()
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
     for s in reg["screens"] + reg["context_screens"]:
         assert page.count(s["id"]) >= 2, s["id"]          # chart label + table cell
         assert s["instrument_kind"] in page
@@ -88,7 +109,7 @@ def test_the_page_splits_screens_by_comparator_release_and_carries_the_head_ladd
     the earlier comparators as closed sections; every model row carries its policy-head-alone read."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
     prod = mod.production_release(reg)
-    page = (HERE / "atlas_v2.html").read_text()
+    page = mod.page                                               # a fresh build; the page is not tracked
     assert f"Screens against release {prod} (the current production)" in page
     for rel in sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}):
         assert f"Screens against release {rel}" in page

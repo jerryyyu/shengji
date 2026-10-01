@@ -1,9 +1,10 @@
 """Build the scaling artifact from ONE source of truth.
 
-    python build.py                 render models.py -> scaling.html (committed next to it)
+    python build.py                 render models.py -> scaling.html (built next to it, NOT tracked; #688)
     python build.py --publish PATH  also copy the page to PATH (the artifact's scratchpad file)
-    python build.py --check         re-render in memory and compare with scaling.html;
-                                    exit 1 on any difference or any data inconsistency
+    python build.py --check         validate models.py, render to a temp file, and -- if a built
+                                    scaling.html is on disk -- compare with it; exit 1 on any data
+                                    inconsistency, a failed build, or a stale local page
 
 models.py is the only place a model or a screen result is entered.  Everything
 else on the page is derived from it: the six charts (series are named by
@@ -25,6 +26,7 @@ import html
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -533,7 +535,13 @@ def main():
                f"{c['ten_total']} ten-window results ({c['ten_cross']} cross zero), "
                f"{c['five_total']} five-window")
     if "--check" in sys.argv:
-        pub = open(PAGE).read() if PAGE.exists() else ""
+        # The page is not tracked: prove it BUILDS (a real write, to a temp file), and if a built
+        # page is lying next to models.py it must match, so a stale local page is still caught.
+        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=True) as tmp:
+            tmp.write(page); tmp.flush()
+            if Path(tmp.name).stat().st_size != len(page.encode()):
+                print("BUILD FAILED: temp page size mismatch"); sys.exit(1)
+        pub = open(PAGE).read() if PAGE.exists() else page
         if pub != page:
             import difflib
             diff = list(difflib.unified_diff(pub.splitlines(), page.splitlines(), "scaling.html", "rendered", lineterm="", n=0))

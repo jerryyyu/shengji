@@ -21,3 +21,18 @@ logs/local/
 # them outside Git's cleanliness boundary so an admitted run can reopen its
 # frozen controller while unrelated tracked or untracked changes still fail.
 server/runs/locks/
+
+# Generated pages: pure functions of docs/scaling_log/models.py and docs/atlas_v2/registry.json.
+# Build them (build.py / build_v2.py) and publish from the built file; never track them (#688).
+docs/scaling_log/scaling.html
+docs/atlas_v2/atlas_v2.html
+
+# Training outputs and run logs (#688). The two served numpy weight files are the
+# exceptions: the Dockerfile copies them into the production image.
+server/*.npz
+server/snapshots_*/*
+!server/snapshots_v7w/ep02.npz
+!server/snapshots_v11pair/ep07.npz
+server/ckpt_*.progress.jsonl
+server/runs/logs/
+server/runs/*.lock

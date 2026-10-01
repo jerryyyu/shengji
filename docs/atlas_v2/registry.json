@@ -717,6 +717,15 @@
     "hi": 0.1615,
     "ref": "10-01 paired duel vs the production head 8ecd4fea, 8k mirrored deals (headduel2-20261001); below SMV3's +0.2067 and arm F's +0.1738 on the same scale, not a paired AW3r2-vs-SMV3 contrast"
    }
+  },
+  {
+   "name": "gen-5 SMV3-PBF1 (policy-batch-fraction 1.0)",
+   "ck": "218bcf5c",
+   "date": "2026-10-01",
+   "recipe": "THE POLICY BATCH FRACTION, NOT THE DATA: SMV3's recipe EXACTLY (arm F recipe + search-mean sidecar v3, 30 corpora, 496,000 deals, 55,123,440 policy rows, production-head warm start 8ecd4fea, seed 1, tree f2345ecb) with ONE variable changed -- --policy-batch-fraction 1.0 instead of 0.25 (#667 finding 3: a batch-size ratio, not unique-row coverage; plan #663, predeclared at issuecomment-5939812191). Run GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3-PBF1, best.pt sha256 218bcf5c70e4bbf8061ca90ebce45d77eb967ee1351a42f157fc89f063411993.",
+   "val_ce": 0.6232,
+   "regret": null,
+   "status": "sealed 2026-10-01 20:17Z (16:17 ET), wall 57,638 s, EARLY STOP at 11 of 20 epochs (no val_ce improvement for 3 epochs), best epoch 8 (SMV3: 67,596 s / 16 / 13; AW3r2: 33,957 s / 7 / 4). Outcome head val rank_regret 0.0567 (own split), top-1 0.414; val_policy_top64 exhaustive 0-20 / 21-100 / 101-1000 = 1.000 / 0.996 / 0.959, partial 101-1000 / 1001-10000 / 10001-1M = 0.946 / 0.934 / 0.902. FOUR FIXED HOLDOUTS (rank_regret, outcome head), PBF1 vs SMV3: roomlog 0.0673 / 0.0655, luna 0.0830 / 0.0855, highn 0.1031 / 0.1054, pt1 0.0409 / 0.0337 -- two better, two worse; point estimates, no interval. Exported outcome head pbf1out-dde17c0c.npz (sha256 dde17c0ca62d3eddfea44ae60b3b375e4d842cd8c87482f016d91cc692c2d612). Reads pending: policy duel (headduel3) and served screen v39a vs release 36 on cloud (fresh windows 37460910..37860910); no strength claim."
   }
  ],
  "data": [

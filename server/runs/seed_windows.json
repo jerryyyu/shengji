@@ -379,6 +379,90 @@
       "host": "ubuntu-32gb-hel1-2",
       "git_head": "4e0065615bfb01a64e3cc3a36a0995eecd215060",
       "note": "runSL4: W32 shortlist rollout teacher priced by the PRODUCTION head 8ecd4fea with its own policy prior (the runJS1..10 recipe, one variable changed: the checkpoint). Policy mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7, level_objective False, explore 0.1/k 2, cap 256, 32,000 rounds. Block runSL1..10 = 33260910..33420909 at 16,000 seeds per store; checked disjoint against this registry on 2026-09-28 before arming. Jerry 2026-09-28: more data gen, shortlist policy. Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runSL5",
+      "purpose": "trajectory",
+      "seed0": 33324910,
+      "clusters": 16000,
+      "span": [
+        33324910,
+        33340910
+      ],
+      "created_at": "2026-09-30T16:13:09Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "4e0065615bfb01a64e3cc3a36a0995eecd215060",
+      "note": "W32 shortlist rollout teacher priced by the PRODUCTION head 8ecd4fea with its own policy prior (the runJS1..10 recipe, one variable changed: the checkpoint). Policy mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7, level_objective False, explore 0.1/k 2, cap 256, 32,000 rounds. Block runSL1..10 = 33260910..33420909 at 16,000 seeds per store. Sealed on the host with 16,000 shards, incomplete_work 0, short_searches 0 and no seed conflicts (host registration traj-s33324910-5cac13a731f6). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runSL6",
+      "purpose": "trajectory",
+      "seed0": 33340910,
+      "clusters": 16000,
+      "span": [
+        33340910,
+        33356910
+      ],
+      "created_at": "2026-09-30T18:00:43Z",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "4e0065615bfb01a64e3cc3a36a0995eecd215060",
+      "note": "W32 shortlist rollout teacher priced by the PRODUCTION head 8ecd4fea with its own policy prior (the runJS1..10 recipe, one variable changed: the checkpoint). Policy mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7, level_objective False, explore 0.1/k 2, cap 256, 32,000 rounds. Block runSL1..10 = 33260910..33420909 at 16,000 seeds per store. Sealed on the host with 16,000 shards, incomplete_work 0, short_searches 0 and no seed conflicts (host registration traj-s33340910-de6471209f09). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runPVR1",
+      "purpose": "trajectory",
+      "seed0": 35260910,
+      "clusters": 16000,
+      "span": [
+        35260910,
+        35276910
+      ],
+      "created_at": "2026-10-01T06:46:05Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "ac1e4320a26f42863d71dc40743d65a00d4f040a",
+      "note": "W64/K8 pv-search data teacher with the RELEASE-36 package smv3out-491ee4bf (production since 2026-09-30 11:53 ET): the runPV1..10 recipe with one variable changed, the package. Policy pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (budgets unset), explore 0.1/k 2, cap 256, 32,000 rounds. Block runPVR1..10 = 35260910..35420909 at 16,000 seeds per store, checked clear against this registry on 2026-09-30 before arming (Jerry 2026-09-30: gen new data on pv search with the production policy). Sealed on the host 2026-10-01 10:18Z: 16,000 shards, 2,209,292 records, incomplete_work 0, short_searches 0, no seed conflicts (host registration traj-s35260910-5c9e56234687). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runPVR2",
+      "purpose": "trajectory",
+      "seed0": 35276910,
+      "clusters": 16000,
+      "span": [
+        35276910,
+        35292910
+      ],
+      "created_at": "2026-10-01T06:40:02Z",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "4dce8a2b22bcd69b0b9c211f6cd2cbdc7c2f08e4",
+      "note": "W64/K8 pv-search data teacher with the RELEASE-36 package smv3out-491ee4bf (production since 2026-09-30 11:53 ET): the runPV1..10 recipe with one variable changed, the package. Policy pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (budgets unset), explore 0.1/k 2, cap 256, 32,000 rounds. Block runPVR1..10 = 35260910..35420909 at 16,000 seeds per store, checked clear against this registry on 2026-09-30 before arming (Jerry 2026-09-30: gen new data on pv search with the production policy). Sealed on the host 2026-10-01 10:29Z: 16,000 shards, 2,207,024 records, incomplete_work 0, short_searches 0, no seed conflicts (host registration traj-s35276910-efc62eea22f7). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runPVR3",
+      "purpose": "trajectory",
+      "seed0": 35292910,
+      "clusters": 16000,
+      "span": [
+        35292910,
+        35308910
+      ],
+      "created_at": "2026-10-01T10:19:32Z",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "ac1e4320a26f42863d71dc40743d65a00d4f040a",
+      "note": "W64/K8 pv-search data teacher with the RELEASE-36 package smv3out-491ee4bf (production since 2026-09-30 11:53 ET): the runPV1..10 recipe with one variable changed, the package. Policy pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (budgets unset), explore 0.1/k 2, cap 256, 32,000 rounds. Block runPVR1..10 = 35260910..35420909 at 16,000 seeds per store, checked clear against this registry on 2026-09-30 before arming (Jerry 2026-09-30: gen new data on pv search with the production policy). Dealing on the host since 2026-10-01 10:19Z (armed behind runPVR1). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runPVR4",
+      "purpose": "trajectory",
+      "seed0": 35308910,
+      "clusters": 16000,
+      "span": [
+        35308910,
+        35324910
+      ],
+      "created_at": "2026-10-01T10:29:54Z",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "4dce8a2b22bcd69b0b9c211f6cd2cbdc7c2f08e4",
+      "note": "W64/K8 pv-search data teacher with the RELEASE-36 package smv3out-491ee4bf (production since 2026-09-30 11:53 ET): the runPV1..10 recipe with one variable changed, the package. Policy pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (budgets unset), explore 0.1/k 2, cap 256, 32,000 rounds. Block runPVR1..10 = 35260910..35420909 at 16,000 seeds per store, checked clear against this registry on 2026-09-30 before arming (Jerry 2026-09-30: gen new data on pv search with the production policy). Dealing on the host since 2026-10-01 10:29Z (armed behind runPVR2). Recorded here because a window registered only on a remote host is invisible to the repo."
     }
   ]
 }

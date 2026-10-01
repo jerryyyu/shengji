@@ -20400,3 +20400,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - The AW3r2 row's served read was put in the five-window COLUMN; that column is charted by corpus size and the chart has no 496k slot, so `build.py` failed (KeyError '496k'), `--check` failed and 34 of 45 tests failed — and my push chain gated on the COMMIT's rc, not the build's, so the broken `models.py` reached main at `eb79e76b` (scaling.html stale for ~10 min). Repaired at `635362bf`: the served read lives in the note (as arm C's does), column empty; build, check and 45 tests green BEFORE the push, which is now gated on all three. The lesson is the standing one ("capture rc per step, push only inside the guard"); the chain that pushes three records in sequence must gate each on its own build.
 
 — Claude
+
+### 2026-10-01 09:2x ET — four stores sealed, registry recorded (#672 merged), Atlas data rows (Claude)
+
+- Sealed overnight, each 16,000 shards / 32,000 rounds / ~2.21M records / incomplete_work 0 / short_searches 0 / no seed conflicts: runSL5 (cloud, 00:25 ET), runSL6 (Perf, 02:39 ET), **runPVR1 (cloud, 06:19 ET) and runPVR2 (Perf, 06:29 ET)** — the first two stores from the release-36 teacher. runPVR3 / runPVR4 dealing behind them (13,363 / 11,720 shards at 09:15 ET).
+- #672 (seed registry, pure append of the six windows): Codex PASS at be987806 with a nonblocking note that runSL5/6's created_at were my ET start times stamped as UTC — corrected at 98bdf920 (two values), re-PASS 2187, CI 5/5 → REST squash `beef11f9`. Two pre-existing failures in `tests/test_seed_windows.py` (a hardcoded window count of 15) reproduce on untouched main; left for a separate test fix.
+- Atlas v2 data table: the six stores added (pushed after the merge; the hold rule kept it and this entry until then). Mini: PBF1 epoch 6 (val_ce 0.6256, own split); SL4 waits behind PBF1 and Codex's receipt. Release 37 healthy, rooms 0.
+
+— Claude

@@ -25,6 +25,31 @@ were):
   slots.  The search then prices the realised fallback next to the throw
   (71% of refused throws had never admitted the forced card, #676).
 
+Optional admission WIDTH rule (#676 C; OFF BY DEFAULT, and while off K is
+``candidates`` on every decision exactly as before):
+
+* ``adaptive_k`` -- when the acting seat is LEADING (no play yet in the current
+  trick) and the scored legal set holds at least one multi-card action (a
+  pair, tractor or throw), the admission takes ``candidates_lead_multi`` slots
+  (default 16) instead of ``candidates`` (8); on a single-only lead and on
+  every follow K is unchanged.  The anchor keeps slot 0 and the extra slots
+  are the next-best by the same policy preference, so the widened ballot is a
+  strict superset of the K=8 ballot in the same order (`admission_diversity`,
+  when on, applies its caps within the widened K).  The width is decided
+  INSIDE `_admit`, FIRST -- before the diversity caps and before the forced
+  components of `admit_forced_single` are appended -- so the final ballot is
+  at most ``candidates_lead_multi + FORCED_EXTRA_SLOTS`` and a wrapper that
+  captures the ballot at the admission boundary (the harvest mixin) sees the
+  widened, final one.  Evidence (#676 category 2): an exploration draw
+  out-valued all 8 shortlisted candidates in 12.4% of multi-card leads
+  against 2.1% of single leads, 1.3% of multi-card follows and 0.07% of
+  single follows.  Cost: the value pass is K x W leaves, so a widened
+  decision does twice the value work; `_value_means` flushes in
+  ``batch_size`` batches and the served `_score_leaves` checks the serving
+  budget around every flush, so the extra batches sit inside the cooperative
+  deadline.  The record carries ``adaptive_k_applied`` and ``k_used`` (the
+  width before any forced extras).
+
 Optional selection rule (#676 E, #677 strategy 2; OFF BY DEFAULT, and while off
 `_select` is the plain ``argmax`` it always was):
 
@@ -85,6 +110,16 @@ TIEBREAK_DEFAULTS = dict(tiebreak_points=False, tiebreak_epsilon=0.02)
 #: every this-many sampled worlds inside the tie-break's leaf rebuild
 TIEBREAK_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
 
+#: `adaptive_k`: the admission width on a lead whose legal set holds a
+#: multi-card action (module docstring); 16 = twice production's K=8.
+ADAPTIVE_K_DEFAULTS = dict(adaptive_k=False, candidates_lead_multi=16)
+
+
+def leading(rnd):
+    """True when the acting seat opens the current trick: a trick is open and
+    holds no play yet (the complement is exactly `_forced_extras`' follow test)."""
+    return rnd.trick is not None and not rnd.trick.plays
+
 
 def structure_key(rnd, action):
     """``(suit class, card count, component shapes)`` for `admission_diversity`.
@@ -137,6 +172,8 @@ class PolicyValueBot(PolicyWorldBot):
                  forced_min_fraction=ADMISSION_DEFAULTS["forced_min_fraction"],
                  tiebreak_points=TIEBREAK_DEFAULTS["tiebreak_points"],
                  tiebreak_epsilon=TIEBREAK_DEFAULTS["tiebreak_epsilon"],
+                 adaptive_k=ADAPTIVE_K_DEFAULTS["adaptive_k"],
+                 candidates_lead_multi=ADAPTIVE_K_DEFAULTS["candidates_lead_multi"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -169,6 +206,14 @@ class PolicyValueBot(PolicyWorldBot):
         self.tiebreak_points = tiebreak_points
         self.tiebreak_epsilon = float(tiebreak_epsilon)
         self._tiebreak = None
+        if type(adaptive_k) is not bool:
+            raise ValueError('adaptive_k must be a bool')
+        # a width below ``candidates`` would NARROW the ballot: not this rule
+        if type(candidates_lead_multi) is not int or not candidates <= candidates_lead_multi <= 512:
+            raise ValueError('candidates_lead_multi must be an integer in [candidates,512]')
+        self.adaptive_k = adaptive_k
+        self.candidates_lead_multi = candidates_lead_multi
+        self._adaptive = {'adaptive_k_applied': False, 'k_used': int(candidates)}
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -265,10 +310,25 @@ class PolicyValueBot(PolicyWorldBot):
 
     # -- admission ------------------------------------------------------------
 
+    def _admission_k(self, rnd, actions, preferences):
+        """``(K, applied)`` for this decision: ``candidates``, or with
+        ``adaptive_k`` on a lead whose scored set holds a multi-card action,
+        ``candidates_lead_multi`` (module docstring).  An entry with a
+        non-finite preference is not production's (the harvest mixin masks a
+        forced-in exploration draw to -inf) and never decides the width."""
+        if not self.adaptive_k or not leading(rnd):
+            return self.candidates, False
+        multi = any(len(action) >= 2 and np.isfinite(preferences[i])
+                    for i, action in enumerate(actions))
+        if not multi:
+            return self.candidates, False
+        return self.candidates_lead_multi, True
+
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
         """Indices (into ``actions``) the value head prices -- THE FINAL scored
-        ballot: the anchor first, then the policy's best scores, ``self.candidates``
-        in all, then (``admit_forced_single``) the forced components, at most
+        ballot: the anchor first, then the policy's best scores, K in all
+        (``self.candidates``, or the widened width of `_admission_k` under
+        ``adaptive_k``, decided first), then (``admit_forced_single``) the forced components, at most
         `FORCED_EXTRA_SLOTS`.  With ``admission_diversity`` the structural caps
         apply (module docstring); the capped indices that stayed out are kept in
         ``self._diversity_skipped``, the forced extras in ``self._forced_added``.
@@ -282,15 +342,17 @@ class PolicyValueBot(PolicyWorldBot):
         the duration of the call (`_admission`).
         """
         worlds, check_budget = self._admission_context
+        k, applied = self._admission_k(rnd, actions, preferences)
+        self._adaptive = {'adaptive_k_applied': applied, 'k_used': int(k)}
         ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
         self._diversity_skipped = []
         self._forced_added, self._forced_detail = [], []
         if not self.admission_diversity:
             chosen = [anchor_index]
             chosen.extend(i for i in ranked if i != anchor_index)
-            chosen = chosen[:self.candidates]
+            chosen = chosen[:k]
         else:
-            chosen = self._admit_diverse(rnd, actions, ranked, anchor_index)
+            chosen = self._admit_diverse(rnd, actions, ranked, anchor_index, k)
         if self.admit_forced_single:
             if worlds is None:
                 raise ValueError('admit_forced_single needs the sampled worlds at admission')
@@ -300,8 +362,8 @@ class PolicyValueBot(PolicyWorldBot):
             chosen = list(chosen) + extras
         return chosen
 
-    def _admit_diverse(self, rnd, actions, ranked, anchor_index):
-        k = self.candidates
+    def _admit_diverse(self, rnd, actions, ranked, anchor_index, k=None):
+        k = self.candidates if k is None else k
         chosen = [anchor_index]
         per_structure = Counter([structure_key(rnd, actions[anchor_index])])
         admitted_counts = [(len(actions[anchor_index]), Counter(actions[anchor_index]))]
@@ -335,7 +397,7 @@ class PolicyValueBot(PolicyWorldBot):
         runs before every admitted throw and every `FORCED_BUDGET_STRIDE` worlds
         inside the resolution loop, so the work between two checks is bounded
         by one stride of engine validations, never by throws x worlds."""
-        if not self.admit_forced_single or rnd.trick is None or rnd.trick.plays:
+        if not self.admit_forced_single or not leading(rnd):
             return [], []
         index_of = {tuple(a): i for i, a in enumerate(actions)}
         admitted = set(chosen)
@@ -392,6 +454,8 @@ class PolicyValueBot(PolicyWorldBot):
         if self.admit_forced_single:
             record["forced_single_added"] = [int(i) for i in self._forced_added]
             record["forced_single_detail"] = list(self._forced_detail)
+        if self.adaptive_k:
+            record.update(self._adaptive)
         return record
 
     def decide_play(self, rnd, seat):

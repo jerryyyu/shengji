@@ -1792,12 +1792,25 @@ button {
   .hud-menu-row.leave.armed { color: var(--gold); }
   .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
-  /* points read as a bar under the number */
+  /* points read as a bar under the number. A two-row GRID, not a column: a column
+     stacked the number, the "/ 80" and the bar into three rows inside a 999px-radius
+     pill, which rendered as a tall egg and made the whole top bar as tall as it
+     (Jerry's screenshot, 2026-10-01). Row 1 = number and target side by side,
+     row 2 = the bar across both; the chip is now the level strip's height. */
   .points-chip {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    padding-bottom: 5px;
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 5px;
+    row-gap: 2px;
+    align-items: baseline;
+    justify-content: start;
+    border-radius: 10px;
+    padding: 2px 9px 4px;
+    line-height: 1.1;
+  }
+
+  .points-chip .points-bar {
+    grid-column: 1 / -1;
   }
 
   .points-bar {

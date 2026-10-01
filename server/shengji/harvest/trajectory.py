@@ -849,22 +849,36 @@ class PVTrajectoryMixin:
         # Production's admission below is the FINAL scored ballot: its optional
         # forced-component extras (#680) are admitted inside ``super()._admit``, so
         # the record and this capture never disagree.
-        # Production's admission is taken over the scored set WITHOUT the draw: the draw's
-        # preferences are masked out of the ranking so a high-scoring draw can never
-        # displace one of production's own top-K (Codex HOLD on #597); it is then
-        # appended, so the ballot is production's list plus the draw, priced like the rest.
+        # Production admission sees only the served scored set. Merely masking
+        # missing draws with -inf is insufficient: structural back-fill and
+        # forced-component lookup can still use those actions (and consume the
+        # forced-extra quota). Remove missing draws for the entire admission,
+        # then map the chosen indices and diagnostics back to the scored list.
         draw = [i for i, a in enumerate(actions) if action_key(a) in self._draw_keys]
         forced = [i for i, a in enumerate(actions) if action_key(a) in getattr(self, "_forced_draw_keys", set())]
-        masked = preferences
         if forced:
-            masked = np.array(preferences, dtype=np.float64, copy=True)
-            masked[forced] = -np.inf
             if anchor_index in forced:
                 raise TrajectoryError("the exploration draw cannot be the anchor")
-        base = [int(i) for i in super()._admit(rnd, seat, actions, masked, anchor_index)]
-        # a forced (masked) draw can only reach the base list as filler when fewer than K
-        # scored actions exist; production's admission over the served scored set is the rest
-        base = [i for i in base if i not in forced]
+            excluded = set(forced)
+            served_indices = [i for i in range(len(actions)) if i not in excluded]
+            served_actions = [actions[i] for i in served_indices]
+            served_preferences = np.asarray(preferences)[served_indices]
+            admitted = super()._admit(rnd, seat, served_actions, served_preferences,
+                                      served_indices.index(anchor_index))
+            base = [served_indices[int(i)] for i in admitted]
+            self._diversity_skipped = [served_indices[int(i)]
+                                       for i in getattr(self, "_diversity_skipped", ())]
+            self._forced_added = [served_indices[int(i)]
+                                  for i in getattr(self, "_forced_added", ())]
+            self._forced_detail = [
+                {**entry,
+                 "throw_index": served_indices[int(entry["throw_index"])],
+                 "index": (None if entry["index"] is None else
+                           served_indices[int(entry["index"])])}
+                for entry in getattr(self, "_forced_detail", ())]
+        else:
+            base = [int(i) for i in super()._admit(
+                rnd, seat, actions, preferences, anchor_index)]
         chosen = list(base)
         for i in draw:                       # every draw is priced: appended unless admitted already
             if i not in chosen:

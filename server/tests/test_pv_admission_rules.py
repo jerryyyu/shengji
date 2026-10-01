@@ -387,6 +387,171 @@ def test_forced_extras_are_in_the_harvested_production_ballot(explore):
         trajectory.pv_fields_from_record(record, ballot[:-1])
 
 
+def test_capped_missing_exploration_component_is_not_reclassified_as_production(monkeypatch):
+    """A forced component absent from the served cap is unavailable to production.
+
+    The exploration mixin may append that card to the scored set.  It then becomes
+    eligible for forced-single admission, but that must not rewrite the captured
+    production ballot: a no-exploration bot at the *same* cap could not have
+    admitted it.  In particular, do not retain `_forced_added` blindly while the
+    mixin removes a missing exploration draw from its production partition.
+    """
+    import random
+    from shengji.harvest import trajectory
+
+    rnd = state(); seat = rnd.turn
+    throw, forced = ["CA", "CJ"], ["CJ"]
+    assert forced_lead(rnd, seat, throw) == forced
+    # The cap retains C10; the forced CJ singleton is absent.  The anchor is
+    # force-included, making this a real capped served ballot with one throw.
+    assert enumerate_legal(rnd, seat, cap=1).actions == [["C10"]]
+    world = [([sorted(hand) for hand in rnd.hands], sorted(rnd.buried))]
+
+    def fresh():
+        config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=1,
+                                   candidates=2, cap=1, batch_size=128,
+                                   admit_forced_single=True)
+        bot = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+                             config=config, checkpoint="/dev/null", seed=17)
+        bot._worlds = lambda *a, **k: (world, 1)
+
+        def scores(rnd_, seat_, actions, worlds_):
+            values = np.array([1000.0 if action == throw else -float(i)
+                               for i, action in enumerate(actions)])
+            return np.tile(values, (len(worlds_), 1))
+        bot.scores = scores
+        return bot
+
+    served_bot, harvest_bot = fresh(), fresh()
+    original = module.HeuristicBot.decide_play
+    monkeypatch.setattr(
+        module.HeuristicBot, "decide_play",
+        lambda self, rnd_, seat_: list(throw) if self in (served_bot, harvest_bot)
+        else original(self, rnd_, seat_))
+
+    # The actual served policy cannot price CJ: it is absent from cap=1 plus
+    # the force-included anchor.  Its detail witnesses the unavailable index.
+    assert served_bot.decide_play(copy.deepcopy(rnd), seat) == throw
+    served_record = served_bot.last_decision_record
+    assert served_record["admitted"] == [throw, ["C10"]]
+    assert served_record["forced_single_added"] == []
+    assert served_record["forced_single_detail"] == [{
+        "throw_index": 1, "forced": forced, "index": None,
+        "worlds_forced": 1, "fraction": 1.0, "admitted": False,
+    }]
+
+    # A missing exploration draw makes CJ available only to the harvesting bot.
+    # Resolution still runs over the served set, so CJ is an exploration action,
+    # not a forced extra; it must stay outside the production partition.
+    harvest_bot.__class__ = trajectory.pv_trajectory_class(type(harvest_bot))
+    harvest_bot._trajectory_init(random.Random(1))
+    harvest_bot.EXPLORE_RATE, harvest_bot.EXPLORE_K, harvest_bot.LEGAL_CAP = 1.0, 1, 256
+    monkeypatch.setattr(trajectory, "sample_off_ballot", lambda *a, **k: ([forced], 1))
+    assert harvest_bot.decide_play(copy.deepcopy(rnd), seat) == throw
+    record = harvest_bot.last_decision_record
+    assert record["admitted"] == [throw, ["C10"], forced]
+    assert record["forced_single_added"] == []
+    assert record["forced_single_detail"] == [{
+        "throw_index": 1, "forced": forced, "index": None,
+        "worlds_forced": 1, "fraction": 1.0, "admitted": False,
+    }]
+    assert len(record["admitted_indices"]) == 3 <= harvest_bot.candidates + module.FORCED_EXTRA_SLOTS
+    assert len(set(record["admitted_indices"])) == 3
+    assert harvest_bot.last_production_ballot == served_record["admitted"]
+    assert harvest_bot.last_ballot == record["admitted"]
+    assert harvest_bot.last_exploration["added"] == [forced]
+
+
+def test_missing_draw_cannot_consume_forced_extra_quota():
+    """The production partition equals admission over the served scored set.
+
+    This is a targeted admission witness: three real engine-refused club throws
+    have three distinct forced components.  C10 is a missing exploration draw;
+    C3 and C5 are in the served scored set.  The missing draw must not take one
+    of the two forced-extra slots and thereby suppress C5 from production.
+    """
+    import random
+    from shengji.harvest import trajectory
+    from shengji.harvest.common import action_key
+
+    rnd = state(); seat = rnd.turn
+    throws = [["C10", "CA"], ["C3", "CA"], ["C5", "CJ"]]
+    missing, present = ["C10"], [["C3"], ["C5"]]
+    assert [forced_lead(rnd, seat, action) for action in throws] == [missing, *present]
+    actions = [*throws, missing, *present]
+    preferences = np.array([0.0, 30.0, 20.0, -999.0, 0.0, 0.0])
+    world = [([sorted(hand) for hand in rnd.hands], sorted(rnd.buried))]
+
+    # The no-exploration control has exactly the served scored set: missing C10
+    # cannot be priced, while C3 and C5 consume the two genuine forced slots.
+    control = served(admit_forced_single=True)
+    control.candidates = 3
+    served_indices = [0, 1, 2, 4, 5]
+    served_actions = [actions[i] for i in served_indices]
+    served_preferences = preferences[served_indices]
+    expected = control._admission(rnd, seat, served_actions, served_preferences, 0, world)
+    expected_ballot = [served_actions[i] for i in expected]
+    assert expected_ballot == [*throws, *present]
+    assert control._forced_added == [3, 4]
+
+    # The harvesting action list contains C10 only because exploration appended
+    # it.  Its production partition must still equal the same-cap control, with
+    # all diagnostics remapped to the widened action indices.
+    bot = served(admit_forced_single=True)
+    bot.candidates = 3
+    bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+    bot._trajectory_init(random.Random(1))
+    bot._draw_keys = {action_key(missing)}
+    bot._forced_draw_keys = {action_key(missing)}
+    bot.LEGAL_CAP = 256
+    chosen = bot._admission(rnd, seat, actions, preferences, 0, world)
+    assert chosen == [0, 1, 2, 4, 5, 3]
+    assert bot.last_production_ballot == expected_ballot
+    assert bot.last_ballot == [*expected_ballot, missing]
+    assert bot._forced_added == [4, 5]
+    assert bot._forced_detail == [
+        {"throw_index": 0, "forced": missing, "index": None,
+         "worlds_forced": 1, "fraction": 1.0, "admitted": False},
+        {"throw_index": 1, "forced": ["C3"], "index": 4,
+         "worlds_forced": 1, "fraction": 1.0, "admitted": True},
+        {"throw_index": 2, "forced": ["C5"], "index": 5,
+         "worlds_forced": 1, "fraction": 1.0, "admitted": True},
+    ]
+    assert len(bot._forced_added) == module.FORCED_EXTRA_SLOTS
+
+
+def test_missing_draw_cannot_backfill_a_diverse_production_ballot():
+    """A masked missing draw must not fill the diversity quota by back-fill."""
+    import random
+    from shengji.harvest import trajectory
+    from shengji.harvest.common import action_key
+
+    rnd = state(); seat = rnd.turn
+    actions = [["C10", "C10", "C3"], ["C3", "C3", "C5"],
+               ["C10", "C10", "C5"]]
+    missing = actions[2]
+    assert len({structure_key(rnd, action) for action in actions}) == 1
+    preferences = np.array([0.0, 10.0, -999.0])
+
+    control = served(admission_diversity=True)
+    control.candidates = 3
+    expected = control._admission(rnd, seat, actions[:2], preferences[:2], 0, [])
+    expected_ballot = [actions[:2][i] for i in expected]
+    assert expected_ballot == actions[:2]
+
+    bot = served(admission_diversity=True)
+    bot.candidates = 3
+    bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+    bot._trajectory_init(random.Random(1))
+    bot._draw_keys = {action_key(missing)}
+    bot._forced_draw_keys = {action_key(missing)}
+    bot.LEGAL_CAP = 256
+    assert bot._admission(rnd, seat, actions, preferences, 0, []) == [0, 1, 2]
+    assert bot.last_production_ballot == expected_ballot
+    assert bot.last_ballot == actions
+    assert bot._diversity_skipped == []
+
+
 # ------------------------------- the serving deadline (Codex HOLD on #680, P1 #2)
 
 def test_deadline_firing_inside_the_forced_extras_loop_is_a_clean_fallback(monkeypatch):

@@ -20350,3 +20350,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Fleet: Mini AW3r2 epoch 4 (val_ce 0.6288, own split), PBF1 and SL4 waiters alive; cloud runSL5 8,058 shards → runPVR1 → runPVR3 armed; Perf runSL6 5,272 → runPVR2 → runPVR4 armed. Release 36 healthy, rooms 0.
 
 — Claude
+
+### 2026-09-30 20:2x ET — #670 merged (dead modules gone); Jerry's step-1 approval reached Codex; the Mini handed to Codex after AW3r2 (Claude)
+
+- Jerry: "Sg delete" on #661 → PR #670 (point_banking, point_flow, point_context, pilot_folds and their three tests removed; the workflow's two explicit test lists drop test_point_banking.py; test_sampler_constraints inlines the sha256 stream seed it borrowed, bit-identical). Codex PASS at c919d064 (179 passed, 1 skipped; the 2 missing-corpus failures reproduced on base) + CI 5/5 → REST squash `f2f52c86`.
+- Codex (2176): Jerry said "I approve 663" directly in the Codex session; the bounded 30-min / 12-root qualification is approved, not yet armed; Codex asked for a free Mini window BEFORE PBF1 without racing its waiter. Done: the PBF1 waiter (pid 35656, a bare wait loop) STOPPED 20:16 ET and noted in its status file; AW3r2 untouched (epoch 6, val_ce 0.6293 own split) and runs to its SEAL (~07:00 ET 10-01), after which the Mini is Codex's; PBF1 re-arms behind AW3r2's SEAL AND Codex's named terminal line once Codex provides it; SL4's waiter keys on PBF1's status file and needs nothing.
+- Cloud runSL5 10,751 / 16,000 shards (runPVR1 → runPVR3 armed behind); Perf runSL6 7,823 (runPVR2 → runPVR4 armed). Release 36 healthy, rooms 0. Open PRs mine: none.
+
+— Claude

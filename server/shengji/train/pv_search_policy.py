@@ -28,6 +28,17 @@ same package's value head -- Jerry 2026-09-21: "we should use value guided hybri
 Nothing in this module deploys anything: registration happens only when
 ``SHENGJI_PV_CKPT`` is set.
 
+Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
+``SHENGJI_PV_ADMISSION_DIVERSITY=1`` caps near-duplicate throws in the K-1
+policy slots and ``SHENGJI_PV_ADMIT_FORCED_SINGLE=1`` also admits, next to an
+admitted throw, the component the engine would force in most sampled worlds
+(definitions and defaults: `policy_value_search`).  Each accepts only ``0`` or
+``1``.  A rule that is on enters the recipe digest and adds ``-div`` / ``-fs``
+to the registry name before ``-r<recipe8>``; with both off the recipe payload,
+the digest, the name (production:
+``pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25``) and the
+admitted indices are exactly what they were before the rules existed.
+
 Optional sampler rule (#676 B, the repeated doomed throws), OFF BY DEFAULT:
 ``SHENGJI_PV_REFUSAL_CONSTRAINTS=1`` makes the world sampler honour every
 failed-throw notice posted this round (`ai.refusal`: a sampled world must make
@@ -58,7 +69,7 @@ from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
-from .policy_value_search import PolicyValueBot
+from .policy_value_search import ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS, PolicyValueBot
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
 
@@ -68,11 +79,20 @@ FALLBACK_SCHEMA = "pv-search-fallback-v1"
 ENCODING = "mlp-static"
 DEFAULTS = dict(worlds=64, candidates=8, cap=4000, batch_size=128, seed=0,
                 serving_budget_seconds=None)
+#: the optional admission rules (`policy_value_search`): env flag -> recipe key
+ADMISSION_RULES = {"ADMISSION_DIVERSITY": "admission_diversity",
+                   "ADMIT_FORCED_SINGLE": "admit_forced_single"}
+#: name tokens, in name order, for the rules that are on
+ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"))
 #: the optional sampler rule (`ai.refusal`): env flag -> recipe key, and its default
 SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"),)
+#: every optional rule, env flag -> recipe key, and the name tokens in name
+#: order (admission rules first, then the sampler rule): div, fs, rc
+RULES = {**ADMISSION_RULES, **SAMPLER_RULES}
+RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS
 ENV_PREFIX = "SHENGJI_PV_"
 
 
@@ -131,20 +151,28 @@ class PVSearchConfig:
     serving_budget_seconds: float | None = DEFAULTS["serving_budget_seconds"]
     encoding: str = ENCODING
     schema: str = SCHEMA
-    # the optional sampler rule (#676 B); OFF by default and, while off, ABSENT
-    # from the recipe payload so every pre-existing name is unchanged
+    # the optional admission rules (#676 A/C) and the sampler rule (#676 B); OFF by
+    # default and, while off, ABSENT from the recipe payload so every pre-existing
+    # name is unchanged
+    admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"]
+    admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"]
     refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that a rule that is OFF is
-    omitted (the payload of the pre-rule recipe, byte for byte)."""
+    omitted (the payload of the pre-rule recipe, byte for byte) and an admission
+    rule that is on carries its parameters."""
     payload = asdict(config)
-    for key in SAMPLER_RULES.values():
+    for key in RULES.values():
         if type(payload[key]) is not bool:
             raise PVSearchPolicyError(f"{key} must be a bool")
         if not payload[key]:
             del payload[key]
+    if config.admission_diversity:
+        payload["max_per_structure"] = ADMISSION_DEFAULTS["max_per_structure"]
+    if config.admit_forced_single:
+        payload["forced_min_fraction"] = ADMISSION_DEFAULTS["forced_min_fraction"]
     return payload
 
 
@@ -160,7 +188,7 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     scorer swapped while the value evaluator stays fixed) the name also carries the
     prior's id, so the two identities can never be mistaken for one package."""
     prior = f"-prior-{prior8}" if prior8 else ""
-    rules = "".join(f"-{token}" for field, token in SAMPLER_TOKENS if getattr(config, field))
+    rules = "".join(f"-{token}" for field, token in RULE_TOKENS if getattr(config, field))
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
 
@@ -172,7 +200,9 @@ class PVSearchBot(PolicyValueBot):
                  checkpoint: str, seed: int = 0):
         super().__init__(predict, evaluator=evaluator, candidates=config.candidates,
                          batch_size=config.batch_size, worlds=config.worlds,
-                         cap=config.cap, seed=seed)
+                         cap=config.cap, seed=seed,
+                         admission_diversity=config.admission_diversity,
+                         admit_forced_single=config.admit_forced_single)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -315,12 +345,14 @@ class PVSearchBot(PolicyValueBot):
         return enumerate_legal(rnd, seat, cap=self.cap, must_include=list(must_include))
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
-        """Indices (into ``actions``) the value head prices: the anchor first, then the
-        policy's best scores, ``self.candidates`` in all."""
-        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
-        chosen = [anchor_index]
-        chosen.extend(i for i in ranked if i != anchor_index)
-        return chosen[:self.candidates]
+        """Indices (into ``actions``) the value head prices -- the FINAL ballot: the
+        anchor first, then the policy's best scores, ``self.candidates`` in all, then
+        any forced-component extras -- the harness's own admission
+        (`PolicyValueBot._admit`; the worlds and the deadline reach it through the
+        admission context `_search` sets).  A wrapper that captures the ballot here
+        (the trajectory mixin, a hook override) captures everything the value head
+        will price."""
+        return super()._admit(rnd, seat, actions, preferences, anchor_index)
 
     def _search(self, rnd, seat, anchor, started, check_budget=None):
         legal = self._legal(rnd, seat, [anchor])
@@ -331,10 +363,21 @@ class PVSearchBot(PolicyValueBot):
         preferences = self.scores(rnd, seat, actions, worlds).mean(axis=0)
         anchor_key = tuple(sorted(anchor))
         anchor_index = next(i for i, a in enumerate(actions) if tuple(sorted(a)) == anchor_key)
-        chosen = [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
+        chosen = self._admission(rnd, seat, actions, preferences, anchor_index, worlds, check_budget)
         if not chosen or chosen[0] != anchor_index or len(set(chosen)) != len(chosen) \
                 or any(not 0 <= i < len(actions) for i in chosen):
             raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
+        # The candidate budget bounds what PRODUCTION admits (K plus the forced
+        # extras).  The harvest mixin appends its exploration draw AFTER the
+        # production ballot (keyed in ``_draw_keys``); on the data path there is
+        # no serving budget and so no fallback, so counting the draw here raised
+        # on a full ballot (#680 at f78ecbe1, found stacking #687).  Draws are
+        # excluded from the count; everything else -- a hook override's extras
+        # included -- is bounded.
+        draw_keys = getattr(self, "_draw_keys", None) or ()
+        budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
+        if len(budgeted) > self.candidates + FORCED_EXTRA_SLOTS:
+            raise PVSearchPolicyError("admission exceeded the candidate budget")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
         if check_budget is not None:
@@ -359,6 +402,7 @@ class PVSearchBot(PolicyValueBot):
             # ``played`` is the server's record/play contract (`api.server._log_play`)
             "played": list(admitted[winner]),
             "seconds": time.perf_counter() - started, "work_complete": True,
+            **self._admission_record(),
             **self._sampler_record(),
         }
         return list(admitted[winner])
@@ -450,7 +494,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bury_serving_budget_seconds=None,
                        bot_factory=None, prior_checkpoint: str | None = None,
                        prior_sha256: str | None = None,
-                       refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+                       refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
+                       admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
+                       admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -477,7 +523,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
-                            refusal_constraints=refusal_constraints)
+                            refusal_constraints=refusal_constraints,
+                            admission_diversity=admission_diversity,
+                            admit_forced_single=admit_forced_single)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -525,7 +573,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         bury_serving_budget_seconds=None, bot_factory=None,
                         prior_checkpoint: str | None = None,
                         prior_sha256: str | None = None,
-                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
+                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
+                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -534,7 +584,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
-                            refusal_constraints=refusal_constraints)
+                            refusal_constraints=refusal_constraints,
+                            admission_diversity=admission_diversity,
+                            admit_forced_single=admit_forced_single)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -576,7 +628,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                bury_serving_budget_seconds=bury_serving_budget_seconds,
                                bot_factory=bot_factory, prior_checkpoint=prior_checkpoint,
                                prior_sha256=prior_sha256,
-                               refusal_constraints=config.refusal_constraints),
+                               refusal_constraints=config.refusal_constraints,
+                               admission_diversity=config.admission_diversity,
+                               admit_forced_single=config.admit_forced_single),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -591,8 +645,9 @@ def pv_env_recipe(environ=None) -> dict:
     the optional ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair (a separate hash-pinned policy
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
-    optional ``_REFUSAL_CONSTRAINTS`` rule flag (``0`` or ``1`` only; unset or empty is
-    off), as keyword arguments for `pv_registry_entries`."""
+    optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS``
+    rule flags (``0`` or ``1`` only; unset or empty is off), as keyword arguments for
+    `pv_registry_entries`."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:
@@ -616,7 +671,7 @@ def pv_env_recipe(environ=None) -> dict:
     raw = env.get(ENV_PREFIX + "SERVING_BUDGET_SECONDS")
     if raw not in (None, ""):
         recipe["serving_budget_seconds"] = float(raw)
-    for suffix, key in SAMPLER_RULES.items():
+    for suffix, key in RULES.items():
         raw = env.get(ENV_PREFIX + suffix)
         if raw in (None, ""):
             continue

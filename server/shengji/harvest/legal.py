@@ -263,6 +263,39 @@ def enumerate_legal(rnd: Round, seat: int, cap: int | None = DEFAULT_CAP,
     return LegalSet(kind, [list(a) for a in actions], count, complete)
 
 
+def resolve_lead(rnd: Round, seat: int, cards: Sequence[str],
+                 hands: Sequence[Sequence[str]] | None = None) -> tuple[list[str], str | None]:
+    """What the engine would ACCEPT for ``seat`` leading ``cards``: ``(actual, message)``.
+
+    The same call `Round.play` makes before committing a lead
+    (``engine.legal.validate_lead`` on the actor's hand and the OTHER THREE
+    hands), so the verdict is the engine's own, never a re-statement of the
+    rule.  A single component always stands; a multi-component throw fails
+    when any other hand can beat a component in suit, and the lowest beatable
+    component is forced.  The verdict therefore depends on HIDDEN cards:
+    ``hands`` (default: the round's live hands) lets a search supply a
+    hypothetical full deal -- one sampled world -- and get that world's
+    verdict.  Pure: reads only the ordering, writes nothing.
+
+    Lives here rather than in ``engine/round.py`` because that file is part of
+    the hashed encoder-identity closure (``cwv_policy.AFTERSTATE_SOURCE_PATHS``):
+    editing it would make the production package refuse to load (#634).
+    """
+    hands = rnd.hands if hands is None else hands
+    others = [list(hands[s]) for s in range(4) if s != seat]
+    return validate_lead(list(cards), list(hands[seat]), others, rnd.ordering)
+
+
+def forced_lead(rnd: Round, seat: int, cards: Sequence[str],
+                hands: Sequence[Sequence[str]] | None = None) -> list[str] | None:
+    """The component `resolve_lead` would force for this throw in this deal, or
+    None when the lead stands as submitted."""
+    actual, message = resolve_lead(rnd, seat, cards, hands)
+    if message is None or sorted(actual) == sorted(cards):
+        return None
+    return sorted(actual)
+
+
 def is_legal(rnd: Round, seat: int, cards: Sequence[str]) -> bool:
     """Engine oracle for one submitted action (no mutation, no rollouts)."""
     assert rnd.trick is not None and rnd.ordering is not None

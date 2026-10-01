@@ -7,18 +7,23 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + a learned-model-guided Monte Carlo AI + FastAPI
 multiplayer server + React web UI with Mandarin voice announcements.
 
-## The production bot — release 35 (2026-09-28; the SAME bot as releases 29–34)
+## The production bot — release 37 (2026-10-01); the model is release 36's
 
-Releases 31–35 changed no model, package or serving configuration: the starting-level selector
-(#638, then moved into the room screen by #646), a table that plays on past Ace scoring a game each
-time (#644), and a quieter landscape-phone table (#652, #653). The bot below has been unchanged since
-release 29; release 30 was the hybrid-bury fix (#607). CI now fetches the production package by hash
-and requires the served bot to construct on every push (#654).
+Release 37 (2026-10-01 01:1x ET, #671) is a phone-HUD CSS fix on release 36's bot. Release 36
+(2026-09-30 11:53 ET, #666) was the first model change since release 30: the served package is
+`smv3out-491ee4bf.npz`, the OUTCOME head of the gen-5 SMV3 checkpoint `3e89e86f` (arm F's recipe
+plus the search-mean sidecar v3, #658), inside the search release 30 served unchanged (W64/K8,
+hybrid bury, 3 s / 2 s budgets, the JS-M1 prior keys retained). As served against release 30 it
+read +0.0361 [+0.0015, +0.0707] (v36a) and the predeclared confirmation +0.0393 [+0.0033, +0.0752]
+(v36a2), five windows each. Releases 29–35 served the soft head `8ecd4fea`; release 30 was the
+hybrid-bury fix (#607). Every screen now compares against release 36. CI fetches the production
+package by hash and requires the served bot to construct on every push (#654). Rollback and the
+full record: [DEPLOY.md](DEPLOY.md).
 
-![Release 29: one soft-head package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
+![Since release 29: one package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
 
-One checkpoint, the **soft-action head** (`8ecd4fea`, served as the NumPy package
-`soft-8ecd4fea.npz`), is the whole play search:
+One checkpoint, served as the NumPy package `smv3out-491ee4bf.npz` (sha256 `491ee4bf…`;
+until release 36 the soft-action head `soft-8ecd4fea.npz`), is the whole play search:
 
 1. **Sample.** 64 hidden worlds consistent with the public information, through
    production's sampler.
@@ -38,6 +43,11 @@ What the evidence says (details and provenance in
 [AI_POLICIES.md](AI_POLICIES.md#production-contract), readouts in the
 [scaling log](docs/scaling_log/) and the search atlas):
 
+- **Release 36's head against release 30 as served:** +0.0361 [+0.0015, +0.0707] and the
+  predeclared confirmation +0.0393 [+0.0033, +0.0752], five windows each — the first model
+  gain since release 29. The policy head alone beats the production head +0.21 level/round in
+  paired duels (8k deals) while served reads for head swaps sit within ±0.02 of zero: a
+  measured decoupling between the head and the search, not a ceiling (#663).
 - **The head-driven search beats what production played, in card play:** +0.086
   [+0.042, +0.131] signed levels per round against the release-28 package on 800
   matched deals, and +0.122 [+0.079, +0.164] on fresh deals. More worlds beyond 64
@@ -167,7 +177,7 @@ as policies.
 | `docs/scaling_log/` | every value model, its offline metrics and screen results (built from `models.py`) |
 | `AGENTS.md` / `CODEX_WORKFLOW.md` | execution discipline and the Codex setup (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
 | `AI_POLICIES.md` | the evidence standard for every strength claim; the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md` |
-| `HANDOFF_ACTIVE.md` / `HANDOFF_REVIEW.md` | current gate summary; the append-only review ledger on `main` |
+| `HANDOFF_ACTIVE.md` / `HANDOFF_REVIEW.md` | `HANDOFF_ACTIVE.md` is slated for deprecation (#674; fleet state is `server/scripts/fleet_status.sh` and the hourly bus status); `HANDOFF_REVIEW.md` is the append-only review ledger on `main` |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
 | `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |
 

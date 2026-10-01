@@ -418,3 +418,217 @@ For a public designated-room check, the script requires
 `--allow-remote --url wss://shengji.fly.dev/ws`; omit `--ordinary-round` to
 avoid putting synthetic gameplay into ordinary human logs. Supply the access
 code via the environment, never an argument or committed file.
+
+## Moved from DEPLOY.md on 2026-10-01
+
+The sections below are verbatim from `DEPLOY.md` (main `ceea12e9`): the release-28 plan as approved, releases 27, 26 and 25 with the release-25 plan, and the release-22 "current production and rollback boundary" with the September-8 W32 rollout and the release-19/18 boundaries. Release numbers, images and rollback statements are those of their day; production since 2026-09-30 is described at the top of `DEPLOY.md`.
+
+## Release 28 plan as approved (kept for the record)
+
+Play policy `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff`: JS-M1 (`a5248cc5`, M1's recipe from scratch with a policy head trained on all
+20.3M root rows) served as a single NumPy package `/data/models/js-m1-0d17fd03.npz`
+(SHA256 `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`, schema v2 with the policy head, PR #455). The package is the value net
+AND, above 1,000 legal actions with top 256 per sampled world, its own policy head is the
+admission prior (`SHENGJI_CWV_PRIOR_CKPT` names the same file; prior kind `joint-numpy`).
+Hybrid bury and the 2-second bury budget unchanged (JS-M1 scores bury candidates).
+Evidence: offline, val_ce 0.5957 (M1 0.5975) and a policy head non-inferior to prior v3 on
+four of five strata (widest unresolved); in play (cloud lane v22, five capped windows),
++0.0239 [+0.0005, +0.0472] vs the release 24 recipe (nominal, shared-control seeds) and
+paired +0.0057 [−0.0163, +0.0277] vs the release 27 recipe at the same decision wall with
+0 decisions over 60 s in 182,096 — no ten-window or fresh-seed read yet. Preconditions
+before `fly deploy --ha=false`: #455 merged; decision-identity gate PASS at threshold
+1,000 on this exact package as value and prior (`scripts/cwv_serving_gate.py --serving
+--threshold 1000`); `scripts/cwv_serving_smoke.py` PASS from a clean checkout of main with
+this fly.toml; the package SHA256-verified on the volume; a live room's log showing a bot
+bury and bot plays completing. Prior-only rollback: remove the four `SHENGJI_CWV_PRIOR_*`
+settings and set `SHENGJI_BOT` to the prior-less JS-M1 name the registry prints. Full
+rollback: release 27 (M1 + prior v2, its fly.toml) or release 24.
+
+## Release 27 — M1 + policy prior v2 (#435), redeployed 2026-09-15 22:0x ET
+
+Release **27**, image `registry.fly.io/shengji:deployment-01M2M1B48P44H5HJXEP6ETYQXE` (digest
+`sha256:ff1b78f900f141315582d770ef2232da8d1999d65e6e7a63e22e8d52c0a62993`), deployed with
+`fly deploy --ha=false` from main `383c8dc8` (the release 25 recipe plus the
+`CWVNumpyPrior.__deepcopy__` fix from #451/#452) on machine `48e7e35a9597e8`, 0 rooms at
+deploy time. Live health after the deploy:
+
+```
+{"ok":true,"rooms":0,"bot":"mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f","fast":true,"prior":{"sha256":"b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c","threshold":1000,"top":256}}
+```
+
+Preconditions met, in order: fix merged; `scripts/cwv_serving_smoke.py` PASS from a clean
+checkout of that main on the exact packages with this fly.toml (40 server turns through
+`_paced_bot_step` / `_commit_bot_turn`); decision-identity gate PASS at threshold 1,000
+(2,222/2,222 identical, prior fired 139×); packages SHA256-verified on the volume.
+`/healthz` cannot see a bot-turn failure (release 25 reported ok while every bot turn
+raised), so the first live room's log is the completion check: a bot `bury` event and
+`model_search` `completed` events must appear.
+
+**Rollback** is unchanged: release 24 image
+`registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A` with release 24's
+`fly.toml` (as done for release 26 at 20:55 ET); prior-only rollback as described below.
+
+## Release 26 = the release 24 image (rollback), 2026-09-15 20:55 ET → superseded by release 27
+
+Release 25 (below) stalled every bot turn in its first live room (KXXD): the server
+deep-copies the bot into a turn snapshot before any search, and the NumPy prior's
+read-only weight mapping could not be pickled, so the snapshot raised before the bury
+budget began. The in-process decision-identity gate could not catch it (it never takes
+the server's snapshot path). Rolled back with
+`fly deploy --image registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A --ha=false`
+and release 24's `fly.toml` → release **26**, `/healthz`
+`{"ok":true,"rooms":0,"bot":"mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a","fast":true}`.
+The two new packages stay on the volume. Redeploy of the release 25 recipe requires:
+PR #451 (`CWVNumpyPrior.__deepcopy__`) merged, `scripts/cwv_serving_smoke.py` PASS on the
+real packages from the fixed tree (it builds the bot from `fly.toml` and plays a bury and
+play turns through the server's own bot-turn path), and Jerry's word.
+
+## Release 25 — M1 + policy prior v2 (#435), deployed 2026-09-15 19:54 ET, rolled back 20:55 ET
+
+Release **25**, image `registry.fly.io/shengji:deployment-01M2KQVJVPC6WD85RQD59SYG38`
+(digest `sha256:4ed088a25eef1244818bbce6dc3e9742ade8f913679a70ebf2a62def1b3af189`), deployed
+with `fly deploy --ha=false` from main `55f0029c` on machine `48e7e35a9597e8`
+(1/1 health passing, 0 rooms at deploy time). Live health after the deploy:
+
+```
+{"ok":true,"rooms":0,"bot":"mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f","fast":true,"prior":{"sha256":"b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c","threshold":1000,"top":256}}
+```
+
+Preconditions that were met, in order: serving gate merged (#445), config merged (#448),
+the serving-scope gate on the exact packages at threshold 1,000 PASS (2,222/2,222 decisions
+identical, prior fired 139×; receipt archived under `~/shengji-archive/2026-09-15/release25/`
+with the 10k run, the deploy log and this health response), both packages SHA256-verified on
+the volume. Jerry's go: 18:2x ET (M1 + prior v2), 19:2x ET (threshold 1,000).
+
+**Rollback.** Full: release **24**, image
+`registry.fly.io/shengji:deployment-01M2BGBXE7JXWYBEVWNMG2YM5A` (fd6bb411 + hybrid bury,
+`SHENGJI_BOT=mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`,
+`SHENGJI_CWV_SHORTLIST_CKPT=/data/models/w32-fd6bb411.npz`, no `SHENGJI_CWV_PRIOR_*`); the
+release 24 package stays on the volume. Prior-only: remove the four `SHENGJI_CWV_PRIOR_*`
+settings and set `SHENGJI_BOT` to the registry's prior-less M1 name; `/healthz` must then
+show `"prior": null`. Machine and volume `vol_rkgj0xeg8ejy1kw4` are unchanged; logs and
+model packages must be preserved.
+
+## Release 25 plan as approved (kept for the record)
+
+Play policy `mc-shortlist-12ce4415-w32-r45b303c2-prior-b9ff76c9-bury-hybrid-3ba49886a78f`:
+M1 (`3cb9cd62`) served as NumPy package `/data/models/m1-12ce4415.npz`
+(SHA256 `12ce4415a65c479b03d52a08574e14a5909b09435c1d8dddeab1726fbc1d4d4f`),
+policy prior v2 (`b6d928c5`) as `/data/models/prior-v2-b9ff76c9.npz`
+(SHA256 `b9ff76c9038630ae80bd396f4565574c549a55e385ffd729c2521905b76f0e6c`, pinned by
+`SHENGJI_CWV_PRIOR_SHA256`), applied above 1,000 legal actions with top 256 per
+sampled world (Jerry accepted 1,000 over the originally approved 10,000 on
+2026-09-15 19:2x ET: on five paired capped windows threshold 1,000 is outcome-identical
+to 10,000, −0.0006 [−0.0026, +0.0014], at 0.72× its decision wall and 0.60× the
+previous recipe's, longest decision 9.9 s vs 57.6 s); hybrid bury and the 2-second
+bury budget unchanged. Evidence: twenty
+fresh windows of the M1 family +0.0140 [+0.0026, +0.0254] vs the previous recipe;
+the prior arm is outcome-identical to M1 (paired −0.0003 [−0.0017, +0.0012]) at
+0.79× the previous decision wall with 0 decisions over 60 s and 0 cap hits in
+365,414 (previous recipe: 161 and 7). Preconditions before `fly deploy --ha=false`:
+both packages on the volume with matching SHA256, the in-repo serving gate
+(`scripts/cwv_serving_gate.py --serving --threshold 1000`) PASS with
+`qualifies_serving` on these exact files at this threshold, `/healthz` after deploy showing the policy name and `"prior"` with the
+prior SHA. Prior-only rollback: remove the four `SHENGJI_CWV_PRIOR_*` settings and set
+`SHENGJI_BOT` to the prior-less M1 name the registry prints; full rollback: release
+24 (below) with its environment. The release number, image and health response are
+recorded above.
+
+## Current production and rollback boundary
+
+Previous production (superseded by release 25 above): release **22** deployed September 9 at approximately 20:51 ET, image
+`registry.fly.io/shengji@sha256:b5dc327f79d8804d2a9f79bcddbb6bea1740b71547937ce1be1c08661030c82d`.
+Live health reports the exact hybrid policy and native engine. An isolated
+functional probe verified the literal model path and SHA, encoder bytes,
+legal eight-card bury, unchanged play RNG and no Torch import; it completed
+in 0.803s without fallback. This is one smoke observation, not a latency SLA.
+The existing engineering-room gate and checkpoint were preserved using deploy
+overrides `SHENGJI_W32_TEST_ROOMS=1` and
+`SHENGJI_W32_TEST_CKPT=/data/models/w32-fd6bb411.npz`; retain those overrides
+on a later deploy if the engineering gate is to remain available. Ordinary
+rooms use the default policy without an access code.
+
+Jerry authorized shipping hybrid bury on September 9 after PR #323's fixed
+1,976-deal all-rank confirmation and consumer review. The shipping config uses
+32 candidates / 32 model worlds / 32 MC worlds, incumbent plus four alternatives,
+and a **2-second cooperative search budget**. Expiry or search error returns
+the legal heuristic incumbent without advancing the play RNG. Queue wait,
+model loading and an in-flight operation are not bounded by that deadline.
+The existing W32 play recipe, compact model, one search worker and 512MiB VM
+remain unchanged. Consult `/healthz` for the live policy; configuration in Git
+is not itself proof of deployment.
+
+Pre-bury rollback release: **21**, image
+`registry.fly.io/shengji@sha256:4a68a54058d028dd2444270d1f83b51dcc8623c627043e68ea8058594d41f54b`.
+Machine `48e7e35a9597e8`, volume `vol_rkgj0xeg8ejy1kw4`, existing model package
+and logs must be preserved. Bury-only policy rollback on the new image restores
+the base W32 name and removes bury registration/budget together; do not select
+an unregistered bury name. Reverting the image also requires restoring its
+compatible environment. Do not interrupt occupied rooms without scoped consent.
+
+Monitor queue/search/request latency separately, fallback reasons, stale-turn
+discards, OOM/crash, legality and kitty-loss incidents. Roll back immediately on
+illegal action, RNG/isolation violation or crash/OOM. Investigate repeated
+2-second expiries or new queue stalls; do not silently raise the budget. Live
+traffic is not a powered strength trial. Large kitty losses are a known tradeoff:
+the confirmation saw four 80+ bonuses versus zero for heuristic, despite better
+average results. See the [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md).
+For tail monitoring, count `round_end.kitty_points >= 80` among completed
+bot-banker rounds using this policy, with the completed-round denominator;
+separate successful hybrid decisions from logged heuristic fallbacks. This
+field is the awarded kitty bonus, not raw buried-card points. Preserve failed
+and unfinished rounds separately rather than silently excluding operational
+failures. These observational counts are not a causal comparison with old traffic.
+
+### Historical W32 rollout (September 8)
+
+On September 8, Fly release **20** deployed the reviewed opt-in W32 room gate
+from PR #310, image
+`registry.fly.io/shengji@sha256:b8f48f41149d8a27225e7a44260b72b03475dbdf99ba7398c56167682afd19e5`.
+The single 512 MB / shared-CPU-1x machine `48e7e35a9597e8` and its volume are
+unchanged. At **19:53 UTC September 8**, after Jerry explicitly authorized
+all-user rollout and health showed zero rooms, an environment-only update on
+this same image made W32 the ordinary-room default. No access code is needed.
+The loaded NumPy package was verified as `fd6bb411` (source `3cd27716`, encoder
+v2), with no Torch import; public health passed with the exact W32 policy.
+Explicit engineering rooms still require a creator access code and remain
+excluded from ordinary training logs.
+See `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived 2026-09-22) for the measured latency and test status through release 28.
+
+The pre-deploy **release 19** rollback image is
+`registry.fly.io/shengji:deployment-01M0P8VNX2C49XMVHFWFNNAPC2`, manifest
+`sha256:38c40bb675b2a330e845168ed3f63089279cff764bdcb7fea4908578721045dc`.
+This is the rollback image for the gated-W32 deployment; retain its
+machine configuration and volume. Health must report
+`{"bot":"mc-s0-report-lcb","fast":true}`. The earlier release-18 boundary
+below is historical, not the current release number.
+
+The decision runtime moves an isolated bot/round snapshot into
+a worker, overlaps the existing 0.7-second pacing floor, and commits the action
+only if the live room, round, phase, turn and controller still match. Claims,
+reconnects and X-ray therefore remain responsive; a stale search is discarded
+with its cloned RNG/counters.
+
+For the original W32 rollout, **policy rollback was `SHENGJI_BOT=mc-s0-report-lcb`**
+on the same image; retain both model packages and the volume. The global model
+registration can remain present when MC-LCB is selected. A normal-room
+constructor and health were checked, not a many-room concurrency benchmark;
+one model-search worker bounds CPU use but concurrent players can queue.
+
+Historical release-18 rollback decisions (not the current W32 rollback):
+
+1. **Release/runtime rollback:** Fly release 17 / image
+   `latency-cd6789e`. Use this for a release-18 availability or kitty-X-ray
+   regression while keeping the report-LCB policy and release-17 scheduler
+   decision separate. It does not undo a defect shared with release 17. The
+   release-17 manifest SHA-256 is
+   `047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
+2. **Policy rollback:** `SHENGJI_BOT=mc-strong`. Use this for a report-LCB
+   decision-semantics/correctness problem; it gives up the confirmed strength
+   gain and is not the response to a generic server/runtime issue.
+
+The project owner (Jerry) is the production deploy and rollback decider.
+Before a planned deploy or policy change, inspect room occupancy and obtain
+scoped authorization before interrupting games. Record the old release, exact
+image/manifest, health response, reason and rollback target. Do not treat an
+empty room as permission to change the production policy.

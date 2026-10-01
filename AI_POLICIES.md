@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-09-22 (release 29: the policy/value search with the soft head, pv-search W64/K8 + hybrid bury)**. This file defines the current callable-policy
+Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in the release-30 pv-search W64/K8 + hybrid bury)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -18,22 +18,23 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 35 (2026-09-28 01:49 ET). Releases 31–35 changed NO model, package or
-serving configuration — the starting level (#638/#646), the play-on-past-Ace game rule (#644) and the phone table
-(#652/#653) — so every strength statement below is release 30's and carries over unchanged. Release 30 (2026-09-22 09:13 ET) was release 29's recipe, same package and served
-name, with the hybrid-bury fix #607 — the bury keeps the heuristic incumbent once instead of refusing the
-decision, which had silently fallen back to the heuristic on ~6% of banker burys on the diagnostic capture set — 24 of
-400 deals; the production-traffic rate is unmeasured): **the policy/value search with the
-soft-action head 8ecd4fea as ONE package** (`soft-8ecd4fea.npz`; the policy head admits 8 of the legal
-actions over 64 sampled worlds, the value head prices them, no playouts; value-guided hybrid bury on
-the same package). Release 28 (JS-M1 as one package inside the MC shortlist) is the one-line rollback.
+The current live Fly snapshot is release 37 (2026-10-01 01:1x ET, #671: a phone-HUD CSS fix, NO model, package
+or serving change). Release 36 (2026-09-30 11:53 ET, #666) was the first model change since release 30: **the gen-5
+SMV3 checkpoint 3e89e86f's OUTCOME head as ONE package** (`smv3out-491ee4bf.npz`, sha256 491ee4bf…; arm F's recipe
+plus the search-mean sidecar v3, #658) inside release 30's search unchanged — the policy head admits 8 of the legal
+actions over 64 sampled worlds, the value head prices them, no playouts; value-guided hybrid bury on the same package;
+budgets 3 s / 2 s; the JS-M1 prior keys retained. Evidence: as served vs release 30, v36a +0.0361 [+0.0015, +0.0707]
+and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752], five windows each (#663). Releases 29–35 served the
+soft head 8ecd4fea (`soft-8ecd4fea.npz`); release 30 (2026-09-22 09:13 ET) added the hybrid-bury fix #607. Every
+screen compares against release 36. Rollback: the three release-30 lines kept as a comment in `fly.toml` (the
+package stays on the volume) with `fly deploy --ha=false`, or the release-35 image; see `DEPLOY.md`.
 
 The current selection is:
 
 ```toml
-SHENGJI_BOT = "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e"
-SHENGJI_PV_CKPT = "/data/models/soft-8ecd4fea.npz"
-SHENGJI_PV_SHA256 = "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75"
+SHENGJI_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
+SHENGJI_PV_CKPT = "/data/models/smv3out-491ee4bf.npz"
+SHENGJI_PV_SHA256 = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 SHENGJI_PV_WORLDS = "64"
 SHENGJI_PV_CANDIDATES = "8"
 SHENGJI_PV_CAP = "4000"
@@ -196,6 +197,7 @@ resolved gain; three shipped for cost, maintainability or correctness with no st
 | 6 | **JS-M1 as one package** (release 28) | M1 + separate prior | +0.006 [−0.016, +0.028] | paired vs release 27 | No resolved difference, and not an equivalence result. Shipped as cost and maintainability: one file is both prior and value net. |
 | 7 | **Policy/value search, soft head** (release 29) | the release-28 package | **+0.086 [+0.042, +0.131]** card play; **+0.049 [+0.003, +0.095]** as served | 800 matched deals, one pre-registered primary; five clean 520-cluster windows | The head IS the search: its policy admits 8 of the legal actions over 64 sampled worlds, its value head prices them, no playouts. Versus MC-LCB in the ladder +0.187 [+0.144, +0.231]. The served read is a common-opponent summary-level estimate, not paired served-vs-served inference, and its lower bound is near zero. |
 | 8 | **Hybrid-bury fix** (release 30) | release 29 | not measured | — | Correctness: the bury stopped refusing its own decision and silently falling back to the heuristic on ~6% of banker burys on the diagnostic capture set (24 of 400; the production-traffic rate is unmeasured). No strength claim. |
+| 9 | **SMV3 outcome head** (release 36) | the release-30 package, same search | **+0.0393 [+0.0033, +0.0752]** as served (confirmation v36a2; the first read v36a +0.0361 [+0.0015, +0.0707]) | five 520-cluster windows each, common MC-LCB control, vs release 30 as served | The gen-5 SMV3 checkpoint 3e89e86f's OUTCOME head (arm F's recipe + sidecar v3, #658) in release 30's search unchanged. Confirmed by a predeclared second read; a common-opponent summary-level estimate like row 7. Policy head alone beats the production head +0.21 level/round in paired duels while served head swaps sit within ±0.02: measured decoupling, not a ceiling (#663). |
 
 **Gen 5, not taken (2026-09-24 → 09-27).** Five one-variable retrains of the production head, each screened
 as served against release 30 on fresh windows (five 520-cluster mirrored windows, common MC-LCB control, DL random
@@ -413,8 +415,9 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- Release 28 is the immediate rollback for release 29 (one `SHENGJI_BOT` line), release 27 the next;
-  `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use
+- Release 30 is the immediate rollback for releases 36/37 (the three release-30 lines kept as a comment in
+  `fly.toml`; package `soft-8ecd4fea.npz`, sha ccade130…, stays on the volume; `fly deploy --ha=false`), or the
+  release-35 image; release 28 (one `SHENGJI_BOT` line) the next; `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use
   the image rollback in `DEPLOY.md`.
 
 ## Durable pointers

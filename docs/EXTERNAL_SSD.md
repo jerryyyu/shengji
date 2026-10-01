@@ -27,6 +27,12 @@ the inventory is the list.
 in #542 and the ledger; a pack is rebuildable from the Mini's caches with the #549 builder. The `shengji-pack/`
 directory no longer exists.
 
+**Added by 2026-10-01** (seen with `ls ~/shengji-ssd/shengji-sl ~/shengji-ssd/shengji-pvr`; `~/shengji-ssd` is a symlink
+to `/Volumes/Extreme SSD`; checksum files and sizes: the inventory on the SSD): `shengji-sl/` — `runSL1`..`runSL6` (the
+W32 shortlist rollout-teacher stores) plus `policy_rows_gen5_sl` and `policy_rows_gen5_sl56`; `shengji-pvr/` —
+`runPVR1`..`runPVR4` (release-36 teacher stores) plus `policy_rows_gen5_pvr`. runPVR5/6 (sealed) and runPVR7/8 (dealing)
+were not under `shengji-pvr/` when this line was written.
+
 Moves are done by `fl-pilot/claude_move_to_ssd.armed.sh`: tar, then every file read back from the tar
 and its sha256 compared with the original, then the original deleted, then the inventory appended.
 A failed verification keeps the original.

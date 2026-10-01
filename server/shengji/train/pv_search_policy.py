@@ -27,6 +27,18 @@ of release 27/28 (`cwv_bury_policy.CWVBuryMixin`: heuristic / mc / hybrid) on th
 same package's value head -- Jerry 2026-09-21: "we should use value guided hybrid".
 Nothing in this module deploys anything: registration happens only when
 ``SHENGJI_PV_CKPT`` is set.
+
+Optional sampler rule (#676 B, the repeated doomed throws), OFF BY DEFAULT:
+``SHENGJI_PV_REFUSAL_CONSTRAINTS=1`` makes the world sampler honour every
+failed-throw notice posted this round (`ai.refusal`: a sampled world must make
+the refused throw refusable, with the same forced component, under the real
+``validate_lead``; the thrower's unplayed attempted cards are pinned to it).
+It accepts only ``0`` or ``1``.  On, it enters the recipe digest and adds
+``-rc`` to the registry name before ``-r<recipe8>``; off, the recipe payload,
+the digest, the name (production:
+``pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25``), the sampled
+worlds and the decision record are exactly what they were before the rule
+existed.  The encoder and its hashed source closure are untouched.
 """
 from __future__ import annotations
 
@@ -42,6 +54,7 @@ import numpy as np
 from ..ai.cwv_policy import file_sha256, sample_worlds, shared_evaluator
 from ..ai.heuristic import HeuristicBot
 from ..ai.memory import Memory
+from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
@@ -55,6 +68,11 @@ FALLBACK_SCHEMA = "pv-search-fallback-v1"
 ENCODING = "mlp-static"
 DEFAULTS = dict(worlds=64, candidates=8, cap=4000, batch_size=128, seed=0,
                 serving_budget_seconds=None)
+#: the optional sampler rule (`ai.refusal`): env flag -> recipe key, and its default
+SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints"}
+SAMPLER_DEFAULTS = dict(refusal_constraints=False)
+#: name tokens, in name order, for the rules that are on
+SAMPLER_TOKENS = (("refusal_constraints", "rc"),)
 ENV_PREFIX = "SHENGJI_PV_"
 
 
@@ -113,12 +131,27 @@ class PVSearchConfig:
     serving_budget_seconds: float | None = DEFAULTS["serving_budget_seconds"]
     encoding: str = ENCODING
     schema: str = SCHEMA
+    # the optional sampler rule (#676 B); OFF by default and, while off, ABSENT
+    # from the recipe payload so every pre-existing name is unchanged
+    refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+
+
+def recipe_payload(config: PVSearchConfig) -> dict:
+    """The digested recipe: every field, except that a rule that is OFF is
+    omitted (the payload of the pre-rule recipe, byte for byte)."""
+    payload = asdict(config)
+    for key in SAMPLER_RULES.values():
+        if type(payload[key]) is not bool:
+            raise PVSearchPolicyError(f"{key} must be a bool")
+        if not payload[key]:
+            del payload[key]
+    return payload
 
 
 def recipe_digest(config: PVSearchConfig) -> str:
     """``<recipe8>``: sha256 of the frozen recipe, the seed excluded (a seed is a
     run parameter, not a policy identity)."""
-    encoded = json.dumps(asdict(config), sort_keys=True, separators=(",", ":")).encode()
+    encoded = json.dumps(recipe_payload(config), sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()[:8]
 
 
@@ -127,7 +160,9 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     scorer swapped while the value evaluator stays fixed) the name also carries the
     prior's id, so the two identities can never be mistaken for one package."""
     prior = f"-prior-{prior8}" if prior8 else ""
-    return f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}-r{recipe_digest(config)}"
+    rules = "".join(f"-{token}" for field, token in SAMPLER_TOKENS if getattr(config, field))
+    return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
+            f"-r{recipe_digest(config)}")
 
 
 class PVSearchBot(PolicyValueBot):
@@ -145,6 +180,11 @@ class PVSearchBot(PolicyValueBot):
         self.serving_budget_seconds = _serving_budget(config.serving_budget_seconds)
         self.seed = seed
         self.last_play_record = None
+        # the optional sampler rule (#676 B): the round's failed-throw notices, as
+        # seen on this bot's turns, constrain its sampled worlds (`ai.refusal`)
+        self.refusal_constraints = bool(config.refusal_constraints)
+        self._refusals = RefusalLedger()
+        self._last_sampling = {}
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -171,8 +211,17 @@ class PVSearchBot(PolicyValueBot):
 
     def _worlds(self, rnd, seat, check_budget=None):
         mem = Memory(rnd, seat, own_kitty=getattr(self.sampler, "BANKER_KITTY", True))
-        worlds, attempts = sample_worlds(self.sampler, rnd, seat, self.worlds, mem=mem,
-                                         check_budget=check_budget)
+        self._last_sampling = {}
+        refusals = self._refusals.observe(rnd) if self.refusal_constraints else ()
+        if refusals:
+            worlds, attempts, self._last_sampling = sample_worlds_refusal_aware(
+                self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
+                check_budget=check_budget)
+        else:
+            # the rule off, or on with no refusal this round: production's draw,
+            # unchanged (the same stream, the same worlds for the same seed)
+            worlds, attempts = sample_worlds(self.sampler, rnd, seat, self.worlds, mem=mem,
+                                             check_budget=check_budget)
         if len(worlds) != self.worlds:
             raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{self.worlds}")
         if any(rnd.ordering.eff_suit(c) in mem.voids[s]
@@ -310,8 +359,18 @@ class PVSearchBot(PolicyValueBot):
             # ``played`` is the server's record/play contract (`api.server._log_play`)
             "played": list(admitted[winner]),
             "seconds": time.perf_counter() - started, "work_complete": True,
+            **self._sampler_record(),
         }
         return list(admitted[winner])
+
+    def _sampler_record(self):
+        """The refusal rule's fields for the decision record: present only while
+        the rule is on (zeros when no refusal constrained this decision)."""
+        if not self.refusal_constraints:
+            return {}
+        return {"refusal_observations": 0, "refusal_rejections": 0,
+                "refusal_fallback_worlds": 0, "refusal_pinned_codes": 0,
+                **self._last_sampling}
 
     def decide_play(self, rnd, seat):
         started = time.perf_counter()
@@ -390,7 +449,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bury_config: CWVBuryConfig | None = None,
                        bury_serving_budget_seconds=None,
                        bot_factory=None, prior_checkpoint: str | None = None,
-                       prior_sha256: str | None = None) -> PVSearchBot:
+                       prior_sha256: str | None = None,
+                       refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+                       ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
 
@@ -415,7 +476,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
         raise PVSearchPolicyError(f"pv-search package SHA256 mismatch: {actual[:8]} != {sha256[:8]}")
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
-                            serving_budget_seconds=_serving_budget(serving_budget_seconds))
+                            serving_budget_seconds=_serving_budget(serving_budget_seconds),
+                            refusal_constraints=refusal_constraints)
+    recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
     predict = NumpyPriorPredict(path, sha256)
@@ -461,14 +524,18 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         bury_config: CWVBuryConfig | None = None,
                         bury_serving_budget_seconds=None, bot_factory=None,
                         prior_checkpoint: str | None = None,
-                        prior_sha256: str | None = None) -> dict:
+                        prior_sha256: str | None = None,
+                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+                        ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
     bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
     from ..ai.cwv_policy import checkpoint_id
     config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
-                            serving_budget_seconds=_serving_budget(serving_budget_seconds))
+                            serving_budget_seconds=_serving_budget(serving_budget_seconds),
+                            refusal_constraints=refusal_constraints)
+    recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
         raise PVSearchPolicyError(f"pv-search package on disk is {ckpt8}, bound SHA256 says {sha256[:8]}")
@@ -508,7 +575,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                bury_arm=bury_arm, bury_config=bury_config,
                                bury_serving_budget_seconds=bury_serving_budget_seconds,
                                bot_factory=bot_factory, prior_checkpoint=prior_checkpoint,
-                               prior_sha256=prior_sha256),
+                               prior_sha256=prior_sha256,
+                               refusal_constraints=config.refusal_constraints),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -522,8 +590,9 @@ def pv_env_recipe(environ=None) -> dict:
     """``SHENGJI_PV_CKPT`` + ``_SHA256`` (both required: an unpinned package is refused),
     the optional ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair (a separate hash-pinned policy
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
-    / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs, as keyword
-    arguments for `pv_registry_entries`."""
+    / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
+    optional ``_REFUSAL_CONSTRAINTS`` rule flag (``0`` or ``1`` only; unset or empty is
+    off), as keyword arguments for `pv_registry_entries`."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:
@@ -547,6 +616,14 @@ def pv_env_recipe(environ=None) -> dict:
     raw = env.get(ENV_PREFIX + "SERVING_BUDGET_SECONDS")
     if raw not in (None, ""):
         recipe["serving_budget_seconds"] = float(raw)
+    for suffix, key in SAMPLER_RULES.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if raw not in ("0", "1"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
+        if raw == "1":
+            recipe[key] = True
     arm = env.get(ENV_PREFIX + "BURY_ARM")
     if arm:
         if arm not in BURY_ARMS:

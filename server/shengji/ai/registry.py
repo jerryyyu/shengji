@@ -858,6 +858,21 @@ def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[s
     return sorted(entries)
 
 
+def _register_cwv_puct_from_env() -> None:
+    """``SHENGJI_CWV_PUCT_CKPT`` + ``SHENGJI_CWV_PUCT_SHA256`` + ``_SIMULATIONS`` (+ the
+    ``_PRIOR`` / ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` / ``_PRIOR_TEMPERATURE`` /
+    ``_LEAF_FINISH_TRICK`` / ``_WORLD_POOL`` / ``_BATCH`` / ``_C_PUCT`` knobs) register
+    the PUCT arms at import, so a spawned screen worker resolves the same name the
+    parent did (`ai.cwv_puct.puct_env_recipe`; #436 step 1b).  Screen-only: nothing
+    served reads these variables."""
+    import os
+    if not os.environ.get("SHENGJI_CWV_PUCT_CKPT"):
+        return
+    from .cwv_puct import puct_env_recipe
+    recipe = puct_env_recipe()
+    register_cwv_puct_policies(recipe.pop("checkpoint"), recipe.pop("simulations"), **recipe)
+
+
 def _register_cwv_shortlist_from_env() -> None:
     """``SHENGJI_CWV_SHORTLIST_CKPT`` (+ the ``_WORLDS``/``_ALTERNATIVES``/
     ``_SELECTION_WORLDS``/``_REPORT_WORLDS``/``_BATCH_SIZE``/``_ENCODING``/
@@ -974,5 +989,6 @@ def _register_netroll_from_env() -> None:
 _register_netroll_from_env()
 _register_cwv_shortlist_from_env()
 _register_pv_search_from_env()
+_register_cwv_puct_from_env()
 _register_exploit_from_env()
 _register_cwv_bury_from_env()

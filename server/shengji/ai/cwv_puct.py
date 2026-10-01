@@ -1227,6 +1227,19 @@ def _bot_class(simulations: int, world_pool: int, batch: int, c_puct: float,
         "CWV_LEAF_FINISH_TRICK": bool(leaf_finish_trick)})
 
 
+def check_pin(path: str | os.PathLike[str], sha256: str, label: str) -> None:
+    """Refuse unless ``path`` hashes to the pinned ``sha256`` NOW."""
+    if type(sha256) is not str or len(sha256) != 64:
+        raise CWVError(f"{label} pin must be a full sha256")
+    resolved = Path(path)
+    if not resolved.is_file():
+        raise CWVError(f"{label} not found: {resolved}")
+    actual = file_sha256(resolved)
+    if actual != sha256:
+        raise CWVError(f"{label} {resolved} hashes to {actual[:8]}, pinned {sha256[:8]}: "
+                       "refusing to build the bot")
+
+
 def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
                       seed: int | None = None, world_pool: int = DEFAULT_WORLD_POOL,
                       batch: int = DEFAULT_BATCH, c_puct: float = DEFAULT_C_PUCT,
@@ -1240,11 +1253,22 @@ def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
                       leaf_playouts: int = 1,
                       prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE,
                       prior_sha256: str | None = None,
-                      leaf_finish_trick: bool = False) -> CWVPuctBot:
+                      leaf_finish_trick: bool = False,
+                      checkpoint_sha256: str | None = None) -> CWVPuctBot:
     """``prior="package"``: ``prior_checkpoint`` is the joint NumPy package and
-    ``prior_sha256`` its pinned SHA256 (both required; a mismatch refuses)."""
+    ``prior_sha256`` its pinned SHA256 (both required; a mismatch refuses).
+
+    ``checkpoint_sha256`` pins the VALUE checkpoint: when given, the file is
+    hashed HERE, at every construction (a registry factory runs in a worker
+    long after registration), and a mismatch refuses -- for every prior mode
+    and for the control.  A given ``prior_sha256`` is enforced the same way
+    on the prior file before any cache is consulted."""
     if prior not in PRIOR_MODES:
         raise CWVError(f"prior mode must be one of {PRIOR_MODES}")
+    if checkpoint_sha256 is not None:
+        check_pin(checkpoint, checkpoint_sha256, "value checkpoint")
+    if prior_sha256 is not None and prior_checkpoint is not None and not control:
+        check_pin(prior_checkpoint, prior_sha256, "prior checkpoint")
     leaf_identity(leaf, leaf_playouts, leaf_finish_trick)   # validates
     prior_identity(prior, prior_temperature)
     if prior == "head" and not control and prior_checkpoint is None:
@@ -1276,6 +1300,78 @@ def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
     return bot
 
 
+PUCT_ENV_PREFIX = "SHENGJI_CWV_PUCT_"
+
+
+def puct_env_recipe(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """``SHENGJI_CWV_PUCT_CKPT`` + ``_SHA256`` (both required: an unpinned package
+    is refused, and the file must hash to the pin) and ``_SIMULATIONS`` (S, int);
+    optional ``_PRIOR`` (``package`` by default, or ``uniform`` / ``head`` /
+    ``value``), the ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair when the prior
+    package is not the value package (under ``package`` the value package is
+    the prior otherwise), ``_PRIOR_TEMPERATURE`` (float > 0),
+    ``_LEAF_FINISH_TRICK`` (0/1), ``_WORLD_POOL`` / ``_BATCH`` (int) and
+    ``_C_PUCT`` (float) -- as keyword arguments for `cwv_puct_registry_entries`
+    plus ``checkpoint`` and ``simulations``.  Screen-only: the registry's
+    import hook reads this so a spawned worker resolves the same name the
+    parent did (#436 step 1b)."""
+    env = os.environ if environ is None else environ
+    checkpoint = env.get(PUCT_ENV_PREFIX + "CKPT")
+    if not checkpoint:
+        raise CWVError("SHENGJI_CWV_PUCT_CKPT is not set")
+    sha256 = env.get(PUCT_ENV_PREFIX + "SHA256")
+    if not sha256 or len(sha256) != 64:
+        raise CWVError("SHENGJI_CWV_PUCT_SHA256 must be the package's full sha256")
+    if not Path(checkpoint).is_file():
+        raise CWVError(f"SHENGJI_CWV_PUCT_CKPT not found: {checkpoint}")
+    if file_sha256(checkpoint) != sha256:
+        raise CWVError("SHENGJI_CWV_PUCT_CKPT does not hash to SHENGJI_CWV_PUCT_SHA256")
+    raw = env.get(PUCT_ENV_PREFIX + "SIMULATIONS")
+    if raw in (None, ""):
+        raise CWVError("SHENGJI_CWV_PUCT_SIMULATIONS is not set")
+    simulations = [int(part) for part in str(raw).split(",") if part.strip()]
+    if not simulations or any(s < 1 for s in simulations):
+        raise CWVError("SHENGJI_CWV_PUCT_SIMULATIONS must be positive integers")
+    prior = env.get(PUCT_ENV_PREFIX + "PRIOR") or "package"
+    if prior not in PRIOR_MODES:
+        raise CWVError(f"SHENGJI_CWV_PUCT_PRIOR must be one of {PRIOR_MODES}")
+    recipe: dict[str, Any] = dict(checkpoint=checkpoint, checkpoint_sha256=sha256,
+                                  simulations=simulations, prior=prior)
+    prior_ckpt = env.get(PUCT_ENV_PREFIX + "PRIOR_CKPT")
+    prior_sha = env.get(PUCT_ENV_PREFIX + "PRIOR_SHA256")
+    if bool(prior_ckpt) != bool(prior_sha):
+        raise CWVError("SHENGJI_CWV_PUCT_PRIOR_CKPT and SHENGJI_CWV_PUCT_PRIOR_SHA256 go together")
+    if prior_ckpt:
+        if len(prior_sha) != 64:
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_SHA256 must be the prior's full sha256")
+        if not Path(prior_ckpt).is_file() or file_sha256(prior_ckpt) != prior_sha:
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_CKPT does not hash to SHENGJI_CWV_PUCT_PRIOR_SHA256")
+        recipe.update(prior_checkpoint=prior_ckpt, prior_sha256=prior_sha)
+    elif prior == "package":
+        recipe.update(prior_checkpoint=checkpoint, prior_sha256=sha256)   # one package, both roles
+    elif prior == "head":
+        raise CWVError("SHENGJI_CWV_PUCT_PRIOR=head needs SHENGJI_CWV_PUCT_PRIOR_CKPT + _SHA256")
+    raw = env.get(PUCT_ENV_PREFIX + "PRIOR_TEMPERATURE")
+    if raw not in (None, ""):
+        t = float(raw)
+        if not (t > 0.0) or not math.isfinite(t):
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_TEMPERATURE must be a positive finite number")
+        recipe["prior_temperature"] = t
+    raw = env.get(PUCT_ENV_PREFIX + "LEAF_FINISH_TRICK")
+    if raw not in (None, ""):
+        if raw not in ("0", "1"):
+            raise CWVError("SHENGJI_CWV_PUCT_LEAF_FINISH_TRICK must be 0 or 1")
+        recipe["leaf_finish_trick"] = raw == "1"
+    for key in ("world_pool", "batch"):
+        raw = env.get(PUCT_ENV_PREFIX + key.upper())
+        if raw not in (None, ""):
+            recipe[key] = int(raw)
+    raw = env.get(PUCT_ENV_PREFIX + "C_PUCT")
+    if raw not in (None, ""):
+        recipe["c_puct"] = float(raw)
+    return recipe
+
+
 def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                               simulations: Sequence[int], *,
                               world_pool: int = DEFAULT_WORLD_POOL,
@@ -1290,7 +1386,8 @@ def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                               leaf: str = "net", leaf_playouts: int = 1,
                               prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE,
                               prior_sha256: str | None = None,
-                              leaf_finish_trick: bool = False
+                              leaf_finish_trick: bool = False,
+                              checkpoint_sha256: str | None = None
                               ) -> dict[str, Any]:
     """``{name: factory}`` per S:
     ``mc-cwvpuct-<ckpt8>[-prior-<prior8>]-s<S>[-pprior[-T<T>]|-vprior[<T>]][-ftl|-pleaf[<n>]]``
@@ -1305,16 +1402,22 @@ def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
     leaf scored at the finished-trick boundary; nothing for the plain net
     leaf); the remaining search parameters (W, K, c_puct, prior mode and
     prior checkpoint) are part of the bot's ``search_identity`` and of the
-    duel's calibration binding.
+    duel's calibration binding.  ``checkpoint_sha256`` (the value pin) and
+    ``prior_sha256`` are carried INTO every factory, arm and control alike,
+    and re-verified against the files at each construction.
     """
-    ckpt8 = checkpoint_id(checkpoint)
+    value_sha = file_sha256(checkpoint)
+    if checkpoint_sha256 is not None and value_sha != checkpoint_sha256:
+        raise CWVError(f"value checkpoint {checkpoint} hashes to {value_sha[:8]}, pinned "
+                       f"{str(checkpoint_sha256)[:8]}")
+    ckpt8 = value_sha[:8]
     leaf_identity(leaf, leaf_playouts, leaf_finish_trick)   # validates
     prior_identity(prior, prior_temperature)
     prior8 = None
     if prior == "package":
         if prior_checkpoint is None or prior_sha256 is None:
             raise CWVError("prior='package' needs the package path and its pinned sha256")
-        if file_sha256(checkpoint) != prior_sha256:
+        if value_sha != prior_sha256:
             prior8 = str(prior_sha256)[:8]
     entries: dict[str, Any] = {}
 
@@ -1326,7 +1429,8 @@ def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                 control=control, receipt=receipt, virtual_loss=virtual_loss,
                 dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon,
                 leaf=leaf, leaf_playouts=leaf_playouts, prior_temperature=prior_temperature,
-                prior_sha256=prior_sha256, leaf_finish_trick=leaf_finish_trick)
+                prior_sha256=prior_sha256, leaf_finish_trick=leaf_finish_trick,
+                checkpoint_sha256=checkpoint_sha256)
         return make
 
     names = dict(leaf=leaf, leaf_playouts=leaf_playouts, prior=prior,

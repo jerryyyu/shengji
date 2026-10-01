@@ -40,135 +40,141 @@ a{color:var(--accent)}
 
 <h2>Screens against release 36 (the current production)</h2>
 <p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart lists the reads against release 36 first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how 36 was chosen), then the context rows against release 28 (lighter).</p>
-<div class="figure"><svg viewBox="0 0 980 1010" width="100%" role="img" aria-label="Screens against the current production release: point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">
-<line x1="690.2" y1="28" x2="690.2" y2="980" class="zero"/>
+<div class="figure"><svg viewBox="0 0 980 1054" width="100%" role="img" aria-label="Screens against the current production release: point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">
+<line x1="690.2" y1="28" x2="690.2" y2="1024" class="zero"/>
 <text x="690.2" y="22" class="lab" text-anchor="middle">production parity</text>
-<line x1="334.3" y1="980" x2="334.3" y2="986" class="tick"/><text x="334.3" y="1000" class="lab" text-anchor="middle">-0.28</text>
-<line x1="359.7" y1="980" x2="359.7" y2="986" class="tick"/><text x="359.7" y="1000" class="lab" text-anchor="middle">-0.26</text>
-<line x1="385.2" y1="980" x2="385.2" y2="986" class="tick"/><text x="385.2" y="1000" class="lab" text-anchor="middle">-0.24</text>
-<line x1="410.6" y1="980" x2="410.6" y2="986" class="tick"/><text x="410.6" y="1000" class="lab" text-anchor="middle">-0.22</text>
-<line x1="436.0" y1="980" x2="436.0" y2="986" class="tick"/><text x="436.0" y="1000" class="lab" text-anchor="middle">-0.20</text>
-<line x1="461.4" y1="980" x2="461.4" y2="986" class="tick"/><text x="461.4" y="1000" class="lab" text-anchor="middle">-0.18</text>
-<line x1="486.8" y1="980" x2="486.8" y2="986" class="tick"/><text x="486.8" y="1000" class="lab" text-anchor="middle">-0.16</text>
-<line x1="512.3" y1="980" x2="512.3" y2="986" class="tick"/><text x="512.3" y="1000" class="lab" text-anchor="middle">-0.14</text>
-<line x1="537.7" y1="980" x2="537.7" y2="986" class="tick"/><text x="537.7" y="1000" class="lab" text-anchor="middle">-0.12</text>
-<line x1="563.1" y1="980" x2="563.1" y2="986" class="tick"/><text x="563.1" y="1000" class="lab" text-anchor="middle">-0.10</text>
-<line x1="588.5" y1="980" x2="588.5" y2="986" class="tick"/><text x="588.5" y="1000" class="lab" text-anchor="middle">-0.08</text>
-<line x1="613.9" y1="980" x2="613.9" y2="986" class="tick"/><text x="613.9" y="1000" class="lab" text-anchor="middle">-0.06</text>
-<line x1="639.4" y1="980" x2="639.4" y2="986" class="tick"/><text x="639.4" y="1000" class="lab" text-anchor="middle">-0.04</text>
-<line x1="664.8" y1="980" x2="664.8" y2="986" class="tick"/><text x="664.8" y="1000" class="lab" text-anchor="middle">-0.02</text>
-<line x1="715.6" y1="980" x2="715.6" y2="986" class="tick"/><text x="715.6" y="1000" class="lab" text-anchor="middle">+0.02</text>
-<line x1="741.0" y1="980" x2="741.0" y2="986" class="tick"/><text x="741.0" y="1000" class="lab" text-anchor="middle">+0.04</text>
-<line x1="766.5" y1="980" x2="766.5" y2="986" class="tick"/><text x="766.5" y="1000" class="lab" text-anchor="middle">+0.06</text>
-<line x1="791.9" y1="980" x2="791.9" y2="986" class="tick"/><text x="791.9" y="1000" class="lab" text-anchor="middle">+0.08</text>
-<line x1="817.3" y1="980" x2="817.3" y2="986" class="tick"/><text x="817.3" y="1000" class="lab" text-anchor="middle">+0.10</text>
-<text x="320" y="72.0" class="lab name prev" text-anchor="end">v34r5 · gen-4 run 4 head (423836c7) served…</text>
-<text x="320" y="86.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="687.7" y1="68.0" x2="750.8" y2="68.0" class="ci null prev"/>
-<circle cx="719.2" cy="68.0" r="5" class="pt null prev"/>
-<text x="838" y="72.0" class="lab num">+0.023 [−0.002, +0.048] (95%)</text>
-<text x="320" y="116.0" class="lab name prev" text-anchor="end">depth-screen · EXTRA_TRICK_HEURISTIC · four extra plies (one completed tr…</text>
-<text x="320" y="130.0" class="sub" text-anchor="end">vs release-30 card-play control (froz · 97.5% primary</text>
-<line x1="499.5" y1="112.0" x2="704.8" y2="112.0" class="ci null prev"/>
-<circle cx="602.2" cy="112.0" r="5" class="pt null prev"/>
-<text x="838" y="116.0" class="lab num">−0.069 [−0.150, +0.011] (97.5%)</text>
-<text x="320" y="160.0" class="lab name prev" text-anchor="end">depth-screen · EXTRA_TRICK_POLICY · four extra plies (one completed tr…</text>
+<line x1="334.3" y1="1024" x2="334.3" y2="1030" class="tick"/><text x="334.3" y="1044" class="lab" text-anchor="middle">-0.28</text>
+<line x1="359.7" y1="1024" x2="359.7" y2="1030" class="tick"/><text x="359.7" y="1044" class="lab" text-anchor="middle">-0.26</text>
+<line x1="385.2" y1="1024" x2="385.2" y2="1030" class="tick"/><text x="385.2" y="1044" class="lab" text-anchor="middle">-0.24</text>
+<line x1="410.6" y1="1024" x2="410.6" y2="1030" class="tick"/><text x="410.6" y="1044" class="lab" text-anchor="middle">-0.22</text>
+<line x1="436.0" y1="1024" x2="436.0" y2="1030" class="tick"/><text x="436.0" y="1044" class="lab" text-anchor="middle">-0.20</text>
+<line x1="461.4" y1="1024" x2="461.4" y2="1030" class="tick"/><text x="461.4" y="1044" class="lab" text-anchor="middle">-0.18</text>
+<line x1="486.8" y1="1024" x2="486.8" y2="1030" class="tick"/><text x="486.8" y="1044" class="lab" text-anchor="middle">-0.16</text>
+<line x1="512.3" y1="1024" x2="512.3" y2="1030" class="tick"/><text x="512.3" y="1044" class="lab" text-anchor="middle">-0.14</text>
+<line x1="537.7" y1="1024" x2="537.7" y2="1030" class="tick"/><text x="537.7" y="1044" class="lab" text-anchor="middle">-0.12</text>
+<line x1="563.1" y1="1024" x2="563.1" y2="1030" class="tick"/><text x="563.1" y="1044" class="lab" text-anchor="middle">-0.10</text>
+<line x1="588.5" y1="1024" x2="588.5" y2="1030" class="tick"/><text x="588.5" y="1044" class="lab" text-anchor="middle">-0.08</text>
+<line x1="613.9" y1="1024" x2="613.9" y2="1030" class="tick"/><text x="613.9" y="1044" class="lab" text-anchor="middle">-0.06</text>
+<line x1="639.4" y1="1024" x2="639.4" y2="1030" class="tick"/><text x="639.4" y="1044" class="lab" text-anchor="middle">-0.04</text>
+<line x1="664.8" y1="1024" x2="664.8" y2="1030" class="tick"/><text x="664.8" y="1044" class="lab" text-anchor="middle">-0.02</text>
+<line x1="715.6" y1="1024" x2="715.6" y2="1030" class="tick"/><text x="715.6" y="1044" class="lab" text-anchor="middle">+0.02</text>
+<line x1="741.0" y1="1024" x2="741.0" y2="1030" class="tick"/><text x="741.0" y="1044" class="lab" text-anchor="middle">+0.04</text>
+<line x1="766.5" y1="1024" x2="766.5" y2="1030" class="tick"/><text x="766.5" y="1044" class="lab" text-anchor="middle">+0.06</text>
+<line x1="791.9" y1="1024" x2="791.9" y2="1030" class="tick"/><text x="791.9" y="1044" class="lab" text-anchor="middle">+0.08</text>
+<line x1="817.3" y1="1024" x2="817.3" y2="1030" class="tick"/><text x="817.3" y="1044" class="lab" text-anchor="middle">+0.10</text>
+<text x="320" y="72.0" class="lab name main" text-anchor="end">v37a · gen-5 SMV3-AW3r2 OUTCOME head (b0b…</text>
+<text x="320" y="86.0" class="sub" text-anchor="end">vs release 36 as served · 95% primary</text>
+<rect x="685.2" y="63.0" width="10" height="10" class="pt pending" transform="rotate(45 690.2 68.0)"/>
+<text x="838" y="72.0" class="lab">running · 95%</text>
+<text x="320" y="116.0" class="lab name prev" text-anchor="end">v34r5 · gen-4 run 4 head (423836c7) served…</text>
+<text x="320" y="130.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
+<line x1="687.7" y1="112.0" x2="750.8" y2="112.0" class="ci null prev"/>
+<circle cx="719.2" cy="112.0" r="5" class="pt null prev"/>
+<text x="838" y="116.0" class="lab num">+0.023 [−0.002, +0.048] (95%)</text>
+<text x="320" y="160.0" class="lab name prev" text-anchor="end">depth-screen · EXTRA_TRICK_HEURISTIC · four extra plies (one completed tr…</text>
 <text x="320" y="174.0" class="sub" text-anchor="end">vs release-30 card-play control (froz · 97.5% primary</text>
-<line x1="592.5" y1="156.0" x2="814.9" y2="156.0" class="ci null prev"/>
-<circle cx="702.4" cy="156.0" r="5" class="pt null prev"/>
-<text x="838" y="160.0" class="lab num">+0.010 [−0.077, +0.098] (97.5%)</text>
-<text x="320" y="204.0" class="lab name prev" text-anchor="end">depth-screen · CURRENT_TRICK · current trick only (the Torch curr…</text>
-<text x="320" y="218.0" class="sub" text-anchor="end">vs release-30 card-play control (froz · 95% diagnostic</text>
-<line x1="690.2" y1="200.0" x2="690.2" y2="200.0" class="ci null prev"/>
-<circle cx="690.2" cy="200.0" r="5" class="pt null prev"/>
-<text x="838" y="204.0" class="lab num">+0.000 [+0.000, +0.000] (95%)</text>
-<text x="320" y="248.0" class="lab name prev" text-anchor="end">v34r1 · gen-4 run 1 head (HARD targets, 3f…</text>
-<text x="320" y="262.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="626.9" y1="244.0" x2="739.8" y2="244.0" class="ci null prev"/>
-<circle cx="683.3" cy="244.0" r="5" class="pt null prev"/>
-<text x="838" y="248.0" class="lab num">−0.005 [−0.050, +0.039] (95%)</text>
-<text x="320" y="292.0" class="lab name prev" text-anchor="end">v34r3 · gen-4 run 3 head (GRID trunk, soft…</text>
+<line x1="499.5" y1="156.0" x2="704.8" y2="156.0" class="ci null prev"/>
+<circle cx="602.2" cy="156.0" r="5" class="pt null prev"/>
+<text x="838" y="160.0" class="lab num">−0.069 [−0.150, +0.011] (97.5%)</text>
+<text x="320" y="204.0" class="lab name prev" text-anchor="end">depth-screen · EXTRA_TRICK_POLICY · four extra plies (one completed tr…</text>
+<text x="320" y="218.0" class="sub" text-anchor="end">vs release-30 card-play control (froz · 97.5% primary</text>
+<line x1="592.5" y1="200.0" x2="814.9" y2="200.0" class="ci null prev"/>
+<circle cx="702.4" cy="200.0" r="5" class="pt null prev"/>
+<text x="838" y="204.0" class="lab num">+0.010 [−0.077, +0.098] (97.5%)</text>
+<text x="320" y="248.0" class="lab name prev" text-anchor="end">depth-screen · CURRENT_TRICK · current trick only (the Torch curr…</text>
+<text x="320" y="262.0" class="sub" text-anchor="end">vs release-30 card-play control (froz · 95% diagnostic</text>
+<line x1="690.2" y1="244.0" x2="690.2" y2="244.0" class="ci null prev"/>
+<circle cx="690.2" cy="244.0" r="5" class="pt null prev"/>
+<text x="838" y="248.0" class="lab num">+0.000 [+0.000, +0.000] (95%)</text>
+<text x="320" y="292.0" class="lab name prev" text-anchor="end">v34r1 · gen-4 run 1 head (HARD targets, 3f…</text>
 <text x="320" y="306.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="651.8" y1="288.0" x2="737.9" y2="288.0" class="ci null prev"/>
-<circle cx="694.9" cy="288.0" r="5" class="pt null prev"/>
-<text x="838" y="292.0" class="lab num">+0.004 [−0.030, +0.037] (95%)</text>
-<text x="320" y="336.0" class="lab name prev" text-anchor="end">v34r2 · gen-4 run 2 head (residual trunk a…</text>
+<line x1="626.9" y1="288.0" x2="739.8" y2="288.0" class="ci null prev"/>
+<circle cx="683.3" cy="288.0" r="5" class="pt null prev"/>
+<text x="838" y="292.0" class="lab num">−0.005 [−0.050, +0.039] (95%)</text>
+<text x="320" y="336.0" class="lab name prev" text-anchor="end">v34r3 · gen-4 run 3 head (GRID trunk, soft…</text>
 <text x="320" y="350.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="657.8" y1="332.0" x2="746.6" y2="332.0" class="ci null prev"/>
-<circle cx="702.3" cy="332.0" r="5" class="pt null prev"/>
-<text x="838" y="336.0" class="lab num">+0.009 [−0.025, +0.044] (95%)</text>
-<text x="320" y="380.0" class="lab name prev" text-anchor="end">v35a · gen-5 arm A head (the production h…</text>
+<line x1="651.8" y1="332.0" x2="737.9" y2="332.0" class="ci null prev"/>
+<circle cx="694.9" cy="332.0" r="5" class="pt null prev"/>
+<text x="838" y="336.0" class="lab num">+0.004 [−0.030, +0.037] (95%)</text>
+<text x="320" y="380.0" class="lab name prev" text-anchor="end">v34r2 · gen-4 run 2 head (residual trunk a…</text>
 <text x="320" y="394.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="567.9" y1="376.0" x2="658.4" y2="376.0" class="ci bad prev"/>
-<circle cx="613.2" cy="376.0" r="5" class="pt bad prev"/>
-<text x="838" y="380.0" class="lab num">−0.061 [−0.096, −0.025] (95%)</text>
-<text x="320" y="424.0" class="lab name prev" text-anchor="end">v35b · gen-5 arm B head (the production h…</text>
+<line x1="657.8" y1="376.0" x2="746.6" y2="376.0" class="ci null prev"/>
+<circle cx="702.3" cy="376.0" r="5" class="pt null prev"/>
+<text x="838" y="380.0" class="lab num">+0.009 [−0.025, +0.044] (95%)</text>
+<text x="320" y="424.0" class="lab name prev" text-anchor="end">v35a · gen-5 arm A head (the production h…</text>
 <text x="320" y="438.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="659.4" y1="420.0" x2="750.6" y2="420.0" class="ci null prev"/>
-<circle cx="704.9" cy="420.0" r="5" class="pt null prev"/>
-<text x="838" y="424.0" class="lab num">+0.012 [−0.024, +0.048] (95%)</text>
-<text x="320" y="468.0" class="lab name prev" text-anchor="end">v35c · gen-5 arm C head (the production h…</text>
+<line x1="567.9" y1="420.0" x2="658.4" y2="420.0" class="ci bad prev"/>
+<circle cx="613.2" cy="420.0" r="5" class="pt bad prev"/>
+<text x="838" y="424.0" class="lab num">−0.061 [−0.096, −0.025] (95%)</text>
+<text x="320" y="468.0" class="lab name prev" text-anchor="end">v35b · gen-5 arm B head (the production h…</text>
 <text x="320" y="482.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="641.3" y1="464.0" x2="731.1" y2="464.0" class="ci null prev"/>
-<circle cx="686.3" cy="464.0" r="5" class="pt null prev"/>
-<text x="838" y="468.0" class="lab num">−0.003 [−0.038, +0.032] (95%)</text>
-<text x="320" y="512.0" class="lab name prev" text-anchor="end">x36a · exploitability probe (#625 step 4)…</text>
-<text x="320" y="526.0" class="sub" text-anchor="end">vs the same package with the reweight · 95% primary</text>
-<line x1="658.7" y1="508.0" x2="704.0" y2="508.0" class="ci null prev"/>
-<circle cx="681.4" cy="508.0" r="5" class="pt null prev"/>
-<text x="838" y="512.0" class="lab num">−0.007 [−0.025, +0.011] (95%)</text>
-<text x="320" y="556.0" class="lab name prev" text-anchor="end">v35d · gen-5 arm D head (arm C&#x27;s corpus e…</text>
-<text x="320" y="570.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="622.8" y1="552.0" x2="711.0" y2="552.0" class="ci null prev"/>
-<circle cx="666.9" cy="552.0" r="5" class="pt null prev"/>
-<text x="838" y="556.0" class="lab num">−0.018 [−0.053, +0.016] (95%)</text>
-<text x="320" y="600.0" class="lab name prev" text-anchor="end">x36c · the exploitability ATTACKER (produ…</text>
-<text x="320" y="614.0" class="sub" text-anchor="end">vs the CONTROL: the same class, packa · 95% primary</text>
-<line x1="342.7" y1="596.0" x2="404.7" y2="596.0" class="ci bad prev"/>
-<circle cx="373.7" cy="596.0" r="5" class="pt bad prev"/>
-<text x="838" y="600.0" class="lab num">−0.249 [−0.273, −0.225] (95%)</text>
-<text x="320" y="644.0" class="lab name prev" text-anchor="end">v35f · gen-5 arm F head (arm C&#x27;s corpus, …</text>
-<text x="320" y="658.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="658.4" y1="640.0" x2="746.8" y2="640.0" class="ci null prev"/>
-<circle cx="702.6" cy="640.0" r="5" class="pt null prev"/>
-<text x="838" y="644.0" class="lab num">+0.010 [−0.025, +0.044] (95%)</text>
-<text x="320" y="688.0" class="lab name prev" text-anchor="end">v36a · gen-5 SMV3 OUTCOME head (3e89e86f;…</text>
+<line x1="659.4" y1="464.0" x2="750.6" y2="464.0" class="ci null prev"/>
+<circle cx="704.9" cy="464.0" r="5" class="pt null prev"/>
+<text x="838" y="468.0" class="lab num">+0.012 [−0.024, +0.048] (95%)</text>
+<text x="320" y="512.0" class="lab name prev" text-anchor="end">v35c · gen-5 arm C head (the production h…</text>
+<text x="320" y="526.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
+<line x1="641.3" y1="508.0" x2="731.1" y2="508.0" class="ci null prev"/>
+<circle cx="686.3" cy="508.0" r="5" class="pt null prev"/>
+<text x="838" y="512.0" class="lab num">−0.003 [−0.038, +0.032] (95%)</text>
+<text x="320" y="556.0" class="lab name prev" text-anchor="end">x36a · exploitability probe (#625 step 4)…</text>
+<text x="320" y="570.0" class="sub" text-anchor="end">vs the same package with the reweight · 95% primary</text>
+<line x1="658.7" y1="552.0" x2="704.0" y2="552.0" class="ci null prev"/>
+<circle cx="681.4" cy="552.0" r="5" class="pt null prev"/>
+<text x="838" y="556.0" class="lab num">−0.007 [−0.025, +0.011] (95%)</text>
+<text x="320" y="600.0" class="lab name prev" text-anchor="end">v35d · gen-5 arm D head (arm C&#x27;s corpus e…</text>
+<text x="320" y="614.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
+<line x1="622.8" y1="596.0" x2="711.0" y2="596.0" class="ci null prev"/>
+<circle cx="666.9" cy="596.0" r="5" class="pt null prev"/>
+<text x="838" y="600.0" class="lab num">−0.018 [−0.053, +0.016] (95%)</text>
+<text x="320" y="644.0" class="lab name prev" text-anchor="end">x36c · the exploitability ATTACKER (produ…</text>
+<text x="320" y="658.0" class="sub" text-anchor="end">vs the CONTROL: the same class, packa · 95% primary</text>
+<line x1="342.7" y1="640.0" x2="404.7" y2="640.0" class="ci bad prev"/>
+<circle cx="373.7" cy="640.0" r="5" class="pt bad prev"/>
+<text x="838" y="644.0" class="lab num">−0.249 [−0.273, −0.225] (95%)</text>
+<text x="320" y="688.0" class="lab name prev" text-anchor="end">v35f · gen-5 arm F head (arm C&#x27;s corpus, …</text>
 <text x="320" y="702.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="692.1" y1="684.0" x2="780.1" y2="684.0" class="ci good prev"/>
-<circle cx="736.1" cy="684.0" r="5" class="pt good prev"/>
-<text x="838" y="688.0" class="lab num">+0.036 [+0.002, +0.071] (95%)</text>
-<text x="320" y="732.0" class="lab name prev" text-anchor="end">v36b · gen-5 SMV3 SEARCH-MEAN head (3e89e…</text>
+<line x1="658.4" y1="684.0" x2="746.8" y2="684.0" class="ci null prev"/>
+<circle cx="702.6" cy="684.0" r="5" class="pt null prev"/>
+<text x="838" y="688.0" class="lab num">+0.010 [−0.025, +0.044] (95%)</text>
+<text x="320" y="732.0" class="lab name prev" text-anchor="end">v36a · gen-5 SMV3 OUTCOME head (3e89e86f;…</text>
 <text x="320" y="746.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="575.2" y1="728.0" x2="672.4" y2="728.0" class="ci bad prev"/>
-<circle cx="623.7" cy="728.0" r="5" class="pt bad prev"/>
-<text x="838" y="732.0" class="lab num">−0.052 [−0.090, −0.014] (95%)</text>
-<text x="320" y="776.0" class="lab name prev" text-anchor="end">v36a2 · gen-5 SMV3 OUTCOME head (3e89e86f)…</text>
+<line x1="692.1" y1="728.0" x2="780.1" y2="728.0" class="ci good prev"/>
+<circle cx="736.1" cy="728.0" r="5" class="pt good prev"/>
+<text x="838" y="732.0" class="lab num">+0.036 [+0.002, +0.071] (95%)</text>
+<text x="320" y="776.0" class="lab name prev" text-anchor="end">v36b · gen-5 SMV3 SEARCH-MEAN head (3e89e…</text>
 <text x="320" y="790.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
-<line x1="694.4" y1="772.0" x2="785.8" y2="772.0" class="ci good prev"/>
-<circle cx="740.1" cy="772.0" r="5" class="pt good prev"/>
-<text x="838" y="776.0" class="lab num">+0.039 [+0.003, +0.075] (95%)</text>
-<text x="320" y="820.0" class="lab name prev" text-anchor="end">v36c · armF-prior · arm F head as prior, production va…</text>
-<text x="320" y="834.0" class="sub" text-anchor="end">vs release 30 as served (own head as  · 95% primary</text>
-<line x1="648.9" y1="816.0" x2="735.8" y2="816.0" class="ci null prev"/>
-<circle cx="692.4" cy="816.0" r="5" class="pt null prev"/>
-<text x="838" y="820.0" class="lab num">+0.002 [−0.033, +0.036] (95%)</text>
-<text x="320" y="864.0" class="lab name prev" text-anchor="end">v36c · smv3-prior · SMV3 head as prior, production val…</text>
+<line x1="575.2" y1="772.0" x2="672.4" y2="772.0" class="ci bad prev"/>
+<circle cx="623.7" cy="772.0" r="5" class="pt bad prev"/>
+<text x="838" y="776.0" class="lab num">−0.052 [−0.090, −0.014] (95%)</text>
+<text x="320" y="820.0" class="lab name prev" text-anchor="end">v36a2 · gen-5 SMV3 OUTCOME head (3e89e86f)…</text>
+<text x="320" y="834.0" class="sub" text-anchor="end">vs release 30 as served · 95% primary</text>
+<line x1="694.4" y1="816.0" x2="785.8" y2="816.0" class="ci good prev"/>
+<circle cx="740.1" cy="816.0" r="5" class="pt good prev"/>
+<text x="838" y="820.0" class="lab num">+0.039 [+0.003, +0.075] (95%)</text>
+<text x="320" y="864.0" class="lab name prev" text-anchor="end">v36c · armF-prior · arm F head as prior, production va…</text>
 <text x="320" y="878.0" class="sub" text-anchor="end">vs release 30 as served (own head as  · 95% primary</text>
-<line x1="661.2" y1="860.0" x2="748.3" y2="860.0" class="ci null prev"/>
-<circle cx="704.7" cy="860.0" r="5" class="pt null prev"/>
-<text x="838" y="864.0" class="lab num">+0.011 [−0.023, +0.046] (95%)</text>
-<text x="320" y="908.0" class="lab name ctx" text-anchor="end">v34r4 · gen-4 run 4 head served (release-2…</text>
-<text x="320" y="922.0" class="sub" text-anchor="end">vs release 28 as served · 95% primary</text>
-<line x1="709.3" y1="904.0" x2="776.6" y2="904.0" class="ci good ctx"/>
-<circle cx="743.6" cy="904.0" r="5" class="pt good ctx"/>
-<text x="838" y="908.0" class="lab num">+0.042 [+0.015, +0.068] (95%)</text>
-<text x="320" y="952.0" class="lab name ctx" text-anchor="end">v34pv · release-29 candidate served</text>
+<line x1="648.9" y1="860.0" x2="735.8" y2="860.0" class="ci null prev"/>
+<circle cx="692.4" cy="860.0" r="5" class="pt null prev"/>
+<text x="838" y="864.0" class="lab num">+0.002 [−0.033, +0.036] (95%)</text>
+<text x="320" y="908.0" class="lab name prev" text-anchor="end">v36c · smv3-prior · SMV3 head as prior, production val…</text>
+<text x="320" y="922.0" class="sub" text-anchor="end">vs release 30 as served (own head as  · 95% primary</text>
+<line x1="661.2" y1="904.0" x2="748.3" y2="904.0" class="ci null prev"/>
+<circle cx="704.7" cy="904.0" r="5" class="pt null prev"/>
+<text x="838" y="908.0" class="lab num">+0.011 [−0.023, +0.046] (95%)</text>
+<text x="320" y="952.0" class="lab name ctx" text-anchor="end">v34r4 · gen-4 run 4 head served (release-2…</text>
 <text x="320" y="966.0" class="sub" text-anchor="end">vs release 28 as served · 95% primary</text>
-<line x1="694.0" y1="948.0" x2="810.9" y2="948.0" class="ci good ctx"/>
-<circle cx="752.5" cy="948.0" r="5" class="pt good ctx"/>
-<text x="838" y="952.0" class="lab num">+0.049 [+0.003, +0.095] (95%)</text>
+<line x1="709.3" y1="948.0" x2="776.6" y2="948.0" class="ci good ctx"/>
+<circle cx="743.6" cy="948.0" r="5" class="pt good ctx"/>
+<text x="838" y="952.0" class="lab num">+0.042 [+0.015, +0.068] (95%)</text>
+<text x="320" y="996.0" class="lab name ctx" text-anchor="end">v34pv · release-29 candidate served</text>
+<text x="320" y="1010.0" class="sub" text-anchor="end">vs release 28 as served · 95% primary</text>
+<line x1="694.0" y1="992.0" x2="810.9" y2="992.0" class="ci good ctx"/>
+<circle cx="752.5" cy="992.0" r="5" class="pt good ctx"/>
+<text x="838" y="996.0" class="lab num">+0.049 [+0.003, +0.095] (95%)</text>
 </svg></div>
-<p class="sub">No screen has read against release 36 yet; every new candidate from 2026-09-30 is read here.</p>
+<div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>
+<tr><td class="mono">v37a</td><td>gen-5 SMV3-AW3r2 OUTCOME head (b0bdf33d; SMV3&#x27;s recipe with ONE variable changed -- search-head weight 3.0) exported as aw3r2out-46b0ac9c.npz and served as pv-search W64/K8 + hybrid bury</td><td>release 36 as served</td><td>served bot · five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects <span class="sub">[windows]</span></td><td class="mono">34160910..34560910</td><td class="num">— <span class="chip wait">pending</span></td><td><span class="chip running">running</span><br><small>~01:30 ET 10-01</small></td><td>The first screen against release 36. Predeclared on #663 before arming: lower bound above zero = positive screen to confirm on fresh windows; interval spanning zero = inconclusive at MDE80 ~0.05; a null is not a diagnosis. Tree claude-main-15 (ac1e4320), both arms on it; runs between runSL5 and runPVR1 (datagen yields to screens).</td></tr>
+</tbody></table></div>
 <h4>Screens against release 30 · 16 reads, a closed comparator</h4><div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>
 <tr><td class="mono">v34r5</td><td>gen-4 run 4 head (423836c7) served as pv-search W64/K8 + hybrid bury</td><td>release 30 as served</td><td>served bot · ten 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects <span class="sub">[windows]</span></td><td class="mono">23960910..24360910 + 24460910..24860910 (ten windows)</td><td class="num">+0.023 [−0.002, +0.048] <span class="chip null">crosses zero</span></td><td><span class="chip sealed">sealed</span></td><td>Sealed 13:58 ET. A matched-window, COMMON-OPPONENT contrast: each served policy is screened against the same MC-LCB opponents on the same seeds and the arms are differenced, so this is a summary-level estimate, NOT a direct duel and not paired served-vs-served inference. CROSSES ZERO (lower bound -0.002): no resolved difference between run 4&#x27;s head and production&#x27;s in served form, and equivalence is NOT established. I2 0%, tau 0, ties 49.7% vs 50.3%. Latency, as the MEAN OF THE TEN PER-WINDOW quantiles (vol_re.py averages window quantiles; it does not pool decision samples): candidate p50 0.10 s / p95 0.16 s, control 0.10 / 0.16. The five-window interim was +0.019 [-0.017, +0.055]. A rough power projection conditional on this effect and variance puts the lower bound near zero around 24 windows total, i.e. about 14 more (~6 h of Perf); that is a projection, not guaranteed resolution, and any extension is a new decision, not queued. Archive readouts/v34r5-run4-vs-r30/ with SHA256SUMS.</td></tr>
 <tr><td class="mono">depth-screen</td><td>soft head 8ecd4fea with four extra plies of lookahead, one completed trick or terminal (heuristic continuation; policy continuation with 1 world)</td><td>release-30 card-play control (frozen identifier production-pv-r29: pv-search W64/K8, 3 s budget; identical to release 30&#x27;s card play since #607 changes only the hybrid bury and this harness uses shared heuristic bury)</td><td>card play · 260 mirrored deals × 3 arms, joint bootstrap, two primaries at Bonferroni 97.5% <span class="sub">[matched-deals]</span><br><small>two primaries vs production at Bonferroni 97.5% each (four extra plies, two continuation policies); the current-trick arm is a 95% null-control diagnostic; component contrasts exploratory</small></td><td class="mono">626710000..626710259</td><td class="num"><span class="sub">EXTRA_TRICK_HEURISTIC · 97.5% primary</span><br>−0.069 [−0.150, +0.011] <span class="chip null">crosses zero</span><br><span class="sub">EXTRA_TRICK_POLICY · 97.5% primary</span><br>+0.010 [−0.077, +0.098] <span class="chip null">crosses zero</span><br><span class="sub">CURRENT_TRICK · 95% diagnostic</span><br>+0.000 [+0.000, +0.000] <span class="chip null">crosses zero</span></td><td><span class="chip sealed">sealed</span></td><td>Codex screen, launched 09:11:55 ET, sealed 12:1x ET; I reproduced the readout exactly with the pinned reader at 2a5c6983 and Codex re-verified the archived copy. Neither depth primary resolves a gain. The current-trick arm&#x27;s per-deal utilities agree exactly with the production control on all 260 deals (interval [0, 0]): that is OUTCOME agreement, not proof that every decision was identical, so it bounds harness-introduced differences rather than proving none. Cost per decision against the current-trick arm: heuristic continuation 1.26x (0.217 s mean), policy continuation 17.4x (2.99 s mean, 8.10 s p95 against production&#x27;s 3 s serving budget). 0 fallbacks on every arm. Archive readouts/codex-depth-screen-20260922/ with SHA256SUMS.</td></tr>
@@ -209,10 +215,11 @@ a{color:var(--accent)}
 <tr><td>gen-5 arm D</td><td class="mono">759c1bdd</td><td class="mono">2026-09-26</td><td>THE WARM START, NOT THE CORPUS: arm C&#x27;s corpus EXACTLY -- shortlist + all ten PV stores + MC-LCB, 30 corpora, 496,000 deals, 55,123,440 policy rows, same trunk, objective, knobs and seed -- with ONE variable changed, the --init checkpoint. Arm C starts from the production head 8ecd4fea; arm D starts from GEN4-SOFT-336k (423836c7), gen-4 run 4, the strongest gen-4 head by the fixed holdouts.</td><td class="num">0.6188</td><td class="num">—</td><td class="num"><span title="head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)">+0.104 [+0.090, +0.118]</span></td><td class="num">—</td><td>sealed 02:39:31 ET 09-26, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 46,246 s -- within 3 minutes of arm C&#x27;s 46,083 s. * SCREENED (lane v35d, 12:50 ET 09-26): -0.0183 [-0.0530, +0.0164] vs release 30 as served, CROSSES ZERO, point negative, four of five windows negative, MDE80 0.0496 -- the better warm start bought nothing served, and the two-of-four holdout edge did not predict it. FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm D vs arm C: roomlog 0.06537 vs 0.06815, pt1 0.02885 vs 0.03846, luna 0.08346 vs 0.08219, highn 0.10518 vs 0.10509. Lower on TWO of four, and the two improvements are the larger ones (pt1 by about a quarter in relative terms). NO SUPERIORITY CLAIM: point estimates with no interval, two-of-four is not a difference test, and the highn gap of 0.00009 is minuscule but REAL -- it is not being called a tie. val_ce 0.61882 is comparable neither to gen 4 nor to arm A (0.6377), arm B (0.6124) or arm C (0.6202), because each arm&#x27;s validation split is drawn from its own training corpus; the comparable surfaces are these four holdouts and a served screen. CONFOUND TO CARRY AT READOUT: this isolates the WARM START only and is NOT a clean transfer experiment, because gen-4 run 4 was itself trained on shortlist corpora that are also in arm D&#x27;s mix, so arm D makes a second pass over data its initialisation already saw. That does not confound the question actually asked -- does starting from our best gen-4 head beat starting from production on the same corpus -- because arm C differs in nothing else. Whether it earns a served read is open; the offline metric failed to predict the served read for every gen-4 head, and arm C was the first time the two agreed.</td></tr>
 <tr><td>gen-5 arm F</td><td class="mono">e2645ec2</td><td class="mono">2026-09-27</td><td>THE POLICY TARGETS, NOT THE CORPUS: arm C&#x27;s corpus EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows), the production-head warm start 8ecd4fea, seed 1, tree c183f9dd, with ONE variable changed -- the two pv-search row families re-extracted with the #650 units fix, so the soft policy target on PV rows is peaked (entropy 0.674 / top-1 0.534) instead of uniform (0.999 / 0.17). Jerry 09-27: &#x27;yea can we re extract it to try the alternative and retrain&#x27;.</td><td class="num">0.6215</td><td class="num">—</td><td class="num"><span title="head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)">+0.238 [+0.224, +0.252]</span></td><td class="num"><span title="headduel-20260930 (paired duel vs the release-30 head 8ecd4fea on the same 8,000 mirrored deals, both heads argmax of the summed card log-odds, no search)">+0.174 [+0.160, +0.187]</span></td><td>sealed 11:22 ET 09-27, rc=0, early stop at 11 of 20 epochs, best epoch 8, wall 44,869 s (arm C: 46,083 s / 11 / 8). FOUR FIXED HOLDOUTS (rank_regret, lower is better), arm F vs arm C: roomlog 0.06825 vs 0.06815, pt1 0.04087 vs 0.03846, luna 0.08677 vs 0.08219, highn 0.10319 vs 0.10509 -- three slightly worse, one better; point estimates, no interval. val miss_at_64 0.04579 vs 0.04788 (same value corpus, so comparable). * SCREENED (lane v35f, 20:24 ET 09-27): +0.0098 [-0.0250, +0.0445] vs release 30 as served, CROSSES ZERO, on top of arm C&#x27;s -0.0031 -- fixing the targets moved neither the holdouts nor the served read. val_ce 0.6215 is comparable to arm C&#x27;s 0.6202 only loosely (same corpus, own split).</td></tr>
 <tr><td>gen-5 SMV3 (search-mean sidecar v3)</td><td class="mono">3e89e86f</td><td class="mono">2026-09-29</td><td>THE SEARCH-MEAN HEAD&#x27;S DATA, NOT THE CORPUS: arm F&#x27;s recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, production-head warm start 8ecd4fea, seed 1, units-fixed policy targets) with ONE variable changed -- sidecar v3 (#658), so the search-mean head trains on 48.85M rows (17.35M of them the 16 pv-search stores&#x27; signed-level means, taken as the two-point target directly, no ramp) instead of 24.2M. Jerry 09-28: &#x27;retrain with search mean sidecar&#x27; -- contain, not replace; the export decides which head is served. Tree f2345ecb (#662 applied the #634 round allowance to the trainer loader; the first attempt died on it after a 3-hour cache rebuild).</td><td class="num">0.6205</td><td class="num">—</td><td class="num"><span title="head8k-gen5-20260930 (vs SmartBot, 8,000 mirrored deals, seed0 20000, argmax of the summed card log-odds, no search)">+0.316 [+0.302, +0.330]</span></td><td class="num"><span title="headduel-20260930 (paired duel vs the release-30 head 8ecd4fea on the same 8,000 mirrored deals, both heads argmax of the summed card log-odds, no search)">+0.207 [+0.193, +0.220]</span></td><td>PRODUCTION as release 36 since 2026-09-30 11:53 ET (the outcome-head package smv3out-491ee4bf) · sealed 20:36 ET 09-29, rc=0, early stop at 16 of 20 epochs, best epoch 13, wall=67596s (arm F: 44,869 s / 11 / 8). Outcome head val rank_regret 0.0569; search-mean head val rank_regret 0.0590 on the same candidate set. FOUR FIXED HOLDOUTS (rank_regret, outcome head), SMV3 vs arm F: roomlog 0.0655 vs 0.0683, pt1 0.0337 vs 0.0409, luna 0.0855 vs 0.0868, highn 0.1054 vs 0.1032 -- three slightly better, one worse; point estimates, no interval. TWO EXPORTS from the one checkpoint: smv3out-491ee4bf.npz (outcome head) and smv3sm-d05b8bc5.npz (search-mean head). * SCREENED as served vs release 30: OUTCOME head (v36a) +0.0361 [+0.0015, +0.0707] on five windows, CONFIRMED on five fresh predeclared windows (v36a2, the read of record) +0.0393 [+0.0033, +0.0752]; descriptive pooled ten +0.0377 [+0.0130, +0.0623]; SEARCH-MEAN head (v36b) -0.0523 [-0.0905, -0.0140], clears zero NEGATIVE on five windows. val_ce 0.6205 comparable to arm F&#x27;s 0.6215 only loosely (same corpus, own split).</td></tr>
+<tr><td>gen-5 SMV3-AW3r2 (search-head weight 3.0)</td><td class="mono">b0bdf33d</td><td class="mono">2026-09-30</td><td>THE AUXILIARY HEAD&#x27;S WEIGHT, NOT ITS DATA: SMV3&#x27;s recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, sidecar v3, production-head warm start 8ecd4fea, seed 1, units-fixed targets, tree f2345ecb) with ONE variable changed -- --search-head-weight 3.0 instead of 1.0 (#663 next-run 3, #667). Armed under Jerry&#x27;s standing run authorization (2026-09-30); a first attempt was stopped 30 min in after its gate proved vacuous (Codex, bus 2153) and this is the re-arm with the reservation basis recorded.</td><td class="num">0.6288</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>sealed 21:27 ET 09-30, rc=0, EARLY STOP at 7 of 20 epochs, best epoch 4, wall 33,957 s (SMV3: 67,596 s / 16 / 13). Outcome head val rank_regret 0.0579 (own split). FOUR FIXED HOLDOUTS (rank_regret, outcome head), AW3r2 vs SMV3: roomlog 0.0686 / 0.0655, pt1 0.0337 / 0.0337, luna 0.0824 / 0.0855, highn 0.1043 / 0.1054 -- one worse, one equal, two better; point estimates, no interval. Search-head rows per epoch 48,849,859 (as SMV3). Exported outcome head aw3r2out-46b0ac9c.npz; screen v37a vs release 36 armed on cloud 22:3x ET.</td></tr>
 </tbody></table></div>
 
 <h2>Data generation on the search</h2>
 <div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>clusters</th><th>status</th></tr></thead><tbody><tr><td class="mono">runPV1</td><td>cloud</td><td class="mono">23260910</td><td class="mono">15,078 / 16,000</td><td>STOPPED 05:34 ET, no manifest: 922 clusters failed on the hybrid-bury duplicated-incumbent refusal (#606). Kept untouched as evidence and unresumable by design, since the fix (#607) changes the source-tree identity the harvest stamps into every run.</td></tr><tr><td class="mono">runPV2</td><td>Perf</td><td class="mono">23276910</td><td class="mono">13,043 / 16,000</td><td>STOPPED 08:39 ET to free Perf for lane v34r5; same #606 fate ahead of it. Sealed shards kept untouched as evidence, unresumable for the same reason.</td></tr><tr><td class="mono">runPV1r</td><td>cloud</td><td class="mono">23260910</td><td class="mono">16,000 / 16,000</td><td>COMPLETE 15:42 ET on the release-30 tree (4e006561): 0 failed, manifest sealed with 16,000 shards, wall 201 min, 9.5 GB. The same recipe on the same decks that failed 922 clusters before the fix. Replays runPV1&#x27;s decks and records the overlap in its manifest.</td></tr><tr><td class="mono">runPV2r</td><td>cloud</td><td class="mono">23276910</td><td class="mono">16,000 / 16,000</td><td>SEALED 19:04 ET on cloud: 0 failed, manifest written, wall 201.9 min, 9.5 GB. Replays runPV2&#x27;s decks and records the overlap in its manifest; runPV3 took the atomic lock 4.5 min later.</td></tr><tr><td class="mono">runPV3</td><td>cloud</td><td class="mono">23292910</td><td class="mono">16,000 / 16,000</td><td>SEALED 22:32 ET on cloud: 0 failed, manifest written, 203.3 min, 9.5 GB. The chain handover was clean — runPV4 took the atomic lock 43 s later.</td></tr><tr><td class="mono">runPV4</td><td>cloud</td><td class="mono">23308910</td><td class="mono">16,000 / 16,000</td><td>SEALED 01:55 ET on cloud: 0 failed, manifest written, wall 202.8 min, 9.5 GB. Last of the four cloud stores; cloud has held no datagen lock since.</td></tr><tr><td class="mono">runPV5</td><td>Perf</td><td class="mono">23324910</td><td class="mono">16,000 / 16,000</td><td>SEALED 03:07 ET on Perf: 0 failed, manifest written, wall 224.2 min, 9.5 GB. Started 23:23 ET, two minutes after lane v34r3 released the screen lock — the lane-level gate behaving as intended.</td></tr><tr><td class="mono">runPV6</td><td>Perf</td><td class="mono">23340910</td><td class="mono">16,000 / 16,000</td><td>SEALED 07:00 ET on Perf: 0 failed, manifest written, 9.5 GB. Completes the six-store set, and no data-generation waiter remains armed on either box.</td></tr><tr><td class="mono">(Perf disk)</td><td>Perf</td><td class="mono">&#8212;</td><td class="mono">unblocked</td><td>Was blocked at 27 GB against a 30 GB gate. Jerry approved the cleanup and Codex removed ~261 GiB of obsolete belief bulk data and caches on 2026-09-22, keeping sources and receipts; Perf has 267 GB free holding runPV5 and runPV6, and cloud has 238 GB free holding the other four stores.</td></tr><tr><td class="mono">(corpus total)</td><td>cloud + Perf</td><td class="mono">&#8212;</td><td class="mono">160,000 / 160,000</td><td>COMPLETE, TEN stores. 160,000 deals, 320,000 rounds, 22,028,452 records, 21,708,452 play decisions and 320,000 bury records, with incomplete_work 0 in every manifest. That counter means no RECORDED SEARCH was left incomplete; it says nothing about legal-action enumeration caps, which are a separate limit. Every decision carries a full search label: searched and decisions are the same number in each manifest and short_searches is zero throughout. All ten ran the #607 bury fix with zero bury failures, against the 922 clusters the first attempt lost. Exploration fired on 10.00% of opportunities, and on about 2.3% of decisions the played action belonged to the exploration-added set — what the explore_played counter literally measures, membership in exploration.added, NOT an action-change rate, since an exploration candidate may also be one the served policy would have chosen. WHAT THE CORPUS BOUGHT, so the page does not imply more: gen-5 arm A trained on shortlist + the first six of these stores with MC-LCB removed and read -0.0606 served; arm B added MC-LCB back and read +0.0116, crossing zero. Arm C, on all thirty corpora including all ten PV stores, is training.</td></tr><tr><td class="mono">runPV7</td><td>cloud</td><td class="mono">23356910</td><td class="mono">16,000 / 16,000</td><td>SEALED on cloud: 0 failed, manifest written, 2,202,372 records, 2,170,372 decisions.</td></tr><tr><td class="mono">runPV8</td><td>cloud</td><td class="mono">23372910</td><td class="mono">16,000 / 16,000</td><td>SEALED on cloud: 0 failed, manifest written, 2,203,668 records, 2,171,668 decisions.</td></tr><tr><td class="mono">runPV9</td><td>cloud</td><td class="mono">23388910</td><td class="mono">16,000 / 16,000</td><td>SEALED on cloud: 0 failed, manifest written, 2,202,156 records, 2,170,156 decisions.</td></tr><tr><td class="mono">runPV10</td><td>cloud</td><td class="mono">23404910</td><td class="mono">16,000 / 16,000</td><td>SEALED on cloud: 0 failed, manifest written, 2,201,680 records, 2,169,680 decisions. Completes the ten-store W64 corpus and exhausts the #436 reservation 23260910..23420909.</td></tr><tr><td class="mono">runPVD1</td><td>cloud</td><td class="mono">23440910</td><td class="mono">16,000 / 16,000</td><td>SEALED 06:46 ET. The DEEPER TEACHER tranche at W128 (Jerry 2026-09-24: &quot;lets do W128&quot;), data policy pv-search-ccade130-w128-k8-rb5f25003-bury-hybrid-f9b3077581ec — a different labeller from the ten W64 stores above, not more of the same. 2,206,456 records, 2,174,456 decisions, incomplete_work 0, short_searches 0, 1.96x the per-cluster cost of W64.</td></tr><tr><td class="mono">runPVD2</td><td>cloud</td><td class="mono">23456910</td><td class="mono">16,000 / 16,000</td><td>SEALED. 2,205,632 records, 2,173,632 decisions, incomplete_work 0, short_searches 0. Same W128 recipe and the same release-30 package as runPVD1.</td></tr><tr><td class="mono">runPVD3</td><td>cloud</td><td class="mono">23472910</td><td class="mono">16,000 / 16,000</td><td>SEALED 20:01 ET 09-24 on cloud: 0 failed, manifest written, 2,204,928 records, incomplete_work 0, short_searches 0. Took the host lock on runPVD2&#x27;s DONE line with no intervention.</td></tr><tr><td class="mono">runPVD4</td><td>cloud</td><td class="mono">23488910</td><td class="mono">16,000 / 16,000</td><td>SEALED 02:43 ET 09-25 on cloud: rc 0, 16,000 shards, 2,201,836 records, incomplete_work 0, short_searches 0. Completes the four-store W128 chain, which ran unattended overnight with each store taking the lock on its predecessor&#x27;s DONE line.</td></tr><tr><td class="mono">(W128 tranche)</td><td>cloud</td><td class="mono">—</td><td class="mono">64,000 sealed</td><td>COMPLETE, FOUR STORES: 64,000 deals and 8,818,852 records at the W128 teacher (pv-search-ccade130-w128-k8-rb5f25003-bury-hybrid-f9b3077581ec), incomplete_work 0 and short_searches 0 in every manifest, 1.96x the per-cluster cost of W64. Two more stores (runPVD5 seed0 23504910, runPVD6 seed0 23520910) are generating behind them on Jerry&#x27;s standing instruction to keep an idle cloud busy. NOTHING TRAINS ON THIS YET, and that is deliberate: mixing a different teacher depth into the same corpus would make &#x27;more data&#x27; and &#x27;deeper teacher&#x27; move together, the confound that already cost a clean read on arm A. Jerry approved an arm E on this data (2026-09-24), which is the experiment that would answer whether a lower-variance value target is worth 1.96x per cluster; it has not been built.</td></tr></tbody></table></div>
 
-<p class="foot">Built 2026-09-30 18:16 EDT from registry.json by build_v2.py · 0 screens vs release 36, 16 vs the era's earlier releases, 2 context reads, 11 models · rows 1–55 and every pre-release-29 model live there, frozen</p>
+<p class="foot">Built 2026-09-30 22:18 EDT from registry.json by build_v2.py · 1 screens vs release 36, 16 vs the era's earlier releases, 2 context reads, 12 models · rows 1–55 and every pre-release-29 model live there, frozen</p>
 </main>

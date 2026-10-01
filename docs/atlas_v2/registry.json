@@ -488,6 +488,25 @@
     }
    ],
    "note": "SEALED 13:59 ET 09-30, recomputed with vol_re.py, archived at ~/shengji-archive/2026-09-13/readouts/v36c-policyonly-vs-r30 with SHA256SUMS. Both contrasts CROSS ZERO (tau 0, MDE80 0.049): arm-F prior windows -0.0010/+0.0385/-0.0221/+0.0260/-0.0260; SMV3 prior +0.0231/+0.0010/+0.0000/+0.0346/-0.0010. Swapping ONLY the admission head under production's value evaluator produced no detectable served change for heads that beat the production head +0.17 / +0.21 in the bare duel, while the whole SMV3 package read +0.0393 confirmed (v36a2): consistent with the value evaluator carrying the gain, NOT established: the SMV3-prior interval includes +0.04, the arm-F-prior interval's upper bound (+0.0359) sits below it, so an admission effect the size of the package gain is excluded for arm F's head and not for SMV3's (corrected 18:2x ET, Codex bus 2172). Predeclared vs release 30 before the release-36 deploy; the adopted plan's direct duel vs pinned production W64 was not run (Codex; recorded on #663)."
+  },
+  {
+   "id": "v37a",
+   "date": "2026-10-01",
+   "status": "running",
+   "box": "cloud",
+   "candidate": "gen-5 SMV3-AW3r2 OUTCOME head (b0bdf33d; SMV3's recipe with ONE variable changed -- search-head weight 3.0) exported as aw3r2out-46b0ac9c.npz and served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "34160910..34560910",
+   "confidence": 0.95,
+   "point": null,
+   "lo": null,
+   "hi": null,
+   "note": "The first screen against release 36. Predeclared on #663 before arming: lower bound above zero = positive screen to confirm on fresh windows; interval spanning zero = inconclusive at MDE80 ~0.05; a null is not a diagnosis. Tree claude-main-15 (ac1e4320), both arms on it; runs between runSL5 and runPVR1 (datagen yields to screens).",
+   "eta": "~01:30 ET 10-01"
   }
  ],
  "context_screens": [
@@ -683,6 +702,15 @@
     "hi": 0.2204,
     "ref": "headduel-20260930 (paired duel vs the release-30 head 8ecd4fea on the same 8,000 mirrored deals, both heads argmax of the summed card log-odds, no search)"
    }
+  },
+  {
+   "name": "gen-5 SMV3-AW3r2 (search-head weight 3.0)",
+   "ck": "b0bdf33d",
+   "date": "2026-09-30",
+   "recipe": "THE AUXILIARY HEAD'S WEIGHT, NOT ITS DATA: SMV3's recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, sidecar v3, production-head warm start 8ecd4fea, seed 1, units-fixed targets, tree f2345ecb) with ONE variable changed -- --search-head-weight 3.0 instead of 1.0 (#663 next-run 3, #667). Armed under Jerry's standing run authorization (2026-09-30); a first attempt was stopped 30 min in after its gate proved vacuous (Codex, bus 2153) and this is the re-arm with the reservation basis recorded.",
+   "val_ce": 0.6288,
+   "regret": null,
+   "status": "sealed 21:27 ET 09-30, rc=0, EARLY STOP at 7 of 20 epochs, best epoch 4, wall 33,957 s (SMV3: 67,596 s / 16 / 13). Outcome head val rank_regret 0.0579 (own split). FOUR FIXED HOLDOUTS (rank_regret, outcome head), AW3r2 vs SMV3: roomlog 0.0686 / 0.0655, pt1 0.0337 / 0.0337, luna 0.0824 / 0.0855, highn 0.1043 / 0.1054 -- one worse, one equal, two better; point estimates, no interval. Search-head rows per epoch 48,849,859 (as SMV3). Exported outcome head aw3r2out-46b0ac9c.npz; screen v37a vs release 36 armed on cloud 22:3x ET."
   }
  ],
  "data": [

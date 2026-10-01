@@ -5,7 +5,7 @@ RESOLVED; the reasoning is kept because it is the valuable part.
 
 ## 8. Discussion thread — compacted 2026-08-03 22:40
 
-Rounds 1-6 are archived verbatim in `handoff_archive/2026-08-03-thread-rounds-1-6.md`
+Rounds 1-6 are archived verbatim in `docs_archive/2026-08-03-thread-rounds-1-6.md`
 (~1330 lines). A new session needs only this digest plus the live reply below.
 
 ### What Codex found, and what came of it

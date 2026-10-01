@@ -1,7 +1,7 @@
 # Learning and search research plan
 
-Last reconciled: **2026-09-22 09:4x ET (release 30: the policy/value search with the soft head is
-production)**. This document owns the research architecture, the estimands and the decision
+Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in
+the release-30 policy/value search)**. This document owns the research architecture, the estimands and the decision
 tree. `BACKLOG.md` owns priority; live compute and review asks are in `HANDOFF_ACTIVE.md`;
 policy names and deployment state are in `AI_POLICIES.md`; immutable receipts and verdicts are
 in `HANDOFF_REVIEW.md`; every training run and screen is on the scaling page
@@ -11,13 +11,13 @@ the shortlist-era screens) are summarised once below and live in `docs_archive/`
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator. Production is release 30 (release 29's recipe with the
-hybrid-bury fix #607): the soft head
-`8ecd4fea` served as one NumPy package, its policy head admitting eight candidates over 64
-sampled worlds and its value head pricing them, no Monte Carlo playouts in play, value-guided
-hybrid bury. The champion for every strength claim is therefore the served release-30 bot
-(release 29's recipe with the fixed hybrid bury; release 29's reads below are the labeled
-historical evidence, not a served-package equivalence — the bury behaviour changed),
+correct engine and a reproducible evaluator. Production is release 37 (2026-10-01, a phone-HUD
+fix) on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
+NumPy package (`smv3out-491ee4bf.npz`) inside the search release 30 served unchanged — its policy
+head admitting eight candidates over 64 sampled worlds and its value head pricing them, no Monte
+Carlo playouts in play, value-guided hybrid bury. The champion for every strength claim is
+therefore the served release-36 bot (release 29/30's reads below are the labeled historical
+evidence of the soft head 8ecd4fea, which releases 29–35 served),
 and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
 direction, recorded on #436). Historical MC-LCB results keep their original labels; MC-LCB is
 no longer the prospective control.
@@ -50,7 +50,17 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 
 ## Current program
 
-0. **Production is release 30** (2026-09-22; release 29 + the #607 bury fix, same name and package). Evidence chain, in order: the soft head alone
+The live plan after gen 5 is issue #663 (what to train and screen next, decided after release 36's
+confirmation) and the data-use audit #667 (its actions landed as #668 units bracketing, #669 sidecar
+coverage + `values_scale` refusal, #670 dead modules deleted, #672/#673 the seed registry). The
+numbered program below is the release-30-era record and is kept for its evidence chain; #663 and
+#667 own the next decision.
+
+0. **Production is release 37** (2026-10-01) on release 36's model (2026-09-30; #666, plan #663): the gen-5 SMV3
+   checkpoint 3e89e86f's OUTCOME head (`smv3out-491ee4bf.npz`) in release 30's search unchanged; as served vs
+   release 30, v36a +0.0361 [+0.0015, +0.0707] and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752],
+   five windows each. Rollback: the release-30 lines in `fly.toml` or the release-35 image (see `DEPLOY.md`).
+   Release 30 (2026-09-22; release 29 + the #607 bury fix, same name and package) was production until then; its evidence chain, in order: the soft head alone
    beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
    W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
    vs the release-28 package in card play
@@ -81,7 +91,7 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
    claim; the 260-pair strength screen (~3.5 h) is approved and RUNNING on cloud since 2026-09-22
    09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
    `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
-4. **What would change production next:** a head that beats release 30 on the served-bot
+4. **What would change production next:** a head that beats release 36 on the served-bot
    design, or a search change whose served contrast clears zero. Nothing else.
 
 ## What the scaling work taught (models)

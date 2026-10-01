@@ -133,8 +133,8 @@ comment body, a sealed artifact on disk. Verify there before acting.
 
 ## Project records
 
-`HANDOFF_ACTIVE.md` owns current fleet state and the single actionable review
-ask. `HANDOFF_REVIEW.md` owns durable review authority. `BACKLOG.md` owns ordered
+Fleet state: `server/scripts/fleet_status.sh` and the hourly bus status;
+`HANDOFF_ACTIVE.md` is slated for deprecation (#674). `HANDOFF_REVIEW.md` owns durable review authority. `BACKLOG.md` owns ordered
 work, `RL_PLAN.md` the technical roadmap, `AI_POLICIES.md` measured policy
 evidence, `AI_POLICIES.md` the evidence standard (the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md`), and `incidents/`
 process failures. Operational signaling between agents is the agent bus

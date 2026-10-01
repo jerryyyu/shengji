@@ -2,9 +2,10 @@
 
 Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in
 the release-30 policy/value search)**. This document owns the research architecture, the estimands and the decision
-tree. `BACKLOG.md` owns priority; live compute and review asks are in `HANDOFF_ACTIVE.md`;
-policy names and deployment state are in `AI_POLICIES.md`; immutable receipts and verdicts are
-in `HANDOFF_REVIEW.md`; every training run and screen is on the scaling page
+tree. `BACKLOG.md` owns priority; live compute and review asks are on GitHub issues and in
+`server/scripts/fleet_status.sh` (`HANDOFF_ACTIVE.md` was deleted, #674);
+policy names and deployment state are in `AI_POLICIES.md`; immutable authority markers are
+in `HANDOFF_REVIEW.md` (frozen to its markers, #674; prose lives on GitHub issues); every training run and screen is on the scaling page
 (`docs/scaling_log/`) and the search atlas. The retired lines (BELIEF, privileged teachers,
 the shortlist-era screens) are summarised once below and live in `docs_archive/`.
 
@@ -266,7 +267,9 @@ oracle or infer true-person disjointness from mutable display names.
 
 The compact plan above is the current research contract. Detailed v1–v13,
 DMC/DMC2, Direct-Q, O0, Teacher T3/T4, S3–S6, H0, high-N, and old artifact
-chronology stays in the existing RL archives, `HANDOFF_REVIEW.md`, incident
+chronology stays in the existing RL archives, the archived `HANDOFF_REVIEW.md` prose
+(`docs_archive/handoff-review-*.md`; the ledger itself is frozen to its authority
+markers, #674, and new prose lives on GitHub issues), incident
 records, and Git history. The closed BELIEF V1 design set
 (`docs_archive/BELIEF_V1_SPEC.md`,
 `docs_archive/BELIEF_V1_V2_DESIGN.md`,

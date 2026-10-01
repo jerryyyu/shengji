@@ -1276,6 +1276,77 @@ def make_cwv_puct_bot(checkpoint: str | os.PathLike[str], *, simulations: int,
     return bot
 
 
+PUCT_ENV_PREFIX = "SHENGJI_CWV_PUCT_"
+
+
+def puct_env_recipe(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """``SHENGJI_CWV_PUCT_CKPT`` + ``_SHA256`` (both required: an unpinned package
+    is refused, and the file must hash to the pin) and ``_SIMULATIONS`` (S, int);
+    optional ``_PRIOR`` (``package`` by default, or ``uniform`` / ``head`` /
+    ``value``), the ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair when the prior
+    package is not the value package (under ``package`` the value package is
+    the prior otherwise), ``_PRIOR_TEMPERATURE`` (float > 0),
+    ``_LEAF_FINISH_TRICK`` (0/1), ``_WORLD_POOL`` / ``_BATCH`` (int) and
+    ``_C_PUCT`` (float) -- as keyword arguments for `cwv_puct_registry_entries`
+    plus ``checkpoint`` and ``simulations``.  Screen-only: the registry's
+    import hook reads this so a spawned worker resolves the same name the
+    parent did (#436 step 1b)."""
+    env = os.environ if environ is None else environ
+    checkpoint = env.get(PUCT_ENV_PREFIX + "CKPT")
+    if not checkpoint:
+        raise CWVError("SHENGJI_CWV_PUCT_CKPT is not set")
+    sha256 = env.get(PUCT_ENV_PREFIX + "SHA256")
+    if not sha256 or len(sha256) != 64:
+        raise CWVError("SHENGJI_CWV_PUCT_SHA256 must be the package's full sha256")
+    if not Path(checkpoint).is_file():
+        raise CWVError(f"SHENGJI_CWV_PUCT_CKPT not found: {checkpoint}")
+    if file_sha256(checkpoint) != sha256:
+        raise CWVError("SHENGJI_CWV_PUCT_CKPT does not hash to SHENGJI_CWV_PUCT_SHA256")
+    raw = env.get(PUCT_ENV_PREFIX + "SIMULATIONS")
+    if raw in (None, ""):
+        raise CWVError("SHENGJI_CWV_PUCT_SIMULATIONS is not set")
+    simulations = [int(part) for part in str(raw).split(",") if part.strip()]
+    if not simulations or any(s < 1 for s in simulations):
+        raise CWVError("SHENGJI_CWV_PUCT_SIMULATIONS must be positive integers")
+    prior = env.get(PUCT_ENV_PREFIX + "PRIOR") or "package"
+    if prior not in PRIOR_MODES:
+        raise CWVError(f"SHENGJI_CWV_PUCT_PRIOR must be one of {PRIOR_MODES}")
+    recipe: dict[str, Any] = dict(checkpoint=checkpoint, simulations=simulations, prior=prior)
+    prior_ckpt = env.get(PUCT_ENV_PREFIX + "PRIOR_CKPT")
+    prior_sha = env.get(PUCT_ENV_PREFIX + "PRIOR_SHA256")
+    if bool(prior_ckpt) != bool(prior_sha):
+        raise CWVError("SHENGJI_CWV_PUCT_PRIOR_CKPT and SHENGJI_CWV_PUCT_PRIOR_SHA256 go together")
+    if prior_ckpt:
+        if len(prior_sha) != 64:
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_SHA256 must be the prior's full sha256")
+        if not Path(prior_ckpt).is_file() or file_sha256(prior_ckpt) != prior_sha:
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_CKPT does not hash to SHENGJI_CWV_PUCT_PRIOR_SHA256")
+        recipe.update(prior_checkpoint=prior_ckpt, prior_sha256=prior_sha)
+    elif prior == "package":
+        recipe.update(prior_checkpoint=checkpoint, prior_sha256=sha256)   # one package, both roles
+    elif prior == "head":
+        raise CWVError("SHENGJI_CWV_PUCT_PRIOR=head needs SHENGJI_CWV_PUCT_PRIOR_CKPT + _SHA256")
+    raw = env.get(PUCT_ENV_PREFIX + "PRIOR_TEMPERATURE")
+    if raw not in (None, ""):
+        t = float(raw)
+        if not (t > 0.0) or not math.isfinite(t):
+            raise CWVError("SHENGJI_CWV_PUCT_PRIOR_TEMPERATURE must be a positive finite number")
+        recipe["prior_temperature"] = t
+    raw = env.get(PUCT_ENV_PREFIX + "LEAF_FINISH_TRICK")
+    if raw not in (None, ""):
+        if raw not in ("0", "1"):
+            raise CWVError("SHENGJI_CWV_PUCT_LEAF_FINISH_TRICK must be 0 or 1")
+        recipe["leaf_finish_trick"] = raw == "1"
+    for key in ("world_pool", "batch"):
+        raw = env.get(PUCT_ENV_PREFIX + key.upper())
+        if raw not in (None, ""):
+            recipe[key] = int(raw)
+    raw = env.get(PUCT_ENV_PREFIX + "C_PUCT")
+    if raw not in (None, ""):
+        recipe["c_puct"] = float(raw)
+    return recipe
+
+
 def cwv_puct_registry_entries(checkpoint: str | os.PathLike[str],
                               simulations: Sequence[int], *,
                               world_pool: int = DEFAULT_WORLD_POOL,

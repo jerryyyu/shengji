@@ -358,7 +358,8 @@ def test_every_training_day_with_a_val_ce_is_on_charts_3_and_4_and_the_day_table
     assert set(ce_days) <= set(c["days"])
     days = ce_days
     for d in days:
-        assert f"<td>{d[8:]} Sep</td>" in page, f"day {d} missing from the by-day table"
+        cell = dt.date.fromisoformat(d).strftime("%d %b")
+        assert f"<td>{cell}</td>" in page, f"day {d} missing from the by-day table"
     # a model trained on a NEW day (tomorrow) appears without any list being edited
     # the new day must be LATER than every real one, or it proves nothing about the header
     newest = max(r["tr"].lstrip("~") for r in rows if r["ck"] not in table_only)

@@ -152,6 +152,47 @@ def root_clone(rnd, hands, buried):
     return clone
 
 
+def prior_rows(rnd, seat, worlds, version):
+    """The prior's input: ONE ``policy_prior.flat_input(root_tensors(...))`` row per
+    sampled world, built on a root clone carrying that world's hands and kitty
+    (``float32``, ``(worlds, input_dim(version))``)."""
+    from .policy_prior import flat_input, root_tensors   # torch-free module level
+    return np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat, version), version)
+                     for hands, buried in worlds]).astype(np.float32)
+
+
+def action_scores(log_odds, actions):
+    """``(rows, actions)`` factorised scores from ``(rows, 54)`` card log-odds:
+    score(action) = sum over its cards of the card log-odds (a multiplicity
+    matrix; a pair counts its card twice).  ``float32`` product, ``float64`` out,
+    exactly the admission's arithmetic."""
+    from .policy_prior import CARD_INDEX, N_CARDS
+    log_odds = np.asarray(log_odds)
+    if log_odds.ndim != 2 or log_odds.shape[1] != N_CARDS or not np.isfinite(log_odds).all():
+        raise ValueError("prior log-odds must be finite, one row per world")
+    multiplicity = np.zeros((len(actions), N_CARDS), dtype=np.float32)
+    for index, action in enumerate(actions):
+        for card in action:
+            multiplicity[index, CARD_INDEX[card]] += 1.0
+    return (log_odds.astype(np.float32) @ multiplicity.T).astype(np.float64)
+
+
+def prior_scores(log_odds, version, rnd, seat, actions, worlds):
+    """``(worlds, actions)`` prior scores of ``actions`` at the root ``rnd`` for
+    ``seat``: one root forward per sampled world through ``log_odds`` (the
+    ``(W, input_dim) -> (W, 54)`` card log-odds callable), then the card sum.
+
+    This is THE scoring path: `CWVPriorAdmissionBot._prior_scores` (the served
+    prior admission) and the PUCT package prior (`cwv_puct.JointPackagePriorHead`)
+    both call it, so a prior read in the tree is the prior serving computes.
+    """
+    X = prior_rows(rnd, seat, worlds, version)
+    rows = np.asarray(log_odds(X))
+    if rows.ndim != 2 or rows.shape[0] != len(worlds):
+        raise ValueError("prior log-odds must be finite, one row per world")
+    return action_scores(rows, actions)      # width and finiteness checked there
+
+
 class CWVPriorAdmissionBot(CWVShortlistBot):
     """Learned W32 shortlist whose wide decisions are pruned by the policy prior."""
 
@@ -185,19 +226,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
 
     def _prior_scores(self, rnd, seat, actions, worlds):
         """``(worlds, actions)`` factorised prior scores: one root forward per world."""
-        from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors   # torch-free module level
-        version = self._prior_version
-        X = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat, version), version)
-                      for hands, buried in worlds]).astype(np.float32)
-        log_odds = self._prior_log_odds(X)
-        if log_odds.shape != (len(worlds), N_CARDS) or not np.isfinite(log_odds).all():
-            raise ValueError("prior log-odds must be finite, one row per world")
-        # Multiplicity matrix: score(action) = sum over its cards of the card log-odds.
-        multiplicity = np.zeros((len(actions), N_CARDS), dtype=np.float32)
-        for index, action in enumerate(actions):
-            for card in action:
-                multiplicity[index, CARD_INDEX[card]] += 1.0
-        return (log_odds.astype(np.float32) @ multiplicity.T).astype(np.float64)
+        return prior_scores(self._prior_log_odds, self._prior_version, rnd, seat, actions, worlds)
 
     def _prior_log_odds(self, X):
         if self._prior_kind == "separate-numpy":
@@ -324,4 +353,4 @@ class CWVPriorBuryBot(CWVBuryBot, CWVPriorAdmissionBot):
 
 
 __all__ = ["CWVPriorAdmissionBot", "CWVPriorAdmissionConfig", "CWVPriorBuryBot", "SCHEMA",
-           "load_prior_checked", "root_clone"]
+           "action_scores", "load_prior_checked", "prior_rows", "prior_scores", "root_clone"]

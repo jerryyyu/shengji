@@ -254,3 +254,62 @@ def test_env_recipe_refuses_anything_but_0_or_1(bad):
     assert "tiebreak_points" not in pv.pv_env_recipe({**PRODUCTION_ENV, "SHENGJI_PV_TIEBREAK_POINTS": ""})
     assert "tiebreak_points" not in pv.pv_env_recipe({**PRODUCTION_ENV, "SHENGJI_PV_TIEBREAK_POINTS": "0"})
     assert pv.pv_env_recipe({**PRODUCTION_ENV, "SHENGJI_PV_TIEBREAK_POINTS": "1"})["tiebreak_points"] is True
+
+
+# ------------------------------- the serving deadline (Codex HOLD on #682, P1)
+
+def test_deadline_crossing_inside_the_rebuild_abandons_the_tiebreak_for_the_argmax(monkeypatch):
+    """Mocked clock: every leaf the tie-break rebuilds advances it 0.1 s, the
+    value pass builds none (crafted means), so the deadline fires INSIDE the
+    rebuild.  Contract: the argmax (the complete value-pass result) is played,
+    the record is the ordinary decision record with ``tiebreak_applied`` False
+    and ``tiebreak_abandoned`` 'budget', never the anchor fallback; the work
+    past the cap is bounded by one stride of leaves; the same bot with a
+    generous budget applies the tie-break."""
+    rnd = last_position(); seat = rnd.turn
+    worse, better = ["DK"], ["D6"]
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    built = []
+    real = module.afterstate
+
+    def slow_afterstate(*args, **kwargs):
+        built.append(1)
+        clock[0] += 0.1
+        return real(*args, **kwargs)
+    monkeypatch.setattr(module, "afterstate", slow_afterstate)
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=64, candidates=8, cap=4000,
+                               batch_size=128, serving_budget_seconds=0.5, tiebreak_points=True)
+    bot = pv.PVSearchBot(predict, evaluator=RankEvaluator(), version=2, config=config,
+                         checkpoint="/dev/null", seed=41)
+    legal = enumerate_legal(rnd, seat, cap=4000)
+    worse_index, better_index = legal.actions.index(worse), legal.actions.index(better)
+    crafted_preferences(bot, rnd, seat, [worse_index, better_index])
+
+    def value_means(rnd_, seat_, admitted_, worlds_, check_budget=None):
+        means = np.full(len(admitted_), -1.0)
+        means[admitted_.index(worse)] = 0.5
+        means[admitted_.index(better)] = 0.5 - EPS / 2
+        return means, 1
+    bot._value_means = value_means
+    anchor = HeuristicBot().decide_play(copy.deepcopy(rnd), seat)
+    assert anchor not in (worse, better)
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert played == worse and played != anchor                 # the argmax, not the anchor
+    assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"] is True
+    assert record["selected_index"] == worse_index
+    assert record["tiebreak_applied"] is False and record["tiebreak_abandoned"] == "budget"
+    assert record["tiebreak_abandon_error"] == "PVSearchBudgetExceeded"
+    assert record["tiebreak_points"] == [] and len(record["tiebreak_near_set"]) == 2
+    # bounded: the cap (5 leaves at 0.1 s) plus at most one stride of leaves
+    assert module.TIEBREAK_BUDGET_STRIDE == 16
+    assert 5 <= len(built) <= 5 + module.TIEBREAK_BUDGET_STRIDE
+    assert clock[0] <= 0.5 + module.TIEBREAK_BUDGET_STRIDE * 0.1
+    # a generous budget completes the rebuild and applies the tie-break
+    clock[0] = 0.0; built.clear()
+    bot.serving_budget_seconds = 1e9
+    assert bot.decide_play(copy.deepcopy(rnd), seat) == better
+    record = bot.last_decision_record
+    assert record["tiebreak_applied"] is True and "tiebreak_abandoned" not in record
+    assert len(built) == 2 * 64

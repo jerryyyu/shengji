@@ -59,7 +59,9 @@ the current trick resolves under the search's own trick finisher, summed over
 the sampled worlds (definition: `policy_value_search`).  ``0`` or ``1`` only; on,
 it enters the recipe digest with its epsilon and adds ``-tb`` to the name after
 the admission tokens; off, it is absent from the payload, so every existing name
-and the served selection (the plain argmax) are unchanged.
+and the served selection (the plain argmax) are unchanged.  The rebuild runs
+under the play budget; on expiry the tie-break abandons itself and the argmax is
+played (the value pass was complete), never the anchor fallback.
 """
 from __future__ import annotations
 
@@ -401,7 +403,9 @@ class PVSearchBot(PolicyValueBot):
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
         if check_budget is not None:
             check_budget()   # pre-success: nothing past the deadline is published
-        winner = self._select(rnd, seat, admitted, means, worlds=worlds)
+        # the optional tie-break rebuilds leaves under the same deadline and, on
+        # expiry, abandons itself in favour of the argmax (`policy_value_search`)
+        winner = self._select(rnd, seat, admitted, means, worlds=worlds, check_budget=check_budget)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),

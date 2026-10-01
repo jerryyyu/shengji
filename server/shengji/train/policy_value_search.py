@@ -50,7 +50,12 @@ Optional selection rule (#676 E, #677 strategy 2; OFF BY DEFAULT, and while off
   ``tiebreak_near_set`` (admitted positions, ascending) and
   ``tiebreak_points`` (the mean signed points per member, in that order; empty
   when the near-set had one member and nothing was rebuilt).  Nothing runs
-  when the near-set is a singleton; no model is consulted.
+  when the near-set is a singleton; no model is consulted.  The rebuild runs
+  under the serving deadline: ``check_budget`` is called before every member
+  and every ``TIEBREAK_BUDGET_STRIDE`` worlds inside the loop, and when it
+  fires the tie-break ABANDONS ITSELF and the argmax (a complete value-pass
+  result, published within budget) is played -- never the anchor fallback --
+  with ``tiebreak_applied`` False and ``tiebreak_abandoned`` ``"budget"``.
 """
 from __future__ import annotations
 
@@ -75,6 +80,9 @@ ADMISSION_DEFAULTS = dict(admission_diversity=False, max_per_structure=2,
 #: `tiebreak_points`: epsilon in the value head's units (signed levels, see the
 #: module docstring); 0.02 of a level is #676's near-tie figure.
 TIEBREAK_DEFAULTS = dict(tiebreak_points=False, tiebreak_epsilon=0.02)
+#: the cooperative budget is checked before every near-set member and after
+#: every this-many sampled worlds inside the tie-break's leaf rebuild
+TIEBREAK_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
 
 
 def structure_key(rnd, action):
@@ -111,6 +119,13 @@ def _near_duplicate(counts, size, admitted_counts):
         if shared >= size - 1:
             return True
     return False
+
+
+def _budget_exceeded():
+    """The serving wrapper's deadline exception (lazy: that module imports this
+    one).  The harness has no deadline, so nothing else is ever caught."""
+    from .pv_search_policy import PVSearchBudgetExceeded
+    return PVSearchBudgetExceeded
 
 
 class PolicyValueBot(PolicyWorldBot):
@@ -183,11 +198,11 @@ class PolicyValueBot(PolicyWorldBot):
         flush()
         return sums / len(worlds), batches
 
-    def _select(self, rnd, seat, admitted, means, worlds=None):
+    def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None):
         winner = int(np.argmax(means))  # anchor retained on an exact value tie
         if not self.tiebreak_points:
             return winner
-        return self._select_by_points(rnd, seat, admitted, means, worlds, winner)
+        return self._select_by_points(rnd, seat, admitted, means, worlds, winner, check_budget)
 
     # -- selection: the optional epsilon tie-break by trick points -------------
 
@@ -202,9 +217,11 @@ class PolicyValueBot(PolicyWorldBot):
         ours = rnd.is_attacker(trick.winner) == rnd.is_attacker(seat)
         return int(trick.points) if ours else -int(trick.points)
 
-    def _select_by_points(self, rnd, seat, admitted, means, worlds, argmax):
+    def _select_by_points(self, rnd, seat, admitted, means, worlds, argmax, check_budget=None):
         """The module docstring's rule.  ``worlds`` are the sampled worlds the
-        means were taken over; the near-set's leaves are rebuilt in each."""
+        means were taken over; the near-set's leaves are rebuilt in each, under
+        ``check_budget`` (the serving deadline): on expiry the rebuild stops and
+        ``argmax`` is returned, the record saying so."""
         if worlds is None:
             raise ValueError('tiebreak_points needs the sampled worlds')
         means = np.asarray(means, dtype=np.float64)
@@ -214,9 +231,21 @@ class PolicyValueBot(PolicyWorldBot):
         if len(near) < 2:
             return argmax
         sums = {i: 0 for i in near}
-        for world_index, (hands, buried) in enumerate(worlds):
+        try:
             for i in near:
-                sums[i] += self._trick_points(rnd, seat, hands, buried, admitted[i], world_index)
+                if check_budget is not None:
+                    check_budget()
+                for world_index, (hands, buried) in enumerate(worlds):
+                    if check_budget is not None and world_index \
+                            and world_index % TIEBREAK_BUDGET_STRIDE == 0:
+                        check_budget()
+                    sums[i] += self._trick_points(rnd, seat, hands, buried, admitted[i], world_index)
+        except _budget_exceeded() as exc:
+            # the value pass was complete and within budget; only the optional
+            # refinement is past it, so the argmax stands and nothing falls back
+            self._tiebreak['tiebreak_abandoned'] = 'budget'
+            self._tiebreak['tiebreak_abandon_error'] = type(exc).__name__
+            return argmax
         # most points first; the argmax breaks an exact tie, then admission order
         winner = min(near, key=lambda i: (-sums[i], i != argmax, i))
         self._tiebreak['tiebreak_points'] = [sums[i] / len(worlds) for i in near]

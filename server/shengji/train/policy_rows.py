@@ -69,7 +69,8 @@ class PolicyRows:
         n = len(X) if not limit else min(int(limit), len(X))
         if n < 1:
             raise ValueError("policy rows: no rows")
-        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key", "means"))
+        meta = _read_meta(prefix + ".meta.jsonl", n, ("ballot", "taken", "deal", "deal_key", "means",
+                                                       "explore_flag", "explore_margin"))
         if len(meta) != n:
             raise ValueError("policy rows: metadata shorter than the rows")
         keys = _deal_keys_of(meta, "policy rows")
@@ -93,6 +94,12 @@ class PolicyRows:
             from .policy_prior import ballot_value_tensor
             vals, _has = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
             self.vals = np.asarray(vals, dtype=np.float32)
+        # Exploration tags (#676 D): present only when EVERY kept row wrote ``explore_flag``;
+        # an older extract reads as all zeros and says so (``explore_tags: False``), so a
+        # weighted run can refuse it rather than upweight nothing.
+        from .policy_prior import explore_flag_counts, explore_tag_arrays
+        self.explore_tags = bool(meta) and all(m.get("explore_flag") is not None for m in meta)
+        self.explore_flag, self.explore_margin = explore_tag_arrays(meta)
         self.n = int(len(idx))
         self.deal_keys = frozenset(m["deal_key"] for m in meta)
         self.deals = len(self.deal_keys)
@@ -103,14 +110,17 @@ class PolicyRows:
                          "deals": self.deals, "deals_excluded": len(excluded_deals),
                          "deal_key_schema": "shengji-value-deal-key-v1",
                          "fit_deals_digest": _digest(self.deal_keys),
-                         "rows_with_ballot_target": self.in_ballot}
+                         "rows_with_ballot_target": self.in_ballot,
+                         "explore_tags": self.explore_tags,
+                         "explore_flag_counts": explore_flag_counts(self.explore_flag)}
 
     def batches(self, batch_size: int, rng: np.random.Generator):
         """One pass in a fresh permutation, yielding numpy batches; the caller cycles passes."""
         perm = rng.permutation(self.n)
         for start in range(0, self.n, batch_size):
             idx = perm[start:start + batch_size]
-            out = {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx]}
+            out = {"x": self.X[idx], "y": self.Y[idx], "ball": self.ball[idx], "mask": self.mask[idx], "tgt": self.tgt[idx],
+                   "explore_flag": self.explore_flag[idx], "explore_margin": self.explore_margin[idx]}
             if self.vals is not None:
                 out["vals"] = self.vals[idx]
             yield out
@@ -137,6 +147,8 @@ def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
            "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
     if batch.get("vals") is not None:
         out["vals"] = t(np.asarray(batch["vals"], dtype=np.float32))
+    if batch.get("explore_flag") is not None:
+        out["explore_flag"] = t(np.asarray(batch["explore_flag"], dtype=np.int8), torch.long)
     return out
 
 
@@ -228,6 +240,10 @@ class PolicyRowsStream:
         # row-aligned with the recorded count.  A replaced or truncated chunk
         # refuses here; passes never re-hash.
         keys: set[str] = set(); excluded: set[str] = set(); rows_used = 0; in_ballot = 0; verified: list[str] = []
+        # Exploration tags (#676 D): an extract carries them only when the manifest says so AND
+        # every chunk has the arrays; otherwise the stream reads the flag as 0 on every row.
+        self.explore_tags = bool(man.get("explore_tags", False))
+        flag_counts = np.zeros(3, dtype=np.int64)
         for c in self.chunks:
             path = self.dir / c["file"]
             if not path.exists():
@@ -241,10 +257,18 @@ class PolicyRowsStream:
                     or d["ball"].shape[0] != n or d["mask"].shape[0] != n or d["tgt"].shape != (n,)
                     or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]):
                 raise ValueError(f"policy rows stream: {c['file']} arrays are not row-aligned with the manifest")
+            if "explore_flag" in d.files and (d["explore_flag"].shape != (n,) or d["explore_margin"].shape != (n,)):
+                raise ValueError(f"policy rows stream: {c['file']} exploration tags are not row-aligned with the manifest")
+            if "explore_flag" not in d.files:
+                self.explore_tags = False
             verified.append(actual)
             dk = d["deal_key"].astype(str); keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
             keys.update(dk[keep].tolist()); excluded.update(dk[~keep].tolist())
             rows_used += int(keep.sum()); in_ballot += int((d["tgt"][keep] >= 0).sum())
+            if "explore_flag" in d.files:
+                flag_counts += np.bincount(np.clip(d["explore_flag"][keep].astype(np.int64), 0, 2), minlength=3)
+            else:
+                flag_counts[0] += int(keep.sum())
         if rows_used < 1:
             raise ValueError("policy rows stream: every row is in an excluded deal")
         self.deal_keys = frozenset(keys)
@@ -259,6 +283,8 @@ class PolicyRowsStream:
                          "deals": self.deals, "deals_excluded": len(excluded), "chunks": len(self.chunks),
                          "window_chunks": self.window, "deal_key_schema": "shengji-value-deal-key-v1",
                          "fit_deals_digest": _digest(self.deal_keys), "rows_with_ballot_target": in_ballot,
+                         "explore_tags": self.explore_tags,
+                         "explore_flag_counts": {str(k): int(flag_counts[k]) for k in range(3)},
                          "split": man.get("split")}
 
     def _load(self, c: dict) -> dict[str, np.ndarray]:
@@ -268,6 +294,12 @@ class PolicyRowsStream:
         out = {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
         if "vals" in d.files:          # present only in post-#496 extracts
             out["vals"] = d["vals"][keep]
+        if "explore_flag" in d.files:  # #676 D tags; an older chunk reads as flag 0 / margin NaN
+            out["explore_flag"] = d["explore_flag"][keep].astype(np.int8)
+            out["explore_margin"] = d["explore_margin"][keep].astype(np.float32)
+        else:
+            out["explore_flag"] = np.zeros(int(keep.sum()), np.int8)
+            out["explore_margin"] = np.full(int(keep.sum()), np.nan, np.float32)
         return out
 
     def batches(self, batch_size: int, rng: np.random.Generator):
@@ -285,6 +317,8 @@ class PolicyRowsStream:
             vals = None
             if all("vals" in p for p in parts):
                 vals = np.concatenate([_pad2f(p["vals"], ball.shape[1], np.nan) for p in parts])
+            eflag = np.concatenate([p["explore_flag"] for p in parts])
+            emargin = np.concatenate([p["explore_margin"] for p in parts])
             perm = rng.permutation(len(X))
             for b in range(0, len(perm), batch_size):
                 if self.limit is not None and drawn >= self.limit:
@@ -293,7 +327,8 @@ class PolicyRowsStream:
                 if self.limit is not None:
                     idx = idx[:self.limit - drawn]          # the budget is exact, never a partial overshoot
                 drawn += len(idx)
-                out = {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx]}
+                out = {"x": X[idx], "y": Y[idx], "ball": ball[idx], "mask": mask[idx], "tgt": tgt[idx],
+                       "explore_flag": eflag[idx], "explore_margin": emargin[idx]}
                 if vals is not None:
                     out["vals"] = vals[idx]
                 yield out
@@ -328,25 +363,48 @@ def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=froz
     return PolicyRows(p, limit=limit, exclude=exclude, version=version)
 
 
+def explore_row_weights(explore_flag: torch.Tensor, explore_weight: float) -> torch.Tensor | None:
+    """Per-row loss weights for ``--policy-explore-weight`` (#676 D): ``explore_weight``
+    on rows whose flag is 2 (an exploration draw beat the shortlist), 1.0 elsewhere.
+    ``None`` at weight 1.0 -- the trainer then takes the unweighted code path, so a
+    run at the default is the pre-#676 run to the bit, not a weighted mean of ones."""
+    if float(explore_weight) == 1.0:
+        return None
+    from .policy_prior import EXPLORE_FLAG_BEAT
+    w = torch.ones(explore_flag.shape, dtype=torch.float32, device=explore_flag.device)
+    w[explore_flag == EXPLORE_FLAG_BEAT] = float(explore_weight)
+    return w
+
+
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
-                  soft_targets: bool = False, soft_temperature: float = 1.0):
+                  soft_targets: bool = False, soft_temperature: float = 1.0, row_weight=None):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (#425
-    step after J1: the head's recall on frozen value features at zero value cost)."""
+    step after J1: the head's recall on frozen value features at zero value cost).
+    ``row_weight`` (b,) float weights BOTH terms per row (#676 D: the BCE as a
+    weighted mean of per-row card means, the listwise term as a weighted mean over
+    the rows with a ballot target); ``None`` is the unweighted reduction.  An
+    all-ones vector gives the same listwise tensor and the BCE to one float32 ulp
+    (a different summation order), which is why the trainer passes None at W=1.0."""
     features = model.features_flat(t["x"])
     if detach:
         features = features.detach()
     logits = model.policy_logits(features)
-    bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
+    if row_weight is None:
+        bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
+    else:
+        from .policy_prior import _weighted_row_mean
+        per_row = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"], reduction="none").mean(1)
+        bce = _weighted_row_mean(per_row, row_weight)
     if listwise_weight <= 0:
         lw = logits.sum() * 0.0
     elif soft_targets:
         from .policy_prior import listwise_loss_soft
         lw = listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"], t["vals"],
-                                temperature=float(soft_temperature))
+                                temperature=float(soft_temperature), row_weight=row_weight)
     else:
-        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"])
+        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"], row_weight=row_weight)
     return bce, lw, logits
 
 
@@ -417,4 +475,5 @@ class PolicyEval:
                 "strata_counted": len(top64)}
 
 
-__all__ = ["PolicyEval", "PolicyRows", "PolicyRowsStream", "SCHEMA", "open_policy_rows", "policy_log_odds", "policy_losses"]
+__all__ = ["PolicyEval", "PolicyRows", "PolicyRowsStream", "SCHEMA", "explore_row_weights", "open_policy_rows",
+           "policy_log_odds", "policy_losses"]

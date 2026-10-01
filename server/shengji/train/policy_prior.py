@@ -19,6 +19,32 @@ whole ballot survives a top-N cut.  Rows with more than ``MAX_LEGAL`` stored
 legal actions are ranked within a sample that always contains the played action
 and the ballot (optimistic for the prior; the count is reported).
 
+Exploration tags (#676 strategy D).  A trajectory record whose search ballot
+was widened by a root exploration draw (``exploration.added``: uniform over the
+legal set, ``explore_rate``/``explore_k``) is tagged per row with an int8
+``explore_flag`` and a float32 ``explore_margin`` (``explore_tags_of``):
+  * 0 -- no ballot slot is an exploration-ONLY candidate: a member of
+    ``exploration.added`` that the shortlist (``production_ballot``, production's
+    own admission, taken EXACTLY -- a widened action on the ballot is neither a
+    draw nor the shortlist's; the ballot minus the draws when a record has no
+    ``production_ballot``) does not already carry.  NOTE this is narrower than the ``explore_played`` counter,
+    which is plain membership in ``exploration.added``: in the pv path a draw
+    already in the scored set competes for admission on its own score, and a
+    draw production admitted anyway is the shortlist's candidate, not a miss;
+  * 1 -- an exploration-only slot is in the ballot but no such slot holds a
+    FINITE search value strictly above the best finite shortlist value (ties,
+    a draw the search did not value, a shortlist with no values, plain losses);
+  * 2 -- an exploration-only slot holds the strictly highest search value in the
+    ballot, i.e. the draw BEAT THE SHORTLIST: the shortlist missed the search's
+    preferred action and the prior that produced it is wrong there (#676 cat. 2).
+``explore_margin`` is, for flag 2 only, the winning draw's value minus the best
+shortlist value on the SAME scale the row's ``vals`` carry (the points
+temperature scale, #650: half-levels x 40 for the pv stores); NaN otherwise.  Both are ADDITIVE: new chunk arrays
+and a manifest ``explore_flag_counts`` / ``explore_tags: true``, the schema
+string unchanged, so extracts written before them load with the flags read as
+zero and ``explore_tags: false``.  The trainer's ``--policy-explore-weight``
+upweights flag-2 rows and refuses an extract without the tags.
+
 CLI: ``extract`` / ``train`` / ``eval``; see ``build_parser``.
 """
 from __future__ import annotations
@@ -27,6 +53,7 @@ import argparse
 import hashlib
 from collections import Counter
 import json
+import math
 import random
 import sys
 import time
@@ -181,10 +208,78 @@ def _shard_rows(args: tuple) -> list[tuple]:
                 means_raw[_i] = _m
         else:
             units = NO_SEARCH_VALUES         # counted apart: a row the search never scored has no units
+        explore_flag, explore_margin = explore_tags_of(
+            raw_ballot, means_raw, (rec.get("exploration") or {}).get("added") or [],
+            production=rec.get("production_ballot"))
         rows.append((x, y, n_legal, [cards_to_idx(a) for a in legal],
                      [cards_to_idx(a) for a in raw_ballot], cards_to_idx(rec["action"]),
-                     bool(rec.get("legal_actions_complete", True)), deal, key, means_raw, units))
+                     bool(rec.get("legal_actions_complete", True)), deal, key, means_raw, units,
+                     explore_flag, explore_margin))
     return rows
+
+
+EXPLORE_FLAG_NONE, EXPLORE_FLAG_IN_BALLOT, EXPLORE_FLAG_BEAT = 0, 1, 2
+EXPLORE_FLAG_NAMES = {EXPLORE_FLAG_NONE: "no_draw", EXPLORE_FLAG_IN_BALLOT: "draw_in_ballot",
+                      EXPLORE_FLAG_BEAT: "draw_beat_shortlist"}
+
+
+def explore_tags_of(raw_ballot: Sequence[Sequence[str]], means_raw: Sequence[float],
+                    added: Sequence[Sequence[str]],
+                    production: Sequence[Sequence[str]] | None = None) -> tuple[int, float]:
+    """``(explore_flag, explore_margin)`` of one decision (#676 D; see the module
+    docstring).  ``raw_ballot`` and ``means_raw`` are slot-aligned (NaN = the
+    search reported no value for that slot); ``added`` is the record's
+    ``exploration.added``; ``production`` its ``production_ballot`` (the
+    shortlist).  Membership is by action identity (sorted cards).  With an
+    explicit ``production`` the shortlist is EXACTLY that list: a draw slot is
+    an ``added`` action the shortlist does not carry, a shortlist slot is one
+    on ``production``, and any OTHER ballot action (a widened candidate, a
+    ``widening.added`` entry) is neither -- it is not production's choice and
+    does not count on either side (Codex HOLD on #684).  Without a
+    ``production`` list (a record from before ``production_ballot``) the
+    shortlist is the ballot minus the draws.  Flag 2 needs a FINITE draw value
+    STRICTLY above the best finite shortlist value; a shortlist with no finite
+    value cannot have been beaten and the row stays at 1."""
+    draws = {tuple(sorted(a)) for a in added if a}
+    shortlist = None if production is None else {tuple(sorted(a)) for a in production if a}
+    if shortlist is not None:
+        draws -= shortlist
+    if not draws:
+        return EXPLORE_FLAG_NONE, float("nan")
+    best_draw = best_other = None
+    seen_draw = False
+    for a, mv in zip(raw_ballot, means_raw):
+        if not a:
+            continue
+        v = float(mv)
+        key = tuple(sorted(a))
+        if key in draws:
+            seen_draw = True
+            if math.isfinite(v) and (best_draw is None or v > best_draw):
+                best_draw = v
+        elif shortlist is not None and key not in shortlist:
+            continue                      # widened, neither a draw nor production's
+        elif math.isfinite(v) and (best_other is None or v > best_other):
+            best_other = v
+    if not seen_draw:
+        return EXPLORE_FLAG_NONE, float("nan")
+    if best_draw is not None and best_other is not None and best_draw > best_other:
+        return EXPLORE_FLAG_BEAT, float(best_draw - best_other)
+    return EXPLORE_FLAG_IN_BALLOT, float("nan")
+
+
+def explore_tag_arrays(meta: Sequence[Mapping[str, Any]]) -> tuple[np.ndarray, np.ndarray]:
+    """Per-row ``(explore_flag int8, explore_margin float32)`` from row metadata;
+    a row without the fields (an extract before the tags) reads 0 / NaN."""
+    flag = np.asarray([int(m.get("explore_flag") or 0) for m in meta], dtype=np.int8)
+    margin = np.asarray([float(m["explore_margin"]) if m.get("explore_margin") is not None else float("nan")
+                         for m in meta], dtype=np.float32)
+    return flag, margin
+
+
+def explore_flag_counts(flag: np.ndarray) -> dict[str, int]:
+    """``{"0": n, "1": n, "2": n}`` -- string keys so the JSON manifest round-trips."""
+    return {str(k): int((np.asarray(flag) == k).sum()) for k in sorted(EXPLORE_FLAG_NAMES)}
 
 
 CHUNK_SCHEMA = "shengji-policy-rows-chunked-v1"
@@ -196,13 +291,17 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
     keys alongside; no legal lists (training never reads them)."""
     ball, mask, tgt = ballot_tensors(meta)
     vals, has_vals = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
+    explore_flag, explore_margin = explore_tag_arrays(meta)
     path = out_dir / f"chunk-{index:05d}.npz"
     # `vals`/`has_vals` are ADDITIVE and the schema string is deliberately unchanged: a live
     # training run is reading policy_rows_v7, which has neither, and must keep loading.
+    # `explore_flag`/`explore_margin` (#676 D) follow the same rule: older chunks lack them
+    # and the stream reads them as 0 / NaN.
     np.savez_compressed(path, X=np.stack(X).astype(np.float16), Y=np.stack(Y).astype(np.uint8),
                         ball=ball.numpy(), mask=mask.numpy(), tgt=tgt.numpy(),
                         deal_key=np.asarray([m["deal_key"] for m in meta]),
-                        vals=vals, has_vals=has_vals)
+                        vals=vals, has_vals=has_vals,
+                        explore_flag=explore_flag, explore_margin=explore_margin)
     with open(path, "rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
     # units are counted HERE, over the rows this chunk persists: a count taken as rows
@@ -211,7 +310,7 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
             "rows_with_ballot_target": int((tgt >= 0).sum()),
             "rows_with_search_values": int(has_vals.sum()), "sha256": sha,
-            "value_units": dict(units)}
+            "value_units": dict(units), "explore_flag_counts": explore_flag_counts(explore_flag)}
 
 
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
@@ -245,10 +344,12 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
             raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
     with ProcessPoolExecutor(workers) as ex:
         for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
-            for x, y, n, legal, ballot, taken, complete, deal, key, means_raw, units in got:
+            for x, y, n, legal, ballot, taken, complete, deal, key, means_raw, units, eflag, emargin in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
-                             "deal": deal, "deal_key": key, "means": means_raw, "units": units})
+                             "deal": deal, "deal_key": key, "means": means_raw, "units": units,
+                             "explore_flag": int(eflag),
+                             "explore_margin": None if not math.isfinite(emargin) else float(emargin)})
             if out_dir is not None:
                 # Flush full chunks as they fill; the LAST chunk may be partial so the
                 # limit is met the moment total + buffered reaches it (bounded memory:
@@ -284,7 +385,12 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                     # the producers' value units, by row, and the scale each was brought to
                     # the points scale with -- so a composed set can show what it mixed (#649)
                     "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
-                    "value_units_scale": dict(_value_units_scale()), "values_scale": "points"}
+                    "value_units_scale": dict(_value_units_scale()), "values_scale": "points",
+                    # #676 D: per-row exploration tags (see the module docstring); a manifest
+                    # without these keys is an extract from before the tags
+                    "explore_tags": True, "explore_flag_names": {str(k): v for k, v in EXPLORE_FLAG_NAMES.items()},
+                    "explore_flag_counts": {k: sum(c["explore_flag_counts"][k] for c in chunks)
+                                            for k in map(str, sorted(EXPLORE_FLAG_NAMES))}}
         with open(out_dir / "manifest.json", "w") as fh:
             json.dump(manifest, fh, indent=1)
         return {"rows": total, "chunks": len(chunks), "dir": str(out_dir)}
@@ -300,7 +406,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                "max_legal": int(max(m["n_legal"] for m in meta)),
                "sampled_rows": int(sum(m["n_legal"] > MAX_LEGAL for m in meta)),
                "incomplete_rows": int(sum(not m["complete"] for m in meta)),
-               "deals": len({m["deal"] for m in meta})}
+               "deals": len({m["deal"] for m in meta}),
+               "explore_tags": True, "explore_flag_counts": explore_flag_counts(explore_tag_arrays(meta)[0])}
     with open(str(out) + ".summary.json", "w") as fh:
         json.dump(summary, fh, indent=1)
     return summary
@@ -404,9 +511,17 @@ def soft_ballot_targets(vals, mask, temperature: float = 1.0):
     return probs, usable
 
 
-def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0):
+def _weighted_row_mean(per_row, w):
+    """Mean of per-row losses under per-row weights ``w`` (same length): the
+    weighted sum over the weight total, so all-ones weights are the plain mean."""
+    w = w.to(per_row.dtype)
+    return (per_row * w).sum() / w.sum()
+
+
+def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, row_weight=None):
     """Listwise CE against the SEARCH'S DISTRIBUTION where it exists, the played action
-    elsewhere (#496 H3).
+    elsewhere (#496 H3).  ``row_weight`` (b,) weights rows (#676 D); ``None`` is the
+    unweighted mean, the code path every run before the weight used.
 
     ``listwise_loss`` teaches "the search played this one"; this teaches "the search
     preferred these, in this proportion" -- the information the search actually produced
@@ -427,12 +542,17 @@ def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0):
     hard = torch.zeros_like(soft)
     hard[torch.arange(hard.shape[0], device=hard.device), tgt[ok]] = 1.0
     target = torch.where(usable.unsqueeze(1), soft, hard)
-    return -(target * torch.log_softmax(scores, dim=1)).sum(1).mean()
+    per_row = -(target * torch.log_softmax(scores, dim=1)).sum(1)
+    if row_weight is None:
+        return per_row.mean()
+    return _weighted_row_mean(per_row, row_weight[ok])
 
 
-def listwise_loss(logits, ball, mask, tgt):
+def listwise_loss(logits, ball, mask, tgt, row_weight=None):
     """Cross-entropy over the ballot's factorised scores, rows whose played action is
-    in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1."""
+    in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1.
+    ``row_weight`` (b,) weights rows (#676 D); ``None`` is the unweighted cross-entropy
+    exactly as before the weight existed."""
     import torch
     ok = tgt >= 0
     if not bool(ok.any()):
@@ -442,7 +562,10 @@ def listwise_loss(logits, ball, mask, tgt):
     gathered = lo.gather(1, b.clamp(min=0).reshape(b.shape[0], -1)).reshape(b.shape)
     gathered = gathered * (b >= 0)
     scores = gathered.sum(2).masked_fill(~mask[ok], -1e9)
-    return torch.nn.functional.cross_entropy(scores, tgt[ok])
+    if row_weight is None:
+        return torch.nn.functional.cross_entropy(scores, tgt[ok])
+    per_row = torch.nn.functional.cross_entropy(scores, tgt[ok], reduction="none")
+    return _weighted_row_mean(per_row, row_weight[ok])
 
 
 # ----------------------------------------------------------------- train / eval

@@ -1313,6 +1313,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
                  policy_rows_limit: int | None = None, policy_detach: bool = False,
                  policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
+                 policy_explore_weight: float = 1.0,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1387,9 +1388,12 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         if not (float(policy_soft_temperature) > 0
                 and math.isfinite(float(policy_soft_temperature))):
             raise TrainError("--policy-soft-temperature must be finite and > 0")
-    elif policy_rows or policy_eval or policy_detach or policy_soft_targets:
+        if not (float(policy_explore_weight) > 0 and math.isfinite(float(policy_explore_weight))):
+            raise TrainError("--policy-explore-weight must be finite and > 0 (1.0 = no reweighting)")
+    elif policy_rows or policy_eval or policy_detach or policy_soft_targets \
+            or float(policy_explore_weight) != 1.0:
         raise TrainError("--policy-rows / --policy-eval / --policy-detach / "
-                         "--policy-soft-targets need --policy-head")
+                         "--policy-soft-targets / --policy-explore-weight need --policy-head")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
                           grid_channels=grid_channels, search_head=search_head,
@@ -1421,6 +1425,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         "policy_detach": bool(policy_detach) if policy_head else False,
         "policy_soft_targets": bool(policy_soft_targets) if policy_head else False,
         "policy_soft_temperature": float(policy_soft_temperature) if policy_head else 1.0,
+        "policy_explore_weight": float(policy_explore_weight) if policy_head else 1.0,
         "window": int(window), "decode_workers": int(decode_workers), "optimizer": "AdamW", "loss": "cross-entropy over 204 classes",
         "public_head": None if public_head is None else str(Path(public_head).resolve()),
         "rank_limit": rank_limit,
@@ -1551,6 +1556,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
           policy_rows_limit: int | None = None, policy_detach: bool = False,
           policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
+          policy_explore_weight: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1564,6 +1570,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
         policy_detach=policy_detach, policy_soft_targets=policy_soft_targets,
         policy_soft_temperature=policy_soft_temperature,
+        policy_explore_weight=policy_explore_weight,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -1711,6 +1718,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             held |= set(policy_evalset.deal_keys)
         policy_data = open_policy_rows(policy_rows, limit=policy_rows_limit, exclude=held,
                                        version=enc_version)
+        if float(policy_explore_weight) != 1.0 and not policy_data.identity.get("explore_tags"):
+            # REFUSE rather than train the unweighted run under a weighted label (the
+            # --policy-soft-targets pattern): an extract from before #676 carries no
+            # explore_flag, every row reads as 0 and the weight would touch nothing.
+            raise TrainError(
+                f"--policy-explore-weight {float(policy_explore_weight)}: this extract carries no "
+                "exploration tags (`explore_flag`; manifest explore_tags is false or absent). It "
+                "predates #676 D; re-extract with the current policy_prior before running the "
+                "weighted arm.")
         root_fit = set(policy_data.deal_keys)
         assert not root_fit & held
         policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
@@ -1721,6 +1737,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"{policy_data.in_ballot} with a ballot target; root batch {policy_batch} per value batch "
             f"{batch_size}; weight {policy_weight} (listwise {policy_listwise_weight})"
             f"{' [TWIN: policy loss off]' if float(policy_weight) == 0 else ''}")
+        say(f"policy rows: exploration tags {'present' if pd_.get('explore_tags') else 'ABSENT'}; "
+            f"flag counts {pd_.get('explore_flag_counts')}; explore weight {float(policy_explore_weight)}"
+            f"{' (flag-2 rows upweighted)' if float(policy_explore_weight) != 1.0 else ' (no reweighting)'}")
         if policy_evalset is not None:
             pe_ = policy_evalset.identity
             pe_["exclusion_rule"] = "current fit deals + ancestral fit-or-selected deals (test rule)"
@@ -1919,6 +1938,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             "eval": None if policy_evalset is None else policy_evalset.identity,
             "twin": float(policy_weight) == 0.0,
             "detach": bool(policy_detach),
+            "explore_weight": float(policy_explore_weight),
+            "explore_tags": bool(policy_data.identity.get("explore_tags", False)),
+            "explore_flag_counts": policy_data.identity.get("explore_flag_counts"),
             "root_fit_deals": len(root_fit), "root_only_fit_deals": len(root_fit - set(population["train"])),
             "exposure_rule": "root deals are fit exposure: rows in this run's val/test or policy-eval "
                              "deals are dropped, kept deals are unioned into exposure.fit (checked "
@@ -2066,11 +2088,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                         "--policy-soft-targets: this extract carries no per-candidate search "
                         "values (`vals`). It predates #496; re-extract with the current "
                         "policy_prior before running the soft arm.")
+                from .policy_rows import explore_row_weights
+                # #676 D: None at weight 1.0 (the unweighted code path, bit-identical to
+                # every run before the flag); a per-row vector otherwise.
+                p_w = explore_row_weights(p_tensors["explore_flag"], float(policy_explore_weight)) \
+                    if "explore_flag" in p_tensors else None
                 p_bce, p_lw, _ = policy_losses(model, p_tensors,
                                                listwise_weight=float(policy_listwise_weight),
                                                detach=bool(policy_detach),
                                                soft_targets=bool(policy_soft_targets),
-                                               soft_temperature=float(policy_soft_temperature))
+                                               soft_temperature=float(policy_soft_temperature),
+                                               row_weight=p_w)
                 b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
@@ -2731,6 +2759,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="temperature of that softmax (default 1.0, chosen from the data: on "
                         "real rows T=1 gives mean top-1 0.596 / normalised entropy 0.612, "
                         "while T>=50 collapses to uniform and carries no signal)")
+    t.add_argument("--policy-explore-weight", type=float, default=1.0,
+                   help="#676 D: multiply the per-row policy loss (BCE and listwise) by W on "
+                        "root rows whose explore_flag is 2 -- an exploration draw (uniform over "
+                        "the legal set) held the strictly highest search value in the ballot, so "
+                        "the shortlist missed the search's preferred action and the prior was "
+                        "wrong there (#676: 6.7%% of runPVR1 rows with an exploration-only draw, "
+                        "12.4%% of such multi-card leads). "
+                        "Default 1.0 = no reweighting and the unweighted code path (bit-identical "
+                        "to runs before the flag). Needs an extract carrying the tags (post-#676 "
+                        "policy_prior.extract; manifest explore_tags true); an older extract reads "
+                        "every flag as 0 and the run REFUSES rather than silently training the "
+                        "unweighted thing. Recorded as policy_explore_weight with the flag counts.")
     t.add_argument("--select-metric", choices=tuple(SELECT_METRICS),
                    default=DEFAULTS["select_metric"],
                    help="early stopping + best.pt on this validation metric (default val_ce; "
@@ -2795,6 +2835,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_rows_limit=args.policy_rows_limit, policy_detach=args.policy_detach,
                   policy_soft_targets=args.policy_soft_targets,
                   policy_soft_temperature=args.policy_soft_temperature,
+                  policy_explore_weight=args.policy_explore_weight,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

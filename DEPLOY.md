@@ -13,7 +13,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 36 (release 29's search recipe with the #607 bury fix on the gen-5 SMV3 outcome head; releases 30–35 changed only game rules and UI), the policy/value search with hybrid bury
+  Fly configuration selects release 37 (release 36's model: release 29's search recipe with the #607 bury fix on the gen-5 SMV3 outcome head; release 37 is a phone-HUD CSS fix only), the policy/value search with hybrid bury
   `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
@@ -26,7 +26,32 @@ clients hold WebSockets to it. That drives every deployment rule below.
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
 
-## Current production: release 36 — the gen-5 SMV3 outcome head in the release-30 search (#666, #663), deployed 2026-09-30 11:53 ET
+## Current production: release 37 — the phone top bar is one strip again (#671), deployed 2026-10-01 01:1x ET
+
+Release **37**, image `registry.fly.io/shengji:deployment-01M3TXZ85YHJM108TBPWKN8BB2` (digest
+`sha256:8fabbe4441c564b58d6d4a9af7acce7d6c639b9562682db164a6c152b7126ffd`), deployed with
+`fly deploy --ha=false` from main `12f20305` (#671) on machine `48e7e35a9597e8`, 0 rooms at deploy
+time, on Jerry's word 2026-10-01 ("Pls fix ui top bar" with a screenshot; "671 passed").
+
+**NO model, package or configuration change.** Same `fly.toml`, package (`smv3out-491ee4bf.npz`),
+prior and served name as release 36; every screen still compares against release 36. Web only, one
+CSS rule in the landscape-phone media block: the points chip was a `flex-direction: column` inside
+the 999px-radius chip pill, so the number, the `/ 80` target and the points bar stacked into three
+rows and rendered as a tall egg that stretched the whole HUD band; it is now a two-row grid (number
+and target side by side, the bar beneath, radius 10 px) the height of the level strip. Desktop
+untouched.
+
+Preconditions as met: Codex PASS on #671 at the exact head `fc260ec6`; CI 5/5; serving smoke on the
+MERGED tree against the SHA-verified volume packages (`491ee4bf…`, `0d17fd03…`) — PASS, 40 server
+turns through `_paced_bot_step` / `_commit_bot_turn`, bury 0.129 s; `/healthz` after the deploy
+unchanged from release 36 (bot, `pv_search.sha256` `491ee4bf…`, prior `0d17fd03…`), rooms 0; the
+served CSS bundle (`assets/index-1BVBTamK.css`) carries the `.points-chip{…display:grid}` rule; live
+room-level acceptance without starting a game (host sets, joiner sees, joiner and unknown level
+refused) PASS.
+
+Rollback: the release-36 image (`deployment-01M3SG9NVC1AC3PNPEH5Y34N0D`), a pure code rollback.
+
+## Release 36 — the gen-5 SMV3 outcome head in the release-30 search (#666, #663), deployed 2026-09-30 11:53 ET; superseded by release 37 (same name, same package)
 
 Release **36**, image `registry.fly.io/shengji:deployment-01M3SG9NVC1AC3PNPEH5Y34N0D` (digest
 `sha256:064d73f54f77d0996baa8a1ab11d1530724d8f57e23c4e4667a175e37362f76b`), deployed with

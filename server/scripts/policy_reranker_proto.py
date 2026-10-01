@@ -57,7 +57,8 @@ def ballot_counts(ball: np.ndarray) -> np.ndarray:
 
 
 def structure_features(counts: np.ndarray, X: np.ndarray) -> np.ndarray:
-    """(n, B, len(FEAT_NAMES)) float32.  Tractor length = longest run of ADJACENT-rank pairs in one
+    """(n, B, len(FEAT_NAMES)) float32.  Counts are card MULTIPLICITIES (a Counter over the candidate's
+    cards, ``ballot_counts``); every per-candidate total is taken over them, never over distinct cards.  Tractor length = longest run of ADJACENT-rank pairs in one
     suit (natural rank order, trump-rank gaps not bridged: an approximation of the engine's tractor)."""
     n, B, _ = counts.shape
     c = counts.astype(np.int16)
@@ -74,8 +75,10 @@ def structure_features(counts: np.ndarray, X: np.ndarray) -> np.ndarray:
     rank_of = np.where(np.arange(N_CARDS) < 52, np.arange(N_CARDS) % 13, 13)
     is_trump = (suit_of[None, :] == tsuit[:, None]) | (suit_of[None, :] == 4) | (rank_of[None, :] == trank[:, None])   # (n, 54)
     is_trump_b = np.broadcast_to(is_trump[:, None, :], present.shape)
-    n_trump = (present & is_trump_b).sum(2)
-    n_trump_rank = (present & (rank_of[None, None, :] == trank[:, None, None])).sum(2)
+    # MULTIPLICITY, not distinct cards: D3 D3 D4 D4 under trump D is four trump cards (a pair-run),
+    # not two -- counting `present` here made every candidate with a trump pair a "mixed throw".
+    n_trump = (c * is_trump_b).sum(2)
+    n_trump_rank = (c * (rank_of[None, None, :] == trank[:, None, None])).sum(2)
     plain_suits = np.zeros((n, B, 4), bool)
     for s in range(4):
         plain_suits[:, :, s] = (present[:, :, s * 13:(s + 1) * 13] & ~is_trump_b[:, :, s * 13:(s + 1) * 13]).any(2)
@@ -151,6 +154,18 @@ def load_chunks(model, directory: Path, chunk_ids, max_rows=None, exclude_deals=
     d["base"] = baseline_scores(d["lo"], d["counts"], d["mask"])
     d["multi"] = ((d["counts"].sum(2) > 1) & d["mask"]).any(1)        # ballot contains a multi-card candidate
     return d
+
+
+def exclude_deals_from(d: dict, deals: frozenset, label: str) -> tuple[dict, int]:
+    """Drop every row of ``d`` whose deal is in ``deals`` (the training deals) and report the count: an
+    extra held-out extract is NOT assumed disjoint from the training chunks."""
+    keep = np.fromiter((k not in deals for k in d["deal"]), bool, len(d["deal"]))
+    dropped = int((~keep).sum())
+    if dropped:
+        log(f"  {label}: dropped {dropped} rows on {len(set(d['deal'][~keep].tolist()))} training deals (overlap guard)")
+    if not keep.any():
+        raise ValueError(f"{label}: every row is on a training deal")
+    return {k: (v[keep] if isinstance(v, np.ndarray) and v.shape[:1] == keep.shape else v) for k, v in d.items()}, dropped
 
 
 # ----------------------------------------------------------------------------- metrics
@@ -366,9 +381,11 @@ def main(argv=None):
     log(f"train rows: baseline top1 {bt['top1'].mean():.4f}, wrong-or-close {wrong_or_close.mean():.3f}")
 
     extras = {}
+    train_deals = frozenset(Tr["deal"].tolist())
     for spec in a.extra_heldout:
         name, rest = spec.split("=", 1); dpath, rng_ = rest.rsplit(":", 1)
-        extras[name] = load_chunks(model, Path(dpath), rng_chunks(rng_), None)
+        extras[name], dropped = exclude_deals_from(load_chunks(model, Path(dpath), rng_chunks(rng_), None), train_deals, name)
+        report.setdefault("extra_overlap_rows_dropped", {})[name] = dropped
         extras[name]["_metrics_base"] = row_metrics(extras[name]["base"], extras[name])
         report.setdefault("extra_baseline", {})[name] = summarize(extras[name]["_metrics_base"], strata(extras[name]))
 

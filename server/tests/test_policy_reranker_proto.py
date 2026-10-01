@@ -108,3 +108,26 @@ def test_row_metrics_and_training_improve_on_structure_interaction(rp):
     boot = rp.paired_bootstrap(base, after, st, d["deal"], n_boot=50)
     lo, hi = boot["all"]["d_top1_ci"]
     assert lo <= boot["all"]["d_top1"] <= hi and lo > 0
+
+
+def test_trump_features_use_multiplicity_d3d3d4d4(rp):
+    # Codex's case: trump D (suit 2), trump rank 2.  D3 D3 D4 D4 = indices 27, 27, 28, 28: four trump cards,
+    # two pairs in a run -- all_trump, never mixed_throw, and never "two distinct trump cards".
+    ball, mask = _ballot([[27, 27, 28, 28], [27, 28], [0, 0]], B=3, C=4)       # also D3 D4 (two singles), S2 S2 (trump-rank pair)
+    f = rp.structure_features(rp.ballot_counts(ball[None]), _root(trump_suit=2, trump_rank=0)[None])
+    names = rp.FEAT_NAMES
+    g = lambda j, n: float(f[0, j, names.index(n)])
+    assert g(0, "n_cards") == 4 and g(0, "n_pairs") == 2 and g(0, "tractor_len") == 2
+    assert g(0, "all_trump") == 1 and g(0, "mixed_throw") == 0 and g(0, "single_plain") == 0
+    assert g(1, "n_cards") == 2 and g(1, "all_trump") == 1 and g(1, "n_pairs") == 0
+    assert g(2, "n_trump_rank") == 2 and g(2, "all_trump") == 1 and g(2, "n_pairs") == 1
+
+
+def test_extra_heldout_overlap_guard(rp):
+    d = _synthetic(rp, n=64)                      # deals d0..d31, two rows each
+    kept, dropped = rp.exclude_deals_from(d, frozenset({"d0", "d1", "d2"}), "extra")
+    assert dropped == 6 and len(kept["tgt"]) == 58 and not (set(kept["deal"]) & {"d0", "d1", "d2"})
+    for k in ("feat", "counts", "mask", "vals", "sf", "base", "lead", "multi"):
+        assert len(kept[k]) == 58
+    with pytest.raises(ValueError):
+        rp.exclude_deals_from(d, frozenset(d["deal"].tolist()), "extra")

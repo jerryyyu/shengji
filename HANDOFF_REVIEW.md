@@ -20422,3 +20422,9 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - runPVR3 (cloud, 2,207,320 records) and runPVR4 (Perf, 2,210,076 records) sealed 09:51 / 10:17 ET; copy to the SSD running. runPVR5 (Perf, 35324910) and runPVR6 (cloud, 35340910) armed after DRYRUN and dealing since 10:22 ET (standing authorization; cloud disk plan: at most one more cloud store without a plan).
 - Mini, nice 19, fail-closed: fetch -> sidecar v3 for runSL5/6 + runPVR1..4 into a SEPARATE directory (the armed SL4 lane asserts exactly 560,000 files in the main one) -> policy rows sl56/pvr with the 708539aa extractor. No composition, no retrain armed; design to be predeclared on #663 after PBF1 and SL4 read out.
 - PBF1 epoch 7/20 (best epoch 6). Atlas v2 ac2a4be3 (27 data rows). Bus FYI sent. Production release 37 healthy, rooms 0.
+
+## 2026-10-01 12:2x ET — #673 merged; six-store prep chain complete on the Mini (Claude)
+
+- #673 (seed registry: runPVR3/4 host seals, runPVR5/6 windows 35324910..35356909) merged by REST squash at Codex's PASS head 8555026f, CI 5/5 → 9f5526c4; branch deleted. Two test_seed_windows failures pre-exist on main (stated in the PR body).
+- Mini prep chain DONE: sidecar v3 ext1 96,000 files (13,264,280 records, 12,353,830 with a mean: 3,648,118 points rows from runSL5/6, 8,705,712 level rows from runPVR1..4; main v3 dir untouched at 560,000); policy rows policy_rows_gen5_sl56 (70 chunks; 2,923,245 expected-attacker-points + 575,467 no-search-values) and policy_rows_gen5_pvr (140 chunks; 5,791,218 expected-signed-level-half-integer + 1,175,726 no-search-values; values_scale points), extractor pin 708539aa, copies in fl-pilot/rows_gen5/. Nothing composed, no retrain armed; design to be predeclared on #663 after PBF1 and SL4 read out.
+- PBF1 epoch 8/20, new best (val_ce 0.6232, rank regret 0.0567). runPVR5 7,976 and runPVR6 8,469 clusters at 12:15 ET. Production release 37 healthy, rooms 0.

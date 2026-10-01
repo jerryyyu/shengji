@@ -611,17 +611,15 @@ def test_real_producer_prior_drives_the_control_in_pt0_units(tmp_path):
             REGISTRY.pop(name, None)
 
 
-TRAIN_WORKTREE = os.environ.get(
-    "SHENGJI_CWV_TRAIN_WORKTREE",
-    "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/cwvtrainw/server")
-REAL_CHECKPOINT = os.environ.get(
-    "SHENGJI_CWV_REAL_CKPT",
-    "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/runA-mlp/best.pt")
+# The training worktree and the archived checkpoint are named by the environment (no
+# machine-specific defaults; #688). SHENGJI_CWV_REAL_CKPT is honoured for older invocations.
+TRAIN_WORKTREE = os.environ.get("SHENGJI_CWV_TRAIN_WORKTREE") or ""
+REAL_CHECKPOINT = os.environ.get("SHENGJI_TEST_CWV_CKPT") or os.environ.get("SHENGJI_CWV_REAL_CKPT") or ""
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not (os.path.exists(REAL_CHECKPOINT)
+    not (REAL_CHECKPOINT and os.path.exists(REAL_CHECKPOINT) and TRAIN_WORKTREE
          and os.path.exists(os.path.join(TRAIN_WORKTREE, "shengji", "rl", "value_model.py"))),
     reason="needs the real mlp checkpoint and the training worktree's value_model.py")
 def test_integration_real_mlp_checkpoint_scores_through_the_evaluator(monkeypatch):

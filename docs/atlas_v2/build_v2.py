@@ -1,7 +1,9 @@
 """Shengji Atlas v2 -- the release-29/30 era.  ONE source of truth: registry.json; this script renders
-atlas_v2.html and `--check` refuses to build when the committed page differs from the registry or the
-registry breaks an invariant.  Never hand-edit the HTML (Jerry 2026-09-22; #604)."""
-import json, html, datetime, sys
+atlas_v2.html next to it.  The page is BUILT, not tracked (#688): publish from the built file.
+`--check` refuses when the registry breaks an invariant or the page cannot be built, and -- when a
+built atlas_v2.html is on disk -- when that stale page differs from a fresh build.  Never hand-edit
+the HTML (Jerry 2026-09-22; #604)."""
+import json, html, datetime, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 R = json.loads((HERE / "registry.json").read_text())
@@ -248,7 +250,13 @@ if __name__ == "__main__":
         print("REGISTRY ERRORS:\n  " + "\n  ".join(errs)); sys.exit(1)
     out = HERE / "atlas_v2.html"
     if "--check" in sys.argv:
-        if not out.exists() or _stable(out.read_text()) != _stable(page):
+        # The page is not tracked: prove it BUILDS (a real write, to a temp file), and if a built
+        # page is lying next to the registry it must match, so a stale local page is still caught.
+        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=True) as tmp:
+            tmp.write(page); tmp.flush()
+            if Path(tmp.name).stat().st_size != len(page.encode()):
+                print("BUILD FAILED: temp page size mismatch"); sys.exit(1)
+        if out.exists() and _stable(out.read_text()) != _stable(page):
             print("OUT OF DATE: atlas_v2.html differs from registry.json; run build_v2.py"); sys.exit(1)
         print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {PROD}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
     else:

@@ -2,21 +2,23 @@
 
 The scaling artifact (charts, by-day table, checkpoint registry, and every
 count in its prose) is GENERATED from `models.py`.  Never edit `scaling.html`
-by hand.
+by hand.  The page is BUILT, not tracked (#688): `scaling.html` is in
+`.gitignore`, `python3 build.py` writes it next to `models.py`, and the
+artifact is published from that built file.
 
 | file | role |
 |---|---|
 | `models.py` | the only place a model or a screen result is entered (`M`, one tuple per checkpoint; `TABLE_ONLY` keeps a row off the charts; `SERIES` names each chart line by checkpoint identity) |
 | `charts.py` | draws the six SVG charts from `M` |
 | `template.html` | the prose, the static corpus table (section 5) and the `{{PLACEHOLDER}}`s |
-| `build.py` | renders `models.py` through the template into `scaling.html`; `--check` verifies |
+| `build.py` | renders `models.py` through the template into `scaling.html`; `--check` validates `models.py`, builds to a temp file and compares with a built `scaling.html` when one is on disk |
 | `test_build.py` | consumer tests: a changed CE, a new model or a positive interval must reach chart, table and headline together; malformed rows are refused |
-| `scaling.html` | the rendered page, committed so the repo carries the current log |
+| `scaling.html` | the rendered page; built locally, ignored by git (the repo carries `models.py`, the source) |
 
 ```sh
 cd docs/scaling_log
 python3 build.py                       # render
-python3 build.py --check               # exit 1 if scaling.html != models.py or a row is malformed
+python3 build.py --check               # exit 1 if a row is malformed, the build fails, or a built scaling.html on disk is stale
 python3 build.py --publish <scratchpad>/scaling.html   # also copy for the artifact publish
 ```
 

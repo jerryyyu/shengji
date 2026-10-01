@@ -29,9 +29,9 @@ from shengji.rl.value_model import ValueModelConfig, ValueModelError, ValueNetwo
 from shengji.train import cwv_data
 from shengji.train.data import TrainDataError
 
-REAL_CHECKPOINT = os.environ.get(
-    "SHENGJI_CWV_REAL_CKPT",
-    "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/runA-mlp/best.pt")
+# An archived complete-world checkpoint for the real-checkpoint test, named by the environment
+# (no machine-specific default; #688). SHENGJI_CWV_REAL_CKPT is honoured for older invocations.
+REAL_CHECKPOINT = os.environ.get("SHENGJI_TEST_CWV_CKPT") or os.environ.get("SHENGJI_CWV_REAL_CKPT") or ""
 
 
 def _played_state(seed: int = 41, plies: int = 5):
@@ -98,7 +98,8 @@ def test_v2_width_survives_save_and_load(tmp_path):
     assert loaded.trunk[0].in_features == net.trunk[0].in_features
 
 
-@pytest.mark.skipif(not os.path.exists(REAL_CHECKPOINT), reason="needs the archived CWV checkpoint")
+@pytest.mark.skipif(not (REAL_CHECKPOINT and os.path.exists(REAL_CHECKPOINT)),
+                    reason="needs SHENGJI_TEST_CWV_CKPT pointing at an archived CWV checkpoint")
 def test_the_archived_v1_checkpoint_loads_with_its_state_hash_intact():
     model, metadata = load_checkpoint(REAL_CHECKPOINT)       # verifies state_sha256
     assert model.config.public_dim == 532 and model.config.enc_version == 1

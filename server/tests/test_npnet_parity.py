@@ -18,7 +18,7 @@ from shengji.rl.encode import ACT_DIM, OBS_DIM  # noqa: E402
 
 def test_npnet_matches_torch():
     t = load_any_net("snapshots_v7w/ep02.pt")
-    n = NpNet("weights_v7w_ep02.npz")
+    n = NpNet("snapshots_v7w/ep02.npz")   # the served numpy weights (weights_v7w_ep02.npz was the same blob; untracked in #688)
     rng = np.random.default_rng(0)
     for trial in range(200):
         k = int(rng.integers(1, 20))

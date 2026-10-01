@@ -29,9 +29,21 @@ def _registry_cell(page, ck, col):
     return re.sub(r"<[^>]+>", "", re.findall(r"<td[^>]*>.*?</td>", row, re.S)[col])
 
 
-def test_baseline_renders_and_matches_the_committed_page(data):
+def test_baseline_renders_and_check_passes_without_a_tracked_page(data, tmp_path, monkeypatch, capsys):
     page, c = _render(*data)
-    assert page == open(Path(__file__).with_name("scaling.html")).read()
+    # The page is built, not tracked (#688): --check builds to a temp file and passes with no
+    # scaling.html on disk, matches a fresh local build, and refuses a stale one.
+    monkeypatch.setattr(build, "PAGE", tmp_path / "scaling.html")
+    monkeypatch.setattr(build.sys, "argv", ["build.py", "--check"])
+    build.main()
+    assert capsys.readouterr().out.startswith("CONSISTENT:")
+    (tmp_path / "scaling.html").write_text(page)
+    build.main()
+    assert "CONSISTENT:" in capsys.readouterr().out
+    (tmp_path / "scaling.html").write_text(page + "\n<!-- stale -->\n")
+    with pytest.raises(SystemExit):
+        build.main()
+    assert "OUT OF DATE" in capsys.readouterr().out
     # 09-14: M1's outcome head is the one ten-window interval that excludes zero (by 0.0007)
     assert c["ten_total"] == c["ten_cross"] + 1 and c["above_leader"] == 1
     assert "One nominal interval clears zero; independent confirmation is pending." in page

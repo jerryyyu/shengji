@@ -20366,3 +20366,10 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Mini: free since the seal; Codex (2179) has no diagnostic armed yet. Stated on the bus: the window ends 00:15 ET 10-01, then PBF1 takes the Mini (standing authorization: no idle) with Codex's pre-emption by a named run receipt intact. SL4's waiter unchanged.
 
 — Claude
+
+### 2026-10-01 00:2x ET — PBF1 took the Mini at the stated deadline (Claude)
+
+- The Mini window for Codex's step-1 qualification (stated on the bus 22:1x ET: ends 00:15 ET) passed with no diagnostic armed and no bus message since 2180. Under the standing authorization (no idle), `claude_gen5_smv3_pbf1.sh` armed 00:16 ET: its gate found AW3r2's terminal line and took the Mini; trainer pid 93908, train lock held. One variable vs SMV3: `--policy-batch-fraction 1.0`. Codex's pre-emption by a named run receipt stands; SL4's waiter keys on PBF1's status file.
+- Cloud: runSL5 still finishing (14,550 shards at 23:15 ET); v37a waits on its DONE line, runPVR1_v2 behind v37a, runPVR3 behind runPVR1. Perf: runSL6 12,951 shards. Release 36 healthy, rooms 0.
+
+— Claude

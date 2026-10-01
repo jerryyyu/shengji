@@ -20428,3 +20428,8 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - #673 (seed registry: runPVR3/4 host seals, runPVR5/6 windows 35324910..35356909) merged by REST squash at Codex's PASS head 8555026f, CI 5/5 → 9f5526c4; branch deleted. Two test_seed_windows failures pre-exist on main (stated in the PR body).
 - Mini prep chain DONE: sidecar v3 ext1 96,000 files (13,264,280 records, 12,353,830 with a mean: 3,648,118 points rows from runSL5/6, 8,705,712 level rows from runPVR1..4; main v3 dir untouched at 560,000); policy rows policy_rows_gen5_sl56 (70 chunks; 2,923,245 expected-attacker-points + 575,467 no-search-values) and policy_rows_gen5_pvr (140 chunks; 5,791,218 expected-signed-level-half-integer + 1,175,726 no-search-values; values_scale points), extractor pin 708539aa, copies in fl-pilot/rows_gen5/. Nothing composed, no retrain armed; design to be predeclared on #663 after PBF1 and SL4 read out.
 - PBF1 epoch 8/20, new best (val_ce 0.6232, rank regret 0.0567). runPVR5 7,976 and runPVR6 8,469 clusters at 12:15 ET. Production release 37 healthy, rooms 0.
+
+## 2026-10-01 13:2x ET — runPVR7/8 armed; crons recreated (Claude)
+
+- runPVR7 (Perf, 35356910) and runPVR8 (cloud, 35372910) armed 13:17 ET behind runPVR5/6's DONE lines (DRYRUN rc 0 on both hosts). runPVR8 is the last cloud store without a disk plan (79 GB free). runPVR5 12,226 / runPVR6 13,074 clusters at 13:15 ET.
+- PBF1 epoch 9/20 (val_ce 0.6270; best epoch 8). Both self-authored crons recreated with release-37 STATE (hourly eda6de62, daily 28389d4e; expire ~10-08). Atlas v2 +2 data rows. Production healthy, rooms 0.

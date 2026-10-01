@@ -389,7 +389,7 @@
         33324910,
         33340910
       ],
-      "created_at": "2026-09-30T20:13:09Z",
+      "created_at": "2026-09-30T16:13:09Z",
       "host": "ubuntu-32gb-hel1-1",
       "git_head": "4e0065615bfb01a64e3cc3a36a0995eecd215060",
       "note": "W32 shortlist rollout teacher priced by the PRODUCTION head 8ecd4fea with its own policy prior (the runJS1..10 recipe, one variable changed: the checkpoint). Policy mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7, level_objective False, explore 0.1/k 2, cap 256, 32,000 rounds. Block runSL1..10 = 33260910..33420909 at 16,000 seeds per store. Sealed on the host with 16,000 shards, incomplete_work 0, short_searches 0 and no seed conflicts (host registration traj-s33324910-5cac13a731f6). Recorded here because a window registered only on a remote host is invisible to the repo."
@@ -403,7 +403,7 @@
         33340910,
         33356910
       ],
-      "created_at": "2026-09-30T22:00:43Z",
+      "created_at": "2026-09-30T18:00:43Z",
       "host": "ubuntu-32gb-hel1-2",
       "git_head": "4e0065615bfb01a64e3cc3a36a0995eecd215060",
       "note": "W32 shortlist rollout teacher priced by the PRODUCTION head 8ecd4fea with its own policy prior (the runJS1..10 recipe, one variable changed: the checkpoint). Policy mc-shortlist-8ecd4fea-w32-r30482ec1-prior-8ecd4fea-bury-hybrid-95942bf16dc7, level_objective False, explore 0.1/k 2, cap 256, 32,000 rounds. Block runSL1..10 = 33260910..33420909 at 16,000 seeds per store. Sealed on the host with 16,000 shards, incomplete_work 0, short_searches 0 and no seed conflicts (host registration traj-s33340910-de6471209f09). Recorded here because a window registered only on a remote host is invisible to the repo."

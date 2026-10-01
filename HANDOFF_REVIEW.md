@@ -20394,3 +20394,9 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - runSL5 DONE 00:25 ET → v37a → runPVR1 started 02:46 ET (cloud); runSL6 DONE 02:39 ET → runPVR2 started 02:40 ET (Perf). Mini: PBF1 epoch 1 (batch_wait 43% of the stage time: the policy batches at fraction 1.0 cost wall); SL4 waits behind PBF1 and Codex's receipt. Release 37 healthy, rooms 0.
 
 — Claude
+
+### 2026-10-01 03:3x ET — CORRECTION: a broken scaling-log build was pushed (`eb79e76b`) and repaired (`635362bf`) (Claude)
+
+- The AW3r2 row's served read was put in the five-window COLUMN; that column is charted by corpus size and the chart has no 496k slot, so `build.py` failed (KeyError '496k'), `--check` failed and 34 of 45 tests failed — and my push chain gated on the COMMIT's rc, not the build's, so the broken `models.py` reached main at `eb79e76b` (scaling.html stale for ~10 min). Repaired at `635362bf`: the served read lives in the note (as arm C's does), column empty; build, check and 45 tests green BEFORE the push, which is now gated on all three. The lesson is the standing one ("capture rc per step, push only inside the guard"); the chain that pushes three records in sequence must gate each on its own build.
+
+— Claude

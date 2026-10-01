@@ -313,3 +313,51 @@ def test_deadline_crossing_inside_the_rebuild_abandons_the_tiebreak_for_the_argm
     record = bot.last_decision_record
     assert record["tiebreak_applied"] is True and "tiebreak_abandoned" not in record
     assert len(built) == 2 * 64
+
+
+def test_deadline_crossing_in_the_final_chunk_abandons_the_tiebreak(monkeypatch):
+    """Codex's #682 witness (HOLD at eb8d901f): only the FINAL near-set leaf
+    advances the clock, to 1.0 under a 0.5 s budget -- inside the last
+    <= TIEBREAK_BUDGET_STRIDE-world chunk, where no strided check runs.  The
+    post-rebuild check must catch it: the argmax is played (work_complete, not
+    the fallback) with ``tiebreak_abandoned`` 'budget', not the tie-break winner."""
+    rnd = last_position(); seat = rnd.turn
+    worse, better = ["DK"], ["D6"]
+    worlds = 64
+    total = 2 * worlds
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    built = []
+    real = module.afterstate
+
+    def last_leaf_is_slow(*args, **kwargs):
+        built.append(1)
+        if len(built) == total:
+            clock[0] = 1.0
+        return real(*args, **kwargs)
+    monkeypatch.setattr(module, "afterstate", last_leaf_is_slow)
+    # the final leaf is world 63 of the second member: after the last strided check
+    assert (worlds - 1) % module.TIEBREAK_BUDGET_STRIDE != 0
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=worlds, candidates=8, cap=4000,
+                               batch_size=128, serving_budget_seconds=0.5, tiebreak_points=True)
+    bot = pv.PVSearchBot(predict, evaluator=RankEvaluator(), version=2, config=config,
+                         checkpoint="/dev/null", seed=41)
+    legal = enumerate_legal(rnd, seat, cap=4000)
+    worse_index, better_index = legal.actions.index(worse), legal.actions.index(better)
+    crafted_preferences(bot, rnd, seat, [worse_index, better_index])
+
+    def value_means(rnd_, seat_, admitted_, worlds_, check_budget=None):
+        means = np.full(len(admitted_), -1.0)
+        means[admitted_.index(worse)] = 0.5
+        means[admitted_.index(better)] = 0.5 - EPS / 2
+        return means, 1
+    bot._value_means = value_means
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert len(built) == total and clock[0] == 1.0          # the whole rebuild ran
+    assert played == worse                                    # the argmax, not the tie-break winner
+    assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"] is True
+    assert record["selected_index"] == worse_index
+    assert record["tiebreak_applied"] is False and record["tiebreak_abandoned"] == "budget"
+    assert record["tiebreak_abandon_error"] == "PVSearchBudgetExceeded"
+    assert record["tiebreak_points"] == []

@@ -52,7 +52,8 @@ Optional selection rule (#676 E, #677 strategy 2; OFF BY DEFAULT, and while off
   when the near-set had one member and nothing was rebuilt).  Nothing runs
   when the near-set is a singleton; no model is consulted.  The rebuild runs
   under the serving deadline: ``check_budget`` is called before every member
-  and every ``TIEBREAK_BUDGET_STRIDE`` worlds inside the loop, and when it
+  and every ``TIEBREAK_BUDGET_STRIDE`` worlds inside the loop and once more
+  after the rebuild completes (before its points are used), and when it
   fires the tie-break ABANDONS ITSELF and the argmax (a complete value-pass
   result, published within budget) is played -- never the anchor fallback --
   with ``tiebreak_applied`` False and ``tiebreak_abandoned`` ``"budget"``.
@@ -240,6 +241,11 @@ class PolicyValueBot(PolicyWorldBot):
                             and world_index % TIEBREAK_BUDGET_STRIDE == 0:
                         check_budget()
                     sums[i] += self._trick_points(rnd, seat, hands, buried, admitted[i], world_index)
+            # final post-rebuild check: the strided checks above miss expiry
+            # inside the last <= TIEBREAK_BUDGET_STRIDE-world chunk, and nothing
+            # computed past the deadline may be published
+            if check_budget is not None:
+                check_budget()
         except _budget_exceeded() as exc:
             # the value pass was complete and within budget; only the optional
             # refinement is past it, so the argmax stands and nothing falls back

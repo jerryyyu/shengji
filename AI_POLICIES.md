@@ -6,9 +6,9 @@ a run log or policy registry duplicate.
 
 - Exact policy implementations and names: `server/shengji/ai/registry.py`
 - Production selection: `fly.toml`
-- Current priorities and review gates: `BACKLOG.md` and `HANDOFF_ACTIVE.md`
+- Current priorities: `BACKLOG.md`; review gates and hourly notes: the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674)
 - Research architecture and model lineage: `RL_PLAN.md`
-- Immutable verdicts, hashes, and reviewer corrections: `HANDOFF_REVIEW.md`
+- Immutable authority markers: `HANDOFF_REVIEW.md` (frozen to its markers, #674); verdicts and reviewer corrections are PR review comments, and prose lives on GitHub issues
 - What each production change actually bought: the ladder table below
 - Engine and sampler contracts: `server/tests/` and `incidents/` (ledger archived at `docs_archive/correctness-through-2026-09-22.md`)
 - Runtime performance and deployment: `DEPLOY.md` and issue #208 (the speed record is archived at `docs_archive/perf-through-2026-09-22.md`)
@@ -425,11 +425,11 @@ when the design calls for it.
 | topic | source |
 |---|---|
 | current queue | `BACKLOG.md` |
-| active fleet and exact review asks | `HANDOFF_ACTIVE.md` |
+| active fleet and exact review asks | `server/scripts/fleet_status.sh`, the hourly bus `status`, and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
 | callable code | `server/shengji/ai/registry.py` |
 | production config | `fly.toml` |
 | model/belief/teacher design | `RL_PLAN.md` |
-| immutable evidence and review corrections | `HANDOFF_REVIEW.md` |
+| immutable evidence and review corrections | `HANDOFF_REVIEW.md` authority markers (frozen, #674; prose lives on GitHub issues and PR review comments; archived text in `docs_archive/handoff-review-*.md`) |
 | engine/sampler contract | `server/tests/`, `incidents/` (archived ledger `docs_archive/correctness-through-2026-09-22.md`) |
 | performance and deployment | `DEPLOY.md`, issue #208 (archived record `docs_archive/perf-through-2026-09-22.md`) |
 | old policy/toggle ledger | Git history and `docs_archive/` |

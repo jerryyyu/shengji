@@ -1,9 +1,10 @@
 # Backlog
 
 Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in the release-30 search)**. This file is the prioritized
-decision queue, not a run log. Live processes and exact operator authority are
-in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
-`HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
+decision queue, not a run log. Live processes are
+`server/scripts/fleet_status.sh` plus the owning GitHub issue (`HANDOFF_ACTIVE.md` was
+deleted, #674); immutable authority markers are in `HANDOFF_REVIEW.md` (frozen to its
+markers, #674; prose lives on GitHub issues); research architecture is in `RL_PLAN.md`; callable policy
 status is in `AI_POLICIES.md`.
 
 Historical queues remain in `docs_archive/backlog-through-2026-08-11.md` and
@@ -81,8 +82,9 @@ must never be used to choose scientific seeds or thresholds.
   hidden-world twins.
 - Negative and refused results remain evidence. Never delete them, retry a
   spent namespace, or convert a mechanism PASS into deployment authority.
-- Exact raw markers and chronology belong only in `HANDOFF_REVIEW.md`; current
-  review asks belong only in `HANDOFF_ACTIVE.md`.
+- Exact raw markers belong only in `HANDOFF_REVIEW.md` (frozen to its authority
+  markers, #674); chronology and current review asks belong on GitHub issues and
+  PR review comments.
 
 ## Durable conclusions shaping the queue
 
@@ -99,4 +101,6 @@ must never be used to choose scientific seeds or thresholds.
 | **C0** | All fixed perfect-information consumer arms were negative versus both required parents; local bare-point improvements did not transport. |
 
 Exact numbers, packet identities, incidents, and reviewer findings remain in
-`HANDOFF_REVIEW.md`, `incidents/`, and the dated archives.
+the `HANDOFF_REVIEW.md` authority markers and its archived prose
+(`docs_archive/handoff-review-*.md`; the ledger is frozen to its markers, #674, and
+new prose lives on GitHub issues), `incidents/`, and the dated archives.

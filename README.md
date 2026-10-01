@@ -177,7 +177,7 @@ as policies.
 | `docs/scaling_log/` | every value model, its offline metrics and screen results (built from `models.py`) |
 | `AGENTS.md` / `CODEX_WORKFLOW.md` | execution discipline and the Codex setup (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
 | `AI_POLICIES.md` | the evidence standard for every strength claim; the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md` |
-| `HANDOFF_ACTIVE.md` / `HANDOFF_REVIEW.md` | `HANDOFF_ACTIVE.md` is slated for deprecation (#674; fleet state is `server/scripts/fleet_status.sh` and the hourly bus status); `HANDOFF_REVIEW.md` is the append-only review ledger on `main` |
+| `HANDOFF_REVIEW.md` | frozen to its authority markers (#674): the markers remain authoritative on `main`, prose lives on GitHub issues (#679 for fleet and housekeeping) and the archived text is in `docs_archive/handoff-review-*.md`. `HANDOFF_ACTIVE.md` was deleted (#674); fleet state is `server/scripts/fleet_status.sh` and the hourly bus status |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
 | `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |
 

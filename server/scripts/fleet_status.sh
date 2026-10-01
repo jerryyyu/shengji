@@ -9,7 +9,9 @@
 # so label each by the rl_data/snapshot/ckpt files it holds open.
 #
 # Convention for NEW long jobs: run as a named script/module logging to
-# server/runs/logs/<name>.log, and note current intent in HANDOFF_ACTIVE.md.
+# server/runs/logs/<name>.log, and note current intent on the owning GitHub
+# issue (#679 for fleet and housekeeping; HANDOFF_ACTIVE.md was deleted, #674).
+# HANDOFF_REVIEW.md is frozen to its authority markers; prose lives on issues.
 
 # Run from anywhere. This used to require cwd=server/, and when the caller's
 # cwd had drifted the script simply failed — printing an EMPTY Codex mailbox
@@ -329,24 +331,12 @@ for d in rl_data/gen_v3_mini rl_data/gen_v3; do
 done
 echo "  (any id here with no matching live process = orphan; quarantine its shards)"
 
-hdr "CODEX MAILBOX — HANDOFF_REVIEW.md discussion thread"
-HR=../HANDOFF_REVIEW.md
-if [ -f "$HR" ]; then
-  # Match how entries are ACTUALLY written ("### Codex reply — ...",
-  # "## Codex audit message ..."). The old pattern "^### \[Codex" matched
-  # nothing and reported 0 unread while real replies sat in the file
-  # (found 2026-08-04 — a monitor that cannot fail loudly is worse than none).
-  codex_n=$(grep -cE "^#{2,3} Codex" "$HR" 2>/dev/null || echo 0)
-  claude_n=$(grep -cE "^#{2,3} Claude" "$HR" 2>/dev/null || echo 0)
-  if [ ! -f "$HR" ]; then
-    echo "  MAILBOX UNREADABLE at $HR — this is NOT 'no new entries'"
-  fi
-  echo "  Codex entries: $codex_n  Claude entries: $claude_n   (file mtime: $(stat -f "%Sm" -t "%m-%d %H:%M" "$HR"))"
-  last=$(grep -nE "^#{2,3} (Codex|Claude)" "$HR" | tail -2 | sed "s/^/    /")
-  [ -n "$last" ] && printf "  last exchange:\n%s\n" "$last"
-else
-  echo "  (HANDOFF_REVIEW.md not found)"
-fi
+hdr "CODEX MAILBOX — GitHub issues"
+# HANDOFF_REVIEW.md is frozen to its authority markers (#674); the discussion
+# thread that used to be counted here now lives on GitHub issues.
+echo "  HANDOFF_REVIEW.md is frozen to its authority markers (#674); prose lives on GitHub issues."
+echo "  fleet and housekeeping thread: https://github.com/jerryyyu/shengji/issues/679"
+echo "  read it with: gh issue view 679 -R jerryyyu/shengji --comments"
 
 hdr "JOB LOGS — metadata only (content requires an explicit safe boundary)"
 # Generic logs may contain sealed outcomes.  File age and size are operational

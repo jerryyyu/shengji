@@ -20416,3 +20416,9 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Fetch of runSL5/6 + runPVR1/2 to the SSD started 09:17 ET at nice 19 (for the next retrain's sidecars and rows).
 
 — Claude
+
+## 2026-10-01 10:3x ET — PVR3/4 sealed, PVR5/6 dealing, six-store prep chain on the Mini (Claude)
+
+- runPVR3 (cloud, 2,207,320 records) and runPVR4 (Perf, 2,210,076 records) sealed 09:51 / 10:17 ET; copy to the SSD running. runPVR5 (Perf, 35324910) and runPVR6 (cloud, 35340910) armed after DRYRUN and dealing since 10:22 ET (standing authorization; cloud disk plan: at most one more cloud store without a plan).
+- Mini, nice 19, fail-closed: fetch -> sidecar v3 for runSL5/6 + runPVR1..4 into a SEPARATE directory (the armed SL4 lane asserts exactly 560,000 files in the main one) -> policy rows sl56/pvr with the 708539aa extractor. No composition, no retrain armed; design to be predeclared on #663 after PBF1 and SL4 read out.
+- PBF1 epoch 7/20 (best epoch 6). Atlas v2 ac2a4be3 (27 data rows). Bus FYI sent. Production release 37 healthy, rooms 0.

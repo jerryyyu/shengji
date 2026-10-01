@@ -147,7 +147,8 @@
     "image deployment-01M3SG9NVC1AC3PNPEH5Y34N0D (sha256:064d73f54f77\u2026), main 30318531 (#666); Codex PASS at the exact head 373361a7; CI 5/5 with the #654 package gate repinned to the serving-packages asset smv3out-491ee4bf.npz",
     "package-level common-control evidence on two independent five-window sets, not a paired duel: the sign is established, the size is uncertain at MDE80 \u2248 0.05 (somewhere in +0.003..+0.075 of a level per round)",
     "every screen from here compares against release 36; v36c (predeclared against release 30 before this deploy) reads out as declared",
-    "rollback: the three release-30 lines kept as a comment in fly.toml (SHENGJI_BOT, SHENGJI_PV_CKPT, SHENGJI_PV_SHA256; the package stays on the volume) + fly deploy --ha=false, or the release-35 image deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN"
+    "rollback: the three release-30 lines kept as a comment in fly.toml (SHENGJI_BOT, SHENGJI_PV_CKPT, SHENGJI_PV_SHA256; the package stays on the volume) + fly deploy --ha=false, or the release-35 image deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN",
+    "release 37 (2026-10-01 01:1x ET, #671, image deployment-01M3TXZ85YHJM108TBPWKN8BB2) is a phone-HUD CSS fix on this exact package and name; it changes nothing the search does, so the comparator for every screen stays 'release 36 as served' and no new baseline card is cut"
    ]
   }
  ],

@@ -181,3 +181,74 @@ def test_the_pv_search_registration_and_names_are_untouched(package, monkeypatch
     for name in names:
         del REGISTRY[name]
     _clear(monkeypatch)
+
+
+# ------------------- (e) the pins are enforced at CONSTRUCTION, not registration
+
+def _replace_bytes(path: str, seed: int) -> str:
+    """Overwrite the package in place with other weights; returns the new sha."""
+    return _write_joint_package(Path(path), seed)
+
+
+@pytest.mark.parametrize("prior", ["package", "uniform", "value", "head"])
+def test_a_value_package_replaced_after_registration_refuses_at_make_bot(
+        tmp_path, other_package, monkeypatch, prior):
+    """Codex HOLD on #692: the value pin must reach the factory.  Register a
+    pinned package, swap the file's bytes, and every registered name -- the
+    arm under each prior mode and the control -- must refuse, naming the pin."""
+    from shengji.ai.cwv_puct import make_cwv_puct_bot
+    _clear(monkeypatch)
+    path = str(tmp_path / f"value-{prior}.npz")
+    sha = _write_joint_package(Path(path), 3)
+    env = _env(path, sha, prior=prior, world_pool="2", batch="4")
+    if prior == "head":
+        other, other_sha = other_package
+        env.update({PREFIX + "PRIOR_CKPT": other, PREFIX + "PRIOR_SHA256": other_sha})
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    registry._register_cwv_puct_from_env()
+    names = sorted(n for n in REGISTRY if n.startswith("mc-cwvpuct-"))
+    assert len(names) == 2 and all(sha[:8] in n for n in names)
+    arm = [n for n in names if not n.startswith("mc-cwvpuct-prior-")][0]
+    if prior != "head":            # a .pt public head is not built here (torch); the refusal is
+        bot = make_bot(arm, seed=1)   # what matters and it fires before the head is loaded
+        assert bot.cwv_checkpoint_sha256 == sha
+    replaced = _replace_bytes(path, 99)
+    assert replaced != sha
+    for name in names:
+        with pytest.raises(CWVError, match=f"value checkpoint .*pinned {sha[:8]}"):
+            make_bot(name, seed=1)
+    # the direct constructor enforces the same pin, with and without a prior package
+    with pytest.raises(CWVError, match="value checkpoint"):
+        make_cwv_puct_bot(path, simulations=1, checkpoint_sha256=sha)
+    with pytest.raises(CWVError, match="value checkpoint"):
+        make_cwv_puct_bot(path, simulations=1, control=True, checkpoint_sha256=sha)
+    # MUTANT (the held behaviour): an UNPINNED factory builds on the replacement
+    unpinned = make_cwv_puct_bot(path, simulations=1)
+    assert unpinned.cwv_checkpoint_sha256 == replaced
+    _clear(monkeypatch)
+
+
+def test_a_prior_package_replaced_after_registration_refuses_at_make_bot(tmp_path, monkeypatch):
+    _clear(monkeypatch)
+    value = str(tmp_path / "value.npz")
+    value_sha = _write_joint_package(Path(value), 3)
+    prior = str(tmp_path / "prior.npz")
+    prior_sha = _write_joint_package(Path(prior), 23)
+    env = _env(value, value_sha, prior="package", prior_ckpt=prior, prior_sha256=prior_sha,
+               world_pool="2", batch="4")
+    for key, value_ in env.items():
+        monkeypatch.setenv(key, value_)
+    registry._register_cwv_puct_from_env()
+    arm = f"mc-cwvpuct-{value_sha[:8]}-prior-{prior_sha[:8]}-s16-pprior"
+    assert arm in REGISTRY
+    bot = make_bot(arm, seed=1)
+    assert bot.prior_head.package_sha256 == prior_sha and bot.cwv_checkpoint_sha256 == value_sha
+    replaced = _replace_bytes(prior, 77)
+    assert replaced != prior_sha
+    # the value file is intact, so only the prior pin fires -- naming it
+    with pytest.raises(CWVError, match=f"prior checkpoint .*pinned {prior_sha[:8]}"):
+        make_bot(arm, seed=1)
+    # the control carries no prior id and no prior package in its name
+    assert f"mc-cwvpuct-prior-{value_sha[:8]}-s16" in REGISTRY
+    _clear(monkeypatch)

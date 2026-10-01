@@ -98,6 +98,12 @@ predeclared against release 30 before this deploy (v36c) read out as declared.
 Watch list: `pv-search-fallback-v1` records, stale-turn discards, decision wall p50/p95, bury seconds;
 the first live room's log.
 
+First live rooms on this package (read 2026-10-01 09:2x ET from the log cache; three rooms LKMU, CDCE,
+KHPX played 2026-09-30 12:0x–20:3x ET, 76–100 bot play searches each, 57–93 bot-mode plus takeover
+plays): play wall p50 0.23–0.25 s, p95 0.35–0.37 s, max 0.42 s; bury 0.57–0.65 s, hybrid arm, search
+status complete, no fallback reason; `stale_discarded` false on every decision; zero fallback records.
+Same shape as release 29's first live room (p50 0.24 s).
+
 ## Release 35 — the phone table's overflow menu and points bar (#653, #651), deployed 2026-09-28 01:49 ET; superseded by release 36 (new package)
 
 Release **35**, image `registry.fly.io/shengji:deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN` (digest

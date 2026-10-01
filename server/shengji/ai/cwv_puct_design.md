@@ -95,3 +95,54 @@ the Mini for the MLP; the descent is pure Python on the fast engine).
   checkpoint sha and refuses a mismatch.
 - Witnesses: `tests/test_cwv_puct.py` (selection formula, back-up, legality mask, batched
   == per-leaf scoring, virtual-loss release, argmax visits, identity binding, zero-signal).
+
+## The joint-package policy prior and the finish-trick leaf boundary (#436 step 1)
+
+Every PUCT read on record lost, and none of them varied the two inputs that have since
+changed: the prior was SmartBot-level (the #213 public head, or the value net's own one-ply
+softmax) and the leaf was read mid-trick, a boundary the outcome head was never trained on.
+The gen-5 heads change both (the SMV3 policy head is +0.21 vs the production head in paired
+duels; the outcome head is the served value since release 36), so the retry design on #436
+puts them into the SAME tree, one variable per read.  This step is the code; no screen is
+armed by it.
+
+- **`prior="package"` (`JointPackagePriorHead`).** The joint NumPy serving package
+  (`smv3out-<sha8>.npz`: value head + 54-card policy head, the release-36 file) read through
+  `train.cwv_prior_admission.load_prior_checked` as kind `joint-numpy`, with the SHA256
+  **pinned** by the caller and a mismatch refused, exactly as the served prior admission and
+  pv-search bind it.  A ballot is priced by `cwv_prior_admission.prior_scores`: one
+  `policy_prior.flat_input(root_tensors(root_clone(...)))` row per sampled world, the
+  package's `policy_log_odds`, and per action the SUM of its cards' log-odds (a pair counts
+  its card twice).  That function is the served admission's `_prior_scores` (which now
+  delegates to it), so the tree's prior is production's prior by construction, not by a
+  re-derivation: the parity witness asserts bitwise equality of the root prior with
+  `softmax(_prior_scores(...).mean(axis=0) / T)`.
+  - Root: scores averaged over the sampled world pool (pv-search's `.mean(axis=0)`
+    preference), softmaxed over the ballot at `prior_temperature` (default 1; the name
+    carries `-pprior` or `-pprior-T<T>`).  The true hidden hands are never encoded
+    (`probabilities(rnd, ...)` refuses; the pool is the only input).
+  - Below the root: the acting seat's node is priced in the CURRENT world (the clone's own
+    hands), batched across nodes in one forward through the `encode` /
+    `batch_from_encoded` hooks `prior="head"` already uses; priors are cached per node as
+    before.
+- **`leaf_finish_trick` (`-ftl`, net leaf only).** The scored position is not the reached
+  leaf but its afterstate boundary: a private copy in which production's heuristic finishes
+  the CURRENT trick and nothing more (`cwv_policy.finish_current_trick` with the default
+  finisher -- the `afterstate(..., finish_trick=True)` path pv-search serves and the outcome
+  head was trained on).  The tree's leaf, its node, its ballot and its trace stay as
+  reached; `trace["boundary"]` carries the scored copy.  A playout leaf already plays
+  through the trick, so the flag is refused there.  Default `False`: the leaves themselves
+  are scored, the identity carries no key and the record is byte-identical to before (the
+  existing 31 witnesses run unchanged; a determinism witness compares the default against
+  an explicit `False`).
+- **Names.** `mc-cwvpuct-<ckpt8>-s<S>-pprior[-T<T>][-ftl]` when the package serves both the
+  value leaf and the prior (the #436 arm); `-prior-<prior8>` is inserted after `<ckpt8>`
+  when the prior package is another file.  The control stays the uniform prior
+  (`mc-cwvpuct-prior-<ckpt8>-s<S>[-ftl]`).  `cwv_duel.py --tree --prior package
+  --prior-checkpoint PKG.npz --prior-sha256 SHA [--leaf-finish-trick]` binds both into the
+  calibration (`prior_checkpoint_sha256` = the pin; `prior_temperature`;
+  `leaf_finish_trick` only when on).  Screen-only: no env or fly.toml registration.
+- **Witnesses:** `tests/test_cwv_puct_package_prior.py` (parity with `_prior_scores` on a
+  synthetic joint package, torch-free; sha mismatch refuses; the boundary moves only within
+  the trick and the default path is unchanged; the registry name and the duel binding
+  round-trip; an end-to-end decision on one package in both roles).

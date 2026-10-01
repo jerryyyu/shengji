@@ -833,17 +833,24 @@ _register_cwv_from_env()
 
 
 def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[str]:
-    """PUCT-over-sampled-worlds arms, named ``mc-cwvpuct-<ckpt8>-s<S>[-pleaf[N]]``.
+    """PUCT-over-sampled-worlds arms, named
+    ``mc-cwvpuct-<ckpt8>[-prior-<prior8>]-s<S>[-pprior[-T<T>]|-vprior[<T>]][-ftl|-pleaf[N]]``.
 
     Same identity rule as ``register_cwv_policies``: the VALUE checkpoint,
-    the simulation budget and the leaf mode (``leaf="playout"`` with
-    ``leaf_playouts=N`` -> ``-pleaf``/``-pleaf<N>``; the net leaf adds
-    nothing) are in the name; the search parameters (world pool, batch,
-    c_puct, prior mode / prior checkpoint, receipt for the control) are
-    keyword arguments recorded in every decision and in the duel's
-    calibration binding.  ``mc-cwvpuct-prior-<ckpt8>-s<S>[-pleaf[N]]`` is
-    the matching no-learning control (uniform prior; stratified-prior leaf,
-    or the same playout leaf).  Returns the registered names.
+    the simulation budget, the prior (``prior="package"`` -- the joint NumPy
+    package's policy head, #436 -- adds ``-pprior``/``-pprior-T<T>`` and, when
+    that package is not the value package, ``-prior-<prior8>``;
+    ``prior="value"`` adds ``-vprior[<T>]``) and the leaf (``leaf="playout"``
+    with ``leaf_playouts=N`` -> ``-pleaf``/``-pleaf<N>``; the net leaf scored
+    at the finished-trick boundary, ``leaf_finish_trick=True`` -> ``-ftl``;
+    the plain net leaf adds nothing) are in the name; the search parameters
+    (world pool, batch, c_puct, prior mode / prior checkpoint and its pinned
+    ``prior_sha256``, receipt for the control) are keyword arguments recorded
+    in every decision and in the duel's calibration binding.
+    ``mc-cwvpuct-prior-<ckpt8>-s<S>[-ftl|-pleaf[N]]`` is the matching
+    no-learning control (uniform prior; stratified-prior leaf, or the same
+    playout leaf).  Screen-only: nothing here is read from the environment.
+    Returns the registered names.
     """
     from .cwv_puct import cwv_puct_registry_entries
     entries = cwv_puct_registry_entries(checkpoint, simulations, **search)

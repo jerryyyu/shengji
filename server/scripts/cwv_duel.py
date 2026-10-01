@@ -160,20 +160,22 @@ def budget_label(multiplier: float) -> str:
 
 def search_binding(*, world_pool: int, batch: int, c_puct: float, prior: str,
                    prior_checkpoint_sha256: str | None, leaf: str = "net",
-                   leaf_playouts: int = 1, prior_temperature: float = 1.0) -> dict:
+                   leaf_playouts: int = 1, prior_temperature: float = 1.0,
+                   leaf_finish_trick: bool = False) -> dict:
     """The PUCT search parameters a tree calibration is bound to (S is the
     budget and lives in the rungs).  The leaf keys follow the bot's own
     ``search_identity``: absent for the net leaf (the v1 binding, so the
     existing net-leaf calibrations stay valid), ``leaf``/``leaf_playouts``
     for a playout leaf (``check_calibration`` compares the union of keys, so
     a binding made under one leaf never serves the other).  Likewise
-    ``prior_temperature`` only under ``prior="value"``."""
+    ``prior_temperature`` only under ``prior="value"`` / ``"package"`` and
+    ``leaf_finish_trick`` only when on."""
     from shengji.ai.cwv_puct import leaf_identity, prior_identity
     return {"kind": "puct", "world_pool": int(world_pool), "batch": int(batch),
             "c_puct": float(c_puct), "prior": str(prior),
             "prior_checkpoint_sha256": prior_checkpoint_sha256,
             **prior_identity(prior, prior_temperature),
-            **leaf_identity(leaf, leaf_playouts)}
+            **leaf_identity(leaf, leaf_playouts, leaf_finish_trick)}
 
 
 def search_from_args(args) -> dict | None:
@@ -188,12 +190,18 @@ def search_from_args(args) -> dict | None:
         if not args.prior_checkpoint:
             raise CalibrationMismatch("--prior head needs --prior-checkpoint")
         prior_sha = file_sha256(args.prior_checkpoint)
+    elif args.prior == "package":
+        # the pinned sha is the binding (the adapter refuses a file that differs)
+        if not args.prior_checkpoint or not getattr(args, "prior_sha256", None):
+            raise CalibrationMismatch("--prior package needs --prior-checkpoint and --prior-sha256")
+        prior_sha = str(args.prior_sha256)
     return search_binding(world_pool=args.world_pool, batch=args.batch,
                           c_puct=args.c_puct, prior=args.prior,
                           prior_checkpoint_sha256=prior_sha,
                           leaf=getattr(args, "leaf", "net"),
                           leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
-                          prior_temperature=float(getattr(args, "prior_temperature", 1.0)))
+                          prior_temperature=float(getattr(args, "prior_temperature", 1.0)),
+                          leaf_finish_trick=bool(getattr(args, "leaf_finish_trick", False)))
 
 
 def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
@@ -205,25 +213,34 @@ def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
             prior_checkpoint=args.prior_checkpoint, receipt=receipt,
             leaf=getattr(args, "leaf", "net"),
             leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
-            prior_temperature=float(getattr(args, "prior_temperature", 1.0)))
+            prior_temperature=float(getattr(args, "prior_temperature", 1.0)),
+            prior_sha256=getattr(args, "prior_sha256", None),
+            leaf_finish_trick=bool(getattr(args, "leaf_finish_trick", False)))
     else:
         register_cwv_policies(checkpoint, budgets, finish_trick=args.finish_trick,
                               lcb=args.lcb, receipt=receipt,
                               plies=bot_plies(getattr(args, "plies", 0)))
 
 
-def _leaf_kw(args) -> dict:
+def _leaf_kw(args, ckpt8: str | None = None) -> dict:
+    prior = getattr(args, "prior", "uniform")
+    prior_sha = getattr(args, "prior_sha256", None)
+    # a package prior that is not the value package carries its own id
+    prior8 = (str(prior_sha)[:8] if prior == "package" and prior_sha
+              and ckpt8 is not None and str(prior_sha)[:8] != ckpt8 else None)
     return {"leaf": getattr(args, "leaf", "net"),
             "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
-            "prior": getattr(args, "prior", "uniform"),
-            "prior_temperature": float(getattr(args, "prior_temperature", 1.0))}
+            "prior": prior,
+            "prior_temperature": float(getattr(args, "prior_temperature", 1.0)),
+            "leaf_finish_trick": bool(getattr(args, "leaf_finish_trick", False)),
+            "prior8": prior8}
 
 
 def arm_name(args, ckpt8: str, budget: int) -> str:
     from shengji.ai.cwv_policy import policy_name
     from shengji.ai.cwv_puct import puct_policy_name
     if getattr(args, "tree", False):
-        return puct_policy_name(ckpt8, budget, **_leaf_kw(args))
+        return puct_policy_name(ckpt8, budget, **_leaf_kw(args, ckpt8))
     return policy_name(ckpt8, budget, lcb=args.lcb, plies=bot_plies(getattr(args, "plies", 0)))
 
 
@@ -1195,9 +1212,11 @@ def run(args) -> dict:
                 "c_puct": getattr(args, "c_puct", None),
                 "prior": getattr(args, "prior", None),
                 "prior_checkpoint": getattr(args, "prior_checkpoint", None),
+                "prior_sha256": getattr(args, "prior_sha256", None),
                 "leaf": getattr(args, "leaf", "net"),
                 "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
-                "prior_temperature": float(getattr(args, "prior_temperature", 1.0))}
+                "prior_temperature": float(getattr(args, "prior_temperature", 1.0)),
+                "leaf_finish_trick": bool(getattr(args, "leaf_finish_trick", False))}
     register_arms(args, checkpoint, worlds, receipt=args.receipt)
     if scaled_multipliers:
         register_scaled_policies(args.opponent, scaled_multipliers)
@@ -1343,17 +1362,25 @@ def add_tree_arguments(parser: argparse.ArgumentParser) -> None:
     tree.add_argument("--c-puct", type=float, default=DEFAULT_C_PUCT)
     tree.add_argument("--prior", choices=PRIOR_MODES, default="uniform",
                       help="uniform; head (--prior-checkpoint); value: softmax of the "
-                           "complete-world net's one-ply afterstate values (arms -vprior)")
+                           "complete-world net's one-ply afterstate values (arms -vprior); "
+                           "package: the joint NumPy package's policy head "
+                           "(--prior-checkpoint PKG.npz --prior-sha256; arms -pprior)")
     tree.add_argument("--prior-checkpoint", default=None,
                       help="shengji-train-v0 checkpoint whose public prior head prices "
-                           "the ballot (--prior head)")
+                           "the ballot (--prior head), or the joint .npz package (--prior package)")
+    tree.add_argument("--prior-sha256", default=None,
+                      help="the pinned SHA256 of --prior-checkpoint under --prior package")
     tree.add_argument("--prior-temperature", type=float, default=1.0,
-                      help="softmax temperature of --prior value (level scale; arms -vprior<T>)")
+                      help="softmax temperature of --prior value / package "
+                           "(arms -vprior<T> / -pprior-T<T>)")
     tree.add_argument("--leaf", choices=LEAF_MODES, default="net",
                       help="leaf value: the net (default) or production's heuristic "
                            "playout of the sampled world to round end (arms -pleaf)")
     tree.add_argument("--leaf-playouts", type=int, default=1,
                       help="playouts averaged per leaf under --leaf playout")
+    tree.add_argument("--leaf-finish-trick", action="store_true",
+                      help="score the net leaf at the finished-trick afterstate boundary "
+                           "(production's heuristic finishes the current trick; arms -ftl)")
 
 
 def build_parser() -> argparse.ArgumentParser:

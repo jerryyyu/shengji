@@ -710,7 +710,13 @@
    "recipe": "THE AUXILIARY HEAD'S WEIGHT, NOT ITS DATA: SMV3's recipe EXACTLY (30 corpora, 496,000 deals, 55,123,440 policy rows, sidecar v3, production-head warm start 8ecd4fea, seed 1, units-fixed targets, tree f2345ecb) with ONE variable changed -- --search-head-weight 3.0 instead of 1.0 (#663 next-run 3, #667). Armed under Jerry's standing run authorization (2026-09-30); a first attempt was stopped 30 min in after its gate proved vacuous (Codex, bus 2153) and this is the re-arm with the reservation basis recorded.",
    "val_ce": 0.6288,
    "regret": null,
-   "status": "sealed 21:27 ET 09-30, rc=0, EARLY STOP at 7 of 20 epochs, best epoch 4, wall 33,957 s (SMV3: 67,596 s / 16 / 13). Outcome head val rank_regret 0.0579 (own split). FOUR FIXED HOLDOUTS (rank_regret, outcome head), AW3r2 vs SMV3: roomlog 0.0686 / 0.0655, pt1 0.0337 / 0.0337, luna 0.0824 / 0.0855, highn 0.1043 / 0.1054 -- one worse, one equal, two better; point estimates, no interval. Search-head rows per epoch 48,849,859 (as SMV3). Exported outcome head aw3r2out-46b0ac9c.npz; * SCREENED (v37a, cloud, 02:44 ET 10-01): -0.0033 [-0.0383, +0.0316] vs release 36 as served, CROSSES ZERO; no extension."
+   "status": "sealed 21:27 ET 09-30, rc=0, EARLY STOP at 7 of 20 epochs, best epoch 4, wall 33,957 s (SMV3: 67,596 s / 16 / 13). Outcome head val rank_regret 0.0579 (own split). FOUR FIXED HOLDOUTS (rank_regret, outcome head), AW3r2 vs SMV3: roomlog 0.0686 / 0.0655, pt1 0.0337 / 0.0337, luna 0.0824 / 0.0855, highn 0.1043 / 0.1054 -- one worse, one equal, two better; point estimates, no interval. Search-head rows per epoch 48,849,859 (as SMV3). Exported outcome head aw3r2out-46b0ac9c.npz; * SCREENED (v37a, cloud, 02:44 ET 10-01): -0.0033 [-0.0383, +0.0316] vs release 36 as served, CROSSES ZERO; no extension.",
+   "head_vs_prod": {
+    "point": 0.1474,
+    "lo": 0.1333,
+    "hi": 0.1615,
+    "ref": "10-01 paired duel vs the production head 8ecd4fea, 8k mirrored deals (headduel2-20261001); below SMV3's +0.2067 and arm F's +0.1738 on the same scale, not a paired AW3r2-vs-SMV3 contrast"
+   }
   }
  ],
  "data": [

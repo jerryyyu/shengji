@@ -90,7 +90,7 @@ M = [
 ("GEN5 SMV3 (arm F's corpus + recipe, search-mean sidecar v3)","3e89e86f","2026-09-29","v2",330,"3e-4","496k","55,123,440","0.62050","",
  "","","","PRODUCTION r36 (09-30): gen-5 SMV3 (#658) outcome head; vs r30 confirmed (v36a2, 5 fresh w) +0.0393 [+0.0033, +0.0752]; search-mean served -0.0523"),
 ("GEN5 SMV3-AW3r2 (SMV3's recipe, search-head weight 3.0)","b0bdf33d","2026-09-30","v2",330,"3e-4","496k","55,123,440","0.62880","",
- "","","5w -0.0033 [-0.0383, +0.0316]","gen-5 AW3r2 (#667): one variable vs SMV3, aux weight 3.0; early stop 7/20, best 4; v37a vs r36 CROSSES ZERO; no extension"),
+ "","","","gen-5 AW3r2 (#667): one variable vs SMV3, aux weight 3.0; served v37a vs r36 -0.0033 [-0.0383, +0.0316] crosses zero; no ext"),
 ("KITTY-v5-pilot: encoder v5 (banker's own burial restored), value only, 24k clusters, 8 epochs","3ca2ec90","2026-09-19","v5",330,"3e-4","24k","3,387,384","0.70088","0.0187",
  "","","","v5 vs its v2 twin: val_ce -0.0004, regret@4 +0.0001, test MAE 0.5266 vs 0.5318: inside twin noise; the kitty columns buy nothing at pilot scale"),
 ("KITTY-v2-control: the pilot's v2 twin (same 24k clusters, seed, epochs)","970695e8","2026-09-19","v2",330,"3e-4","24k","3,387,384","0.70130","0.0186",

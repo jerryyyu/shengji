@@ -902,6 +902,20 @@
    "seed0": "35340910",
    "clusters": "dealing",
    "status": "Release-36 teacher, as runPVR1; dealing since 10:22 ET 10-01 behind runPVR3's DONE line. Cloud disk 87 GB free before this store (~10 GB each): at most one more cloud store (runPVR8) without a disk plan."
+  },
+  {
+   "name": "runPVR7",
+   "box": "Perf",
+   "seed0": "35356910",
+   "clusters": "armed",
+   "status": "Release-36 teacher, as runPVR1; DRYRUN through the real entry point 13:17 ET 10-01, armed behind runPVR5's DONE line (standing run authorization)."
+  },
+  {
+   "name": "runPVR8",
+   "box": "cloud",
+   "seed0": "35372910",
+   "clusters": "armed",
+   "status": "Release-36 teacher, as runPVR1; armed 13:17 ET 10-01 behind runPVR6's DONE line. Cloud disk 79 GB free before this store: the LAST cloud store without a disk plan."
   }
  ],
  "history": {

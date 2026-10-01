@@ -846,6 +846,48 @@
    "seed0": "\u2014",
    "clusters": "64,000 sealed",
    "status": "COMPLETE, FOUR STORES: 64,000 deals and 8,818,852 records at the W128 teacher (pv-search-ccade130-w128-k8-rb5f25003-bury-hybrid-f9b3077581ec), incomplete_work 0 and short_searches 0 in every manifest, 1.96x the per-cluster cost of W64. Two more stores (runPVD5 seed0 23504910, runPVD6 seed0 23520910) are generating behind them on Jerry's standing instruction to keep an idle cloud busy. NOTHING TRAINS ON THIS YET, and that is deliberate: mixing a different teacher depth into the same corpus would make 'more data' and 'deeper teacher' move together, the confound that already cost a clean read on arm A. Jerry approved an arm E on this data (2026-09-24), which is the experiment that would answer whether a lower-variance value target is worth 1.96x per cluster; it has not been built."
+  },
+  {
+   "name": "runSL5",
+   "box": "cloud",
+   "seed0": "33324910",
+   "clusters": "16,000 sealed",
+   "status": "SEALED 00:25 ET 10-01: W32 shortlist rollout teacher priced by the production head 8ecd4fea (the runSL1..4 recipe); 32,000 rounds, 2,216,908 records, incomplete_work 0, short_searches 0, no seed conflicts. Not yet in any training store list (next: extraction + SL6 for a later retrain)."
+  },
+  {
+   "name": "runSL6",
+   "box": "Perf",
+   "seed0": "33340910",
+   "clusters": "16,000 sealed",
+   "status": "SEALED 02:39 ET 10-01: same recipe as runSL5; 32,000 rounds, 2,213,660 records, incomplete_work 0, short_searches 0, no seed conflicts. Completes the shortlist block at six stores (runSL1..6)."
+  },
+  {
+   "name": "runPVR1",
+   "box": "cloud",
+   "seed0": "35260910",
+   "clusters": "16,000 sealed",
+   "status": "SEALED 06:19 ET 10-01: the FIRST store from the RELEASE-36 teacher pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (the runPV1..10 recipe with one variable, the package; budgets unset); 32,000 rounds, 2,209,292 records, incomplete_work 0, short_searches 0. Jerry 2026-09-30: gen new data on pv search with the production policy. Block runPVR1..10 = 35260910..35420909 (#672)."
+  },
+  {
+   "name": "runPVR2",
+   "box": "Perf",
+   "seed0": "35276910",
+   "clusters": "16,000 sealed",
+   "status": "SEALED 06:29 ET 10-01: release-36 teacher, as runPVR1; 32,000 rounds, 2,207,024 records, incomplete_work 0, short_searches 0."
+  },
+  {
+   "name": "runPVR3",
+   "box": "cloud",
+   "seed0": "35292910",
+   "clusters": "dealing",
+   "status": "Release-36 teacher, armed behind runPVR1; dealing since 06:19 ET 10-01 (13,363 shards at 09:15 ET)."
+  },
+  {
+   "name": "runPVR4",
+   "box": "Perf",
+   "seed0": "35308910",
+   "clusters": "dealing",
+   "status": "Release-36 teacher, armed behind runPVR2; dealing since 06:30 ET 10-01 (11,720 shards at 09:15 ET)."
   }
  ],
  "history": {

@@ -20387,3 +20387,10 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Cloud: runSL5 DONE 00:25 ET; v37a started on the host lock, 3/10 windows sealed at 01:08 ET; runPVR1_v2 behind it. Perf: runSL6 14,220 shards. Release 37 healthy, rooms 0.
 
 — Claude
+
+### 2026-10-01 03:2x ET — v37a READ: AW3r2 (search-head weight 3.0) vs release 36 crosses zero; both boxes on the release-36 stores (Claude)
+
+- **v37a (cloud, LANE DONE 02:44 ET; AW3r2 outcome head aw3r2out-46b0ac9c vs release 36 as served, five fresh windows 34160910..34560910): −0.0033 [−0.0383, +0.0316]**, tau 0, I2 0%, MDE80 0.050; ties 50.3% vs 50.8%; latency p50/p95 0.09/0.16 s both arms. CROSSES ZERO: inconclusive; point below the +0.015 extension threshold, no extension. The auxiliary head's weight (3.0 vs 1.0) shows no served effect at this resolution; not shown to be zero. Recomputed with `vol_re.py`; archived flat with SHA256SUMS at `~/shengji-archive/2026-09-13/readouts/v37a-aw3r2out-vs-r36/`; Atlas sealed (first screen vs release 36), scaling log row updated.
+- runSL5 DONE 00:25 ET → v37a → runPVR1 started 02:46 ET (cloud); runSL6 DONE 02:39 ET → runPVR2 started 02:40 ET (Perf). Mini: PBF1 epoch 1 (batch_wait 43% of the stage time: the policy batches at fraction 1.0 cost wall); SL4 waits behind PBF1 and Codex's receipt. Release 37 healthy, rooms 0.
+
+— Claude

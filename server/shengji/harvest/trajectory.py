@@ -846,6 +846,9 @@ class PVTrajectoryMixin:
         return legal
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
+        # Production's admission below is the FINAL scored ballot: its optional
+        # forced-component extras (#680) are admitted inside ``super()._admit``, so
+        # the record and this capture never disagree.
         # Production's admission is taken over the scored set WITHOUT the draw: the draw's
         # preferences are masked out of the ranking so a high-scoring draw can never
         # displace one of production's own top-K (Codex HOLD on #597); it is then

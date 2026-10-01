@@ -318,3 +318,125 @@ def test_served_wrapper_carries_the_rules_and_records_them():
     assert record["value_evaluations"] == 2 * k
     assert all(0 <= i < record["actions"] for i in record["admitted_indices"])
     assert len(set(record["admitted_indices"])) == k
+
+
+# ------------------------------------- the harvest ballot (Codex HOLD on #680, P1 #1)
+
+def _trajectory_bot(explore_rate, explore_k, **rules):
+    """A torch-free served bot re-classed onto the PV trajectory mixin exactly as
+    `make_trajectory_bot` does it."""
+    import random
+    from shengji.harvest import trajectory
+    bot = served(**rules)
+    bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+    bot._trajectory_init(random.Random(1))
+    bot.EXPLORE_RATE = float(explore_rate)
+    bot.EXPLORE_K = int(explore_k)
+    bot.LEGAL_CAP = 256
+    return bot
+
+
+@pytest.mark.parametrize("explore", [(0.0, 0), (1.0, 1)])
+def test_forced_extras_are_in_the_harvested_production_ballot(explore):
+    """The mixin captures the ballot at the admission boundary; the forced extras
+    must be inside it, so `pv_fields_from_record` (the harvester's alignment
+    guard) accepts the record: the FINAL scored ballot, its production partition
+    (anchor, policy picks, forced extras) and its exploration partition (the
+    draw) agree with the record.  On d7eef7f6 the extras were appended after the
+    capture and this raised TrajectoryError (a 9-action record vs an 8-action
+    ballot)."""
+    from collections import Counter as _Counter
+    from shengji.harvest import trajectory
+    from shengji.harvest.common import action_key
+    rnd = state(); seat = rnd.turn
+    actions = enumerate_legal(rnd, seat, cap=4000).actions
+    throw = ["C10", "CA"]
+    bot = _trajectory_bot(*explore, admit_forced_single=True)
+    bot._worlds = lambda *a, **k: ([([sorted(h) for h in rnd.hands], sorted(rnd.buried))] * 2, 2)
+    crafted_preferences(bot, rnd, seat, [actions.index(throw)])
+    action = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    # the REAL harvest path FIRST: on d7eef7f6 this raised TrajectoryError
+    # ("admitted a different ballot") from pv_fields_from_record's alignment guard
+    stats = _Counter()
+    fields = trajectory._play_fields({}, "run", 0, 0, rnd, seat, [], action, bot, 256, stats)
+    assert record["forced_single_added"] == [actions.index(["C10"])]
+    assert len(record["admitted_indices"]) == 9 + (1 if explore[1] else 0)
+    ballot = bot.last_ballot
+    assert len(ballot) == len(record["admitted"]) == len(record["value_means"])
+    assert [action_key(a) for a in ballot] == [action_key(a) for a in record["admitted"]]
+    production = bot.last_production_ballot
+    assert action_key(["C10"]) in {action_key(a) for a in production}
+    assert production == ballot[:len(production)]
+    draw = [a for a in ballot if a not in production]
+    if explore[1]:
+        assert bot.last_exploration is not None and len(draw) == len(bot.last_exploration["added"]) == 1
+    else:
+        assert draw == [] and production == ballot
+    # the record was accepted and the partitions are stamped
+    assert stats["searched"] == 1
+    assert fields["ballot"] == ballot and len(fields["action_values"]["means"]) == len(ballot)
+    assert fields["allocation"]["played_index"] == record["admitted_indices"].index(record["selected_index"])
+    assert action_key(fields["ballot"][fields["allocation"]["played_index"]]) == action_key(action)
+    if explore[1]:
+        assert fields["production_ballot"] == production and fields["exploration"]["added"] == draw
+    else:
+        assert fields["production_ballot"] is None and fields["exploration"] is None
+    # the harvester's own alignment guard still bites on a misaligned ballot
+    with pytest.raises(trajectory.TrajectoryError, match="different ballot"):
+        trajectory.pv_fields_from_record(record, ballot[:-1])
+
+
+# ------------------------------- the serving deadline (Codex HOLD on #680, P1 #2)
+
+def test_deadline_firing_inside_the_forced_extras_loop_is_a_clean_fallback(monkeypatch):
+    """Mocked clock: every engine validation inside the throw-resolution loop
+    advances it, so the deadline fires INSIDE `_forced_extras` (after the stride
+    checkpoint) before any value batch exists.  The contract: the heuristic anchor
+    is played, the record is the fallback record, the sampler RNG is restored, no
+    value batch ran; and the same bot with a generous budget completes."""
+    rnd = state(); seat = rnd.turn
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    validations = []
+
+    def slow_forced_lead(rnd_, seat_, cards, hands=None):
+        validations.append(1)
+        clock[0] += 0.1                       # 16 validations cross a 1 s deadline
+        return forced_lead(rnd_, seat_, cards, hands)
+    monkeypatch.setattr(module, "forced_lead", slow_forced_lead)
+
+    class CountingEvaluator(ZeroEvaluator):
+        calls = 0
+
+        def score(self, leaves, seat_):
+            type(self).calls += 1
+            return np.zeros(len(leaves))
+
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=64, candidates=8, cap=4000,
+                               batch_size=128, serving_budget_seconds=1.0, admit_forced_single=True)
+    bot = pv.PVSearchBot(predict, evaluator=CountingEvaluator(), version=2, config=config,
+                         checkpoint="/dev/null", seed=41)
+    actions = enumerate_legal(rnd, seat, cap=4000).actions
+    crafted_preferences(bot, rnd, seat, [actions.index(["C10", "CA"])])
+    anchor = module.HeuristicBot().decide_play(copy.deepcopy(rnd), seat)
+    before = bot.sampler.rng.getstate()
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert played == list(anchor)
+    assert record["schema"] == pv.FALLBACK_SCHEMA and record["reason"] == "budget"
+    assert record["error_class"] == "PVSearchBudgetExceeded" and record["work_complete"] is False
+    assert bot.sampler.rng.getstate() == before
+    assert CountingEvaluator.calls == 0
+    # the deadline fired at a stride checkpoint inside the world loop: bounded work
+    # (a literal, so a tree without the in-loop checkpoint fails on the COUNT: it
+    # resolves all 64 worlds of the first throw before any check)
+    assert 0 < len(validations) <= 32
+    assert module.FORCED_BUDGET_STRIDE == 16
+    # a generous budget completes with the extras admitted, and consumes the stream
+    clock[0] = 0.0
+    bot.serving_budget_seconds = 1e9
+    bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert record["schema"] == pv.RECORD_SCHEMA and record["forced_single_added"] == [actions.index(["C10"])]
+    assert bot.sampler.rng.getstate() != before

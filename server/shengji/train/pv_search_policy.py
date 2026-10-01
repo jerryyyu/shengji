@@ -69,7 +69,7 @@ from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
-from .policy_value_search import ADMISSION_DEFAULTS, PolicyValueBot
+from .policy_value_search import ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS, PolicyValueBot
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
 
@@ -345,9 +345,13 @@ class PVSearchBot(PolicyValueBot):
         return enumerate_legal(rnd, seat, cap=self.cap, must_include=list(must_include))
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
-        """Indices (into ``actions``) the value head prices: the anchor first, then the
-        policy's best scores, ``self.candidates`` in all -- the harness's own
-        admission (`PolicyValueBot._admit`), including its optional diversity cap."""
+        """Indices (into ``actions``) the value head prices -- the FINAL ballot: the
+        anchor first, then the policy's best scores, ``self.candidates`` in all, then
+        any forced-component extras -- the harness's own admission
+        (`PolicyValueBot._admit`; the worlds and the deadline reach it through the
+        admission context `_search` sets).  A wrapper that captures the ballot here
+        (the trajectory mixin, a hook override) captures everything the value head
+        will price."""
         return super()._admit(rnd, seat, actions, preferences, anchor_index)
 
     def _search(self, rnd, seat, anchor, started, check_budget=None):
@@ -359,14 +363,12 @@ class PVSearchBot(PolicyValueBot):
         preferences = self.scores(rnd, seat, actions, worlds).mean(axis=0)
         anchor_key = tuple(sorted(anchor))
         anchor_index = next(i for i, a in enumerate(actions) if tuple(sorted(a)) == anchor_key)
-        chosen = [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
+        chosen = self._admission(rnd, seat, actions, preferences, anchor_index, worlds, check_budget)
         if not chosen or chosen[0] != anchor_index or len(set(chosen)) != len(chosen) \
                 or any(not 0 <= i < len(actions) for i in chosen):
             raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
-        extras, detail = self._forced_extras(rnd, seat, actions, chosen, worlds)
-        if any(i in chosen for i in extras) or len(set(extras)) != len(extras):
-            raise PVSearchPolicyError("forced-single admission must add distinct new indices")
-        chosen.extend(int(i) for i in extras)
+        if len(chosen) > self.candidates + FORCED_EXTRA_SLOTS:
+            raise PVSearchPolicyError("admission exceeded the candidate budget")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
         if check_budget is not None:
@@ -391,7 +393,7 @@ class PVSearchBot(PolicyValueBot):
             # ``played`` is the server's record/play contract (`api.server._log_play`)
             "played": list(admitted[winner]),
             "seconds": time.perf_counter() - started, "work_complete": True,
-            **self._admission_record(extras, detail),
+            **self._admission_record(),
             **self._sampler_record(),
         }
         return list(admitted[winner])

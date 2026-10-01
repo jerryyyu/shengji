@@ -40,6 +40,9 @@ from .policy_world_search import PolicyWorldBot
 
 #: `admit_forced_single` may grow the shortlist by at most this many slots (K+2).
 FORCED_EXTRA_SLOTS = 2
+#: the cooperative budget is checked before every admitted throw and after
+#: every this-many sampled worlds inside the throw-resolution loop
+FORCED_BUDGET_STRIDE = 16
 ADMISSION_DEFAULTS = dict(admission_diversity=False, max_per_structure=2,
                           admit_forced_single=False, forced_min_fraction=0.25)
 
@@ -108,6 +111,8 @@ class PolicyValueBot(PolicyWorldBot):
         self.max_per_structure = max_per_structure
         self.admit_forced_single = admit_forced_single
         self.forced_min_fraction = float(forced_min_fraction)
+        self._admission_context = (None, None)
+        self._diversity_skipped, self._forced_added, self._forced_detail = [], [], []
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -144,17 +149,39 @@ class PolicyValueBot(PolicyWorldBot):
     # -- admission ------------------------------------------------------------
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
-        """Indices (into ``actions``) the value head prices: the anchor first, then
-        the policy's best scores, ``self.candidates`` in all.  With
-        ``admission_diversity`` the structural caps apply (module docstring); the
-        capped indices that stayed out are kept in ``self._diversity_skipped``."""
+        """Indices (into ``actions``) the value head prices -- THE FINAL scored
+        ballot: the anchor first, then the policy's best scores, ``self.candidates``
+        in all, then (``admit_forced_single``) the forced components, at most
+        `FORCED_EXTRA_SLOTS`.  With ``admission_diversity`` the structural caps
+        apply (module docstring); the capped indices that stayed out are kept in
+        ``self._diversity_skipped``, the forced extras in ``self._forced_added``.
+
+        Everything that reaches the value head is decided HERE, so a wrapper that
+        captures the ballot at the admission boundary (the trajectory mixin's
+        production ballot, a hook override's ``super()._admit``) sees exactly what
+        is priced.  The signature is the hook contract (five positionals); the
+        sampled worlds and the serving deadline callback the forced-component rule
+        needs arrive through ``self._admission_context``, set by the caller for
+        the duration of the call (`_admission`).
+        """
+        worlds, check_budget = self._admission_context
         ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
         self._diversity_skipped = []
+        self._forced_added, self._forced_detail = [], []
         if not self.admission_diversity:
             chosen = [anchor_index]
             chosen.extend(i for i in ranked if i != anchor_index)
-            return chosen[:self.candidates]
-        return self._admit_diverse(rnd, actions, ranked, anchor_index)
+            chosen = chosen[:self.candidates]
+        else:
+            chosen = self._admit_diverse(rnd, actions, ranked, anchor_index)
+        if self.admit_forced_single:
+            if worlds is None:
+                raise ValueError('admit_forced_single needs the sampled worlds at admission')
+            extras, detail = self._forced_extras(rnd, seat, actions, chosen, worlds,
+                                                 check_budget=check_budget)
+            self._forced_added, self._forced_detail = extras, detail
+            chosen = list(chosen) + extras
+        return chosen
 
     def _admit_diverse(self, rnd, actions, ranked, anchor_index):
         k = self.candidates
@@ -184,10 +211,13 @@ class PolicyValueBot(PolicyWorldBot):
         self._diversity_skipped = skipped[len(backfill):]
         return chosen
 
-    def _forced_extras(self, rnd, seat, actions, chosen, worlds):
+    def _forced_extras(self, rnd, seat, actions, chosen, worlds, check_budget=None):
         """Indices of the forced components to admit next to the admitted throws
         (``admit_forced_single``) and their detail records.  Empty on a follow,
-        and whenever the rule is off."""
+        and whenever the rule is off.  ``check_budget`` (the serving deadline)
+        runs before every admitted throw and every `FORCED_BUDGET_STRIDE` worlds
+        inside the resolution loop, so the work between two checks is bounded
+        by one stride of engine validations, never by throws x worlds."""
         if not self.admit_forced_single or rnd.trick is None or rnd.trick.plays:
             return [], []
         index_of = {tuple(a): i for i, a in enumerate(actions)}
@@ -199,8 +229,12 @@ class PolicyValueBot(PolicyWorldBot):
             action = actions[throw_index]
             if len(action) < 2 or len(decompose(list(action), rnd.ordering).components) < 2:
                 continue
+            if check_budget is not None:
+                check_budget()
             tally = Counter()
-            for hands, _ in worlds:
+            for world_index, (hands, _) in enumerate(worlds):
+                if check_budget is not None and world_index and world_index % FORCED_BUDGET_STRIDE == 0:
+                    check_budget()
                 forced = forced_lead(rnd, seat, action, hands)
                 if forced is not None:
                     tally[tuple(forced)] += 1
@@ -224,13 +258,23 @@ class PolicyValueBot(PolicyWorldBot):
             detail.append(entry)
         return extras, detail
 
-    def _admission_record(self, extras, detail):
+    def _admission(self, rnd, seat, actions, preferences, anchor_index, worlds,
+                   check_budget=None):
+        """`_admit` with the per-decision context (worlds, deadline) in place."""
+        self._admission_context = (worlds, check_budget)
+        try:
+            return [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
+        finally:
+            self._admission_context = (None, None)
+
+    def _admission_record(self):
+        """The rule fields of the decision record; EMPTY with both rules off."""
         record = {}
         if self.admission_diversity:
             record["diversity_skipped"] = [int(i) for i in self._diversity_skipped]
         if self.admit_forced_single:
-            record["forced_single_added"] = [int(i) for i in extras]
-            record["forced_single_detail"] = detail
+            record["forced_single_added"] = [int(i) for i in self._forced_added]
+            record["forced_single_detail"] = list(self._forced_detail)
         return record
 
     def decide_play(self, rnd, seat):
@@ -246,9 +290,7 @@ class PolicyValueBot(PolicyWorldBot):
         anchor_key = tuple(sorted(anchor))
         anchor_index = next(i for i, a in enumerate(actions)
                             if tuple(sorted(a)) == anchor_key)
-        chosen = list(self._admit(rnd, seat, actions, preferences, anchor_index))
-        extras, detail = self._forced_extras(rnd, seat, actions, chosen, worlds)
-        chosen.extend(extras)
+        chosen = self._admission(rnd, seat, actions, preferences, anchor_index, worlds)
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds)
         winner = self._select(rnd, seat, admitted, means)
@@ -260,6 +302,6 @@ class PolicyValueBot(PolicyWorldBot):
             'selected_index': chosen[winner], 'value_batches': batches,
             'value_evaluations': len(worlds) * len(admitted),
             'seconds': time.perf_counter() - started,
-            **self._admission_record(extras, detail),
+            **self._admission_record(),
         }
         return list(admitted[winner])

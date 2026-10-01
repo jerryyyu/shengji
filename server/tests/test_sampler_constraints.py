@@ -262,9 +262,14 @@ def test_pair_cap_forward_check_prevents_a_rejected_world():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, os.path.join(root, "scripts"))
     import pilot_states as PS
+    import hashlib
     from shengji.ai.registry import make_bot
     from shengji.ai.memory import Memory
-    from shengji.pilot_folds import stream_seed
+
+    def stream_seed(salt: str, state_key: str, fold: str) -> int:
+        # the deterministic per-(state, fold) seed pilot_folds.stream_seed produced, inlined
+        # when that module was deleted (#661): sha256 of "salt|state_key|fold", first 8 bytes
+        return int.from_bytes(hashlib.sha256(f"{salt}|{state_key}|{fold}".encode()).digest()[:8], "big")
 
     art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
     if not os.path.exists(art):

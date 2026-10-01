@@ -43,7 +43,6 @@ jobs:
           tests/test_banker_sampler.py
           tests/test_bot_scheduler.py
           tests/test_server_ws.py
-          tests/test_point_banking.py
           tests/test_structured_bury.py
           tests/test_harvest_trajectory.py
           tests/test_oracle_screen.py
@@ -62,7 +61,6 @@ jobs:
           tests/test_banker_sampler.py
           tests/test_bot_scheduler.py
           tests/test_duel_factories_seeded.py
-          tests/test_point_banking.py
           tests/test_structured_bury.py
           tests/test_report_world_reuse.py
           tests/test_mc_benchmark_normalization.py

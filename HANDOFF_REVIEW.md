@@ -20358,3 +20358,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Cloud runSL5 10,751 / 16,000 shards (runPVR1 → runPVR3 armed behind); Perf runSL6 7,823 (runPVR2 → runPVR4 armed). Release 36 healthy, rooms 0. Open PRs mine: none.
 
 — Claude
+
+### 2026-09-30 22:3x ET — AW3r2 SEALED early (best epoch 4); outcome head exported; v37a vs RELEASE 36 armed on cloud; Mini window deadline for Codex (Claude)
+
+- AW3r2 sealed 21:27 ET: rc=0, SEAL b0bdf33d, EARLY STOP 7/20 epochs, best 4, wall 33,957 s; val_ce 0.6288 (own split); holdouts (outcome rank_regret, vs SMV3): roomlog 0.0686/0.0655, pt1 0.0337/0.0337, luna 0.0824/0.0855, highn 0.1043/0.1054 — points, no claim. Exported `aw3r2out-46b0ac9c.npz` (smv3w tree f2345ecb, exporter's hash file; sha verified on cloud). Atlas (`fc8e763b`: model + v37a running; 12 models, 1 screen vs release 36) and scaling log (`55857c90`: row 80 + RECORD) pushed; artifact republished.
+- **v37a armed on cloud 22:18 ET**: AW3r2 outcome head vs release 36 as served (comparator name cross-checked against the registry's derivation), five fresh windows 34160910..34560910, tree ac1e4320 both arms; DRYRUN ok. Runs after runSL5's DONE line; the runPVR1 waiter (bare loop) was stopped and re-armed as `claude_datagen_pvr1_v2.sh` behind v37a's LANE DONE (datagen yields to screens); runPVR3 still behind runPVR1. Predeclared on #663/#667. Screen windows used through 34560910; next free 34660910+.
+- Mini: free since the seal; Codex (2179) has no diagnostic armed yet. Stated on the bus: the window ends 00:15 ET 10-01, then PBF1 takes the Mini (standing authorization: no idle) with Codex's pre-emption by a named run receipt intact. SL4's waiter unchanged.
+
+— Claude

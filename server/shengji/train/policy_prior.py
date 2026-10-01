@@ -25,8 +25,9 @@ legal set, ``explore_rate``/``explore_k``) is tagged per row with an int8
 ``explore_flag`` and a float32 ``explore_margin`` (``explore_tags_of``):
   * 0 -- no ballot slot is an exploration-ONLY candidate: a member of
     ``exploration.added`` that the shortlist (``production_ballot``, production's
-    own admission; the ballot minus the draws when a record has none) does not
-    already carry.  NOTE this is narrower than the ``explore_played`` counter,
+    own admission, taken EXACTLY -- a widened action on the ballot is neither a
+    draw nor the shortlist's; the ballot minus the draws when a record has no
+    ``production_ballot``) does not already carry.  NOTE this is narrower than the ``explore_played`` counter,
     which is plain membership in ``exploration.added``: in the pv path a draw
     already in the scored set competes for admission on its own score, and a
     draw production admitted anyway is the shortlist's candidate, not a miss;
@@ -229,15 +230,20 @@ def explore_tags_of(raw_ballot: Sequence[Sequence[str]], means_raw: Sequence[flo
     docstring).  ``raw_ballot`` and ``means_raw`` are slot-aligned (NaN = the
     search reported no value for that slot); ``added`` is the record's
     ``exploration.added``; ``production`` its ``production_ballot`` (the
-    shortlist), or None for a record without one, where the shortlist is the
-    ballot minus the draws.  Membership is by action identity (sorted cards).
-    A draw slot is an ``added`` action the shortlist does NOT carry; every other
-    slot is the shortlist's.  Flag 2 needs a FINITE draw value STRICTLY above
-    the best finite shortlist value; a shortlist with no finite value cannot
-    have been beaten and the row stays at 1."""
+    shortlist).  Membership is by action identity (sorted cards).  With an
+    explicit ``production`` the shortlist is EXACTLY that list: a draw slot is
+    an ``added`` action the shortlist does not carry, a shortlist slot is one
+    on ``production``, and any OTHER ballot action (a widened candidate, a
+    ``widening.added`` entry) is neither -- it is not production's choice and
+    does not count on either side (Codex HOLD on #684).  Without a
+    ``production`` list (a record from before ``production_ballot``) the
+    shortlist is the ballot minus the draws.  Flag 2 needs a FINITE draw value
+    STRICTLY above the best finite shortlist value; a shortlist with no finite
+    value cannot have been beaten and the row stays at 1."""
     draws = {tuple(sorted(a)) for a in added if a}
-    if production is not None:
-        draws -= {tuple(sorted(a)) for a in production if a}
+    shortlist = None if production is None else {tuple(sorted(a)) for a in production if a}
+    if shortlist is not None:
+        draws -= shortlist
     if not draws:
         return EXPLORE_FLAG_NONE, float("nan")
     best_draw = best_other = None
@@ -246,10 +252,13 @@ def explore_tags_of(raw_ballot: Sequence[Sequence[str]], means_raw: Sequence[flo
         if not a:
             continue
         v = float(mv)
-        if tuple(sorted(a)) in draws:
+        key = tuple(sorted(a))
+        if key in draws:
             seen_draw = True
             if math.isfinite(v) and (best_draw is None or v > best_draw):
                 best_draw = v
+        elif shortlist is not None and key not in shortlist:
+            continue                      # widened, neither a draw nor production's
         elif math.isfinite(v) and (best_other is None or v > best_other):
             best_other = v
     if not seen_draw:

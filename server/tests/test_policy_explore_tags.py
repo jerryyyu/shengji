@@ -79,6 +79,22 @@ def test_flag_2_with_the_margin_over_the_best_non_draw_value():
     assert flag == 1 and math.isnan(margin)
     flag, margin = pp.explore_tags_of(ballot, [0.0, 0.5, -9.0, 0.75], [["S7", "S8"], ["SA", "SK"]], production=production)
     assert flag == 2 and margin == pytest.approx(0.25)
+
+
+def test_a_widened_non_draw_action_is_neither_production_nor_a_draw():
+    """Codex HOLD on #684: with an explicit production_ballot the shortlist is EXACTLY that
+    list.  Ballot S3/H3/C3 with means 0/2/1, exploration C3, production [S3]: H3 is a widened
+    action (neither), so the draw C3 = 1 beats production's best S3 = 0 -> flag 2, margin 1."""
+    ballot = [["S3"], ["H3"], ["C3"]]
+    flag, margin = pp.explore_tags_of(ballot, [0.0, 2.0, 1.0], [["C3"]], production=[["S3"]])
+    assert flag == 2 and margin == pytest.approx(1.0)
+    # the widened action never counts on the draw side either: an unvalued production slot
+    # cannot have been beaten even though H3 holds a value
+    flag, margin = pp.explore_tags_of(ballot, [NAN, 2.0, 1.0], [["C3"]], production=[["S3"]])
+    assert flag == 1 and math.isnan(margin)
+    # without a production_ballot the fallback (ballot minus draws) still treats H3 as the shortlist's
+    flag, margin = pp.explore_tags_of(ballot, [0.0, 2.0, 1.0], [["C3"]])
+    assert flag == 1 and math.isnan(margin)
     # empty ballot entries (the ones ballot_tensors drops) are skipped, not counted as slots
     flag, margin = pp.explore_tags_of([[], ["S3"], ["S7"]], [99.0, 1.0, 2.0], [["S7"]])
     assert flag == 2 and margin == pytest.approx(1.0)

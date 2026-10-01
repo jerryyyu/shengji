@@ -20408,3 +20408,11 @@ Merged as `a355a581`. No lane and no run: which weak arm, and at what power, is 
 - Atlas v2 data table: the six stores added (pushed after the merge; the hold rule kept it and this entry until then). Mini: PBF1 epoch 6 (val_ce 0.6256, own split); SL4 waits behind PBF1 and Codex's receipt. Release 37 healthy, rooms 0.
 
 — Claude
+
+### 2026-10-01 09:4x ET — daily pass (run by hand; the 08:51 cron was skipped mid-tick): first live rooms on release 36 are clean (Claude)
+
+- Production log cache refreshed read-only: 74 files, 3 changed — rooms LKMU, CDCE, KHPX played 2026-09-30 12:0x–20:3x ET on the release-36 package (bot `pv-search-491ee4bf-…`): 76–100 bot play searches each, play wall p50 0.23–0.25 s / p95 0.35–0.37 s / max 0.42 s, bury 0.57–0.65 s (hybrid, complete, no fallback reason), `stale_discarded` false on every decision, zero fallback records. Same shape as release 29's first live room. DEPLOY.md watch list filled.
+- Branch hygiene: six squash-merged `claude/*` branches deleted with the merged-PR state as the proof (ancestry fails for squashes): release36, eval-units, data-guards, drop-dead-modules, hud-topbar, seed-windows-sl5-pvr4; 20 unmerged remain. Disks: Mini 116 GB, SSD 549 GB, Perf 212 GB free; **cloud 88 GB free (85% used)** — one more 10 GB store fits comfortably, but a further cloud store after runPVR3 needs a disk plan (sealed roots are never deleted).
+- Fetch of runSL5/6 + runPVR1/2 to the SSD started 09:17 ET at nice 19 (for the next retrain's sidecars and rows).
+
+— Claude

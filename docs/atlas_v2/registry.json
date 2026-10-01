@@ -879,15 +879,29 @@
    "name": "runPVR3",
    "box": "cloud",
    "seed0": "35292910",
-   "clusters": "dealing",
-   "status": "Release-36 teacher, armed behind runPVR1; dealing since 06:19 ET 10-01 (13,363 shards at 09:15 ET)."
+   "clusters": "16,000 sealed",
+   "status": "SEALED 09:51 ET 10-01: release-36 teacher, as runPVR1; 32,000 rounds, 2,207,320 records, run traj-s35292910-247bcf35f694. Fetched to the Mini SSD 10:2x ET."
   },
   {
    "name": "runPVR4",
    "box": "Perf",
    "seed0": "35308910",
+   "clusters": "16,000 sealed",
+   "status": "SEALED 10:17 ET 10-01: release-36 teacher, as runPVR1; 32,000 rounds, 2,210,076 records, run traj-s35308910-e55ff53e3f84. Fetched to the Mini SSD 10:2x ET."
+  },
+  {
+   "name": "runPVR5",
+   "box": "Perf",
+   "seed0": "35324910",
    "clusters": "dealing",
-   "status": "Release-36 teacher, armed behind runPVR2; dealing since 06:30 ET 10-01 (11,720 shards at 09:15 ET)."
+   "status": "Release-36 teacher, as runPVR1 (one variable vs runPV1..10: the package); DRYRUN through the real entry point, dealing since 10:22 ET 10-01 behind runPVR4's DONE line (standing run authorization 09-30)."
+  },
+  {
+   "name": "runPVR6",
+   "box": "cloud",
+   "seed0": "35340910",
+   "clusters": "dealing",
+   "status": "Release-36 teacher, as runPVR1; dealing since 10:22 ET 10-01 behind runPVR3's DONE line. Cloud disk 87 GB free before this store (~10 GB each): at most one more cloud store (runPVR8) without a disk plan."
   }
  ],
  "history": {

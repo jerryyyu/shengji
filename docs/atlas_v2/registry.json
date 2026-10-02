@@ -524,7 +524,7 @@
    "point": 0.02324,
    "lo": -0.00055,
    "hi": 0.04704,
-   "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944007948): the legacy Perf vol_re.py rejected valid cross-mirror banker/suit differences, so pairing was rebuilt on planned (cluster, seed, rank) with both mirrors, the original window_delta (4,000 bootstrap replicates) and DL pooling unchanged; 2,600 paired clusters, none dropped. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-vs-r36 with SHA256SUMS. CROSSES ZERO (SE 0.01214, tau 0, MDE80 0.034); all five window points positive (+0.029/+0.026/+0.038/+0.006/+0.019). Point CLEARS the +0.015 triage: fresh-five confirmation running. Not a validated gain; no promotion; mechanism unverified."
+   "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944007948): the legacy Perf vol_re.py rejected valid cross-mirror banker/suit differences, so pairing was rebuilt on planned (cluster, seed, rank) with both mirrors, the original window_delta (4,000 bootstrap replicates) and DL pooling unchanged; 2,600 paired clusters, none dropped. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-vs-r36 with SHA256SUMS. CROSSES ZERO (SE 0.01214, tau 0, MDE80 0.034); all five window points positive (+0.029/+0.026/+0.038/+0.006/+0.019). Point CLEARED the +0.015 triage, but the fresh-five confirmation did NOT confirm (see v38divc: +0.0157 [-0.0282, +0.0596], 10-02). Not a validated gain; no promotion; mechanism unverified."
   },
   {
    "id": "v38fs",
@@ -561,6 +561,42 @@
    "lo": -0.0006,
    "hi": 0.03428,
    "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944236034; legacy vol_re.py rejected valid cross-mirror banker/suit differences; numerical window_delta and DL unchanged); 2,600 paired clusters, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38rc-vs-r36 with SHA256SUMS. CROSSES ZERO (MDE80 0.025); windows +0.048/-0.001/+0.002/+0.023/+0.011. Point CLEARS the +0.015 triage: fresh-five confirmation running. Telemetry: 184,366/184,366 valid refusal traces, 2,935 decisions rejected a world, 0 refill fallbacks; decision wall 1.017x production. Not a validated gain; no promotion."
+  },
+  {
+   "id": "v38divc",
+   "date": "2026-10-02",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "admission DIVERSITY rule (-div), FRESH-FIVE CONFIRMATION of v38div: release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admission_diversity on",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "37960910..38360910",
+   "confidence": 0.95,
+   "point": 0.01568,
+   "lo": -0.02822,
+   "hi": 0.05959,
+   "note": "SEALED 10-02; Codex's reviewed launcher (tree c8704a08) and analyzer of record (#676 issuecomment-5946020810): paired bootstrap (4,000 replicates) + DL, fresh-only primary, predeclared criterion CI lower bound > 0. 2,600 paired clusters, none dropped; integrity/coverage PASS, zero PV play fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-confirm-vs-r36 with SHA256SUMS. UNCONFIRMED: crosses zero (SE 0.0224, tau 0.0417, I2 69.6%); windows -0.059/+0.024/+0.075/+0.038/+0.004. Does not establish harm or equivalence. v38div's +0.023 is not confirmed; no promotion."
+  },
+  {
+   "id": "v38tb",
+   "date": "2026-10-02",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "TIE-BREAK by trick points (-tb): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE change -- near-tie value argmax broken by trick points (tree claude-main-19 at 7059f7c2)",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "35860910..36260910",
+   "confidence": 0.95,
+   "point": 0.00986,
+   "lo": -0.02529,
+   "hi": 0.04501,
+   "note": "SEALED 10-02; analyzer of record is Codex's reviewed one-pass readout (#676 issuecomment-5946487630): declared vol_re.py summary-level primary, DL over all five windows (SE 0.0179, tau 0, I2 0%, MDE80 ~0.050); 2,600 clusters per policy, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38tb-vs-r36 with SHA256SUMS. INCONCLUSIVE: crosses zero; windows -0.003/+0.008/+0.022/+0.006/+0.016. Below the +0.015 triage: no extension. Mechanism active: tie-break changed the argmax on 16,257/183,216 PV play decisions (8.87%); no recorded fallback, tie-break budget abandonment or timeout. Not a validated gain; no promotion."
   },
   {
    "id": "v39a",

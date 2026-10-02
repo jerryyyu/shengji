@@ -96,6 +96,7 @@ import numpy as np
 
 from ..ai.cwv_policy import afterstate
 from ..ai.heuristic import HeuristicBot
+from ..engine.cards import TRUMP, make_deck
 from ..engine.combos import decompose
 from ..harvest.legal import enumerate_legal, forced_lead
 from .policy_world_search import PolicyWorldBot
@@ -117,6 +118,33 @@ TIEBREAK_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
 #: `adaptive_k`: the admission width on a lead whose legal set holds a
 #: multi-card action (module docstring); 16 = twice production's K=8.
 ADAPTIVE_K_DEFAULTS = dict(adaptive_k=False, candidates_lead_multi=16)
+
+#: `lead_anchor`: the optional slot-0 rule on low-single leads (module docstring)
+LEAD_ANCHOR_DEFAULTS = dict(lead_anchor=False)
+_DECK = tuple(sorted(set(make_deck())))
+
+
+def _cards_text(cards):
+    """A scalar for the decision record (the screen trace writer drops lists)."""
+    return " ".join(cards)
+
+
+def _is_top_live(rnd, seat, card):
+    """True when no live card of ``card``'s effective suit outranks it.  Live =
+    not played in a resolved trick or the current one, and not in the seat's
+    own kitty (only the banker knows it); the seat's own hand is live, so a
+    held higher card makes ``card`` not the top."""
+    ordering = rnd.ordering
+    suit, level = ordering.eff_suit(card), ordering.level(card)
+    gone = Counter()
+    tricks = list(rnd.history) + ([rnd.trick] if rnd.trick is not None else [])
+    for trick in tricks:
+        for play in trick.plays:
+            gone.update(play.cards)
+    if rnd.banker == seat and rnd.buried:
+        gone.update(rnd.buried)
+    return not any(ordering.eff_suit(c) == suit and ordering.level(c) > level
+                   and gone[c] < 2 for c in _DECK)
 
 
 def leading(rnd):
@@ -178,6 +206,7 @@ class PolicyValueBot(PolicyWorldBot):
                  tiebreak_epsilon=TIEBREAK_DEFAULTS["tiebreak_epsilon"],
                  adaptive_k=ADAPTIVE_K_DEFAULTS["adaptive_k"],
                  candidates_lead_multi=ADAPTIVE_K_DEFAULTS["candidates_lead_multi"],
+                 lead_anchor=LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -222,6 +251,10 @@ class PolicyValueBot(PolicyWorldBot):
         self.adaptive_k = adaptive_k
         self.candidates_lead_multi = candidates_lead_multi
         self._adaptive = {'adaptive_k_applied': False, 'k_used': int(candidates)}
+        if type(lead_anchor) is not bool:
+            raise ValueError('lead_anchor must be a bool')
+        self.lead_anchor = lead_anchor
+        self._lead_anchor = None
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -356,9 +389,12 @@ class PolicyValueBot(PolicyWorldBot):
         the duration of the call (`_admission`).
         """
         worlds, check_budget = self._admission_context
+        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
+        if self.lead_anchor:
+            anchor_index = self._lead_anchor_index(rnd, seat, actions, preferences,
+                                                   anchor_index, ranked)
         k, applied = self._admission_k(rnd, actions, preferences)
         self._adaptive = {'adaptive_k_applied': applied, 'k_used': int(k)}
-        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
         self._diversity_skipped = []
         self._forced_added, self._forced_detail = [], []
         if not self.admission_diversity:
@@ -375,6 +411,48 @@ class PolicyValueBot(PolicyWorldBot):
             self._forced_added, self._forced_detail = extras, detail
             chosen = list(chosen) + extras
         return chosen
+
+    def _lead_anchor_index(self, rnd, seat, actions, preferences, anchor_index, ranked):
+        """Slot 0 under ``lead_anchor`` (module docstring): the heuristic's index,
+        or its replacement on a low-single lead.  ``ranked`` is the admission's
+        own preference order, reused (no new model call).  Sets
+        ``self._lead_anchor`` (the record fields, the effective anchor's cards)."""
+        anchor = list(actions[anchor_index])
+        target, source = anchor_index, "heuristic"
+        ordering = rnd.ordering
+        if leading(rnd) and len(anchor) == 1 and ordering.eff_suit(anchor[0]) != TRUMP \
+                and not _is_top_live(rnd, seat, anchor[0]):
+            best = None
+            for i, action in enumerate(actions):
+                if len(action) < 2 or not np.isfinite(preferences[i]):
+                    continue
+                suits = {ordering.eff_suit(c) for c in action}
+                if len(suits) != 1 or TRUMP in suits:
+                    continue
+                components = decompose(list(action), ordering).components
+                if len(components) != 1 or components[0].pair_len < 1:
+                    continue
+                key = (components[0].top, len(action), -i)
+                if best is None or key > best[0]:
+                    best = (key, i)
+            if best is not None:
+                target, source = best[1], "pair"
+            elif ranked and np.isfinite(preferences[ranked[0]]):
+                target, source = ranked[0], "policy"
+        self._lead_anchor = {
+            "lead_anchor_applied": target != anchor_index,
+            "lead_anchor_from": _cards_text(anchor),
+            "lead_anchor_to": _cards_text(actions[target]),
+            "lead_anchor_source": source if target != anchor_index else "heuristic",
+        }
+        return target
+
+    def _effective_anchor_key(self, anchor_key):
+        """The cards key slot 0 must hold: the heuristic anchor's, or (rule on)
+        the one `_lead_anchor_index` chose for this decision."""
+        if self.lead_anchor and self._lead_anchor is not None:
+            return tuple(sorted(self._lead_anchor["lead_anchor_to"].split(" ")))
+        return anchor_key
 
     def _admit_diverse(self, rnd, actions, ranked, anchor_index, k=None):
         k = self.candidates if k is None else k
@@ -455,6 +533,7 @@ class PolicyValueBot(PolicyWorldBot):
                    check_budget=None):
         """`_admit` with the per-decision context (worlds, deadline) in place."""
         self._admission_context = (worlds, check_budget)
+        self._lead_anchor = None
         try:
             return [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
         finally:
@@ -470,6 +549,8 @@ class PolicyValueBot(PolicyWorldBot):
             record["forced_single_detail"] = list(self._forced_detail)
         if self.adaptive_k:
             record.update(self._adaptive)
+        if self.lead_anchor and self._lead_anchor is not None:
+            record.update(self._lead_anchor)
         return record
 
     def decide_play(self, rnd, seat):

@@ -615,6 +615,42 @@
    "lo": -0.0878,
    "hi": -0.0171,
    "note": "SEALED 22:58Z 10-01 (rc=0 all ten arm-windows); analyzer of record Codex's isolated readout with the original vol_re.py (#663 issuecomment-5942352095); 2,600 paired clusters. Archived at ~/shengji-archive/2026-09-13/readouts/v39a-pbf1out-vs-r36 with SHA256SUMS. NEGATIVE: the interval excludes zero below it (SE 0.018, tau 0, I2 0%, MDE80 0.0505); every window negative (-0.039/-0.039/-0.081/-0.064/-0.038); supplementary paired bootstrap -0.0525 [-0.0829,-0.0223]. PBF1's head is better ALONE (+0.238 vs the production head) yet worse SERVED: a head-only-to-served transfer failure, not proof admission alone caused it. Do not promote."
+  },
+  {
+   "id": "v38drt",
+   "date": "2026-10-02",
+   "status": "sealed",
+   "box": "Perf + cloud",
+   "candidate": "COMBINED rules div + rc + tb: release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with THREE flags on together -- admission_diversity, refusal_constraints, tiebreak_points (Perf tree a94ae3bb, cloud tree 7059f7c2)",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten fresh 520-cluster mirrored windows (five per host), 300 s cap, common MC-LCB control per window; paired bootstrap + DL random effects",
+   "seeds": "39460910..39860910 (Perf), 39960910, 40060910, 40160910, 40360910, 40460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.01751,
+   "lo": -0.00202,
+   "hi": 0.03704,
+   "note": "SEALED 15:09Z 10-02 (both lanes LANE DONE); analyzer of record Codex's reviewed adapter read_combo_numeric.py 211e1e35 (the 7f8c0a1e adapter refused pre-raw on an int/float type-only binding difference at 2/3/300; disclosed numeric correction pinned before the raw pass, #676 issuecomment-5959215812); readout #676 issuecomment-5959262090, result abaf0008. Paired bootstrap (4,000 replicates, seed 20260909) + DL; 5,200 paired clusters, none dropped; integrity/coverage/PV health PASS, zero PV fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/combo-drt-vs-r36 with SHA256SUMS. UNCONFIRMED: crosses zero (SE 0.00996, tau 0, I2 0%); host halves (descriptive) Perf +0.0131 [-0.0144,+0.0406], cloud +0.0220 [-0.0057,+0.0497]. Tie-break applied on 8.65% of candidate decisions; diversity activation unobservable (diversity_skipped absent), not zero. Cannot attribute among the three rules or show additivity; no promotion."
+  },
+  {
+   "id": "v40a",
+   "date": "2026-10-02",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "gen-5 SMV3-SL4 OUTCOME head (3a4e3d70; SMV3's recipe + runSL1..4 rollout value labels, 560k) exported as sl4out-b85eda44.npz and served as pv-search W64/K8 + hybrid bury (tree claude-main-19 at 7059f7c2)",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five fresh 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; paired bootstrap + DL random effects",
+   "seeds": "40560910..40960910",
+   "confidence": 0.95,
+   "point": -0.01621,
+   "lo": -0.05996,
+   "hi": 0.02754,
+   "note": "SEALED 18:12Z 10-02; Claude readout at Jerry's request (#663 issuecomment-5959375120; Codex cross-check pending): the diversity-confirmation reader 27e65b64 instantiated for v40a (c3aae55e; package identity is the treatment), primary vol_re.py ce161623 (4,000 replicates + DL); predeclared fl-pilot vol_re.py f1f36583 recompute -0.0155 [-0.0592,+0.0282] agrees. 2,600 paired clusters, none dropped; integrity/coverage PASS, zero PV/bury fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/v40a-sl4out-vs-r36 with SHA256SUMS + receipt.json. INCONCLUSIVE: crosses zero (SE 0.0223, tau 0.036, I2 51.7%, MDE80 0.063); windows -0.041/+0.056/-0.073/+0.013/-0.033. Below the +0.015 triage: no extension; a five-window null is 'not large', not 'no effect'. No promotion."
   }
  ],
  "context_screens": [
@@ -839,6 +875,21 @@
     "lo": 0.2244,
     "hi": 0.2512,
     "ref": "10-01 paired duel vs the production head 8ecd4fea, 8k mirrored deals (headduel3-20261001); above SMV3's +0.2067 [+0.1932,+0.2204] and arm F's +0.1738 on the same scale \u2014 separate duels vs the production head, not a paired PBF1-vs-SMV3 contrast"
+   }
+  },
+  {
+   "name": "gen-5 SMV3-SL4 (rollout value labels)",
+   "ck": "3a4e3d70",
+   "date": "2026-10-02",
+   "recipe": "THE VALUE LABELS, NOT THE POLICY RECIPE: SMV3's recipe (arm F recipe + search-mean sidecar v3, production-head warm start 8ecd4fea, policy-batch-fraction 0.25 unchanged, tree f2345ecb) with ONE change -- the four rollout-labelled runSL1..4 stores added as independent value labels (#667 finding 2): 496,000 -> 560,000 files (plan #663, predeclared at issuecomment-5952877116). Run GEN5-PROD-SOFT-allPV-plusMCLCB-560k-SMV3-SL4, best.pt sha256 3a4e3d704ba8f3c81c14212d7dc113a9b0f44d0770b88b3f38b300688618e5d8.",
+   "val_ce": 0.6212,
+   "regret": null,
+   "status": "sealed 2026-10-02 11:05:41Z, wall 52,983 s, EARLY STOP at 10 of 20 epochs, best epoch 7. Own-split val_ce 0.6212 (NOT comparable to SMV3's: the val split changed with the corpus), rank_regret 0.0607, top-1 0.404. FOUR FIXED HOLDOUTS (outcome rank_regret), SL4 vs SMV3: roomlog 0.0687 / 0.0655, luna 0.0822 / 0.0855, highn 0.1056 / 0.1054, pt1 0.0385 / 0.0337 -- mixed; points, no interval. Exported outcome head sl4out-b85eda44.npz (sha256 b85eda440d925d042ef929599eb357298722bc989f8f501ee967b1f21ef1088a). Policy duel +0.1832 [+0.1699,+0.1969] vs the production head (headduel4r2; just below SMV3's interval, context only). SERVED v40a vs release 36 (windows 40560910..40960910): -0.0162 [-0.0600,+0.0275] INCONCLUSIVE, a five-window null ('not large', MDE80 0.063); no extension, no promotion.",
+   "head_vs_prod": {
+    "point": 0.1832,
+    "lo": 0.1699,
+    "hi": 0.1969,
+    "ref": "10-02 paired duel vs the production head 8ecd4fea, 8k mirrored deals (headduel4r2-sl4-20261002); just below SMV3's +0.2067 [+0.1932,+0.2204] -- separate duels vs the production head, not a paired SL4-vs-SMV3 contrast"
    }
   }
  ],

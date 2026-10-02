@@ -28,6 +28,45 @@ from .search_inference import SearchHeads
 from .search_policy import LearnedSearchBot, SearchConfig
 
 
+_SCALARS = (str, int, float, bool, type(None))
+TRACE_LIST_MAX = 16     # a numeric list up to this long is persisted whole
+
+
+def trace_fields(rec, skip=()):
+    """The persisted form of a served bot's decision record (#679 B6).
+
+    Scalars are kept exactly as before (same keys, same order, same values),
+    so an existing reader parses a new shard unchanged.  Everything else is
+    ADDED after them, never silently dropped:
+
+    * every list/tuple field gets ``<field>__len``; a numeric list of at most
+      ``TRACE_LIST_MAX`` entries is also kept whole under its own name (e.g.
+      ``diversity_skipped``, ``tiebreak_near_set``, ``admitted_indices``);
+    * ``trace_dropped_fields`` counts the fields whose full value is NOT in the
+      trace (long or non-numeric lists, kept as their length only; dicts and
+      other objects).  It is always present, so 0 means "nothing lost", and a
+      missing list field in a new shard means the bot did not record it.
+
+    A summary key never overwrites a key the record itself carries."""
+    out = {k: v for k, v in rec.items() if k not in skip and isinstance(v, _SCALARS)}
+    dropped = 0
+    for k, v in rec.items():
+        if k in skip or isinstance(v, _SCALARS):
+            continue
+        whole = False
+        if isinstance(v, (list, tuple)):
+            if f"{k}__len" not in rec:
+                out[f"{k}__len"] = len(v)
+            if (len(v) <= TRACE_LIST_MAX and k not in out
+                    and all(isinstance(x, (int, float)) for x in v)):
+                out[k] = list(v)
+                whole = True
+        dropped += not whole
+    if "trace_dropped_fields" not in rec:
+        out["trace_dropped_fields"] = dropped
+    return out
+
+
 class TimedPolicy:
     def __init__(self, bot):
         self.bot = bot
@@ -48,9 +87,7 @@ class TimedPolicy:
             rec = getattr(self.bot, "last_bury_record", None)
             if rec:
                 self.bury_decisions.append({
-                    "seat": seat, "phase": "bury",
-                    **{k: v for k, v in rec.items()
-                       if isinstance(v, (str, int, float, bool, type(None)))},
+                    "seat": seat, "phase": "bury", **trace_fields(rec),
                 })
 
     def decide_play(self, rnd, seat):
@@ -71,11 +108,11 @@ class TimedPolicy:
             if rec and "candidates" not in rec:
                 # A served policy with its own record (release 29's pv-search
                 # `pv-search-decision-v1` / `pv-search-fallback-v1`): keep the
-                # scalar receipt, not the MC shortlist shape.
+                # scalar receipt plus bounded list summaries (`trace_fields`),
+                # not the MC shortlist shape.
                 self.decisions.append({
                     "seat": seat, "trick": len(rnd.history), "played": rec.get("played"),
-                    **{k: v for k, v in rec.items()
-                       if k != "played" and isinstance(v, (str, int, float, bool, type(None)))},
+                    **trace_fields(rec, skip=("played",)),
                 })
             elif rec:
                 challenger = rec.get("report_candidate_index")

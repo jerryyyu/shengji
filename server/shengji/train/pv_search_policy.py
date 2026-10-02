@@ -51,6 +51,15 @@ the digest, the name (production:
 worlds and the decision record are exactly what they were before the rule
 existed.  The encoder and its hashed source closure are untouched.
 
+Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
+admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
+is leading and the scored legal set holds a multi-card action -- the K=8 ballot
+plus the next-best eight by the same policy preference, decided before the
+diversity caps and the forced extras (definition and the evidence:
+`policy_value_search`).  ``0`` or ``1`` only; on, it enters the recipe digest
+with its width and adds ``-ak16`` (the width) to the name as the last token; off,
+it is absent from the payload and K is 8 everywhere.
+
 Optional selection rule (#676 E, #677 strategy 2), OFF BY DEFAULT:
 ``SHENGJI_PV_TIEBREAK_POINTS=1`` lets the final choice among candidates whose
 value means lie within ``tiebreak_epsilon`` (0.02 of a signed level, the head's
@@ -81,7 +90,8 @@ from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
-from .policy_value_search import (ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS, TIEBREAK_DEFAULTS,
+from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
+                                  TIEBREAK_DEFAULTS,
                                   PolicyValueBot)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -104,11 +114,15 @@ SAMPLER_DEFAULTS = dict(refusal_constraints=False)
 SAMPLER_TOKENS = (("refusal_constraints", "rc"),)
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
+#: the optional admission width rule (`policy_value_search`): env flag -> recipe key
+ADAPTIVE_K_RULE = {"ADAPTIVE_K": "adaptive_k"}
+#: its name token encodes the width it admits on a multi-card lead
+ADAPTIVE_K_TOKEN = ("adaptive_k", f"ak{ADAPTIVE_K_DEFAULTS['candidates_lead_multi']}")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
-#: name order (admission rules, then the sampler rule, then selection): div, fs, rc, tb
-RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE}
+#: name order (admission rules, the sampler rule, selection, width): div, fs, rc, tb, ak16
+RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE}
 RULES = RULE_FLAGS
-RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),)
+RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN)
 ENV_PREFIX = "SHENGJI_PV_"
 
 
@@ -175,6 +189,8 @@ class PVSearchConfig:
     refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
+    # the optional admission width rule (#676 C); the same contract
+    adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -193,6 +209,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["forced_min_fraction"] = ADMISSION_DEFAULTS["forced_min_fraction"]
     if config.tiebreak_points:
         payload["tiebreak_epsilon"] = TIEBREAK_DEFAULTS["tiebreak_epsilon"]
+    if config.adaptive_k:
+        payload["candidates_lead_multi"] = ADAPTIVE_K_DEFAULTS["candidates_lead_multi"]
     return payload
 
 
@@ -223,7 +241,8 @@ class PVSearchBot(PolicyValueBot):
                          cap=config.cap, seed=seed,
                          admission_diversity=config.admission_diversity,
                          admit_forced_single=config.admit_forced_single,
-                         tiebreak_points=config.tiebreak_points)
+                         tiebreak_points=config.tiebreak_points,
+                         adaptive_k=config.adaptive_k)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -388,8 +407,8 @@ class PVSearchBot(PolicyValueBot):
         if not chosen or chosen[0] != anchor_index or len(set(chosen)) != len(chosen) \
                 or any(not 0 <= i < len(actions) for i in chosen):
             raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
-        # The candidate budget bounds what PRODUCTION admits (K plus the forced
-        # extras).  The harvest mixin appends its exploration draw AFTER the
+        # The candidate budget bounds what PRODUCTION admits (k_used plus the
+        # forced extras).  The harvest mixin appends its exploration draw AFTER the
         # production ballot (keyed in ``_draw_keys``); on the data path there is
         # no serving budget and so no fallback, so counting the draw here raised
         # on a full ballot (#680 at f78ecbe1, found stacking #687).  Draws are
@@ -397,7 +416,8 @@ class PVSearchBot(PolicyValueBot):
         # included -- is bounded.
         draw_keys = getattr(self, "_draw_keys", None) or ()
         budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
-        if len(budgeted) > self.candidates + FORCED_EXTRA_SLOTS:
+        if len(budgeted) > self._adaptive["k_used"] + FORCED_EXTRA_SLOTS \
+                or self._adaptive["k_used"] > max(self.candidates, self.candidates_lead_multi):
             raise PVSearchPolicyError("admission exceeded the candidate budget")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
@@ -521,7 +541,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
-                       tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
+                       tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
+                       adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -551,7 +572,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             refusal_constraints=refusal_constraints,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
-                            tiebreak_points=tiebreak_points)
+                            tiebreak_points=tiebreak_points, adaptive_k=adaptive_k)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -602,7 +623,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
-                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
+                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
+                        adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -614,7 +636,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             refusal_constraints=refusal_constraints,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
-                            tiebreak_points=tiebreak_points)
+                            tiebreak_points=tiebreak_points, adaptive_k=adaptive_k)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -659,7 +681,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                refusal_constraints=config.refusal_constraints,
                                admission_diversity=config.admission_diversity,
                                admit_forced_single=config.admit_forced_single,
-                               tiebreak_points=config.tiebreak_points),
+                               tiebreak_points=config.tiebreak_points,
+                               adaptive_k=config.adaptive_k),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -675,8 +698,8 @@ def pv_env_recipe(environ=None) -> dict:
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
-    ``_TIEBREAK_POINTS`` rule flags (``0`` or ``1`` only; unset or empty is off), as keyword
-    arguments for
+    ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` rule flags (``0`` or ``1`` only; unset or empty is
+    off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")

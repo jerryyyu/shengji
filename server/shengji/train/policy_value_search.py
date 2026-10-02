@@ -30,15 +30,19 @@ Optional admission WIDTH rule (#676 C; OFF BY DEFAULT, and while off K is
 
 * ``adaptive_k`` -- when the acting seat is LEADING (no play yet in the current
   trick) and the scored legal set holds at least one multi-card action (a
-  pair, tractor or throw), the admission takes ``candidates_lead_multi`` slots
-  (default 16) instead of ``candidates`` (8); on a single-only lead and on
-  every follow K is unchanged.  The anchor keeps slot 0 and the extra slots
+  pair, tractor or throw), the admission takes
+  ``max(candidates, candidates_lead_multi)`` slots (default 16 against
+  production's 8); on a single-only lead and on every follow K is unchanged.
+  The rule never SHRINKS the ballot: a recipe whose ``candidates`` already
+  meets the width (K=32..512) admits ``candidates`` as before, and with the
+  rule off ``candidates_lead_multi`` is unused and never constrains
+  ``candidates`` (every K in 1..512 constructs exactly as before the rule).  The anchor keeps slot 0 and the extra slots
   are the next-best by the same policy preference, so the widened ballot is a
   strict superset of the K=8 ballot in the same order (`admission_diversity`,
   when on, applies its caps within the widened K).  The width is decided
   INSIDE `_admit`, FIRST -- before the diversity caps and before the forced
   components of `admit_forced_single` are appended -- so the final ballot is
-  at most ``candidates_lead_multi + FORCED_EXTRA_SLOTS`` and a wrapper that
+  at most ``K + FORCED_EXTRA_SLOTS`` (K the decided width) and a wrapper that
   captures the ballot at the admission boundary (the harvest mixin) sees the
   widened, final one.  Evidence (#676 category 2): an exploration draw
   out-valued all 8 shortlisted candidates in 12.4% of multi-card leads
@@ -208,9 +212,13 @@ class PolicyValueBot(PolicyWorldBot):
         self._tiebreak = None
         if type(adaptive_k) is not bool:
             raise ValueError('adaptive_k must be a bool')
-        # a width below ``candidates`` would NARROW the ballot: not this rule
-        if type(candidates_lead_multi) is not int or not candidates <= candidates_lead_multi <= 512:
-            raise ValueError('candidates_lead_multi must be an integer in [candidates,512]')
+        # Range-checked on its own, NEVER against ``candidates``: with the rule
+        # off the width is unused, so every K main accepted (1..512) must still
+        # construct (#687 HOLD: K32..512 refused against the default 16).  With
+        # the rule on, a width below ``candidates`` is not a narrowing either:
+        # `_admission_k` takes max(candidates, candidates_lead_multi).
+        if type(candidates_lead_multi) is not int or not 1 <= candidates_lead_multi <= 512:
+            raise ValueError('candidates_lead_multi must be an integer in [1,512]')
         self.adaptive_k = adaptive_k
         self.candidates_lead_multi = candidates_lead_multi
         self._adaptive = {'adaptive_k_applied': False, 'k_used': int(candidates)}
@@ -313,16 +321,22 @@ class PolicyValueBot(PolicyWorldBot):
     def _admission_k(self, rnd, actions, preferences):
         """``(K, applied)`` for this decision: ``candidates``, or with
         ``adaptive_k`` on a lead whose scored set holds a multi-card action,
-        ``candidates_lead_multi`` (module docstring).  An entry with a
-        non-finite preference is not production's (the harvest mixin masks a
-        forced-in exploration draw to -inf) and never decides the width."""
+        ``max(candidates, candidates_lead_multi)`` (module docstring).  The
+        rule only ever WIDENS: when ``candidates`` already meets or exceeds
+        ``candidates_lead_multi`` (e.g. a fixed K=32 recipe with the default
+        16) the ballot stays ``candidates`` wide and ``applied`` is False, so
+        ``applied`` means exactly "this decision admitted more than
+        ``candidates``".  An entry with a non-finite preference is not
+        production's (the harvest mixin masks a forced-in exploration draw to
+        -inf) and never decides the width."""
         if not self.adaptive_k or not leading(rnd):
             return self.candidates, False
         multi = any(len(action) >= 2 and np.isfinite(preferences[i])
                     for i, action in enumerate(actions))
         if not multi:
             return self.candidates, False
-        return self.candidates_lead_multi, True
+        k = max(self.candidates, self.candidates_lead_multi)
+        return k, k > self.candidates
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
         """Indices (into ``actions``) the value head prices -- THE FINAL scored

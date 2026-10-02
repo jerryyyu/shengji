@@ -17,7 +17,11 @@ harvest mixin the CAPTURED production ballot is the widened one and
 `pv_fields_from_record` accepts the record, with and without an exploration
 draw, and with the forced-single rule on as well (the width is decided
 before the forced extras, so the final ballot is at most 16+2 and is
-captured whole; the #680 HOLD was a ballot appended after capture).
+captured whole; the #680 HOLD was a ballot appended after capture); (h)
+#687 HOLD: with the rule OFF every previously valid fixed K (32, 512) still
+constructs and decides through the harness, the served wrapper and the real
+env -> registry -> factory path, and with the rule ON a K above the width is
+never shrunk.
 """
 import copy
 import random
@@ -32,6 +36,7 @@ from shengji.train import policy_value_search as module
 from shengji.train import pv_search_policy as pv
 from shengji.train.policy_value_search import PolicyValueBot, structure_key
 from test_policy_world_search import state
+from test_pv_search_serving import package  # noqa: F401
 from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                      ZeroEvaluator, crafted_preferences, legacy_admission,
                                      names, predict, production_package)  # noqa: F401
@@ -242,8 +247,9 @@ def test_env_flag_refuses_anything_but_0_or_1(bad):
 def test_bad_values_are_refused():
     with pytest.raises(ValueError, match="adaptive_k must be a bool"):
         PolicyValueBot(predict, evaluator=ZeroEvaluator(), adaptive_k=1)
-    with pytest.raises(ValueError, match="candidates_lead_multi"):
-        PolicyValueBot(predict, evaluator=ZeroEvaluator(), candidates=8, candidates_lead_multi=7)
+    for bad in (0, 513):
+        with pytest.raises(ValueError, match="candidates_lead_multi"):
+            PolicyValueBot(predict, evaluator=ZeroEvaluator(), candidates_lead_multi=bad)
     with pytest.raises(ValueError, match="candidates_lead_multi"):
         PolicyValueBot(predict, evaluator=ZeroEvaluator(), candidates_lead_multi=16.0)
     with pytest.raises(pv.PVSearchPolicyError, match="must be a bool"):
@@ -326,3 +332,88 @@ def test_with_forced_single_the_final_ballot_is_at_most_18_and_captured_whole():
     narrow = served()
     narrow.decide_play(copy.deepcopy(rnd), seat)
     assert production[:8] == narrow.last_decision_record["admitted"]
+
+
+# ------------------------------------------------------- (h) K > width (#687 HOLD)
+
+def harness_k(k, **rules):
+    return PolicyValueBot(predict, evaluator=ZeroEvaluator(), worlds=2, candidates=k,
+                          cap=4000, seed=17, **rules)
+
+
+def served_k(k, **rules):
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=2, candidates=k,
+                               cap=4000, batch_size=128, **rules)
+    return pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2, config=config,
+                          checkpoint="/dev/null", seed=17)
+
+
+@pytest.mark.parametrize("k", [32, 512])
+@pytest.mark.parametrize("build", [harness_k, served_k], ids=["harness", "served"])
+def test_rule_off_previously_valid_k_constructs_and_decides(build, k):
+    """The HOLD's witness: before the fix both constructors refused K>16 with
+    the rule absent (width checked against the default 16)."""
+    rnd = state(); seat = rnd.turn
+    assert module.leading(rnd)
+    for rules in ({}, {"adaptive_k": False}):
+        bot = build(k, **rules)
+        assert bot.candidates == k and bot.adaptive_k is False
+        played = bot.decide_play(copy.deepcopy(rnd), seat)
+        record = bot.last_decision_record
+        legal, prefs = preferences_of(bot, rnd, seat)
+        anchor = record["admitted_indices"][0]
+        assert record["admitted_indices"] == legacy_admission(prefs, anchor, k)
+        assert len(record["admitted_indices"]) == k
+        assert played == list(legal.actions[record["selected_index"]])
+        assert not ADAPTIVE_KEYS & set(record)
+    # an explicit width below K is inert with the rule off (harness knob)
+    if build is harness_k:
+        harness_k(k, candidates_lead_multi=8).decide_play(copy.deepcopy(rnd), seat)
+
+
+@pytest.mark.parametrize("k", [32, 512])
+@pytest.mark.parametrize("build", [harness_k, served_k], ids=["harness", "served"])
+def test_rule_on_never_shrinks_a_k_above_the_width(build, k):
+    rnd = state(); seat = rnd.turn
+    off, on = build(k), build(k, adaptive_k=True)
+    assert on.candidates_lead_multi == WIDE < k
+    off.decide_play(copy.deepcopy(rnd), seat)
+    on.decide_play(copy.deepcopy(rnd), seat)
+    narrow, wide = off.last_decision_record, on.last_decision_record
+    assert len(wide["admitted_indices"]) == k
+    assert wide["admitted_indices"] == narrow["admitted_indices"]
+    assert wide["adaptive_k_applied"] is False and wide["k_used"] == k
+    assert on._admission_k(rnd, [["C3"], ["C3", "C3"]], np.array([0.0, 1.0])) == (k, False)
+    # the harness width knob: below, equal, above K -- never below K
+    if build is harness_k:
+        for width, expected in ((8, k), (k, k), (min(k + 8, 512), min(k + 8, 512))):
+            bot = harness_k(k, adaptive_k=True, candidates_lead_multi=width)
+            assert bot._admission_k(rnd, [["C3"], ["C3", "C3"]], np.array([0.0, 1.0])) \
+                == (expected, expected > k)
+
+
+@pytest.mark.parametrize("adaptive", ["0", "1"])
+@pytest.mark.parametrize("k", [32, 512])
+def test_served_env_registry_path_builds_and_decides_at_k_above_the_width(package, k, adaptive):
+    """The real served path: env -> `pv_env_recipe` -> `pv_registry_entries` ->
+    factory -> `make_pv_search_bot` -> PVSearchBot on a real (tiny) package."""
+    path, sha = package
+    env = {"SHENGJI_PV_CKPT": path, "SHENGJI_PV_SHA256": sha, "SHENGJI_PV_WORLDS": "2",
+           "SHENGJI_PV_CANDIDATES": str(k), "SHENGJI_PV_CAP": "4000",
+           "SHENGJI_PV_BATCH_SIZE": "128", "SHENGJI_PV_ADAPTIVE_K": adaptive}
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    (name, factory), = entries.items()
+    assert f"-w2-k{k}" in name and (("-ak16" in name) == (adaptive == "1"))
+    bot = factory(seed=5)
+    assert isinstance(bot, pv.PVSearchBot) and bot.candidates == k
+    rnd = state(); seat = rnd.turn
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert len(record["admitted_indices"]) == k
+    assert record["work_complete"] is True and record["value_evaluations"] == 2 * k
+    assert played == record["played"] == \
+        record["admitted"][record["admitted_indices"].index(record["selected_index"])]
+    if adaptive == "1":
+        assert record["adaptive_k_applied"] is False and record["k_used"] == k
+    else:
+        assert not ADAPTIVE_KEYS & set(record)

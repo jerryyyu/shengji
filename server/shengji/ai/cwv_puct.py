@@ -1115,6 +1115,14 @@ class CWVPuctBot(MCBot):
             if hasattr(self.evaluator, "identity") else repr(self.evaluator),
             "search": self.search_identity(),
             "n_determinizations": pool,
+            # PUCT runs NO disjoint report fold: it requests exactly 0 report
+            # worlds and names no report challenger, which is what an MCBot with
+            # REPORT_FOLD_WORLDS=0 publishes. A literal 0, not the inherited
+            # REPORT_FOLD_WORLDS, because this decide_play never reads that knob.
+            # The screen's TimedPolicy indexes these for every record carrying
+            # candidates; their absence aborted lane PUCT P1 (#436, 2026-10-02).
+            "report_worlds_requested": 0,
+            "report_candidate_index": None,
             "margin": 0.0,
             "seed": self.seed,
             "rng_state": pre_rng_state,

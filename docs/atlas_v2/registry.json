@@ -507,6 +507,78 @@
    "lo": -0.0383,
    "hi": 0.0316,
    "note": "SEALED 02:44 ET 10-01; recomputed with vol_re.py, archived at ~/shengji-archive/2026-09-13/readouts/v37a-aw3r2out-vs-r36 with SHA256SUMS. CROSSES ZERO (tau 0, MDE80 0.050); ties 50.3% vs 50.8%; latency p50/p95 0.09/0.16 s both arms. Five-window triage, point below the extension threshold: no extension. The search-mean head's weight (3.0 vs SMV3's 1.0) shows no served effect at this resolution; not shown to be zero. The first screen against release 36."
+  },
+  {
+   "id": "v38div",
+   "date": "2026-10-01",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "admission DIVERSITY rule (-div): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admission_diversity on",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "34660910..35060910",
+   "confidence": 0.95,
+   "point": 0.02324,
+   "lo": -0.00055,
+   "hi": 0.04704,
+   "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944007948): the legacy Perf vol_re.py rejected valid cross-mirror banker/suit differences, so pairing was rebuilt on planned (cluster, seed, rank) with both mirrors, the original window_delta (4,000 bootstrap replicates) and DL pooling unchanged; 2,600 paired clusters, none dropped. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-vs-r36 with SHA256SUMS. CROSSES ZERO (SE 0.01214, tau 0, MDE80 0.034); all five window points positive (+0.029/+0.026/+0.038/+0.006/+0.019). Point CLEARS the +0.015 triage: fresh-five confirmation running. Not a validated gain; no promotion; mechanism unverified."
+  },
+  {
+   "id": "v38fs",
+   "date": "2026-10-01",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "FORCED-SINGLE admission (-fs): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admit_forced_single on",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "35160910, 35460910, 35560910, 35660910, 35760910",
+   "confidence": 0.95,
+   "point": 0.00238,
+   "lo": -0.00236,
+   "hi": 0.00712,
+   "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944236034; legacy vol_re.py rejected valid cross-mirror banker/suit differences; numerical window_delta and DL unchanged); 2,600 paired clusters, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38fs-vs-r36 with SHA256SUMS. INCONCLUSIVE: crosses zero (MDE80 0.0068); windows +0.010/-0.003/+0.009/+0.001/-0.002. Below the +0.015 triage: no extension. Does not show the forced fallback was already correctly priced."
+  },
+  {
+   "id": "v38rc",
+   "date": "2026-10-01",
+   "status": "sealed",
+   "box": "Perf",
+   "candidate": "REFUSAL-AWARE world sampling (-rc): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- refusal_constraints on",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "36960910..37360910",
+   "confidence": 0.95,
+   "point": 0.01684,
+   "lo": -0.0006,
+   "hi": 0.03428,
+   "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944236034; legacy vol_re.py rejected valid cross-mirror banker/suit differences; numerical window_delta and DL unchanged); 2,600 paired clusters, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38rc-vs-r36 with SHA256SUMS. CROSSES ZERO (MDE80 0.025); windows +0.048/-0.001/+0.002/+0.023/+0.011. Point CLEARS the +0.015 triage: fresh-five confirmation running. Telemetry: 184,366/184,366 valid refusal traces, 2,935 decisions rejected a world, 0 refill fallbacks; decision wall 1.017x production. Not a validated gain; no promotion."
+  },
+  {
+   "id": "v39a",
+   "date": "2026-10-01",
+   "status": "sealed",
+   "box": "cloud",
+   "candidate": "gen-5 SMV3-PBF1 OUTCOME head (218bcf5c; SMV3's recipe with ONE variable changed -- policy-batch-fraction 1.0) exported as pbf1out-dde17c0c.npz and served as pv-search W64/K8 + hybrid bury",
+   "comparator": "release 36 as served",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows, 300 s cap, common MC-LCB control per window; DL random effects",
+   "seeds": "37460910..37860910",
+   "confidence": 0.95,
+   "point": -0.0525,
+   "lo": -0.0878,
+   "hi": -0.0171,
+   "note": "SEALED 22:58Z 10-01 (rc=0 all ten arm-windows); analyzer of record Codex's isolated readout with the original vol_re.py (#663 issuecomment-5942352095); 2,600 paired clusters. Archived at ~/shengji-archive/2026-09-13/readouts/v39a-pbf1out-vs-r36 with SHA256SUMS. NEGATIVE: the interval excludes zero below it (SE 0.018, tau 0, I2 0%, MDE80 0.0505); every window negative (-0.039/-0.039/-0.081/-0.064/-0.038); supplementary paired bootstrap -0.0525 [-0.0829,-0.0223]. PBF1's head is better ALONE (+0.238 vs the production head) yet worse SERVED: a head-only-to-served transfer failure, not proof admission alone caused it. Do not promote."
   }
  ],
  "context_screens": [
@@ -725,7 +797,7 @@
    "recipe": "THE POLICY BATCH FRACTION, NOT THE DATA: SMV3's recipe EXACTLY (arm F recipe + search-mean sidecar v3, 30 corpora, 496,000 deals, 55,123,440 policy rows, production-head warm start 8ecd4fea, seed 1, tree f2345ecb) with ONE variable changed -- --policy-batch-fraction 1.0 instead of 0.25 (#667 finding 3: a batch-size ratio, not unique-row coverage; plan #663, predeclared at issuecomment-5939812191). Run GEN5-PROD-SOFT-allPV-plusMCLCB-496k-SMV3-PBF1, best.pt sha256 218bcf5c70e4bbf8061ca90ebce45d77eb967ee1351a42f157fc89f063411993.",
    "val_ce": 0.6232,
    "regret": null,
-   "status": "sealed 2026-10-01 20:17Z (16:17 ET), wall 57,638 s, EARLY STOP at 11 of 20 epochs (no val_ce improvement for 3 epochs), best epoch 8 (SMV3: 67,596 s / 16 / 13; AW3r2: 33,957 s / 7 / 4). Outcome head val rank_regret 0.0567 (own split), top-1 0.414; val_policy_top64 exhaustive 0-20 / 21-100 / 101-1000 = 1.000 / 0.996 / 0.959, partial 101-1000 / 1001-10000 / 10001-1M = 0.946 / 0.934 / 0.902. FOUR FIXED HOLDOUTS (rank_regret, outcome head), PBF1 vs SMV3: roomlog 0.0673 / 0.0655, luna 0.0830 / 0.0855, highn 0.1031 / 0.1054, pt1 0.0409 / 0.0337 -- two better, two worse; point estimates, no interval. Exported outcome head pbf1out-dde17c0c.npz (sha256 dde17c0ca62d3eddfea44ae60b3b375e4d842cd8c87482f016d91cc692c2d612). Policy duel READ +0.2379 [+0.2244,+0.2512] vs the production head (headduel3); served screen v39a pending vs release 36 on cloud (fresh windows 37460910..37860910); no strength claim.",
+   "status": "sealed 2026-10-01 20:17Z (16:17 ET), wall 57,638 s, EARLY STOP at 11 of 20 epochs (no val_ce improvement for 3 epochs), best epoch 8 (SMV3: 67,596 s / 16 / 13; AW3r2: 33,957 s / 7 / 4). Outcome head val rank_regret 0.0567 (own split), top-1 0.414; val_policy_top64 exhaustive 0-20 / 21-100 / 101-1000 = 1.000 / 0.996 / 0.959, partial 101-1000 / 1001-10000 / 10001-1M = 0.946 / 0.934 / 0.902. FOUR FIXED HOLDOUTS (rank_regret, outcome head), PBF1 vs SMV3: roomlog 0.0673 / 0.0655, luna 0.0830 / 0.0855, highn 0.1031 / 0.1054, pt1 0.0409 / 0.0337 -- two better, two worse; point estimates, no interval. Exported outcome head pbf1out-dde17c0c.npz (sha256 dde17c0ca62d3eddfea44ae60b3b375e4d842cd8c87482f016d91cc692c2d612). Policy duel READ +0.2379 [+0.2244,+0.2512] vs the production head (headduel3); SERVED v39a vs release 36 (windows 37460910..37860910): -0.0525 [-0.0878,-0.0171] NEGATIVE, every window negative. Better head ALONE (+0.238 vs the production head; paired vs SMV3 +0.031 [+0.015,+0.048] per Codex) yet WORSE SERVED -- the policy-duel gain did not transfer; do not promote.",
    "head_vs_prod": {
     "point": 0.2379,
     "lo": 0.2244,
@@ -945,5 +1017,5 @@
   "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
  },
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
- "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read."
+ "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36."
 }

@@ -86,6 +86,42 @@ Optional selection rule (#676 E, #677 strategy 2; OFF BY DEFAULT, and while off
   fires the tie-break ABANDONS ITSELF and the argmax (a complete value-pass
   result, published within budget) is played -- never the anchor fallback --
   with ``tiebreak_applied`` False and ``tiebreak_abandoned`` ``"budget"``.
+
+Optional LEAD selection rule (#676 online lead review, board A8; OFF BY DEFAULT,
+and while off `_select` is exactly what it was):
+
+* ``lead_tiebreak_prior`` -- ONLY when the acting seat is LEADING (`leading`:
+  no play yet in the current trick).  The near-set is every admitted candidate
+  whose value mean is finite and within ``lead_tiebreak_epsilon`` of the best
+  mean (inclusive).  UNITS: the same as ``tiebreak_epsilon`` -- the value
+  head's expected SIGNED LEVEL (one level = 40 points); the default is the
+  same constant, 0.02 of a level (about 0.8 points).  Among the near-set the
+  candidate with the highest POLICY PRIOR score is played: the admission's own
+  ranking score, i.e. the world-averaged sum of the action's card log-odds
+  (``preferences``; no new model call, nothing rebuilt).  A candidate with a
+  non-finite prior (a masked exploration draw) is never preferred.  The
+  heuristic anchor (slot 0) has no special status.  On an exact prior tie the
+  original argmax stands, then admission order.  Evidence: about 60% of the
+  low-single leads reviewed in production were value near-ties (< 0.02), where
+  the argmax is effectively arbitrary while the policy has a preference.
+  PRECEDENCE with ``tiebreak_points`` when both are on -- the rule is
+  ADDITIVE on top of the points rule, never a replacement.  The points rule
+  runs FIRST, exactly as it does alone (it does act on leads: it prices the
+  trick the heuristic finisher completes), and its record is unchanged.  Any
+  selection it CHANGES is kept: the prior rule stands aside
+  (``lead_tiebreak_applied`` False, ``lead_tiebreak_superseded``
+  ``"tiebreak_points"``).  The prior decides only on a lead where the points
+  rule leaves the original argmax in place (a singleton near-set, the argmax
+  banks the most points or ties for them, or the rebuild abandoned itself on
+  the serving budget).  On a FOLLOW this rule does nothing.  So with both on,
+  every decision the points rule moves is played exactly as without this rule.
+  The record carries scalars only: ``lead_tiebreak_leading``,
+  ``lead_tiebreak_applied`` (this rule moved the selection off the argmax),
+  ``lead_tiebreak_near_count``, ``lead_tiebreak_from_index`` /
+  ``lead_tiebreak_to_index`` (admitted positions: the argmax, this rule's
+  choice), ``lead_tiebreak_from`` / ``lead_tiebreak_to`` (their cards),
+  ``lead_tiebreak_value_gap`` (the value mean given up, >= 0) and, only when
+  the points rule's change was kept, ``lead_tiebreak_superseded``.
 """
 from __future__ import annotations
 
@@ -114,6 +150,12 @@ TIEBREAK_DEFAULTS = dict(tiebreak_points=False, tiebreak_epsilon=0.02)
 #: the cooperative budget is checked before every near-set member and after
 #: every this-many sampled worlds inside the tie-break's leaf rebuild
 TIEBREAK_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
+
+#: `lead_tiebreak_prior`: the optional lead near-tie rule (module docstring); its
+#: epsilon is on the SAME scale as ``tiebreak_epsilon`` (signed levels) and
+#: defaults to the same constant.
+LEAD_TIEBREAK_DEFAULTS = dict(lead_tiebreak_prior=False,
+                              lead_tiebreak_epsilon=TIEBREAK_DEFAULTS["tiebreak_epsilon"])
 
 #: `adaptive_k`: the admission width on a lead whose legal set holds a
 #: multi-card action (module docstring); 16 = twice production's K=8.
@@ -207,6 +249,8 @@ class PolicyValueBot(PolicyWorldBot):
                  adaptive_k=ADAPTIVE_K_DEFAULTS["adaptive_k"],
                  candidates_lead_multi=ADAPTIVE_K_DEFAULTS["candidates_lead_multi"],
                  lead_anchor=LEAD_ANCHOR_DEFAULTS["lead_anchor"],
+                 lead_tiebreak_prior=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
+                 lead_tiebreak_epsilon=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -255,6 +299,14 @@ class PolicyValueBot(PolicyWorldBot):
             raise ValueError('lead_anchor must be a bool')
         self.lead_anchor = lead_anchor
         self._lead_anchor = None
+        if type(lead_tiebreak_prior) is not bool:
+            raise ValueError('lead_tiebreak_prior must be a bool')
+        if type(lead_tiebreak_epsilon) not in (int, float) \
+                or not np.isfinite(lead_tiebreak_epsilon) or lead_tiebreak_epsilon < 0:
+            raise ValueError('lead_tiebreak_epsilon must be a finite non-negative number')
+        self.lead_tiebreak_prior = lead_tiebreak_prior
+        self.lead_tiebreak_epsilon = float(lead_tiebreak_epsilon)
+        self._lead_tiebreak = None
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -285,11 +337,66 @@ class PolicyValueBot(PolicyWorldBot):
         flush()
         return sums / len(worlds), batches
 
-    def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None):
+    def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None,
+                priors=None):
+        """The admitted position to play.  ``priors`` are the admitted
+        candidates' policy preference scores (the admission's ranking scores),
+        needed only by ``lead_tiebreak_prior``."""
         winner = int(np.argmax(means))  # anchor retained on an exact value tie
-        if not self.tiebreak_points:
-            return winner
-        return self._select_by_points(rnd, seat, admitted, means, worlds, winner, check_budget)
+        chosen = winner
+        if self.tiebreak_points:
+            chosen = self._select_by_points(rnd, seat, admitted, means, worlds, winner,
+                                            check_budget)
+        if self.lead_tiebreak_prior:
+            # PRECEDENCE: the points rule ran first, unchanged; a selection it
+            # moved is kept, the prior decides only where it left the argmax
+            chosen = self._select_by_prior(rnd, admitted, means, priors, winner, chosen)
+        return chosen
+
+    # -- selection: the optional lead near-tie break by the policy prior -------
+
+    def _select_by_prior(self, rnd, admitted, means, priors, argmax, held=None):
+        """The module docstring's ``lead_tiebreak_prior`` rule; sets
+        ``self._lead_tiebreak`` (the record fields) on every decision.
+        ``held`` is the selection so far (the points rule's, when that rule is
+        on; else the argmax): when it already differs from ``argmax`` it is
+        returned untouched."""
+        held = argmax if held is None else held
+        is_lead = leading(rnd)
+        winner, near = argmax, []
+        means = np.asarray(means, dtype=np.float64)
+        superseded = is_lead and held != argmax
+        if is_lead:
+            if priors is None:
+                raise ValueError('lead_tiebreak_prior needs the admitted policy priors')
+            priors = np.asarray(priors, dtype=np.float64)
+            if priors.shape != means.shape:
+                raise ValueError('lead_tiebreak_prior needs one prior per admitted candidate')
+            if np.isfinite(means[argmax]):
+                near = [int(i) for i in np.flatnonzero(
+                    np.isfinite(means) & (means >= means[argmax] - self.lead_tiebreak_epsilon))]
+            rated = [i for i in near if np.isfinite(priors[i])]
+            if len(near) >= 2 and rated and not superseded:
+                # highest prior first; the argmax breaks an exact tie, then admission order
+                winner = min(rated, key=lambda i: (-priors[i], i != argmax, i))
+        self._lead_tiebreak = {
+            'lead_tiebreak_leading': bool(is_lead),
+            'lead_tiebreak_applied': winner != argmax,
+            'lead_tiebreak_near_count': len(near),
+            'lead_tiebreak_from_index': int(argmax),
+            'lead_tiebreak_to_index': int(winner),
+            'lead_tiebreak_from': _cards_text(admitted[argmax]),
+            'lead_tiebreak_to': _cards_text(admitted[winner]),
+            'lead_tiebreak_value_gap': float(means[argmax] - means[winner]) if winner != argmax else 0.0,
+        }
+        if superseded:
+            self._lead_tiebreak['lead_tiebreak_superseded'] = 'tiebreak_points'
+        return winner if held == argmax else held
+
+    def _lead_tiebreak_record(self):
+        if not self.lead_tiebreak_prior or self._lead_tiebreak is None:
+            return {}
+        return dict(self._lead_tiebreak)
 
     # -- selection: the optional epsilon tie-break by trick points -------------
 
@@ -569,7 +676,8 @@ class PolicyValueBot(PolicyWorldBot):
         chosen = self._admission(rnd, seat, actions, preferences, anchor_index, worlds)
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds)
-        winner = self._select(rnd, seat, admitted, means, worlds=worlds)
+        winner = self._select(rnd, seat, admitted, means, worlds=worlds,
+                              priors=[float(preferences[i]) for i in chosen])
         self.last_decision_record = {
             'schema': 'policy-admit-value-mean-v1', 'worlds': len(worlds),
             'sample_attempts': attempts, 'actions': len(actions), 'cap': self.cap,
@@ -580,5 +688,6 @@ class PolicyValueBot(PolicyWorldBot):
             'seconds': time.perf_counter() - started,
             **self._admission_record(),
             **self._tiebreak_record(),
+            **self._lead_tiebreak_record(),
         }
         return list(admitted[winner])

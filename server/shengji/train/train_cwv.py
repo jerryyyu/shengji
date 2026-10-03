@@ -2273,7 +2273,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                        else cwv_score_many_fn(model, dev)), public_head=public_model,
         prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
         workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
-        version=enc_version, cache_dir=cache)
+        version=enc_version, cache_dir=cache, compact_agreement=True)
     note = _public_head_note(public_info, config=config, split=split)
     metric_kw = dict(n_boot=n_boot, seed=seed)
     ev_val = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
@@ -2316,7 +2316,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             score_fn=cwv_score_fn(model, dev), public_head=public_model,
             prior=StratifiedPrior.from_dict(baselines["stratified_prior"]), device=dev,
             workers=eval_workers, rank_limit=rank_limit, history=history, progress=say,
-            version=enc_version)
+            version=enc_version, compact_agreement=True)
         ev_luna = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                            batch_size=batch_size, aux_head=aux_head)
         luna_public, luna_check = public_comparison(luna_pass, public_info)
@@ -2573,7 +2573,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         pass_result = candidate_pass(
             shard_keys, score_fn=cwv_score_fn(model, dev), public_head=public_model,
             prior=prior, device=dev, workers=eval_workers, rank_limit=rank_limit,
-            history=history, progress=say, version=enc_version, cache_dir=cache)
+            history=history, progress=say, version=enc_version, cache_dir=cache,
+            compact_agreement=True)
         ev = run_eval(model, store, mask_fn, dev, batch_size=batch_size, aux_head=aux_head)
         data_public, data_check = public_comparison(pass_result, public_info)
         metrics = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
@@ -2624,7 +2625,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
             [(shard, None) for shard, _path in luna_blocks.entries],
             score_fn=cwv_score_fn(model, dev), public_head=public_model, prior=prior,
             device=dev, workers=eval_workers, rank_limit=rank_limit, history=history,
-            progress=say, version=enc_version)
+            progress=say, version=enc_version, compact_agreement=True)
         ev = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                       batch_size=batch_size, aux_head=aux_head)
         luna_public, luna_check = public_comparison(luna_pass, public_info)

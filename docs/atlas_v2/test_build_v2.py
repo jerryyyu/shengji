@@ -132,7 +132,11 @@ def test_the_chart_and_tables_carry_one_band_per_comparator():
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
     prod = mod.production_release(reg)
     labels = [label for label, _, _ in mod.SECTIONS]
-    assert labels[0].startswith(f"against release {prod} as served")
+    if any(s["vs"] == prod for s in reg["screens"]):
+        assert labels[0].startswith(f"against release {prod} as served")
+    else:                                                          # just promoted: nothing reads vs prod yet
+        assert all(c["kind"] == "prev" for c in mod.COMPARATORS)
+        assert f"No screen has read against release {prod} yet" in page
     assert len(labels) == len(set(labels))
     named = [s for s in reg["screens"] if s.get("vs_group")]
     assert {"v43cla", "x36a", "x36c", "depth-screen"} <= {s["id"] for s in named}
@@ -155,20 +159,23 @@ def test_the_chart_and_tables_carry_one_band_per_comparator():
 
 
 def test_a_promotion_keeps_every_named_comparator_in_its_own_section():
-    """Promotion regression (36 -> 38): once another release is production, the reads against release 36
-    become a closed comparator -- and v43cla (read against the combo) and the release-30 controls must
-    still sit in their own sections, not in the 'as served' one."""
+    """Promotion regression (36 -> 38, and any later one): once another release is production, the reads
+    against release 36 are a closed comparator -- and v43cla (read against the combo) and the release-30
+    controls must still sit in their own sections, not in the 'as served' one.  ``old`` is the current
+    production release, promoted once more here; ``read_vs`` is the release the combo screens were read
+    against (36), which stays fixed whichever release is production."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
     old = mod.production_release(reg)
+    read_vs = next(s for s in reg["screens"] if s["id"] == "v43cla")["vs"]
     promoted = copy.deepcopy(reg)
     new = copy.deepcopy(next(b for b in promoted["baseline"] if b["release"] == old)); new["release"] = old + 2
     for b in promoted["baseline"]: b["status"] = "superseded"
     promoted["baseline"].append(new)
     assert mod.check_registry(promoted) == [] and mod.production_release(promoted) == old + 2
     secs = mod.comparator_sections(promoted)
-    assert all(c["kind"] == "prev" and c["label"].endswith("closed comparator") for c in secs)   # nothing reads vs 38 yet
+    assert all(c["kind"] == "prev" and c["label"].endswith("closed comparator") for c in secs)   # nothing reads vs old + 2
     def section_of(sid): return next(c for c in secs if any(s["id"] == sid for s in c["items"]))
-    served = next(c for c in secs if c["release"] == old and c["group"] is None)
+    served = next(c for c in secs if c["release"] == read_vs and c["group"] is None)
     assert "v43cla" not in {s["id"] for s in served["items"]} and len(served["items"]) >= 12
     assert section_of("v43cla")["group"] and [s["id"] for s in section_of("v43cla")["items"]] == ["v43cla"]
     for sid in ("x36a", "x36c", "depth-screen"):

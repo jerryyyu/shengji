@@ -9,12 +9,11 @@ multiplayer server + React web UI with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 37** (2026-10-01; model since release 36, 2026-09-30) — the SMV3 outcome-head
-package `smv3out-491ee4bf.npz` in release 30's policy/value search, served as
-`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`.
-**Release 38 (pending deploy; Jerry approved 2026-10-03)** — the same package and search plus
-the four rules marked below, served as
+**Live: release 38** (deployed 2026-10-03 09:41 ET; model since release 36, 2026-09-30) — the
+SMV3 outcome-head package `smv3out-491ee4bf.npz` in release 30's policy/value search plus four
+search rules (div, rc, tb, la below), served as
 `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`.
+Every new screen compares against release 38 as served.
 
 ```mermaid
 flowchart TD
@@ -32,13 +31,11 @@ flowchart TD
   admit --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
   value --> tb["tb · candidates within 0.02 level of the best:<br/>most root-team points from the current trick"]
   tb --> play(["play"])
-  classDef r38 fill:#fff4d6,stroke:#b7791f,stroke-width:2px,stroke-dasharray:4 3;
-  class rc,la,div,tb r38;
 ```
 
-Dashed nodes are release 38's rules (pending deploy); release 37 runs the same path without
-them (slot 0 is always the heuristic play, the walk admits the seven best-scored actions
-unfiltered, plain argmax). Play has a
+The four rule steps (rc, la, div, tb) arrived in release 38 (2026-10-03); releases 36–37 ran
+the same path without them (slot 0 is always the heuristic play, the walk admits the seven
+best-scored actions unfiltered, plain argmax). Play has a
 3 s cooperative budget; on expiry the heuristic anchor is played. Source:
 `server/shengji/train/pv_search_policy.py`, `policy_value_search.py`, `ai/refusal.py`.
 

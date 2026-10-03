@@ -28,6 +28,17 @@ same package's value head -- Jerry 2026-09-21: "we should use value guided hybri
 Nothing in this module deploys anything: registration happens only when
 ``SHENGJI_PV_CKPT`` is set.
 
+Optional paired lookahead tree ("PUCT v2", #436), OFF BY DEFAULT:
+``SHENGJI_PV_TREE_SIMS=<S>`` (with the optional ``_TREE_EPS`` / ``_TREE_ZMIN`` /
+``_TREE_BUDGET_FRACTION``) builds `pv_tree_search`'s subclass of the served bot:
+after the unchanged PV pass, the candidates the value head cannot separate get
+S policy-continuation lookaheads, paired by world, and the PV decision is
+overridden only when the paired depth-corrected difference is significant
+(definition: `pv_tree_search`; recipe and env: `pv_tree_config`).  Set, it
+enters the recipe digest and adds ``-ts<S>`` to the name after the rule tokens;
+unset, ``PVSearchConfig.tree`` is None and absent from the payload, so every
+existing name and the served classes are unchanged.  No change to bury.
+
 Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
 ``SHENGJI_PV_ADMISSION_DIVERSITY=1`` caps near-duplicate throws in the K-1
 policy slots and ``SHENGJI_PV_ADMIT_FORCED_SINGLE=1`` also admits, next to an
@@ -124,6 +135,7 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   PolicyValueBot)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
+from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
 SCHEMA = "pv-search-recipe-v1"
 RECORD_SCHEMA = "pv-search-decision-v1"
@@ -218,6 +230,9 @@ class PVSearchConfig:
     serving_budget_seconds: float | None = DEFAULTS["serving_budget_seconds"]
     encoding: str = ENCODING
     schema: str = SCHEMA
+    # the optional paired lookahead tree (`pv_tree_search`, #436); None = off and
+    # ABSENT from the recipe payload, so every pre-existing name is unchanged
+    tree: PVTreeConfig | None = None
     # the optional admission rules (#676 A/C) and the sampler rule (#676 B); OFF by
     # default and, while off, ABSENT from the recipe payload so every pre-existing
     # name is unchanged
@@ -239,6 +254,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
     rule that is on carries its parameters."""
     payload = asdict(config)
+    if config.tree is None:
+        del payload["tree"]
+    elif not isinstance(config.tree, PVTreeConfig):
+        raise PVSearchPolicyError("tree must be a PVTreeConfig or None")
     for key in RULE_FLAGS.values():
         if type(payload[key]) is not bool:
             raise PVSearchPolicyError(f"{key} must be a bool")
@@ -270,6 +289,7 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     prior's id, so the two identities can never be mistaken for one package."""
     prior = f"-prior-{prior8}" if prior8 else ""
     rules = "".join(f"-{token}" for field, token in RULE_TOKENS if getattr(config, field))
+    rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
 
@@ -586,7 +606,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        serving_budget_seconds=None, threads: int | None = 1,
                        name: str | None = None, bury_arm: str | None = None,
                        bury_config: CWVBuryConfig | None = None,
-                       bury_serving_budget_seconds=None,
+                       bury_serving_budget_seconds=None, tree: PVTreeConfig | None = None,
                        bot_factory=None, prior_checkpoint: str | None = None,
                        prior_sha256: str | None = None,
                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
@@ -619,7 +639,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     actual = file_sha256(path)
     if actual != sha256:
         raise PVSearchPolicyError(f"pv-search package SHA256 mismatch: {actual[:8]} != {sha256[:8]}")
-    config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
+    config = PVSearchConfig(checkpoint_sha256=sha256, tree=tree, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
                             refusal_constraints=refusal_constraints,
@@ -649,6 +669,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
         raise PVSearchPolicyError("pv-search requires the numpy evaluator backend")
     expected = PVSearchBot if bury_arm is None else PVSearchBuryBot
     build = expected if bot_factory is None else bot_factory
+    if config.tree is not None:
+        # the tree's classes subclass the served ones (lazy: that module imports this one)
+        from .pv_tree_search import tree_bot_class
+        build = tree_bot_class(expected, bot_factory)
     if bury_arm is None:
         bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
                     checkpoint=path, seed=int(seed))
@@ -673,6 +697,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         serving_budget_seconds=None, bury_arm: str | None = None,
                         bury_config: CWVBuryConfig | None = None,
                         bury_serving_budget_seconds=None, bot_factory=None,
+                        tree: PVTreeConfig | None = None,
                         prior_checkpoint: str | None = None,
                         prior_sha256: str | None = None,
                         refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
@@ -687,7 +712,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
     bury wrapper does: ``<play name>-bury-<arm>-<12 hex of the cwv-bury-recipe-v1 identity>``."""
     from ..ai.cwv_policy import checkpoint_id
-    config = PVSearchConfig(checkpoint_sha256=sha256, worlds=int(worlds), candidates=int(candidates),
+    config = PVSearchConfig(checkpoint_sha256=sha256, tree=tree, worlds=int(worlds), candidates=int(candidates),
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
                             refusal_constraints=refusal_constraints,
@@ -735,7 +760,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                serving_budget_seconds=config.serving_budget_seconds, name=name,
                                bury_arm=bury_arm, bury_config=bury_config,
                                bury_serving_budget_seconds=bury_serving_budget_seconds,
-                               bot_factory=bot_factory, prior_checkpoint=prior_checkpoint,
+                               bot_factory=bot_factory, tree=config.tree,
+                               prior_checkpoint=prior_checkpoint,
                                prior_sha256=prior_sha256,
                                refusal_constraints=config.refusal_constraints,
                                admission_diversity=config.admission_diversity,
@@ -793,6 +819,9 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
         if raw == "1":
             recipe[key] = True
+    tree = tree_env(env, ENV_PREFIX)   # SHENGJI_PV_TREE_SIMS (+ _EPS / _ZMIN / _BUDGET_FRACTION)
+    if tree is not None:
+        recipe["tree"] = tree
     arm = env.get(ENV_PREFIX + "BURY_ARM")
     if arm:
         if arm not in BURY_ARMS:

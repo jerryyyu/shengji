@@ -454,10 +454,20 @@ def _default_run(command: tuple[str, ...], prompt: bytes, workspace: Path,
         wall_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
         result = InvocationResult(returncode, stdout, stderr, wall_ms)
     except subprocess.TimeoutExpired as exc:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        # Deadline and cancellation must compete for the same cleanup claim.
+        # A cancellation may already have killed/reaped this group, so a
+        # second signal here can target a reused PGID or mask timeout evidence.
+        if active_calls.claim_release(process.pid, watchdog_fd):
+            try:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            finally:
+                try:
+                    os.close(watchdog_fd)
+                except OSError:
+                    pass
         # communicate() after the kill returns the complete buffered streams,
         # including any prefix in TimeoutExpired.output. Do not concatenate it.
         stdout, stderr = process.communicate()

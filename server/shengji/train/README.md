@@ -1,7 +1,9 @@
 # Learned search: research harnesses and W32 serving
 
-As of September 9, W32 shortlist is deployed; the older prior/value root-search
-experiment described first below remains research-only. Deployment state and
+Historical (releases 22–28). Since release 29 production plays with the policy/value search in
+`pv_search_policy.py` / `policy_value_search.py` (see the root README's diagram); the W32
+shortlist below served releases 22–28 and the older prior/value root-search experiment described
+first remains research-only. Deployment state and
 the selected model belong in [AI_POLICIES.md](../../../AI_POLICIES.md) and
 [docs_archive/w32-fly-serving-through-2026-09-22.md](../../../docs_archive/w32-fly-serving-through-2026-09-22.md) (archived 2026-09-22; the live record is `DEPLOY.md`).
 
@@ -9,9 +11,9 @@ the selected model belong in [AI_POLICIES.md](../../../AI_POLICIES.md) and
 `search_policy.py` plugs it into the production MC-LCB selection/report split.
 No retraining, BELIEF dependency, or production registry entry is required.
 
-**Deployed consumer:** the complete-world **full-legal W32
+**Consumer deployed through release 28:** the complete-world **full-legal W32
 shortlist** below, not the older RunA prior/value experiment described first
-in this file. See [MC vs W32 and the results](../../../AI_POLICIES.md#experimental-w32-shortlist)
+in this file. See [MC vs W32 and the results](../../../AI_POLICIES.md#the-shortlist-era-condensed-releases-2228)
 for the A+B+C milestone and its limits.
 
 ## What changes

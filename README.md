@@ -7,77 +7,56 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + a learned-model-guided Monte Carlo AI + FastAPI
 multiplayer server + React web UI with Mandarin voice announcements.
 
-## The production bot — release 37 (2026-10-01); the model is release 36's
+## The production bot
 
-Release 37 (2026-10-01 01:1x ET, #671) is a phone-HUD CSS fix on release 36's bot. Release 36
-(2026-09-30 11:53 ET, #666) was the first model change since release 30: the served package is
-`smv3out-491ee4bf.npz`, the OUTCOME head of the gen-5 SMV3 checkpoint `3e89e86f` (arm F's recipe
-plus the search-mean sidecar v3, #658), inside the search release 30 served unchanged (W64/K8,
-hybrid bury, 3 s / 2 s budgets, the JS-M1 prior keys retained). As served against release 30 it
-read +0.0361 [+0.0015, +0.0707] (v36a) and the predeclared confirmation +0.0393 [+0.0033, +0.0752]
-(v36a2), five windows each. Releases 29–35 served the soft head `8ecd4fea`; release 30 was the
-hybrid-bury fix (#607). Every screen now compares against release 36. CI fetches the production
-package by hash and requires the served bot to construct on every push (#654). Rollback and the
-full record: [DEPLOY.md](DEPLOY.md).
+**Live: release 37** (2026-10-01; model since release 36, 2026-09-30) — the SMV3 outcome-head
+package `smv3out-491ee4bf.npz` in release 30's policy/value search, served as
+`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`.
+**Release 38 (pending deploy; Jerry approved 2026-10-03)** — the same package and search plus
+the four rules marked below, served as
+`pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`.
 
-![Since release 29: one package is the whole play search; its policy head admits eight candidates over 64 sampled worlds, its value head prices them, the highest mean plays; hybrid bury uses the same package](docs/visuals/pv-search-one-package.svg)
+```mermaid
+flowchart TD
+  turn(["bot's turn"]) --> phase{phase}
+  phase -->|declare| dec["heuristic declare"]
+  phase -->|bury| bury["hybrid bury: heuristic candidates,<br/>value head scores, MC picks among 4 alternatives<br/>(2 s budget, heuristic fallback)"]
+  phase -->|play| anchor["heuristic play = anchor"]
+  anchor --> legal["legal actions, capped at 4,000,<br/>anchor forced in"]
+  legal --> worlds["sample 64 hidden worlds<br/>consistent with public info"]
+  worlds --> rc["rc · each world must make this round's refused<br/>throws refusable with the same forced component"]
+  rc --> prior["policy head scores every legal action<br/>(card log-odds summed, mean over worlds)"]
+  prior --> la["la · leading a non-trump single that is not the<br/>top live card? slot 0 = highest plain pair/tractor,<br/>else the policy's top action"]
+  la --> admit["admit 8: slot 0 + the 7 best by policy score"]
+  admit --> div["div · at most 2 per shape (suit, size, components);<br/>skip actions sharing all but one card with an<br/>admitted one; back-fill if short"]
+  div --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
+  value --> tb["tb · candidates within 0.02 level of the best:<br/>most root-team points from the current trick"]
+  tb --> play(["play"])
+  classDef r38 fill:#fff4d6,stroke:#b7791f,stroke-width:2px,stroke-dasharray:4 3;
+  class rc,la,div,tb r38;
+```
 
-One checkpoint, served as the NumPy package `smv3out-491ee4bf.npz` (sha256 `491ee4bf…`;
-until release 36 the soft-action head `soft-8ecd4fea.npz`), is the whole play search:
+Dashed nodes are release 38's rules (pending deploy); release 37 runs the same path without
+them (slot 0 is always the heuristic play, plain top-8 admission, plain argmax). Play has a
+3 s cooperative budget; on expiry the heuristic anchor is played. Source:
+`server/shengji/train/pv_search_policy.py`, `policy_value_search.py`, `ai/refusal.py`.
 
-1. **Sample.** 64 hidden worlds consistent with the public information, through
-   production's sampler.
-2. **Admit (policy head).** The policy head scores the capped legal listing (up
-   to 4,000 actions, the heuristic's play always forced in) in every world; the
-   heuristic's play plus the seven best others are admitted.
-3. **Price (value head).** Each admitted play is applied, the current trick
-   finished heuristically, and the value head prices the afterstate in every
-   world; the highest mean plays. No playouts, no lower-bound rule, no report
-   fold: about 0.25 s a decision on Fly against release 28's 0.9 s.
+**Served results** (signed levels per round, 95% CI; each arm read against a common MC-LCB
+control, so these are indirect contrasts, not head-to-head win rates):
 
-Bury is hybrid: heuristic candidates, scored by the same package's value head, MC
-selection with four alternatives, a 2 s budget with heuristic fallback. Declares
-are heuristic. The engine runs the compiled fast path.
+| change | against | result | reading |
+|---|---|---|---|
+| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | confirmed, ten fresh windows (#676) |
+| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | confirmed, ten windows; lower bound near zero |
+| SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) |
+| policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] |
+| adaptive K16 | release 36 | −0.0061 [−0.0303, +0.0181] | inconclusive, not taken |
+| PUCT (package prior / uniform) | release 36 | −0.417 / −0.894 | closed (#436) |
 
-What the evidence says (details and provenance in
-[AI_POLICIES.md](AI_POLICIES.md#production-contract), readouts in the
-[scaling log](docs/scaling_log/) and the search atlas):
-
-- **Release 36's head against release 30 as served:** +0.0361 [+0.0015, +0.0707] and the
-  predeclared confirmation +0.0393 [+0.0033, +0.0752], five windows each — the first model
-  gain since release 29. The policy head alone beats the production head +0.21 level/round in
-  paired duels (8k deals) while served reads for head swaps sit within ±0.02 of zero: a
-  measured decoupling between the head and the search, not a ceiling (#663).
-- **The head-driven search beats what production played, in card play:** +0.086
-  [+0.042, +0.131] signed levels per round against the release-28 package on 800
-  matched deals, and +0.122 [+0.079, +0.164] on fresh deals. More worlds beyond 64
-  are not shown to help (W128−W64 +0.024 [−0.034, +0.083]).
-- **Served against release 28 as served** (both bots with their own bury, five
-  clean 520-deal windows, 300 s cap): +0.049 [+0.003, +0.095], clear of zero but
-  narrowly, with real spread between windows. That is the number the deploy rests
-  on; it is not a large effect.
-- Within the family of heads at W64 (soft, JS-M1, JS-G1, gen-4 run 1, gen-3-warm)
-  no head is shown superior to another; the soft head has the largest point.
-- **Release 28 shipped for maintainability, not for strength.** One checkpoint
-  and one file replace two, so there is a single artifact to export, gate,
-  version and roll back. In play it read `+0.0057 [−0.0163, +0.0277]` signed
-  levels per round paired against release 27 at the same decision wall: no
-  resolved difference, which is the bar it had to clear. (Against the older
-  release 24 recipe, five capped windows read `+0.0239 [+0.0005, +0.0472]`,
-  but that inherits M1's win rather than adding to it.) A fresh-deal check that
-  the simplification did not cost strength is running.
-- The prior is a latency device with no resolved strength effect: on paired
-  seeds it changed outcomes by `−0.0003 [−0.0017, +0.0012]` while removing every
-  decision over 60 s (0 in 365k fresh-deal decisions vs 161 for the old recipe).
-- Every deploy passes two gates in `server/scripts/`: the decision-identity
-  gate (the NumPy package reproduces the Torch checkpoint's decisions) and the
-  server-path smoke (the server can take bury and play turns with the built
-  bot). Release 25 passed the first alone and stalled live; the second exists
-  because of it.
-
-Rollbacks and release records: [DEPLOY.md](DEPLOY.md). The serving path
-(packages, gate, smoke, `/healthz`): `DEPLOY.md` (the engineering record through release 28 is archived at [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md)).
-What comes next: [BACKLOG.md](BACKLOG.md) and [RL_PLAN.md](RL_PLAN.md).
+Each of div, rc, tb alone was unconfirmed or inconclusive; only the combination confirmed.
+Every production change and its receipt: [AI_POLICIES.md](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
+Rollback, gates and release records: [DEPLOY.md](DEPLOY.md). Open investigations: the board
+issue #679. Next work: [BACKLOG.md](BACKLOG.md), [RL_PLAN.md](RL_PLAN.md).
 
 ## Quick start
 
@@ -126,9 +105,12 @@ pair-count rule.
 server/shengji/engine/   cards, combos (tractor decomposition), legality, round, game
 server/shengji/ai/       policies: heuristic.py, smart.py + memory.py (card-counting
                          heuristic), mcbot.py (the Monte Carlo search), cwv_numpy.py
-                         (the Torch-free package runtime), registry.py (SHENGJI_BOT
-                         names are derived from the fly.toml env, never hand-written)
-server/shengji/train/    the shortlist bot, prior admission, bury policy, screens
+                         (the Torch-free package runtime), refusal.py (refusal-aware
+                         world sampling), registry.py (SHENGJI_BOT names are derived
+                         from the fly.toml env, never hand-written)
+server/shengji/train/    pv_search_policy.py + policy_value_search.py (the served play
+                         search), cwv_bury_policy.py (hybrid bury), the shortlist-era
+                         bots, screens
 server/shengji/rl/       encoders, action enumeration, the value/policy model, trainer
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
 server/scripts/          export_cwv_numpy.py, cwv_serving_gate.py, cwv_serving_smoke.py,
@@ -143,23 +125,23 @@ codes per seat so hidden information never leaves the server.
 
 ## Other policies in the registry
 
-`mc-s0-report-lcb` is the bare MC-LCB search (the screen baseline and the deep
-rollback); release 27's two-file recipe (M1 value package + separate prior v2)
-is the first rollback; `smart` and `heuristic` are the hand-written baselines.
-Closed lanes (G1's grid trunk in play, the PUCT ladder with the heads, the
-BELIEF and privileged-teacher teachers, direct-Q, Suphx O0) are recorded as
-lessons in [AI_POLICIES.md](AI_POLICIES.md) and [RL_PLAN.md](RL_PLAN.md), not
-as policies.
+`mc-s0-report-lcb` is the bare MC-LCB search (the common control of every served screen and
+the deep rollback); the shortlist-era packages (releases 22–28) remain registered as rollbacks
+(order in [DEPLOY.md](DEPLOY.md)); `smart` and `heuristic` are the hand-written baselines.
+Closed lanes (G1's grid trunk in play, PUCT with the heads, root allocation, the BELIEF and
+privileged-teacher teachers, direct-Q, Suphx O0) are recorded as lessons in
+[AI_POLICIES.md](AI_POLICIES.md) and [RL_PLAN.md](RL_PLAN.md), not as policies.
 
 ## Debugging & analysis tools
 
 - `scripts/replay.py` — render any room log (`logs/<ROOM>.jsonl`) as a full
   transcript with all hands.
 - `scripts/xray.py` / the in-game X-ray (press `x`; needs
-  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any position:
-  W32 nominations, MC selection estimates and the paired report-gap decision,
-  with the checkpoint, recipe, search work and measured times labelled. It
-  evaluates an isolated snapshot and never changes the live bot's RNG.
+  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any position.
+  It decodes the shortlist-era records (W32 nominations, MC selection
+  estimates, the report-gap decision); for the pv-search bot it shows the pick
+  and the bot's memory, not the admitted candidates' value means. It evaluates
+  an isolated snapshot and never changes the live bot's RNG.
 - `scripts/fetch_fly_logs.sh` — stage, validate, refresh and hash prod logs.
 - `python -m shengji.rl.human_shards` — build a replay-audited human play/bury
   corpus (raw human choices are proposal data until counterfactually validated).
@@ -168,16 +150,16 @@ as policies.
 
 | file | what it holds |
 |---|---|
-| `AI_POLICIES.md` | the production contract, every measured policy and durable conclusion |
+| `AI_POLICIES.md` | the production contract, every measured policy and durable conclusion, the evidence standard (research doctrine archived at `docs_archive/research-principles-through-2026-09-22.md`) |
 | `RL_PLAN.md` | decision tree, key learnings, measurement rules |
 | `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
 | `DEPLOY.md` | release records, rollbacks, the served modes and their gates |
 | issue #208 / `docs/scaling_log/` | engine/search speed (the dated record through 2026-09-22 is archived at `docs_archive/perf-through-2026-09-22.md`) |
 | `incidents/` / `server/tests/` | postmortems and the validation suite (the correctness ledger through 2026-09-22 is archived at `docs_archive/correctness-through-2026-09-22.md`) |
-| `docs/scaling_log/` | every value model, its offline metrics and screen results (built from `models.py`) |
+| `docs/scaling_log/` / `docs/atlas_v2/` | every model with its offline metrics (built from `models.py`); every screen since release 29 (built from `registry.json`) |
+| GitHub issue #679 + topic issues | the live investigation board, updated hourly; topics: #663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit |
 | `AGENTS.md` / `CODEX_WORKFLOW.md` | execution discipline and the Codex setup (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
-| `AI_POLICIES.md` | the evidence standard for every strength claim; the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md` |
-| `HANDOFF_REVIEW.md` | frozen to its authority markers (#674): the markers remain authoritative on `main`, prose lives on GitHub issues (#679 for fleet and housekeeping) and the archived text is in `docs_archive/handoff-review-*.md`. `HANDOFF_ACTIVE.md` was deleted (#674); fleet state is `server/scripts/fleet_status.sh` and the hourly bus status |
+| `HANDOFF_REVIEW.md` | frozen to its authority markers (#674); prose lives on GitHub issues, archived text in `docs_archive/handoff-review-*.md`. `HANDOFF_ACTIVE.md` was deleted (#674); fleet state is `server/scripts/fleet_status.sh` |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
 | `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |
 

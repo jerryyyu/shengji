@@ -1,8 +1,9 @@
 # Learning and search research plan
 
-Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in
-the release-30 policy/value search)**. This document owns the research architecture, the estimands and the decision
-tree. `BACKLOG.md` owns priority; live compute and review asks are on GitHub issues and in
+Last reconciled: **2026-10-03 (release 37 live on release 36's model: the gen-5 SMV3 outcome head in
+the release-30 policy/value search; release 38 = the same package + four search rules, approved and
+pending deploy)**. This document owns the research architecture, the estimands and the decision
+tree. `BACKLOG.md` owns priority; open investigations are on the board issue #679 and its topic issues; live compute and review asks are on GitHub issues and in
 `server/scripts/fleet_status.sh` (`HANDOFF_ACTIVE.md` was deleted, #674);
 policy names and deployment state are in `AI_POLICIES.md`; immutable authority markers are
 in `HANDOFF_REVIEW.md` (frozen to its markers, #674; prose lives on GitHub issues); every training run and screen is on the scaling page
@@ -16,7 +17,9 @@ correct engine and a reproducible evaluator. Production is release 37 (2026-10-0
 fix) on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
 NumPy package (`smv3out-491ee4bf.npz`) inside the search release 30 served unchanged — its policy
 head admitting eight candidates over 64 sampled worlds and its value head pricing them, no Monte
-Carlo playouts in play, value-guided hybrid bury. The champion for every strength claim is
+Carlo playouts in play, value-guided hybrid bury. Release 38 (approved 2026-10-03, pending deploy)
+adds four search rules to that search — admission diversity, refusal-constraint sampling, a points
+tie-break and lead-anchor — and becomes the champion once deployed. The champion for every strength claim is
 therefore the served release-36 bot (release 29/30's reads below are the labeled historical
 evidence of the soft head 8ecd4fea, which releases 29–35 served),
 and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
@@ -50,6 +53,22 @@ Screens run five 520-cluster windows first and extend to ten only when the five-
 exceeds +0.015 and the interval crosses zero; a five-window null is "not large", not "equal".
 
 ## Current program
+
+**State on 2026-10-03.** Search rules (#676): admission diversity + refusal constraints + points
+tie-break confirmed only as a combination, +0.0461 [+0.0242, +0.0681] vs release 36 on ten fresh
+windows; lead-anchor added +0.0106 [+0.0006, +0.0205] on top; together they are release 38
+(pending deploy). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
+closed (−0.417 package prior, −0.894 uniform vs release 36) and the root-allocation pilot A6 closed
+(#436). Model (#663): the C11 retrain (SMV3 recipe + runPVR1..8, 624k deals) early-stopped at
+epoch 9, best epoch 6, screen pending; SL4 (rollout value labels) served −0.0162 [−0.0600,
++0.0275], inconclusive. Data: runPVC1 (16,000 deals, teacher = the combo + la search, seeds
+44260910..) sealed 10-03; runPVC2 running. Mechanism (#663 issuecomment-5967276911): the listwise
+policy loss sums card logits per candidate, so a card shared by every admitted candidate cancels
+in the softmax and the head cannot learn whether to spend it; about 1.7% of PVR soft-target rows
+share a pair across all candidates (C15 baseline, issuecomment-5967436179). Admission diversity
+should raise that contrast in new data — a hypothesis, not a measured effect. Sol benchmark
+(#355): the SMV3 row vs Sol +0.55 [+0.10, +1.00] (15/20), vs PT-Sol +0.10 [−0.20, +0.40], ten
+deals each, descriptive; remaining rows running.
 
 The live plan after gen 5 is issue #663 (what to train and screen next, decided after release 36's
 confirmation) and the data-use audit #667 (its actions landed as #668 units bracketing, #669 sidecar
@@ -89,11 +108,14 @@ numbered program below is the release-30-era record and is kept for its evidence
    depth (one extra trick, heuristic or policy) completed its 3 × 12-pair qualification on the
    cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
    current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
-   claim; the 260-pair strength screen (~3.5 h) is approved and RUNNING on cloud since 2026-09-22
+   claim; the 260-pair strength screen (~3.5 h; SEALED 2026-09-22 with no resolved gain, see
+   `BACKLOG.md`) ran on cloud from 2026-09-22
    09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
    `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
-4. **What would change production next:** a head that beats release 36 on the served-bot
-   design, or a search change whose served contrast clears zero. Nothing else.
+4. **What would change production next:** a head that beats the production release (release 36/37;
+   release 38 once deployed) on the served-bot design, or a search change whose served contrast
+   clears zero. Nothing else. (The search rules of release 38 are the first search change to do so
+   since release 29.)
 
 ## What the scaling work taught (models)
 
@@ -128,6 +150,10 @@ Every row is on the scaling page with its receipt; these are the conclusions.
   W4 loses. More worlds beyond 64 are not shown to help.
 - **Policy head alone is SmartBot-level** under public information; the gap to the search is
   the value pricing, not the prior.
+- **Admission and selection rules beat tree search here** (2026-10): diversity, refusal-aware
+  worlds, a points tie-break and lead-anchor on the release-36 search confirmed in combination
+  (above), while PUCT on the same package lost (−0.417 signed levels per round vs release 36) and
+  adaptive K16 did not resolve. Each rule alone was unconfirmed; the gain appeared only in combination.
 - **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
   and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
 - **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs

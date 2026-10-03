@@ -18,8 +18,9 @@ Env (all under ``SHENGJI_PV_``):
   bot's, with the tree telemetry attached);
 * ``TREE_EPS`` -- the contender window, in the value head's units (signed
   levels); default 0.05;
-* ``TREE_ZMIN`` -- the significance gate on overriding the PV decision
-  (default 1.0; ``0`` = plain argmax of the depth-corrected estimate);
+* ``TREE_ZMIN`` -- the gate on overriding the PV decision: the depth evidence
+  for the action serving's selection picks under Q must have z >= ZMIN
+  (default 1.0; ``0`` = any positive depth difference);
 * ``TREE_BUDGET_FRACTION`` -- the tree starts only while the decision has used
   at most this fraction of the play serving budget (default 0.5);
 * ``TREE_CONT`` -- the continuation a lookahead plays before the value head is
@@ -75,7 +76,9 @@ class PVTreeConfig:
     budget_fraction: float = TREE_DEFAULTS["budget_fraction"]
     #: ... and abandons itself (for the PV decision) once elapsed reaches this one
     budget_stop_fraction: float = TREE_DEFAULTS["budget_stop_fraction"]
-    schema: str = "pv-tree-recipe-v3"
+    #: the override gate: serving's selection on Q, justified by depth evidence alone
+    gate: str = "selection-on-q-depth-z"
+    schema: str = "pv-tree-recipe-v4"
 
     def __post_init__(self):
         if type(self.sims) is not int or not 0 <= self.sims <= MAX_SIMS:

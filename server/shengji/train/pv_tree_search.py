@@ -79,20 +79,21 @@ Stage B -- the tree.
     ``Q(a) = mean_W v0[., a] + mean_V d[., a]`` (the 64-world mean plus a
     paired depth correction); a non-contender keeps ``Q = mean v0`` and cannot
     be chosen by the tree.
-  * The tree's candidate ``a*`` is the argmax of Q over T (an exact tie keeps
-    ``b``, then admission order).  When ``a* != b`` the PAIRED difference
-    ``delta = mean_W(x) + mean_V(y)`` with ``x = v0[., a*] - v0[., b]`` and
-    ``y = d[., a*] - d[., b]`` is computed with its standard error
-    ``se = sqrt(Var(x)/W + Var(y)/|V| + 2 Cov(x[V], y)/W)`` (sample moments;
-    the covariance term is there because the depth corrections are measured on
-    worlds that also enter the 64-world mean; with V = W it is
-    ``sqrt(Var(x + y)/W)``), and ``b`` is overridden only when
-    ``delta > zmin * se``; with fewer than two visited worlds (or W < 2), or a
-    negative variance estimate, ``se`` is infinite and ``b`` stands.  The gate
-    is POST-SELECTION -- ``a*`` is the best of up to four contenders -- so it
-    is a filter against noise, not a calibrated test.  ``zmin == 0`` is the plain argmax of Q
-    (``delta > 0``).  The serving selection rules (the points tie-break, ...)
-    act on the PV decision ``b`` only; they are not re-run on Q.
+  * The gate (v2).  The action selected under Q is ``a'`` = SERVING'S OWN
+    SELECTION run on Q instead of on the v0 means: the same `_select` call --
+    argmax, then every selection rule that is on (the points tie-break, the
+    lead-prior rule), with the same worlds and priors -- so a tie-break serving
+    applied to the PV decision is applied to the tree's choice as well.
+    ``a' == b``: ``b`` is played.  ``a' != b``: the override must be justified
+    by DEPTH evidence alone -- ``y_w = d[w, a'] - d[w, b]`` over the visited
+    worlds, ``z = mean(y) / (sd(y) / sqrt(|V|))`` -- and happens only when
+    ``|V| >= 2``, ``mean(y) > 0`` and ``z >= zmin`` (`depth_override`).  The v0
+    gap between the two is never counted (the first gate counted it, and so
+    reversed serving's tie-breaks: #704).  If ``a'`` is not a contender there
+    is no depth evidence for it and ``b`` stands.  A tree whose lookahead says
+    nothing (d = 0) therefore never changes the move.  The gate is still
+    POST-SELECTION -- ``a'`` is chosen after looking at Q -- so it is a noise
+    filter, not a calibrated test.
   * Network calls are batched across (a, w): one policy forward per ply and
     one value pass, each in ``batch_size`` chunks.
 
@@ -110,10 +111,12 @@ on): ``tree_sims``, ``tree_applied``, ``tree_skipped`` (``""``, ``"sims0"``,
 ``"single"``, ``"last-seat"``, ``"budget"``, ``"refused"``, ``"error"``),
 ``tree_cont``, ``tree_skipped_budget``,
 ``tree_contenders``, ``tree_worlds``, ``tree_evaluations``,
-``tree_pv_action`` / ``tree_q_action`` / ``tree_action`` (admitted positions:
-PV's, the argmax of Q, the one played), ``tree_changed_action``,
-``tree_override``, ``tree_override_blocked``, ``tree_delta``, ``tree_se``,
-``tree_z`` (None when not finite), ``tree_mean_abs_d``, ``tree_max_abs_d``,
+``tree_pv_action`` / ``tree_selected_q_index`` / ``tree_action`` (admitted
+positions: PV's, serving's selection on Q, the one played),
+``tree_pv_tiebreak`` (the PV decision is not the argmax of the v0 means: a
+selection rule chose it), ``tree_changed_action``, ``tree_override``,
+``tree_override_blocked``, ``tree_depth_delta``, ``tree_depth_se``,
+``tree_depth_z`` (None when not finite), ``tree_mean_abs_d``, ``tree_max_abs_d``,
 ``tree_d_nonzero`` (lookaheads whose value differs from v0 by more than 1e-6:
 the continuation reached a different leaf than serving's), ``tree_policy_rows``,
 ``tree_forced_plays``, ``tree_multi_leads`` (lookahead leads of two or more
@@ -149,8 +152,8 @@ TREE_BUDGET_STRIDE = 16
 #: a closed-form policy choice is used only when its maximiser is unique by more
 #: than this (log-odds); float rounding of an enumerated score is ~1e-13
 TOP_TOLERANCE = 1e-9
-#: a negative variance estimate smaller than this in magnitude is rounding (-> 0)
-VARIANCE_ROUNDING = 1e-12
+#: per-decision record state of serving's selection rules (`policy_value_search`)
+_SELECTION_STATE = ("_tiebreak", "_lead_tiebreak")
 #: a lookahead value further than this from v0 counts as a different leaf
 D_NONZERO = 1e-6
 
@@ -177,57 +180,28 @@ def contender_set(means, pv_index: int, eps: float, cap: int) -> list[int]:
     return sorted([int(pv_index)] + near[:max(0, cap - 1)])
 
 
-def paired_override(v0, d, a: int, b: int, zmin: float) -> dict:
-    """The significance gate (module docstring).  ``v0`` is the ``(W, n)`` PV
-    matrix over the contender columns; ``d`` is the ``(V, n)`` depth-correction
-    matrix over the same columns, measured on the FIRST ``V`` of those ``W``
-    worlds; ``a`` / ``b`` are column indices.
+def depth_override(d, a: int, b: int, zmin: float) -> dict:
+    """The override gate (module docstring): is the DEPTH evidence alone in
+    favour of column ``a`` over column ``b``?  ``d`` is the ``(V, n)``
+    depth-correction matrix; ``y_w = d[w, a] - d[w, b]`` over the V visited
+    worlds, ``delta = mean(y)``, ``se = sd(y, ddof=1) / sqrt(V)``,
+    ``z = delta / se``.  Override only with ``V >= 2``, ``delta > 0`` and
+    ``z >= zmin``.  The v0 gap between the two candidates is never evidence.
 
-    With ``x_w = v0[w, a] - v0[w, b]`` (all W worlds) and
-    ``y_w = d[w, a] - d[w, b]`` (the V visited worlds):
-    ``delta = mean_W(x) + mean_V(y)`` and, because ``y`` is measured on worlds
-    that also enter ``mean_W(x)``,
-    ``var(delta) = Var(x)/W + Var(y)/V + 2 Cov(x[:V], y)/W``
-    (sample variances and covariance, ddof 1).  With ``V == W`` this is
-    ``Var(x + y)/W``.  The standard error is infinite (no override unless
-    ``zmin == 0``) when ``W < 2`` or ``V < 2``, or when the estimate comes out
-    negative by more than rounding (possible for ``V < W``).
-
-    Returns ``delta``, ``se``, ``z`` and ``override``."""
-    v0 = np.asarray(v0, dtype=np.float64)
+    Returns ``delta``, ``se`` (``inf`` when V < 2), ``z`` and ``override``."""
     d = np.asarray(d, dtype=np.float64)
-    x = v0[:, a] - v0[:, b]
     y = d[:, a] - d[:, b]
-    worlds, visited = len(x), len(y)
-    if visited > worlds:
-        raise ValueError("the depth corrections cover more worlds than the PV pass")
-    delta = float(x.mean() + y.mean())
-    if worlds < 2 or visited < 2:
-        se = math.inf
-    else:
-        head = x[:visited]
-        covariance = float(((head - head.mean()) * (y - y.mean())).sum() / (visited - 1))
-        variance = float(x.var(ddof=1) / worlds + y.var(ddof=1) / visited
-                         + 2.0 * covariance / worlds)
-        if variance >= 0.0:
-            se = math.sqrt(variance)
-        elif variance > -VARIANCE_ROUNDING:
-            se = 0.0
-        else:
-            se = math.inf
-    if zmin == 0:
-        override = delta > 0
-    elif not math.isfinite(se):
-        override = False
-    else:
-        override = delta > zmin * se
-    if se > 0 and math.isfinite(se):
+    delta = float(y.mean())
+    if len(y) < 2:
+        return {"delta": delta, "se": math.inf, "z": 0.0, "override": False}
+    se = float(y.std(ddof=1) / math.sqrt(len(y)))
+    if se > 0:
         z = delta / se
-    elif se == 0 and delta != 0:
-        z = math.copysign(math.inf, delta)
+    elif delta != 0:
+        z = math.copysign(math.inf, delta)     # the same difference in every world
     else:
         z = 0.0
-    return {"delta": delta, "se": se, "z": z, "override": bool(override)}
+    return {"delta": delta, "se": se, "z": z, "override": bool(delta > 0 and z >= zmin)}
 
 
 def _separated(values) -> bool:
@@ -299,6 +273,7 @@ class PVTreeMixin:
     _tree_v0 = None
     _tree_fields = None
     _tree_last_d = None
+    _tree_points = None
 
     @property
     def tree_config(self) -> PVTreeConfig:
@@ -320,10 +295,11 @@ class PVTreeMixin:
     def _search(self, rnd, seat, anchor, started, check_budget=None):
         self.tree_config
         self._tree_started, self._tree_v0, self._tree_fields = started, None, None
+        self._tree_points = {}
         try:
             action = super()._search(rnd, seat, anchor, started, check_budget)
         finally:
-            self._tree_v0 = None
+            self._tree_v0 = self._tree_points = None
         record = self.last_decision_record
         if isinstance(record, dict) and self._tree_fields is not None:
             record.update(self._tree_fields)
@@ -336,10 +312,11 @@ class PVTreeMixin:
                 "tree_skipped": "", "tree_cont": self.tree_config.cont,
                 "tree_skipped_budget": False,
                 "tree_contenders": 0, "tree_worlds": 0, "tree_evaluations": 0,
-                "tree_pv_action": int(pv_winner), "tree_q_action": int(pv_winner),
+                "tree_pv_action": int(pv_winner), "tree_selected_q_index": int(pv_winner),
+                "tree_pv_tiebreak": False,
                 "tree_action": int(pv_winner), "tree_changed_action": False,
                 "tree_override": False, "tree_override_blocked": False,
-                "tree_delta": 0.0, "tree_se": 0.0, "tree_z": 0.0,
+                "tree_depth_delta": 0.0, "tree_depth_se": 0.0, "tree_depth_z": 0.0,
                 "tree_mean_abs_d": 0.0, "tree_max_abs_d": 0.0, "tree_d_nonzero": 0,
                 "tree_d_means": [], "tree_policy_rows": 0, "tree_forced_plays": 0,
                 "tree_multi_leads": 0, "tree_reply_plays": 0, "tree_reply_evaluations": 0,
@@ -355,8 +332,13 @@ class PVTreeMixin:
         tree_started = time.perf_counter()
         winner = pv_winner
         self._tree_last_d = None
+        # the selection rules' own record fields describe the PV decision; the
+        # second selection (on Q) must not replace them
+        kept = {name: getattr(self, name) for name in _SELECTION_STATE if hasattr(self, name)}
+        tiebreak = int(pv_winner) != int(np.argmax(means))
         try:
-            winner = self._tree_decide(rnd, seat, admitted, means, worlds, pv_winner, fields)
+            winner = self._tree_decide(rnd, seat, admitted, means, worlds, pv_winner, fields,
+                                       kwargs)
         except PVTreeBudgetExceeded:
             winner = pv_winner
             fields.update(self._blank_fields(pv_winner), tree_skipped="budget",
@@ -368,8 +350,23 @@ class PVTreeMixin:
             winner = pv_winner
             fields.update(self._blank_fields(pv_winner), tree_skipped="error",
                           tree_error=type(exc).__name__)
+        finally:
+            for name, value in kept.items():
+                setattr(self, name, value)
+        fields["tree_pv_tiebreak"] = bool(tiebreak)
         fields["tree_seconds"] = time.perf_counter() - tree_started
         return winner
+
+    def _trick_points(self, rnd, seat, hands, buried, action, world_index):
+        """Serving's tie-break points, remembered within a decision: the second
+        selection (on Q) asks for the same (candidate, world) leaves again."""
+        cache = self._tree_points
+        if cache is None:
+            return super()._trick_points(rnd, seat, hands, buried, action, world_index)
+        key = (tuple(action), world_index)
+        if key not in cache:
+            cache[key] = super()._trick_points(rnd, seat, hands, buried, action, world_index)
+        return cache[key]
 
     def _tree_gate(self):
         """The tree's own deadline callback (None without a serving budget)."""
@@ -383,7 +380,7 @@ class PVTreeMixin:
                 raise PVTreeBudgetExceeded("pv-tree budget share reached")
         return gate
 
-    def _tree_decide(self, rnd, seat, admitted, means, worlds, pv_winner, fields):
+    def _tree_decide(self, rnd, seat, admitted, means, worlds, pv_winner, fields, select_kwargs):
         cfg = self.tree_config
         means = np.asarray(means, dtype=np.float64)
         if cfg.sims == 0:
@@ -419,25 +416,30 @@ class PVTreeMixin:
         self._tree_last_d = d     # diagnostic only (probes); never read by the bot
         q = means.copy()
         q[contenders] = means[contenders] + d.mean(axis=0)
-        # argmax of Q over the contenders; an exact tie keeps the PV decision
-        best = min(contenders, key=lambda i: (-q[i], i != pv_winner, i))
         fields.update(tree_applied=True, tree_worlds=int(visited),
                       tree_evaluations=int(visited * len(contenders)),
-                      tree_q_action=int(best),
                       tree_mean_abs_d=float(np.abs(d).mean()),
                       tree_max_abs_d=float(np.abs(d).max()),
                       tree_d_nonzero=int((np.abs(d) > D_NONZERO).sum()),
                       tree_d_means=[float(v) for v in d.mean(axis=0)], **stats)
+        # serving's own selection, on Q: the same call that chose the PV decision,
+        # under the tree's deadline (expiry leaves the PV decision in place)
+        selected = int(super()._select(rnd, seat, admitted, q, worlds=worlds, check_budget=gate,
+                                       **select_kwargs))
+        fields["tree_selected_q_index"] = selected
         winner = pv_winner
-        if best != pv_winner:
-            test = paired_override(v0[:, contenders], d, contenders.index(best),
-                                   contenders.index(pv_winner), cfg.zmin)
-            fields.update(tree_delta=test["delta"], tree_se=_finite_or_none(test["se"]),
-                          tree_z=_finite_or_none(test["z"]),
-                          tree_override=test["override"],
-                          tree_override_blocked=not test["override"])
-            if test["override"]:
-                winner = best
+        if selected != pv_winner:
+            override = False
+            if selected in contenders:     # else: no depth evidence for it
+                test = depth_override(d, contenders.index(selected),
+                                      contenders.index(pv_winner), cfg.zmin)
+                fields.update(tree_depth_delta=test["delta"],
+                              tree_depth_se=_finite_or_none(test["se"]),
+                              tree_depth_z=_finite_or_none(test["z"]))
+                override = test["override"]
+            fields.update(tree_override=override, tree_override_blocked=not override)
+            if override:
+                winner = selected
         fields.update(tree_action=int(winner), tree_changed_action=winner != pv_winner)
         return winner
 

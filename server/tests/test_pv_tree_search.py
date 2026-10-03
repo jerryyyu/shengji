@@ -51,8 +51,9 @@ SIMS = "SHENGJI_PV_TREE_SIMS"
 CONTS = ("trick", "trick-next-heuristic", "policy", "trick-greedy")
 TREE_KEYS = {"tree_sims", "tree_applied", "tree_skipped", "tree_skipped_budget",
              "tree_contenders", "tree_worlds", "tree_evaluations", "tree_pv_action",
-             "tree_q_action", "tree_action", "tree_changed_action", "tree_override",
-             "tree_override_blocked", "tree_delta", "tree_se", "tree_z", "tree_mean_abs_d",
+             "tree_selected_q_index", "tree_pv_tiebreak", "tree_action", "tree_changed_action",
+             "tree_override", "tree_override_blocked", "tree_depth_delta", "tree_depth_se",
+             "tree_depth_z", "tree_mean_abs_d",
              "tree_max_abs_d", "tree_policy_rows", "tree_forced_plays",
              "tree_multi_leads", "tree_cont", "tree_d_nonzero", "tree_reply_plays",
              "tree_reply_evaluations", "tree_reply_differs_heuristic",
@@ -128,6 +129,7 @@ def craft(bot, matrix_fn, lookahead_fn=None):
     def score_leaves(rnd, seat, actions, worlds, check_budget=None, capture=None):
         matrix = np.asarray(matrix_fn(actions, worlds), dtype=np.float64)
         assert matrix.shape == (len(worlds), len(actions))
+        bot._crafted_actions = [list(a) for a in actions]
         if capture is not None:
             capture[:] = matrix
         return matrix.sum(axis=0), 1
@@ -146,6 +148,18 @@ def flat(means):
     """A PV matrix with the given column means and NO world variance."""
     return lambda actions, worlds: np.tile(np.asarray(means[:len(actions)], dtype=np.float64),
                                            (len(worlds), 1))
+
+
+def zero_depth(bot):
+    """Replace the lookahead by serving's own leaf (heuristic finish, same
+    evaluator): the lookahead value IS v0, so every depth correction is 0."""
+    def lookahead(rnd, seat, actions, worlds, gate=None):
+        leaves = [bot._leaf(rnd, seat, hands, buried, action, index)
+                  for index, (hands, buried) in enumerate(worlds) for action in actions]
+        values = np.asarray(bot.evaluator.score(leaves, seat), dtype=np.float64)
+        return values.reshape(len(worlds), len(actions)), {}
+    bot._tree_lookahead = lookahead
+    return bot
 
 
 def strip(record):
@@ -208,7 +222,8 @@ def test_recipe_payload_carries_every_tree_field_only_when_on():
     assert payload["tree"] == {"sims": 64, "eps": 0.05, "zmin": 1.0, "max_contenders": 4,
                                "cont": "trick", "reply_candidates": 4,
                                "budget_fraction": 0.5,
-                               "budget_stop_fraction": 0.8, "schema": "pv-tree-recipe-v3"}
+                               "budget_stop_fraction": 0.8, "gate": "selection-on-q-depth-z",
+                               "schema": "pv-tree-recipe-v4"}
     off = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
     assert pv.recipe_digest(config) != pv.recipe_digest(off)
     assert tree_token(None) == "" and tree_token(PVTreeConfig(sims=7)) == "-ts7"
@@ -262,7 +277,7 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
     sims=64: the same PV pass (ballot, means) and ``tree_pv_action`` = the
     mode-off selection, so the tree only ever moves OFF a known PV decision."""
     deals = range(71001, 71007) if rules == RELEASE38_RULES else range(71001, 71004)
-    states = 0
+    states = silent_applied = 0
     applied, changed = Counter(), Counter()
     skipped = {cont: Counter() for cont in CONTS}
     for deal_seed in deals:
@@ -274,6 +289,8 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
         ts0 = [bot_of(PVTreeConfig(sims=0), seed=100 + s, **kw) for s in range(4)]
         modes = {cont: [bot_of(PVTreeConfig(sims=64, zmin=0.0, cont=cont), seed=100 + s, **kw)
                         for s in range(4)] for cont in CONTS}
+        silent = [zero_depth(bot_of(PVTreeConfig(sims=64, zmin=0.0), seed=100 + s, **kw))
+                  for s in range(4)]
         while rnd.phase == "play":
             seat = rnd.turn
             last = len(rnd.trick.plays) == 3
@@ -288,6 +305,15 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
             assert r_0["admitted_indices"][r_0["tree_pv_action"]] == r_off["selected_index"]
             state_off = off[seat].sampler.rng.getstate()
             assert ts0[seat].sampler.rng.getstate() == state_off
+            # sims=64 with a lookahead that says nothing (d = 0): the tree runs and
+            # the played action is the mode-off one, in every state
+            a_s = silent[seat].decide_play(copy.deepcopy(rnd), seat)
+            r_s = silent[seat].last_decision_record
+            assert a_s == a_off and strip(r_s) == strip(r_off)
+            assert r_s["tree_d_nonzero"] == 0 and r_s["tree_changed_action"] is False
+            assert r_s["tree_selected_q_index"] == r_s["tree_pv_action"] == r_s["tree_action"]
+            assert silent[seat].sampler.rng.getstate() == state_off
+            silent_applied += r_s["tree_applied"]
             # sims=64, every continuation: the PV pass is untouched and the PV
             # decision is the mode-off one
             for cont, bots in modes.items():
@@ -325,6 +351,7 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
     for cont in CONTS:                                 # every mode was really exercised
         assert applied[cont] > states // 10 and changed[cont] > 0, (cont, applied, changed)
     assert skipped["trick"]["last-seat"] > 0 and skipped["policy"]["last-seat"] == 0
+    assert silent_applied > states // 10
 
 
 # ------------------------------------------------------------- (c) contender set
@@ -395,132 +422,196 @@ def test_cap_of_four_and_sims_rounding():
 
 # ------------------------------------------------------------- (d) the significance gate
 
-def test_paired_override_uses_the_paired_variance():
-    """delta = mean_W(x) + mean_V(y); var = Var(x)/W + Var(y)/V + 2 Cov(x[:V], y)/W,
-    because y is measured on worlds that also enter mean_W(x) (Codex, #704)."""
-    # POSITIVE covariance (the review's witness): the independence formula gave
-    # se 0.0707 and overrode; the full-pair se is 0.10 and delta 0.08 does not clear it
-    out = tree.paired_override([[0.4, 0.5], [0.5, 0.5]], [[0.08, 0.0], [0.18, 0.0]], 0, 1, 1.0)
-    assert out["delta"] == pytest.approx(0.08) and out["se"] == pytest.approx(0.10)
-    assert out["override"] is False and out["z"] == pytest.approx(0.8)
-    # NEGATIVE covariance: x = [0.1, 0], y = [0, 0.1] -> x + y is constant, se 0;
-    # the independence formula (se 0.0707) suppressed this override at zmin 2
-    out = tree.paired_override([[0.5, 0.4], [0.4, 0.4]], [[0.0, 0.0], [0.1, 0.0]], 0, 1, 2.0)
-    assert out["delta"] == pytest.approx(0.1) and out["se"] == pytest.approx(0.0, abs=1e-12)
-    assert out["override"] is True
-    assert math.sqrt(0.005 / 2 + 0.005 / 2) * 2.0 > 0.1          # what the old gate compared
-    rng = np.random.default_rng(3)
-    for _ in range(50):
-        # V == W: exactly Var(x + y) / W
-        w = int(rng.integers(2, 12))
-        v0, d = rng.normal(size=(w, 3)), rng.normal(size=(w, 3))
-        a, b = 2, 0
-        x, y = v0[:, a] - v0[:, b], d[:, a] - d[:, b]
-        out = tree.paired_override(v0, d, a, b, 1.0)
-        assert out["delta"] == pytest.approx((x + y).mean())
-        assert out["se"] == pytest.approx(math.sqrt((x + y).var(ddof=1) / w))
-        assert out["override"] == bool(out["delta"] > out["se"])
-        # V < W: the estimator's variance formula, computed directly
-        w, v = int(rng.integers(4, 12)), int(rng.integers(2, 4))
-        v0, d = rng.normal(size=(w, 2)), 0.3 * rng.normal(size=(v, 2))
-        x, y = v0[:, 1] - v0[:, 0], d[:, 1] - d[:, 0]
-        variance = x.var(ddof=1) / w + y.var(ddof=1) / v + 2 * np.cov(x[:v], y, ddof=1)[0, 1] / w
-        out = tree.paired_override(v0, d, 1, 0, 1.0)
-        assert out["delta"] == pytest.approx(x.mean() + y.mean())
-        if variance >= 0:
-            assert out["se"] == pytest.approx(math.sqrt(variance))
-            assert out["z"] == pytest.approx(out["delta"] / out["se"])
-        else:
-            assert out["se"] == math.inf and out["override"] is False
-
-
-def test_paired_override_undefined_variance_never_overrides():
-    v0 = np.array([[0.50, 0.49], [0.52, 0.47], [0.48, 0.51], [0.50, 0.49]])
+def test_depth_override_counts_depth_evidence_only():
     d = np.array([[0.0, 0.2], [0.0, 0.25], [0.0, 0.15]])
-    assert tree.paired_override(v0, d, 1, 0, 1.0)["override"] is True     # the defined case
-    assert tree.paired_override(v0, d, 1, 0, 100.0)["override"] is False
-    # |V| = 1 or W = 1: se is infinite and b stands -- unless zmin == 0
-    one = tree.paired_override(v0, d[:1], 1, 0, 1.0)
-    assert one["se"] == math.inf and one["override"] is False and one["z"] == 0.0
-    assert tree.paired_override(v0, d[:1], 1, 0, 0.0)["override"] is True
-    single = tree.paired_override(v0[:1], d[:1], 1, 0, 1.0)
-    assert single["se"] == math.inf and single["override"] is False
-    # zmin == 0 is the sign of delta
-    assert tree.paired_override(v0, -d, 1, 0, 0.0)["override"] is False
-    # V < W can estimate a NEGATIVE variance: x = [1,-1,0,0], y = [-0.5, 0.5]
-    #   2/3/4 + 0.5/2 + 2 * (-1) / 4 = -0.0833  -> refused, not clamped
-    neg = tree.paired_override([[1.0, 0.0], [-1.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
-                               [[-0.5, 0.0], [0.5, 0.0]], 0, 1, 1.0)
-    assert neg["se"] == math.inf and neg["override"] is False
-    # ... while a rounding-sized negative is zero
-    tiny = tree.paired_override([[0.3, 0.2], [0.2, 0.2], [0.25, 0.2]],
-                                [[0.0, 0.0], [0.1, 0.0], [0.05, 0.0]], 0, 1, 1.0)
-    assert tiny["se"] == pytest.approx(0.0, abs=1e-7) and tiny["override"] is True
-    with pytest.raises(ValueError):
-        tree.paired_override(v0[:2], d, 1, 0, 1.0)                        # V > W
+    y = d[:, 1] - d[:, 0]
+    out = tree.depth_override(d, 1, 0, 1.0)
+    assert out["delta"] == pytest.approx(y.mean())
+    assert out["se"] == pytest.approx(y.std(ddof=1) / math.sqrt(3))
+    assert out["z"] == pytest.approx(out["delta"] / out["se"]) and out["override"] is True
+    assert tree.depth_override(d, 1, 0, 100.0)["override"] is False       # z below zmin
+    # the boundary is inclusive: z >= zmin
+    assert tree.depth_override(d, 1, 0, out["z"])["override"] is True
+    # depth against the rival never overrides, whatever zmin
+    for zmin in (0.0, 1.0):
+        back = tree.depth_override(d, 0, 1, zmin)
+        assert back["delta"] < 0 and back["z"] < 0 and back["override"] is False
+    # |V| = 1: the sd is undefined, no override even at zmin 0
+    for zmin in (0.0, 1.0):
+        one = tree.depth_override(d[:1], 1, 0, zmin)
+        assert one["se"] == math.inf and one["z"] == 0.0 and one["override"] is False
+        assert one["delta"] == pytest.approx(0.2)
+    # the same positive difference in every world: sd 0, z infinite, override
+    const = tree.depth_override([[0.0, 0.125], [0.0, 0.125], [0.0, 0.125]], 1, 0, 2.0)
+    assert const["se"] == 0.0 and const["z"] == math.inf and const["override"] is True
+    # no difference at all: nothing to justify an override, even at zmin 0
+    none = tree.depth_override([[0.3, 0.3], [0.1, 0.1]], 1, 0, 0.0)
+    assert none["delta"] == 0.0 and none["z"] == 0.0 and none["override"] is False
+    # zmin = 0: any positive depth mean over >= 2 worlds
+    weak = tree.depth_override([[0.0, 2.1], [0.0, -1.9]], 1, 0, 0.0)
+    assert weak["delta"] == pytest.approx(0.1) and 0 < weak["z"] < 1 and weak["override"] is True
+    assert tree.depth_override([[0.0, 2.1], [0.0, -1.9]], 1, 0, 1.0)["override"] is False
 
 
-def _gate_bot(zmin, noise, sims=64, worlds=16):
+def _gate_bot(zmin, noise, sims=64, worlds=16, gain=0.1, **rules):
     """PV: candidate 0 leads candidate 1 by 0.01 in every world.  Lookahead:
-    candidate 1 gains ``0.1 +- noise`` (alternating by world), candidate 0 nothing."""
-    bot = bot_of(PVTreeConfig(sims=sims, zmin=zmin), worlds=worlds)
+    candidate 1 gains ``gain +- noise`` (alternating by world), candidate 0 nothing."""
+    bot = bot_of(PVTreeConfig(sims=sims, zmin=zmin), worlds=worlds, **rules)
 
     def lookahead(actions, worlds_):
         values = np.tile([0.50, 0.49], (len(worlds_), 1))
-        values[:, 1] += 0.1 + noise * np.where(np.arange(len(worlds_)) % 2, 1.0, -1.0)
+        values[:, 1] += gain + noise * np.where(np.arange(len(worlds_)) % 2, 1.0, -1.0)
         return values
     craft(bot, flat([0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), lookahead)
     return bot
 
 
-def test_override_needs_a_significant_paired_difference():
+def craft_points(bot, points):
+    """Crafted tie-break points per admitted position (serving's `_trick_points`
+    is what `_select_by_points` sums over the worlds)."""
+    def trick_points(rnd, seat, hands, buried, action, world_index):
+        return points[bot._crafted_actions.index(list(action))]
+    bot._trick_points = trick_points
+
+
+def test_override_needs_depth_evidence_for_the_action_selected_under_q():
     rnd = state(); seat = rnd.turn
-    # large delta against its se: the tree overrides PV
+    # (iii) depth clearly favours the rival: selected under Q and overridden
     bot = _gate_bot(zmin=1.0, noise=0.05)
     played = bot.decide_play(copy.deepcopy(rnd), seat)
     r = bot.last_decision_record
-    assert r["tree_applied"] and r["tree_pv_action"] == 0 and r["tree_q_action"] == 1
+    assert r["tree_applied"] and r["tree_pv_action"] == 0 and r["tree_selected_q_index"] == 1
+    assert r["tree_pv_tiebreak"] is False
     assert r["tree_override"] is True and r["tree_override_blocked"] is False
     assert r["tree_action"] == 1 and r["tree_changed_action"] is True
     assert played == r["admitted"][1] == r["played"]
     assert r["selected_index"] == r["admitted_indices"][1] and r["anchor_selected"] is False
-    assert r["tree_delta"] == pytest.approx(0.09) and r["tree_z"] > 1.0
-    assert r["tree_se"] == pytest.approx(math.sqrt(np.var([0.15, 0.05] * 8, ddof=1) / 16))
+    # the evidence is the depth difference alone (0.10), never Q's 0.09
+    assert r["tree_depth_delta"] == pytest.approx(0.10) and r["tree_depth_z"] > 1.0
+    assert r["tree_depth_se"] == pytest.approx(math.sqrt(np.var([0.15, 0.05] * 8, ddof=1) / 16))
     assert r["tree_mean_abs_d"] == pytest.approx(0.05) and r["tree_max_abs_d"] == pytest.approx(0.15)
     assert r["tree_worlds"] == 16 and r["tree_contenders"] == 2
-    # the same delta buried in noise: PV stands and the block is recorded
+    # (v) the same gain buried in noise: z < ZMIN, PV stands and the block is recorded
     bot = _gate_bot(zmin=1.0, noise=2.0)
     played = bot.decide_play(copy.deepcopy(rnd), seat)
     r = bot.last_decision_record
-    assert r["tree_applied"] and r["tree_q_action"] == 1 and r["tree_action"] == 0
+    assert r["tree_applied"] and r["tree_selected_q_index"] == 1 and r["tree_action"] == 0
     assert r["tree_override"] is False and r["tree_override_blocked"] is True
     assert r["tree_changed_action"] is False and played == r["admitted"][0]
-    assert 0 < r["tree_z"] < 1.0 and r["selected_index"] == r["admitted_indices"][0]
-    # zmin = 0 on the same noise: the plain argmax of Q
+    assert 0 < r["tree_depth_z"] < 1.0 and r["selected_index"] == r["admitted_indices"][0]
+    # zmin = 0 on the same noise: any positive depth mean
     bot = _gate_bot(zmin=0.0, noise=2.0)
     assert bot.decide_play(copy.deepcopy(rnd), seat) == r["admitted"][1]
     assert bot.last_decision_record["tree_override"] is True
-    # one visited world (sims = 2 over 2 contenders): se infinite, PV stands
-    bot = _gate_bot(zmin=1.0, noise=0.0, sims=2)
-    assert bot.decide_play(copy.deepcopy(rnd), seat) == r["admitted"][0]
-    r1 = bot.last_decision_record
-    assert r1["tree_worlds"] == 1 and r1["tree_override_blocked"] is True
-    assert r1["tree_se"] is None and r1["tree_z"] == 0.0 and r1["tree_delta"] == pytest.approx(0.09)
-    # ... and zmin = 0 still reproduces argmax-Q there
-    bot = _gate_bot(zmin=0.0, noise=0.0, sims=2)
-    assert bot.decide_play(copy.deepcopy(rnd), seat) == r["admitted"][1]
+    # one visited world (sims = 2 over 2 contenders): no sd, PV stands -- at zmin 0 too
+    for zmin in (1.0, 0.0):
+        bot = _gate_bot(zmin=zmin, noise=0.0, sims=2)
+        assert bot.decide_play(copy.deepcopy(rnd), seat) == r["admitted"][0]
+        r1 = bot.last_decision_record
+        assert r1["tree_worlds"] == 1 and r1["tree_override_blocked"] is True
+        assert r1["tree_depth_se"] is None and r1["tree_depth_z"] == 0.0
+        assert r1["tree_depth_delta"] == pytest.approx(0.1) and r1["tree_selected_q_index"] == 1
 
 
-def test_tree_agreeing_with_pv_and_exact_q_ties_keep_pv():
+def test_selection_under_q_agreeing_with_pv_keeps_pv():
     rnd = state(); seat = rnd.turn
     bot = bot_of(PVTreeConfig(sims=64, zmin=0.0, eps=1.0), worlds=8)
-    # binary-exact numbers: Q = 0.5 + 0 and 0.25 + 0.25 tie exactly at 0.5
+    # binary-exact numbers: Q = 0.5 + 0 and 0.25 + 0.25 tie exactly at 0.5; the
+    # argmax keeps the first, which is the PV decision
     craft(bot, flat([0.5, 0.25, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0]),
           lambda a, w: np.tile([0.5, 0.5], (len(w), 1)))
     bot.decide_play(copy.deepcopy(rnd), seat)
     r = bot.last_decision_record
-    assert r["tree_applied"] and r["tree_q_action"] == r["tree_pv_action"] == r["tree_action"] == 0
-    assert not r["tree_override"] and not r["tree_override_blocked"] and r["tree_delta"] == 0.0
+    assert r["tree_applied"]
+    assert r["tree_selected_q_index"] == r["tree_pv_action"] == r["tree_action"] == 0
+    assert not r["tree_override"] and not r["tree_override_blocked"]
+    assert r["tree_depth_delta"] == 0.0
+    # (iv) depth is against b, but serving's selection on Q still picks b: kept.
+    # The rival gains 0.005 in every world (an infinite z), Q = 0.495 < 0.50.
+    bot = _gate_bot(zmin=0.0, noise=0.0, gain=0.005)
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    r = bot.last_decision_record
+    assert r["tree_applied"] and r["tree_d_means"] == pytest.approx([0.0, 0.005])
+    assert r["tree_selected_q_index"] == 0 and played == r["admitted"][0]
+    assert not r["tree_override"] and not r["tree_override_blocked"]
+
+
+def test_a_tiebreak_choice_is_not_reversed_by_its_v0_gap():
+    """(ii) The #704 failure.  b is serving's points tie-break choice: a rival
+    has the larger v0 mean (inside the tie-break epsilon) and b banks more
+    points.  With EQUAL depth corrections the first gate overrode b on the v0
+    gap alone; now serving's own selection runs on Q, applies the same
+    tie-break, picks b again, and nothing is overridden."""
+    rnd = state(); seat = rnd.turn
+    means = [0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    points = [0, 10, 0, 0, 0, 0, 0, 0]
+
+    def build(lookahead, zmin=0.0):
+        bot = bot_of(PVTreeConfig(sims=64, zmin=zmin), worlds=8, tiebreak_points=True)
+        craft(bot, flat(means), lookahead)
+        craft_points(bot, points)
+        return bot
+    off = bot_of(None, worlds=8, tiebreak_points=True)
+    craft(off, flat(means)); craft_points(off, points)
+    b_action = off.decide_play(copy.deepcopy(rnd), seat)
+    off_record = off.last_decision_record
+    assert off_record["tiebreak_applied"] is True and off_record["tiebreak_near_set"] == [0, 1]
+    # equal depth corrections (+0.03 for both): Q keeps the 0.01 gap, the tie-break keeps b
+    bot = build(lambda a, w: np.tile([0.53, 0.52], (len(w), 1)))
+    assert bot.decide_play(copy.deepcopy(rnd), seat) == b_action
+    r = bot.last_decision_record
+    assert r["admitted"][1] == b_action and r["tree_applied"] and r["tree_pv_action"] == 1
+    assert r["tree_pv_tiebreak"] is True and r["tree_selected_q_index"] == 1
+    assert not r["tree_override"] and not r["tree_override_blocked"] and not r["tree_changed_action"]
+    # the record's tie-break fields still describe the PV decision, exactly as mode off
+    for key in ("tiebreak_applied", "tiebreak_near_set", "tiebreak_points"):
+        assert r[key] == off_record[key]
+    # depth mildly AGAINST b (the rival +0.005 in every world): still inside the
+    # tie-break epsilon on Q, so the tie-break keeps b
+    bot = build(lambda a, w: np.tile([0.505, 0.49], (len(w), 1)))
+    assert bot.decide_play(copy.deepcopy(rnd), seat) == b_action
+    assert bot.last_decision_record["tree_selected_q_index"] == 1
+    # depth CLEARLY for the rival (+0.10 +- 0.01): outside the epsilon on Q, selected, and
+    # the depth evidence alone clears the gate -> override
+    def strong(a, w):
+        values = np.tile([0.60, 0.49], (len(w), 1))
+        values[:, 0] += 0.01 * np.where(np.arange(len(w)) % 2, 1.0, -1.0)
+        return values
+    bot = build(strong, zmin=2.0)
+    assert bot.decide_play(copy.deepcopy(rnd), seat) == bot.last_decision_record["admitted"][0]
+    r = bot.last_decision_record
+    assert r["tree_selected_q_index"] == 0 and r["tree_override"] is True
+    assert r["tree_depth_delta"] == pytest.approx(0.10) and r["tree_depth_z"] > 2.0
+    assert r["tiebreak_applied"] is True                      # still the PV decision's record
+    # the tie-break's leaves are rebuilt once per (candidate, world), not twice
+    bot = bot_of(PVTreeConfig(sims=64, zmin=0.0), worlds=8, tiebreak_points=True)
+    craft(bot, flat(means), lambda a, w: np.tile([0.53, 0.52], (len(w), 1)))
+    built = []
+    real = pv.PVSearchBot._trick_points
+
+    def counting(self, rnd_, seat_, hands, buried, action, world_index):
+        built.append((tuple(action), world_index))
+        return real(self, rnd_, seat_, hands, buried, action, world_index)
+    pv.PVSearchBot._trick_points = counting
+    try:
+        bot.decide_play(copy.deepcopy(rnd), seat)
+    finally:
+        pv.PVSearchBot._trick_points = real
+    assert len(built) == len(set(built)) == 2 * 8
+
+
+def test_a_non_contender_selected_under_q_has_no_depth_evidence():
+    rnd = state(); seat = rnd.turn
+    bot = bot_of(PVTreeConfig(sims=64, zmin=0.0), worlds=8)
+    # both contenders lose 0.2 at depth, so Q's argmax is candidate 2, which was
+    # never looked at: b stands and the block is recorded
+    craft(bot, flat([0.50, 0.49, 0.40, 0.0, 0.0, 0.0, 0.0, 0.0]),
+          lambda a, w: np.tile([0.30, 0.29], (len(w), 1)))
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    r = bot.last_decision_record
+    assert r["tree_contenders"] == 2 and r["tree_selected_q_index"] == 2
+    assert r["tree_override"] is False and r["tree_override_blocked"] is True
+    assert played == r["admitted"][0] and r["tree_depth_delta"] == 0.0
 
 
 def test_pv_tiebreak_choice_is_always_a_contender_and_the_reference():
@@ -581,7 +672,7 @@ def test_every_contender_is_evaluated_in_the_same_visited_worlds(monkeypatch):
     d = deep - np.array([[0.50, 0.49, 0.48]] * 2)
     assert r["tree_mean_abs_d"] == pytest.approx(np.abs(d).mean())
     q = np.array([0.50, 0.49, 0.48]) + d.mean(axis=0)
-    assert r["tree_q_action"] == int(np.argmax(q))
+    assert r["tree_selected_q_index"] == int(np.argmax(q))
 
 
 # ------------------------------------------------------------- (f) the lookahead

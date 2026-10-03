@@ -63,6 +63,98 @@ def test_dry_run_plans_four_arms_without_constructing_transport(tmp_path):
     assert not output.exists()
 
 
+def test_production_w64_records_exact_recipe_and_sol_arms(tmp_path, monkeypatch):
+    output, config = wiring(tmp_path, baseline="production-w64", models=("sol",),
+                            policy=benchmark.PRODUCTION_W64_POLICY)
+    identity = {"path": str(tmp_path / "prod.npz"),
+                "sha256": benchmark.PRODUCTION_W64_SHA256}
+    monkeypatch.setattr(benchmark, "_checkpoint_identity", lambda _: identity)
+    monkeypatch.setenv("SHENGJI_PV_WORLDS", "256")
+    monkeypatch.setenv("SHENGJI_PV_BURY_CANDIDATES", "1")
+    calls = []
+    def register(path, **recipe):
+        calls.append((path, recipe))
+        return [benchmark.PRODUCTION_W64_POLICY]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not use old registration or construct a provider")
+    config.update(pv_register_fn=register, register_fn=forbidden,
+                  transport_factory=forbidden)
+    result = benchmark.run_benchmark(**config)
+    assert result["planned_arms"] == ["sol-actor-only", "sol-perfect"]
+    assert result["planned_mirrors"] == 8
+    recipe = result["config"]["baseline_recipe"]
+    assert recipe["release"] == 30
+    assert recipe["sha256"] == identity["sha256"]
+    assert (recipe["worlds"], recipe["candidates"], recipe["cap"],
+            recipe["batch_size"]) == (64, 8, 4000, 128)
+    assert recipe["serving_budget_seconds"] == 3.0
+    assert recipe["bury_serving_budget_seconds"] == 2.0
+    assert recipe["bury_arm"] == "hybrid"
+    assert recipe["bury_config"] == vars(CWVBuryConfig())
+    assert len(calls) == 1 and calls[0][0] == identity["path"]
+    assert benchmark.MODEL_NAMES["sol"] == "gpt-5.6-sol"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("sha,suffix", [("0" * 64, ".npz"),
+                                        (benchmark.PRODUCTION_W64_SHA256, ".pt")])
+def test_production_w64_rejects_wrong_package_before_registration(sha, suffix):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid package must not register")
+    with pytest.raises(benchmark.BenchmarkRefusal, match="pinned release-30"):
+        benchmark._registered_production_w64(
+            {"path": "model" + suffix, "sha256": sha}, register=forbidden)
+
+
+def test_production_w64_refuses_recipe_name_drift():
+    with pytest.raises(benchmark.BenchmarkRefusal, match="differs from release 30"):
+        benchmark._registered_production_w64(
+            {"path": "prod.npz", "sha256": benchmark.PRODUCTION_W64_SHA256},
+            register=lambda *a, **k: ["different-policy"])
+
+
+def test_production_recipe_matches_real_registry_identity(monkeypatch):
+    from shengji.ai import cwv_policy
+    from shengji.train.pv_search_policy import pv_registry_entries
+    # Exercise real recipe/name construction without loading or playing a model.
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda _: "ccade130")
+    name, recipe = benchmark._registered_production_w64(
+        {"path": "prod.npz", "sha256": benchmark.PRODUCTION_W64_SHA256},
+        register=lambda *a, **kw: sorted(pv_registry_entries(*a, **kw)))
+    assert name == benchmark.PRODUCTION_W64_POLICY
+    assert recipe["registered_names"] == [name]
+
+
+def test_summary_keeps_failed_mirror_fallbacks_and_flags_legacy_rows():
+    summary = benchmark._summary([
+        {"seed": 1, "flip": 0, "complete": False, "baseline_play": {},
+         "events": [{"side": "baseline", "policy_record": {
+             "schema": "pv-search-fallback-v1", "reason": "budget"}}]},
+        {"seed": 1, "flip": 1, "complete": True, "signed_levels": 1},
+    ], arm="sol-perfect", seed=1)
+    assert summary["complete_deal_pairs"] == 0
+    assert summary["baseline_play"]["fallbacks"] == 1
+    assert summary["mirrors_missing_play_telemetry"] == 1
+
+
+def test_setup_bury_fallback_is_in_sealed_report(tmp_path):
+    class BuryPolicy(FakePolicy):
+        def decide_bury(self, *_args):
+            self.last_bury_record = {"schema": "cwv-bury-fallback-v1", "reason": "budget"}
+            return []
+    output, config = wiring(tmp_path, run=True, seeds=[7])
+    prepare = config["prepare_fn"]
+    def setup(game, policies):
+        policies[0].decide_bury(None, 0)
+        return prepare(game, policies)
+    config.update(prepare_fn=setup, bot_factory=lambda *a, **k: BuryPolicy(),
+                  runner=lambda *a, **k: {"complete": False, "calls": []})
+    report = benchmark.run_benchmark(**config)
+    assert report["baseline_setup_by_seed"]["7"]["fallbacks"] == 1
+    receipt = json.loads((output / "setup-7.json").read_text())
+    assert receipt["baseline_bury"]["reasons"] == {"budget": 1}
+
+
 @pytest.mark.parametrize("limit", [None, 0, -1, True, 1.5])
 def test_run_requires_positive_integer_token_ceiling_before_any_work(tmp_path, monkeypatch, limit):
     output, config = wiring(tmp_path, run=True, token_limit=limit)

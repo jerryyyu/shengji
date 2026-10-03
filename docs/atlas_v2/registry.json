@@ -888,6 +888,27 @@
    "takeaway": "Inconclusive: the interval spans zero and the point is below the +0.015 extension line. Not extended, not promoted; release 38 keeps its model.",
    "note": "SEALED 10-03; dispatch #663 issuecomment-5971350164; readout (Codex, one pass) issuecomment-5972721473. Paired +0.009617 [-0.020626,+0.039860], SE 0.015430, MDE80 0.043229, I2 0%; INCONCLUSIVE (interval spans zero). Extension trigger (point > +0.015) not met: no extension, not promoted. Window deltas +0.0048, +0.0356, +0.0154, +0.0115, -0.0135. Health: 735,032 expected play calls all recorded, no PV fallback; MC-LCB baseline receipts unclassified by the PV health reader (not evidence of zero MC fallback); tiebreak_abandoned missing, not zero. The retrain changes data, optimisation exposure and validation population together: no attribution to the policy head or data quality. Reader sha256 118feb2b7d65ce4bc1210d85266499feff8f50fd09595be430df36be20717586; result sha256 6138968a939b3929900cbc874a0efc04f60facf36b4187154f43babefdbd5236. Archived ~/shengji-archive/2026-09-13/readouts/v45c11-c11out-vs-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-5972721473"
+  },
+  {
+   "id": "v46tree",
+   "date": "2026-10-03",
+   "status": "sealed",
+   "box": "Perf",
+   "title": "PUCT lookahead tree on top of release 38",
+   "candidate": "PAIRED LOOKAHEAD TREE (v46tree, #704): release 38 as served plus the tree \u2014 64 simulations, each finishing the current trick before the value head prices the position, candidates compared on the same worlds, and the one-ply choice overridden only when a candidate has at least two visits and a two-standard-error advantage (SHENGJI_PV_TREE_SIMS=64, ZMIN 2.0; name token -ts64-tz2); vs release 38 as served.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; exploratory",
+   "seeds": "47060910 47160910 47260910 47360910 47460910 (Perf)",
+   "confidence": 0.95,
+   "point": 0.017878,
+   "lo": -0.002376,
+   "hi": 0.038132,
+   "takeaway": "Inconclusive, but the point clears the +0.015 line: a predeclared ten-window confirmation on fresh seeds is next. Not promoted.",
+   "note": "SEALED 10-03; dispatch #436 issuecomment-5972698852; readout (Codex, one pass) issuecomment-5973885417. Paired +0.017878 [-0.002376,+0.038132], SE 0.010334, MDE80 0.028951, I2 0%; INCONCLUSIVE (interval spans zero). Point exceeds the +0.015 proposal threshold: fresh ten-window confirmation proposed, judged alone, not pooled with this read. Window deltas +0.0221, +0.0404, +0.0250, +0.0087, -0.0058. Activation: tree ran on 83,240 of 181,564 candidate plays (45.85%), overrode the one-ply choice on 5,715 (3.15%), blocked override on 17,485 (9.63%); skips 72,800 single-candidate and 25,524 last-seat. Latency: median window p50 0.1308 s vs 0.1041 s for release 38; zero decision timeouts. Health: 727,044 expected play calls all recorded, no PV fallback; MC-LCB internal receipts unclassified. Earlier PUCT attempt (P1) read -0.417 vs the release-36 package. Reader sha256 abdeb234c1ebaa3658274570d2afc4af6c334ae21887fd33f660ec3fa4de65d5; result sha256 56cdccf5fb9c0dc9a9c1465a603f9811ec9269f51ee2dba807a4a206fb6f1c74. Archived ~/shengji-archive/2026-09-13/readouts/v46tree-tree-on-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/436#issuecomment-5973885417"
   }
  ],
  "context_screens": [

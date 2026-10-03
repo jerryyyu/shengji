@@ -51,6 +51,8 @@ def check_registry(reg):
     for s in reg["screens"]:
         if "vs_group" in s and not (isinstance(s["vs_group"], str) and s["vs_group"].strip()):
             errs.append(f"{s['id']}: vs_group, when given, names the comparator that is not the release as served")
+        if "vs_group" not in s and not str(s.get("comparator", "")).startswith(f"release {s.get('vs')} as served"):
+            errs.append(f"{s['id']}: the comparator is not 'release {s.get('vs')} as served', so it needs a vs_group naming what it is compared to")
     for s in reg["screens"] + reg["context_screens"]:
         # the instrument is an explicit typed field on EVERY row (context rows included), never inferred
         if s.get("instrument_kind") not in INSTRUMENT_KINDS or not s.get("instrument"):
@@ -115,21 +117,26 @@ SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
 SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
 def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
-def now_groups():
-    """Reads against the production release, split by what they are actually compared to: the release
-    as served first, then each named variant of it (``vs_group``), in registry order."""
-    plain = [s for s in SCREENS_NOW if not s.get("vs_group")]
-    out = [(f"release {PROD} as served · current production", plain)] if plain else []
-    named = {}
-    for s in SCREENS_NOW:
-        if s.get("vs_group"):
-            named.setdefault(s["vs_group"], []).append(s)
-    return out + list(named.items())
-NOW_GROUPS = now_groups()
+def comparator_sections(reg):
+    """One section per (release, actual comparator): the production release first, then the earlier
+    ones, newest first.  Within a release the reads against the release AS SERVED come first, then each
+    named comparator (``vs_group``: a variant, a control, card play) in registry order.  Grouping never
+    depends on which release is production, so a promotion keeps every named comparator apart."""
+    prod = production_release(reg)
+    rels = [prod] + sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}, reverse=True)
+    out = []
+    for rel in rels:
+        groups = {}
+        for s in sorted((s for s in reg["screens"] if s["vs"] == rel), key=lambda s: bool(s.get("vs_group"))):
+            groups.setdefault(s.get("vs_group"), []).append(s)
+        for g, items in groups.items():
+            tail = (" · current production" if g is None else "") if rel == prod else " · closed comparator"
+            out.append({"release": rel, "group": g, "label": (f"release {rel} as served" if g is None else g) + tail,
+                        "kind": "main" if rel == prod else "prev", "items": items})
+    return out
+COMPARATORS = comparator_sections(R)
 # One chart band per comparator: every row under a band is compared to the thing the band names.
-SECTIONS = [(f"against {label}", "main", items) for label, items in NOW_GROUPS]
-SECTIONS += [(f"against release {rel} · closed comparator", "prev", [s for s in SCREENS_EARLIER if s["vs"] == rel])
-             for rel in sorted(EARLIER_RELEASES, reverse=True)]
+SECTIONS = [(f"against {c['label']}", c["kind"], c["items"]) for c in COMPARATORS]
 if R["context_screens"]:
     SECTIONS.append(("context · against release 28", "ctx", R["context_screens"]))
 rows = [r for _, kind, items in SECTIONS for r in _chart_rows(items, kind)]
@@ -223,17 +230,12 @@ def baseline_cards():
     return card + (f'<ul class="releases">{lines}</ul>' if lines else "")
 models_note = ('<p class="lede small">' + esc(R["models_note"]) + "</p>") if R.get("models_note") else ""
 head_note = ('<p class="sub small">' + esc(R["head_ladder_note"]) + "</p>") if R.get("head_ladder_note") else ""
+def comparator_tables(sections):
+    return "\n".join(f'<h4>Screens against {esc(c["label"])} · {_reads(len(c["items"]))}</h4>' + screens_table(c["items"]) for c in sections)
+now_block = (comparator_tables([c for c in COMPARATORS if c["release"] == PROD]) if SCREENS_NOW
+             else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>')
 def earlier_sections():
-    out = []
-    for rel in EARLIER_RELEASES:
-        items = [s for s in SCREENS_EARLIER if s["vs"] == rel]
-        out.append(f'<h4>Screens against release {rel} · {len(items)} reads, a closed comparator</h4>' + screens_table(items))
-    return "\n".join(out)
-def now_tables():
-    if len(NOW_GROUPS) <= 1:
-        return screens_table(SCREENS_NOW)
-    return "\n".join(f'<h4>Against {esc(label)} · {_reads(len(items))}</h4>' + screens_table(items) for label, items in NOW_GROUPS)
-now_block = now_tables() if SCREENS_NOW else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>'
+    return comparator_tables([c for c in COMPARATORS if c["release"] != PROD])
 
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'

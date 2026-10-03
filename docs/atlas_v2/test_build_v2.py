@@ -126,27 +126,56 @@ def test_the_page_splits_screens_by_comparator_release_and_carries_the_head_ladd
 
 
 def test_the_chart_and_tables_carry_one_band_per_comparator():
-    """Jerry 2026-10-03: a visual separator for each thing a screen is compared to.  The reads against
-    the production release split into the release as served and each named variant (``vs_group``);
-    every earlier release and the context rows get their own band too."""
+    """Jerry 2026-10-03: a visual separator for each thing a screen is compared to.  Sections are keyed by
+    (release, actual comparator) for the current AND the earlier releases (Codex HOLD on #697): the
+    release as served first, then each named comparator (``vs_group``)."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
     prod = mod.production_release(reg)
     labels = [label for label, _, _ in mod.SECTIONS]
     assert labels[0].startswith(f"against release {prod} as served")
     assert len(labels) == len(set(labels))
-    groups = {s["vs_group"] for s in reg["screens"] if s.get("vs_group")}
-    assert groups, "no screen names a non-release comparator"
-    for g in groups:
-        assert f"against {g}" in labels
-        assert f"Against {mod.esc(g)}" in page                      # its own sub-table
-    for rel in {s["vs"] for s in reg["screens"] if s["vs"] != prod}:
-        assert any(l.startswith(f"against release {rel} ") for l in labels)
+    named = [s for s in reg["screens"] if s.get("vs_group")]
+    assert {"v43cla", "x36a", "x36c", "depth-screen"} <= {s["id"] for s in named}
+    for s in named:
+        sec = [c for c in mod.COMPARATORS if s in c["items"]]
+        assert len(sec) == 1 and sec[0]["group"] == s["vs_group"] and sec[0]["release"] == s["vs"], s["id"]
+        assert f'Screens against {mod.esc(sec[0]["label"])}' in page   # its own sub-table
+    for rel in {s["vs"] for s in reg["screens"]}:
+        assert any(c["release"] == rel and c["group"] is None for c in mod.COMPARATORS)
     assert page.count('class="sepband"') == len(mod.SECTIONS)
     assert sum(len(mod._chart_rows(items, kind)) for _, kind, items in mod.SECTIONS) == len(mod.rows)
-    for label, _, items in mod.SECTIONS:                           # a band never mixes comparators
-        assert len({(s.get("vs"), s.get("vs_group")) for s in items}) == 1, label
+    for c in mod.COMPARATORS:                                      # a section never mixes comparators
+        assert len({(s["vs"], s.get("vs_group")) for s in c["items"]}) == 1, c["label"]
+        if c["group"] is None:                                     # ... and "as served" means exactly that
+            assert all(s["comparator"].startswith(f"release {c['release']} as served") for s in c["items"]), c["label"]
     bad = copy.deepcopy(reg); bad["screens"][0]["vs_group"] = " "
     assert any("vs_group" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); x = next(s for s in bad["screens"] if s["id"] == "x36a"); del x["vs_group"]
+    assert any("x36a" in e and "vs_group" in e for e in mod.check_registry(bad))   # an untagged control is refused
+
+
+def test_a_promotion_keeps_every_named_comparator_in_its_own_section():
+    """Promotion regression (36 -> 38): once another release is production, the reads against release 36
+    become a closed comparator -- and v43cla (read against the combo) and the release-30 controls must
+    still sit in their own sections, not in the 'as served' one."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
+    old = mod.production_release(reg)
+    promoted = copy.deepcopy(reg)
+    new = copy.deepcopy(next(b for b in promoted["baseline"] if b["release"] == old)); new["release"] = old + 2
+    for b in promoted["baseline"]: b["status"] = "superseded"
+    promoted["baseline"].append(new)
+    assert mod.check_registry(promoted) == [] and mod.production_release(promoted) == old + 2
+    secs = mod.comparator_sections(promoted)
+    assert all(c["kind"] == "prev" and c["label"].endswith("closed comparator") for c in secs)   # nothing reads vs 38 yet
+    def section_of(sid): return next(c for c in secs if any(s["id"] == sid for s in c["items"]))
+    served = next(c for c in secs if c["release"] == old and c["group"] is None)
+    assert "v43cla" not in {s["id"] for s in served["items"]} and len(served["items"]) >= 12
+    assert section_of("v43cla")["group"] and [s["id"] for s in section_of("v43cla")["items"]] == ["v43cla"]
+    for sid in ("x36a", "x36c", "depth-screen"):
+        c = section_of(sid); assert c["group"] and c["release"] == 30 and [s["id"] for s in c["items"]] == [sid]
+    before = {(c["release"], c["group"]): [s["id"] for s in c["items"]] for c in mod.comparator_sections(reg)}
+    after = {(c["release"], c["group"]): [s["id"] for s in c["items"]] for c in secs}
+    assert before == after                                         # membership never depends on which release is production
 
 
 def test_rows_lead_with_a_short_title_and_takeaway_and_production_is_one_card():

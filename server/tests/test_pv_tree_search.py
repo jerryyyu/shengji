@@ -48,13 +48,15 @@ RELEASE38_ENV = {**COMBO_ENV, "SHENGJI_PV_LEAD_ANCHOR": "1"}
 RELEASE38_RULES = dict(admission_diversity=True, refusal_constraints=True,
                        tiebreak_points=True, lead_anchor=True)
 SIMS = "SHENGJI_PV_TREE_SIMS"
-CONTS = ("trick", "trick-next-heuristic", "policy")
+CONTS = ("trick", "trick-next-heuristic", "policy", "trick-greedy")
 TREE_KEYS = {"tree_sims", "tree_applied", "tree_skipped", "tree_skipped_budget",
              "tree_contenders", "tree_worlds", "tree_evaluations", "tree_pv_action",
              "tree_q_action", "tree_action", "tree_changed_action", "tree_override",
              "tree_override_blocked", "tree_delta", "tree_se", "tree_z", "tree_mean_abs_d",
              "tree_max_abs_d", "tree_policy_rows", "tree_forced_plays",
-             "tree_multi_leads", "tree_cont", "tree_d_nonzero",
+             "tree_multi_leads", "tree_cont", "tree_d_nonzero", "tree_reply_plays",
+             "tree_reply_evaluations", "tree_reply_differs_heuristic",
+             "tree_reply_differs_policy",
              "tree_terminal_leaves", "tree_value_batches", "tree_seconds"}
 
 
@@ -187,7 +189,13 @@ def test_unset_every_served_name_is_unchanged_and_set_adds_the_token(production_
                  "SHENGJI_PV_TREE_ZMIN": "2"})
     tr, = names({**RELEASE38_ENV, SIMS: "64", "SHENGJI_PV_TREE_CONT": "trick"})
     assert "-ts64-tcnh-r" in nh and "-ts64-tcp-tz2-r" in po and tr == default
-    assert len({default, nh, po}) == 3
+    gr, = names({**RELEASE38_ENV, SIMS: "64", "SHENGJI_PV_TREE_CONT": "trick-greedy"})
+    g2, = names({**RELEASE38_ENV, SIMS: "64", "SHENGJI_PV_TREE_CONT": "trick-greedy",
+                 "SHENGJI_PV_TREE_REPLIES": "2", "SHENGJI_PV_TREE_ZMIN": "2"})
+    g4, = names({**RELEASE38_ENV, SIMS: "64", "SHENGJI_PV_TREE_CONT": "trick-greedy",
+                 "SHENGJI_PV_TREE_REPLIES": "4"})
+    assert "-ts64-tcg-r" in gr and "-ts64-tcg-tr2-tz2-r" in g2 and g4 == gr
+    assert len({default, nh, po, gr, g2}) == 5
     assert PVTreeConfig(sims=1).cont == "trick" == TREE_DEFAULTS["cont"]
     same, = names({**RELEASE38_ENV, SIMS: "64", "SHENGJI_PV_TREE_ZMIN": "1.0",
                    "SHENGJI_PV_TREE_EPS": "0.05"})
@@ -198,8 +206,9 @@ def test_recipe_payload_carries_every_tree_field_only_when_on():
     config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, tree=PVTreeConfig(sims=64))
     payload = pv.recipe_payload(config)
     assert payload["tree"] == {"sims": 64, "eps": 0.05, "zmin": 1.0, "max_contenders": 4,
-                               "cont": "trick", "budget_fraction": 0.5,
-                               "budget_stop_fraction": 0.8, "schema": "pv-tree-recipe-v2"}
+                               "cont": "trick", "reply_candidates": 4,
+                               "budget_fraction": 0.5,
+                               "budget_stop_fraction": 0.8, "schema": "pv-tree-recipe-v3"}
     off = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
     assert pv.recipe_digest(config) != pv.recipe_digest(off)
     assert tree_token(None) == "" and tree_token(PVTreeConfig(sims=7)) == "-ts7"
@@ -216,6 +225,8 @@ def test_recipe_payload_carries_every_tree_field_only_when_on():
     {"SHENGJI_PV_TREE_EPS": "0.1"}, {"SHENGJI_PV_TREE_ZMIN": "2"},   # a knob without SIMS
     {"SHENGJI_PV_TREE_CONT": "policy"},
     {SIMS: "8", "SHENGJI_PV_TREE_CONT": "tricks"}, {SIMS: "8", "SHENGJI_PV_TREE_CONT": "Policy"},
+    {"SHENGJI_PV_TREE_REPLIES": "4"}, {SIMS: "8", "SHENGJI_PV_TREE_REPLIES": "0"},
+    {SIMS: "8", "SHENGJI_PV_TREE_REPLIES": "x"}, {SIMS: "8", "SHENGJI_PV_TREE_REPLIES": "17"},
 ])
 def test_env_refuses_bad_tree_recipes(env):
     with pytest.raises(PVTreeConfigError):
@@ -293,9 +304,14 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
                 assert r_64["played"] == r_64["admitted"][r_64["tree_action"]] == a_64
                 assert r_64["tree_skipped"] in ("", "single", "last-seat", "refused")
                 # ``trick`` has nothing to look ahead when the root seat plays last
-                if cont == "trick" and last:
+                if cont in ("trick", "trick-greedy") and last:
                     assert not r_64["tree_applied"] and a_64 == a_off
                     assert r_64["tree_skipped"] in ("single", "last-seat")
+                if cont == "trick-greedy" and r_64["tree_applied"]:
+                    assert r_64["tree_reply_plays"] >= r_64["tree_evaluations"]
+                    assert r_64["tree_reply_differs_heuristic"] <= r_64["tree_reply_plays"]
+                elif cont != "trick-greedy":
+                    assert r_64["tree_reply_plays"] == r_64["tree_reply_evaluations"] == 0
                 if cont != "trick-next-heuristic":
                     assert r_64["tree_skipped"] != "refused"     # only a heuristic throw can be
                 if cont == "policy" and r_64["tree_applied"]:
@@ -379,21 +395,69 @@ def test_cap_of_four_and_sims_rounding():
 
 # ------------------------------------------------------------- (d) the significance gate
 
-def test_paired_override_arithmetic():
+def test_paired_override_uses_the_paired_variance():
+    """delta = mean_W(x) + mean_V(y); var = Var(x)/W + Var(y)/V + 2 Cov(x[:V], y)/W,
+    because y is measured on worlds that also enter mean_W(x) (Codex, #704)."""
+    # POSITIVE covariance (the review's witness): the independence formula gave
+    # se 0.0707 and overrode; the full-pair se is 0.10 and delta 0.08 does not clear it
+    out = tree.paired_override([[0.4, 0.5], [0.5, 0.5]], [[0.08, 0.0], [0.18, 0.0]], 0, 1, 1.0)
+    assert out["delta"] == pytest.approx(0.08) and out["se"] == pytest.approx(0.10)
+    assert out["override"] is False and out["z"] == pytest.approx(0.8)
+    # NEGATIVE covariance: x = [0.1, 0], y = [0, 0.1] -> x + y is constant, se 0;
+    # the independence formula (se 0.0707) suppressed this override at zmin 2
+    out = tree.paired_override([[0.5, 0.4], [0.4, 0.4]], [[0.0, 0.0], [0.1, 0.0]], 0, 1, 2.0)
+    assert out["delta"] == pytest.approx(0.1) and out["se"] == pytest.approx(0.0, abs=1e-12)
+    assert out["override"] is True
+    assert math.sqrt(0.005 / 2 + 0.005 / 2) * 2.0 > 0.1          # what the old gate compared
+    rng = np.random.default_rng(3)
+    for _ in range(50):
+        # V == W: exactly Var(x + y) / W
+        w = int(rng.integers(2, 12))
+        v0, d = rng.normal(size=(w, 3)), rng.normal(size=(w, 3))
+        a, b = 2, 0
+        x, y = v0[:, a] - v0[:, b], d[:, a] - d[:, b]
+        out = tree.paired_override(v0, d, a, b, 1.0)
+        assert out["delta"] == pytest.approx((x + y).mean())
+        assert out["se"] == pytest.approx(math.sqrt((x + y).var(ddof=1) / w))
+        assert out["override"] == bool(out["delta"] > out["se"])
+        # V < W: the estimator's variance formula, computed directly
+        w, v = int(rng.integers(4, 12)), int(rng.integers(2, 4))
+        v0, d = rng.normal(size=(w, 2)), 0.3 * rng.normal(size=(v, 2))
+        x, y = v0[:, 1] - v0[:, 0], d[:, 1] - d[:, 0]
+        variance = x.var(ddof=1) / w + y.var(ddof=1) / v + 2 * np.cov(x[:v], y, ddof=1)[0, 1] / w
+        out = tree.paired_override(v0, d, 1, 0, 1.0)
+        assert out["delta"] == pytest.approx(x.mean() + y.mean())
+        if variance >= 0:
+            assert out["se"] == pytest.approx(math.sqrt(variance))
+            assert out["z"] == pytest.approx(out["delta"] / out["se"])
+        else:
+            assert out["se"] == math.inf and out["override"] is False
+
+
+def test_paired_override_undefined_variance_never_overrides():
     v0 = np.array([[0.50, 0.49], [0.52, 0.47], [0.48, 0.51], [0.50, 0.49]])
     d = np.array([[0.0, 0.2], [0.0, 0.25], [0.0, 0.15]])
-    out = tree.paired_override(v0, d, 1, 0, 1.0)
-    base, deep = v0[:, 1] - v0[:, 0], d[:, 1] - d[:, 0]
-    assert out["delta"] == pytest.approx(base.mean() + deep.mean())
-    assert out["se"] == pytest.approx(math.sqrt(base.var(ddof=1) / 4 + deep.var(ddof=1) / 3))
-    assert out["z"] == pytest.approx(out["delta"] / out["se"]) and out["override"] is True
+    assert tree.paired_override(v0, d, 1, 0, 1.0)["override"] is True     # the defined case
     assert tree.paired_override(v0, d, 1, 0, 100.0)["override"] is False
-    # |V| = 1: the variance is undefined, se is infinite, b stands -- unless zmin == 0
+    # |V| = 1 or W = 1: se is infinite and b stands -- unless zmin == 0
     one = tree.paired_override(v0, d[:1], 1, 0, 1.0)
     assert one["se"] == math.inf and one["override"] is False and one["z"] == 0.0
     assert tree.paired_override(v0, d[:1], 1, 0, 0.0)["override"] is True
+    single = tree.paired_override(v0[:1], d[:1], 1, 0, 1.0)
+    assert single["se"] == math.inf and single["override"] is False
     # zmin == 0 is the sign of delta
     assert tree.paired_override(v0, -d, 1, 0, 0.0)["override"] is False
+    # V < W can estimate a NEGATIVE variance: x = [1,-1,0,0], y = [-0.5, 0.5]
+    #   2/3/4 + 0.5/2 + 2 * (-1) / 4 = -0.0833  -> refused, not clamped
+    neg = tree.paired_override([[1.0, 0.0], [-1.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                               [[-0.5, 0.0], [0.5, 0.0]], 0, 1, 1.0)
+    assert neg["se"] == math.inf and neg["override"] is False
+    # ... while a rounding-sized negative is zero
+    tiny = tree.paired_override([[0.3, 0.2], [0.2, 0.2], [0.25, 0.2]],
+                                [[0.0, 0.0], [0.1, 0.0], [0.05, 0.0]], 0, 1, 1.0)
+    assert tiny["se"] == pytest.approx(0.0, abs=1e-7) and tiny["override"] is True
+    with pytest.raises(ValueError):
+        tree.paired_override(v0[:2], d, 1, 0, 1.0)                        # V > W
 
 
 def _gate_bot(zmin, noise, sims=64, worlds=16):
@@ -621,6 +685,11 @@ def test_trick_mode_skips_when_the_root_seat_plays_last():
     assert r["tree_skipped"] == "last-seat" and r["tree_applied"] is False
     assert r["tree_contenders"] >= 2 and r["tree_worlds"] == 0 and r["tree_d_means"] == []
     assert r["tree_action"] == r["tree_pv_action"] and played == r["admitted"][r["tree_pv_action"]]
+    greedy = bot_of(PVTreeConfig(sims=64, zmin=0.0, cont="trick-greedy"), worlds=4)
+    craft(greedy, flat(means))
+    greedy._tree_lookahead = lambda *a, **k: pytest.fail("the lookahead must not run")
+    assert greedy.decide_play(copy.deepcopy(rnd), seat) == played
+    assert greedy.last_decision_record["tree_skipped"] == "last-seat"
     # with a single contender the reason recorded is the general one
     bot = bot_of(PVTreeConfig(sims=64), worlds=4)
     craft(bot, flat([0.5, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]))
@@ -784,7 +853,7 @@ def test_policy_choice_equals_the_enumerated_reference(monkeypatch):
     assert used["fill"] > 100 and used["none"] > 100
 
 
-@pytest.mark.parametrize("cont", ["trick", "policy"])
+@pytest.mark.parametrize("cont", ["trick", "policy", "trick-greedy"])
 def test_the_legal_set_cache_changes_nothing(cont):
     """Within a decision the legal set is cached per (hand, lead); the lookahead
     with the cache equals the lookahead that enumerates every time."""
@@ -803,6 +872,125 @@ def test_the_legal_set_cache_changes_nothing(cont):
                 for leaf in bot.evaluator.seen] == \
             [[(p.seat, p.cards) for t in leaf.history for p in t.plays]
              for leaf in plain.evaluator.seen]
+
+
+class TeamEvaluator:
+    """``f(leaf)`` for the banker's team (seats 0 and 2 in the fixture), ``-f``
+    for the other: the perspective is the ``seat`` argument, as in serving."""
+    backend = "numpy"
+    max_batch = 128
+
+    def __init__(self, f):
+        self.f = f
+        self.calls = []
+
+    def score(self, leaves, seat):
+        self.calls.append((seat, len(leaves)))
+        sign = -1.0 if leaves[0].is_attacker(seat) else 1.0
+        return np.array([sign * self.f(leaf) for leaf in leaves])
+
+
+def test_trick_greedy_picks_the_value_preferred_reply_the_heuristic_misses():
+    """Seat 1 leads D8 (hands [D2 S2 D2] [DQ D8 C2] [SQ SA C2] [HQ D5 H5]).
+    Seat 2 is void in diamonds; the heuristic follows SQ and the policy's top
+    follow is C2 (39).  The value head (for seat 2's team) prefers the position
+    in which seat 2 has played SA, so the greedy reply is SA -- neither the
+    heuristic's nor the policy's.  Seat 3 must follow D5; seat 0 (D2 or S2, the
+    value indifferent) keeps the policy order: D2."""
+    rnd = endgame(3); seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    assert HeuristicBot().decide_play(
+        afterstate(rnd, seat, world[0], world[1], ["D8"]), 2) == ["SQ"]
+    evaluator = TeamEvaluator(lambda leaf: 1.0 if "SA" not in leaf.hands[2] else 0.0)
+    assert not rnd.is_attacker(2) and not rnd.is_attacker(0) and rnd.is_attacker(1)
+    bot = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2, evaluator=evaluator)
+    captured = []
+    real = bot._tree_values
+
+    def values(leaves, seat_, gate=None):
+        captured.append((seat_, list(leaves)))
+        return real(leaves, seat_, gate)
+    bot._tree_values = values
+    out, stats = bot._tree_lookahead(rnd, seat, [["D8"]], [world])
+    # seat 2 valued C2, SA, SQ (policy order; the heuristic's SQ is already among
+    # them) from ITS team; seat 0 valued D2, S2; the leaf from the ROOT seat's team
+    assert [(s_, len(l)) for s_, l in captured] == [(2, 3), (0, 2), (1, 1)]
+    assert [[p.cards for p in leaf.history[12].plays][1] for leaf in captured[0][1]] == \
+        [["C2"], ["SA"], ["SQ"]]
+    leaf, = captured[-1][1]
+    assert plays_of(leaf.history[12]) == [(1, ["D8"]), (2, ["SA"]), (3, ["D5"]), (0, ["D2"])]
+    assert len(leaf.history) == 13 and not leaf.trick.plays
+    # the root seat (1) is on the other team: its value of that leaf is -1
+    assert out.shape == (1, 1) and out[0, 0] == -1.0
+    assert stats == {"tree_policy_rows": 2, "tree_forced_plays": 1, "tree_multi_leads": 0,
+                     "tree_terminal_leaves": 0, "tree_value_batches": 3,
+                     "tree_reply_plays": 3, "tree_reply_evaluations": 5,
+                     "tree_reply_differs_heuristic": 1, "tree_reply_differs_policy": 1}
+    assert len(rnd.history) == 12 and sorted(rnd.hands[1]) == ["C2", "D8", "DQ"]   # root untouched
+
+
+def test_trick_greedy_values_each_reply_from_the_replying_seats_team():
+    """Seat 0 (banker) leads D2 from [S2 D2]; seat 1 must follow C2; seat 2
+    (partner: SA C2) and seat 3 (opponent: HQ H5, void in trump) choose.
+    f = 1 when seat 3 has shed HQ, + 0.5 when seat 2 still holds SA, valued
+    for the banker's team.  The PARTNER maximises f: it keeps SA and plays C2
+    (the heuristic plays SA).  The OPPONENT minimises f: it keeps HQ and plays
+    H5 (the heuristic and the policy both play HQ).  A root-perspective sign
+    for seat 3 would have chosen HQ."""
+    rnd = endgame(2); seat = rnd.turn
+    assert seat == 0 and rnd.is_attacker(3) and not rnd.is_attacker(2)
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+
+    def f(leaf):
+        return 1.0 * ("HQ" not in leaf.hands[3]) + 0.5 * ("SA" in leaf.hands[2])
+    walked = afterstate(rnd, seat, world[0], world[1], ["D2"])
+    h = HeuristicBot()
+    walked.play(1, h.decide_play(walked, 1))
+    assert h.decide_play(walked, 2) == ["SA"]
+    walked.play(2, ["C2"])
+    assert h.decide_play(walked, 3) == ["HQ"]
+    bot = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2, evaluator=TeamEvaluator(f))
+    out, stats = bot._tree_lookahead(rnd, seat, [["D2"]], [world])
+    assert [c[0] for c in bot.evaluator.calls] == [2, 3, 0]       # each reply from its own seat
+    assert out[0, 0] == 0.5                                       # SA kept, HQ kept, root's team
+    assert stats["tree_reply_plays"] == 3 and stats["tree_reply_evaluations"] == 4
+    assert stats["tree_reply_differs_heuristic"] == 2 and stats["tree_reply_differs_policy"] == 1
+    # R = 1: the candidates are the policy's top follow and the heuristic's
+    one = bot_of(PVTreeConfig(sims=8, cont="trick-greedy", reply_candidates=1), worlds=2,
+                 evaluator=TeamEvaluator(f))
+    out1, stats1 = one._tree_lookahead(rnd, seat, [["D2"]], [world])
+    # seat 2: {C2 (policy), SA (heuristic)} -> C2; seat 3: policy top == heuristic == HQ, no choice
+    assert stats1["tree_reply_evaluations"] == 2 and out1[0, 0] == 1.5
+    assert stats1["tree_reply_differs_heuristic"] == 1 and stats1["tree_reply_differs_policy"] == 0
+
+
+def test_trick_greedy_decisions_are_deterministic_and_recorded():
+    rnd = walk(state(), 9); seat = rnd.turn
+    records = []
+    for _ in range(2):
+        bot = bot_of(PVTreeConfig(sims=64, zmin=0.0, eps=10.0, cont="trick-greedy"), worlds=6,
+                     seed=5, policy=predict_x, **RELEASE38_RULES)
+        played = bot.decide_play(copy.deepcopy(rnd), seat)
+        record = dict(bot.last_decision_record)
+        assert record["tree_applied"] and record["tree_cont"] == "trick-greedy"
+        assert record["tree_reply_plays"] > 0 and record["tree_reply_evaluations"] > 0
+        assert record["tree_reply_evaluations"] <= 5 * record["tree_reply_plays"]
+        record.pop("seconds"); record.pop("tree_seconds")
+        records.append((played, record))
+    assert records[0] == records[1]
+    # a budget abort inside the greedy lookahead plays PV like every other mode
+    off = bot_of(None, worlds=6, seed=5, policy=predict_x, **RELEASE38_RULES)
+    pv_action = off.decide_play(copy.deepcopy(rnd), seat)
+    bot = bot_of(PVTreeConfig(sims=64, zmin=0.0, eps=10.0, cont="trick-greedy"), worlds=6,
+                 seed=5, policy=predict_x, budget=1e9, **RELEASE38_RULES)
+
+    def expired():
+        def gate():
+            raise tree.PVTreeBudgetExceeded("test")
+        return gate
+    bot._tree_gate = expired
+    assert bot.decide_play(copy.deepcopy(rnd), seat) == pv_action
+    assert bot.last_decision_record["tree_skipped"] == "budget"
 
 
 def test_trick_mode_d_is_policy_finish_minus_heuristic_finish():

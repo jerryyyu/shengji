@@ -25,24 +25,30 @@ Env (all under ``SHENGJI_PV_``):
 * ``TREE_CONT`` -- the continuation a lookahead plays before the value head is
   read (`pv_tree_search`): ``trick`` (default: the policy finishes the current
   trick only), ``trick-next-heuristic`` (then the heuristic leads the next
-  trick and the policy follows it) or ``policy`` (then the policy leads the
-  next trick with its best single-component lead and follows it).
+  trick and the policy follows it), ``policy`` (then the policy leads the
+  next trick with its best single-component lead and follows it) or
+  ``trick-greedy`` (the current trick only, each reply chosen by one-step value
+  greed among the policy's top ``TREE_REPLIES`` follows plus the heuristic's);
+* ``TREE_REPLIES`` -- the R of ``trick-greedy`` (an integer in [1, 16], default 4).
 
 The optional knobs are refused unless ``TREE_SIMS`` is set.  Every field of
 `PVTreeConfig` enters the recipe digest; the name carries ``-ts<S>`` (plus
-``-tcnh`` / ``-tcp`` for a non-default continuation and ``-te<eps>`` /
-``-tz<zmin>`` when those differ from their defaults) after the rule tokens.
+``-tcnh`` / ``-tcp`` / ``-tcg`` for a non-default continuation, ``-tr<R>``
+for a non-default R, and ``-te<eps>`` / ``-tz<zmin>`` when those differ from
+their defaults) after the rule tokens.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-TREE_DEFAULTS = dict(eps=0.05, zmin=1.0, max_contenders=4, cont="trick",
+TREE_DEFAULTS = dict(eps=0.05, zmin=1.0, max_contenders=4, cont="trick", reply_candidates=4,
                      budget_fraction=0.5, budget_stop_fraction=0.8)
 #: continuation mode -> its name token ("" for the default)
-CONT_TOKENS = {"trick": "", "trick-next-heuristic": "-tcnh", "policy": "-tcp"}
+CONT_TOKENS = {"trick": "", "trick-next-heuristic": "-tcnh", "policy": "-tcp",
+               "trick-greedy": "-tcg"}
 ENV_CONT = "TREE_CONT"
+ENV_REPLIES = "TREE_REPLIES"
 MAX_SIMS = 4096
 ENV_SIMS = "TREE_SIMS"
 #: env suffix -> `PVTreeConfig` field, for the optional float knobs
@@ -63,11 +69,13 @@ class PVTreeConfig:
     max_contenders: int = TREE_DEFAULTS["max_contenders"]
     #: the continuation mode (module docstring; `CONT_TOKENS`)
     cont: str = TREE_DEFAULTS["cont"]
+    #: ``trick-greedy``: the policy's top-R follows are a seat's reply candidates
+    reply_candidates: int = TREE_DEFAULTS["reply_candidates"]
     #: the tree starts only while elapsed <= this fraction of the play budget ...
     budget_fraction: float = TREE_DEFAULTS["budget_fraction"]
     #: ... and abandons itself (for the PV decision) once elapsed reaches this one
     budget_stop_fraction: float = TREE_DEFAULTS["budget_stop_fraction"]
-    schema: str = "pv-tree-recipe-v2"
+    schema: str = "pv-tree-recipe-v3"
 
     def __post_init__(self):
         if type(self.sims) is not int or not 0 <= self.sims <= MAX_SIMS:
@@ -81,6 +89,8 @@ class PVTreeConfig:
             raise PVTreeConfigError("tree max_contenders must be an integer in [2,16]")
         if self.cont not in CONT_TOKENS:
             raise PVTreeConfigError(f"tree cont must be one of {sorted(CONT_TOKENS)}")
+        if type(self.reply_candidates) is not int or not 1 <= self.reply_candidates <= 16:
+            raise PVTreeConfigError("tree reply_candidates must be an integer in [1,16]")
         for name in ("budget_fraction", "budget_stop_fraction"):
             value = getattr(self, name)
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 1:
@@ -97,6 +107,8 @@ def tree_token(tree: PVTreeConfig | None) -> str:
     if not isinstance(tree, PVTreeConfig):
         raise PVTreeConfigError("tree must be a PVTreeConfig or None")
     token = f"-ts{tree.sims}{CONT_TOKENS[tree.cont]}"
+    if tree.reply_candidates != TREE_DEFAULTS["reply_candidates"]:
+        token += f"-tr{tree.reply_candidates}"
     if tree.eps != TREE_DEFAULTS["eps"]:
         token += f"-te{tree.eps:g}"
     if tree.zmin != TREE_DEFAULTS["zmin"]:
@@ -107,7 +119,7 @@ def tree_token(tree: PVTreeConfig | None) -> str:
 def tree_env(env, prefix: str = "SHENGJI_PV_") -> PVTreeConfig | None:
     """`PVTreeConfig` from the environment, or None when ``TREE_SIMS`` is unset."""
     raw = env.get(prefix + ENV_SIMS)
-    given = {suffix: env.get(prefix + suffix) for suffix in (*ENV_FLOATS, ENV_CONT)}
+    given = {suffix: env.get(prefix + suffix) for suffix in (*ENV_FLOATS, ENV_CONT, ENV_REPLIES)}
     given = {suffix: value for suffix, value in given.items() if value not in (None, "")}
     if raw in (None, ""):
         if given:
@@ -119,6 +131,11 @@ def tree_env(env, prefix: str = "SHENGJI_PV_") -> PVTreeConfig | None:
     fields = {}
     if ENV_CONT in given:
         fields["cont"] = given.pop(ENV_CONT)
+    if ENV_REPLIES in given:
+        value = given.pop(ENV_REPLIES)
+        if not value.isdigit():
+            raise PVTreeConfigError(f"{prefix}{ENV_REPLIES} must be an integer, not {value!r}")
+        fields["reply_candidates"] = int(value)
     for suffix, value in given.items():
         try:
             fields[ENV_FLOATS[suffix]] = float(value)

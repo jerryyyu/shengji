@@ -47,7 +47,23 @@ Stage B -- the tree.
         tractor; never a multi-component throw), ranked by the MEAN card
         log-odds (length-normalised; ties by enumeration order), and followed
         by the policy.
-    A FOLLOW is always the policy's top legal follow: the card log-odds of the
+      - ``trick-greedy``: the current trick only, like ``trick``, but each
+        remaining seat replies by ONE-STEP VALUE GREED inside the sampled
+        world.  Its candidates are the policy's top ``reply_candidates`` (4)
+        legal follows plus production's heuristic follow when that is not
+        among them; each candidate is applied, the rest of the trick is
+        finished by production's heuristic (`finish_current_trick`), and the
+        value head is read at that trick boundary from THAT seat's team; the
+        seat plays its highest-valued candidate (ties: policy order, the
+        heuristic's last).  Seats reply in turn order, so the last seat's
+        candidates are valued directly at the boundary.  The root candidate's
+        lookahead value is the value head at the resulting boundary from the
+        ROOT seat's team.  This is PERFECT-INFORMATION play inside a
+        determinised world -- every replying seat sees all four hands through
+        the value head -- so strategy fusion is possible; the significance
+        gate and the tactical fixtures are what guard against it.  Skipped,
+        like ``trick``, when the root seat plays last.
+    In the other modes a FOLLOW is always the policy's top legal follow: the card log-odds of the
     acting seat's own row in that world
     (``flat_input(root_tensors(clone, seat))``, the admission's scoring path)
     summed over the action's cards (the length is fixed by the lead), over the
@@ -65,11 +81,16 @@ Stage B -- the tree.
     be chosen by the tree.
   * The tree's candidate ``a*`` is the argmax of Q over T (an exact tie keeps
     ``b``, then admission order).  When ``a* != b`` the PAIRED difference
-    ``delta = mean_W(v0[., a*] - v0[., b]) + mean_V(d[., a*] - d[., b])`` and
-    its standard error ``se = sqrt(var_W(v0 diff) / W + var_V(d diff) / |V|)``
-    (sample variances) are computed, and ``b`` is overridden only when
-    ``delta > zmin * se``; with fewer than two visited worlds (or W < 2) ``se``
-    is infinite and ``b`` stands.  ``zmin == 0`` is the plain argmax of Q
+    ``delta = mean_W(x) + mean_V(y)`` with ``x = v0[., a*] - v0[., b]`` and
+    ``y = d[., a*] - d[., b]`` is computed with its standard error
+    ``se = sqrt(Var(x)/W + Var(y)/|V| + 2 Cov(x[V], y)/W)`` (sample moments;
+    the covariance term is there because the depth corrections are measured on
+    worlds that also enter the 64-world mean; with V = W it is
+    ``sqrt(Var(x + y)/W)``), and ``b`` is overridden only when
+    ``delta > zmin * se``; with fewer than two visited worlds (or W < 2), or a
+    negative variance estimate, ``se`` is infinite and ``b`` stands.  The gate
+    is POST-SELECTION -- ``a*`` is the best of up to four contenders -- so it
+    is a filter against noise, not a calibrated test.  ``zmin == 0`` is the plain argmax of Q
     (``delta > 0``).  The serving selection rules (the points tie-break, ...)
     act on the PV decision ``b`` only; they are not re-run on Q.
   * Network calls are batched across (a, w): one policy forward per ply and
@@ -96,7 +117,11 @@ PV's, the argmax of Q, the one played), ``tree_changed_action``,
 ``tree_d_nonzero`` (lookaheads whose value differs from v0 by more than 1e-6:
 the continuation reached a different leaf than serving's), ``tree_policy_rows``,
 ``tree_forced_plays``, ``tree_multi_leads`` (lookahead leads of two or more
-cards), ``tree_terminal_leaves``, ``tree_value_batches``, ``tree_seconds``; and
+cards), ``tree_terminal_leaves``, ``tree_value_batches``, ``tree_seconds``,
+and for ``trick-greedy`` ``tree_reply_plays`` (replies played),
+``tree_reply_evaluations`` (reply candidates valued),
+``tree_reply_differs_heuristic`` / ``tree_reply_differs_policy`` (replies that
+are not the heuristic's follow / not the policy's top follow); and
 one short numeric list, ``tree_d_means`` (the mean depth correction per
 contender, in admission order; kept whole by the trace filter).
 
@@ -112,7 +137,7 @@ from itertools import islice
 
 import numpy as np
 
-from ..ai.cwv_policy import afterstate, default_finisher
+from ..ai.cwv_policy import afterstate, child_position, default_finisher, finish_current_trick
 from ..engine.combos import find_tractor_runs
 from ..harvest.legal import (MAX_TRACTOR, _follow_case, _lead_groups, count_multiset_subsets,
                              iter_follow_actions)
@@ -124,6 +149,8 @@ TREE_BUDGET_STRIDE = 16
 #: a closed-form policy choice is used only when its maximiser is unique by more
 #: than this (log-odds); float rounding of an enumerated score is ~1e-13
 TOP_TOLERANCE = 1e-9
+#: a negative variance estimate smaller than this in magnitude is rounding (-> 0)
+VARIANCE_ROUNDING = 1e-12
 #: a lookahead value further than this from v0 counts as a different leaf
 D_NONZERO = 1e-6
 
@@ -151,20 +178,43 @@ def contender_set(means, pv_index: int, eps: float, cap: int) -> list[int]:
 
 
 def paired_override(v0, d, a: int, b: int, zmin: float) -> dict:
-    """The significance gate (module docstring).  ``v0`` is ``(W,)``-paired
-    columns as ``(v0[:, a], v0[:, b])``-indexable ``(W, n)``; ``d`` is the
-    ``(V, n)`` depth-correction matrix over the same columns; ``a`` / ``b`` are
-    column indices.  Returns ``delta``, ``se`` (``inf`` when a variance is
-    undefined), ``z`` and ``override``."""
+    """The significance gate (module docstring).  ``v0`` is the ``(W, n)`` PV
+    matrix over the contender columns; ``d`` is the ``(V, n)`` depth-correction
+    matrix over the same columns, measured on the FIRST ``V`` of those ``W``
+    worlds; ``a`` / ``b`` are column indices.
+
+    With ``x_w = v0[w, a] - v0[w, b]`` (all W worlds) and
+    ``y_w = d[w, a] - d[w, b]`` (the V visited worlds):
+    ``delta = mean_W(x) + mean_V(y)`` and, because ``y`` is measured on worlds
+    that also enter ``mean_W(x)``,
+    ``var(delta) = Var(x)/W + Var(y)/V + 2 Cov(x[:V], y)/W``
+    (sample variances and covariance, ddof 1).  With ``V == W`` this is
+    ``Var(x + y)/W``.  The standard error is infinite (no override unless
+    ``zmin == 0``) when ``W < 2`` or ``V < 2``, or when the estimate comes out
+    negative by more than rounding (possible for ``V < W``).
+
+    Returns ``delta``, ``se``, ``z`` and ``override``."""
     v0 = np.asarray(v0, dtype=np.float64)
     d = np.asarray(d, dtype=np.float64)
-    base = v0[:, a] - v0[:, b]
-    deep = d[:, a] - d[:, b]
-    delta = float(base.mean() + deep.mean())
-    if len(base) < 2 or len(deep) < 2:
+    x = v0[:, a] - v0[:, b]
+    y = d[:, a] - d[:, b]
+    worlds, visited = len(x), len(y)
+    if visited > worlds:
+        raise ValueError("the depth corrections cover more worlds than the PV pass")
+    delta = float(x.mean() + y.mean())
+    if worlds < 2 or visited < 2:
         se = math.inf
     else:
-        se = float(math.sqrt(base.var(ddof=1) / len(base) + deep.var(ddof=1) / len(deep)))
+        head = x[:visited]
+        covariance = float(((head - head.mean()) * (y - y.mean())).sum() / (visited - 1))
+        variance = float(x.var(ddof=1) / worlds + y.var(ddof=1) / visited
+                         + 2.0 * covariance / worlds)
+        if variance >= 0.0:
+            se = math.sqrt(variance)
+        elif variance > -VARIANCE_ROUNDING:
+            se = 0.0
+        else:
+            se = math.inf
     if zmin == 0:
         override = delta > 0
     elif not math.isfinite(se):
@@ -292,7 +342,8 @@ class PVTreeMixin:
                 "tree_delta": 0.0, "tree_se": 0.0, "tree_z": 0.0,
                 "tree_mean_abs_d": 0.0, "tree_max_abs_d": 0.0, "tree_d_nonzero": 0,
                 "tree_d_means": [], "tree_policy_rows": 0, "tree_forced_plays": 0,
-                "tree_multi_leads": 0,
+                "tree_multi_leads": 0, "tree_reply_plays": 0, "tree_reply_evaluations": 0,
+                "tree_reply_differs_heuristic": 0, "tree_reply_differs_policy": 0,
                 "tree_terminal_leaves": 0, "tree_value_batches": 0, "tree_seconds": 0.0}
 
     def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None, **kwargs):
@@ -343,7 +394,7 @@ class PVTreeMixin:
         if len(contenders) < 2:
             fields["tree_skipped"] = "single"
             return pv_winner
-        if cfg.cont == "trick" and len(rnd.trick.plays) == 3:
+        if cfg.cont in ("trick", "trick-greedy") and len(rnd.trick.plays) == 3:
             # the root seat's play completes the trick: nothing to look ahead, d = 0
             fields["tree_skipped"] = "last-seat"
             return pv_winner
@@ -495,6 +546,114 @@ class PVTreeMixin:
                 choices[index] = self._tree_top_action(clone, clone.turn, row, cache)
         return choices, len(rows)
 
+    def _tree_values(self, leaves, seat, gate=None):
+        """Root-team (``seat``'s team) values of ``leaves``: ``(values, batches)``."""
+        values = np.empty(len(leaves), dtype=np.float64)
+        batches = 0
+        for start in range(0, len(leaves), self.batch_size):
+            if gate is not None:
+                gate()
+            chunk = leaves[start:start + self.batch_size]
+            scores = np.asarray(self.evaluator.score(chunk, seat), dtype=np.float64)
+            if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
+                raise ValueError("value evaluator requires one finite root-team score per leaf")
+            values[start:start + len(chunk)] = scores
+            batches += 1
+        return values, batches
+
+    def _tree_greedy_ply(self, active, gate, cache, stats):
+        """One reply ply of ``trick-greedy``: every clone in ``active`` has the
+        SAME seat to act (turn order inside one trick is fixed); that seat plays
+        its highest-valued candidate in each clone (module docstring)."""
+        from .policy_prior import N_CARDS, flat_input, root_tensors
+        seat = active[0].turn
+        if any(clone.turn != seat for clone in active):
+            raise PVSearchPolicyError("greedy ply: the clones disagree on the seat to act")
+        heuristic = default_finisher()
+        keep = self.tree_config.reply_candidates
+        plans = [None] * len(active)       # (candidates in policy order [+ heuristic], heuristic)
+        rows, pending = [], []
+        for index, clone in enumerate(active):
+            if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
+                gate()
+            legal, scoring = self._tree_legal(clone, seat, cache)
+            if len(legal) == 1:
+                plans[index] = ([list(legal[0])], list(legal[0]))
+                continue
+            rows.append(flat_input(root_tensors(clone, seat, self.version), self.version))
+            pending.append((index, legal, scoring))
+        for start in range(0, len(rows), self.batch_size):
+            if gate is not None:
+                gate()
+            chunk = np.stack(rows[start:start + self.batch_size]).astype(np.float32)
+            logits = np.asarray(self.predict(chunk), dtype=np.float64)
+            if logits.shape != (len(chunk), N_CARDS) or not np.isfinite(logits).all():
+                raise ValueError("policy requires finite rows x 54 log-odds")
+            for row, (index, legal, scoring) in zip(logits, pending[start:start + self.batch_size]):
+                # the policy's top-R follows; a stable sort keeps enumeration order on ties
+                order = np.argsort(-(scoring @ row), kind="stable")[:keep]
+                candidates = [list(legal[int(i)]) for i in order]
+                follow = sorted(heuristic.decide_play(active[index], seat))
+                if follow not in candidates:
+                    candidates.append(follow)
+                plans[index] = (candidates, follow)
+        stats["tree_policy_rows"] += len(rows)
+        stats["tree_forced_plays"] += len(active) - len(rows)
+        # every (clone, candidate): apply it, let the heuristic finish the trick,
+        # read the value head from the ACTING seat's team
+        leaves, owners = [], []
+        for index, (candidates, _follow) in enumerate(plans):
+            if len(candidates) == 1:
+                continue
+            if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
+                gate()
+            for k, candidate in enumerate(candidates):
+                child = child_position(active[index], seat, candidate)
+                finish_current_trick(child)
+                leaves.append(child)
+                owners.append((index, k))
+        best = [0] * len(active)
+        if leaves:
+            values, batches = self._tree_values(leaves, seat, gate)
+            stats["tree_value_batches"] += batches
+            stats["tree_reply_evaluations"] += len(leaves)
+            top = {}
+            for (index, k), value in zip(owners, values):
+                if index not in top or value > top[index]:     # first maximum: policy order
+                    top[index], best[index] = value, k
+        for index, clone in enumerate(active):
+            candidates, follow = plans[index]
+            choice = candidates[best[index]]
+            stats["tree_reply_plays"] += 1
+            stats["tree_reply_differs_heuristic"] += choice != follow
+            stats["tree_reply_differs_policy"] += choice != candidates[0]
+            clone.play(seat, choice)
+
+    def _tree_lookahead_greedy(self, rnd, seat, actions, worlds, gate=None):
+        """`_tree_lookahead` for ``cont == "trick-greedy"``."""
+        target = len(rnd.history) + 1
+        clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
+                  for hands, buried in worlds for action in actions]
+        stats = {"tree_policy_rows": 0, "tree_forced_plays": 0, "tree_multi_leads": 0,
+                 "tree_terminal_leaves": 0, "tree_value_batches": 0, "tree_reply_plays": 0,
+                 "tree_reply_evaluations": 0, "tree_reply_differs_heuristic": 0,
+                 "tree_reply_differs_policy": 0}
+        cache = {}
+
+        def open_(clone):
+            return clone.phase == "play" and len(clone.history) < target
+
+        active = [c for c in clones if open_(c)]
+        while active:
+            if gate is not None:
+                gate()
+            self._tree_greedy_ply(active, gate, cache, stats)
+            active = [c for c in active if open_(c)]
+        values, batches = self._tree_values(clones, seat, gate)
+        stats["tree_value_batches"] += batches
+        stats["tree_terminal_leaves"] = sum(c.phase == "round_end" for c in clones)
+        return values.reshape(len(worlds), len(actions)), {k: int(v) for k, v in stats.items()}
+
     def _tree_lookahead(self, rnd, seat, actions, worlds, gate=None):
         """``(values, stats)``: ``values[w, a]`` is the root-team value of
         contender ``a`` in visited world ``w`` after the continuation
@@ -502,6 +661,8 @@ class PVTreeMixin:
         given world.  Raises `PVTreeContinuationRefused` when the engine does
         not accept a continuation lead as submitted."""
         cont = self.tree_config.cont
+        if cont == "trick-greedy":
+            return self._tree_lookahead_greedy(rnd, seat, actions, worlds, gate)
         target = len(rnd.history) + (1 if cont == "trick" else 2)
         clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
                   for hands, buried in worlds for action in actions]

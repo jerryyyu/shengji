@@ -55,17 +55,25 @@ exceeds +0.015 and the interval crosses zero; a five-window null is "not large",
 ## Current program
 
 **State on 2026-10-03.** Search rules (#676): admission diversity + refusal constraints + points
-tie-break confirmed only as a combination, +0.0461 [+0.0242, +0.0681] vs release 36 on ten fresh
-windows; lead-anchor added +0.0106 [+0.0006, +0.0205] on top; together they are release 38
-(pending deploy). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
+tie-break CONFIRMED only as a combination, +0.0461 [+0.0242, +0.0681] vs release 36 on ten fresh
+windows (issuecomment-5962364713); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205]
+over ten windows, POSITIVE incremental with a lower bound near zero, not a second confirmation
+(issuecomment-5965252288); lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262],
+five windows, below the extension triage). Together the four rules are release 38 (pending deploy). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
 closed (−0.417 package prior, −0.894 uniform vs release 36) and the root-allocation pilot A6 closed
 (#436). Model (#663): the C11 retrain (SMV3 recipe + runPVR1..8, 624k deals) early-stopped at
-epoch 9, best epoch 6, screen pending; SL4 (rollout value labels) served −0.0162 [−0.0600,
+epoch 9, best epoch 6, screen pending; SL4 (the runSL1..4 stores' trajectory, value and policy
+supervision added, recipe unchanged) served −0.0162 [−0.0600,
 +0.0275], inconclusive. Data: runPVC1 (16,000 deals, teacher = the combo + la search, seeds
 44260910..) sealed 10-03; runPVC2 running. Mechanism (#663 issuecomment-5967276911): the listwise
-policy loss sums card logits per candidate, so a card shared by every admitted candidate cancels
-in the softmax and the head cannot learn whether to spend it; about 1.7% of PVR soft-target rows
-share a pair across all candidates (C15 baseline, issuecomment-5967436179). Admission diversity
+policy loss sums card logits per candidate, so on a row whose admitted candidates all contain the
+same card multiplicity that term cancels in the softmax: this row's listwise term has zero direct
+gradient for the shared card multiplicity. The card-presence BCE still pushes toward the recorded
+play, and other rows and shared parameters can still train it; this is a row-level gradient fact,
+not a proof that the head fails. C15 baseline (issuecomment-5967436179): 702 of 41,551 soft-target
+rows (1.69%) have a pair common to every candidate, counted in the FIRST availability-selected
+50,000-row chunk of the PVR5–8 extraction — descriptive for that chunk, not a prevalence estimate
+across PVR (23.8% of the same rows already carry a pair-multiplicity contrast). Admission diversity
 should raise that contrast in new data — a hypothesis, not a measured effect. Sol benchmark
 (#355): the SMV3 row vs Sol +0.55 [+0.10, +1.00] (15/20), vs PT-Sol +0.10 [−0.20, +0.40], ten
 deals each, descriptive; remaining rows running.
@@ -151,9 +159,11 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 - **Policy head alone is SmartBot-level** under public information; the gap to the search is
   the value pricing, not the prior.
 - **Admission and selection rules beat tree search here** (2026-10): diversity, refusal-aware
-  worlds, a points tie-break and lead-anchor on the release-36 search confirmed in combination
-  (above), while PUCT on the same package lost (−0.417 signed levels per round vs release 36) and
-  adaptive K16 did not resolve. Each rule alone was unconfirmed; the gain appeared only in combination.
+  worlds and a points tie-break on the release-36 search were CONFIRMED in combination and
+  lead-anchor on top was POSITIVE incremental (above; not a second confirmation), while PUCT on
+  the same package lost (−0.417 signed levels per round vs release 36) and adaptive K16 did not
+  resolve. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive
+  exploratory, below the extension triage.
 - **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
   and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
 - **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs

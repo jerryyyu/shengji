@@ -27,9 +27,9 @@ flowchart TD
   worlds --> rc["rc · each world must make this round's refused<br/>throws refusable with the same forced component"]
   rc --> prior["policy head scores every legal action<br/>(card log-odds summed, mean over worlds)"]
   prior --> la["la · leading a non-trump single that is not the<br/>top live card? slot 0 = highest plain pair/tractor,<br/>else the policy's top action"]
-  la --> admit["admit 8: slot 0 + the 7 best by policy score"]
-  admit --> div["div · at most 2 per shape (suit, size, components);<br/>skip actions sharing all but one card with an<br/>admitted one; back-fill if short"]
-  div --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
+  la --> admit["admit 8: slot 0, then walk ALL legal actions<br/>in policy-score order until 8 are admitted"]
+  div["div · during the walk: at most 2 per shape<br/>(suit, size, components); skip actions sharing all but<br/>one card with an admitted one, so lower-ranked actions<br/>enter; back-fill from the skipped if short"] -.-> admit
+  admit --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
   value --> tb["tb · candidates within 0.02 level of the best:<br/>most root-team points from the current trick"]
   tb --> play(["play"])
   classDef r38 fill:#fff4d6,stroke:#b7791f,stroke-width:2px,stroke-dasharray:4 3;
@@ -37,7 +37,8 @@ flowchart TD
 ```
 
 Dashed nodes are release 38's rules (pending deploy); release 37 runs the same path without
-them (slot 0 is always the heuristic play, plain top-8 admission, plain argmax). Play has a
+them (slot 0 is always the heuristic play, the walk admits the seven best-scored actions
+unfiltered, plain argmax). Play has a
 3 s cooperative budget; on expiry the heuristic anchor is played. Source:
 `server/shengji/train/pv_search_policy.py`, `policy_value_search.py`, `ai/refusal.py`.
 
@@ -46,14 +47,16 @@ control, so these are indirect contrasts, not head-to-head win rates):
 
 | change | against | result | reading |
 |---|---|---|---|
-| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | confirmed, ten fresh windows (#676) |
-| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | confirmed, ten windows; lower bound near zero |
+| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) |
+| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) |
 | SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) |
 | policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] |
 | adaptive K16 | release 36 | −0.0061 [−0.0303, +0.0181] | inconclusive, not taken |
 | PUCT (package prior / uniform) | release 36 | −0.417 / −0.894 | closed (#436) |
 
-Each of div, rc, tb alone was unconfirmed or inconclusive; only the combination confirmed.
+Each of div, rc, tb alone was unconfirmed or inconclusive; only their combination confirmed.
+Lead-anchor alone vs release 36 was positive exploratory (+0.0138 [+0.0013, +0.0262], five
+windows, below the extension triage).
 Every production change and its receipt: [AI_POLICIES.md](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
 Rollback, gates and release records: [DEPLOY.md](DEPLOY.md). Open investigations: the board
 issue #679. Next work: [BACKLOG.md](BACKLOG.md), [RL_PLAN.md](RL_PLAN.md).
@@ -158,7 +161,7 @@ privileged-teacher teachers, direct-Q, Suphx O0) are recorded as lessons in
 | `incidents/` / `server/tests/` | postmortems and the validation suite (the correctness ledger through 2026-09-22 is archived at `docs_archive/correctness-through-2026-09-22.md`) |
 | `docs/scaling_log/` / `docs/atlas_v2/` | every model with its offline metrics (built from `models.py`); every screen since release 29 (built from `registry.json`) |
 | GitHub issue #679 + topic issues | the live investigation board, updated hourly; topics: #663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit |
-| `AGENTS.md` / `CODEX_WORKFLOW.md` | execution discipline and the Codex setup (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
+| `AGENTS.md` | execution discipline and agent orchestration (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
 | `HANDOFF_REVIEW.md` | frozen to its authority markers (#674); prose lives on GitHub issues, archived text in `docs_archive/handoff-review-*.md`. `HANDOFF_ACTIVE.md` was deleted (#674); fleet state is `server/scripts/fleet_status.sh` |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
 | `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |

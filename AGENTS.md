@@ -148,5 +148,3 @@ evidence and the evidence standard (the research doctrine is archived at `docs_a
 process failures. Operational signaling between agents is the agent bus
 (above); it is a pointer channel, not a record. Do not create a parallel
 documentation framework.
-
-Native setup and rollback instructions are in `CODEX_WORKFLOW.md`.

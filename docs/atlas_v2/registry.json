@@ -714,6 +714,7 @@
    "candidate": "COMBO + LEAD-ANCHOR (v43cla): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with FOUR flags on together -- admission_diversity, refusal_constraints, tiebreak_points, lead_anchor; served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457 vs the confirmed combo (div+rc+tb) as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f",
    "comparator": "the confirmed COMBO (div+rc+tb, combo2), NOT release 36: release 36's package with the three flags, served as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f (grouped under release 36 because the schema's vs must name a baseline release, as x36a/x36c do for their non-release controls)",
    "vs": 36,
+   "vs_group": "the combo (div+rc+tb) on release 36's model",
    "form": "served bot",
    "instrument_kind": "windows",
    "instrument": "ten fresh 520-cluster mirrored windows (five per host), 300 s cap, each arm vs the common MC-LCB control per window (not head-to-head); paired bootstrap 4000 + DL random effects; single all-ten read",

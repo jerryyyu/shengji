@@ -123,3 +123,27 @@ def test_the_page_splits_screens_by_comparator_release_and_carries_the_head_ladd
     bad = copy.deepcopy(reg)
     for b in bad["baseline"]: b["status"] = "superseded"
     assert any("exactly one production baseline" in e for e in mod.check_registry(bad))
+
+
+def test_the_chart_and_tables_carry_one_band_per_comparator():
+    """Jerry 2026-10-03: a visual separator for each thing a screen is compared to.  The reads against
+    the production release split into the release as served and each named variant (``vs_group``);
+    every earlier release and the context rows get their own band too."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
+    prod = mod.production_release(reg)
+    labels = [label for label, _, _ in mod.SECTIONS]
+    assert labels[0].startswith(f"against release {prod} as served")
+    assert len(labels) == len(set(labels))
+    groups = {s["vs_group"] for s in reg["screens"] if s.get("vs_group")}
+    assert groups, "no screen names a non-release comparator"
+    for g in groups:
+        assert f"against {g}" in labels
+        assert f"Against {mod.esc(g)}" in page                      # its own sub-table
+    for rel in {s["vs"] for s in reg["screens"] if s["vs"] != prod}:
+        assert any(l.startswith(f"against release {rel} ") for l in labels)
+    assert page.count('class="sepband"') == len(mod.SECTIONS)
+    assert sum(len(mod._chart_rows(items, kind)) for _, kind, items in mod.SECTIONS) == len(mod.rows)
+    for label, _, items in mod.SECTIONS:                           # a band never mixes comparators
+        assert len({(s.get("vs"), s.get("vs_group")) for s in items}) == 1, label
+    bad = copy.deepcopy(reg); bad["screens"][0]["vs_group"] = " "
+    assert any("vs_group" in e for e in mod.check_registry(bad))

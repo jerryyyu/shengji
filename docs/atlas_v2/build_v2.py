@@ -36,6 +36,8 @@ def check_registry(reg):
             errs.append(f"{s['id']}: form must be 'served bot' or 'card play'")
         if s.get("status") not in ("planned", "running", "restarting", "sealed", "stopped"):
             errs.append(f"{s['id']}: unknown status {s.get('status')!r}")
+        if "vs_group" in s and not (isinstance(s["vs_group"], str) and s["vs_group"].strip()):
+            errs.append(f"{s['id']}: vs_group, when given, names the comparator that is not the release as served")
     for s in reg["screens"] + reg["context_screens"]:
         # the instrument is an explicit typed field on EVERY row (context rows included), never inferred
         if s.get("instrument_kind") not in INSTRUMENT_KINDS or not s.get("instrument"):
@@ -99,9 +101,27 @@ PROD = production_release(R)
 SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
 SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
-rows = _chart_rows(SCREENS_NOW, "main") + _chart_rows(SCREENS_EARLIER, "prev") + _chart_rows(R["context_screens"], "ctx")
-W, LEFT, RIGHT, ROWH, TOP = 980, 330, 150, 44, 46
-H = TOP + ROWH * len(rows) + 40
+def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
+def now_groups():
+    """Reads against the production release, split by what they are actually compared to: the release
+    as served first, then each named variant of it (``vs_group``), in registry order."""
+    plain = [s for s in SCREENS_NOW if not s.get("vs_group")]
+    out = [(f"release {PROD} as served · current production", plain)] if plain else []
+    named = {}
+    for s in SCREENS_NOW:
+        if s.get("vs_group"):
+            named.setdefault(s["vs_group"], []).append(s)
+    return out + list(named.items())
+NOW_GROUPS = now_groups()
+# One chart band per comparator: every row under a band is compared to the thing the band names.
+SECTIONS = [(f"against {label}", "main", items) for label, items in NOW_GROUPS]
+SECTIONS += [(f"against release {rel} · closed comparator", "prev", [s for s in SCREENS_EARLIER if s["vs"] == rel])
+             for rel in sorted(EARLIER_RELEASES, reverse=True)]
+if R["context_screens"]:
+    SECTIONS.append(("context · against release 28", "ctx", R["context_screens"]))
+rows = [r for _, kind, items in SECTIONS for r in _chart_rows(items, kind)]
+W, LEFT, RIGHT, ROWH, TOP, SEPH = 980, 330, 200, 44, 46, 34
+H = TOP + ROWH * len(rows) + SEPH * len(SECTIONS) + 40
 lo_all = min([r[4] for r in rows if r[4] is not None] + [-0.05]); hi_all = max([r[5] for r in rows if r[5] is not None] + [0.10])
 lo_all, hi_all = min(lo_all, -0.02) - 0.01, hi_all + 0.01
 def X(v): return LEFT + (v - lo_all) / (hi_all - lo_all) * (W - LEFT - RIGHT)
@@ -111,8 +131,19 @@ svg.append(f'<text x="{X(0):.1f}" y="{TOP-24}" class="lab" text-anchor="middle">
 for t in [round(lo_all + i*0.02, 2) for i in range(int((hi_all-lo_all)/0.02)+1)]:
     if abs(t) < 1e-9: continue
     svg.append(f'<line x1="{X(t):.1f}" y1="{H-30}" x2="{X(t):.1f}" y2="{H-24}" class="tick"/><text x="{X(t):.1f}" y="{H-10}" class="lab" text-anchor="middle">{t:+.2f}</text>')
-for i, (rid, cand, comp, p, lo, hi, st, kind, conf, role) in enumerate(rows):
-    y = TOP + i * ROWH + ROWH/2
+layout, _y = [], TOP
+for label, kind, items in SECTIONS:
+    sec_rows = _chart_rows(items, kind)
+    layout.append(("sep", _y, f"{label} · {_reads(len(sec_rows))}")); _y += SEPH
+    for r in sec_rows:
+        layout.append(("row", _y, r)); _y += ROWH
+for what, top, item in layout:
+    if what == "sep":
+        svg.append(f'<rect x="0" y="{top+6}" width="{W}" height="{SEPH-12}" class="sepband"/>')
+        svg.append(f'<text x="12" y="{top+SEPH/2+4}" class="sep">{esc(item)}</text>')
+        continue
+    rid, cand, comp, p, lo, hi, st, kind, conf, role = item
+    y = top + ROWH/2
     name = f"{rid} · {cand[:34]}{'…' if len(cand) > 34 else ''}"
     svg.append(f'<text x="{LEFT-10}" y="{y+4}" class="lab name {kind}" text-anchor="end">{esc(name)}</text>')
     svg.append(f'<text x="{LEFT-10}" y="{y+18}" class="sub" text-anchor="end">vs {esc(comp[:34])} · {conf*100:g}% {esc(role)}</text>')
@@ -173,7 +204,11 @@ def earlier_sections():
         items = [s for s in SCREENS_EARLIER if s["vs"] == rel]
         out.append(f'<h4>Screens against release {rel} · {len(items)} reads, a closed comparator</h4>' + screens_table(items))
     return "\n".join(out)
-now_block = screens_table(SCREENS_NOW) if SCREENS_NOW else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>'
+def now_tables():
+    if len(NOW_GROUPS) <= 1:
+        return screens_table(SCREENS_NOW)
+    return "\n".join(f'<h4>Against {esc(label)} · {_reads(len(items))}</h4>' + screens_table(items) for label, items in NOW_GROUPS)
+now_block = now_tables() if SCREENS_NOW else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>'
 
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
@@ -205,6 +240,7 @@ h4{{margin:12px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:upperca
 table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--rule)}} th{{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--sub)}} td.num,th.num{{text-align:right;white-space:nowrap}}
 .figure{{background:var(--card);border:1px solid var(--rule);padding:12px}}
 svg .zero{{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}} svg .tick{{stroke:var(--rule)}} svg .lab{{fill:var(--ink);font:12px "IBM Plex Sans",sans-serif}} svg .sub{{fill:var(--sub);font:11px "IBM Plex Sans",sans-serif}} svg .name{{font-weight:500}} svg .name.ctx{{fill:var(--sub)}}
+svg .sepband{{fill:var(--chipbg)}} svg .sep{{fill:var(--accent);font:600 11px "IBM Plex Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase}}
 svg .ci{{stroke-width:3}} svg .ci.good{{stroke:var(--good)}} svg .ci.null{{stroke:var(--null)}} svg .ci.bad{{stroke:var(--bad)}} svg .ci.ctx{{opacity:.55}}
 svg .ci.prev{{opacity:.8}} svg .pt.prev{{opacity:.8}}
 svg .pt.good{{fill:var(--good)}} svg .pt.null{{fill:var(--null)}} svg .pt.bad{{fill:var(--bad)}} svg .pt.ctx{{opacity:.55}} svg .pt.pending{{fill:none;stroke:var(--wait);stroke-width:1.5}}
@@ -219,7 +255,7 @@ a{{color:var(--accent)}}
 <div class="cards">{baseline_cards()}</div>
 
 <h2>Screens against release {PROD} (the current production)</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart lists the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
 {now_block}
 {earlier_sections()}

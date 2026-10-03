@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from shengji.ai.cwv_numpy import PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2
+from shengji.ai.cwv_numpy import PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2, PACKAGE_SCHEMA_V3
 
 
 def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
@@ -96,6 +96,17 @@ def export_cwv_numpy(checkpoint: str | Path, output: str | Path, *,
             cfg.update({"trunk_block": config.trunk_block, "trunk_layers": config.trunk_layers})
         cfg["policy_head"] = True
         names.update({"policy_head.weight": "policy_weight", "policy_head.bias": "policy_bias"})
+        if config.policy_tower_layers:
+            # Policy tower: its own schema (v3), so a runtime from before the tower
+            # refuses the package instead of serving the head without its tower.
+            # A towerless net never reaches this branch: its package is unchanged.
+            schema = PACKAGE_SCHEMA_V3
+            cfg.update({"policy_tower_layers": config.policy_tower_layers,
+                        "policy_tower_width": config.policy_tower_width})
+            for i in range(config.policy_tower_layers):
+                for part in ("norm", "up", "down"):
+                    names.update({f"policy_tower.{i}.{part}.weight": f"policy_tower{i}_{part}_weight",
+                                  f"policy_tower.{i}.{part}.bias": f"policy_tower{i}_{part}_bias"})
     metadata["exported_value_head"] = head
     state = model.state_dict()
     missing = [src for src in names if src not in state]

@@ -30,8 +30,13 @@ def test_loss_sync_cadence_does_not_change_training(store_dir, luna, tmp_path, m
     for a, b in zip(per_batch["epochs"], every32["epochs"]):
         for key in ("loss", "cross_entropy", "rows", "batches"):
             assert np.isclose(a["train"][key], b["train"][key], rtol=1e-6, atol=0), key
-        # timing fields differ run to run; every number does not
-        strip = lambda d: {k: v for k, v in d.items() if not k.endswith("secs")}
+        # Exclude only measured timing, not model-quality or selection metrics.
+        strip = lambda d: {k: v for k, v in d.items()
+                           if not k.endswith("secs") and k != "stage_wall_seconds"}
+        for val in (a["val"], b["val"]):
+            timings = val["stage_wall_seconds"]
+            assert set(timings) == {"outcome_eval", "outcome_metrics", "outcome_ranking", "total"}
+            assert all(np.isfinite(v) and v >= 0 for v in timings.values())
         assert strip(a["val"]) == strip(b["val"])
 
 

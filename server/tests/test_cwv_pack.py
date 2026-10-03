@@ -15,6 +15,7 @@ from shengji.train import cwv_data, cwv_pack
 from shengji.train.data import Residency, SplitSelector, split_deals
 from tests.test_cwv_train import (store_dir, other_dir, records, other_records, luna, blocks,  # noqa: F401
                                   THIRDS)
+from tests.test_cwv_train_policy_head import policy_rows  # noqa: F401
 
 _BUDGET = 2 * 10 ** 6   # small enough that windows are byte-bounded on the tiny store
 
@@ -74,7 +75,9 @@ def test_batch_sequence_is_identical_under_a_byte_bounded_residency(prepared, pa
             assert np.array_equal(x[k], y[k]), k
 
 
-def test_two_epochs_from_the_pack_give_bitwise_identical_weights(store_dir, luna, pack, tmp_path):
+@pytest.mark.parametrize("joint", [False, True])
+def test_two_epochs_from_the_pack_give_bitwise_identical_weights(
+        store_dir, luna, pack, policy_rows, tmp_path, joint):
     from shengji.train import train_cwv, train_v0
     out, _ = pack
     luna_path, _rows = luna
@@ -85,6 +88,9 @@ def test_two_epochs_from_the_pack_give_bitwise_identical_weights(store_dir, luna
               seed=7, batch_size=64, n_boot=10, hidden=32, log=None, cache_workers=1, eval_workers=1,
               bench_batch=32, public_head=str(tmp_path / "public" / "best.pt"),
               resident_bytes=_BUDGET, **THIRDS)
+    if joint:
+        kw.update(policy_head=True, policy_rows=policy_rows, policy_eval=policy_rows,
+                  policy_weight=0.2, policy_batch_fraction=0.25, aux_points=True)
     cache = tmp_path / "cache"
     a = train_cwv.train(out=tmp_path / "cache-run", cache_dir=cache, **kw)
     manifest = cwv_pack.build_pack([(s, p) for s, p in _entries(store_dir, cache)], tmp_path / "pack2",
@@ -104,6 +110,13 @@ def test_two_epochs_from_the_pack_give_bitwise_identical_weights(store_dir, luna
     ea = [(e["train"]["loss"], e["val"]["loss"]) for e in a["epochs"]]
     eb = [(e["train"]["loss"], e["val"]["loss"]) for e in b["epochs"]]
     assert ea == eb
+    if joint:
+        assert ma.policy_head is not None and mb.policy_head is not None
+        for epoch_a, epoch_b in zip(a["epochs"], b["epochs"]):
+            assert epoch_a["train"]["policy_rows"] > 0
+            assert epoch_a["train"]["policy_bce"] > 0
+            for metric in ("policy_rows", "policy_bce", "policy_listwise"):
+                assert epoch_a["train"][metric] == epoch_b["train"][metric]
 
 
 def _entries(store_dir, cache):

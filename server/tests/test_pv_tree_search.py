@@ -1,9 +1,10 @@
 """The OPTIONAL paired lookahead tree on the pv-search bot ("PUCT v2", #436):
 `train.pv_tree_search` / `train.pv_tree_config`, ``SHENGJI_PV_TREE_SIMS``.
 
-Mostly torch-free: stub predictors and evaluators on real rounds, the real
-legal enumeration, the real sampler and the real engine; the last section runs
-the registered bot on a tiny real joint package.
+Torch-free but for the last section: stub predictors and evaluators on real
+rounds, the real legal enumeration, the real sampler and the real engine; the
+last section runs the registered bot on a tiny real joint package (skipped
+without torch).
 
 Witnesses: (a) names -- unset, every served name (release 36, combo, release
 38) is byte-identical and the served classes are built; set, ``-ts<S>`` and a
@@ -32,7 +33,6 @@ from shengji.train import pv_tree_search as tree
 from shengji.train.policy_prior import CARD_INDEX
 from shengji.train.pv_tree_config import (PVTreeConfig, PVTreeConfigError, TREE_DEFAULTS,
                                           tree_env, tree_token)
-from shengji.train.search_screen import trace_fields
 from test_policy_world_search import state
 from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                      predict, production_package)  # noqa: F401  (fixture)
@@ -758,6 +758,12 @@ def test_an_expired_serving_budget_is_still_servings_anchor_fallback():
 # ------------------------------------------------------------- (h) telemetry
 
 def test_tree_fields_are_scalars_and_survive_the_screen_trace_filter():
+    try:      # the screen module needs torch; the scalar contract is checked without it
+        from shengji.train.search_screen import trace_fields
+    except ImportError:
+        def trace_fields(record):
+            return {k: v for k, v in record.items()
+                    if isinstance(v, (str, int, float, bool, type(None)))}
     rnd = state(); seat = rnd.turn
     for bot in (_gate_bot(1.0, 0.05), _gate_bot(1.0, 2.0), _gate_bot(1.0, 0.0, sims=2),
                 bot_of(PVTreeConfig(sims=0)), bot_of(PVTreeConfig(sims=64), **RELEASE38_RULES)):

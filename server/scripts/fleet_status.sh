@@ -10,7 +10,7 @@
 #
 # Convention for NEW long jobs: run as a named script/module logging to
 # server/runs/logs/<name>.log, and note current intent on the owning GitHub
-# issue (#679 for fleet and housekeeping; HANDOFF_ACTIVE.md was deleted, #674).
+# issue (#707 is the active investigation board; #679 is closed history).
 # HANDOFF_REVIEW.md is frozen to its authority markers; prose lives on issues.
 
 # Run from anywhere. This used to require cwd=server/, and when the caller's
@@ -335,8 +335,8 @@ hdr "CODEX MAILBOX — GitHub issues"
 # HANDOFF_REVIEW.md is frozen to its authority markers (#674); the discussion
 # thread that used to be counted here now lives on GitHub issues.
 echo "  HANDOFF_REVIEW.md is frozen to its authority markers (#674); prose lives on GitHub issues."
-echo "  fleet and housekeeping thread: https://github.com/jerryyyu/shengji/issues/679"
-echo "  read it with: gh issue view 679 -R jerryyyu/shengji --comments"
+echo "  active investigation board: https://github.com/jerryyyu/shengji/issues/707"
+echo "  read it with: gh issue view 707 -R jerryyyu/shengji --comments"
 
 hdr "JOB LOGS — metadata only (content requires an explicit safe boundary)"
 # Generic logs may contain sealed outcomes.  File age and size are operational

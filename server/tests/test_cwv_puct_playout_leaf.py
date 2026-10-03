@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import random
 from pathlib import Path
 
 import numpy as np
@@ -27,13 +26,12 @@ from shengji.ai.cwv_puct import (
 )
 from shengji.ai.heuristic import HeuristicBot
 from shengji.ai.mcbot import MCBot
-from shengji.ai.smart import SmartBot
-from shengji.engine.game import Game
 from shengji.rl.value_afterstate import (
     OUTCOME_CLASSES,
     category_signed_level,
     terminal_distribution,
 )
+from game_state_helpers import state_after as _state_after
 
 SUPPORT = np.asarray([category_signed_level(i) for i in range(OUTCOME_CLASSES)])
 
@@ -44,29 +42,6 @@ def _load_script(name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _state_after(seed: int, plies: int):
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bots = [SmartBot() for _ in range(4)]
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bots[seat].decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-    for seat in range(4):
-        cards = bots[seat].decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, bots[rnd.banker].decide_bury(rnd, rnd.banker))
-    for _ in range(plies):
-        if rnd.phase != "play":
-            break
-        seat = rnd.turn
-        rnd.play(seat, bots[seat].decide_play(rnd, seat))
-    return rnd
 
 
 def _contested_state(seed: int = 5, start: int = 4, *, min_candidates: int = 3,

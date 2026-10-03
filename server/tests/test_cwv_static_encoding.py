@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import random
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,8 +10,6 @@ import pytest
 from shengji.ai import cwv_policy
 from shengji.ai import cwv_static_encoding as static
 from shengji.ai.cwv_policy import CompleteWorldEvaluator
-from shengji.ai.smart import SmartBot
-from shengji.engine.game import Game
 from shengji.rl.douzero_micro import DouZeroMicroError
 from shengji.rl import value_afterstate
 from shengji.rl.encode import CARD_INDEX, OBS_DIM
@@ -21,29 +18,7 @@ from shengji.rl.value_model import ValueModelConfig, ValueNetwork
 from shengji.train import cwv_shortlist_screen as screen
 from shengji.train.cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from tests.test_world_shortlist import play_state, round_signature
-
-
-def _state_after(seed: int, plies: int):
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bots = [SmartBot() for _ in range(4)]
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bots[seat].decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-    for seat in range(4):
-        cards = bots[seat].decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, bots[rnd.banker].decide_bury(rnd, rnd.banker))
-    for _ in range(plies):
-        if rnd.phase != "play":
-            break
-        seat = rnd.turn
-        rnd.play(seat, bots[seat].decide_play(rnd, seat))
-    return rnd
+from game_state_helpers import state_after as _state_after
 
 
 @pytest.fixture(scope="module")

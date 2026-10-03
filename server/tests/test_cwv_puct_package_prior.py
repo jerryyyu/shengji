@@ -16,7 +16,6 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
-import random
 from pathlib import Path
 
 import numpy as np
@@ -41,9 +40,8 @@ from shengji.ai.cwv_puct import (
 )
 from shengji.ai.mcbot import MCBot
 from shengji.ai.memory import Memory
-from shengji.ai.smart import SmartBot
-from shengji.engine.game import Game
 from shengji.train.cwv_prior_admission import CWVPriorAdmissionBot, load_prior_checked
+from game_state_helpers import state_after as _state_after
 
 
 def _load_script(name: str):
@@ -89,29 +87,6 @@ def other_package(tmp_path_factory):
 
 
 # --------------------------------------------------------------- fixtures
-
-def _state_after(seed: int, plies: int):
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bots = [SmartBot() for _ in range(4)]
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bots[seat].decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-    for seat in range(4):
-        cards = bots[seat].decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, bots[rnd.banker].decide_bury(rnd, rnd.banker))
-    for _ in range(plies):
-        if rnd.phase != "play":
-            break
-        seat = rnd.turn
-        rnd.play(seat, bots[seat].decide_play(rnd, seat))
-    return rnd
-
 
 def _contested_state(seed: int = 5, start: int = 4, *, min_candidates: int = 3):
     bot = MCBot(seed=0)

@@ -9,7 +9,6 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
-import random
 from pathlib import Path
 
 import numpy as np
@@ -33,13 +32,12 @@ from shengji.ai.cwv_policy import (
 from shengji.ai.mcbot import MCBot
 from shengji.ai.memory import Memory
 from shengji.ai.registry import REGISTRY, make_bot, register_cwv_policies
-from shengji.ai.smart import SmartBot
 from shengji.engine.ballot import ballot_for_policy
-from shengji.engine.game import Game
 from shengji.rl.value_afterstate import apply_action, category_signed_level
 from shengji.rl.value_checkpoint import save_checkpoint
 from shengji.rl.value_inference import predict_round
 from shengji.rl.value_model import ValueModelConfig, ValueNetwork
+from game_state_helpers import state_after as _state_after
 
 
 def _load_script(name: str):
@@ -96,30 +94,6 @@ def checkpoint(tmp_path_factory) -> str:
     _load_script("cwv_dev_checkpoint").build_dev_checkpoint(
         str(out), rounds=2, max_epochs=2, quiet=True)
     return str(out)
-
-
-def _state_after(seed: int, plies: int):
-    """A complete round (every hand known) after ``plies`` heuristic plays."""
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bots = [SmartBot() for _ in range(4)]
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bots[seat].decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-    for seat in range(4):
-        cards = bots[seat].decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, bots[rnd.banker].decide_bury(rnd, rnd.banker))
-    for _ in range(plies):
-        if rnd.phase != "play":
-            break
-        seat = rnd.turn
-        rnd.play(seat, bots[seat].decide_play(rnd, seat))
-    return rnd
 
 
 def _state_where(seed: int, predicate, *, start: int = 0, limit: int = 100):

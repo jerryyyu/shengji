@@ -183,14 +183,14 @@ def test_hybrid_finalist_count_is_respected(monkeypatch, alternatives):
     assert record["candidate_count"] == 12 and record["mc_rollouts"] == finalists * 32
 
 
-@pytest.mark.parametrize("arm, alternatives, where, finalists, rolled", [
-    ("value", 2, "model", None, 0),
-    ("mc", 2, "rollout", "all", 2),
-    ("hybrid", 2, "rollout", 3, 2),
-    ("hybrid", 4, "rollout", 5, 2),
+@pytest.mark.parametrize("arm, alternatives, where, finalists, rolled, positions", [
+    ("value", 2, "model", None, 0, None),      # ranking interrupted: unknown, not zero
+    ("mc", 2, "rollout", "all", 2, 0),         # no ranking stage: a true zero
+    ("hybrid", 2, "rollout", 3, 2, 12),        # ranking complete: 6 candidates x 2 worlds
+    ("hybrid", 4, "rollout", 5, 2, 12),
 ])
 def test_budget_expiry_falls_back_with_the_receipt(monkeypatch, arm, alternatives, where,
-                                                   finalists, rolled):
+                                                   finalists, rolled, positions):
     clock = SimpleNamespace(value=0.0)
     monkeypatch.setattr(policy, "time", SimpleNamespace(perf_counter=lambda: clock.value))
     rollout = MCBot._rollout_from_bury
@@ -226,6 +226,7 @@ def test_budget_expiry_falls_back_with_the_receipt(monkeypatch, arm, alternative
     assert record["finalist_count"] == (6 if finalists == "all" else finalists)
     # Only rollouts that finished inside the budget are counted.
     assert record["mc_rollouts"] == rolled and count[0] == (0 if arm == "value" else 3)
+    assert record["model_positions"] == positions
     assert "mc_evidence" not in record
 
 
@@ -243,6 +244,7 @@ def test_search_error_fallback_and_complete_receipts_carry_the_fields():
     record = failed.last_bury_record
     assert record["fallback_reason"] == "search-error" and record["error_class"] == "RuntimeError"
     assert (record["candidate_count"], record["finalist_count"], record["mc_rollouts"]) == (6, None, 0)
+    assert record["model_positions"] is None
     for arm, finalists in (("heuristic", 0), ("value", 0), ("mc", 6), ("hybrid", 3)):
         player = policy.CWVBuryBot(Evaluator(), seed=73, arm=arm, bury_config=config,
                                    serving_budget_seconds=30.0)
@@ -415,6 +417,11 @@ def test_control_summary_is_zero_for_control_vs_control_and_reports_each_arm():
     assert cost["mc_all"]["fallback_counts"] == {"budget": 26} and cost["mc_all"]["fallback_count"] == 26
     assert cost["hybrid"]["fallback_counts"] == {} and cost["hybrid"]["mean_finalist_count"] == 5
     assert cost["mc_all"]["full_bury_rollouts"] == 26 * 40 + 26 * 6 * 32
+    # Half of mc_all's receipts are fallbacks with no candidate list: the scalar is read.
+    for arm in labels:
+        assert cost[arm]["mean_candidate_count"] == cost[arm]["max_candidate_count"] == 6
+        assert cost[arm]["candidate_count_unknown_rows"] == 0
+    assert cost["mc_all"]["mean_finalist_count"] == 6
     report = screen.arm_report(result, config, "value")
     assert report["vs_control"] is value and report["cost"] is cost["value"]
     assert report["policy"] == "policy-value" and report["control"] == "hybrid"
@@ -498,3 +505,61 @@ def test_pv_search_cli_writes_one_report_per_arm_and_a_summary(tmp_path, monkeyp
         assert report["vs_control"]["utility"]["ci95"] == [0.0, 0.0]
         assert report["cost"] == summary["cost"][arm] and report["completed_deals"] == 52
     assert json.loads((out / "report-hybrid.json").read_text())["vs_control"] is None
+
+
+def _cost(receipts):
+    """The control summary's cost block for one arm whose 52 receipts cycle ``receipts``."""
+    shards = [_shard(cluster, [_row("hybrid", INCUMBENT, 40, 0, _done(1.0, 5)),
+                               _row("arm", INCUMBENT, 40, 0, receipts[cluster % len(receipts)])])
+              for cluster in range(52)]
+    config = {"deals": 52, "population": screen.ALLRANK_POPULATION, "control": "hybrid",
+              "bury_budget_seconds": 2.0, "policies": {"hybrid": "a", "arm": "b"},
+              "arm_recipes": {"hybrid": screen.arm_recipe("hybrid"), "arm": screen.arm_recipe("mc")}}
+    result = screen.summarize(shards, config)
+    json.dumps(result, allow_nan=False)                      # unknown is null, never NaN
+    return result["cost"]["arm"]
+
+
+def test_summary_reads_scalar_receipts_on_fallback_and_unknown_is_not_zero():
+    success = {"elapsed_seconds": 1.0, "candidates": [INCUMBENT] * 20, "candidate_count": 20,
+               "finalist_count": 20, "mc_rollouts": 640, "model_positions": 0,
+               "fallback_reason": None}
+    expired = {"elapsed_seconds": 2.0, "candidate_count": 30, "finalist_count": 30,
+               "mc_rollouts": 500, "model_positions": 0, "fallback_reason": "budget"}
+    # Mixed: fallbacks carry the scalar and no list; the summary is receipt-true.
+    mixed = _cost([success, expired])
+    assert mixed["mean_candidate_count"] == 25 and mixed["max_candidate_count"] == 30
+    assert mixed["mean_finalist_count"] == 25 and mixed["full_bury_rollouts"] == 26 * 1140
+    assert mixed["fallback_counts"] == {"budget": 26}
+    for field in ("candidate_count", "finalist_count", "full_bury_rollouts", "model_positions"):
+        assert mixed[f"{field}_unknown_rows"] == 0
+    # Every search expired: the scalar counts, not zero.
+    all_expired = _cost([expired])
+    assert all_expired["mean_candidate_count"] == all_expired["max_candidate_count"] == 30
+    assert all_expired["mean_finalist_count"] == 30 and all_expired["fallback_count"] == 52
+    assert all_expired["full_bury_rollouts"] == 52 * 500
+    assert all_expired["candidate_count_unknown_rows"] == 0
+    # A legacy receipt has the list and no scalar; its other new fields are unknown.
+    legacy = _cost([{"elapsed_seconds": 1.0, "candidates": [INCUMBENT] * 7, "mc_rollouts": 224,
+                     "model_positions": 0}])
+    assert legacy["mean_candidate_count"] == legacy["max_candidate_count"] == 7
+    assert legacy["candidate_count_unknown_rows"] == 0 and legacy["full_bury_rollouts"] == 52 * 224
+    assert legacy["mean_finalist_count"] is None and legacy["finalist_count_unknown_rows"] == 52
+    # A search that stopped before its ballot, part-way through the ranking: the
+    # counts it never reached are unknown, and its completed rollouts are a true zero.
+    early = {"elapsed_seconds": 2.0, "candidate_count": None, "finalist_count": None,
+             "mc_rollouts": 0, "model_positions": None, "fallback_reason": "budget"}
+    unknown = _cost([early])
+    assert unknown["mean_candidate_count"] is None and unknown["max_candidate_count"] is None
+    assert unknown["candidate_count_unknown_rows"] == 52
+    assert unknown["mean_finalist_count"] is None and unknown["finalist_count_unknown_rows"] == 52
+    assert unknown["model_positions"] == 0 and unknown["model_positions_unknown_rows"] == 52
+    assert unknown["full_bury_rollouts"] == 0 and unknown["full_bury_rollouts_unknown_rows"] == 0
+    # Unknown rows are left out of the mean and counted, not averaged in as zeros.
+    partly = _cost([success, early, {"elapsed_seconds": 2.0}])
+    assert partly["mean_candidate_count"] == partly["max_candidate_count"] == 20
+    assert partly["candidate_count_unknown_rows"] == 34 and partly["mean_finalist_count"] == 20
+    assert partly["finalist_count_unknown_rows"] == 34
+    assert partly["full_bury_rollouts"] == 18 * 640
+    assert partly["full_bury_rollouts_unknown_rows"] == 17      # the receipt with neither
+    assert partly["model_positions_unknown_rows"] == 34

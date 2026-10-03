@@ -169,8 +169,10 @@ class CWVBuryMixin:
         rng = self._bury_rng()
         before = rng.getstate()
         # What the search had done when it stopped; the fallback receipt
-        # reports it so a screen can cost an expired search.
-        progress = {"candidate_count": None, "finalist_count": None, "mc_rollouts": 0}
+        # reports it so a screen can cost an expired search.  None is unknown:
+        # a count not reached, or a ranking stage interrupted part-way.
+        progress = {"candidate_count": None, "finalist_count": None, "mc_rollouts": 0,
+                    "model_positions": 0}
 
         def check_budget():
             if time.perf_counter() - started >= self.bury_serving_budget_seconds:
@@ -207,7 +209,7 @@ class CWVBuryMixin:
         incumbent = list(super().decide_bury(rnd, seat)) if incumbent is None else incumbent
         options = {} if check_budget is None else {"check_budget": check_budget}
         if progress is None:
-            progress = {"mc_rollouts": 0}
+            progress = {"mc_rollouts": 0, "model_positions": 0}
         if check_budget is not None:
             check_budget()
         # The control arm is exactly the inherited heuristic action.  Do not
@@ -240,6 +242,7 @@ class CWVBuryMixin:
                     "mc-s0-report-lcb", seed=_seed("model", self.seed))
                 model_started = time.perf_counter()
                 model_counter_before = self._counter(model_bot)
+                progress["model_positions"] = None
                 model_worlds, model_attempts = _worlds(
                     model_bot, rnd, seat, self.bury_config.model_worlds, "model", **options)
                 model_values = score_bury_candidates(
@@ -258,6 +261,7 @@ class CWVBuryMixin:
                 shortlist = [0] + sorted(finalists)
                 model_seconds = time.perf_counter() - model_started
                 model_counter_after = self._counter(model_bot)
+                progress["model_positions"] = len(candidates) * self.bury_config.model_worlds
                 if self.bury_arm == "value":
                     # The ranking decides alone: no shortlist reaches MC.
                     shortlist = [0]

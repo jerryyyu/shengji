@@ -139,6 +139,27 @@ def stratified_interval(values, shards, *, reps=4000, seed=782321):
                            "rank×initial_banker strata")}
 
 
+def _candidate_count(bury):
+    """The receipt's candidate count: the scalar, else a legacy receipt's list,
+    else None (the receipt does not say -- never zero)."""
+    count = bury.get("candidate_count")
+    if count is None and "candidates" in bury:
+        count = len(bury["candidates"])
+    return count
+
+
+def _known(rows, read):
+    """One receipt field over an arm's rows: the known values and how many rows
+    leave it unknown.  Unknown rows are excluded from every figure, not zeroed."""
+    values = [read(r["bury"]) for r in rows]
+    known = [value for value in values if value is not None]
+    return known, len(values) - len(known)
+
+
+def _mean(values):
+    return sum(values) / len(values) if values else None
+
+
 def banker_utility(points):
     """Existing paired-screen convention: a win counts at least one level."""
     if points >= 80:
@@ -304,27 +325,35 @@ def summarize(shards, config):
                 })
     for arm in screen_arms(config):
         rows = [r for s in shards for r in s["records"] if r["arm"] == arm]
+        # A fallback receipt carries scalars and no candidate list, and leaves a
+        # count it never reached as None: read the scalars, keep unknown apart.
+        candidate_counts, candidates_unknown = _known(rows, _candidate_count)
+        rollouts, rollouts_unknown = _known(rows, lambda bury: bury.get("mc_rollouts"))
+        positions, positions_unknown = _known(rows, lambda bury: bury.get("model_positions"))
         result["cost"][arm] = {"total_wall_seconds": sum(r["wall_seconds"] for r in rows),
                                "total_cpu_seconds": sum(r["cpu_seconds"] for r in rows),
                                "total_bury_seconds": sum(r["bury"]["elapsed_seconds"] for r in rows),
                                "mean_bury_seconds": sum(r["bury"]["elapsed_seconds"] for r in rows) / len(rows),
-                               "full_bury_rollouts": sum(r["bury"].get("mc_rollouts", 0) for r in rows),
-                               "model_positions": sum(r["bury"].get("model_positions", 0) for r in rows),
-                               "mean_candidate_count": sum(len(r["bury"].get("candidates", [])) for r in rows) / len(rows)}
+                               "full_bury_rollouts": sum(rollouts),
+                               "full_bury_rollouts_unknown_rows": rollouts_unknown,
+                               "model_positions": sum(positions),
+                               "model_positions_unknown_rows": positions_unknown,
+                               "mean_candidate_count": _mean(candidate_counts),
+                               "candidate_count_unknown_rows": candidates_unknown}
         if population == ALLRANK_POPULATION:
             bury_seconds = np.asarray([r["bury"]["elapsed_seconds"] for r in rows], dtype=float)
-            candidate_counts = np.asarray([len(r["bury"].get("candidates", []))
-                                           for r in rows], dtype=float)
             kitty = np.asarray([r["kitty_bonus"] for r in rows], dtype=float)
             result["cost"][arm].update({
                 "bury_latency_p95_seconds": float(np.quantile(bury_seconds, .95)),
                 "bury_latency_p99_seconds": float(np.quantile(bury_seconds, .99)),
-                "max_candidate_count": int(candidate_counts.max()),
+                "max_candidate_count": max(candidate_counts) if candidate_counts else None,
                 "kitty_nonzero_count": int(np.count_nonzero(kitty)),
                 "kitty_ge80_count": int(np.count_nonzero(kitty >= 80)),
                 "kitty_bonus_max": int(kitty.max()),
             })
             if "control" in config:
+                finalists, finalists_unknown = _known(
+                    rows, lambda bury: bury.get("finalist_count"))
                 reasons = Counter(r["bury"]["fallback_reason"] for r in rows
                                   if r["bury"].get("fallback_reason") is not None)
                 result["cost"][arm].update({
@@ -332,8 +361,8 @@ def summarize(shards, config):
                     "mean_buried_points": float(np.mean(
                         [sum(card_points(card) for card in r["buried"]) for r in rows])),
                     "mean_kitty_bonus": float(kitty.mean()),
-                    "mean_finalist_count": float(np.mean(
-                        [r["bury"].get("finalist_count") or 0 for r in rows])),
+                    "mean_finalist_count": _mean(finalists),
+                    "finalist_count_unknown_rows": finalists_unknown,
                     "fallback_count": sum(reasons.values()),
                     "fallback_counts": dict(sorted(reasons.items())),
                 })

@@ -1,6 +1,6 @@
 # AI policy ledger
 
-Last reconciled: **2026-10-03 (release 37 live; the model is release 36's: the gen-5 SMV3 outcome head in the release-30 pv-search W64/K8 + hybrid bury. Release 38, the same package plus four search rules, is approved and pending deploy)**. This file defines the current callable-policy
+Last reconciled: **2026-10-03 (release 38 live since 2026-10-03 09:41 ET: release 36's package, the gen-5 SMV3 outcome head in the release-30 pv-search W64/K8 + hybrid bury, plus four search rules; every new screen compares against release 38)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
@@ -18,19 +18,22 @@ dated status blocks here.
 
 ## Production contract
 
-The current live Fly snapshot is release 37 (2026-10-01 01:1x ET, #671: a phone-HUD CSS fix, NO model, package
-or serving change). Release 36 (2026-09-30 11:53 ET, #666) was the first model change since release 30: **the gen-5
+The current live Fly snapshot is **release 38** (deployed 2026-10-03 09:41 ET, #698 at main `c8d487a6`; image
+`deployment-01M40ZWSAHNX4782CGKJ615YF7`): release 36's package, search, bury and budgets plus four search rules
+(below). Release 37 (2026-10-01 01:1x ET, #671) was a phone-HUD CSS fix on release 36's bot, NO model, package
+or serving change. Release 36 (2026-09-30 11:53 ET, #666) was the first model change since release 30: **the gen-5
 SMV3 checkpoint 3e89e86f's OUTCOME head as ONE package** (`smv3out-491ee4bf.npz`, sha256 491ee4bf…; arm F's recipe
 plus the search-mean sidecar v3, #658) inside release 30's search unchanged — the policy head admits 8 of the legal
 actions over 64 sampled worlds, the value head prices them, no playouts; value-guided hybrid bury on the same package;
 budgets 3 s / 2 s; the JS-M1 prior keys retained. Evidence: as served vs release 30, v36a +0.0361 [+0.0015, +0.0707]
 and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752], five windows each (#663). Releases 29–35 served the
-soft head 8ecd4fea (`soft-8ecd4fea.npz`); release 30 (2026-09-22 09:13 ET) added the hybrid-bury fix #607. Every
-screen compares against release 36. Rollback: the three release-30 lines kept as a comment in `fly.toml` (the
-package stays on the volume) with `fly deploy --ha=false`, or the release-35 image; see `DEPLOY.md`.
+soft head 8ecd4fea (`soft-8ecd4fea.npz`); release 30 (2026-09-22 09:13 ET) added the hybrid-bury fix #607. **Every
+new screen compares against release 38 as served** (Jerry, 2026-10-03); screens already read against release 36 or
+the combo keep their declared comparator. Rollback of release 38: delete the four `SHENGJI_PV_*` rule lines and
+restore the release-36 `SHENGJI_BOT` kept as a comment in `fly.toml`, then `fly deploy --ha=false`, or redeploy the
+release-37 image `deployment-01M3TXZ85YHJM108TBPWKN8BB2`; see `DEPLOY.md`.
 
-**Release 38 — pending deploy (Jerry approved promotion 2026-10-03; not live until its release PR
-deploys).** The same package in the same W64/K8 search + hybrid bury, with four rules that are off
+**Release 38 — deployed 2026-10-03 09:41 ET (Jerry approved promotion and the deploy 2026-10-03).** The same package in the same W64/K8 search + hybrid bury, with four rules that are off
 by default in source and on in release 38: admission diversity `div` (#680: at most 2 admitted
 actions per structural key, near-duplicates sharing all but one card skipped, back-fill when short),
 refusal-constraint sampling `rc` (#689: sampled worlds must make this round's refused throws
@@ -46,14 +49,14 @@ windows read +0.0175 [−0.0020, +0.0370]); combo + la minus combo +0.0106 [+0.0
 ten windows, POSITIVE incremental with a lower bound near zero, not a second confirmation
 (issuecomment-5965252288). Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone
 vs release 36 read +0.0138 [+0.0013, +0.0262] at five windows (positive exploratory, below the
-extension triage; issuecomment-5963796858). Once release 38 is live, every screen
-compares against it; its fly.toml selection and rollback are recorded in `DEPLOY.md` by the
-release PR.
+extension triage; issuecomment-5963796858). Play latency on the same 808 states: p50 0.119 s vs
+release 36's 0.107 s (≈ +10%), zero fallbacks. Every new screen compares against release 38; its
+`fly.toml` selection, gate and rollback are recorded in `DEPLOY.md`.
 
-The current (release 37) selection is:
+The current (release 38) selection is:
 
 ```toml
-SHENGJI_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
+SHENGJI_BOT = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
 SHENGJI_PV_CKPT = "/data/models/smv3out-491ee4bf.npz"
 SHENGJI_PV_SHA256 = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 SHENGJI_PV_WORLDS = "64"
@@ -63,6 +66,10 @@ SHENGJI_PV_BATCH_SIZE = "128"
 SHENGJI_PV_SERVING_BUDGET_SECONDS = "3"
 SHENGJI_PV_BURY_ARM = "hybrid"
 SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = "2"
+SHENGJI_PV_ADMISSION_DIVERSITY = "1"
+SHENGJI_PV_REFUSAL_CONSTRAINTS = "1"
+SHENGJI_PV_TIEBREAK_POINTS = "1"
+SHENGJI_PV_LEAD_ANCHOR = "1"
 SHENGJI_FAST = "1"
 ```
 
@@ -77,7 +84,8 @@ bury identity); it is never hand-written. `/healthz` reports the policy name and
 under `pv_search`, the package's on-disk SHA256, worlds, candidates, budgets and
 bury arm (the `prior` block belongs to the retained release-28 keys, not to the
 active decision path). The server source fallback is `mc` when `SHENGJI_BOT` is
-absent. Rollbacks, in order of proximity: release 28 (JS-M1 as one package inside
+absent. Rollbacks, in order of proximity: release 36 (its `SHENGJI_BOT`, kept as a comment in `fly.toml`,
+with the four rule lines deleted), release 30 (three lines kept as a comment), release 28 (JS-M1 as one package inside
 the MC shortlist; one `SHENGJI_BOT` line), release 27 (M1 + separate prior v2),
 release 24 (`fd6bb411` + hybrid bury), `mc-s0-report-lcb`. Changing the package,
 the world count, the admitted-candidate count, the cap, the sampler or the bury
@@ -205,9 +213,9 @@ and deployed strength gain.
 One row per production change, each measured **against the policy it replaced**, on that era's
 instrument. The numbers are signed levels per round unless the row says otherwise. They are NOT
 additive and NOT on one scale: the opponents, deal populations, designs and budgets differ by era,
-so this is a chain of relative reads, not a cumulative total. Of the nine deployed changes, six measured a
-resolved gain and three shipped for cost, maintainability or correctness with no strength claim; row 10 is
-approved and pending deploy.
+so this is a chain of relative reads, not a cumulative total. Of the ten deployed changes, seven measured a
+resolved gain (row 10's confirmed part is the three-rule combination; its lead-anchor increment is a small
+positive read, not a confirmation) and three shipped for cost, maintainability or correctness with no strength claim.
 
 | # | change | what it replaced | measured effect | instrument | reading |
 |---:|---|---|---|---|---|
@@ -220,7 +228,7 @@ approved and pending deploy.
 | 7 | **Policy/value search, soft head** (release 29) | the release-28 package | **+0.086 [+0.042, +0.131]** card play; **+0.049 [+0.003, +0.095]** as served | 800 matched deals, one pre-registered primary; five clean 520-cluster windows | The head IS the search: its policy admits 8 of the legal actions over 64 sampled worlds, its value head prices them, no playouts. Versus MC-LCB in the ladder +0.187 [+0.144, +0.231]. The served read is a common-opponent summary-level estimate, not paired served-vs-served inference, and its lower bound is near zero. |
 | 8 | **Hybrid-bury fix** (release 30) | release 29 | not measured | — | Correctness: the bury stopped refusing its own decision and silently falling back to the heuristic on ~6% of banker burys on the diagnostic capture set (24 of 400; the production-traffic rate is unmeasured). No strength claim. |
 | 9 | **SMV3 outcome head** (release 36) | the release-30 package, same search | **+0.0393 [+0.0033, +0.0752]** as served (confirmation v36a2; the first read v36a +0.0361 [+0.0015, +0.0707]) | five 520-cluster windows each, common MC-LCB control, vs release 30 as served | The gen-5 SMV3 checkpoint 3e89e86f's OUTCOME head (arm F's recipe + sidecar v3, #658) in release 30's search unchanged. Confirmed by a predeclared second read; a common-opponent summary-level estimate like row 7. Policy head alone beats the production head +0.21 level/round in paired duels while served head swaps sit within ±0.02: measured decoupling, not a ceiling (#663). |
-| 10 | **Search rules div + rc + tb + la** (release 38, PENDING deploy) | release 36/37, same package | **+0.0461 [+0.0242, +0.0681]** (div + rc + tb vs release 36, ten fresh windows: CONFIRMED); +0.0106 [+0.0006, +0.0205] (+ la over that combination, ten windows: POSITIVE incremental) | 520-cluster windows, common MC-LCB control | One confirmed contrast (the three-rule combination, #676 issuecomment-5962364713) and one small positive incremental contrast with a lower bound near zero (lead-anchor on the combination, issuecomment-5965252288), which is not a second confirmation. Indirect reads through the common control, not head-to-head win rates, and not additive. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262], five windows, below the extension triage). Pending deploy as of 2026-10-03. |
+| 10 | **Search rules div + rc + tb + la** (release 38, deployed 2026-10-03) | release 36/37, same package | **+0.0461 [+0.0242, +0.0681]** (div + rc + tb vs release 36, ten fresh windows: CONFIRMED); +0.0106 [+0.0006, +0.0205] (+ la over that combination, ten windows: POSITIVE incremental) | 520-cluster windows, common MC-LCB control | One confirmed contrast (the three-rule combination, #676 issuecomment-5962364713) and one small positive incremental contrast with a lower bound near zero (lead-anchor on the combination, issuecomment-5965252288), which is not a second confirmation. Indirect reads through the common control, not head-to-head win rates, and not additive. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262], five windows, below the extension triage). Deployed as release 38 on 2026-10-03 09:41 ET; play p50 ≈ +10% latency, zero fallbacks. |
 
 **Gen 5, not taken (2026-09-24 → 09-27).** Five one-variable retrains of the production head, each screened
 as served against release 30 on fresh windows (five 520-cluster mirrored windows, common MC-LCB control, DL random
@@ -364,7 +372,7 @@ the deploy gate is the served design.
 | lane | conclusion for policy work |
 |---|---|
 | **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21 (from 2026-09-22 every new search comparison is against production W64/K8, Jerry's direction on #436). Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
-| **Search rules on the head-driven search (release 38 pending, 2026-10)** | Admission diversity, refusal-constraint sampling and the points tie-break CONFIRMED only in combination (+0.0461 [+0.0242, +0.0681] vs release 36, ten fresh windows); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205], POSITIVE incremental with a lower bound near zero, not a second confirmation; lead-anchor alone was positive exploratory, below the extension triage. Adaptive K16 inconclusive; PUCT and root allocation closed. All are indirect contrasts through the common MC-LCB control. |
+| **Search rules on the head-driven search (release 38, deployed 2026-10-03)** | Admission diversity, refusal-constraint sampling and the points tie-break CONFIRMED only in combination (+0.0461 [+0.0242, +0.0681] vs release 36, ten fresh windows); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205], POSITIVE incremental with a lower bound near zero, not a second confirmation; lead-anchor alone was positive exploratory, below the extension triage. Adaptive K16 inconclusive; PUCT and root allocation closed. All are indirect contrasts through the common MC-LCB control. |
 | **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow; a common-opponent summary-level read, not paired inference). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; the next production claim needs a served contrast against release 29. |
 | **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
@@ -446,7 +454,8 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- Release 38 is pending deploy; its rollback (release 37's selection) is recorded in `DEPLOY.md` by its release PR.
+- Release 38 is production (2026-10-03 09:41 ET); its rollback is release 36's `SHENGJI_BOT` kept as a comment in
+  `fly.toml` with the four `SHENGJI_PV_*` rule lines deleted, or the release-37 image (`DEPLOY.md`).
   Release 30 is the immediate rollback for releases 36/37 (the three release-30 lines kept as a comment in
   `fly.toml`; package `soft-8ecd4fea.npz`, sha ccade130…, stays on the volume; `fly deploy --ha=false`), or the
   release-35 image; release 28 (one `SHENGJI_BOT` line) the next; `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use

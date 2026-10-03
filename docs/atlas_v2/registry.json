@@ -110,8 +110,8 @@
   },
   {
    "release": 36,
-   "status": "production",
-   "since": "2026-09-30 11:53 ET",
+   "status": "superseded",
+   "since": "2026-09-30 11:53 ET \u2192 2026-10-03 09:41 ET",
    "bot": "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
    "head": "3e89e86f",
    "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), the gen-5 SMV3 OUTCOME head; prior js-m1-0d17fd03.npz unchanged",
@@ -153,6 +153,63 @@
     "every screen from here compares against release 36; v36c (predeclared against release 30 before this deploy) reads out as declared",
     "rollback: the three release-30 lines kept as a comment in fly.toml (SHENGJI_BOT, SHENGJI_PV_CKPT, SHENGJI_PV_SHA256; the package stays on the volume) + fly deploy --ha=false, or the release-35 image deployment-01M3K8WQX7EXB3CYDMNGJ8MQHN",
     "release 37 (2026-10-01 01:1x ET, #671, image deployment-01M3TXZ85YHJM108TBPWKN8BB2) is a phone-HUD CSS fix on this exact package and name; it changes nothing the search does, so the comparator for every screen stays 'release 36 as served' and no new baseline card is cut"
+   ]
+  },
+  {
+   "release": 38,
+   "status": "production",
+   "since": "2026-10-03 09:41 ET",
+   "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457",
+   "head": "3e89e86f",
+   "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
+   "oneline": "Release 36's model + four search rules (div, rc, tb, la). Combo beat release 36 on ten fresh windows (+0.046); lead-anchor added a small +0.011 on top.",
+   "recipe": "release 36's package, search, bury and budgets exactly (W64/K8, hybrid bury, 3 s / 2 s, JS-M1 prior keys) with four search-rule flags on: admission diversity (div, #680: at most 2 admitted actions per shape, near-duplicates skipped, back-fill when short), refusal-constraint sampling (rc, #689: sampled worlds honour this round's public throw refusals), points tie-break (tb, #682: among candidates within 0.02 level of the best, most root-team points from the current trick) and lead-anchor (la, #694: slot 0 becomes the highest plain pair/tractor on a weak non-trump single lead, else the policy's top action). Jerry 2026-10-03: \"lets promote combo + lead anchor\"; deploy: \"I'm good to deploy to fly \u2014 we should make release 38 the baseline for new screens too\".",
+   "evidence": [
+    {
+     "what": "combo2: div + rc + tb as served vs release 36 as served, each vs the common MC-LCB control, ten FRESH 520-cluster windows (five per host), CONFIRMED (#676 issuecomment-5962364713)",
+     "point": 0.046136,
+     "lo": 0.024216,
+     "hi": 0.068056,
+     "ref": "combo2"
+    },
+    {
+     "what": "v43cla: combo + la minus combo, ten fresh 520-cluster windows, POSITIVE incremental, not a second confirmation (#676 issuecomment-5965252288)",
+     "point": 0.010563,
+     "lo": 0.000619,
+     "hi": 0.020507,
+     "ref": "v43cla"
+    },
+    {
+     "what": "serving smoke on the MERGED tree c8d487a6 against the SHA-verified packages (491ee4bf\u2026 and 0d17fd03\u2026), 40 server turns through _paced_bot_step/_commit_bot_turn (bury 0.37 s, plays 0.035\u20130.126 s)",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "smoke-release38.json"
+    },
+    {
+     "what": "/healthz after deploy: bot = the name above, pv_search.sha256 491ee4bf\u2026, worlds 64, candidates 8, budgets 3 / 2, bury hybrid, prior 0d17fd03\u2026, rooms 0",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "13:41Z"
+    },
+    {
+     "what": "live room-level acceptance without starting a game (host sets the level, guest sees it, guest's set refused, unknown level refused): all three",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "#698 issuecomment-5969734527"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M40ZWSAHNX4782CGKJ615YF7 (Fly version 38), main c8d487a6 (#698, squash at the reviewed head cbb1dce3); Codex PASS at the exact head; CI 5/5; machine 48e7e35a9597e8, 0 rooms at deploy",
+    "only the three-rule combination is CONFIRMED; div, rc and tb alone were unconfirmed or inconclusive, and the confirmation is of the combined policy, not of any rule or of additivity",
+    "the lead-anchor increment is small: +0.0106 with a lower bound near zero (+0.0006), POSITIVE incremental, not a second confirmation; per-host descriptive split Perf +0.003 [-0.009, +0.016] / cloud +0.017 [+0.003, +0.031]",
+    "indirect, package-level evidence through the common MC-LCB control, not head-to-head win rates; the two reads are not additive",
+    "latency: play p50 0.119 s vs release 36's 0.107 s on the same 808 states (\u2248 +10%), p95 0.200 / 0.180 s, zero play or bury fallbacks on either arm",
+    "every NEW screen compares against release 38 as served (Jerry 2026-10-03); screens already read against release 36 or the combo keep their declared comparator, now a closed comparator",
+    "rollback: delete the four SHENGJI_PV_* rule lines and restore the release-36 SHENGJI_BOT kept as a comment in fly.toml, then fly deploy --ha=false; or redeploy the release-37 image deployment-01M3TXZ85YHJM108TBPWKN8BB2",
+    "release 37 (2026-10-01, #671) was a CSS-only release on release 36's bot and is not a baseline card"
    ]
   }
  ],
@@ -726,8 +783,8 @@
    "point": 0.04614,
    "lo": 0.02422,
    "hi": 0.06806,
-   "takeaway": "Confirmed positive on ten new predeclared windows, for the combined policy only (not each rule). Promotion approved 10-03: release 38, pending deploy.",
-   "note": "SEALED 10-02; readout #676 issuecomment-5962364713 (predeclaration amendment 2 issuecomment-5959843839; dispatch digests issuecomment-5960216622); reader combo20_reader_v2.py 2012ce64. CONFIRMED POSITIVE on the new ten windows alone: +0.046136 [+0.024216,+0.068056] (DL tau 0.015019, I2 18.04%); 5,200 paired deal clusters. First ten (v38drt) reproduced: +0.017513 [-0.002016,+0.037043]. Pooled twenty is DESCRIPTIVE ONLY: +0.031435 [+0.017519,+0.045350] (97.5% [+0.015521,+0.047348]). Tie-break applied on 8.71% of candidate PV plays; diversity activation unobservable, not zero. Confirms the COMBINED policy, not any individual rule or additivity. Archived at ~/shengji-archive/2026-09-13/readouts/combo2-drt-vs-r36 (combo20-numeric-result.json sha256 3a2cb85505cc34a339b33b5e4f13f02fdd2866df4032584936d6ef80d42a7b9d; transfer-receipt.json sha256 12845763cddd008868e1b89bcf959fddba6ee8db654a722e0c5d3321e2b174cb). NOT DEPLOYED; promotion is Jerry's decision."
+   "takeaway": "Confirmed positive on ten new predeclared windows, for the combined policy only (not each rule). Deployed as release 38 on 10-03.",
+   "note": "SEALED 10-02; readout #676 issuecomment-5962364713 (predeclaration amendment 2 issuecomment-5959843839; dispatch digests issuecomment-5960216622); reader combo20_reader_v2.py 2012ce64. CONFIRMED POSITIVE on the new ten windows alone: +0.046136 [+0.024216,+0.068056] (DL tau 0.015019, I2 18.04%); 5,200 paired deal clusters. First ten (v38drt) reproduced: +0.017513 [-0.002016,+0.037043]. Pooled twenty is DESCRIPTIVE ONLY: +0.031435 [+0.017519,+0.045350] (97.5% [+0.015521,+0.047348]). Tie-break applied on 8.71% of candidate PV plays; diversity activation unobservable, not zero. Confirms the COMBINED policy, not any individual rule or additivity. Archived at ~/shengji-archive/2026-09-13/readouts/combo2-drt-vs-r36 (combo20-numeric-result.json sha256 3a2cb85505cc34a339b33b5e4f13f02fdd2866df4032584936d6ef80d42a7b9d; transfer-receipt.json sha256 12845763cddd008868e1b89bcf959fddba6ee8db654a722e0c5d3321e2b174cb). NOT DEPLOYED; promotion is Jerry's decision. UPDATE 2026-10-03 09:41 ET: deployed as release 38 (#698) on Jerry's word."
   },
   {
    "id": "v42la",
@@ -787,8 +844,8 @@
    "point": 0.01056,
    "lo": 0.00062,
    "hi": 0.02051,
-   "takeaway": "Positive on its predeclared ten-window read against the combo: lead-anchor adds a little on top. Ships with the combo in release 38 (pending).",
-   "note": "SEALED 10-03; predeclared #676 issuecomment-5963971098; readout (Codex) issuecomment-5965252288; reader v43cla_reader.py 7db0f635. POSITIVE: +0.010563 [+0.000619,+0.020507], SE 0.00507, MDE80 0.0142, I2 26.8%. Per-host descriptive: Perf +0.003342 [-0.008840,+0.015524], cloud +0.017243 [+0.003080,+0.031406]. Anchor replaced on 8.33% of candidate play records; tiebreak ~8.6%; diversity skipped >=1 candidate on ~31.9% of plays both arms. Lead-anchor adds on top of the combo; whole-policy ITT, no component attribution. Archived ~/shengji-archive/2026-09-13/readouts/v43cla-combo-la-vs-combo (readout.json 8abbd8e9\u2026, adjudication.json d274840d\u2026). NOT DEPLOYED; promotion is Jerry's decision."
+   "takeaway": "Positive on its predeclared ten-window read against the combo: lead-anchor adds a little on top. Deployed with the combo as release 38 on 10-03.",
+   "note": "SEALED 10-03; predeclared #676 issuecomment-5963971098; readout (Codex) issuecomment-5965252288; reader v43cla_reader.py 7db0f635. POSITIVE: +0.010563 [+0.000619,+0.020507], SE 0.00507, MDE80 0.0142, I2 26.8%. Per-host descriptive: Perf +0.003342 [-0.008840,+0.015524], cloud +0.017243 [+0.003080,+0.031406]. Anchor replaced on 8.33% of candidate play records; tiebreak ~8.6%; diversity skipped >=1 candidate on ~31.9% of plays both arms. Lead-anchor adds on top of the combo; whole-policy ITT, no component attribution. Archived ~/shengji-archive/2026-09-13/readouts/v43cla-combo-la-vs-combo (readout.json 8abbd8e9\u2026, adjudication.json d274840d\u2026). NOT DEPLOYED; promotion is Jerry's decision. UPDATE 2026-10-03 09:41 ET: deployed as release 38 (#698) on Jerry's word."
   }
  ],
  "context_screens": [

@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-10-03 (release 37 live on release 36's model; release 38 = the same package + four search rules, approved and pending deploy)**. This file is the prioritized
+Last reconciled: **2026-10-03 (release 38 live since 09:41 ET: release 36's package + four search rules; every new screen compares against release 38)**. This file is the prioritized
 decision queue, not a run log. Open investigations are tracked on the board issue #679 and its
 topic issues (#663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681
 mistake audit). Live processes are
@@ -20,7 +20,7 @@ tail bounded. The reference points are `mc-s0-report-lcb` (the screen
 baseline), the release 24 recipe (`fd6bb411` + hybrid bury, the capped control
 of every 2026-09 screen), release 27 (M1 + prior v2), release 28 (JS-M1 as
 one package) and, since 2026-09-30, release 36 (the SMV3 outcome head in the release-30 search,
-live under release 37; every screen compares against it until release 38 deploys, then against release 38). Screens are 520-cluster mirrored windows; five windows
+served through release 37) and, since 2026-10-03, release 38 (the same package + four search rules; every new screen compares against release 38 as served). Screens are 520-cluster mirrored windows; five windows
 triage (extend only when the point exceeds +0.015; MDE80 about 0.033), ten
 shared-control windows are nominal, and only fresh held-out deals confirm.
 
@@ -28,8 +28,7 @@ shared-control windows are nominal, and only fresh held-out deals confirm.
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **LIVE** | **Release 37 (2026-10-01) on release 36's model: pv-search W64/K8 + hybrid bury, SMV3 outcome head 491ee4bf — Claude** | Release 36 deployed 2026-09-30 11:53 ET (#666, plan #663) on v36a +0.0361 [+0.0015, +0.0707] and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752] vs release 30 as served; release 37 (#671, 01:1x ET 10-01) is a phone-HUD CSS fix, same package and name. Releases 29–35 served the soft head 8ecd4fea. | The post-gen-5 plan on #663 and the data-use audit #667; every screen compares against release 36. | Rollback = the release-30 lines in `fly.toml` or the release-35 image (`DEPLOY.md`). |
-| **PENDING** | **Release 38: release 36's package + search rules div + rc + tb + la — release PR in preparation** | Jerry approved promotion 2026-10-03. Evidence (#676, indirect vs a common MC-LCB control): div + rc + tb vs release 36 +0.0461 [+0.0242, +0.0681] on ten fresh windows, CONFIRMED; + la over the combination +0.0106 [+0.0006, +0.0205], ten windows, POSITIVE incremental (lower bound near zero; not a second confirmation). Served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`. | Deploy (Jerry's call), then every screen compares against release 38. | Rollback = release 37's selection, recorded in `DEPLOY.md` by the release PR. |
+| **LIVE** | **Release 38 (deployed 2026-10-03 09:41 ET): release 36's package + search rules div + rc + tb + la — Claude** | Deployed on Jerry's word from main `c8d487a6` (#698), image `deployment-01M40ZWSAHNX4782CGKJ615YF7`; served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`, package `smv3out-491ee4bf.npz` and prior unchanged. Evidence (#676, indirect vs a common MC-LCB control): div + rc + tb vs release 36 +0.0461 [+0.0242, +0.0681] on ten fresh windows, CONFIRMED; + la over the combination +0.0106 [+0.0006, +0.0205], ten windows, POSITIVE incremental (lower bound near zero; not a second confirmation). Play p50 ≈ +10% (0.119 s vs 0.107 s), zero fallbacks. Release 37 (#671, 10-01) was a CSS fix on release 36's bot; release 36 (09-30, #666) brought the SMV3 outcome head. | Every new screen compares against release 38 as served; watch fallback records, decision wall p50/p95, bury seconds and the first live room. | Rollback = delete the four `SHENGJI_PV_*` rule lines and restore release 36's `SHENGJI_BOT` (comment in `fly.toml`), or the release-37 image (`DEPLOY.md`). |
 | **P1** | **Model: C11 retrain — #663** | SMV3 recipe + runPVR1..8 (624k deals); early-stopped at epoch 9, best epoch 6. Finding (#663 issuecomment-5967276911): on a row whose admitted candidates all contain the same card multiplicity, the listwise term has zero direct gradient for that shared card; the card-presence BCE still pushes toward the recorded play, and other rows and shared parameters can still train it. C15 baseline (issuecomment-5967436179): 702 of 41,551 soft-target rows (1.69%) have a pair common to every candidate in the FIRST availability-selected 50,000-row chunk of the PVR5–8 extraction — a descriptive count on that chunk, not a prevalence estimate across PVR. Hypothesis, unmeasured: search-rule diversity raises the contrast in new data. | C11's served screen vs the production search. | Every screen vs the current production release. |
 | **P1** | **Data: runPVC1/runPVC2 — teacher = the combo + la search** | runPVC1 done 10-03 (16,000 deals, seeds 44260910..); runPVC2 running. | A corpus whose ballots carry the release-38 admission's contrast. | Corpus seed ranges excluded from screens of models trained on them. |
 | **P2** | **Sol benchmark — #355** | SMV3 row vs Sol +0.55 [+0.10, +1.00] (15/20), vs PT-Sol +0.10 [−0.20, +0.40]; ten deals each, descriptive. Remaining rows running. | The full nine-policy panel. | Descriptive only; no strength claim. |
@@ -51,7 +50,7 @@ shared-control windows are nominal, and only fresh held-out deals confirm.
 4. ~~Seal gen-4 run 3~~ done (v34r3 crosses zero; see the table).
 5. ~~Land the atlas v2 generator in the repo (#604) and close the docs pass for release 30 (#608)~~ both merged.
 6. ~~Decide the next run under #663 after #667's audit actions~~ done: C11 trained (screen pending) and the #676 search rules screened.
-7. Deploy release 38 (Jerry's call); move every screen's comparator to release 38.
+7. ~~Deploy release 38 (Jerry's call); move every screen's comparator to release 38~~ done 2026-10-03 09:41 ET.
 8. Screen C11; train on runPVC1/runPVC2 once sealed; finish the #355 panel.
 
 ## Entry criteria for new scientific lanes

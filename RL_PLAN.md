@@ -1,8 +1,8 @@
 # Learning and search research plan
 
-Last reconciled: **2026-10-03 (release 37 live on release 36's model: the gen-5 SMV3 outcome head in
-the release-30 policy/value search; release 38 = the same package + four search rules, approved and
-pending deploy)**. This document owns the research architecture, the estimands and the decision
+Last reconciled: **2026-10-03 (release 38 live since 09:41 ET: release 36's model, the gen-5 SMV3
+outcome head in the release-30 policy/value search, + four search rules; every new screen compares
+against release 38)**. This document owns the research architecture, the estimands and the decision
 tree. `BACKLOG.md` owns priority; open investigations are on the board issue #679 and its topic issues; live compute and review asks are on GitHub issues and in
 `server/scripts/fleet_status.sh` (`HANDOFF_ACTIVE.md` was deleted, #674);
 policy names and deployment state are in `AI_POLICIES.md`; immutable authority markers are
@@ -13,14 +13,15 @@ the shortlist-era screens) are summarised once below and live in `docs_archive/`
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator. Production is release 37 (2026-10-01, a phone-HUD
-fix) on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
+correct engine and a reproducible evaluator. Production is release 38 (deployed 2026-10-03 09:41 ET)
+on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
 NumPy package (`smv3out-491ee4bf.npz`) inside the search release 30 served unchanged — its policy
 head admitting eight candidates over 64 sampled worlds and its value head pricing them, no Monte
-Carlo playouts in play, value-guided hybrid bury. Release 38 (approved 2026-10-03, pending deploy)
-adds four search rules to that search — admission diversity, refusal-constraint sampling, a points
-tie-break and lead-anchor — and becomes the champion once deployed. The champion for every strength claim is
-therefore the served release-36 bot (release 29/30's reads below are the labeled historical
+Carlo playouts in play, value-guided hybrid bury — plus, from release 38, four search rules:
+admission diversity, refusal-constraint sampling, a points tie-break and lead-anchor (release 37,
+2026-10-01, was a phone-HUD fix on release 36's bot). The champion for every NEW strength claim is
+therefore the served release-38 bot (Jerry, 2026-10-03: every new screen compares against release 38;
+screens already read against release 36 or the combo keep their comparator; release 29/30's reads below are the labeled historical
 evidence of the soft head 8ecd4fea, which releases 29–35 served),
 and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
 direction, recorded on #436). Historical MC-LCB results keep their original labels; MC-LCB is
@@ -59,7 +60,7 @@ tie-break CONFIRMED only as a combination, +0.0461 [+0.0242, +0.0681] vs release
 windows (issuecomment-5962364713); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205]
 over ten windows, POSITIVE incremental with a lower bound near zero, not a second confirmation
 (issuecomment-5965252288); lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262],
-five windows, below the extension triage). Together the four rules are release 38 (pending deploy). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
+five windows, below the extension triage). Together the four rules are release 38 (deployed 2026-10-03 09:41 ET). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
 closed (−0.417 package prior, −0.894 uniform vs release 36) and the root-allocation pilot A6 closed
 (#436). Model (#663): the C11 retrain (SMV3 recipe + runPVR1..8, 624k deals) early-stopped at
 epoch 9, best epoch 6, screen pending; SL4 (the runSL1..4 stores' trajectory, value and policy
@@ -84,10 +85,15 @@ coverage + `values_scale` refusal, #670 dead modules deleted, #672/#673 the seed
 numbered program below is the release-30-era record and is kept for its evidence chain; #663 and
 #667 own the next decision.
 
-0. **Production is release 37** (2026-10-01) on release 36's model (2026-09-30; #666, plan #663): the gen-5 SMV3
+0. **Production is release 38** (deployed 2026-10-03 09:41 ET; #698): release 36's model plus four search rules
+   (div + rc + tb CONFIRMED in combination vs release 36, +0.0461 [+0.0242, +0.0681], ten fresh windows; + la
+   over the combination +0.0106 [+0.0006, +0.0205], POSITIVE incremental, #676). Every new screen compares
+   against release 38. Rollback: release 36's `SHENGJI_BOT` (comment in `fly.toml`) with the four rule lines
+   deleted, or the release-37 image (see `DEPLOY.md`). Release 37 (2026-10-01) was a phone-HUD fix on release
+   36's model (2026-09-30; #666, plan #663): the gen-5 SMV3
    checkpoint 3e89e86f's OUTCOME head (`smv3out-491ee4bf.npz`) in release 30's search unchanged; as served vs
    release 30, v36a +0.0361 [+0.0015, +0.0707] and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752],
-   five windows each. Rollback: the release-30 lines in `fly.toml` or the release-35 image (see `DEPLOY.md`).
+   five windows each.
    Release 30 (2026-09-22; release 29 + the #607 bury fix, same name and package) was production until then; its evidence chain, in order: the soft head alone
    beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
    W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
@@ -120,8 +126,8 @@ numbered program below is the release-30-era record and is kept for its evidence
    `BACKLOG.md`) ran on cloud from 2026-09-22
    09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
    `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
-4. **What would change production next:** a head that beats the production release (release 36/37;
-   release 38 once deployed) on the served-bot design, or a search change whose served contrast
+4. **What would change production next:** a head that beats the production release (release 38 as
+   served, since 2026-10-03) on the served-bot design, or a search change whose served contrast
    clears zero. Nothing else. (The search rules of release 38 are the first search change to do so
    since release 29.)
 

@@ -65,10 +65,14 @@ over ten windows, POSITIVE incremental with a lower bound near zero, not a secon
 five windows, below the extension triage). Together the four rules are release 38 (deployed 2026-10-03 09:41 ET). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
 closed (−0.417 package prior, −0.894 uniform vs release 36) and the root-allocation pilot A6 closed
 (#436). Model (#663): the C11 retrain (SMV3 recipe + runPVR1..8, 624k deals) early-stopped at
-epoch 9, best epoch 6, screen pending; SL4 (the runSL1..4 stores' trajectory, value and policy
+epoch 9, best epoch 6. Its [served screen](https://github.com/jerryyyu/shengji/issues/663#issuecomment-5972721473)
+read +0.0096 [−0.0206, +0.0399] vs release 38: exploratory INCONCLUSIVE, no extension or promotion,
+not evidence of equivalence or that extra data cannot help. SL4 (the runSL1..4 stores' trajectory, value and policy
 supervision added, recipe unchanged) served −0.0162 [−0.0600,
 +0.0275], inconclusive. Data: runPVC1 (16,000 deals, teacher = the combo + la search, seeds
-44260910..) sealed 10-03; runPVC2 running. Mechanism (#663 issuecomment-5967276911): the listwise
+44260910..) sealed 10-03. For subsequent corpus status and queue ownership, see [#592](https://github.com/jerryyyu/shengji/issues/592)
+and the active [board #707](https://github.com/jerryyyu/shengji/issues/707).
+Mechanism (#663 issuecomment-5967276911): the listwise
 policy loss sums card logits per candidate, so on a row whose admitted candidates all contain the
 same card multiplicity that term cancels in the softmax: this row's listwise term has zero direct
 gradient for the shared card multiplicity. The card-presence BCE still pushes toward the recorded

@@ -104,18 +104,24 @@ and while off `_select` is exactly what it was):
   original argmax stands, then admission order.  Evidence: about 60% of the
   low-single leads reviewed in production were value near-ties (< 0.02), where
   the argmax is effectively arbitrary while the policy has a preference.
-  PRECEDENCE with ``tiebreak_points`` when both are on: on a LEAD the prior
-  decides and the points rule does NOT run (no leaf is rebuilt; the record
-  says ``tiebreak_applied`` False, ``tiebreak_superseded``
-  ``"lead_tiebreak_prior"``); on a FOLLOW this rule does nothing and the
-  points rule is exactly what it was.  (Without this rule the points rule
-  does act on leads, pricing the trick the heuristic finisher completes.)
+  PRECEDENCE with ``tiebreak_points`` when both are on -- the rule is
+  ADDITIVE on top of the points rule, never a replacement.  The points rule
+  runs FIRST, exactly as it does alone (it does act on leads: it prices the
+  trick the heuristic finisher completes), and its record is unchanged.  Any
+  selection it CHANGES is kept: the prior rule stands aside
+  (``lead_tiebreak_applied`` False, ``lead_tiebreak_superseded``
+  ``"tiebreak_points"``).  The prior decides only on a lead where the points
+  rule leaves the original argmax in place (a singleton near-set, the argmax
+  banks the most points or ties for them, or the rebuild abandoned itself on
+  the serving budget).  On a FOLLOW this rule does nothing.  So with both on,
+  every decision the points rule moves is played exactly as without this rule.
   The record carries scalars only: ``lead_tiebreak_leading``,
-  ``lead_tiebreak_applied`` (the selection moved off the argmax),
+  ``lead_tiebreak_applied`` (this rule moved the selection off the argmax),
   ``lead_tiebreak_near_count``, ``lead_tiebreak_from_index`` /
-  ``lead_tiebreak_to_index`` (admitted positions: the argmax, the play),
-  ``lead_tiebreak_from`` / ``lead_tiebreak_to`` (their cards) and
-  ``lead_tiebreak_value_gap`` (the value mean given up, >= 0).
+  ``lead_tiebreak_to_index`` (admitted positions: the argmax, this rule's
+  choice), ``lead_tiebreak_from`` / ``lead_tiebreak_to`` (their cards),
+  ``lead_tiebreak_value_gap`` (the value mean given up, >= 0) and, only when
+  the points rule's change was kept, ``lead_tiebreak_superseded``.
 """
 from __future__ import annotations
 
@@ -337,31 +343,29 @@ class PolicyValueBot(PolicyWorldBot):
         candidates' policy preference scores (the admission's ranking scores),
         needed only by ``lead_tiebreak_prior``."""
         winner = int(np.argmax(means))  # anchor retained on an exact value tie
+        chosen = winner
+        if self.tiebreak_points:
+            chosen = self._select_by_points(rnd, seat, admitted, means, worlds, winner,
+                                            check_budget)
         if self.lead_tiebreak_prior:
-            chosen = self._select_by_prior(rnd, admitted, means, priors, winner)
-            if leading(rnd):
-                # PRECEDENCE: on a lead the prior decides; the points rule does
-                # not run (module docstring)
-                if self.tiebreak_points:
-                    values = np.asarray(means, dtype=np.float64)
-                    near = np.flatnonzero(values >= values[winner] - self.tiebreak_epsilon)
-                    self._tiebreak = {'tiebreak_applied': False,
-                                      'tiebreak_near_set': [int(i) for i in near],
-                                      'tiebreak_points': [],
-                                      'tiebreak_superseded': 'lead_tiebreak_prior'}
-                return chosen
-        if not self.tiebreak_points:
-            return winner
-        return self._select_by_points(rnd, seat, admitted, means, worlds, winner, check_budget)
+            # PRECEDENCE: the points rule ran first, unchanged; a selection it
+            # moved is kept, the prior decides only where it left the argmax
+            chosen = self._select_by_prior(rnd, admitted, means, priors, winner, chosen)
+        return chosen
 
     # -- selection: the optional lead near-tie break by the policy prior -------
 
-    def _select_by_prior(self, rnd, admitted, means, priors, argmax):
+    def _select_by_prior(self, rnd, admitted, means, priors, argmax, held=None):
         """The module docstring's ``lead_tiebreak_prior`` rule; sets
-        ``self._lead_tiebreak`` (the record fields) on every decision."""
+        ``self._lead_tiebreak`` (the record fields) on every decision.
+        ``held`` is the selection so far (the points rule's, when that rule is
+        on; else the argmax): when it already differs from ``argmax`` it is
+        returned untouched."""
+        held = argmax if held is None else held
         is_lead = leading(rnd)
         winner, near = argmax, []
         means = np.asarray(means, dtype=np.float64)
+        superseded = is_lead and held != argmax
         if is_lead:
             if priors is None:
                 raise ValueError('lead_tiebreak_prior needs the admitted policy priors')
@@ -372,7 +376,7 @@ class PolicyValueBot(PolicyWorldBot):
                 near = [int(i) for i in np.flatnonzero(
                     np.isfinite(means) & (means >= means[argmax] - self.lead_tiebreak_epsilon))]
             rated = [i for i in near if np.isfinite(priors[i])]
-            if len(near) >= 2 and rated:
+            if len(near) >= 2 and rated and not superseded:
                 # highest prior first; the argmax breaks an exact tie, then admission order
                 winner = min(rated, key=lambda i: (-priors[i], i != argmax, i))
         self._lead_tiebreak = {
@@ -385,7 +389,9 @@ class PolicyValueBot(PolicyWorldBot):
             'lead_tiebreak_to': _cards_text(admitted[winner]),
             'lead_tiebreak_value_gap': float(means[argmax] - means[winner]) if winner != argmax else 0.0,
         }
-        return winner
+        if superseded:
+            self._lead_tiebreak['lead_tiebreak_superseded'] = 'tiebreak_points'
+        return winner if held == argmax else held
 
     def _lead_tiebreak_record(self):
         if not self.lead_tiebreak_prior or self._lead_tiebreak is None:

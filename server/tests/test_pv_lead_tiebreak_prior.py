@@ -12,15 +12,21 @@ policy prior is played and recorded; a FOLLOW is untouched; (c) the epsilon
 boundary is inclusive, outside it the argmax stands; (d) non-finite means and
 non-finite priors never qualify; (e) an exact prior tie keeps the argmax, then
 admission order; (f) the anchor has no special status; (g) with
-``tiebreak_points`` on as well the prior decides on leads (no leaf rebuilt) and
-the points rule is unchanged on follows; (h) the record's fields are scalars
+``tiebreak_points`` on as well the rule is ADDITIVE: the points rule runs
+first and unchanged, a selection it moves is kept, the prior decides only a
+lead where the points rule leaves the argmax in place, and a follow is the
+points rule alone -- with the three tactical positions the first draft of this
+rule regressed (it replaced the points rule on leads) as regression witnesses;
+(h) the record's fields are scalars
 and survive the screen trace filter; (i) every existing served name is
 byte-identical with the flag off, ``-lp`` when on; (j) no value call, world or
 ballot changes; the harvest record still reads.
 """
 import copy
 import json
+import os
 import random
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -249,30 +255,114 @@ def test_the_anchor_slot_has_no_special_status():
 
 # ------------------------------------------------------- (g) both flags: precedence
 
-def test_with_the_points_rule_on_the_prior_decides_leads_and_nothing_is_rebuilt():
+def stub_points(bot, points):
+    """Give the points rule a fixed per-world reading per admitted action (the
+    hook is the rule's own `_trick_points`), and count its calls."""
+    calls = []
+
+    def trick_points(rnd, seat, hands, buried, action, world_index):
+        calls.append(tuple(action))
+        return points[tuple(action)]
+    bot._trick_points = trick_points
+    return calls
+
+
+def test_a_selection_the_points_rule_moves_is_kept_whatever_the_prior_says():
     rnd = lead(); seat = rnd.turn
-    bot = harness(tiebreak_points=True, lead_tiebreak_prior=True)
-    worlds, _ = bot._worlds(rnd, seat)
+    admitted = ADMITTED[:3]
+    means = np.array([0.50 - EPS / 2, 0.50, 0.50 - EPS / 3])
+    points = {("S2",): 10, ("S3",): -5, ("S4",): 0}
+    both = harness(tiebreak_points=True, lead_tiebreak_prior=True)
+    only = harness(tiebreak_points=True)
+    worlds, _ = both._worlds(rnd, seat)
+    stub_points(both, points); stub_points(only, points)
+    # the prior prefers S4, then the argmax S3; the points rule moves to S2
+    for priors in ([0.0, 1.0, 9.0], [0.0, 9.0, 1.0], [9.0, 1.0, 0.0]):
+        assert both._select(rnd, seat, admitted, means, worlds=worlds, priors=priors) == 0
+        assert only._select(rnd, seat, admitted, means, worlds=worlds) == 0
+        assert both._tiebreak_record() == only._tiebreak_record() == {
+            "tiebreak_applied": True, "tiebreak_near_set": [0, 1, 2],
+            "tiebreak_points": [10.0, -5.0, 0.0]}
+        record = both._lead_tiebreak_record()
+        assert record["lead_tiebreak_applied"] is False
+        assert record["lead_tiebreak_superseded"] == "tiebreak_points"
+        assert record["lead_tiebreak_near_count"] == 3
+        assert record["lead_tiebreak_from_index"] == record["lead_tiebreak_to_index"] == 1
+        assert record["lead_tiebreak_value_gap"] == 0.0
+
+
+def test_the_prior_decides_a_lead_the_points_rule_leaves_on_the_argmax():
+    rnd = lead(); seat = rnd.turn
+    admitted = ADMITTED[:3]
+    means = np.array([0.50 - EPS / 2, 0.50, 0.50 - EPS / 3])
+    both = harness(tiebreak_points=True, lead_tiebreak_prior=True)
+    only = harness(tiebreak_points=True)
+    worlds, _ = both._worlds(rnd, seat)
+    # (1) the argmax banks the most points; (2) an exact points tie keeps it
+    for points in ({("S2",): -5, ("S3",): 10, ("S4",): 0},
+                   {("S2",): 10, ("S3",): 10, ("S4",): 10}):
+        calls = stub_points(both, points); stub_points(only, points)
+        assert only._select(rnd, seat, admitted, means, worlds=worlds) == 1
+        assert both._select(rnd, seat, admitted, means, worlds=worlds, priors=[0.0, 1.0, 9.0]) == 2
+        assert len(calls) == 3 * len(worlds)               # the points rule DID run, first
+        assert both._tiebreak_record() == only._tiebreak_record()
+        assert both._tiebreak_record()["tiebreak_applied"] is False
+        record = both._lead_tiebreak_record()
+        assert record["lead_tiebreak_applied"] is True and "lead_tiebreak_superseded" not in record
+        assert (record["lead_tiebreak_from_index"], record["lead_tiebreak_to_index"]) == (1, 2)
+        # the prior agrees with the argmax: nothing moves at all
+        assert both._select(rnd, seat, admitted, means, worlds=worlds, priors=[0.0, 9.0, 1.0]) == 1
+    # (3) a singleton near-set: neither rule has anything to decide
+    calls = stub_points(both, {})
+    far = np.array([0.1, 0.5, 0.2])
+    assert both._select(rnd, seat, admitted, far, worlds=worlds, priors=[9.0, 0.0, 9.0]) == 1
+    assert calls == [] and both._lead_tiebreak_record()["lead_tiebreak_near_count"] == 1
+    # both rules need their inputs on a lead
+    with pytest.raises(ValueError, match="sampled worlds"):
+        both._select(rnd, seat, admitted, means, priors=[0.0, 1.0, 9.0])
+
+
+def test_the_prior_decides_when_the_points_rule_abandons_itself_on_the_budget():
+    rnd = lead(); seat = rnd.turn
+    admitted = ADMITTED[:3]
+    means = np.array([0.50 - EPS / 2, 0.50, 0.50 - EPS / 3])
+    both = harness(tiebreak_points=True, lead_tiebreak_prior=True)
+    worlds, _ = both._worlds(rnd, seat)
+    stub_points(both, {("S2",): 10, ("S3",): -5, ("S4",): 0})
+
+    def expired():
+        raise pv.PVSearchBudgetExceeded("pv-search serving budget expired")
+    assert both._select(rnd, seat, admitted, means, worlds=worlds, check_budget=expired,
+                        priors=[0.0, 1.0, 9.0]) == 2
+    assert both._tiebreak_record()["tiebreak_abandoned"] == "budget"
+    assert both._tiebreak_record()["tiebreak_applied"] is False
+    assert both._lead_tiebreak_record()["lead_tiebreak_applied"] is True
+
+
+def test_with_the_points_rule_on_a_real_lead_is_the_points_rule_when_it_moves():
+    """The real engine and finisher on the fixture lead (every mean tied, so
+    the whole ballot is near): both-on plays what the points rule alone plays
+    whenever that rule moves, else the prior's choice."""
+    rnd = lead(); seat = rnd.turn
+    both = harness(tiebreak_points=True, lead_tiebreak_prior=True)
+    only = harness(tiebreak_points=True)
+    worlds, _ = both._worlds(rnd, seat)
     legal = enumerate_legal(rnd, seat, cap=4000)
-    admitted = [list(a) for a in legal.actions[:4]]
-    points_only = harness(tiebreak_points=True)
-    by_points = points_only._select(rnd, seat, admitted, np.zeros(4), worlds=worlds)
-    # the policy prefers a candidate the points rule does not pick
-    target = next(i for i in range(4) if i != by_points)
-    priors = [1.0 if i == target else 0.0 for i in range(4)]
-    rebuilt = []
-    original = bot._leaf
-    bot._leaf = lambda *a: rebuilt.append(a) or original(*a)
-    assert bot._select(rnd, seat, admitted, np.zeros(4), worlds=worlds, priors=priors) == target
-    assert rebuilt == []                                   # the points rule did not run
-    assert bot._tiebreak_record() == {"tiebreak_applied": False,
-                                      "tiebreak_near_set": [0, 1, 2, 3], "tiebreak_points": [],
-                                      "tiebreak_superseded": "lead_tiebreak_prior"}
-    lead_record = bot._lead_tiebreak_record()
-    assert lead_record["lead_tiebreak_near_count"] == 4
-    assert lead_record["lead_tiebreak_applied"] is (target != 0)
-    # the lead needs no sampled worlds under this precedence
-    assert bot._select(rnd, seat, admitted, np.zeros(4), priors=priors) == target
+    moved = kept = 0
+    for start in range(0, 12, 2):
+        admitted = [list(a) for a in legal.actions[start:start + 4]]
+        by_points = only._select(rnd, seat, admitted, np.zeros(4), worlds=worlds)
+        priors = [0.0, 1.0, 2.0, 3.0]
+        chosen = both._select(rnd, seat, admitted, np.zeros(4), worlds=worlds, priors=priors)
+        assert both._tiebreak_record() == only._tiebreak_record()
+        if by_points != 0:
+            moved += 1
+            assert chosen == by_points
+            assert both._lead_tiebreak_record()["lead_tiebreak_superseded"] == "tiebreak_points"
+        else:
+            kept += 1
+            assert chosen == 3 and both._lead_tiebreak_record()["lead_tiebreak_applied"] is True
+    assert moved and moved + kept == 6
 
 
 def test_with_the_points_rule_on_a_follow_is_exactly_the_points_rule():
@@ -288,14 +378,13 @@ def test_with_the_points_rule_on_a_follow_is_exactly_the_points_rule():
     assert only._select(rnd, seat, admitted, means, worlds=worlds) == 2
     assert both._tiebreak_record() == only._tiebreak_record() == {
         "tiebreak_applied": True, "tiebreak_near_set": [1, 2], "tiebreak_points": [-20.0, -10.0]}
-    assert both._lead_tiebreak_record()["lead_tiebreak_leading"] is False
-    assert both._lead_tiebreak_record()["lead_tiebreak_applied"] is False
-    # a stale lead marker never leaks into a follow's record
-    lead_rnd = lead()
-    both._select(lead_rnd, lead_rnd.turn, ADMITTED[:2], np.zeros(2), priors=[0.0, 1.0])
-    assert both._tiebreak_record()["tiebreak_superseded"] == "lead_tiebreak_prior"
-    both._select(rnd, seat, admitted, means, worlds=worlds, priors=[0.0, 9.0, 1.0])
-    assert "tiebreak_superseded" not in both._tiebreak_record()
+    record = both._lead_tiebreak_record()
+    assert record["lead_tiebreak_leading"] is False and record["lead_tiebreak_applied"] is False
+    assert "lead_tiebreak_superseded" not in record       # that key is a LEAD's
+    # the points rule leaving the argmax on a follow does not hand it to the prior
+    assert both._select(rnd, seat, admitted, np.array([0.40, 0.50 - EPS / 2, 0.50]),
+                        worlds=worlds, priors=[0.0, 9.0, 1.0]) == 2
+    assert both._tiebreak_record()["tiebreak_applied"] is False
     # whole follow decisions: both-on == points-only, harness and served
     for build in (harness, served):
         a, b = build(tiebreak_points=True), build(tiebreak_points=True, lead_tiebreak_prior=True)
@@ -304,6 +393,117 @@ def test_with_the_points_rule_on_a_follow_is_exactly_the_points_rule():
         for key in ("admitted_indices", "value_means", "selected_index", "tiebreak_applied",
                     "tiebreak_near_set", "tiebreak_points"):
             assert ra[key] == rb[key]
+
+
+# The three tactical positions (tests/tactical/fixtures.jsonl) that the FIRST
+# draft of this rule regressed on combo+la (#699: 12/22 -> 9/22): there the
+# prior replaced the points rule on leads, so the lead went back to the value
+# argmax, a multi-component throw.  Recorded from the real package
+# (smv3out-491ee4bf, combo+la, seed 0): the admitted ballot, the 64-world value
+# means, the policy log-odds, the points rule's near-set and mean points, and
+# the action combo+la played.
+REGRESSED = {
+    "lkmu-r1-s2-t0-throw": dict(
+        admitted=["SA", "C2 C2 C6 C6 C7", "C10 C2 C2 C6 C6 C7", "C10 C10 C2 C2 C6 C6 C7",
+                  "C2 C6 C6 C7", "C6 C6 C7", "C10 C10 C6 C6 C7", "C10 C10 C6 C6 C7 D2"],
+        means=[-0.318595, -0.312636, -0.312636, -0.312636, -0.312636, -0.312636, -0.312636,
+               -0.312636],
+        priors=[0.364, 1.5962, 1.5514, 1.5067, 1.4207, 1.2453, 1.1558, 1.0023],
+        near=[0, 1, 2, 3, 4, 5, 6, 7],
+        points=[5.9375, -3.984375, -3.984375, -3.984375, -3.984375, -3.984375, -3.984375,
+                -3.984375],
+        combo_la="SA", argmax="C2 C2 C6 C6 C7"),
+    "cdce-r1-s2-t5-throw": dict(
+        admitted=["DK DK", "D6 D6 DK DK", "D6 D6 DK DK DQ", "D6 DK DK", "D6 D6", "D6 D6 DQ",
+                  "H6 H6", "DK"],
+        means=[-1.802997, -1.721759, -1.618315, -1.72863, -1.755788, -1.63141, -1.634484,
+               -1.791435],
+        priors=[0.4888, 0.9699, 0.8409, 0.7293, 0.4811, 0.3521, 0.2698, 0.2444],
+        near=[2, 5, 6], points=[-6.71875, -6.328125, -4.6875],
+        combo_la="H6 H6", argmax="D6 D6 DK DK DQ"),
+    "khpx-r2-s2-t10-rethrow": dict(
+        admitted=["D7", "D7 D7 D9 D9", "D7 D7 D9 D9 DQ", "D7 D7 D9", "D7 D7 D9 D9 DJ DQ",
+                  "D7 D7", "D7 D7 D9 D9 DJ DK DQ", "D9 D9"],
+        means=[-0.54959, -0.550073, -0.527059, -0.551245, -0.528215, -0.541512, -0.528215,
+               -0.544046],
+        priors=[0.8038, 2.8451, 2.6364, 2.2264, 2.188, 1.6077, 1.5388, 1.2374],
+        near=[2, 4, 5, 6, 7], points=[-2.890625, -1.640625, 0.15625, -1.640625, 0.15625],
+        combo_la="D7 D7", argmax="D7 D7 D9 D9 DQ"),
+}
+
+
+@pytest.mark.parametrize("fixture_id", sorted(REGRESSED))
+def test_regression_witness_the_points_rule_lead_is_kept(fixture_id):
+    """Package-free: the recorded means, priors and points through the real
+    `_select`.  combo+la+lp must play combo+la's action; the prior alone (no
+    points rule) keeps the throw, which is why replacing the points rule
+    regressed these."""
+    row = REGRESSED[fixture_id]
+    rnd = lead(); seat = rnd.turn
+    admitted = [a.split(" ") for a in row["admitted"]]
+    means = np.array(row["means"])
+    points = {tuple(admitted[i]): p for i, p in zip(row["near"], row["points"])}
+    both = harness(tiebreak_points=True, lead_tiebreak_prior=True)
+    only = harness(tiebreak_points=True)
+    prior_only = harness(lead_tiebreak_prior=True)
+    worlds, _ = both._worlds(rnd, seat)
+    stub_points(both, points); stub_points(only, points)
+    assert " ".join(admitted[int(np.argmax(means))]) == row["argmax"]
+    combo = only._select(rnd, seat, admitted, means, worlds=worlds)
+    assert " ".join(admitted[combo]) == row["combo_la"] != row["argmax"]
+    assert only._tiebreak_record()["tiebreak_near_set"] == row["near"]
+    assert only._tiebreak_record()["tiebreak_points"] == row["points"]
+    chosen = both._select(rnd, seat, admitted, means, worlds=worlds, priors=row["priors"])
+    assert chosen == combo and " ".join(admitted[chosen]) == row["combo_la"]
+    assert both._tiebreak_record() == only._tiebreak_record()
+    record = both._lead_tiebreak_record()
+    assert record["lead_tiebreak_applied"] is False
+    assert record["lead_tiebreak_superseded"] == "tiebreak_points"
+    # the first draft's behaviour, for the record: the prior alone keeps the throw
+    alone = prior_only._select(rnd, seat, admitted, means, priors=row["priors"])
+    assert " ".join(admitted[alone]) == row["argmax"]
+
+
+def _package():
+    ckpt, sha = os.environ.get("SHENGJI_PV_CKPT"), os.environ.get("SHENGJI_PV_SHA256")
+    if not ckpt or not sha or not Path(ckpt).is_file():
+        pytest.skip("SHENGJI_PV_CKPT/SHENGJI_PV_SHA256 not set to a local served package")
+    return ckpt, sha
+
+
+COMBO_LA_FLAGS = {k: v for k, v in COMBO_LA_ENV.items() if k not in PRODUCTION_ENV}
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_real_package_every_lead_the_points_rule_moves_is_played_as_combo_la(seed):
+    """The served bot on the real package, all 22 tactical fixtures: the ballot,
+    the value means and the points rule's record are identical with the flag
+    on; wherever the points rule moves the selection the action is combo+la's;
+    wherever the action differs the prior rule says it applied, on a lead."""
+    from shengji.eval import tactical as T
+    ckpt, sha = _package()
+    # no serving budget: a loaded machine must not turn a decision into the
+    # anchor fallback (the search itself is the same computation)
+    base = T.production_environ(ckpt, sha, SHENGJI_PV_SERVING_BUDGET_SECONDS="",
+                                **COMBO_LA_FLAGS)
+    cand = {**base, FLAG: "1"}
+    fixtures = T.load_fixtures()
+    for fx in fixtures:
+        a = T.run_fixture(T.bot_from_environ(base, seed=seed)[1], fx)
+        b = T.run_fixture(T.bot_from_environ(cand, seed=seed)[1], fx)
+        assert a.error is None and b.error is None, fx.id
+        ra, rb = a.record, b.record
+        for key in ("admitted", "value_means", "tiebreak_applied", "tiebreak_near_set",
+                    "tiebreak_points"):
+            assert ra[key] == rb[key], (fx.id, key)
+        if ra["tiebreak_applied"] or not rb["lead_tiebreak_leading"]:
+            assert a.action == b.action, fx.id
+            assert rb["lead_tiebreak_applied"] is False
+        if a.action != b.action:
+            assert rb["lead_tiebreak_applied"] is True and rb["lead_tiebreak_leading"] is True
+        if seed == 0 and fx.id in REGRESSED:
+            assert " ".join(a.action) == " ".join(b.action) == REGRESSED[fx.id]["combo_la"]
+            assert rb["lead_tiebreak_superseded"] == "tiebreak_points"
 
 
 # ------------------------------------------------------- (h) whole decision + telemetry
@@ -363,8 +563,8 @@ def test_the_record_fields_survive_the_screen_trace_filter():
     pytest.importorskip("torch")
     from shengji.train import search_screen
     rnd = lead(); seat = rnd.turn
-    bot = served(lead_tiebreak_prior=True, tiebreak_points=True)
-    _, second = crafted_decision(bot, rnd, seat)
+    bot = served(lead_tiebreak_prior=True)
+    first, second = crafted_decision(bot, rnd, seat)
     assert bot.decide_play(copy.deepcopy(rnd), seat) == second
     record = bot.last_decision_record
     policy = search_screen.TimedPolicy(bot)
@@ -375,8 +575,10 @@ def test_the_record_fields_survive_the_screen_trace_filter():
             k: record[k] for k in RULE_KEYS - {"lead_tiebreak_value_gap"}}
         assert source["lead_tiebreak_value_gap"] == pytest.approx(EPS / 2)
         assert not any(f"{k}__len" in source for k in RULE_KEYS)
-        assert source["tiebreak_superseded"] == "lead_tiebreak_prior"
         assert source["lead_tiebreak_applied"] is True
+    # the "points rule's change was kept" marker is a scalar too
+    kept = search_screen.trace_fields({**record, "lead_tiebreak_superseded": "tiebreak_points"})
+    assert kept["lead_tiebreak_superseded"] == "tiebreak_points"
     assert json.loads(json.dumps(trace))["lead_tiebreak_to"] == " ".join(second)
 
 
@@ -485,17 +687,26 @@ def test_the_harvest_record_reads_with_the_rule_on(explore, others):
     record = bot.last_decision_record
     assert record["schema"] == pv.RECORD_SCHEMA and RULE_KEYS <= set(record)
     assert record["lead_tiebreak_leading"] is True
-    # every value mean is 0: the whole ballot is the near-set, and the play is
-    # the finite-rated candidate the policy ranks first (argmax on a tie)
+    # every value mean is 0: the whole ballot is the near-set.  The points rule
+    # (when on) goes first and a selection it moves is kept; otherwise the play
+    # is the finite-rated candidate the policy ranks first (argmax on a tie)
     k = len(bot.last_ballot)
     assert record["lead_tiebreak_near_count"] == k
     odds = record["policy_log_odds_admitted"]
     rated = [i for i in range(k) if np.isfinite(odds[i])]
     best = min(rated, key=lambda i: (-odds[i], i != 0, i))
-    assert played == bot.last_ballot[best] and record["lead_tiebreak_to_index"] == best
+    index = bot.last_ballot.index(played)
+    if record.get("tiebreak_applied"):
+        assert others and record["lead_tiebreak_superseded"] == "tiebreak_points"
+        assert record["lead_tiebreak_applied"] is False and index != 0
+        points = record["tiebreak_points"]
+        assert points[record["tiebreak_near_set"].index(index)] == max(points)
+    else:
+        assert index == best == record["lead_tiebreak_to_index"]
+        assert "lead_tiebreak_superseded" not in record
     allocation, preference, values = trajectory.pv_fields_from_record(record, bot.last_ballot)
-    assert allocation["played_index"] == bot.last_ballot.index(played) == best
+    assert allocation["played_index"] == index
     assert len(values["means"]) == k == len(values["policy_log_odds"])
     if others:
-        assert record["tiebreak_superseded"] == "lead_tiebreak_prior"
-        assert record["tiebreak_applied"] is False and record["tiebreak_points"] == []
+        assert {"tiebreak_applied", "tiebreak_near_set", "tiebreak_points"} <= set(record)
+        assert "tiebreak_superseded" not in record

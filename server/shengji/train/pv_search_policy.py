@@ -90,12 +90,15 @@ admitted candidates whose value mean is within ``lead_tiebreak_epsilon`` (0.02
 of a signed level, the same scale and constant as ``tiebreak_epsilon``) of the
 best, the one with the highest policy prior score (the admission's ranking
 score) is played; an exact prior tie keeps the argmax.  With
-``SHENGJI_PV_TIEBREAK_POINTS=1`` as well, the prior decides on leads (the points
-rule does not run there) and the points rule is unchanged on follows
-(definition: `policy_value_search`).  ``0`` or ``1`` only; on, it enters the
+``SHENGJI_PV_TIEBREAK_POINTS=1`` as well the rule is additive: the points rule
+runs first, unchanged, any selection it moves is kept, and the prior decides
+only on a lead where the points rule leaves the argmax in place (definition:
+`policy_value_search`).  ``0`` or ``1`` only; on, it enters the
 recipe digest with its epsilon and adds ``-lp`` to the name as the last rule
 token; off, it is absent from the payload, so every existing name and the
 served selection are unchanged.  No model call and no leaf rebuild is added.
+The prior rule itself costs nothing, so it needs no budget check; the points
+rule keeps its own deadline handling.
 """
 from __future__ import annotations
 

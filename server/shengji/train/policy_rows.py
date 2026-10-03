@@ -130,15 +130,6 @@ class PolicyRows:
         return _to_device(batch, device)
 
 
-def _pad2f(a: np.ndarray, width: int, fill: float) -> np.ndarray:
-    """Pad a (n, b) float array out to ``width`` columns with ``fill``."""
-    if a.shape[1] >= width:
-        return a[:, :width]
-    out = np.full((a.shape[0], width), fill, np.float32)
-    out[:, :a.shape[1]] = a
-    return out
-
-
 def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
     def t(v, dtype=None):
         v = torch.as_tensor(v) if not isinstance(v, torch.Tensor) else v
@@ -253,9 +244,11 @@ class PolicyRowsStream:
                 raise ValueError(f"policy rows stream: {c['file']} SHA256 differs from the manifest (tampered or rewritten)")
             d = np.load(path)
             n = int(c["rows"])
+            vals_shape = d["vals"].shape if "vals" in d.files else None
             if (d["X"].ndim != 2 or d["X"].shape != (n, self.input_dim) or d["Y"].shape != (n, 54)
                     or d["ball"].shape[0] != n or d["mask"].shape[0] != n or d["tgt"].shape != (n,)
-                    or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]):
+                    or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]
+                    or (vals_shape is not None and (len(vals_shape) != 2 or vals_shape[0] != n))):
                 raise ValueError(f"policy rows stream: {c['file']} arrays are not row-aligned with the manifest")
             if "explore_flag" in d.files and (d["explore_flag"].shape != (n,) or d["explore_margin"].shape != (n,)):
                 raise ValueError(f"policy rows stream: {c['file']} exploration tags are not row-aligned with the manifest")
@@ -288,19 +281,27 @@ class PolicyRowsStream:
                          "split": man.get("split")}
 
     def _load(self, c: dict) -> dict[str, np.ndarray]:
-        d = np.load(self.dir / c["file"])
-        dk = d["deal_key"].astype(str)
-        keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
-        out = {k: d[k][keep] for k in ("X", "Y", "ball", "mask", "tgt")}
-        if "vals" in d.files:          # present only in post-#496 extracts
-            out["vals"] = d["vals"][keep]
-        if "explore_flag" in d.files:  # #676 D tags; an older chunk reads as flag 0 / margin NaN
-            out["explore_flag"] = d["explore_flag"][keep].astype(np.int8)
-            out["explore_margin"] = d["explore_margin"][keep].astype(np.float32)
-        else:
-            out["explore_flag"] = np.zeros(int(keep.sum()), np.int8)
-            out["explore_margin"] = np.full(int(keep.sum()), np.nan, np.float32)
-        return out
+        with np.load(self.dir / c["file"]) as d:
+            dk = d["deal_key"].astype(str)
+            keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
+            all_kept = bool(keep.all())
+
+            def selected(name: str) -> np.ndarray:
+                array = d[name]
+                # Arrays returned by NpzFile own their data, so retaining the direct
+                # array after closing the archive is safe and avoids a full copy.
+                return array if all_kept else array[keep]
+
+            out = {k: selected(k) for k in ("X", "Y", "ball", "mask", "tgt")}
+            if "vals" in d.files:          # present only in post-#496 extracts
+                out["vals"] = selected("vals")
+            if "explore_flag" in d.files:  # #676 D tags; an older chunk reads as flag 0 / margin NaN
+                out["explore_flag"] = selected("explore_flag").astype(np.int8, copy=False)
+                out["explore_margin"] = selected("explore_margin").astype(np.float32, copy=False)
+            else:
+                out["explore_flag"] = np.zeros(int(keep.sum()), np.int8)
+                out["explore_margin"] = np.full(int(keep.sum()), np.nan, np.float32)
+            return out
 
     def batches(self, batch_size: int, rng: np.random.Generator):
         """One pass: chunks in a fresh order, ``window`` at a time, rows shuffled within the window."""
@@ -308,7 +309,8 @@ class PolicyRowsStream:
         for start in range(0, len(order), self.window):
             parts = [self._load(self.chunks[i]) for i in order[start:start + self.window]]
             X = np.concatenate([p["X"] for p in parts]); Y = np.concatenate([p["Y"] for p in parts])
-            ball = _pad_concat([p["ball"] for p in parts], -1); mask = np.concatenate([_pad2(p["mask"], ball.shape[1], False) for p in parts])
+            ball = _pad_concat([p["ball"] for p in parts], -1)
+            mask = _pad2_concat([p["mask"] for p in parts], ball.shape[1], False)
             tgt = np.concatenate([p["tgt"] for p in parts])
             # `vals` is OPTIONAL: pre-#496 extracts (policy_rows_v7 and earlier) have none.
             # Carry it only when EVERY chunk in the window has it -- fabricating NaNs for the
@@ -316,10 +318,13 @@ class PolicyRowsStream:
             # a different claim from "this extract predates the field".
             vals = None
             if all("vals" in p for p in parts):
-                vals = np.concatenate([_pad2f(p["vals"], ball.shape[1], np.nan) for p in parts])
+                vals = _pad2_concat([p["vals"] for p in parts], ball.shape[1], np.nan,
+                                    float32_when_narrow=True)
             eflag = np.concatenate([p["explore_flag"] for p in parts])
             emargin = np.concatenate([p["explore_margin"] for p in parts])
+            del parts
             perm = rng.permutation(len(X))
+            out = None
             for b in range(0, len(perm), batch_size):
                 if self.limit is not None and drawn >= self.limit:
                     return
@@ -332,25 +337,49 @@ class PolicyRowsStream:
                 if vals is not None:
                     out["vals"] = vals[idx]
                 yield out
+            # Do not retain a completed window while the next window is loaded.
+            del X, Y, ball, mask, tgt, vals, eflag, emargin, perm, out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
         return _to_device(batch, device)
 
 
-def _pad2(a: np.ndarray, width: int, fill) -> np.ndarray:
-    if a.shape[1] == width:
-        return a
-    out = np.full((a.shape[0], width), fill, dtype=a.dtype); out[:, :a.shape[1]] = a; return out
+def _pad2_concat(arrays, width: int, fill, *, float32_when_narrow: bool = False) -> np.ndarray:
+    """Concatenate row arrays into one padded allocation.
+
+    ``float32_when_narrow`` mirrors ``_pad2f``: a narrower input was previously
+    materialized as float32 before concatenation, which can promote the whole
+    result even when the other inputs already have the target width.
+    """
+    dtypes = [np.float32 if float32_when_narrow and a.shape[1] < width else a.dtype
+              for a in arrays]
+    out = np.full((sum(a.shape[0] for a in arrays), width), fill,
+                  dtype=np.result_type(*dtypes))
+    start = 0
+    for a in arrays:
+        stop = start + a.shape[0]
+        source = a[:, :width]
+        if float32_when_narrow and a.shape[1] < width:
+            # The old _pad2f allocated a float32 padded array for this case,
+            # so preserve its narrowing before assigning into a promoted result.
+            source = source.astype(np.float32, copy=False)
+        out[start:stop, :source.shape[1]] = source
+        start = stop
+    return out
 
 
 def _pad_concat(arrays, fill) -> np.ndarray:
     """Concatenate (n, B, C) int8 ballot arrays whose B and C differ per chunk."""
     B = max(a.shape[1] for a in arrays); C = max(a.shape[2] for a in arrays)
-    out = []
+    dtype = np.result_type(*(a.dtype for a in arrays))
+    out = np.full((sum(a.shape[0] for a in arrays), B, C), fill, dtype=dtype)
+    start = 0
     for a in arrays:
-        o = np.full((a.shape[0], B, C), fill, dtype=a.dtype); o[:, :a.shape[1], :a.shape[2]] = a; out.append(o)
-    return np.concatenate(out)
+        stop = start + a.shape[0]
+        out[start:stop, :a.shape[1], :a.shape[2]] = a
+        start = stop
+    return out
 
 
 def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=frozenset(),

@@ -29,10 +29,10 @@ Nothing in this module deploys anything: registration happens only when
 ``SHENGJI_PV_CKPT`` is set.
 
 Optional paired lookahead tree ("PUCT v2", #436), OFF BY DEFAULT:
-``SHENGJI_PV_TREE_SIMS=<S>`` (with the optional ``_TREE_EPS`` / ``_TREE_ZMIN`` /
-``_TREE_BUDGET_FRACTION``) builds `pv_tree_search`'s subclass of the served bot:
+``SHENGJI_PV_TREE_SIMS=<S>`` (with the optional ``_TREE_CONT`` / ``_TREE_EPS`` /
+``_TREE_ZMIN`` / ``_TREE_BUDGET_FRACTION``) builds `pv_tree_search`'s subclass of the served bot:
 after the unchanged PV pass, the candidates the value head cannot separate get
-S policy-continuation lookaheads, paired by world, and the PV decision is
+S lookaheads (the policy finishes the current trick), paired by world, and the PV decision is
 overridden only when the paired depth-corrected difference is significant
 (definition: `pv_tree_search`; recipe and env: `pv_tree_config`).  Set, it
 enters the recipe digest and adds ``-ts<S>`` to the name after the rule tokens;
@@ -819,7 +819,7 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
         if raw == "1":
             recipe[key] = True
-    tree = tree_env(env, ENV_PREFIX)   # SHENGJI_PV_TREE_SIMS (+ _EPS / _ZMIN / _BUDGET_FRACTION)
+    tree = tree_env(env, ENV_PREFIX)   # SHENGJI_PV_TREE_SIMS (+ _CONT / _EPS / _ZMIN / ...)
     if tree is not None:
         recipe["tree"] = tree
     arm = env.get(ENV_PREFIX + "BURY_ARM")

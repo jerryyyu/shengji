@@ -27,21 +27,38 @@ Stage B -- the tree.
     ``min(W, S // |T|)`` sampled worlds (S is rounded down to a multiple of
     |T|).
   * One lookahead of (a, w): apply ``a`` in world w (`cwv_policy.afterstate`,
-    the clone serving's leaf starts from); every later seat of the current
-    trick plays the PACKAGE POLICY's top-scoring legal action -- the card
-    log-odds of the acting seat's own row in that world
-    (``flat_input(root_tensors(clone, seat))``, the admission's scoring path),
-    summed over the action's cards, over the capped legal enumeration, ties to
-    the first in enumeration order -- then the next trick is led and followed
-    the same way (``lookahead_tricks`` = 1 further full trick), and the value
-    head is read at that trick boundary from the ROOT seat's team through the
-    served evaluator (a terminal position takes its exact value there, never
-    the model).  A seat with one legal action plays it without a model row.
-    Because the score is additive over cards, the top action of a LEAD and of
-    a FOLLOW by a seat short of the led suit has a closed form (`top_lead`,
-    `top_fill`); it is used only when it is provably the unique maximiser of
-    the complete enumeration, and the enumeration itself decides every other
-    case (ties, capped sets, in-suit follows) -- same action, less work.
+    the clone serving's leaf starts from), play the CONTINUATION (``cont``,
+    below), and read the value head at the trick boundary reached, from the
+    ROOT seat's team through the served evaluator (a terminal position takes
+    its exact value there, never the model).
+  * Continuation modes (``PVTreeConfig.cont``, ``SHENGJI_PV_TREE_CONT``):
+      - ``trick`` (default): the remaining seats of the CURRENT trick follow
+        with the package policy's top legal follow; nothing is led.  Serving's
+        own leaf finishes the same trick with the HEURISTIC, so here ``d`` is
+        "policy-finished minus heuristic-finished" on the same world.  When
+        the root seat is last to play there is nothing to look ahead: the tree
+        is skipped (``tree_skipped == "last-seat"``, d = 0).
+      - ``trick-next-heuristic``: as ``trick``, then the next trick is led by
+        production's heuristic (`cwv_policy.default_finisher`, the heuristic
+        that gives serving its anchor and finishes its leaves) and followed by
+        the policy.
+      - ``policy`` (kept for comparison): as ``trick``, then the next trick is
+        led by the policy's best SINGLE-COMPONENT lead (a single, a pair or a
+        tractor; never a multi-component throw), ranked by the MEAN card
+        log-odds (length-normalised; ties by enumeration order), and followed
+        by the policy.
+    A FOLLOW is always the policy's top legal follow: the card log-odds of the
+    acting seat's own row in that world
+    (``flat_input(root_tensors(clone, seat))``, the admission's scoring path)
+    summed over the action's cards (the length is fixed by the lead), over the
+    capped legal enumeration, ties to the first in enumeration order.  A seat
+    with one legal action plays it without a model row; a seat short of the
+    led suit has a closed form (`top_fill`), used only when it is provably the
+    unique maximiser of the complete enumeration.
+    The engine must ACCEPT every continuation action as submitted.  A lead it
+    refuses and forces down (a heuristic throw another hand beats in that
+    world) aborts the tree: the PV decision is played and the record says
+    ``tree_skipped == "refused"``.
   * ``d[w, a] = lookahead(a, w) - v0[w, a]``; for a contender
     ``Q(a) = mean_W v0[., a] + mean_V d[., a]`` (the 64-world mean plus a
     paired depth correction); a non-contender keeps ``Q = mean v0`` and cannot
@@ -69,16 +86,19 @@ played and the record carries ``tree_skipped == "error"`` and the class name.
 Record (scalars only, so the screen trace filter keeps them; added to the
 ordinary ``pv-search-decision-v1`` record on every decision while the mode is
 on): ``tree_sims``, ``tree_applied``, ``tree_skipped`` (``""``, ``"sims0"``,
-``"single"``, ``"budget"``, ``"error"``), ``tree_skipped_budget``,
+``"single"``, ``"last-seat"``, ``"budget"``, ``"refused"``, ``"error"``),
+``tree_cont``, ``tree_skipped_budget``,
 ``tree_contenders``, ``tree_worlds``, ``tree_evaluations``,
 ``tree_pv_action`` / ``tree_q_action`` / ``tree_action`` (admitted positions:
 PV's, the argmax of Q, the one played), ``tree_changed_action``,
 ``tree_override``, ``tree_override_blocked``, ``tree_delta``, ``tree_se``,
 ``tree_z`` (None when not finite), ``tree_mean_abs_d``, ``tree_max_abs_d``,
-``tree_policy_rows``, ``tree_forced_plays``, ``tree_multi_leads`` (lookahead
-leads of two or more cards), ``tree_refused_throws`` (those the engine refused
-and forced down to one component), ``tree_terminal_leaves``,
-``tree_value_batches``, ``tree_seconds``.
+``tree_d_nonzero`` (lookaheads whose value differs from v0 by more than 1e-6:
+the continuation reached a different leaf than serving's), ``tree_policy_rows``,
+``tree_forced_plays``, ``tree_multi_leads`` (lookahead leads of two or more
+cards), ``tree_terminal_leaves``, ``tree_value_batches``, ``tree_seconds``; and
+one short numeric list, ``tree_d_means`` (the mean depth correction per
+contender, in admission order; kept whole by the trace filter).
 
 Bury is untouched.  Nothing here is reachable unless a recipe sets
 ``PVSearchConfig.tree`` (``SHENGJI_PV_TREE_SIMS``).
@@ -92,9 +112,10 @@ from itertools import islice
 
 import numpy as np
 
-from ..ai.cwv_policy import afterstate
-from ..harvest.legal import (_follow_case, count_lead_actions, count_multiset_subsets,
-                             enumerate_legal, iter_follow_actions)
+from ..ai.cwv_policy import afterstate, default_finisher
+from ..engine.combos import find_tractor_runs
+from ..harvest.legal import (MAX_TRACTOR, _follow_case, _lead_groups, count_multiset_subsets,
+                             iter_follow_actions)
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
@@ -103,10 +124,16 @@ TREE_BUDGET_STRIDE = 16
 #: a closed-form policy choice is used only when its maximiser is unique by more
 #: than this (log-odds); float rounding of an enumerated score is ~1e-13
 TOP_TOLERANCE = 1e-9
+#: a lookahead value further than this from v0 counts as a different leaf
+D_NONZERO = 1e-6
 
 
 class PVTreeBudgetExceeded(PVSearchPolicyError):
     """The tree reached its share of the play budget (the PV decision stands)."""
+
+
+class PVTreeContinuationRefused(PVSearchPolicyError):
+    """The engine did not accept a continuation action as submitted."""
 
 
 def contender_set(means, pv_index: int, eps: float, cap: int) -> list[int]:
@@ -159,38 +186,34 @@ def _separated(values) -> bool:
     return all(high - low > TOP_TOLERANCE for low, high in zip(ordered, ordered[1:]))
 
 
-def top_lead(hand, ordering, row, cap):
-    """The first-maximum legal LEAD under additive card scores, in closed form,
-    or None when the enumeration must decide.
+def single_component_leads(hand, ordering) -> list[list[str]]:
+    """The legal leads of one component -- singles, pairs, tractors -- in
+    `harvest.legal.iter_lead_actions`' own order (they are its first three
+    sections, before any throw, so its cap never truncates them).  A single
+    component always stands: the engine cannot refuse one."""
+    groups = list(_lead_groups(list(hand), ordering))
+    out, seen = [], set()
 
-    The legal leads are exactly the non-empty sub-multisets of each
-    effective-suit group of the hand (`harvest.legal.iter_lead_actions`:
-    singles, pairs, tractors and throws; `count_lead_actions` is their count),
-    and an action's score is the sum of its cards' log-odds.  So within a group
-    the best lead is every card with a positive log-odds (the best single when
-    none is), and the best lead is the best group's.  That maximiser is UNIQUE,
-    by more than `TOP_TOLERANCE`, when the hand's distinct cards have distinct
-    non-zero log-odds and the two best groups are apart; then no rounding of
-    the enumerated scores can change the argmax, and tie order is irrelevant.
-    Anything else -- a tie, a near-tie, a hand whose enumeration is capped --
-    returns None."""
-    from .policy_prior import CARD_INDEX
-    if count_lead_actions(list(hand), ordering) > cap:
-        return None
-    logit = {card: float(row[CARD_INDEX[card]]) for card in set(hand)}
-    if min(abs(v) for v in logit.values()) <= TOP_TOLERANCE or not _separated(logit.values()):
-        return None
-    groups = {}
-    for card in hand:
-        groups.setdefault(ordering.eff_suit(card), []).append(card)
-    scored = []
-    for cards in groups.values():
-        pick = [card for card in cards if logit[card] > 0] or [max(cards, key=logit.__getitem__)]
-        scored.append((sum(logit[card] for card in pick), pick))
-    scored.sort(key=lambda item: -item[0])
-    if len(scored) > 1 and scored[0][0] - scored[1][0] <= TOP_TOLERANCE:
-        return None
-    return sorted(scored[0][1])
+    def emit(key):
+        if key not in seen:
+            seen.add(key)
+            out.append(list(key))
+    for _, cards in groups:
+        for code in sorted(set(cards)):
+            emit((code,))
+    for _, cards in groups:
+        counts = Counter(cards)
+        for code in sorted(counts):
+            if counts[code] >= 2:
+                emit((code, code))
+    for _, cards in groups:
+        for length in range(2, MAX_TRACTOR + 1):
+            runs = find_tractor_runs(cards, ordering, length)
+            if not runs:
+                break
+            for run in sorted(tuple(sorted(r)) for r in runs):
+                emit(run)
+    return out
 
 
 def top_fill(base, off, need, row, cap):
@@ -225,6 +248,7 @@ class PVTreeMixin:
     _tree_started = None
     _tree_v0 = None
     _tree_fields = None
+    _tree_last_d = None
 
     @property
     def tree_config(self) -> PVTreeConfig:
@@ -259,15 +283,16 @@ class PVTreeMixin:
 
     def _blank_fields(self, pv_winner):
         return {"tree_sims": int(self.tree_config.sims), "tree_applied": False,
-                "tree_skipped": "", "tree_skipped_budget": False,
+                "tree_skipped": "", "tree_cont": self.tree_config.cont,
+                "tree_skipped_budget": False,
                 "tree_contenders": 0, "tree_worlds": 0, "tree_evaluations": 0,
                 "tree_pv_action": int(pv_winner), "tree_q_action": int(pv_winner),
                 "tree_action": int(pv_winner), "tree_changed_action": False,
                 "tree_override": False, "tree_override_blocked": False,
                 "tree_delta": 0.0, "tree_se": 0.0, "tree_z": 0.0,
-                "tree_mean_abs_d": 0.0, "tree_max_abs_d": 0.0,
-                "tree_policy_rows": 0, "tree_forced_plays": 0,
-                "tree_multi_leads": 0, "tree_refused_throws": 0,
+                "tree_mean_abs_d": 0.0, "tree_max_abs_d": 0.0, "tree_d_nonzero": 0,
+                "tree_d_means": [], "tree_policy_rows": 0, "tree_forced_plays": 0,
+                "tree_multi_leads": 0,
                 "tree_terminal_leaves": 0, "tree_value_batches": 0, "tree_seconds": 0.0}
 
     def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None, **kwargs):
@@ -278,12 +303,16 @@ class PVTreeMixin:
         self._tree_fields = fields
         tree_started = time.perf_counter()
         winner = pv_winner
+        self._tree_last_d = None
         try:
             winner = self._tree_decide(rnd, seat, admitted, means, worlds, pv_winner, fields)
         except PVTreeBudgetExceeded:
             winner = pv_winner
             fields.update(self._blank_fields(pv_winner), tree_skipped="budget",
                           tree_skipped_budget=True)
+        except PVTreeContinuationRefused:
+            winner = pv_winner
+            fields.update(self._blank_fields(pv_winner), tree_skipped="refused")
         except Exception as exc:   # the PV decision is complete; never lose it to the tree
             winner = pv_winner
             fields.update(self._blank_fields(pv_winner), tree_skipped="error",
@@ -314,6 +343,10 @@ class PVTreeMixin:
         if len(contenders) < 2:
             fields["tree_skipped"] = "single"
             return pv_winner
+        if cfg.cont == "trick" and len(rnd.trick.plays) == 3:
+            # the root seat's play completes the trick: nothing to look ahead, d = 0
+            fields["tree_skipped"] = "last-seat"
+            return pv_winner
         visited = min(len(worlds), cfg.sims // len(contenders))
         if visited < 1:
             fields["tree_skipped"] = "sims0"
@@ -332,6 +365,7 @@ class PVTreeMixin:
         if gate is not None:
             gate()   # nothing computed past the tree's deadline is used
         d = deep - v0[:visited][:, contenders]
+        self._tree_last_d = d     # diagnostic only (probes); never read by the bot
         q = means.copy()
         q[contenders] = means[contenders] + d.mean(axis=0)
         # argmax of Q over the contenders; an exact tie keeps the PV decision
@@ -340,7 +374,9 @@ class PVTreeMixin:
                       tree_evaluations=int(visited * len(contenders)),
                       tree_q_action=int(best),
                       tree_mean_abs_d=float(np.abs(d).mean()),
-                      tree_max_abs_d=float(np.abs(d).max()), **stats)
+                      tree_max_abs_d=float(np.abs(d).max()),
+                      tree_d_nonzero=int((np.abs(d) > D_NONZERO).sum()),
+                      tree_d_means=[float(v) for v in d.mean(axis=0)], **stats)
         winner = pv_winner
         if best != pv_winner:
             test = paired_override(v0[:, contenders], d, contenders.index(best),
@@ -357,8 +393,11 @@ class PVTreeMixin:
     # -- the lookahead ------------------------------------------------------------
 
     def _tree_legal(self, clone, seat, cache):
-        """``(legal actions, multiplicity matrix)`` of the seat to act: the capped
-        legal enumeration the admission scores (`enumerate_legal`, ``self.cap``).
+        """``(actions, scoring matrix)`` of the seat to act.  A follower: the
+        capped legal enumeration the admission scores (`enumerate_legal`'s
+        listing, ``self.cap``) and the card multiplicities (score = summed
+        log-odds).  A leader: the single-component leads and their multiplicities
+        divided by the action length (score = mean log-odds).
         The legal set is a function of the seat's hand and the trick's lead under
         one trump ordering, so within a decision it is computed once per distinct
         (hand, lead) -- contenders share worlds, hence most hands."""
@@ -374,7 +413,8 @@ class PVTreeMixin:
                     iter_follow_actions(list(clone.hands[seat]), plays[0].cards, clone.ordering),
                     self.cap)]
             else:
-                legal = enumerate_legal(clone, seat, cap=self.cap).actions
+                # a continuation LEAD (``cont == "policy"``): one component only
+                legal = single_component_leads(clone.hands[seat], clone.ordering)
             if not legal:
                 raise PVSearchPolicyError("lookahead reached a seat with no legal action")
             multiplicity = None
@@ -383,39 +423,40 @@ class PVTreeMixin:
                 np.add.at(multiplicity,
                           ([i for i, action in enumerate(legal) for _ in action],
                            [CARD_INDEX[card] for action in legal for card in action]), 1.0)
+                if not plays:
+                    # leads differ in length: rank by the MEAN card log-odds
+                    multiplicity /= multiplicity.sum(axis=1, keepdims=True)
             hit = (legal, multiplicity)
             if cache is not None:
                 cache[key] = hit
         return hit
 
     def _tree_top_action(self, clone, seat, row, cache=None):
-        """The top-scoring legal action of ``seat`` under the card log-odds
-        ``row``: the first maximum of the admission's score over the capped legal
-        enumeration.  The closed forms (`top_lead`, `top_fill`) return that same
-        action without enumerating when it is provably unique; otherwise the
-        enumeration decides."""
-        hand = clone.hands[seat]
+        """The policy's action for ``seat`` under the card log-odds ``row``: the
+        first maximum of the score over `_tree_legal`'s listing.  For a seat
+        short of the led suit the closed form (`top_fill`) returns that same
+        action without enumerating when it is provably unique."""
         plays = clone.trick.plays
-        if not plays:
-            action = top_lead(hand, clone.ordering, row, self.cap)
-        else:
-            case, base, off, n = _follow_case(list(hand), plays[0].cards, clone.ordering)
-            action = None if case == "in-suit" else top_fill(base, off, n - len(base), row, self.cap)
+        action = None
+        if plays:
+            case, base, off, n = _follow_case(list(clone.hands[seat]), plays[0].cards,
+                                              clone.ordering)
+            if case != "in-suit":
+                action = top_fill(base, off, n - len(base), row, self.cap)
         if action is None:
-            legal, multiplicity = self._tree_legal(clone, seat, cache)
-            # the admission's arithmetic (card log-odds summed over the action);
+            legal, scoring = self._tree_legal(clone, seat, cache)
             # argmax returns the first maximum = enumeration order on a tie
-            action = legal[0] if multiplicity is None else legal[int(np.argmax(multiplicity @ row))]
+            action = legal[0] if scoring is None else legal[int(np.argmax(scoring @ row))]
         return list(action)
 
     def _tree_forced(self, clone, seat, cache):
         """The seat's only legal action, or None when it has a choice."""
         hand = clone.hands[seat]
         plays = clone.trick.plays
-        if not plays:
-            return list(hand) if len(hand) == 1 else None
-        case, base, off, n = _follow_case(list(hand), plays[0].cards, clone.ordering)
-        if case != "in-suit":
+        case = None
+        if plays:
+            case, base, off, n = _follow_case(list(hand), plays[0].cards, clone.ordering)
+        if plays and case != "in-suit":
             need = n - len(base)
             if count_multiset_subsets(list(Counter(off).values()), need) != 1:
                 return None
@@ -456,34 +497,48 @@ class PVTreeMixin:
 
     def _tree_lookahead(self, rnd, seat, actions, worlds, gate=None):
         """``(values, stats)``: ``values[w, a]`` is the root-team value of
-        contender ``a`` in visited world ``w`` after the policy continuation
-        (module docstring).  Every contender is evaluated in every given world."""
-        cfg = self.tree_config
-        target = len(rnd.history) + 1 + cfg.lookahead_tricks
+        contender ``a`` in visited world ``w`` after the continuation
+        (``cont``, module docstring).  Every contender is evaluated in every
+        given world.  Raises `PVTreeContinuationRefused` when the engine does
+        not accept a continuation lead as submitted."""
+        cont = self.tree_config.cont
+        target = len(rnd.history) + (1 if cont == "trick" else 2)
         clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
                   for hands, buried in worlds for action in actions]
+        heuristic = default_finisher() if cont == "trick-next-heuristic" else None
 
         def open_(clone):
             return clone.phase == "play" and len(clone.history) < target
 
-        policy_rows = forced = multi_leads = refused = 0
+        policy_rows = forced = multi_leads = 0
         cache = {}
         active = [c for c in clones if open_(c)]
         while active:
             if gate is not None:
                 gate()
-            choices, rows = self._tree_policy_choices(active, gate, cache)
+            choices = [None] * len(active)
+            asked = []
+            for index, clone in enumerate(active):
+                if heuristic is not None and not clone.trick.plays:
+                    # the next trick's lead, by production's heuristic, from the
+                    # leader's own seat in this world
+                    choices[index] = list(heuristic.decide_play(clone, clone.turn))
+                else:
+                    asked.append(index)
+            picked, rows = self._tree_policy_choices([active[i] for i in asked], gate, cache)
+            for index, action in zip(asked, picked):
+                choices[index] = action
             policy_rows += rows
-            forced += len(active) - rows
+            forced += len(asked) - rows
             for clone, action in zip(active, choices):
                 trick = clone.trick
                 lead = not trick.plays
                 clone.play(clone.turn, action)
-                if lead and len(action) > 1:
-                    # a multi-card lead the policy chose; the engine may refuse a
-                    # throw and force one component (`Round.play`)
-                    multi_leads += 1
-                    refused += len(trick.plays[0].cards) != len(action)
+                if lead:
+                    multi_leads += len(action) > 1
+                    if sorted(trick.plays[0].cards) != sorted(action):
+                        raise PVTreeContinuationRefused(
+                            f"the engine forced {trick.plays[0].cards} for the lead {action}")
             active = [c for c in active if open_(c)]
         values = np.empty(len(clones), dtype=np.float64)
         batches = 0
@@ -497,7 +552,7 @@ class PVTreeMixin:
             values[start:start + len(chunk)] = scores
             batches += 1
         stats = {"tree_policy_rows": int(policy_rows), "tree_forced_plays": int(forced),
-                 "tree_multi_leads": int(multi_leads), "tree_refused_throws": int(refused),
+                 "tree_multi_leads": int(multi_leads),
                  "tree_terminal_leaves": sum(c.phase == "round_end" for c in clones),
                  "tree_value_batches": int(batches)}
         return values.reshape(len(worlds), len(actions)), stats

@@ -10,6 +10,7 @@ R = json.loads((HERE / "registry.json").read_text())
 
 
 INSTRUMENT_KINDS = {"windows", "matched-deals", "ladder"}
+TITLE_MAX, TAKEAWAY_MAX, ONELINE_MAX = 60, 150, 170
 
 
 def results_of(s):
@@ -36,6 +37,22 @@ def check_registry(reg):
             errs.append(f"{s['id']}: form must be 'served bot' or 'card play'")
         if s.get("status") not in ("planned", "running", "restarting", "sealed", "stopped"):
             errs.append(f"{s['id']}: unknown status {s.get('status')!r}")
+    for s in reg["screens"] + reg["context_screens"]:
+        # the page leads with these; the long candidate/note text is the record behind a toggle
+        t, k = s.get("title"), s.get("takeaway")
+        if not (isinstance(t, str) and 0 < len(t) <= TITLE_MAX):
+            errs.append(f"{s['id']}: title (what was tested, plain words) is required, at most {TITLE_MAX} characters")
+        if not (isinstance(k, str) and 0 < len(k) <= TAKEAWAY_MAX):
+            errs.append(f"{s['id']}: takeaway (one sentence: what we learned) is required, at most {TAKEAWAY_MAX} characters")
+    for b in reg["baseline"]:
+        o = b.get("oneline")
+        if not (isinstance(o, str) and 0 < len(o) <= ONELINE_MAX):
+            errs.append(f"release {b.get('release')}: oneline (what changed, headline evidence) is required, at most {ONELINE_MAX} characters")
+    for s in reg["screens"]:
+        if "vs_group" in s and not (isinstance(s["vs_group"], str) and s["vs_group"].strip()):
+            errs.append(f"{s['id']}: vs_group, when given, names the comparator that is not the release as served")
+        if "vs_group" not in s and not str(s.get("comparator", "")).startswith(f"release {s.get('vs')} as served"):
+            errs.append(f"{s['id']}: the comparator is not 'release {s.get('vs')} as served', so it needs a vs_group naming what it is compared to")
     for s in reg["screens"] + reg["context_screens"]:
         # the instrument is an explicit typed field on EVERY row (context rows included), never inferred
         if s.get("instrument_kind") not in INSTRUMENT_KINDS or not s.get("instrument"):
@@ -93,27 +110,63 @@ def _chart_rows(items, kind):
     for s in items:
         for r in results_of(s):
             tag = s["id"] if r["arm"] == "-" else f"{s['id']} · {r['arm']}"
-            out.append((tag, r["label"] or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
+            out.append((tag, r["label"] or s.get("title") or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
     return out
 PROD = production_release(R)
 SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
 SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
-rows = _chart_rows(SCREENS_NOW, "main") + _chart_rows(SCREENS_EARLIER, "prev") + _chart_rows(R["context_screens"], "ctx")
-W, LEFT, RIGHT, ROWH, TOP = 980, 330, 150, 44, 46
-H = TOP + ROWH * len(rows) + 40
+def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
+def comparator_sections(reg):
+    """One section per (release, actual comparator): the production release first, then the earlier
+    ones, newest first.  Within a release the reads against the release AS SERVED come first, then each
+    named comparator (``vs_group``: a variant, a control, card play) in registry order.  Grouping never
+    depends on which release is production, so a promotion keeps every named comparator apart."""
+    prod = production_release(reg)
+    rels = [prod] + sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}, reverse=True)
+    out = []
+    for rel in rels:
+        groups = {}
+        for s in sorted((s for s in reg["screens"] if s["vs"] == rel), key=lambda s: bool(s.get("vs_group"))):
+            groups.setdefault(s.get("vs_group"), []).append(s)
+        for g, items in groups.items():
+            tail = (" · current production" if g is None else "") if rel == prod else " · closed comparator"
+            out.append({"release": rel, "group": g, "label": (f"release {rel} as served" if g is None else g) + tail,
+                        "kind": "main" if rel == prod else "prev", "items": items})
+    return out
+COMPARATORS = comparator_sections(R)
+# One chart band per comparator: every row under a band is compared to the thing the band names.
+SECTIONS = [(f"against {c['label']}", c["kind"], c["items"]) for c in COMPARATORS]
+if R["context_screens"]:
+    SECTIONS.append(("context · against release 28", "ctx", R["context_screens"]))
+rows = [r for _, kind, items in SECTIONS for r in _chart_rows(items, kind)]
+W, LEFT, RIGHT, ROWH, TOP, SEPH = 980, 330, 200, 44, 46, 34
+H = TOP + ROWH * len(rows) + SEPH * len(SECTIONS) + 40
 lo_all = min([r[4] for r in rows if r[4] is not None] + [-0.05]); hi_all = max([r[5] for r in rows if r[5] is not None] + [0.10])
 lo_all, hi_all = min(lo_all, -0.02) - 0.01, hi_all + 0.01
 def X(v): return LEFT + (v - lo_all) / (hi_all - lo_all) * (W - LEFT - RIGHT)
 svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Screens against the current production release: point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">']
 svg.append(f'<line x1="{X(0):.1f}" y1="{TOP-18}" x2="{X(0):.1f}" y2="{H-30}" class="zero"/>')
 svg.append(f'<text x="{X(0):.1f}" y="{TOP-24}" class="lab" text-anchor="middle">production parity</text>')
-for t in [round(lo_all + i*0.02, 2) for i in range(int((hi_all-lo_all)/0.02)+1)]:
+STEP = 0.02 if hi_all - lo_all <= 0.25 else 0.05                      # keep the tick labels apart on a wide axis
+for t in [round(STEP * i, 2) for i in range(int(lo_all / STEP) - 1, int(hi_all / STEP) + 2) if lo_all <= STEP * i <= hi_all]:
     if abs(t) < 1e-9: continue
     svg.append(f'<line x1="{X(t):.1f}" y1="{H-30}" x2="{X(t):.1f}" y2="{H-24}" class="tick"/><text x="{X(t):.1f}" y="{H-10}" class="lab" text-anchor="middle">{t:+.2f}</text>')
-for i, (rid, cand, comp, p, lo, hi, st, kind, conf, role) in enumerate(rows):
-    y = TOP + i * ROWH + ROWH/2
-    name = f"{rid} · {cand[:34]}{'…' if len(cand) > 34 else ''}"
+layout, _y = [], TOP
+for label, kind, items in SECTIONS:
+    sec_rows = _chart_rows(items, kind)
+    layout.append(("sep", _y, f"{label} · {_reads(len(sec_rows))}")); _y += SEPH
+    for r in sec_rows:
+        layout.append(("row", _y, r)); _y += ROWH
+for what, top, item in layout:
+    if what == "sep":
+        svg.append(f'<rect x="0" y="{top+6}" width="{W}" height="{SEPH-12}" class="sepband"/>')
+        svg.append(f'<text x="12" y="{top+SEPH/2+4}" class="sep">{esc(item)}</text>')
+        continue
+    rid, cand, comp, p, lo, hi, st, kind, conf, role = item
+    y = top + ROWH/2
+    name = f"{rid} · {cand}"
+    name = name if len(name) <= 52 else name[:51] + "…"            # the label column is LEFT px wide
     svg.append(f'<text x="{LEFT-10}" y="{y+4}" class="lab name {kind}" text-anchor="end">{esc(name)}</text>')
     svg.append(f'<text x="{LEFT-10}" y="{y+18}" class="sub" text-anchor="end">vs {esc(comp[:34])} · {conf*100:g}% {esc(role)}</text>')
     if p is None:
@@ -131,19 +184,24 @@ SVG = "\n".join(svg)
 
 # ---------- tables ----------
 def screens_table(items, ctx=False):
-    out = ['<div class="tablewrap"><table><thead><tr><th>lane</th><th>candidate</th><th>comparator</th><th>form · instrument</th><th>seeds</th><th class="num">read</th><th>status</th><th>note</th></tr></thead><tbody>']
+    """One short row per screen (what was tested, the read, what we learned); the full registry text --
+    candidate, comparator, instrument, seeds and note -- sits in a closed toggle under the row."""
+    out = ['<div class="tablewrap"><table class="screens"><thead><tr><th>lane</th><th>what was tested</th><th class="num">read</th><th>what we learned</th><th>status</th></tr></thead><tbody>']
     for s in items:
         cells = []
         for r in results_of(s):
             v, cls = verdict(r["lo"], r["hi"])
             lab = "" if r["arm"] == "-" else f'<span class="sub">{esc(r["arm"])} · {r["confidence"]*100:g}% {esc(r.get("role",""))}</span><br>'
-            cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))} <span class="{cls}">{v}</span>')
-        fam = f'<br><small>{esc(s["family"])}</small>' if s.get("family") else ""
-        out.append(f'<tr><td class="mono">{esc(s["id"])}</td><td>{esc(s["candidate"])}</td><td>{esc(s["comparator"])}</td>'
-                   f'<td>{esc(s["form"])} · {esc(s["instrument"])} <span class="sub">[{esc(s["instrument_kind"])}]</span>{fam}</td><td class="mono">{esc(s.get("seeds",""))}</td>'
-                   f'<td class="num">{"<br>".join(cells)}</td>'
-                   f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td>'
-                   f'<td>{esc(s["note"])}{(" · " + esc(s["ref"])) if s.get("ref") else ""}</td></tr>')
+            cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))}<br><span class="{cls}">{v}</span>')
+        fam = f'<dt>family</dt><dd>{esc(s["family"])}</dd>' if s.get("family") else ""
+        ref = f'<dt>ref</dt><dd>{esc(s["ref"])}</dd>' if s.get("ref") else ""
+        out.append(f'<tr class="lead"><td class="mono">{esc(s["id"])}<br><span class="sub">{esc(s.get("date", ""))}</span></td><td>{esc(s["title"])}</td>'
+                   f'<td class="num">{"<br>".join(cells)}</td><td>{esc(s["takeaway"])}</td>'
+                   f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td></tr>')
+        out.append(f'<tr class="more"><td></td><td colspan="4"><details><summary>full record</summary><dl>'
+                   f'<dt>candidate</dt><dd>{esc(s["candidate"])}</dd><dt>compared to</dt><dd>{esc(s["comparator"])}</dd>'
+                   f'<dt>instrument</dt><dd>{esc(s["form"])} · {esc(s["instrument"])} <span class="sub">[{esc(s["instrument_kind"])}]</span></dd>'
+                   f'<dt>seeds</dt><dd class="mono">{esc(s.get("seeds","")) or "—"}</dd>{fam}<dt>note</dt><dd>{esc(s["note"])}</dd>{ref}</dl></details></td></tr>')
     out.append("</tbody></table></div>")
     return "\n".join(out)
 def _head(h):
@@ -157,23 +215,27 @@ def models_table():
                    f'<td class="num">{_head(m.get("head_alone"))}</td><td class="num">{_head(m.get("head_vs_prod"))}</td><td>{esc(m["status"])}</td></tr>')
     out.append("</tbody></table></div>"); return "\n".join(out)
 def baseline_cards():
-    out = []
-    for b in R["baseline"]:
-        ev = "".join(f'<li>{esc(e["what"])}: <b class="num">{esc(iv(e["point"], e["lo"], e["hi"])) if e["point"] is not None else "PASS"}</b> <span class="sub">({esc(e["ref"])})</span></li>' for e in b["evidence"])
-        cv = "".join(f"<li>{esc(c)}</li>" for c in b["caveats"])
-        out.append(f'<article class="card {b["status"]}"><header><span class="chip {b["status"]}">release {b["release"]} · {b["status"]}</span> <span class="sub">{esc(b["since"])}</span></header>'
-                   f'<p class="mono small">{esc(b["bot"])}</p><p>{esc(b["recipe"])}</p><p class="sub">head {esc(b["head"])} · package {esc(b["package"])}</p>'
-                   f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></article>')
-    return "\n".join(out)
+    """The current production release as one card (caveats behind a toggle); every earlier release of the
+    era as one line.  The full evidence for the earlier ones stays in registry.json."""
+    b = [x for x in R["baseline"] if x["status"] == "production"][0]
+    ev = "".join(f'<li>{esc(e["what"])}: <b class="num">{esc(iv(e["point"], e["lo"], e["hi"])) if e["point"] is not None else "PASS"}</b> <span class="sub">({esc(e["ref"])})</span></li>' for e in b["evidence"])
+    cv = "".join(f"<li>{esc(c)}</li>" for c in b["caveats"])
+    card = (f'<article class="card production"><header><span class="chip production">release {b["release"]} · production</span> <span class="sub">since {esc(b["since"])}</span></header>'
+            f'<p>{esc(b["oneline"])}</p><p class="mono small">{esc(b["bot"])}</p>'
+            f'<details><summary>recipe, evidence and caveats</summary><p>{esc(b["recipe"])}</p><p class="sub">head {esc(b["head"])} · package {esc(b["package"])}</p>'
+            f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></details></article>')
+    earlier = [x for x in R["baseline"] if x["status"] != "production"]
+    lines = "".join(f'<li><b>release {x["release"]}</b> <span class="sub">{esc(x["since"])}</span> — {esc(x["oneline"])}</li>'
+                    for x in sorted(earlier, key=lambda x: x["release"], reverse=True))
+    return card + (f'<ul class="releases">{lines}</ul>' if lines else "")
 models_note = ('<p class="lede small">' + esc(R["models_note"]) + "</p>") if R.get("models_note") else ""
 head_note = ('<p class="sub small">' + esc(R["head_ladder_note"]) + "</p>") if R.get("head_ladder_note") else ""
+def comparator_tables(sections):
+    return "\n".join(f'<h4>Screens against {esc(c["label"])} · {_reads(len(c["items"]))}</h4>' + screens_table(c["items"]) for c in sections)
+now_block = (comparator_tables([c for c in COMPARATORS if c["release"] == PROD]) if SCREENS_NOW
+             else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>')
 def earlier_sections():
-    out = []
-    for rel in EARLIER_RELEASES:
-        items = [s for s in SCREENS_EARLIER if s["vs"] == rel]
-        out.append(f'<h4>Screens against release {rel} · {len(items)} reads, a closed comparator</h4>' + screens_table(items))
-    return "\n".join(out)
-now_block = screens_table(SCREENS_NOW) if SCREENS_NOW else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>'
+    return comparator_tables([c for c in COMPARATORS if c["release"] != PROD])
 
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
@@ -203,8 +265,13 @@ h4{{margin:12px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:upperca
 .good{{color:var(--good)}} .bad{{color:var(--bad)}} .null{{color:var(--null)}} .wait{{color:var(--wait)}}
 .tablewrap{{overflow-x:auto;border:1px solid var(--rule);background:var(--card)}}
 table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--rule)}} th{{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--sub)}} td.num,th.num{{text-align:right;white-space:nowrap}}
+table.screens td:first-child{{white-space:nowrap}} table.screens tr.lead td{{border-bottom:0;padding-bottom:4px}} table.screens tr.more td{{padding-top:0;padding-bottom:8px}}
+details summary{{cursor:pointer;color:var(--sub);font-size:12px;letter-spacing:.04em}} details summary:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
+details dl{{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:8px 0 4px;font-size:13px;max-width:92ch}} details dt{{color:var(--sub);font-size:12px;letter-spacing:.04em;text-transform:uppercase}} details dd{{margin:0}}
+ul.releases{{list-style:none;margin:12px 0 0;padding:0;max-width:92ch}} ul.releases li{{padding:6px 0;border-bottom:1px solid var(--rule)}}
 .figure{{background:var(--card);border:1px solid var(--rule);padding:12px}}
 svg .zero{{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}} svg .tick{{stroke:var(--rule)}} svg .lab{{fill:var(--ink);font:12px "IBM Plex Sans",sans-serif}} svg .sub{{fill:var(--sub);font:11px "IBM Plex Sans",sans-serif}} svg .name{{font-weight:500}} svg .name.ctx{{fill:var(--sub)}}
+svg .sepband{{fill:var(--chipbg)}} svg .sep{{fill:var(--accent);font:600 11px "IBM Plex Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase}}
 svg .ci{{stroke-width:3}} svg .ci.good{{stroke:var(--good)}} svg .ci.null{{stroke:var(--null)}} svg .ci.bad{{stroke:var(--bad)}} svg .ci.ctx{{opacity:.55}}
 svg .ci.prev{{opacity:.8}} svg .pt.prev{{opacity:.8}}
 svg .pt.good{{fill:var(--good)}} svg .pt.null{{fill:var(--null)}} svg .pt.bad{{fill:var(--bad)}} svg .pt.ctx{{opacity:.55}} svg .pt.pending{{fill:none;stroke:var(--wait);stroke-width:1.5}}
@@ -215,11 +282,11 @@ a{{color:var(--accent)}}
 <h1>Shengji Atlas v2</h1>
 <p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> (29, then 30, now <b>{PROD}</b>). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
 
-<h2>Production baseline</h2>
-<div class="cards">{baseline_cards()}</div>
+<h2>Production</h2>
+{baseline_cards()}
 
 <h2>Screens against release {PROD} (the current production)</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart lists the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
 {now_block}
 {earlier_sections()}

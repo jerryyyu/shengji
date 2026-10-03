@@ -3,7 +3,7 @@
 Last reconciled: **2026-10-03 (release 38 live since 09:41 ET: release 36's model, the gen-5 SMV3
 outcome head in the release-30 policy/value search, + four search rules; every new screen compares
 against release 38)**. This document owns the research architecture, the estimands and the decision
-tree. `BACKLOG.md` owns priority; open investigations are on the board issue #679 and its topic issues; live compute and review asks are on GitHub issues and in
+tree. Priority is tracked on GitHub: the board issue #707 (its predecessor #679 is closed and holds everything finished through 2026-10-03), its topic issues, and open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03); live compute and review asks are on GitHub issues and in
 `server/scripts/fleet_status.sh` (`HANDOFF_ACTIVE.md` was deleted, #674);
 policy names and deployment state are in `AI_POLICIES.md`; immutable authority markers are
 in `HANDOFF_REVIEW.md` (frozen to its markers, #674; prose lives on GitHub issues); every training run and screen is on the scaling page
@@ -13,7 +13,9 @@ the shortlist-era screens) are summarised once below and live in `docs_archive/`
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator. Production is release 38 (deployed 2026-10-03 09:41 ET)
+correct engine and a reproducible evaluator: beat the live policy on fresh mirrored whole games with a
+single learned model that keeps improving from its own search data, and keep production's latency
+tail bounded. Production is release 38 (deployed 2026-10-03 09:41 ET)
 on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
 NumPy package (`smv3out-491ee4bf.npz`) inside the search release 30 served unchanged — its policy
 head admitting eight candidates over 64 sampled worlds and its value head pricing them, no Monte
@@ -123,7 +125,7 @@ numbered program below is the release-30-era record and is kept for its evidence
    cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
    current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
    claim; the 260-pair strength screen (~3.5 h; SEALED 2026-09-22 with no resolved gain, see
-   `BACKLOG.md`) ran on cloud from 2026-09-22
+   the Atlas v2 row `depth-screen` in `docs/atlas_v2/registry.json`) ran on cloud from 2026-09-22
    09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
    `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
 4. **What would change production next:** a head that beats the production release (release 38 as
@@ -303,7 +305,10 @@ oracle or infer true-person disjointness from mutable display names.
 - An interval overlap is not a difference test; superiority between two arms needs a
   contrast that clears zero on a common opponent or paired deals.
 - Five windows first, extend to ten only when the point exceeds +0.015; capped (300 s) and
-  uncapped screens are separate populations.
+  uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
+  triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
+  served policy/value-search screens. Ten shared-control windows are a nominal read, and only
+  fresh held-out deals confirm.
 
 ## Archive boundary
 

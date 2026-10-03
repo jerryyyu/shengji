@@ -28,6 +28,10 @@ rules, off by default in source and on in release 38:
 - **Lead-anchor `la`** (#694): on a lead whose heuristic anchor is a non-trump single that is not the top live card,
   slot 0 becomes the highest plain pair/tractor, else the policy's top action.
 
+Without the rules (releases 36 and 37) slot 0 was always the heuristic play, the seven best-scored actions were
+admitted unfiltered, and the highest mean played. Play has a 3 s cooperative budget; on expiry the bot plays the
+heuristic anchor.
+
 Evidence: ladder row 10 (#676). Further detail: the combination's first ten windows read +0.0175
 [−0.0020, +0.0370]; the lead-anchor-alone read is issuecomment-5963796858; play latency on the same 808 states was
 p50 0.119 s vs release 36's 0.107 s.
@@ -80,8 +84,10 @@ fresh evidence.
 6. **Release 24**: `fd6bb411` + hybrid bury.
 7. `mc-s0-report-lcb`: the deep policy rollback.
 
-The next two subsections describe the release-27/28 decision path (the shortlist with policy-prior admission): the
-rollback's contract, not release 29's.
+The subsections below are records of earlier decision paths, kept because they are the rollback contracts and
+because parts of them are still served. Policy prior admission and JS-M1 describe the release-27/28 shortlist path
+(the release-28 rollback's contract). The soft head describes release 29's package, which releases 29–35 served.
+Serving qualification and hybrid bury still apply to release 38. `mc-s0-report-lcb` is the deep rollback.
 
 ### Policy prior admission — deployed (releases 27 and 28)
 
@@ -145,26 +151,52 @@ root-row cache (20.3M mover-encoded root decisions on the 140,800 fit deals).
 Served as one NumPy package (schema v2 with the policy head, `server/shengji/ai/cwv_numpy.py`); the prior admission
 loads the same file as kind `joint-numpy`. Earlier joint attempts from M1 on 1.0M root rows (J1 weight 1, J2 weight
 0.2, J3 stop-gradient) all trailed the separate prior offline; training from scratch on all root rows closed that
-gap. Still owed: ten windows and fresh seeds. In progress: JS-G1 (the grid trunk on the same data) and a
-JS-M1-teacher corpus (Perf, runJS1).
+gap.
+
+What was read afterwards (the scaling log, `docs/scaling_log/models.py`, rows JS-M1, JS-G1 and gen-1):
+
+- The owed fresh-seed read (lane v24, 2026-09-17, five fresh windows 16260910..16660910, paired against release 27
+  at the same admission threshold): `−0.0159 [−0.0383, +0.0065]`, inconclusive with a negative point. The nominal
+  `+0.0239` did not confirm, so release 28 carries no strength claim (ladder row 6). The scaling log records no
+  ten-window read of JS-M1.
+- JS-G1 (the grid trunk on the same data, sealed 2026-09-16): `+0.0184 [−0.0056, +0.0425]` against the capped
+  control on five windows, and `−0.0051 [−0.0286, +0.0184]` paired against JS-M1; both inconclusive, at 1.32× the
+  decision wall of M1 + prior at the same threshold. Not promoted.
+- The JS-M1-teacher corpus runJS1 completed (16,000 clusters) and went into gen-1, which was inconclusive in play
+  (`+0.0136 [−0.0085, +0.0357]`, five windows).
 
 ### Serving qualification — every deploy
 
-1. Decision-identity gate (`server/scripts/cwv_serving_gate.py --serving --threshold 1000`): the NumPy packages
-   reproduce the Torch checkpoints' decisions (action, RNG state, shortlist and means, admission trace) on 60
-   rounds at the serving recipe, prior exercised. Near-tie reorders with the same play are reported separately,
-   never folded into "identical".
-2. Server-path smoke (`server/scripts/cwv_serving_smoke.py`): build the bot from the fly.toml environment exactly
-   as the server does and play bury and play turns through `_paced_bot_step` / `_commit_bot_turn`. Release 25
-   passed the gate yet stalled every live bot turn because nothing took this path.
-3. Packages SHA256-verified on the volume; `/healthz`; a live room's log showing a bot bury and bot plays
-   completing.
+For the `pv-search` mode (production since release 29; the gate as `DEPLOY.md` records it for releases 29–38):
+
+1. Package on the volume, SHA256-verified. CI also fetches the pinned production package and loads it on the tree
+   (`.github/workflows/pr-checks.yml`), and `server/tests/test_bury_fly_config.py` pins the served name that the
+   `fly.toml` environment derives.
+2. Server-path smoke (`server/scripts/cwv_serving_smoke.py`, which also builds the `pv-search` bot when
+   `SHENGJI_PV_CKPT` is set): build the bot from the `fly.toml` environment exactly as the server does and play
+   bury and play turns through `_paced_bot_step` / `_commit_bot_turn`, on the merged tree against the exact
+   package. Release 25 passed the decision-identity gate yet stalled every live bot turn because nothing took
+   this path.
+3. For a strength change, the served-bot screen against the current production release.
+4. Jerry's go; then `/healthz` (the name and the `pv_search` block) and a live room's log showing a bot bury and
+   bot plays completing.
+
+For a shortlist package (releases 22–28, now the rollback path) there is one more step before the smoke: the
+decision-identity gate (`server/scripts/cwv_serving_gate.py --serving --threshold 1000`). The NumPy packages must
+reproduce the Torch checkpoints' decisions (action, RNG state, shortlist and means, admission trace) on 60 rounds
+at the serving recipe, prior exercised. Near-tie reorders with the same play are reported separately, never folded
+into "identical". Its serving scope is the W32/N30 shortlist recipe; it last ran for release 28 and `DEPLOY.md`
+records no run of it for a `pv-search` release.
 
 ### Hybrid bury integration — deployed
 
-PR [#323](https://github.com/jerryyyu/shengji/pull/323) merged at `ec7f27ad`. The deployed policy is
-`mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`: unchanged compact package `fd6bb411` / source
-`3cd27716`, plus a 2-second cooperative deadline and heuristic fallback that the research recipe did not have.
+PR [#323](https://github.com/jerryyyu/shengji/pull/323) merged at `ec7f27ad`. Historical: it first shipped in the
+shortlist era as `mc-shortlist-fd6bb411-w32-r55d379a3-bury-hybrid-c93a9877ae6a`: unchanged compact package
+`fd6bb411` / source `3cd27716`, plus a 2-second cooperative deadline and heuristic fallback that the research
+recipe did not have. The same bury arm is still served. In release 38 the `pv-search` bot runs it
+(`PVSearchBuryBot` in `server/shengji/train/pv_search_policy.py`, which reuses `CWVBuryMixin` from
+`cwv_bury_policy.py`) on the production package's value head: `SHENGJI_PV_BURY_ARM = "hybrid"` with the 2-second
+budget, the `-bury-hybrid-5517ddbd7457` part of the served name, including the release-30 fix (#607).
 Exact numbers behind ladder row 3 (1,976 fixed deals, hybrid vs heuristic): `+0.03644` utility
 `[+0.01164,+0.06024]`, `+1.62` pp win rate `[+0.56,+2.68]`. Kitty bonus of at least 80 occurred 4 times for hybrid
 vs 0 for heuristic. [Final bury report](docs_archive/value-guided-bury-dev-2026-09-08.md).
@@ -179,8 +211,9 @@ The former live champion, now the rollback/reference policy, in two independent 
 The challenger replaces the incumbent only when the one-sided paired lower confidence bound is at least zero
 (equality accepted); short or invalid report folds fall back to the incumbent. Exact numbers behind ladder row 1:
 `+0.338379 +/- 0.067706` signed levels vs `mc-strong` on 2,048 fresh clusters; collision-free matched extra-work null
-`-0.019043 +/- 0.068270`. This establishes the registered one-round policy, not arbitrary extra search, as the only
-confirmed and deployed strength gain.
+`-0.019043 +/- 0.068270`. This establishes the registered one-round policy, not arbitrary extra search, as the source
+of that gain. It was the first confirmed and deployed strength gain; ladder rows 2, 3, 4, 7, 9 and 10 record the
+later ones.
 
 ## The ladder: every production change and what it measured
 
@@ -218,8 +251,14 @@ served vs release 30 on five fresh 520-cluster mirrored windows (common MC-LCB c
 Corpus volume, composition, warm start and policy targets are not levers at this MDE. #649 found the 16 pv-search
 corpora had taught the policy head a uniform target (half-level means under a points-calibrated temperature); #650
 fixed the extract. The fix moved neither the holdouts nor the served read: the served search uses the policy head
-only to admit candidates, and the value head decides. The search-mean head has never been
-served and is the one untried lever inside this architecture. Full record: Atlas v2 and the scaling log.
+only to admit candidates, and the value head decides.
+
+The search-mean head has never been the production value function. It was served once, in a screen after these
+five arms (v36b, 2026-09-29): the SMV3 checkpoint's search-mean head as the value function read
+**−0.0523 [−0.0905, −0.0140]** against release 30 as served, resolved and negative, and was not shipped. Release
+36's package comes from that same checkpoint, which was trained with the search-mean sidecar v3 (#658), but the
+served search prices candidates with the outcome head only. The screen does not settle a search-mean head trained
+on all candidates (#663 step 4). Full record: Atlas v2 and the scaling log.
 
 **Exploitability, not established (#625, closed 2026-09-28 on Jerry's call).** A belief-reweighting attacker (the
 search's own 64 worlds reweighted by an opponent model's likelihood of the observed plays) is HARMFUL, not weak. The
@@ -260,10 +299,11 @@ If this summary and `server/shengji/ai/registry.py` ever differ, the registry is
 | `mc`, `mc-lite`, `mc-strong`, `mc-vstrong` | Determinized Monte Carlo at named work levels. `mc` is the source fallback; `mc-strong` is N=30 and a historical rollback. Current rollback boundaries are above. | Supported. A legal sampler is not a calibrated belief model. |
 | `mc-s0-*`, nulls, prefix policies | Frozen search/report experiments and matched controls. | Experiment/reproduction only unless `fly.toml` names one. |
 | structured-bury, exact-endgame, point-banking, pair/throw and ballot variants | Mechanism-specific experimental constructors. Some intentionally remain outside the global registry to preserve evidence identity. | No production authority. |
-| learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only, except the exact W32 package named in the production contract above. |
+| learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. The one learned package production serves is the `pv-search` package named in the production contract above (last row). |
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, W sampled worlds, every (candidate, world) afterstate scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (same positions, the training receipt's stratified prior as the value, in the prior's own utility scale -- PT0 integer levels for the training build's `baselines` prior, with exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is part of the name and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | Production with its selection and report doses scaled together (N=90/R=900, N=300/R=3000): production's own compute curve, the bar a learned arm must beat at each budget. | Reference arms for the ladder only. |
-| `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | W32 PLAY and hybrid BURY are live in release 22, with bounded heuristic fallback. See below. |
+| `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`; DEV) | Exhaustive legal actions ranked by the complete-world model over W sampled worlds; K4 or K8 alternatives plus incumbent go to full N30/R300 MC. Unlike `mc-cwv-*`, the model does not replace the final rollout evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` (and `harvest/trajectory.py --policy`) can reach it; the entry point REFUSES to hand back anything that is not a `CWVShortlistBot`, because `mc-cwv-<ckpt8>-w32` is the one-ply bot, not this one. | Historical: W32 PLAY and hybrid BURY were production from release 22 through release 28, with bounded heuristic fallback. Since release 29 this family is a registered rollback only (the release-28 name; its keys stay in `fly.toml`). See below. |
+| `pv-search-<ckpt8>-w<W>-k<K>[-<rule tokens>]-r<recipe8>[-bury-hybrid-<id>]` (`PVSearchBot`, `PVSearchBuryBot`; `train/pv_search_policy.py`) | The one-ply policy/value search: the package's policy head admits K of the legal actions over W sampled worlds and its value head prices them, with no playouts; the hybrid bury runs on the same package. Registered by `register_pv_search_policies` when `SHENGJI_PV_CKPT` and `SHENGJI_PV_SHA256` are set; the name is derived from the environment. | PRODUCTION since release 29. Release 38 is W64/K8 with the rule tokens `div`, `rc`, `tb`, `la` and hybrid bury (the production contract above). |
 
 Example local selection:
 
@@ -329,9 +369,12 @@ conclusions:
 
 **Models.** Offline cross-entropy does not order play: the programme's best CE played like the leader. The last
 full data doubling inside the shortlist bought −0.0036 CE and nothing in play; width and depth alone did not move
-play. Encoder v2 was the one real gain; v3–v5 bought nothing. Warm-started generations were null as packages. The
-policy head alone is SmartBot-level under public information. The soft target (the search's own values as the policy
-target) is the ingredient with the largest point estimate in the head-driven search; no head in the W64 family is
+play. Encoder v2 was the one real gain; v3–v5 bought nothing. Warm-started generations were null as packages. Through
+2026-09-22 the policy head alone was SmartBot-level under public information (soft head +0.052 [+0.039, +0.067];
+JS-M1's head −0.0137 [−0.0269, −0.0004]). The gen-5 heads are stronger alone: SMV3's head beats the release-30 head by
++0.21 in a paired head-only duel (ladder row 9). That duel uses the head-alone harness that sees the true hands, so
+it is not a public-information read, and the gain did not carry into the served search. The soft target (the
+search's own values as the policy target) is the ingredient with the largest point estimate in the head-driven search; no head in the W64 family is
 shown superior to another. Corpus seeds are decks and are excluded from screens per model.
 
 **Search.** Worlds were the lever through 64; the ladder shows no resolved gain beyond (numbers under "Not taken";
@@ -347,15 +390,16 @@ design.
 |---|---|
 | **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21 (from 2026-09-22 every new search comparison is against production W64/K8, Jerry's direction on #436). Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
 | **Search rules on the head-driven search (release 38, deployed 2026-10-03)** | Admission diversity, refusal-constraint sampling and the points tie-break CONFIRMED only in combination (+0.0461 [+0.0242, +0.0681] vs release 36, ten fresh windows); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205], POSITIVE incremental with a lower bound near zero, not a second confirmation; lead-anchor alone was positive exploratory, below the extension triage. Adaptive K16 inconclusive; PUCT and root allocation closed. All are indirect contrasts through the common MC-LCB control. |
-| **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow; a common-opponent summary-level read, not paired inference). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; the next production claim needs a served contrast against release 29. |
-| **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
+| **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow; a common-opponent summary-level read, not paired inference). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; at release 29 the next production claim needed a served contrast against release 29; the comparator is now release 38 as served. |
+| **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28. The owed fresh-seed read came back inconclusive with a negative point (−0.0159 [−0.0383, +0.0065] paired vs release 27, five fresh windows, 2026-09-17), so release 28 carries no strength claim; no ten-window read is recorded. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
-| **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |
-| **T4 model proposal** | Selected none. The uninformed widening control was positive against champion but used 14.8% more accepted worlds and 80.9% more searches; it requires a three-arm compute/candidate attribution test. |
+| **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries; reopen only with a materially different axis, not a larger retry. |
+| **T4 model proposal** | Selected none. The uninformed widening control was positive against champion but used 14.8% more accepted worlds and 80.9% more searches; it requires a three-arm compute/candidate attribution test before claiming that widening itself won. The later W32 shortlist screen does not settle that experiment. |
 | **BELIEF R4/R5** | R4's preserved synthetic-primary cohort reduced held-out count Brier by 21.40% versus REF-C, but the permuted-label control also improved materially and failed on demand — a predictive channel, not behavioral belief learning. The opened-DEV consumer diagnostic then sealed `NO_PRIMARY_POLICY_SIGNAL` (ESS 97–99.5% of maximum, 1/104 flips, paired value exactly zero). R4 is terminal; no R5 compute proceeds unless a separate oracle-belief probe shows a gain worth reopening. No BELIEF sampler, candidate, or policy is registered or deployable. |
+| **BELIEF V1/R3 resource failures** | They provide no learning verdict. They motivated reusable artifacts, measured scheduling, graceful truncation, progress telemetry and the R4/R5 recovery path. |
 | **PT0** | Privileged late-endgame policy had a small edge over heuristic/smart and an inconclusive edge over production MC. |
-| **PT1** | Clean negative despite high action-flip dose: exact teacher guidance did not produce the required utility improvement. |
-| **PT-Full** | A single true-world collapse was bad; repeated true-world search recovered most of that loss but did not beat the public ensemble. |
+| **PT1** | Clean negative for the frozen scope despite high action-flip dose: the exact teacher changed many actions but produced only `1/208` mean C−B and one positive state, missing all efficacy gates. The retired backlog recorded that the recovered result carries a preregistration-governance caveat and is not a clean general closure of late-game teacher search. |
+| **PT-Full** | A single true-world collapse was bad; repeated true-world search recovered most of that loss but did not beat the public ensemble. Preserve posterior ensembles. |
 | **C0** | Fixed perfect-information consumer variants all lost to both required parents; local bare-point symptom fixes did not transport. |
 | **K8 shortlist** | Exploratory DEV screen: +0.08203 versus production (95% CI `[+0.00972,+0.15430]`), but −0.05664 directly versus K4 (95% CI `[-0.11328,-0.00391]`; 17 favorable / 32 unfavorable / 207 tied). Keep K4; no K16 escalation or deployment. |
 | **Value-Afterstate V0** | `REFUSE_MECHANICS_OR_NEGATIVE_CONTROL` (2026-08-28, source `d9ad99f6`, independently verified): the first afterstate value screen refused on its own mechanics/negative-control gates; no value signal was established. |
@@ -396,6 +440,24 @@ Elo pools, human agreement, individual decisions, offline loss, state regret and
 hypotheses. Strength requires a fresh mirrored whole-game comparison against the exact live champion, followed by
 confirmation when the design calls for it.
 
+## Entry criteria for new scientific lanes
+
+Moved from `BACKLOG.md` on 2026-10-03. A proposed lane enters the review queue only when it names:
+
+1. the exact decision or prediction it changes;
+2. the natural dose and the smallest effect worth detecting;
+3. the candidate, the literal parent, and a behavior/work-matched null;
+4. one frozen population/split and one terminal rule;
+5. source, runtime and artifact identities, plus recoverability behavior;
+6. one consolidated review surface; and
+7. for any projected multi-hour run, one pre-launch DAG audit that proves there is no duplicate full-data
+   integrity work, names worker/core utilization for every expensive stage, demonstrates checkpoint/recovery
+   behavior, and identifies the cheapest learning-bearing result before fleet scale.
+
+Run a cheap score-free census or rehearsal first when dose, runtime or candidate geometry is unknown. A rehearsal
+proves mechanics, not efficacy; the rule that nothing scientific (seeds, thresholds, populations, terminal rules)
+may be chosen from one is under [Change and deployment rules](#change-and-deployment-rules).
+
 ## Correctness and runtime boundaries
 
 - Tied effective cards retain physical identity. Throws may be ruffed. Failed throws force the engine-selected
@@ -412,6 +474,27 @@ confirmation when the design calls for it.
   scientific packets, short/zero-work evaluations refuse rather than silently fall back.
 - Encoder identity includes semantics and transitive source bytes. Assets with private-kitty or other
   actor-visibility drift remain quarantined even when their tensor dimensions match.
+
+## Operating constraints
+
+Moved from `BACKLOG.md` on 2026-10-03.
+
+- No test opening before a durable pre-test readiness artifact proves that training, calibration, curves and exact
+  identities independently reopen.
+- Expiry yields a sealed, explicitly truncated result at the best complete common epoch when the design permits it.
+  It must not erase healthy learning or masquerade as convergence.
+- Preserve reusable capture, reference, index, cache, checkpoint and calibration artifacts when their contracts
+  permit exact reuse.
+- Progress must expose completed/total units, percent, elapsed time, ETA, stage, worker identity and deadline
+  headroom without exposing outcomes.
+- Use diverse trump ranks and player/deal-disjoint human data. Human moves are behavior/proposal evidence, not
+  strength labels.
+- Keep facts, actor-private observations, probabilistic beliefs and privileged labels typed and separate.
+  Actor-visible runtime bytes must be invariant to hidden-world twins.
+- Negative and refused results remain evidence. Never delete them, retry a spent namespace, or convert a mechanism
+  PASS into deployment authority.
+- Exact raw markers belong only in `HANDOFF_REVIEW.md` (frozen to its authority markers, #674). Chronology and
+  current review asks belong on GitHub issues and PR review comments.
 
 ## Change and deployment rules
 
@@ -431,8 +514,8 @@ confirmation when the design calls for it.
 
 | topic | source |
 |---|---|
-| current queue | `BACKLOG.md` |
-| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #679 and its topic issues (#663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
+| current queue and priority | GitHub: the board issue #707, open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03 and is a pointer stub) |
+| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #707 (its predecessor #679 is closed and holds everything finished through 2026-10-03) and its topic issues (#663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
 | callable code | `server/shengji/ai/registry.py` |
 | production config | `fly.toml` |
 | model/belief/teacher design; research architecture and model lineage | `RL_PLAN.md` |
@@ -440,4 +523,6 @@ confirmation when the design calls for it.
 | engine/sampler contract | `server/tests/`, `incidents/` (ledger archived at `docs_archive/correctness-through-2026-09-22.md`) |
 | performance and deployment | `DEPLOY.md`, issue #208 (the speed record is archived at `docs_archive/perf-through-2026-09-22.md`) |
 | what each production change bought | the ladder table above |
+| screen results since release 29 | `docs/atlas_v2/registry.json` (Atlas v2) |
+| agent execution discipline | `AGENTS.md` (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
 | old policy/toggle ledger | Git history and `docs_archive/` |

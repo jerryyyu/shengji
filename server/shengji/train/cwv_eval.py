@@ -27,6 +27,7 @@ import multiprocessing
 import os
 import time
 import zipfile
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
@@ -236,18 +237,61 @@ def candidate_agreement(scores: Sequence[float], means: Sequence[float]) -> dict
     }
 
 
-def summarize_agreement(rows: Sequence[Mapping[str, Any]], clusters: Sequence[str], *,
+class _AgreementColumns:
+    """Numeric, append-only storage for candidate-agreement rows.
+
+    ``candidate_agreement`` still returns its ordinary transient mapping.  The
+    compact pass consumes that mapping immediately, retaining only the four
+    numeric columns needed by the summary and paired metrics.
+    """
+
+    __slots__ = ("_columns",)
+
+    _FLOAT_COLUMNS = ("spearman", "top1", "regret")
+    _INT_COLUMNS = ("candidates",)
+
+    def __init__(self) -> None:
+        self._columns = {name: array("d") for name in self._FLOAT_COLUMNS}
+        self._columns["candidates"] = array("q")
+
+    def append(self, row: Mapping[str, Any]) -> None:
+        for name in self._FLOAT_COLUMNS:
+            value = row[name]
+            self._columns[name].append(math.nan if value is None else float(value))
+        self._columns["candidates"].append(int(row["candidates"]))
+
+    def __len__(self) -> int:
+        return len(self._columns["candidates"])
+
+    def column(self, name: str) -> array:
+        if name not in self._columns:
+            raise KeyError(name)
+        return self._columns[name]
+
+    @property
+    def nbytes(self) -> int:
+        """Bytes occupied by the numeric payload, excluding the small container."""
+        return sum(column.itemsize * len(column) for column in self._columns.values())
+
+
+def summarize_agreement(rows: Sequence[Mapping[str, Any]] | _AgreementColumns,
+                        clusters: Sequence[str], *,
                         n_boot: int, seed: int) -> dict:
     """Mean Spearman (over the records where it is defined), top-1 and
     regret with deal-cluster bootstrap CIs."""
     if not rows:
         return {"n": 0}
     clusters = np.asarray(clusters, dtype=str)
-    spear = np.asarray([math.nan if r["spearman"] is None else r["spearman"] for r in rows],
-                       dtype=np.float64)
+    if isinstance(rows, _AgreementColumns):
+        spear = np.asarray(rows.column("spearman"), dtype=np.float64)
+        top1 = np.asarray(rows.column("top1"), dtype=np.float64)
+        regret = np.asarray(rows.column("regret"), dtype=np.float64)
+    else:
+        spear = np.asarray([math.nan if r["spearman"] is None else r["spearman"]
+                            for r in rows], dtype=np.float64)
+        top1 = np.asarray([r["top1"] for r in rows], dtype=np.float64)
+        regret = np.asarray([r["regret"] for r in rows], dtype=np.float64)
     defined = np.isfinite(spear)
-    top1 = np.asarray([r["top1"] for r in rows], dtype=np.float64)
-    regret = np.asarray([r["regret"] for r in rows], dtype=np.float64)
     return {
         "n": int(len(rows)),
         "spearman": (cluster_bootstrap(spear[defined], clusters[defined], n_boot=n_boot,
@@ -259,15 +303,35 @@ def summarize_agreement(rows: Sequence[Mapping[str, Any]], clusters: Sequence[st
     }
 
 
-def paired_agreement(rows_a: Sequence[Mapping[str, Any]], rows_b: Sequence[Mapping[str, Any]],
+def paired_agreement(rows_a: Sequence[Mapping[str, Any]] | _AgreementColumns,
+                     rows_b: Sequence[Mapping[str, Any]] | _AgreementColumns,
                      clusters: Sequence[str], *, n_boot: int, seed: int) -> dict:
     """Paired per-record differences (a minus b) of top-1 and regret."""
     if not rows_a:
         return {"n": 0}
     clusters = np.asarray(clusters, dtype=str)
-    top = np.asarray([a["top1"] - b["top1"] for a, b in zip(rows_a, rows_b)], dtype=np.float64)
-    regret = np.asarray([a["regret"] - b["regret"] for a, b in zip(rows_a, rows_b)],
-                        dtype=np.float64)
+    if not isinstance(rows_a, _AgreementColumns) and not isinstance(rows_b, _AgreementColumns):
+        top = np.asarray([a["top1"] - b["top1"] for a, b in zip(rows_a, rows_b)],
+                         dtype=np.float64)
+        regret = np.asarray([a["regret"] - b["regret"] for a, b in zip(rows_a, rows_b)],
+                            dtype=np.float64)
+        return {"top1": cluster_bootstrap(top, clusters, n_boot=n_boot, seed=seed + 3),
+                "regret_points": cluster_bootstrap(regret, clusters, n_boot=n_boot,
+                                                   seed=seed + 4)}
+    if isinstance(rows_a, _AgreementColumns):
+        top_a = np.asarray(rows_a.column("top1"), dtype=np.float64)
+        regret_a = np.asarray(rows_a.column("regret"), dtype=np.float64)
+    else:
+        top_a = np.asarray([a["top1"] for a in rows_a], dtype=np.float64)
+        regret_a = np.asarray([a["regret"] for a in rows_a], dtype=np.float64)
+    if isinstance(rows_b, _AgreementColumns):
+        top_b = np.asarray(rows_b.column("top1"), dtype=np.float64)
+        regret_b = np.asarray(rows_b.column("regret"), dtype=np.float64)
+    else:
+        top_b = np.asarray([b["top1"] for b in rows_b], dtype=np.float64)
+        regret_b = np.asarray([b["regret"] for b in rows_b], dtype=np.float64)
+    top = top_a[:len(rows_b)] - top_b[:len(rows_a)]
+    regret = regret_a[:len(rows_b)] - regret_b[:len(rows_a)]
     return {"top1": cluster_bootstrap(top, clusters, n_boot=n_boot, seed=seed + 3),
             "regret_points": cluster_bootstrap(regret, clusters, n_boot=n_boot, seed=seed + 4)}
 
@@ -589,7 +653,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                    progress: Callable[[str], None] | None = None,
                    version: int = ENC_VERSION,
                    score_many_fn: Callable[[Sequence[dict]], list[np.ndarray]] | None = None,
-                   cache_dir: str | os.PathLike | None = None) -> dict:
+                   cache_dir: str | os.PathLike | None = None,
+                   compact_agreement: bool = False) -> dict:
     """Run the workers over ``shard_keys`` (``(shard, selected deal keys or
     None)``) and score what they return.  With ``cache_dir`` the workers'
     output is memoised per shard (``iter_shard_results``); the returned
@@ -616,7 +681,9 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
     started = time.perf_counter()
     decision_values: dict[str, float] = {}
     decision_keys: dict[str, str] = {}
-    agreement: dict[str, list[dict]] = {name: [] for name in SCORERS}
+    agreement: dict[str, list[dict] | _AgreementColumns] = {
+        name: (_AgreementColumns() if compact_agreement else []) for name in SCORERS
+    }
     clusters: list[str] = []
     n_rows = 0
     n_candidates = 0
@@ -675,7 +742,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                 scores = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), scores)
-                agreement["cwv"].append(candidate_agreement(scores, entry["means"]))
+                row = candidate_agreement(scores, entry["means"])
+                agreement["cwv"].append(row)
             if public_head is not None:
                 # Slice to the width the HEAD declares; a head of another
                 # encoder version fails loudly in ``public_values``.
@@ -685,14 +753,16 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
                 values = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), values)
-                agreement["public_head"].append(candidate_agreement(values, entry["means"]))
+                row = candidate_agreement(values, entry["means"])
+                agreement["public_head"].append(row)
             if prior is not None:
                 role = np.full(k, bool(entry["role_attacker"]))
                 values = prior.predict(entry["successor_ply"], role, entry["successor_points"])
                 values = np.where(terminal, np.asarray([pt0_level(v) if t else 0.0
                                                         for v, t in zip(entry["terminal_level"],
                                                                         terminal)]), values)
-                agreement["stratified_prior"].append(candidate_agreement(values, entry["means"]))
+                row = candidate_agreement(values, entry["means"])
+                agreement["stratified_prior"].append(row)
         if progress and (done % 200 == 0 or done == len(tasks)):
             progress(f"candidate pass: {done}/{len(tasks)} shards, rows={n_rows} "
                      f"search_records={len(clusters)} candidates={n_candidates} "

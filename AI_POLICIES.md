@@ -1,12 +1,12 @@
 # AI policy ledger
 
-Last reconciled: **2026-10-01 (release 37; the model is release 36's: the gen-5 SMV3 outcome head in the release-30 pv-search W64/K8 + hybrid bury)**. This file defines the current callable-policy
+Last reconciled: **2026-10-03 (release 37 live; the model is release 36's: the gen-5 SMV3 outcome head in the release-30 pv-search W64/K8 + hybrid bury. Release 38, the same package plus four search rules, is approved and pending deploy)**. This file defines the current callable-policy
 contract and the scientific conclusions that constrain policy work. It is not
 a run log or policy registry duplicate.
 
 - Exact policy implementations and names: `server/shengji/ai/registry.py`
 - Production selection: `fly.toml`
-- Current priorities: `BACKLOG.md`; review gates and hourly notes: the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674)
+- Current priorities: `BACKLOG.md`; open investigations: the board issue #679 and its topic issues (#663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit); review gates: the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674)
 - Research architecture and model lineage: `RL_PLAN.md`
 - Immutable authority markers: `HANDOFF_REVIEW.md` (frozen to its markers, #674); verdicts and reviewer corrections are PR review comments, and prose lives on GitHub issues
 - What each production change actually bought: the ladder table below
@@ -29,7 +29,28 @@ soft head 8ecd4fea (`soft-8ecd4fea.npz`); release 30 (2026-09-22 09:13 ET) added
 screen compares against release 36. Rollback: the three release-30 lines kept as a comment in `fly.toml` (the
 package stays on the volume) with `fly deploy --ha=false`, or the release-35 image; see `DEPLOY.md`.
 
-The current selection is:
+**Release 38 — pending deploy (Jerry approved promotion 2026-10-03; not live until its release PR
+deploys).** The same package in the same W64/K8 search + hybrid bury, with four rules that are off
+by default in source and on in release 38: admission diversity `div` (#680: at most 2 admitted
+actions per structural key, near-duplicates sharing all but one card skipped, back-fill when short),
+refusal-constraint sampling `rc` (#689: sampled worlds must make this round's refused throws
+refusable with the same forced component), tie-break by points `tb` (#682: among candidates within
+0.02 level of the best mean, the most root-team points from the current trick under the search's
+own trick finisher) and lead-anchor `la` (#694: on a lead whose heuristic anchor is a non-trump
+single that is not the top live card, slot 0 becomes the highest plain pair/tractor, else the
+policy's top action). Served name
+`pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`. Evidence (#676; each
+arm vs a common MC-LCB control, indirect, not head-to-head): div + rc + tb vs release 36 on ten
+fresh windows +0.0461 [+0.0242, +0.0681], confirmed (issuecomment-5962364713; its first ten
+windows read +0.0175 [−0.0020, +0.0370]); combo + la minus combo +0.0106 [+0.0006, +0.0205] over
+ten windows, POSITIVE incremental with a lower bound near zero, not a second confirmation
+(issuecomment-5965252288). Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone
+vs release 36 read +0.0138 [+0.0013, +0.0262] at five windows (positive exploratory, below the
+extension triage; issuecomment-5963796858). Once release 38 is live, every screen
+compares against it; its fly.toml selection and rollback are recorded in `DEPLOY.md` by the
+release PR.
+
+The current (release 37) selection is:
 
 ```toml
 SHENGJI_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
@@ -184,8 +205,9 @@ and deployed strength gain.
 One row per production change, each measured **against the policy it replaced**, on that era's
 instrument. The numbers are signed levels per round unless the row says otherwise. They are NOT
 additive and NOT on one scale: the opponents, deal populations, designs and budgets differ by era,
-so this is a chain of relative reads, not a cumulative total. Five of the eight changes measured a
-resolved gain; three shipped for cost, maintainability or correctness with no strength claim.
+so this is a chain of relative reads, not a cumulative total. Of the nine deployed changes, six measured a
+resolved gain and three shipped for cost, maintainability or correctness with no strength claim; row 10 is
+approved and pending deploy.
 
 | # | change | what it replaced | measured effect | instrument | reading |
 |---:|---|---|---|---|---|
@@ -198,6 +220,7 @@ resolved gain; three shipped for cost, maintainability or correctness with no st
 | 7 | **Policy/value search, soft head** (release 29) | the release-28 package | **+0.086 [+0.042, +0.131]** card play; **+0.049 [+0.003, +0.095]** as served | 800 matched deals, one pre-registered primary; five clean 520-cluster windows | The head IS the search: its policy admits 8 of the legal actions over 64 sampled worlds, its value head prices them, no playouts. Versus MC-LCB in the ladder +0.187 [+0.144, +0.231]. The served read is a common-opponent summary-level estimate, not paired served-vs-served inference, and its lower bound is near zero. |
 | 8 | **Hybrid-bury fix** (release 30) | release 29 | not measured | — | Correctness: the bury stopped refusing its own decision and silently falling back to the heuristic on ~6% of banker burys on the diagnostic capture set (24 of 400; the production-traffic rate is unmeasured). No strength claim. |
 | 9 | **SMV3 outcome head** (release 36) | the release-30 package, same search | **+0.0393 [+0.0033, +0.0752]** as served (confirmation v36a2; the first read v36a +0.0361 [+0.0015, +0.0707]) | five 520-cluster windows each, common MC-LCB control, vs release 30 as served | The gen-5 SMV3 checkpoint 3e89e86f's OUTCOME head (arm F's recipe + sidecar v3, #658) in release 30's search unchanged. Confirmed by a predeclared second read; a common-opponent summary-level estimate like row 7. Policy head alone beats the production head +0.21 level/round in paired duels while served head swaps sit within ±0.02: measured decoupling, not a ceiling (#663). |
+| 10 | **Search rules div + rc + tb + la** (release 38, PENDING deploy) | release 36/37, same package | **+0.0461 [+0.0242, +0.0681]** (div + rc + tb vs release 36, ten fresh windows: CONFIRMED); +0.0106 [+0.0006, +0.0205] (+ la over that combination, ten windows: POSITIVE incremental) | 520-cluster windows, common MC-LCB control | One confirmed contrast (the three-rule combination, #676 issuecomment-5962364713) and one small positive incremental contrast with a lower bound near zero (lead-anchor on the combination, issuecomment-5965252288), which is not a second confirmation. Indirect reads through the common control, not head-to-head win rates, and not additive. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262], five windows, below the extension triage). Pending deploy as of 2026-10-03. |
 
 **Gen 5, not taken (2026-09-24 → 09-27).** Five one-variable retrains of the production head, each screened
 as served against release 30 on fresh windows (five 520-cluster mirrored windows, common MC-LCB control, DL random
@@ -217,6 +240,13 @@ an opponent model's likelihood of the observed plays) is HARMFUL, not weak: the 
 of SmartBot's plays reproduced from the true hands), the loss is estimator variance (the posterior collapses to ~2 of 64
 worlds), and candidate margins (~0.02 half-levels) sit far below estimate noise (~0.5). The earlier x36a null against
 MC-LCB is therefore not a bound on anything. A best response needs the opponent inside the rollout continuation.
+
+**Since release 36, not taken (2026-10-01 → 10-03).** PUCT tree search on the SMV3 package vs release 36
+(P1 r4, five windows, exploratory): package prior **−0.417 [−0.463, −0.371]**, uniform prior **−0.894
+[−0.928, −0.861]** — closed (#436 issuecomment-5962752743). The root-allocation pilot A6 (learned-prior PUCT,
+uniform PUCT, successive halving vs uniform W64 on 24 DEV roots) is closed (#436 issuecomment-5962069171).
+Adaptive K16 on multi-card leads −0.0061 [−0.0303, +0.0181], inconclusive (issuecomment-5963808991). SMV3-SL4
+(the runSL1..4 stores' trajectory, value and policy supervision added, recipe unchanged) served vs release 36 −0.0162 [−0.0600, +0.0275], inconclusive (v40a, #663).
 
 **Not taken.** More worlds beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024
 [−0.033, +0.081]), K16, bounded PUCT, learned continuations, adaptive allocation, and every
@@ -334,6 +364,7 @@ the deploy gate is the served design.
 | lane | conclusion for policy work |
 |---|---|
 | **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21 (from 2026-09-22 every new search comparison is against production W64/K8, Jerry's direction on #436). Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
+| **Search rules on the head-driven search (release 38 pending, 2026-10)** | Admission diversity, refusal-constraint sampling and the points tie-break CONFIRMED only in combination (+0.0461 [+0.0242, +0.0681] vs release 36, ten fresh windows); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205], POSITIVE incremental with a lower bound near zero, not a second confirmation; lead-anchor alone was positive exploratory, below the extension triage. Adaptive K16 inconclusive; PUCT and root allocation closed. All are indirect contrasts through the common MC-LCB control. |
 | **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow; a common-opponent summary-level read, not paired inference). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; the next production claim needs a served contrast against release 29. |
 | **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28; ten-window and fresh-seed reads owed. |
 | **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
@@ -415,7 +446,8 @@ when the design calls for it.
   enable a policy experiment; none counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test
   opening, or a different policy. Those authorities are explicit and separate.
-- Release 30 is the immediate rollback for releases 36/37 (the three release-30 lines kept as a comment in
+- Release 38 is pending deploy; its rollback (release 37's selection) is recorded in `DEPLOY.md` by its release PR.
+  Release 30 is the immediate rollback for releases 36/37 (the three release-30 lines kept as a comment in
   `fly.toml`; package `soft-8ecd4fea.npz`, sha ccade130…, stays on the volume; `fly deploy --ha=false`), or the
   release-35 image; release 28 (one `SHENGJI_BOT` line) the next; `mc-s0-report-lcb` is the deep policy rollback. For runtime regressions use
   the image rollback in `DEPLOY.md`.
@@ -425,7 +457,7 @@ when the design calls for it.
 | topic | source |
 |---|---|
 | current queue | `BACKLOG.md` |
-| active fleet and exact review asks | `server/scripts/fleet_status.sh`, the hourly bus `status`, and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
+| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #679 and its topic issues, and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
 | callable code | `server/shengji/ai/registry.py` |
 | production config | `fly.toml` |
 | model/belief/teacher design | `RL_PLAN.md` |

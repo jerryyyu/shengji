@@ -13,8 +13,10 @@ clients hold WebSockets to it. That drives every deployment rule below.
   on https pages (same-origin), no config needed.
 - Health check: `GET /healthz`.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10), while
-  Fly configuration selects release 37 (release 36's model: release 29's search recipe with the #607 bury fix on the gen-5 SMV3 outcome head; release 37 is a phone-HUD CSS fix only), the policy/value search with hybrid bury
-  `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25` (`SHENGJI_PV_*`;
+  Fly configuration selects release 38 (pending deploy; release 37 serves until then): release 36's
+  model, search, bury and budgets with the four search rules on (admission diversity, refusal
+  constraints, point tie-break, lead anchor), the policy/value search with hybrid bury
+  `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457` (`SHENGJI_PV_*`;
   `/healthz` reports it under `pv_search`). The release-28 shortlist keys stay in
   `fly.toml` so the rollback is one line. A deploy that binds the policy prior
   (`SHENGJI_CWV_PRIOR_CKPT`, optional `_SHA256` pin, `_THRESHOLD`, `_TOP`;
@@ -25,6 +27,47 @@ clients hold WebSockets to it. That drives every deployment rule below.
   play-policy rollback; `smart` and `heuristic`
   are cheaper difficulty choices, not strength-equivalent replacements. See
   `docs_archive/w32-fly-serving-through-2026-09-22.md` (archived) for the rollout boundary through release 28 and `AI_POLICIES.md` for evidence.
+
+## Release 38 (merged config, PENDING DEPLOY) — combo + lead-anchor search rules on the release-36 model
+
+**Not deployed until Jerry's deploy word; release 37 serves until then.** Approved for promotion by
+Jerry 2026-10-03 ("lets promote combo + lead anchor").
+
+**Search-rule change only: the package, search width, bury and budgets are release 36's.** Same
+package `smv3out-491ee4bf.npz` (sha256 `491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670`),
+64 worlds, 8 admitted candidates, 3 s play budget, hybrid bury at 2 s, JS-M1 prior keys unchanged.
+`fly.toml` adds four `SHENGJI_PV_*` rule flags, each `'1'`:
+
+- `SHENGJI_PV_ADMISSION_DIVERSITY` — caps near-duplicate throws in the admitted ballot (#676 A);
+- `SHENGJI_PV_REFUSAL_CONSTRAINTS` — the world sampler honours every public throw refusal (#676 B);
+- `SHENGJI_PV_TIEBREAK_POINTS` — point tie-break among value-tied candidates (#676 E);
+- `SHENGJI_PV_LEAD_ANCHOR` — the lead anchor in slot 0 (#694).
+
+Served bot `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`, the name
+the server derives from the `fly.toml` env (`pv_env_recipe` -> `pv_registry_entries` in a fresh
+interpreter; the same derivation on release 36's `fly.toml` reproduces
+`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`). `tests/test_bury_fly_config.py`
+pins both names and now runs in CI.
+
+Evidence (#676; Atlas v2): combo (div + rc + tb) vs release 36, the confirmatory combo2 on a fresh
+ten windows **+0.046136 [+0.024216, +0.068056]**
+([#676 comment](https://github.com/jerryyyu/shengji/issues/676#issuecomment-5962364713)); the lead
+anchor on top of combo, v43cla, combo + la minus combo **+0.010563 [+0.000619, +0.020507]**
+([#676 comment](https://github.com/jerryyyu/shengji/issues/676#issuecomment-5965252288)).
+
+Latency (cloud, single thread, served budgets, both arms deciding the SAME 808 play states and 12
+bury states over 12 deals, seeds 91261003+): play p50 0.119 s / p95 0.200 s / max 0.243 s vs release
+36's 0.107 / 0.180 / 0.262 s (per-state median ratio 1.09x); bury p50 0.670 s / max 0.815 s vs
+0.676 / 0.741 s; zero play or bury fallbacks on either arm. Serving smoke on this `fly.toml` against
+the SHA-verified packages: PASS, 40 server turns through `_paced_bot_step` / `_commit_bot_turn`.
+
+Rollback: in `fly.toml` delete the four `SHENGJI_PV_*` rule lines and restore the release-36
+`SHENGJI_BOT` kept as the comment directly above them
+(`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`), then `fly deploy --ha=false`; or
+redeploy the release-37 image `deployment-01M3TXZ85YHJM108TBPWKN8BB2`. No package moves either way.
+
+Watch list after the deploy: `/healthz` bot is the name above; `pv-search-fallback-v1` records,
+decision wall p50/p95, bury seconds; the first live room's log.
 
 ## Current production: release 37 — the phone top bar is one strip again (#671), deployed 2026-10-01 01:1x ET
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tomllib
 
-from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
+from shengji.train.cwv_bury_policy import bury_env_recipe
 from shengji.train.cwv_shortlist import resolved_recipe, shortlist_policy_name
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
@@ -13,9 +13,13 @@ from shengji.train.cwv_shortlist import resolved_recipe, shortlist_policy_name
 # what the name shows.
 M1_PACKAGE_SHA = "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747"
 PRIOR_PACKAGE_SHA = M1_PACKAGE_SHA
+# The served pv-search package (release 36, unchanged in release 38): smv3out-491ee4bf.
+SERVED_PV_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
+RELEASE36 = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
+RELEASE38 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
 
 
-def test_fly_bury_name_matches_recipe_and_preserves_play():
+def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     config = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())
     env = config["env"]
     parsed = bury_env_recipe(env)
@@ -44,22 +48,26 @@ def test_fly_bury_name_matches_recipe_and_preserves_play():
     release28 = identity["play_policy"] + "-bury-hybrid-" + digest
     assert release28 == "mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff"
     assert env["SHENGJI_BOT"] != release28
+    from shengji.ai import cwv_policy
     from shengji.train import pv_search_policy as pv
     pv_recipe = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_")}
-    assert pv_recipe["SHENGJI_PV_CKPT"] == "/data/models/soft-8ecd4fea.npz"
-    assert len(pv_recipe["SHENGJI_PV_SHA256"]) == 64
-    play = pv.pv_policy_name(pv_recipe["SHENGJI_PV_SHA256"][:8], pv.PVSearchConfig(
-        checkpoint_sha256=pv_recipe["SHENGJI_PV_SHA256"], worlds=int(pv_recipe["SHENGJI_PV_WORLDS"]),
-        candidates=int(pv_recipe["SHENGJI_PV_CANDIDATES"]), cap=int(pv_recipe["SHENGJI_PV_CAP"]),
-        batch_size=int(pv_recipe["SHENGJI_PV_BATCH_SIZE"]),
-        serving_budget_seconds=float(pv_recipe["SHENGJI_PV_SERVING_BUDGET_SECONDS"])))
-    pv_identity = dict(schema="cwv-bury-recipe-v1", play_policy=play,
-                       checkpoint_sha256=pv_recipe["SHENGJI_PV_SHA256"], arm="hybrid",
-                       config=vars(CWVBuryConfig()), fallback="heuristic-on-error-or-budget",
-                       serving_budget_seconds=float(pv_recipe["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"]))
-    pv_digest = hashlib.sha256(json.dumps(pv_identity, sort_keys=True,
-        separators=(",", ":")).encode()).hexdigest()[:12]
-    assert env["SHENGJI_BOT"] == play + "-bury-hybrid-" + pv_digest
+    assert pv_recipe["SHENGJI_PV_CKPT"] == "/data/models/smv3out-491ee4bf.npz"
+    assert pv_recipe["SHENGJI_PV_SHA256"] == SERVED_PV_SHA
+    # Release 38 (Jerry 2026-10-03): release 36's package, search, bury and budgets with the
+    # four search rules on (combo = div + rc + tb, #676; lead anchor, #694).
+    for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR"):
+        assert pv_recipe["SHENGJI_PV_" + flag] == "1"
+    # The served name is the one the server derives from this env (pv_env_recipe ->
+    # pv_registry_entries); the package is not in the repo, so only its on-disk hash
+    # lookup is stood in by the pinned sha.
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: SERVED_PV_SHA[:8])
+    names = list(pv.pv_registry_entries(**pv.pv_env_recipe(env)))
+    assert names == [env["SHENGJI_BOT"]] == [RELEASE38]
+    # Rollback: the same env without the four rule lines registers release 36's name.
+    rollback = {k: v for k, v in env.items() if k not in (
+        "SHENGJI_PV_ADMISSION_DIVERSITY", "SHENGJI_PV_REFUSAL_CONSTRAINTS",
+        "SHENGJI_PV_TIEBREAK_POINTS", "SHENGJI_PV_LEAD_ANCHOR")}
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe(rollback))) == [RELEASE36]
     assert pv_recipe["SHENGJI_PV_BURY_ARM"] == "hybrid"
     assert env["SHENGJI_CWV_SHORTLIST_CKPT"] == env["SHENGJI_CWV_PRIOR_CKPT"] == "/data/models/js-m1-0d17fd03.npz"
     assert env["SHENGJI_CWV_PRIOR_SHA256"] == PRIOR_PACKAGE_SHA

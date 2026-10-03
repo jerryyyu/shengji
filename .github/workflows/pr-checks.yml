@@ -49,6 +49,7 @@ jobs:
           tests/test_harvest_ballot_capture.py
           tests/test_report_world_reuse.py
           tests/test_mc_benchmark_normalization.py
+          tests/test_bury_fly_config.py
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"

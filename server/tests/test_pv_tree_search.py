@@ -227,14 +227,16 @@ def test_env_parses_the_tree_recipe_and_the_classes_follow():
 
 # ------------------------------------------------------------- (b) identity
 
-@pytest.mark.parametrize("rules", [RELEASE38_RULES, {}], ids=["release38", "release36"])
+@pytest.mark.parametrize("rules", [RELEASE38_RULES, {},
+                                   {**RELEASE38_RULES, "lead_tiebreak_prior": True}],
+                         ids=["release38", "release36", "release38+lp"])
 def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
     """The differential witness: three bots per seat (mode off, sims=0, sims=64)
     with the same seed decide every state of whole deals.  sims=0: the same
     action, the same record (tree fields aside) and the same sampler stream.
     sims=64: the same PV pass (ballot, means) and ``tree_pv_action`` = the
     mode-off selection, so the tree only ever moves OFF a known PV decision."""
-    deals = range(71001, 71007) if rules else range(71001, 71004)
+    deals = range(71001, 71007) if rules == RELEASE38_RULES else range(71001, 71004)
     states = applied = changed = 0
     for deal_seed in deals:
         rnd = deal(deal_seed)
@@ -251,6 +253,7 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
             a_64 = ts64[seat].decide_play(copy.deepcopy(rnd), seat)
             r_off, r_0, r_64 = (b[seat].last_decision_record for b in (off, ts0, ts64))
             assert r_off["schema"] == r_0["schema"] == r_64["schema"] == pv.RECORD_SCHEMA
+            assert ("lead_tiebreak_leading" in r_64) == bool(rules.get("lead_tiebreak_prior"))
             assert a_0 == a_off
             assert strip(r_0) == strip(r_off)
             assert r_0["tree_skipped"] == "sims0" and r_0["tree_applied"] is False
@@ -270,7 +273,7 @@ def test_sims0_plays_the_mode_off_action_in_every_state_of_whole_deals(rules):
             applied += r_64["tree_applied"]
             changed += r_64["tree_changed_action"]
             rnd.play(seat, a_off if rng.random() < 0.7 else h.decide_play(rnd, seat))
-    assert states >= (400 if rules else 200), states
+    assert states >= (400 if rules == RELEASE38_RULES else 200), states
     assert applied > states // 10 and changed > 0     # the tree was really exercised
 
 

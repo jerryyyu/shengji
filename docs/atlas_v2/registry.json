@@ -867,6 +867,27 @@
    "takeaway": "Inconclusive: the interval spans zero and the point is below the +0.015 extension line. Not extended, not promoted; the flag stays off in production.",
    "note": "SEALED 10-03; dispatch #676 issuecomment-5970184811; readout (Codex, one pass) issuecomment-5971387823. Paired -0.007864 [-0.026617,+0.010889], SE 0.009568, MDE80 0.026806; INCONCLUSIVE (interval spans zero). Extension trigger (point > +0.015) not met: no extension, not promoted; SHENGJI_PV_LEAD_TIEBREAK_PRIOR stays off in production. Activation: A8 changed 5,940 of 184,444 candidate plays (3.22%), 12.99% of leads. Common-opponent instrument, not a direct duel. Reader sha256 e5667b81af78130591dd0520f00daa0ef04dfdb5438c4cecf551e9c9cb4ca669; result sha256 bd282bc855720c79f4d52edc3d81cf78deba5f00bc3728c601c7b8e318f13c88. Archived ~/shengji-archive/2026-09-13/readouts/v44lp-a8-lead-prior-vs-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/676#issuecomment-5971387823"
+  },
+  {
+   "id": "v45c11",
+   "date": "2026-10-03",
+   "status": "sealed",
+   "box": "Perf",
+   "title": "C11 model (more PV data) under release-38 rules",
+   "candidate": "C11 package c11out-faf37d6d (CE-selected epoch 6 of the 624k-deal C11 retrain: all PV corpora plus PVR/MC-LCB) served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury); vs release 38 as served (package smv3out-491ee4bf). The model package is the only treatment.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; exploratory",
+   "seeds": "46060910 46160910 46260910 46360910 46460910 (Perf)",
+   "confidence": 0.95,
+   "point": 0.009617,
+   "lo": -0.020626,
+   "hi": 0.03986,
+   "takeaway": "Inconclusive: the interval spans zero and the point is below the +0.015 extension line. Not extended, not promoted; release 38 keeps its model.",
+   "note": "SEALED 10-03; dispatch #663 issuecomment-5971350164; readout (Codex, one pass) issuecomment-5972721473. Paired +0.009617 [-0.020626,+0.039860], SE 0.015430, MDE80 0.043229, I2 0%; INCONCLUSIVE (interval spans zero). Extension trigger (point > +0.015) not met: no extension, not promoted. Window deltas +0.0048, +0.0356, +0.0154, +0.0115, -0.0135. Health: 735,032 expected play calls all recorded, no PV fallback; MC-LCB baseline receipts unclassified by the PV health reader (not evidence of zero MC fallback); tiebreak_abandoned missing, not zero. The retrain changes data, optimisation exposure and validation population together: no attribution to the policy head or data quality. Reader sha256 118feb2b7d65ce4bc1210d85266499feff8f50fd09595be430df36be20717586; result sha256 6138968a939b3929900cbc874a0efc04f60facf36b4187154f43babefdbd5236. Archived ~/shengji-archive/2026-09-13/readouts/v45c11-c11out-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-5972721473"
   }
  ],
  "context_screens": [

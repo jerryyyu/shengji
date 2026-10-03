@@ -705,6 +705,24 @@
    "form": "served bot",
    "instrument_kind": "windows",
    "confidence": 0.95
+  },
+  {
+   "id": "v43cla",
+   "date": "2026-10-03",
+   "status": "sealed",
+   "box": "Perf + cloud",
+   "candidate": "COMBO + LEAD-ANCHOR (v43cla): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with FOUR flags on together -- admission_diversity, refusal_constraints, tiebreak_points, lead_anchor; served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457 vs the confirmed combo (div+rc+tb) as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f",
+   "comparator": "the confirmed COMBO (div+rc+tb, combo2), NOT release 36: release 36's package with the three flags, served as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f (grouped under release 36 because the schema's vs must name a baseline release, as x36a/x36c do for their non-release controls)",
+   "vs": 36,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten fresh 520-cluster mirrored windows (five per host), 300 s cap, each arm vs the common MC-LCB control per window (not head-to-head); paired bootstrap 4000 + DL random effects; single all-ten read",
+   "seeds": "43060910..43460910 (Perf), 43560910..43960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.01056,
+   "lo": 0.00062,
+   "hi": 0.02051,
+   "note": "SEALED 10-03; predeclared #676 issuecomment-5963971098; readout (Codex) issuecomment-5965252288; reader v43cla_reader.py 7db0f635. POSITIVE: +0.010563 [+0.000619,+0.020507], SE 0.00507, MDE80 0.0142, I2 26.8%. Per-host descriptive: Perf +0.003342 [-0.008840,+0.015524], cloud +0.017243 [+0.003080,+0.031406]. Anchor replaced on 8.33% of candidate play records; tiebreak ~8.6%; diversity skipped >=1 candidate on ~31.9% of plays both arms. Lead-anchor adds on top of the combo; whole-policy ITT, no component attribution. Archived ~/shengji-archive/2026-09-13/readouts/v43cla-combo-la-vs-combo (readout.json 8abbd8e9\u2026, adjudication.json d274840d\u2026). NOT DEPLOYED; promotion is Jerry's decision."
   }
  ],
  "context_screens": [

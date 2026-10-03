@@ -147,3 +147,24 @@ def test_the_chart_and_tables_carry_one_band_per_comparator():
         assert len({(s.get("vs"), s.get("vs_group")) for s in items}) == 1, label
     bad = copy.deepcopy(reg); bad["screens"][0]["vs_group"] = " "
     assert any("vs_group" in e for e in mod.check_registry(bad))
+
+
+def test_rows_lead_with_a_short_title_and_takeaway_and_production_is_one_card():
+    """Jerry 2026-10-03: the long candidate/note text was hard to digest, and one production section is
+    enough.  Every screen leads with a short title and a one-sentence takeaway (the full record sits in a
+    closed toggle); the current release is one card and every earlier release is one line."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
+    for s in reg["screens"] + reg["context_screens"]:
+        assert mod.esc(s["title"]) in page and mod.esc(s["takeaway"]) in page, s["id"]
+        assert mod.esc(s["note"]) in page                           # the record is kept, behind the toggle
+    assert page.count("<summary>full record</summary>") == len(reg["screens"]) + len(reg["context_screens"])
+    assert page.count('<article class="card') == 1                  # one production card
+    for b in reg["baseline"]:
+        assert mod.esc(b["oneline"]) in page
+        if b["status"] != "production":
+            assert mod.esc(b["recipe"]) not in page                 # earlier releases are one line each
+    for key, lst in (("title", "screens"), ("takeaway", "screens"), ("oneline", "baseline")):
+        bad = copy.deepcopy(reg); del bad[lst][0][key]
+        assert any(key in e for e in mod.check_registry(bad)), key
+    bad = copy.deepcopy(reg); bad["screens"][0]["title"] = "x" * (mod.TITLE_MAX + 1)
+    assert any("title" in e for e in mod.check_registry(bad))

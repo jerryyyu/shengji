@@ -7,6 +7,7 @@
    "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
    "head": "8ecd4fea",
    "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026)",
+   "oneline": "New player: policy head picks 8 moves over 64 sampled worlds, value head prices them, plus value-guided bury. Beat release 28 served (+0.049) and in card play (+0.086).",
    "recipe": "policy/value search: policy head admits 8 of the legal actions over 64 sampled worlds, value head prices them, no playouts; value-guided hybrid bury on the same package; 3 s / 2 s budgets",
    "evidence": [
     {
@@ -43,6 +44,7 @@
    "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
    "head": "8ecd4fea",
    "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
+   "oneline": "Hybrid-bury fix (keeps the incumbent instead of refusing a repeat); same model. No new screen; strength evidence carries over from release 29.",
    "recipe": "release 29 + #607: the hybrid bury keeps the incumbent once instead of refusing when the generator repeats it",
    "evidence": [
     {
@@ -73,6 +75,7 @@
    "bot": "pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e",
    "head": "8ecd4fea",
    "package": "soft-8ecd4fea.npz (sha256 ccade130\u2026), unchanged",
+   "oneline": "Rooms can pick the starting level (and round 1 now deals at it); player byte-identical to release 30. No strength claim.",
    "recipe": "release 30 with NO model, package or serving change: #638 adds an optional start_level to create_room, so the room's creator picks the rank both teams begin at. The victory condition is untouched, so a higher level is simply a shorter game.",
    "evidence": [
     {
@@ -112,6 +115,7 @@
    "bot": "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
    "head": "3e89e86f",
    "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), the gen-5 SMV3 OUTCOME head; prior js-m1-0d17fd03.npz unchanged",
+   "oneline": "First model change since 30: gen-5 SMV3 outcome head in release 30's search. Beat release 30 on first read (+0.036) and on a fresh confirmation (+0.039).",
    "recipe": "release 30's search, bury, budgets and prior (W64/K8, hybrid bury, 3 s / 2 s) on the gen-5 SMV3 checkpoint: arm F's recipe with ONE change, the search-mean sidecar v3 (#658), so the auxiliary search-mean head trained on 48.85M rows instead of 24.2M and moved the shared trunk. The value function is still the game-outcome head; the search-mean head served as the value function read negative (v36b) and is not shipped. Jerry 2026-09-30: \"Let's deploy\".",
    "evidence": [
     {
@@ -158,6 +162,7 @@
    "date": "2026-09-22",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-4 run 4: soft-target head, served",
    "candidate": "gen-4 run 4 head (423836c7) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -168,6 +173,7 @@
    "lo": -0.002,
    "hi": 0.0477,
    "eta": "",
+   "takeaway": "Inconclusive over ten windows; equivalence not shown either. Further extension would be a new decision and is not queued.",
    "note": "Sealed 13:58 ET. A matched-window, COMMON-OPPONENT contrast: each served policy is screened against the same MC-LCB opponents on the same seeds and the arms are differenced, so this is a summary-level estimate, NOT a direct duel and not paired served-vs-served inference. CROSSES ZERO (lower bound -0.002): no resolved difference between run 4's head and production's in served form, and equivalence is NOT established. I2 0%, tau 0, ties 49.7% vs 50.3%. Latency, as the MEAN OF THE TEN PER-WINDOW quantiles (vol_re.py averages window quantiles; it does not pool decision samples): candidate p50 0.10 s / p95 0.16 s, control 0.10 / 0.16. The five-window interim was +0.019 [-0.017, +0.055]. A rough power projection conditional on this effect and variance puts the lower bound near zero around 24 windows total, i.e. about 14 more (~6 h of Perf); that is a projection, not guaranteed resolution, and any extension is a new decision, not queued. Archive readouts/v34r5-run4-vs-r30/ with SHA256SUMS.",
    "archive": "",
    "instrument_kind": "windows",
@@ -178,6 +184,7 @@
    "date": "2026-09-22",
    "status": "sealed",
    "box": "cloud",
+   "title": "Deeper lookahead: four extra plies, two continuations",
    "candidate": "soft head 8ecd4fea with four extra plies of lookahead, one completed trick or terminal (heuristic continuation; policy continuation with 1 world)",
    "comparator": "release-30 card-play control (frozen identifier production-pv-r29: pv-search W64/K8, 3 s budget; identical to release 30's card play since #607 changes only the hybrid bury and this harness uses shared heuristic bury)",
    "vs": 30,
@@ -185,6 +192,7 @@
    "instrument": "260 mirrored deals \u00d7 3 arms, joint bootstrap, two primaries at Bonferroni 97.5%",
    "seeds": "626710000..626710259",
    "eta": "",
+   "takeaway": "Both deeper-search variants were inconclusive with no gain shown; the policy-continuation version ran far over the 3 s move budget at p95.",
    "note": "Codex screen, launched 09:11:55 ET, sealed 12:1x ET; I reproduced the readout exactly with the pinned reader at 2a5c6983 and Codex re-verified the archived copy. Neither depth primary resolves a gain. The current-trick arm's per-deal utilities agree exactly with the production control on all 260 deals (interval [0, 0]): that is OUTCOME agreement, not proof that every decision was identical, so it bounds harness-introduced differences rather than proving none. Cost per decision against the current-trick arm: heuristic continuation 1.26x (0.217 s mean), policy continuation 17.4x (2.99 s mean, 8.10 s p95 against production's 3 s serving budget). 0 fallbacks on every arm. Archive readouts/codex-depth-screen-20260922/ with SHA256SUMS.",
    "archive": "",
    "instrument_kind": "matched-deals",
@@ -224,6 +232,7 @@
    "date": "2026-09-22",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-4 run 1: hard-target head, served",
    "candidate": "gen-4 run 1 head (HARD targets, 3f83bfb7) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -236,6 +245,7 @@
    "lo": -0.0498,
    "hi": 0.039,
    "eta": "",
+   "takeaway": "Inconclusive at five windows; point below the triage line, so not extended.",
    "note": "The contrast that isolates the TRAINING OBJECTIVE: run 1 (hard targets) and run 4 (soft targets) share the corpus, the warm start and the served form. Crosses zero, so run 1's head is not shown better or worse than production's; point -0.005 is below the +0.015 triage line so the lane stops at five windows. Read WITH run 4's +0.0228 the ordering is consistent with the soft-target story but does NOT establish it: two separate common-opponent screens at different doses, not a paired head-to-head. Archive readouts/v34r1-run1-vs-r30/."
   },
   {
@@ -243,6 +253,7 @@
    "date": "2026-09-22",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-4 run 3: grid trunk, soft targets, served",
    "candidate": "gen-4 run 3 head (GRID trunk, soft targets, warm from JS-G1; 4b829486) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -255,6 +266,7 @@
    "lo": -0.0302,
    "hi": 0.0375,
    "eta": "",
+   "takeaway": "Inconclusive at five windows and about 3x slower per move; best offline step of the generation did not show up served. Not extended.",
    "note": "Sealed 23:21 ET. Crosses zero: NO DEMONSTRATED GAIN AT THIS DOSE, and no demonstrated loss either \u2014 the interval spans zero and the read does not establish that the effect is zero. Point below the +0.015 triage line so the lane stops at five windows. A matched-window common-opponent contrast, not a direct duel. I2 0%, tau 0. COST, measured on THIS host and workload (Perf, 14 workers, screen concurrency \u2014 not production hardware and not a production serving measurement): candidate latency as the mean of the five per-window quantiles p50 0.30 s / p95 0.48 s against the control's 0.10 / 0.16, about 3x per decision, inside production's 3 s play budget. Run 3 was the largest offline step of the generation (val_ce 0.55954 vs ~0.597) and shows no demonstrated gain served; its rank regret at the selected checkpoint sat in the same flat band as runs 1 and 4 (0.0789 vs 0.0797 / 0.0800), but whether that band PREDICTS a served read is not established on three points. Archive readouts/v34r3-run3-vs-r30/."
   },
   {
@@ -262,6 +274,7 @@
    "date": "2026-09-23",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-4 run 2: deeper trunk (depth 6), served",
    "candidate": "gen-4 run 2 head (residual trunk at DEPTH 6, soft targets) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -273,6 +286,7 @@
    "point": 0.0095,
    "lo": -0.0255,
    "hi": 0.0444,
+   "takeaway": "Inconclusive at five windows, slightly slower; not extended. All four gen-4 heads now read inconclusive against release 30.",
    "note": "Sealed 09:48 ET. CROSSES ZERO: no demonstrated gain at this dose, and no demonstrated loss either \u2014 the interval spans zero and the read does not establish that the effect is zero. Point +0.0095 is below the +0.015 triage line, so the lane stops at five windows. I2 0%, tau 0, Q 0.36/4df, MDE80 +0.0500; ties 51.7% candidate vs 52.3% control. WHAT THIS LANE MEASURES: run 2's head against RELEASE 30, each against the common MC-LCB control on the same seeds. It does NOT isolate capacity. Run 2 and run 4 differ only in trunk depth as MODELS, but reading this lane beside v34r5 compares two separate common-opponent screens at different doses, not a paired run-2-vs-run-4 contrast; no such contrast exists. LATENCY, measured on this host and workload as the mean of the five per-window quantiles: candidate p50 0.1049 s / p95 0.1714 s against the control's 0.1003 / 0.1653, about 5% slower at p50 and 4% at p95. Both round to 0.10 / 0.17, which is not the same as equal. That is a far smaller cost than run 3's grid trunk at about 3x, but it is not free. With this read all four gen-4 heads have been screened served against release 30 and all four intervals cross zero. Recomputed with the pinned reader; archive readouts/v34r2-run2-vs-r30/ with SHA256SUMS."
   },
   {
@@ -280,6 +294,7 @@
    "date": "2026-09-23",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 arm A: retrained without MC-LCB data",
    "candidate": "gen-5 arm A head (the production head retrained on SHORTLIST + PV, NO MC-LCB; 9f4c9658) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -291,6 +306,7 @@
    "point": -0.0606,
    "lo": -0.0962,
    "hi": -0.025,
+   "takeaway": "Worse than release 30: dropping MC-LCB data from the corpus hurt play. Arm B (MC-LCB restored) was trained to separate the cause.",
    "note": "Sealed 21:24 ET. CLEARS ZERO, and NEGATIVE: arm A's head is WORSE than release 30 served at this dose. The first resolved served read in this series -- the four gen-4 heads all crossed zero. Every one of the five windows is negative (-0.0654, -0.0298, -0.0856, -0.0519, -0.0731), I2 0%, tau 0, Q 1.11/4df, MDE80 +0.0509; ties 51.6% candidate vs 50.2% control; latency equal only at the precision shown: the window-average quantiles are candidate p50 0.0979 s / p95 0.1588 s against the control's 0.0975 / 0.1582, so about 0.4% apart, which is not the same as equal. WHAT IT DOES AND DOES NOT SAY: arm A differs from the production head in ONE way, the corpus it was retrained on -- shortlist + PV with the MC-LCB family removed -- so on this instrument removing MC-LCB and retraining made the served player worse. It does NOT isolate whether the loss is caused by dropping MC-LCB or by adding PV, because arm A changes the corpus as a whole. Arm B, the same warm start and recipe WITH MC-LCB restored, is the contrast that separates them and is training now. A matched-window common-opponent contrast, not a direct duel. Recomputed with the pinned reader; archive readouts/v35a-gen5armA-vs-r30/ with SHA256SUMS."
   },
   {
@@ -298,6 +314,7 @@
    "date": "2026-09-24",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 arm B: retrained with MC-LCB data restored",
    "candidate": "gen-5 arm B head (the production head retrained on SHORTLIST + PV + MC-LCB, 26 corpora / 432,000 deals; c5f6ac52) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -309,6 +326,7 @@
    "point": 0.0116,
    "lo": -0.0242,
    "hi": 0.0475,
+   "takeaway": "Inconclusive; arm A's loss did not appear with MC-LCB data restored (different windows, not a clean contrast). No gain over release 30 shown.",
    "note": "Lane DONE 12:07 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35b-gen5armB-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive at this dose: arm B has NOT demonstrated a gain over release 30, and equivalence is NOT established (MDE80 +0.0512). Windows +0.0125, -0.0048, +0.0298, -0.0077, +0.0269; tau 0, Q 0.73/4df, I2 0%, RE SE 0.01829; ties 50.1% candidate vs 49.8% control. WHAT IT DOES SAY, read against v35a: arm A and arm B differ in EXACTLY ONE THING, whether the MC-LCB family is in the corpus, and arm A read -0.0606 [-0.0962, -0.0250], resolved and negative, while arm B does not. The two intervals do not overlap. Restoring MC-LCB removed arm A's loss. This is a COMMON-OPPONENT, SUMMARY-LEVEL comparison of two separate screens on DIFFERENT seed windows, not a duel between the arms, so it does not isolate the pair; the one-variable training design is what carries the inference, not the screen."
   },
   {
@@ -316,6 +334,7 @@
    "date": "2026-09-25",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 arm C: retrained on every corpus we own",
    "candidate": "gen-5 arm C head (the production head retrained on EVERY corpus we own -- shortlist + all ten PV stores + MC-LCB, 30 corpora / 496,000 deals; 1fb1a381) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -327,6 +346,7 @@
    "point": -0.0031,
    "lo": -0.0385,
    "hi": 0.0322,
+   "takeaway": "Inconclusive: training on all our data bought nothing served. Decided that more data of the same kind is not the lever.",
    "note": "Lane DONE 11:26 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35c-gen5armC-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive, and the point is very slightly NEGATIVE. Windows +0.0356, +0.0154, -0.0269, -0.0173, -0.0250; tau 0, Q 1.96/4df, I2 0%, RE SE 0.01803, MDE80 +0.0505; ties 50.2% candidate vs 50.7% control; latency p50/p95 0.10/0.16 both arms, candidate max 1.16 s against the control's 0.79 s. WHAT THIS CLOSES: arm C trains on EVERY deal we own -- 64,000 more deals and 6.9M more rows than arm B -- and buys NOTHING served. Gen 5's three served reads are now -0.0606 (arm A, resolved negative), +0.0116 (arm B, crosses zero) and -0.0031 (arm C, crosses zero). The offline holdouts said the same thing first: arm C was MIXED against arm B, not better. MORE DATA OF THE SAME KIND IS NOT THE LEVER. A matched-window common-opponent contrast, not a direct duel."
   },
   {
@@ -334,6 +354,7 @@
    "date": "2026-09-25",
    "status": "sealed",
    "box": "Cloud",
+   "title": "Exploit probe: reweight sampled worlds by self-model",
    "candidate": "exploitability probe (#625 step 4): the belief-reweighting ATTACKER -- the served release-30/31 policy with the world prior reweighted by per-decision log-likelihoods (arm identity ...-exploit-7c602a04a)",
    "comparator": "the same package with the reweighting short-circuited at floor>=1, i.e. served parity (arm identity ...-exploit-2f5e6c244)",
    "vs": 30,
@@ -345,6 +366,7 @@
    "point": -0.0069,
    "lo": -0.0248,
    "hi": 0.0109,
+   "takeaway": "Inconclusive; later judged a flawed probe (self-model, two cards of evidence), so it says nothing about exploitability or any bound.",
    "note": "METHOD CORRECTION (Jerry 09-26, 'it doesn't make sense MC-LCB is not exploitable' -- he was right): this run does NOT bear on MC-LCB's exploitability. The attacker's belief model is a SELF-model -- P(opponent played X | world) is scored with the attacker's OWN policy head, so it never models MC-LCB or any specific opponent -- and it conditions only on the opposing team's plays in the CURRENT trick (at most two cards), discarding all prior tricks. Mechanical diagnostic on 6 self-play deals / 163 evidence-bearing decisions (Mini, not the screen; indicative only): the world weights do move (effective-sample-size ratio median 0.63, p10 0.30) but change the chosen action in only 8.6% of decisions. So the null is explained by a wrong opponent model, two cards of evidence and a ~50% tie rate -- not by MC-LCB being robust. The interval stands as a number; read 'this attack' as 'a self-model on two cards'. Whether MC-LCB, or anything, is exploitable by an attacker that models its opponent and uses the history is UNTESTED. THE PARTY EXPLOITED IS mc-s0-report-lcb, NOT the current served policy: the harness passes --baseline production and that name resolves to the release-28-era W32 play policy, two releases stale. So this reads as 'belief reweighting does not help a PV searcher beat MC-LCB more than a plain PV searcher does', and says nothing about how exploitable release 30/31 is as an opponent. The contrast is still valid -- both arms face the identical baseline. CROSSES ZERO -- inconclusive as to direction; the point estimate is NOT a finding that the attacker is worse. What this establishes is the UPPER BOUND the probe was designed for: any gain from this attack is at most +0.0109 per-round signed level utility at 95%, against a typical per-round utility of +0.13 to +0.19. MDE80 landed at 0.0255 against the pre-registered 0.0255, so the variance model was right; tau 0, I2 0.0%, Q 14.11/19df. All 40 windows complete, 0 refused, arm identities confirmed distinct. COST: attacker decision latency p95 0.80 s vs control 0.15 s (max 2.13 vs 1.02) for no detected gain. Tie rate 49.5% vs 50.0% -- close, but these are rounded means and are not being called identical. This bounds THIS attacker, not exploitability in general. Recomputed with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/x36a-exploit-vs-control/ with SHA256SUMS."
   },
   {
@@ -352,6 +374,7 @@
    "date": "2026-09-26",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 arm D: arm C data, warm start from gen-4 run 4",
    "candidate": "gen-5 arm D head (arm C's corpus exactly, warm-started from gen-4 run 4 423836c7 instead of the production head; 759c1bdd) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -363,6 +386,7 @@
    "point": -0.0183,
    "lo": -0.053,
    "hi": 0.0164,
+   "takeaway": "Inconclusive, leaning negative; not extended. Neither more data nor a better warm start is the lever.",
    "note": "Lane DONE 12:50 ET; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35d-armD-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive, point NEGATIVE, four of five windows negative. Windows -0.0202, -0.0269, +0.0019, -0.0154, -0.0279; tau 0, Q 0.35/4df, I2 0%, RE SE 0.01770, MDE80 +0.0496; ties 51.1% candidate vs 53.0% control; latency p50/p95 0.10/0.16 both arms, candidate max 0.51 s vs the control's 1.39 s. Five-window triage: point below +0.015, no extension. WHAT THIS CLOSES: the warm start from our best gen-4 head, on the same 496k-deal corpus as arm C, bought nothing served either -- and the offline holdouts (lower rank_regret on two of four vs arm C) did not predict it, the same failure of the offline metric seen through gen 4. Gen 5's four served reads: -0.0606 (A, resolved negative), +0.0116 (B), -0.0031 (C), -0.0183 (D), the last three crossing zero. NEITHER MORE DATA NOR A BETTER WARM START IS THE LEVER. The lane's names carry a g5c prefix while loading gen5d-3566db7e.npz (a label slip in the launcher; the config.json records the package). A matched-window common-opponent contrast, not a direct duel."
   },
   {
@@ -370,6 +394,7 @@
    "date": "2026-09-27",
    "status": "sealed",
    "box": "cloud",
+   "title": "Exploit probe positive control: reweight vs SmartBot",
    "candidate": "the exploitability ATTACKER (production package soft-8ecd4fea as pv-search W64/K8 + hybrid bury, belief floor 0.0: the same 64 sampled worlds reweighted by the TRUE opponent model's likelihood of every observed play in the round -- opponent = SmartBot, scope round, K=1, eps 0.1)",
    "comparator": "the CONTROL: the same class, package and recipe with belief floor 1.0 (uniform weights = serving's own reducer), both arms playing SmartBot as the exploited party",
    "vs": 30,
@@ -381,6 +406,7 @@
    "point": -0.249,
    "lo": -0.2734,
    "hi": -0.2246,
+   "takeaway": "Clearly worse: reweighting collapses onto a few wrong worlds, so the probe is harmful. Exploit lanes are off until it is rebuilt.",
    "note": "THE POSITIVE CONTROL for #625, pre-registered before launch (opponent = opponent model = smart, scope round, K=1, eps 0.1; 10 interleaved windows x 520 mirrored clusters; one variance-only look at five pairs). Lane DONE 00:46 ET 09-27, 10/10 pairs, zero decision timeouts; recomputed with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/x36c-smart-positive-control with SHA256SUMS. CLEARS ZERO, NEGATIVE: the attacker is a quarter of a level per round WORSE than the control against the weakest registry policy -- ten of ten windows negative (-0.20..-0.28), tau 0, Q 3.96/9df, I2 0%, RE SE 0.01245, MDE80 0.0349; per-round means vs SmartBot control +0.55..+0.62, attacker +0.30..+0.38; ties 46.1% attacker vs 34.9% control; attacker latency p50 1.07 s / p95 3.05 s vs control 0.09 / 0.15. WHAT IT MEANS: the instrument is HARMFUL, not weak. Reweighting a fixed 64 worlds by a deterministic opponent's eps-smoothed likelihood over ~20 observed plays collapses the posterior onto ~3 worlds (ESS ratio median 0.048 in the #647 smoke) that mismatched least -- confident and wrong -- and the value head then scores over three noisy worlds. NOTHING about SmartBot's or MC-LCB's exploitability follows; x36a's null was a milder dose of the same instrument and is no longer readable as a bound. A working instrument needs evidence-conditioned SAMPLING (keep N surviving worlds) or a tempered, ESS-floored likelihood that refuses to reweight below the floor, validated on the smoke (ESS >= ~0.5 and a head-alone win vs SmartBot) before any lane. mc-lite / production / shortlist runs are OFF until then. Both arms are the same class over the same package; this is a same-window paired contrast of the belief floor, not a strength screen."
   },
   {
@@ -388,6 +414,7 @@
    "date": "2026-09-27",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 arm F: policy targets fixed (units bug)",
    "candidate": "gen-5 arm F head (arm C's corpus, recipe, warm start and seed with ONE variable changed -- the policy targets, re-extracted with the #650 units fix; e2645ec2) served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -399,6 +426,7 @@
    "point": 0.0098,
    "lo": -0.025,
    "hi": 0.0445,
+   "takeaway": "Inconclusive; no sign the target fix changed served strength either way. Not extended.",
    "note": "Lane DONE 20:24 ET 09-27; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v35f-armF-vs-r30 with SHA256SUMS. CROSSES ZERO -- inconclusive. Windows +0.0260, -0.0038, +0.0144, -0.0385, +0.0481; tau 0, Q 2.75/4df, I2 0%, RE SE 0.01772, MDE80 +0.0496; ties 51.4% candidate vs 50.4% control; latency p50/p95 0.10/0.16 on both arms. Five-window triage: point below +0.015, no extension. WHAT THIS CLOSES: #649 found that the 16 pv-search corpora had taught the policy head a UNIFORM target (half-level means under a points-calibrated temperature; 32% of arm C's policy rows); #650 fixed the extract and arm F retrained arm C's exact recipe on the fixed rows. Offline the four holdouts were mixed (three slightly worse, one better) and served the read sits on top of arm C's (v35c -0.0031 [-0.0385, +0.0322]) -- no evidence the fix changed strength in either direction. The served search uses the policy head only to ADMIT candidates (anchor + top-7; matters on 33-42% of decisions) and the value head decides, so a better admission prior has a bounded lever this screen cannot resolve. Gen 5's five served reads: A -0.0606 (negative), B +0.0116, C -0.0031, D -0.0183, F +0.0098. A matched-window common-opponent contrast, not a direct duel."
   },
   {
@@ -406,6 +434,7 @@
    "date": "2026-09-29",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 SMV3: bigger search-mean side data, outcome head",
    "candidate": "gen-5 SMV3 OUTCOME head (3e89e86f; arm F's recipe with ONE variable changed -- the search-mean head's sidecar, v3) exported as smv3out-491ee4bf.npz and served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -417,6 +446,7 @@
    "point": 0.0361,
    "lo": 0.0015,
    "hi": 0.0707,
+   "takeaway": "Positive on first read (exploratory). A predeclared fresh five-window confirmation (v36a2) was armed before acting on it.",
    "note": "Lane DONE 23:06 ET 09-29; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36a-smv3out-vs-r30 with SHA256SUMS. CLEARS ZERO on five windows, lower bound 0.0015. Windows +0.0490, +0.0606, +0.0183, +0.0394, +0.0135 (5/5 positive); tau 0, Q 1.03/4df, I2 0%, RE SE 0.01766, MDE80 +0.0494; ties 50.6% candidate vs 50.7% control; latency p50/p95 0.10/0.16 on both arms. Tree 9ec54528 on both arms (the release-30 tree refuses the post-#621 identity the SMV3 package carries; 9ec54528 serves production's package through the #634 allowance, as CI proves). EXPLORATORY TRIAGE, NOT CONFIRMATION (Codex, #663): point above +0.015, so a PREDECLARED fresh five-window confirmation (v36a2, seeds 33660910..34060910, same package/recipe/tree) was armed before acting on this read; the read of record is the ten-window RE estimate, and the effect worth acting on is a lower bound above zero at ten windows. Package-level evidence, each arm vs the common control on its own windows, not a paired duel. The first gen-5-era package to clear zero; every earlier arm (A -0.0606, B +0.0116, C -0.0031, D -0.0183, F +0.0098) did not or cleared negative."
   },
   {
@@ -424,6 +454,7 @@
    "date": "2026-09-29",
    "status": "sealed",
    "box": "cloud",
+   "title": "Gen-5 SMV3: search-mean head used as the value function",
    "candidate": "gen-5 SMV3 SEARCH-MEAN head (3e89e86f; the auxiliary head trained on the search's own value of the played action, sidecar v3) exported as smv3sm-d05b8bc5.npz and served as pv-search W64/K8 + hybrid bury -- the first time the search-mean head was ever served",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -435,6 +466,7 @@
    "point": -0.0523,
    "lo": -0.0905,
    "hi": -0.014,
+   "takeaway": "Worse than release 30: the search-mean head is a worse value function than the outcome head. Not extended, not shipped.",
    "note": "Lane DONE 23:13 ET 09-29; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36b-smv3sm-vs-r30 with SHA256SUMS. CLEARS ZERO, NEGATIVE, 5/5 windows negative: -0.0115, -0.0481, -0.0750, -0.1135, -0.0125; tau 0.020, Q 5.02/4df, I2 20%, RE SE 0.01952, MDE80 +0.0547; ties 53.2% candidate vs 52.2% control; latency p50/p95 0.09/0.16 vs 0.09/0.17. No extension. WHAT THIS SETTLES: the search-mean head as trained here (target = the search's value of the PLAYED action only, ramp(E[points]) on rollout rows and the pv-search bootstrap level directly on pv rows) is a WORSE served value function than the outcome head trained on the realised result, at this MDE. It does not settle the all-candidate target (#663 step 4), which needs its own input/target contract first. Package-level evidence vs the common control on its own windows, not a paired duel, and not the same windows as v36a."
   },
   {
@@ -442,6 +474,7 @@
    "date": "2026-09-30",
    "status": "sealed",
    "box": "Perf",
+   "title": "Gen-5 SMV3 outcome head: fresh confirmation",
    "candidate": "gen-5 SMV3 OUTCOME head (3e89e86f) as smv3out-491ee4bf.npz served as pv-search W64/K8 + hybrid bury -- the PREDECLARED fresh confirmation of v36a, same package/recipe/tree",
    "comparator": "release 30 as served",
    "vs": 30,
@@ -453,6 +486,7 @@
    "point": 0.0393,
    "lo": 0.0033,
    "hi": 0.0752,
+   "takeaway": "Confirmed positive on the predeclared fresh read; the gain's size is uncertain. Deployed as release 36.",
    "note": "CONFIRMATION READ OF RECORD (v36a2 alone; predeclared on #663 before v36a was acted on, and revised on Codex's point that a pooled interval would inherit v36a's positive-screen selection). Lane DONE 01:52 ET 09-30; recomputed from the sealed summaries with fl-pilot/vol_re.py and archived at ~/shengji-archive/2026-09-13/readouts/v36a2-smv3out-vs-r30-confirmation with SHA256SUMS. CLEARS ZERO on five NEW windows: +0.0192, +0.0317, +0.0250, +0.0096, +0.1115 (5/5 positive); tau 0.0086, Q 4.18/4df, I2 4%, RE SE 0.01836, MDE80 +0.0514; ties 49.1% candidate vs 50.4% control; latency p50/p95 0.10/0.16 on both arms. Descriptive only: pooled ten windows v36a + v36a2 +0.0377 [+0.0130, +0.0623], tau 0, all ten positive. WHAT THIS ESTABLISHES: the first retrain since gen 3 to clear zero as served AND survive an independent predeclared confirmation, at ~0.03-0.04 of a level per round against the common control. Package-level, common-control evidence, not a paired duel; the sign is established, the size is uncertain at this MDE. The one variable vs arm F is the search-mean auxiliary head's data (sidecar v3), so the gain came through the shared trunk; the mechanism is not identified (#663 steps 1 and 3). Deploy candidate for the standard pre-deploy gate as release 36; Jerry's call."
   },
   {
@@ -460,6 +494,7 @@
    "date": "2026-09-30",
    "status": "sealed",
    "box": "Perf",
+   "title": "New policy head for the shortlist only, old value head",
    "candidate": "POLICY-ONLY arms: production's value package (soft-8ecd4fea) under the served W64/K8 hybrid-bury recipe with a SEPARATE hash-pinned prior package as the admission head (#664): the gen-5 arm F head (101017ee) and the SMV3 head (491ee4bf)",
    "comparator": "release 30 as served (own head as prior)",
    "vs": 30,
@@ -488,6 +523,7 @@
      "hi": 0.0457
     }
    ],
+   "takeaway": "Both arms inconclusive: swapping only the shortlist head showed no served change, consistent with (not proof that) the value head carries the gain.",
    "note": "SEALED 13:59 ET 09-30, recomputed with vol_re.py, archived at ~/shengji-archive/2026-09-13/readouts/v36c-policyonly-vs-r30 with SHA256SUMS. Both contrasts CROSS ZERO (tau 0, MDE80 0.049): arm-F prior windows -0.0010/+0.0385/-0.0221/+0.0260/-0.0260; SMV3 prior +0.0231/+0.0010/+0.0000/+0.0346/-0.0010. Swapping ONLY the admission head under production's value evaluator produced no detectable served change for heads that beat the production head +0.17 / +0.21 in the bare duel, while the whole SMV3 package read +0.0393 confirmed (v36a2): consistent with the value evaluator carrying the gain, NOT established: the SMV3-prior interval includes +0.04, the arm-F-prior interval's upper bound (+0.0359) sits below it, so an admission effect the size of the package gain is excluded for arm F's head and not for SMV3's (corrected 18:2x ET, Codex bus 2172). Predeclared vs release 30 before the release-36 deploy; the adopted plan's direct duel vs pinned production W64 was not run (Codex; recorded on #663)."
   },
   {
@@ -495,6 +531,7 @@
    "date": "2026-10-01",
    "status": "sealed",
    "box": "cloud",
+   "title": "Search-mean head weight 3.0 (vs 1.0)",
    "candidate": "gen-5 SMV3-AW3r2 OUTCOME head (b0bdf33d; SMV3's recipe with ONE variable changed -- search-head weight 3.0) exported as aw3r2out-46b0ac9c.npz and served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -506,6 +543,7 @@
    "point": -0.0033,
    "lo": -0.0383,
    "hi": 0.0316,
+   "takeaway": "Inconclusive at five windows; point below the triage line, so not extended. First screen against release 36.",
    "note": "SEALED 02:44 ET 10-01; recomputed with vol_re.py, archived at ~/shengji-archive/2026-09-13/readouts/v37a-aw3r2out-vs-r36 with SHA256SUMS. CROSSES ZERO (tau 0, MDE80 0.050); ties 50.3% vs 50.8%; latency p50/p95 0.09/0.16 s both arms. Five-window triage, point below the extension threshold: no extension. The search-mean head's weight (3.0 vs SMV3's 1.0) shows no served effect at this resolution; not shown to be zero. The first screen against release 36."
   },
   {
@@ -513,6 +551,7 @@
    "date": "2026-10-01",
    "status": "sealed",
    "box": "Perf",
+   "title": "Shortlist diversity rule",
    "candidate": "admission DIVERSITY rule (-div): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admission_diversity on",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -524,6 +563,7 @@
    "point": 0.02324,
    "lo": -0.00055,
    "hi": 0.04704,
+   "takeaway": "Inconclusive, but point cleared triage so a fresh confirmation ran; that confirmation (v38divc) failed. Not promoted.",
    "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944007948): the legacy Perf vol_re.py rejected valid cross-mirror banker/suit differences, so pairing was rebuilt on planned (cluster, seed, rank) with both mirrors, the original window_delta (4,000 bootstrap replicates) and DL pooling unchanged; 2,600 paired clusters, none dropped. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-vs-r36 with SHA256SUMS. CROSSES ZERO (SE 0.01214, tau 0, MDE80 0.034); all five window points positive (+0.029/+0.026/+0.038/+0.006/+0.019). Point CLEARED the +0.015 triage, but the fresh-five confirmation did NOT confirm (see v38divc: +0.0157 [-0.0282, +0.0596], 10-02). Not a validated gain; no promotion; mechanism unverified."
   },
   {
@@ -531,6 +571,7 @@
    "date": "2026-10-01",
    "status": "sealed",
    "box": "cloud",
+   "title": "Always admit a forced single into the search",
    "candidate": "FORCED-SINGLE admission (-fs): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admit_forced_single on",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -542,6 +583,7 @@
    "point": 0.00238,
    "lo": -0.00236,
    "hi": 0.00712,
+   "takeaway": "Inconclusive at five windows; below the triage line, so not extended.",
    "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944236034; legacy vol_re.py rejected valid cross-mirror banker/suit differences; numerical window_delta and DL unchanged); 2,600 paired clusters, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38fs-vs-r36 with SHA256SUMS. INCONCLUSIVE: crosses zero (MDE80 0.0068); windows +0.010/-0.003/+0.009/+0.001/-0.002. Below the +0.015 triage: no extension. Does not show the forced fallback was already correctly priced."
   },
   {
@@ -549,6 +591,7 @@
    "date": "2026-10-01",
    "status": "sealed",
    "box": "Perf",
+   "title": "Refusal-aware world sampling",
    "candidate": "REFUSAL-AWARE world sampling (-rc): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- refusal_constraints on",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -560,6 +603,7 @@
    "point": 0.01684,
    "lo": -0.0006,
    "hi": 0.03428,
+   "takeaway": "Inconclusive; the point cleared triage, but the fresh five-window confirmation did not confirm it. Not promoted on its own.",
    "note": "SEALED 10-01; analyzer of record is Codex's reviewed extraction correction (#676 issuecomment-5944236034; legacy vol_re.py rejected valid cross-mirror banker/suit differences; numerical window_delta and DL unchanged); 2,600 paired clusters, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38rc-vs-r36 with SHA256SUMS. CROSSES ZERO (MDE80 0.025); windows +0.048/-0.001/+0.002/+0.023/+0.011. Point CLEARS the +0.015 triage: fresh-five confirmation running. Telemetry: 184,366/184,366 valid refusal traces, 2,935 decisions rejected a world, 0 refill fallbacks; decision wall 1.017x production. Not a validated gain; no promotion."
   },
   {
@@ -567,6 +611,7 @@
    "date": "2026-10-02",
    "status": "sealed",
    "box": "Perf",
+   "title": "Shortlist diversity rule: fresh confirmation",
    "candidate": "admission DIVERSITY rule (-div), FRESH-FIVE CONFIRMATION of v38div: release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE flag changed -- admission_diversity on",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -578,6 +623,7 @@
    "point": 0.01568,
    "lo": -0.02822,
    "hi": 0.05959,
+   "takeaway": "Inconclusive and noisy: the predeclared confirmation did not confirm v38div's first read. Not promoted.",
    "note": "SEALED 10-02; Codex's reviewed launcher (tree c8704a08) and analyzer of record (#676 issuecomment-5946020810): paired bootstrap (4,000 replicates) + DL, fresh-only primary, predeclared criterion CI lower bound > 0. 2,600 paired clusters, none dropped; integrity/coverage PASS, zero PV play fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/v38div-confirm-vs-r36 with SHA256SUMS. UNCONFIRMED: crosses zero (SE 0.0224, tau 0.0417, I2 69.6%); windows -0.059/+0.024/+0.075/+0.038/+0.004. Does not establish harm or equivalence. v38div's +0.023 is not confirmed; no promotion."
   },
   {
@@ -585,6 +631,7 @@
    "date": "2026-10-02",
    "status": "sealed",
    "box": "cloud",
+   "title": "Tie-break near-equal moves by trick points",
    "candidate": "TIE-BREAK by trick points (-tb): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with ONE change -- near-tie value argmax broken by trick points (tree claude-main-19 at 7059f7c2)",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -596,6 +643,7 @@
    "point": 0.00986,
    "lo": -0.02529,
    "hi": 0.04501,
+   "takeaway": "Inconclusive at five windows though the rule changed about one move in eleven; below triage, not extended, not promoted.",
    "note": "SEALED 10-02; analyzer of record is Codex's reviewed one-pass readout (#676 issuecomment-5946487630): declared vol_re.py summary-level primary, DL over all five windows (SE 0.0179, tau 0, I2 0%, MDE80 ~0.050); 2,600 clusters per policy, none excluded. Archived at ~/shengji-archive/2026-09-13/readouts/v38tb-vs-r36 with SHA256SUMS. INCONCLUSIVE: crosses zero; windows -0.003/+0.008/+0.022/+0.006/+0.016. Below the +0.015 triage: no extension. Mechanism active: tie-break changed the argmax on 16,257/183,216 PV play decisions (8.87%); no recorded fallback, tie-break budget abandonment or timeout. Not a validated gain; no promotion."
   },
   {
@@ -603,6 +651,7 @@
    "date": "2026-10-01",
    "status": "sealed",
    "box": "cloud",
+   "title": "Gen-5 SMV3 with policy-batch fraction 1.0",
    "candidate": "gen-5 SMV3-PBF1 OUTCOME head (218bcf5c; SMV3's recipe with ONE variable changed -- policy-batch-fraction 1.0) exported as pbf1out-dde17c0c.npz and served as pv-search W64/K8 + hybrid bury",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -614,6 +663,7 @@
    "point": -0.0525,
    "lo": -0.0878,
    "hi": -0.0171,
+   "takeaway": "Worse served even though its head is stronger alone: a head-to-served transfer failure. Do not promote.",
    "note": "SEALED 22:58Z 10-01 (rc=0 all ten arm-windows); analyzer of record Codex's isolated readout with the original vol_re.py (#663 issuecomment-5942352095); 2,600 paired clusters. Archived at ~/shengji-archive/2026-09-13/readouts/v39a-pbf1out-vs-r36 with SHA256SUMS. NEGATIVE: the interval excludes zero below it (SE 0.018, tau 0, I2 0%, MDE80 0.0505); every window negative (-0.039/-0.039/-0.081/-0.064/-0.038); supplementary paired bootstrap -0.0525 [-0.0829,-0.0223]. PBF1's head is better ALONE (+0.238 vs the production head) yet worse SERVED: a head-only-to-served transfer failure, not proof admission alone caused it. Do not promote."
   },
   {
@@ -621,6 +671,7 @@
    "date": "2026-10-02",
    "status": "sealed",
    "box": "Perf + cloud",
+   "title": "Combo: diversity + refusal sampling + tie-break",
    "candidate": "COMBINED rules div + rc + tb: release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with THREE flags on together -- admission_diversity, refusal_constraints, tiebreak_points (Perf tree a94ae3bb, cloud tree 7059f7c2)",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -632,6 +683,7 @@
    "point": 0.01751,
    "lo": -0.00202,
    "hi": 0.03704,
+   "takeaway": "Inconclusive over ten windows; cannot attribute among the three rules. Not promoted; a confirmatory rerun (combo2) followed.",
    "note": "SEALED 15:09Z 10-02 (both lanes LANE DONE); analyzer of record Codex's reviewed adapter read_combo_numeric.py 211e1e35 (the 7f8c0a1e adapter refused pre-raw on an int/float type-only binding difference at 2/3/300; disclosed numeric correction pinned before the raw pass, #676 issuecomment-5959215812); readout #676 issuecomment-5959262090, result abaf0008. Paired bootstrap (4,000 replicates, seed 20260909) + DL; 5,200 paired clusters, none dropped; integrity/coverage/PV health PASS, zero PV fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/combo-drt-vs-r36 with SHA256SUMS. UNCONFIRMED: crosses zero (SE 0.00996, tau 0, I2 0%); host halves (descriptive) Perf +0.0131 [-0.0144,+0.0406], cloud +0.0220 [-0.0057,+0.0497]. Tie-break applied on 8.65% of candidate decisions; diversity activation unobservable (diversity_skipped absent), not zero. Cannot attribute among the three rules or show additivity; no promotion."
   },
   {
@@ -639,6 +691,7 @@
    "date": "2026-10-02",
    "status": "sealed",
    "box": "cloud",
+   "title": "Gen-5 SMV3 plus extra rollout value labels",
    "candidate": "gen-5 SMV3-SL4 OUTCOME head (3a4e3d70; SMV3's recipe + runSL1..4 rollout value labels, 560k) exported as sl4out-b85eda44.npz and served as pv-search W64/K8 + hybrid bury (tree claude-main-19 at 7059f7c2)",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -650,6 +703,7 @@
    "point": -0.01621,
    "lo": -0.05996,
    "hi": 0.02754,
+   "takeaway": "Inconclusive and noisy at five windows; below triage, so not extended and not promoted.",
    "note": "SEALED 18:12Z 10-02; Claude readout at Jerry's request (#663 issuecomment-5959375120; Codex cross-check pending): the diversity-confirmation reader 27e65b64 instantiated for v40a (c3aae55e; package identity is the treatment), primary vol_re.py ce161623 (4,000 replicates + DL); predeclared fl-pilot vol_re.py f1f36583 recompute -0.0155 [-0.0592,+0.0282] agrees. 2,600 paired clusters, none dropped; integrity/coverage PASS, zero PV/bury fallbacks, zero outer timeouts. Archived at ~/shengji-archive/2026-09-13/readouts/v40a-sl4out-vs-r36 with SHA256SUMS + receipt.json. INCONCLUSIVE: crosses zero (SE 0.0223, tau 0.036, I2 51.7%, MDE80 0.063); windows -0.041/+0.056/-0.073/+0.013/-0.033. Below the +0.015 triage: no extension; a five-window null is 'not large', not 'no effect'. No promotion."
   },
   {
@@ -657,6 +711,7 @@
    "date": "2026-10-02",
    "status": "sealed",
    "box": "Perf + cloud",
+   "title": "Combo: diversity + refusal sampling + tie-break, confirm",
    "candidate": "COMBINED rules div + rc + tb, CONFIRMATORY (combo2): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with THREE flags on together -- admission_diversity, refusal_constraints, tiebreak_points; served as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f vs release 36 as pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
    "comparator": "release 36 as served",
    "vs": 36,
@@ -668,17 +723,20 @@
    "point": 0.04614,
    "lo": 0.02422,
    "hi": 0.06806,
+   "takeaway": "Confirmed positive on ten new predeclared windows, for the combined policy only (not each rule). Promotion approved 10-03: release 38, pending deploy.",
    "note": "SEALED 10-02; readout #676 issuecomment-5962364713 (predeclaration amendment 2 issuecomment-5959843839; dispatch digests issuecomment-5960216622); reader combo20_reader_v2.py 2012ce64. CONFIRMED POSITIVE on the new ten windows alone: +0.046136 [+0.024216,+0.068056] (DL tau 0.015019, I2 18.04%); 5,200 paired deal clusters. First ten (v38drt) reproduced: +0.017513 [-0.002016,+0.037043]. Pooled twenty is DESCRIPTIVE ONLY: +0.031435 [+0.017519,+0.045350] (97.5% [+0.015521,+0.047348]). Tie-break applied on 8.71% of candidate PV plays; diversity activation unobservable, not zero. Confirms the COMBINED policy, not any individual rule or additivity. Archived at ~/shengji-archive/2026-09-13/readouts/combo2-drt-vs-r36 (combo20-numeric-result.json sha256 3a2cb85505cc34a339b33b5e4f13f02fdd2866df4032584936d6ef80d42a7b9d; transfer-receipt.json sha256 12845763cddd008868e1b89bcf959fddba6ee8db654a722e0c5d3321e2b174cb). NOT DEPLOYED; promotion is Jerry's decision."
   },
   {
    "id": "v42la",
    "box": "Perf",
+   "title": "Lead-anchor: swap a weak low-single anchor lead",
    "candidate": "LEAD-ANCHOR rule (#694 fbc58dea; tree 1517b909): release 36's package exactly + SHENGJI_PV_LEAD_ANCHOR=1, served as pv-search-491ee4bf-w64-k8-la-rdfb624a0-bury-hybrid-74e6f9723892 vs release 36 as pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
    "instrument": "five 520-cluster mirrored windows (step 100000), 300 s cap, each arm vs the common MC-LCB control per window (not head-to-head); paired bootstrap + DL random effects, primary vol_re.py ce161623",
    "seeds": "42560910..42960910 (Perf)",
    "point": 0.01377,
    "lo": 0.00129,
    "hi": 0.02625,
+   "takeaway": "Small gain on first read, but below the extension triage line: not extended, not a confirmation, not promoted.",
    "note": "SEALED (LANE DONE 00:40:34Z 10-03); predeclared #676 issuecomment-5960868433; reader pin issuecomment-5963742101 (adapter 219c5d2d); Codex sealed one-pass read + adjudication issuecomment-5963796858: health/provenance/independent review PASS. Paired +0.013771 [+0.001295,+0.026248] (SE 0.00637, tau 0, I2 0, MDE80 ~0.018). Small positive five-window SCREEN, below the predeclared >+0.015 extension triage: no extension, not a confirmation, no promotion. Common-opponent instrument, not direct H2H; no tactical-specific improvement established. Archived at ~/shengji-archive/2026-09-13/readouts/v42la-lead-anchor-vs-r36 (numeric-result.json sha256 27e0350469ada53b5defa4c1cb2a1899f97731f06fb2b0362ef8832e890a4a3a).",
    "date": "2026-10-02",
    "status": "sealed",
@@ -691,12 +749,14 @@
   {
    "id": "v41ak",
    "box": "cloud",
+   "title": "Adaptive search width: 16 moves on multi-card leads",
    "candidate": "ADAPTIVE K (16 on multi-card leads; #687 34389abe; tree a1033571): release 36's package exactly + SHENGJI_PV_ADAPTIVE_K=1, served as pv-search-491ee4bf-w64-k8-ak16-ra57a8dda-bury-hybrid-7a4e42e75337 vs release 36 as pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25",
    "instrument": "five 520-cluster mirrored windows (step 100000), 300 s cap, each arm vs the common MC-LCB control per window (not head-to-head); paired bootstrap + DL random effects, primary vol_re.py ce161623",
    "seeds": "42060910..42460910 (cloud)",
    "point": -0.00607,
    "lo": -0.03026,
    "hi": 0.01813,
+   "takeaway": "Inconclusive at five windows; a worthwhile gain is not ruled out. Below triage: not extended, not promoted.",
    "note": "SEALED (LANE DONE 00:43:06Z 10-03); predeclared #676 issuecomment-5959825984; reader pin issuecomment-5963789382 (adapter 017e7fa1); Codex sealed one-pass read + adjudication issuecomment-5963808991: health CLEAN, provenance/independent review PASS; adaptive K applied on 22.59% of eligible decisions. Paired -0.006065 [-0.030261,+0.018131] (SE 0.01234, tau 0, I2 0, MDE80 ~0.035). INCONCLUSIVE: crosses zero; upper bound does not exclude a worthwhile +0.015 benefit, so not evidence of no effect. Below the >+0.015 triage: no extension, no promotion. Archived at ~/shengji-archive/2026-09-13/readouts/v41ak-adaptive-k-vs-r36 (numeric-result.json sha256 6243d314d20abb963d19e99e5a603658eaaea058103203b3f38e8f7e877754e7).",
    "date": "2026-10-02",
    "status": "sealed",
@@ -711,6 +771,7 @@
    "date": "2026-10-03",
    "status": "sealed",
    "box": "Perf + cloud",
+   "title": "Lead-anchor added on top of the confirmed combo",
    "candidate": "COMBO + LEAD-ANCHOR (v43cla): release 36's package exactly (smv3out-491ee4bf, pv-search W64/K8 + hybrid bury) with FOUR flags on together -- admission_diversity, refusal_constraints, tiebreak_points, lead_anchor; served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457 vs the confirmed combo (div+rc+tb) as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f",
    "comparator": "the confirmed COMBO (div+rc+tb, combo2), NOT release 36: release 36's package with the three flags, served as pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f (grouped under release 36 because the schema's vs must name a baseline release, as x36a/x36c do for their non-release controls)",
    "vs": 36,
@@ -723,6 +784,7 @@
    "point": 0.01056,
    "lo": 0.00062,
    "hi": 0.02051,
+   "takeaway": "Positive on its predeclared ten-window read against the combo: lead-anchor adds a little on top. Ships with the combo in release 38 (pending).",
    "note": "SEALED 10-03; predeclared #676 issuecomment-5963971098; readout (Codex) issuecomment-5965252288; reader v43cla_reader.py 7db0f635. POSITIVE: +0.010563 [+0.000619,+0.020507], SE 0.00507, MDE80 0.0142, I2 26.8%. Per-host descriptive: Perf +0.003342 [-0.008840,+0.015524], cloud +0.017243 [+0.003080,+0.031406]. Anchor replaced on 8.33% of candidate play records; tiebreak ~8.6%; diversity skipped >=1 candidate on ~31.9% of plays both arms. Lead-anchor adds on top of the combo; whole-policy ITT, no component attribution. Archived ~/shengji-archive/2026-09-13/readouts/v43cla-combo-la-vs-combo (readout.json 8abbd8e9\u2026, adjudication.json d274840d\u2026). NOT DEPLOYED; promotion is Jerry's decision."
   }
  ],
@@ -731,6 +793,7 @@
    "id": "v34r4",
    "date": "2026-09-22",
    "status": "sealed",
+   "title": "Gen-4 run 4 head served, vs release 28",
    "candidate": "gen-4 run 4 head served (release-29 form)",
    "comparator": "release 28 as served",
    "form": "served bot",
@@ -738,6 +801,7 @@
    "point": 0.042,
    "lo": 0.015,
    "hi": 0.068,
+   "takeaway": "Positive against the old release-28 production; context only, not a contrast with release 29.",
    "note": "beats the OLD production; not a contrast with release 29",
    "ref": "row 55",
    "instrument_kind": "windows",
@@ -747,6 +811,7 @@
    "id": "v34pv",
    "date": "2026-09-22",
    "status": "sealed",
+   "title": "Release-29 search candidate, vs release 28",
    "candidate": "release-29 candidate served",
    "comparator": "release 28 as served",
    "form": "served bot",
@@ -754,6 +819,7 @@
    "point": 0.049,
    "lo": 0.003,
    "hi": 0.095,
+   "takeaway": "Positive against release 28: the release gate read that led to deploying release 29.",
    "note": "the release gate read",
    "ref": "row 51",
    "instrument_kind": "windows",

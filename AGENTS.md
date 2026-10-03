@@ -138,12 +138,13 @@ acting.
 
 Fleet state: `server/scripts/fleet_status.sh` and the hourly bus `status`;
 hourly notes go to the owning GitHub issue. Open investigations are tracked on the board issue
-#679 (updated hourly) and its topic issues (#663 model, #676 search screens, #436 PUCT/allocation,
+#707 (its predecessor #679 is closed and holds everything finished through 2026-10-03) and its topic issues (#663 model, #676 search screens, #436 PUCT/allocation,
 #355 Sol benchmark, #681 mistake audit).
 `HANDOFF_ACTIVE.md` was deleted (#674). `HANDOFF_REVIEW.md` is frozen to its
 authority markers (#674): the markers stay authoritative, and all prose, review
-verdicts and asks live on GitHub issues and PR review comments. `BACKLOG.md` owns ordered
-work, `RL_PLAN.md` the technical roadmap, `AI_POLICIES.md` measured policy
+verdicts and asks live on GitHub issues and PR review comments. Ordered work is tracked
+on GitHub (the board issue, open issues and PRs; `BACKLOG.md` was deprecated 2026-10-03 and is a
+pointer stub), `RL_PLAN.md` owns the technical roadmap, `AI_POLICIES.md` measured policy
 evidence and the evidence standard (the research doctrine is archived at `docs_archive/research-principles-through-2026-09-22.md`), and `incidents/`
 process failures. Operational signaling between agents is the agent bus
 (above); it is a pointer channel, not a record. Do not create a parallel

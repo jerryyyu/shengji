@@ -9,11 +9,9 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 38** (deployed 2026-10-03 09:41 ET; model since release 36, 2026-09-30): the
-SMV3 outcome-head package `smv3out-491ee4bf.npz` in release 30's policy/value search, plus four
-search rules (div, rc, tb, la in the diagram), served as
-`pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`.
-Every new screen compares against release 38 as served.
+**Live: release 38** (since 2026-10-03 09:41 ET): the SMV3 outcome-head package
+`smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds, 8 candidates) with four
+search rules (div, rc, tb, la in the diagram).
 
 ```mermaid
 flowchart TD
@@ -33,13 +31,7 @@ flowchart TD
   tb --> play(["play"])
 ```
 
-Releases 36–37 ran this path without the four rules (slot 0 always the heuristic play, the seven
-best-scored actions admitted unfiltered, plain argmax). Play has a 3 s cooperative budget; on
-expiry the bot plays the heuristic anchor. Source:
-`server/shengji/train/pv_search_policy.py`, `policy_value_search.py`, `ai/refusal.py`.
-
-**Served results** (signed levels per round, 95% CI). Each arm is read against a common MC-LCB
-control, so these are indirect contrasts, not head-to-head win rates.
+**Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
 | change | against | result | reading |
 |---|---|---|---|
@@ -50,12 +42,10 @@ control, so these are indirect contrasts, not head-to-head win rates.
 | adaptive K16 | release 36 | −0.0061 [−0.0303, +0.0181] | inconclusive, not taken |
 | PUCT (package prior / uniform) | release 36 | −0.417 / −0.894 | closed (#436) |
 
-Each of div, rc, tb alone was unconfirmed or inconclusive; only their combination confirmed.
-Lead-anchor alone vs release 36 was positive exploratory (+0.0138 [+0.0013, +0.0262], five
-windows, below the extension triage).
-Every production change and its receipt: [AI_POLICIES.md](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
-Rollback, gates and release records: [DEPLOY.md](DEPLOY.md). Open investigations: the board
-issue #679. Next work: [BACKLOG.md](BACKLOG.md), [RL_PLAN.md](RL_PLAN.md).
+The exact contract, the caveats on these reads and every earlier release:
+[AI_POLICIES.md](AI_POLICIES.md#production-contract) and its
+[ladder](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
+Rollback and gates: [DEPLOY.md](DEPLOY.md). Open work: board issue #707 and [RL_PLAN.md](RL_PLAN.md).
 
 ## Quick start
 
@@ -151,18 +141,18 @@ privileged-teacher teachers, direct-Q, Suphx O0) are lessons in
 
 | file | what it holds |
 |---|---|
-| `AI_POLICIES.md` | the production contract, every measured policy and durable conclusion, the evidence standard (research doctrine archived at `docs_archive/research-principles-through-2026-09-22.md`) |
-| `RL_PLAN.md` | decision tree, key learnings, measurement rules |
-| `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
-| `DEPLOY.md` | release records, rollbacks, the served modes and their gates |
-| issue #208 / `docs/scaling_log/` | engine/search speed (the dated record through 2026-09-22 is archived at `docs_archive/perf-through-2026-09-22.md`) |
-| `incidents/` / `server/tests/` | postmortems and the validation suite (the correctness ledger through 2026-09-22 is archived at `docs_archive/correctness-through-2026-09-22.md`) |
-| `docs/scaling_log/` / `docs/atlas_v2/` | every model with its offline metrics (built from `models.py`); every screen since release 29 (built from `registry.json`) |
-| GitHub issue #679 + topic issues | the live investigation board, updated hourly; topics: #663 model, #676 search screens, #436 PUCT/allocation, #355 Sol benchmark, #681 mistake audit |
-| `AGENTS.md` | execution discipline and agent orchestration (the daily routine is archived at `docs_archive/maintenance-through-2026-09-22.md`) |
-| `HANDOFF_REVIEW.md` | frozen to its authority markers (#674); prose lives on GitHub issues, archived text in `docs_archive/handoff-review-*.md`. `HANDOFF_ACTIVE.md` was deleted (#674); fleet state is `server/scripts/fleet_status.sh` |
-| `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture and UI invariants |
-| `docs_archive/` | compacted history: closed lanes, old designs (incl. the privileged-teacher docs), rotated handoffs |
+| `AI_POLICIES.md` | production contract, measured policies, evidence and lane rules |
+| `RL_PLAN.md` | research plan, key learnings, measurement rules |
+| `DEPLOY.md` | release records, rollbacks, gates |
+| GitHub issue #707 + topic issues | the live investigation board and work queue (predecessor: #679) |
+| `docs/atlas_v2/` | every screen since release 29 (`registry.json`) |
+| `docs/scaling_log/` | every model with its offline metrics; engine and search speed (with issue #208) |
+| `incidents/` / `server/tests/` | postmortems; the validation suite |
+| `AGENTS.md` | execution discipline and agent orchestration |
+| `HANDOFF_REVIEW.md` | frozen authority markers (#674) |
+| `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture |
+| `BACKLOG.md` | deprecated 2026-10-03; a pointer stub |
+| `docs_archive/` | compacted history: closed lanes, old designs, rotated ledgers |
 
 Top-level documents hold only current project, operational or durable contract
 surfaces. Completed one-off specs are summarized in their owner and moved to

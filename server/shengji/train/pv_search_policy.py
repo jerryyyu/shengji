@@ -25,6 +25,10 @@ Declare stays heuristic.  Bury is heuristic in `PVSearchBot` (as in every screen
 that measured this design) and, in `PVSearchBuryBot`, the value-guided bury arms
 of release 27/28 (`cwv_bury_policy.CWVBuryMixin`: heuristic / mc / hybrid) on the
 same package's value head -- Jerry 2026-09-21: "we should use value guided hybrid".
+``SHENGJI_PV_BURY_ARM`` also accepts ``value`` (the value head's top-ranked
+candidate, no rollouts) and ``mc_all`` (a spelling of ``mc``, which already rolls
+out every candidate); ``SHENGJI_PV_BURY_ALTERNATIVES`` widens hybrid's finalists.
+Each registers under its own ``-bury-<arm>-<id>`` name; the served name is unchanged.
 Nothing in this module deploys anything: registration happens only when
 ``SHENGJI_PV_CKPT`` is set.
 
@@ -133,7 +137,8 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   LEAD_ANCHOR_DEFAULTS, LEAD_TIEBREAK_DEFAULTS,
                                   TIEBREAK_DEFAULTS,
                                   PolicyValueBot)
-from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
+from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
+                              BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
@@ -824,6 +829,7 @@ def pv_env_recipe(environ=None) -> dict:
         recipe["tree"] = tree
     arm = env.get(ENV_PREFIX + "BURY_ARM")
     if arm:
+        arm = BURY_ARM_ALIASES.get(arm, arm)
         if arm not in BURY_ARMS:
             raise PVSearchPolicyError(f"unknown bury arm {arm!r}")
         values = asdict(CWVBuryConfig())

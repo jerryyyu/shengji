@@ -4,6 +4,11 @@ Each independent natural deal is replayed with heuristic, MC and hybrid bury.
 Only the banker bury changes. Every seat uses W32 and the same play RNG seed
 across arms. This is a paired counterfactual round comparison, not a multi-round
 match, mirrored opposing-team duel, or production promotion test.
+
+``--play pv-search --arms ... --control ...`` is the same paired design with the
+served card play instead: all four seats are the pv-search bot on release 38's
+recipe (`PV_PLAY`), the listed bury arms are compared against one control arm
+(default: the served hybrid), and the bury budget is an explicit setting.
 """
 from __future__ import annotations
 import argparse
@@ -27,13 +32,19 @@ from .cwv_bury_diagnostic import (
 )
 from .cwv_bury_panel import atomic_json
 from .cwv_bury_readout import interval
-from .cwv_bury_policy import CWVBuryConfig, make_cwv_bury_bot
+from .cwv_bury_policy import CWVBuryConfig, canonical_arm, make_cwv_bury_bot
 from .search_screen import _run_pending, bind_output_config, execution_source_identity
 
 ARMS = ("heuristic", "mc", "hybrid")
 START_INDEX = 64  # diagnostic roots 0..63 are excluded
 ALLRANK_DEALS = 1040
 POPULATIONS = ("legacy-rank2", ALLRANK_POPULATION)
+PLAYS = ("w32-shortlist", "pv-search")
+# Release 38's card play (fly.toml): W64/K8 with the four search rules on.  No
+# play budget: a wall-clock fallback would break the identical-play pairing.
+PV_PLAY = {"worlds": 64, "candidates": 8, "cap": 4000, "batch_size": 128,
+           "admission_diversity": True, "refusal_constraints": True,
+           "tiebreak_points": True, "lead_anchor": True}
 
 
 def scaling_recipes():
@@ -49,6 +60,32 @@ def scaling_recipes():
         "hybrid_pool64_mc128": recipe("hybrid", candidates=64, worlds=128),
         "mc_pool64_mc128": recipe("mc", candidates=64, worlds=128),
     }
+
+
+def arm_recipe(spec):
+    """``<arm>`` or ``hybrid-<finalists>`` as one bury recipe; fails closed."""
+    arm, separator, finalists = spec.partition("-")
+    values = {}
+    if separator:
+        if arm != "hybrid" or not finalists.isdigit():
+            raise ValueError(f"unknown bury arm spec {spec!r}")
+        values["alternatives"] = int(finalists)
+    return {"arm": canonical_arm(arm), "bury_config": asdict(CWVBuryConfig(**values))}
+
+
+def pv_arm_entry(config, recipe):
+    """The registered name and factory of one arm's pv-search bot.
+
+    Built through the registry's own entry point, so the name is the one a
+    server with this recipe would register and only the bury fields differ
+    between arms.
+    """
+    from .pv_search_policy import pv_registry_entries
+    (name, factory), = pv_registry_entries(
+        config["checkpoint"], sha256=config["checkpoint_sha256"], **config["pv_play"],
+        bury_arm=recipe["arm"], bury_config=CWVBuryConfig(**recipe["bury_config"]),
+        bury_serving_budget_seconds=config["bury_budget_seconds"]).items()
+    return name, factory
 
 
 def screen_arms(config):
@@ -102,6 +139,27 @@ def stratified_interval(values, shards, *, reps=4000, seed=782321):
                            "rank×initial_banker strata")}
 
 
+def _candidate_count(bury):
+    """The receipt's candidate count: the scalar, else a legacy receipt's list,
+    else None (the receipt does not say -- never zero)."""
+    count = bury.get("candidate_count")
+    if count is None and "candidates" in bury:
+        count = len(bury["candidates"])
+    return count
+
+
+def _known(rows, read):
+    """One receipt field over an arm's rows: the known values and how many rows
+    leave it unknown.  Unknown rows are excluded from every figure, not zeroed."""
+    values = [read(r["bury"]) for r in rows]
+    known = [value for value in values if value is not None]
+    return known, len(values) - len(known)
+
+
+def _mean(values):
+    return sum(values) / len(values) if values else None
+
+
 def banker_utility(points):
     """Existing paired-screen convention: a win counts at least one level."""
     if points >= 80:
@@ -136,9 +194,13 @@ def run_cluster(config, cluster):
         play_label = (f"{play_namespace}:play:{state_index}"
                       if _population(config) == ALLRANK_POPULATION
                       else f"{play_namespace}:{state_index}")
-        bots = [make_cwv_bury_bot(evaluator, seed=derived_seed(
-                    play_label, seat), **kwargs)
-                for seat in range(4)]
+        if "pv_play" in config:
+            policy, factory = pv_arm_entry(config, config["arm_recipes"][arm])
+            bots = [factory(seed=derived_seed(play_label, seat)) for seat in range(4)]
+        else:
+            bots = [make_cwv_bury_bot(evaluator, seed=derived_seed(
+                        play_label, seat), **kwargs)
+                    for seat in range(4)]
         started, cpu_start = time.perf_counter(), time.process_time()
         banker = rnd.banker
         chosen = bots[banker].decide_bury(rnd, banker)
@@ -160,6 +222,8 @@ def run_cluster(config, cluster):
                   "wall_seconds": time.perf_counter() - started,
                   "cpu_seconds": time.process_time() - cpu_start,
                   "config_sha256": config["config_sha256"]}
+        if "pv_play" in config:
+            record["policy"] = policy
         atomic_json(path, record)
         records.append(record)
     return {"schema": "cwv-bury-gameplay-shard-v1", "cluster": cluster,
@@ -190,6 +254,13 @@ def summarize(shards, config):
         result["comparisons_are_exploratory"] = True
         result["intervals"] = "nominal 95%; multiple comparisons, no promotion claim"
         result["arm_recipes"] = config["arm_recipes"]
+    if "control" in config:
+        # Every listed arm against the one control arm, nothing else.
+        control = config["control"]
+        comparisons = tuple((arm, control) for arm in screen_arms(config) if arm != control)
+        result["control"] = control
+        result["policies"] = config["policies"]
+        result["bury_budget_seconds"] = config["bury_budget_seconds"]
     if population == ALLRANK_POPULATION:
         result["claim"] = ("exploratory all-rank known-banker single-round paired "
                             "comparison panel; not a human deal distribution, "
@@ -244,29 +315,70 @@ def summarize(shards, config):
                 "buried_points_delta": metric_interval(buried_delta),
                 "kitty_ge80_difference": metric_interval(kitty_ge80_delta),
             })
+            if "control" in config:
+                contrast.update({
+                    "different_bury_fraction": 1 - sum(same_bury) / len(pairs),
+                    # The value head's own units (0 between 80 and 119 points),
+                    # the scale the offline bury diagnostic reads.
+                    "model_unit_utility": metric_interval(
+                        [x["model_unit_utility"] - y["model_unit_utility"] for x, y in pairs]),
+                })
     for arm in screen_arms(config):
         rows = [r for s in shards for r in s["records"] if r["arm"] == arm]
+        # A fallback receipt carries scalars and no candidate list, and leaves a
+        # count it never reached as None: read the scalars, keep unknown apart.
+        candidate_counts, candidates_unknown = _known(rows, _candidate_count)
+        rollouts, rollouts_unknown = _known(rows, lambda bury: bury.get("mc_rollouts"))
+        positions, positions_unknown = _known(rows, lambda bury: bury.get("model_positions"))
         result["cost"][arm] = {"total_wall_seconds": sum(r["wall_seconds"] for r in rows),
                                "total_cpu_seconds": sum(r["cpu_seconds"] for r in rows),
                                "total_bury_seconds": sum(r["bury"]["elapsed_seconds"] for r in rows),
                                "mean_bury_seconds": sum(r["bury"]["elapsed_seconds"] for r in rows) / len(rows),
-                               "full_bury_rollouts": sum(r["bury"].get("mc_rollouts", 0) for r in rows),
-                               "model_positions": sum(r["bury"].get("model_positions", 0) for r in rows),
-                               "mean_candidate_count": sum(len(r["bury"].get("candidates", [])) for r in rows) / len(rows)}
+                               "full_bury_rollouts": sum(rollouts),
+                               "full_bury_rollouts_unknown_rows": rollouts_unknown,
+                               "model_positions": sum(positions),
+                               "model_positions_unknown_rows": positions_unknown,
+                               "mean_candidate_count": _mean(candidate_counts),
+                               "candidate_count_unknown_rows": candidates_unknown}
         if population == ALLRANK_POPULATION:
             bury_seconds = np.asarray([r["bury"]["elapsed_seconds"] for r in rows], dtype=float)
-            candidate_counts = np.asarray([len(r["bury"].get("candidates", []))
-                                           for r in rows], dtype=float)
             kitty = np.asarray([r["kitty_bonus"] for r in rows], dtype=float)
             result["cost"][arm].update({
                 "bury_latency_p95_seconds": float(np.quantile(bury_seconds, .95)),
                 "bury_latency_p99_seconds": float(np.quantile(bury_seconds, .99)),
-                "max_candidate_count": int(candidate_counts.max()),
+                "max_candidate_count": max(candidate_counts) if candidate_counts else None,
                 "kitty_nonzero_count": int(np.count_nonzero(kitty)),
                 "kitty_ge80_count": int(np.count_nonzero(kitty >= 80)),
                 "kitty_bonus_max": int(kitty.max()),
             })
+            if "control" in config:
+                finalists, finalists_unknown = _known(
+                    rows, lambda bury: bury.get("finalist_count"))
+                reasons = Counter(r["bury"]["fallback_reason"] for r in rows
+                                  if r["bury"].get("fallback_reason") is not None)
+                result["cost"][arm].update({
+                    "bury_latency_p50_seconds": float(np.quantile(bury_seconds, .5)),
+                    "mean_buried_points": float(np.mean(
+                        [sum(card_points(card) for card in r["buried"]) for r in rows])),
+                    "mean_kitty_bonus": float(kitty.mean()),
+                    "mean_finalist_count": _mean(finalists),
+                    "finalist_count_unknown_rows": finalists_unknown,
+                    "fallback_count": sum(reasons.values()),
+                    "fallback_counts": dict(sorted(reasons.items())),
+                })
     return result
+
+
+def arm_report(result, config, arm):
+    """One arm's slice of the control summary, written as its own file."""
+    control = config["control"]
+    return {"schema": "cwv-bury-arm-report-v1", "arm": arm, "control": control,
+            "recipe": config["arm_recipes"][arm], "policy": config["policies"][arm],
+            "completed_deals": result["completed_deals"], "claim": result["claim"],
+            "intervals": result["intervals"],
+            "bury_budget_seconds": config["bury_budget_seconds"],
+            "vs_control": result["comparisons"].get(f"{arm}_minus_{control}"),
+            "cost": result["cost"][arm]}
 
 
 def main(argv=None):
@@ -281,9 +393,24 @@ def main(argv=None):
     parser.add_argument("--scaling", action="store_true",
                         help="fixed six-arm candidate-pool/MC-world DEV scaling screen")
     parser.add_argument("--limit", type=int, help="timing slice only; same fixed population on resume")
+    parser.add_argument("--play", choices=PLAYS, default=PLAYS[0],
+                        help="card play for all four seats; pv-search is release 38's recipe")
+    parser.add_argument("--arms", help="pv-search only: comma-separated bury arms to compare "
+                        "with the control (heuristic, mc/mc_all, hybrid, hybrid-<finalists>, value)")
+    parser.add_argument("--control", default="hybrid",
+                        help="pv-search only: the control arm (default: the served hybrid)")
+    parser.add_argument("--bury-budget-seconds", default="2",
+                        help="pv-search only: cooperative bury budget for every arm "
+                        "(served: 2); 'none' disables it and a search error then stops the run")
+    parser.add_argument("--resume", action="store_true",
+                        help="pv-search only: continue an existing output directory "
+                        "(same configuration); without it an existing directory is refused")
     args = parser.parse_args(argv)
+    pv_search = args.play == "pv-search"
     if args.deals is None:
         args.deals = ALLRANK_DEALS if args.population == ALLRANK_POPULATION else 256
+    if pv_search and args.start_index is None:
+        parser.error("pv-search play requires an explicit --start-index")
     if args.start_index is None:
         args.start_index = 0 if args.population == ALLRANK_POPULATION else START_INDEX
     if min(args.deals, args.workers) < 1 or (args.limit is not None and args.limit < 1):
@@ -299,6 +426,28 @@ def main(argv=None):
         parser.error("scaling must exclude the completed bury population: start-index >=1088")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         parser.error("SHENGJI_REQUIRE_VOIDS=1 required")
+    if not pv_search and (args.arms or args.resume):
+        parser.error("--arms/--resume require --play pv-search")
+    if pv_search:
+        if args.population != ALLRANK_POPULATION or not args.arms:
+            parser.error("pv-search play requires the all-rank population and --arms")
+        try:
+            # The control runs first.  ``hybrid-4`` beside ``hybrid`` is the same
+            # recipe under a second label: a control-vs-control check.
+            labels = [args.control] + [a for a in args.arms.split(",") if a != args.control]
+            if len(set(labels)) != len(labels):
+                raise ValueError("bury arms must be distinct")
+            arm_recipes = {label: arm_recipe(label) for label in labels}
+            bury_budget = (None if args.bury_budget_seconds == "none"
+                           else float(args.bury_budget_seconds))
+            if bury_budget is not None and not bury_budget > 0:
+                raise ValueError("bury budget must be positive")
+        except ValueError as exc:
+            parser.error(str(exc))
+        if len(labels) < 2:
+            parser.error("--arms must name at least one arm besides the control")
+        if args.out.exists() and not args.resume:
+            parser.error(f"output directory {args.out} exists; choose a fresh one or pass --resume")
     evaluator = shared_evaluator(args.checkpoint, threads=1, max_batch=128, encoding="mlp-static")
     config = {"schema": "cwv-bury-gameplay-config-v1", "deals": args.deals,
               "output": str(args.out.resolve()), "start_index": args.start_index,
@@ -315,6 +464,13 @@ def main(argv=None):
         config["namespace"] = ALLRANK_NAMESPACE
         config["schedule"] = {"ranks": list(RANKS),
                                "bankers": 4, "deals_per_rank_banker": args.deals // 52}
+    if pv_search:
+        # The arm recipes carry the bury settings; the W32 block does not apply.
+        del config["w32"], config["bury"]
+        config.update(play="pv-search", pv_play=PV_PLAY, arm_recipes=arm_recipes,
+                      control=args.control, bury_budget_seconds=bury_budget)
+        config["policies"] = {label: pv_arm_entry(config, recipe)[0]
+                              for label, recipe in arm_recipes.items()}
     if args.scaling:
         config["arm_recipes"] = scaling_recipes()
         config["claim"] = "fixed-count exploratory scaling; no outcome-driven extension or deployment"
@@ -336,6 +492,9 @@ def main(argv=None):
     if len(shards) == args.deals:
         result = summarize(shards, config)
         atomic_json(args.out / "summary.json", result)
+        if pv_search:
+            for arm in screen_arms(config):
+                atomic_json(args.out / f"report-{arm}.json", arm_report(result, config, arm))
         print(json.dumps(result, indent=2))
 
 

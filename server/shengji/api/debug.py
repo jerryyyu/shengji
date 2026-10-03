@@ -68,7 +68,17 @@ def _bury_xray(rnd, seat: int, isolated_bot) -> dict:
     if record is not None and record.get("schema") == "cwv-bury-policy-v1":
         from ..train.cwv_bury_policy import trajectory_bury_record
         raw = record
-        record = trajectory_bury_record(raw)
+        if raw["arm"] == "value":
+            # No rollouts ran, so there is no MC ballot to map.  Show the ranked
+            # pool; the head's means are signed levels, not the MC objective
+            # ``banker_avg`` carries, and stay out of that column.
+            record = {"candidates": [{"cards": list(cards), "mean_banker_value": None,
+                                      "worlds": 0} for cards in raw["candidates"]],
+                      "played_index": raw["picked_index"],
+                      "raw_winner_index": raw["picked_index"],
+                      "reason": "value-head-top-ranked"}
+        else:
+            record = trajectory_bury_record(raw)
         record.update(mode=raw["arm"], incumbent_index=0, fallback=False,
                       search_secs=raw["elapsed_seconds"],
                       work={"worlds_requested": raw["selection_worlds"],

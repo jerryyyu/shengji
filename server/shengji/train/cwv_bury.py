@@ -205,13 +205,14 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
 
 
 def rollout_bury_values(rnd: Round, candidates: Sequence[Sequence[str]],
-                        worlds: Sequence[Any], bot: Any, *, check_budget=None
-                        ) -> tuple[np.ndarray, np.ndarray]:
+                        worlds: Sequence[Any], bot: Any, *, check_budget=None,
+                        on_rollout=None) -> tuple[np.ndarray, np.ndarray]:
     """Roll every world/candidate pair and return model units plus raw points.
 
     Rollout points are attacker points.  The returned value matrix is mapped
     to the banker/defender team's signed-level support so it can be compared
-    directly with complete-world model predictions.
+    directly with complete-world model predictions.  ``on_rollout`` is called
+    after each rollout that completed inside the budget.
     """
     banker = _require_bury_round(rnd)
     candidates = tuple(tuple(candidate) for candidate in candidates)
@@ -235,6 +236,8 @@ def rollout_bury_values(rnd: Round, candidates: Sequence[Sequence[str]],
             if not np.isfinite(raw) or not raw.is_integer():
                 raise BuryValueError("bury rollout must return integral attacker points")
             attacker_points = int(raw)
+            if on_rollout is not None:
+                on_rollout()
             points[world_index, candidate_index] = attacker_points
             values[world_index, candidate_index] = category_signed_level(
                 signed_level_category(attacker_points, False))

@@ -29,7 +29,14 @@ MODEL_WORLDS = 32
 SELECTION_WORLDS = 32
 SHORTLIST_ALTERNATIVES = 4
 _SEED_NAMESPACE = "cwv-bury-policy-v1"
-_ARMS = frozenset(("heuristic", "mc", "hybrid"))
+_ARMS = frozenset(("heuristic", "mc", "hybrid", "value"))
+# ``mc`` already rolls out EVERY structured candidate, so the diagnostic's
+# "MC on all" chooser is that arm; ``mc_all`` is accepted as a spelling of it at
+# the environment/screen boundary and never becomes a second identity.
+ARM_ALIASES = {"mc_all": "mc"}
+# Which arms run the value-head ranking and which run MC rollouts.
+_MODEL_ARMS = ("hybrid", "value")
+_MC_ARMS = ("mc", "hybrid")
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,14 @@ class BuryBudgetExceeded(BuryPolicyError):
     """A cooperative serving budget expired at a bounded operation boundary."""
 
 
+def canonical_arm(arm):
+    """Resolve an arm spelling to its identity; unknown values fail closed."""
+    arm = ARM_ALIASES.get(arm, arm)
+    if arm not in _ARMS:
+        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    return arm
+
+
 def _serving_budget(value):
     if value is None:
         return None
@@ -83,7 +98,7 @@ def _worlds(bot: Any, rnd: Any, seat: int, count: int, label: str, check_budget=
 
 
 class CWVBuryMixin:
-    """The DEV bury arms (heuristic / mc / hybrid) as a mixin over ANY play bot
+    """The DEV bury arms (heuristic / mc / hybrid / value) as a mixin over ANY play bot
     that exposes ``self.evaluator`` (a complete-world value evaluator) and
     ``self.seed``, and whose next ``decide_bury`` in the MRO is the heuristic
     incumbent.  The concrete classes are `CWVBuryBot` (the shortlist, release
@@ -93,6 +108,13 @@ class CWVBuryMixin:
     RNG and state are not consumed.  The class must set ``bury_arm``,
     ``bury_config`` and ``bury_serving_budget_seconds`` before the first call;
     ``_bury_rng`` names the RNG whose state the budget fallback restores.
+
+    ``value`` plays the value head's top-ranked candidate (hybrid's ranking
+    stage, the incumbent included, lowest index on a tie) and runs no rollouts.
+    It has NO incumbent margin: the MC margin is in the rollout objective's
+    units (points) and nothing in this code maps it to the head's signed-level
+    units.  ``hybrid`` with a larger ``bury_config.alternatives`` is the
+    wider-finalist arm.
     """
 
     def _bury_rng(self):
@@ -146,6 +168,11 @@ class CWVBuryMixin:
             raise BuryPolicyError("heuristic fallback is not a legal eight-card bury")
         rng = self._bury_rng()
         before = rng.getstate()
+        # What the search had done when it stopped; the fallback receipt
+        # reports it so a screen can cost an expired search.  None is unknown:
+        # a count not reached, or a ranking stage interrupted part-way.
+        progress = {"candidate_count": None, "finalist_count": None, "mc_rollouts": 0,
+                    "model_positions": 0}
 
         def check_budget():
             if time.perf_counter() - started >= self.bury_serving_budget_seconds:
@@ -153,7 +180,8 @@ class CWVBuryMixin:
 
         try:
             return self._decide_bury(rnd, seat, started=started,
-                                     incumbent=incumbent, check_budget=check_budget)
+                                     incumbent=incumbent, check_budget=check_budget,
+                                     progress=progress)
         except Exception as exc:
             # Synchronous unwind: no abandoned worker/thread, no partially
             # scored choice, and no partial evidence mislabeled as MC targets.
@@ -167,15 +195,21 @@ class CWVBuryMixin:
                 "budget_seconds": self.bury_serving_budget_seconds,
                 "elapsed_seconds": time.perf_counter() - started,
                 "work_complete": False,
+                "fallback_reason": ("budget" if isinstance(exc, BuryBudgetExceeded)
+                                    else "search-error"),
+                **progress,
             }
             return incumbent
 
-    def _decide_bury(self, rnd, seat, *, started=None, incumbent=None, check_budget=None):
+    def _decide_bury(self, rnd, seat, *, started=None, incumbent=None, check_budget=None,
+                     progress=None):
         started = time.perf_counter() if started is None else started
         if getattr(rnd, "phase", None) != "bury" or getattr(rnd, "banker", None) != seat:
             raise BuryPolicyError("bury policy requires the banker in bury phase")
         incumbent = list(super().decide_bury(rnd, seat)) if incumbent is None else incumbent
         options = {} if check_budget is None else {"check_budget": check_budget}
+        if progress is None:
+            progress = {"mc_rollouts": 0, "model_positions": 0}
         if check_budget is not None:
             check_budget()
         # The control arm is exactly the inherited heuristic action.  Do not
@@ -183,7 +217,9 @@ class CWVBuryMixin:
         # candidate/sampling cost.
         candidates = ([list(incumbent)] if self.bury_arm == "heuristic"
                       else self._bury_candidates(rnd, incumbent))
+        progress["candidate_count"] = len(candidates)
         shortlist = [0]
+        finalist_count = 0
         model_seconds = 0.0
         rollout_seconds = 0.0
         model_attempts = 0
@@ -201,11 +237,12 @@ class CWVBuryMixin:
         else:
             model_bot = None
             model_worlds = []
-            if self.bury_arm == "hybrid":
+            if self.bury_arm in _MODEL_ARMS:
                 model_bot = make_bot(
                     "mc-s0-report-lcb", seed=_seed("model", self.seed))
                 model_started = time.perf_counter()
                 model_counter_before = self._counter(model_bot)
+                progress["model_positions"] = None
                 model_worlds, model_attempts = _worlds(
                     model_bot, rnd, seat, self.bury_config.model_worlds, "model", **options)
                 model_values = score_bury_candidates(
@@ -224,36 +261,47 @@ class CWVBuryMixin:
                 shortlist = [0] + sorted(finalists)
                 model_seconds = time.perf_counter() - model_started
                 model_counter_after = self._counter(model_bot)
+                progress["model_positions"] = len(candidates) * self.bury_config.model_worlds
+                if self.bury_arm == "value":
+                    # The ranking decides alone: no shortlist reaches MC.
+                    shortlist = [0]
+                    picked = order[0]
 
-            mc_bot = make_bot("mc-s0-report-lcb",
-                              seed=_seed("mc", self.seed))
-            rollout_started = time.perf_counter()
-            mc_counter_before = self._counter(mc_bot)
-            shared_worlds, mc_attempts = _worlds(
-                mc_bot, rnd, seat, self.bury_config.selection_worlds, "MC", **options)
-            local_candidates = (candidates if self.bury_arm == "mc"
-                                else [candidates[i] for i in shortlist])
-            _utility, points = rollout_bury_values(
-                rnd, local_candidates, shared_worlds, mc_bot, **options)
-            mc_rollouts = len(local_candidates) * len(shared_worlds)
-            local_pick = pick_mc(points, mc_bot, range(len(local_candidates)))
-            picked = local_pick if self.bury_arm == "mc" else shortlist[local_pick]
-            # Retain precisely the chooser's MC objective, NOT the model's
-            # signed-level prediction or scores for unsearched candidates.
-            mc_means = np.asarray([
-                [-mc_bot._score(float(p)) for p in row] for row in points
-            ]).mean(axis=0).tolist()
-            mc_evidence = {
-                "candidate_indices": (list(range(len(candidates)))
-                                      if self.bury_arm == "mc" else list(shortlist)),
-                "mean_banker_values": mc_means,
-                "worlds_per_candidate": len(shared_worlds),
-                "objective": "negative-mcbot-score",
-                "level_objective": bool(mc_bot.LEVEL_OBJECTIVE),
-                "incumbent_margin": float(mc_bot.MARGIN),
-            }
-            rollout_seconds = time.perf_counter() - rollout_started
-            mc_counter_after = self._counter(mc_bot)
+            if self.bury_arm in _MC_ARMS:
+                mc_bot = make_bot("mc-s0-report-lcb",
+                                  seed=_seed("mc", self.seed))
+                rollout_started = time.perf_counter()
+                mc_counter_before = self._counter(mc_bot)
+                shared_worlds, mc_attempts = _worlds(
+                    mc_bot, rnd, seat, self.bury_config.selection_worlds, "MC", **options)
+                local_candidates = (candidates if self.bury_arm == "mc"
+                                    else [candidates[i] for i in shortlist])
+                finalist_count = progress["finalist_count"] = len(local_candidates)
+                if check_budget is not None:
+                    def rolled():
+                        progress["mc_rollouts"] += 1
+                    options = {**options, "on_rollout": rolled}
+                _utility, points = rollout_bury_values(
+                    rnd, local_candidates, shared_worlds, mc_bot, **options)
+                mc_rollouts = len(local_candidates) * len(shared_worlds)
+                local_pick = pick_mc(points, mc_bot, range(len(local_candidates)))
+                picked = local_pick if self.bury_arm == "mc" else shortlist[local_pick]
+                # Retain precisely the chooser's MC objective, NOT the model's
+                # signed-level prediction or scores for unsearched candidates.
+                mc_means = np.asarray([
+                    [-mc_bot._score(float(p)) for p in row] for row in points
+                ]).mean(axis=0).tolist()
+                mc_evidence = {
+                    "candidate_indices": (list(range(len(candidates)))
+                                          if self.bury_arm == "mc" else list(shortlist)),
+                    "mean_banker_values": mc_means,
+                    "worlds_per_candidate": len(shared_worlds),
+                    "objective": "negative-mcbot-score",
+                    "level_objective": bool(mc_bot.LEVEL_OBJECTIVE),
+                    "incumbent_margin": float(mc_bot.MARGIN),
+                }
+                rollout_seconds = time.perf_counter() - rollout_started
+                mc_counter_after = self._counter(mc_bot)
 
         if check_budget is not None:
             check_budget()
@@ -265,17 +313,22 @@ class CWVBuryMixin:
             "candidates": [list(candidate) for candidate in candidates],
             "shortlist": list(shortlist),
             "picked_index": int(picked),
+            # Scalar receipt shared with the fallback record: how many
+            # candidates were proposed and how many of them MC rolled out.
+            "candidate_count": len(candidates),
+            "finalist_count": finalist_count,
+            "fallback_reason": None,
             "model_means": model_means,
             "mc_evidence": mc_evidence,
             "model_worlds": (self.bury_config.model_worlds
-                              if self.bury_arm == "hybrid" else 0),
+                              if self.bury_arm in _MODEL_ARMS else 0),
             "selection_worlds": (self.bury_config.selection_worlds
-                                 if self.bury_arm != "heuristic" else 0),
+                                 if self.bury_arm in _MC_ARMS else 0),
             "world_counts": {
                 "model": (self.bury_config.model_worlds
-                           if self.bury_arm == "hybrid" else 0),
+                           if self.bury_arm in _MODEL_ARMS else 0),
                 "selection": (self.bury_config.selection_worlds
-                               if self.bury_arm != "heuristic" else 0),
+                               if self.bury_arm in _MC_ARMS else 0),
                 "model_attempts": model_attempts,
                 "selection_attempts": mc_attempts,
             },
@@ -284,7 +337,7 @@ class CWVBuryMixin:
             "rollout_seconds": rollout_seconds,
             "mc_rollouts": mc_rollouts,
             "model_positions": (len(candidates) * self.bury_config.model_worlds
-                                if self.bury_arm == "hybrid" else 0),
+                                if self.bury_arm in _MODEL_ARMS else 0),
             "counters": {
                 "wrapper": self._counter(self),
                 "model_before": model_counter_before,
@@ -462,7 +515,8 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
 def bury_env_recipe(environ=None):
     """Add a bury arm to the existing SHORTLIST environment recipe, opt-in.
 
-    SHENGJI_CWV_BURY_ARM: heuristic/mc/hybrid. When absent nothing is added.
+    SHENGJI_CWV_BURY_ARM: heuristic/mc/hybrid/value (``mc_all`` is ``mc``). When
+    absent nothing is added.
     Optional MAX_CANDIDATES/MODEL_WORLDS/SELECTION_WORLDS/ALTERNATIVES use the
     same SHENGJI_CWV_BURY_ prefix. SHORTLIST_* settings still govern only play.
     SERVING_BUDGET_SECONDS opts into cooperative expiry + heuristic fallback.
@@ -475,8 +529,7 @@ def bury_env_recipe(environ=None):
     arm = env.get("SHENGJI_CWV_BURY_ARM")
     if not arm:
         return None
-    if arm not in _ARMS:
-        raise BuryPolicyError(f"unknown bury arm {arm!r}")
+    arm = canonical_arm(arm)
     play = shortlist_env_recipe(env)
     if play is None:
         raise BuryPolicyError("bury registration requires SHENGJI_CWV_SHORTLIST_CKPT")
@@ -490,7 +543,8 @@ def bury_env_recipe(environ=None):
 
 __all__ = [
     "BuryPolicyError", "CWVBuryConfig", "CWVBuryBot", "CWVBuryMixin", "MODEL_WORLDS",
-    "SELECTION_WORLDS", "SHORTLIST_ALTERNATIVES", "make_cwv_bury_bot",
+    "SELECTION_WORLDS", "SHORTLIST_ALTERNATIVES", "ARM_ALIASES", "canonical_arm",
+    "make_cwv_bury_bot",
     "bury_registry_entries", "bury_env_recipe",
 ]
 

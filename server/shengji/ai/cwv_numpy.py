@@ -30,7 +30,13 @@ PACKAGE_SCHEMA = "shengji-cwv-numpy-mlp-v1"
 #: N tabular-ResNet blocks -> LayerNorm -> ReLU) next to the plain two-layer
 #: MLP.  v1 packages are unchanged and keep loading byte for byte.
 PACKAGE_SCHEMA_V2 = "shengji-cwv-numpy-mlp-v2"
-PACKAGE_SCHEMAS = (PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2)
+#: v3 = a v2 joint package whose policy head sits behind a policy TOWER
+#: (policy-only residual blocks on the trunk features).  Its own schema, so a
+#: runtime from before the tower refuses the package at the schema check
+#: rather than serving the policy head without its tower.  Only tower packages
+#: are v3; every other export is unchanged.
+PACKAGE_SCHEMA_V3 = "shengji-cwv-numpy-mlp-v3"
+PACKAGE_SCHEMAS = (PACKAGE_SCHEMA, PACKAGE_SCHEMA_V2, PACKAGE_SCHEMA_V3)
 LAYERNORM_EPS = 1e-5
 PACKAGE_MAX_BYTES = 128 * 1024 * 1024
 OUTCOME_CLASSES = 204
@@ -70,6 +76,11 @@ class CWVNumpyConfig:
     #: #411 grid trunk: the window-read channel count (``value_model.GridTrunk``);
     #: zero for every other trunk, required positive for ``trunk_block="grid"``.
     grid_channels: int = 0
+    #: policy tower (v3): ``policy_tower_layers`` residual blocks of inner width
+    #: ``policy_tower_width`` between the trunk features and the policy head,
+    #: on the policy path only.  0 / 0 on every package without one.
+    policy_tower_layers: int = 0
+    policy_tower_width: int = 0
 
     def validate(self) -> None:
         if self.architecture != "mlp":
@@ -93,6 +104,16 @@ class CWVNumpyConfig:
             raise CWVNumpyError("invalid exported model configuration")
         if self.width < 8 or self.feedforward_width < self.width:
             raise CWVNumpyError("invalid exported model widths")
+        if type(self.policy_tower_layers) is not int or type(self.policy_tower_width) is not int \
+                or not 0 <= self.policy_tower_layers <= 64:
+            raise CWVNumpyError("invalid policy tower depth")
+        if self.policy_tower_layers == 0:
+            if self.policy_tower_width != 0:
+                raise CWVNumpyError("policy_tower_width without a policy tower")
+        elif not self.policy_head:
+            raise CWVNumpyError("a policy tower needs the policy head it feeds")
+        elif not self.width <= self.policy_tower_width <= 65536:
+            raise CWVNumpyError("invalid policy tower width")
         # Encoder widths are deliberately checked without importing the
         # training stack; v1/v2 are the only supported identity-preserving
         # public dimensions.
@@ -161,6 +182,13 @@ def expected_arrays(config: "CWVNumpyConfig") -> dict[str, tuple[int, ...]]:
 def _with_policy(arrays: dict, config: "CWVNumpyConfig") -> dict:
     if config.policy_head:
         arrays.update({"policy_weight": (N_CARDS, config.width), "policy_bias": (N_CARDS,)})
+    for i in range(config.policy_tower_layers):
+        arrays.update({
+            f"policy_tower{i}_norm_weight": (config.width,), f"policy_tower{i}_norm_bias": (config.width,),
+            f"policy_tower{i}_up_weight": (config.policy_tower_width, config.width),
+            f"policy_tower{i}_up_bias": (config.policy_tower_width,),
+            f"policy_tower{i}_down_weight": (config.width, config.policy_tower_width),
+            f"policy_tower{i}_down_bias": (config.width,)})
     return arrays
 
 
@@ -323,7 +351,9 @@ class CWVNumpyMLP:
     def policy_log_odds(self, flat) -> np.ndarray:
         """The joint net's policy head over a flat root row (the layout
         ``policy_prior.flat_input`` writes: ``public | world | perspective``),
-        i.e. ``ValueNetwork.policy_logits(features_flat(x))`` without Torch."""
+        i.e. ``ValueNetwork.policy_logits(features_flat(x))`` without Torch.
+        A tower package applies its policy-only residual blocks to the trunk
+        features first (``probabilities`` never does)."""
         if not self.config.policy_head:
             raise CWVNumpyError("this package carries no policy head")
         x = np.asarray(flat)
@@ -335,8 +365,14 @@ class CWVNumpyMLP:
         if x.shape[0] == 0:
             return np.empty((0, N_CARDS), dtype=np.float64)
         h = self._trunk(x.astype(np.float64))
+        w = self._math_weights
         with np.errstate(all="ignore"):
-            logits = h @ self._math_weights["policy_weight"].T + self._math_weights["policy_bias"]
+            for i in range(self.config.policy_tower_layers):
+                # value_model.ResidualTrunkBlock: h + down(relu(up(norm(h))))
+                n = _layer_norm(h, w[f"policy_tower{i}_norm_weight"], w[f"policy_tower{i}_norm_bias"])
+                n = np.maximum(n @ w[f"policy_tower{i}_up_weight"].T + w[f"policy_tower{i}_up_bias"], 0.0)
+                h = h + (n @ w[f"policy_tower{i}_down_weight"].T + w[f"policy_tower{i}_down_bias"])
+            logits = h @ w["policy_weight"].T + w["policy_bias"]
         if not np.all(np.isfinite(logits)):
             raise CWVNumpyError("policy head produced nonfinite logits")
         return logits.astype(np.float64, copy=False)
@@ -400,14 +436,21 @@ def _load_npz(path: str | os.PathLike[str]) -> CWVNumpyMLP:
             joint_keys = v2_keys | {"policy_head"}
             keys = set(metadata["config"]) if isinstance(metadata["config"], dict) else None
             # ``grid_channels`` may be spelled out (zero) on any package; a grid trunk must name it.
-            shapes = (base_keys, v2_keys, joint_keys)
+            tower_keys = joint_keys | {"policy_tower_layers", "policy_tower_width"}
+            shapes = (base_keys, v2_keys, joint_keys, tower_keys)   # keys only; v3 is checked below
             if keys is None or keys not in shapes + tuple(k | {"grid_channels"} for k in shapes):
                 raise CWVNumpyError("invalid package configuration")
             cfg = CWVNumpyConfig(**metadata["config"])
             cfg.validate()
-            if cfg.policy_head and metadata["schema"] != PACKAGE_SCHEMA_V2:
+            # The tower and the v3 schema name each other: a v3 package must carry a
+            # tower, and a tower is never a v1/v2 package
+            # (the two keys may be spelled out as 0 / 0 on any package, like grid_channels).
+            if (metadata["schema"] == PACKAGE_SCHEMA_V3) != (cfg.policy_tower_layers > 0):
+                raise CWVNumpyError("a policy tower is a v3 package feature, and v3 is nothing else")
+            v2_family = (PACKAGE_SCHEMA_V2, PACKAGE_SCHEMA_V3)
+            if cfg.policy_head and metadata["schema"] not in v2_family:
                 raise CWVNumpyError("a policy head is a v2 package feature")
-            if cfg.trunk_block == "grid" and ("grid_channels" not in keys or metadata["schema"] != PACKAGE_SCHEMA_V2):
+            if cfg.trunk_block == "grid" and ("grid_channels" not in keys or metadata["schema"] not in v2_family):
                 raise CWVNumpyError("a grid trunk is a v2 package feature that names its grid_channels")
             # A v1 package is the plain two-layer MLP: the trunk keys may be absent or
             # spell out that default, never anything else.

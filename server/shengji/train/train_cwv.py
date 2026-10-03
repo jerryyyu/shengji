@@ -316,6 +316,7 @@ PRIVACY = {
 def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                  trunk_layers: int = 2, trunk_block: str = "plain", search_head: bool = False,
                  grid_channels: int = 0, policy_head: bool = False,
+                 policy_tower_layers: int = 0, policy_tower_width: int | None = None,
                  dropout: float = DEFAULTS["dropout"], seq_kind: str = DEFAULTS["seq_kind"],
                  seq_width: int = DEFAULTS["seq_width"], seq_layers: int = DEFAULTS["seq_layers"],
                  seq_heads: int = DEFAULTS["seq_heads"],
@@ -330,6 +331,18 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
         raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
     if policy_head and arch != "mlp":
         raise TrainError("--policy-head reads the mlp trunk; the seq architecture exposes none")
+    if int(policy_tower_layers) < 0:
+        raise TrainError("--policy-tower-layers must be >= 0 (0 = no tower)")
+    if int(policy_tower_layers) and not policy_head:
+        raise TrainError("--policy-tower-layers needs --policy-head")
+    if policy_tower_width is not None and not int(policy_tower_layers):
+        raise TrainError("--policy-tower-width needs --policy-tower-layers >= 1")
+    # The tower blocks' inner width; default = the trunk blocks' inner width
+    # (--hidden), so a tower block has exactly the trunk block's shape.  The
+    # residual stream is always the trunk width.  0/0 without a tower, which the
+    # payload omits, so a towerless config is the one written before the option.
+    tower_width = 0 if not int(policy_tower_layers) else (
+        int(hidden) if policy_tower_width is None else int(policy_tower_width))
     if arch != "mlp" and (trunk_layers != 2 or trunk_block != "plain" or grid_channels != 0):
         raise TrainError("--trunk-layers / --trunk-block / --grid-channels shape the mlp trunk; "
                          "the seq architecture has none")
@@ -348,6 +361,7 @@ def model_config(arch: str, *, hidden: int = DEFAULTS["hidden"],
                 trunk_layers=int(trunk_layers), trunk_block=str(trunk_block),
                 grid_channels=int(grid_channels), search_head=bool(search_head),
                 policy_head=bool(policy_head),
+                policy_tower_layers=int(policy_tower_layers), policy_tower_width=tower_width,
                 attention_heads=1, feedforward_width=int(hidden), dropout=float(dropout),
                 max_history=HISTORY_MAX_EVENTS, **width_fields)
             config.validate()      # a grid without channels (or channels without a grid) refuses here
@@ -1174,7 +1188,18 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     # output projection ZEROED so each is an exact identity at step 0 — the
     # deeper net computes the incumbent's function until the new blocks learn.
     # Any other configuration difference is still refused.
-    core = lambda cfg: {k: v for k, v in cfg.items() if k not in ("policy_head", "trunk_layers")}
+    # Policy tower: a tower net may warm-start from a TOWERLESS checkpoint (the
+    # production head, as SMV3's recipe does).  Everything the source has loads,
+    # its policy head included; the tower keeps its construction init, whose
+    # zeroed output projections make every block an exact identity, so the
+    # policy logits at step 0 are the source's (or, with a fresh policy head,
+    # that head on the bare trunk features).  Tower -> same tower loads strictly;
+    # tower -> towerless, or two different towers, is refused.
+    _skip = ("policy_head", "trunk_layers", "policy_tower_layers", "policy_tower_width")
+    core = lambda cfg: {k: v for k, v in cfg.items() if k not in _skip}
+    tower_of = lambda cfg: (int(cfg.get("policy_tower_layers", 0)), int(cfg.get("policy_tower_width", 0)))
+    tower_fresh = tower_of(ours_cfg)[0] > 0 and tower_of(theirs_cfg)[0] == 0
+    tower_same = tower_of(ours_cfg) == tower_of(theirs_cfg)
     ours_depth = int(ours_cfg.get("trunk_layers", 2))
     theirs_depth = int(theirs_cfg.get("trunk_layers", 2))
     policy_fresh = ours_cfg.get("policy_head") is True and "policy_head" not in theirs_cfg
@@ -1182,11 +1207,13 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     deeper = (config["arch"] == "mlp" and ours_cfg.get("trunk_block") == "residual"
               and ours_depth > theirs_depth)
     if not (core(ours_cfg) == core(theirs_cfg) and (policy_fresh or policy_same)
+            and (tower_fresh or tower_same)
             and (ours_depth == theirs_depth or deeper)):
         raise TrainError(f"--init {init}: model configuration differs (theirs "
                          f"{metadata.get('model_config')}, ours {config['model_config']}); "
                          "--hidden / --dropout / seq knobs must match (a residual trunk may only "
-                         "warm-start from a SHALLOWER residual trunk of the same width)")
+                         "warm-start from a SHALLOWER residual trunk of the same width; a policy "
+                         "tower may only warm-start from a towerless net or the same tower)")
     theirs = source.state_dict()
     ours = model.state_dict()
     blocks_added = 0
@@ -1209,10 +1236,17 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     else:
         new_block_prefixes = ()
     expected = {k for k in ours if not (policy_fresh and k.startswith("policy_head."))
+                and not (tower_fresh and k.startswith("policy_tower."))
                 and not k.startswith(new_block_prefixes)}
     if set(theirs) != expected or any(theirs[k].shape != ours[k].shape for k in expected):
         raise TrainError(f"--init {init}: parameter layout differs from this model")
-    model.load_state_dict(theirs, strict=not (policy_fresh or deeper))
+    model.load_state_dict(theirs, strict=not (policy_fresh or deeper or tower_fresh))
+    if tower_fresh:
+        # The construction init already zeroes these; assert it rather than
+        # assume it, so the identity start is a checked property of the warm start.
+        for block in model.policy_tower:
+            if bool(block.down.weight.any()) or bool(block.down.bias.any()):
+                raise TrainError(f"--init {init}: the fresh policy tower is not an identity")
     if deeper:
         with torch.no_grad():
             for i in range(theirs_depth + 1, ours_depth + 1):
@@ -1236,6 +1270,9 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         "policy_head_fresh": bool(policy_fresh),
         "trunk_blocks_added": int(blocks_added),
         "trunk_blocks_added_identity_init": bool(blocks_added),
+        # present only when a tower was added, so a towerless warm start's
+        # init block (and the metadata it is saved in) is unchanged
+        **({"policy_tower_fresh": True, "policy_tower_identity_init": True} if tower_fresh else {}),
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
         "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()
@@ -1314,6 +1351,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_rows_limit: int | None = None, policy_detach: bool = False,
                  policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
                  policy_explore_weight: float = 1.0,
+                 policy_tower_layers: int = 0, policy_tower_width: int | None = None,
+                 policy_trunk_grad_scale: float = 1.0,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1390,18 +1429,41 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
             raise TrainError("--policy-soft-temperature must be finite and > 0")
         if not (float(policy_explore_weight) > 0 and math.isfinite(float(policy_explore_weight))):
             raise TrainError("--policy-explore-weight must be finite and > 0 (1.0 = no reweighting)")
+        if not (math.isfinite(float(policy_trunk_grad_scale))
+                and 0.0 <= float(policy_trunk_grad_scale) <= 1.0):
+            raise TrainError("--policy-trunk-grad-scale must be in [0, 1] (1.0 = the full policy "
+                             "gradient into the trunk, 0.0 = stop-gradient)")
+        if policy_detach and float(policy_trunk_grad_scale) != 1.0:
+            raise TrainError("--policy-detach IS --policy-trunk-grad-scale 0; give one of them")
     elif policy_rows or policy_eval or policy_detach or policy_soft_targets \
             or float(policy_explore_weight) != 1.0:
         raise TrainError("--policy-rows / --policy-eval / --policy-detach / "
                          "--policy-soft-targets / --policy-explore-weight need --policy-head")
+    elif int(policy_tower_layers) or policy_tower_width is not None \
+            or float(policy_trunk_grad_scale) != 1.0:
+        raise TrainError("--policy-tower-layers / --policy-tower-width / "
+                         "--policy-trunk-grad-scale need --policy-head")
     config = model_config(arch, hidden=hidden, dropout=dropout, seq_kind=seq_kind,
                           trunk_layers=trunk_layers, trunk_block=trunk_block,
                           grid_channels=grid_channels, search_head=search_head,
                           policy_head=policy_head,
+                          policy_tower_layers=policy_tower_layers,
+                          policy_tower_width=policy_tower_width,
                           seq_width=seq_width, seq_layers=seq_layers, seq_heads=seq_heads,
                           seq_feedforward=seq_feedforward, encoder_version=encoder_version)
     identity = cwv_encoder_identity(encoder_version)
+    # Recorded ONLY when set: at the defaults the config (and so config_sha256,
+    # the checkpoint metadata and the exported package) is what the trainer
+    # wrote before the options existed.  The tower's shape is also in
+    # ``model_config`` (same omit-at-default rule).
+    tower_fields: dict[str, Any] = {}
+    if config.policy_tower_layers:
+        tower_fields.update(policy_tower_layers=int(config.policy_tower_layers),
+                            policy_tower_width=int(config.policy_tower_width))
+    if policy_head and float(policy_trunk_grad_scale) != 1.0:
+        tower_fields["policy_trunk_grad_scale"] = float(policy_trunk_grad_scale)
     return {
+        **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
         "encoder_version": int(encoder_version),
         "public_dim": public_dim(encoder_version),
@@ -1557,6 +1619,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_rows_limit: int | None = None, policy_detach: bool = False,
           policy_soft_targets: bool = False, policy_soft_temperature: float = 1.0,
           policy_explore_weight: float = 1.0,
+          policy_tower_layers: int = 0, policy_tower_width: int | None = None,
+          policy_trunk_grad_scale: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1571,6 +1635,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_detach=policy_detach, policy_soft_targets=policy_soft_targets,
         policy_soft_temperature=policy_soft_temperature,
         policy_explore_weight=policy_explore_weight,
+        policy_tower_layers=policy_tower_layers, policy_tower_width=policy_tower_width,
+        policy_trunk_grad_scale=policy_trunk_grad_scale,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -1740,6 +1806,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"policy rows: exploration tags {'present' if pd_.get('explore_tags') else 'ABSENT'}; "
             f"flag counts {pd_.get('explore_flag_counts')}; explore weight {float(policy_explore_weight)}"
             f"{' (flag-2 rows upweighted)' if float(policy_explore_weight) != 1.0 else ' (no reweighting)'}")
+        if int(policy_tower_layers) or float(policy_trunk_grad_scale) != 1.0:
+            mc_ = config["model_config"]
+            say(f"policy tower: {mc_.get('policy_tower_layers', 0)} residual block(s), inner width "
+                f"{mc_.get('policy_tower_width', 0)}, identity init; trunk policy-gradient scale "
+                f"{float(policy_trunk_grad_scale)} (tower and policy head: full gradient)")
         if policy_evalset is not None:
             pe_ = policy_evalset.identity
             pe_["exclusion_rule"] = "current fit deals + ancestral fit-or-selected deals (test rule)"
@@ -1951,6 +2022,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     "batch, per-row-mean terms; the value rows and their targets are "
                     "unchanged; weight 0 = the matched twin (same batches, same steps, "
                     "no policy gradient); the outcome head remains the selection head"}
+        if int(policy_tower_layers) or float(policy_trunk_grad_scale) != 1.0:
+            # Present only when an option is set (a default run's block is unchanged).
+            policy_head_block["tower"] = {
+                "layers": int(config["model_config"].get("policy_tower_layers", 0)),
+                "width": int(config["model_config"].get("policy_tower_width", 0)),
+                "block": "ResidualTrunkBlock on the trunk features, policy path only, "
+                         "zero-initialised output projection (identity at step 0)",
+                "trunk_grad_scale": float(policy_trunk_grad_scale),
+                "rule": "the policy loss reaches the tower and the policy head at full "
+                        "gradient and the trunk at trunk_grad_scale x; value, search-mean "
+                        "and aux gradients are untouched and never pass through the tower"}
     base_metadata = {
         "encoder": identity, "public_encoder": public_encoder_identity(),
         "config": config, "config_sha256": config_sha256(config), "split": split,
@@ -2098,7 +2180,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                detach=bool(policy_detach),
                                                soft_targets=bool(policy_soft_targets),
                                                soft_temperature=float(policy_soft_temperature),
-                                               row_weight=p_w)
+                                               row_weight=p_w,
+                                               trunk_grad_scale=float(policy_trunk_grad_scale))
                 b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
@@ -2748,6 +2831,24 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--policy-detach", action="store_true",
                    help="stop-gradient: the policy head trains on the trunk features but never "
                         "moves the trunk (zero cost to the value heads)")
+    t.add_argument("--policy-tower-layers", type=int, default=0,
+                   help="policy-ONLY residual blocks (the trunk's block style) between the "
+                        "shared trunk and the 54 card logits; the value, search-mean and aux "
+                        "heads never see them. Each block starts as an exact identity (zeroed "
+                        "output projection), so a towerless --init warm-starts unchanged. "
+                        "Default 0 = no tower: model, training and export are what they were "
+                        "before the option. A tower package exports under its own schema and "
+                        "an older runtime refuses it.")
+    t.add_argument("--policy-tower-width", type=int, default=None,
+                   help="inner (up-projection) width of the tower blocks; default = the trunk "
+                        "blocks' inner width (--hidden). The residual stream stays the trunk "
+                        "width. Needs --policy-tower-layers >= 1.")
+    t.add_argument("--policy-trunk-grad-scale", type=float, default=1.0,
+                   help="multiply the POLICY loss's gradient where it enters the shared trunk "
+                        "by A in [0, 1]; the tower and the policy head keep the full gradient, "
+                        "value gradients are untouched. 1.0 (default) = today's joint training, "
+                        "0.0 = --policy-detach. Note the scale is on the gradient, before AdamW's "
+                        "per-parameter normalisation of the summed value + policy gradient.")
     t.add_argument("--policy-soft-targets", action="store_true",
                    help="train the policy head on the SEARCH'S DISTRIBUTION over the ballot "
                         "(softmax of its per-candidate means) instead of the single played "
@@ -2836,6 +2937,9 @@ def main(argv: list[str] | None = None) -> int:
                   policy_soft_targets=args.policy_soft_targets,
                   policy_soft_temperature=args.policy_soft_temperature,
                   policy_explore_weight=args.policy_explore_weight,
+                  policy_tower_layers=args.policy_tower_layers,
+                  policy_tower_width=args.policy_tower_width,
+                  policy_trunk_grad_scale=args.policy_trunk_grad_scale,
                   val_rank_records=args.val_rank_records, init=args.init,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,

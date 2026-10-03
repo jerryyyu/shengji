@@ -56,6 +56,11 @@ _LEGACY_GRID = {"grid_channels": 0}
 #: compare unchanged and a headless net never grows the module.
 _POLICY_FIELDS = ("policy_head",)
 _LEGACY_POLICY = {"policy_head": False}
+#: policy tower: optional policy-ONLY residual blocks between the mlp trunk and
+#: the 54 card logits; omitted from every payload without a tower, so archived
+#: configs compare unchanged and a towerless net never grows the module.
+_TOWER_FIELDS = ("policy_tower_layers", "policy_tower_width")
+_LEGACY_TOWER = {"policy_tower_layers": 0, "policy_tower_width": 0}
 VALUE_HEADS = ("outcome", "search-mean")
 
 
@@ -93,6 +98,14 @@ class ValueModelConfig:
     #: #425 joint net: ``policy_head`` adds ``ValueNetwork.policy_head`` (54
     #: card logits over the mlp trunk; the factorised action prior of #419).
     policy_head: bool = False
+    #: policy tower: ``policy_tower_layers`` residual blocks (the trunk's block
+    #: style, ``ResidualTrunkBlock``) applied to the trunk features on the POLICY
+    #: path only, in front of ``policy_head``; ``policy_tower_width`` is the
+    #: blocks' inner (up-projection) width.  The residual stream keeps the trunk
+    #: ``width``, so a zero-initialised block is an exact identity and a towerless
+    #: checkpoint's policy head warm-starts unchanged.  0 / 0 = no tower.
+    policy_tower_layers: int = 0
+    policy_tower_width: int = 0
 
     def validate(self) -> None:
         try:
@@ -142,6 +155,19 @@ class ValueModelConfig:
         if self.policy_head and self.architecture != "mlp":
             raise ValueModelError("model configuration drift: the policy head reads "
                                   "the mlp trunk")
+        if type(self.policy_tower_layers) is not int or type(self.policy_tower_width) is not int \
+                or not 0 <= self.policy_tower_layers <= 64:
+            raise ValueModelError("model configuration drift")
+        if self.policy_tower_layers == 0:
+            if self.policy_tower_width != 0:
+                raise ValueModelError("model configuration drift: policy_tower_width "
+                                      "without a policy tower")
+        elif not self.policy_head:
+            raise ValueModelError("model configuration drift: the policy tower feeds "
+                                  "the policy head this net does not have")
+        elif not self.width <= self.policy_tower_width <= 65536:
+            raise ValueModelError("model configuration drift: policy_tower_width must "
+                                  "be at least the trunk width")
 
     def payload(self) -> dict[str, object]:
         self.validate()
@@ -163,18 +189,22 @@ class ValueModelConfig:
         if all(getattr(self, k) == v for k, v in _LEGACY_POLICY.items()):
             for name in _POLICY_FIELDS:
                 del out[name]
+        if all(getattr(self, k) == v for k, v in _LEGACY_TOWER.items()):
+            for name in _TOWER_FIELDS:
+                del out[name]
         return out
 
     @classmethod
     def from_payload(cls, value: Mapping[str, object]) -> "ValueModelConfig":
         base = set(asdict(cls())) - set(_WIDTH_FIELDS) - set(_TRUNK_FIELDS) \
-            - set(_HEAD_FIELDS) - set(_GRID_FIELDS) - set(_POLICY_FIELDS)
-        allowed = {frozenset(base | w | t | h | g | p)
+            - set(_HEAD_FIELDS) - set(_GRID_FIELDS) - set(_POLICY_FIELDS) - set(_TOWER_FIELDS)
+        allowed = {frozenset(base | w | t | h | g | p | pt)
                    for w in (set(), set(_WIDTH_FIELDS))
                    for t in (set(), set(_TRUNK_FIELDS))
                    for h in (set(), set(_HEAD_FIELDS))
                    for g in (set(), set(_GRID_FIELDS))
-                   for p in (set(), set(_POLICY_FIELDS))}
+                   for p in (set(), set(_POLICY_FIELDS))
+                   for pt in (set(), set(_TOWER_FIELDS))}
         if type(value) is not dict or frozenset(value) not in allowed:
             raise ValueModelError("model configuration schema drift")
         try:
@@ -387,6 +417,21 @@ class ValueNetwork(nn.Module):
             if config.policy_head:
                 # #425: the action prior, same trunk, 54 card log-odds.
                 self.policy_head = nn.Linear(width, N_CARDS)
+            if config.policy_tower_layers:
+                # Policy-only layers.  Built AFTER every other module, so the
+                # trunk, the value heads and the policy head draw the same
+                # initial weights from the RNG as the towerless net of the same
+                # seed; a towerless config never reaches this branch at all.
+                # Each block's output projection is ZEROED: the tower starts as
+                # an exact identity (policy logits == policy_head(features)),
+                # which is what lets a towerless checkpoint warm-start it.
+                self.policy_tower = nn.Sequential(*[
+                    ResidualTrunkBlock(width, config.policy_tower_width, config.dropout)
+                    for _ in range(config.policy_tower_layers)])
+                with torch.no_grad():
+                    for block in self.policy_tower:
+                        block.down.weight.zero_()
+                        block.down.bias.zero_()
             return
         self.public_encoder = nn.Sequential(
             nn.Linear(config.public_dim, width), nn.ReLU(), nn.LayerNorm(width))
@@ -441,9 +486,14 @@ class ValueNetwork(nn.Module):
         raise ValueModelError(f"unknown value head {head!r}")
 
     def policy_logits(self, features: torch.Tensor) -> torch.Tensor:
-        """#425: the 54 card log-odds of the policy head over mlp trunk features."""
+        """#425: the 54 card log-odds of the policy head over mlp trunk features.
+        With a policy tower the features pass through its blocks first; the
+        tower is on this path ONLY (``head_logits`` and the aux head read the
+        trunk features directly and never see it)."""
         if self.config.architecture != "mlp" or not self.config.policy_head:
             raise ValueModelError("this net has no policy head")
+        if self.config.policy_tower_layers:
+            features = self.policy_tower(features)
         return self.policy_head(features)
 
     def features_flat(self, flat: torch.Tensor) -> torch.Tensor:

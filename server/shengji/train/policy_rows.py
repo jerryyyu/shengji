@@ -376,8 +376,28 @@ def explore_row_weights(explore_flag: torch.Tensor, explore_weight: float) -> to
     return w
 
 
+def scale_trunk_gradient(features: torch.Tensor, scale: float) -> torch.Tensor:
+    """The gradient dial: the SAME forward values as ``features`` (bit for bit),
+    with the gradient that flows back into the trunk multiplied by ``scale``.
+    ``1.0`` returns the tensor untouched (today's graph); ``0.0`` is a plain
+    ``detach``; in between it is ``d + scale * (f - d)`` with ``d = f.detach()``
+    -- ``f - d`` is exactly zero, so the value is ``d`` exactly, and the
+    derivative with respect to ``f`` is ``scale``.  Everything downstream of the
+    returned tensor (policy tower, policy head) receives its full gradient."""
+    scale = float(scale)
+    if not (0.0 <= scale <= 1.0):
+        raise ValueError("trunk gradient scale must be in [0, 1]")
+    if scale == 1.0:
+        return features
+    stopped = features.detach()
+    if scale == 0.0:
+        return stopped
+    return stopped + scale * (features - stopped)
+
+
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
-                  soft_targets: bool = False, soft_temperature: float = 1.0, row_weight=None):
+                  soft_targets: bool = False, soft_temperature: float = 1.0, row_weight=None,
+                  trunk_grad_scale: float = 1.0):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (#425
@@ -386,10 +406,15 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
     weighted mean of per-row card means, the listwise term as a weighted mean over
     the rows with a ballot target); ``None`` is the unweighted reduction.  An
     all-ones vector gives the same listwise tensor and the BCE to one float32 ulp
-    (a different summation order), which is why the trainer passes None at W=1.0."""
+    (a different summation order), which is why the trainer passes None at W=1.0.
+    ``trunk_grad_scale`` (``--policy-trunk-grad-scale``) multiplies the policy
+    gradient where it enters the trunk (``scale_trunk_gradient``); the policy
+    tower and head keep the full gradient.  1.0 is the unscaled code path."""
     features = model.features_flat(t["x"])
     if detach:
         features = features.detach()
+    else:
+        features = scale_trunk_gradient(features, trunk_grad_scale)
     logits = model.policy_logits(features)
     if row_weight is None:
         bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["y"])
@@ -476,4 +501,4 @@ class PolicyEval:
 
 
 __all__ = ["PolicyEval", "PolicyRows", "PolicyRowsStream", "SCHEMA", "explore_row_weights", "open_policy_rows",
-           "policy_log_odds", "policy_losses"]
+           "policy_log_odds", "policy_losses", "scale_trunk_gradient"]

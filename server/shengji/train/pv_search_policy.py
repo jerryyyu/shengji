@@ -83,6 +83,19 @@ and adds ``-la`` to the name as the last rule token; off, it is absent from the
 payload, so every existing name (production:
 ``pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25``) and slot 0
 are unchanged.  No model call is added.
+
+Optional lead selection rule (#676 online lead review, board A8), OFF BY DEFAULT:
+``SHENGJI_PV_LEAD_TIEBREAK_PRIOR=1`` -- only when the seat is LEADING, among the
+admitted candidates whose value mean is within ``lead_tiebreak_epsilon`` (0.02
+of a signed level, the same scale and constant as ``tiebreak_epsilon``) of the
+best, the one with the highest policy prior score (the admission's ranking
+score) is played; an exact prior tie keeps the argmax.  With
+``SHENGJI_PV_TIEBREAK_POINTS=1`` as well, the prior decides on leads (the points
+rule does not run there) and the points rule is unchanged on follows
+(definition: `policy_value_search`).  ``0`` or ``1`` only; on, it enters the
+recipe digest with its epsilon and adds ``-lp`` to the name as the last rule
+token; off, it is absent from the payload, so every existing name and the
+served selection are unchanged.  No model call and no leaf rebuild is added.
 """
 from __future__ import annotations
 
@@ -103,7 +116,8 @@ from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
-                                  LEAD_ANCHOR_DEFAULTS, TIEBREAK_DEFAULTS,
+                                  LEAD_ANCHOR_DEFAULTS, LEAD_TIEBREAK_DEFAULTS,
+                                  TIEBREAK_DEFAULTS,
                                   PolicyValueBot)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -132,14 +146,17 @@ ADAPTIVE_K_RULE = {"ADAPTIVE_K": "adaptive_k"}
 ADAPTIVE_K_TOKEN = ("adaptive_k", f"ak{ADAPTIVE_K_DEFAULTS['candidates_lead_multi']}")
 #: the optional anchor rule (`policy_value_search`): env flag -> recipe key
 LEAD_ANCHOR_RULE = {"LEAD_ANCHOR": "lead_anchor"}
+#: the optional lead selection rule (`policy_value_search`): env flag -> recipe key
+LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
-#: name order (admission rules, the sampler rule, selection, width, anchor):
-#: div, fs, rc, tb, ak16, la
+#: name order (admission rules, the sampler rule, selection, width, anchor, lead
+#: selection): div, fs, rc, tb, ak16, la, lp
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
-              **LEAD_ANCHOR_RULE}
+              **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
-                                                   ("lead_anchor", "la"))
+                                                   ("lead_anchor", "la"),
+                                                   ("lead_tiebreak_prior", "lp"))
 ENV_PREFIX = "SHENGJI_PV_"
 
 
@@ -210,6 +227,8 @@ class PVSearchConfig:
     adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"]
     # the optional anchor rule (#676 online lead review); the same contract
     lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"]
+    # the optional lead selection rule (board A8); the same contract
+    lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -230,6 +249,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["tiebreak_epsilon"] = TIEBREAK_DEFAULTS["tiebreak_epsilon"]
     if config.adaptive_k:
         payload["candidates_lead_multi"] = ADAPTIVE_K_DEFAULTS["candidates_lead_multi"]
+    if config.lead_tiebreak_prior:
+        payload["lead_tiebreak_epsilon"] = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"]
     return payload
 
 
@@ -262,7 +283,8 @@ class PVSearchBot(PolicyValueBot):
                          admit_forced_single=config.admit_forced_single,
                          tiebreak_points=config.tiebreak_points,
                          adaptive_k=config.adaptive_k,
-                         lead_anchor=config.lead_anchor)
+                         lead_anchor=config.lead_anchor,
+                         lead_tiebreak_prior=config.lead_tiebreak_prior)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -449,7 +471,8 @@ class PVSearchBot(PolicyValueBot):
             check_budget()   # pre-success: nothing past the deadline is published
         # the optional tie-break rebuilds leaves under the same deadline and, on
         # expiry, abandons itself in favour of the argmax (`policy_value_search`)
-        winner = self._select(rnd, seat, admitted, means, worlds=worlds, check_budget=check_budget)
+        winner = self._select(rnd, seat, admitted, means, worlds=worlds, check_budget=check_budget,
+                              priors=[float(preferences[i]) for i in chosen])
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -472,6 +495,7 @@ class PVSearchBot(PolicyValueBot):
             **self._admission_record(),
             **self._sampler_record(),
             **self._tiebreak_record(),
+            **self._lead_tiebreak_record(),
         }
         return list(admitted[winner])
 
@@ -567,7 +591,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                        adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
-                       lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"]
+                       lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
+                       lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -598,7 +623,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
-                            lead_anchor=lead_anchor)
+                            lead_anchor=lead_anchor,
+                            lead_tiebreak_prior=lead_tiebreak_prior)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -651,7 +677,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                         adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
-                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"]
+                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
+                        lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -664,7 +691,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
-                            lead_anchor=lead_anchor)
+                            lead_anchor=lead_anchor,
+                            lead_tiebreak_prior=lead_tiebreak_prior)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -711,7 +739,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                admit_forced_single=config.admit_forced_single,
                                tiebreak_points=config.tiebreak_points,
                                adaptive_k=config.adaptive_k,
-                               lead_anchor=config.lead_anchor),
+                               lead_anchor=config.lead_anchor,
+                               lead_tiebreak_prior=config.lead_tiebreak_prior),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -727,7 +756,7 @@ def pv_env_recipe(environ=None) -> dict:
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
-    ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

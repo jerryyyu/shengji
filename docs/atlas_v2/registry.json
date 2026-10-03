@@ -846,6 +846,27 @@
    "hi": 0.02051,
    "takeaway": "Positive on its predeclared ten-window read against the combo: lead-anchor adds a little on top. Deployed with the combo as release 38 on 10-03.",
    "note": "SEALED 10-03; predeclared #676 issuecomment-5963971098; readout (Codex) issuecomment-5965252288; reader v43cla_reader.py 7db0f635. POSITIVE: +0.010563 [+0.000619,+0.020507], SE 0.00507, MDE80 0.0142, I2 26.8%. Per-host descriptive: Perf +0.003342 [-0.008840,+0.015524], cloud +0.017243 [+0.003080,+0.031406]. Anchor replaced on 8.33% of candidate play records; tiebreak ~8.6%; diversity skipped >=1 candidate on ~31.9% of plays both arms. Lead-anchor adds on top of the combo; whole-policy ITT, no component attribution. Archived ~/shengji-archive/2026-09-13/readouts/v43cla-combo-la-vs-combo (readout.json 8abbd8e9\u2026, adjudication.json d274840d\u2026). NOT DEPLOYED; promotion is Jerry's decision. UPDATE 2026-10-03 09:41 ET: deployed as release 38 (#698) on Jerry's word."
+  },
+  {
+   "id": "v44lp",
+   "date": "2026-10-03",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Lead near-tie broken by the policy prior (A8)",
+   "candidate": "LEAD PRIOR TIE-BREAK (A8, v44lp): release 38 as served + SHENGJI_PV_LEAD_TIEBREAK_PRIOR=1 (token -lp): among near-tied lead candidates, prefer the higher policy prior; vs release 38 as served",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; exploratory",
+   "seeds": "45360910 45460910 45560910 45660910 45760910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.007864,
+   "lo": -0.026617,
+   "hi": 0.010889,
+   "takeaway": "Inconclusive: the interval spans zero and the point is below the +0.015 extension line. Not extended, not promoted; the flag stays off in production.",
+   "note": "SEALED 10-03; dispatch #676 issuecomment-5970184811; readout (Codex, one pass) issuecomment-5971387823. Paired -0.007864 [-0.026617,+0.010889], SE 0.009568, MDE80 0.026806; INCONCLUSIVE (interval spans zero). Extension trigger (point > +0.015) not met: no extension, not promoted; SHENGJI_PV_LEAD_TIEBREAK_PRIOR stays off in production. Activation: A8 changed 5,940 of 184,444 candidate plays (3.22%), 12.99% of leads. Common-opponent instrument, not a direct duel. Reader sha256 e5667b81af78130591dd0520f00daa0ef04dfdb5438c4cecf551e9c9cb4ca669; result sha256 bd282bc855720c79f4d52edc3d81cf78deba5f00bc3728c601c7b8e318f13c88. Archived ~/shengji-archive/2026-09-13/readouts/v44lp-a8-lead-prior-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/676#issuecomment-5971387823"
   }
  ],
  "context_screens": [

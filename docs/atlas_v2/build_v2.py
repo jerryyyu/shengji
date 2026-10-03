@@ -113,6 +113,10 @@ def _chart_rows(items, kind):
             out.append((tag, r["label"] or s.get("title") or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
     return out
 PROD = production_release(R)
+PROD_SINCE = next(b["since"] for b in R["baseline"] if b["release"] == PROD).split(" ")[0]      # the date it took over
+# The releases that screens were read against before the current one, in order ("29, then 30, then 36, ").
+_COMPARATORS = sorted({s["vs"] for s in R["screens"] if s["vs"] != PROD} | {29})
+EARLIER_PRODS = ", then ".join(str(r) for r in _COMPARATORS) + (", " if _COMPARATORS else "")
 SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
 SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
@@ -233,7 +237,7 @@ head_note = ('<p class="sub small">' + esc(R["head_ladder_note"]) + "</p>") if R
 def comparator_tables(sections):
     return "\n".join(f'<h4>Screens against {esc(c["label"])} · {_reads(len(c["items"]))}</h4>' + screens_table(c["items"]) for c in sections)
 now_block = (comparator_tables([c for c in COMPARATORS if c["release"] == PROD]) if SCREENS_NOW
-             else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from 2026-09-30 is read here.</p>')
+             else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from {esc(PROD_SINCE)} is read here.</p>')
 def earlier_sections():
     return comparator_tables([c for c in COMPARATORS if c["release"] != PROD])
 
@@ -280,7 +284,7 @@ a{{color:var(--accent)}}
 </style>
 <main>
 <h1>Shengji Atlas v2</h1>
-<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> (29, then 30, now <b>{PROD}</b>). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
+<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> ({esc(EARLIER_PRODS)}now <b>{PROD}</b>). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
 
 <h2>Production</h2>
 {baseline_cards()}

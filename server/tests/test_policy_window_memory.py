@@ -6,6 +6,7 @@ import json
 import weakref
 
 import numpy as np
+import pytest
 
 from shengji.train import policy_prior as pp
 from shengji.train import policy_rows as pr
@@ -81,6 +82,42 @@ def _write_chunks(root, specs):
     json.dump({"schema": pp.CHUNK_SCHEMA, "input_dim": pp.INPUT_DIM, "enc_version": 2,
                "rows": sum(s[0] for s in specs), "chunks": chunks},
               (root / "manifest.json").open("w"))
+
+
+def _rewrite_first_chunk_vals(root, vals):
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    chunk_path = root / manifest["chunks"][0]["file"]
+    with np.load(chunk_path) as source:
+        arrays = {name: source[name] for name in source.files}
+    arrays["vals"] = vals
+    np.savez_compressed(chunk_path, **arrays)
+    manifest["chunks"][0]["sha256"] = hashlib.sha256(chunk_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+
+@pytest.mark.parametrize("vals_rows", [1, 3])
+@pytest.mark.parametrize("exclude, limit", [(frozenset(), None), ({"deck:drop"}, 1)])
+def test_constructor_refuses_optional_vals_row_count_mismatch_before_filtering_or_limit(
+        tmp_path, vals_rows, exclude, limit):
+    root = tmp_path / "malformed"
+    _write_chunks(root, [(2, 2, 1, True, np.int8, ("drop", "keep"))])
+    with np.load(root / "chunk-00000.npz") as source:
+        vals = np.zeros((vals_rows, source["vals"].shape[1]), np.float32)
+    _rewrite_first_chunk_vals(root, vals)
+
+    with pytest.raises(ValueError, match="not row-aligned"):
+        pr.PolicyRowsStream(root, exclude=exclude, limit=limit)
+
+
+@pytest.mark.parametrize("vals", [np.float32(1.0), np.zeros(2, np.float32)])
+def test_constructor_refuses_non_matrix_optional_vals(tmp_path, vals):
+    root = tmp_path / "malformed-shape"
+    _write_chunks(root, [(2, 2, 1, True, np.int8, ("a", "b"))])
+    _rewrite_first_chunk_vals(root, vals)
+
+    with pytest.raises(ValueError, match="not row-aligned"):
+        pr.PolicyRowsStream(root)
 
 
 def _oracle_batches(specs, *, exclude, window, batch_size, seed, limit=None):

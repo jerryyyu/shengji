@@ -244,9 +244,11 @@ class PolicyRowsStream:
                 raise ValueError(f"policy rows stream: {c['file']} SHA256 differs from the manifest (tampered or rewritten)")
             d = np.load(path)
             n = int(c["rows"])
+            vals_shape = d["vals"].shape if "vals" in d.files else None
             if (d["X"].ndim != 2 or d["X"].shape != (n, self.input_dim) or d["Y"].shape != (n, 54)
                     or d["ball"].shape[0] != n or d["mask"].shape[0] != n or d["tgt"].shape != (n,)
-                    or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]):
+                    or d["deal_key"].shape != (n,) or d["ball"].shape[1] != d["mask"].shape[1]
+                    or (vals_shape is not None and (len(vals_shape) != 2 or vals_shape[0] != n))):
                 raise ValueError(f"policy rows stream: {c['file']} arrays are not row-aligned with the manifest")
             if "explore_flag" in d.files and (d["explore_flag"].shape != (n,) or d["explore_margin"].shape != (n,)):
                 raise ValueError(f"policy rows stream: {c['file']} exploration tags are not row-aligned with the manifest")

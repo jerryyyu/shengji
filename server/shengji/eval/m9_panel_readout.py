@@ -13,6 +13,7 @@ from typing import Any
 
 from .ballot_matrix import CARD_INDEX, _canonical_collection
 from .ballot_full_pool import summarize_full_pool_matrix
+from .ballot_points_selection import summarize_points_selection
 from .m9_panel_plan import build_m9_panel_plan
 from .m9_panel_worker import _validate_panel
 from .m9_replay_binding import validate_m9_replay
@@ -219,6 +220,8 @@ def _read_panel(record: Mapping[str, Any], job: Mapping[str, Any],
         # Initialize after validating arm captures so the assignment above is
         # unambiguous and preserves the two independent ballot columns.
         deltas = {}
+        ballot_replays = {}
+        shared_replays = {}
         for arm in _ARMS:
             indices = ballot_info[arm]
             ballot = _object(captures[arm], f"{arm} capture")
@@ -232,6 +235,18 @@ def _read_panel(record: Mapping[str, Any], job: Mapping[str, Any],
                 _finite(delta, f"{arm} schedule delta")
                 arm_deltas.append(delta)
             deltas[arm] = arm_deltas
+            ballot_replays[arm] = summarize_points_selection(
+                job[f"{arm}_ballot"], means, ballot["signed_trick_points"])
+            shared_replays[arm] = summarize_points_selection(
+                job[f"{arm}_ballot"], [full["means"][j] for j in indices],
+                [[row[j] for j in indices] for row in full["points"]])
+        for field, expected in (
+            ("ballot_schedule_points_replay", ballot_replays),
+            ("shared_matrix_points_replay", shared_replays),
+            ("ballot_minus_full_schedule_value_deltas", deltas),
+        ):
+            if not _same(collection.get(field), expected):
+                raise ValueError(f"cached {field} differs")
         full_capture_obj = full
         replay = validate_m9_replay(panel, saved_analysis)
         if not _same(record.get("replay_consistency"), replay):
@@ -269,7 +284,9 @@ def summarize_m9_panels(saved_analysis, records) -> dict[str, Any]:
             raise ValueError(f"records[{index}] job differs or is out of order")
         if record.get("validation_status") != "passed":
             raise ValueError("all panel records must have passed validation")
-        if record.get("replay_failure") is not None:
+        if "replay_failure" not in record:
+            raise ValueError("record must explicitly contain replay_failure")
+        if record["replay_failure"] is not None:
             raise ValueError("rejected replay record cannot be read out")
         expected_cadence = ("fresh-root" if job["mode"] == "fresh-root"
                             else "single-seat-actor-turns")

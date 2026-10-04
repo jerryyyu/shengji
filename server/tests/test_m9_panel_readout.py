@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 import itertools
+import json
 import math
 
 import pytest
 
 from shengji.eval.ballot_full_pool import summarize_full_pool_matrix
 from shengji.eval.ballot_matrix import CARD_INDEX
+from shengji.eval.ballot_points_selection import summarize_points_selection
 from shengji.eval.m9_panel_plan import (
     CHECKPOINT_SHA256,
     EXPECTED_ACTION_COUNTS,
@@ -55,6 +57,9 @@ def _analysis_and_actions(*, multi=False):
         for row in root["seeds"]:
             for arm, ballot in (("control", control), ("treatment", treatment)):
                 decision = row[arm]["decision"]
+                # The plan-only fixture carries an unrelated Infinity sentinel;
+                # retained records must instead be strict JSON serializable.
+                decision.pop("ignored_matrix_means")
                 decision["admitted"] = copy.deepcopy(ballot)
                 decision["value_means"] = [values[_canonical_key(action)]
                                             for action in ballot]
@@ -111,6 +116,25 @@ def _records(*, matrix_bad=None, drift=False, points_bad=False,
             collection = {"schema": "fixed-tape-three-pass-panel-v1",
                            "captures": captures,
                            "shared_matrix_summary": shared}
+            indices = {_canonical_key(action): i
+                       for i, action in enumerate(panel_actions)}
+            replays, shared_replays, deltas = {}, {}, {}
+            for arm in ("control", "treatment"):
+                ballot = job[f"{arm}_ballot"]
+                capture = captures[arm]
+                columns = [indices[_canonical_key(action)] for action in ballot]
+                shared_means = [full["serving_value_means"][i] for i in columns]
+                replays[arm] = summarize_points_selection(
+                    ballot, capture["serving_value_means"], capture["signed_trick_points"])
+                shared_replays[arm] = summarize_points_selection(
+                    ballot, shared_means,
+                    [[row[i] for i in columns] for row in full["signed_trick_points"]])
+                deltas[arm] = [value - common for value, common in
+                              zip(capture["serving_value_means"], shared_means)]
+            collection.update(
+                ballot_schedule_points_replay=replays,
+                shared_matrix_points_replay=shared_replays,
+                ballot_minus_full_schedule_value_deltas=deltas)
         else:
             collection = {
                 "schema": "fixed-tape-history-primed-panel-v1",
@@ -167,6 +191,40 @@ def test_multi_card_membership_uses_canonical_cards_but_preserves_capture_order(
     analysis, records = _records(multi=True)
     report = summarize_m9_panels(analysis, records)
     assert report["panel_count"] == 15
+
+
+@pytest.mark.parametrize("field", [
+    "ballot_schedule_points_replay", "shared_matrix_points_replay",
+    "ballot_minus_full_schedule_value_deltas",
+])
+@pytest.mark.parametrize("mutation", ["missing", "garbage", "nested_bool"])
+def test_cached_fresh_derivatives_are_recomputed(field, mutation):
+    analysis, records = _records()
+    # Exercise the persisted JSON representation, not Python-only tuple shapes.
+    analysis, records = json.loads(json.dumps([analysis, records], allow_nan=False))
+    collection = records[0]["panel"]["collection"]
+    if mutation == "missing":
+        del collection[field]
+    elif mutation == "garbage":
+        collection[field] = "garbage"
+    elif field == "ballot_minus_full_schedule_value_deltas":
+        assert collection[field]["control"][0] == 0.0
+        collection[field]["control"][0] = False
+    else:
+        assert collection[field]["control"]["near_count"] == 1
+        collection[field]["control"]["near_count"] = True
+    with pytest.raises(ValueError, match=f"cached {field} differs"):
+        summarize_m9_panels(analysis, records)
+
+
+def test_good_json_roundtrip_and_explicit_replay_failure_key():
+    analysis, records = _records(multi=True)
+    expected = summarize_m9_panels(analysis, records)
+    analysis, records = json.loads(json.dumps([analysis, records], allow_nan=False))
+    assert summarize_m9_panels(analysis, records) == expected
+    del records[0]["replay_failure"]
+    with pytest.raises(ValueError, match="explicitly contain replay_failure"):
+        summarize_m9_panels(analysis, records)
 
 
 def test_primed_tape_receipt_is_also_bound():

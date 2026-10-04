@@ -302,12 +302,36 @@ def _start_game(client, a, to_play=False):
     a.send_json({"type": "start_game"})
     st = _drain(a, "state", tries=60)
     if to_play:
+        from shengji.engine.round import KITTY_SIZE
+        bury_sent = False
         for _ in range(400):
             if st.get("phase") == "play":
                 break
+            if (st.get("phase") == "bury" and st.get("banker") == st.get("you")
+                    and not bury_sent):
+                # No declaration can leave the human at seat 0 as banker.
+                # Drive that required action through the real socket too.
+                ids = [card["id"] for card in st["hand"][:KITTY_SIZE]]
+                assert len(ids) == KITTY_SIZE
+                a.send_json({"type": "bury", "card_ids": ids})
+                bury_sent = True
             st = _drain(a, "state", tries=400)
         assert st.get("phase") == "play", "round never reached the play phase"
     return code, srv.rooms[code]
+
+
+def test_start_game_to_play_completes_human_banker_bury(client, monkeypatch):
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.round import KITTY_SIZE
+
+    # With no declarations the first round defaults to seat 0, the human.
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    with client.websocket_connect("/ws") as a:
+        _, room = _start_game(client, a, to_play=True)
+        assert room.round.banker == 0
+        assert room.round.phase == "play"
+        assert len(room.round.buried) == KITTY_SIZE
+        assert len(room.round.hands[0]) == 25
 
 
 def test_claim_preserves_private_hand_and_ids(client):

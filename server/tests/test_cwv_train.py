@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import random
+import shutil
 
 import numpy as np
 import pytest
@@ -56,18 +57,30 @@ THIRDS = dict(val_fraction=1 / 3, test_fraction=1 / 3)     # 3 deals -> 1 / 1 / 
 
 
 @pytest.fixture(scope="module")
-def store_dir(tmp_path_factory):
+def store_dir(tmp_path_factory, cwv_corpus_factory):
     out = tmp_path_factory.mktemp("cwv-traj") / "run"
-    trajectory.generate(rounds=ROUNDS, seed0=SEED0, out_dir=out, workers=1, merge=False,
-                        **WORK, **EXPLORE)
+    source = cwv_corpus_factory(
+        ("cwv-train", ROUNDS, SEED0, 1, False, tuple(sorted(WORK.items())),
+         tuple(sorted(EXPLORE.items()))),
+        lambda target: trajectory.generate(
+            rounds=ROUNDS, seed0=SEED0, out_dir=target, workers=1, merge=False,
+            **WORK, **EXPLORE),
+    )
+    shutil.copytree(source, out)
     return out
 
 
 @pytest.fixture(scope="module")
-def other_dir(tmp_path_factory):
+def other_dir(tmp_path_factory, cwv_corpus_factory):
     out = tmp_path_factory.mktemp("cwv-other") / "run"
-    trajectory.generate(rounds=2, seed0=SEED0 + 7_777, out_dir=out, workers=1, merge=False,
-                        **WORK, **EXPLORE)
+    source = cwv_corpus_factory(
+        ("cwv-other", 2, SEED0 + 7_777, 1, False, tuple(sorted(WORK.items())),
+         tuple(sorted(EXPLORE.items()))),
+        lambda target: trajectory.generate(
+            rounds=2, seed0=SEED0 + 7_777, out_dir=target, workers=1, merge=False,
+            **WORK, **EXPLORE),
+    )
+    shutil.copytree(source, out)
     return out
 
 

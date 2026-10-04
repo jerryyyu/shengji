@@ -14,6 +14,7 @@ import re
 import socket
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 from . import observation_queue as guards
@@ -133,7 +134,8 @@ def _run_packet(packet_path, packet_sha, *, panel):
     if hashlib.sha256(raw).hexdigest() != packet_sha:
         raise ValueError("packet SHA mismatch")
     packet = guards._parse_finite_object(raw)
-    keys = (_KEYS - {"read_complete"}) | {"timeout_seconds"} if panel else _KEYS
+    keys = ((_KEYS - {"read_complete"}) | {"timeout_seconds", "process_timeout_seconds"}
+            if panel else _KEYS)
     if set(packet) != keys or packet["schema"] != (PANEL_SCHEMA if panel else SCHEMA):
         raise ValueError("exact M9 packet required")
     recipe = packet["recipe"]
@@ -142,10 +144,14 @@ def _run_packet(packet_path, packet_sha, *, panel):
         timeout = packet["timeout_seconds"]
         if type(timeout) is not int or timeout <= 0:
             raise ValueError("explicit positive integer panel deadline required")
+        process_timeout = packet["process_timeout_seconds"]
+        if type(process_timeout) is not int or process_timeout <= timeout:
+            raise ValueError("panel process timeout must exceed inner deadline")
         inner_command = build_panel_worker_command(recipe, str(packet_path), packet_sha)
     else:
         validate_recipe(recipe)
         timeout = recipe["timeout_seconds"]
+        process_timeout = timeout
         inner_command = build_observation_command(recipe)
     source = Path(recipe["source_root"])
     command = (recipe["python"], "-I", "-B",
@@ -261,6 +267,10 @@ def _run_packet(packet_path, packet_sha, *, panel):
     }
     if panel:
         claim["queue_snapshot"] = queue
+        # Same-host monotonic clock shared with the child. Start BEFORE spawn,
+        # not after child bootstrap, so the soft deadline precedes the outer
+        # process timeout by at least the explicitly reviewed margin.
+        claim["deadline_monotonic"] = time.monotonic() + timeout
     guards.write_exclusive_json(controls["claim"], claim)
     stamps[controls["claim"]] = file_stamp(controls["claim"])
     lease = Lease(controls["host_lock"], f"{namespace} {os.getpid()} {packet_sha}\n")
@@ -291,7 +301,7 @@ def _run_packet(packet_path, packet_sha, *, panel):
         raise ValueError("reservation/lease changed before dispatch")
     result = run_observation_process(command, workspace=source / "server",
                                      env=dict(packet["environment"]), watchdog_script=watchdog,
-                                     timeout_seconds=timeout, evidence=evidence)
+                                     timeout_seconds=process_timeout, evidence=evidence)
     checks()  # includes positive no-peer/no-child census, not merely exit0
     if (not lease.check() or not guards.queue_unchanged(queue_spec, queue, owned_record=own)
             or type(result.get("returncode")) is not int

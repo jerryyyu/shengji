@@ -14,6 +14,7 @@ def _panel(tmp_path, monkeypatch):
     packet["schema"] = admission.PANEL_SCHEMA
     packet.pop("read_complete")
     packet["timeout_seconds"] = 901
+    packet["process_timeout_seconds"] = 931
     # The panel uses the explicitly captured queue, not original M9's v49 gate.
     entry = packet["queue"]["reservations"][0]
     entry["lane"] = "completed-data"
@@ -66,7 +67,7 @@ def test_panel_owner_binds_namespace_directory_deadline_queue_and_drains(tmp_pat
     assert len(calls) == 1
     command, kwargs = calls[0]
     assert command[-5:] == ("--panel", "--packet", str(path), "--sha256", digest)
-    assert kwargs["timeout_seconds"] == 901
+    assert kwargs["timeout_seconds"] == 931
     claim = json.loads(paths["claim"].read_text())
     assert claim["schema"] == "m9-panel-owner-attempt-v1"
     assert claim["queue_snapshot"] == {"queue": "snapshot"}
@@ -149,9 +150,9 @@ def test_original_release_namespace_cannot_authorize_panel(tmp_path, monkeypatch
     assert not calls and not paths["claim"].exists()
 
 
-@pytest.mark.parametrize("drift", [None, "hold", "claim", "reservation", "status",
+@pytest.mark.parametrize("drift", [None, "hold", "peer_lock", "claim", "reservation", "status",
                                   "packet", "release", "owner", "queue", "dead_owner",
-                                  "deadline"])
+                                  "deadline", "bootstrap_deadline"])
 def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drift):
     from types import SimpleNamespace
     from scripts import observation_worker as worker
@@ -170,11 +171,15 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
     # Only relocate the hard-coded production lock for this local file witness.
     monkeypatch.setattr(worker, "Path", lambda value: paths["host_lock"]
                         if str(value) == "/root/.claude-host.lock" else Path(value))
-    monkeypatch.setattr(worker, "_bootstrap", lambda *a, **kw:
-                        (packet, paths["root"] / "server", {}))
     ticks = [1.0]
     monkeypatch.setattr(worker.time, "monotonic", lambda: ticks[0])
+    def bootstrap(*args, **kwargs):
+        # The inner clock includes this startup cost; it must not restart here.
+        ticks[0] += packet["timeout_seconds"] + 10 if drift == "bootstrap_deadline" else 5
+        return packet, paths["root"] / "server", {}
+    monkeypatch.setattr(worker, "_bootstrap", bootstrap)
     seen = []
+    child_errors = []
 
     def body(recipe, manifest, *, check_admission, check_budget):
         assert check_admission() is True
@@ -187,7 +192,8 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
             ticks[0] += packet["timeout_seconds"]
         elif drift:
             target = {"packet": path, "owner": paths["host_lock"] / "owner",
-                      "queue": Path(entry["status"])}.get(drift, paths.get(drift))
+                      "queue": Path(entry["status"]),
+                      "peer_lock": Path(packet["other_locks"][0])}.get(drift, paths.get(drift))
             target.write_text("changed")
         check_budget()
         assert check_admission() is True
@@ -198,15 +204,41 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
         admission.guards, None, SimpleNamespace(run_panel_body=body)))
 
     def child(command, **kwargs):
-        worker.run_panel_packet(str(path), digest)
+        outer_deadline = ticks[0] + kwargs["timeout_seconds"]
+        try:
+            worker.run_panel_packet(str(path), digest)
+        except (ValueError, TimeoutError) as exc:
+            child_errors.append(exc)
+            if drift in {"deadline", "bootstrap_deadline"}:
+                assert ticks[0] < outer_deadline  # Soft stop beats owner kill.
+            raise
         return {"status": "exited", "returncode": 0}
 
     monkeypatch.setattr(admission, "run_observation_process", child)
     if drift:
         with pytest.raises((ValueError, TimeoutError)):
             admission.run_panel_packet(path, digest)
+        expected = {
+            "hold": "HOLD or peer lock", "claim": "panel claim changed",
+            "peer_lock": "HOLD or peer lock",
+            "reservation": "panel reservation changed", "status": "terminal status appeared",
+            "packet": "panel packet changed", "release": "panel RELEASE changed",
+            "owner": "panel host lease changed", "queue": "panel queue changed",
+            "dead_owner": "panel owner process is stale", "deadline": "panel deadline exceeded",
+            "bootstrap_deadline": "panel deadline exceeded",
+        }[drift]
+        assert len(child_errors) == 1 and expected in str(child_errors[0])
         assert paths["host_lock"].is_dir()  # Ambiguous child failure retains lease.
     else:
         admission.run_panel_packet(path, digest)
         assert not paths["host_lock"].exists()
-    assert seen == ["body"]
+    assert seen == ([] if drift == "bootstrap_deadline" else ["body"])
+
+
+@pytest.mark.parametrize("outer", [True, 0, 900, 901, 901.5, None])
+def test_panel_requires_explicit_outer_deadline_margin(tmp_path, monkeypatch, outer):
+    path, packet, paths, calls = _panel(tmp_path, monkeypatch)
+    packet["process_timeout_seconds"] = outer
+    with pytest.raises(ValueError, match="process timeout"):
+        admission.run_panel_packet(path, _seal(path, packet, paths))
+    assert not calls and not paths["claim"].exists()

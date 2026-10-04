@@ -30,7 +30,7 @@ _PACKET_KEYS = frozenset({
 })
 _PANEL_PACKET_SCHEMA = "m9-panel-admission-v1"
 _PANEL_PACKET_KEYS = frozenset((*(_PACKET_KEYS - {"read_complete"}),
-                                "timeout_seconds"))
+                                "timeout_seconds", "process_timeout_seconds"))
 _CLAIM_KEYS = frozenset({
     "schema", "packet_sha256", "status", "comparison_validated", "owner_pid",
     "inner_command",
@@ -249,7 +249,7 @@ def _verify_claim_and_controls(packet, packet_sha, guards, *, panel=False,
 
     claim_raw, claim_stamp = _stable_read(controls["claim"], _MAX_CLAIM_BYTES)
     claim = _parse_object(claim_raw)
-    claim_keys = _CLAIM_KEYS | ({"queue_snapshot"} if panel else set())
+    claim_keys = _CLAIM_KEYS | ({"queue_snapshot", "deadline_monotonic"} if panel else set())
     claim_schema = "m9-panel-owner-attempt-v1" if panel else "m9-owner-attempt-v1"
     if (set(claim) != claim_keys or claim.get("schema") != claim_schema
             or claim.get("packet_sha256") != packet_sha
@@ -387,6 +387,7 @@ def _panel_reservation(controls, packet, packet_sha, owner_pid, recipe):
 
 def run_panel_packet(packet_path, packet_sha):
     """Authenticate and run one admitted fixed panel in this process."""
+    started = time.monotonic()
     packet, server, runtime_manifest = _bootstrap(packet_path, packet_sha, panel=True)
     packet_path = _canonical_absolute(str(packet_path), "packet")
     recipe_value = packet["recipe"]
@@ -402,10 +403,17 @@ def run_panel_packet(packet_path, packet_sha):
     timeout = packet.get("timeout_seconds")
     if type(timeout) is not int or timeout <= 0:
         raise ValueError("panel timeout_seconds must be a strict positive integer")
+    process_timeout = packet.get("process_timeout_seconds")
+    if type(process_timeout) is not int or process_timeout <= timeout:
+        raise ValueError("panel process timeout must exceed inner deadline")
 
     controls = _verify_claim_and_controls(
         packet, packet_sha, guards, panel=True, packet_path=packet_path)
     owner_pid = controls["_claim"]["owner_pid"]
+    deadline = controls["_claim"].get("deadline_monotonic")
+    if (type(deadline) not in (int, float) or not math.isfinite(deadline)
+            or deadline <= 0 or deadline > started + timeout):
+        raise ValueError("owner-bound monotonic panel deadline required")
     own = _panel_reservation(controls, packet, packet_sha, owner_pid, recipe_value)
     queue_spec = guards.validate_queue_spec(packet["queue"])
     if controls["reservation"].parent != Path(queue_spec["reservation_dir"]):
@@ -459,8 +467,6 @@ def run_panel_packet(packet_path, packet_sha):
             if isinstance(exc, ValueError):
                 raise
             raise ValueError("panel admission control unreadable") from exc
-
-    deadline = time.monotonic() + timeout
 
     def check_budget():
         if time.monotonic() >= deadline:

@@ -23,7 +23,8 @@ def _write_packet(tmp_path: Path, packet: dict) -> tuple[Path, str]:
 def _packet():
     keys = set(worker._PACKET_KEYS) - {"read_complete"}
     packet = {key: None for key in keys}
-    packet.update(schema="m9-panel-admission-v1", timeout_seconds=1)
+    packet.update(schema="m9-panel-admission-v1", timeout_seconds=1,
+                  process_timeout_seconds=31)
     return packet
 
 

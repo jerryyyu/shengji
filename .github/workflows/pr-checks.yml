@@ -224,6 +224,7 @@ jobs:
           tests/test_m9_panel_admission.py
           tests/test_m9_panel_authenticated_worker.py
           tests/test_m9_panel_factory_preflight.py
+          tests/test_observation_queue_m9.py
           tests/test_m9_panel_worker.py
           tests/test_m9_panel_persistence.py
           tests/test_m9_panel_readout.py

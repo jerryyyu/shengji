@@ -28,6 +28,21 @@ _RESERVATION_KEYS = frozenset({
     "terminal_suffix",
 })
 _RESUMED_RESERVATION_KEYS = _RESERVATION_KEYS | {"resumed_status_sha256"}
+_M9_RESERVATION_KEYS = frozenset({
+    "path", "sha256", "lane", "launcher", "launcher_sha256", "status", "pid",
+    "reservation_schema", "status_sha256",
+})
+_M9_RESERVATION_SCHEMAS = frozenset({
+    "codex-m9-reservation-v1", "codex-m9-panel-reservation-v1",
+})
+_M9_TERMINAL_SCHEMAS = {
+    "codex-m9-reservation-v1": "m9-owner-terminal-v1",
+    "codex-m9-panel-reservation-v1": "m9-panel-owner-terminal-v1",
+}
+_M9_COUNTS = {
+    "codex-m9-reservation-v1": 12,
+    "codex-m9-panel-reservation-v1": 15,
+}
 _TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RUNPVC_LANE = re.compile(r"^runPVC[1-9][0-9]*$")
 _LINE_BREAKS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
@@ -102,9 +117,18 @@ def validate_queue_spec(spec: Any) -> dict[str, Any]:
     seen: set[str] = set()
     seen_status: set[str] = set()
     for index, entry in enumerate(reservations):
-        if type(entry) is not dict or set(entry) not in (
-                _RESERVATION_KEYS, _RESUMED_RESERVATION_KEYS):
+        if type(entry) is not dict:
             raise ValueError(f"reservation[{index}] fields mismatch")
+        entry_keys = set(entry)
+        is_m9 = entry_keys == _M9_RESERVATION_KEYS
+        if not is_m9 and entry_keys not in (_RESERVATION_KEYS, _RESUMED_RESERVATION_KEYS):
+            raise ValueError(f"reservation[{index}] fields mismatch")
+        if is_m9:
+            if (type(entry["reservation_schema"]) is not str
+                    or entry["reservation_schema"] not in _M9_RESERVATION_SCHEMAS):
+                raise ValueError("reservation schema is not a supported M9 kind")
+            _strict_sha(entry["status_sha256"],
+                        f"reservation[{index}].status_sha256")
         path = _canonical_absolute(entry["path"], f"reservation[{index}].path")
         status = _canonical_absolute(entry["status"], f"reservation[{index}].status")
         launcher = _canonical_absolute(entry["launcher"], f"reservation[{index}].launcher")
@@ -125,7 +149,8 @@ def validate_queue_spec(spec: Any) -> dict[str, Any]:
             raise ValueError("lane must be non-empty")
         if type(entry["pid"]) is not int or entry["pid"] <= 1:
             raise ValueError("pid must be a strict integer greater than one")
-        if not _valid_terminal_suffix(entry["terminal_suffix"], entry["lane"]):
+        if (not is_m9
+                and not _valid_terminal_suffix(entry["terminal_suffix"], entry["lane"])):
             raise ValueError("terminal_suffix must end with LANE DONE or name a runPVC lane")
     launcher_hashes: dict[str, str] = {}
     for entry in reservations:
@@ -186,6 +211,27 @@ def _status_terminal(raw: bytes, suffix: str,
         raise ValueError("status contains an explicit refusal marker")
 
 
+def _m9_status_terminal(raw: bytes, schema: str, packet_sha256: str) -> None:
+    """Validate the checked-worker's exact successful terminal receipt."""
+
+    try:
+        record = _parse_finite_object(raw)
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("M9 terminal status is malformed") from exc
+    if (set(record) != {
+            "schema", "packet_sha256", "process_status", "returncode", "utc",
+            "comparison_validated",
+        }
+            or type(record.get("utc")) is not str or not record["utc"]
+            or record.get("schema") != _M9_TERMINAL_SCHEMAS[schema]
+            or record.get("process_status") != "exited"
+            or type(record.get("returncode")) is not int
+            or record["returncode"] != 0
+            or record.get("packet_sha256") != packet_sha256
+            or record.get("comparison_validated") is not False):
+        raise ValueError("M9 terminal status binding mismatch")
+
+
 def capture_queue(spec: Any, *, pid_alive=None) -> dict[str, Any]:
     """Capture queue identities after validating every completed reservation."""
 
@@ -213,18 +259,40 @@ def capture_queue(spec: Any, *, pid_alive=None) -> dict[str, Any]:
             record = _parse_finite_object(raw)
         except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("reservation JSON is malformed") from exc
-        if (record.get("schema") != _QUEUE_SCHEMA
-                or record.get("lane") != entry["lane"]
-                or record.get("launcher") != entry["launcher"]
-                or record.get("launcher_sha256") != entry["launcher_sha256"]
-                or record.get("status") != entry["status"]):
+        if "reservation_schema" in entry:
+            reservation_schema = entry["reservation_schema"]
+            packet_sha256 = record.get("packet_sha256")
+            if (record.get("schema") != reservation_schema
+                    or record.get("lane") != entry["lane"]
+                    or record.get("launcher") != entry["launcher"]
+                    or record.get("launcher_sha256") != entry["launcher_sha256"]
+                    or record.get("status") != entry["status"]
+                    or record.get("pid") != entry["pid"]):
+                raise ValueError("M9 reservation metadata does not match queue spec")
+            if type(record.get("pid")) is not int or record["pid"] <= 1:
+                raise ValueError("M9 reservation pid must be a strict integer greater than one")
+            _strict_sha(packet_sha256, "M9 reservation packet_sha256")
+            seeds = record.get("seeds")
+            if (type(seeds) is not list or len(seeds) != 3
+                    or any(type(seed) is not int for seed in seeds)
+                    or seeds != [0, 1, 2]):
+                raise ValueError("M9 reservation seeds must be exactly [0, 1, 2]")
+            if (type(record.get("count")) is not int
+                    or record["count"] != _M9_COUNTS[reservation_schema]):
+                raise ValueError("M9 reservation count does not match schema")
+        elif (record.get("schema") != _QUEUE_SCHEMA
+              or record.get("lane") != entry["lane"]
+              or record.get("launcher") != entry["launcher"]
+              or record.get("launcher_sha256") != entry["launcher_sha256"]
+              or record.get("status") != entry["status"]):
             raise ValueError("reservation metadata does not match queue spec")
         seeds = record.get("seeds")
-        if (type(seeds) is not list or not seeds
-                or any(type(seed) is not int or seed <= 0 for seed in seeds)):
-            raise ValueError("reservation seeds must be positive strict integers")
-        if type(record.get("count")) is not int or record["count"] <= 0:
-            raise ValueError("reservation count must be a positive strict integer")
+        if "reservation_schema" not in entry:
+            if (type(seeds) is not list or not seeds
+                    or any(type(seed) is not int or seed <= 0 for seed in seeds)):
+                raise ValueError("reservation seeds must be positive strict integers")
+            if type(record.get("count")) is not int or record["count"] <= 0:
+                raise ValueError("reservation count must be a positive strict integer")
         if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
             raise ValueError("reservation SHA mismatch")
         files[str(reservation_path)] = list(stamp)
@@ -240,8 +308,13 @@ def capture_queue(spec: Any, *, pid_alive=None) -> dict[str, Any]:
             launcher_stamps[str(launcher_path)] = launcher_after
         status_path = Path(entry["status"])
         status_raw, status_stamp = _stable_read(status_path, _MAX_STATUS_BYTES)
-        _status_terminal(status_raw, entry["terminal_suffix"],
-                         entry.get("resumed_status_sha256"))
+        if "reservation_schema" in entry:
+            if hashlib.sha256(status_raw).hexdigest() != entry["status_sha256"]:
+                raise ValueError("M9 status SHA mismatch")
+            _m9_status_terminal(status_raw, entry["reservation_schema"], packet_sha256)
+        else:
+            _status_terminal(status_raw, entry["terminal_suffix"],
+                             entry.get("resumed_status_sha256"))
         if pid_alive_fn(entry["pid"]):
             raise ValueError("reservation process is still alive")
         files[str(status_path)] = list(status_stamp)

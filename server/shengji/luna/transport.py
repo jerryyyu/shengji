@@ -351,17 +351,15 @@ class ActiveCallManager:
     """Own liveness FDs and process groups for one controller instance."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._calls: dict[int, int] = {}
         self._stopped = False
 
     def register(self, process_group: int, watchdog_fd: int) -> None:
-        with self._lock:
-            admitted = (not self._stopped
-                        and process_group not in self._calls)
-            if admitted:
-                self._calls[process_group] = watchdog_fd
-        if not admitted:
+        """Register a group, closing/signaling on refusal as before."""
+        try:
+            self._register_handoff(process_group, watchdog_fd)
+        except CodexProviderResourceError:
             try:
                 os.close(watchdog_fd)
             except OSError:
@@ -370,6 +368,20 @@ class ActiveCallManager:
                 os.killpg(process_group, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            raise
+
+    def _register_handoff(self, process_group: int, watchdog_fd: int) -> None:
+        """Transfer startup resources; caller retains ownership on refusal.
+
+        The spawning helper holds our reentrant lock across spawn/registration
+        and handles failed or interrupted transfers before cancellation resumes.
+        """
+        with self._lock:
+            admitted = (not self._stopped
+                        and process_group not in self._calls)
+            if admitted:
+                self._calls[process_group] = watchdog_fd
+        if not admitted:
             raise CodexProviderResourceError(
                 "Codex process-group registration refused")
 
@@ -424,28 +436,45 @@ def _start_contained_process(command: tuple[str, ...], *, workspace: Path,
                 or not watchdog_script.is_file()):
             raise ValueError(
                 "watchdog_script must be an absolute regular nonsymlink file")
-    read_fd, write_fd = os.pipe()
-    if watchdog_script is None:
-        wrapper = (
-            sys.executable, "-B", "-m",
-            "shengji.luna.watchdog",
-            str(read_fd), *command)
-    else:
-        wrapper = (
-            sys.executable, "-I", "-B", str(watchdog_script),
-            str(read_fd), *command)
-    try:
-        process = subprocess.Popen(
-            wrapper, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, cwd=workspace, env=env,
-            start_new_session=True, pass_fds=(read_fd,))
-    except BaseException:
-        os.close(write_fd)
-        raise
-    finally:
-        os.close(read_fd)
-    active_calls.register(process.pid, write_fd)
-    return process, write_fd
+    # No cancellation may close/reuse the liveness FD during ownership
+    # transfer. Only process creation/registration is serialized, not work.
+    with active_calls._lock:
+        if active_calls._stopped:
+            raise CodexProviderResourceError("Codex process-group registration refused")
+        read_fd, write_fd = os.pipe()
+        process = None
+        try:
+            if watchdog_script is None:
+                wrapper = (
+                    sys.executable, "-B", "-m",
+                    "shengji.luna.watchdog", str(read_fd), *command)
+            else:
+                wrapper = (
+                    sys.executable, "-I", "-B", str(watchdog_script),
+                    str(read_fd), *command)
+            process = subprocess.Popen(
+                wrapper, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, cwd=workspace, env=env,
+                start_new_session=True, pass_fds=(read_fd,))
+            active_calls._register_handoff(process.pid, write_fd)
+            return process, write_fd
+        except BaseException:
+            # Includes interruption both before and after insertion. The lock
+            # guarantees cancellation has not already taken these resources.
+            if process is not None:
+                if active_calls._calls.get(process.pid) == write_fd:
+                    active_calls._calls.pop(process.pid)
+            os.close(write_fd)
+            if process is not None:
+                if process.poll() is None or process.returncode < 0:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                process.communicate(timeout=5)
+            raise
+        finally:
+            os.close(read_fd)
 
 
 def _default_run(command: tuple[str, ...], prompt: bytes, workspace: Path,

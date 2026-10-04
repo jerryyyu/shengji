@@ -36,7 +36,7 @@ def _fake_capture_context(tmp_path, monkeypatch):
     dependencies = {str(dependency): file_stamp(dependency)}
     preload_calls = []
     monkeypatch.setattr(runtime, "preload",
-                        lambda path: preload_calls.append(Path(path)))
+                        lambda path, **kwargs: preload_calls.append(Path(path)))
     monkeypatch.setattr(runtime, "_origins", lambda path: origins)
     monkeypatch.setattr(runtime, "_dependencies", lambda path: dependencies)
     external = {"source_root": str(source),
@@ -98,6 +98,58 @@ def test_fixed_preload_import_surface_is_exact():
         "shengji.ai.refusal",
         "encodings.cp437",
     )
+
+
+def test_panel_profile_capture_and_admission_require_same_explicit_profile(tmp_path, monkeypatch):
+    source, _, _, _, _ = _fake_capture_context(tmp_path, monkeypatch)
+    seen = []
+    monkeypatch.setattr(runtime, "preload", lambda path, **kw: seen.append(kw["profile"]))
+    monkeypatch.setattr(runtime.runtime_fence, "capture", lambda path, imports: {
+        "source_root": str(path), "imports": imports})
+    manifest = runtime.capture(source, profile="panel")
+    assert manifest["external_runtime"]["imports"] == list(runtime.PANEL_PRELOAD_IMPORTS)
+    assert runtime.PANEL_PRELOAD_IMPORTS == runtime.PRELOAD_IMPORTS + (
+        "shengji.eval.m9_panel_persistence", "shengji.eval.m9_panel_readout")
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    assert runtime.ObservationRuntime(manifest, profile="panel").check()
+    assert seen == ["panel", "panel"]
+    with pytest.raises(ValueError, match="import/source binding"):
+        runtime.ObservationRuntime(manifest)  # no silent inference or fallback
+    old = copy.deepcopy(manifest)
+    old["external_runtime"]["imports"] = list(runtime.PRELOAD_IMPORTS)
+    with pytest.raises(ValueError, match="import/source binding"):
+        runtime.ObservationRuntime(old, profile="panel")
+
+
+@pytest.mark.parametrize("profile", [None, True, "auto", "", []])
+def test_unknown_profile_refused_before_filesystem_access(profile):
+    for function in (runtime.preload, runtime.capture, runtime.ObservationRuntime):
+        with pytest.raises(ValueError, match="runtime profile"):
+            function(None, profile=profile)
+
+
+def test_real_panel_import_surface_does_not_construct_models():
+    source = Path(runtime.__file__).resolve().parents[2]
+    script = '''
+import importlib, sys
+sys.path.insert(0, sys.argv[1])
+from shengji.train import pv_search_policy as pv
+def forbidden(*args, **kwargs):
+    raise AssertionError("model factory invoked during preload")
+pv.make_pv_search_bot = forbidden
+from shengji.eval.observation_runtime import PANEL_PRELOAD_IMPORTS
+for name in PANEL_PRELOAD_IMPORTS:
+    importlib.import_module(name)
+assert "shengji.eval.m9_panel_worker" in sys.modules
+assert "shengji.eval.public_refusal_tape" in sys.modules
+assert "shengji.eval.fixed_tape_capture" in sys.modules
+assert "torch" not in sys.modules
+'''
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(source)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
 
 
 def test_observation_runtime_admission_hashes_before_preload_and_checks_without_rehash(
@@ -166,7 +218,7 @@ def test_bad_manifest_schema_importset_and_paths_refuse(tmp_path, monkeypatch, m
         def check(self):
             return True
     monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence", Fence)
-    monkeypatch.setattr(runtime, "preload", lambda path: None)
+    monkeypatch.setattr(runtime, "preload", lambda path, **kwargs: None)
     monkeypatch.setattr(runtime, "_routes", lambda path: None)
     bad = copy.deepcopy(manifest)
     if mutation == "schema":

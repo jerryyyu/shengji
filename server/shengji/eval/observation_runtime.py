@@ -34,6 +34,18 @@ PRELOAD_IMPORTS = (
     "shengji.ai.refusal",
     "encodings.cp437",
 )
+PANEL_PRELOAD_IMPORTS = PRELOAD_IMPORTS + (
+    "shengji.eval.m9_panel_persistence",
+    "shengji.eval.m9_panel_readout",
+)
+
+
+def _profile_imports(profile):
+    if type(profile) is not str or profile not in ("observation", "panel"):
+        raise ValueError("explicit observation or panel runtime profile required")
+    return PRELOAD_IMPORTS if profile == "observation" else PANEL_PRELOAD_IMPORTS
+
+
 ENVIRONMENT = {
     "SHENGJI_FAST": "1",
     "OMP_NUM_THREADS": "1",
@@ -145,8 +157,9 @@ def _routes(source):
         raise ValueError("required native M9 routes unavailable")
 
 
-def preload(source):
+def preload(source, *, profile="observation"):
     """Import exactly the M9 dependency surface without constructing a model."""
+    imports = _profile_imports(profile)
     source = _root(source)
     if not sys.platform.startswith("linux") or os.environ.get("SHENGJI_FAST") != "1":
         raise ValueError("Linux SHENGJI_FAST=1 required")
@@ -161,7 +174,7 @@ def preload(source):
     source_stat_inventory(source)
     sys.path.insert(0, str(source))
     importlib.invalidate_caches()
-    for name in PRELOAD_IMPORTS:
+    for name in imports:
         importlib.import_module(name)
     _routes(source)
 
@@ -200,16 +213,17 @@ def _mapped_source_coverage(source, inventory):
             raise ValueError("mapped source file outside application inventory")
 
 
-def capture(source):
+def capture(source, *, profile="observation"):
     """One import-only capture on Linux; returns metadata, writes nothing."""
+    imports = _profile_imports(profile)
     source = _root(source)
     before = source_stat_inventory(source)
-    preload(source)
+    preload(source, profile=profile)
     origins = _origins(source)
     deps = _dependencies(source)
     source_files = {p: _sha(source / p) for p in sorted(before)}
     dependency_files = {p: _sha(Path(p)) for p in deps}
-    external = runtime_fence.capture(source, list(PRELOAD_IMPORTS))
+    external = runtime_fence.capture(source, list(imports))
     _mapped_source_coverage(source, before)
     if (source_stat_inventory(source) != before or _origins(source) != origins
             or _dependencies(source) != deps):
@@ -224,7 +238,8 @@ def capture(source):
 class ObservationRuntime:
     """Hash once at admission; subsequent checks only compare identities/stats."""
 
-    def __init__(self, manifest):
+    def __init__(self, manifest, *, profile="observation"):
+        imports = _profile_imports(profile)
         if (type(manifest) is not dict or set(manifest) != {
                 "schema", "source_root", "source_files", "dependency_files", "external_runtime",
                 "environment", "module_origins"}
@@ -235,7 +250,7 @@ class ObservationRuntime:
             raise ValueError("runtime manifest environment mismatch")
         external = manifest["external_runtime"]
         if (type(external) is not dict or external.get("source_root") != str(self.source)
-                or external.get("imports") != list(PRELOAD_IMPORTS)):
+                or external.get("imports") != list(imports)):
             raise ValueError("M9 runtime import/source binding mismatch")
         self.source_stamps = source_stat_inventory(self.source)
         declared = manifest["source_files"]
@@ -244,7 +259,7 @@ class ObservationRuntime:
         # Authenticate all application code/native bytes BEFORE importing it.
         if any(_sha(self.source / p) != h for p, h in declared.items()):
             raise ValueError("source hash mismatch")
-        preload(self.source)
+        preload(self.source, profile=profile)
         self.origins = _origins(self.source)
         if manifest["module_origins"] != {name: path for name, (_, path) in self.origins.items()}:
             raise ValueError("runtime module origin map mismatch")

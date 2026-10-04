@@ -541,6 +541,23 @@ def test_cheapest_winning_public_out_of_domain_falls_back_with_parity(
         fast.deactivate()
 
 
+@pytest.mark.parametrize("suit,rank", CONFIGS)
+def test_single_follow_keeps_all_validation_failures(pure_routing, suit, rank):
+    cases = [
+        (["H8"], ["H8", "C3"], ["H7"]),
+        (["C3"], ["H8", "C3"], ["H7"]),
+        (["C3"], ["C3", "D4"], ["H7"]),
+        (["BJ"], ["BJ", "S2"], ["SJ"]),
+        (["H8"], ["C3"], ["H7"]),
+        ([], ["H8"], ["H7"]),
+        (["H8", "H8"], ["H8", "H8"], ["H7"]),
+        (["H8"], ["H8", "H8"], ["H7", "H7"]),
+    ]
+    for play, hand, lead in cases:
+        assert _outcome(fast.validate_follow, play, hand, lead, Ordering(suit, rank)) == (
+            _outcome(legal.validate_follow, play, hand, lead, Ordering(suit, rank)))
+
+
 def test_validate_follow_and_helpers_random_parity(pure_routing):
     """validate_follow / check_in_hand / uniform_suit / pair_count parity:
     same result or the same exception type AND message."""

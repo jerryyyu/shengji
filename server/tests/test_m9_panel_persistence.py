@@ -203,3 +203,42 @@ def test_raw_callback_is_detached_from_validation(monkeypatch):
                                on_panel=records.append, on_collected=mutate)
     assert receipt["completed_panels"] == 15
     assert all(record["validation_status"] == "passed" for record in records)
+
+
+@pytest.mark.parametrize("mode", ["fresh-root", "history-primed"])
+def test_real_sampler_panel_strict_json_roundtrip_without_model(mode):
+    from shengji.eval.tactical import load_fixtures
+    from shengji.eval.public_refusal_history import public_root_with_ledger
+    from shengji.eval.public_fixture_panel import collect_public_fixture_panel
+    from shengji.harvest.legal import enumerate_legal
+    from test_refusal_constraints import served
+
+    fixture = next(f for f in load_fixtures(
+        Path(__file__).parent / "tactical/public_observations.jsonl")
+        if f.id == "pvr8-c2-m0-p62-joker-control")
+    root, _, _ = public_root_with_ledger(fixture, mode=mode, fill_seed=0)
+    legal = enumerate_legal(root, fixture.seat, cap=400)
+    assert legal.complete and legal.count == 3
+    # Real constructor, root reconstruction, sampling, scoring loop and leaves;
+    # only policy prediction and value evaluation are deterministic test stubs.
+    panel = collect_public_fixture_panel(
+        lambda: served(seed=17, worlds=2, refusal_constraints=True),
+        fixture, legal.actions, legal.actions, mode=mode, seed=17,
+        expected_legal_count=3)
+
+    def json_shape(value):
+        if type(value) in (list, tuple):
+            return [json_shape(item) for item in value]
+        if type(value) is dict:
+            assert all(type(key) is str for key in value)
+            return {key: json_shape(item) for key, item in value.items()}
+        assert value is None or type(value) in (str, bool, int, float)
+        return value
+
+    decoded = json.loads(persistence._json_bytes(panel))
+    for field in ("worlds", "tape_receipt", "collection", "config", "actions"):
+        assert decoded[field] == json_shape(panel[field])
+    assert len(decoded["worlds"]) == 2
+    assert decoded["tape_receipt"]["world_count"] == 2
+    expected_refusals = 0 if mode == "fresh-root" else 10
+    assert len(decoded["tape_receipt"]["ledger_receipt"]["retained_refusals"]) == expected_refusals

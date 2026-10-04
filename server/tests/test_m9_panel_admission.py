@@ -152,7 +152,9 @@ def test_original_release_namespace_cannot_authorize_panel(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("drift", [None, "hold", "peer_lock", "claim", "reservation", "status",
                                   "packet", "release", "owner", "queue", "dead_owner",
-                                  "deadline", "bootstrap_deadline"])
+                                  "deadline", "bootstrap_deadline", "spawn_deadline",
+                                  "claim_deadline_bool", "claim_deadline_zero",
+                                  "claim_deadline_future"])
 def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drift):
     from types import SimpleNamespace
     from scripts import observation_worker as worker
@@ -190,7 +192,11 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
                                 (_ for _ in ()).throw(ProcessLookupError()))
         elif drift == "deadline":
             ticks[0] += packet["timeout_seconds"]
-        elif drift:
+        elif drift == "spawn_deadline":
+            # Owner claimed at t=1; child started at t=11. Expire the
+            # owner's budget while the incorrectly restarted one is live.
+            ticks[0] = packet["timeout_seconds"] + 2
+        elif drift and not drift.startswith("claim_deadline_"):
             target = {"packet": path, "owner": paths["host_lock"] / "owner",
                       "queue": Path(entry["status"]),
                       "peer_lock": Path(packet["other_locks"][0])}.get(drift, paths.get(drift))
@@ -205,11 +211,21 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
 
     def child(command, **kwargs):
         outer_deadline = ticks[0] + kwargs["timeout_seconds"]
+        if drift == "spawn_deadline":
+            ticks[0] += 10
+        if drift and drift.startswith("claim_deadline_"):
+            claim = json.loads(paths["claim"].read_text())
+            claim["deadline_monotonic"] = {
+                "claim_deadline_bool": True,
+                "claim_deadline_zero": 0,
+                "claim_deadline_future": ticks[0] + packet["timeout_seconds"] + 1,
+            }[drift]
+            paths["claim"].write_text(json.dumps(claim))
         try:
             worker.run_panel_packet(str(path), digest)
         except (ValueError, TimeoutError) as exc:
             child_errors.append(exc)
-            if drift in {"deadline", "bootstrap_deadline"}:
+            if drift in {"deadline", "bootstrap_deadline", "spawn_deadline"}:
                 assert ticks[0] < outer_deadline  # Soft stop beats owner kill.
             raise
         return {"status": "exited", "returncode": 0}
@@ -226,13 +242,18 @@ def test_owner_to_child_real_control_files_and_queue(tmp_path, monkeypatch, drif
             "owner": "panel host lease changed", "queue": "panel queue changed",
             "dead_owner": "panel owner process is stale", "deadline": "panel deadline exceeded",
             "bootstrap_deadline": "panel deadline exceeded",
+            "spawn_deadline": "panel deadline exceeded",
+            "claim_deadline_bool": "owner-bound monotonic panel deadline required",
+            "claim_deadline_zero": "owner-bound monotonic panel deadline required",
+            "claim_deadline_future": "owner-bound monotonic panel deadline required",
         }[drift]
         assert len(child_errors) == 1 and expected in str(child_errors[0])
         assert paths["host_lock"].is_dir()  # Ambiguous child failure retains lease.
     else:
         admission.run_panel_packet(path, digest)
         assert not paths["host_lock"].exists()
-    assert seen == ([] if drift == "bootstrap_deadline" else ["body"])
+    early = drift == "bootstrap_deadline" or (drift and drift.startswith("claim_deadline_"))
+    assert seen == ([] if early else ["body"])
 
 
 @pytest.mark.parametrize("outer", [True, 0, 900, 901, 901.5, None])

@@ -703,7 +703,7 @@ def observation_decision_metadata(result: Result) -> dict:
     """Expose only decision telemetry safe for an observation comparison."""
     record = result.record or {}
     return {key: record[key] for key in
-            ("work_complete", "admitted", "value_means",
+            ("work_complete", "admitted", "admitted_indices", "value_means",
              "policy_log_odds_admitted", "selected_index")
             if key in record} | {"seconds": result.seconds}
 

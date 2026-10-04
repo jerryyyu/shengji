@@ -131,11 +131,15 @@ def test_cli_comparison_records_pair_telemetry_and_refuses_reuse(cases, tmp_path
         def decide_play(self, rnd, seat):
             fx = next(fx for fx in cases if fx.trick == len(rnd.history)
                       and fx.position == len(rnd.trick.plays) and fx.seat == seat)
+            indices = [100 + 3 * i for i in range(len(fx.observed["admitted"]))]
+            selected = next(i for i, a in enumerate(fx.observed["admitted"])
+                            if Counter(a) == Counter(fx.observed["action"]))
             self.last_decision_record = {"work_complete": True,
                                          "admitted": fx.observed["admitted"],
+                                         "admitted_indices": indices,
                                          "value_means": fx.observed["value_means"],
                                          "policy_log_odds_admitted": fx.observed["policy_log_odds"],
-                                         "selected_index": 7,
+                                         "selected_index": indices[selected],
                                          "worlds": [["private-world"]]}
             return fx.observed["action"]
 
@@ -164,7 +168,10 @@ def test_cli_comparison_records_pair_telemetry_and_refuses_reuse(cases, tmp_path
             assert coverage['strategic_quality_assessed'] is False
             decision = pair[arm]['decision']
             assert decision['policy_log_odds_admitted'] == fixture.observed['policy_log_odds']
-            assert decision['selected_index'] == 7
+            assert decision['selected_index'] >= 100
+            assert decision['admitted_indices'] == [100 + 3 * i for i in range(len(decision['admitted']))]
+            slot = decision['admitted_indices'].index(decision['selected_index'])
+            assert Counter(decision['admitted'][slot]) == Counter(pair[arm]['action'])
             assert 'worlds' not in decision
     assert report['results'][0]['control']['ballot_opportunity']['cards']['S6']['ballot_spent'] == [2]
     assert "worlds" not in report["results"][0]["control"]["decision"]

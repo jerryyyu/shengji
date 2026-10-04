@@ -661,8 +661,14 @@ def run_observation_comparison(make_control: Callable[[int], Any],
                                make_treatment: Callable[[int], Any],
                                fixtures: Sequence[Fixture], *,
                                seeds: Sequence[int] = OBSERVATION_COMPARISON_SEEDS,
-                               fill_seed: int = OBSERVATION_COMPARISON_FILL_SEED) -> list[dict]:
-    """Run four public observations paired at identical roots and seeds."""
+                               fill_seed: int = OBSERVATION_COMPARISON_FILL_SEED,
+                               on_observation: Callable[[Result, int, str], None] | None = None
+                               ) -> list[dict]:
+    """Run four public observations paired at identical roots and seeds.
+
+    When supplied, ``on_observation`` receives ``(result, seed, arm)`` after
+    each decision and before status validation or the next decision.
+    """
     if len(fixtures) != 4 or any(fx.category != OBSERVATION_CATEGORY or fx.current_bot is not None
                                  for fx in fixtures):
         raise TacticalError("comparison requires exactly four unstamped observation fixtures")
@@ -672,8 +678,14 @@ def run_observation_comparison(make_control: Callable[[int], Any],
     for seed in seeds:
         for fx in fixtures:
             control = run_fixture(make_control(seed), fx, fill_seed=fill_seed)
+            if on_observation is not None:
+                on_observation(control, seed, "control")
+            if control.status != "observed":
+                raise TacticalError(f"{fx.id}/seed {seed}: comparison is not observed-only")
             treatment = run_fixture(make_treatment(seed), fx, fill_seed=fill_seed)
-            if control.status != "observed" or treatment.status != "observed":
+            if on_observation is not None:
+                on_observation(treatment, seed, "treatment")
+            if treatment.status != "observed":
                 raise TacticalError(f"{fx.id}/seed {seed}: comparison is not observed-only")
             rows.append({"fixture": fx.id, "seed": seed, "fill_seed": fill_seed,
                          "control": control, "treatment": treatment})

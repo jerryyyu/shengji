@@ -24,6 +24,7 @@ meaningful for the production bot; it is what the pytest xfail marks read).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -32,6 +33,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from shengji.eval import tactical as T  # noqa: E402
+from shengji.luna.atomic_io import partial_path, publish_exclusive_bytes  # noqa: E402
+
+
+def _canonical_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode("utf-8")
+
+
+def _publish_json(path: Path, value) -> None:
+    publish_exclusive_bytes(path, _canonical_json(value), mode=0o600)
+
+
+def _reserve_comparison_attempt(output_path: Path) -> Path:
+    attempt = Path(f"{output_path}.attempt")
+    for path in (output_path, partial_path(output_path), attempt):
+        if path.exists() or path.is_symlink():
+            raise SystemExit(f"comparison output or attempt already exists: {path}")
+    try:
+        attempt.mkdir(mode=0o700)
+    except FileExistsError as exc:
+        raise SystemExit(f"comparison output or attempt already exists: {attempt}") from exc
+    return attempt
 
 
 def main() -> None:
@@ -86,11 +109,17 @@ def main() -> None:
         if len(set(seeds)) != len(seeds):
             raise SystemExit("--compare-seeds must not contain duplicates")
         output_path = Path(args.json)
-        try:
-            fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-        except FileExistsError:
-            raise SystemExit(f"comparison output already exists: {args.json}")
+        attempt_path = _reserve_comparison_attempt(output_path)
+        normalized_fixture_sha256 = hashlib.sha256(
+            _canonical_json([fx.to_json() for fx in fixtures])).hexdigest()
+        _publish_json(attempt_path / "claim.json", {
+            "schema": "shengji-observation-comparison-attempt-v1",
+            "kind": "comparison_claim", "comparison_complete": False,
+            "output": str(output_path), "checkpoint": args.ckpt,
+            "checkpoint_sha256": args.sha256, "fixtures": [fx.id for fx in fixtures],
+            "normalized_fixture_sha256": normalized_fixture_sha256,
+            "seeds": list(seeds), "fill_seed": args.compare_fill_seed,
+        })
         environs = T.observation_comparison_environs(args.ckpt, args.sha256)
         names = {}
         for label, environ in environs.items():
@@ -99,32 +128,48 @@ def main() -> None:
         def factory(label):
             return lambda seed: T.bot_from_environ(environs[label], seed=seed)[1]
 
+        partial_index = 0
+
+        def row(result):
+            return {"status": result.status, "action": result.action,
+                    "detail": result.detail, "error": result.error,
+                    "observation": result.extra.get("observation"),
+                    "decision": T.observation_decision_metadata(result)}
+
+        def on_observation(result, seed, arm):
+            nonlocal partial_index
+            _publish_json(attempt_path / f"{partial_index:03d}-{arm}.json", {
+                "schema": "shengji-observation-comparison-partial-v1",
+                "kind": "partial_observation", "comparison_complete": False,
+                "fixture": result.fixture.id, "seed": seed, "fill_seed": args.compare_fill_seed,
+                "arm": arm, **row(result),
+            })
+            partial_index += 1
+
         paired = T.run_observation_comparison(
             factory("r36-smv3"), factory("div+rc+tb+la"), fixtures,
-            seeds=seeds, fill_seed=args.compare_fill_seed)
+            seeds=seeds, fill_seed=args.compare_fill_seed,
+            on_observation=on_observation)
         print(f"paired observations: {len(paired)} roots; "
               f"control={names['r36-smv3']} treatment={names['div+rc+tb+la']}")
-        if args.json:
-            def row(result):
-                return {"status": result.status, "action": result.action,
-                        "detail": result.detail, "error": result.error,
-                        "observation": result.extra.get("observation"),
-                        "ballot_opportunity": result.extra["ballot_opportunity"],
-                        "decision": T.observation_decision_metadata(result)}
-            payload = {
-                "comparison": "r36-smv3-vs-div+rc+tb+la",
-                "checkpoint": args.ckpt, "checkpoint_sha256": args.sha256,
-                "seeds": list(seeds), "fill_seed": args.compare_fill_seed,
-                "changed_flags": list(T.OBSERVATION_COMPARISON_FLAGS),
-                "bots": names,
-                "results": [{"id": item["fixture"], "seed": item["seed"],
-                             "fill_seed": item["fill_seed"],
-                             "control": row(item["control"]),
-                             "treatment": row(item["treatment"])}
-                            for item in paired],
-            }
-            output_path.write_text(json.dumps(payload, indent=1))
-            print(f"wrote {args.json}", file=sys.stderr)
+        payload = {
+            "comparison": "r36-smv3-vs-div+rc+tb+la",
+            "comparison_complete": True,
+            "checkpoint": args.ckpt, "checkpoint_sha256": args.sha256,
+            "normalized_fixture_sha256": normalized_fixture_sha256,
+            "seeds": list(seeds), "fill_seed": args.compare_fill_seed,
+            "changed_flags": list(T.OBSERVATION_COMPARISON_FLAGS),
+            "bots": names,
+            "results": [{"id": item["fixture"], "seed": item["seed"],
+                         "fill_seed": item["fill_seed"],
+                         "control": {**row(item["control"]),
+                                     "ballot_opportunity": item["control"].extra["ballot_opportunity"]},
+                         "treatment": {**row(item["treatment"]),
+                                       "ballot_opportunity": item["treatment"].extra["ballot_opportunity"]}}
+                        for item in paired],
+        }
+        _publish_json(output_path, payload)
+        print(f"wrote {args.json}", file=sys.stderr)
         return
 
     if args.bot:

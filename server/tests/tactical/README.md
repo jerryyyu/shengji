@@ -124,6 +124,17 @@ tests/tactical/public_observations.jsonl` path with a reviewed recipe and the
 existing launch/release gates. Do not change the frozen B2 population to include
 these outcome-selected exploratory examples.
 
+Comparison output is exclusive: `<output>.attempt/claim.json` records the
+recipe and normalized fixture digest before bot construction. Numbered per-arm
+files retain allowlisted observations, including an error result if available,
+with `comparison_complete: false`. These files are incomplete diagnostic
+evidence, not a smaller scored population, and do not authorize a retry.
+The final output is atomically published with `comparison_complete: true` only
+after every decision and legal-pool coverage check succeeds. Any existing final,
+staged partial, or attempt directory refuses reuse. Preserve the entire attempt
+directory on failure; timeout/process cleanup and runtime/launch authorization
+still belong to the separately reviewed execution wrapper.
+
 ```
 cd server
 # the served package, local copy (read-only), production knobs by default

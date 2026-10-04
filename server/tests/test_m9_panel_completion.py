@@ -29,6 +29,18 @@ def test_complete_execution_gate_does_not_mutate_or_claim_acceptance():
     assert values == before
 
 
+def test_persisted_collection_receipt_matches_gate(monkeypatch, tmp_path):
+    # Exercise the real publisher/worker receipt, with synthetic collector
+    # panels: a copied receipt dictionary alone cannot detect contract drift.
+    import json
+    from test_m9_panel_persistence import _run
+    _, _, output, terminal, _, _ = _run(monkeypatch, tmp_path)
+    persisted = json.loads((output / "terminal.json").read_text())
+    assert persisted == terminal
+    owner, process, _ = receipts()
+    validate_panel_completion(owner, process, persisted, packet_sha256="a" * 64)
+
+
 @pytest.mark.parametrize("index,key,value", [
     (0, "packet_sha256", "b" * 64), (0, "schema", "m9-owner-terminal-v1"),
     (0, "process_status", "failed"), (0, "returncode", 1),

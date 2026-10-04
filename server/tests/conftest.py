@@ -51,6 +51,40 @@ def _session_seed_windows(tmp_path_factory):
         os.environ["SHENGJI_SEED_WINDOWS"] = previous
 
 
+@pytest.fixture(scope="session")
+def cwv_corpus_factory(tmp_path_factory):
+    """Lazily build each named CWV corpus once, then serve it to modules.
+
+    The returned callable owns the generated source tree for the session.  A
+    caller still copies that tree into its module scratch directory, so tests
+    may mutate their copy without changing another module's input.  Generation
+    gets a registry dedicated to this source tree and restores the caller's
+    environment exactly, including when the generator raises.
+    """
+    generated = {}
+
+    def get(recipe, generate):
+        if recipe in generated:
+            return generated[recipe]
+
+        attempt = tmp_path_factory.mktemp("cwv-corpus-source")
+        source = attempt / "run"
+        registry = attempt / "seed_windows.json"
+        previous = os.environ.get("SHENGJI_SEED_WINDOWS")
+        os.environ["SHENGJI_SEED_WINDOWS"] = str(registry)
+        try:
+            generate(source)
+        finally:
+            if previous is None:
+                os.environ.pop("SHENGJI_SEED_WINDOWS", None)
+            else:
+                os.environ["SHENGJI_SEED_WINDOWS"] = previous
+        generated[recipe] = source
+        return source
+
+    return get
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _module_seed_windows(tmp_path_factory):
     """Each test *module* gets its own fresh scratch registry.

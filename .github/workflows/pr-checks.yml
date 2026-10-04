@@ -112,6 +112,54 @@ jobs:
       - name: Test CWV consumers in both engine modes
         run: bash scripts/ci_cwv_modes.sh
 
+  search-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [pure, compiled]
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
+      - name: Test production search regressions
+        env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: |
+          if [ "${{ matrix.engine }}" = "pure" ]; then
+            unset SHENGJI_FAST
+          else
+            export SHENGJI_FAST=1
+          fi
+          # Missing torch must not silently skip real-package witnesses;
+          # a compiled import fallback must not masquerade as native coverage.
+          uv run python -B - <<'PY'
+          import os
+          import torch
+          from shengji.engine import legal
+          expected = "shengji.engine._fast" if os.environ.get("SHENGJI_FAST") == "1" else "shengji.engine.legal"
+          assert legal.validate_follow.__module__ == expected
+          PY
+          uv run python -B -m pytest -q --durations=10 \
+            tests/test_pv_admission_rules.py \
+            tests/test_refusal_constraints.py \
+            tests/test_pv_tiebreak_points.py \
+            tests/test_pv_lead_anchor.py \
+            tests/test_pv_tree_search.py
+
   luna-profiles:
     runs-on: ubuntu-latest
     timeout-minutes: 10

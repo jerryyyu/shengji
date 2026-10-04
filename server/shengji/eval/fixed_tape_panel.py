@@ -90,3 +90,58 @@ def collect_fixed_tape_panel(bot_factory, root, seat, actions, control_ballot,
         "provenance_verified": False,
         "strategic_quality_assessed": False,
     }
+
+
+def collect_history_primed_panel(bot_factory, root, seat, actions,
+                                 control_ballot, treatment_ballot, worlds,
+                                 *, check_budget=None):
+    """Capture one complete pool on one fixed tape and project both ballots.
+
+    The name describes the caller's intended tape mode only; this function
+    neither samples worlds nor verifies that the supplied tape is history-
+    primed.  Ballot columns are projected from the one full-pool capture, so
+    this diagnostic does not make served or treatment-admission claims.
+    """
+    full = _canonical_collection(actions, "actions")
+    control = _canonical_collection(control_ballot, "control_ballot")
+    treatment = _canonical_collection(treatment_ballot, "treatment_ballot")
+    full_set = set(full)
+    if not set(control) <= full_set or not set(treatment) <= full_set:
+        raise ValueError("ballot member absent from full pool")
+    if type(worlds) is not list or not worlds:
+        raise ValueError("a nonempty frozen tape is required")
+    if any(not isinstance(world, (tuple, list)) or len(world) != 2 for world in worlds):
+        raise ValueError("worlds must contain (hands, buried) pairs")
+    if type(seat) is not int or seat not in range(4) or root.turn != seat:
+        raise ValueError("seat must be the current player")
+
+    tape = copy.deepcopy(worlds)
+    frozen_root = copy.deepcopy(root)
+    from ..train.policy_value_search import PolicyValueBot
+
+    if check_budget is not None:
+        check_budget()
+    bot = bot_factory()
+    # Match the three-pass panel's canonical leaf guard.  capture_fixed_tape
+    # separately enforces the canonical world-major scoring loop.
+    if getattr(getattr(bot, "_leaf", None), "__func__", None) is not PolicyValueBot._leaf:
+        raise ValueError("canonical production leaf implementation is required")
+    pass_tape = copy.deepcopy(tape)
+    full_capture = capture_fixed_tape(
+        bot, copy.deepcopy(frozen_root), seat, copy.deepcopy(actions), pass_tape,
+        check_budget=check_budget)
+    if pass_tape != tape:
+        raise ValueError("capture mutated the frozen world tape")
+
+    summary = summarize_full_pool_matrix(
+        actions, control_ballot, treatment_ballot, full_capture["value_matrix"])
+    return {
+        "schema": "fixed-tape-history-primed-panel-v1",
+        "full_pool_capture": full_capture,
+        "shared_matrix_summary": summary,
+        "union_is_projection": True,
+        "saved_ballots_generated_under_this_sampler": False,
+        "sampler_mode_verified": False,
+        "provenance_verified": False,
+        "strategic_quality_assessed": False,
+    }

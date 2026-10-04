@@ -1,6 +1,7 @@
 """Pin M9's scientific recipe without constructing a model or a bot."""
 
 import hashlib
+from dataclasses import asdict
 
 from scripts.tactical_report import _canonical_json
 from shengji.eval import tactical
@@ -22,12 +23,21 @@ def test_m9_resolved_numeric_recipe(monkeypatch):
         assert resolved.pop("sha256") == MODEL_SHA256
         assert resolved.pop("bury_arm") == "hybrid"
         assert resolved.pop("bury_serving_budget_seconds") == 2.0
-        resolved.pop("bury_config")
+        assert asdict(resolved.pop("bury_config")) == {
+            "max_candidates": 32, "model_worlds": 32,
+            "selection_worlds": 32, "alternatives": 4,
+        }
         config = pv.PVSearchConfig(checkpoint_sha256=MODEL_SHA256, **resolved)
         assert (config.worlds, config.candidates, config.cap, config.batch_size) == (64, 8, 4000, 128)
         assert config.serving_budget_seconds == 3.0
         assert config.encoding == "mlp-static"
         assert config.tree is None
+        digest, name = {
+            "r36-smv3": ("4a09aef5", "pv-search-491ee4bf-w64-k8-r4a09aef5"),
+            "div+rc+tb+la": ("7092480e", "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e"),
+        }[label]
+        assert pv.recipe_digest(config) == digest
+        assert pv.pv_policy_name(MODEL_SHA256[:8], config) == name
         assert {key for key in pv.RULE_FLAGS.values() if getattr(config, key)} == (
             enabled if label == "div+rc+tb+la" else set())
         payload = pv.recipe_payload(config)

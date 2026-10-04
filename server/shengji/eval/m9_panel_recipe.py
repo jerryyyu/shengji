@@ -69,5 +69,19 @@ def panel_model_environ(recipe: Mapping[str, object]) -> dict[str, str]:
         str(recipe["model"]), MODEL_SHA256)[POLICY]
 
 
+def build_panel_worker_command(recipe, packet_path, packet_sha):
+    """Bind explicit panel dispatch; this does not authorize or inspect files."""
+    validate_panel_recipe(recipe)
+    packet = _absolute_normalized(packet_path, "packet")
+    if (type(packet_sha) is not str or len(packet_sha) != 64
+            or any(char not in "0123456789abcdef" for char in packet_sha)):
+        raise ValueError("packet SHA must be lowercase SHA-256")
+    from pathlib import Path
+
+    return (str(recipe["python"]), "-I", "-B",
+            str(Path(recipe["source_root"]) / "server/scripts/observation_worker.py"),
+            "--panel", "--packet", str(packet), "--sha256", packet_sha)
+
+
 __all__ = ["SCHEMA", "SAVED_READOUT_SHA256", "POLICY",
-           "validate_panel_recipe", "panel_model_environ"]
+           "validate_panel_recipe", "panel_model_environ", "build_panel_worker_command"]

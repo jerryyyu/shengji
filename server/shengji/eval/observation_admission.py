@@ -21,9 +21,11 @@ from .observation_lease import Lease, file_stamp
 from .observation_process import run_observation_process
 from .observation_recipe import build_observation_command, validate_recipe
 from .observation_runtime import ObservationRuntime, ENVIRONMENT
+from .m9_panel_recipe import validate_panel_recipe, build_panel_worker_command
 
 
 SCHEMA = "m9-admission-v1"
+PANEL_SCHEMA = "m9-panel-admission-v1"
 HOST_LOCK = Path("/root/.claude-host.lock")
 REQUIRED_ANCESTOR = "94350c39b56ff845fcb37e61d27ab72a0fe6abe5"  # merged #729, includes #723–726
 READ_RECEIPT_SHA = "431b731d7cd88b5da6126874bad82007d873c12bd70c462ec36e44262d69bf20"
@@ -116,21 +118,42 @@ def run_packet(packet_path, packet_sha):
     A failed/expired child can release only after positive host drain and
     unchanged ownership are checked. Process exit0 never accepts the science.
     """
+    return _run_packet(packet_path, packet_sha, panel=False)
+
+
+def run_panel_packet(packet_path, packet_sha):
+    """Dedicated panel admission. No implicit conversion of original packets."""
+    return _run_packet(packet_path, packet_sha, panel=True)
+
+
+def _run_packet(packet_path, packet_sha, *, panel):
     packet_path = guards._canonical_absolute(str(packet_path), "packet")
     guards._strict_sha(packet_sha, "packet SHA")
     raw, stamp = guards._stable_read(packet_path, 1024 * 1024)
     if hashlib.sha256(raw).hexdigest() != packet_sha:
         raise ValueError("packet SHA mismatch")
     packet = guards._parse_finite_object(raw)
-    if set(packet) != _KEYS or packet["schema"] != SCHEMA:
+    keys = (_KEYS - {"read_complete"}) | {"timeout_seconds"} if panel else _KEYS
+    if set(packet) != keys or packet["schema"] != (PANEL_SCHEMA if panel else SCHEMA):
         raise ValueError("exact M9 packet required")
     recipe = packet["recipe"]
-    validate_recipe(recipe)
-    inner_command = build_observation_command(recipe)
+    if panel:
+        validate_panel_recipe(recipe)
+        timeout = packet["timeout_seconds"]
+        if type(timeout) is not int or timeout <= 0:
+            raise ValueError("explicit positive integer panel deadline required")
+        inner_command = build_panel_worker_command(recipe, str(packet_path), packet_sha)
+    else:
+        validate_recipe(recipe)
+        timeout = recipe["timeout_seconds"]
+        inner_command = build_observation_command(recipe)
     source = Path(recipe["source_root"])
     command = (recipe["python"], "-I", "-B",
                str(source / "server/scripts/observation_worker.py"),
                "--packet", str(packet_path), "--sha256", packet_sha)
+    if panel:
+        command = inner_command
+    namespace = "m9-panel" if panel else "m9"
     if (packet["environment"] != ENVIRONMENT or packet["hostname"] != socket.gethostname()
             or Path(recipe["python"]).resolve() != Path(sys.executable).resolve()):
         raise ValueError("host/interpreter/environment binding mismatch")
@@ -153,10 +176,14 @@ def run_packet(packet_path, packet_sha):
 
     runtime_path, runtime_raw = read_ref(packet["runtime"], "runtime")
     watchdog, _ = read_ref(packet["watchdog"], "watchdog")
-    read_path, _ = read_ref(packet["read_complete"], "read-complete")
-    if packet["read_complete"]["sha256"] != READ_RECEIPT_SHA:
-        raise ValueError("v49 saved-read-complete witness required")
-    for key, sha_key in (("model", "model_sha256"), ("fixtures", "fixture_sha256")):
+    if not panel:
+        read_ref(packet["read_complete"], "read-complete")
+        if packet["read_complete"]["sha256"] != READ_RECEIPT_SHA:
+            raise ValueError("v49 saved-read-complete witness required")
+    inputs = [("model", "model_sha256"), ("fixtures", "fixture_sha256")]
+    if panel:
+        inputs.append(("saved_readout", "saved_readout_sha256"))
+    for key, sha_key in inputs:
         path = guards._canonical_absolute(recipe[key], key)
         digest, mark = _hash_file(path)
         if digest != recipe[sha_key]:
@@ -165,7 +192,8 @@ def run_packet(packet_path, packet_sha):
     runtime_manifest = guards._parse_finite_object(runtime_raw)
     if runtime_manifest.get("source_root") != str(source / "server"):
         raise ValueError("runtime source binding mismatch")
-    runtime = ObservationRuntime(runtime_manifest)
+    runtime = (ObservationRuntime(runtime_manifest, profile="panel") if panel
+               else ObservationRuntime(runtime_manifest))
     controls = {key: guards._canonical_absolute(packet[key], key) for key in
                 ("release", "hold", "host_lock", "reservation", "status", "claim")}
     if controls["host_lock"] != HOST_LOCK:
@@ -174,13 +202,15 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("explicit peer lock paths required")
     other_locks = [guards._canonical_absolute(p, "peer lock") for p in packet["other_locks"]]
     queue_spec = guards.validate_queue_spec(packet["queue"])
-    if not any(r["lane"] == "v49tc" for r in queue_spec["reservations"]):
+    if not panel and not any(r["lane"] == "v49tc" for r in queue_spec["reservations"]):
         raise ValueError("v49 predecessor missing from completed queue")
     if controls["reservation"].parent != Path(queue_spec["reservation_dir"]):
         raise ValueError("own reservation must use shared queue directory")
-    output, evidence = Path(recipe["output"]), Path(recipe["evidence"])
-    fresh = [output, Path(str(output) + ".attempt"),
-             output.with_name("." + output.name + ".partial"), evidence,
+    output = Path(recipe["output_dir"] if panel else recipe["output"])
+    evidence = Path(recipe["evidence"])
+    outputs = ([output] if panel else [output, Path(str(output) + ".attempt"),
+                                      output.with_name("." + output.name + ".partial")])
+    fresh = [*outputs, evidence,
              controls["reservation"], controls["status"], controls["claim"]]
     protected = set(stamps) | {source, Path(recipe["python"]), *other_locks,
                               controls["release"], controls["hold"], controls["host_lock"]}
@@ -202,7 +232,7 @@ def run_packet(packet_path, packet_sha):
             raise ValueError("fresh artifact overlaps protected path")
         if path != controls["reservation"] and _overlap(path, Path(queue_spec["reservation_dir"])):
             raise ValueError("fresh artifact overlaps queue directory")
-    expected_release = {"schema": "m9-release-v1", "packet_sha256": packet_sha}
+    expected_release = {"schema": f"{namespace}-release-v1", "packet_sha256": packet_sha}
 
     def still_fresh(excluded=()):
         for path in fresh:
@@ -223,14 +253,17 @@ def run_packet(packet_path, packet_sha):
     queue = guards.capture_queue(queue_spec)
     if os.path.lexists(controls["host_lock"]):
         raise ValueError("host lease busy before claim")
-    guards.write_exclusive_json(controls["claim"], {
-        "schema": "m9-owner-attempt-v1", "packet_sha256": packet_sha,
+    claim = {
+        "schema": f"{namespace}-owner-attempt-v1", "packet_sha256": packet_sha,
         "status": "spent_no_retry", "comparison_validated": False,
         "owner_pid": os.getpid(),
         "inner_command": list(inner_command),
-    })
+    }
+    if panel:
+        claim["queue_snapshot"] = queue
+    guards.write_exclusive_json(controls["claim"], claim)
     stamps[controls["claim"]] = file_stamp(controls["claim"])
-    lease = Lease(controls["host_lock"], f"m9 {os.getpid()} {packet_sha}\n")
+    lease = Lease(controls["host_lock"], f"{namespace} {os.getpid()} {packet_sha}\n")
     if not lease.acquire():
         raise ValueError("host lease busy; packet spent")
     # No unconditional finally-release: an ambiguous child/ownership failure
@@ -240,13 +273,14 @@ def run_packet(packet_path, packet_sha):
     if not lease.check() or not guards.queue_unchanged(queue_spec, queue):
         raise ValueError("admission changed under lease")
     guards.write_exclusive_json(controls["reservation"], {
-        "schema": "codex-m9-reservation-v1", "lane": "m9",
+        "schema": f"codex-{namespace}-reservation-v1", "lane": namespace,
         "launcher": str(launcher), "launcher_sha256": launcher_sha,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "packet_sha256": packet_sha, "pid": os.getpid(),
-        "output": str(output.parent), "output_root": str(output.parent),
+        "output": str(output if panel else output.parent),
+        "output_root": str(output if panel else output.parent),
         "result": str(output), "evidence": str(evidence),
-        "status": str(controls["status"]), "count": 12, "seeds": [0, 1, 2],
+        "status": str(controls["status"]), "count": 15 if panel else 12, "seeds": [0, 1, 2],
         "seed_kind": "observation-world seeds, not generated-deal windows",
     })
     own = {"path": str(controls["reservation"]),
@@ -257,14 +291,14 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("reservation/lease changed before dispatch")
     result = run_observation_process(command, workspace=source / "server",
                                      env=dict(packet["environment"]), watchdog_script=watchdog,
-                                     timeout_seconds=recipe["timeout_seconds"], evidence=evidence)
+                                     timeout_seconds=timeout, evidence=evidence)
     checks()  # includes positive no-peer/no-child census, not merely exit0
     if (not lease.check() or not guards.queue_unchanged(queue_spec, queue, owned_record=own)
             or type(result.get("returncode")) is not int
             or result.get("status") not in {"exited", "failed", "timeout"}):
         raise ValueError("child drain/lease/queue unconfirmed; lease retained")
     guards.write_exclusive_json(controls["status"], {
-        "schema": "m9-owner-terminal-v1", "packet_sha256": packet_sha,
+        "schema": f"{namespace}-owner-terminal-v1", "packet_sha256": packet_sha,
         "process_status": result["status"], "returncode": result["returncode"],
         "utc": datetime.now(timezone.utc).isoformat(), "comparison_validated": False,
     })

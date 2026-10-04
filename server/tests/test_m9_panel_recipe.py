@@ -5,6 +5,7 @@ import pytest
 
 from shengji.eval.m9_panel_recipe import (
     POLICY, SAVED_READOUT_SHA256, SCHEMA, panel_model_environ, validate_panel_recipe,
+    build_panel_worker_command,
 )
 from shengji.eval.observation_recipe import FIXTURE_SHA256, MODEL_SHA256, validate_recipe
 
@@ -25,6 +26,19 @@ def test_recipe_is_distinct_from_original_command_and_immutable():
     assert value == before
     with pytest.raises(ValueError, match="recipe keys"):
         validate_recipe(value)
+
+
+def test_panel_worker_command_requires_explicit_mode_and_pinned_packet():
+    spec = recipe()
+    before = copy.deepcopy(spec)
+    assert build_panel_worker_command(spec, "/packets/panel.json", "a" * 64) == (
+        "/env/bin/python", "-I", "-B", "/source/server/scripts/observation_worker.py",
+        "--panel", "--packet", "/packets/panel.json", "--sha256", "a" * 64)
+    assert spec == before
+    for bad_path, bad_sha in [("relative", "a" * 64), ("/p", "A" * 64),
+                              ("/p", None), ("/p", "a" * 63)]:
+        with pytest.raises(ValueError):
+            build_panel_worker_command(spec, bad_path, bad_sha)
 
 
 @pytest.mark.parametrize("field,value", [

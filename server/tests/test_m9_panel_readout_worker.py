@@ -38,6 +38,8 @@ def _invocation(tmp_path: Path) -> tuple[dict, Path]:
         "schema": "m9-panel-readout-invocation-v1",
         "files": files,
         "packet_sha256": "a" * 64,
+        "collection_packet": {"path": str(tmp_path / "collection-packet.json"),
+                              "sha256": "a" * 64},
         "output_dir": str(tmp_path / "output"),
         "runtime": {"path": str(runtime_path), "sha256": _sha(b"{}")},
     }
@@ -89,6 +91,42 @@ def test_invocation_requires_canonical_bytes_and_runtime_pin(tmp_path: Path):
     with pytest.raises(ValueError, match="exact M9 panel readout invocation"):
         worker._read_invocation(helper, str(path), _sha(path.read_bytes()))
 
+
+def test_collection_packet_digest_mismatch_refuses_before_parse(tmp_path, monkeypatch):
+    packet_path = tmp_path / "collection-packet.json"
+    packet_path.write_bytes(b"not the authenticated packet")
+    invocation = {"collection_packet": {
+        "path": str(packet_path), "sha256": _sha(b"different bytes")}}
+    helper = _load_actual_helper()
+    monkeypatch.setattr(helper, "_parse_object", lambda raw: pytest.fail(
+        "packet parser must not run after digest mismatch"))
+    with pytest.raises(ValueError, match="collection packet SHA mismatch"):
+        worker._read_collection_packet(helper, invocation)
+
+
+def test_collection_packet_requires_panel_schema_before_application(monkeypatch,
+                                                                      tmp_path):
+    packet_path = tmp_path / "collection-packet.json"
+    raw = _canonical({"schema": "m9-admission-v1"})
+    packet_path.write_bytes(raw)
+    helper = _load_actual_helper()
+    with pytest.raises(ValueError, match="exact M9 panel collection packet"):
+        worker._read_collection_packet(helper, {
+            "collection_packet": {"path": str(packet_path), "sha256": _sha(raw)}})
+
+
+def test_fifo_collection_packet_is_refused_before_stable_read(monkeypatch,
+                                                               tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO unavailable")
+    packet_path = tmp_path / "collection-packet.fifo"
+    os.mkfifo(packet_path)
+    helper = _load_actual_helper()
+    monkeypatch.setattr(helper, "_stable_read", lambda *_: pytest.fail(
+        "FIFO must be rejected before stable read"))
+    with pytest.raises(ValueError, match="regular nonsymlink"):
+        worker._read_collection_packet(helper, {
+            "collection_packet": {"path": str(packet_path), "sha256": "a" * 64}})
 
 def test_actual_helper_runtime_source_inventory_rejects_drift(tmp_path: Path):
     server = tmp_path / "server"
@@ -149,6 +187,8 @@ def test_fifo_runtime_is_refused_before_runtime_reader(monkeypatch, tmp_path):
     monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
     monkeypatch.setattr(worker, "_load_helper", lambda _: helper)
     monkeypatch.setattr(worker, "_read_invocation", lambda *_: invocation)
+    monkeypatch.setattr(worker, "_read_collection_packet", lambda *_: (
+        Path(invocation["collection_packet"]["path"]), {}))
     with pytest.raises(ValueError, match="regular nonsymlink"):
         worker.run(str(path), "a" * 64, "b" * 64)
 
@@ -187,6 +227,8 @@ def test_runtime_source_failure_prevents_import_and_publication(monkeypatch, tmp
     monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
     monkeypatch.setattr(worker, "_load_helper", lambda digest: helper)
     monkeypatch.setattr(worker, "_read_invocation", lambda *args: invocation)
+    monkeypatch.setattr(worker, "_read_collection_packet", lambda *_: (
+        Path(invocation["collection_packet"]["path"]), {}))
     with pytest.raises(ValueError, match="source pins refused"):
         worker.run(str(tmp_path / "invocation.json"), "a" * 64, "b" * 64)
     assert runtime_path.is_file()
@@ -201,6 +243,8 @@ def test_runtime_manifest_must_bind_authenticated_helper_before_import(
     monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
     monkeypatch.setattr(worker, "_load_helper", lambda digest: helper)
     monkeypatch.setattr(worker, "_read_invocation", lambda *args: invocation)
+    monkeypatch.setattr(worker, "_read_collection_packet", lambda *_: (
+        Path(invocation["collection_packet"]["path"]), {}))
     with pytest.raises(ValueError, match="bind authenticated bootstrap"):
         worker.run(str(tmp_path / "invocation.json"), "a" * 64, "b" * 64)
 
@@ -231,15 +275,34 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
         seen.append("admitted")
         return SimpleNamespace(check=check)
 
-    def publish(value, *, invocation_sha256, runtime_check):
-        assert seen == ["admitted"]
+    def publish(value, *, invocation_sha256, runtime_check, collection_packet):
+        assert seen == ["admitted", "recipe"]
         assert value is invocation
         assert invocation_sha256 == digest
         assert runtime_check is check
+        assert collection_packet["schema"] == "m9-panel-admission-v1"
         return {"synthetic": True}
+
+    from test_m9_panel_recipe import recipe as recipe_fixture
+    panel_recipe = recipe_fixture()
+    panel_recipe.update(
+        output_dir=str(tmp_path / "collection"),
+        evidence=str(tmp_path / "evidence"),
+        saved_readout=str(tmp_path / "saved-readout.json"),
+    )
+    packet = {key: None for key in _load_actual_helper()._PANEL_PACKET_KEYS}
+    packet.update(schema="m9-panel-admission-v1", recipe=panel_recipe)
+    monkeypatch.setattr(worker, "_read_collection_packet", lambda *_: (
+        Path(invocation["collection_packet"]["path"]), packet))
+    from shengji.eval.m9_panel_recipe import validate_panel_recipe
+    def validate_recipe(value):
+        validate_panel_recipe(value)
+        seen.append("recipe")
 
     modules = {
         "shengji.eval.observation_runtime": SimpleNamespace(ObservationRuntime=admit),
+        "shengji.eval.m9_panel_recipe": SimpleNamespace(
+            validate_panel_recipe=validate_recipe),
         "shengji.eval.m9_panel_publication": SimpleNamespace(
             publish_m9_panel_readout_once=publish),
     }

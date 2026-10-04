@@ -20,7 +20,8 @@ from . import observation_queue as guards
 
 
 _INVOCATION_KEYS = {
-    "schema", "files", "packet_sha256", "output_dir", "runtime",
+    "schema", "files", "packet_sha256", "collection_packet", "output_dir",
+    "runtime",
 }
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _RESULT_KEYS = {
@@ -53,6 +54,15 @@ def _validate_invocation(invocation: Any, invocation_sha256: Any) -> tuple[dict,
     guards._canonical_absolute(runtime["path"], "runtime manifest")
     guards._strict_sha(runtime["sha256"], "runtime manifest SHA")
 
+    collection_packet = invocation["collection_packet"]
+    if (type(collection_packet) is not dict
+            or set(collection_packet) != {"path", "sha256"}):
+        raise ValueError("exact collection packet reference required")
+    guards._canonical_absolute(collection_packet["path"], "collection packet")
+    guards._strict_sha(collection_packet["sha256"], "collection packet SHA")
+    if collection_packet["sha256"] != invocation["packet_sha256"]:
+        raise ValueError("collection packet SHA differs from packet SHA")
+
     output = guards._canonical_absolute(invocation["output_dir"], "output_dir")
     parent = output.parent
     if parent.is_symlink() or not parent.is_dir():
@@ -60,6 +70,65 @@ def _validate_invocation(invocation: Any, invocation_sha256: Any) -> tuple[dict,
     if type(invocation["files"]) is not dict:
         raise ValueError("panel files mapping required")
     return invocation, output
+
+
+_META = ("owner", "process", "collection", "saved_readout", "plan")
+_RECORDS = tuple(f"validated-{index:03d}.json" for index in range(15))
+_PANEL_PACKET_SCHEMA = "m9-panel-admission-v1"
+
+
+def _bind_collection_files(invocation: dict, collection_packet: Any) -> None:
+    """Bind the readout pins to paths named by the original packet/recipe.
+
+    This adapter intentionally authenticates only data and canonical paths.
+    The worker owns packet-byte authentication; the artifact reader owns the
+    later file reads and hashes.
+    """
+    if type(collection_packet) is not dict:
+        raise ValueError("authenticated collection packet data required")
+    recipe = collection_packet.get("recipe")
+    if type(recipe) is not dict:
+        raise ValueError("collection packet recipe required")
+    if collection_packet.get("schema") != _PANEL_PACKET_SCHEMA:
+        raise ValueError("exact M9 panel collection packet required")
+    required = {"status", "recipe"}
+    if not required <= set(collection_packet):
+        raise ValueError("collection packet binding fields required")
+
+    packet_status = guards._canonical_absolute(collection_packet["status"],
+                                                "collection packet status")
+    recipe_output = guards._canonical_absolute(recipe.get("output_dir"),
+                                               "recipe output_dir")
+    evidence = guards._canonical_absolute(recipe.get("evidence"),
+                                          "recipe evidence")
+    saved_readout = guards._canonical_absolute(recipe.get("saved_readout"),
+                                               "recipe saved_readout")
+    expected = {
+        "owner": packet_status,
+        "process": evidence / "process.json",
+        "collection": recipe_output / "terminal.json",
+        "saved_readout": saved_readout,
+        "plan": recipe_output / "plan.json",
+    }
+    expected.update({name: recipe_output / name for name in _RECORDS})
+    if set(invocation["files"]) != set(expected):
+        raise ValueError("exact collection file mapping required")
+
+    seen = set()
+    for name, target in expected.items():
+        entry = invocation["files"][name]
+        if type(entry) is not dict or set(entry) != {"path", "sha256"}:
+            raise ValueError("exact path/SHA input pin required")
+        path = guards._canonical_absolute(entry["path"], f"input {name}")
+        guards._strict_sha(entry["sha256"], f"input SHA for {name}")
+        if path != target:
+            raise ValueError(f"input {name} is not bound to collection packet")
+        if path in seen:
+            raise ValueError("distinct collection input paths required")
+        seen.add(path)
+    if invocation["files"]["saved_readout"]["sha256"] != recipe.get(
+            "saved_readout_sha256"):
+        raise ValueError("saved readout SHA differs from frozen recipe")
 
 
 def _validate_result(result: Any, invocation: dict) -> dict:
@@ -96,7 +165,8 @@ def _publish_refusal(output: Path, exc: BaseException) -> None:
         pass
 
 
-def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_check):
+def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_check,
+                                  collection_packet):
     """Read and publish one already-authorized M9 panel bundle exactly once.
 
     Validation happens before claim or input access.  Once the output
@@ -108,8 +178,14 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
     panel-readout runtime. It must return exactly True; capture/authentication
     belongs to the pinned bootstrap, not this adapter. Checks run before the
     claim and after analysis, before any scientific result is published.
+
+    ``collection_packet`` must be the bootstrap's authenticated, parsed packet
+    whose frozen recipe it has validated. This adapter binds the input paths
+    to that data; it does not independently authenticate the packet object or
+    establish terminal-seal, RELEASE, or claim provenance.
     """
     invocation, output = _validate_invocation(invocation, invocation_sha256)
+    _bind_collection_files(invocation, collection_packet)
     packet_sha256 = invocation["packet_sha256"]
     if not callable(runtime_check) or runtime_check() is not True:
         raise ValueError("readout runtime check failed before claim")
@@ -122,6 +198,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "schema": "m9-panel-readout-claim-v1",
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
+            "collection_packet": invocation["collection_packet"],
             "runtime": invocation["runtime"],
             "provenance_verified": False,
         }
@@ -142,6 +219,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "schema": "m9-panel-readout-receipt-v1",
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
+            "collection_packet": invocation["collection_packet"],
             "result_sha256": hashlib.sha256(result_raw).hexdigest(),
             "runtime": invocation["runtime"],
             "input_sha256": result["input_sha256"],

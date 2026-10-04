@@ -20,9 +20,11 @@ import types
 
 _MAX_HELPER_BYTES = 256 * 1024
 _MAX_INVOCATION_BYTES = 1024 * 1024
+_MAX_COLLECTION_PACKET_BYTES = 1024 * 1024
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _INVOCATION_KEYS = frozenset({
-    "schema", "files", "packet_sha256", "output_dir", "runtime",
+    "schema", "files", "packet_sha256", "collection_packet", "output_dir",
+    "runtime",
 })
 _HELPER_NAME = "_m9_panel_readout_observation_worker"
 
@@ -129,6 +131,14 @@ def _read_invocation(helper, invocation_path, invocation_sha: str) -> dict:
         helper._canonical_absolute(entry["path"], f"input {name}")
         helper._strict_sha(entry["sha256"], f"input SHA for {name}")
     helper._strict_sha(invocation["packet_sha256"], "packet SHA")
+    collection_packet = invocation.get("collection_packet")
+    if (type(collection_packet) is not dict
+            or set(collection_packet) != {"path", "sha256"}):
+        raise ValueError("exact collection packet reference required")
+    helper._canonical_absolute(collection_packet["path"], "collection packet")
+    helper._strict_sha(collection_packet["sha256"], "collection packet SHA")
+    if collection_packet["sha256"] != invocation["packet_sha256"]:
+        raise ValueError("collection packet SHA differs from packet SHA")
     helper._canonical_absolute(invocation["output_dir"], "output_dir")
     runtime = invocation.get("runtime")
     if type(runtime) is not dict or set(runtime) != {"path", "sha256"}:
@@ -138,11 +148,30 @@ def _read_invocation(helper, invocation_path, invocation_sha: str) -> dict:
     return invocation
 
 
+def _read_collection_packet(helper, invocation: dict) -> tuple[Path, dict]:
+    """Authenticate and parse the original panel packet before app import."""
+    reference = invocation["collection_packet"]
+    path = helper._canonical_absolute(reference["path"], "collection packet")
+    # The authenticated helper's stamp is intentionally metadata-only; apply
+    # this bootstrap's regular-file check before delegating the stable read.
+    _stamp(path)
+    raw, _ = helper._stable_read(path, _MAX_COLLECTION_PACKET_BYTES)
+    if hashlib.sha256(raw).hexdigest() != reference["sha256"]:
+        raise ValueError("collection packet SHA mismatch")
+    packet = helper._parse_object(raw)
+    if (set(packet) != helper._PANEL_PACKET_KEYS
+            or packet.get("schema") != helper._PANEL_PACKET_SCHEMA):
+        raise ValueError("exact M9 panel collection packet required")
+    return path, packet
+
+
 def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
     """Authenticate and perform one already-reviewed publication invocation."""
     _runtime_gate()
     helper = _load_helper(bootstrap_sha)
     invocation = _read_invocation(helper, invocation_path, invocation_sha)
+    _collection_packet_path, collection_packet = _read_collection_packet(
+        helper, invocation)
 
     # The worker is itself under server/scripts; do not resolve through a
     # symlink and thereby silently admit a different source tree.
@@ -168,9 +197,12 @@ def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
     importlib.invalidate_caches()
     runtime_adapter = importlib.import_module("shengji.eval.observation_runtime")
     admitted = runtime_adapter.ObservationRuntime(manifest, profile="panel-readout")
+    recipe = importlib.import_module("shengji.eval.m9_panel_recipe")
+    recipe.validate_panel_recipe(collection_packet["recipe"])
     publication = importlib.import_module("shengji.eval.m9_panel_publication")
     return publication.publish_m9_panel_readout_once(
-        invocation, invocation_sha256=invocation_sha, runtime_check=admitted.check)
+        invocation, invocation_sha256=invocation_sha, runtime_check=admitted.check,
+        collection_packet=collection_packet)
 
 
 def main(argv=None) -> int:

@@ -205,6 +205,7 @@ jobs:
           tests/test_m9_replay_binding.py
           tests/test_m9_panel_plan.py
           tests/test_m9_panel_worker.py
+          tests/test_m9_panel_persistence.py
           tests/test_observation_summary.py
           tests/test_observation_partial_evidence.py
           tests/test_tactical_public_observations.py

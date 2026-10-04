@@ -50,19 +50,22 @@ def _validate_panel(panel: Any, job: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def collect_m9_panels(saved_analysis, fixtures, bot_factory_for_seed, *,
-                      on_panel, check_budget=None):
+                      on_panel, check_budget=None, on_collected=None):
     """Collect the fixed 15-job panel, delivering each result immediately.
 
     ``on_panel`` owns persistence of partial progress, including explicitly
     failed replay records. Consumers must check ``validation_status``.
     A successful return is
     only a collection-process receipt; provenance and served-choice claims
-    remain false.
+    remain false. ``on_collected`` receives a detached raw panel before any
+    validation, allowing persistence even if metadata validation fails.
     """
     if not callable(bot_factory_for_seed):
         raise ValueError("bot_factory_for_seed must be callable")
     if not callable(on_panel):
         raise ValueError("on_panel callback is required")
+    if on_collected is not None and not callable(on_collected):
+        raise ValueError("on_collected must be callable")
     if check_budget is not None and not callable(check_budget):
         raise ValueError("check_budget must be callable")
     if (isinstance(fixtures, (str, bytes, bytearray))
@@ -94,6 +97,8 @@ def collect_m9_panels(saved_analysis, fixtures, bot_factory_for_seed, *,
             mode=job["mode"], seed=job["seed"], fill_seed=job["fill_seed"],
             expected_legal_count=job["expected_legal_count"],
             check_budget=check_budget)
+        if on_collected is not None:
+            on_collected({"job": copy.deepcopy(job), "panel": copy.deepcopy(panel)})
         panel = _validate_panel(panel, job)
         replay_error = None
         replay_failure = None

@@ -3,7 +3,8 @@
 This file deliberately starts as a standard-library-only bootstrap.  Packet
 and application bytes are authenticated before the Shengji package is put on
 ``sys.path``; the imported runtime adapter then performs its stronger import
-and dependency checks.  The worker never starts a child process or retries.
+and dependency checks. Worker mode never starts a child process or retries;
+explicit ``--admit`` mode delegates to the guarded owning caller.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ _PACKET_KEYS = frozenset({
 })
 _CLAIM_KEYS = frozenset({
     "schema", "packet_sha256", "status", "comparison_validated", "owner_pid",
+    "inner_command",
 })
 _SOURCE_SUFFIXES = {".py", ".so"}
 
@@ -217,9 +219,12 @@ def _import_application(server: Path):
 
 
 def _verify_claim_and_controls(packet, packet_sha, guards):
+    from shengji.eval.observation_recipe import build_observation_command
     controls = {}
     for key in ("release", "hold", "host_lock", "reservation", "status", "claim"):
         controls[key] = _canonical_absolute(packet[key], key)
+    if controls["host_lock"] != Path("/root/.claude-host.lock"):
+        raise ValueError("shared host directory lease required")
     other_locks = packet["other_locks"]
     if type(other_locks) is not list or not other_locks:
         raise ValueError("explicit peer lock paths required")
@@ -232,6 +237,8 @@ def _verify_claim_and_controls(packet, packet_sha, guards):
             or claim.get("status") != "spent_no_retry"
             or claim.get("comparison_validated") is not False):
         raise ValueError("strict spent owner claim required")
+    if claim["inner_command"] != list(build_observation_command(packet["recipe"])):
+        raise ValueError("owner inner command mismatch")
     owner_pid = claim.get("owner_pid")
     if type(owner_pid) is not int or owner_pid <= 0:
         raise ValueError("strict positive owner pid required")
@@ -333,7 +340,11 @@ def main(argv=None):
                         help="bootstrap the owning caller; exact RELEASE and all admission guards required")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     entry = run_owner_packet if args.admit else run_packet
-    entry(args.packet, args.sha256)
+    result = entry(args.packet, args.sha256)
+    if args.admit:
+        if (type(result) is not dict or result.get("status") != "exited"
+                or type(result.get("returncode")) is not int or result["returncode"] != 0):
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

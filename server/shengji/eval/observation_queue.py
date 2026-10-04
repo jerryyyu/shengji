@@ -27,6 +27,7 @@ _RESERVATION_KEYS = frozenset({
     "path", "sha256", "lane", "launcher", "launcher_sha256", "status", "pid",
     "terminal_suffix",
 })
+_RESUMED_RESERVATION_KEYS = _RESERVATION_KEYS | {"resumed_status_sha256"}
 _TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RUNPVC_LANE = re.compile(r"^runPVC[1-9][0-9]*$")
 _LINE_BREAKS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
@@ -101,7 +102,8 @@ def validate_queue_spec(spec: Any) -> dict[str, Any]:
     seen: set[str] = set()
     seen_status: set[str] = set()
     for index, entry in enumerate(reservations):
-        if type(entry) is not dict or set(entry) != _RESERVATION_KEYS:
+        if type(entry) is not dict or set(entry) not in (
+                _RESERVATION_KEYS, _RESUMED_RESERVATION_KEYS):
             raise ValueError(f"reservation[{index}] fields mismatch")
         path = _canonical_absolute(entry["path"], f"reservation[{index}].path")
         status = _canonical_absolute(entry["status"], f"reservation[{index}].status")
@@ -116,6 +118,9 @@ def validate_queue_spec(spec: Any) -> dict[str, Any]:
         seen_status.add(str(status))
         _strict_sha(entry["sha256"], f"reservation[{index}].sha256")
         _strict_sha(entry["launcher_sha256"], f"reservation[{index}].launcher_sha256")
+        if "resumed_status_sha256" in entry:
+            _strict_sha(entry["resumed_status_sha256"],
+                        f"reservation[{index}].resumed_status_sha256")
         if type(entry["lane"]) is not str or not entry["lane"]:
             raise ValueError("lane must be non-empty")
         if type(entry["pid"]) is not int or entry["pid"] <= 1:
@@ -157,19 +162,27 @@ def _default_pid_alive(pid: int) -> bool:
     return True
 
 
-def _status_terminal(raw: bytes, suffix: str) -> None:
+def _status_terminal(raw: bytes, suffix: str,
+                     resumed_status_sha256: str | None = None) -> None:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("status is not UTF-8") from exc
     lines = text.splitlines()
-    terminal = [line for line in lines
-                if len(line) >= 21 and _TIMESTAMP.fullmatch(line[:20])
-                and line[20:] == " " + suffix]
-    if len(terminal) != 1:
+    terminal_indices = [index for index, line in enumerate(lines)
+                        if len(line) >= 21 and _TIMESTAMP.fullmatch(line[:20])
+                        and line[20:] == " " + suffix]
+    if len(terminal_indices) != 1:
         raise ValueError("status must contain exactly one terminal line")
-    if any(marker in line for line in lines
-           for marker in ("REFUSING:", "ABORTED", "STOPPED", "ABORT:", "STOP:")):
+    markers = ("REFUSING:", "ABORTED", "STOPPED", "ABORT:", "STOP:")
+    if resumed_status_sha256 is not None:
+        if hashlib.sha256(raw).hexdigest() != resumed_status_sha256:
+            raise ValueError("resumed status SHA mismatch")
+        terminal_index = terminal_indices[0]
+        if any(index >= terminal_index and marker in line
+               for index, line in enumerate(lines) for marker in markers):
+            raise ValueError("status contains a refusal after terminal")
+    elif any(marker in line for line in lines for marker in markers):
         raise ValueError("status contains an explicit refusal marker")
 
 
@@ -227,7 +240,8 @@ def capture_queue(spec: Any, *, pid_alive=None) -> dict[str, Any]:
             launcher_stamps[str(launcher_path)] = launcher_after
         status_path = Path(entry["status"])
         status_raw, status_stamp = _stable_read(status_path, _MAX_STATUS_BYTES)
-        _status_terminal(status_raw, entry["terminal_suffix"])
+        _status_terminal(status_raw, entry["terminal_suffix"],
+                         entry.get("resumed_status_sha256"))
         if pid_alive_fn(entry["pid"]):
             raise ValueError("reservation process is still alive")
         files[str(status_path)] = list(status_stamp)

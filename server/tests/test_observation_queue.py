@@ -132,6 +132,69 @@ def test_capture_refuses_wrong_or_duplicate_terminal(tmp_path: Path, status_text
         capture_queue(spec, pid_alive=lambda _: False)
 
 
+def _resumed_status(spec: dict, paths: dict[str, Path], text: str, pin: str | None = None):
+    status = paths["runPVC7.status"]
+    status.write_text(text)
+    entry = next(item for item in spec["reservations"] if item["lane"] == "runPVC7")
+    if pin is None:
+        entry.pop("resumed_status_sha256", None)
+    else:
+        entry["resumed_status_sha256"] = pin
+    return status
+
+
+def test_stop_before_done_requires_matching_reviewed_status_pin(tmp_path: Path) -> None:
+    spec, paths = _queue_fixture(tmp_path)
+    text = (
+        "2026-10-04T00:00:00Z STOPPED: resumed after supervisor review\n"
+        "2026-10-04T00:00:01Z === runPVC7 DONE ===\n"
+    )
+    status = _resumed_status(spec, paths, text)
+    with pytest.raises(ValueError, match="explicit refusal"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+    _resumed_status(spec, paths, text, _sha(status))
+    snapshot = capture_queue(spec, pid_alive=lambda _: False)
+    assert str(status) in snapshot["files"]
+
+
+def test_resumed_status_wrong_pin_is_refused(tmp_path: Path) -> None:
+    spec, paths = _queue_fixture(tmp_path)
+    status = _resumed_status(
+        spec, paths,
+        "2026-10-04T00:00:00Z STOPPED: resumed\n"
+        "2026-10-04T00:00:01Z === runPVC7 DONE ===\n",
+        "0" * 64,
+    )
+    assert _sha(status) != "0" * 64
+    with pytest.raises(ValueError, match="resumed status SHA mismatch"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+
+def test_resumed_status_refuses_marker_after_terminal(tmp_path: Path) -> None:
+    spec, paths = _queue_fixture(tmp_path)
+    text = (
+        "2026-10-04T00:00:00Z === runPVC7 DONE ===\n"
+        "2026-10-04T00:00:01Z STOPPED: late refusal\n"
+    )
+    status = _resumed_status(spec, paths, text, None)
+    _resumed_status(spec, paths, text, _sha(status))
+    with pytest.raises(ValueError, match="refusal after terminal"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+
+def test_resumed_status_requires_one_terminal_line(tmp_path: Path) -> None:
+    spec, paths = _queue_fixture(tmp_path)
+    text = (
+        "2026-10-04T00:00:00Z === runPVC7 DONE ===\n"
+        "2026-10-04T00:00:01Z === runPVC7 DONE ===\n"
+    )
+    status = _resumed_status(spec, paths, text, None)
+    _resumed_status(spec, paths, text, _sha(status))
+    with pytest.raises(ValueError, match="exactly one terminal"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+
 def test_capture_refuses_malformed_duplicate_key_json(tmp_path: Path) -> None:
     spec, paths = _queue_fixture(tmp_path)
     paths["runPVC7"].write_bytes(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -142,9 +143,30 @@ def test_success_uses_checked_worker_argv_owner_claim_and_releases_after_drain(
     )
     assert seen["claim"]["owner_pid"] == os.getpid()
     assert seen["claim"]["status"] == "spent_no_retry"
+    assert seen["claim"]["inner_command"] == ["synthetic"]
     assert seen["kwargs"]["workspace"] == paths["root"] / "server"
     assert not paths["host_lock"].exists()
     assert json.loads(paths["status"].read_text())["process_status"] == "exited"
+    # Peer admission predicate copied from reviewed v49tc launcher lines549–558.
+    # A private schema tag must not leave a malformed record for the next lane.
+    r = json.loads(paths["reservation"].read_text())
+    dual = isinstance(r, dict) and 'output' in r and 'output_root' in r and r['output'] != r['output_root']
+    ok = (not dual and isinstance(r, dict) and isinstance(r.get('seeds'), list) and r['seeds'] and all(type(x) is int for x in r['seeds'])
+          and type(r.get('count')) is int and r['count'] > 0 and isinstance(r.get('launcher'), str)
+          and re.fullmatch(r'[0-9a-f]{64}', str(r.get('launcher_sha256', ''))) and isinstance(r.get('status'), str)
+          and isinstance(r.get('output_root'), str) and isinstance(r.get('created_at'), str))
+    assert ok
+    assert r["launcher_sha256"] == _sha(Path(r["launcher"]))
+
+
+def test_busy_host_lease_refuses_before_spending_claim(tmp_path, monkeypatch):
+    packet_path, packet_sha, _, paths = _fixture(tmp_path, monkeypatch)
+    paths["host_lock"].mkdir()
+    monkeypatch.setattr(admission, "run_observation_process", lambda *a, **k: pytest.fail("busy dispatch"))
+    with pytest.raises(ValueError, match="busy before claim"):
+        admission.run_packet(packet_path, packet_sha)
+    assert not paths["claim"].exists()
+    assert paths["host_lock"].is_dir()
 
 
 @pytest.mark.parametrize("blocker", ["release", "hold", "output"])

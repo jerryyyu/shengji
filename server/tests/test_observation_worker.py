@@ -210,10 +210,22 @@ def test_owner_auth_failure_never_imports_admission(tmp_path, monkeypatch, stage
 @pytest.mark.parametrize("admit", [False, True])
 def test_cli_owner_mode_is_explicit_without_changing_worker_default(monkeypatch, admit):
     calls = []
-    monkeypatch.setattr(worker, "run_owner_packet", lambda *args: calls.append(("owner", args)))
+    monkeypatch.setattr(worker, "run_owner_packet", lambda *args:
+                        (calls.append(("owner", args)) or {"status": "exited", "returncode": 0}))
     monkeypatch.setattr(worker, "run_packet", lambda *args: calls.append(("worker", args)))
     worker.main(["--packet", "/packet", "--sha256", "a" * 64] + (["--admit"] if admit else []))
     assert calls == [("owner" if admit else "worker", ("/packet", "a" * 64))]
+
+
+@pytest.mark.parametrize("receipt", [
+    {"status": "timeout", "returncode": -9}, {"status": "failed", "returncode": 2},
+    {"status": "failed", "returncode": 0}, {"status": "exited", "returncode": False}, None,
+])
+def test_owner_cli_propagates_unsuccessful_receipt(monkeypatch, receipt):
+    monkeypatch.setattr(worker, "run_owner_packet", lambda *args: receipt)
+    with pytest.raises(SystemExit) as error:
+        worker.main(["--admit", "--packet", "/packet", "--sha256", "a" * 64])
+    assert error.value.code == 1
 
 
 def test_isolated_owner_cli_refuses_bad_packet_without_application_import(tmp_path):

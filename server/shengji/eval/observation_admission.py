@@ -126,7 +126,7 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("exact M9 packet required")
     recipe = packet["recipe"]
     validate_recipe(recipe)
-    build_observation_command(recipe)  # validate the fixed scientific invocation
+    inner_command = build_observation_command(recipe)
     source = Path(recipe["source_root"])
     command = (recipe["python"], "-I", "-B",
                str(source / "server/scripts/observation_worker.py"),
@@ -136,6 +136,9 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("host/interpreter/environment binding mismatch")
     _source(source, packet["source_commit"])
     stamps = {packet_path: stamp}
+    launcher = source / "server/scripts/observation_worker.py"
+    launcher_sha, launcher_stamp = _hash_file(launcher)
+    stamps[launcher] = launcher_stamp
 
     def read_ref(ref, label):
         if type(ref) is not dict or set(ref) != {"path", "sha256"}:
@@ -218,10 +221,13 @@ def run_packet(packet_path, packet_sha):
 
     checks()
     queue = guards.capture_queue(queue_spec)
+    if os.path.lexists(controls["host_lock"]):
+        raise ValueError("host lease busy before claim")
     guards.write_exclusive_json(controls["claim"], {
         "schema": "m9-owner-attempt-v1", "packet_sha256": packet_sha,
         "status": "spent_no_retry", "comparison_validated": False,
         "owner_pid": os.getpid(),
+        "inner_command": list(inner_command),
     })
     stamps[controls["claim"]] = file_stamp(controls["claim"])
     lease = Lease(controls["host_lock"], f"m9 {os.getpid()} {packet_sha}\n")
@@ -235,6 +241,8 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("admission changed under lease")
     guards.write_exclusive_json(controls["reservation"], {
         "schema": "codex-m9-reservation-v1", "lane": "m9",
+        "launcher": str(launcher), "launcher_sha256": launcher_sha,
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "packet_sha256": packet_sha, "pid": os.getpid(),
         "output": str(output.parent), "output_root": str(output.parent),
         "result": str(output), "evidence": str(evidence),

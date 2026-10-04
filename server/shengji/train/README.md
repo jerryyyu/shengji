@@ -13,7 +13,7 @@ No retraining, BELIEF dependency, or production registry entry is required.
 
 **Consumer deployed through release 28:** the complete-world **full-legal W32
 shortlist** below, not the older RunA prior/value experiment described first
-in this file. See [MC vs W32 and the results](../../../AI_POLICIES.md#the-shortlist-era-condensed-releases-2228)
+in this file. See [MC vs W32 and the results](../../../docs_archive/ai-policies-release-sections-through-r38.md#the-shortlist-era-condensed-releases-2228)
 for the A+B+C milestone and its limits.
 
 ## What changes

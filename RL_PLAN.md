@@ -137,7 +137,7 @@ Measure search work, world quality, consumer decision dose and whole-game utilit
   into whole-game play; Luna data retained as evidence, no active lane.
 - **Global learned rankers, V11, Direct-Q, T4 widening, S4/S6 mechanisms, C0:** better label
   fit did not transport; none cleared a registered bar. Do not revive unchanged.
-- **The shortlist era (releases 22–28)** is condensed in `AI_POLICIES.md`.
+- **The shortlist era (releases 22–28)** is condensed in `docs_archive/ai-policies-release-sections-through-r38.md`.
 
 ## Literature-derived design constraints
 

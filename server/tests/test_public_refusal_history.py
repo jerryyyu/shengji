@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from shengji.eval import tactical
-from shengji.eval.public_refusal_history import public_root_with_ledger
+from shengji.eval.public_refusal_history import (
+    public_root_with_ledger, public_root_with_observation_schedule,
+)
 
 
 @pytest.fixture(scope="module")
@@ -286,3 +288,80 @@ def test_real_pv_dispatch_uses_reconstructed_ledger_without_drawing(
     with pytest.raises(RuntimeError, match="before scientific"):
         sample_public_refusal_tape(bot, fx, mode=mode, seed=17)
     assert calls == [expected]
+
+
+@pytest.mark.parametrize("fill_seed", [0, 1])
+@pytest.mark.parametrize("fixture_index", range(4))
+def test_schedules_match_existing_modes(fixtures, fixture_index, fill_seed):
+    fx = fixtures[fixture_index]
+    original = copy.deepcopy(fx.to_json())
+    actor_indices = [i for i, p in enumerate(fx.plays) if p["seat"] == fx.seat]
+    for mode, indices in [("fresh-root", []), ("history-primed", actor_indices)]:
+        root, _, expected = public_root_with_ledger(fx, mode=mode, fill_seed=fill_seed)
+        scheduled, ledger, receipt = public_root_with_observation_schedule(
+            fx, observed_play_indices=indices, fill_seed=fill_seed)
+        assert receipt["retained_refusals"] == expected["retained_refusals"]
+        assert receipt["historical_observations"] == [
+            {"play_index": i, "seat": fx.plays[i]["seat"]} for i in indices]
+        assert receipt["final_root_observation"] == {"play_index": len(fx.plays), "seat": fx.seat}
+        assert scheduled.hands == root.hands and scheduled.history == root.history
+        assert scheduled.trick == root.trick and scheduled.notice == root.notice
+        assert len(ledger.observe(scheduled)) == len(expected["retained_refusals"])
+        assert not receipt["observation_schedule_verified"]
+        assert not receipt["provenance_verified"]
+        assert not receipt["live_rng_state_reconstructed"]
+        assert receipt["hidden_hands_are_placeholders"]
+    assert fx.to_json() == original
+
+
+@pytest.mark.parametrize("fill_seed", [0, 1])
+def test_explicit_all_turns_adds_two_notices_without_inferred_ownership(fixtures, fill_seed):
+    fx = next(f for f in fixtures if f.id == "pvr8-c2-m0-p43-partner-overtake-control")
+    _, _, actor = public_root_with_ledger(fx, mode="history-primed", fill_seed=fill_seed)
+    _, _, all_turns = public_root_with_observation_schedule(
+        fx, observed_play_indices=tuple(range(len(fx.plays))), fill_seed=fill_seed)
+    assert (len(actor["retained_refusals"]), len(all_turns["retained_refusals"])) == (6, 8)
+    assert len(all_turns["historical_observations"]) == len(fx.plays)
+
+
+def test_changing_seat_schedule_is_explicit_and_copied(fixtures):
+    fx = fixtures[0]
+    indices = [0, 2, 5]
+    _, _, receipt = public_root_with_observation_schedule(fx, observed_play_indices=indices)
+    indices.append(6)
+    assert receipt["historical_observations"] == [
+        {"play_index": i, "seat": fx.plays[i]["seat"]} for i in (0, 2, 5)]
+    assert len({o["seat"] for o in receipt["historical_observations"]}) > 1
+
+
+@pytest.mark.parametrize("indices", [None, "all", True, {0}, [True], [0.0], [-1],
+                                      [100000], [1, 0], [0, 0]])
+def test_invalid_schedule_refused_before_root_replay(fixtures, indices, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid schedule reached root construction")
+    monkeypatch.setattr(tactical, "public_round", forbidden)
+    with pytest.raises(ValueError):
+        public_root_with_observation_schedule(fixtures[0], observed_play_indices=indices)
+
+
+def test_schedule_is_required_and_final_root_is_not_a_historical_index(fixtures):
+    with pytest.raises(TypeError):
+        public_root_with_observation_schedule(fixtures[0])
+    with pytest.raises(ValueError):
+        public_root_with_observation_schedule(
+            fixtures[0], observed_play_indices=[len(fixtures[0].plays)])
+
+
+def test_schedule_replay_drift_refused(fixtures, monkeypatch):
+    original = tactical.round_from_setup
+    calls = 0
+    def changed(*args, **kwargs):
+        nonlocal calls
+        rnd = original(*args, **kwargs)
+        calls += 1
+        if calls == 2:
+            rnd.attacker_points += 1
+        return rnd
+    monkeypatch.setattr(tactical, "round_from_setup", changed)
+    with pytest.raises(ValueError, match="differs"):
+        public_root_with_observation_schedule(fixtures[0], observed_play_indices=[])

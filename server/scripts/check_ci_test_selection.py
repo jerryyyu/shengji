@@ -71,7 +71,7 @@ UV_RUN_VALUE_OPTS = {
     "--with", "--with-editable", "--with-requirements", "--python", "-p", "--group", "--extra",
     "--package", "--directory", "--project", "--env-file", "--index", "--index-url", "--only-group",
 }
-PYTHON_VALUE_OPTS = {"-W", "-X", "-c"}
+PYTHON_VALUE_OPTS = {"-W", "-X"}
 CHECKOUT_WRAPPER = "scripts/test_checkout.py"
 PYTEST_NON_SELECTING_OPTS = {"--ignore", "--ignore-glob", "--deselect"}
 SCRIPT_TOKEN = re.compile(r"(?<![A-Za-z0-9_./-])((?:server/)?scripts/[A-Za-z0-9_./-]+\.sh)(?![A-Za-z0-9_])")
@@ -272,7 +272,11 @@ def pytest_arguments(words: list[str]) -> list[str] | None:
     if program == "pytest":
         return words[i + 1 :]
     if re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", program):
-        j = _skip_options(words, i + 1, PYTHON_VALUE_OPTS)
+        j = i + 1
+        while j < len(words) and words[j].startswith("-") and words[j] != "-m":
+            if words[j] == "-c" or words[j] == "-" or words[j].startswith("-c"):
+                return None  # -c / stdin end the interpreter's options; the rest is the program's argv
+            j += 2 if words[j] in PYTHON_VALUE_OPTS else 1
         if words[j : j + 2] == ["-m", "pytest"]:
             return words[j + 2 :]
         if j < len(words) and words[j].endswith(CHECKOUT_WRAPPER):

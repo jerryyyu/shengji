@@ -363,6 +363,12 @@ def test_executed_script_forms_are_followed(tmp_path):
         assert check.run(root) == 0, run
 
 
+def test_python_dash_c_is_not_pytest(tmp_path):
+    for k, run in enumerate(["python -c pass -m pytest tests/test_new.py", "python -B -c 'import x' -m pytest tests/test_new.py"]):
+        root = make_tree(tmp_path / str(k), workflow=wf(run), tests=["test_new.py"])
+        assert check.run(root) == 1, run
+
+
 def test_untokenizable_pytest_line_fails_closed(tmp_path, capsys):
     root = make_tree(tmp_path, workflow=wf("uv run pytest tests/test_a.py 'unclosed"), tests=["test_a.py"])
     assert check.run(root) == 1

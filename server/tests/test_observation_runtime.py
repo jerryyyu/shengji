@@ -205,10 +205,26 @@ def _linux_sys(modules=None, *, dont_write_bytecode=True):
 def _fast_env(monkeypatch):
     for key in tuple(os.environ):
         if key.startswith(("SHENGJI_", "PYTHON", "OMP_", "OPENBLAS_", "MKL_",
-                           "VECLIB_", "NUMEXPR_", "LC_")):
+                           "VECLIB_", "NUMEXPR_", "LC_", "LD_", "DYLD_",
+                           "BLIS_", "GOTO_", "KMP_")):
             monkeypatch.delenv(key, raising=False)
     for key, value in runtime.ENVIRONMENT.items():
         monkeypatch.setenv(key, value)
+
+
+@pytest.mark.parametrize("key", [
+    "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "BLIS_NUM_THREADS",
+    "GOTO_NUM_THREADS", "KMP_AFFINITY",
+])
+def test_synthetic_environment_isolates_host_overrides(monkeypatch, key):
+    monkeypatch.setenv(key, "host-setting")
+    _fast_env(monkeypatch)
+    assert key not in os.environ
+    assert runtime._environment() == runtime.ENVIRONMENT
+    # Isolation belongs to the fixture; the real runtime must still refuse it.
+    monkeypatch.setenv(key, "host-setting")
+    with pytest.raises(ValueError, match="unapproved runtime override: " + key):
+        runtime._environment()
 
 
 @pytest.mark.parametrize("dont_write", [False, True])

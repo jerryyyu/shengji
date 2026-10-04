@@ -118,6 +118,164 @@ def test_pytest_directory_argument_selects_all(tmp_path):
     assert check.run(root) == 0
 
 
+# --- Only executed configuration selects tests (#764 review) -----------------
+# The first two cases reproduce Codex's HOLD witnesses verbatim.
+
+
+def test_non_execution_reference_cannot_select_tests(tmp_path):
+    workflow = """jobs:
+  smoke:
+    steps:
+      - name: Inspect tests/
+        run: echo no-tests-executed
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_paths_filter_is_not_execution(tmp_path):
+    workflow = """on:
+  pull_request:
+    paths:
+      - server/tests/test_new.py
+jobs:
+  smoke:
+    steps:
+      - run: echo no-tests-executed
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_env_and_if_fields_do_not_select(tmp_path):
+    workflow = """jobs:
+  smoke:
+    steps:
+      - name: Smoke
+        if: contains('tests/test_new.py pytest', 'x')
+        env:
+          TARGET: pytest tests/test_new.py
+        run: echo pytest-free
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_unreferenced_matrix_value_does_not_select(tmp_path):
+    workflow = """jobs:
+  smoke:
+    strategy:
+      matrix:
+        tests:
+          - "tests/test_a.py"
+        unused: ["tests/test_new.py"]
+    steps:
+      - run: uv run pytest -q ${{ matrix.tests }}
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_new.py"])
+    assert check.run(root) == 1
+    selected, _, _ = check.collect_selection(root)
+    assert selected == {"server/tests/test_a.py"}
+
+
+def test_referenced_matrix_values_select(tmp_path):
+    workflow = """jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        tests:
+          - "tests/test_a.py tests/test_b.py"
+          - "tests/test_c.py"
+        engine: [pure, compiled]
+    steps:
+      - name: Run
+        if: matrix.tests == 'tests/test_a.py tests/test_b.py'
+        run: uv run pytest -q ${{ matrix.tests }}
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_b.py", "test_c.py"])
+    assert check.run(root) == 0
+
+
+def test_matrix_of_another_job_is_not_used(tmp_path):
+    workflow = """jobs:
+  one:
+    strategy:
+      matrix:
+        tests: ["tests/test_new.py"]
+    steps:
+      - run: echo ${{ matrix.tests }}
+  two:
+    steps:
+      - run: uv run pytest -q ${{ matrix.tests }}
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_literal_block_with_continuations_selects(tmp_path):
+    workflow = """jobs:
+  smoke:
+    steps:
+      - run: |
+          # tests/test_commented.py is not run
+          uv run python -m pytest -q \\
+            tests/test_a.py \\
+            tests/test_b.py
+          echo tests/test_echoed.py
+      - name: after
+        run: echo done
+"""
+    root = make_tree(
+        tmp_path,
+        workflow=workflow,
+        tests=["test_a.py", "test_b.py"],
+        exclusions="server/tests/test_commented.py\nserver/tests/test_echoed.py\n",
+    )
+    # The two excluded names do not exist as files, so they are stale, but the
+    # selection itself must be exactly the pytest arguments.
+    selected, _, _ = check.collect_selection(root)
+    assert selected == {"server/tests/test_a.py", "server/tests/test_b.py"}
+
+
+def test_directory_token_needs_pytest_on_the_same_line(tmp_path):
+    workflow = """jobs:
+  smoke:
+    steps:
+      - run: |
+          ls tests/
+          uv run pytest -q tests/test_a.py
+"""
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_script_comment_does_not_select(tmp_path):
+    root = make_tree(
+        tmp_path,
+        workflow=wf("bash scripts/ci_modes.sh"),
+        tests=["test_a.py", "test_new.py"],
+        scripts={"scripts/ci_modes.sh": "# uv run pytest tests/test_new.py\nuv run pytest tests/test_a.py\n"},
+    )
+    assert check.run(root) == 1
+
+
+def test_script_named_outside_run_is_not_followed(tmp_path):
+    workflow = """jobs:
+  smoke:
+    steps:
+      - name: bash scripts/ci_modes.sh
+        run: echo nothing
+"""
+    root = make_tree(
+        tmp_path,
+        workflow=workflow,
+        tests=["test_a.py"],
+        scripts={"scripts/ci_modes.sh": "uv run pytest tests/test_a.py\n"},
+    )
+    assert check.run(root) == 1
+
+
 def test_repository_selection_is_clean():
     proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr

@@ -91,16 +91,23 @@ def _publish_refusal(output: Path, exc: BaseException) -> None:
         pass
 
 
-def publish_m9_panel_readout_once(invocation, *, invocation_sha256):
+def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_check):
     """Read and publish one already-authorized M9 panel bundle exactly once.
 
     Validation happens before claim or input access.  Once the output
     directory is exclusively created, every failure leaves the claim and any
     successfully published immutable files in place; no read or publication
     is retried and no existing output is overwritten.
+
+    ``runtime_check`` must be the check method of the caller's authenticated
+    panel-readout runtime. It must return exactly True; capture/authentication
+    belongs to the pinned bootstrap, not this adapter. Checks run before the
+    claim and after analysis, before any scientific result is published.
     """
     invocation, output = _validate_invocation(invocation, invocation_sha256)
     packet_sha256 = invocation["packet_sha256"]
+    if not callable(runtime_check) or runtime_check() is not True:
+        raise ValueError("readout runtime check failed before claim")
 
     # Directory creation is the exclusive per-output claim and deliberately
     # precedes both claim publication and the artifact reader.
@@ -121,6 +128,8 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256):
             artifact_reader.read_m9_panel_files(
                 reader_files, packet_sha256=packet_sha256),
             invocation)
+        if runtime_check() is not True:
+            raise ValueError("readout runtime check failed after analysis")
         result_raw = _json_bytes(result)
         publish_exclusive_bytes(output / "result.json", result_raw, mode=0o400)
         receipt = {

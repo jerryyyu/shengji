@@ -24,12 +24,61 @@ def invocation_sha(invocation):
     return hashlib.sha256(publication.guards._canonical(invocation)).hexdigest()
 
 
+@pytest.mark.parametrize("response", [False, None, 1])
+def test_runtime_refusal_before_claim_prevents_reader(monkeypatch, tmp_path, response):
+    pins, _, _ = bundle(monkeypatch, tmp_path)
+    output = tmp_path / "readout"
+    invocation = invocation_for(pins, output)
+    monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files",
+                        lambda *a, **kw: pytest.fail("reader before valid runtime"))
+    with pytest.raises(ValueError, match="runtime check failed before claim"):
+        publication.publish_m9_panel_readout_once(
+            invocation, invocation_sha256=invocation_sha(invocation),
+            runtime_check=lambda: response)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_runtime_checked_around_real_reader_before_publication(monkeypatch, tmp_path, drift):
+    pins, _, _ = bundle(monkeypatch, tmp_path)
+    output = tmp_path / "readout"
+    invocation = invocation_for(pins, output)
+    events = []
+    real_reader = publication.artifact_reader.read_m9_panel_files
+
+    def check():
+        events.append("check")
+        assert not (output / "result.json").exists()
+        assert not (output / "receipt.json").exists()
+        return not (drift and len(events) == 3)
+
+    def read(*args, **kwargs):
+        assert events == ["check"]
+        assert (output / "claim.json").exists()
+        events.append("read")
+        return real_reader(*args, **kwargs)
+
+    monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files", read)
+    kwargs = dict(invocation_sha256=invocation_sha(invocation), runtime_check=check)
+    if drift:
+        with pytest.raises(ValueError, match="runtime check failed after analysis"):
+            publication.publish_m9_panel_readout_once(invocation, **kwargs)
+        assert (output / "claim.json").exists()
+        assert (output / "refusal.json").exists()
+        assert not (output / "result.json").exists()
+        assert not (output / "receipt.json").exists()
+    else:
+        publication.publish_m9_panel_readout_once(invocation, **kwargs)
+        assert (output / "receipt.json").exists()
+    assert events == ["check", "read", "check"]
+
+
 def test_real_reader_is_published_once_with_bound_receipt(monkeypatch, tmp_path):
     pins, _, _ = bundle(monkeypatch, tmp_path)
     invocation = invocation_for(pins, tmp_path / "readout")
 
     receipt = publication.publish_m9_panel_readout_once(
-        invocation, invocation_sha256=invocation_sha(invocation))
+        invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
     output = Path(invocation["output_dir"])
     result_raw = (output / "result.json").read_bytes()
     result = json.loads(result_raw)
@@ -44,7 +93,7 @@ def test_real_reader_is_published_once_with_bound_receipt(monkeypatch, tmp_path)
                         lambda *args, **kwargs: pytest.fail("reader retried"))
     with pytest.raises(FileExistsError):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
 
 
 def test_invocation_sha_and_output_paths_refuse_before_claim_or_reader(
@@ -57,20 +106,20 @@ def test_invocation_sha_and_output_paths_refuse_before_claim_or_reader(
 
     with pytest.raises(ValueError, match="invocation SHA"):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256="0" * 64)
+            invocation, invocation_sha256="0" * 64, runtime_check=lambda: True)
     assert not output.exists()
 
     invocation["output_dir"] = str(tmp_path / "link" / "readout")
     (tmp_path / "link").symlink_to(tmp_path, target_is_directory=True)
     with pytest.raises(ValueError, match="canonical absolute path"):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
 
     invocation["output_dir"] = str(tmp_path / "existing")
     Path(invocation["output_dir"]).mkdir()
     with pytest.raises(FileExistsError):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
 
 
 @pytest.mark.parametrize("error_class", [RuntimeError, KeyboardInterrupt])
@@ -84,7 +133,7 @@ def test_refusal_preserves_claim_and_hides_exception_text(monkeypatch, tmp_path,
     monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files", refuse)
     with pytest.raises(error_class, match="score-bearing"):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
 
     output = Path(invocation["output_dir"])
     refusal = json.loads((output / "refusal.json").read_text())
@@ -118,7 +167,7 @@ def test_reader_mutation_cannot_change_hashed_invocation_bindings(
     monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files",
                         mutate_reader)
     receipt = publication.publish_m9_panel_readout_once(
-        invocation, invocation_sha256=invocation_sha(invocation))
+        invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
     if not mutate_caller:
         assert invocation["files"] == original_files
     assert receipt["packet_sha256"] == "a" * 64
@@ -148,7 +197,7 @@ def test_concurrent_calls_allow_only_one_reader(monkeypatch, tmp_path):
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(publication.publish_m9_panel_readout_once,
                                invocation,
-                               invocation_sha256=invocation_sha(invocation))
+                               invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
                    for _ in range(2)]
         assert started.wait(5)
         release.set()
@@ -181,7 +230,7 @@ def test_receipt_failure_preserves_result_and_refuses_without_retry(
     monkeypatch.setattr(publication, "publish_exclusive_bytes", fail_receipt)
     with pytest.raises(OSError, match="receipt publication failed"):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)
 
     output = Path(invocation["output_dir"])
     assert receipt_calls == 1
@@ -193,4 +242,4 @@ def test_receipt_failure_preserves_result_and_refuses_without_retry(
                         lambda *args, **kwargs: pytest.fail("reader retried"))
     with pytest.raises(FileExistsError):
         publication.publish_m9_panel_readout_once(
-            invocation, invocation_sha256=invocation_sha(invocation))
+            invocation, invocation_sha256=invocation_sha(invocation), runtime_check=lambda: True)

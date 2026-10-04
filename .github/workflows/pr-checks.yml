@@ -153,6 +153,15 @@ jobs:
           tests/test_tactical_public_observations.py
           tests/test_observation_process.py
           tests/test_observation_process_cli.py
+          tests/test_observation_recipe.py
+          tests/test_observation_numeric_recipe.py
+          tests/test_observation_control_rejections.py
+          tests/test_observation_lease.py
+          tests/test_observation_runtime.py
+          tests/test_observation_runtime_fence.py
+          tests/test_observation_queue.py
+          tests/test_observation_worker.py
+          tests/test_observation_admission.py
           tests/test_luna_startup_cleanup.py
 
   frontend:

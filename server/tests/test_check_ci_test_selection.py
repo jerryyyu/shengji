@@ -308,8 +308,9 @@ def test_supported_pytest_invocations_select(tmp_path):
         "uv run -m pytest tests/test_e.py",
         "(uv run python -m pytest -q tests/test_f.py 2>&1 | sed -u 's/^/x /') &",
         "python3 -m pytest server/tests/test_g.py",
+        "uv run python scripts/test_checkout.py --engine pure -- -q --durations=10 tests/test_h.py",
     ]
-    names = [f"test_{c}.py" for c in "abcdefg"]
+    names = [f"test_{c}.py" for c in "abcdefgh"]
     for k, form in enumerate(forms):
         root = make_tree(tmp_path / str(k), workflow=wf(form), tests=[names[k]])
         assert check.run(root) == 0, form
@@ -329,6 +330,16 @@ def test_ignored_and_deselected_paths_do_not_select(tmp_path):
         tests=["test_a.py", "test_new.py"],
     )
     assert check.run(root2) == 1
+
+
+def test_checkout_wrapper_selects_only_after_double_dash(tmp_path):
+    root = make_tree(
+        tmp_path,
+        workflow=wf("uv run python scripts/test_checkout.py --engine pure tests/test_new.py -- tests/test_a.py"),
+        tests=["test_a.py", "test_new.py"],
+    )
+    selected, _, _, _ = check.collect_selection(root)
+    assert selected == {"server/tests/test_a.py"}
 
 
 def test_untokenizable_pytest_line_fails_closed(tmp_path, capsys):

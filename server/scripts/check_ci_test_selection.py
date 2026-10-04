@@ -21,6 +21,7 @@ Detection (stdlib only, no YAML library; an indentation-based extractor):
   each line into simple commands at ``;``, ``&&``, ``||``, ``|``, ``&`` and
   parentheses, with shell quoting (``shlex``).  Only a simple command whose
   program is pytest selects tests: ``pytest``, ``python[3] [opts] -m pytest``,
+  ``python[3] [opts] scripts/test_checkout.py [opts] -- <pytest args>``,
   optionally behind ``VAR=value`` prefixes, ``env [-u NAME] [VAR=value]`` and
   ``uv run [opts]``.  Only that command's own arguments after pytest count, so
   ``echo "pytest tests/x.py"`` or a sibling ``echo tests/x.py`` selects
@@ -29,7 +30,8 @@ Detection (stdlib only, no YAML library; an indentation-based extractor):
   is expanded as a glob, and ``tests``/``tests/`` selects every module under
   it; the values of ``--ignore``/``--ignore-glob``/``--deselect`` select
   nothing.  Paths resolve under ``server/`` (the steps' working directory).
-  A line that mentions pytest but cannot be tokenized fails the check.
+  A line that mentions pytest (or the wrapper) but cannot be tokenized fails
+  the check.
 * A shell script referenced from a run value as ``scripts/<name>.sh`` or
   ``server/scripts/<name>.sh`` is followed (recursively) and its command lines
   are treated the same way.  Python scripts are NOT followed.
@@ -68,6 +70,7 @@ UV_RUN_VALUE_OPTS = {
     "--package", "--directory", "--project", "--env-file", "--index", "--index-url", "--only-group",
 }
 PYTHON_VALUE_OPTS = {"-W", "-X", "-c"}
+CHECKOUT_WRAPPER = "scripts/test_checkout.py"
 PYTEST_NON_SELECTING_OPTS = {"--ignore", "--ignore-glob", "--deselect"}
 SCRIPT_TOKEN = re.compile(r"(?<![A-Za-z0-9_./-])((?:server/)?scripts/[A-Za-z0-9_./-]+\.sh)(?![A-Za-z0-9_])")
 PYTEST = re.compile(r"(?<![A-Za-z0-9_])pytest(?![A-Za-z0-9_])")
@@ -270,6 +273,10 @@ def pytest_arguments(words: list[str]) -> list[str] | None:
         j = _skip_options(words, i + 1, PYTHON_VALUE_OPTS)
         if words[j : j + 2] == ["-m", "pytest"]:
             return words[j + 2 :]
+        if j < len(words) and words[j].endswith(CHECKOUT_WRAPPER):
+            # The checkout-safe wrapper forwards everything after ``--`` to pytest.
+            rest = words[j + 1 :]
+            return rest[rest.index("--") + 1 :] if "--" in rest else []
     return None
 
 
@@ -323,7 +330,7 @@ def collect_selection(root: Path) -> tuple[set[str], list[str], list[str], list[
                         queue.append(script)
                     else:
                         dangling.append(f"{label}: {token}")
-                if not PYTEST.search(line):
+                if not (PYTEST.search(line) or CHECKOUT_WRAPPER in line):
                     continue
                 try:
                     commands = simple_commands(line)

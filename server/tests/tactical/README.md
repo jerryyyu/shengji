@@ -84,6 +84,46 @@ notes
 
 ## Running
 
+### Unscored public observations (#681)
+
+`public_observations.jsonl` is a **separate**, exposed-DEV set of four PVR8
+positions: pair-preserving follow, big-joker control, ace control, and a
+partner-overtake negative control. They predate the combo teacher. Their
+best moves are unknown; do not merge their counts into the 22 scored
+heuristic fixtures or label them proven blunders.
+
+They use the existing fixture/public-rebuild pipeline with category
+`observation`, predicate `observe_follow`, and `current_bot: null`. The runner
+validates follows and emits `status: observed`, never a strategic pass/fail.
+Telemetry reports the current trick winner/points, whether the trick is
+complete, and the actor's residual hand, including admitted alternatives when
+a complete search record exists. In third position, current winner/points are
+**not** final trick outcomes. `--stamp` leaves these fixtures unlabelled.
+
+The source is the saved three-game transcript from
+[#681's manual audit](https://github.com/jerryyyu/shengji/issues/681#issuecomment-5966751888),
+SHA256 `e15afce77105f259acc0c808ddbfba10c5beadd791206f14d465ad7e56de5253`.
+Each fixture retains the exact root, shard hash, historical dirty source-tree
+identity and teacher. Public history is derived from preceding accepted plays,
+retaining attempted refused throws; burial is retained only for the banker.
+No opponents' hands, future plays or terminal outcomes are included.
+
+Package-free validation:
+
+```sh
+python -m pytest tests/test_tactical_public_observations.py -q
+```
+
+This checks public-state reconstruction under different hidden fills, legal
+alternatives, exact local consequences, and historical prior/value disagreement.
+A direct diversity-method test shows it can retain an available pair-preserving
+alternative but cannot invent one absent from its candidate input. This is
+**not** a sampled baseline/combo comparison or a strength result. Such a
+comparison uses the existing `tactical_report.py --fixtures
+tests/tactical/public_observations.jsonl` path with a reviewed recipe and the
+existing launch/release gates. Do not change the frozen B2 population to include
+these outcome-selected exploratory examples.
+
 ```
 cd server
 # the served package, local copy (read-only), production knobs by default

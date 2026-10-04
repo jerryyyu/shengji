@@ -42,6 +42,7 @@ FIXTURES_PATH = Path(__file__).resolve().parents[2] / "tests" / "tactical" / "fi
 
 CATEGORIES = ("doomed-throw", "point-donation", "missed-point-win", "shortlist-miss",
               "repeated-failed-throw")
+OBSERVATION_CATEGORY = "observation"
 
 # The production play recipe (fly.toml, release 36).  A caller that pins only the
 # package gets exactly the served name; every knob can still be overridden.
@@ -51,6 +52,13 @@ PRODUCTION_PLAY_ENV = {
     "SHENGJI_PV_BURY_ARM": "hybrid", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2",
 }
 PRODUCTION_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
+OBSERVATION_COMPARISON_SEEDS = (0, 1, 2)
+OBSERVATION_COMPARISON_FILL_SEED = 0
+OBSERVATION_COMPARISON_SHA256 = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
+OBSERVATION_COMPARISON_FLAGS = (
+    "SHENGJI_PV_ADMISSION_DIVERSITY", "SHENGJI_PV_REFUSAL_CONSTRAINTS",
+    "SHENGJI_PV_TIEBREAK_POINTS", "SHENGJI_PV_LEAD_ANCHOR",
+)
 
 
 class TacticalError(ValueError):
@@ -107,10 +115,17 @@ def fixture_from_json(row: Mapping[str, Any]) -> Fixture:
 
 
 def validate_fixture(fx: Fixture) -> None:
-    if fx.category not in CATEGORIES:
+    if fx.category not in CATEGORIES and fx.category != OBSERVATION_CATEGORY:
         raise TacticalError(f"{fx.id}: unknown category {fx.category!r}")
     if fx.predicate not in PREDICATES:
         raise TacticalError(f"{fx.id}: unknown predicate {fx.predicate!r}")
+    if fx.category == OBSERVATION_CATEGORY:
+        if fx.predicate != "observe_follow":
+            raise TacticalError(f"{fx.id}: observation fixtures must use observe_follow")
+        if fx.current_bot is not None:
+            raise TacticalError(f"{fx.id}: observation fixtures must not record current_bot")
+    elif fx.predicate == "observe_follow":
+        raise TacticalError(f"{fx.id}: observe_follow requires the observation category")
     if fx.seat not in range(4):
         raise TacticalError(f"{fx.id}: seat {fx.seat}")
     if fx.current_bot not in (None, "pass", "fail"):
@@ -305,7 +320,7 @@ class Context:
     fixture: Fixture
 
 
-Verdict = tuple[bool, str]
+Verdict = tuple[bool | None, str]
 
 
 def _key(cards: Sequence[str]) -> tuple[str, ...]:
@@ -466,6 +481,16 @@ def admitted_ballot_not_crowded(ctx: Context, max_same_suit_throws: int = 4) -> 
     return ok, f"{n}/{total} admitted candidates are {suit}-suit throws (limit {max_same_suit_throws})"
 
 
+def observe_follow(ctx: Context) -> Verdict:
+    """Marker predicate for a bounded, non-scored follow observation.
+
+    The runner performs the engine legality check and emits local trick
+    consequences.  There is deliberately no claim that the chosen follow or
+    any admitted alternative is better.
+    """
+    return None, "observed follow; no best-action verdict"
+
+
 PREDICATES: dict[str, Callable[..., Verdict]] = {
     "not_a_doomed_throw": not_a_doomed_throw,
     "not_a_throw_refuted_by_public_refusal": not_a_throw_refuted_by_public_refusal,
@@ -474,6 +499,7 @@ PREDICATES: dict[str, Callable[..., Verdict]] = {
     "wins_point_trick_when_available": wins_point_trick_when_available,
     "structured_lead_admitted": structured_lead_admitted,
     "admitted_ballot_not_crowded": admitted_ballot_not_crowded,
+    "observe_follow": observe_follow,
 }
 
 
@@ -498,7 +524,7 @@ def refusal_args(fx_plays: Sequence[Mapping[str, Any]], seat: int, ordering: Ord
 class Result:
     fixture: Fixture
     action: list[str] | None
-    passed: bool
+    passed: bool | None
     detail: str
     record: dict | None = None
     seconds: float = 0.0
@@ -509,7 +535,49 @@ class Result:
     def status(self) -> str:
         if self.error:
             return "ERROR"
+        if self.passed is None:
+            return "observed"
         return "pass" if self.passed else "FAIL"
+
+
+def _observation_consequence(rnd: Round, seat: int, action: Sequence[str]) -> dict:
+    """Validate a follow and report only facts local to the current trick."""
+    if rnd.trick is None or not rnd.trick.plays:
+        raise IllegalPlay("observation follow requires a non-empty lead")
+    if not action:
+        raise IllegalPlay("observation follow cannot be empty")
+    assert rnd.ordering is not None
+    lead = rnd.trick.plays[0].cards
+    validate_follow(list(action), list(rnd.hands[seat]), lead, rnd.ordering)
+    table = [(p.seat, p.cards) for p in rnd.trick.plays]
+    table.append((seat, list(action)))
+    residual = Counter(rnd.hands[seat]) - Counter(action)
+    return {
+        "action": list(action),
+        "current_winner": _trick_winner(table, rnd.ordering),
+        "current_points": total_points(c for _s, cards in table for c in cards),
+        "trick_complete": len(table) == 4,
+        "residual_hand": sorted(residual.elements()),
+    }
+
+
+def _observation_result(rnd: Round, fx: Fixture, action: list[str],
+                        record: dict | None, seconds: float) -> Result:
+    """Validate and summarize an observation without judging its preference."""
+    try:
+        chosen = _observation_consequence(rnd, fx.seat, action)
+        observation = {k: chosen[k] for k in
+                       ("current_winner", "current_points", "trick_complete", "residual_hand")}
+        if record and record.get("work_complete") is True:
+            observation["admitted"] = [
+                _observation_consequence(rnd, fx.seat, list(candidate))
+                for candidate in record.get("admitted") or []
+            ]
+        return Result(fx, action, None, "observed follow; no best-action verdict",
+                      record=record, seconds=seconds, extra={"observation": observation})
+    except Exception as exc:
+        return Result(fx, action, None, f"{type(exc).__name__}: {exc}", record=record,
+                      seconds=seconds, error="observation")
 
 
 def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
@@ -524,7 +592,9 @@ def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
         return Result(fx, None, False, str(exc), error="rebuild")
     captured: dict[str, Any] = {}
     original = getattr(type(bot), "_worlds", None)
-    if original is not None:
+    # Observation fixtures must not retain or inspect sampled opponent worlds.
+    capture_worlds = fx.category != OBSERVATION_CATEGORY
+    if original is not None and capture_worlds:
         def _worlds(rnd_, seat_, check_budget=None):
             worlds, attempts = original(bot, rnd_, seat_, check_budget)
             captured["worlds"] = worlds
@@ -537,13 +607,15 @@ def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
         return Result(fx, None, False, f"{type(exc).__name__}: {exc}", error="decide_play",
                       seconds=time.perf_counter() - started)
     finally:
-        if original is not None:
+        if original is not None and capture_worlds:
             try:
                 del bot._worlds
             except AttributeError:
                 pass
     seconds = time.perf_counter() - started
     record = getattr(bot, "last_decision_record", None)
+    if fx.category == OBSERVATION_CATEGORY:
+        return _observation_result(rnd, fx, action, record, seconds)
     ctx = Context(rnd=rnd, seat=fx.seat, action=action, record=record,
                   worlds=list(captured.get("worlds") or []), fixture=fx)
     try:
@@ -573,6 +645,67 @@ def run_set(make_bot: Callable[[], Any], fixtures: Sequence[Fixture], *, fill_se
     return out
 
 
+def observation_comparison_environs(checkpoint: str, sha256: str) -> dict[str, dict[str, str]]:
+    """Return frozen r36-SMV3 control and the four-flag DEV treatment."""
+    control = production_environ(checkpoint, sha256)
+    treatment = dict(control)
+    treatment.update({flag: "1" for flag in OBSERVATION_COMPARISON_FLAGS})
+    differing = {key for key in set(control) | set(treatment)
+                 if control.get(key) != treatment.get(key)}
+    if differing != set(OBSERVATION_COMPARISON_FLAGS):
+        raise TacticalError(f"comparison changes unexpected keys: {sorted(differing)}")
+    return {"r36-smv3": control, "div+rc+tb+la": treatment}
+
+
+def run_observation_comparison(make_control: Callable[[int], Any],
+                               make_treatment: Callable[[int], Any],
+                               fixtures: Sequence[Fixture], *,
+                               seeds: Sequence[int] = OBSERVATION_COMPARISON_SEEDS,
+                               fill_seed: int = OBSERVATION_COMPARISON_FILL_SEED) -> list[dict]:
+    """Run four public observations paired at identical roots and seeds."""
+    if len(fixtures) != 4 or any(fx.category != OBSERVATION_CATEGORY or fx.current_bot is not None
+                                 for fx in fixtures):
+        raise TacticalError("comparison requires exactly four unstamped observation fixtures")
+    if len({fx.id for fx in fixtures}) != 4:
+        raise TacticalError("comparison roots must be unique")
+    rows = []
+    for seed in seeds:
+        for fx in fixtures:
+            control = run_fixture(make_control(seed), fx, fill_seed=fill_seed)
+            treatment = run_fixture(make_treatment(seed), fx, fill_seed=fill_seed)
+            if control.status != "observed" or treatment.status != "observed":
+                raise TacticalError(f"{fx.id}/seed {seed}: comparison is not observed-only")
+            rows.append({"fixture": fx.id, "seed": seed, "fill_seed": fill_seed,
+                         "control": control, "treatment": treatment})
+    # Coverage is post-decision diagnostics, outside policy timing. Enumerate
+    # once per public fixture, never using an opponent's actual hidden hand.
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.train.ballot_opportunity import summarize_opportunities
+    pools = {}
+    for fx in fixtures:
+        rnd = public_round(fx, fill_seed=fill_seed)
+        pools[fx.id] = enumerate_legal(rnd, fx.seat, cap=None)
+    for row in rows:
+        legal = pools[row['fixture']]
+        for arm in ('control', 'treatment'):
+            result = row[arm]
+            record = result.record
+            if (not isinstance(record, dict) or record.get('work_complete') is not True
+                    or 'admitted' not in record):
+                raise TacticalError('complete admitted-action telemetry required for coverage')
+            result.extra['ballot_opportunity'] = summarize_opportunities(
+                result.fixture.hand, legal.actions, record['admitted'],
+                legal_complete=legal.complete)
+    return rows
+
+
+def observation_decision_metadata(result: Result) -> dict:
+    """Expose only decision telemetry safe for an observation comparison."""
+    record = result.record or {}
+    return {key: record[key] for key in ("work_complete", "admitted", "value_means")
+            if key in record} | {"seconds": result.seconds}
+
+
 def format_table(results: Sequence[Result], bot_name: str | None = None) -> str:
     rows = [("id", "category", "status", "known", "action", "observed", "secs", "detail")]
     for r in results:
@@ -587,20 +720,29 @@ def format_table(results: Sequence[Result], bot_name: str | None = None) -> str:
         lines.append(f"bot: {bot_name}")
     for row in rows:
         lines.append("  ".join(str(v).ljust(w) for v, w in zip(row[:-1], widths)) + "  " + str(row[-1]))
-    n = len(results)
     passed = sum(1 for r in results if r.status == "pass")
     failed = sum(1 for r in results if r.status == "FAIL")
-    errors = n - passed - failed
+    errors = sum(1 for r in results if r.status == "ERROR")
+    observed = sum(1 for r in results if r.status == "observed")
     by_cat: dict[str, list[int]] = {}
     for r in results:
+        if r.status == "observed":
+            continue
         by_cat.setdefault(r.fixture.category, [0, 0])
         by_cat[r.fixture.category][1] += 1
         if r.status == "pass":
             by_cat[r.fixture.category][0] += 1
-    lines.append(f"total: {passed} pass, {failed} fail, {errors} error of {n}; by category: "
-                 + ", ".join(f"{k} {p}/{t}" for k, (p, t) in sorted(by_cat.items())))
+    scored = passed + failed + errors
+    by_category = ", ".join(f"{k} {p}/{t}" for k, (p, t) in sorted(by_cat.items()))
+    if observed:
+        lines.append(f"total: {passed} pass, {failed} fail, {errors} error of {scored}; "
+                     f"observations: {observed}; by category: {by_category}")
+    else:
+        lines.append(f"total: {passed} pass, {failed} fail, {errors} error of {scored}; by category: "
+                     + by_category)
     moved = [r for r in results if r.fixture.current_bot and
-             r.status != "ERROR" and (r.status == "pass") != (r.fixture.current_bot == "pass")]
+             r.status in ("pass", "FAIL") and
+             (r.status == "pass") != (r.fixture.current_bot == "pass")]
     if moved:
         lines.append("moved vs the recorded production verdict: "
                      + ", ".join(f"{r.fixture.id} ({r.fixture.current_bot}->{r.status})" for r in moved))

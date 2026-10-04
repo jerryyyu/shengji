@@ -200,6 +200,7 @@ jobs:
           tests/test_observation_summary.py
           tests/test_observation_partial_evidence.py
           tests/test_tactical_public_observations.py
+          tests/test_public_refusal_history.py
           tests/test_observation_process.py
           tests/test_observation_process_cli.py
           tests/test_observation_recipe.py

@@ -61,8 +61,20 @@ Open http://localhost:8000, create a room, add 3 bots (or share the room code
 with friends on your network), and start. For frontend development, run
 `npm run dev` in `web/` (Vite on :5173, talks to the server on :8000).
 
-Tests: `cd server && uv run pytest` (`SHENGJI_FAST=1` runs the compiled-engine
-witnesses). Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
+Tests: `cd server && uv run python scripts/test_checkout.py --engine pure -- -q`.
+The entrypoint anchors imports to its own checkout, prints the source and engine,
+and checks both before pytest starts. It also works with a shared environment's
+Python from another working directory; pass the absolute script path. Use
+`--engine compiled` after building that checkout's extension; missing native
+code fails instead of silently counting pure coverage. Pure mode unsets
+`SHENGJI_FAST` (setting it to `0` is not sufficient).
+
+For a small, model-free producer-to-consumer diagnostic rehearsal:
+`uv run python scripts/test_checkout.py --engine pure -- -q tests/test_m9_readout_persistence_roundtrip.py`.
+This exercises synthetic collection, persisted panels and final summarization;
+it is not a real-model qualification or scientific run. Frontend checks:
+`cd web && npm ci && npm run lint && npm test && npm run build` (from repo root).
+Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
 
 ## Rules implemented (standard 4-player, 2 decks)
 

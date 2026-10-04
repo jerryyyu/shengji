@@ -21,6 +21,10 @@ def results_of(s):
              "point": s.get("point"), "lo": s.get("lo"), "hi": s.get("hi")}]
 
 
+# what the contrast varies: the whole served bot, the card-play search, or the bury chooser alone
+FORMS = ("served bot", "card play", "bury decision")
+
+
 def check_registry(reg):
     """Invariants: one production baseline; every screen names a comparator that is a baseline release
     and a form; every read is a proper interval around its point; a served-bot read never carries a
@@ -33,8 +37,8 @@ def check_registry(reg):
     for s in reg["screens"]:
         if s.get("vs") not in releases:
             errs.append(f"{s['id']}: comparator release {s.get('vs')!r} is not a registered baseline")
-        if s.get("form") not in ("served bot", "card play"):
-            errs.append(f"{s['id']}: form must be 'served bot' or 'card play'")
+        if s.get("form") not in FORMS:
+            errs.append(f"{s['id']}: form must be one of {sorted(FORMS)}")
         if s.get("status") not in ("planned", "running", "restarting", "sealed", "stopped"):
             errs.append(f"{s['id']}: unknown status {s.get('status')!r}")
     for s in reg["screens"] + reg["context_screens"]:
@@ -59,6 +63,8 @@ def check_registry(reg):
             errs.append(f"{s['id']}: instrument_kind must be one of {sorted(INSTRUMENT_KINDS)} with a non-empty instrument text")
         if s.get("form") == "served bot" and s.get("instrument_kind") != "windows":
             errs.append(f"{s['id']}: a served-bot read must use the 'windows' instrument")
+        if s.get("form") == "bury decision" and s.get("instrument_kind") != "matched-deals":
+            errs.append(f"{s['id']}: a bury-decision read must use the 'matched-deals' instrument")
         for r in results_of(s):
             p, lo, hi = r.get("point"), r.get("lo"), r.get("hi")
             if (p is None) != (lo is None) or (p is None) != (hi is None):

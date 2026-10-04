@@ -56,6 +56,14 @@ def test_registry_invariants_hold_and_the_checks_bite():
     assert any("served-bot read must use the 'windows' instrument" in e for e in mod.check_registry(bad))
     bad = copy.deepcopy(reg); bad["context_screens"][0]["instrument_kind"] = "bogus"
     assert any("instrument_kind" in e for e in mod.check_registry(bad))
+    # a bury screen is its own form, never rendered as card play (Codex HOLD on #731)
+    bury = next(i for i, s in enumerate(reg["screens"]) if s["id"] == "v48bury")
+    assert reg["screens"][bury]["form"] == "bury decision"
+    bad = copy.deepcopy(reg); bad["screens"][bury]["instrument_kind"] = "windows"
+    assert any("bury-decision read must use the 'matched-deals' instrument" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); bad["screens"][bury]["form"] = "bury"
+    assert any("form must be one of" in e for e in mod.check_registry(bad))
+    assert "bury decision · " in mod.page                         # rendered as its own form
 
 
 def test_a_multi_arm_family_has_one_slot_per_arm_with_its_own_coverage():

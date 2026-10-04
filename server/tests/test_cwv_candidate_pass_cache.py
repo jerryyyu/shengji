@@ -148,6 +148,25 @@ def test_no_cache_dir_means_no_files_and_no_count(store_dir, tmp_path):
     assert not (tmp_path / "cache").exists()
 
 
+@pytest.mark.parametrize("missing", ["offsets", "public", "decision_obs", "source_ref",
+                                     "history_offsets", "history_cards", "history_meta"])
+def test_missing_cached_column_rebuilds_without_changing_results(store_dir, tmp_path, missing):
+    shard_keys = _shard_keys(store_dir)
+    cache = tmp_path / "cache"
+    history = missing.startswith("history_")
+    first, _ = _run(shard_keys, cache, history=history)
+    path = sorted((cache / "candidate-pass").glob("*.npz"))[0]
+    with np.load(path, allow_pickle=False) as npz:
+        arrays = {name: npz[name] for name in npz.files if name != missing}
+    np.savez_compressed(path, **arrays)
+    second, _ = _run(shard_keys, cache, history=history)
+    assert second["cached_shards"] == len(shard_keys) - 1
+    _same(first, second)
+    third, _ = _run(shard_keys, cache, history=history)
+    assert third["cached_shards"] == len(shard_keys)
+    _same(first, third)
+
+
 def test_the_pool_path_pairs_each_result_with_its_own_file(store_dir, tmp_path, monkeypatch):
     """With several workers the pool completes in any order; every file must
     hold the shard its name says, and the rows must come out in task order,

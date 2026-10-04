@@ -552,8 +552,14 @@ def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | 
             arrays = {name: npz[name] for name in npz.files if name != "meta"}
     except (OSError, EOFError, ValueError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
         return None
-    if "units_code" not in arrays:
-        return None                      # a v2-schema file without the column is a miss, not a crash
+    required = set(_SEARCH_ARRAYS) | {
+        "offsets", "role_attacker", "units_code", "search_source_ref",
+        "search_deal_key", "source_ref", "deal_key", "decision_obs",
+    }
+    if meta.get("history"):
+        required.update(("history_offsets", *_SEARCH_HISTORY))
+    if not required.issubset(arrays):
+        return None                      # incomplete caches are rebuilt, never partially scored
     offsets = arrays["offsets"]
     history = "history_offsets" in arrays
     search: list[dict] = []

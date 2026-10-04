@@ -331,3 +331,65 @@ def test_final_guard_failure_raises_after_preserving_completed_artifacts(
     assert terminal["status"] == "complete"
     assert terminal["provenance_verified"] is False
     assert len(checks) == 63
+
+
+def test_deadline_after_first_panel_preserves_evidence_and_stops_dispatch(
+        monkeypatch, tmp_path):
+    recipe, events, _, bot_calls, _ = _harness(monkeypatch, tmp_path)
+    output = Path(recipe["output_dir"])
+    expired = TimeoutError("synthetic deadline")
+
+    def budget():
+        if (output / "validated-000.json").exists():
+            raise expired
+
+    with pytest.raises(TimeoutError) as caught:
+        execution.run_panel_body(
+            recipe, _manifest(recipe, events), check_admission=lambda: True,
+            check_budget=budget)
+    assert caught.value is expired
+    assert len(bot_calls) == 2  # No second job or retry.
+    assert (output / "collected-000.json").is_file()
+    assert (output / "validated-000.json").is_file()
+    assert not (output / "collected-001.json").exists()
+    terminal = json.loads((output / "terminal.json").read_text())
+    assert terminal["status"] == "failed"
+    assert terminal["error_type"] == "TimeoutError"
+    assert terminal["collected_count"] == terminal["validated_count"] == 1
+    assert terminal["provenance_verified"] is False
+
+
+@pytest.mark.parametrize("drift", ["model", "runtime", "admission"])
+def test_post_factory_checkpoint_refuses_drift_before_scoring(
+        monkeypatch, tmp_path, drift):
+    recipe, events, hash_calls, bot_calls, _ = _harness(monkeypatch, tmp_path)
+    original_factory = execution.tactical.bot_from_environ
+    admission_ok = True
+
+    def changing_factory(environment, *, seed):
+        nonlocal admission_ok
+        result = original_factory(environment, seed=seed)
+        if drift == "model":
+            Path(recipe["model"]).write_bytes(b"changed model identity")
+        elif drift == "runtime":
+            # Change the result only after construction, not at initial admission.
+            monkeypatch.setattr(execution.ObservationRuntime, "check", lambda self: False)
+        else:
+            admission_ok = False
+        return result
+
+    monkeypatch.setattr(execution.tactical, "bot_from_environ", changing_factory)
+    pattern = {"model": "model changed", "runtime": "runtime drift",
+               "admission": "live admission guard"}[drift]
+    with pytest.raises(ValueError, match=pattern):
+        execution.run_panel_body(
+            recipe, _manifest(recipe, events),
+            check_admission=lambda: admission_ok, check_budget=lambda: None)
+    assert len(bot_calls) == 1  # Second factory and scoring never reached.
+    assert hash_calls == [Path(recipe["model"])]
+    output = Path(recipe["output_dir"])
+    assert (output / "plan.json").is_file()
+    assert not (output / "collected-000.json").exists()
+    terminal = json.loads((output / "terminal.json").read_text())
+    assert terminal["status"] == "failed"
+    assert terminal["collected_count"] == terminal["validated_count"] == 0

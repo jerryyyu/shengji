@@ -984,7 +984,7 @@
    "comparator": "release 38's served hybrid bury with release-38 play, run as pv-search-491ee4bf-w64-k8-div-rc-tb-la-r55a56d25-bury-hybrid-1a97b0120006 (the screen harness's form of the served pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457, no play budget); only the bury chooser differs, so this is a bury contrast, not a served-bot contrast",
    "vs": 38,
    "vs_group": "release 38's hybrid bury (a bury-decision screen, not card play)",
-   "form": "card play",
+   "form": "bury decision",
    "instrument_kind": "matched-deals",
    "instrument": "2,080 paired generated deals (all-ranks-known-banker-v1 indices 2080..4159, four sealed blocks of 520), paired banker utility arm minus control, 4000 paired bootstrap replicates within rank x initial-banker strata; heuristic declarations",
    "seeds": "deal indices 2080..4159 (all-ranks-known-banker-v1)",

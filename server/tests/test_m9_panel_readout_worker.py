@@ -125,6 +125,58 @@ def test_fifo_helper_is_refused_without_opening(tmp_path: Path):
         worker._read_helper(fifo, "a" * 64)
 
 
+def test_fifo_invocation_is_refused_before_stable_read(monkeypatch, tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO unavailable")
+    fifo = tmp_path / "invocation.json"
+    os.mkfifo(fifo)
+    helper = _load_actual_helper()
+    monkeypatch.setattr(helper, "_stable_read", lambda *_: pytest.fail(
+        "FIFO must be rejected before opening"))
+    with pytest.raises(ValueError, match="regular nonsymlink"):
+        worker._read_invocation(helper, str(fifo), "a" * 64)
+
+
+def test_fifo_runtime_is_refused_before_runtime_reader(monkeypatch, tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO unavailable")
+    invocation, path = _invocation(tmp_path)
+    fifo = tmp_path / "runtime-fifo.json"
+    os.mkfifo(fifo)
+    invocation["runtime"]["path"] = str(fifo)
+    helper = SimpleNamespace(_read_runtime=lambda *_: pytest.fail(
+        "FIFO must be rejected before runtime read"))
+    monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
+    monkeypatch.setattr(worker, "_load_helper", lambda _: helper)
+    monkeypatch.setattr(worker, "_read_invocation", lambda *_: invocation)
+    with pytest.raises(ValueError, match="regular nonsymlink"):
+        worker.run(str(path), "a" * 64, "b" * 64)
+
+
+@pytest.mark.parametrize("platform,isolated,no_bytecode,modules,refusal", [
+    ("darwin", True, True, {}, "Linux"),
+    ("linux", False, True, {}, "isolated"),
+    ("linux", True, False, {}, "bytecode"),
+    ("linux", True, True, {"scripts": object()}, "already"),
+    ("linux", True, True, {"scripts.other": object()}, "already"),
+    ("linux", True, True, {"shengji": object()}, "already"),
+    ("linux", True, True, {"shengji.eval": object()}, "already"),
+    ("linux", True, True, {}, None),
+])
+def test_runtime_gate_contract(monkeypatch, platform, isolated, no_bytecode,
+                               modules, refusal):
+    # Substitute only the worker's sys reference; do not disturb pytest's
+    # process-global import cache or interpreter flags.
+    monkeypatch.setattr(worker, "sys", SimpleNamespace(
+        platform=platform, flags=SimpleNamespace(isolated=isolated),
+        dont_write_bytecode=no_bytecode, modules=modules))
+    if refusal is None:
+        worker._runtime_gate()
+    else:
+        with pytest.raises(ValueError, match=refusal):
+            worker._runtime_gate()
+
+
 def test_runtime_source_failure_prevents_import_and_publication(monkeypatch, tmp_path):
     invocation, _ = _invocation(tmp_path)
     runtime_path = Path(invocation["runtime"]["path"])

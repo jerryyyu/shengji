@@ -226,6 +226,10 @@ def test_frozen_comparison_pairs_all_roots_and_seeds_without_strategic_verdict(c
             self.last_decision_record = {
                 "work_complete": True, "admitted": fx.observed["admitted"],
                 "value_means": fx.observed["value_means"],
+                "policy_log_odds_admitted": fx.observed["policy_log_odds"],
+                "admitted_indices": list(range(len(fx.observed["admitted"]))),
+                "selected_index": next(i for i, a in enumerate(fx.observed["admitted"])
+                                       if Counter(a) == Counter(fx.observed["action"])),
             }
             return fx.observed["action"]
 

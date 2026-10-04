@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import random
 import time
 from collections import Counter
@@ -657,6 +658,32 @@ def observation_comparison_environs(checkpoint: str, sha256: str) -> dict[str, d
     return {"r36-smv3": control, "div+rc+tb+la": treatment}
 
 
+def _validate_observation_telemetry(result: Result) -> None:
+    """Require a usable ballot/score/selection join, not merely a ballot."""
+    record = result.record
+    if not isinstance(record, dict) or record.get("work_complete") is not True:
+        raise TacticalError("complete observation telemetry required")
+    admitted = record.get("admitted")
+    indices = record.get("admitted_indices")
+    selected = record.get("selected_index")
+    if (not isinstance(admitted, list) or not admitted
+            or any(not isinstance(a, list) or not a
+                   or any(not isinstance(c, str) for c in a) for a in admitted)
+            or not isinstance(indices, list) or len(indices) != len(admitted)
+            or any(type(i) is not int or i < 0 for i in indices)
+            or len(set(indices)) != len(indices)
+            or type(selected) is not int or selected not in indices):
+        raise TacticalError("invalid observation telemetry ballot/index mapping")
+    for key in ("value_means", "policy_log_odds_admitted"):
+        values = record.get(key)
+        if (not isinstance(values, list) or len(values) != len(admitted)
+                or any(type(v) not in (int, float) or not math.isfinite(v)
+                       for v in values)):
+            raise TacticalError(f"invalid observation telemetry {key}")
+    if Counter(admitted[indices.index(selected)]) != Counter(result.action):
+        raise TacticalError("observation telemetry selected action does not match decision")
+
+
 def run_observation_comparison(make_control: Callable[[int], Any],
                                make_treatment: Callable[[int], Any],
                                fixtures: Sequence[Fixture], *,
@@ -682,11 +709,13 @@ def run_observation_comparison(make_control: Callable[[int], Any],
                 on_observation(control, seed, "control")
             if control.status != "observed":
                 raise TacticalError(f"{fx.id}/seed {seed}: comparison is not observed-only")
+            _validate_observation_telemetry(control)
             treatment = run_fixture(make_treatment(seed), fx, fill_seed=fill_seed)
             if on_observation is not None:
                 on_observation(treatment, seed, "treatment")
             if treatment.status != "observed":
                 raise TacticalError(f"{fx.id}/seed {seed}: comparison is not observed-only")
+            _validate_observation_telemetry(treatment)
             rows.append({"fixture": fx.id, "seed": seed, "fill_seed": fill_seed,
                          "control": control, "treatment": treatment})
     # Coverage is post-decision diagnostics, outside policy timing. Enumerate

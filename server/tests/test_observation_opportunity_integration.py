@@ -1,5 +1,6 @@
 """Post-decision coverage attachment; fake policies, no inference."""
 import copy
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,12 @@ def setup(monkeypatch, bad=None):
         admitted = copy.deepcopy(fx.observed['admitted'])
         if bot == 'treatment' and fx is fixtures[0]:
             admitted.append(fx.observed['alternative'])
-        record = {'work_complete': True, 'admitted': admitted}
+        record = {'work_complete': True, 'admitted': admitted,
+                  'admitted_indices': list(range(len(admitted))),
+                  'selected_index': next(i for i, a in enumerate(admitted)
+                                         if Counter(a) == Counter(fx.observed['action'])),
+                  'value_means': [0.0] * len(admitted),
+                  'policy_log_odds_admitted': [0.0] * len(admitted)}
         if bad == 'missing':
             record.pop('admitted')
         elif bad == 'incomplete':

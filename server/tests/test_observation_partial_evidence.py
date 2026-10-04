@@ -1,5 +1,7 @@
 import hashlib
+import copy
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -34,7 +36,9 @@ class FakeBot:
             "admitted": fx.observed["admitted"],
             "value_means": fx.observed["value_means"],
             "policy_log_odds_admitted": fx.observed["policy_log_odds"],
-            "selected_index": 7,
+            "admitted_indices": list(range(len(fx.observed["admitted"]))),
+            "selected_index": next(i for i, a in enumerate(fx.observed["admitted"])
+                                   if Counter(a) == Counter(fx.observed["action"])),
             "worlds": [["private-world"]],
         }
         return fx.observed["action"]
@@ -170,3 +174,46 @@ def test_partial_write_failure_propagates_before_next_bot(cases, tmp_path, monke
     # treatment bot is never constructed after the callback write fails.
     assert constructed == [("control", 0), ("treatment", 0), ("control", 0)]
     assert not output.exists()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("admitted_indices", None), ("admitted_indices", [1, 1]),
+    ("admitted_indices", [True, 5]), ("admitted_indices", [-1, 5]),
+    ("admitted_indices", [2]), ("selected_index", 99),
+    ("selected_index", True), ("selected_index", 5),
+    ("value_means", None), ("value_means", [0.1]),
+    ("value_means", [float("nan"), 0.1]),
+    ("policy_log_odds_admitted", [float("inf"), 0.1]),
+    ("policy_log_odds_admitted", [True, 0.1]),
+    ("admitted", []), ("admitted", [["S6"], [None]]),
+])
+def test_malformed_score_join_refuses(cases, field, value):
+    record = {"work_complete": True, "admitted": [["S6"], ["H6"]],
+              "admitted_indices": [2, 5], "selected_index": 2,
+              "value_means": [0.1, 0.2], "policy_log_odds_admitted": [0.3, 0.4]}
+    result = T.Result(cases[0], ["S6"], None, "synthetic", record=record)
+    T._validate_observation_telemetry(result)
+    record[field] = copy.deepcopy(value)
+    with pytest.raises(T.TacticalError, match="telemetry"):
+        T._validate_observation_telemetry(result)
+
+
+def test_missing_score_join_preserves_partial_but_never_completes(cases, tmp_path, monkeypatch):
+    output = tmp_path / "comparison.json"
+    constructed = _fake_bots(monkeypatch, cases)
+    decide = FakeBot.decide_play
+
+    def incomplete(self, rnd, seat):
+        action = decide(self, rnd, seat)
+        self.last_decision_record.pop("admitted_indices")
+        return action
+
+    monkeypatch.setattr(FakeBot, "decide_play", incomplete)
+    monkeypatch.setattr("sys.argv", _argv(output))
+    with pytest.raises(T.TacticalError, match="telemetry"):
+        tactical_report.main()
+    assert constructed == [("control", 0), ("treatment", 0), ("control", 0)]
+    assert not output.exists()
+    attempt = Path(f"{output}.attempt")
+    assert sorted(p.name for p in attempt.glob("*.json")) == ["000-control.json", "claim.json"]
+    assert json.loads((attempt / "000-control.json").read_text())["comparison_complete"] is False

@@ -13,6 +13,35 @@ from shengji.train import pv_search_policy as pv
 ACTIONS = [["DK"], ["D6"]]
 
 
+@pytest.mark.parametrize("expected", [True, 0, -1, 2.0])
+def test_invalid_declared_count_rejected_before_factory(expected):
+    def forbidden():
+        pytest.fail("factory must not run")
+    with pytest.raises(ValueError, match="expected_legal_count"):
+        collect_public_fixture_panel(forbidden, None, [], [],
+                                     mode="fresh-root", seed=0,
+                                     expected_legal_count=expected)
+
+
+@pytest.mark.parametrize("mode", ["fresh-root", "history-primed"])
+def test_declared_count_mismatch_stops_before_scoring(monkeypatch, mode):
+    fixture, factory, calls, _, _ = _inputs(monkeypatch, mode=mode)
+    with pytest.raises(ValueError, match="legal count differs"):
+        collect_public_fixture_panel(factory, fixture, ACTIONS[:1], ACTIONS[1:],
+                                     mode=mode, seed=17,
+                                     expected_legal_count=3)
+    assert calls["factory"] == 1  # sampler only, no scoring/model evaluation
+
+
+def test_matching_declared_count_collects(monkeypatch):
+    fixture, factory, calls, _, _ = _inputs(monkeypatch)
+    out = collect_public_fixture_panel(factory, fixture, ACTIONS[:1], ACTIONS[1:],
+                                       mode="fresh-root", seed=17,
+                                       expected_legal_count=2)
+    assert out["legal_count"] == 2
+    assert calls["factory"] == 4
+
+
 def _inputs(monkeypatch, *, mode="fresh-root", config_changes=None):
     root = last_position()
     worlds = [(copy.deepcopy(root.hands), list(root.buried)) for _ in range(3)]

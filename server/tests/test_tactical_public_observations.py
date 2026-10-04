@@ -160,6 +160,18 @@ def test_cli_comparison_records_pair_telemetry_and_refuses_reuse(cases, tmp_path
     assert len(report["results"]) == 12
     assert report["results"][0]["control"]["status"] == "observed"
     assert report["results"][0]["control"]["decision"]["value_means"]
+    # Check the reader adapter against actual serialized collector output,
+    # including sparse original candidate indices. Both fake arms choose the
+    # same recorded action; no model inference or strategic verdict is involved.
+    from shengji.eval.observation_summary import summarize_observation_comparison
+    summary = summarize_observation_comparison(report)
+    assert len(summary["rows"]) == 12
+    assert summary["selection_changed_count"] == 0
+    assert {(row["id"], row["seed"]) for row in summary["rows"]} == {
+        (fx.id, seed) for fx in cases for seed in (0, 1, 2)
+    }
+    assert summary["strategic_quality_assessed"] is False
+    assert summary["causal_mechanism_assessed"] is False
     for pair in report['results']:
         fixture = next(fx for fx in cases if fx.id == pair["id"])
         for arm in ('control', 'treatment'):

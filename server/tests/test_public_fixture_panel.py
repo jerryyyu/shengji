@@ -130,7 +130,7 @@ def test_malformed_mode_seed_and_ballots_refuse_before_factory(monkeypatch, bad)
     fixture = SimpleNamespace(id="fx", seat=0)
     with pytest.raises(ValueError):
         collect_public_fixture_panel(
-            fail, fixture, [], [["DK"]], **bad)
+            fail, fixture, [["DK"]], [["D6"]], **bad)
     assert factory_calls == []
 
     root = last_position()
@@ -168,6 +168,47 @@ def test_recipe_drift_and_reused_sampler_refuse(monkeypatch):
             lambda: reused[0], fixture, ACTIONS[:1], ACTIONS[1:],
             mode="fresh-root", seed=17)
     assert calls["factory"] == 1
+
+
+@pytest.mark.parametrize("mode,expected_count", [
+    ("fresh-root", 0), ("history-primed", 1),
+])
+def test_real_composed_preflight_reaches_expected_sampler_without_drawing(
+        monkeypatch, mode, expected_count):
+    from pathlib import Path
+    from shengji.eval import tactical
+    from test_refusal_constraints import served
+
+    fixtures = tactical.load_fixtures(
+        Path(__file__).parent / "tactical/public_observations.jsonl")
+    fixture = next(f for f in fixtures
+                   if f.id == "pvr8-c1-m0-p23-pair-preservation")
+    original = copy.deepcopy(fixture.to_json())
+    bots, dispatches = [], []
+
+    def factory():
+        bot = served(seed=17, worlds=2, refusal_constraints=True)
+        bots.append(bot)
+        return bot
+
+    def stop(kind):
+        def intercept(sampler, root, seat, n, *args, **kwargs):
+            dispatches.append(kind)
+            assert len(bots) == 1 and sampler is bots[0].sampler
+            assert seat == fixture.seat and n == 2
+            assert len(bots[0]._refusals.refusals) == expected_count
+            assert bots[0]._refusals.key == tuple(root.deck)
+            raise RuntimeError("preflight stopped before draw")
+        return intercept
+
+    monkeypatch.setattr(pv, "sample_worlds", stop("plain"))
+    monkeypatch.setattr(pv, "sample_worlds_refusal_aware", stop("refusal"))
+    with pytest.raises(RuntimeError, match="before draw"):
+        collect_public_fixture_panel(
+            factory, fixture, [["DK"]], [["D6"]], mode=mode, seed=17)
+    assert dispatches == ["refusal" if expected_count else "plain"]
+    assert fixture.to_json() == original
+    assert bots[0]._public_refusal_tape_consumed is True
 
 
 def test_missing_ballot_and_partial_pool_refuse_before_scoring_factory(monkeypatch):

@@ -410,14 +410,30 @@ class ActiveCallManager:
 
 def _start_contained_process(command: tuple[str, ...], *, workspace: Path,
                              env: dict[str, str],
-                             active_calls: ActiveCallManager) \
+                             active_calls: ActiveCallManager,
+                             watchdog_script: Path | None = None) \
         -> tuple[subprocess.Popen[bytes], int]:
-    """Launch one RPC behind a pipe-triggered parent-death watchdog."""
+    """Launch one RPC behind a pipe-triggered parent-death watchdog.
+
+    An explicit script runs through the current interpreter in isolated mode;
+    its interpreter and script pinning remain the caller's responsibility.
+    """
+    if watchdog_script is not None:
+        if (not watchdog_script.is_absolute()
+                or watchdog_script.is_symlink()
+                or not watchdog_script.is_file()):
+            raise ValueError(
+                "watchdog_script must be an absolute regular nonsymlink file")
     read_fd, write_fd = os.pipe()
-    wrapper = (
-        sys.executable, "-B", "-m",
-        "shengji.luna.watchdog",
-        str(read_fd), *command)
+    if watchdog_script is None:
+        wrapper = (
+            sys.executable, "-B", "-m",
+            "shengji.luna.watchdog",
+            str(read_fd), *command)
+    else:
+        wrapper = (
+            sys.executable, "-I", "-B", str(watchdog_script),
+            str(read_fd), *command)
     try:
         process = subprocess.Popen(
             wrapper, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

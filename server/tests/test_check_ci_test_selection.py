@@ -174,7 +174,7 @@ def test_unreferenced_matrix_value_does_not_select(tmp_path):
 """
     root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_new.py"])
     assert check.run(root) == 1
-    selected, _, _ = check.collect_selection(root)
+    selected, _, _, _ = check.collect_selection(root)
     assert selected == {"server/tests/test_a.py"}
 
 
@@ -234,7 +234,7 @@ def test_literal_block_with_continuations_selects(tmp_path):
     )
     # The two excluded names do not exist as files, so they are stale, but the
     # selection itself must be exactly the pytest arguments.
-    selected, _, _ = check.collect_selection(root)
+    selected, _, _, _ = check.collect_selection(root)
     assert selected == {"server/tests/test_a.py", "server/tests/test_b.py"}
 
 
@@ -274,6 +274,67 @@ def test_script_named_outside_run_is_not_followed(tmp_path):
         scripts={"scripts/ci_modes.sh": "uv run pytest tests/test_a.py\n"},
     )
     assert check.run(root) == 1
+
+
+def test_quoted_pytest_in_echo_does_not_select(tmp_path):
+    root = make_tree(
+        tmp_path,
+        workflow=wf('uv run pytest tests/test_a.py; echo "pytest tests/test_new.py"'),
+        tests=["test_a.py", "test_new.py"],
+    )
+    assert check.run(root) == 1
+
+
+def test_sibling_command_path_does_not_select(tmp_path):
+    root = make_tree(
+        tmp_path,
+        workflow=wf("uv run pytest tests/test_a.py; echo tests/test_new.py"),
+        tests=["test_a.py", "test_new.py"],
+    )
+    assert check.run(root) == 1
+
+
+def test_echo_of_pytest_alone_selects_nothing(tmp_path):
+    root = make_tree(tmp_path, workflow=wf('echo "pytest tests/test_new.py"'), tests=["test_new.py"])
+    assert check.run(root) == 1
+
+
+def test_supported_pytest_invocations_select(tmp_path):
+    forms = [
+        "pytest tests/test_a.py",
+        "env -u SHENGJI_FAST uv run pytest -q tests/test_b.py",
+        "SHENGJI_FAST=1 uv run python -B -m pytest -q tests/test_c.py::test_ok",
+        "uv run python -P -B -m pytest -q tests/test_d.py",
+        "uv run -m pytest tests/test_e.py",
+        "(uv run python -m pytest -q tests/test_f.py 2>&1 | sed -u 's/^/x /') &",
+        "python3 -m pytest server/tests/test_g.py",
+    ]
+    names = [f"test_{c}.py" for c in "abcdefg"]
+    for k, form in enumerate(forms):
+        root = make_tree(tmp_path / str(k), workflow=wf(form), tests=[names[k]])
+        assert check.run(root) == 0, form
+
+
+def test_ignored_and_deselected_paths_do_not_select(tmp_path):
+    root = make_tree(
+        tmp_path,
+        workflow=wf("uv run pytest tests --ignore tests/test_new.py --deselect tests/test_a.py::test_ok"),
+        tests=["test_a.py", "test_new.py"],
+    )
+    selected, _, _, _ = check.collect_selection(root)
+    assert selected == {"server/tests/test_a.py", "server/tests/test_new.py"}  # the directory still selects
+    root2 = make_tree(
+        tmp_path / "b",
+        workflow=wf("uv run pytest tests/test_a.py --ignore tests/test_new.py"),
+        tests=["test_a.py", "test_new.py"],
+    )
+    assert check.run(root2) == 1
+
+
+def test_untokenizable_pytest_line_fails_closed(tmp_path, capsys):
+    root = make_tree(tmp_path, workflow=wf("uv run pytest tests/test_a.py 'unclosed"), tests=["test_a.py"])
+    assert check.run(root) == 1
+    assert "could not be tokenized" in capsys.readouterr().out
 
 
 def test_repository_selection_is_clean():

@@ -17,12 +17,19 @@ Detection (stdlib only, no YAML library; an indentation-based extractor):
   that job's ``strategy.matrix.<key>`` list.  A matrix key no ``run:`` value
   references selects nothing.
 * Each run value is split into command lines (folded ``>`` blocks are one
-  line, backslash continuations are joined, shell comments are stripped).  Only
-  a command line that invokes ``pytest`` selects tests: a ``tests/<name>.py`` or
-  ``server/tests/<name>.py`` token selects that file, a token with ``*``, ``?``
-  or ``[...]`` is expanded as a glob, and a ``tests``/``tests/`` directory
-  argument selects every module under it.  Paths resolve under ``server/``
-  (the steps' working directory).
+  line, backslash continuations are joined, shell comments are stripped), and
+  each line into simple commands at ``;``, ``&&``, ``||``, ``|``, ``&`` and
+  parentheses, with shell quoting (``shlex``).  Only a simple command whose
+  program is pytest selects tests: ``pytest``, ``python[3] [opts] -m pytest``,
+  optionally behind ``VAR=value`` prefixes, ``env [-u NAME] [VAR=value]`` and
+  ``uv run [opts]``.  Only that command's own arguments after pytest count, so
+  ``echo "pytest tests/x.py"`` or a sibling ``echo tests/x.py`` selects
+  nothing.  An argument ``tests/<name>.py`` or ``server/tests/<name>.py``
+  (optionally ``::node``) selects that file, one with ``*``, ``?`` or ``[...]``
+  is expanded as a glob, and ``tests``/``tests/`` selects every module under
+  it; the values of ``--ignore``/``--ignore-glob``/``--deselect`` select
+  nothing.  Paths resolve under ``server/`` (the steps' working directory).
+  A line that mentions pytest but cannot be tokenized fails the check.
 * A shell script referenced from a run value as ``scripts/<name>.sh`` or
   ``server/scripts/<name>.sh`` is followed (recursively) and its command lines
   are treated the same way.  Python scripts are NOT followed.
@@ -35,22 +42,33 @@ shell variables at run time.
 Failures:
   (a) a test module neither selected nor excluded;
   (b) a stale exclusion (the file is now selected, or no longer exists);
-  (c) a workflow/script test reference that matches no file.
+  (c) a workflow/script test reference that matches no file;
+  (d) a command line mentioning pytest that cannot be tokenized.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import sys
 from pathlib import Path
 
 EXCLUSIONS_REL = "server/tests/ci_selection_exclusions.txt"
 SERVER_DIR = "server"
 
-_PATH_CHARS = r"[A-Za-z0-9_.*?\[\]/-]"
-TEST_TOKEN = re.compile(rf"(?<![A-Za-z0-9_./-])((?:server/)?tests/{_PATH_CHARS}*?\.py)(?![A-Za-z0-9_])")
-TEST_DIR_TOKEN = re.compile(r"(?<![A-Za-z0-9_./-])((?:server/)?tests)/?(?=\s|$|[\"';|&)])")
+TEST_ARG = re.compile(r"((?:server/)?tests/[A-Za-z0-9_.*?\[\]/-]*\.py)(?:::.*)?")
+TEST_DIR_ARG = re.compile(r"((?:server/)?tests)/?")
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+SHELL_PUNCTUATION = ";&|()"
+# Options whose value is the next argument, per wrapper.
+ENV_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}
+UV_RUN_VALUE_OPTS = {
+    "--with", "--with-editable", "--with-requirements", "--python", "-p", "--group", "--extra",
+    "--package", "--directory", "--project", "--env-file", "--index", "--index-url", "--only-group",
+}
+PYTHON_VALUE_OPTS = {"-W", "-X", "-c"}
+PYTEST_NON_SELECTING_OPTS = {"--ignore", "--ignore-glob", "--deselect"}
 SCRIPT_TOKEN = re.compile(r"(?<![A-Za-z0-9_./-])((?:server/)?scripts/[A-Za-z0-9_./-]+\.sh)(?![A-Za-z0-9_])")
 PYTEST = re.compile(r"(?<![A-Za-z0-9_])pytest(?![A-Za-z0-9_])")
 MATRIX_REF = re.compile(r"\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}")
@@ -206,6 +224,68 @@ def command_lines(shell_text: str) -> list[str]:
     return [l for l in out if l.strip()]
 
 
+def simple_commands(line: str) -> list[list[str]]:
+    """Argument vectors of the simple commands on one shell line.
+
+    Raises ``ValueError`` when the line cannot be tokenized (unbalanced quote).
+    """
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=SHELL_PUNCTUATION)
+    lexer.whitespace_split = True
+    commands: list[list[str]] = [[]]
+    for word in lexer:
+        if word and set(word) <= set(SHELL_PUNCTUATION):
+            commands.append([])
+        else:
+            commands[-1].append(word)
+    return [c for c in commands if c]
+
+
+def _skip_options(words: list[str], i: int, value_opts: set[str]) -> int:
+    while i < len(words) and words[i].startswith("-") and words[i] != "-m":
+        i += 2 if words[i] in value_opts else 1
+    return i
+
+
+def pytest_arguments(words: list[str]) -> list[str] | None:
+    """Arguments after pytest when ``words`` runs pytest, else None."""
+    i = 0
+    while True:
+        while i < len(words) and ASSIGNMENT.fullmatch(words[i]):
+            i += 1
+        if i < len(words) and words[i] == "env":
+            i = _skip_options(words, i + 1, ENV_VALUE_OPTS)
+            continue
+        if words[i : i + 2] == ["uv", "run"]:
+            i = _skip_options(words, i + 2, UV_RUN_VALUE_OPTS)
+            continue
+        break
+    if i >= len(words):
+        return None
+    if words[i : i + 2] == ["-m", "pytest"]:  # uv run -m pytest
+        return words[i + 2 :]
+    program = words[i].rsplit("/", 1)[-1]
+    if program == "pytest":
+        return words[i + 1 :]
+    if re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", program):
+        j = _skip_options(words, i + 1, PYTHON_VALUE_OPTS)
+        if words[j : j + 2] == ["-m", "pytest"]:
+            return words[j + 2 :]
+    return None
+
+
+def _selecting_arguments(args: list[str]) -> list[str]:
+    out: list[str] = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in PYTEST_NON_SELECTING_OPTS:
+            skip = True
+        elif not arg.startswith("-"):
+            out.append(arg)
+    return out
+
+
 def _server_rel(token: str) -> str:
     """Normalise a token to a path relative to ``server/``."""
     return token[len("server/") :] if token.startswith("server/") else token
@@ -216,11 +296,12 @@ def all_test_files(root: Path) -> set[str]:
     return {p.relative_to(root).as_posix() for p in tests.rglob("test_*.py") if p.is_file()}
 
 
-def collect_selection(root: Path) -> tuple[set[str], list[str], list[str]]:
-    """Return (selected repo-relative paths, scanned sources, dangling refs)."""
+def collect_selection(root: Path) -> tuple[set[str], list[str], list[str], list[str]]:
+    """Return (selected repo-relative paths, scanned sources, dangling refs, untokenizable lines)."""
     server = root / SERVER_DIR
     selected: set[str] = set()
     dangling: list[str] = []
+    unparsed: list[str] = []
     scanned: list[str] = []
     wf_dir = root / ".github" / "workflows"
     queue = sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")])
@@ -244,24 +325,32 @@ def collect_selection(root: Path) -> tuple[set[str], list[str], list[str]]:
                         dangling.append(f"{label}: {token}")
                 if not PYTEST.search(line):
                     continue
-                for token in TEST_TOKEN.findall(line):
-                    rel = _server_rel(token)
-                    if GLOB_CHARS & set(rel):
-                        matches = [p for p in server.glob(rel) if p.is_file()]
-                    else:
-                        matches = [server / rel] if (server / rel).is_file() else []
-                    if not matches:
-                        dangling.append(f"{label}: {token}")
-                    selected.update(p.relative_to(root).as_posix() for p in matches)
-                for token in TEST_DIR_TOKEN.findall(line):
-                    tests_dir = server / _server_rel(token)
-                    if tests_dir.is_dir():
-                        selected.update(
-                            p.relative_to(root).as_posix()
-                            for p in tests_dir.rglob("test_*.py")
-                            if p.is_file()
-                        )
-    return selected, scanned, dangling
+                try:
+                    commands = simple_commands(line)
+                except ValueError:
+                    unparsed.append(f"{label}: {line.strip()}")
+                    continue
+                for words in commands:
+                    args = pytest_arguments(words)
+                    for arg in _selecting_arguments(args or []):
+                        if m := TEST_ARG.fullmatch(arg):
+                            rel = _server_rel(m.group(1))
+                            if GLOB_CHARS & set(rel):
+                                matches = [p for p in server.glob(rel) if p.is_file()]
+                            else:
+                                matches = [server / rel] if (server / rel).is_file() else []
+                            if not matches:
+                                dangling.append(f"{label}: {arg}")
+                            selected.update(p.relative_to(root).as_posix() for p in matches)
+                        elif m := TEST_DIR_ARG.fullmatch(arg):
+                            tests_dir = server / _server_rel(m.group(1))
+                            if tests_dir.is_dir():
+                                selected.update(
+                                    p.relative_to(root).as_posix()
+                                    for p in tests_dir.rglob("test_*.py")
+                                    if p.is_file()
+                                )
+    return selected, scanned, dangling, unparsed
 
 
 def read_exclusions(path: Path) -> list[str]:
@@ -277,7 +366,7 @@ def read_exclusions(path: Path) -> list[str]:
 
 def run(root: Path, *, print_unselected: bool = False) -> int:
     tests = all_test_files(root)
-    selected, scanned, dangling = collect_selection(root)
+    selected, scanned, dangling, unparsed = collect_selection(root)
     selected_tests = selected & tests
     exclusions = read_exclusions(root / EXCLUSIONS_REL)
     excluded = set(exclusions)
@@ -292,7 +381,7 @@ def run(root: Path, *, print_unselected: bool = False) -> int:
     stale_gone = sorted(excluded - tests)
     duplicates = sorted({e for e in exclusions if exclusions.count(e) > 1})
 
-    ok = not (missing or stale_selected or stale_gone or duplicates or dangling)
+    ok = not (missing or stale_selected or stale_gone or duplicates or dangling or unparsed)
     if missing:
         print(f"FAIL: {len(missing)} test file(s) selected by no CI job and not excluded:")
         for path in missing:
@@ -314,6 +403,10 @@ def run(root: Path, *, print_unselected: bool = False) -> int:
     if dangling:
         print(f"FAIL: {len(dangling)} CI reference(s) match no file:")
         for ref in dangling:
+            print(f"  {ref}")
+    if unparsed:
+        print(f"FAIL: {len(unparsed)} pytest command line(s) could not be tokenized:")
+        for ref in unparsed:
             print(f"  {ref}")
     print(
         f"ci-test-selection: {'OK' if ok else 'FAIL'} total={len(tests)} selected={len(selected_tests)}"

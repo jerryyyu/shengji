@@ -51,7 +51,8 @@ def _snapshot_bot(bot, *, seed: int, label: str):
 
 def collect_public_fixture_panel(bot_factory, fixture, control_ballot,
                                  treatment_ballot, *, mode, seed,
-                                 fill_seed=0, check_budget=None):
+                                 fill_seed=0, check_budget=None,
+                                 expected_legal_count=None):
     """Compose one declared-mode public tape with complete-pool scoring.
 
     The caller still owns fixture history, model/runtime, sampler, and legal
@@ -64,6 +65,9 @@ def collect_public_fixture_panel(bot_factory, fixture, control_ballot,
         raise ValueError("seed must be a nonnegative integer")
     if type(fill_seed) is not int or fill_seed < 0:
         raise ValueError("fill_seed must be a nonnegative integer")
+    if expected_legal_count is not None and (
+            type(expected_legal_count) is not int or expected_legal_count < 1):
+        raise ValueError("expected_legal_count must be a positive integer")
 
     control_input = copy.deepcopy(control_ballot)
     treatment_input = copy.deepcopy(treatment_ballot)
@@ -83,6 +87,8 @@ def collect_public_fixture_panel(bot_factory, fixture, control_ballot,
                             cap=sampler_bot.config.cap)
     if not legal.complete or type(legal.count) is not int or legal.count < 1:
         raise ValueError("complete legal action pool is required")
+    if expected_legal_count is not None and legal.count != expected_legal_count:
+        raise ValueError("legal count differs from declared panel plan")
     actions = copy.deepcopy(legal.actions)
     action_set = set(_canonical_collection(actions, "legal actions"))
     if not set(control) <= action_set or not set(treatment) <= action_set:

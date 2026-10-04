@@ -154,6 +154,7 @@ jobs:
           tests/test_observation_process_cli.py
           tests/test_observation_recipe.py
           tests/test_observation_numeric_recipe.py
+          tests/test_observation_control_rejections.py
           tests/test_observation_lease.py
           tests/test_observation_runtime.py
           tests/test_observation_runtime_fence.py

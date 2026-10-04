@@ -285,7 +285,7 @@ rollout continuation.
 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]), K16, bounded PUCT, learned continuations, adaptive allocation,
 and every warm-started generation as a shortlist package (v33 −0.007 [−0.038, +0.024]).
 
-Receipts: rows 1–6 in the condensed shortlist-era section below and the linked run records; rows 7–8 in `DEPLOY.md`,
+Receipts: rows 1–6 in the condensed shortlist-era section below and the linked run records; rows 7–10 in `DEPLOY.md`,
 the scaling page and the search atlas.
 
 ## Callable policy families
@@ -326,7 +326,7 @@ exhaustive legal set over 32 constrained sampled worlds; four alternatives plus 
 production's N30/R300 Monte Carlo search (heuristic rollouts, paired-LCB report rule). Release 27 added a policy prior
 that pruned positions above 1,000 legal actions to the union of per-world top-256; from release 28 one joint package
 (JS-M1) was both prior and value net. Hybrid bury (heuristic candidates, model-scored, MC selection, 2 s budget)
-shipped with release 22 and is unchanged in release 29.
+shipped with release 22 and is still served in release 38 (with the release-30 fix, #607).
 
 **What it measured** (signed levels per round, 95% paired-deal intervals):
 
@@ -388,7 +388,7 @@ design.
 
 | lane | conclusion for policy work |
 |---|---|
-| **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21 (from 2026-09-22 every new search comparison is against production W64/K8, Jerry's direction on #436). Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
+| **RLCB** | The confirmed MC-LCB search; the historical screen baseline through 2026-09-21. Superseded in production by the model-guided shortlist (W32, then M1 + prior, then the JS-M1 joint model), and from release 29 by the head-driven policy/value search, which uses no MC playouts in play. |
 | **Search rules on the head-driven search (release 38, deployed 2026-10-03)** | Admission diversity, refusal-constraint sampling and the points tie-break CONFIRMED only in combination (+0.0461 [+0.0242, +0.0681] vs release 36, ten fresh windows); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205], POSITIVE incremental with a lower bound near zero, not a second confirmation; lead-anchor alone was positive exploratory, below the extension triage. Adaptive K16 inconclusive; PUCT and root allocation closed. All are indirect contrasts through the common MC-LCB control. |
 | **Head-driven policy/value search (release 29, 2026-09)** | The soft head as the whole search beats MC-LCB at W16, W32 and W64 in the ladder (W4 loses), the release-28 package in card play (+0.086 [+0.042, +0.131]) and release 28 as served (+0.049 [+0.003, +0.095], narrow; a common-opponent summary-level read, not paired inference). No resolved gain beyond 64 worlds in the ladder; no head in the W64 family shown superior; at release 29 the next production claim needed a served contrast against release 29; the comparator is now release 38 as served. |
 | **M1 / policy prior v2 / JS-M1 (2026-09)** | M1 confirmed on fresh deals (+0.0212 [+0.0036, +0.0387]); the prior's paired contrast with M1 is −0.0003 [−0.0017, +0.0012] (no resolved difference) with 0 decisions >60 s in the 365k observed; JS-M1 as one net reads +0.0057 [−0.0163, +0.0277] paired vs the two-model arm (no resolved difference, not established non-inferiority) and +0.0239 [+0.0005, +0.0472] vs release 24 at five (nominal). Deployed as release 28. The owed fresh-seed read came back inconclusive with a negative point (−0.0159 [−0.0383, +0.0065] paired vs release 27, five fresh windows, 2026-09-17), so release 28 carries no strength claim; no ten-window read is recorded. |
@@ -493,8 +493,8 @@ Moved from `BACKLOG.md` on 2026-10-03.
   Actor-visible runtime bytes must be invariant to hidden-world twins.
 - Negative and refused results remain evidence. Never delete them, retry a spent namespace, or convert a mechanism
   PASS into deployment authority.
-- Exact raw markers belong only in `HANDOFF_REVIEW.md` (frozen to its authority markers, #674). Chronology and
-  current review asks belong on GitHub issues and PR review comments.
+- `HANDOFF_REVIEW.md` is closed: it has taken no markers since 2026-09-03 (#674). Grep it for a marker name rather
+  than reading it whole. Verdicts live in PR review comments; chronology and current review asks on GitHub issues.
 
 ## Change and deployment rules
 
@@ -507,8 +507,6 @@ Moved from `BACKLOG.md` on 2026-10-03.
   counts as an AI win.
 - No result may implicitly authorize merge, promotion, deployment, retry, test opening or a different policy. Those
   authorities are explicit and separate.
-- Release 38 is production (2026-10-03 09:41 ET). Rollbacks, nearest first, are listed in the production contract
-  above; for runtime regressions use the image rollback in `DEPLOY.md`.
 
 ## Durable pointers
 

@@ -1336,6 +1336,10 @@ def validate_follow(list play, list hand, list lead, ordering):
     if h_suit_n >= nl:
         if p_suit_n != np_:
             raise IllegalPlay("You must follow suit.")
+        # A single-card lead cannot impose a pair or tractor obligation.
+        # Ownership, response length and follow suit were all checked above.
+        if nl == 1:
+            return
         lead_dec = _decompose_memo(lead, ordering, ctx)
         have_pairs = 0
         for c in range(N_CODES):

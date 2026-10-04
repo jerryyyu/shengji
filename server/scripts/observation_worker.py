@@ -270,8 +270,8 @@ def _verify_claim_and_controls(packet, packet_sha, guards):
     return controls
 
 
-def run_packet(packet_path, packet_sha):
-    """Authenticate and invoke one fixed tactical report in this process."""
+def _bootstrap(packet_path, packet_sha):
+    """Authenticate all application bytes using only the standard library."""
     _, packet = _read_packet(packet_path, packet_sha)
     repo = _repository_root()
     recipe_value = packet.get("recipe")
@@ -279,6 +279,28 @@ def run_packet(packet_path, packet_sha):
         raise ValueError("recipe source is not this repository")
     server = repo / "server"
     runtime_manifest = _read_runtime(packet, server)
+    return packet, server, runtime_manifest
+
+
+def _import_owner(server):
+    import importlib
+
+    sys.path.insert(0, str(server))
+    importlib.invalidate_caches()
+    return importlib.import_module("shengji.eval.observation_admission")
+
+
+def run_owner_packet(packet_path, packet_sha):
+    """Bootstrap the owning caller; this does not create RELEASE or skip guards."""
+    _, server, _ = _bootstrap(packet_path, packet_sha)
+    owner = _import_owner(server)
+    return owner.run_packet(packet_path, packet_sha)
+
+
+def run_packet(packet_path, packet_sha):
+    """Authenticate and invoke one fixed tactical report in this process."""
+    packet, server, runtime_manifest = _bootstrap(packet_path, packet_sha)
+    recipe_value = packet["recipe"]
 
     recipe, runtime_adapter, guards, tactical = _import_application(server)
     recipe.validate_recipe(recipe_value)
@@ -307,8 +329,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", required=True)
     parser.add_argument("--sha256", required=True)
+    parser.add_argument("--admit", action="store_true",
+                        help="bootstrap the owning caller; exact RELEASE and all admission guards required")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    run_packet(args.packet, args.sha256)
+    entry = run_owner_packet if args.admit else run_packet
+    entry(args.packet, args.sha256)
 
 
 if __name__ == "__main__":

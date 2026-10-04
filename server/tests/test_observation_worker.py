@@ -171,3 +171,62 @@ def test_success_calls_tactical_once_and_restores_argv(tmp_path: Path, monkeypat
     assert calls == ["recipe", "runtime", "tactical"]
     assert seen == [["tactical_report.py", "--fixed"]]
     assert sys.argv == original
+
+
+def test_owner_authenticates_before_import_and_delegates_once(tmp_path, monkeypatch):
+    calls = []
+    packet = {"recipe": {"source_root": str(tmp_path)}}
+    monkeypatch.setattr(worker, "_repository_root", lambda: tmp_path)
+    monkeypatch.setattr(worker, "_read_packet",
+                        lambda *args: (calls.append("packet") or (None, packet)))
+    monkeypatch.setattr(worker, "_read_runtime",
+                        lambda *args: (calls.append("source-auth") or {}))
+    def imported(server):
+        assert server == tmp_path / "server"
+        calls.append("owner-import")
+        def admitted(path, sha):
+            calls.append(("admit", path, sha))
+            return {"comparison_validated": False}
+        return SimpleNamespace(run_packet=admitted)
+    monkeypatch.setattr(worker, "_import_owner", imported)
+    result = worker.run_owner_packet("/packet", "a" * 64)
+    assert calls == ["packet", "source-auth", "owner-import", ("admit", "/packet", "a" * 64)]
+    assert result == {"comparison_validated": False}
+
+
+@pytest.mark.parametrize("stage", ["packet", "source"])
+def test_owner_auth_failure_never_imports_admission(tmp_path, monkeypatch, stage):
+    def refuse(*args):
+        raise ValueError("authentication refused")
+    monkeypatch.setattr(worker, "_repository_root", lambda: tmp_path)
+    monkeypatch.setattr(worker, "_read_packet", refuse if stage == "packet" else
+                        lambda *args: (None, {"recipe": {"source_root": str(tmp_path)}}))
+    monkeypatch.setattr(worker, "_read_runtime", refuse)
+    monkeypatch.setattr(worker, "_import_owner", lambda *args: pytest.fail("unauthenticated import"))
+    with pytest.raises(ValueError, match="authentication refused"):
+        worker.run_owner_packet("/packet", "a" * 64)
+
+
+@pytest.mark.parametrize("admit", [False, True])
+def test_cli_owner_mode_is_explicit_without_changing_worker_default(monkeypatch, admit):
+    calls = []
+    monkeypatch.setattr(worker, "run_owner_packet", lambda *args: calls.append(("owner", args)))
+    monkeypatch.setattr(worker, "run_packet", lambda *args: calls.append(("worker", args)))
+    worker.main(["--packet", "/packet", "--sha256", "a" * 64] + (["--admit"] if admit else []))
+    assert calls == [("owner" if admit else "worker", ("/packet", "a" * 64))]
+
+
+def test_isolated_owner_cli_refuses_bad_packet_without_application_import(tmp_path):
+    import subprocess
+
+    packet = tmp_path / "packet.json"
+    packet.write_bytes(b"{}")
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", str(Path(worker.__file__).resolve()),
+         "--admit", "--packet", str(packet), "--sha256", _sha(packet)],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    assert result.returncode != 0
+    assert "exact M9 packet required" in result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
+    assert list(tmp_path.iterdir()) == [packet]

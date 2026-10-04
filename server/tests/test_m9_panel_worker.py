@@ -135,7 +135,15 @@ def test_replay_mismatch_stops_before_primed_jobs(monkeypatch):
         worker.collect_m9_panels(analysis, fixtures, lambda seed: object(),
                                  on_panel=records.append)
     assert len(calls) == 2
-    assert len(records) == 1
+    assert len(records) == 2
+    failed = records[1]
+    assert failed["validation_status"] == "failed"
+    assert failed["replay_consistency"] is None
+    assert "control" in failed["replay_failure"]["message"]
+    means = failed["replay_failure"]["arms"]["control"]
+    assert means["saved_value_means"][0] == 0.0
+    assert means["captured_value_means"][0] == 1.0
+    assert failed["panel"]["collection"]["captures"]["control"]["serving_value_means"] == means["captured_value_means"]
     assert all(kwargs["mode"] == "fresh-root" for _, kwargs, _, _ in calls)
 
 
@@ -155,6 +163,33 @@ def test_sampler_and_callback_failures_are_not_retried(monkeypatch):
         worker.collect_m9_panels(analysis, fixtures, lambda seed: object(),
                                  on_panel=fail_callback)
     assert len(calls) == len(records) == 1
+
+
+def test_failed_evidence_callback_preserves_replay_error(monkeypatch):
+    analysis, fixtures, calls, records = _setup(monkeypatch, drift_seed=0)
+    def fail(record):
+        records.append(record)
+        raise OSError("disk unavailable")
+    with pytest.raises(ValueError, match="means differ") as caught:
+        worker.collect_m9_panels(analysis, fixtures, lambda seed: object(), on_panel=fail)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert records[0]["validation_status"] == "failed"
+    assert len(calls) == 1
+
+
+def test_malformed_capture_still_delivered_as_failed_evidence(monkeypatch):
+    analysis, fixtures, calls, records = _setup(monkeypatch)
+    original = worker.collect_public_fixture_panel
+    def malformed(*args, **kwargs):
+        panel = original(*args, **kwargs)
+        panel["collection"] = None
+        return panel
+    monkeypatch.setattr(worker, "collect_public_fixture_panel", malformed)
+    with pytest.raises(ValueError, match="collection"):
+        worker.collect_m9_panels(analysis, fixtures, lambda seed: object(), on_panel=records.append)
+    assert records[0]["validation_status"] == "failed"
+    assert records[0]["replay_failure"]["arms"]["control"]["captured_value_means"] is None
+    assert len(calls) == 1
 
 
 def test_metadata_drift_is_rejected(monkeypatch):

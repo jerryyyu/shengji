@@ -53,7 +53,9 @@ def collect_m9_panels(saved_analysis, fixtures, bot_factory_for_seed, *,
                       on_panel, check_budget=None):
     """Collect the fixed 15-job panel, delivering each result immediately.
 
-    ``on_panel`` owns persistence of partial progress.  A successful return is
+    ``on_panel`` owns persistence of partial progress, including explicitly
+    failed replay records. Consumers must check ``validation_status``.
+    A successful return is
     only a collection-process receipt; provenance and served-choice claims
     remain false.
     """
@@ -93,17 +95,53 @@ def collect_m9_panels(saved_analysis, fixtures, bot_factory_for_seed, *,
             expected_legal_count=job["expected_legal_count"],
             check_budget=check_budget)
         panel = _validate_panel(panel, job)
+        replay_error = None
+        replay_failure = None
         if job["require_m9_replay_match"]:
-            replay = validate_m9_replay(panel, analysis_copy)
+            try:
+                replay = validate_m9_replay(panel, analysis_copy)
+            except ValueError as exc:
+                replay = None
+                replay_error = exc
+                root = next(root for root in analysis_copy["roots"]
+                            if root["id"] == job["fixture_id"])
+                row = next(row for row in root["seeds"]
+                           if row["seed"] == job["seed"])
+                collection = panel.get("collection")
+                captures = collection.get("captures") if isinstance(collection, Mapping) else None
+                captures = captures if isinstance(captures, Mapping) else {}
+                def captured_means(arm):
+                    capture = captures.get(arm)
+                    return (copy.deepcopy(capture.get("serving_value_means"))
+                            if isinstance(capture, Mapping) else None)
+                replay_failure = {
+                    "message": str(exc),
+                    "arms": {
+                        arm: {
+                            "saved_value_means": copy.deepcopy(
+                                row[arm]["decision"]["value_means"]),
+                            "captured_value_means": captured_means(arm),
+                        } for arm in ("control", "treatment")
+                    },
+                }
         else:
             replay = None
         record = {
             "job": copy.deepcopy(job),
             "panel": copy.deepcopy(panel),
             "replay_consistency": copy.deepcopy(replay),
+            "validation_status": "failed" if replay_error else "passed",
+            "replay_failure": replay_failure,
             "ledger_cadence": ("fresh-root" if job["mode"] == "fresh-root"
                                 else "single-seat-actor-turns"),
         }
+        if replay_error is not None:
+            try:
+                on_panel(record)
+            except BaseException as callback_error:
+                replay_error.add_note(f"failure evidence callback failed: {callback_error!r}")
+                raise replay_error from callback_error
+            raise replay_error
         on_panel(record)
     return {
         "schema": "m9-panel-collection-v1",

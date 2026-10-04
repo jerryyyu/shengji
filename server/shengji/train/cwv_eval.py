@@ -556,12 +556,15 @@ def load_shard_result(path: str | os.PathLike, *, digest: str) -> ShardResult | 
         "offsets", "role_attacker", "units_code", "search_source_ref",
         "search_deal_key", "source_ref", "deal_key", "decision_obs",
     }
-    if meta.get("history"):
-        required.update(("history_offsets", *_SEARCH_HISTORY))
+    history = bool(meta.get("history"))
+    history_columns = {"history_offsets", *_SEARCH_HISTORY}
+    if history:
+        required.update(history_columns)
+    elif history_columns.intersection(arrays):
+        return None                      # contradictory history payload must be rebuilt
     if not required.issubset(arrays):
         return None                      # incomplete caches are rebuilt, never partially scored
     offsets = arrays["offsets"]
-    history = "history_offsets" in arrays
     search: list[dict] = []
     for r in range(int(offsets.size - 1)):
         lo, hi = int(offsets[r]), int(offsets[r + 1])

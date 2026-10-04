@@ -32,9 +32,11 @@ Detection (stdlib only, no YAML library; an indentation-based extractor):
   nothing.  Paths resolve under ``server/`` (the steps' working directory).
   A line that mentions pytest (or the wrapper) but cannot be tokenized fails
   the check.
-* A shell script referenced from a run value as ``scripts/<name>.sh`` or
-  ``server/scripts/<name>.sh`` is followed (recursively) and its command lines
-  are treated the same way.  Python scripts are NOT followed.
+* A shell script ``scripts/<name>.sh`` or ``server/scripts/<name>.sh`` is
+  followed (recursively), and its command lines treated the same way, only
+  when a simple command executes it: as the program (optionally ``./``), as
+  the operand of ``bash``/``sh`` [options], or of ``source``/``.``.  A script
+  path that is merely an argument (``echo scripts/x.sh``) is not followed.  Python scripts are NOT followed.
 
 Not modelled: pytest ``-k``/``-m``/``--deselect``/``--ignore`` and skip markers
 (a selected file may still run zero tests), step/job ``if:`` conditions,
@@ -280,6 +282,34 @@ def pytest_arguments(words: list[str]) -> list[str] | None:
     return None
 
 
+def executed_script(words: list[str]) -> str | None:
+    """The ``scripts/*.sh`` path this command executes, else None.
+
+    Executed means the script is the program (``scripts/x.sh``,
+    ``./scripts/x.sh``), the operand of ``bash``/``sh`` (after options), or of
+    ``source``/``.``.  A path that is merely an argument (``echo scripts/x.sh``)
+    is not followed.
+    """
+    i = 0
+    while i < len(words) and ASSIGNMENT.fullmatch(words[i]):
+        i += 1
+    if i < len(words) and words[i] == "env":
+        i = _skip_options(words, i + 1, ENV_VALUE_OPTS)
+        while i < len(words) and ASSIGNMENT.fullmatch(words[i]):
+            i += 1
+    if i >= len(words):
+        return None
+    program = words[i]
+    if program in ("bash", "sh", "source", "."):
+        i = _skip_options(words, i + 1, set()) if program in ("bash", "sh") else i + 1
+        if i >= len(words):
+            return None
+        program = words[i]
+    program = program[2:] if program.startswith("./") else program
+    m = SCRIPT_TOKEN.fullmatch(program)
+    return m.group(1) if m else None
+
+
 def _selecting_arguments(args: list[str]) -> list[str]:
     out: list[str] = []
     skip = False
@@ -324,18 +354,25 @@ def collect_selection(root: Path) -> tuple[set[str], list[str], list[str], list[
         shell_texts = run_values(raw) if source.suffix in (".yml", ".yaml") else [raw]
         for shell_text in shell_texts:
             for line in command_lines(shell_text):
-                for token in SCRIPT_TOKEN.findall(line):
-                    script = server / _server_rel(token)
-                    if script.is_file():
-                        queue.append(script)
-                    else:
-                        dangling.append(f"{label}: {token}")
-                if not (PYTEST.search(line) or CHECKOUT_WRAPPER in line):
+                mentions_script = bool(re.search(r"scripts/\S*\.sh", line))
+                mentions_pytest = bool(PYTEST.search(line) or CHECKOUT_WRAPPER in line)
+                if not (mentions_script or mentions_pytest):
                     continue
                 try:
                     commands = simple_commands(line)
                 except ValueError:
                     unparsed.append(f"{label}: {line.strip()}")
+                    continue
+                for words in commands:
+                    token = executed_script(words)
+                    if token is None:
+                        continue
+                    script = server / _server_rel(token)
+                    if script.is_file():
+                        queue.append(script)
+                    else:
+                        dangling.append(f"{label}: {token}")
+                if not mentions_pytest:
                     continue
                 for words in commands:
                     args = pytest_arguments(words)

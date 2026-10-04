@@ -342,6 +342,27 @@ def test_checkout_wrapper_selects_only_after_double_dash(tmp_path):
     assert selected == {"server/tests/test_a.py"}
 
 
+def test_script_named_as_an_argument_is_not_followed(tmp_path):
+    scripts = {"scripts/fake.sh": "uv run pytest tests/test_new.py\n"}
+    for k, run in enumerate(["echo scripts/fake.sh", 'printf "%s" "bash scripts/fake.sh"', "cat scripts/fake.sh"]):
+        root = make_tree(
+            tmp_path / str(k),
+            workflow=wf("uv run pytest tests/test_a.py; " + run),
+            tests=["test_a.py", "test_new.py"],
+            scripts=scripts,
+        )
+        assert check.run(root) == 1, run
+
+
+def test_executed_script_forms_are_followed(tmp_path):
+    scripts = {"scripts/real.sh": "uv run pytest tests/test_new.py\n"}
+    forms = ["bash scripts/real.sh", "bash -eu scripts/real.sh", "sh scripts/real.sh", "./scripts/real.sh",
+             "scripts/real.sh", "source scripts/real.sh", ". scripts/real.sh", "X=1 bash server/scripts/real.sh"]
+    for k, run in enumerate(forms):
+        root = make_tree(tmp_path / str(k), workflow=wf(run), tests=["test_new.py"], scripts=scripts)
+        assert check.run(root) == 0, run
+
+
 def test_untokenizable_pytest_line_fails_closed(tmp_path, capsys):
     root = make_tree(tmp_path, workflow=wf("uv run pytest tests/test_a.py 'unclosed"), tests=["test_a.py"])
     assert check.run(root) == 1

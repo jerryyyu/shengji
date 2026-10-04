@@ -321,6 +321,62 @@ def test_real_pv_candidate_stage_keeps_pair_preserving_follow(cases, fill_seed):
     # The harvest's displayed prefix is NOT the PV scorer's 4000-action cap.
 
 
+@pytest.mark.parametrize("fill_seed", [0, 1])
+def test_pair_root_fresh_ledger_loses_expired_refusal_and_changes_sampler_dispatch(
+        cases, fill_seed, monkeypatch):
+    """No worlds/models: distinguish fresh-root from persistent-bot semantics.
+
+    This witnesses a diagnostic setup limitation, NOT a production regression
+    or a reason to rewrite the already sealed fresh-root M9 comparison.
+    """
+    from shengji.ai.refusal import RefusalLedger
+    from shengji.train import pv_search_policy as pv
+
+    fx = next(fx for fx in cases if fx.id == "pvr8-c1-m0-p23-pair-preservation")
+    final = T.public_round(fx, fill_seed)
+    assert final.notice is None
+    assert RefusalLedger().observe(final) == []
+    # Replay the identical deck so the ledger's round identity remains fixed.
+    replay = T.round_from_setup(list(final.deck),
+                                dict(fx.setup, buried=list(final.buried)))
+    T._replay_public(replay, fx.plays[:11], fx.seat)
+    assert replay.turn == fx.seat
+    ledger = RefusalLedger()
+    observed = ledger.observe(replay)
+    assert len(observed) == 1
+    assert observed[0].trick_index == 2
+    assert observed[0].attempted == ("H10", "HJ", "HK")
+    T._replay_public(replay, fx.plays[11:], fx.seat)
+    assert replay.notice is None
+    assert replay.history == final.history
+    assert replay.trick == final.trick
+    assert replay.hands == final.hands and replay.buried == final.buried
+    assert replay.turn == final.turn == fx.seat
+    assert ledger.observe(replay) == observed
+
+    class DispatchOnly(Exception):
+        pass
+
+    calls = []
+    def plain(*args, **kwargs):
+        calls.append(("plain", None))
+        raise DispatchOnly
+    def aware(sampler, root, seat, count, refusals, **kwargs):
+        calls.append(("refusal_aware", list(refusals)))
+        raise DispatchOnly
+    monkeypatch.setattr(pv, "sample_worlds", plain)
+    monkeypatch.setattr(pv, "sample_worlds_refusal_aware", aware)
+    for enabled, state in [(False, RefusalLedger()), (True, RefusalLedger()), (True, ledger)]:
+        bot = object.__new__(pv.PVSearchBot)
+        bot.sampler = SimpleNamespace(BANKER_KITTY=True)
+        bot.worlds = 64
+        bot.refusal_constraints = enabled
+        bot._refusals = state
+        with pytest.raises(DispatchOnly):
+            bot._worlds(final, fx.seat)
+    assert calls == [("plain", None), ("plain", None), ("refusal_aware", observed)]
+
+
 def test_same_pair_in_every_slot_has_no_listwise_gradient(cases):
     """Actual loss function, tiny CPU tensors only; no network or training run."""
     import torch

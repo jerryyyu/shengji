@@ -2,6 +2,7 @@
 from collections import Counter
 from itertools import combinations
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -132,7 +133,10 @@ def test_cli_comparison_records_pair_telemetry_and_refuses_reuse(cases, tmp_path
                       and fx.position == len(rnd.trick.plays) and fx.seat == seat)
             self.last_decision_record = {"work_complete": True,
                                          "admitted": fx.observed["admitted"],
-                                         "value_means": fx.observed["value_means"]}
+                                         "value_means": fx.observed["value_means"],
+                                         "policy_log_odds_admitted": fx.observed["policy_log_odds"],
+                                         "selected_index": 7,
+                                         "worlds": [["private-world"]]}
             return fx.observed["action"]
 
     calls = []
@@ -153,10 +157,15 @@ def test_cli_comparison_records_pair_telemetry_and_refuses_reuse(cases, tmp_path
     assert report["results"][0]["control"]["status"] == "observed"
     assert report["results"][0]["control"]["decision"]["value_means"]
     for pair in report['results']:
+        fixture = next(fx for fx in cases if fx.id == pair["id"])
         for arm in ('control', 'treatment'):
             coverage = pair[arm]['ballot_opportunity']
             assert coverage['schema'] == 'hand-conditioned-ballot-opportunity-v1'
             assert coverage['strategic_quality_assessed'] is False
+            decision = pair[arm]['decision']
+            assert decision['policy_log_odds_admitted'] == fixture.observed['policy_log_odds']
+            assert decision['selected_index'] == 7
+            assert 'worlds' not in decision
     assert report['results'][0]['control']['ballot_opportunity']['cards']['S6']['ballot_spent'] == [2]
     assert "worlds" not in report["results"][0]["control"]["decision"]
     before = len(calls)
@@ -227,8 +236,7 @@ def test_frozen_comparison_pairs_all_roots_and_seeds_without_strategic_verdict(c
 
 
 def test_comparison_refuses_mixed_or_stamped_fixtures(cases):
-    bad = list(cases)
-    bad[0].current_bot = "fail"
+    bad = [replace(cases[0], current_bot="fail"), *cases[1:]]
     with pytest.raises(T.TacticalError, match="exactly four"):
         T.run_observation_comparison(lambda seed: RecordedAction(cases[0]),
                                      lambda seed: RecordedAction(cases[0]), bad)

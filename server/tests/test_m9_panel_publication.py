@@ -19,6 +19,7 @@ def invocation_for(pins, output):
         "files": copy.deepcopy(pins),
         "packet_sha256": "a" * 64,
         "output_dir": str(output),
+        "runtime": {"path": str(output.parent / "runtime.json"), "sha256": "c" * 64},
     }
 
 
@@ -45,6 +46,11 @@ def test_real_runtime_source_stamp_fences_actual_publication(monkeypatch, tmp_pa
     changed_source = source / "shengji" / "engine" / "round.py"
     output = tmp_path / "readout"
     invocation = invocation_for(pins, output)
+    manifest_path = tmp_path / "runtime.json"
+    manifest_raw = publication.guards._canonical(manifest)
+    manifest_path.write_bytes(manifest_raw)
+    invocation["runtime"] = {"path": str(manifest_path),
+                             "sha256": hashlib.sha256(manifest_raw).hexdigest()}
     real_reader = publication.artifact_reader.read_m9_panel_files
     calls = []
 
@@ -85,6 +91,19 @@ def test_runtime_refusal_before_claim_prevents_reader(monkeypatch, tmp_path, res
         publication.publish_m9_panel_readout_once(
             invocation, invocation_sha256=invocation_sha(invocation),
             runtime_check=lambda: response)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("runtime", [{}, {"path": "relative", "sha256": "c" * 64},
+                                    {"path": "/not-read.json", "sha256": "bad"}])
+def test_runtime_pin_shape_refuses_before_claim(monkeypatch, tmp_path, runtime):
+    output = tmp_path / "readout"
+    invocation = invocation_for({}, output)
+    invocation["runtime"] = runtime
+    with pytest.raises(ValueError):
+        publication.publish_m9_panel_readout_once(
+            invocation, invocation_sha256=invocation_sha(invocation),
+            runtime_check=lambda: pytest.fail("checked invalid invocation"))
     assert not output.exists()
 
 
@@ -138,6 +157,7 @@ def test_real_reader_is_published_once_with_bound_receipt(monkeypatch, tmp_path)
     assert receipt["input_sha256"] == result["input_sha256"]
     assert receipt["packet_sha256"] == "a" * 64
     assert receipt["provenance_verified"] is False
+    assert receipt["runtime"] == invocation["runtime"]
     assert json.loads((output / "claim.json").read_text())["invocation_sha256"] == invocation_sha(invocation)
     monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files",
                         lambda *args, **kwargs: pytest.fail("reader retried"))

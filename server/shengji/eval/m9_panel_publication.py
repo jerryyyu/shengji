@@ -20,7 +20,7 @@ from . import observation_queue as guards
 
 
 _INVOCATION_KEYS = {
-    "schema", "files", "packet_sha256", "output_dir",
+    "schema", "files", "packet_sha256", "output_dir", "runtime",
 }
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _RESULT_KEYS = {
@@ -47,6 +47,11 @@ def _validate_invocation(invocation: Any, invocation_sha256: Any) -> tuple[dict,
         raise ValueError("invocation SHA mismatch")
     # Do not retain or pass the caller's mutable object after hashing it.
     invocation = guards._parse_finite_object(canonical)
+    runtime = invocation["runtime"]
+    if type(runtime) is not dict or set(runtime) != {"path", "sha256"}:
+        raise ValueError("exact runtime reference required")
+    guards._canonical_absolute(runtime["path"], "runtime manifest")
+    guards._strict_sha(runtime["sha256"], "runtime manifest SHA")
 
     output = guards._canonical_absolute(invocation["output_dir"], "output_dir")
     parent = output.parent
@@ -117,6 +122,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "schema": "m9-panel-readout-claim-v1",
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
+            "runtime": invocation["runtime"],
             "provenance_verified": False,
         }
         publish_exclusive_bytes(output / "claim.json", _json_bytes(claim),
@@ -137,6 +143,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
             "result_sha256": hashlib.sha256(result_raw).hexdigest(),
+            "runtime": invocation["runtime"],
             "input_sha256": result["input_sha256"],
             "provenance_verified": False,
         }

@@ -13,7 +13,7 @@ def test_parallel_mode_runner_propagates_each_failure_and_drains(tmp_path, fail)
     binary = tmp_path / "uv"
     binary.write_text(f"#!{sys.executable}\n" + '''
 import os, pathlib, sys, time
-assert sys.argv[1:] == ["run", "python", "-B", "-m", "pytest", "-q", "tests/test_fake_cwv.py"]
+assert sys.argv[1:] == ["run", "python", "-B", "-m", "pytest", "-q", "--durations=20", "tests/test_fake_cwv.py"]
 assert all(os.environ[k] == "1" for k in (
     "SHENGJI_REQUIRE_VOIDS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"))
 flag = os.environ.get("SHENGJI_FAST")

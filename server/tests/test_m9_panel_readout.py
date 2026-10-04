@@ -17,7 +17,7 @@ from shengji.eval.m9_panel_plan import (
     ROOTS,
     build_m9_panel_plan,
 )
-from shengji.eval.m9_panel_readout import summarize_m9_panels
+from shengji.eval.m9_panel_readout import _choice_view, _diagnostic_views, summarize_m9_panels
 from shengji.eval.m9_replay_binding import validate_m9_replay
 from test_m9_panel_plan import _analysis
 
@@ -61,6 +61,8 @@ def _analysis_and_actions(*, multi=False):
                 # retained records must instead be strict JSON serializable.
                 decision.pop("ignored_matrix_means")
                 decision["admitted"] = copy.deepcopy(ballot)
+                decision["admitted_indices"] = list(range(100, 100 + len(ballot)))
+                decision["selected_index"] = 100 + len(ballot) - 1
                 decision["value_means"] = [values[_canonical_key(action)]
                                             for action in ballot]
     return analysis, actions, values
@@ -227,6 +229,92 @@ def test_good_json_roundtrip_and_explicit_replay_failure_key():
         summarize_m9_panels(analysis, records)
 
 
+def test_views_map_saved_legal_indices_and_label_schedules():
+    analysis, records = _records()
+    report = summarize_m9_panels(analysis, records)
+    fresh = report["rows"][0]["diagnostic_views"]
+    assert fresh["saved_fresh_choices"]["control"] == ["DK"]
+    assert fresh["saved_control_choice_absent_from_treatment_ballot"] is True
+    assert fresh["replayed_control_choice_absent_from_treatment_ballot"] is True
+    assert fresh["own_ballot_schedule"]["control"]["raw_argmax_action"] == ["DK"]
+    assert fresh["own_ballot_schedule"]["control"]["near_actions"] == [["DK"]]
+    assert fresh["own_ballot_schedule"]["control"]["near_point_sums"] == [0]
+    assert fresh["tie_break_alone_explains_choice_change"] is None
+    small = report["rows"][6]["diagnostic_views"]
+    assert small["small_root_comparison"]["raw_argmax_action"] == ["D9"]
+    assert small["raw_argmax_matches_saved_fresh_choice"] == dict(control=True, treatment=True)
+    assert report["rows"][6]["shared_summary_reduction"] == "math.fsum"
+    assert "post-selection" in report["rows"][6]["shared_summary_selected_difference_se_scope"]
+
+
+@pytest.mark.parametrize("points,unresolved", [([4, 4, 9], True), ([4, 8, 9], False)])
+def test_primed_any_near_points_tie_is_unresolved_even_below_winner(points, unresolved):
+    view = _choice_view([["D6"], ["D7"], ["D8"]], [0.0, 0.01, 0.02],
+                        [points] * 64, ordered_ballot=False)
+    assert view["near_actions"] == [["D6"], ["D7"], ["D8"]]
+    assert view["near_point_sums"] == [p * 64 for p in points]
+    assert view["order_dependent"] is unresolved
+    assert view["points_choice_action"] == (None if unresolved else ["D8"])
+    assert view["points_replay"] is None
+
+
+def test_ordered_ballot_can_resolve_points_tie_but_primed_cannot():
+    actions, means, points = [["D6"], ["D7"]], [0.0, 0.0], [[5, 5]] * 64
+    own = _choice_view(actions, means, points, ordered_ballot=True)
+    primed = _choice_view(actions, means, points, ordered_ballot=False)
+    assert own["points_choice_action"] == ["D6"]
+    assert own["points_replay"]["selected_index"] == 0
+    assert primed["points_choice_action"] is None
+    assert primed["raw_argmax_actions"] == actions
+
+
+def test_view_builder_does_not_substitute_full_schedule_for_own_schedule():
+    analysis, records = _records()
+    record = records[0]
+    # Isolate view wiring: capture consistency is tested separately above.
+    capture = record["panel"]["collection"]["captures"]["control"]
+    capture["serving_value_means"][0] = 1000.0
+    view = _diagnostic_views(analysis, record["job"], record["panel"])
+    assert view["own_ballot_schedule"]["control"]["raw_argmax_action"] == ["D6"]
+    assert view["full_pool_schedule_ballot_projection"]["control"]["raw_argmax_action"] == ["DK"]
+
+
+def test_primed_report_preserves_unresolved_choice_comparison():
+    analysis, records = _records()
+    record = records[6]  # first partner root, four-action primed full pool
+    panel = record["panel"]
+    collection = panel["collection"]
+    capture = collection["full_pool_capture"]
+    capture["value_matrix"] = [[0.0] * 4 for _ in range(64)]
+    capture["serving_value_means"] = [0.0] * 4
+    capture["signed_trick_points"] = [[5] * 4 for _ in range(64)]
+    collection["shared_matrix_summary"] = summarize_full_pool_matrix(
+        panel["actions"], record["job"]["control_ballot"],
+        record["job"]["treatment_ballot"], capture["value_matrix"])
+    view = summarize_m9_panels(analysis, records)["rows"][6]["diagnostic_views"]
+    assert view["small_root_comparison"]["order_dependent"] is True
+    assert view["small_root_comparison"]["points_choice_action"] is None
+    assert view["points_choice_matches_saved_fresh_choice"] == dict(control=None, treatment=None)
+    assert view["raw_argmax_matches_saved_fresh_choice"] == dict(control=False, treatment=False)
+    assert view["small_root_comparison"]["raw_argmax_actions"] == panel["actions"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "bool", "duplicate", "out_of_ballot"])
+def test_saved_choice_join_refuses_invalid_indices(mutation):
+    analysis, records = _records()
+    decision = analysis["roots"][0]["seeds"][0]["control"]["decision"]
+    if mutation == "missing":
+        del decision["admitted_indices"]
+    elif mutation == "bool":
+        decision["selected_index"] = True
+    elif mutation == "duplicate":
+        decision["admitted_indices"][0] = decision["admitted_indices"][1]
+    else:
+        decision["selected_index"] = 0
+    with pytest.raises(ValueError, match="saved control choice/index mapping invalid"):
+        summarize_m9_panels(analysis, records)
+
+
 def test_primed_tape_receipt_is_also_bound():
     analysis, records = _records()
     records[3]["panel"]["tape_receipt"]["mode"] = "fresh-root"
@@ -252,7 +340,9 @@ def test_record_population_and_status_are_strict(mutation):
         records[1] = copy.deepcopy(records[0])
     else:
         records[0]["validation_status"] = "failed"
-    with pytest.raises(ValueError):
+    pattern = {"missing": "exactly 15", "reordered": "job differs",
+               "duplicate": "job differs", "rejected": "passed validation"}[mutation]
+    with pytest.raises(ValueError, match=pattern):
         summarize_m9_panels(analysis, records)
 
 
@@ -260,7 +350,7 @@ def test_record_population_and_status_are_strict(mutation):
 def test_boolean_panel_counts_are_rejected(field, value):
     analysis, records = _records()
     records[0]["panel"]["effective"][field] = value
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="worlds|batch_size"):
         summarize_m9_panels(analysis, records)
 
 
@@ -271,7 +361,7 @@ def test_matrix_shape_and_finiteness_are_rejected(bad):
         records[0]["panel"]["collection"]["captures"]["full_pool"]["value_matrix"] = [[0.0]]
     else:
         records[0]["panel"]["collection"]["captures"]["full_pool"]["value_matrix"][0][0] = float("nan")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="64 rows|finite plain number"):
         summarize_m9_panels(analysis, records)
 
 

@@ -14,7 +14,7 @@ from typing import Any
 from .ballot_matrix import CARD_INDEX, _canonical_collection
 from .ballot_full_pool import summarize_full_pool_matrix
 from .ballot_points_selection import summarize_points_selection
-from .m9_panel_plan import build_m9_panel_plan
+from .m9_panel_plan import PRIMARY_ROOT, build_m9_panel_plan
 from .m9_panel_worker import _validate_panel
 from .m9_replay_binding import validate_m9_replay
 
@@ -272,6 +272,98 @@ def _read_panel(record: Mapping[str, Any], job: Mapping[str, Any],
     return recomputed, deltas, replay
 
 
+def _saved_choices(saved_analysis, job):
+    root = next(root for root in saved_analysis["roots"]
+                if root["id"] == job["fixture_id"])
+    seed = next(row for row in root["seeds"] if row["seed"] == job["seed"])
+    choices = {}
+    for arm in _ARMS:
+        decision = seed[arm]["decision"]
+        indices = decision.get("admitted_indices")
+        selected = decision.get("selected_index")
+        ballot = _canonical_collection(decision["admitted"], f"saved {arm} ballot")
+        if (type(indices) is not list or len(indices) != len(ballot)
+                or any(type(i) is not int or i < 0 for i in indices)
+                or len(set(indices)) != len(indices)
+                or type(selected) is not int or selected not in indices):
+            raise ValueError(f"saved {arm} choice/index mapping invalid")
+        choices[arm] = list(ballot[indices.index(selected)])
+    return choices
+
+
+def _choice_view(actions, means, points, *, ordered_ballot):
+    replay = summarize_points_selection(actions, means, points)
+    canonical = replay["actions"]
+    near = replay["near_indices"]
+    sums = [sum(row[i] for row in points) for i in near]
+    tied = len(set(sums)) != len(sums)
+    unresolved = not ordered_ballot and tied
+    raw = replay["raw_index"]
+    return {
+        "actions": canonical,
+        "value_means": list(means),
+        "reduction": "serving sequential np.add.at / world_count",
+        "raw_argmax_action": canonical[raw],
+        "raw_argmax_actions": [canonical[i] for i, value in enumerate(means)
+                               if value == means[raw]],
+        "raw_argmax_tie_rule": "first in supplied action order; not a served-choice claim",
+        "epsilon": replay["epsilon"],
+        "near_actions": [canonical[i] for i in near],
+        "near_point_sums": sums,
+        "order_dependent": unresolved,
+        "points_choice_action": None if unresolved else canonical[replay["selected_index"]],
+        "points_replay": replay if ordered_ballot else None,
+        "choice_scope": ("saved ordered ballot, conditional on complete rebuild"
+                         if ordered_ballot else "full-pool diagnostic, not served admission order"),
+        "serving_deadline_assessed": False,
+    }
+
+
+def _diagnostic_views(saved_analysis, job, panel):
+    saved = _saved_choices(saved_analysis, job)
+    collection = panel["collection"]
+    if job["mode"] == "fresh-root":
+        captures = collection["captures"]
+        own, shared = {}, {}
+        full = captures["full_pool"]
+        full_actions = _canonical_collection(panel["actions"], "full actions")
+        for arm in _ARMS:
+            capture = captures[arm]
+            ballot = job[f"{arm}_ballot"]
+            own[arm] = _choice_view(ballot, capture["serving_value_means"],
+                                    capture["signed_trick_points"], ordered_ballot=True)
+            columns = [full_actions.index(action) for action in
+                       _canonical_collection(ballot, f"{arm} ballot")]
+            shared[arm] = _choice_view(
+                ballot, [full["serving_value_means"][i] for i in columns],
+                [[row[i] for i in columns] for row in full["signed_trick_points"]],
+                ordered_ballot=True)
+        treatment = own["treatment"]["actions"]
+        return {
+            "saved_fresh_choices": saved,
+            "own_ballot_schedule": own,
+            "full_pool_schedule_ballot_projection": shared,
+            "saved_control_choice_absent_from_treatment_ballot": saved["control"] not in treatment,
+            "replayed_control_choice_absent_from_treatment_ballot":
+                own["control"]["points_choice_action"] not in treatment,
+            "tie_break_alone_explains_choice_change": None,
+        }
+    if job["fixture_id"] == PRIMARY_ROOT:
+        return {"saved_fresh_choices": saved, "small_root_comparison": None}
+    full = collection["full_pool_capture"]
+    view = _choice_view(panel["actions"], full["serving_value_means"],
+                        full["signed_trick_points"], ordered_ballot=False)
+    return {
+        "saved_fresh_choices": saved,
+        "small_root_comparison": view,
+        "raw_argmax_matches_saved_fresh_choice": {
+            arm: view["raw_argmax_action"] == saved[arm] for arm in _ARMS},
+        "points_choice_matches_saved_fresh_choice": {
+            arm: None if view["order_dependent"] else
+            view["points_choice_action"] == saved[arm] for arm in _ARMS},
+    }
+
+
 def summarize_m9_panels(saved_analysis, records) -> dict[str, Any]:
     """Return a descriptive readout after strict panel internal checks."""
     plan = build_m9_panel_plan(saved_analysis)
@@ -302,6 +394,10 @@ def summarize_m9_panels(saved_analysis, records) -> dict[str, Any]:
             "full_pool_summary": full_summary,
             "ballot_minus_full_schedule_value_deltas": deltas,
             "replay_consistency": _replay,
+            "diagnostic_views": _diagnostic_views(saved_analysis, job, record["panel"]),
+            "shared_summary_reduction": "math.fsum",
+            "shared_summary_selected_action_scope": "descriptive matrix argmax, not served choice",
+            "shared_summary_selected_difference_se_scope": "post-selection descriptive, not confirmatory",
         })
     return {
         "schema": "m9-panel-readout-v1",

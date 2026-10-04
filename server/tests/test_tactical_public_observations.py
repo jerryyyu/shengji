@@ -11,6 +11,42 @@ import pytest
 from shengji.eval import tactical as T
 
 
+@pytest.mark.parametrize("fill_seed", [0, 1])
+def test_replaced_notice_can_hide_own_failed_throw_until_next_actor_turn(cases, fill_seed):
+    """Public replay witness, not an assertion about sampled worlds or strength."""
+    from shengji.ai.refusal import RefusalLedger
+
+    fx = next(fx for fx in cases if fx.id == "pvr8-c2-m0-p43-partner-overtake-control")
+    root = T.public_round(fx, fill_seed)
+    setup = dict(fx.setup, buried=list(root.buried))
+    rnd = T.round_from_setup(list(root.deck), setup)
+    actor, every_seat = RefusalLedger(), RefusalLedger()
+    actor_notices = []
+    notice_after_play = {}
+    for index, play in enumerate(fx.plays):
+        every_seat.observe(rnd)
+        if rnd.turn == fx.seat:
+            actor.observe(rnd)
+            actor_notices.append((index, None if rnd.notice is None else rnd.notice["id"]))
+        T._replay_public(rnd, [play], fx.seat)
+        if index in (0, 4, 28, 32):
+            notice_after_play[index] = rnd.notice["id"]
+    actor_refusals, all_refusals = actor.observe(rnd), every_seat.observe(rnd)
+    assert (len(actor_refusals), len(all_refusals)) == (6, 8)
+    assert notice_after_play == {0: 1, 4: 2, 28: 6, 32: 7}
+    # Both replacements occur after only four further accepted plays, before
+    # the eight-play expiry and before seat 0's next opportunity to observe.
+    assert [(i, n) for i, n in actor_notices if i <= 6 or 28 <= i <= 34] == [
+        (0, None), (6, 2), (28, 5), (34, 7)]
+    assert [(r.trick_index, r.seat, r.attempted, r.forced)
+            for r in all_refusals if r not in actor_refusals] == [
+        (0, 0, ("SA", "SK", "SK"), ("SA",)),
+        (7, 0, ("C10", "C10", "C7"), ("C7",)),
+    ]
+    assert rnd.hands == root.hands and rnd.history == root.history
+    assert rnd.trick == root.trick and rnd.notice == root.notice
+
+
 PATH = Path(__file__).parent / "tactical" / "public_observations.jsonl"
 
 

@@ -42,12 +42,13 @@ Nothing here touches the encoder or its hashed source closure
 ``engine/round.py``); the notice is read here, outside that closure, and only
 sampled worlds change -- a model-input change is a different project.
 
-The notice lives ``Round.NOTICE_PLAYS`` (8) accepted plays, so the trick it
-refers to is the current one or one of the previous two; a bot that acts at
-least once per trick therefore sees every refusal while it is posted, and
-`RefusalLedger` keeps it for the rest of the round (the bot is the only thing
-that persists between its own turns; the server's per-turn snapshot
-deep-copies the bot and the round together).
+The notice lives at most ``Round.NOTICE_PLAYS`` (8) accepted plays, so the
+trick it refers to is the current one or one of the previous two. A later
+failed throw can replace it before a particular seat acts again; observing
+once per trick does NOT guarantee seeing every refusal, including one's own
+failed throw. `RefusalLedger` retains only the notices that its bot instance
+observes. Screen bots are per-seat; the server shares a room bot across its
+bot-controlled seats and deep-copies that bot with each turn snapshot.
 """
 from __future__ import annotations
 

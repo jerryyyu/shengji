@@ -291,28 +291,38 @@ def _saved_choices(saved_analysis, job):
     return choices
 
 
-def _choice_view(actions, means, points, *, ordered_ballot):
+def _choice_view(actions, means, points, *, ordered_ballot, arm=None):
     replay = summarize_points_selection(actions, means, points)
     canonical = replay["actions"]
     near = replay["near_indices"]
     sums = [sum(row[i] for row in points) for i in near]
-    tied = len(set(sums)) != len(sums)
-    unresolved = not ordered_ballot and tied
     raw = replay["raw_index"]
+    raw_maxima = [i for i, value in enumerate(means) if value == means[raw]]
+    point_maxima = [i for i, total in zip(near, sums) if total == max(sums)]
+    # A unique points maximum is order-independent. A unique raw argmax
+    # also resolves a points-maximum tie in its favour. Otherwise legal-pool
+    # order cannot stand in for unknown admission order (including raw ties).
+    unresolved = (not ordered_ballot and len(point_maxima) > 1
+                  and not (len(raw_maxima) == 1 and raw in point_maxima))
+    control = arm == "control"
     return {
         "actions": canonical,
         "value_means": list(means),
         "reduction": "serving sequential np.add.at / world_count",
         "raw_argmax_action": canonical[raw],
-        "raw_argmax_actions": [canonical[i] for i, value in enumerate(means)
-                               if value == means[raw]],
-        "raw_argmax_tie_rule": "first in supplied action order; not a served-choice claim",
+        "raw_argmax_actions": [canonical[i] for i in raw_maxima],
+        "raw_argmax_tie_rule": (
+            "first in saved ballot order; release-36 control selection rule"
+            if control else "first in supplied action order; raw value view, not final treatment choice"),
         "epsilon": replay["epsilon"],
         "near_actions": [canonical[i] for i in near],
         "near_point_sums": sums,
         "order_dependent": unresolved,
         "points_choice_action": None if unresolved else canonical[replay["selected_index"]],
         "points_replay": replay if ordered_ballot else None,
+        "points_rule_scope": (
+            "hypothetical release-38 points rule on release-36 control ballot; not control behaviour"
+            if control else "release-38 points replay omitting lead-anchor rule; conditional on complete rebuild"),
         "choice_scope": ("saved ordered ballot, conditional on complete rebuild"
                          if ordered_ballot else "full-pool diagnostic, not served admission order"),
         "serving_deadline_assessed": False,
@@ -331,13 +341,13 @@ def _diagnostic_views(saved_analysis, job, panel):
             capture = captures[arm]
             ballot = job[f"{arm}_ballot"]
             own[arm] = _choice_view(ballot, capture["serving_value_means"],
-                                    capture["signed_trick_points"], ordered_ballot=True)
+                                    capture["signed_trick_points"], ordered_ballot=True, arm=arm)
             columns = [full_actions.index(action) for action in
                        _canonical_collection(ballot, f"{arm} ballot")]
             shared[arm] = _choice_view(
                 ballot, [full["serving_value_means"][i] for i in columns],
                 [[row[i] for i in columns] for row in full["signed_trick_points"]],
-                ordered_ballot=True)
+                ordered_ballot=True, arm=arm)
         treatment = own["treatment"]["actions"]
         return {
             "saved_fresh_choices": saved,
@@ -345,7 +355,7 @@ def _diagnostic_views(saved_analysis, job, panel):
             "full_pool_schedule_ballot_projection": shared,
             "saved_control_choice_absent_from_treatment_ballot": saved["control"] not in treatment,
             "replayed_control_choice_absent_from_treatment_ballot":
-                own["control"]["points_choice_action"] not in treatment,
+                own["control"]["raw_argmax_action"] not in treatment,
             "tie_break_alone_explains_choice_change": None,
         }
     if job["fixture_id"] == PRIMARY_ROOT:

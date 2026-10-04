@@ -247,14 +247,18 @@ def test_views_map_saved_legal_indices_and_label_schedules():
     assert "post-selection" in report["rows"][6]["shared_summary_selected_difference_se_scope"]
 
 
-@pytest.mark.parametrize("points,unresolved", [([4, 4, 9], True), ([4, 8, 9], False)])
-def test_primed_any_near_points_tie_is_unresolved_even_below_winner(points, unresolved):
+@pytest.mark.parametrize("points,chosen", [
+    ([9, 4, 4], ["D6"]),  # lower tied points do not matter
+    ([4, 9, 9], ["D8"]),  # unique raw argmax wins a maximum-points tie
+    ([9, 9, 4], None),  # maximum points tie excludes raw argmax
+])
+def test_primed_points_choice_resolves_exactly_when_order_independent(points, chosen):
     view = _choice_view([["D6"], ["D7"], ["D8"]], [0.0, 0.01, 0.02],
                         [points] * 64, ordered_ballot=False)
     assert view["near_actions"] == [["D6"], ["D7"], ["D8"]]
     assert view["near_point_sums"] == [p * 64 for p in points]
-    assert view["order_dependent"] is unresolved
-    assert view["points_choice_action"] == (None if unresolved else ["D8"])
+    assert view["order_dependent"] is (chosen is None)
+    assert view["points_choice_action"] == chosen
     assert view["points_replay"] is None
 
 
@@ -268,6 +272,24 @@ def test_ordered_ballot_can_resolve_points_tie_but_primed_cannot():
     assert primed["raw_argmax_actions"] == actions
 
 
+def test_primed_resolvability_matches_all_admission_permutations():
+    actions = [["D6"], ["D7"], ["D8"]]
+    for means in ([0.0, 0.01, 0.02], [0.02, 0.02, 0.0], [0.0] * 3):
+        for points in itertools.product(range(3), repeat=3):
+            possible = set()
+            for order in itertools.permutations(range(3)):
+                replay = _choice_view(
+                    [actions[i] for i in order], [means[i] for i in order],
+                    [[points[i] for i in order]] * 64, ordered_ballot=True)
+                possible.add(tuple(replay["points_choice_action"]))
+            primed = _choice_view(actions, means, [list(points)] * 64, ordered_ballot=False)
+            assert primed["order_dependent"] is (len(possible) > 1)
+            if len(possible) == 1:
+                assert tuple(primed["points_choice_action"]) in possible
+            else:
+                assert primed["points_choice_action"] is None
+
+
 def test_view_builder_does_not_substitute_full_schedule_for_own_schedule():
     analysis, records = _records()
     record = records[0]
@@ -277,6 +299,28 @@ def test_view_builder_does_not_substitute_full_schedule_for_own_schedule():
     view = _diagnostic_views(analysis, record["job"], record["panel"])
     assert view["own_ballot_schedule"]["control"]["raw_argmax_action"] == ["D6"]
     assert view["full_pool_schedule_ballot_projection"]["control"]["raw_argmax_action"] == ["DK"]
+
+
+def test_control_membership_uses_raw_rule_not_hypothetical_points():
+    analysis, records = _records()
+    record = records[0]
+    panel, job = record["panel"], record["job"]
+    control = panel["collection"]["captures"]["control"]
+    # Synthetic view-only witness: raw winner DK absent from treatment, but
+    # hypothetical points winner D6 is present. Mirrors the review counterexample.
+    control["serving_value_means"] = [0.0] * 7 + [0.01]
+    control["signed_trick_points"] = [[10] + [0] * 7 for _ in range(64)]
+    job["treatment_ballot"][0] = ["D6"]
+    panel["collection"]["captures"]["treatment"]["actions"][0] = ["D6"]
+    view = _diagnostic_views(analysis, job, panel)
+    arm = view["own_ballot_schedule"]["control"]
+    assert arm["points_choice_action"] == ["D6"]
+    assert arm["raw_argmax_action"] == ["DK"]
+    assert view["replayed_control_choice_absent_from_treatment_ballot"] is True
+    assert view["saved_control_choice_absent_from_treatment_ballot"] is True
+    assert "hypothetical" in arm["points_rule_scope"]
+    assert "release-36 control selection rule" in arm["raw_argmax_tie_rule"]
+    assert "omitting lead-anchor" in view["own_ballot_schedule"]["treatment"]["points_rule_scope"]
 
 
 def test_primed_report_preserves_unresolved_choice_comparison():

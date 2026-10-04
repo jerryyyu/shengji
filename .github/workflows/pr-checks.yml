@@ -204,6 +204,7 @@ jobs:
           tests/test_public_fixture_panel.py
           tests/test_m9_replay_binding.py
           tests/test_m9_panel_plan.py
+          tests/test_m9_panel_recipe.py
           tests/test_m9_panel_worker.py
           tests/test_m9_panel_persistence.py
           tests/test_m9_panel_readout.py

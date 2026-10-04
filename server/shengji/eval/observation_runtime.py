@@ -37,6 +37,9 @@ PRELOAD_IMPORTS = (
 PANEL_PRELOAD_IMPORTS = PRELOAD_IMPORTS + (
     "shengji.eval.m9_panel_persistence",
     "shengji.eval.m9_panel_readout",
+    "shengji.eval.m9_panel_recipe",
+    "shengji.eval.m9_panel_inputs",
+    "shengji.eval.m9_panel_execution",
 )
 
 

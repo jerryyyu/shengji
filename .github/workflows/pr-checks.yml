@@ -139,6 +139,19 @@ jobs:
         env:
           SHENGJI_FAST: "1"
         run: uv run pytest -q ${{ matrix.tests }}
+      - name: Install locked observation-test dependencies
+        if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
+        run: uv sync --frozen --group dev --group rl
+      - name: Test observation evidence and process containment
+        if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
+        run: >-
+          uv run python -B -m pytest -q --durations=10
+          tests/test_observation_opportunity_integration.py
+          tests/test_observation_partial_evidence.py
+          tests/test_tactical_public_observations.py
+          tests/test_observation_process.py
+          tests/test_observation_process_cli.py
+          tests/test_luna_startup_cleanup.py
 
   frontend:
     runs-on: ubuntu-latest

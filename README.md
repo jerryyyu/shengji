@@ -144,14 +144,14 @@ privileged-teacher teachers, direct-Q, Suphx O0) are lessons in
 | `AI_POLICIES.md` | production contract, measured policies, evidence and lane rules |
 | `RL_PLAN.md` | research plan, key learnings, measurement rules |
 | `DEPLOY.md` | release records, rollbacks, gates |
-| GitHub issue #707 + topic issues | the live investigation board and work queue (predecessor: #679) |
+| GitHub issue #707 + topic issues | the live investigation board and work queue |
 | `docs/atlas_v2/` | every screen since release 29 (`registry.json`) |
 | `docs/scaling_log/` | every model with its offline metrics; engine and search speed (with issue #208) |
 | `incidents/` / `server/tests/` | postmortems; the validation suite |
 | `AGENTS.md` | execution discipline and agent orchestration |
 | `HANDOFF_REVIEW.md` | frozen authority markers (#674) |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture |
-| `BACKLOG.md` | deprecated 2026-10-03; a pointer stub |
+| `BACKLOG.md` | deprecated; see #707 |
 | `docs_archive/` | compacted history: closed lanes, old designs, rotated ledgers |
 
 Top-level documents hold only current project, operational or durable contract

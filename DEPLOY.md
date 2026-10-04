@@ -385,7 +385,7 @@ Rollback (one line): `SHENGJI_BOT` back to
 are still in `fly.toml`), then `fly deploy --ha=false`; release 27 next; image rollback below.
 
 Watch list: `pv-search-fallback-v1` records (budget or search-error), stale-turn discards, decision wall
-p50/p95; the run-4 head served the same way (lane v34r4) reads out 2026-09-22 ~01:50 ET.
+p50/p95.
 
 ## Release 28 — JS-M1, the from-scratch joint net, as ONE package (#425 / #435), deployed 2026-09-16 00:5x ET; the one-line rollback for release 29
 
@@ -418,17 +418,10 @@ registry prints; `/healthz` must then show `"prior": null`.
 
 The head-driven search that beat the deployed package in card play (soft 8ecd4fea head, W64/K8,
 +0.086 [+0.042, +0.131] on 800 matched deals, 2026-09-21; atlas row 45) is the production bot
-mode: `train/pv_search_policy.py`, registered as `pv-search-<ckpt8>-w<W>-k<K>-r<recipe8>` when
-`SHENGJI_PV_CKPT` is set. It is the screened design unchanged (`train/policy_value_search.py`),
-served from ONE NumPy package as both value evaluator and policy prior, without Torch.
-
-Env (all under `[env]`, alongside — not replacing — the release-28 keys until a release swaps `SHENGJI_BOT`):
-
-    SHENGJI_PV_CKPT = '/data/models/<package>.npz'   # value + policy head (v2 schema, policy_head)
-    SHENGJI_PV_SHA256 = '<full sha256>'              # required; the mode refuses an unpinned package
-    SHENGJI_PV_WORLDS = '64'  SHENGJI_PV_CANDIDATES = '8'  SHENGJI_PV_CAP = '4000'
-    SHENGJI_PV_BATCH_SIZE = '128'  SHENGJI_PV_SEED = '0'
-    SHENGJI_PV_SERVING_BUDGET_SECONDS = '<seconds>'  # cooperative play budget; expiry plays the heuristic anchor
+mode: `train/pv_search_policy.py`, registered when `SHENGJI_PV_CKPT` is set (the mode refuses a package
+without its `SHENGJI_PV_SHA256` pin). It is the screened design (`train/policy_value_search.py`),
+served from ONE NumPy package as both value evaluator and policy prior, without Torch. The served env
+and bot name are in `fly.toml` and "Current production" above.
 
 What it does per card-play decision: heuristic anchor first; W sampled worlds through production's
 sampler (void-checked); the policy head ranks the capped legal listing (cap 4,000, the anchor forced in) and admits K with the anchor
@@ -438,9 +431,8 @@ heuristically) in every world; the highest mean plays. Declare is the heuristic;
 plays with a `pv-search-fallback-v1` record; otherwise the record is `pv-search-decision-v1`
 (carries `played`, the admitted indices, value means, work counts).
 
-The release gate for this mode (package on the volume, smoke on the exact package, the served-bot
-confirmation screen, Jerry's go, `/healthz` and the first live room) was met for release 29; see the
-record above. A future head in this mode repeats the same gate with its own package.
+The release gate for this mode is package on the volume, smoke on the exact package, the served-bot
+confirmation screen, Jerry's go, `/healthz` and the first live room; each new package repeats it.
 
 ## Releases 22–28 records (archived 2026-10-01)
 
@@ -495,9 +487,8 @@ Policy cost, not the rules engine, sets CPU capacity. On the measured mini,
 SmartBot is p50 0.05ms / p95 0.13ms, direct v11pair is 0.25ms / 0.52ms on the
 numpy path, base N=10 MC is 77ms / 150ms, and an earlier matched benchmark put
 the production report-LCB decision at 0.390s versus 0.127s for `mc-strong`.
-Live Fly time is workload-dependent: after release 17, the first ordinary
-human room's 195 searched turns measured p50/p95/max
-0.896/1.714/1.906s. Off-loop execution hides event-loop blocking and overlaps
+Live Fly time is workload-dependent; the served policy's measured play and
+bury latency is under "Current production" above. Off-loop execution hides event-loop blocking and overlaps
 the 0.7s pacing floor; it does **not** make search free or let a worker react
 before the latest play. Each turn snapshots only after that play, computes,
 then revalidates before commit. Load-test the chosen policy and concurrent room

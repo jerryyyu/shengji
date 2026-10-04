@@ -24,10 +24,8 @@ admission diversity, refusal-constraint sampling, a points tie-break and lead-an
 2026-10-01, was a phone-HUD fix on release 36's bot). The champion for every NEW strength claim is
 therefore the served release-38 bot (Jerry, 2026-10-03: every new screen compares against release 38;
 screens already read against release 36 or the combo keep their comparator; release 29/30's reads below are the labeled historical
-evidence of the soft head 8ecd4fea, which releases 29–35 served),
-and from 2026-09-22 every NEW search comparison runs against production W64/K8 (Jerry's
-direction, recorded on #436). Historical MC-LCB results keep their original labels; MC-LCB is
-no longer the prospective control.
+evidence of the soft head 8ecd4fea, which releases 29–35 served). Historical MC-LCB results
+keep their original labels; MC-LCB is no longer the prospective control.
 
 Evidence labels:
 
@@ -52,90 +50,20 @@ a bar.
 | **iii — confirmation** | a deploy or strength claim | the full immutable machinery: exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
 
 A lane enters tier iii only when a candidate beats the champion on a tier ii paired screen.
-Screens run five 520-cluster windows first and extend to ten only when the five-window point
-exceeds +0.015 and the interval crosses zero; a five-window null is "not large", not "equal".
 
 ## Current program
 
-**State on 2026-10-03.** Search rules (#676): admission diversity + refusal constraints + points
-tie-break CONFIRMED only as a combination, +0.0461 [+0.0242, +0.0681] vs release 36 on ten fresh
-windows (issuecomment-5962364713); lead-anchor on that combination read +0.0106 [+0.0006, +0.0205]
-over ten windows, POSITIVE incremental with a lower bound near zero, not a second confirmation
-(issuecomment-5965252288); lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262],
-five windows, below the extension triage). Together the four rules are release 38 (deployed 2026-10-03 09:41 ET). Adaptive K16 inconclusive (−0.0061 [−0.0303, +0.0181]); PUCT on the SMV3 package
-closed (−0.417 package prior, −0.894 uniform vs release 36) and the root-allocation pilot A6 closed
-(#436). Model (#663): the C11 retrain (SMV3 recipe + runPVR1..8, 624k deals) early-stopped at
-epoch 9, best epoch 6. Its [served screen](https://github.com/jerryyyu/shengji/issues/663#issuecomment-5972721473)
-read +0.0096 [−0.0206, +0.0399] vs release 38: exploratory INCONCLUSIVE, no extension or promotion,
-not evidence of equivalence or that extra data cannot help. SL4 (the runSL1..4 stores' trajectory, value and policy
-supervision added, recipe unchanged) served −0.0162 [−0.0600,
-+0.0275], inconclusive. Data: runPVC1 (16,000 deals, teacher = the combo + la search, seeds
-44260910..) sealed 10-03. For subsequent corpus status and queue ownership, see [#592](https://github.com/jerryyyu/shengji/issues/592)
-and the active [board #707](https://github.com/jerryyyu/shengji/issues/707).
-Mechanism (#663 issuecomment-5967276911): the listwise
-policy loss sums card logits per candidate, so on a row whose admitted candidates all contain the
-same card multiplicity that term cancels in the softmax: this row's listwise term has zero direct
-gradient for the shared card multiplicity. The card-presence BCE still pushes toward the recorded
-play, and other rows and shared parameters can still train it; this is a row-level gradient fact,
-not a proof that the head fails. C15 baseline (issuecomment-5967436179): 702 of 41,551 soft-target
-rows (1.69%) have a pair common to every candidate, counted in the FIRST availability-selected
-50,000-row chunk of the PVR5–8 extraction — descriptive for that chunk, not a prevalence estimate
-across PVR (23.8% of the same rows already carry a pair-multiplicity contrast). Admission diversity
-should raise that contrast in new data — a hypothesis, not a measured effect. Sol benchmark
-(#355): the SMV3 row vs Sol +0.55 [+0.10, +1.00] (15/20), vs PT-Sol +0.10 [−0.20, +0.40], ten
-deals each, descriptive; remaining rows running.
+The work queue and each lane's state are on the board issue [#707](https://github.com/jerryyyu/shengji/issues/707)
+(corpus status: row M6); production and its rollback are in `DEPLOY.md` "Current production".
 
-The live plan after gen 5 is issue #663 (what to train and screen next, decided after release 36's
-confirmation) and the data-use audit #667 (its actions landed as #668 units bracketing, #669 sidecar
-coverage + `values_scale` refusal, #670 dead modules deleted, #672/#673 the seed registry). The
-numbered program below is the release-30-era record and is kept for its evidence chain; #663 and
-#667 own the next decision.
+#663 (what to train and screen next) and the data-use audit #667 own the next decision. The
+release-30-era program (gen-4 #538 and the gen-5 search corpora #592, both closed; search scaling
+#577, parked) is recorded in Atlas v2 (`docs/atlas_v2/registry.json`).
 
-0. **Production is release 38** (deployed 2026-10-03 09:41 ET; #698): release 36's model plus four search rules
-   (div + rc + tb CONFIRMED in combination vs release 36, +0.0461 [+0.0242, +0.0681], ten fresh windows; + la
-   over the combination +0.0106 [+0.0006, +0.0205], POSITIVE incremental, #676). Every new screen compares
-   against release 38. Rollback: release 36's `SHENGJI_BOT` (comment in `fly.toml`) with the four rule lines
-   deleted, or the release-37 image (see `DEPLOY.md`). Release 37 (2026-10-01) was a phone-HUD fix on release
-   36's model (2026-09-30; #666, plan #663): the gen-5 SMV3
-   checkpoint 3e89e86f's OUTCOME head (`smv3out-491ee4bf.npz`) in release 30's search unchanged; as served vs
-   release 30, v36a +0.0361 [+0.0015, +0.0707] and the predeclared confirmation v36a2 +0.0393 [+0.0033, +0.0752],
-   five windows each.
-   Release 30 (2026-09-22; release 29 + the #607 bury fix, same name and package) was production until then; its evidence chain, in order: the soft head alone
-   beats SmartBot under public information (+0.052); as the whole search it beats MC-LCB at
-   W16, W32 and W64 in the world-scaling ladder (W64/K8 +0.187 [+0.144, +0.231]; W4 loses);
-   vs the release-28 package in card play
-   +0.086 [+0.042, +0.131] on 800 matched deals and +0.122 on fresh deals; served with hybrid
-   bury vs release 28 as served +0.049 [+0.003, +0.095] over five clean windows (narrow, I²
-   49%; a common-opponent, summary-level read, not paired served-vs-served inference). Rollback is one `SHENGJI_BOT` line. The next production claim needs a served-bot
-   contrast against release 30 on the same design (release 29's numbers are historical evidence).
-1. **The generation loop (gen-4, #538).** Four runs on the full 20-store corpus, order
-   1 → 4 → 3 → 2: run 1 (JS-M1 extended, hard targets) sealed and null as a package, positive
-   but not separable from the family in the W64 search; run 4 (soft targets) sealed 09-22
-   02:29Z and its served PV-search screen is running (lane v34r4); run 3 (grid trunk, soft, all
-   data) training; run 2 (depth 6, soft) armed behind it. Every model goes through BOTH the
-   W64/K8 card-play screen vs production and the served/package screen.
-2. **Gen-5: data from the search itself (#592).** The release-29 search generates the next
-   corpus (`harvest.trajectory` over the pv-search bot: the admitted ballot, the value head's
-   means as the soft policy target in their own units, the outcome as the value target, an
-   exploration draw from the full legal set that must never displace production's admission;
-   reviewed on #597, merging on CI).
-   Decisions taken: W64/K8, explore rate 0.1, two stores then a read, MC-LCB stores leave the
-   training mix for the SSD after run 2. Data generation yields the boxes to screens.
-3. **Search scaling (#577).** Worlds were the lever through 64; the ladder shows no resolved
-   gain beyond 64 (W128−W64 +0.024 [−0.034, +0.083], W256−W64 +0.024 [−0.033, +0.081]: not
-   equivalence bounds, unresolved); K8 not K16; the T1 value cutoff is a gain over terminal-level MC
-   while a learned continuation adds nothing at 68× the cost; bounded PUCT lost at 2× wall;
-   depth (one extra trick, heuristic or policy) completed its 3 × 12-pair qualification on the
-   cloud against a frozen release-29 card-play control (clean; 0.16 / 0.21 / 2.9 s a move for
-   current-trick / heuristic-extra / policy-extra, no fallbacks): mechanics only, no strength
-   claim; the 260-pair strength screen (~3.5 h; SEALED 2026-09-22 with no resolved gain, see
-   the Atlas v2 row `depth-screen` in `docs/atlas_v2/registry.json`) ran on cloud from 2026-09-22
-   09:11:55 ET (Codex launcher aa80652b, runtime 06999b0d; frozen control identifier
-   `production-pv-r29`, which equals release 30's card play since #607 changed only the hybrid bury).
-4. **What would change production next:** a head that beats the production release (release 38 as
-   served, since 2026-10-03) on the served-bot design, or a search change whose served contrast
-   clears zero. Nothing else. (The search rules of release 38 are the first search change to do so
-   since release 29.)
+**What would change production next:** a head that beats the production release (release 38 as
+served, since 2026-10-03) on the served-bot design, or a search change whose served contrast
+clears zero. Nothing else. (The search rules of release 38 are the first search change to do so
+since release 29.)
 
 ## What the scaling work taught (models)
 
@@ -168,8 +96,8 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 - **The head as the whole search** replaces playouts: the policy head admits, the value head
   prices, and it beats MC-LCB by +0.095 at W16 and +0.187 at W64 at a fraction of the cost;
   W4 loses. More worlds beyond 64 are not shown to help.
-- **Policy head alone is SmartBot-level** under public information; the gap to the search is
-  the value pricing, not the prior.
+- **Policy head alone beats SmartBot after the units fix:** +0.24 vs SmartBot (arm F,
+  2026-09-30; through gen 3 it was SmartBot-level); the gain does not show in served play.
 - **Admission and selection rules beat tree search here** (2026-10): diversity, refusal-aware
   worlds and a points tie-break on the release-36 search were CONFIRMED in combination and
   lead-anchor on top was POSITIVE incremental (above; not a second confirmation), while PUCT on
@@ -186,10 +114,10 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 
 ## Search and teacher strategy
 
-1. **Candidate admission and search cost.** Keep the release-29 recipe as the reference;
+1. **Candidate admission and search cost.** Keep the release-38 recipe as the reference;
    separate exact speedups from policy changes; compute-match controls when a claim is about
    cost.
-2. **Depth and allocation.** Test one bounded change against the frozen release-29 control
+2. **Depth and allocation.** Test one bounded change against the frozen release-38 control
    before any larger tree recipe; the ballot-rooted PUCT ladder is closed.
 3. **Model and teacher transport.** Improve data and targets against the actual consumer (the
    search's own values as the target), preserve held-out deals, then test the resulting head in
@@ -308,7 +236,9 @@ oracle or infer true-person disjointness from mutable display names.
 - A positive point estimate that misses its gate is a clue, not permission.
 - An interval overlap is not a difference test; superiority between two arms needs a
   contrast that clears zero on a common opponent or paired deals.
-- Five windows first, extend to ten only when the point exceeds +0.015; capped (300 s) and
+- Five windows first, extend to ten only when the point exceeds +0.015 and the interval crosses
+  zero; a five-window null is
+  "not large", not "equal". Capped (300 s) and
   uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
   served policy/value-search screens. Ten shared-control windows are a nominal read, and only
@@ -316,25 +246,6 @@ oracle or infer true-person disjointness from mutable display names.
 
 ## Archive boundary
 
-The compact plan above is the current research contract. Detailed v1–v13,
-DMC/DMC2, Direct-Q, O0, Teacher T3/T4, S3–S6, H0, high-N, and old artifact
-chronology stays in the existing RL archives, the archived `HANDOFF_REVIEW.md` prose
-(`docs_archive/handoff-review-*.md`; the ledger itself is frozen to its authority
-markers, #674, and new prose lives on GitHub issues), incident
-records, and Git history. The closed BELIEF V1 design set
-(`docs_archive/BELIEF_V1_SPEC.md`,
-`docs_archive/BELIEF_V1_V2_DESIGN.md`,
-`docs_archive/BELIEF_V1_B2_DESIGN.md`,
-`docs_archive/BELIEF_V1_B2_RUNBOOK.md`) and
-`docs_archive/SUPHX_MICRO_SPEC.md` moved to `docs_archive/` on 2026-09-04.
-Their archived paths remain source-bound for reproducible future re-entry.
-On 2026-09-05 the closed code lanes themselves (belief, suphx,
-douzero_learning_screen, distill, the dead rl lineage, the S0/S3/S4/S5,
-teacher, v11, H0, pair-ballot and RLCB campaign scripts, and the early-August
-one-off scripts) were deleted from the tree; the tag
-`archive/code-lanes-pre-cleanup-20260905` and the `archive/pr-*` tags keep
-them, and `docs_archive/PRIVILEGED_TEACHER_V1_PROPOSAL.md` holds the closed
-PT1 proposal.  `shengji/teacher_v1.py`, `rl/douzero_micro.py` and
-`rl/torch_policy.py` stay because live modules or registry rows import them.
+Closed lanes live in `docs_archive/` and the tag `archive/code-lanes-pre-cleanup-20260905`.
 Update this file only when the architecture, estimand, or live decision tree
 changes.

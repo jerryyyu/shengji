@@ -4,11 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 import threading
+from types import SimpleNamespace
 
 import pytest
 
 from shengji.eval import m9_panel_publication as publication
 from test_m9_panel_artifact_reader import bundle
+from test_observation_runtime import _fake_capture_context
 
 
 def invocation_for(pins, output):
@@ -22,6 +24,54 @@ def invocation_for(pins, output):
 
 def invocation_sha(invocation):
     return hashlib.sha256(publication.guards._canonical(invocation)).hexdigest()
+
+
+@pytest.mark.parametrize("drift_phase", [None, "before", "after"])
+def test_real_runtime_source_stamp_fences_actual_publication(monkeypatch, tmp_path, drift_phase):
+    from shengji.eval import observation_runtime as runtime
+
+    pins, _, _ = bundle(monkeypatch, tmp_path)
+    source, _, _, _, _ = _fake_capture_context(tmp_path / "runtime", monkeypatch)
+    # Only host/native process plumbing is synthetic. Capture/admission source
+    # hashes and the subsequent source-stat checks are the real implementation.
+    monkeypatch.setattr(runtime.runtime_fence, "capture", lambda path, imports: {
+        "source_root": str(path), "imports": imports})
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    manifest = runtime.capture(source, profile="panel-readout")
+    admitted = runtime.ObservationRuntime(manifest, profile="panel-readout")
+    monkeypatch.setattr(runtime, "_sha", lambda *args: pytest.fail("runtime check rehashed"))
+    changed_source = source / "shengji" / "engine" / "round.py"
+    output = tmp_path / "readout"
+    invocation = invocation_for(pins, output)
+    real_reader = publication.artifact_reader.read_m9_panel_files
+    calls = []
+
+    def read(*args, **kwargs):
+        calls.append("read")
+        result = real_reader(*args, **kwargs)
+        if drift_phase == "after":
+            changed_source.write_text("# source changed after runtime admission\n")
+        return result
+
+    monkeypatch.setattr(publication.artifact_reader, "read_m9_panel_files", read)
+    if drift_phase == "before":
+        changed_source.write_text("# source changed before publication claim\n")
+    kwargs = dict(invocation_sha256=invocation_sha(invocation), runtime_check=admitted.check)
+    if drift_phase is None:
+        publication.publish_m9_panel_readout_once(invocation, **kwargs)
+        assert (output / "receipt.json").is_file()
+    else:
+        with pytest.raises(ValueError, match="runtime check failed"):
+            publication.publish_m9_panel_readout_once(invocation, **kwargs)
+        assert not (output / "result.json").exists()
+        assert not (output / "receipt.json").exists()
+        assert output.exists() is (drift_phase == "after")
+        if drift_phase == "after":
+            assert (output / "claim.json").is_file()
+            assert (output / "refusal.json").is_file()
+    assert calls == ([] if drift_phase == "before" else ["read"])
 
 
 @pytest.mark.parametrize("response", [False, None, 1])

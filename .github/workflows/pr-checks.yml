@@ -228,6 +228,7 @@ jobs:
           tests/test_m9_panel_worker.py
           tests/test_m9_panel_persistence.py
           tests/test_m9_panel_readout.py
+          tests/test_m9_panel_completion.py
           tests/test_m9_readout_persistence_roundtrip.py
           tests/test_observation_summary.py
           tests/test_observation_partial_evidence.py

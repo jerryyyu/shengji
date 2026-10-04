@@ -419,4 +419,75 @@ def summarize_m9_panels(saved_analysis, records) -> dict[str, Any]:
     }
 
 
-__all__ = ["summarize_m9_panels"]
+def validate_panel_completion(owner, process, collection, *, packet_sha256):
+    """Refuse incomplete/failed execution before an outer reader opens panels.
+
+    Inputs must already be authenticated against a sealed bundle by the
+    caller. This pure consistency gate performs no I/O, authenticates no seal,
+    and grants neither read ownership nor scientific acceptance. In particular
+    collection status='complete' alone is insufficient: the final worker guard
+    can fail after that file was written.
+    """
+    from .observation_queue import _strict_sha
+
+    _strict_sha(packet_sha256, "packet SHA")
+    expected = (
+        (owner, {"schema", "packet_sha256", "process_status", "returncode",
+                 "utc", "comparison_validated"}, "m9-panel-owner-terminal-v1"),
+        (process, {"schema", "status", "returncode", "elapsed_seconds",
+                   "comparison_validated", "error_type"}, "m9-process-result-v1"),
+        (collection, {"schema", "status", "collected_count", "validated_count",
+                      "provenance_verified", "receipt"}, "m9-panel-terminal-v1"),
+    )
+    for value, keys, schema in expected:
+        if type(value) is not dict or set(value) != keys or value["schema"] != schema:
+            raise ValueError("exact panel completion receipt required")
+    if owner["packet_sha256"] != packet_sha256:
+        raise ValueError("owner terminal belongs to another packet")
+    if type(owner["utc"]) is not str or not owner["utc"]:
+        raise ValueError("owner terminal timestamp required")
+    if owner["process_status"] != "exited" or process["status"] != "exited":
+        raise ValueError("owner and process must both report exited")
+    for value in (owner, process):
+        if type(value["returncode"]) is not int or value["returncode"] != 0:
+            raise ValueError("successful strict integer returncode required")
+        if value["comparison_validated"] is not False:
+            raise ValueError("execution receipt must not claim scientific acceptance")
+    elapsed = process["elapsed_seconds"]
+    if (type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed < 0
+            or process["error_type"] is not None):
+        raise ValueError("process has invalid timing or recorded an error")
+    if collection["status"] != "complete" or collection["provenance_verified"] is not False:
+        raise ValueError("complete collection process receipt required")
+    for key in ("collected_count", "validated_count"):
+        if type(collection[key]) is not int or collection[key] != 15:
+            raise ValueError("complete fifteen-panel publication required")
+    receipt = collection["receipt"]
+    if (type(receipt) is not dict or set(receipt) != {
+            "schema", "completed_panels", "primary_panels", "secondary_panels",
+            "provenance_verified", "serving_choice_assessed"}
+            or receipt["schema"] != "m9-panel-collection-v1"):
+        raise ValueError("exact panel population receipt required")
+    for key, count in (("completed_panels", 15), ("primary_panels", 3),
+                       ("secondary_panels", 12)):
+        if type(receipt[key]) is not int or receipt[key] != count:
+            raise ValueError("panel receipt population mismatch")
+    if receipt["provenance_verified"] is not False or receipt["serving_choice_assessed"] is not False:
+        raise ValueError("collection receipt must not claim provenance or serving parity")
+
+
+def read_completed_m9_panels(saved_analysis, owner, process, collection, *,
+                             packet_sha256, load_records):
+    """Gate a single deferred record load using authenticated metadata.
+
+    The external wrapper must own the one-pass read and authenticate these
+    metadata objects and the loader's input seals before calling. This is not
+    that wrapper or a source/runtime/seal verifier. No retry is performed.
+    """
+    if not callable(load_records):
+        raise ValueError("explicit sealed-record loader required")
+    validate_panel_completion(owner, process, collection, packet_sha256=packet_sha256)
+    return summarize_m9_panels(saved_analysis, load_records())
+
+
+__all__ = ["summarize_m9_panels", "validate_panel_completion", "read_completed_m9_panels"]

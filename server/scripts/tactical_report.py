@@ -51,6 +51,12 @@ def main() -> None:
     ap.add_argument("--json", help="write per-fixture results here")
     ap.add_argument("--stamp", action="store_true",
                     help="rewrite current_bot in the fixtures file from this run")
+    ap.add_argument("--compare-observations", action="store_true",
+                    help="paired r36-SMV3 vs div+rc+tb+la observation screen")
+    ap.add_argument("--compare-seeds", default="0,1,2",
+                    help="comparison bot seeds (recorded in JSON; default: 0,1,2)")
+    ap.add_argument("--compare-fill-seed", type=int, default=0,
+                    help="comparison public hidden-fill seed (recorded in JSON)")
     args = ap.parse_args()
 
     fixtures = T.load_fixtures(args.fixtures)
@@ -58,6 +64,68 @@ def main() -> None:
         fixtures = [fx for fx in fixtures if fx.id in args.only or fx.category in args.only]
     if not fixtures:
         raise SystemExit("no fixtures selected")
+
+    if args.compare_observations:
+        if not args.ckpt or not args.sha256:
+            raise SystemExit("--compare-observations requires --ckpt and full --sha256")
+        if args.sha256 != T.OBSERVATION_COMPARISON_SHA256:
+            raise SystemExit("comparison requires the pinned r36 SMV3 package SHA256")
+        if not args.json:
+            raise SystemExit("--compare-observations requires --json for comparison metadata")
+        if args.stamp or args.bot or args.from_env or args.only or args.env_override:
+            raise SystemExit("comparison refuses stamp, bot, env, filters, and overrides")
+        if len(fixtures) != 4 or any(fx.category != T.OBSERVATION_CATEGORY or
+                                     fx.current_bot is not None for fx in fixtures):
+            raise SystemExit("comparison requires exactly four unstamped observation fixtures")
+        try:
+            seeds = tuple(int(value) for value in args.compare_seeds.split(",") if value != "")
+        except ValueError as exc:
+            raise SystemExit("--compare-seeds must be comma-separated integers") from exc
+        if not seeds:
+            raise SystemExit("--compare-seeds must not be empty")
+        if len(set(seeds)) != len(seeds):
+            raise SystemExit("--compare-seeds must not contain duplicates")
+        output_path = Path(args.json)
+        try:
+            fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+        except FileExistsError:
+            raise SystemExit(f"comparison output already exists: {args.json}")
+        environs = T.observation_comparison_environs(args.ckpt, args.sha256)
+        names = {}
+        for label, environ in environs.items():
+            names[label], _ = T.bot_from_environ(environ, seed=seeds[0])
+
+        def factory(label):
+            return lambda seed: T.bot_from_environ(environs[label], seed=seed)[1]
+
+        paired = T.run_observation_comparison(
+            factory("r36-smv3"), factory("div+rc+tb+la"), fixtures,
+            seeds=seeds, fill_seed=args.compare_fill_seed)
+        print(f"paired observations: {len(paired)} roots; "
+              f"control={names['r36-smv3']} treatment={names['div+rc+tb+la']}")
+        if args.json:
+            def row(result):
+                return {"status": result.status, "action": result.action,
+                        "detail": result.detail, "error": result.error,
+                        "observation": result.extra.get("observation"),
+                        "ballot_opportunity": result.extra["ballot_opportunity"],
+                        "decision": T.observation_decision_metadata(result)}
+            payload = {
+                "comparison": "r36-smv3-vs-div+rc+tb+la",
+                "checkpoint": args.ckpt, "checkpoint_sha256": args.sha256,
+                "seeds": list(seeds), "fill_seed": args.compare_fill_seed,
+                "changed_flags": list(T.OBSERVATION_COMPARISON_FLAGS),
+                "bots": names,
+                "results": [{"id": item["fixture"], "seed": item["seed"],
+                             "fill_seed": item["fill_seed"],
+                             "control": row(item["control"]),
+                             "treatment": row(item["treatment"])}
+                            for item in paired],
+            }
+            output_path.write_text(json.dumps(payload, indent=1))
+            print(f"wrote {args.json}", file=sys.stderr)
+        return
 
     if args.bot:
         from shengji.ai.registry import make_bot
@@ -98,7 +166,7 @@ def main() -> None:
 
     if args.stamp:
         verdict = {r.fixture.id: ("pass" if r.status == "pass" else "fail")
-                   for r in results if r.status != "ERROR"}
+                   for r in results if r.status in ("pass", "FAIL")}
         path = Path(args.fixtures)
         out = []
         for line in path.read_text().splitlines():

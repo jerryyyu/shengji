@@ -236,7 +236,8 @@ oracle or infer true-person disjointness from mutable display names.
 - A positive point estimate that misses its gate is a clue, not permission.
 - An interval overlap is not a difference test; superiority between two arms needs a
   contrast that clears zero on a common opponent or paired deals.
-- Five windows first, extend to ten only when the point exceeds +0.015; a five-window null is
+- Five windows first, extend to ten only when the point exceeds +0.015 and the interval crosses
+  zero; a five-window null is
   "not large", not "equal". Capped (300 s) and
   uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the

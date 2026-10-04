@@ -148,6 +148,7 @@ jobs:
           uv run python -B -m pytest -q --durations=10
           tests/test_observation_opportunity_integration.py
           tests/test_ballot_selection.py
+          tests/test_observation_summary.py
           tests/test_observation_partial_evidence.py
           tests/test_tactical_public_observations.py
           tests/test_observation_process.py

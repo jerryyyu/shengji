@@ -167,6 +167,25 @@ def test_missing_cached_column_rebuilds_without_changing_results(store_dir, tmp_
     _same(first, third)
 
 
+@pytest.mark.parametrize("extra", ["history_offsets", "history_cards", "history_meta"])
+def test_history_false_with_history_payload_rebuilds(store_dir, tmp_path, extra):
+    shard_keys = _shard_keys(store_dir)
+    cache = tmp_path / "cache"
+    first, _ = _run(shard_keys, cache, history=False)
+    path = sorted((cache / "candidate-pass").glob("*.npz"))[0]
+    with np.load(path, allow_pickle=False) as npz:
+        arrays = {name: npz[name] for name in npz.files}
+    assert json.loads(str(arrays["meta"]))["history"] is False
+    arrays[extra] = np.zeros(1, dtype=np.int64)
+    np.savez_compressed(path, **arrays)
+    second, _ = _run(shard_keys, cache, history=False)
+    assert second["cached_shards"] == len(shard_keys) - 1
+    _same(first, second)
+    third, _ = _run(shard_keys, cache, history=False)
+    assert third["cached_shards"] == len(shard_keys)
+    _same(first, third)
+
+
 def test_the_pool_path_pairs_each_result_with_its_own_file(store_dir, tmp_path, monkeypatch):
     """With several workers the pool completes in any order; every file must
     hold the shard its name says, and the rows must come out in task order,

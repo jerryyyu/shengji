@@ -906,9 +906,30 @@
    "point": 0.017878,
    "lo": -0.002376,
    "hi": 0.038132,
-   "takeaway": "Inconclusive, but the point clears the +0.015 line: a predeclared ten-window confirmation on fresh seeds is next. Not promoted.",
-   "note": "SEALED 10-03; dispatch #436 issuecomment-5972698852; readout (Codex, one pass) issuecomment-5973885417. Paired +0.017878 [-0.002376,+0.038132], SE 0.010334, MDE80 0.028951, I2 0%; INCONCLUSIVE (interval spans zero). Point exceeds the +0.015 proposal threshold: fresh ten-window confirmation proposed, judged alone, not pooled with this read. Window deltas +0.0221, +0.0404, +0.0250, +0.0087, -0.0058. Activation: tree ran on 83,240 of 181,564 candidate plays (45.85%), overrode the one-ply choice on 5,715 (3.15%), blocked override on 17,485 (9.63%); skips 72,800 single-candidate and 25,524 last-seat. Latency: median window p50 0.1308 s vs 0.1041 s for release 38; zero decision timeouts. Health: 727,044 expected play calls all recorded, no PV fallback; MC-LCB internal receipts unclassified. Earlier PUCT attempt (P1) read -0.417 vs the release-36 package. Reader sha256 abdeb234c1ebaa3658274570d2afc4af6c334ae21887fd33f660ec3fa4de65d5; result sha256 56cdccf5fb9c0dc9a9c1465a603f9811ec9269f51ee2dba807a4a206fb6f1c74. Archived ~/shengji-archive/2026-09-13/readouts/v46tree-tree-on-r38/.",
+   "takeaway": "Inconclusive first read (+0.018); the predeclared ten-window confirmation (v47tree) did not confirm it. Not promoted.",
+   "note": "SEALED 10-03; dispatch #436 issuecomment-5972698852; readout (Codex, one pass) issuecomment-5973885417. Paired +0.017878 [-0.002376,+0.038132], SE 0.010334, MDE80 0.028951, I2 0%; INCONCLUSIVE (interval spans zero). Point exceeds the +0.015 proposal threshold: fresh ten-window confirmation proposed, judged alone, not pooled with this read. Window deltas +0.0221, +0.0404, +0.0250, +0.0087, -0.0058. Activation: tree ran on 83,240 of 181,564 candidate plays (45.85%), overrode the one-ply choice on 5,715 (3.15%), blocked override on 17,485 (9.63%); skips 72,800 single-candidate and 25,524 last-seat. Latency: median window p50 0.1308 s vs 0.1041 s for release 38; zero decision timeouts. Health: 727,044 expected play calls all recorded, no PV fallback; MC-LCB internal receipts unclassified. Earlier PUCT attempt (P1) read -0.417 vs the release-36 package. Reader sha256 abdeb234c1ebaa3658274570d2afc4af6c334ae21887fd33f660ec3fa4de65d5; result sha256 56cdccf5fb9c0dc9a9c1465a603f9811ec9269f51ee2dba807a4a206fb6f1c74. Archived ~/shengji-archive/2026-09-13/readouts/v46tree-tree-on-r38/. UPDATE 2026-10-04: the fresh ten-window confirmation v47tree read +0.002585 [-0.011611,+0.016782], inconclusive; this first read is not confirmed.",
    "ref": "https://github.com/jerryyyu/shengji/issues/436#issuecomment-5973885417"
+  },
+  {
+   "id": "v47tree",
+   "date": "2026-10-04",
+   "status": "sealed",
+   "box": "Perf + cloud",
+   "title": "PUCT lookahead tree: ten-window confirmation",
+   "candidate": "CONFIRMATION of v46tree, unchanged candidate: release 38 as served plus the paired lookahead tree (#704: 64 simulations, trick continuation, override only with at least two visits and a two-standard-error advantage; name token -ts64-tz2); vs release 38 as served. Predeclared single read, judged alone, not pooled with v46tree.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten fresh 520-cluster mirrored windows (5,200 paired clusters), five per host, each arm vs the common MC-LCB control per window (not head-to-head); paired read pooled over all ten windows; confirmatory",
+   "seeds": "48060910 48160910 48260910 48360910 48460910 (Perf); 48560910 48660910 48760910 48860910 48960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.002585,
+   "lo": -0.011611,
+   "hi": 0.016782,
+   "takeaway": "Inconclusive: the fresh ten windows do not confirm v46tree's +0.018. The tree is not promoted and its scaling variants are parked.",
+   "note": "SEALED 10-04; predeclared #436 issuecomment-5974202850; dispatch issuecomment-5974271146; readout (Codex, one pass) issuecomment-5975340893. Paired +0.002585 [-0.011611,+0.016782], SE 0.007243, MDE80 0.020292; INCONCLUSIVE (interval spans zero): not a confirmed gain, not equivalence, not a negative result. Activation matches v46tree: tree applied on 165,671 of 361,752 decisions (45.80%), changed the action on 11,285 (3.12%), blocked override on 34,574 (9.56%). Latency: window-median p50 0.1287 s vs 0.1027 s for release 38 (+25.3%); zero decision timeouts. Descriptive own-arm levels vs MC-LCB: tree 0.2289 [0.2067,0.2510], release 38 0.2267 [0.2051,0.2483] (their difference is not the paired primary). Health/provenance/coverage PASS on all twenty arms; no fallbacks or tree errors. Reader sha256 fa13f1ad9e5685e4d9966123755bbfcc41464135fc3bf5be478f4a03f2adb011; result sha256 8fda8be0d638fd537be820e76bdfb361f638940c73eea435b91274f102ddad8b. Archived ~/shengji-archive/2026-09-13/readouts/v47tree-tree-confirm-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/436#issuecomment-5975340893"
   }
  ],
  "context_screens": [

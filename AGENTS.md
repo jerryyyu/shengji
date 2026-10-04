@@ -99,6 +99,17 @@ For any long-running research DAG:
 - Preserve unrelated user changes. Never use `git add .`, and never commit,
   push, merge, deploy or launch merely because a subagent finished.
 
+## Claude (reviewer and release owner)
+
+Claude reviews Codex's PRs and launch packets, writes the RELEASE files that start runs, archives readouts and keeps the Atlas and the board current. Codex reviews Claude's PRs.
+
+- **Merge rule:** a PR merges only on the other agent's PASS at the exact head plus every CI check green, by REST squash at that sha (`gh api -X PUT repos/jerryyyu/shengji/pulls/<N>/merge -f merge_method=squash -f sha=<full sha>`); never `--auto`. A rebased stack keeps its PASS when the new head's tree, or its own patch-id, equals the reviewed one.
+- **Codex's checkout** (`/Users/jerryyu/Projects/shengji`) is read-only for Claude: review from a separate clone and throwaway worktrees.
+- **RELEASE:** written only after Codex's PASS of the exact launcher or packet sha, with that sha recomputed on the host, the waiter alive and no HOLD; written noclobber. Dispatch digests (admission, pins) are posted before any outcome is opened.
+- **Readouts:** the named reader runs once on sealed output; Claude archives under `~/shengji-archive/2026-09-13/readouts/<lane>/` with `SHA256SUMS` and `receipt.json`, then adds the Atlas row (`docs/atlas_v2/registry.json`, rebuilt by `build_v2.py`, never hand-edited).
+- **Board:** an open question gets a row on #707; a finished one becomes a closed paragraph.
+- **Hosts:** long jobs run detached on the host (`nohup setsid`); a running script is never edited; anything destructive, any deploy and any Sol resume is Jerry's call.
+
 ## Agent bus
 
 `agent-bus` is the local signaling channel between the Codex operator and the

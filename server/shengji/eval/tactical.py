@@ -581,16 +581,49 @@ def _observation_result(rnd: Round, fx: Fixture, action: list[str],
                       seconds=seconds, error="observation")
 
 
-def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
+def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0,
+                ledger_mode: str | None = None) -> Result:
     """Run ``bot.decide_play`` on the fixture's public root and judge the action.
 
     The bot's own sampled worlds are captured by shadowing ``_worlds`` on the
     instance for the duration of the call -- purely observing, the sampler's
-    stream and the decision are what they would be without the capture."""
-    try:
-        rnd = public_round(fx, fill_seed)
-    except TacticalError as exc:
-        return Result(fx, None, False, str(exc), error="rebuild")
+    stream and the decision are what they would be without the capture.
+
+    An explicit ``ledger_mode`` is a bounded diagnostic reconstruction.  It is
+    deliberately opt-in so the default fixture path retains its existing
+    public root and result serialization.
+    """
+    refusal_receipt = None
+    original_ledger = None
+    replacement_ledger = None
+    if ledger_mode is None:
+        try:
+            rnd = public_round(fx, fill_seed)
+        except TacticalError as exc:
+            return Result(fx, None, False, str(exc), error="rebuild")
+    else:
+        # Keep this import lazy: public_refusal_history imports tactical for
+        # the shared replay helpers, so importing it at module load time cycles.
+        try:
+            from ..ai.refusal import RefusalLedger
+            original_ledger = getattr(bot, "_refusals", None)
+            if not isinstance(original_ledger, RefusalLedger):
+                raise ValueError("bot does not provide a RefusalLedger")
+            from .public_refusal_history import public_root_with_ledger
+            rnd, replacement_ledger, refusal_receipt = public_root_with_ledger(
+                fx, mode=ledger_mode, fill_seed=fill_seed)
+            if not isinstance(replacement_ledger, RefusalLedger):
+                raise ValueError("public root did not provide a RefusalLedger")
+            if not isinstance(refusal_receipt, dict):
+                raise ValueError("public root did not provide a ledger receipt")
+        except Exception as exc:
+            return Result(fx, None, False, f"{type(exc).__name__}: {exc}", error="rebuild")
+
+    def _result(result: Result) -> Result:
+        if refusal_receipt is not None:
+            result.extra["refusal_ledger"] = refusal_receipt
+        return result
+
     captured: dict[str, Any] = {}
     original = getattr(type(bot), "_worlds", None)
     # Observation fixtures must not retain or inspect sampled opponent worlds.
@@ -601,13 +634,27 @@ def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
             captured["worlds"] = worlds
             return worlds, attempts
         bot._worlds = _worlds
+    ledger_installed = False
+    if replacement_ledger is not None:
+        try:
+            bot._refusals = replacement_ledger
+            ledger_installed = True
+        except Exception as exc:
+            if original is not None and capture_worlds:
+                try:
+                    del bot._worlds
+                except AttributeError:
+                    pass
+            return Result(fx, None, False, f"{type(exc).__name__}: {exc}", error="rebuild")
     started = time.perf_counter()
     try:
         action = list(bot.decide_play(copy.deepcopy(rnd), fx.seat))
     except Exception as exc:  # the report must list the failure, not abort the set
-        return Result(fx, None, False, f"{type(exc).__name__}: {exc}", error="decide_play",
-                      seconds=time.perf_counter() - started)
+        return _result(Result(fx, None, False, f"{type(exc).__name__}: {exc}",
+                              error="decide_play", seconds=time.perf_counter() - started))
     finally:
+        if ledger_installed:
+            bot._refusals = original_ledger
         if original is not None and capture_worlds:
             try:
                 del bot._worlds
@@ -616,30 +663,34 @@ def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0) -> Result:
     seconds = time.perf_counter() - started
     record = getattr(bot, "last_decision_record", None)
     if fx.category == OBSERVATION_CATEGORY:
-        return _observation_result(rnd, fx, action, record, seconds)
+        return _result(_observation_result(rnd, fx, action, record, seconds))
     ctx = Context(rnd=rnd, seat=fx.seat, action=action, record=record,
                   worlds=list(captured.get("worlds") or []), fixture=fx)
     try:
         ok, detail = PREDICATES[fx.predicate](ctx, **fx.args)
     except Exception as exc:
-        return Result(fx, action, False, f"{type(exc).__name__}: {exc}", record=record,
-                      seconds=seconds, error="predicate")
+        return _result(Result(fx, action, False, f"{type(exc).__name__}: {exc}",
+                              record=record, seconds=seconds, error="predicate"))
     extra = {}
     if record and record.get("work_complete") is True:
         means = record.get("value_means") or []
         extra["value_spread"] = (max(means) - min(means)) if means else None
     elif record:
         extra["fallback"] = record.get("reason")
-    return Result(fx, action, ok, detail, record=record, seconds=seconds, extra=extra)
+    return _result(Result(fx, action, ok, detail, record=record, seconds=seconds, extra=extra))
 
 
 def run_set(make_bot: Callable[[], Any], fixtures: Sequence[Fixture], *, fill_seed: int = 0,
+            ledger_mode: str | None = None,
             progress: Callable[[Result], None] | None = None) -> list[Result]:
     """One FRESH bot per fixture (``make_bot()``), so every verdict is a function
     of the fixture and the bot's seed alone, never of the order of the set."""
     out = []
     for fx in fixtures:
-        res = run_fixture(make_bot(), fx, fill_seed=fill_seed)
+        kwargs = {"fill_seed": fill_seed}
+        if ledger_mode is not None:
+            kwargs["ledger_mode"] = ledger_mode
+        res = run_fixture(make_bot(), fx, **kwargs)
         out.append(res)
         if progress is not None:
             progress(res)

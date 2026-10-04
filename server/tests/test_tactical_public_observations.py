@@ -68,6 +68,88 @@ class RecordedAction:
         return self.action
 
 
+@pytest.mark.parametrize("mode,expected", [("fresh-root", 0), ("history-primed", 1)])
+@pytest.mark.parametrize("raises", [False, True])
+def test_fixture_explicit_ledger_reaches_decision_and_restores_bot(cases, mode, expected, raises):
+    from shengji.ai.refusal import RefusalLedger
+
+    fx = next(f for f in cases if f.id == "pvr8-c1-m0-p23-pair-preservation")
+    class LedgerProbe(RecordedAction):
+        def decide_play(self, rnd, seat):
+            assert len(self._refusals.observe(rnd)) == expected
+            if raises:
+                raise RuntimeError("decision witness")
+            return super().decide_play(rnd, seat)
+    bot = LedgerProbe(fx)
+    original = bot._refusals = RefusalLedger()
+    result = T.run_fixture(bot, fx, ledger_mode=mode)
+    assert bot._refusals is original
+    assert (result.error == "decide_play") is raises
+    if raises:
+        assert result.detail == "RuntimeError: decision witness"
+    receipt = result.extra["refusal_ledger"]
+    assert receipt["mode"] == mode
+    assert len(receipt["retained_refusals"]) == expected
+    assert receipt["live_rng_state_reconstructed"] is False
+    assert receipt["provenance_verified"] is False
+
+
+def test_fixture_ledger_rejects_unsupported_bot_and_invalid_mode(cases):
+    for mode in ("history-primed", "invalid"):
+        result = T.run_fixture(RecordedAction(cases[0]), cases[0], ledger_mode=mode)
+        assert result.error == "rebuild"
+        assert result.action is None
+
+
+@pytest.mark.parametrize("args", [[], ["--json", "unused", "--stamp"],
+                                   ["--json", "unused", "--compare-observations"]])
+def test_ledger_cli_refuses_ambiguous_modes_before_loading(monkeypatch, args):
+    from scripts import tactical_report
+    monkeypatch.setattr(T, "load_fixtures", lambda *a: pytest.fail("must refuse before loading"))
+    monkeypatch.setattr("sys.argv", ["tactical_report", "--from-env",
+                                    "--ledger-mode", "history-primed", *args])
+    with pytest.raises(SystemExit, match="--ledger-mode requires"):
+        tactical_report.main()
+
+
+def test_run_set_explicit_ledger_mode_is_forwarded(cases, monkeypatch):
+    calls = []
+    def run(bot, fx, **kwargs):
+        calls.append(kwargs)
+        return T.Result(fx, None, None, "test")
+    monkeypatch.setattr(T, "run_fixture", run)
+    T.run_set(lambda: object(), cases[:2], ledger_mode="history-primed")
+    assert calls == [{"fill_seed": 0, "ledger_mode": "history-primed"}] * 2
+
+
+def test_ledger_cli_serializes_mode_and_history_receipt(cases, monkeypatch, tmp_path):
+    from scripts import tactical_report
+    from shengji.ai.refusal import RefusalLedger
+    fx = next(f for f in cases if f.id == "pvr8-c1-m0-p23-pair-preservation")
+    fixture_path, output = tmp_path / "cases.jsonl", tmp_path / "report.json"
+    fixture_path.write_text(json.dumps(fx.to_json()) + "\n")
+    def make(*a, **k):
+        bot = RecordedAction(fx)
+        bot._refusals = RefusalLedger()
+        return "recorded-test-double", bot
+    monkeypatch.setattr(T, "bot_from_environ", make)
+    monkeypatch.setattr("sys.argv", ["tactical_report", "--from-env", "--fixtures",
+                                    str(fixture_path), "--json", str(output),
+                                    "--ledger-mode", "history-primed"])
+    tactical_report.main()
+    payload = json.loads(output.read_text())
+    assert payload["ledger_mode"] == "history-primed"
+    row = payload["results"][0]
+    assert row["status"] == "observed"
+    assert row["refusal_ledger"]["mode"] == "history-primed"
+    assert len(row["refusal_ledger"]["retained_refusals"]) == 1
+    before = output.read_bytes()
+    monkeypatch.setattr(T, "bot_from_environ", lambda *a, **k: pytest.fail("no rerun"))
+    with pytest.raises(SystemExit, match="output already exists"):
+        tactical_report.main()
+    assert output.read_bytes() == before
+
+
 def test_source_scope_and_public_information(cases):
     assert len(cases) == 4
     assert len({fx.source["source_ref"] for fx in cases}) == 4

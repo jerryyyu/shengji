@@ -123,12 +123,17 @@ def _prepare_imports(engine: str) -> tuple[ModuleType, ModuleType]:
 
 def _arguments(argv: list[str] | None) -> tuple[str, list[str]]:
     parser = argparse.ArgumentParser(
-        description="run pytest using this checkout's source tree"
+        description="run pytest using this checkout's source tree",
+        allow_abbrev=False,
     )
     parser.add_argument("--engine", choices=("pure", "compiled"), required=True)
-    parsed, pytest_args = parser.parse_known_args(argv)
-    if pytest_args[:1] == ["--"]:
-        del pytest_args[0]
+    words = list(sys.argv[1:] if argv is None else argv)
+    if "--" in words:
+        boundary = words.index("--")
+        prefix, pytest_args = words[:boundary], words[boundary + 1:]
+    else:
+        prefix, pytest_args = words, []
+    parsed = parser.parse_args(prefix)
     return parsed.engine, pytest_args
 
 

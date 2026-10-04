@@ -133,3 +133,21 @@ def test_engine_is_required(tmp_path):
 
     assert result.returncode != 0
     assert "--engine" in result.stderr
+
+
+@pytest.mark.parametrize("args", [
+    ["--engine", "pure", "tests/x.py", "--", "-q"],
+    ["--engine", "pure", "-q", "--", "tests/x.py"],
+    ["--eng", "pure", "--", "tests/x.py"],
+    ["--engine", "pure", "tests/x.py"],
+])
+def test_only_wrapper_options_are_allowed_before_separator(tmp_path, args):
+    result = _run(tmp_path, *args)
+    assert result.returncode == 2
+    assert "fake pytest" not in result.stdout
+
+
+def test_suffix_is_forwarded_exactly_after_first_separator(tmp_path):
+    result = _run(tmp_path, "--engine", "pure", "--", "-q", "--", "tests/x.py")
+    assert result.returncode == 0, result.stderr
+    assert "fake pytest args: ['-q', '--', 'tests/x.py']" in result.stdout

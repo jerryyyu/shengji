@@ -27,7 +27,7 @@ from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
 from shengji.luna.benchmark_games import play_mirror
 from shengji.luna.benchmark_recipes import PreparedRecipe
-from shengji.luna.benchmark_transport import BenchmarkTransport
+from shengji.luna.benchmark_transport import BenchmarkTransport, CAPACITY_RETRY_DELAYS
 from shengji.luna.canonical import canonical_json_bytes
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
 from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
@@ -667,6 +667,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   prepared_roots_from: str | os.PathLike | None = None,
                   prepared_roots_sha256: str | None = None,
                   prepared_recipe: PreparedRecipe | None = None,
+                  capacity_retries: bool = False,
+                  accept_recovered_reconnects: bool = False,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -675,6 +677,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   recipe_reader=bury_env_recipe,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
+    for name, value in (("capacity_retries", capacity_retries),
+                        ("accept_recovered_reconnects", accept_recovered_reconnects)):
+        if type(value) is not bool:
+            raise BenchmarkRefusal(f"{name} must be boolean")
     if run and (type(token_limit) is not int or token_limit <= 0):
         raise BenchmarkRefusal("--run requires a positive --soft-token-limit")
     if continue_from is not None and prepared_roots_from is not None:
@@ -699,6 +705,9 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     else:
         checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
+    if (capacity_retries or accept_recovered_reconnects) and (
+            prepared_recipe is None or models != ("sol",)):
+        raise BenchmarkRefusal("recovery controls require the explicit Sol prepared-recipe path")
     information = tuple(information)
     seeds = parse_seeds([str(seed) for seed in seeds])
     if any(model not in MODEL_NAMES for model in models):
@@ -748,6 +757,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
             "root_hashes": prepared_roots["root_hashes"],
             "source_config": prepared_roots["source_config"],
         }
+    if capacity_retries:
+        config["provider_capacity_retry_delays"] = list(CAPACITY_RETRY_DELAYS)
+    if accept_recovered_reconnects:
+        config["accept_recovered_reconnects"] = True
     if not run:
         result = {"schema": SCHEMA, "mode": "dry-run", "config": config,
                 "planned_arms": [f"{model}-{mode}" for model in models for mode in information],
@@ -873,11 +886,17 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
 
                             def planner_factory(seat, *, _model=model, _evidence=evidence):
                                 budget.check("planner construction")
+                                recovery_options = {}
+                                if capacity_retries:
+                                    recovery_options["capacity_retry_delays"] = CAPACITY_RETRY_DELAYS
+                                if accept_recovered_reconnects:
+                                    recovery_options["accept_recovered_reconnects"] = True
                                 transport = transport_factory(
                                     evidence_root=_evidence / f"seat-{seat}",
                                     model=MODEL_NAMES[_model], codex_binary=codex_binary,
                                     timeout_seconds=timeout_seconds,
-                                    deadline_provider=lambda: budget.deadline_ns)
+                                    deadline_provider=lambda: budget.deadline_ns,
+                                    **recovery_options)
                                 transports.append(transport)
                                 return _BudgetedPlanner(transport, budget)
 

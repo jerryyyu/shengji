@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,10 @@ from shengji.train.cwv_bury_policy import CWVBuryConfig, bury_env_recipe
 SCHEMA = "w32-llm-benchmark-v1"
 MODEL_NAMES = {"sol": "gpt-5.6-sol", "luna": "gpt-5.6-luna"}
 INFORMATION_MODES = ("actor-only", "perfect")
+PANEL_POLICIES = ("smv3-pv", "soft-pv", "js-m1-shortlist", "m1-prior",
+                  "w32-original", "mc-lcb", "mc-strong", "mc", "smart")
+ROOT_SOURCE_SCHEMA = "w32-llm-panel-roots-v1"
+ROOT_SOURCE_SETUP_SCHEMA = "w32-llm-panel-root-setup-v1"
 
 
 class BenchmarkRefusal(ValueError):
@@ -84,6 +89,35 @@ def parse_seeds(values: Sequence[str] | str) -> tuple[int, ...]:
     if len(set(seeds)) != len(seeds):
         raise BenchmarkRefusal("seeds must be unique")
     return seeds
+
+
+def _callable_source_identity(value: object) -> dict[str, object]:
+    """Identify the exact local source used to make a common root."""
+    source = inspect.getsourcefile(value)
+    if source is None:
+        raise BenchmarkRefusal("panel root setup source is unavailable")
+    path = Path(source).resolve()
+    if not path.is_file() or path.is_symlink():
+        raise BenchmarkRefusal("panel root setup source is not a regular file")
+    return {"module": getattr(value, "__module__", None),
+            "qualname": getattr(value, "__qualname__", None),
+            "path": str(path), "sha256": _sha_bytes(path.read_bytes())}
+
+
+def _panel_setup_identity() -> dict[str, object]:
+    """Return the allowlisted SmartBot/current-engine root setup identity."""
+    from shengji.ai.env import prepare_round
+    from shengji.ai.smart import SmartBot
+
+    return {
+        "schema": ROOT_SOURCE_SETUP_SCHEMA,
+        "seats": 4,
+        "policy": "SmartBot",
+        "engine": _callable_source_identity(Game),
+        "prepare_round": _callable_source_identity(prepare_round),
+        "smartbot": _callable_source_identity(SmartBot),
+        "snapshot": _callable_source_identity(_root_snapshot),
+    }
 
 
 def _checkpoint_identity(path: str | os.PathLike) -> dict[str, str]:

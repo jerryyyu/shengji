@@ -250,11 +250,14 @@ def beats(challenger: list[str], lead: list[str], incumbent_suit: str,
     eff = uniform_suit(challenger, ordering)
     if eff is None:
         return False, 0
-    lead_dec = decompose(lead, ordering)
-    ch_dec = decompose_matching(challenger, ordering, lead_dec.shape())
-    if ch_dec is None:
-        return False, 0
-    top = ch_dec.top_level()
+    if len(challenger) == 1 and len(lead) == 1:
+        top = ordering.level(challenger[0])
+    else:
+        lead_dec = decompose(lead, ordering)
+        ch_dec = decompose_matching(challenger, ordering, lead_dec.shape())
+        if ch_dec is None:
+            return False, 0
+        top = ch_dec.top_level()
     if eff == incumbent_suit:
         return top > incumbent_top, top
     if eff == TRUMP:

@@ -26,6 +26,7 @@ from shengji.engine.cards import RANKS
 from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
 from shengji.luna.benchmark_games import play_mirror
+from shengji.luna.benchmark_recipes import PreparedRecipe
 from shengji.luna.benchmark_transport import BenchmarkTransport
 from shengji.luna.canonical import canonical_json_bytes
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
@@ -658,11 +659,14 @@ def _restore_game(root: Mapping[str, object], seed: int, game_factory: Callable[
     return game
 
 
-def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
+def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathLike,
                   seeds: Sequence[int], models: Sequence[str] = ("sol", "luna"),
                   information: Sequence[str] = INFORMATION_MODES,
                   wall_seconds: float = 1800.0, token_limit: int | None = None,
                   continue_from: str | os.PathLike | None = None,
+                  prepared_roots_from: str | os.PathLike | None = None,
+                  prepared_roots_sha256: str | None = None,
+                  prepared_recipe: PreparedRecipe | None = None,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -673,7 +677,27 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     """Validate, optionally execute, and return the sealed benchmark report."""
     if run and (type(token_limit) is not int or token_limit <= 0):
         raise BenchmarkRefusal("--run requires a positive --soft-token-limit")
-    checkpoint_id = _checkpoint_identity(checkpoint)
+    if continue_from is not None and prepared_roots_from is not None:
+        raise BenchmarkRefusal("continuation and prepared roots are mutually exclusive")
+    if prepared_roots_sha256 is not None and prepared_roots_from is None:
+        raise BenchmarkRefusal("root-source SHA256 requires prepared roots")
+    if prepared_recipe is not None:
+        if type(prepared_recipe) is not PreparedRecipe:
+            raise BenchmarkRefusal("prepared_recipe must be an explicit PreparedRecipe")
+        if prepared_roots_from is None or continue_from is not None:
+            raise BenchmarkRefusal("panel recipes require root-only import, not continuation")
+        if baseline_factory is not None:
+            raise BenchmarkRefusal("prepared recipe cannot be combined with a baseline override")
+        if (type(prepared_roots_sha256) is not str or len(prepared_roots_sha256) != 64
+                or any(c not in "0123456789abcdef" for c in prepared_roots_sha256)):
+            raise BenchmarkRefusal("panel requires a pinned root-source report SHA256")
+        identity = prepared_recipe.identity
+        if checkpoint != identity.get("checkpoint"):
+            raise BenchmarkRefusal("checkpoint disagrees with the prepared recipe")
+        checkpoint_id = ({"path": identity["checkpoint"], "sha256": identity["sha256"]}
+                         if "checkpoint" in identity else None)
+    else:
+        checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
     information = tuple(information)
     seeds = parse_seeds([str(seed) for seed in seeds])
@@ -686,19 +710,27 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
     output_path = Path(output).expanduser().resolve()
     if output_path.exists() or output_path.is_symlink():
         raise BenchmarkRefusal("output must be a fresh path")
-    baseline_name, baseline_recipe = _registered_baseline(
-        checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
+    if prepared_recipe is not None:
+        baseline_name, baseline_recipe = prepared_recipe.policy, prepared_recipe.identity
+    else:
+        baseline_name, baseline_recipe = _registered_baseline(
+            checkpoint_id["path"], register=register_fn, recipe_reader=recipe_reader)
     if policy != baseline_name:
         raise BenchmarkRefusal(
             f"requested policy {policy!r} is not the registered baseline {baseline_name!r}")
     source = _source_identity()
     continuation = None
+    prepared_roots = None
     if continue_from is not None:
         if not run:
             raise BenchmarkRefusal("--continue-from requires --run")
         continuation = _load_continuation(
             continue_from, seeds=seeds, checkpoint=checkpoint_id, policy=policy,
             baseline_recipe=baseline_recipe, models=models, information=information)
+    if prepared_roots_from is not None:
+        prepared_roots = _load_prepared_roots(
+            prepared_roots_from, seeds=seeds, game_factory=game_factory,
+            expected_result_sha256=prepared_roots_sha256)
     config = {"schema": SCHEMA, "checkpoint": checkpoint_id, "policy": policy,
               "seeds": list(seeds), "models": list(models),
               "information": list(information), "wall_seconds": wall_seconds,
@@ -710,10 +742,23 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
             "path": continuation["path"],
             "result_sha256": continuation["result_sha256"],
         }
+    if prepared_roots is not None:
+        config["prepared_roots_from"] = {
+            "path": prepared_roots["path"], "result_sha256": prepared_roots["result_sha256"],
+            "root_hashes": prepared_roots["root_hashes"],
+            "source_config": prepared_roots["source_config"],
+        }
     if not run:
-        return {"schema": SCHEMA, "mode": "dry-run", "config": config,
+        result = {"schema": SCHEMA, "mode": "dry-run", "config": config,
                 "planned_arms": [f"{model}-{mode}" for model in models for mode in information],
                 "planned_mirrors": len(seeds) * 2 * len(models) * len(information)}
+        if prepared_roots is not None:
+            result["prepared_roots"] = {
+                "source": prepared_roots["path"],
+                "result_sha256": prepared_roots["result_sha256"],
+                "root_hashes": prepared_roots["root_hashes"],
+            }
+        return result
 
     try:
         output_path.mkdir(mode=0o700, parents=False, exist_ok=False)
@@ -721,7 +766,10 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
         raise BenchmarkRefusal("output must be a fresh path") from exc
     _publish(output_path / "config.json", config)
     budget = _Budget(float(wall_seconds), token_limit)
-    baseline_fn = baseline_factory or (lambda seat, seed: bot_factory(policy, seed=seed + seat))
+    if prepared_recipe is not None:
+        baseline_fn = lambda seat, seed: prepared_recipe.factory(seed=seed + seat)
+    else:
+        baseline_fn = baseline_factory or (lambda seat, seed: bot_factory(policy, seed=seed + seat))
     roots: dict[int, object] = {}
     root_hashes: dict[int, str] = {}
     setup_failures: dict[int, str] = {}
@@ -748,6 +796,20 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                 _publish(output_path / f"setup-{seed}.error.json",
                          {"schema": "w32-llm-benchmark-setup-error-v1", "seed": seed,
                           "error": error})
+    elif prepared_roots is not None:
+        for seed in seeds:
+            root = prepared_roots["roots"][seed]
+            roots[seed] = prepared_roots["games"][seed]
+            root_hashes[seed] = prepared_roots["root_hashes"][str(seed)]
+            _publish(output_path / f"root-{seed}.json",
+                     {key: value for key, value in root.items() if key != "_source_bytes_sha256"})
+            _publish(output_path / f"setup-{seed}.json", {
+                "schema": "w32-llm-benchmark-imported-setup-v1", "seed": seed,
+                "policy": policy, "root_sha256": root_hashes[seed],
+                "source": prepared_roots["path"],
+                "source_result_sha256": prepared_roots["result_sha256"],
+                "source_root_sha256": root_hashes[seed],
+            })
     else:
         for index, seed in enumerate(seeds):
             game = game_factory(random.Random(seed))
@@ -876,6 +938,12 @@ def run_benchmark(*, checkpoint: str, policy: str, output: str | os.PathLike,
                          "wall_seconds": time.monotonic() - budget.started},
               "prior": prior_meta,
               "setup_failures": setup_failures}
+    if prepared_roots is not None:
+        report["prepared_roots"] = {
+            "source": prepared_roots["path"],
+            "result_sha256": prepared_roots["result_sha256"],
+            "root_hashes": prepared_roots["root_hashes"],
+        }
     _publish(output_path / "result.json", report)
     return report
 

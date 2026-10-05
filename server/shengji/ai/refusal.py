@@ -49,6 +49,15 @@ once per trick does NOT guarantee seeing every refusal, including one's own
 failed throw. `RefusalLedger` retains only the notices that its bot instance
 observes. Screen bots are per-seat; the server shares a room bot across its
 bot-controlled seats and deep-copies that bot with each turn snapshot.
+
+The event-complete arm (#707 S8, ``SHENGJI_PV_REFUSAL_EVENT_COMPLETE``) closes
+that gap outside this module: the table's round driver calls the bot's
+`observe_public` after EVERY committed play (`api.server._observe_committed_play`
+on the committed room bot; `ai.env.observe_committed_play` on every seat's
+bot), and a notice can only be replaced by a later commit, so the ledger sees
+each one.  `RefusalLedger.observe` is idempotent for a notice it already holds
+(`Refusal` is a frozen dataclass compared by value), so the decision-time read
+and the post-commit read never double-count.
 """
 from __future__ import annotations
 

@@ -23,6 +23,7 @@ from collections import Counter
 import numpy as np
 
 from ..ai.cwv_policy import shared_evaluator
+from ..ai.env import observe_committed_play
 from ..engine.cards import RANKS, points as card_points
 from ..oracle.screen import work_counters
 from ..rl.value_afterstate import signed_level_category, category_signed_level
@@ -212,6 +213,9 @@ def run_cluster(config, cluster):
             attempted = bots[seat].decide_play(rnd, seat)
             rnd.play(seat, attempted)
             transcript.append({"seat": seat, "attempted": list(attempted)})
+            # #707 S8: every seat's bot reads the public notice after the
+            # committed play (a no-op for every bot but the event-complete arm)
+            observe_committed_play(rnd, bots)
         points = rnd.attacker_points
         record = {"arm": arm, "state": row, "bury": bury_record,
                   "banker_won": int(points < 80), "attacker_points": points,

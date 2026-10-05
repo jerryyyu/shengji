@@ -61,10 +61,28 @@ describe("short landscape table layout", () => {
     expect(trick.width).toBe("calc(var(--trick-half) * 2)");
   });
 
-  it("keeps the turn pill and action buttons beside the trick box", () => {
-    const cluster = rule(block, ".you-tagline, .action-bar");
+  it("keeps the turn pill and action buttons beside the trick box in play only", () => {
+    const cluster = rule(block, ".phase-play .you-tagline, .phase-play .action-bar");
     expect(cluster["align-self"]).toBe("flex-end");
     expect(cluster["max-width"]).toBe("calc(50% - var(--trick-half) - 16px)");
+    // Unscoped, the side column also squeezed the declare buttons into a tall
+    // stack over the HUD and the right seat (Codex HOLD on #829).
+    expect(rule(block, ".you-tagline, .action-bar")).toEqual({});
+    expect(rule(block, ".action-bar")["max-width"]).toBeUndefined();
+    expect(rule(block, ".action-bar")["align-self"]).toBeUndefined();
+  });
+
+  it("gives deal, declare and bury one full-width row above the hand", () => {
+    const setup = (sel: string) => ["deal", "declare", "bury"].map((p) => `.phase-${p} ${sel}`).join(", ");
+    const bar = rule(block, setup(".action-bar"));
+    expect(bar["flex-wrap"]).toBe("nowrap"); // never grows up into the table
+    expect(bar["overflow-x"]).toBe("auto");  // many declare options scroll sideways
+    expect(bar["max-width"]).toBe("100%");
+    expect(rule(block, setup(".trick-area")).bottom).toBe("calc(var(--hand-h) + var(--setup-bar-h))");
+    // the bar row: 44px buttons, 3px padding above and below, the 4px gap
+    expect(px(vars["--setup-bar-h"])).toBeGreaterThanOrEqual(44 + 3 * 2 + 4);
+    // the banker's pill stands above the Bury row
+    expect(rule(block, ".phase-bury .trick-area").bottom).toBe("calc(var(--hand-h) + var(--setup-bar-h) + 26px)");
   });
 
   it("floats the failed-throw notice instead of pushing the table down", () => {

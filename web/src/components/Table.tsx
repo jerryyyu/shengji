@@ -279,7 +279,7 @@ export default function Table({ state }: { state: GameState }) {
   }
 
   return (
-    <div className="table-screen">
+    <div className={`table-screen phase-${state.phase}`}>
       <Hud state={state} />
       <div className="felt">
         {opponents.map((p) => (

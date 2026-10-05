@@ -1961,8 +1961,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        - the hand is the only thing in the bottom band (--hand-h tall);
        - the trick box spans from under the top seat to the top of the hand,
          336px wide, so its four slots never meet each other or the hand;
-       - the turn pill and action buttons sit in the bottom-right corner,
-         beside the trick box (never wider than the space next to it);
+       - in play, the turn pill and action buttons sit in the bottom-right
+         corner beside the trick box (never wider than the space next to it);
+         while dealing, declaring and burying they keep the full-width row
+         above the hand -- four declare options plus Pass need it (Codex HOLD
+         on #829) -- and the trick box, which then shows one declaration at
+         most, ends above that row instead;
        - the side seats sit just above their trick slots, clear of that corner;
        - the failed-throw notice floats in the bottom-left corner instead of
          taking a row of height from the felt. */
@@ -1971,6 +1975,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-h: calc(105.2px + env(safe-area-inset-bottom, 0px));
     --trick-top: 34px;          /* under the top seat's one-line label */
     --trick-half: 168px;        /* half the trick box's width */
+    --setup-bar-h: 56px;        /* one 44px button row, its 3px focus padding, the 4px gap */
   }
 
   .trick-area {
@@ -1993,19 +1998,63 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transform: none;
   }
 
-  .you-tagline,
-  .action-bar {
+  .phase-play .you-tagline,
+  .phase-play .action-bar {
     align-self: flex-end;
     margin-right: calc(8px + env(safe-area-inset-right, 0px));
     max-width: calc(50% - var(--trick-half) - 16px);
   }
 
-  .action-bar {
+  .phase-play .action-bar {
     justify-content: flex-end;
   }
 
-  .action-hint {
+  .phase-play .action-hint {
     text-align: right;
+  }
+
+  /* Setup phases: one row of controls above the hand. Declare options can
+     outgrow a phone's width (four suits, suit pairs, joker pairs), so the row
+     scrolls sideways instead of wrapping up into the table; the auto margins
+     centre it whenever it fits. */
+  .phase-deal .trick-area,
+  .phase-declare .trick-area,
+  .phase-bury .trick-area {
+    bottom: calc(var(--hand-h) + var(--setup-bar-h));
+  }
+
+  /* the banker's "your turn" pill stands on top of the Bury row */
+  .phase-bury .trick-area {
+    bottom: calc(var(--hand-h) + var(--setup-bar-h) + 26px);
+  }
+
+  .phase-deal .action-bar,
+  .phase-declare .action-bar,
+  .phase-bury .action-bar {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    max-width: 100%;
+    padding: 3px calc(8px + env(safe-area-inset-right, 0px)) 3px calc(8px + env(safe-area-inset-left, 0px));
+    scrollbar-width: none;
+  }
+
+  .phase-deal .action-bar > *,
+  .phase-declare .action-bar > *,
+  .phase-bury .action-bar > * {
+    flex: 0 0 auto;
+  }
+
+  .phase-deal .action-bar > :first-child,
+  .phase-declare .action-bar > :first-child,
+  .phase-bury .action-bar > :first-child {
+    margin-left: auto;
+  }
+
+  .phase-deal .action-bar > :last-child,
+  .phase-declare .action-bar > :last-child,
+  .phase-bury .action-bar > :last-child {
+    margin-right: auto;
   }
 
   .hud-notice {

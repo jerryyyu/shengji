@@ -201,10 +201,27 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"))
 ENV_PREFIX = "SHENGJI_PV_"
+#: the fallback record's ``error_message`` is the exception text cut to this
+#: many characters (#707 S9)
+ERROR_MESSAGE_MAX = 200
+#: the sampler's cumulative counters whose per-decision change the record
+#: carries as ``<name>_delta`` (#707 S9; read, never written)
+SAMPLER_DELTA_COUNTERS = ("impossible_worlds", "rejected_worlds")
 
 
 class PVSearchPolicyError(RuntimeError):
-    """The production wrapper refused to build or to run a decision."""
+    """The production wrapper refused to build or to run a decision.
+
+    ``stage`` (#707 S9, telemetry only) is a short stable name for the
+    decision-time raise site, copied into the fallback record as
+    ``error_stage``; ``None`` where a raise site names none."""
+
+    stage = None
+
+    def __init__(self, *args, stage=None):
+        super().__init__(*args)
+        if stage is not None:
+            self.stage = stage
 
 
 class PVSearchBudgetExceeded(PVSearchPolicyError):
@@ -417,10 +434,12 @@ class PVSearchBot(PolicyValueBot):
             worlds, attempts = sample_worlds(self.sampler, rnd, seat, self.worlds, mem=mem,
                                              check_budget=check_budget)
         if len(worlds) != self.worlds:
-            raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{self.worlds}")
+            raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{self.worlds}",
+                                      stage="world_sampling_short")
         if any(rnd.ordering.eff_suit(c) in mem.voids[s]
                for hands, _ in worlds for s in range(4) if s != seat for c in hands[s]):
-            raise PVSearchPolicyError("policy world sampling violates public voids")
+            raise PVSearchPolicyError("policy world sampling violates public voids",
+                                      stage="world_sampling_void_check")
         return worlds, attempts
 
     def _score_leaves(self, rnd, seat, actions, worlds, check_budget=None, capture=None):
@@ -492,7 +511,7 @@ class PVSearchBot(PolicyValueBot):
         sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget,
                                            capture=matrix)
         if not np.isfinite(matrix).all():
-            raise PVSearchPolicyError("value matrix has unfilled cells")
+            raise PVSearchPolicyError("value matrix has unfilled cells", stage="value_matrix_unfilled")
         return matrix, sums, batches
 
     # -- the decision ---------------------------------------------------------
@@ -534,7 +553,8 @@ class PVSearchBot(PolicyValueBot):
         if not chosen or not 0 <= chosen[0] < len(actions) \
                 or tuple(sorted(actions[chosen[0]])) != slot0 or len(set(chosen)) != len(chosen) \
                 or any(not 0 <= i < len(actions) for i in chosen):
-            raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first")
+            raise PVSearchPolicyError("admission must return distinct indices into the scored set, anchor first",
+                                      stage="admission_contract")
         # The candidate budget bounds what PRODUCTION admits (k_used plus the
         # forced extras).  The harvest mixin appends its exploration draw AFTER the
         # production ballot (keyed in ``_draw_keys``); on the data path there is
@@ -546,7 +566,8 @@ class PVSearchBot(PolicyValueBot):
         budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
         if len(budgeted) > self._adaptive["k_used"] + FORCED_EXTRA_SLOTS \
                 or self._adaptive["k_used"] > max(self.candidates, self.candidates_lead_multi):
-            raise PVSearchPolicyError("admission exceeded the candidate budget")
+            raise PVSearchPolicyError("admission exceeded the candidate budget",
+                                      stage="admission_budget")
         admitted = [actions[i] for i in chosen]
         means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
         if check_budget is not None:
@@ -590,12 +611,25 @@ class PVSearchBot(PolicyValueBot):
                 "refusal_fallback_worlds": 0, "refusal_pinned_codes": 0,
                 **self._last_sampling}
 
+    def _sampler_counts(self):
+        return {name: int(getattr(self.sampler, name, 0)) for name in SAMPLER_DELTA_COUNTERS}
+
     def decide_play(self, rnd, seat):
         started = time.perf_counter()
+        counts = self._sampler_counts()
         try:
             return self._decide_play(rnd, seat, started)
         finally:
             self.search_secs += time.perf_counter() - started
+            # #707 S9, telemetry only: this decision's change in the sampler's
+            # cumulative void counters (worlds assigned ignoring public voids
+            # with SHENGJI_REQUIRE_VOIDS unset; worlds refused under it).  Reads
+            # the counters; never samples, draws or alters the decision.
+            record = self.last_decision_record
+            if isinstance(record, dict):
+                after = self._sampler_counts()
+                for name in SAMPLER_DELTA_COUNTERS:
+                    record[f"{name}_delta"] = after[name] - counts[name]
 
     def _decide_play(self, rnd, seat, started):
         self.last_decision_record = None
@@ -621,6 +655,10 @@ class PVSearchBot(PolicyValueBot):
                 "action": list(anchor), "played": list(anchor),
                 "reason": "budget" if isinstance(exc, PVSearchBudgetExceeded) else "search-error",
                 "error_class": type(exc).__name__,
+                # #707 S9: the raise site and the bounded message, so a
+                # search-error is identifiable from the serving log alone
+                "error_stage": getattr(exc, "stage", None),
+                "error_message": str(exc)[:ERROR_MESSAGE_MAX],
                 "budget_seconds": self.serving_budget_seconds,
                 "elapsed_seconds": time.perf_counter() - started,
                 "work_complete": False,

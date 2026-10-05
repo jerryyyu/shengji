@@ -75,8 +75,6 @@ Claude reviews Codex's PRs and launch packets, writes the RELEASE files that sta
 
 ## Checkouts (shared by both agents; Jerry 2026-10-04, #688)
 
-Transition in progress on #688; until it completes, Claude works from `~/Projects/shengji-claude`.
-
 - `/Users/jerryyu/Projects/shengji` is the one shared home checkout. It stays on `main`, clean: no
   branch checkouts, no uncommitted edits, no commits. A launchd job fast-forwards it to `origin/main`
   every 5 minutes, and only when it is clean and on `main`; agents also fast-forward at session start.

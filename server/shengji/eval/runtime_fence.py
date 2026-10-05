@@ -323,18 +323,26 @@ class RuntimeFence:
 
     def check(self) -> bool:
         """Return whether the current process still satisfies the fence."""
+        self.last_failure = None
+        stage = "runtime_identity"
         try:
             if _runtime() != self._runtime:
+                self.last_failure = {"stage": stage}
                 return False
-            if any(
+            changed_modules = [
+                name for name in self._imports if
                 name not in sys.modules
                 or sys.modules[name] is None
                 or sys.modules[name] is not self._module_objects[name]
-                for name in self._imports
-            ):
+            ]
+            if changed_modules:
+                self.last_failure = {"stage": "module_identity", "changed": changed_modules}
                 return False
+            stage = "source_root"
             if self._source_root.is_symlink() or not self._source_root.is_dir():
+                self.last_failure = {"stage": stage}
                 return False
+            stage = "mapped_files"
             current = _maps_snapshot(self._maps_path)
             current_external = {
                 path: item
@@ -342,11 +350,25 @@ class RuntimeFence:
                 if not _under(self._source_root, Path(path))
             }
             if set(current_external) != self._declared_files:
+                self.last_failure = {
+                    "stage": stage,
+                    "added": sorted(set(current_external) - self._declared_files),
+                    "removed": sorted(self._declared_files - set(current_external)),
+                }
                 return False
             if current != self._maps:
+                self.last_failure = {
+                    "stage": stage,
+                    "added": sorted(current.keys() - self._maps.keys()),
+                    "removed": sorted(self._maps.keys() - current.keys()),
+                    "changed": sorted(k for k in current.keys() & self._maps.keys()
+                                      if current[k] != self._maps[k]),
+                }
                 return False
             return True
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.last_failure = {"stage": stage, "error_type": type(exc).__name__,
+                                 "error": str(exc)}
             return False
 
 

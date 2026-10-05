@@ -31,6 +31,11 @@ PRELOAD_IMPORTS = (
     "shengji.ai.cwv_numpy",
     "shengji.ai.cwv_prior_numpy",
     "shengji.ai.cwv_policy",
+    # shared_evaluator imports this at factory time; legacy encoder identity
+    # verification imports the compatibility helper on its fallback path.
+    # Pin both before admission rather than discovering them after scoring.
+    "shengji.ai.cwv_numpy_evaluator",
+    "shengji.ai.cwv_encoder_compat",
     "shengji.ai.refusal",
     "encodings.cp437",
 )
@@ -281,15 +286,44 @@ class ObservationRuntime:
             raise ValueError("dependency hash mismatch")
         self.external = runtime_fence.RuntimeFence(external, self.source)
         if not self.check():
-            raise ValueError("runtime changed during admission")
+            raise ValueError(f"runtime changed during admission: {self.last_failure}")
 
     def check(self):
+        """Fail closed and retain the first mismatch without rehashing files.
+
+        ``last_failure`` is diagnostic only: never adopt a changed inventory
+        as a new baseline. Module replacements count even at the same path.
+        """
+        self.last_failure = None
+        stage = "routes"
         try:
             _routes(self.source)
+            stage = "mapped_source_coverage"
             _mapped_source_coverage(self.source, self.source_stamps)
-            return (source_stat_inventory(self.source) == self.source_stamps
-                    and _origins(self.source) == self.origins
-                    and _dependencies(self.source) == self.deps
-                    and self.external.check())
-        except (OSError, ValueError, RuntimeError):
+            for stage, read, expected in (
+                ("source", source_stat_inventory, self.source_stamps),
+                ("module_origins", _origins, self.origins),
+                ("dependencies", _dependencies, self.deps),
+            ):
+                current = read(self.source)
+                if current != expected:
+                    self.last_failure = {
+                        "stage": stage,
+                        "added": sorted(current.keys() - expected.keys()),
+                        "removed": sorted(expected.keys() - current.keys()),
+                        "changed": sorted(k for k in current.keys() & expected.keys()
+                                          if current[k] != expected[k]),
+                    }
+                    return False
+            stage = "external_runtime"
+            if not self.external.check():
+                self.last_failure = {"stage": stage}
+                detail = getattr(self.external, "last_failure", None)
+                if detail is not None:
+                    self.last_failure["detail"] = detail
+                return False
+            return True
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.last_failure = {"stage": stage, "error": str(exc),
+                                 "error_type": type(exc).__name__}
             return False

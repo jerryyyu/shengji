@@ -61,7 +61,7 @@ def run_panel_body(recipe, runtime_manifest, *, check_admission, check_budget):
         if file_stamp(model) != model_stamp:
             raise ValueError("panel model changed after authentication")
         if not runtime.check():
-            raise ValueError("panel runtime drift")
+            raise ValueError(f"panel runtime drift: {getattr(runtime, 'last_failure', None)}")
 
     def factory(seed):
         if type(seed) is not int or seed not in (0, 1, 2):

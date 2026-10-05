@@ -95,6 +95,8 @@ def test_fixed_preload_import_surface_is_exact():
         "shengji.ai.cwv_numpy",
         "shengji.ai.cwv_prior_numpy",
         "shengji.ai.cwv_policy",
+        "shengji.ai.cwv_numpy_evaluator",
+        "shengji.ai.cwv_encoder_compat",
         "shengji.ai.refusal",
         "encodings.cp437",
     )
@@ -169,6 +171,12 @@ for name in _profile_imports(sys.argv[2]):
 assert "shengji.eval.m9_panel_worker" in sys.modules
 assert "shengji.eval.public_refusal_tape" in sys.modules
 assert "shengji.eval.fixed_tape_capture" in sys.modules
+assert "shengji.ai.cwv_numpy_evaluator" in sys.modules
+assert "shengji.ai.cwv_encoder_compat" in sys.modules
+before = set(sys.modules)
+from shengji.ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+from shengji.ai.cwv_encoder_compat import history_import_move_identity, round_notice_identity
+assert set(sys.modules) == before
 assert "torch" not in sys.modules
 if sys.argv[2] == "panel-readout":
     assert "shengji.eval.m9_panel_artifact_reader" in sys.modules
@@ -259,6 +267,58 @@ def test_bad_manifest_schema_importset_and_paths_refuse(tmp_path, monkeypatch, m
         bad["dependency_files"][str(dependency)] = "0" * 64
     with pytest.raises(ValueError):
         runtime.ObservationRuntime(bad)
+
+
+@pytest.mark.parametrize("stage,reader", [
+    ("source", "source_stat_inventory"),
+    ("module_origins", "_origins"),
+    ("dependencies", "_dependencies"),
+])
+def test_postcheck_reports_exact_inventory_delta_without_rehash(tmp_path, monkeypatch,
+                                                              stage, reader):
+    manifest, _, _, _, _, _ = _capture_manifest(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    admitted = runtime.ObservationRuntime(manifest)
+    monkeypatch.setattr(runtime, "_sha", lambda path: pytest.fail("postcheck rehashed"))
+    original = getattr(runtime, reader)
+    expected = original(admitted.source)
+    key = next(iter(expected))
+    changed = dict(expected)
+    changed[key] = object()  # includes same-path module identity replacement
+    changed["new-origin"] = object()
+    monkeypatch.setattr(runtime, reader, lambda path: changed)
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": stage, "added": ["new-origin"],
+                                     "removed": [], "changed": [key]}
+    monkeypatch.setattr(runtime, reader, lambda path: {})
+    assert not admitted.check()
+    assert admitted.last_failure["removed"] == sorted(expected)
+    monkeypatch.setattr(runtime, reader, original)
+    assert admitted.check()
+    assert admitted.last_failure is None
+
+
+def test_postcheck_reports_exception_and_external_failure(tmp_path, monkeypatch):
+    manifest, _, _, _, _, _ = _capture_manifest(tmp_path, monkeypatch)
+    fence = SimpleNamespace(check=lambda: True)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence", lambda *args: fence)
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    admitted = runtime.ObservationRuntime(manifest)
+    fence.check = lambda: False
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "external_runtime"}
+    fence.last_failure = {"stage": "mapped_files", "added": ["/synthetic.so"]}
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "external_runtime",
+                                     "detail": fence.last_failure}
+    def fail(path):
+        raise ValueError("foreign module origin")
+    monkeypatch.setattr(runtime, "_routes", fail)
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "routes", "error_type": "ValueError",
+                                     "error": "foreign module origin"}
 
 
 def test_capture_rejects_source_pyc_and_does_not_publish_or_launch(tmp_path,

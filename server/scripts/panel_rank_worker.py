@@ -128,7 +128,8 @@ def execute_rank_once(helper, spec, selected_pins, packet, runtime, *,
     Not a bootstrap. The caller must authenticate source/runtime, collection
     packet, terminal seal and historical controls before calling. The supplied
     authorization check must retain and check the new release/invocation pins.
-    No collection or historical full-readout entry point is called here.
+    No collection or historical full-readout entry point is called here. A
+    valid publication requires a receipt and no refusal document.
     """
     from shengji.eval import tactical
     from shengji.eval.m9_panel_recipe import validate_panel_recipe, panel_model_environ
@@ -221,16 +222,24 @@ def execute_rank_once(helper, spec, selected_pins, packet, runtime, *,
         stage = "selected-reader"
         selected = read_selected_panel(selected_pins,
                                        packet_sha256=spec["packet_sha256"], index=spec["index"])
+        stage = "selected-reader-checkpoint"
         checkpoint()
-        fixture = next(f for f in fixtures if f.id == selected["job"]["fixture_id"])
+        stage = "fixture-resolution"
+        try:
+            fixture = next(f for f in fixtures if f.id == selected["job"]["fixture_id"])
+        except StopIteration as exc:
+            raise ValueError("selected fixture missing from authenticated fixtures") from exc
         stage = "model-construction"
         _, bot = tactical.bot_from_environ(panel_model_environ(recipe), seed=selected["job"]["seed"])
+        stage = "model-construction-checkpoint"
         checkpoint()
         stage = "rank-projection"
         result = project_panel_rank_repairs(selected, fixture, bot, check_budget=budget)
+        stage = "rank-projection-checkpoint"
         checkpoint()
         stage = "publication"
         result_sha = publish("result.json", result)
+        stage = "publication-checkpoint"
         checkpoint()
         receipt = {"schema": "panel-rank-receipt-v1", "invocation_sha256": invocation_sha256,
                    "result_sha256": result_sha, "input_sha256": selected["input_sha256"],
@@ -239,12 +248,14 @@ def execute_rank_once(helper, spec, selected_pins, packet, runtime, *,
                    "runtime": spec["runtime"], "model_sha256": recipe["model_sha256"],
                    "fixture_sha256": recipe["fixture_sha256"], "provenance_verified": False,
                    "serving_choice_assessed": False, "strategic_quality_assessed": False}
+        stage = "receipt-publication"
         publish("receipt.json", receipt)
         return receipt
     except BaseException as exc:
         publish("refusal.json", {"schema": "panel-rank-refusal-v1",
                                  "error_type": type(exc).__name__, "stage": stage,
-                                 "invocation_sha256": invocation_sha256})
+                                 "invocation_sha256": invocation_sha256,
+                                 "reason": str(exc)[:2000]})
         raise
 
 
@@ -368,7 +379,7 @@ def main(argv=None):
         else:
             run(*args)
     except BaseException as exc:
-        print(type(exc).__name__, file=sys.stderr)
+        print(f"{type(exc).__name__}: {str(exc)[:2000]}", file=sys.stderr)
         return 1
     return 0
 

@@ -365,7 +365,7 @@ def test_authenticated_prediction_drift_refuses_publication(
     assert not (output / "result.json").exists()
     assert not (output / "receipt.json").exists()
     refusal = json.loads((output / "refusal.json").read_bytes())
-    assert refusal["stage"] == "rank-projection"
+    assert refusal["stage"] == "rank-projection-checkpoint"
     assert refusal["error_type"] == "ValueError"
     claim = (ownership / "claim.json").read_bytes()
     assert json.loads((output / "claim.json").read_bytes())["status"] == "spent_no_retry"

@@ -271,8 +271,36 @@ def test_real_selected_reader_root_capture_projection_and_publication(tmp_path, 
      invocation_pin, release_pin, spec) = _authorization_bundle(
          tmp_path, analysis, records, fixture, fixtures)
     if damage:
+        from shengji.ai.memory import Memory
+        from shengji.eval.public_refusal_history import public_root_with_ledger
+        root, _, _ = public_root_with_ledger(fixture, mode="history-primed", fill_seed=0)
+        memory = Memory(root, fixture.seat,
+                        own_kitty=getattr(bot.sampler, "BANKER_KITTY", True))
+        hands = records[6]["panel"]["worlds"][0][0]
         buried = records[6]["panel"]["worlds"][0][1]
-        buried[0] = "BJ" if buried[0] != "BJ" else "LJ"
+        target_seat = next((seat for seat in range(4)
+                            if seat != fixture.seat and memory.voids[seat]), None)
+        assert target_seat is not None, memory.voids
+        source = next(
+            (("hand", seat, index)
+             for seat in range(4) if seat != target_seat
+             for index, card in enumerate(hands[seat])
+             if root.ordering.eff_suit(card) in memory.voids[target_seat]),
+            None)
+        if source is None:
+            source = next(
+                (("buried", None, index)
+                 for index, card in enumerate(buried)
+                 if root.ordering.eff_suit(card) in memory.voids[target_seat]),
+                None)
+        assert source is not None, memory.voids[target_seat]
+        kind, seat, index = source
+        if kind == "hand":
+            hands[seat][index], hands[target_seat][0] = (
+                hands[target_seat][0], hands[seat][index])
+        else:
+            buried[index], hands[target_seat][0] = (
+                hands[target_seat][0], buried[index])
     panel_bytes = json.dumps(records[6], sort_keys=True, separators=(",", ":"),
                               allow_nan=False).encode()
     panel_path.write_bytes(panel_bytes)
@@ -328,7 +356,9 @@ def test_real_selected_reader_root_capture_projection_and_publication(tmp_path, 
         assert panel_reads == [panel_path]
         assert calls == []
         assert not (tmp_path / "rank-output" / "receipt.json").exists()
-        assert (tmp_path / "rank-output" / "refusal.json").is_file()
+        refusal = json.loads((tmp_path / "rank-output" / "refusal.json").read_bytes())
+        assert refusal["stage"] == "rank-projection"
+        assert "public voids" in refusal["reason"]
         return
     receipt = worker.execute_rank_once(
         helper, spec, selected, {"recipe": recipe},

@@ -139,9 +139,11 @@ def test_cli_without_pins_is_fail_closed():
                             capture_output=True, text=True, timeout=10)
     assert result.returncode != 0
     assert "ValueError" in result.stderr
+    assert ": " in result.stderr
+    assert len(result.stderr.split(": ", 1)[1].strip()) <= 2000
 
 
-@pytest.mark.parametrize("failure", [None, "fixture", "model", "prediction", "drift", "occupied",
+@pytest.mark.parametrize("failure", [None, "fixture", "model", "prediction", "long-prediction", "drift", "occupied",
                                     "runtime", "authorization", "deadline"])
 def test_admitted_body_publication_and_refusal(tmp_path, monkeypatch, failure):
     from shengji.eval import tactical, m9_panel_recipe, selected_panel_reader, panel_rank_root
@@ -187,6 +189,8 @@ def test_admitted_body_publication_and_refusal(tmp_path, monkeypatch, failure):
         events.append("dual-arm-projection")
         if failure == "prediction":
             raise ValueError("synthetic prediction refusal")
+        if failure == "long-prediction":
+            raise ValueError("x" * 3000)
         if failure == "drift":
             model.write_bytes(b"changed")
         if failure in ("runtime", "authorization"):
@@ -213,8 +217,11 @@ def test_admitted_body_publication_and_refusal(tmp_path, monkeypatch, failure):
         if failure != "occupied":
             refusal = json.loads((tmp_path / "output" / "refusal.json").read_bytes())
             assert refusal["stage"]
-            assert "reason" not in refusal
-            assert "synthetic prediction refusal" not in json.dumps(refusal)
+            assert isinstance(refusal["reason"], str)
+            if failure == "prediction":
+                assert refusal["reason"] == "synthetic prediction refusal"
+            if failure == "long-prediction":
+                assert len(refusal["reason"]) == 2000
         if failure in ("fixture", "model", "occupied"):
             assert events == []
     else:

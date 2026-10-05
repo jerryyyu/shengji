@@ -16,6 +16,7 @@
   --card-red: #cf2f44;
   --card-black: #23252e;
   --danger: #e05563;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -36,19 +37,42 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html {
+  -webkit-text-size-adjust: 100%; /* avoid landscape-only font inflation */
+}
+
+html,
+body {
+  overscroll-behavior: none; /* the game owns its inner scrolling surfaces */
+}
+
 .app {
   height: 100%;
+  height: 100dvh; /* keep bottom controls above mobile browser chrome */
   touch-action: manipulation; /* no double-tap zoom on the table */
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
 button {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none; /* controls only; names, messages and codes stay copyable */
+}
+
+/* Keyboard feedback must be as clear as touch feedback. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
 }
 
 /* ---------- shared chrome ---------- */
@@ -59,7 +83,11 @@ button {
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  padding: 12px;
+  overscroll-behavior: contain;
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
   background:
     radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
 }
@@ -84,12 +112,14 @@ button {
   font-weight: 600;
   font-size: 14px;
   letter-spacing: 0.02em;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  transition: background 150ms ease, transform 120ms var(--ease-out), box-shadow 150ms ease;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .btn:hover:not(:disabled) {
   background: #313a48;
   transform: translateY(-1px);
+}
 }
 
 .btn:disabled {
@@ -102,8 +132,10 @@ button {
   border-color: #4da377;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .btn.primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #48a171, #357e56);
+}
 }
 
 .btn.gold {
@@ -112,8 +144,10 @@ button {
   color: #ffe9b0;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .btn.gold:hover:not(:disabled) {
   background: linear-gradient(180deg, #a17f31, #7d6122);
+}
 }
 
 .btn.subtle {
@@ -125,9 +159,16 @@ button {
   color: #f0a0aa;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .btn.danger:hover:not(:disabled) {
   background: #3a1e24;
   border-color: var(--danger);
+}
+}
+
+.btn:active:not(:disabled):not(:focus-visible),
+.seat-option:active:not(:disabled):not(:focus-visible) {
+  transform: scale(0.97); /* feedback on press; actions still commit on click */
 }
 
 .leave-room-btn {
@@ -149,9 +190,11 @@ button {
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .leave-btn:hover {
   color: var(--text);
   border-color: #4a5462;
+}
 }
 
 .leave-btn.armed {
@@ -178,9 +221,11 @@ button {
   transition: background 0.15s, border-color 0.15s;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .mute-btn:hover {
   background: #262d38;
   border-color: #4a5462;
+}
 }
 
 .room-panel > .mute-btn {
@@ -311,6 +356,7 @@ button {
 
 .lobby-panel {
   width: 380px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -364,7 +410,6 @@ button {
   border-radius: 10px;
   color: var(--text);
   padding: 11px 14px;
-  outline: none;
   transition: border-color 0.15s;
 }
 
@@ -515,8 +560,10 @@ button {
   transition: border-color 0.15s;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .room-code:hover {
   border-color: var(--gold);
+}
 }
 
 .copied-tag {
@@ -633,7 +680,9 @@ button {
 .hud {
   background: linear-gradient(180deg, #191d25, #14171e);
   border-bottom: 1px solid var(--panel-edge);
-  padding: 8px 18px 6px;
+  padding: calc(8px + env(safe-area-inset-top, 0px))
+    calc(18px + env(safe-area-inset-right, 0px)) 6px
+    calc(18px + env(safe-area-inset-left, 0px));
   z-index: 10;
 }
 
@@ -793,7 +842,9 @@ button {
   cursor: pointer;
   opacity: 0.7;
 }
-.hud-notice-close:hover { opacity: 1; background: rgba(255, 233, 176, 0.12); }
+@media (hover: hover) and (pointer: fine) {
+  .hud-notice-close:hover { opacity: 1; background: rgba(255, 233, 176, 0.12); }
+}
 .hud-notice-close:focus-visible { outline: 2px solid #e0a03a; outline-offset: 1px; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .hud-notice { animation: none; } }
 
@@ -1089,7 +1140,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding-bottom: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
 .you-tagline {
@@ -1172,7 +1223,7 @@ button {
 }
 
 /* Hover-lift is a mouse nicety only — tap/click alone selects on touch. */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .hand.selectable .card.clickable:hover {
     transform: translateY(-10px);
     z-index: 5;
@@ -1295,6 +1346,12 @@ button {
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: fade-in 0.25s ease-out;
 }
 
@@ -1307,6 +1364,9 @@ button {
 .modal {
   width: 480px;
   max-width: 92vw;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1428,7 +1488,7 @@ button {
 @media (max-height: 500px) {
   /* --- HUD: single thin bar, essentials only --- */
   .hud {
-    padding: 3px calc(10px + env(safe-area-inset-right)) 2px calc(10px + env(safe-area-inset-left));
+    padding: calc(3px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right)) 2px calc(10px + env(safe-area-inset-left));
   }
 
   .room-chip,
@@ -1787,7 +1847,9 @@ button {
   }
 
   .hud-menu-row[aria-disabled="true"] { cursor: default; }
-  .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+  @media (hover: hover) and (pointer: fine) {
+    .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+  }
   .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
   .hud-menu-row.leave.armed { color: var(--gold); }
   .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -1924,7 +1986,7 @@ button {
   .modal {
     padding: 14px 20px;
     gap: 10px;
-    max-height: calc(100vh - 16px);
+    max-height: 100%;
     overflow-y: auto;
   }
 
@@ -2062,8 +2124,10 @@ button {
   padding: 0;
 }
 
+@media (hover: hover) and (pointer: fine) {
 .xr-close:hover {
   background: #262d38;
+}
 }
 
 .xr-section {
@@ -2191,6 +2255,8 @@ button {
 /* ---- Chat: toggled overlay (the table fills landscape screens) ---- */
 .chat-launch {
   position: fixed; right: 14px; bottom: 14px; z-index: 40;
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: 46px; height: 46px; border-radius: 50%;
   background: rgba(20, 28, 22, 0.92); border: 1px solid rgba(255,255,255,0.18);
   font-size: 20px; cursor: pointer;
@@ -2202,7 +2268,10 @@ button {
 }
 .chat-panel {
   position: fixed; right: 12px; bottom: 68px; z-index: 41;
-  width: min(320px, 82vw); max-height: min(58vh, 380px);
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  width: min(320px, 82vw);
+  max-height: min(380px, calc(100dvh - 80px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
   display: flex; flex-direction: column;
   background: rgba(16, 22, 18, 0.97); color: #eee;
   border: 1px solid rgba(255,255,255,0.16); border-radius: 12px;
@@ -2215,7 +2284,8 @@ button {
   opacity: 0.85;
 }
 .chat-close { background: none; border: none; color: #eee; font-size: 20px; cursor: pointer; }
-.chat-log { flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 14px; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: 14px; }
+.chat-head, .chat-input { flex-shrink: 0; }
 .chat-empty { opacity: 0.5; font-size: 13px; }
 .chat-msg { margin: 4px 0; word-break: break-word; }
 .chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
@@ -2238,9 +2308,11 @@ button.room-chip {
   border-color: rgba(242, 193, 78, 0.45);
   transition: background 0.12s ease, border-color 0.12s ease;
 }
+@media (hover: hover) and (pointer: fine) {
 button.room-chip:hover {
   background: rgba(242, 193, 78, 0.14);
   border-color: var(--gold);
+}
 }
 button.room-chip.copied {
   background: rgba(120, 200, 130, 0.22);
@@ -2271,7 +2343,10 @@ button.room-chip::after {
   opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
   z-index: 50;
 }
-button.room-chip:hover::after { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  button.room-chip:hover::after { opacity: 1; }
+}
+button.room-chip:focus-visible::after { opacity: 1; }
 
 /* Seat picker for mid-game joins */
 .seat-hint { opacity: 0.7; font-size: 14px; margin: 4px 0 14px; }
@@ -2287,9 +2362,13 @@ button.room-chip:hover::after { opacity: 1; }
 .seat-option.team0 { border-left: 3px solid #6ba7ff; }
 .seat-option.team1 { border-left: 3px solid #ffab5e; }
 .seat-option:disabled, .seat-option.taken { opacity: 0.4; cursor: not-allowed; }
-.seat-option:not(:disabled):hover { background: rgba(255,255,255,0.12); }
+@media (hover: hover) and (pointer: fine) {
+  .seat-option:not(:disabled):hover { background: rgba(255,255,255,0.12); }
+}
 .seat-num { font-weight: 600; font-size: 13px; }
 .seat-who { font-size: 13px; opacity: 0.8; }
+.seat-option { min-width: 0; }
+.seat-who { overflow-wrap: anywhere; }
 .seat-team { font-size: 11px; opacity: 0.55; letter-spacing: 0.06em; }
 .seat-take { font-size: 11px; opacity: 0.7; margin-top: 2px; }
 
@@ -2304,4 +2383,30 @@ button.room-chip:hover::after { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-message { animation: none; }
+  .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-icon { animation: none; }
+  .hand .card, .btn, .seat-option { transition: none; }
+  .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
+  /* Preserve the toast's dismissal timing, without its slide-in movement. */
+  .toast { animation: toast-out 0.01ms linear 3.6s forwards; }
+}
+
+/* A phone's controls need finger-sized targets, not desktop icon bounds. */
+@media (pointer: coarse) {
+  .btn, .leave-btn, .mute-btn, .hud-more-btn, .hud-menu-row,
+  .hud-notice-close, .chat-close, .xr-close, button.room-chip {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .field input, .field select, .start-level-row select, .room-input,
+  .chat-input input { font-size: 16px; }
+}
+
+.mute-btn:active, .leave-btn:active, .hud-more-btn:active,
+.hud-menu-row:not([aria-disabled="true"]):active, .chat-close:active,
+.xr-close:active, .chat-launch:active, .hud-notice-close:active,
+button.room-chip:active { background-color: #394452; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .modal-backdrop { backdrop-filter: none; background: #10131a; }
+  .hud-menu, .chat-panel, .xray-panel { background: var(--panel); }
 }

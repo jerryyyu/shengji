@@ -67,9 +67,11 @@ export default function ChatPanel({
           value={draft}
           maxLength={300}
           placeholder="Message…"
+          aria-label="Chat message"
+          enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") send();
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) send();
             e.stopPropagation();   // don't trigger table hotkeys (e.g. X-ray)
           }}
         />

@@ -208,6 +208,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             value={name}
             maxLength={20}
             placeholder="e.g. Jerry"
+            autoComplete="nickname"
+            autoCorrect="off"
             onChange={(e) => setName(e.target.value)}
           />
         </label>
@@ -257,6 +259,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             value={roomCode}
             maxLength={4}
             placeholder="CODE"
+            aria-label="Room code"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="go"
             onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
               if (e.key === "Enter") join();

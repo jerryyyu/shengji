@@ -48,6 +48,7 @@ jobs:
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
+          tests/test_llm_benchmark_rollouts.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
           tests/test_prepared_play_error_hook.py

@@ -1,4 +1,4 @@
-"""Synthetic DEEP8 capacity witness; no production checkpoint or corpus access."""
+"""Synthetic DEEP8 capacity witness; selected by both CWV CI engine modes."""
 import torch
 
 from shengji.rl.value_model import ValueNetwork, mlp_input_dim

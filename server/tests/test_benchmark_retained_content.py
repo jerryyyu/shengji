@@ -15,6 +15,42 @@ from shengji.luna.canonical import canonical_json_bytes
 SEEDS = list(range(10, 20))
 
 
+def test_actual_runner_retention_report_satisfies_content_reader(tmp_path):
+    """Bridge producer/reader contracts; hand-written reports alone miss fields."""
+    import json
+    from scripts import prepare_llm_panel_roots as producer
+    from scripts import w32_llm_benchmark as runner
+    from shengji.luna.benchmark_recipes import prepare_recipe
+    from test_benchmark_retention import _repin_report
+
+    roots = tmp_path / 'roots'
+    producer.prepare_roots(output=roots, seeds=SEEDS)
+    recipe = prepare_recipe('smart', {})
+    options = dict(checkpoint=None, policy=recipe.policy, prepared_recipe=recipe,
+                   prepared_roots_from=roots,
+                   prepared_roots_sha256=hashlib.sha256((roots / 'result.json').read_bytes()).hexdigest(),
+                   seeds=SEEDS, models=['sol'], output=tmp_path / 'out',
+                   failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True)
+    config = runner.run_benchmark(**options)['config']
+    _, plan, _ = _source(tmp_path)
+    source = tmp_path / 'source'
+    old = json.loads((source / 'result.json').read_bytes())
+    old['config'] = config
+    pin = _repin_report(plan, source, old)
+    auth = retention.load_retained_attempts(plan, pin, expected_config=config)
+    attempts = []
+    def completed(game, **kwargs):
+        attempts.append((kwargs['information'], kwargs['seed'], kwargs['flip']))
+        return {'complete': True, 'signed_levels': 2}
+    report = runner.run_benchmark(
+        **options, run=True, token_limit=1000, retention_plan=str(plan),
+        retention_plan_sha256=pin, runner=completed)
+    assert attempts == [('perfect', 10, 0)]
+    assert validate_retained_content(report, auth) == {
+        'status': 'scheduled-terminal', 'completed': 39, 'failed': 1,
+        'unattempted': 0, 'scheduled': 40}
+
+
 def _row(mode: str, seed: int, flip: int, kind: str) -> dict:
     key = f"sol-{mode}-seed{seed}-flip{flip}"
     row = {

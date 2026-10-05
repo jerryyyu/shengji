@@ -281,6 +281,13 @@ class HeuristicBot:
         lead_suit = uniform_suit(lead, o)
         assert lead_suit is not None
         h_suit = suit_cards(hand, lead_suit, o)
+        if n == 1:
+            # No pair/tractor obligation can apply to a single-card lead.
+            # Preserve the same pool order and _lowest tie-breaking as the
+            # general fill loop, including point preference and avoidance.
+            return [self._lowest(h_suit if h_suit else hand, o,
+                                 avoid_points=not prefer_points,
+                                 seek_points=prefer_points, avoid=avoid)]
         picked: list[str] = []
         if len(h_suit) >= n:
             pool = list(h_suit)

@@ -232,6 +232,7 @@ jobs:
           tests/test_ballot_full_pool.py
           tests/test_ballot_points_selection.py
           tests/test_fixed_tape_capture.py
+          tests/test_fixed_tape_policy.py
           tests/test_fixed_tape_panel.py
           tests/test_public_fixture_panel.py
           tests/test_m9_replay_binding.py

@@ -65,6 +65,9 @@ jobs:
           tests/test_mc_benchmark_normalization.py
           tests/test_bury_fly_config.py
           tests/test_check_ci_test_selection.py
+          tests/test_paired_window_metadata.py
+          tests/test_refusal_readout_summary.py
+          tests/test_v52ec_handoff.py
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"

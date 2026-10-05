@@ -173,7 +173,10 @@ jobs:
             tests/test_refusal_constraints.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \
-            tests/test_pv_tree_search.py
+            tests/test_pv_tree_search.py \
+            tests/test_pv_search_serving.py \
+            tests/test_pv_search_hooks.py \
+            tests/test_pv_value_matrix.py
 
   luna-profiles:
     runs-on: ubuntu-latest

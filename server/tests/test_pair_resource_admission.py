@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.engine.cards import Ordering
-from shengji.eval.pair_resource_admission import pair_resource_ballot
+from shengji.eval.pair_resource_admission import pair_resource_ballot, pair_resource_rank_repair
 from shengji.harvest.legal import enumerate_legal
-from shengji.train.policy_value_search import structure_key
+from shengji.train.policy_value_search import structure_key, _near_duplicate
 
 from test_pv_admission_rules import _pair_preservation_follow, harness
 
@@ -228,3 +228,89 @@ def test_fixed_k_resource_partition_can_reduce_both_kinds_of_coverage():
     assert legacy[0] == prototype[0] == anchor
     assert coverage(legacy) == (5, 3)
     assert coverage(prototype) == (3, 2)
+
+
+def test_rank_repair_admits_legal_witness_without_losing_coverage():
+    rnd = _pair_preservation_follow()
+    actions = list(enumerate_legal(rnd, 1, cap=4000).actions)
+    keys = [tuple(sorted(a)) for a in actions]
+    anchor = keys.index(("C2", "D8", "S6"))
+    target = keys.index(("C2", "D8", "S8"))
+    ranked = [anchor, target] + [i for i in range(len(actions)) if i not in (anchor, target)]
+    baseline = harness(admission_diversity=True)._admit_diverse(rnd, actions, ranked, anchor, k=8)
+    original = list(baseline)
+    result = pair_resource_rank_repair(rnd, 1, actions, ranked, baseline)
+    assert result["swap"]["added"] == target
+    assert target in result["chosen"] and target not in baseline
+    assert result["chosen"][0] == anchor
+    assert len(result["chosen"]) == len(set(result["chosen"])) == 8
+    assert baseline == original
+    for i in result["chosen"]:
+        copy.deepcopy(rnd).play(1, list(actions[i]))
+
+
+@pytest.mark.parametrize("seed", range(32))
+def test_rank_repair_preserves_exact_coverage_sets_and_improves_rank(seed):
+    rnd = _pair_preservation_follow()
+    actions = list(enumerate_legal(rnd, 1, cap=4000).actions)
+    anchor = [tuple(sorted(a)) for a in actions].index(("C2", "D8", "S6"))
+    ranked = list(range(len(actions)))
+    random.Random(seed).shuffle(ranked)
+    baseline = harness(admission_diversity=True)._admit_diverse(rnd, actions, ranked, anchor, k=8)
+    result = pair_resource_rank_repair(rnd, 1, actions, ranked, baseline)
+    chosen = result["chosen"]
+    pairs = sorted(c for c, n in Counter(rnd.hands[1]).items() if n == 2)
+    signature = lambda i: tuple(2 - Counter(actions[i])[c] for c in pairs)
+    assert {structure_key(rnd, actions[i]) for i in baseline} <= {
+        structure_key(rnd, actions[i]) for i in chosen
+    }
+    assert {signature(i) for i in baseline} <= {signature(i) for i in chosen}
+    assert len(chosen) == len(set(chosen)) == len(baseline)
+    assert chosen[0] == baseline[0]
+    if result["swap"]:
+        removed, added = result["swap"]["removed"], result["swap"]["added"]
+        assert ranked.index(added) < ranked.index(removed)
+        assert set(chosen) - set(baseline) == {added}
+        assert set(baseline) - set(chosen) == {removed}
+        retained = [i for i in chosen if i != added]
+        overlaps = [i for i in retained if _near_duplicate(
+            Counter(actions[added]), len(actions[added]),
+            [(len(actions[i]), Counter(actions[i]))]
+        )]
+        assert overlaps
+        assert all(signature(i) != signature(added) for i in overlaps)
+    else:
+        assert chosen == baseline
+
+
+def test_rank_repair_no_pair_parity_and_singleton_anchor():
+    rnd = _synthetic_round()
+    rnd.hands[1] = list(dict.fromkeys(rnd.hands[1]))
+    actions = _resource_actions()
+    ranked = list(range(len(actions)))
+    baseline = [0, 5, 6, 7]
+    assert pair_resource_rank_repair(rnd, 1, actions, ranked, baseline) == {
+        "chosen": baseline, "swap": None
+    }
+    assert pair_resource_rank_repair(rnd, 1, actions, ranked, [0]) == {
+        "chosen": [0], "swap": None
+    }
+
+
+@pytest.mark.parametrize("baseline", [[], [True], [0, 0], [99], [-1]])
+def test_rank_repair_refuses_invalid_baseline(baseline):
+    with pytest.raises(ValueError):
+        pair_resource_rank_repair(_synthetic_round(), 1, _resource_actions(), list(range(8)), baseline)
+
+
+def test_rank_repair_protects_unique_resource_and_does_not_mutate_inputs():
+    rnd = _synthetic_round()
+    actions = _resource_actions()
+    ranked, baseline = list(range(8)), [0, 5]
+    before = copy.deepcopy((rnd.hands, actions, ranked, baseline))
+    # Candidate 1 cannot evict the only both-pairs-retained representative 5.
+    result = pair_resource_rank_repair(rnd, 1, actions, ranked, baseline)
+    assert result == {"chosen": baseline, "swap": None}
+    assert (rnd.hands, actions, ranked, baseline) == before
+    rnd.hands[0] = ["BJ", "BJ"]
+    assert pair_resource_rank_repair(rnd, 1, actions, ranked, baseline) == result

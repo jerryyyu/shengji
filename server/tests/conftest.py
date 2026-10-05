@@ -85,6 +85,48 @@ def cwv_corpus_factory(tmp_path_factory):
     return get
 
 
+@pytest.fixture(scope="session")
+def cwv_gru_checkpoint_factory(tmp_path_factory):
+    """Build the tiny GRU checkpoint once, then make isolated consumer files.
+
+    This is deliberately a fixed TEST-ONLY recipe rather than a generic
+    recipe cache: both CWV modules exercise the same default GRU checkpoint.
+    The successful checkpoint is retained as immutable bytes, while every
+    consumer receives a fresh file written with exclusive creation.  Training
+    runs inside a CPU-only ``fork_rng`` context so the helper's seeding cannot
+    change a caller's Torch RNG state, including when the build raises.
+    """
+    cached_bytes = None
+    recipe = {
+        "seed0": 4_200_000,
+        "rounds": 2,
+        "architecture": "gru",
+        "width": 16,
+        "max_epochs": 2,
+        "patience": 4,
+        "seed": 0,
+        "quiet": True,
+    }
+
+    def get(destination, build):
+        nonlocal cached_bytes
+        destination = Path(destination)
+        if cached_bytes is None:
+            staging = tmp_path_factory.mktemp("cwv-gru-checkpoint") / "checkpoint.pt"
+            import torch
+
+            with torch.random.fork_rng(devices=[]):
+                build(str(staging), **recipe)
+            cached_bytes = staging.read_bytes()
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("xb") as handle:
+            handle.write(cached_bytes)
+        return str(destination)
+
+    return get
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _module_seed_windows(tmp_path_factory):
     """Each test *module* gets its own fresh scratch registry.

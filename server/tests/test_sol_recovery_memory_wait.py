@@ -38,7 +38,7 @@ def test_memory_parser_refuses_unknown_or_ambiguous_snapshot(snapshot):
 
 def test_memory_guard_unsupported_platform_never_probes(monkeypatch):
     guard = launcher.benchmark_batch
-    monkeypatch.setattr(guard.sys, 'platform', 'linux')
+    monkeypatch.setattr(guard.sys, 'platform', 'freebsd')
     monkeypatch.setattr(guard.subprocess, 'run',
                         lambda *a, **kw: pytest.fail('unsupported host probe'))
     assert not guard.assert_memory_headroom()

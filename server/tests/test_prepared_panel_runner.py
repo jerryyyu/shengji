@@ -116,3 +116,28 @@ def test_recovery_refuses_legacy_path(kwargs, monkeypatch, flag):
     with pytest.raises(runner.BenchmarkRefusal, match="explicit Sol"):
         runner.run_benchmark(**kwargs, **{flag: True})
     assert not kwargs["output"].exists()
+
+
+@pytest.mark.parametrize("raise_error", [False, True])
+@pytest.mark.parametrize("failure_index", [0, 1])
+def test_prepared_panel_stops_after_first_incomplete(kwargs, raise_error, failure_index):
+    attempted = []
+    def fake_runner(game, **options):
+        attempted.append((options["information"], options["flip"]))
+        if len(attempted) - 1 == failure_index:
+            if raise_error:
+                raise RuntimeError("synthetic failure")
+            return {"complete": False, "error": "synthetic failure"}
+        return {"complete": True, "signed_levels": 0}
+    report = runner.run_benchmark(**kwargs, run=True, token_limit=1000000,
+                                  runner=fake_runner)
+    assert len(attempted) == failure_index + 1
+    rows = report["mirrors"]
+    assert len(rows) == 4
+    assert sum(row["complete"] for row in rows) == failure_index
+    assert "synthetic failure" in rows[failure_index]["error"]
+    for row in rows[failure_index + 1:]:
+        assert row["status"] == "not_run"
+        assert row["calls"] == []
+        assert "signed_levels" not in row
+    assert len({row["key"] for row in rows}) == 4

@@ -7,6 +7,7 @@ trajectories. Missing telemetry is not a zero observation.
 from __future__ import annotations
 
 import math
+import copy
 from collections.abc import Iterable, Mapping
 
 
@@ -68,3 +69,46 @@ interval never needs the inconclusive-result extension, regardless of point.
     if point > 0.015 and low <= 0 <= high:
         return "new predeclared confirmation may be proposed; no launch authority"
     return "no extension under the predeclared rule"
+
+
+def attach_five_window_summaries(result: Mapping, *, seeds: tuple[int, ...],
+                                 prefixes: tuple[str, str]) -> dict:
+    """Attach descriptive census summaries to an already validated raw pass.
+
+    The existing reader supplies ``descriptive_health`` keyed by each window's
+    full directory path. Require the exact ten-arm inventory; never mix arms
+    or silently drop a census. This function performs no I/O or estimation and
+    does not strengthen the reader's integrity/health claims.
+    """
+    if (len(seeds) != 5 or len(set(seeds)) != 5
+            or any(type(s) is not int for s in seeds)
+            or len(prefixes) != 2 or prefixes[0] == prefixes[1]
+            or any(not isinstance(p, str) or not p or '/' in p for p in prefixes)):
+        raise ValueError("expected five distinct seeds and two distinct directory prefixes")
+    if result.get("integrity") != "PASS" or result.get("outcome_filter_applied") is not False:
+        raise ValueError("requires validated unfiltered reader output")
+    health = result.get("descriptive_health")
+    if not isinstance(health, Mapping):
+        raise ValueError("missing per-window census")
+    expected = {f"{prefix}-{seed}" for prefix in prefixes for seed in seeds}
+    by_name = {}
+    for path, item in health.items():
+        if not isinstance(path, str):
+            raise ValueError("window path must be a string")
+        name = path.rsplit('/', 1)[-1]
+        if name not in expected or name in by_name:
+            raise ValueError("unexpected or duplicate census window")
+        if not isinstance(item, Mapping) or not isinstance(item.get("refusal_census"), Mapping):
+            raise ValueError("missing refusal census")
+        by_name[name] = item["refusal_census"]
+    if set(by_name) != expected:
+        raise ValueError("incomplete census inventory")
+    triage = result["triage"]
+    extension = five_window_extension(triage["mean"], triage["ci95"])
+    out = copy.deepcopy(dict(result))
+    out["extension"] = extension
+    out["refusal_observation_summary"] = {
+        side: summarize_refusal_observations(by_name[f"{prefix}-{seed}"] for seed in seeds)
+        for side, prefix in zip(("candidate", "comparator"), prefixes)
+    }
+    return out

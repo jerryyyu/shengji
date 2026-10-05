@@ -1,7 +1,8 @@
+import copy
 import pytest
 
 from shengji.eval.refusal_readout_summary import (
-    five_window_extension, summarize_refusal_observations,
+    attach_five_window_summaries, five_window_extension, summarize_refusal_observations,
 )
 
 
@@ -64,3 +65,66 @@ def test_extension_boundaries(point, interval, propose):
 def test_bad_interval_refused(point, interval):
     with pytest.raises(ValueError):
         five_window_extension(point, interval)
+
+
+SEEDS = (52060910, 52160910, 52260910, 52360910, 52460910)
+PREFIXES = ('PVSEARCH-r38rcec-v52ec', 'PVSEARCH-r38-v52ec')
+
+
+def readout():
+    return dict(integrity='PASS', outcome_filter_applied=False,
+                triage={'mean': .02, 'ci95': [-.01, .05]}, statistical_result='INCONCLUSIVE',
+                strength_verdict='WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW',
+                windows=[{'delta': .02}], receipts=[{'sha256': 'synthetic'}],
+                descriptive_health={f'/synthetic/{prefix}-{seed}': {
+                    'refusal_census': census(1, 0, 0) if side == 0 else census(1, 1, 5)}
+                    for side, prefix in enumerate(PREFIXES) for seed in SEEDS})
+
+
+def attach(result):
+    return attach_five_window_summaries(result, seeds=SEEDS, prefixes=PREFIXES)
+
+
+def test_attach_preserves_primary_and_health_and_allows_lower_candidate_counts():
+    result = readout()
+    before = copy.deepcopy(result)
+    output = attach(result)
+    assert result == before
+    for key in before:
+        assert output[key] == before[key]
+    assert output['refusal_observation_summary']['candidate']['mean_observations'] == 0
+    assert output['refusal_observation_summary']['comparator']['mean_observations'] == 5
+    assert 'may be proposed' in output['extension']
+
+
+@pytest.mark.parametrize('problem', ['missing', 'extra', 'duplicate', 'no_census', 'filtered', 'unvalidated'])
+def test_attach_refuses_incomplete_or_ambiguous_population(problem):
+    result = readout()
+    health = result['descriptive_health']
+    path = next(iter(health))
+    if problem == 'missing':
+        del health[path]
+    elif problem == 'extra':
+        health['/synthetic/unplanned-1'] = health[path]
+    elif problem == 'duplicate':
+        health['/another/' + path.rsplit('/', 1)[1]] = health[path]
+    elif problem == 'no_census':
+        health[path] = {}
+    elif problem == 'filtered':
+        result['outcome_filter_applied'] = True
+    else:
+        result['integrity'] = 'FAIL'
+    with pytest.raises(ValueError):
+        attach(result)
+
+
+def test_positive_interval_replaces_old_extension_without_changing_primary():
+    result = readout()
+    result['triage']['ci95'] = [.001, .05]
+    result['statistical_result'] = 'POSITIVE'
+    result['extension'] = 'obsolete point-only extension'
+    output = attach(result)
+    assert output['extension'].startswith('no extension')
+    assert output['triage'] == result['triage']
+    assert output['statistical_result'] == 'POSITIVE'
+    assert output['strength_verdict'] == result['strength_verdict']

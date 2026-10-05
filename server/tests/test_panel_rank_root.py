@@ -182,7 +182,8 @@ def test_projection_refuses_damage_before_prediction(damage, mode):
 
 
 @pytest.mark.parametrize('expire_at', [1, 2, 3, 4])
-def test_projection_budget_refusal_returns_no_result(expire_at):
+@pytest.mark.parametrize('both_arms', [False, True])
+def test_projection_budget_refusal_returns_no_result(expire_at, both_arms):
     import numpy as np
     selected, fixture, bot = selected_inputs('fresh-root')
     calls = []
@@ -197,6 +198,49 @@ def test_projection_budget_refusal_returns_no_result(expire_at):
         if checks == expire_at:
             raise TimeoutError('synthetic deadline')
     with pytest.raises(TimeoutError, match='synthetic deadline'):
-        module.project_panel_rank_repair(selected, fixture, bot,
-                                         arm='treatment', check_budget=budget)
+        if both_arms:
+            module.project_panel_rank_repairs(selected, fixture, bot, check_budget=budget)
+        else:
+            module.project_panel_rank_repair(selected, fixture, bot,
+                                             arm='treatment', check_budget=budget)
     assert calls == ([] if expire_at <= 2 else [64])
+
+
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_both_arms_share_one_capture_and_match_independent_projections(mode):
+    import numpy as np
+    from shengji.eval.pair_resource_admission import project_rank_repair
+    selected, fixture, bot = selected_inputs(mode)
+    before = copy.deepcopy((selected, fixture.to_json(), bot.sampler.rng.getstate()))
+    calls = []
+    def predict(x):
+        calls.append(len(x))
+        assert len(calls) == 1, 'both arms must share the same rank capture'
+        return np.tile(np.arange(54), (len(x), 1))
+    bot.predict = predict
+    result = module.project_panel_rank_repairs(selected, fixture, bot)
+    assert calls == [64]
+    assert list(result['projections']) == ['control', 'treatment']
+    panel = selected['panel']
+    root = module.bind_panel_rank_root(panel, fixture, bot)
+    for arm in ('control', 'treatment'):
+        expected = project_rank_repair(root, fixture.seat, result['capture'],
+                                      selected['job'][f'{arm}_ballot'], panel['actions'],
+                                      [float(i) for i in range(len(panel['actions']))])
+        assert result['projections'][arm] == expected
+    assert (selected, fixture.to_json(), bot.sampler.rng.getstate()) == before
+
+
+@pytest.mark.parametrize('arms', [[], ['control', 'control'], ['bogus'], 'control', [True], [{}]])
+def test_multi_arm_request_rejected_before_prediction(arms):
+    selected, fixture, bot = selected_inputs('fresh-root')
+    with pytest.raises(ValueError, match='arms'):
+        module.project_panel_rank_repairs(selected, fixture, bot, arms=arms)
+
+
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_invalid_second_arm_refuses_before_shared_prediction(mode):
+    selected, fixture, bot = selected_inputs(mode)
+    selected['job']['treatment_ballot'] = []
+    with pytest.raises(ValueError, match='baseline'):
+        module.project_panel_rank_repairs(selected, fixture, bot)

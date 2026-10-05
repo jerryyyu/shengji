@@ -61,7 +61,17 @@ def bind_panel_rank_root(panel, fixture, bot):
 
 
 def project_panel_rank_repair(selected, fixture, bot, *, arm, check_budget=None):
-    """Compose ranks and saved-value projection for one validated selection.
+    """Single-arm compatibility API; use the plural API to compare both arms."""
+    result = project_panel_rank_repairs(selected, fixture, bot, arms=(arm,),
+                                        check_budget=check_budget)
+    projection = result.pop('projections')[arm]
+    result.update(schema='selected-panel-rank-repair-v1', arm=arm, projection=projection)
+    return result
+
+
+def project_panel_rank_repairs(selected, fixture, bot, *,
+                              arms=('control', 'treatment'), check_budget=None):
+    """Project requested ballots from one shared policy-rank capture.
 
     Caller must authenticate selected-reader output, fixture, model and runtime
     before entry. No I/O, sampling or value execution occurs here. Real policy
@@ -76,20 +86,25 @@ def project_panel_rank_repair(selected, fixture, bot, *, arm, check_budget=None)
     if check_budget is not None:
         check_budget()
     selected = copy.deepcopy(selected)
-    if (type(selected) is not dict or selected.get('schema') != 'selected-m9-panel-v1'
-            or arm not in ('control', 'treatment')):
-        raise ValueError('validated selection and explicit control/treatment arm required')
+    if type(selected) is not dict or selected.get('schema') != 'selected-m9-panel-v1':
+        raise ValueError('validated selection required')
+    if (type(arms) not in (tuple, list) or not arms
+            or any(type(arm) is not str or arm not in ('control', 'treatment') for arm in arms)
+            or len(set(arms)) != len(arms)):
+        raise ValueError('unique nonempty control/treatment arms required')
+    arms = tuple(arms)
     panel, job = selected['panel'], selected['job']
     for key in ('fixture_id', 'mode', 'seed'):
         if _canonical(job.get(key)) != _canonical(panel.get(key)):
             raise ValueError(f'selected job/panel {key} mismatch')
     root = bind_panel_rank_root(panel, fixture, bot)
     actions = panel['actions']
-    baseline = job[f'{arm}_ballot']
     full = set(_canonical_collection(actions, 'full pool'))
-    ballot = _canonical_collection(baseline, 'baseline')
-    if not ballot or not set(ballot) <= full:
-        raise ValueError('baseline absent from full pool')
+    baselines = {arm: job[f'{arm}_ballot'] for arm in arms}
+    for arm, baseline in baselines.items():
+        ballot = _canonical_collection(baseline, f'{arm} baseline')
+        if not ballot or not set(ballot) <= full:
+            raise ValueError(f'{arm} baseline absent from full pool')
     collection = panel['collection']
     saved = (collection['captures']['full_pool'] if panel['mode'] == 'fresh-root'
              else collection['full_pool_capture'])
@@ -97,11 +112,12 @@ def project_panel_rank_repair(selected, fixture, bot, *, arm, check_budget=None)
     values = _capture(saved, actions, 'full_pool capture')['means']
     ranks = capture_policy_ranks(bot, root, fixture.seat, actions, panel['worlds'],
                                  check_budget=check_budget)
-    projection = project_rank_repair(root, fixture.seat, ranks, baseline, actions, values)
+    projections = {arm: project_rank_repair(root, fixture.seat, ranks, baseline, actions, values)
+                   for arm, baseline in baselines.items()}
     if check_budget is not None:
         check_budget()
-    return {'schema': 'selected-panel-rank-repair-v1',
+    return {'schema': 'selected-panel-rank-repairs-v1',
             'fixture_id': fixture.id, 'mode': panel['mode'], 'seed': panel['seed'],
-            'arm': arm, 'capture': ranks, 'projection': projection,
+            'capture': ranks, 'projections': projections,
             'provenance_verified': False, 'serving_choice_assessed': False,
             'strategic_quality_assessed': False}

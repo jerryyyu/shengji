@@ -155,10 +155,12 @@ export default function App() {
           {toast}
         </div>
       ) : null}
-      <div className="rotate-hint" aria-hidden="true">
-        <div className="rotate-icon">📱</div>
-        <div>Rotate your phone to play</div>
-      </div>
+      {game ? (
+        <div className="rotate-hint">
+          <div className="rotate-icon" aria-hidden="true">📱</div>
+          <div>Rotate your phone to play</div>
+        </div>
+      ) : null}
     </div>
   );
 }

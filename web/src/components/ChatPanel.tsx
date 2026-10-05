@@ -23,9 +23,15 @@ export default function ChatPanel({
 
   useEffect(() => {
     if (open) {
-      endRef.current?.scrollIntoView({ block: "end" });
+      const previous = document.activeElement;
       inputRef.current?.focus();
+      return () => {
+        if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      };
     }
+  }, [open]);
+  useEffect(() => {
+    if (open) endRef.current?.scrollIntoView({ block: "end" });
   }, [open, messages.length]);
 
   if (!open) return null;
@@ -38,14 +44,17 @@ export default function ChatPanel({
   };
 
   return (
-    <div className="chat-panel">
+    <div className="chat-panel" role="region" aria-label="Chat" onKeyDown={(event) => {
+      if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
+      event.stopPropagation();
+    }}>
       <div className="chat-head">
         <span>Chat</span>
         <button className="chat-close" onClick={onClose} aria-label="Close chat">
           ×
         </button>
       </div>
-      <div className="chat-log">
+      <div className="chat-log" role="log" aria-label="Messages" aria-relevant="additions">
         {messages.length === 0 && <div className="chat-empty">No messages yet</div>}
         {messages.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
@@ -67,10 +76,11 @@ export default function ChatPanel({
           value={draft}
           maxLength={300}
           placeholder="Message…"
+          aria-label="Chat message"
+          enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") send();
-            e.stopPropagation();   // don't trigger table hotkeys (e.g. X-ray)
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) send();
           }}
         />
         <button className="btn" onClick={send} disabled={!draft.trim()}>

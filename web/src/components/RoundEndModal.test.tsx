@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GameState, RoundResult, StatePlayer } from "../protocol";
 import RoundEndModal from "./RoundEndModal";
 
@@ -31,14 +31,46 @@ function makeResult(overrides: Partial<RoundResult> = {}): RoundResult {
   };
 }
 
+let root: ReturnType<typeof createRoot>;
+let host: HTMLDivElement;
+const originalShow = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+beforeEach(() => {
+  // jsdom has no modal top-layer implementation; real-browser checks cover isolation.
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  } });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  } });
+});
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  for (const [name, descriptor] of [["showModal", originalShow], ["close", originalClose]] as const) {
+    if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, name, descriptor);
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
+  }
+});
 function renderModal(result: RoundResult): string {
-  const host = document.createElement("div");
+  host = document.createElement("div");
   document.body.appendChild(host);
-  act(() => { createRoot(host).render(<RoundEndModal state={state} result={result} />); });
+  root = createRoot(host);
+  act(() => { root.render(<RoundEndModal state={state} result={result} />); });
   return host.textContent ?? "";
 }
 
 describe("round end modal", () => {
+  it("opens a named dialog, focuses its heading and prevents silent dismissal", () => {
+    renderModal(makeResult());
+    const dialog = host.querySelector("dialog")!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.getAttribute("aria-labelledby")).toBe(host.querySelector("h2")!.id);
+    expect(document.activeElement).toBe(host.querySelector("h2"));
+    const cancel = new Event("cancel", { cancelable: true });
+    dialog.dispatchEvent(cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+  });
   it("shows a level change on an ordinary round", () => {
     const text = renderModal(makeResult({ new_levels: ["5", "2"] }));
     expect(text).toContain("Level change");

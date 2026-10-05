@@ -95,6 +95,8 @@ def test_fixed_preload_import_surface_is_exact():
         "shengji.ai.cwv_numpy",
         "shengji.ai.cwv_prior_numpy",
         "shengji.ai.cwv_policy",
+        "shengji.ai.cwv_numpy_evaluator",
+        "shengji.ai.cwv_encoder_compat",
         "shengji.ai.refusal",
         "encodings.cp437",
     )

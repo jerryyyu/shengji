@@ -18,6 +18,7 @@ import copy
 import json
 import os
 import random
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -1212,7 +1213,53 @@ def _start_cli(out: Path, *args: str) -> subprocess.Popen:
     cmd = [sys.executable, "-P", "-B", str(SCRIPT), "--rounds", "2",
            "--seed", "777", "--out", str(out), "--workers", "2", *args]
     return subprocess.Popen(cmd, cwd=SERVER, env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True)
+                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+
+
+def _drain_cli(proc):
+    """Drain only the session created by _start_cli, including pool workers."""
+    def send(sig):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+
+    send(signal.SIGTERM)
+    try:
+        proc.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        send(signal.SIGKILL)
+        proc.communicate(timeout=5)
+    finally:
+        # A parent can exit with an uncooperative descendant whose pipes closed.
+        send(signal.SIGKILL)
+
+
+def _work_runs(root):
+    specs = {
+        "none": ("--arm", "none"),
+        "work_production": ("--arm", "work", "--work-select-worlds", "30",
+                            "--work-report-worlds", "300"),
+        "work_tiny": ("--arm", "work", "--work-select-worlds", "1",
+                      "--work-report-worlds", "30"),
+    }
+    procs = {}
+    try:
+        for name, args in specs.items():
+            procs[name] = _start_cli(root / name, *args)
+        for name, proc in procs.items():
+            stdout, stderr = proc.communicate(timeout=600)
+            assert proc.returncode == 0, f"{name}: {stderr}{stdout}"
+        return {name: root / name for name in procs}
+    finally:
+        errors = []
+        for proc in procs.values():
+            try:
+                _drain_cli(proc)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise ExceptionGroup("oracle fixture cleanup failed", errors)
 
 
 @pytest.fixture(scope="module")
@@ -1220,19 +1267,77 @@ def work_runs(tmp_path_factory):
     """The work arm's baseline must be production, so these rounds cost ~20 s
     each without the fast engine; the three runs proceed concurrently."""
     root = tmp_path_factory.mktemp("oracle_work")
-    procs = {
-        "none": _start_cli(root / "none", "--arm", "none"),
-        "work_production": _start_cli(
-            root / "work_production", "--arm", "work",
-            "--work-select-worlds", "30", "--work-report-worlds", "300"),
-        "work_tiny": _start_cli(
-            root / "work_tiny", "--arm", "work",
-            "--work-select-worlds", "1", "--work-report-worlds", "30"),
-    }
-    for name, proc in procs.items():
-        stdout, stderr = proc.communicate(timeout=600)
-        assert proc.returncode == 0, f"{name}: {stderr}{stdout}"
-    return {name: root / name for name in procs}
+    return _work_runs(root)
+
+
+@pytest.mark.parametrize("failure", ["start", "exit", "timeout", "cleanup", None])
+def test_work_fixture_drains_every_started_process(tmp_path, monkeypatch, failure):
+    started, drained = [], []
+
+    class Process:
+        returncode = 1 if failure == "exit" else 0
+
+        def communicate(self, timeout):
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired("synthetic", timeout)
+            return "", ""
+
+    def start(*args):
+        if failure == "start" and started:
+            raise OSError("synthetic start failure")
+        proc = Process()
+        started.append(proc)
+        return proc
+
+    def drain(proc):
+        drained.append(proc)
+        if failure == "cleanup" and len(drained) == 1:
+            raise OSError("synthetic cleanup failure")
+
+    monkeypatch.setattr(sys.modules[__name__], "_start_cli", start)
+    monkeypatch.setattr(sys.modules[__name__], "_drain_cli", drain)
+    if failure:
+        with pytest.raises((OSError, AssertionError, subprocess.TimeoutExpired, ExceptionGroup)):
+            _work_runs(tmp_path)
+    else:
+        assert len(_work_runs(tmp_path)) == 3
+    assert len(started) == (1 if failure == "start" else 3)
+    assert drained == started
+
+
+def test_work_fixture_drain_escalates_only_its_owned_group(monkeypatch):
+    calls = []
+
+    class Process:
+        pid = 12345
+
+        def communicate(self, timeout):
+            calls.append(("wait", timeout))
+            if calls.count(("wait", timeout)) == 1:
+                raise subprocess.TimeoutExpired("synthetic", timeout)
+            return "", ""
+
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: calls.append((pid, sig)))
+    _drain_cli(Process())
+    assert calls == [(12345, signal.SIGTERM), ("wait", 5),
+                     (12345, signal.SIGKILL), ("wait", 5),
+                     (12345, signal.SIGKILL)]
+
+
+def test_work_fixture_starts_an_owned_session(tmp_path, monkeypatch):
+    calls = []
+    sentinel = object()
+
+    def popen(command, **kwargs):
+        calls.append((command, kwargs))
+        return sentinel
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    assert _start_cli(tmp_path, "--arm", "none") is sentinel
+    command, kwargs = calls.pop()
+    assert kwargs["start_new_session"] is True
+    assert command[command.index("--rounds") + 1] == "2"
+    assert command[command.index("--workers") + 1] == "2"
 
 
 def _summary(out: Path) -> dict:

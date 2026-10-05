@@ -330,18 +330,33 @@ def test_panel_reconnect_census_never_selects_or_changes_game_scores(tmp_path):
     assert result["policies"]["smart"]["pt_sol"]["transport_health"]["recorded_reconnect_events"] == 0
 
 
-def test_atomic_output_does_not_clobber(tmp_path, monkeypatch):
-    # Exercise legacy non-bundle publication. Frozen-bundle CLI refusal has
-    # its own fresh-process test; it must not be bypassed in real use.
-    monkeypatch.setattr(readout, '__file__', str(tmp_path / 'source/scripts/readout.py'))
+def test_atomic_output_does_not_clobber(tmp_path):
+    from shengji.luna.atomic_io import AtomicPublishError, publish_exclusive_bytes
     rows = _panel(tmp_path)
-    mapping = json.dumps({key: str(path) for key, path in rows.items()})
     output = tmp_path / "readout.json"
-    assert readout.main(["--rows", mapping, "--output", str(output)]) == 0
+    raw = json.dumps(readout.analyze_panel(rows), sort_keys=True).encode()
+    publish_exclusive_bytes(output, raw, mode=0o400)
     first = output.read_bytes()
-    with pytest.raises(SystemExit):
-        readout.main(["--rows", mapping, "--output", str(output)])
+    with pytest.raises(AtomicPublishError, match='slot occupied'):
+        publish_exclusive_bytes(output, raw, mode=0o400)
     assert output.read_bytes() == first
+
+
+@pytest.mark.parametrize('has_manifest', [False, True])
+def test_directory_cli_refuses_before_data_access_in_any_layout(tmp_path, monkeypatch, has_manifest):
+    monkeypatch.setattr(readout, '__file__', str(tmp_path / 'source/scripts/readout.py'))
+    if has_manifest:
+        (tmp_path / 'manifest.json').write_text('{}')
+    output = tmp_path / 'readout.json'
+    output.write_bytes(b'preserve existing output')
+    def forbidden(*args, **kwargs):
+        raise AssertionError('raw mapping or panel must not be opened')
+    monkeypatch.setattr(readout, '_load_mapping', forbidden)
+    monkeypatch.setattr(readout, 'analyze_panel', forbidden)
+    monkeypatch.setattr(readout, '_read_json', forbidden)
+    with pytest.raises(readout.PanelReadoutError, match='forbids the directory CLI'):
+        readout.main(['--rows', str(tmp_path / 'unread.json'), '--output', str(output)])
+    assert output.read_bytes() == b'preserve existing output'
 
 
 def test_partial_campaign_rows_and_explicit_not_run_are_labeled(tmp_path):

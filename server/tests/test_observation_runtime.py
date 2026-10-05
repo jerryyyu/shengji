@@ -301,6 +301,10 @@ def test_postcheck_reports_exception_and_external_failure(tmp_path, monkeypatch)
     fence.check = lambda: False
     assert not admitted.check()
     assert admitted.last_failure == {"stage": "external_runtime"}
+    fence.last_failure = {"stage": "mapped_files", "added": ["/synthetic.so"]}
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "external_runtime",
+                                     "detail": fence.last_failure}
     def fail(path):
         raise ValueError("foreign module origin")
     monkeypatch.setattr(runtime, "_routes", fail)

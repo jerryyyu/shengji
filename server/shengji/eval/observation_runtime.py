@@ -313,6 +313,9 @@ class ObservationRuntime:
             stage = "external_runtime"
             if not self.external.check():
                 self.last_failure = {"stage": stage}
+                detail = getattr(self.external, "last_failure", None)
+                if detail is not None:
+                    self.last_failure["detail"] = detail
                 return False
             return True
         except (OSError, ValueError, RuntimeError) as exc:

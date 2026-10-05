@@ -47,6 +47,7 @@ def test_capture_and_verify_accept_unchanged_synthetic_fence(tmp_path, monkeypat
     }
     fence = RuntimeFence(manifest, source_root, maps_path=maps)
     assert fence.check() is True
+    assert fence.last_failure is None
     assert manifest["imports"] == [module_name]
 
 
@@ -82,6 +83,8 @@ def test_mapped_file_bytes_or_stat_drift_is_rejected(
     info = mapped.stat()
     os.utime(mapped, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000))
     assert fence.check() is False
+    assert fence.last_failure == {"stage": "mapped_files", "added": [],
+                                  "removed": [], "changed": [str(mapped)]}
 
 
 @pytest.mark.parametrize("mutation", ["new", "deleted"])
@@ -97,6 +100,13 @@ def test_new_or_deleted_map_fails_check(tmp_path, monkeypatch, mutation):
     else:
         maps.write_text("", encoding="utf-8")
     assert fence.check() is False
+    assert fence.last_failure == {
+        "stage": "mapped_files", "added": [str(added)] if mutation == "new" else [],
+        "removed": [str(mapped)] if mutation == "deleted" else [],
+    }
+    maps.write_text(_maps_line(mapped), encoding="utf-8")
+    assert fence.check()
+    assert fence.last_failure is None
 
 
 @pytest.mark.parametrize("kind", ["path", "inode"])
@@ -120,3 +130,4 @@ def test_replaced_module_object_fails_check(tmp_path, monkeypatch):
     fence = RuntimeFence(manifest, source_root, maps_path=maps)
     monkeypatch.setitem(sys.modules, module_name, ModuleType(module_name))
     assert fence.check() is False
+    assert fence.last_failure == {"stage": "module_identity", "changed": [module_name]}

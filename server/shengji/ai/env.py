@@ -86,6 +86,22 @@ def prepare_round(game: Game, policies: list) -> Round:
     return rnd
 
 
+def observe_committed_play(rnd: Round, policies: list) -> None:
+    """After one committed play, let EVERY seat's policy read the public
+    failed-throw notice (#707 S8: the PV search bot's `observe_public`; its
+    event-complete arm feeds its refusal ledger from it, the flag-off bot and
+    every other policy are no-ops).  Called from the one place a screen commits
+    a play, so per-seat bots see each notice before the next failed throw
+    replaces it.  A policy without the method is skipped; a wrapper that
+    delegates attribute lookup (`search_screen.TimedPolicy`) forwards it.
+    Not best-effort: a screen fails closed on a raise, as on any other error.
+    """
+    for policy in policies:
+        observe = getattr(policy, "observe_public", None)
+        if observe is not None:
+            observe(rnd)
+
+
 def play_prepared_round(game: Game, policies: list, record: bool = False) -> RoundLog:
     """Continue a prepared play state using the same loop as play_round."""
     rnd = game.round
@@ -99,6 +115,7 @@ def play_prepared_round(game: Game, policies: list, record: bool = False) -> Rou
         rnd.play(seat, cards)
         if record:  # engine truth, not the attempt (failed throws differ)
             history.append((seat, actual_play_after(rnd, seat, prev_last)))
+        observe_committed_play(rnd, policies)
     result = game.finish_round()
     return RoundLog(rnd.trump_rank, rnd.banker, result.attacker_points,
                     result.winner_team, result.level_change, history=history)

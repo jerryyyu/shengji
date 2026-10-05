@@ -66,6 +66,27 @@ the digest, the name (production:
 worlds and the decision record are exactly what they were before the rule
 existed.  The encoder and its hashed source closure are untouched.
 
+Optional event-complete refusal observation (#707 board S8), OFF BY DEFAULT:
+``SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1`` makes the bot's `RefusalLedger` read
+the public notice after EVERY committed play at its table (`observe_public`,
+called by the server's commit paths and by the screen's round driver), not
+only inside its own decisions.  ``Round.notice`` is replaced by the next failed
+throw and expires after ``NOTICE_PLAYS`` accepted plays, so a ledger that
+observes only when its bot decides misses notices -- its own failed throw's
+notice above all, which is posted after the decision (#745: 6 of 8 retained on
+the partner fixture at the actor's seat).  A notice is set at the commit of the
+failed throw and can only be replaced by a LATER commit, so observing once
+after every committed play sees every notice.  ``0`` or ``1`` only; on, it
+REQUIRES ``SHENGJI_PV_REFUSAL_CONSTRAINTS=1`` (refused at construction
+otherwise: with the sampler rule off no decision reads the ledger, and a name
+token for a rule with no effect would be a lie), enters the recipe digest and
+adds ``-rcec`` to the registry name right after ``-rc``; off, `observe_public`
+is a no-op, the ledger is fed exactly as before (inside `_worlds`) and every
+existing name, digest, sampled world and decision record is unchanged
+(release 38: ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457``).
+The engine and the hashed encoder closure are untouched; nothing is added to
+``Round``.
+
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
 is leading and the scored legal set holds a multi-card action -- the K=8 ballot
@@ -153,11 +174,13 @@ ADMISSION_RULES = {"ADMISSION_DIVERSITY": "admission_diversity",
                    "ADMIT_FORCED_SINGLE": "admit_forced_single"}
 #: name tokens, in name order, for the rules that are on
 ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"))
-#: the optional sampler rule (`ai.refusal`): env flag -> recipe key, and its default
-SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints"}
-SAMPLER_DEFAULTS = dict(refusal_constraints=False)
+#: the optional sampler rule (`ai.refusal`) and its event-complete observation
+#: (#707 S8; requires the sampler rule): env flag -> recipe key, and the defaults
+SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
+                 "REFUSAL_EVENT_COMPLETE": "refusal_event_complete"}
+SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False)
 #: name tokens, in name order, for the rules that are on
-SAMPLER_TOKENS = (("refusal_constraints", "rc"),)
+SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"))
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
 #: the optional admission width rule (`policy_value_search`): env flag -> recipe key
@@ -169,8 +192,8 @@ LEAD_ANCHOR_RULE = {"LEAD_ANCHOR": "lead_anchor"}
 #: the optional lead selection rule (`policy_value_search`): env flag -> recipe key
 LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
-#: name order (admission rules, the sampler rule, selection, width, anchor, lead
-#: selection): div, fs, rc, tb, ak16, la, lp
+#: name order (admission rules, the sampler rules, selection, width, anchor, lead
+#: selection): div, fs, rc, rcec, tb, ak16, la, lp
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE}
 RULES = RULE_FLAGS
@@ -244,6 +267,9 @@ class PVSearchConfig:
     admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"]
     admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"]
     refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
+    # the event-complete observation of the sampler rule (#707 S8): the same
+    # contract, and on only together with ``refusal_constraints``
+    refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -268,6 +294,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
             raise PVSearchPolicyError(f"{key} must be a bool")
         if not payload[key]:
             del payload[key]
+    if config.refusal_event_complete and not config.refusal_constraints:
+        raise PVSearchPolicyError("refusal_event_complete requires refusal_constraints "
+                                  "(SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1 needs "
+                                  "SHENGJI_PV_REFUSAL_CONSTRAINTS=1)")
     if config.admission_diversity:
         payload["max_per_structure"] = ADMISSION_DEFAULTS["max_per_structure"]
     if config.admit_forced_single:
@@ -323,12 +353,36 @@ class PVSearchBot(PolicyValueBot):
         # the optional sampler rule (#676 B): the round's failed-throw notices, as
         # seen on this bot's turns, constrain its sampled worlds (`ai.refusal`)
         self.refusal_constraints = bool(config.refusal_constraints)
+        # #707 S8: the ledger also reads the notice after every committed play
+        # at the table (`observe_public`), never only at this bot's decisions
+        self.refusal_event_complete = bool(config.refusal_event_complete)
+        if self.refusal_event_complete and not self.refusal_constraints:
+            raise PVSearchPolicyError("refusal_event_complete requires refusal_constraints")
         self._refusals = RefusalLedger()
         self._last_sampling = {}
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
         self.search_secs = 0.0
+
+    # -- the public-event hook (#707 S8) ---------------------------------------
+
+    def observe_public(self, rnd) -> None:
+        """Read the round's public failed-throw notice into this bot's ledger.
+
+        Called by the table's round driver after EVERY committed play (the
+        server's commit paths on the committed room bot, `ai.env` on every
+        seat's bot), so the ledger sees each notice before the next failed
+        throw replaces it -- its own failed throw's notice included, which is
+        posted only after `decide_play` returned.  A no-op unless BOTH
+        ``refusal_constraints`` and ``refusal_event_complete`` are on, so a
+        flag-off bot's ledger is fed exactly as before (inside `_worlds`).
+        `RefusalLedger.observe` is idempotent for a notice already held, so the
+        decision-time read and this one never double-count.  Reads the round;
+        never plays, samples or advances the RNG.
+        """
+        if self.refusal_constraints and self.refusal_event_complete:
+            self._refusals.observe(rnd)
 
     # -- the two harness hooks that serving changes -------------------------
 
@@ -615,6 +669,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bot_factory=None, prior_checkpoint: str | None = None,
                        prior_sha256: str | None = None,
                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
+                       refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -648,6 +703,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
                             refusal_constraints=refusal_constraints,
+                            refusal_event_complete=refusal_event_complete,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -706,6 +762,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         prior_checkpoint: str | None = None,
                         prior_sha256: str | None = None,
                         refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
+                        refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -721,6 +778,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             cap=int(cap), batch_size=int(batch_size),
                             serving_budget_seconds=_serving_budget(serving_budget_seconds),
                             refusal_constraints=refusal_constraints,
+                            refusal_event_complete=refusal_event_complete,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -769,6 +827,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                prior_checkpoint=prior_checkpoint,
                                prior_sha256=prior_sha256,
                                refusal_constraints=config.refusal_constraints,
+                               refusal_event_complete=config.refusal_event_complete,
                                admission_diversity=config.admission_diversity,
                                admit_forced_single=config.admit_forced_single,
                                tiebreak_points=config.tiebreak_points,
@@ -790,7 +849,7 @@ def pv_env_recipe(environ=None) -> dict:
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
-    ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

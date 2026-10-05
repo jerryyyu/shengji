@@ -712,6 +712,37 @@ def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
 
 
 
+def _observe_committed_play(room: Room) -> None:
+    """Let the COMMITTED room bot read the public failed-throw notice (#707 S8).
+
+    Where this hook lives, and why.  A ``Round.notice`` is posted by the commit
+    of a failed throw and replaced by the next one, so a ledger that reads it
+    only inside the bot's own decisions misses notices (#745).  The decision
+    runs on a deep-copied snapshot (`_snapshot_bot_turn`) against a deep-copied
+    round, BEFORE the play commits -- it cannot see its own throw's notice, and
+    the whole copy is discarded when the commit is stale.  So the read must
+    happen (1) after ``rnd.play`` on the LIVE round, (2) under ``room.lock`` on
+    the three commit paths (`bot_step`, `_commit_bot_turn`, the human play in
+    `handle_action`), and (3) on ``room.bot`` AS IT IS AFTER THE COMMIT -- in
+    `_commit_bot_turn` that is ``snapshot.bot_copy``, which has just become the
+    room bot and persists to the next turn.  Reading on the snapshot inside
+    `_compute_bot_turn` would be too early and, on a stale commit, lost.
+
+    Best-effort and bounded: a bot without `observe_public` (every non-PV bot)
+    is skipped, and nothing raised here reaches the game loop -- the play has
+    already committed and is logged; a failed read must never desync a room.
+    A flag-off PV bot's `observe_public` is itself a no-op.
+    """
+    observe = getattr(room.bot, "observe_public", None)
+    if observe is None:
+        return
+    try:
+        observe(room.round)
+    except Exception as exc:  # never into the loop; the play is already committed
+        logging.warning("room %s observe_public failed: %s: %s",
+                        room.code, type(exc).__name__, exc)
+
+
 def pending_ready(room: Room) -> set[int]:
     """Connected humans who have not yet confirmed the round end."""
     return {i for i, sd in enumerate(room.seats)
@@ -799,6 +830,7 @@ def bot_step(room: Room, seat: int) -> bool:
             played = actual_play_after(rnd, seat, prev_last)
             room.remove_codes(seat, played)
             _log_play(room, seat, played, True, prev_last)
+            _observe_committed_play(room)
         else:
             return False
         if rnd.phase == "round_end" and game.result is None:
@@ -1002,6 +1034,8 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             played = actual_play_after(rnd, seat, prev_last)
             room.remove_codes(seat, played)
             _log_play(room, seat, played, True, prev_last)
+            # on the committed bot: ``room.bot`` is ``snapshot.bot_copy`` now
+            _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
             return False
         if rnd.phase == "round_end" and room.game.result is None:
@@ -1394,6 +1428,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         else:
             room.remove_codes(seat, played)
         _log_play(room, seat, played, False, prev_last)
+        # a human's play is a committed play too: the room bot's ledger must see
+        # the notice it posts (or replaces) before the bot's next turn
+        _observe_committed_play(room)
     elif t == "next_round":
         if rnd.phase != "round_end":
             raise IllegalPlay("Round not finished.")

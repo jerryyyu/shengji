@@ -1,4 +1,5 @@
 import copy
+import json
 
 import numpy as np
 import pytest
@@ -44,6 +45,47 @@ def test_ties_preserve_supplied_order():
     bot.predict = lambda x: np.zeros((len(x), 54))
     result = capture_policy_ranks(bot, root, seat, list(reversed(actions)), worlds)
     assert result['ranked_indices'] == list(range(len(actions)))
+
+
+@pytest.mark.parametrize('damage', ['missing', 'extra', 'substitute', 'kitty'])
+def test_nonconserving_tape_refuses_before_prediction(damage):
+    bot, root, seat, actions, worlds = setup()
+    other = (seat + 1) % 4
+    hands, buried = worlds[-1]
+    if damage == 'missing':
+        hands[other].pop()
+    elif damage == 'extra':
+        hands[other].append(hands[other][0])
+    elif damage == 'substitute':
+        hands[other][0] = next(c for c in root.deck if c != hands[other][0])
+    else:
+        buried.pop()
+    calls = []
+    bot.predict = lambda x: calls.append(x) or np.zeros((len(x), 54))
+    with pytest.raises(ValueError):
+        capture_policy_ranks(bot, root, seat, actions, worlds)
+    assert calls == []
+
+
+def test_json_tape_with_completed_and_partial_tricks_keeps_order():
+    from shengji.ai.heuristic import HeuristicBot
+
+    bot, root, _, _, _ = setup()
+    for _ in range(5):
+        root.play(root.turn, HeuristicBot().decide_play(root, root.turn))
+    assert root.history and root.trick.plays
+    seat = root.turn
+    actions = [[c] for c in dict.fromkeys(root.hands[seat])]
+    worlds = json.loads(json.dumps([
+        (copy.deepcopy(root.hands), root.buried),
+        ([list(reversed(h)) for h in root.hands], list(reversed(root.buried))),
+    ]))
+    before = copy.deepcopy(worlds)
+    expected = bot.scores(root, seat, actions, worlds).mean(axis=0).tolist()
+    result = capture_policy_ranks(bot, root, seat, actions, worlds)
+    assert result['preferences'] == expected
+    assert worlds == before
+    assert result['provenance_verified'] is False
 
 
 def test_scores_use_supplied_worlds_not_live_hidden_hands():

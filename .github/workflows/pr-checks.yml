@@ -199,6 +199,7 @@ jobs:
             tests/test_pv_value_matrix.py \
             tests/test_pv_adaptive_k.py \
             tests/test_pv_lead_tiebreak_prior.py \
+            tests/test_pv_doomed_throw_swap.py \
             tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \
             tests/test_pv_serving_smoke.py \

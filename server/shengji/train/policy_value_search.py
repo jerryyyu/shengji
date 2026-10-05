@@ -122,6 +122,36 @@ and while off `_select` is exactly what it was):
   choice), ``lead_tiebreak_from`` / ``lead_tiebreak_to`` (their cards),
   ``lead_tiebreak_value_gap`` (the value mean given up, >= 0) and, only when
   the points rule's change was kept, ``lead_tiebreak_superseded``.
+
+Optional PLAYED-ACTION rule (OXPS round 1, release 38; OFF BY DEFAULT, and while
+off the played action is the selected candidate exactly as before):
+
+* ``doomed_throw_swap`` -- after the selection (every selection rule above
+  included), when the acting seat is LEADING and the selected action is a
+  multi-card lead that the engine REFUSES in EVERY sampled world with the SAME
+  forced component (`harvest.legal.forced_lead`, the engine's own
+  ``validate_lead`` on that world's hands), that forced component is played
+  instead of the throw.  The value is unchanged under the search's own model:
+  the throw's leaf in each world (`_leaf` -> `afterstate` -> ``Round.play``)
+  already IS the forced component played, because a rollout clone posts no
+  failed-throw notice and the encoder reads none, so the two leaves are the same
+  state.  The throw was therefore a free alias of its forced card, and it won
+  only by first-argmax order over equal values; played for real it also posts a
+  public notice that shows the thrown cards (and, under the refusal sampler
+  rule, constrains the other bots' worlds).  The swap removes only that.  A
+  throw that stands in some world, or that is forced to different components in
+  different worlds, is played unchanged (its exposure is not priced here).
+  Nothing in the admission, the value pass or the selection changes, no model
+  is called, and ``selected_index`` / ``value_means`` keep describing the
+  search; the record adds scalars only: ``doomed_throw_swap_applied``,
+  ``doomed_throw_swap_from`` / ``doomed_throw_swap_to`` (cards; ``to`` equals
+  ``from`` when nothing was swapped), ``doomed_throw_swap_worlds`` and
+  ``doomed_throw_swap_refused_worlds`` (sampled worlds and how many refused the
+  throw; 0 when the selected action was not a multi-card lead) and
+  ``doomed_throw_swap_forced_variants`` (distinct forced components seen).  The
+  check runs under the serving deadline (strided like the forced-component
+  rule); on expiry it abandons itself and the selected action is played, with
+  ``doomed_throw_swap_abandoned`` ``"budget"``.
 """
 from __future__ import annotations
 
@@ -163,6 +193,12 @@ ADAPTIVE_K_DEFAULTS = dict(adaptive_k=False, candidates_lead_multi=16)
 
 #: `lead_anchor`: the optional slot-0 rule on low-single leads (module docstring)
 LEAD_ANCHOR_DEFAULTS = dict(lead_anchor=False)
+
+#: `doomed_throw_swap`: the optional played-action rule (module docstring)
+DOOMED_THROW_DEFAULTS = dict(doomed_throw_swap=False)
+#: the cooperative budget is checked after every this-many sampled worlds
+#: inside the swap's throw-resolution loop
+DOOMED_THROW_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
 _DECK = tuple(sorted(set(make_deck())))
 
 
@@ -251,6 +287,7 @@ class PolicyValueBot(PolicyWorldBot):
                  lead_anchor=LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                  lead_tiebreak_prior=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
                  lead_tiebreak_epsilon=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"],
+                 doomed_throw_swap=DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -307,6 +344,10 @@ class PolicyValueBot(PolicyWorldBot):
         self.lead_tiebreak_prior = lead_tiebreak_prior
         self.lead_tiebreak_epsilon = float(lead_tiebreak_epsilon)
         self._lead_tiebreak = None
+        if type(doomed_throw_swap) is not bool:
+            raise ValueError('doomed_throw_swap must be a bool')
+        self.doomed_throw_swap = doomed_throw_swap
+        self._doomed_throw = None
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -397,6 +438,59 @@ class PolicyValueBot(PolicyWorldBot):
         if not self.lead_tiebreak_prior or self._lead_tiebreak is None:
             return {}
         return dict(self._lead_tiebreak)
+
+    # -- the played action: the optional doomed-throw swap ----------------------
+
+    def _swap_doomed_throw(self, rnd, seat, action, worlds, check_budget=None):
+        """The cards to play for the selected ``action`` (module docstring's
+        ``doomed_throw_swap``): its forced component when the engine refuses it
+        in every one of ``worlds`` with one forced component, else ``action``.
+        Sets ``self._doomed_throw`` (the record fields) whenever the rule is on.
+        On the serving deadline the check abandons itself and ``action`` stands
+        (the value pass and the selection were complete)."""
+        self._doomed_throw = None
+        action = list(action)
+        if not self.doomed_throw_swap:
+            return action
+        record = {'doomed_throw_swap_applied': False,
+                  'doomed_throw_swap_from': _cards_text(action),
+                  'doomed_throw_swap_to': _cards_text(action),
+                  'doomed_throw_swap_worlds': len(worlds) if worlds is not None else 0,
+                  'doomed_throw_swap_refused_worlds': 0,
+                  'doomed_throw_swap_forced_variants': 0}
+        self._doomed_throw = record
+        if not worlds or not leading(rnd) or len(action) < 2:
+            return action
+        refused, variants = 0, set()
+        try:
+            for world_index, (hands, _) in enumerate(worlds):
+                if check_budget is not None and world_index \
+                        and world_index % DOOMED_THROW_BUDGET_STRIDE == 0:
+                    check_budget()
+                forced = forced_lead(rnd, seat, action, hands)
+                if forced is not None:
+                    refused += 1
+                    variants.add(tuple(forced))
+            # nothing computed past the deadline may be published
+            if check_budget is not None:
+                check_budget()
+        except _budget_exceeded() as exc:
+            record['doomed_throw_swap_abandoned'] = 'budget'
+            record['doomed_throw_swap_abandon_error'] = type(exc).__name__
+            return action
+        record['doomed_throw_swap_refused_worlds'] = refused
+        record['doomed_throw_swap_forced_variants'] = len(variants)
+        if refused != len(worlds) or len(variants) != 1:
+            return action
+        forced = list(next(iter(variants)))
+        record['doomed_throw_swap_applied'] = True
+        record['doomed_throw_swap_to'] = _cards_text(forced)
+        return forced
+
+    def _doomed_throw_record(self):
+        if not self.doomed_throw_swap or self._doomed_throw is None:
+            return {}
+        return dict(self._doomed_throw)
 
     # -- selection: the optional epsilon tie-break by trick points -------------
 
@@ -678,6 +772,7 @@ class PolicyValueBot(PolicyWorldBot):
         means, batches = self._value_means(rnd, seat, admitted, worlds)
         winner = self._select(rnd, seat, admitted, means, worlds=worlds,
                               priors=[float(preferences[i]) for i in chosen])
+        played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds)
         self.last_decision_record = {
             'schema': 'policy-admit-value-mean-v1', 'worlds': len(worlds),
             'sample_attempts': attempts, 'actions': len(actions), 'cap': self.cap,
@@ -689,5 +784,6 @@ class PolicyValueBot(PolicyWorldBot):
             **self._admission_record(),
             **self._tiebreak_record(),
             **self._lead_tiebreak_record(),
+            **self._doomed_throw_record(),
         }
-        return list(admitted[winner])
+        return played

@@ -185,7 +185,8 @@ jobs:
             tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \
             tests/test_pv_serving_smoke.py \
-            tests/test_pv_refusal_event_complete.py
+            tests/test_pv_refusal_event_complete.py \
+            tests/test_pv_sampler_telemetry.py
 
   luna-profiles:
     runs-on: ubuntu-latest

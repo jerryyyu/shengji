@@ -1261,9 +1261,20 @@ def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
     }
 
 
+def _history_rows(history) -> list:
+    """The committed transcript as persisted: ``[[seat, [cards...]], ...]``."""
+    return [[seat, list(cards)] for seat, cards in history]
+
+
+def _history_sha256(history) -> str:
+    """The full SHA-256 over the exact serialization ``_history_digest`` hashes
+    (#707 S9); its first 16 hex digits ARE ``history_sha256_16``."""
+    payload = json.dumps(_history_rows(history))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _history_digest(history) -> str:
-    payload = json.dumps([[seat, list(cards)] for seat, cards in history])
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return _history_sha256(history)[:16]
 
 
 def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
@@ -1314,6 +1325,12 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
         "baseline_utility": -arm_utility,
         "plays": len(log.history),
         "history_sha256_16": _history_digest(log.history),
+        # #707 S9, telemetry only: the full digest of the same serialization,
+        # and the COMMITTED transcript itself (`RoundLog.history`: engine
+        # truth, so a failed throw shows what was played, not what was
+        # attempted -- the attempt stays in the decision traces)
+        "history_sha256": _history_sha256(log.history),
+        "committed_history": _history_rows(log.history),
         "work": {"arm": count([a1, a2]),
                  "baseline": count([b1, b2])},
     }

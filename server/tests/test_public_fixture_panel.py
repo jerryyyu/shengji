@@ -13,6 +13,59 @@ from shengji.train import pv_search_policy as pv
 ACTIONS = [["DK"], ["D6"]]
 
 
+@pytest.mark.parametrize("fill_seed", [0, 17])
+@pytest.mark.parametrize("mode,refusals", [("fresh-root", 0), ("history-primed", 1)])
+def test_synthetic_capacity_fixture_has_complete_wide_pool_and_history(
+        mode, refusals, fill_seed):
+    from itertools import combinations
+    from pathlib import Path
+    from shengji.eval import tactical
+    from shengji.eval.public_refusal_history import public_root_with_ledger
+    from shengji.harvest.legal import enumerate_legal
+
+    fixture = tactical.load_fixtures(
+        Path(__file__).parent / "tactical/capacity_m9.jsonl")[0]
+    original = copy.deepcopy(fixture.to_json())
+    root, ledger, receipt = public_root_with_ledger(
+        fixture, mode=mode, fill_seed=fill_seed)
+    legal = enumerate_legal(root, fixture.seat, cap=4000)
+    # All 23 remaining cards are distinct and void in the three-card lead's
+    # suit. The independent combinations oracle is not the legal enumerator.
+    assert len(fixture.hand) == len(set(fixture.hand)) == 23
+    assert all(not card.startswith("S") for card in fixture.hand)
+    expected = {tuple(sorted(cards)) for cards in combinations(fixture.hand, 3)}
+    assert legal.complete and legal.count == len(expected) == 1771
+    assert {tuple(sorted(cards)) for cards in legal.actions} == expected
+    assert root.notice is None
+    assert len(ledger.refusals) == len(receipt["retained_refusals"]) == refusals
+    assert fixture.to_json() == original
+    assert fixture.source["kind"] == "synthetic-capacity"
+    assert not fixture.observed and fixture.current_bot is None
+
+
+@pytest.mark.parametrize("mode,refusals", [("fresh-root", 0), ("history-primed", 1)])
+def test_synthetic_capacity_fixture_samples_without_any_model_prediction(
+        monkeypatch, mode, refusals):
+    from pathlib import Path
+    from shengji.eval import tactical
+    from shengji.eval.public_refusal_tape import sample_public_refusal_tape
+    from test_refusal_constraints import served
+
+    fixture = tactical.load_fixtures(
+        Path(__file__).parent / "tactical/capacity_m9.jsonl")[0]
+    bot = served(seed=17, worlds=2, refusal_constraints=True)
+    def forbidden(*args, **kwargs):
+        pytest.fail("capacity fixture validation must not score or predict")
+    monkeypatch.setattr(bot, "predict", forbidden)
+    monkeypatch.setattr(bot.evaluator, "score", forbidden)
+    root, worlds, receipt = sample_public_refusal_tape(
+        bot, fixture, mode=mode, seed=17)
+    assert root.turn == fixture.seat
+    assert len(worlds) == receipt["world_count"] == 2
+    assert len(receipt["ledger_receipt"]["retained_refusals"]) == refusals
+    assert receipt["model_verified"] is False
+
+
 @pytest.mark.parametrize("expected", [True, 0, -1, 2.0])
 def test_invalid_declared_count_rejected_before_factory(expected):
     def forbidden():

@@ -71,6 +71,8 @@ def main() -> None:
     ap.add_argument("--only", action="append", default=[], help="fixture id or category filter")
     ap.add_argument("--seed", type=int, default=0, help="bot seed (fresh bot per fixture)")
     ap.add_argument("--fill-seed", type=int, default=0, help="placeholder hidden-hand fill")
+    ap.add_argument("--ledger-mode", choices=("fresh-root", "history-primed"),
+                    help="diagnostic refusal history; requires --json, refuses stamp/comparison; not live-state reconstruction")
     ap.add_argument("--json", help="write per-fixture results here")
     ap.add_argument("--stamp", action="store_true",
                     help="rewrite current_bot in the fixtures file from this run")
@@ -81,6 +83,14 @@ def main() -> None:
     ap.add_argument("--compare-fill-seed", type=int, default=0,
                     help="comparison public hidden-fill seed (recorded in JSON)")
     args = ap.parse_args()
+
+    if args.ledger_mode is not None:
+        if args.compare_observations or args.stamp or not args.json:
+            raise SystemExit("--ledger-mode requires --json and refuses --stamp/--compare-observations")
+        output = Path(args.json)
+        if (output.exists() or output.is_symlink()
+                or partial_path(output).exists() or partial_path(output).is_symlink()):
+            raise SystemExit("ledger diagnostic output already exists")
 
     fixtures = T.load_fixtures(args.fixtures)
     if args.only:
@@ -196,7 +206,9 @@ def main() -> None:
               file=sys.stderr, flush=True)
 
     print(f"running {len(fixtures)} fixtures against {name}", file=sys.stderr)
-    results = T.run_set(make, fixtures, fill_seed=args.fill_seed, progress=progress)
+    ledger_args = {} if args.ledger_mode is None else {"ledger_mode": args.ledger_mode}
+    results = T.run_set(make, fixtures, fill_seed=args.fill_seed, progress=progress,
+                        **ledger_args)
     print(T.format_table(results, name))
 
     if args.json:
@@ -204,9 +216,13 @@ def main() -> None:
                  "action": r.action, "detail": r.detail, "seconds": r.seconds, "error": r.error,
                  "current_bot": r.fixture.current_bot, "record": r.record, **r.extra}
                 for r in results]
-        Path(args.json).write_text(json.dumps({"bot": name, "seed": args.seed,
-                                               "fill_seed": args.fill_seed, "results": rows},
-                                              indent=1))
+        payload = {"bot": name, "seed": args.seed,
+                   "fill_seed": args.fill_seed, "results": rows}
+        if args.ledger_mode is not None:
+            payload["ledger_mode"] = args.ledger_mode
+            _publish_json(Path(args.json), payload)
+        else:
+            Path(args.json).write_text(json.dumps(payload, indent=1))
         print(f"wrote {args.json}", file=sys.stderr)
 
     if args.stamp:

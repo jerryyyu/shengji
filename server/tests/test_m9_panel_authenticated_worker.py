@@ -13,6 +13,92 @@ import pytest
 from scripts import observation_worker as worker
 
 
+@pytest.mark.parametrize("flag", ["--verify-panel-runtime", "--capture-panel-runtime"])
+def test_qualification_cli_never_dispatches_owner_or_collection(monkeypatch, flag):
+    calls = []
+    def forbidden(*args, **kwargs):
+        pytest.fail("qualification must not dispatch")
+    monkeypatch.setattr(worker, "run_owner_packet", forbidden)
+    monkeypatch.setattr(worker, "run_panel_packet", forbidden)
+    monkeypatch.setattr(worker, "run_packet", forbidden)
+    monkeypatch.setattr(worker, "qualify_panel_runtime",
+                        lambda *a, **kw: calls.append((a, kw)))
+    suffix = [flag] + (["/runtime.json"] if "capture" in flag else [])
+    worker.main(["--panel", "--packet", "/packet", "--sha256", "a" * 64, *suffix])
+    assert calls == [(("/packet", "a" * 64), {
+        "destination": "/runtime.json" if "capture" in flag else None})]
+    for flags in ([], ["--panel", "--admit"]):
+        with pytest.raises(SystemExit) as error:
+            worker.main([*flags, "--packet", "/packet", "--sha256", "a" * 64, *suffix])
+        assert error.value.code == 2
+    assert len(calls) == 1
+
+
+def test_qualification_authenticates_before_import(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise ValueError("bad source digest")
+    monkeypatch.setattr(worker, "_bootstrap", refuse)
+    monkeypatch.setattr(worker, "_import_application", lambda *a, **kw: pytest.fail("import"))
+    with pytest.raises(ValueError, match="bad source digest"):
+        worker.qualify_panel_runtime("/packet", "a" * 64)
+
+
+@pytest.fixture
+def qualification(monkeypatch, tmp_path):
+    server = tmp_path / "source/server"
+    server.mkdir(parents=True)
+    baseline = dict(source_root=str(server), source_files={"worker.py": "sha"},
+                    environment={"SHENGJI_FAST": "1"}, dependency_files={"old-driver": "sha"})
+    current = dict(baseline, dependency_files={"actual-worker-dependency": "sha"})
+    calls = []
+    def capture(source, *, profile):
+        calls.append("capture")
+        assert source == server and profile == "panel"
+        return current
+    def admit(manifest, *, profile):
+        calls.append("verify")
+        assert manifest is baseline and profile == "panel"
+        return SimpleNamespace(check=lambda: True)
+    adapter = SimpleNamespace(capture=capture, ObservationRuntime=admit)
+    monkeypatch.setattr(worker, "_bootstrap", lambda *a, **kw: ({}, server, baseline))
+    monkeypatch.setattr(worker, "_import_application",
+                        lambda *a, **kw: (None, adapter, None, None, None))
+    return server, baseline, current, calls, adapter
+
+
+def test_qualification_capture_is_exclusive_and_preserves_source(qualification, tmp_path):
+    server, baseline, current, calls, _ = qualification
+    output = tmp_path / "runtime.json"
+    worker.qualify_panel_runtime("/packet", "a" * 64, destination=output)
+    assert json.loads(output.read_bytes()) == current
+    assert baseline["dependency_files"] == {"old-driver": "sha"}
+    with pytest.raises(ValueError, match="exists"):
+        worker.qualify_panel_runtime("/packet", "a" * 64, destination=output)
+    with pytest.raises(ValueError, match="outside"):
+        worker.qualify_panel_runtime("/packet", "a" * 64, destination=server / "new.json")
+    assert calls == ["capture"]
+
+
+@pytest.mark.parametrize("key", ["source_root", "source_files", "environment"])
+def test_qualification_rejects_material_drift(qualification, tmp_path, key):
+    _, _, current, _, _ = qualification
+    current[key] = "changed"
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="qualified application changed"):
+        worker.qualify_panel_runtime("/packet", "a" * 64, destination=output)
+    assert not output.exists()
+
+
+def test_qualification_verify_is_read_only_and_requires_check(qualification, tmp_path):
+    _, baseline, _, calls, adapter = qualification
+    worker.qualify_panel_runtime("/packet", "a" * 64)
+    assert calls == ["verify"]
+    adapter.ObservationRuntime = lambda *a, **kw: SimpleNamespace(check=lambda: False)
+    with pytest.raises(ValueError, match="verification failed"):
+        worker.qualify_panel_runtime("/packet", "a" * 64)
+    assert list(tmp_path.iterdir()) == [tmp_path / "source"]
+
+
 def _write_packet(tmp_path: Path, packet: dict) -> tuple[Path, str]:
     path = tmp_path / "panel.json"
     raw = json.dumps(packet, sort_keys=True, separators=(",", ":")).encode()

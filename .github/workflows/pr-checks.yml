@@ -85,6 +85,7 @@ jobs:
           SHENGJI_FAST: "1"
         run: >-
           uv run pytest -q --durations=10
+          tests/test_benchmark_final_action_boundary.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py
           tests/test_action_semantics.py

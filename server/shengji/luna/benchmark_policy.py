@@ -18,10 +18,13 @@ from .game import (MAX_ROLLOUT_CALLS_PER_DECISION, MAX_NEW_EVALUATIONS_PER_CALL,
 
 class SeatPlannerPolicy:
     def __init__(self, *, seat, information, planner, setup_policy, seed=0, worlds=8,
-                 invalid_action_feedback=False):
+                 invalid_action_feedback=False, classify_final_action_failures=False):
         if type(invalid_action_feedback) is not bool:
             raise ValueError("invalid_action_feedback must be bool")
         self.invalid_action_feedback = invalid_action_feedback
+        if type(classify_final_action_failures) is not bool:
+            raise ValueError("classify_final_action_failures must be bool")
+        self.classify_final_action_failures = classify_final_action_failures
         if type(seat) is not int or seat not in range(4):
             raise ValueError("benchmark seat must be 0..3")
         if information not in ("actor-only", "perfect"):
@@ -109,10 +112,12 @@ class SeatPlannerPolicy:
         if type(reply) is not dict or set(reply) != {"cards", "memory"}:
             raise ValueError("planner reply requires cards and memory")
         cards, memory = reply["cards"], reply["memory"]
-        if (type(cards) is not list or not cards
+        if (type(cards) is not list
                 or any(type(card) is not str for card in cards)
-                or Counter(cards) - Counter(rnd.hands[seat])
                 or type(memory) is not str):
+            raise ValueError("invalid planner cards or memory")
+        if not self.classify_final_action_failures and (
+                not cards or Counter(cards) - Counter(rnd.hands[seat])):
             raise ValueError("invalid planner cards or memory")
         # The normal engine enforces follow rules and resolves throws. Never
         # replace a refused response with a stronger policy without recording it.

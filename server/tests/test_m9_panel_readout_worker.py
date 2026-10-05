@@ -55,6 +55,115 @@ def _load_actual_helper():
     return worker._load_helper(_sha(path.read_bytes()))
 
 
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_sealed_synthetic_bundle_through_bootstrap_and_real_reader(tmp_path, monkeypatch, corrupt):
+    """Only host/runtime admission and the fixture digest are synthetic.
+
+    Packet/control/seal authentication, recipe/path checks, persisted panel
+    reading and exclusive publication all execute their actual code paths.
+    This does not qualify a Linux runtime or authenticate scientific results.
+    """
+    from test_m9_panel_artifact_reader import bundle
+    from test_m9_panel_recipe import recipe
+    from shengji.eval import m9_panel_recipe, observation_runtime
+    from shengji.eval import m9_panel_artifact_reader as reader
+    from shengji.eval.m9_panel_readout import summarize_m9_panels
+
+    pins, analysis, panel_records = bundle(monkeypatch, tmp_path)
+    evidence = tmp_path / "process"
+    evidence.mkdir()
+    Path(pins["process"]["path"]).rename(evidence / "process.json")
+    pins["process"]["path"] = str(evidence / "process.json")
+    spec = recipe()
+    spec.update(output_dir=str(tmp_path / "collection"), evidence=str(evidence),
+                saved_readout=pins["saved_readout"]["path"],
+                saved_readout_sha256=pins["saved_readout"]["sha256"])
+    monkeypatch.setattr(m9_panel_recipe, "SAVED_READOUT_SHA256", spec["saved_readout_sha256"])
+
+    def write_pin(path, value):
+        raw = _canonical(value)
+        path.write_bytes(raw)
+        return {"path": str(path), "sha256": _sha(raw)}
+
+    helper = _load_actual_helper()
+    helper_sha = _sha(Path(helper.__file__).read_bytes())
+    old_runtime = write_pin(tmp_path / "collection-runtime.json", {
+        "schema": "shengji-m9-runtime-v1", "source_root": "/source/server",
+        "source_files": {"scripts/observation_worker.py": helper_sha}})
+    packet = {key: None for key in helper._PANEL_PACKET_KEYS}
+    packet.update(schema="m9-panel-admission-v1", recipe=spec, runtime=old_runtime,
+                  status=pins["owner"]["path"], timeout_seconds=800,
+                  process_timeout_seconds=900)
+    for name in ("release", "claim", "reservation"):
+        packet[name] = str(tmp_path / f"{name}.json")
+    packet_pin = write_pin(tmp_path / "packet.json", packet)
+    digest = packet_pin["sha256"]
+    owner = json.loads(Path(pins["owner"]["path"]).read_bytes())
+    owner["packet_sha256"] = digest
+    pins["owner"] = write_pin(Path(pins["owner"]["path"]), owner)
+    command = list(m9_panel_recipe.build_panel_worker_command(spec, packet_pin["path"], digest))
+    controls = {
+        "release": write_pin(Path(packet["release"]), {
+            "schema": "m9-panel-release-v1", "packet_sha256": digest}),
+        "claim": write_pin(Path(packet["claim"]), {
+            "schema": "m9-panel-owner-attempt-v1", "packet_sha256": digest,
+            "status": "spent_no_retry", "comparison_validated": False,
+            "owner_pid": 123, "inner_command": command, "queue_snapshot": {},
+            "deadline_monotonic": 12345.0}),
+        "reservation": write_pin(Path(packet["reservation"]), {
+            "schema": "codex-m9-panel-reservation-v1", "lane": "m9-panel",
+            "packet_sha256": digest, "pid": 123, "count": 15, "seeds": [0, 1, 2],
+            "status": packet["status"], "output": spec["output_dir"],
+            "output_root": spec["output_dir"], "result": spec["output_dir"],
+            "evidence": str(evidence), "launcher": command[3], "launcher_sha256": helper_sha}),
+        "process_claim": write_pin(evidence / "claim.json", {
+            "schema": "m9-process-attempt-v1", "command": command,
+            "timeout_seconds": 900, "comparison_validated": False}),
+    }
+    refs = [*pins.values(), *controls.values(), packet_pin, old_runtime]
+    seal = tmp_path / "SHA256SUMS"
+    seal.write_bytes("".join(f'{r["sha256"]}  {r["path"]}\n' for r in refs).encode())
+    invocation = {
+        "schema": "m9-panel-readout-invocation-v1", "files": pins,
+        "packet_sha256": digest, "collection_packet": packet_pin,
+        "controls": controls, "terminal_seal": {"path": str(seal), "sha256": _sha(seal.read_bytes())},
+        "runtime": write_pin(tmp_path / "readout-runtime.json", {}),
+        "output_dir": str(tmp_path / "readout"),
+    }
+    invocation_pin = write_pin(tmp_path / "invocation.json", invocation)
+    if corrupt:
+        seal.write_bytes(b"changed after pinning\n")
+    monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
+    monkeypatch.setattr(helper, "_read_runtime", lambda *_: {
+        "source_files": {"scripts/observation_worker.py": helper_sha}})
+    monkeypatch.setattr(worker, "_load_helper", lambda _: helper)
+    monkeypatch.setattr(observation_runtime, "ObservationRuntime",
+                        lambda *a, **kw: SimpleNamespace(check=lambda: True))
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    reads = []
+    stable = reader.guards._stable_read
+    def track(path, limit):
+        reads.append(str(path))
+        return stable(path, limit)
+    monkeypatch.setattr(reader.guards, "_stable_read", track)
+    if corrupt:
+        with pytest.raises(ValueError, match="terminal seal SHA mismatch"):
+            worker.run(invocation_pin["path"], invocation_pin["sha256"], helper_sha)
+        assert reads == []
+        assert not (tmp_path / "readout").exists()
+        return
+    receipt = worker.run(invocation_pin["path"], invocation_pin["sha256"], helper_sha)
+    assert len(reads) == len(set(reads)) == 20
+    result = json.loads((tmp_path / "readout/result.json").read_bytes())
+    assert result["analysis"] == summarize_m9_panels(analysis, panel_records)
+    assert receipt["terminal_seal"] == invocation["terminal_seal"]
+    assert receipt["result_sha256"] == _sha((tmp_path / "readout/result.json").read_bytes())
+    assert json.loads((tmp_path / "readout/receipt.json").read_bytes()) == receipt
+    with pytest.raises(FileExistsError):
+        worker.run(invocation_pin["path"], invocation_pin["sha256"], helper_sha)
+    assert len(reads) == 20  # spent publication cannot trigger a second outcome read
+
+
 @pytest.mark.parametrize("bad", [None, "hash", "missing", "extra", "duplicate",
                                     "digest", "relative", "newline", "alias"])
 def test_terminal_inventory_binds_all_pins_without_outcome_access(tmp_path, monkeypatch, bad):

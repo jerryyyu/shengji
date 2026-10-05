@@ -1883,19 +1883,25 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      (Jerry's screenshot, 2026-10-01). Row 1 = number and target side by side,
      row 2 = the bar across both; the chip is now the level strip's height. */
   .points-chip {
-    display: grid;
-    grid-template-columns: auto auto;
+    /* Wrapping flex, not a grid: iOS WebKit kept the grid's first column at the
+       width of "0" when the score became "10", so the digits ran into the "/"
+       (Jerry's screenshot, 2026-10-05). The bar takes a full line of its own. */
+    display: flex;
+    flex-wrap: wrap;
     column-gap: 5px;
     row-gap: 2px;
     align-items: baseline;
-    justify-content: start;
     border-radius: 10px;
     padding: 2px 9px 4px;
     line-height: 1.1;
   }
 
+  .points-big {
+    font-variant-numeric: tabular-nums;
+  }
+
   .points-chip .points-bar {
-    grid-column: 1 / -1;
+    flex: 0 0 100%;
   }
 
   .points-bar {
@@ -1944,6 +1950,74 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
     z-index: 11;
     animation: hud-message-pass 3.2s ease forwards;
+  }
+
+  /* ============ Short landscape: the trick owns the middle ============
+     Jerry 2026-10-05 (phone, landscape, ~336px of felt-plus-HUD): the turn pill
+     and Play button stacked above the hand sat on the trick, the top seat's
+     card covered its own label, the hand clipped the LEAD tag, and a failed-
+     throw notice pushed the whole table down. A 140px trick box centred at 38%
+     never knew where the hand began. Now every region is anchored:
+       - the hand is the only thing in the bottom band (--hand-h tall);
+       - the trick box spans from under the top seat to the top of the hand,
+         336px wide, so its four slots never meet each other or the hand;
+       - the turn pill and action buttons sit in the bottom-right corner,
+         beside the trick box (never wider than the space next to it);
+       - the side seats sit just above their trick slots, clear of that corner;
+       - the failed-throw notice floats in the bottom-left corner instead of
+         taking a row of height from the felt. */
+  .table-screen {
+    /* fan padding 16 + card 58 * 7/5 + 4, plus you-area padding 4 */
+    --hand-h: calc(105.2px + env(safe-area-inset-bottom, 0px));
+    --trick-top: 34px;          /* under the top seat's one-line label */
+    --trick-half: 168px;        /* half the trick box's width */
+  }
+
+  .trick-area {
+    top: var(--trick-top);
+    bottom: var(--hand-h);
+    width: calc(var(--trick-half) * 2);
+    height: auto;
+    transform: translateX(-50%);
+  }
+
+  .table-emblem {
+    top: 50%;
+  }
+
+  /* level with the top of their trick slot: centre of the box minus a slot */
+  .opponent.pos-left,
+  .opponent.pos-right {
+    top: max(var(--trick-top),
+      calc((var(--trick-top) + 100% - var(--hand-h)) / 2 - 59px));
+    transform: none;
+  }
+
+  .you-tagline,
+  .action-bar {
+    align-self: flex-end;
+    margin-right: calc(8px + env(safe-area-inset-right, 0px));
+    max-width: calc(50% - var(--trick-half) - 16px);
+  }
+
+  .action-bar {
+    justify-content: flex-end;
+  }
+
+  .action-hint {
+    text-align: right;
+  }
+
+  .hud-notice {
+    position: fixed;
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    bottom: calc(var(--hand-h) + 6px);
+    z-index: 11;
+    width: calc(50% - var(--trick-half) - 16px);
+    max-width: 360px;
+    margin: 0;
+    padding: 6px 8px;
+    font-size: 11px;
   }
 
   /* --- Lobby / Room fit in 360px-tall viewports --- */

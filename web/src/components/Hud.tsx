@@ -167,7 +167,8 @@ export default function Hud({ state }: { state: GameState }) {
 
         <div className="hud-group">
           <span className="chip points-chip" title="Points captured by the attacking team">
-            <span className="points-big">{state.attacker_points}</span>
+            {/* keyed so a new score is a new box: WebKit kept the old width (Jerry, 2026-10-05) */}
+            <span className="points-big" key={state.attacker_points}>{state.attacker_points}</span>
             <span className="points-target">/ 80</span>
             {/* the phone draws progress to 80 as a bar under the number (#651); hidden on desktop */}
             <span

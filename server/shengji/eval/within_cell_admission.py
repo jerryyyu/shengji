@@ -10,9 +10,9 @@ An action's cell is ``(structure_key, held_pair_remainder_signature)``.  If a
 cell has at least two baseline representatives and at least one excluded
 action, the worst-ranked non-anchor baseline representative in that cell is
 replaced by the best-ranked excluded representative in the same cell.  At
-most one replacement is made.  The replacement is deliberately not required
-to improve policy rank: selecting the best excluded member of the eligible
-cell is the complete S11a rule.
+most one replacement is made, and it must improve policy rank. Rank-worsening
+exploration belongs to S11b. If the selected slot cannot improve, return a
+no-op without trying another slot.
 """
 
 from __future__ import annotations
@@ -106,11 +106,12 @@ def within_cell_rank_repair(rnd, seat, actions, ranked, baseline):
     if not eligible:
         return {"chosen": list(baseline), "audit": None}
 
-    # Strict ranks make both choices unambiguous.  The candidate is selected
-    # by rank within its cell even when it is worse than the removable slot;
-    # S11b's separate rank-depth criterion does not belong here.
+    # Strict ranks make both choices unambiguous. Keep the selected-slot rule;
+    # do not search another cell when this slot cannot improve.
     removed = max(eligible, key=rank.__getitem__)
     candidate = min(excluded_by_cell[cells[removed]], key=rank.__getitem__)
+    if rank[candidate] >= rank[removed]:
+        return {"chosen": list(baseline), "audit": None}
     chosen = list(baseline)
     chosen[chosen.index(removed)] = candidate
     audit = {

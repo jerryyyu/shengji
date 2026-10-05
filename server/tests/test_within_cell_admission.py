@@ -67,7 +67,7 @@ def test_witness_replaces_worst_same_cell_slot_and_audits_the_swap():
     }
 
 
-def test_worse_ranked_excluded_member_is_still_selected_without_rank_gate():
+def test_worse_ranked_excluded_member_is_a_noop():
     rnd = _synthetic_round()
     actions = _resource_actions()
     # Action 2 is the only excluded member of the anchor cell, but its rank
@@ -76,9 +76,7 @@ def test_worse_ranked_excluded_member_is_still_selected_without_rank_gate():
 
     result = within_cell_rank_repair(rnd, 1, actions, ranked, [0, 3])
 
-    assert result["chosen"] == [0, 2]
-    assert result["audit"]["removed"]["policy_rank"] == 2
-    assert result["audit"]["added"]["policy_rank"] == 8
+    assert result == {"chosen": [0, 3], "audit": None}
 
 
 def test_s11a_witness_differs_from_pair_resource_repair():
@@ -108,7 +106,7 @@ def test_anchor_is_never_replaced_even_when_it_is_worst_ranked():
     rnd = _synthetic_round()
     actions = _resource_actions()
     # Anchor 0 is eligible by cell count but is ranked below removable 3.
-    result = within_cell_rank_repair(rnd, 1, actions, [3, 2, 1, 0, 4, 5, 6, 7], [0, 3])
+    result = within_cell_rank_repair(rnd, 1, actions, [2, 3, 1, 0, 4, 5, 6, 7], [0, 3])
     assert result["chosen"] == [0, 2]
     assert result["audit"]["removed"]["index"] == 3
 
@@ -116,7 +114,7 @@ def test_anchor_is_never_replaced_even_when_it_is_worst_ranked():
 def test_global_worst_slot_and_exact_cell_multiplicities_across_two_cells():
     rnd = _synthetic_round()
     actions = _resource_actions() + [["S8", "D8", "C5"]]
-    ranked = [0, 2, 1, 3, 4, 5, 6, 7, 8]
+    ranked = [0, 2, 1, 3, 8, 4, 5, 6, 7]
     baseline = [0, 3, 1, 4]
     _, signatures = _pair_inputs(rnd, 1, actions, ranked, 0, len(actions), 1)
     cells = [
@@ -135,6 +133,18 @@ def test_global_worst_slot_and_exact_cell_multiplicities_across_two_cells():
     assert Counter(cells[index] for index in result["chosen"]) == Counter(
         cells[index] for index in baseline
     )
+
+
+def test_no_fallback_when_worst_slot_cannot_improve_but_another_cell_can():
+    rnd = _synthetic_round()
+    actions = _resource_actions() + [["S8", "D8", "C5"]]
+    # Slot 4 is worst. Its only excluded same-cell member 8 ranks lower,
+    # although excluded 2 could improve slot 3 in the other cell.
+    ranked = [0, 2, 1, 3, 4, 5, 6, 7, 8]
+    baseline = [0, 3, 1, 4]
+    assert within_cell_rank_repair(rnd, 1, actions, ranked, baseline) == {
+        "chosen": baseline, "audit": None,
+    }
 
 
 def test_reordered_equivalent_pool_preserves_action_identities_and_ranks():

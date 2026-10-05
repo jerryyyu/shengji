@@ -22,6 +22,11 @@ def _safe_recovery_memory(monkeypatch):
                         'assert_memory_headroom', lambda: True)
 
 
+@pytest.fixture(autouse=True)
+def _safe_recovery_release(monkeypatch):
+    monkeypatch.setattr(launcher, '_require_recovery_release', lambda *args: None)
+
+
 def _retention(tmp_path):
     plan = tmp_path / 'retention.json'
     plan.write_text(json.dumps({'source_directory': '/sealed', 'result_sha256': 'b' * 64}))

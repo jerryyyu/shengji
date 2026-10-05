@@ -59,6 +59,7 @@ jobs:
           tests/test_launch_sol_recovery.py
           tests/test_sol_recovery_memory_wait.py
           tests/test_sol_linux_memory_guard.py
+          tests/test_sol_release_gate.py
           tests/test_sealed_panel_reader.py
           tests/test_sealed_readout_wrapper.py
           tests/test_engine.py

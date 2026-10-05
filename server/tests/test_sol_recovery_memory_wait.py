@@ -11,6 +11,11 @@ from test_launch_production_llm_panel import _config, _real_validation_fixture, 
 from test_launch_sol_recovery import _binding, _report, _retention, _controls
 
 
+@pytest.fixture(autouse=True)
+def _safe_recovery_release(monkeypatch):
+    monkeypatch.setattr(launcher, '_require_recovery_release', lambda *args: None)
+
+
 def _snapshot(page_size=16384, free=1, inactive=2, speculative=3):
     return (f'Mach Virtual Memory Statistics: (page size of {page_size} bytes)\n'
             f'Pages free: {free}.\nPages inactive: {inactive}.\n'

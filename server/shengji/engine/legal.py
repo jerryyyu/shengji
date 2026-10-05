@@ -28,6 +28,11 @@ def suit_cards(hand: list[str], eff: str, ordering: Ordering) -> list[str]:
 
 
 def _is_submultiset(small: list[str], big: list[str]) -> bool:
+    # No multiplicity accounting is needed for zero or one required card.
+    if not small:
+        return True
+    if len(small) == 1:
+        return small[0] in big
     cs, cb = Counter(small), Counter(big)
     return all(cb[c] >= n for c, n in cs.items())
 

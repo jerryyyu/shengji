@@ -5,6 +5,59 @@ from shengji.engine.combos import decompose, find_tractor_runs, has_tractor
 from shengji.engine.legal import IllegalPlay, beats, validate_follow, validate_lead
 
 
+def test_submultiset_matches_counter_reference_without_mutation():
+    from collections import Counter
+    from itertools import product
+    from shengji.engine.legal import _is_submultiset
+
+    pools = [list(cards) for n in range(5)
+             for cards in product(("S2", "H5", BJ), repeat=n)]
+    for small in pools:
+        for big in pools:
+            before = (list(small), list(big))
+            required, available = Counter(small), Counter(big)
+            expected = all(available[c] >= n for c, n in required.items())
+            assert _is_submultiset(small, big) == expected
+            assert (small, big) == before
+
+
+def test_small_submultiset_avoids_counter_but_keeps_multiplicity(monkeypatch):
+    from shengji.engine import legal
+
+    original = legal.Counter
+    calls = []
+
+    def counted(cards):
+        calls.append(list(cards))
+        return original(cards)
+
+    monkeypatch.setattr(legal, "Counter", counted)
+    assert legal._is_submultiset([], [])
+    assert legal._is_submultiset([], ["S2"])
+    assert legal._is_submultiset(["S2"], ["H5", "S2", "S2"])
+    assert not legal._is_submultiset(["S2"], [])
+    assert not legal._is_submultiset(["S2"], ["H5"])
+    assert calls == []
+    assert not legal._is_submultiset(["S2", "S2"], ["S2", "H5"])
+    assert len(calls) == 2
+
+
+def test_small_ownership_fast_path_preserves_legality_rejections():
+    from shengji.engine.legal import check_in_hand
+
+    for play in ([], ["H5"], ["S2", "S2"]):
+        with pytest.raises(IllegalPlay):
+            check_in_hand(["S2"], play)
+    check_in_hand(["S2", "H5"], ["S2"])
+    o = Ordering("H", "7")
+    # Being void permits an off-suit card, but cannot excuse an unowned card.
+    validate_follow(["H5"], ["H5"], ["S2"], o)
+    with pytest.raises(IllegalPlay):
+        validate_follow(["H5"], ["S3", "H5"], ["S2"], o)
+    with pytest.raises(IllegalPlay):
+        validate_follow(["H5"], ["D4"], ["S2"], o)
+
+
 def test_deck():
     deck = make_deck()
     assert len(deck) == 108

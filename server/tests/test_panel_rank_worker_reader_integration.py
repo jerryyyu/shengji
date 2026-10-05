@@ -47,7 +47,7 @@ def _write_json(path: Path, value: object) -> dict[str, str]:
     return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
-def _real_selected_bundle(tmp_path: Path):
+def _real_selected_bundle(tmp_path: Path, *, supplied_bot=None):
     """Build one reader-valid retained record around a real public root."""
     fixtures_path = (Path(__file__).parent / "tactical" /
                      "public_observations.jsonl")
@@ -59,16 +59,18 @@ def _real_selected_bundle(tmp_path: Path):
 
     # The helper gives us the real PVSearchBot shape and sampler; its predictor
     # is replaced below with a deterministic test-owned 54-column policy.
-    bot = served(seed=0, worlds=64)
-    bot.config = replace(bot.config, checkpoint_sha256=CHECKPOINT_SHA256)
-    bot.checkpoint_sha256 = CHECKPOINT_SHA256
+    bot = supplied_bot if supplied_bot is not None else served(seed=0, worlds=64)
+    if supplied_bot is None:
+        bot.config = replace(bot.config, checkpoint_sha256=CHECKPOINT_SHA256)
+        bot.checkpoint_sha256 = CHECKPOINT_SHA256
     calls: list[int] = []
 
     def predict(batch):
         calls.append(len(batch))
         return np.tile(np.arange(54, dtype=np.float64), (len(batch), 1))
 
-    bot.predict = predict
+    if supplied_bot is None:
+        bot.predict = predict
     legal = enumerate_legal(root, fixture.seat, cap=bot.cap)
     assert legal.complete and legal.count == 4
 
@@ -151,7 +153,8 @@ def _real_selected_bundle(tmp_path: Path):
     return fixtures, fixture, bot, analysis, records, calls
 
 
-def _authorization_bundle(tmp_path: Path, analysis, records, fixture, fixtures):
+def _authorization_bundle(tmp_path: Path, analysis, records, fixture, fixtures,
+                          *, model_bytes=b"test-owned-synthetic-model"):
     collection_dir = tmp_path / "collection"
     evidence_dir = tmp_path / "evidence"
     collection_dir.mkdir()
@@ -179,7 +182,7 @@ def _authorization_bundle(tmp_path: Path, analysis, records, fixture, fixtures):
     # the record itself is written by the test after this helper returns.
 
     model_path = tmp_path / "synthetic-model.npz"
-    model_path.write_bytes(b"test-owned-synthetic-model")
+    model_path.write_bytes(model_bytes)
     fixture_path = tmp_path / "fixtures.jsonl"
     fixture_path.write_bytes(b"\n".join(
         json.dumps(fx.to_json(), sort_keys=True, separators=(",", ":"),

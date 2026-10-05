@@ -4,7 +4,9 @@ This is not a qualified Linux CLI lane or scientific validation.  The packet,
 historical controls, old runtime, terminal seal, selected reader, public-root
 binding, fixed-tape prediction, projections, and publication are exercised as
 one path.  Interpreter admission/current-runtime authentication, frozen recipe
-digest constants, and the model factory are explicitly test-owned boundaries.
+digest constants are explicitly test-owned boundaries. Most cases fake the
+model factory; the real-NumPy case exercises loading and inference using a
+tiny synthetic package instead of historical model bytes.
 """
 
 from __future__ import annotations
@@ -39,13 +41,15 @@ def _pin(path: Path, value: object) -> dict[str, str]:
     return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
-def _complete_authenticated_bundle(tmp_path: Path, monkeypatch):
+def _complete_authenticated_bundle(tmp_path: Path, monkeypatch, *,
+                                   supplied_bot=None,
+                                   model_bytes=b"test-owned-synthetic-model"):
     """Complete the reader-integration partial bundle for the real bootstrap."""
     fixtures, fixture, bot, analysis, records, predict_calls = \
-        _real_selected_bundle(tmp_path)
+        _real_selected_bundle(tmp_path, supplied_bot=supplied_bot)
     (fixture_path, _partial_recipe, panel_path, files,
      _old_invocation_pin, _old_release_pin, spec) = _authorization_bundle(
-         tmp_path, analysis, records, fixture, fixtures)
+         tmp_path, analysis, records, fixture, fixtures, model_bytes=model_bytes)
 
     collection_dir = tmp_path / "collection"
     evidence_dir = tmp_path / "evidence"
@@ -56,7 +60,7 @@ def _complete_authenticated_bundle(tmp_path: Path, monkeypatch):
     # Use the full frozen recipe contract, replacing only test-owned paths and
     # the three frozen content digests with bytes staged in this bundle.
     model_path = tmp_path / "synthetic-model.npz"
-    model_path.write_bytes(b"test-owned-synthetic-model")
+    model_path.write_bytes(model_bytes)
     saved_sha = hashlib.sha256(saved_path.read_bytes()).hexdigest()
     model_sha = hashlib.sha256(model_path.read_bytes()).hexdigest()
     fixture_sha = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
@@ -371,3 +375,59 @@ def test_authenticated_prediction_drift_refuses_publication(
     assert (ownership / "claim.json").read_bytes() == claim
     assert bundle["predict_calls"] == [64]
     assert len(factory_calls) == 1
+
+
+def test_authenticated_real_numpy_factory_to_publication(tmp_path, monkeypatch):
+    """Use real model loading/encoding/inference; runtime remains synthetic."""
+    from test_cwv_puct_package_prior import _write_joint_package
+    from shengji.eval import m9_panel_plan
+    import test_m9_panel_plan
+    import test_m9_panel_readout
+    import test_panel_rank_worker_reader_integration as reader_fixture
+
+    model_path = tmp_path / "tiny.npz"
+    model_sha = _write_joint_package(model_path, 3)
+    # Rebind only test-owned population identity; production source is unchanged.
+    for module in (m9_panel_plan, test_m9_panel_plan,
+                   test_m9_panel_readout, reader_fixture):
+        monkeypatch.setattr(module, "CHECKPOINT_SHA256", model_sha)
+    real_factory = tactical.bot_from_environ
+    env = tactical.observation_comparison_environs(str(model_path), model_sha)[
+        m9_panel_recipe.POLICY]
+    _, fixture_bot = real_factory(env, seed=0)
+    bundle = _complete_authenticated_bundle(
+        tmp_path, monkeypatch, supplied_bot=fixture_bot,
+        model_bytes=model_path.read_bytes())
+    _install_allowed_boundaries(monkeypatch, bundle)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    calls = []
+    predictions = []
+
+    def tracked_factory(environment, *, seed):
+        name, bot = real_factory(environment, seed=seed)
+        calls.append(bot)
+        real_predict = bot.predict
+
+        def tracked_predict(batch):
+            predictions.append(len(batch))
+            return real_predict(batch)
+
+        bot.predict = tracked_predict
+        return name, bot
+
+    monkeypatch.setattr(tactical, "bot_from_environ", tracked_factory)
+    receipt = worker.run(
+        bundle["invocation_pin"]["path"], bundle["invocation_pin"]["sha256"],
+        bundle["release_pin"]["path"], bundle["release_pin"]["sha256"],
+        bundle["bootstrap_sha"], bundle["helper_sha"])
+    assert len(calls) == 1
+    assert predictions == [64]
+    assert calls[0].checkpoint_sha256 == model_sha
+    output = Path(bundle["spec"]["output_dir"])
+    result_bytes = (output / "result.json").read_bytes()
+    result = json.loads(result_bytes)
+    assert set(result["projections"]) == {"control", "treatment"}
+    assert receipt["model_sha256"] == model_sha
+    assert receipt["result_sha256"] == hashlib.sha256(result_bytes).hexdigest()
+    assert json.loads((output / "receipt.json").read_bytes()) == receipt
+    assert not (output / "refusal.json").exists()

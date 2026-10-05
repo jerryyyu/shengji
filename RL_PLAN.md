@@ -223,6 +223,9 @@ oracle or infer true-person disjointness from mutable display names.
 - Align with the user before a design adds a duplicate multi-hour reconstruction or integrity pass.
   An independent reproduction must answer a meaningfully independent question, not call the same
   implementation again.
+- A deadline at any completed DAG node (collection, reconstruction, training or scoring) is graceful
+  truncation, not automatic loss: seal the best valid completed boundary with an explicit truncated
+  status. The common-epoch clause above is the training case of this rule.
 - Seal the first interpretable scientific result before optional or independent reconstruction;
   track later verification separately, and a verifier failure must not erase valid datasets,
   checkpoints or sealed results.

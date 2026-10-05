@@ -164,7 +164,7 @@ def test_rank_profile_binds_new_helpers_and_refuses_historical_profiles(tmp_path
                         lambda *args: SimpleNamespace(check=lambda: True))
     assert runtime.RANK_PRELOAD_IMPORTS == runtime.READOUT_PRELOAD_IMPORTS + (
         "shengji.eval.selected_panel_reader", "shengji.eval.fixed_tape_policy",
-        "shengji.eval.pair_resource_admission")
+        "shengji.eval.pair_resource_admission", "shengji.eval.panel_rank_root")
     manifest = runtime.capture(source, profile="panel-rank")
     assert manifest["external_runtime"]["imports"] == list(runtime.RANK_PRELOAD_IMPORTS)
     assert runtime.ObservationRuntime(manifest, profile="panel-rank").check()
@@ -209,10 +209,11 @@ if sys.argv[2] == "panel-rank":
     from shengji.eval.public_refusal_history import public_root_with_ledger
     from shengji.eval.fixed_tape_policy import capture_policy_ranks
     from shengji.eval.pair_resource_admission import project_rank_repair
+    from shengji.eval.panel_rank_root import bind_panel_rank_root
     assert set(sys.modules) == before
 else:
     assert not {"shengji.eval.selected_panel_reader", "shengji.eval.fixed_tape_policy",
-                "shengji.eval.pair_resource_admission"} & set(sys.modules)
+                "shengji.eval.pair_resource_admission", "shengji.eval.panel_rank_root"} & set(sys.modules)
 '''
     result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(source), profile],
                             capture_output=True, text=True, timeout=30)

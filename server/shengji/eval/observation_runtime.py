@@ -57,6 +57,7 @@ RANK_PRELOAD_IMPORTS = READOUT_PRELOAD_IMPORTS + (
     "shengji.eval.selected_panel_reader",
     "shengji.eval.fixed_tape_policy",
     "shengji.eval.pair_resource_admission",
+    "shengji.eval.panel_rank_root",
 )
 
 

@@ -332,6 +332,11 @@ class HeuristicBot:
     def _lowest(self, cards: list[str], o: Ordering, avoid_points: bool = False,
                 seek_points: bool = False, avoid: set[str] | None = None) -> str:
         avoid = avoid or set()
+        # Point-seeking never uses suit length. Preserve stable first-card ties
+        # without building the suit histogram used only by junk-discard keys.
+        if seek_points:
+            return min(cards, key=lambda c: (
+                c in avoid, -points(c), o.eff_suit(c) == TRUMP, o.level(c)))
         if self.VOID_DUMP:
             suit_n = Counter(o.eff_suit(c) for c in cards)
 
@@ -340,8 +345,6 @@ class HeuristicBot:
             # shorter suit first when junking (1 card from a singleton beats
             # an equal card from a long suit: it opens a ruff lane)
             vlen = suit_n[o.eff_suit(c)] if self.VOID_DUMP and not trumpish else 0
-            if seek_points:
-                return (c in avoid, -points(c), trumpish, o.level(c))
             if avoid_points:
                 return (c in avoid, trumpish, points(c) > 0, vlen, o.level(c))
             return (c in avoid, trumpish, vlen, o.level(c))

@@ -1042,6 +1042,27 @@
    "takeaway": "All three bury arms inconclusive: no alternative chooser shows a change against the served hybrid bury. No confirmation proposed, nothing promoted.",
    "note": "A BURY-DECISION screen, not a card-play screen: everything but the bury chooser is release-38 play. Predeclared #707 issuecomment-5974742316; dispatch #707 issuecomment-5975292330; readout (Codex, one pass) #663 issuecomment-5975770190. All three INCONCLUSIVE (intervals span zero): value +0.002404 [-0.043269,+0.050000] (bury changed on 82.8% of deals), mc_all -0.005769 [-0.034135,+0.022596] (24.0%), hybrid-8 +0.013942 [-0.004808,+0.032212] (12.3%). Bury p50 latency: hybrid 0.2375 s, value 0.1686 s, mc_all 0.2984 s, hybrid-8 0.2836 s. Health gate PASS (pairing mismatches 0, every arm a receipt for every deal); generated deals, not live traffic. No promotion or extension. Reader sha256 c03be9f8529fbad6d527ddb83216b23e4ecc691f4ee38ac70a4a903af6545189; result sha256 ed6c64e1e494d0f33282953feca74024f58b62d4bb41a9e0b0a6930e2d340c7f; raw manifest 0065d073e7810a94eb41e4fc607eb605e7f2b30248570719e2e9c56b6e969fba. Archived ~/shengji-archive/2026-09-13/readouts/v48bury-bury-arms-vs-hybrid/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-5975770190"
+  },
+  {
+   "id": "v52ec",
+   "date": "2026-10-05",
+   "status": "unavailable",
+   "box": "cloud",
+   "title": "Release 38 + complete refusal events vs release 38",
+   "candidate": "release 38 with SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1 (#777), otherwise unchanged (same package smv3out-491ee4bf and release-38 rules), served as pv-search-491ee4bf-w64-k8-div-rc-rcec-tb-la-r3950772a-bury-hybrid-ad86d3fafbbd; vs release 38 as served (pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457). Board S8, issue #676.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory",
+   "seeds": "52060910 52160910 52260910 52360910 52460910 (cloud)",
+   "confidence": 0.95,
+   "point": null,
+   "lo": null,
+   "hi": null,
+   "takeaway": "No estimate: every window had SE 0 (all 2,600 paired clusters tied), so the reader refused. Not equivalence; no strength claim, no promotion.",
+   "note": "PRIMARY UNAVAILABLE. Dispatched 2026-10-05 05:02:42Z (#676 issuecomment-5988436569), LANE DONE 07:19:51Z; cloud, capped 300 s. The pinned reader (0c09f172) refused in pool() because every window had SE = 0, so there is no point, interval or verdict. Predeclared amendment r5 (predeclaration sha 72a2ed7a\u2026) then ran a direction-suppressed diagnostic (diagnostics.json c79d5b36\u2026; #676 issuecomment-5990723972): all 5 windows n_nonzero_delta = 0 (2600/2600 paired clusters tied); history-digest agreement 5200/5200 (HASH AGREEMENT ONLY); committed-play equality UNIDENTIFIABLE. Reading: no observed paired-outcome difference and no detected history difference on these decks; NOT equivalence, no strength claim, no extension or promotion. Archived ~/shengji-archive/2026-09-13/readouts/v52ec-rcec-vs-r38-recovery/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/676#issuecomment-5990723972"
   }
  ],
  "context_screens": [

@@ -10,14 +10,18 @@ import copy
 
 from shengji.ai.mcbot import MCBot
 from shengji.ai.memory import Memory
-from shengji.engine.legal import validate_follow, validate_lead
+from shengji.engine.legal import IllegalPlay, validate_follow, validate_lead
 
 from .benchmark_observation import observation
 from .game import _continuation, signed_level_utility
 
 
 class DecisionRollouts:
-    def __init__(self, rnd, seat, *, information, seed, worlds=8, max_evaluations=32):
+    def __init__(self, rnd, seat, *, information, seed, worlds=8, max_evaluations=32,
+                 invalid_action_feedback=False):
+        if type(invalid_action_feedback) is not bool:
+            raise ValueError("invalid_action_feedback must be bool")
+        self._invalid_action_feedback = invalid_action_feedback
         observation(rnd, seat, information=information)  # enforce acting seat/mode
         if type(worlds) is not int or not 1 <= worlds <= 32:
             raise ValueError("rollout worlds must be 1..32")
@@ -55,15 +59,29 @@ class DecisionRollouts:
             raise ValueError("decision rollout budget exhausted")
         if type(cards) is not list or any(type(c) is not str for c in cards):
             raise ValueError("rollout cards must be a list of card codes")
+        # Feedback changes the benchmark protocol, so it requires explicit
+        # opt-in. Default ordering and failure/budget behavior stay unchanged.
+        if self._invalid_action_feedback:
+            policy, exact = _continuation(continuation, seat % 2)
+            self._remaining -= 1
         # Validate follows before entering MCBot's trusted rollout fast path.
         # Lead structure is checked without consulting the real hidden hands;
         # throw reduction occurs independently inside each sampled world.
-        if rnd.trick.plays:
-            validate_follow(cards, rnd.hands[seat], rnd.trick.plays[0].cards, rnd.ordering)
-        else:
-            validate_lead(cards, rnd.hands[seat], [], rnd.ordering)
-        policy, exact = _continuation(continuation, seat % 2)
-        self._remaining -= 1
+        try:
+            if rnd.trick.plays:
+                validate_follow(cards, rnd.hands[seat], rnd.trick.plays[0].cards,
+                                rnd.ordering)
+            else:
+                validate_lead(cards, rnd.hands[seat], [], rnd.ordering)
+        except IllegalPlay as exc:
+            if not self._invalid_action_feedback:
+                raise
+            return {"status": "invalid", "cards": list(cards),
+                    "continuation": continuation, "worlds": 0,
+                    "error": "illegal_action", "message": str(exc)}
+        if not self._invalid_action_feedback:
+            policy, exact = _continuation(continuation, seat % 2)
+            self._remaining -= 1
         evaluator = MCBot(seed=0)
         evaluator.rollout_policy, evaluator.EXACT_ENDGAME = policy, exact
         points = []

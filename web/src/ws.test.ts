@@ -203,16 +203,93 @@ describe("leaveToLobby (Back to lobby without a page reload)", () => {
     expect(got).toEqual(["left", "room"]);
   });
 
-  it("an error reply also ends the wait", async () => {
-    const { conn } = await load();
-    conn.start();
-    const ws = FakeWS.last!;
-    ws.onopen?.();
-    const { got } = record(conn);
-    conn.leaveToLobby();
-    ws.deliver({ type: "error", message: "Join a room first." });
-    ws.deliver({ type: "room", room: "BBBB", you: 0 });
-    expect(got).toEqual(["left", "room"]);
+  // Codex HOLD on #845: errors carry no request id, so a late error from an
+  // old action must not lift the barrier for the old state queued behind it.
+  it("a late error from the old room does not let a late state through", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await load();
+      conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      const { got } = record(conn);
+      conn.leaveToLobby();
+      ws.deliver({ type: "error", message: "Invalid request." });   // reply to an old play
+      ws.deliver(state);                                            // old room, still in flight
+      expect(got).toEqual(["left"]);
+      // The ambiguous error retired that socket; the next one is clean.
+      expect(ws.readyState).toBe(3);
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual([]);                                // nothing resumed
+      next.deliver({ type: "room", room: "BBBB", you: 0 });
+      expect(got).toEqual(["left", "room"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a socket close during the leave resets cleanly", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await load();
+      conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      const { got } = record(conn);
+      conn.leaveToLobby();
+      ws.close();
+      ws.deliver(state);                       // a dead socket's leftovers stay dropped
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual([]);
+      next.deliver({ type: "room", room: "BBBB", you: 0 });
+      expect(got).toEqual(["left", "room"]);
+      vi.advanceTimersByTime(10_000);          // the leave watchdog was cancelled
+      expect(next.readyState).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with no confirmation at all, the socket is retired after the watchdog", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await load();
+      conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      const { got } = record(conn);
+      conn.leaveToLobby();
+      vi.advanceTimersByTime(4999);
+      expect(ws.readyState).toBe(1);
+      vi.advanceTimersByTime(1);
+      expect(ws.readyState).toBe(3);
+      ws.deliver(state);
+      expect(got).toEqual(["left"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("after the server's left, the watchdog does not retire the socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await load();
+      conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      conn.leaveToLobby();
+      ws.deliver({ type: "left" });
+      vi.advanceTimersByTime(10_000);
+      expect(ws.readyState).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("with no open socket it only resets locally", async () => {

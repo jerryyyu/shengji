@@ -26,6 +26,8 @@ const WS_URL = wsUrl();
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
 const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
+/** How long leaveToLobby() waits for the server's "left" before retiring the socket. */
+const LEAVE_ACK_MS = 5000;
 
 export function getSavedName(): string {
   return localStorage.getItem(NAME_KEY) ?? "";
@@ -77,9 +79,10 @@ class Connection {
   private msgListeners = new Set<MsgListener>();
   private statusListeners = new Set<StatusListener>();
   /** The socket a leaveToLobby() is waiting on: until the server confirms
-   *  with {type:"left"}, room-scoped messages already in flight on it belong
-   *  to the room we just left and must not pull the UI back into it. */
+   *  with {type:"left"}, messages already in flight on it belong to the room
+   *  we just left and must not pull the UI back into it. */
   private leavingWs: WebSocket | null = null;
+  private leaveTimer: number | null = null;
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
@@ -121,11 +124,34 @@ class Connection {
   leaveToLobby(): void {
     clearSavedRoom();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "leave_room" } satisfies ClientMsg));
-      this.leavingWs = this.ws;
+      const ws = this.ws;
+      ws.send(JSON.stringify({ type: "leave_room" } satisfies ClientMsg));
+      this.leavingWs = ws;
+      // Fail-safe: no confirmation means no barrier can be lifted safely, so
+      // give up on this socket rather than swallow the next room's replies.
+      if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
+      this.leaveTimer = window.setTimeout(() => {
+        this.leaveTimer = null;
+        if (this.leavingWs === ws) this.retire(ws);
+      }, LEAVE_ACK_MS);
     }
     this.clearChat();
     this.emit({ type: "left" });
+  }
+
+  private endLeave(): void {
+    this.leavingWs = null;
+    if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
+    this.leaveTimer = null;
+  }
+
+  /** Abandon a socket whose remaining traffic cannot be trusted: everything
+   *  still in flight on it dies with it, and the normal reconnect opens a
+   *  clean one (the saved room is already cleared, so nothing is resumed). */
+  private retire(ws: WebSocket): void {
+    this.endLeave();
+    ws.onmessage = null;   // nothing more from it reaches the UI
+    ws.close();
   }
 
   private emit(msg: ServerMsg): void {
@@ -163,6 +189,7 @@ class Connection {
     };
 
     ws.onmessage = (ev: MessageEvent) => {
+      if (this.ws !== ws) return;   // a socket we closed or replaced
       let msg: ServerMsg;
       try {
         msg = JSON.parse(ev.data as string) as ServerMsg;
@@ -171,11 +198,16 @@ class Connection {
       }
       if (this.leavingWs === ws) {
         // Already reset locally by leaveToLobby(): drop whatever the room
-        // sent before the server processed our leave_room. The server always
-        // answers it with "left" (or an error, or by closing the socket), and
-        // any of those ends the wait, so this can never swallow the reply to
-        // the user's next create/join.
-        if (msg.type === "left" || msg.type === "error") this.leavingWs = null;
+        // sent before the server processed our leave_room. Only "left" is
+        // causally tied to it (server.py answers leave_room with "left" once
+        // the seat is detached), so only "left" reopens the socket. Errors
+        // carry no request id: one may be a late reply to an old action, with
+        // more old-room state behind it, or the server refusing the leave
+        // (stale_connection / no room). Neither is safe to read as the end of
+        // the old room, so an error retires the socket instead; a close, or
+        // the timeout above, ends the wait the same way.
+        if (msg.type === "left") this.endLeave();
+        else if (msg.type === "error") this.retire(ws);
         return;
       }
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
@@ -213,7 +245,7 @@ class Connection {
     };
 
     ws.onclose = () => {
-      if (this.leavingWs === ws) this.leavingWs = null;
+      if (this.leavingWs === ws) this.endLeave();
       if (this.ws !== ws) return;
       this.ws = null;
       this.setStatus("closed");

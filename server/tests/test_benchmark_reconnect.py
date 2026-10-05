@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from shengji.luna.benchmark_transport import (
-    BenchmarkTransport, _benchmark_events_and_usage,
+    CAPACITY_RETRY_DELAYS, BenchmarkTransport, _benchmark_events_and_usage,
 )
 from shengji.luna.transport import (
     CodexTurnTransportError, InvocationResult, _events_and_usage,
@@ -28,7 +28,10 @@ def raw(rows):
     return b"\n".join(json.dumps(row).encode() for row in rows)
 
 
-def test_recovered_notice_keeps_original_evidence_and_does_not_retry(tmp_path):
+@pytest.mark.parametrize("option", [{}, {"accept_recovered_reconnects": False},
+                                    {"accept_recovered_reconnects": True}])
+@pytest.mark.parametrize("retries", [(), CAPACITY_RETRY_DELAYS])
+def test_recovered_notice_requires_independent_opt_in(tmp_path, option, retries):
     stream = raw(recovered_rows())
     calls = []
 
@@ -39,17 +42,38 @@ def test_recovered_notice_keeps_original_evidence_and_does_not_retry(tmp_path):
 
     transport = BenchmarkTransport(
         evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=retries, **option,
         runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
         run_command=run)
-    assert transport({}) == {"cards": ["C3"], "memory": "lead"}
+    enabled = option.get("accept_recovered_reconnects", False)
+    if enabled:
+        assert transport({}) == {"cards": ["C3"], "memory": "lead"}
+    else:
+        with pytest.raises(CodexTurnTransportError, match="trace event forbidden"):
+            transport({})
     assert len(calls) == 1
     receipt = transport.calls[0]
-    assert receipt["accepted"]
-    assert receipt["recovered_reconnects"] == [{"type": "error", "message": NOTICE}]
-    assert receipt["usage"]["input_tokens"] == 100
+    assert receipt["accepted"] is enabled
+    assert receipt["accept_recovered_reconnects"] is enabled
+    if enabled:
+        assert receipt["recovered_reconnects"] == [{"type": "error", "message": NOTICE}]
+        assert receipt["usage"]["input_tokens"] == 100
+    else:
+        assert "recovered_reconnects" not in receipt
     assert (Path(receipt["evidence_path"]) / "stdout.jsonl").read_bytes() == stream
     with pytest.raises(CodexTurnTransportError, match="trace event forbidden"):
         _events_and_usage(stream)  # legacy parser stays strict
+
+
+@pytest.mark.parametrize("option", [None, 0, 1, "true", [], {}])
+def test_reconnect_option_requires_boolean(tmp_path, option):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid option must refuse before runtime or dispatch")
+
+    with pytest.raises(CodexTurnTransportError, match="reconnect option drift"):
+        BenchmarkTransport(evidence_root=tmp_path,
+                           accept_recovered_reconnects=option,
+                           runtime_attestor=forbidden, run_command=forbidden)
 
 
 @pytest.mark.parametrize("change", [
@@ -104,6 +128,7 @@ def test_recovered_notice_still_requires_successful_matching_final(tmp_path, cha
 
     transport = BenchmarkTransport(
         evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        accept_recovered_reconnects=True,
         runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
         run_command=run)
     with pytest.raises(CodexTurnTransportError):

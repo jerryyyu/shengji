@@ -84,7 +84,10 @@ def output_schema():
 class BenchmarkTransport(CodexExecPlannerTransport):
     ALLOWED_MODELS = ("gpt-5.6-sol", "gpt-5.6-luna")
 
-    def __init__(self, *, evidence_root, capacity_retry_delays=(), **kwargs):
+    def __init__(self, *, evidence_root, capacity_retry_delays=(),
+                 accept_recovered_reconnects=False, **kwargs):
+        if type(accept_recovered_reconnects) is not bool:
+            raise CodexTurnTransportError("benchmark reconnect option drift")
         if type(capacity_retry_delays) is not tuple \
                 or any(type(delay) is not int or isinstance(delay, bool)
                        for delay in capacity_retry_delays) \
@@ -92,6 +95,7 @@ class BenchmarkTransport(CodexExecPlannerTransport):
             raise CodexTurnTransportError("benchmark capacity retry drift")
         super().__init__(**kwargs)
         self.capacity_retry_delays = capacity_retry_delays
+        self.accept_recovered_reconnects = accept_recovered_reconnects
         self.evidence_root = Path(evidence_root)
         self.evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.calls = []
@@ -195,6 +199,7 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                 "attempt": attempt_ordinal,
                 "attempt_ordinal": attempt_ordinal,
                 "retry_enabled": bool(retry_delays),
+                "accept_recovered_reconnects": self.accept_recovered_reconnects,
                 "backoff_seconds": 0,
                 "backoff_planned": False,
             }
@@ -253,8 +258,12 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                     # --output-last-message file defines the final answer; bind it to
                     # the last message before the sole completed turn. Never select
                     # an earlier answer by legality or score. Legacy callers stay strict.
-                    reconnects, usage, message = _benchmark_events_and_usage(result.stdout)
-                    receipt["recovered_reconnects"] = reconnects
+                    if self.accept_recovered_reconnects:
+                        reconnects, usage, message = _benchmark_events_and_usage(result.stdout)
+                        receipt["recovered_reconnects"] = reconnects
+                    else:
+                        _, usage, message = _events_and_usage(
+                            result.stdout, use_final_message=True)
                     receipt["usage"] = usage
                     final = _strict_json(final_path.read_bytes(), "benchmark final")
                     if final != _strict_json(message.encode(), "benchmark message"):

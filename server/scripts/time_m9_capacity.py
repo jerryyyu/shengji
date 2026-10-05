@@ -24,6 +24,14 @@ MODEL_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 SEED = 17
 
 
+def require_runtime(runtime, phase):
+    """Expose the authenticated adapter's diagnostic without relaxing its verdict."""
+    if not runtime.check():
+        detail = getattr(runtime, "last_failure", None)
+        raise ValueError(f"runtime check {phase} failed; measurement invalid; "
+                         f"diagnostic={detail!r}")
+
+
 def pinned_bytes(path, expected):
     path = Path(path)
     if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
@@ -141,8 +149,7 @@ def qualify(action, source, original, path, digest, capture, admit):
         raise ValueError("explicit action and verified timing-runtime digest required")
     manifest = json.loads(pinned_bytes(path, digest))
     runtime = admit(manifest, profile="panel")
-    if not runtime.check():
-        raise ValueError("timing runtime verification failed")
+    require_runtime(runtime, "during verification")
     return runtime
 
 
@@ -194,8 +201,7 @@ def main():
     environment = tactical.observation_comparison_environs(str(model), MODEL_SHA)["div+rc+tb+la"]
     def factory():
         return tactical.bot_from_environ(environment, seed=SEED)[1]
-    if not runtime.check():
-        raise ValueError("runtime check before timing failed")
+    require_runtime(runtime, "before timing")
     with ExitStack() as stack:
         for module, name, label in (
             (public_fixture_panel, "sample_public_refusal_tape", "public_replay_and_sampling"),
@@ -206,8 +212,7 @@ def main():
         measure(public_fixture_panel.collect_public_fixture_panel, factory, fixture,
                 (legal.actions[:8], legal.actions[-8:]), mode=args.mode,
                 output=args.output, timing=timing)
-    if not runtime.check():
-        raise ValueError("runtime check after timing failed; measurement invalid")
+    require_runtime(runtime, "after timing")
     print("CAPACITY COMPLETE; runtime postcheck PASS; not scientific collection", flush=True)
 
 

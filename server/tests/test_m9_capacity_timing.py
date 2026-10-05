@@ -13,6 +13,29 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+@pytest.mark.parametrize("phase", ["before timing", "after timing"])
+@pytest.mark.parametrize("diagnostic", [None, {
+    "stage": "external_runtime", "detail": {
+        "stage": "mapped_files", "added": ["/synthetic/lib.so"]}}])
+def test_runtime_failure_surfaces_detail_without_retry(phase, diagnostic):
+    calls = []
+    def check():
+        calls.append(True)
+        return False
+    runtime = SimpleNamespace(check=check)
+    if diagnostic is not None:
+        runtime.last_failure = diagnostic
+    with pytest.raises(ValueError, match=f"runtime check {phase} failed") as exc:
+        module.require_runtime(runtime, phase)
+    assert repr(diagnostic) in str(exc.value)
+    assert "measurement invalid" in str(exc.value)
+    assert calls == [True]
+
+
+def test_runtime_success_preserves_verdict():
+    assert module.require_runtime(SimpleNamespace(check=lambda: True), "after timing") is None
+
+
 def test_timer_exact_boundary_and_gap():
     clock = [10.0]
     timing = module.Timing(5, lambda: clock[0])

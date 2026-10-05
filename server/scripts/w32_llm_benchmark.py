@@ -803,7 +803,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
             "plan": str(Path(retention_plan).resolve()),
             "plan_sha256": retention_plan_sha256,
             "source": retained["path"], "result_sha256": retained["result_sha256"],
+            "prior_cost_tokens": retained["prior_cost_tokens"],
         }
+        if token_limit is not None and retained["prior_cost_tokens"] >= token_limit:
+            raise BenchmarkRefusal("retained attempts already exhaust soft token threshold")
     if not run:
         result = {"schema": SCHEMA, "mode": "dry-run", "config": config,
                 "planned_arms": [f"{model}-{mode}" for model in models for mode in information],
@@ -821,7 +824,9 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     except FileExistsError as exc:
         raise BenchmarkRefusal("output must be a fresh path") from exc
     _publish(output_path / "config.json", config)
-    budget = _Budget(float(wall_seconds), token_limit)
+    new_token_limit = (token_limit - retained["prior_cost_tokens"]
+                       if retained is not None and token_limit is not None else token_limit)
+    budget = _Budget(float(wall_seconds), new_token_limit)
     if prepared_recipe is not None:
         baseline_fn = lambda seat, seed: prepared_recipe.factory(seed=seed + seat)
     else:

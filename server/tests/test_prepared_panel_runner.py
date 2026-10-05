@@ -196,6 +196,9 @@ def test_retention_authenticates_and_counts_before_dispatch(kwargs, tmp_path, li
         assert row['lineage']['retention_plan_sha256'] == pin
     assert {p.name: p.read_bytes() for p in source.iterdir()} == original
     assert report['retained_attempts'] == report['config']['retained_attempts']
+    assert report['retained_attempts']['prior_cost_tokens'] == 7
+    assert set(report['retained_attempts']) == {
+        'plan', 'plan_sha256', 'source', 'result_sha256', 'prior_cost_tokens'}
 
 
 @pytest.mark.parametrize('change', ['wrong_pin', 'missing_pin', 'missing_plan', 'default_protocol', 'continue'])
@@ -226,6 +229,45 @@ def test_retention_dry_run_checks_plan_but_does_not_write(kwargs, tmp_path):
     assert report['mode'] == 'dry-run'
     assert report['config']['retained_attempts']['plan_sha256'] == pin
     assert not kwargs['output'].exists()
+
+
+@pytest.mark.parametrize('limit', [6, 7])
+@pytest.mark.parametrize('execute', [False, True])
+def test_retained_cost_exhaustion_refuses_before_output(kwargs, tmp_path, limit, execute):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    with pytest.raises(runner.BenchmarkRefusal, match='exhaust soft token'):
+        runner.run_benchmark(
+            **kwargs, run=execute, token_limit=limit, retention_plan=str(plan),
+            retention_plan_sha256=pin, failure_protocol=PRESERVE_ILLEGAL,
+            classify_final_action_failures=True)
+    assert not kwargs['output'].exists()
+
+
+def test_retained_tokens_reduce_budget_for_new_provider_calls(kwargs, tmp_path):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    called = []
+    class FakeTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            called.append(packet)
+            self.calls.append({'usage': {'input_tokens': 1, 'output_tokens': 0}})
+            return {'cards': [], 'memory': ''}
+    def two_calls(game, **options):
+        provider = options['planner_factory'](0)
+        provider({})
+        provider({})  # must refuse: prior 7 + first new 1 reaches total ceiling 8
+        raise AssertionError('budget failed to stop second provider call')
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=8, runner=two_calls,
+        transport_factory=FakeTransport, retention_plan=str(plan),
+        retention_plan_sha256=pin, failure_protocol=PRESERVE_ILLEGAL,
+        classify_final_action_failures=True)
+    assert len(called) == 1
+    assert report['budget']['new_tokens'] == 1
+    assert report['budget']['prior_tokens'] == 7
+    assert report['budget']['combined_tokens'] == 8
+    assert report['scheduled_summary']['blocked'] is True
 
 
 @pytest.mark.parametrize("capacity", [False, True])

@@ -51,6 +51,45 @@ def test_real_public_rebuild_binds_without_mutation_or_model_work(mode):
     assert panel['tape_receipt']['last_sampling']['refusal_fallback_worlds'] == 64
 
 
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_pre_doomed_throw_config_projects_once_without_rewriting_panel(mode):
+    import numpy as np
+    selected, fixture, bot = selected_inputs(mode)
+    del selected['panel']['config']['doomed_throw_swap']
+    before = copy.deepcopy(selected)
+    calls = []
+    def predict(x):
+        calls.append(len(x))
+        return np.tile(np.arange(54), (len(x), 1))
+    bot.predict = predict
+    result = module.project_panel_rank_repairs(selected, fixture, bot)
+    assert calls == [64]
+    assert set(result['projections']) == {'control', 'treatment'}
+    assert selected == before
+
+
+@pytest.mark.parametrize('damage', ['config_true', 'config_zero', 'bot_true',
+                                  'bot_zero', 'missing_other', 'extra', 'changed'])
+def test_old_config_compatibility_is_narrow_and_strict(damage):
+    from dataclasses import replace
+    panel, fixture, bot = inputs()
+    del panel['config']['doomed_throw_swap']
+    if damage.startswith('config_'):
+        bot.config = replace(bot.config, doomed_throw_swap=True if damage == 'config_true' else 0)
+    elif damage.startswith('bot_'):
+        bot.doomed_throw_swap = True if damage == 'bot_true' else 0
+    elif damage == 'missing_other':
+        del panel['config']['lead_anchor']
+    elif damage == 'extra':
+        panel['config']['unknown_future_rule'] = False
+    else:
+        panel['config']['candidates'] += 1
+    before = copy.deepcopy(panel)
+    with pytest.raises(ValueError, match='config mismatch'):
+        module.bind_panel_rank_root(panel, fixture, bot)
+    assert panel == before
+
+
 @pytest.mark.parametrize('damage,match', [
     ('fixture', 'identity'), ('config', 'config mismatch'), ('effective', 'effective mismatch'),
     ('checkpoint', 'checkpoint_sha256 mismatch'), ('ledger', 'ledger receipt'),

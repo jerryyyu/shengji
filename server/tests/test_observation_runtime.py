@@ -169,6 +169,12 @@ for name in _profile_imports(sys.argv[2]):
 assert "shengji.eval.m9_panel_worker" in sys.modules
 assert "shengji.eval.public_refusal_tape" in sys.modules
 assert "shengji.eval.fixed_tape_capture" in sys.modules
+assert "shengji.ai.cwv_numpy_evaluator" in sys.modules
+assert "shengji.ai.cwv_encoder_compat" in sys.modules
+before = set(sys.modules)
+from shengji.ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+from shengji.ai.cwv_encoder_compat import history_import_move_identity, round_notice_identity
+assert set(sys.modules) == before
 assert "torch" not in sys.modules
 if sys.argv[2] == "panel-readout":
     assert "shengji.eval.m9_panel_artifact_reader" in sys.modules

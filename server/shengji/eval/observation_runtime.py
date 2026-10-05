@@ -31,6 +31,11 @@ PRELOAD_IMPORTS = (
     "shengji.ai.cwv_numpy",
     "shengji.ai.cwv_prior_numpy",
     "shengji.ai.cwv_policy",
+    # shared_evaluator imports this at factory time; legacy encoder identity
+    # verification imports the compatibility helper on its fallback path.
+    # Pin both before admission rather than discovering them after scoring.
+    "shengji.ai.cwv_numpy_evaluator",
+    "shengji.ai.cwv_encoder_compat",
     "shengji.ai.refusal",
     "encodings.cp437",
 )

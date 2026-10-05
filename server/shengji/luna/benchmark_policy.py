@@ -18,10 +18,13 @@ from .game import (MAX_ROLLOUT_CALLS_PER_DECISION, MAX_NEW_EVALUATIONS_PER_CALL,
 
 class SeatPlannerPolicy:
     def __init__(self, *, seat, information, planner, setup_policy, seed=0, worlds=8,
-                 classify_final_action_failures=False):
+                 classify_final_action_failures=False, invalid_action_feedback=False):
         if type(classify_final_action_failures) is not bool:
             raise ValueError("classify_final_action_failures must be bool")
         self.classify_final_action_failures = classify_final_action_failures
+        if type(invalid_action_feedback) is not bool:
+            raise ValueError("invalid_action_feedback must be bool")
+        self.invalid_action_feedback = invalid_action_feedback
         if type(seat) is not int or seat not in range(4):
             raise ValueError("benchmark seat must be 0..3")
         if information not in ("actor-only", "perfect"):
@@ -33,6 +36,11 @@ class SeatPlannerPolicy:
         self.seed, self.worlds = seed, worlds
         self._round = None
         self._memory = ""
+        # Lifetime totals for this seat-policy instance, including partial failures.
+        # World counts cover returned successful evaluations, not internal work
+        # completed before an evaluator raises midway through its world loop.
+        self.rollout_usage = {"requested_batches": 0, "attempted_evaluations": 0,
+                              "completed_evaluations": 0, "completed_world_rollouts": 0}
 
     def _check_seat(self, seat):
         if type(seat) is not int or seat != self.seat:
@@ -82,16 +90,23 @@ class SeatPlannerPolicy:
                 raise ValueError("invalid planner rollout request")
             if request_index == MAX_ROLLOUT_CALLS_PER_DECISION:
                 raise ValueError("planner rollout call budget exhausted")
+            self.rollout_usage["requested_batches"] += 1
             if tool is None:
                 # Seeds depend only on explicit experiment seed and visible state.
                 tool = DecisionRollouts(
                     rnd, seat, information=self.information, worlds=self.worlds,
-                    seed=self.seed + int(visible["observation_sha256"][:16], 16))
+                    seed=self.seed + int(visible["observation_sha256"][:16], 16),
+                    invalid_action_feedback=self.invalid_action_feedback)
             results = []
             for evaluation in reply["evaluations"]:
                 if type(evaluation) is not dict or set(evaluation) != {"cards", "continuation"}:
                     raise ValueError("invalid planner rollout evaluation")
-                results.append(tool.evaluate(**evaluation))
+                self.rollout_usage["attempted_evaluations"] += 1
+                result = tool.evaluate(**evaluation)
+                if result.get("status") != "invalid":
+                    self.rollout_usage["completed_evaluations"] += 1
+                    self.rollout_usage["completed_world_rollouts"] += result["worlds"]
+                results.append(result)
             packet["rollout_results"].extend(results)
             packet["memory"] = reply["memory"]
         if type(reply) is not dict or set(reply) != {"cards", "memory"}:

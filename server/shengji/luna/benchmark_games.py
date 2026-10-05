@@ -33,7 +33,7 @@ def _native_action_rejection(cards, hand, exc):
 
 def play_mirror(prepared_game, *, flip, information, planner_factory,
                 baseline_factory, seed, before_decision=lambda: None,
-                classify_final_action_failures=False):
+                classify_final_action_failures=False, invalid_action_feedback=False):
     """Compare one partnership to baseline, retaining a partial trace on failure.
 
     The caller prepares setup once and supplies the same root for every mirror
@@ -44,8 +44,10 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
         raise ValueError("mirror must be 0 or 1")
     if type(classify_final_action_failures) is not bool:
         raise ValueError("classify_final_action_failures must be bool")
+    if type(invalid_action_feedback) is not bool:
+        raise ValueError("invalid_action_feedback must be bool")
     game = copy.deepcopy(prepared_game)
-    events, planners, policies = [], [], []
+    events, planners, policies, planner_bots = [], [], [], []
     for seat in range(4):
         baseline = baseline_factory(seat, seed)
         if seat % 2 == flip:
@@ -53,13 +55,16 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
             planners.append(planner)
             bot = SeatPlannerPolicy(seat=seat, information=information,
                                     planner=planner, setup_policy=baseline, seed=seed,
-                                    classify_final_action_failures=classify_final_action_failures)
+                                    classify_final_action_failures=classify_final_action_failures,
+                                    invalid_action_feedback=invalid_action_feedback)
+            planner_bots.append(bot)
         else:
             bot = baseline
         policies.append(_RecordedPolicy(bot, seat, before_decision, events))
     started = time.monotonic()
     record = {"flip": flip, "information": information, "seed": seed,
-              "complete": False, "events": events}
+              "complete": False, "events": events,
+              "invalid_action_feedback": invalid_action_feedback}
     if classify_final_action_failures:
         record["classify_final_action_failures"] = True
 
@@ -82,6 +87,10 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
         record["error"] = f"{type(exc).__name__}: {exc}"
     record["wall_seconds"] = time.monotonic() - started
     record["calls"] = [call for planner in planners for call in getattr(planner, "calls", ())]
+    record["rollout_usage"] = {
+        key: sum(bot.rollout_usage[key] for bot in planner_bots)
+        for key in ("requested_batches", "attempted_evaluations",
+                    "completed_evaluations", "completed_world_rollouts")}
     return record
 
 

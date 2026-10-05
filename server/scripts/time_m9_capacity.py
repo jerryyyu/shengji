@@ -123,8 +123,33 @@ def measure(collector, factory, fixture, ballots, *, mode, output, timing):
             handle.write("\n")
 
 
+def qualify(action, source, original, path, digest, capture, admit):
+    """Same-entrypoint capture/verification, with no model or fixture work."""
+    if action == "capture-runtime":
+        if digest is not None:
+            raise ValueError("capture has no supplied runtime digest")
+        manifest = capture(source, profile="panel")
+        for key in ("source_root", "source_files", "environment"):
+            if manifest[key] != original[key]:
+                raise ValueError("qualified stage changed: " + key)
+        raw = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+        with path.open("xb") as handle:
+            handle.write(raw)
+        print("TIMING RUNTIME CAPTURED sha256=" + hashlib.sha256(raw).hexdigest(), flush=True)
+        return None
+    if action not in ("verify-runtime", "measure") or digest is None:
+        raise ValueError("explicit action and verified timing-runtime digest required")
+    manifest = json.loads(pinned_bytes(path, digest))
+    runtime = admit(manifest, profile="panel")
+    if not runtime.check():
+        raise ValueError("timing runtime verification failed")
+    return runtime
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--action", choices=("capture-runtime", "verify-runtime", "measure"), required=True)
+    parser.add_argument("--runtime-sha256")
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", choices=("fresh-root", "history-primed"), required=True)
@@ -141,14 +166,22 @@ def main():
     timing = Timing(120)
     source = STAGE / "source/server"
     fixture_raw = pinned_bytes(args.fixture, FIXTURE_SHA)
-    manifest = json.loads(pinned_bytes(STAGE / "panel-runtime.json", MANIFEST_SHA))
+    original_manifest = json.loads(pinned_bytes(STAGE / "panel-runtime.json", MANIFEST_SHA))
     pinned_bytes(source / "shengji/eval/observation_runtime.py", ADAPTER_SHA)
     sys.path.insert(0, str(source))
-    from shengji.eval.observation_runtime import ObservationRuntime
-    runtime = timing.call("runtime_verification", ObservationRuntime, manifest, profile="panel")
+    from shengji.eval.observation_runtime import ObservationRuntime, capture
     from shengji.eval import tactical, public_fixture_panel, fixed_tape_panel
     from shengji.eval.public_refusal_history import public_root_with_ledger
     from shengji.harvest.legal import enumerate_legal
+    # Capture and verify through THIS entrypoint. The old qualification
+    # driver's __main__.__file__ belongs to its dependency set, not ours.
+    runtime_path = args.output.parent / "runtime.json"
+    runtime = timing.call("runtime_qualification", qualify, args.action, source,
+                          original_manifest, runtime_path, args.runtime_sha256,
+                          capture, ObservationRuntime)
+    if args.action != "measure":
+        print("TIMING QUALIFICATION DONE; no model access", flush=True)
+        return
     fixture = tactical.fixture_from_json(json.loads(fixture_raw))
     root, _ledger, _receipt = public_root_with_ledger(fixture, mode=args.mode)
     legal = enumerate_legal(root, fixture.seat, cap=4000)

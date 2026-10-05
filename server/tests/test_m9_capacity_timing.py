@@ -101,3 +101,36 @@ def test_input_authentication_and_symlink_refusal(tmp_path):
     link.symlink_to(path)
     with pytest.raises(ValueError, match="nonsymlink"):
         module.pinned_bytes(link, digest)
+
+
+def test_actual_entrypoint_manifest_capture_then_verify(tmp_path):
+    import hashlib
+    old = dict(source_root="stage", source_files={"a": "b"}, environment={})
+    new = dict(old, dependency_files={"timing-driver": "new"})
+    path = tmp_path / "runtime.json"
+    def capture(source, *, profile):
+        assert source == "stage" and profile == "panel"
+        return new
+    def admit(manifest, *, profile):
+        assert manifest == new and profile == "panel"
+        return SimpleNamespace(check=lambda: True)
+    assert module.qualify("capture-runtime", "stage", old, path, None,
+                          capture, admit) is None
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert module.qualify("verify-runtime", "stage", old, path, digest,
+                          capture, admit).check()
+    with pytest.raises(FileExistsError):
+        module.qualify("capture-runtime", "stage", old, path, None, capture, admit)
+    with pytest.raises(ValueError, match="digest"):
+        module.qualify("measure", "stage", old, path, None, capture, admit)
+
+
+@pytest.mark.parametrize("key", ["source_root", "source_files", "environment"])
+def test_capture_cannot_silently_requalify_changed_stage(tmp_path, key):
+    old = dict(source_root="stage", source_files={}, environment={})
+    changed = dict(old, **{key: "changed"})
+    path = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="qualified stage changed"):
+        module.qualify("capture-runtime", "stage", old, path, None,
+                       lambda *a, **k: changed, None)
+    assert not path.exists()

@@ -141,3 +141,18 @@ describe("failed-throw notice", () => {
     view.unmount();
   });
 });
+
+describe("points chip", () => {
+  it("renders a new score box when the score changes", () => {
+    // iOS WebKit kept the old box's width when "0" became "10", so the digits ran
+    // into the "/ 80" (Jerry, 2026-10-05). A fresh element forces a fresh layout.
+    const view = render(makeState({ attacker_points: 0 }));
+    const before = view.host.querySelector(".points-big");
+    expect(before!.textContent).toBe("0");
+    view.rerender(makeState({ attacker_points: 10 }));
+    const after = view.host.querySelector(".points-big");
+    expect(after!.textContent).toBe("10");
+    expect(after).not.toBe(before);
+    view.unmount();
+  });
+});

@@ -195,3 +195,13 @@ describe("opponent turn status", () => {
     }
   });
 });
+
+describe("phase class", () => {
+  it("tags the table with its phase so phone layouts can differ per phase", () => {
+    for (const phase of ["declare", "bury", "play"] as const) {
+      const view = renderTable(makeState({ phase, target: {} }));
+      expect(view.container.querySelector(".table-screen")!.classList.contains(`phase-${phase}`)).toBe(true);
+      view.unmount();
+    }
+  });
+});

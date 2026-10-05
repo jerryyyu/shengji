@@ -102,7 +102,8 @@ def observe_committed_play(rnd: Round, policies: list) -> None:
             observe(rnd)
 
 
-def play_prepared_round(game: Game, policies: list, record: bool = False) -> RoundLog:
+def play_prepared_round(game: Game, policies: list, record: bool = False, *,
+                        on_play_error=None) -> RoundLog:
     """Continue a prepared play state using the same loop as play_round."""
     rnd = game.round
     if rnd is None or rnd.phase != "play":
@@ -112,7 +113,16 @@ def play_prepared_round(game: Game, policies: list, record: bool = False) -> Rou
         seat = rnd.turn
         cards = policies[seat].decide_play(rnd, seat)
         prev_last = rnd.last_trick
-        rnd.play(seat, cards)
+        try:
+            rnd.play(seat, cards)
+        except Exception as exc:
+            if on_play_error is not None:
+                try:
+                    on_play_error(seat, cards, exc)
+                except BaseException:
+                    # Diagnostic failures must not replace the engine error.
+                    pass
+            raise
         if record:  # engine truth, not the attempt (failed throws differ)
             history.append((seat, actual_play_after(rnd, seat, prev_last)))
         observe_committed_play(rnd, policies)

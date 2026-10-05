@@ -206,7 +206,9 @@ jobs:
 
   luna-profiles:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Each shard also runs the shared observation/ballot suite; the CLI shard
+    # reached 10 min with no test failing (#805, #809 on 2026-10-05).
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

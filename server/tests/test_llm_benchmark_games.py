@@ -105,3 +105,39 @@ def test_mirror_feedback_option_is_strict_before_factories(option):
     with pytest.raises(ValueError, match="invalid_action_feedback must be bool"):
         play_mirror(None, flip=0, information="perfect", planner_factory=forbidden,
                     baseline_factory=forbidden, seed=0, invalid_action_feedback=option)
+
+
+@pytest.mark.parametrize("feedback", [False, True])
+@pytest.mark.parametrize("classify", [False, True])
+def test_feedback_and_final_action_attribution_are_independent(feedback, classify):
+    game = Game(random.Random(733))
+    prepare_round(game, [HeuristicBot() for _ in range(4)])
+    calls = []
+
+    def choose(packet):
+        calls.append(packet)
+        if not packet["rollout_results"]:
+            return {"evaluations": [{"cards": [], "continuation": "heuristic-all"}],
+                    "memory": "candidate"}
+        assert packet["rollout_results"][0]["status"] == "invalid"
+        return {"cards": [], "memory": "final"}
+
+    row = play_mirror(game, flip=game.round.turn % 2, information="perfect",
+                      planner_factory=lambda seat: choose,
+                      baseline_factory=lambda seat, seed: HeuristicBot(), seed=733,
+                      invalid_action_feedback=feedback,
+                      classify_final_action_failures=classify)
+    assert not row["complete"] and "signed_levels" not in row
+    assert len(calls) == (2 if feedback else 1)
+    assert row["rollout_usage"] == {
+        "requested_batches": 1, "attempted_evaluations": 1,
+        "completed_evaluations": 0, "completed_world_rollouts": 0}
+    assert row["invalid_action_feedback"] is feedback
+    assert row.get("classify_final_action_failures", False) is classify
+    if feedback and classify:
+        assert row["failure"]["category"] == "model_illegal_action"
+        assert row["failure"]["stage"] == "engine_play"
+        assert row["events"][-1]["attempted_cards"] == []
+    else:
+        assert "failure" not in row
+        assert row["events"] == []

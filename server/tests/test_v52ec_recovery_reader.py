@@ -1,6 +1,7 @@
 """Failure-path witnesses using synthetic dependencies, never screen data."""
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -67,3 +68,23 @@ def test_success_does_not_restore_primary(reader, monkeypatch, tmp_path):
     assert result['original_primary'] == 'UNAVAILABLE'
     assert result['outcome_blind'] is False
     assert 'verdict' not in result
+
+
+@pytest.mark.parametrize('success', [True, False])
+def test_cli_binds_all_explicit_paths_and_exit_status(reader, monkeypatch, capsys, success):
+    flags = ('reservation', 'status', 'rc-path', 'support', 'reader-dir', 'primary-path')
+    argv = ['recovery', 'synthetic-root', 'synthetic-output']
+    for flag in flags:
+        argv.extend(['--' + flag, 'synthetic-' + flag])
+    monkeypatch.setattr(sys, 'argv', argv)
+
+    def run(output, **kwargs):
+        assert output == Path('synthetic-output')
+        assert kwargs == {'root': Path('synthetic-root'), **{
+            f.replace('-', '_'): Path('synthetic-' + f) for f in flags}}
+        return success
+
+    monkeypatch.setattr(reader, 'run_once', run)
+    assert reader.main() == (0 if success else 1)
+    assert capsys.readouterr().out.strip() == (
+        'DIAGNOSTICS_COMPLETE' if success else 'REFUSED: safe report preserved')

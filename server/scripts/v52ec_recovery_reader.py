@@ -4,6 +4,7 @@ The original estimator remains unavailable. No pool or strength classification
 is called. Caller must verify terminal process state and exclusive ownership.
 """
 import copy
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -137,3 +138,20 @@ def run_once(output, **kwargs):
         handle.flush()
         os.fsync(handle.fileno())
     return success
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root', type=Path)
+    parser.add_argument('output', type=Path)
+    for flag in ('reservation', 'status', 'rc-path', 'support', 'reader-dir', 'primary-path'):
+        parser.add_argument('--' + flag, type=Path, required=True)
+    args = vars(parser.parse_args())
+    output = args.pop('output')
+    success = run_once(output, **args)
+    print('DIAGNOSTICS_COMPLETE' if success else 'REFUSED: safe report preserved')
+    return 0 if success else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

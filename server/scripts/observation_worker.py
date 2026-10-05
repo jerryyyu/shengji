@@ -477,6 +477,40 @@ def run_panel_packet(packet_path, packet_sha):
         check_admission=check_admission, check_budget=check_budget)
 
 
+def qualify_panel_runtime(packet_path, packet_sha, *, destination=None):
+    """Model-free qualification using the actual child worker entrypoint.
+
+    The input packet authenticates the source via its pinned existing runtime
+    manifest. Capture may replace entrypoint-bound dependency identity, never
+    application bytes/environment. Verification uses the packet's manifest.
+    No owner, queue, claim, RELEASE, fixture or model code is invoked here.
+    A qualified manifest is preparation, not permission to collect a panel.
+    """
+    _packet, server, baseline = _bootstrap(packet_path, packet_sha, panel=True)
+    target = None
+    if destination is not None:
+        target = _canonical_absolute(str(destination), "qualification output")
+        if target.is_relative_to(server.parent):
+            raise ValueError("qualification output must be outside the source checkout")
+        if target.exists():
+            raise ValueError("qualification output exists; preserve it")
+    _recipe, adapter, _guards, _tactical, _execution = _import_application(server, panel=True)
+    if target is None:
+        runtime = adapter.ObservationRuntime(baseline, profile="panel")
+        if not runtime.check():
+            raise ValueError("panel worker runtime verification failed")
+        print("PANEL WORKER RUNTIME VERIFIED; no model or claim access", flush=True)
+        return
+    manifest = adapter.capture(server, profile="panel")
+    for key in ("source_root", "source_files", "environment"):
+        if manifest[key] != baseline[key]:
+            raise ValueError("qualified application changed: " + key)
+    raw = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+    with target.open("xb") as handle:
+        handle.write(raw)
+    print("PANEL WORKER RUNTIME CAPTURED sha256=" + hashlib.sha256(raw).hexdigest(), flush=True)
+
+
 def main(argv=None):
     import argparse
 
@@ -487,7 +521,18 @@ def main(argv=None):
                         help="bootstrap the owning caller; exact RELEASE and all admission guards required")
     parser.add_argument("--panel", action="store_true",
                         help="use the authenticated fixed M9 panel packet and child")
+    qualification = parser.add_mutually_exclusive_group()
+    qualification.add_argument("--capture-panel-runtime", metavar="OUTPUT",
+                               help="model-free capture through this child entrypoint")
+    qualification.add_argument("--verify-panel-runtime", action="store_true",
+                               help="model-free verification of the packet runtime")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if args.capture_panel_runtime is not None or args.verify_panel_runtime:
+        if not args.panel or args.admit:
+            parser.error("runtime qualification requires --panel and forbids --admit")
+        qualify_panel_runtime(args.packet, args.sha256,
+                              destination=args.capture_panel_runtime)
+        return
     if args.admit:
         result = (run_owner_packet(args.packet, args.sha256, panel=True)
                   if args.panel else run_owner_packet(args.packet, args.sha256))

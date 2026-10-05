@@ -68,6 +68,10 @@ jobs:
           tests/test_paired_window_metadata.py
           tests/test_refusal_readout_summary.py
           tests/test_v52ec_handoff.py
+          tests/test_v52ec_recovery_diagnostics.py
+          tests/test_v52ec_recovery_traces.py
+          tests/test_v52ec_recovery_reader.py
+          tests/test_v52ec_recovery_integration.py
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"

@@ -50,6 +50,8 @@ jobs:
           tests/test_test_checkout.py
           tests/test_llm_benchmark_rollouts.py
           tests/test_benchmark_recipes.py
+          tests/test_llm_benchmark_policy.py
+          tests/test_llm_benchmark_games.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
           tests/test_prepared_play_error_hook.py

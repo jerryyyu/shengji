@@ -119,6 +119,83 @@ def test_actual_tool_result_reaches_planner_then_engine():
     rnd.play(1, bot.decide_play(rnd, 1))
     assert len(received) == 2
     assert rnd.trick.plays[-1].cards == cards
+    assert bot.rollout_usage == {"requested_batches": 1, "attempted_evaluations": 1,
+                                 "completed_evaluations": 1, "completed_world_rollouts": 2}
+
+
+def test_invalid_rollout_is_feedback_and_allows_legal_final_play():
+    from test_llm_benchmark_rollouts import root
+    from shengji.ai.heuristic import HeuristicBot
+    rnd = root()
+    legal = HeuristicBot().decide_play(rnd, 1)
+    received = []
+
+    def planner(packet):
+        received.append(packet)
+        if not packet["rollout_results"]:
+            return {"evaluations": [{"cards": ["SJ"],
+                                      "continuation": "heuristic-all"}],
+                    "memory": "correct after refusal"}
+        assert packet["rollout_results"] == [{
+            "status": "invalid", "cards": ["SJ"],
+            "continuation": "heuristic-all", "worlds": 0,
+            "error": "illegal_action", "message": "You don't hold those cards."}]
+        return {"cards": legal, "memory": "selected legal play"}
+
+    bot = SeatPlannerPolicy(seat=1, information="actor-only", planner=planner,
+                            setup_policy=None, worlds=2, invalid_action_feedback=True)
+    rnd.play(1, bot.decide_play(rnd, 1))
+    assert len(received) == 2
+    assert bot.rollout_usage == {"requested_batches": 1, "attempted_evaluations": 1,
+                                 "completed_evaluations": 0, "completed_world_rollouts": 0}
+
+
+def test_legal_off_ballot_rollout_proposal_remains_allowed(monkeypatch):
+    from test_llm_benchmark_rollouts import root
+    from shengji.luna.game import WideHeuristicBallotBot
+    rnd = root()
+    off_ballot_card = next(card for card in rnd.hands[1]
+                          if card.startswith("S") and card != "S5")
+    monkeypatch.setattr(WideHeuristicBallotBot, "_candidates",
+                        lambda self, round_, seat: [["S5"]])
+    received = []
+
+    def planner(packet):
+        received.append(packet)
+        if not packet["rollout_results"]:
+            assert packet["suggested_actions"] == [["S5"]]
+            return {"evaluations": [{"cards": [off_ballot_card],
+                                      "continuation": "heuristic-all"}],
+                    "memory": "compare off ballot"}
+        assert packet["rollout_results"][0]["cards"] == [off_ballot_card]
+        return {"cards": [off_ballot_card], "memory": "selected off ballot"}
+
+    bot = SeatPlannerPolicy(seat=1, information="actor-only", planner=planner,
+                            setup_policy=None, worlds=1)
+    rnd.play(1, bot.decide_play(rnd, 1))
+    assert len(received) == 2
+    assert bot.rollout_usage == {"requested_batches": 1, "attempted_evaluations": 1,
+                                 "completed_evaluations": 1, "completed_world_rollouts": 1}
+
+
+def test_completed_evaluation_usage_survives_later_failure_in_same_batch():
+    from test_llm_benchmark_rollouts import root
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.legal import IllegalPlay
+    rnd = root()
+    cards = HeuristicBot().decide_play(rnd, 1)
+
+    def planner(packet):
+        return {"evaluations": [{"cards": candidate, "continuation": "heuristic-all"}
+                                for candidate in (cards, [])], "memory": ""}
+
+    bot = SeatPlannerPolicy(seat=1, information="perfect", planner=planner,
+                            setup_policy=None)
+    with pytest.raises(IllegalPlay):
+        bot.decide_play(rnd, 1)
+    assert bot.rollout_usage == {"requested_batches": 1, "attempted_evaluations": 2,
+                                 "completed_evaluations": 1, "completed_world_rollouts": 1}
+    assert rnd.turn == 1
 
 
 def test_rollout_call_limit_is_enforced_at_planner_wiring():
@@ -138,6 +215,8 @@ def test_rollout_call_limit_is_enforced_at_planner_wiring():
     assert len(calls) == 3
     assert [packet["rollout_calls_remaining"] for packet in calls] == [2, 1, 0]
     assert rnd.turn == 1
+    assert bot.rollout_usage == {"requested_batches": 2, "attempted_evaluations": 2,
+                                 "completed_evaluations": 2, "completed_world_rollouts": 2}
 
 
 def test_existing_full_round_runner_accepts_json_only_planners():

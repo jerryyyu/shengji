@@ -1,5 +1,6 @@
 """Offline tests for the pair-resource admission hypothesis."""
 import copy
+import random
 from collections import Counter
 from types import SimpleNamespace
 
@@ -199,3 +200,31 @@ def test_structure_keys_are_same_only_within_matching_resource_signatures():
     actions = _resource_actions()
     assert structure_key(rnd, actions[0]) == structure_key(rnd, actions[1])
     assert Counter(actions[0]) != Counter(actions[1])
+
+
+def test_fixed_k_resource_partition_can_reduce_both_kinds_of_coverage():
+    """Known limitation, not a desired strength invariant or learned ranking.
+
+    Relaxing both filters lets earlier ranks crowd out later action shapes and
+    even resource states. A successful rank-2 witness is not dominance proof.
+    """
+    rnd = _pair_preservation_follow()
+    actions = list(enumerate_legal(rnd, 1, cap=4000).actions)
+    anchor = [tuple(sorted(a)) for a in actions].index(("C2", "D8", "S6"))
+    ranked = list(range(len(actions)))
+    random.Random(22).shuffle(ranked)
+    legacy = harness(admission_diversity=True)._admit_diverse(
+        rnd, actions, ranked, anchor, k=8
+    )
+    prototype = pair_resource_ballot(rnd, 1, actions, ranked, anchor, k=8)["chosen"]
+    pairs = sorted(c for c, n in Counter(rnd.hands[1]).items() if n == 2)
+
+    def coverage(chosen):
+        shapes = {structure_key(rnd, actions[i]) for i in chosen}
+        resources = {tuple(2 - Counter(actions[i])[c] for c in pairs) for i in chosen}
+        return len(shapes), len(resources)
+
+    assert len(legacy) == len(prototype) == 8
+    assert legacy[0] == prototype[0] == anchor
+    assert coverage(legacy) == (5, 3)
+    assert coverage(prototype) == (3, 2)

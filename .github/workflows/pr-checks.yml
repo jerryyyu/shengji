@@ -177,6 +177,7 @@ jobs:
           PY
           uv run python -B -m pytest -q --durations=10 \
             tests/test_pv_admission_rules.py \
+            tests/test_pair_resource_admission.py \
             tests/test_refusal_constraints.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \

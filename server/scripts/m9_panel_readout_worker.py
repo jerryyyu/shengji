@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 import stat
@@ -24,7 +25,7 @@ _MAX_COLLECTION_PACKET_BYTES = 1024 * 1024
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _INVOCATION_KEYS = frozenset({
     "schema", "files", "packet_sha256", "collection_packet", "output_dir",
-    "runtime",
+    "runtime", "controls",
 })
 _HELPER_NAME = "_m9_panel_readout_observation_worker"
 
@@ -165,6 +166,76 @@ def _read_collection_packet(helper, invocation: dict) -> tuple[Path, dict]:
     return path, packet
 
 
+def _read_controls(helper, invocation, packet):
+    """Bind historical execution records; never inspect live launch guards.
+
+    These pins still need an externally reviewed terminal inventory. Matching
+    JSON records alone are not proof of authorization or scientific provenance.
+    """
+    expected = {name: packet[name] for name in ("release", "claim", "reservation")}
+    expected["process_claim"] = str(Path(packet["recipe"]["evidence"]) / "claim.json")
+    pins = invocation["controls"]
+    if type(pins) is not dict or set(pins) != set(expected):
+        raise ValueError("exact four historical control pins required")
+    buffers = {}
+    paths = set()
+    for name, target in expected.items():
+        ref = pins[name]
+        if type(ref) is not dict or set(ref) != {"path", "sha256"}:
+            raise ValueError("exact control path/SHA pin required")
+        path = helper._canonical_absolute(ref["path"], name)
+        if path != helper._canonical_absolute(target, name) or path in paths:
+            raise ValueError("control path differs from collection packet")
+        paths.add(path)
+        helper._strict_sha(ref["sha256"], name)
+        _stamp(path)
+        raw, _ = helper._stable_read(path, 64 * 1024)
+        if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+            raise ValueError("historical control SHA mismatch")
+        buffers[name] = raw
+    records = {name: helper._parse_object(raw) for name, raw in buffers.items()}
+    digest = invocation["packet_sha256"]
+    if records["release"] != {"schema": "m9-panel-release-v1", "packet_sha256": digest}:
+        raise ValueError("historical RELEASE differs from collection packet")
+    recipe = packet["recipe"]
+    command = [recipe["python"], "-I", "-B",
+               str(Path(recipe["source_root"]) / "server/scripts/observation_worker.py"),
+               "--panel", "--packet", invocation["collection_packet"]["path"],
+               "--sha256", digest]
+    claim = records["claim"]
+    if (set(claim) != {"schema", "packet_sha256", "status", "comparison_validated",
+                       "owner_pid", "inner_command", "queue_snapshot", "deadline_monotonic"}
+            or claim["schema"] != "m9-panel-owner-attempt-v1"
+            or claim["packet_sha256"] != digest or claim["status"] != "spent_no_retry"
+            or claim["comparison_validated"] is not False
+            or type(claim["owner_pid"]) is not int or claim["owner_pid"] <= 0
+            or claim["inner_command"] != command or type(claim["queue_snapshot"]) is not dict
+            or type(claim["deadline_monotonic"]) not in (int, float)
+            or not math.isfinite(claim["deadline_monotonic"]) or claim["deadline_monotonic"] <= 0):
+        raise ValueError("historical owner claim binding mismatch")
+    reservation = records["reservation"]
+    for key, value in {
+        "schema": "codex-m9-panel-reservation-v1", "lane": "m9-panel",
+        "packet_sha256": digest, "pid": claim["owner_pid"], "count": 15,
+        "seeds": [0, 1, 2], "status": packet["status"],
+        "output": recipe["output_dir"], "output_root": recipe["output_dir"],
+        "result": recipe["output_dir"], "evidence": recipe["evidence"],
+        "launcher": command[3],
+    }.items():
+        if _canonical_json(reservation.get(key)) != _canonical_json(value):
+            raise ValueError("historical reservation binding mismatch")
+    process = records["process_claim"]
+    timeout = packet["process_timeout_seconds"]
+    if (type(timeout) is not int or timeout <= 0 or set(process) != {
+            "schema", "command", "timeout_seconds", "comparison_validated"}
+            or process["schema"] != "m9-process-attempt-v1"
+            or process["command"] != command
+            or type(process["timeout_seconds"]) not in (int, float)
+            or process["timeout_seconds"] != timeout
+            or process["comparison_validated"] is not False):
+        raise ValueError("historical process claim binding mismatch")
+
+
 def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
     """Authenticate and perform one already-reviewed publication invocation."""
     _runtime_gate()
@@ -190,6 +261,8 @@ def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
     if (type(source_files) is not dict
             or source_files.get("scripts/observation_worker.py") != bootstrap_sha):
         raise ValueError("runtime manifest does not bind authenticated bootstrap")
+
+    _read_controls(helper, invocation, collection_packet)
 
     import importlib
 

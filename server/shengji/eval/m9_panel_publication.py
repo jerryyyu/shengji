@@ -21,7 +21,7 @@ from . import observation_queue as guards
 
 _INVOCATION_KEYS = {
     "schema", "files", "packet_sha256", "collection_packet", "output_dir",
-    "runtime",
+    "runtime", "controls",
 }
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _RESULT_KEYS = {
@@ -199,6 +199,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
             "collection_packet": invocation["collection_packet"],
+            "controls": invocation["controls"],
             "runtime": invocation["runtime"],
             "provenance_verified": False,
         }
@@ -220,6 +221,7 @@ def publish_m9_panel_readout_once(invocation, *, invocation_sha256, runtime_chec
             "invocation_sha256": invocation_sha256,
             "packet_sha256": packet_sha256,
             "collection_packet": invocation["collection_packet"],
+            "controls": invocation["controls"],
             "result_sha256": hashlib.sha256(result_raw).hexdigest(),
             "runtime": invocation["runtime"],
             "input_sha256": result["input_sha256"],

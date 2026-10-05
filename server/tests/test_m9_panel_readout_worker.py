@@ -37,6 +37,7 @@ def _invocation(tmp_path: Path) -> tuple[dict, Path]:
     value = {
         "schema": "m9-panel-readout-invocation-v1",
         "files": files,
+        "controls": {},
         "packet_sha256": "a" * 64,
         "collection_packet": {"path": str(tmp_path / "collection-packet.json"),
                               "sha256": "a" * 64},
@@ -51,6 +52,70 @@ def _invocation(tmp_path: Path) -> tuple[dict, Path]:
 def _load_actual_helper():
     path = Path(worker.__file__).with_name("observation_worker.py")
     return worker._load_helper(_sha(path.read_bytes()))
+
+
+@pytest.mark.parametrize("bad", [None, "release", "owner_command", "pid_bool",
+                                    "count_bool", "process_command", "timeout",
+                                    "hash", "path"])
+def test_historical_controls_bind_packet_without_live_checks(tmp_path, monkeypatch, bad):
+    from test_m9_panel_recipe import recipe
+    spec = recipe()
+    packet = {"recipe": spec, "status": "/outputs/status.json",
+              "process_timeout_seconds": 900}
+    spec["evidence"] = str(tmp_path / "process")
+    (tmp_path / "process").mkdir()
+    for name in ("release", "claim", "reservation"):
+        packet[name] = str(tmp_path / f"{name}.json")
+    invocation = {"packet_sha256": "a" * 64,
+                  "collection_packet": {"path": "/packet.json"}, "controls": {}}
+    command = [spec["python"], "-I", "-B",
+               "/source/server/scripts/observation_worker.py", "--panel", "--packet",
+               "/packet.json", "--sha256", "a" * 64]
+    records = {
+        "release": {"schema": "m9-panel-release-v1", "packet_sha256": "a" * 64},
+        "claim": {"schema": "m9-panel-owner-attempt-v1", "packet_sha256": "a" * 64,
+                  "status": "spent_no_retry", "comparison_validated": False,
+                  "owner_pid": 123, "inner_command": command, "queue_snapshot": {},
+                  "deadline_monotonic": 12345.0},
+        "reservation": {"schema": "codex-m9-panel-reservation-v1", "lane": "m9-panel",
+                        "packet_sha256": "a" * 64, "pid": 123, "count": 15,
+                        "seeds": [0, 1, 2], "status": packet["status"],
+                        "output": spec["output_dir"], "output_root": spec["output_dir"],
+                        "result": spec["output_dir"], "evidence": spec["evidence"],
+                        "launcher": command[3]},
+        "process_claim": {"schema": "m9-process-attempt-v1", "command": command,
+                          "timeout_seconds": 900, "comparison_validated": False},
+    }
+    if bad == "release":
+        records["release"]["packet_sha256"] = "b" * 64
+    elif bad == "owner_command":
+        records["claim"]["inner_command"] = ["other"]
+    elif bad == "pid_bool":
+        records["claim"]["owner_pid"] = True
+    elif bad == "count_bool":
+        records["reservation"]["count"] = True
+    elif bad == "process_command":
+        records["process_claim"]["command"] = ["other"]
+    elif bad == "timeout":
+        records["process_claim"]["timeout_seconds"] = 901
+    for name, record in records.items():
+        path = Path(packet[name]) if name != "process_claim" else tmp_path / "process/claim.json"
+        raw = _canonical(record)
+        path.write_bytes(raw)
+        invocation["controls"][name] = {"path": str(path), "sha256": _sha(raw)}
+    helper = _load_actual_helper()
+    if bad == "hash":
+        invocation["controls"]["process_claim"]["sha256"] = "0" * 64
+        monkeypatch.setattr(helper, "_parse_object", lambda *_: pytest.fail(
+            "all controls must authenticate before any is parsed"))
+    if bad == "path":
+        invocation["controls"]["claim"]["path"] = str(tmp_path / "other.json")
+    monkeypatch.setattr(os, "kill", lambda *_: pytest.fail("no live PID checks for historical read"))
+    if bad is None:
+        worker._read_controls(helper, invocation, packet)
+    else:
+        with pytest.raises(ValueError):
+            worker._read_controls(helper, invocation, packet)
 
 
 def test_module_load_is_stdlib_only_and_helper_runs_under_non_main_name():
@@ -268,6 +333,7 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
     manifest = {"source_files": {"scripts/observation_worker.py": "b" * 64}}
     check = lambda: True
     seen = []
+    monkeypatch.setattr(worker, "_read_controls", lambda *_: seen.append("controls"))
 
     def admit(value, *, profile):
         assert value is manifest
@@ -276,7 +342,7 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
         return SimpleNamespace(check=check)
 
     def publish(value, *, invocation_sha256, runtime_check, collection_packet):
-        assert seen == ["admitted", "recipe"]
+        assert seen == ["controls", "admitted", "recipe"]
         assert value is invocation
         assert invocation_sha256 == digest
         assert runtime_check is check

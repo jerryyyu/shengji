@@ -1,6 +1,8 @@
 import type { GameState, RoundResult } from "../protocol";
 import { clearSavedRoom, conn } from "../ws";
 import Card from "./Card";
+import { useId } from "react";
+import ResultDialog from "./ResultDialog";
 
 interface RoundEndModalProps {
   state: GameState;
@@ -20,6 +22,7 @@ function teamName(team: 0 | 1, state?: GameState): string {
 }
 
 export default function RoundEndModal({ state, result }: RoundEndModalProps) {
+  const titleId = useId();
   const nextBankerName =
     state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
   // attacker_points is the final total (kitty bonus already included);
@@ -29,10 +32,10 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
 
   if (result.game_over) {
     return (
-      <div className="modal-backdrop">
+      <ResultDialog titleId={titleId}>
         <div className="panel modal victory">
           <div className="victory-crown">👑</div>
-          <h2 className={`victory-title team${result.winner_team}`}>
+          <h2 id={titleId} tabIndex={-1} className={`victory-title team${result.winner_team}`}>
             {teamName(result.winner_team, state)} wins the game!
           </h2>
           <p className="victory-sub">
@@ -48,14 +51,14 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
             Back to lobby
           </button>
         </div>
-      </div>
+      </ResultDialog>
     );
   }
 
   return (
-    <div className="modal-backdrop">
+    <ResultDialog titleId={titleId}>
       <div className="panel modal">
-        <h2 className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team, state)} wins the round</h2>
+        <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team, state)} wins the round</h2>
 
         <div className="result-grid">
           <span className="result-label">Trick points</span>
@@ -152,6 +155,6 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           );
         })()}
       </div>
-    </div>
+    </ResultDialog>
   );
 }

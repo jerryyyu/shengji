@@ -17,7 +17,7 @@
   --card-black: #23252e;
   --danger: #e05563;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 * {
@@ -1257,6 +1257,19 @@ textarea:focus-visible {
 
 .card.clickable {
   cursor: pointer;
+  padding: 0;
+  text-align: initial;
+  display: block;
+}
+
+.hand .card.clickable:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  z-index: 6;
+}
+
+.card.clickable:active {
+  filter: brightness(0.92); /* no transform: preserve selected-card lift */
 }
 
 .card.red {
@@ -1340,6 +1353,13 @@ textarea:focus-visible {
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  color: inherit;
   background: rgba(6, 10, 8, 0.62);
   backdrop-filter: blur(3px);
   display: flex;
@@ -1354,6 +1374,9 @@ textarea:focus-visible {
   overscroll-behavior: contain;
   animation: fade-in 0.25s ease-out;
 }
+
+dialog.modal-backdrop:not([open]) { display: none; }
+dialog.modal-backdrop::backdrop { background: transparent; }
 
 @keyframes fade-in {
   from {
@@ -2409,4 +2432,24 @@ button.room-chip:active { background-color: #394452; }
 @media (prefers-reduced-transparency: reduce) {
   .modal-backdrop { backdrop-filter: none; background: #10131a; }
   .hud-menu, .chat-panel, .xray-panel { background: var(--panel); }
+}
+
+/* Text-heavy surfaces scale with the user's default text size. Card geometry
+   stays independent so changing text size cannot change a hand's hit mapping. */
+.lobby-panel { width: 24rem; }
+.field, .chat-log, .result-grid, .result-verdict, .ready-status { line-height: 1.5; }
+.field > span, .result-label, .ready-status { font-size: 0.875rem; }
+.field input, .field select, .chat-input input { font-size: max(16px, 1rem); }
+.chat-log, .result-value, .result-verdict { font-size: 0.9375rem; }
+.modal-title, .victory-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.result-grid { min-width: 0; }
+.result-grid > * { min-width: 0; overflow-wrap: anywhere; }
+
+@media (prefers-contrast: more) {
+  :root { --text-dim: #dce2eb; --panel-edge: #aab7c8; }
+  .panel, .hud, .hud-menu, .chat-panel, .xray-panel { background: #14171e; }
+  .modal-backdrop { background: #080b0e; backdrop-filter: none; }
+  .btn, .field input, .field select, .chat-input input,
+  .chat-panel, .hud-menu { border-color: #b8c4d4; }
+  .chat-head, .chat-msg .chat-name, .seat-who, .seat-team, .seat-hint { opacity: 1; }
 }

@@ -33,6 +33,10 @@ interface CardProps {
 }
 
 export default function Card({ code, selected = false, onClick, className }: CardProps) {
+  const Face = onClick ? "button" : "div";
+  const accessibility = onClick
+    ? { type: "button" as const, "aria-pressed": selected, "aria-label": code ? codeLabel(code) : undefined }
+    : {};
   const cls = (extra: string) =>
     ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", className ?? ""]
       .filter(Boolean)
@@ -45,10 +49,10 @@ export default function Card({ code, selected = false, onClick, className }: Car
   if (code === "BJ" || code === "LJ") {
     const red = code === "BJ";
     return (
-      <div className={cls(`joker ${red ? "red" : "black"}`)} onClick={onClick} title={codeLabel(code)}>
+      <Face {...accessibility} className={cls(`joker ${red ? "red" : "black"}`)} onClick={onClick} title={codeLabel(code)}>
         <span className="joker-text">JOKER</span>
         <span className="joker-star">{red ? "★" : "☆"}</span>
-      </div>
+      </Face>
     );
   }
 
@@ -58,7 +62,7 @@ export default function Card({ code, selected = false, onClick, className }: Car
   const red = suit === "H" || suit === "D";
 
   return (
-    <div className={cls(red ? "red" : "black")} onClick={onClick} title={codeLabel(code)}>
+    <Face {...accessibility} className={cls(red ? "red" : "black")} onClick={onClick} title={codeLabel(code)}>
       <span className="corner tl">
         <span className="corner-rank">{rank}</span>
         <span className="corner-suit">{symbol}</span>
@@ -68,6 +72,6 @@ export default function Card({ code, selected = false, onClick, className }: Car
         <span className="corner-rank">{rank}</span>
         <span className="corner-suit">{symbol}</span>
       </span>
-    </div>
+    </Face>
   );
 }

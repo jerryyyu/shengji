@@ -42,3 +42,27 @@ it("labels the mobile composer and does not send while confirming IME compositio
   expect(send).toHaveBeenCalledExactlyOnceWith({ type: "chat", text: "你好" });
   expect(input.value).toBe("");
 });
+
+it("does not steal focus on incoming messages and closes on Escape", () => {
+  const close = vi.fn();
+  const closeButton = host.querySelector<HTMLButtonElement>(".chat-close")!;
+  closeButton.focus();
+  act(() => root.render(<ChatPanel messages={[{ type: "chat", id: 1, room: "TEST", t: 0, seat: 1, name: "Peer", text: "Hi" }]}
+    you={0} open onClose={close} />));
+  expect(document.activeElement).toBe(closeButton);
+  act(() => closeButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("returns focus to the launcher when chat closes", () => {
+  act(() => root.render(<ChatPanel messages={[]} you={0} open={false} onClose={() => {}} />));
+  const launcher = document.createElement("button");
+  document.body.append(launcher);
+  try {
+    launcher.focus();
+    act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} />));
+    expect(document.activeElement).toBe(host.querySelector("input"));
+    act(() => root.render(<ChatPanel messages={[]} you={0} open={false} onClose={() => {}} />));
+    expect(document.activeElement).toBe(launcher);
+  } finally { launcher.remove(); }
+});

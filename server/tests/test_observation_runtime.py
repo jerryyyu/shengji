@@ -155,7 +155,28 @@ def test_readout_profile_is_distinct_and_cannot_accept_collection_manifest(tmp_p
             runtime.ObservationRuntime(collection, profile="panel-readout")
 
 
-@pytest.mark.parametrize("profile", ["panel", "panel-readout"])
+def test_rank_profile_binds_new_helpers_and_refuses_historical_profiles(tmp_path, monkeypatch):
+    source, _, _, _, _ = _fake_capture_context(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime.runtime_fence, "capture", lambda path, imports: {
+        "source_root": str(path), "imports": imports})
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    assert runtime.RANK_PRELOAD_IMPORTS == runtime.READOUT_PRELOAD_IMPORTS + (
+        "shengji.eval.selected_panel_reader", "shengji.eval.fixed_tape_policy",
+        "shengji.eval.pair_resource_admission")
+    manifest = runtime.capture(source, profile="panel-rank")
+    assert manifest["external_runtime"]["imports"] == list(runtime.RANK_PRELOAD_IMPORTS)
+    assert runtime.ObservationRuntime(manifest, profile="panel-rank").check()
+    for old in ("observation", "panel", "panel-readout"):
+        with pytest.raises(ValueError, match="import/source binding"):
+            runtime.ObservationRuntime(manifest, profile=old)
+        historical = runtime.capture(source, profile=old)
+        with pytest.raises(ValueError, match="import/source binding"):
+            runtime.ObservationRuntime(historical, profile="panel-rank")
+
+
+@pytest.mark.parametrize("profile", ["panel", "panel-readout", "panel-rank"])
 def test_real_panel_import_surface_does_not_construct_models(profile):
     source = Path(runtime.__file__).resolve().parents[2]
     script = '''
@@ -178,10 +199,20 @@ from shengji.ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
 from shengji.ai.cwv_encoder_compat import history_import_move_identity, round_notice_identity
 assert set(sys.modules) == before
 assert "torch" not in sys.modules
-if sys.argv[2] == "panel-readout":
+if sys.argv[2] in ("panel-readout", "panel-rank"):
     assert "shengji.eval.m9_panel_artifact_reader" in sys.modules
     assert "shengji.eval.m9_panel_publication" in sys.modules
     assert "shengji.luna.atomic_io" in sys.modules
+if sys.argv[2] == "panel-rank":
+    before = set(sys.modules)
+    from shengji.eval.selected_panel_reader import read_selected_panel
+    from shengji.eval.public_refusal_history import public_root_with_ledger
+    from shengji.eval.fixed_tape_policy import capture_policy_ranks
+    from shengji.eval.pair_resource_admission import project_rank_repair
+    assert set(sys.modules) == before
+else:
+    assert not {"shengji.eval.selected_panel_reader", "shengji.eval.fixed_tape_policy",
+                "shengji.eval.pair_resource_admission"} & set(sys.modules)
 '''
     result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(source), profile],
                             capture_output=True, text=True, timeout=30)

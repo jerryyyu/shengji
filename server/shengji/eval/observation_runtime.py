@@ -51,13 +51,21 @@ READOUT_PRELOAD_IMPORTS = PANEL_PRELOAD_IMPORTS + (
     "shengji.eval.m9_panel_publication",
     "shengji.luna.atomic_io",
 )
+# Source preparation only: a new rank invocation must capture/review its own
+# manifest. Never relabel a historical collection/readout manifest as this.
+RANK_PRELOAD_IMPORTS = READOUT_PRELOAD_IMPORTS + (
+    "shengji.eval.selected_panel_reader",
+    "shengji.eval.fixed_tape_policy",
+    "shengji.eval.pair_resource_admission",
+)
 
 
 def _profile_imports(profile):
     profiles = {"observation": PRELOAD_IMPORTS, "panel": PANEL_PRELOAD_IMPORTS,
-                "panel-readout": READOUT_PRELOAD_IMPORTS}
+                "panel-readout": READOUT_PRELOAD_IMPORTS,
+                "panel-rank": RANK_PRELOAD_IMPORTS}
     if type(profile) is not str or profile not in profiles:
-        raise ValueError("explicit observation, panel or panel-readout runtime profile required")
+        raise ValueError("explicit observation, panel, panel-readout or panel-rank runtime profile required")
     return profiles[profile]
 
 

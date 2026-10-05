@@ -212,3 +212,53 @@ def test_rows_lead_with_a_short_title_and_takeaway_and_production_is_one_card():
         assert any(key in e for e in mod.check_registry(bad)), key
     bad = copy.deepcopy(reg); bad["screens"][0]["title"] = "x" * (mod.TITLE_MAX + 1)
     assert any("title" in e for e in mod.check_registry(bad))
+
+
+def _unavailable_row(reg, rid="zz-unavail"):
+    """A copy of a sealed single-read screen turned into a finished screen with no estimate."""
+    s = copy.deepcopy(next(x for x in reg["screens"] if "results" not in x and x["status"] == "sealed"))
+    s.update(id=rid, status="unavailable", point=None, lo=None, hi=None,
+             note="the pinned reader refused: every window had SE = 0")
+    return s
+
+
+def test_an_unavailable_screen_carries_no_estimate_and_says_why():
+    """`unavailable` is a finished state without a strength estimate (v52ec, #676): it passes only with
+    point/lo/hi all null and a note; a numeric point is refused, and sealed-without-a-read still fails."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
+    ok = copy.deepcopy(reg); ok["screens"].append(_unavailable_row(ok))
+    assert mod.check_registry(ok) == []                                        # (a)
+    for point in ({"point": 0.0, "lo": -0.01, "hi": 0.01}, {"point": 0.02, "lo": 0.01, "hi": 0.03}):
+        bad = copy.deepcopy(reg); row = _unavailable_row(bad); row.update(point); bad["screens"].append(row)
+        assert any("unavailable screen carries no estimate" in e for e in mod.check_registry(bad))   # (b)
+    bad = copy.deepcopy(reg); row = _unavailable_row(bad); row["note"] = "  "; bad["screens"].append(row)
+    assert any("non-empty note" in e for e in mod.check_registry(bad))
+    bad = copy.deepcopy(reg); row = _unavailable_row(bad); row["status"] = "sealed"; bad["screens"].append(row)
+    assert any("sealed without a read" in e for e in mod.check_registry(bad))   # (d)
+    bad = copy.deepcopy(reg); row = _unavailable_row(bad); row["status"] = "bogus"; bad["screens"].append(row)
+    assert any("unknown status" in e for e in mod.check_registry(bad))
+
+
+def test_an_unavailable_screen_has_no_chart_mark_and_is_never_pending(tmp_path):
+    """(c) an unavailable row draws no point, interval or pending diamond (nothing on the zero line) and
+    its table row reads 'no estimate (unavailable)', never 'pending'."""
+    import shutil
+    shutil.copy(HERE / "build_v2.py", tmp_path / "build_v2.py")
+    reg = json.loads((HERE / "registry.json").read_text())
+    reg["screens"].append(_unavailable_row(reg, "zz-unavail"))
+    (tmp_path / "registry.json").write_text(json.dumps(reg))
+    spec = importlib.util.spec_from_file_location("build_v2_tmp", tmp_path / "build_v2.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    assert mod.check_registry(reg) == []
+    lines = mod.SVG.split("\n")
+    start = next(i for i, l in enumerate(lines) if 'class="lab name' in l and ">zz-unavail · " in l)
+    end = next(i for i in range(start + 1, len(lines)) if 'class="lab name' in lines[i] or "sepband" in lines[i] or lines[i] == "</svg>")
+    row_svg = "\n".join(lines[start:end])
+    assert 'class="pt' not in row_svg and 'class="ci' not in row_svg and "<rect" not in row_svg and "<circle" not in row_svg
+    assert "pending" not in row_svg and "no estimate (unavailable)" in row_svg
+    lead = next(l for l in mod.page.split("\n") if l.startswith('<tr class="lead"><td class="mono">zz-unavail<'))
+    assert "pending" not in lead and "no estimate (unavailable)" in lead and "chip wait" not in lead
+    # every unavailable row in the committed registry renders the same way
+    for s in (x for x in mod.R["screens"] if x["status"] == "unavailable"):
+        lead = next(l for l in mod.page.split("\n") if l.startswith(f'<tr class="lead"><td class="mono">{s["id"]}<'))
+        assert "pending" not in lead and "no estimate (unavailable)" in lead

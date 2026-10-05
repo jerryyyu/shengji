@@ -23,6 +23,10 @@ def results_of(s):
 
 # what the contrast varies: the whole served bot, the card-play search, or the bury chooser alone
 FORMS = ("served bot", "card play", "bury decision")
+# ``unavailable`` is a FINISHED state with no strength estimate (e.g. the pinned reader refused): it carries
+# no point/lo/hi, must say why in its note, and is never drawn as a mark on the chart (v52ec, #676).
+STATUSES = ("planned", "running", "restarting", "sealed", "stopped", "unavailable")
+NO_ESTIMATE = "no estimate (unavailable)"
 
 
 def check_registry(reg):
@@ -39,7 +43,7 @@ def check_registry(reg):
             errs.append(f"{s['id']}: comparator release {s.get('vs')!r} is not a registered baseline")
         if s.get("form") not in FORMS:
             errs.append(f"{s['id']}: form must be one of {sorted(FORMS)}")
-        if s.get("status") not in ("planned", "running", "restarting", "sealed", "stopped"):
+        if s.get("status") not in STATUSES:
             errs.append(f"{s['id']}: unknown status {s.get('status')!r}")
     for s in reg["screens"] + reg["context_screens"]:
         # the page leads with these; the long candidate/note text is the record behind a toggle
@@ -73,6 +77,12 @@ def check_registry(reg):
                 errs.append(f"{s['id']}/{r['arm']}: interval [{lo}, {hi}] does not contain the point {p}")
             if r.get("confidence") not in (0.95, 0.975, 0.9875):
                 errs.append(f"{s['id']}/{r['arm']}: confidence must be declared (0.95, 0.975 or 0.9875)")
+        if s.get("status") == "unavailable":
+            if any(r.get(k) is not None for r in results_of(s) for k in ("point", "lo", "hi")):
+                errs.append(f"{s['id']}: an unavailable screen carries no estimate; point, lo and hi must all be null")
+            if not (isinstance(s.get("note"), str) and s["note"].strip()):
+                errs.append(f"{s['id']}: an unavailable screen needs a non-empty note saying why there is no estimate")
+            continue
         if "results" in s:
             rs = s["results"]
             read = [r.get("point") is not None for r in rs]
@@ -179,6 +189,9 @@ for what, top, item in layout:
     name = name if len(name) <= 52 else name[:51] + "…"            # the label column is LEFT px wide
     svg.append(f'<text x="{LEFT-10}" y="{y+4}" class="lab name {kind}" text-anchor="end">{esc(name)}</text>')
     svg.append(f'<text x="{LEFT-10}" y="{y+18}" class="sub" text-anchor="end">vs {esc(comp[:34])} · {conf*100:g}% {esc(role)}</text>')
+    if st == "unavailable":                                       # finished without an estimate: no mark at all
+        svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab sub">{esc(NO_ESTIMATE)}</text>')
+        continue
     if p is None:
         svg.append(f'<rect x="{X(0)-5:.1f}" y="{y-5}" width="10" height="10" class="pt pending" transform="rotate(45 {X(0):.1f} {y})"/>')
         svg.append(f'<text x="{W-RIGHT+8}" y="{y+4}" class="lab">{esc(st)} · {conf*100:g}%</text>')
@@ -200,7 +213,7 @@ def screens_table(items, ctx=False):
     for s in items:
         cells = []
         for r in results_of(s):
-            v, cls = verdict(r["lo"], r["hi"])
+            v, cls = (NO_ESTIMATE, "chip unavailable") if s.get("status") == "unavailable" else verdict(r["lo"], r["hi"])
             lab = "" if r["arm"] == "-" else f'<span class="sub">{esc(r["arm"])} · {r["confidence"]*100:g}% {esc(r.get("role",""))}</span><br>'
             cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))}<br><span class="{cls}">{v}</span>')
         fam = f'<dt>family</dt><dd>{esc(s["family"])}</dd>' if s.get("family") else ""
@@ -271,7 +284,7 @@ h4{{margin:12px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:upperca
 .card{{background:var(--card);border:1px solid var(--rule);padding:16px 18px}} .card.production{{border-left:4px solid var(--accent)}}
 .card ul{{margin:4px 0 0 18px;padding:0}} .card header{{display:flex;gap:10px;align-items:center;margin-bottom:6px}}
 .chip{{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--chipbg);font-size:12px;letter-spacing:.03em}}
-.chip.production,.chip.sealed{{color:var(--good)}} .chip.running,.chip.pending{{color:var(--wait)}} .chip.planned{{color:var(--sub)}}
+.chip.production,.chip.sealed{{color:var(--good)}} .chip.running,.chip.pending{{color:var(--wait)}} .chip.planned,.chip.unavailable{{color:var(--sub)}}
 .good{{color:var(--good)}} .bad{{color:var(--bad)}} .null{{color:var(--null)}} .wait{{color:var(--wait)}}
 .tablewrap{{overflow-x:auto;border:1px solid var(--rule);background:var(--card)}}
 table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--rule)}} th{{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--sub)}} td.num,th.num{{text-align:right;white-space:nowrap}}
@@ -296,7 +309,7 @@ a{{color:var(--accent)}}
 {baseline_cards()}
 
 <h2>Screens against release {PROD} (the current production)</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal, and a row marked {esc(NO_ESTIMATE)} finished without a strength estimate and has no mark. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
 {now_block}
 {earlier_sections()}

@@ -70,19 +70,25 @@ def pair_resource_ballot(rnd, seat, actions, ranked, anchor_index, *, k=8,
     return {'chosen': chosen, 'skipped': skipped[len(backfill):]}
 
 
-def pair_resource_rank_repair(rnd, seat, actions, ranked, baseline):
+def pair_resource_rank_repair(rnd, seat, actions, ranked, baseline, *,
+                              signature_overlap_veto=True):
     """Offline single-swap hypothesis; caller supplies the legacy ballot.
 
     Keep its anchor and size, and every covered played shape AND exact pair
     state. Consider excluded actions in supplied policy order; replace the
     worst-ranked removable non-anchor only with a better-ranked action that
     overlaps a retained action using different pair resources. Do not introduce
-    same-resource overlap. Stop after one swap, returning its explicit indices.
+    same-resource overlap by default. With signature_overlap_veto=False (S11a),
+    disable only that veto; still require overlap, rank improvement and both
+    coverage checks, with identical candidate-first traversal. Stop after one
+    swap, returning its explicit indices.
 
     This does NOT preserve shape multiplicities, every action, tractor/control
     value, or utility. It cannot assert why the original selector omitted an
     action; it only tests a bounded alternative to global filter relaxation.
     """
+    if type(signature_overlap_veto) is not bool:
+        raise ValueError('signature_overlap_veto must be a bool')
     if (not baseline or any(type(i) is not int for i in baseline)
             or len(set(baseline)) != len(baseline)
             or any(not 0 <= i < len(actions) for i in baseline)):
@@ -112,7 +118,8 @@ def pair_resource_rank_repair(rnd, seat, actions, ranked, baseline):
                 counts[candidate], len(actions[candidate]),
                 [(len(actions[i]), counts[i])]
             )]
-            if not overlaps or any(signatures[i] == signatures[candidate] for i in overlaps):
+            if not overlaps or (signature_overlap_veto and any(
+                    signatures[i] == signatures[candidate] for i in overlaps)):
                 continue
             if not covered_shapes <= {shape(i) for i in retained} | {shape(candidate)}:
                 continue

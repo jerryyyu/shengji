@@ -42,3 +42,23 @@ def test_point_seek_stable_tie_and_empty_input():
         assert bot._lowest(cards, o, seek_points=True) == cards[0]
     with pytest.raises(ValueError):
         bot._lowest([], o, seek_points=True)
+
+
+@pytest.mark.parametrize("void_dump", [False, True])
+@pytest.mark.parametrize("seek", [False, True])
+@pytest.mark.parametrize("avoid_points", [False, True])
+def test_singleton_and_empty_for_every_preference(void_dump, seek, avoid_points):
+    bot = HeuristicBot()
+    bot.VOID_DUMP = void_dump
+    for trump in [None, "S", "H", "D", "C"]:
+        for rank in ["2", "7", "A"]:
+            o = Ordering(trump, rank)
+            for card in dict.fromkeys(make_deck()):
+                for avoid in [None, set(), {card}]:
+                    cards = [card]
+                    avoid_before = None if avoid is None else avoid.copy()
+                    assert bot._lowest(cards, o, avoid_points, seek, avoid) == card
+                    assert cards == [card]
+                    assert avoid == avoid_before
+            with pytest.raises(ValueError):
+                bot._lowest([], o, avoid_points, seek)

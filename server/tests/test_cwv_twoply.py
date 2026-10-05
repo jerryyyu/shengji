@@ -60,11 +60,11 @@ def _load_script(name: str):
 
 
 @pytest.fixture(scope="module")
-def checkpoint(tmp_path_factory) -> str:
+def checkpoint(tmp_path_factory, cwv_gru_checkpoint_factory) -> str:
+    """An isolated consumer copy of the session's tiny GRU checkpoint."""
     out = tmp_path_factory.mktemp("cwv2") / "tiny.pt"
-    _load_script("cwv_dev_checkpoint").build_dev_checkpoint(
-        str(out), rounds=2, max_epochs=2, quiet=True)
-    return str(out)
+    return cwv_gru_checkpoint_factory(
+        out, _load_script("cwv_dev_checkpoint").build_dev_checkpoint)
 
 
 def _state_where(seed: int, predicate, *, start: int = 0, limit: int = 100):

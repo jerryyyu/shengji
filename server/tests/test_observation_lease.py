@@ -1,11 +1,62 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from shengji.eval import observation_lease
 from shengji.eval.observation_lease import Lease
+
+
+def _stable_metadata(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_gid,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _stable_snapshot(path: Path) -> tuple[int, ...]:
+    return _stable_metadata(path.stat())
+
+
+def _stable_content_snapshot(path: Path) -> tuple[tuple[int, ...], bytes]:
+    return _stable_metadata(path.stat()), path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+     "st_size", "st_mtime_ns", "st_ctime_ns"],
+)
+def test_stable_metadata_ignores_atime_but_detects_stable_drift(field: str) -> None:
+    base = SimpleNamespace(
+        st_dev=1,
+        st_ino=2,
+        st_mode=0o600,
+        st_uid=3,
+        st_gid=4,
+        st_nlink=1,
+        st_size=7,
+        st_atime_ns=8,
+        st_mtime_ns=9,
+        st_ctime_ns=10,
+    )
+    atime_drift = SimpleNamespace(**{**vars(base), "st_atime_ns": 11})
+    stable_drift = SimpleNamespace(**{
+        **vars(base), field: getattr(base, field) + 1,
+    })
+
+    assert _stable_metadata(atime_drift) == _stable_metadata(base)
+    assert _stable_metadata(stable_drift) != _stable_metadata(base)
 
 
 def test_normal_acquisition_check_and_release(tmp_path: Path) -> None:
@@ -37,11 +88,11 @@ def test_existing_foreign_lock_is_refused_unchanged(tmp_path: Path) -> None:
     lock.mkdir()
     owner = lock / "owner"
     owner.write_bytes(b"foreign")
-    before = (lock.stat(), owner.stat(), owner.read_bytes())
+    before = (_stable_snapshot(lock), _stable_content_snapshot(owner))
 
     assert Lease(lock, "worker-a").acquire() is False
 
-    after = (lock.stat(), owner.stat(), owner.read_bytes())
+    after = (_stable_snapshot(lock), _stable_content_snapshot(owner))
     assert after == before
 
 

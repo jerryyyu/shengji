@@ -19,8 +19,10 @@ SEEDS = list(range(10, 20))
     (1, 2, 39, 1, 0), (7, 1, 31, 8, 1), (8, 0, 30, 8, 2),
 ])
 @pytest.mark.parametrize('prior_tokens', [0, 7])
+@pytest.mark.parametrize('new_tokens_per_call', [0, 5])
 def test_actual_runner_retention_report_satisfies_content_reader(
-        tmp_path, old_failures, expected_attempts, completed_count, failed, pending, prior_tokens):
+        tmp_path, old_failures, expected_attempts, completed_count, failed, pending,
+        prior_tokens, new_tokens_per_call):
     """Bridge producer/reader contracts; hand-written reports alone miss fields."""
     import json
     from scripts import prepare_llm_panel_roots as producer
@@ -57,20 +59,39 @@ def test_actual_runner_retention_report_satisfies_content_reader(
     auth = retention.load_retained_attempts(plan, pin, expected_config=config)
     assert auth['prior_cost_tokens'] == prior_tokens
     attempts = []
+    provider_calls = []
+
+    class FakeTransport:
+        def __init__(self, **options):
+            self.calls = []
+
+        def __call__(self, packet):
+            provider_calls.append(packet)
+            self.calls.append({'usage': {'input_tokens': new_tokens_per_call,
+                                         'output_tokens': 0}})
+            return {'cards': [], 'memory': ''}
+
     def completed(game, **kwargs):
         attempts.append((kwargs['information'], kwargs['seed'], kwargs['flip']))
+        if new_tokens_per_call:
+            kwargs['planner_factory'](0)({})
         if old_failures == 7:
             return _row(kwargs['information'], kwargs['seed'], kwargs['flip'], 'typed')
         return {'complete': True, 'signed_levels': 2}
     report = runner.run_benchmark(
         **options, run=True, token_limit=1000, retention_plan=str(plan),
-        retention_plan_sha256=pin, runner=completed)
+        retention_plan_sha256=pin, runner=completed, transport_factory=FakeTransport)
     assert attempts == [('actor-only', 10, flip) for flip in range(expected_attempts)]
     assert report['retained_attempts']['prior_cost_tokens'] == prior_tokens
     assert report['config']['retained_attempts'] == report['retained_attempts']
     assert report['budget']['prior_tokens'] == prior_tokens
-    assert report['budget']['new_tokens'] == 0  # Fake runner makes no calls.
-    assert report['budget']['combined_tokens'] == prior_tokens
+    expected_new_tokens = expected_attempts * new_tokens_per_call
+    assert len(provider_calls) == (expected_attempts if new_tokens_per_call else 0)
+    assert report['budget']['new_tokens'] == expected_new_tokens
+    assert report['budget']['combined_tokens'] == prior_tokens + expected_new_tokens
+    assert sum(call['usage']['input_tokens'] + call['usage'].get('output_tokens', 0)
+               for row in report['mirrors'] for call in row.get('calls', [])) == (
+                   prior_tokens + expected_new_tokens)
     assert validate_retained_content(report, auth) == {
         'status': 'scheduled-terminal' if failed < 8 else 'failure-limit',
         'completed': completed_count, 'failed': failed,

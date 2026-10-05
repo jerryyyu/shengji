@@ -13,7 +13,7 @@ baseline moves (replace the row and date it).
 
 Current serving note: Fly release 22 is W32 PLAY with HYBRID BURY, a 2-second
 cooperative budget and heuristic fallback. Research and serving boundaries
-are recorded in [AI_POLICIES.md](../AI_POLICIES.md#hybrid-bury-integration--deployed).
+are recorded in [the archived AI_POLICIES sections](ai-policies-release-sections-through-r38.md#hybrid-bury-integration--deployed).
 
 ## Measured baselines (latest first)
 

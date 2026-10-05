@@ -132,7 +132,29 @@ def test_unknown_profile_refused_before_filesystem_access(profile):
             function(None, profile=profile)
 
 
-def test_real_panel_import_surface_does_not_construct_models():
+def test_readout_profile_is_distinct_and_cannot_accept_collection_manifest(tmp_path, monkeypatch):
+    source, _, _, _, _ = _fake_capture_context(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime.runtime_fence, "capture", lambda path, imports: {
+        "source_root": str(path), "imports": imports})
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    assert runtime.READOUT_PRELOAD_IMPORTS == runtime.PANEL_PRELOAD_IMPORTS + (
+        "shengji.eval.m9_panel_artifact_reader",
+        "shengji.eval.m9_panel_publication", "shengji.luna.atomic_io")
+    manifest = runtime.capture(source, profile="panel-readout")
+    assert manifest["external_runtime"]["imports"] == list(runtime.READOUT_PRELOAD_IMPORTS)
+    assert runtime.ObservationRuntime(manifest, profile="panel-readout").check()
+    for other in ("observation", "panel"):
+        with pytest.raises(ValueError, match="import/source binding"):
+            runtime.ObservationRuntime(manifest, profile=other)
+        collection = runtime.capture(source, profile=other)
+        with pytest.raises(ValueError, match="import/source binding"):
+            runtime.ObservationRuntime(collection, profile="panel-readout")
+
+
+@pytest.mark.parametrize("profile", ["panel", "panel-readout"])
+def test_real_panel_import_surface_does_not_construct_models(profile):
     source = Path(runtime.__file__).resolve().parents[2]
     script = '''
 import importlib, sys
@@ -141,15 +163,19 @@ from shengji.train import pv_search_policy as pv
 def forbidden(*args, **kwargs):
     raise AssertionError("model factory invoked during preload")
 pv.make_pv_search_bot = forbidden
-from shengji.eval.observation_runtime import PANEL_PRELOAD_IMPORTS
-for name in PANEL_PRELOAD_IMPORTS:
+from shengji.eval.observation_runtime import _profile_imports
+for name in _profile_imports(sys.argv[2]):
     importlib.import_module(name)
 assert "shengji.eval.m9_panel_worker" in sys.modules
 assert "shengji.eval.public_refusal_tape" in sys.modules
 assert "shengji.eval.fixed_tape_capture" in sys.modules
 assert "torch" not in sys.modules
+if sys.argv[2] == "panel-readout":
+    assert "shengji.eval.m9_panel_artifact_reader" in sys.modules
+    assert "shengji.eval.m9_panel_publication" in sys.modules
+    assert "shengji.luna.atomic_io" in sys.modules
 '''
-    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(source)],
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(source), profile],
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 

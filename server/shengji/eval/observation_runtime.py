@@ -41,12 +41,19 @@ PANEL_PRELOAD_IMPORTS = PRELOAD_IMPORTS + (
     "shengji.eval.m9_panel_inputs",
     "shengji.eval.m9_panel_execution",
 )
+READOUT_PRELOAD_IMPORTS = PANEL_PRELOAD_IMPORTS + (
+    "shengji.eval.m9_panel_artifact_reader",
+    "shengji.eval.m9_panel_publication",
+    "shengji.luna.atomic_io",
+)
 
 
 def _profile_imports(profile):
-    if type(profile) is not str or profile not in ("observation", "panel"):
-        raise ValueError("explicit observation or panel runtime profile required")
-    return PRELOAD_IMPORTS if profile == "observation" else PANEL_PRELOAD_IMPORTS
+    profiles = {"observation": PRELOAD_IMPORTS, "panel": PANEL_PRELOAD_IMPORTS,
+                "panel-readout": READOUT_PRELOAD_IMPORTS}
+    if type(profile) is not str or profile not in profiles:
+        raise ValueError("explicit observation, panel or panel-readout runtime profile required")
+    return profiles[profile]
 
 
 ENVIRONMENT = {

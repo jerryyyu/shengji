@@ -7,7 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.engine.cards import Ordering
-from shengji.eval.pair_resource_admission import pair_resource_ballot, pair_resource_rank_repair
+from shengji.eval.pair_resource_admission import (
+    pair_resource_ballot, pair_resource_rank_repair, project_rank_repair,
+)
 from shengji.harvest.legal import enumerate_legal
 from shengji.train.policy_value_search import structure_key, _near_duplicate
 
@@ -314,3 +316,59 @@ def test_rank_repair_protects_unique_resource_and_does_not_mutate_inputs():
     assert (rnd.hands, actions, ranked, baseline) == before
     rnd.hands[0] = ["BJ", "BJ"]
     assert pair_resource_rank_repair(rnd, 1, actions, ranked, baseline) == result
+
+
+def _projection_inputs():
+    actions = _resource_actions()
+    capture = {'schema': 'fixed-tape-policy-ranks-v1', 'actions': actions,
+               'preferences': list(range(8, 0, -1)), 'ranked_indices': list(range(8))}
+    return _synthetic_round(), capture, [actions[i] for i in [0, 2, 5, 6, 7]], actions
+
+
+def test_projection_joins_by_multiset_not_position_and_can_show_value_loss():
+    rnd, capture, baseline, actions = _projection_inputs()
+    values = [0., -10., 10., 0., 0., 0., 0., 0.]
+    original = copy.deepcopy((capture, baseline, actions, values))
+    result = project_rank_repair(rnd, 1, capture, baseline, actions, values)
+    shuffled = project_rank_repair(rnd, 1, capture, baseline,
+                                  [list(reversed(a)) for a in reversed(actions)],
+                                  list(reversed(values)))
+    assert result == shuffled
+    assert result['swap'] == {'removed': 2, 'added': 1}
+    assert result['raw_value_max_delta'] == -10.
+    assert result['repaired']['gap_to_full_pool'] == 10.
+    assert not result['strategic_quality_assessed']
+    assert not result['serving_choice_assessed']
+    assert (capture, baseline, actions, values) == original
+
+
+def test_projection_values_cannot_change_the_rank_repair():
+    rnd, capture, baseline, actions = _projection_inputs()
+    a = project_rank_repair(rnd, 1, capture, baseline, actions, [0.] * 8)
+    b = project_rank_repair(rnd, 1, capture, baseline, actions, [100., -100.] * 4)
+    assert a['swap'] == b['swap']
+    assert a['repaired']['actions'] == b['repaired']['actions']
+
+
+@pytest.mark.parametrize('failure', ['rank', 'tie', 'missing', 'duplicate', 'nan', 'bool', 'length'])
+def test_projection_refuses_incompatible_or_invalid_inputs(failure):
+    rnd, capture, baseline, actions = _projection_inputs()
+    actions = copy.deepcopy(actions)
+    values = [0.] * 8
+    if failure == 'rank':
+        capture['ranked_indices'] = list(reversed(range(8)))
+    elif failure == 'tie':
+        capture['preferences'] = [0.] * 8
+        capture['ranked_indices'] = [1, 0] + list(range(2, 8))
+    elif failure == 'missing':
+        actions[1] = ['C6']
+    elif failure == 'duplicate':
+        actions[1] = actions[0]
+    elif failure == 'nan':
+        values[0] = float('nan')
+    elif failure == 'bool':
+        capture['preferences'][0] = True
+    else:
+        values.pop()
+    with pytest.raises(ValueError):
+        project_rank_repair(rnd, 1, capture, baseline, actions, values)

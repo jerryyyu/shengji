@@ -9,6 +9,7 @@ singleton trump control.
 from collections import Counter
 
 from ..train.policy_value_search import structure_key, _near_duplicate
+from .ballot_matrix import _canonical_collection, _finite_number, _finite_result
 
 
 def _pair_inputs(rnd, seat, actions, ranked, anchor_index, k, max_per_structure):
@@ -120,3 +121,53 @@ def pair_resource_rank_repair(rnd, seat, actions, ranked, baseline):
             chosen[chosen.index(removed)] = candidate
             return {'chosen': chosen, 'swap': {'removed': removed, 'added': candidate}}
     return {'chosen': chosen, 'swap': None}
+
+
+def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, value_means):
+    """Model-free action-identity join, not a served-choice or provenance gate.
+
+    Caller authenticates that root, rank capture and saved full-pool values
+    belong to the intended diagnostic. Rank and value arrays may have different
+    pool order, but must contain exactly the same unique card multisets. Values
+    never enter admission. Report raw-value maxima only, not points tie-break,
+    serving reduction/batching equivalence, uncertainty or tactical correctness.
+    """
+    if not isinstance(capture, dict) or capture.get('schema') != 'fixed-tape-policy-ranks-v1':
+        raise ValueError('fixed-tape policy capture required')
+    actions = capture.get('actions')
+    canonical = _canonical_collection(actions, 'policy actions')
+    values_canonical = _canonical_collection(value_actions, 'value actions')
+    baseline = _canonical_collection(baseline_actions, 'baseline')
+    if set(canonical) != set(values_canonical) or not set(baseline) <= set(canonical):
+        raise ValueError('action pools or baseline do not match')
+    preferences, ranked = capture.get('preferences'), capture.get('ranked_indices')
+    if (type(preferences) is not list or len(preferences) != len(actions)
+            or type(value_means) is not list or len(value_means) != len(value_actions)
+            or type(ranked) is not list or any(type(i) is not int for i in ranked)):
+        raise ValueError('complete policy/value vectors and integer ranks required')
+    for value in preferences + value_means:
+        _finite_number(value, 'policy/value score')
+    if ranked != sorted(range(len(actions)), key=lambda i: (-preferences[i], i)):
+        raise ValueError('rank order differs from preferences/index tie order')
+    index = {action: i for i, action in enumerate(canonical)}
+    baseline_indices = [index[action] for action in baseline]
+    repair = pair_resource_rank_repair(rnd, seat, actions, ranked, baseline_indices)
+    lookup = dict(zip(values_canonical, value_means))
+    values = [lookup[action] for action in canonical]
+    full_best = max(values)
+
+    def describe(indices):
+        best = max(values[i] for i in indices)
+        return {'actions': [list(actions[i]) for i in indices],
+                'raw_value_max': best,
+                'gap_to_full_pool': _finite_result(full_best - best, 'value gap')}
+
+    old, new = describe(baseline_indices), describe(repair['chosen'])
+    return {
+        'schema': 'pair-resource-rank-repair-projection-v1',
+        'baseline': old, 'repaired': new, 'swap': repair['swap'],
+        'raw_value_max_delta': _finite_result(new['raw_value_max'] - old['raw_value_max'], 'max delta'),
+        'value_scope': 'descriptive saved full-pool means; no served selection replay',
+        'provenance_verified': False, 'strategic_quality_assessed': False,
+        'serving_choice_assessed': False,
+    }

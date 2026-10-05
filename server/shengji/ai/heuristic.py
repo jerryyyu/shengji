@@ -331,6 +331,9 @@ class HeuristicBot:
 
     def _lowest(self, cards: list[str], o: Ordering, avoid_points: bool = False,
                 seek_points: bool = False, avoid: set[str] | None = None) -> str:
+        # With one legal card there is no ranking or suit-length tie to resolve.
+        if len(cards) == 1:
+            return cards[0]
         avoid = avoid or set()
         # Point-seeking never uses suit length. Preserve stable first-card ties
         # without building the suit histogram used only by junk-discard keys.

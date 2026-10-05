@@ -29,6 +29,55 @@ def test_prepared_dry_run_creates_nothing(kwargs):
     assert not kwargs["output"].exists()
 
 
+@pytest.mark.parametrize("feedback", [False, True])
+@pytest.mark.parametrize("attribution", [False, True])
+def test_action_controls_reach_real_mirrors_independently(kwargs, feedback, attribution):
+    seen = []
+    class FakeTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            return planner(packet)
+    def checked_mirror(game, **options):
+        assert options.get('invalid_action_feedback', False) is feedback
+        assert options.get('classify_final_action_failures', False) is attribution
+        assert ('invalid_action_feedback' in options) is feedback
+        assert ('classify_final_action_failures' in options) is attribution
+        seen.append(options['flip'])
+        return runner.play_mirror(game, **options)
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000,
+        invalid_action_feedback=feedback, classify_final_action_failures=attribution,
+        runner=checked_mirror, transport_factory=FakeTransport)
+    assert len(seen) == 4
+    assert ('invalid_action_feedback' in report['config']) is feedback
+    assert ('classify_final_action_failures' in report['config']) is attribution
+    assert all(row['complete'] for row in report['mirrors'])
+    assert all(row['invalid_action_feedback'] is feedback for row in report['mirrors'])
+    assert all(('classify_final_action_failures' in row) is attribution
+               for row in report['mirrors'])
+
+
+def test_attributed_illegal_action_still_stops_panel(kwargs):
+    calls = []
+    class IllegalTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            calls.append(packet)
+            return {'cards': [], 'memory': ''}
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000,
+        classify_final_action_failures=True, transport_factory=IllegalTransport)
+    failed, *pending = report['mirrors']
+    assert calls and failed['complete'] is False
+    assert failed['failure']['category'] == 'model_illegal_action'
+    assert failed['failure']['stage'] == 'engine_play'
+    assert 'signed_levels' not in failed
+    assert len(pending) == 3
+    assert all(row['status'] == 'not_run' and row['calls'] == [] for row in pending)
+
+
 @pytest.mark.parametrize("capacity", [False, True])
 @pytest.mark.parametrize("reconnect", [False, True])
 def test_prepared_real_engine_fake_planner_keeps_exact_roots(kwargs, capacity, reconnect):
@@ -92,7 +141,8 @@ def test_prepared_mismatch_refused_before_output(kwargs, change):
     assert not kwargs["output"].exists()
 
 
-@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects"])
+@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects",
+                                  "invalid_action_feedback", "classify_final_action_failures"])
 @pytest.mark.parametrize("invalid", [0, 1, "true", None])
 def test_recovery_flags_require_strict_bool(kwargs, flag, invalid):
     with pytest.raises(runner.BenchmarkRefusal, match="boolean"):
@@ -100,7 +150,8 @@ def test_recovery_flags_require_strict_bool(kwargs, flag, invalid):
     assert not kwargs["output"].exists()
 
 
-@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects"])
+@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects",
+                                  "invalid_action_feedback", "classify_final_action_failures"])
 @pytest.mark.parametrize("models", [["luna"], ["sol", "luna"], ["sol", "sol"]])
 def test_recovery_requires_sol_only(kwargs, flag, models):
     kwargs["models"] = models
@@ -109,7 +160,8 @@ def test_recovery_requires_sol_only(kwargs, flag, models):
     assert not kwargs["output"].exists()
 
 
-@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects"])
+@pytest.mark.parametrize("flag", ["capacity_retries", "accept_recovered_reconnects",
+                                  "invalid_action_feedback", "classify_final_action_failures"])
 def test_recovery_refuses_legacy_path(kwargs, monkeypatch, flag):
     kwargs["prepared_recipe"] = None
     monkeypatch.setattr(runner, "_checkpoint_identity", lambda path: {})

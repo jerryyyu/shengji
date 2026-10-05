@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 export const SUIT_SYMBOL: Record<string, string> = {
   S: "♠",
   H: "♥",
@@ -32,7 +34,7 @@ interface CardProps {
   className?: string;
 }
 
-export default function Card({ code, selected = false, onClick, className }: CardProps) {
+function Card({ code, selected = false, onClick, className }: CardProps) {
   const Face = onClick ? "button" : "div";
   const accessibility = onClick
     ? { type: "button" as const, "aria-pressed": selected, "aria-label": code ? codeLabel(code) : undefined }
@@ -75,3 +77,8 @@ export default function Card({ code, selected = false, onClick, className }: Car
     </Face>
   );
 }
+
+/** Memoized: a server state re-renders the whole table, but a card's look
+ *  depends only on these props, so unchanged cards skip rendering. Callers
+ *  must pass a stable onClick (see Hand) for that to hold. */
+export default memo(Card);

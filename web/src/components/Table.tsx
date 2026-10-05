@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
@@ -188,14 +188,15 @@ export default function Table({ state }: { state: GameState }) {
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";
 
-  const toggle = (id: number) => {
+  // Stable identity so memoized hand cards skip re-rendering (see Hand).
+  const toggle = useCallback((id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   // Selected ids in hand (sorted) order.
   const selectedIds = state.hand.filter((c) => selected.has(c.id)).map((c) => c.id);

@@ -8,9 +8,21 @@
     <meta name="theme-color" content="#14171e" />
     <meta name="color-scheme" content="dark" />
     <title>Sheng Ji 升级</title>
+    <!-- Static first paint: shown until React mounts (and replaces #root's
+         contents), so a slow phone network gets the title instead of a blank
+         page while the script downloads. Plain inline CSS, no script. -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #14171e; }
+      .boot { height: 100%; display: flex; flex-direction: column; align-items: center;
+              justify-content: center; gap: 14px; text-align: center; color: #9aa3b2;
+              font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .boot-title { margin: 0; font-size: 52px; letter-spacing: 0.05em; color: #f2c14e; }
+      .boot-title span { display: block; margin-top: 6px; font-size: 18px; letter-spacing: 0.35em; color: #9aa3b2; }
+      .boot-status { font-size: 13px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot"><h1 class="boot-title">升级 <span>SHENG JI</span></h1><div class="boot-status">Loading…</div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

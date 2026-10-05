@@ -76,6 +76,10 @@ class Connection {
   private ws: WebSocket | null = null;
   private msgListeners = new Set<MsgListener>();
   private statusListeners = new Set<StatusListener>();
+  /** The socket a leaveToLobby() is waiting on: until the server confirms
+   *  with {type:"left"}, room-scoped messages already in flight on it belong
+   *  to the room we just left and must not pull the UI back into it. */
+  private leavingWs: WebSocket | null = null;
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
@@ -104,6 +108,28 @@ class Connection {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
+  }
+
+  /** Leave the current room and go straight back to the lobby, keeping this
+   *  socket. Replaces the old full-page reload after a finished game: the
+   *  saved room is forgotten, the server is told (leave_room frees the seat
+   *  exactly like a disconnect did), and listeners get the same {type:"left"}
+   *  the server will send, so the UI resets now instead of a round trip later.
+   *  If the socket is not open there is nothing to tell the server: the seat
+   *  was already dropped, and with the saved room gone a reconnect will not
+   *  resume it. */
+  leaveToLobby(): void {
+    clearSavedRoom();
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "leave_room" } satisfies ClientMsg));
+      this.leavingWs = this.ws;
+    }
+    this.clearChat();
+    this.emit({ type: "left" });
+  }
+
+  private emit(msg: ServerMsg): void {
+    for (const fn of this.msgListeners) fn(msg);
   }
 
   subscribe(fn: MsgListener): () => void {
@@ -143,6 +169,15 @@ class Connection {
       } catch {
         return;
       }
+      if (this.leavingWs === ws) {
+        // Already reset locally by leaveToLobby(): drop whatever the room
+        // sent before the server processed our leave_room. The server always
+        // answers it with "left" (or an error, or by closing the socket), and
+        // any of those ends the wait, so this can never swallow the reply to
+        // the user's next create/join.
+        if (msg.type === "left" || msg.type === "error") this.leavingWs = null;
+        return;
+      }
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
       // subscribes — so it is buffered here. The server sends one
       // authoritative chat_history snapshot per attach, then live events with
@@ -174,10 +209,11 @@ class Connection {
         default:
           break;
       }
-      for (const fn of this.msgListeners) fn(msg);
+      this.emit(msg);
     };
 
     ws.onclose = () => {
+      if (this.leavingWs === ws) this.leavingWs = null;
       if (this.ws !== ws) return;
       this.ws = null;
       this.setStatus("closed");

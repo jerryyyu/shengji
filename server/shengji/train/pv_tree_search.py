@@ -125,14 +125,18 @@ and for ``trick-greedy`` ``tree_reply_plays`` (replies played),
 ``tree_reply_evaluations`` (reply candidates valued),
 ``tree_reply_differs_heuristic`` / ``tree_reply_differs_policy`` (replies that
 are not the heuristic's follow / not the policy's top follow); and
-one short numeric list, ``tree_d_means`` (the mean depth correction per
-contender, in admission order; kept whole by the trace filter).
+two short numeric lists, ``tree_d_means`` (mean depth correction per contender)
+and ``tree_contender_indices`` (corresponding admitted positions; both empty
+without a completed lookahead). ``tree_pv_cards_json`` stores the PV candidate's
+card codes as a JSON scalar so the screen retains the unplayed alternative.
+These fields describe choices, not counterfactual utility or evidence of benefit.
 
 Bury is untouched.  Nothing here is reachable unless a recipe sets
 ``PVSearchConfig.tree`` (``SHENGJI_PV_TREE_SIMS``).
 """
 from __future__ import annotations
 
+import json
 import math
 import time
 from collections import Counter
@@ -318,7 +322,8 @@ class PVTreeMixin:
                 "tree_override": False, "tree_override_blocked": False,
                 "tree_depth_delta": 0.0, "tree_depth_se": 0.0, "tree_depth_z": 0.0,
                 "tree_mean_abs_d": 0.0, "tree_max_abs_d": 0.0, "tree_d_nonzero": 0,
-                "tree_d_means": [], "tree_policy_rows": 0, "tree_forced_plays": 0,
+                "tree_d_means": [], "tree_contender_indices": [],
+                "tree_policy_rows": 0, "tree_forced_plays": 0,
                 "tree_multi_leads": 0, "tree_reply_plays": 0, "tree_reply_evaluations": 0,
                 "tree_reply_differs_heuristic": 0, "tree_reply_differs_policy": 0,
                 "tree_terminal_leaves": 0, "tree_value_batches": 0, "tree_seconds": 0.0}
@@ -354,6 +359,10 @@ class PVTreeMixin:
             for name, value in kept.items():
                 setattr(self, name, value)
         fields["tree_pv_tiebreak"] = bool(tiebreak)
+        # A JSON scalar survives the screen's bounded trace filter, unlike a
+        # card list. Retain the unplayed PV alternative without the full ballot.
+        fields["tree_pv_cards_json"] = json.dumps(list(admitted[pv_winner]),
+                                                  separators=(",", ":"))
         fields["tree_seconds"] = time.perf_counter() - tree_started
         return winner
 
@@ -421,7 +430,8 @@ class PVTreeMixin:
                       tree_mean_abs_d=float(np.abs(d).mean()),
                       tree_max_abs_d=float(np.abs(d).max()),
                       tree_d_nonzero=int((np.abs(d) > D_NONZERO).sum()),
-                      tree_d_means=[float(v) for v in d.mean(axis=0)], **stats)
+                      tree_d_means=[float(v) for v in d.mean(axis=0)],
+                      tree_contender_indices=list(contenders), **stats)
         # serving's own selection, on Q: the same call that chose the PV decision,
         # under the tree's deadline (expiry leaves the PV decision in place)
         selected = int(super()._select(rnd, seat, admitted, q, worlds=worlds, check_budget=gate,

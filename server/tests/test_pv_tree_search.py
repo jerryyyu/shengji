@@ -17,6 +17,7 @@ pairing by world; (f) the lookahead on a hand-built position, terminal leaves;
 the screen trace filter; (i) determinism; (j) the real package.
 """
 import copy
+import json
 import math
 from collections import Counter
 import pickle
@@ -51,7 +52,8 @@ SIMS = "SHENGJI_PV_TREE_SIMS"
 CONTS = ("trick", "trick-next-heuristic", "policy", "trick-greedy")
 TREE_KEYS = {"tree_sims", "tree_applied", "tree_skipped", "tree_skipped_budget",
              "tree_contenders", "tree_worlds", "tree_evaluations", "tree_pv_action",
-             "tree_selected_q_index", "tree_pv_tiebreak", "tree_action", "tree_changed_action",
+             "tree_selected_q_index", "tree_pv_tiebreak", "tree_pv_cards_json",
+             "tree_action", "tree_changed_action",
              "tree_override", "tree_override_blocked", "tree_depth_delta", "tree_depth_se",
              "tree_depth_z", "tree_mean_abs_d",
              "tree_max_abs_d", "tree_policy_rows", "tree_forced_plays",
@@ -1233,6 +1235,40 @@ def test_an_expired_serving_budget_is_still_servings_anchor_fallback():
 
 
 # ------------------------------------------------------------- (h) telemetry
+
+@pytest.mark.parametrize("mode", ["override", "blocked", "sims0", "error"])
+def test_trace_keeps_pv_cards_and_explicit_noncontiguous_depth_columns(mode):
+    from shengji.train.search_screen import TimedPolicy
+
+    rnd = state(); seat = rnd.turn
+    bot = bot_of(PVTreeConfig(sims=0 if mode == "sims0" else 64, zmin=1.0), worlds=8)
+
+    def lookahead(actions, worlds):
+        if mode == "error":
+            raise ValueError("synthetic continuation failure")
+        deep = np.tile([0.50, 0.59], (len(worlds), 1))
+        if mode == "blocked":
+            deep[:, 1] += np.where(np.arange(len(worlds)) % 2, 2.0, -2.0)
+        return deep
+
+    craft(bot, flat([0.50, 0.0, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0]), lookahead)
+    timed = TimedPolicy(bot)
+    played = timed.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    trace, = timed.decisions
+    assert json.loads(trace["tree_pv_cards_json"]) == record["admitted"][0]
+    assert trace["played"] == played
+    assert "admitted" not in trace
+    assert trace["tree_contender_indices"] == record["tree_contender_indices"]
+    if mode in ("override", "blocked"):
+        assert trace["tree_contender_indices"] == [0, 2]
+        assert len(trace["tree_d_means"]) == 2
+        assert trace["tree_selected_q_index"] == 2
+        assert trace["tree_changed_action"] is (mode == "override")
+    else:
+        assert trace["tree_contender_indices"] == trace["tree_d_means"] == []
+        assert played == json.loads(trace["tree_pv_cards_json"])
+
 
 def test_tree_fields_are_scalars_and_survive_the_screen_trace_filter():
     try:      # the screen module needs torch; the scalar contract is checked without it

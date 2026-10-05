@@ -30,6 +30,16 @@ def bind_panel_rank_root(panel, fixture, bot):
     if type(panel.get('seed')) is not int or panel['seed'] not in (0, 1, 2):
         raise ValueError('strict panel seed required')
     snapshot = _snapshot_bot(bot, seed=panel.get('seed'), label='rank bot')
+    # Pre-#830 panels serialized the full PVSearchConfig before this optional
+    # field existed. Its absence means the old, disabled played-action rule.
+    # Compare a detached current snapshot in that one historical spelling only;
+    # never rewrite authenticated panel bytes or discard other/new config keys.
+    # Require strict False on BOTH config and effective bot, not falsy values.
+    saved_config = panel.get('config')
+    if (type(saved_config) is dict and 'doomed_throw_swap' not in saved_config
+            and snapshot['config'].get('doomed_throw_swap') is False
+            and getattr(bot, 'doomed_throw_swap', None) is False):
+        del snapshot['config']['doomed_throw_swap']
     for key in ('config', 'effective', 'checkpoint_sha256'):
         if _canonical(snapshot[key]) != _canonical(panel.get(key)):
             raise ValueError(f'panel/rank bot {key} mismatch')

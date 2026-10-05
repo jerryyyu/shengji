@@ -157,3 +157,38 @@ def test_v3_lead_equivalence_accounts_for_residual_structure():
     assert len(shapes) == 2, (
         "S7 and C7 leave different residual structure, so an equivalence "
         "keyed only on effective level is unsound")
+def test_heuristic_single_forced_follow_preserves_selection_and_inputs():
+    """Single-lead shortcut: independent key, all trumps/preferences, duplicates."""
+    from collections import Counter
+    import random
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.cards import Ordering, TRUMP, make_deck, points
+    from shengji.engine.legal import validate_follow
+
+    rng = random.Random(60105)
+    bot = HeuristicBot()
+    for trump in (None, "S", "H", "D", "C"):
+        for rank in ("2", "7", "A"):
+            ordering = Ordering(trump, rank)
+            for _ in range(40):
+                hand = rng.sample(make_deck(), rng.randint(1, 25))
+                lead = [rng.choice(make_deck())]
+                avoid = set(rng.sample(hand, rng.randint(0, len(hand))))
+                original = (list(hand), list(lead), set(avoid))
+                eligible = [c for c in hand if ordering.eff_suit(c) == ordering.eff_suit(lead[0])]
+                eligible = eligible or hand
+                counts = Counter(ordering.eff_suit(c) for c in eligible)
+                for dump in (False, True):
+                    bot.VOID_DUMP = dump
+                    for prefer in (False, True):
+                        def key(card):
+                            suit = ordering.eff_suit(card)
+                            if prefer:
+                                return (card in avoid, -points(card), suit == TRUMP, ordering.level(card))
+                            length = counts[suit] if dump and suit != TRUMP else 0
+                            return (card in avoid, suit == TRUMP, points(card) > 0, length, ordering.level(card))
+                        expected = [min(eligible, key=key)]
+                        actual = bot._forced_follow(hand, lead, ordering, prefer, avoid)
+                        assert actual == expected
+                        validate_follow(actual, hand, lead, ordering)
+                        assert (hand, lead, avoid) == original

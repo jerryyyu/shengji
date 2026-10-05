@@ -61,6 +61,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 
 | release | deployed (ET) | what changed | package/bot change? | PR(s) | image / rollback |
 |---:|---|---|---|---|---|
+| 39 | 2026-10-05 01:47 | Mobile UI, touch controls and accessibility. Frontend-only overlay on the immutable release-38 image; no intervening backend/search changes shipped. | none | #778 | `deployment-01M459KDH29EQFN9SDRH7P4GQ2`, digest `sha256:bfd4b192e82e71e2b05d7ad612e4cf3a15491ac5890bc99cd8b6fe1b90bf759e`; web source `0a1f4e3a`. Rollback: release-38 image. Health/assets verified; first real-phone room and complete-game acceptance pending. |
 | 38 | 2026-10-03 09:41 | Four search rules on, as `fly.toml` flags: `SHENGJI_PV_ADMISSION_DIVERSITY`, `SHENGJI_PV_REFUSAL_CONSTRAINTS`, `SHENGJI_PV_TIEBREAK_POINTS`, `SHENGJI_PV_LEAD_ANCHOR`. Package, width, bury and budgets are release 36's. | flags only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`; same package `491ee4bf…`, same prior `0d17fd03…` | #698 (evidence #676; rules #680, #689, #682, #694) | `deployment-01M40ZWSAHNX4782CGKJ615YF7` from main `c8d487a6`. Rollback: delete the four rule lines, restore the release-36 `SHENGJI_BOT` kept as the comment above them, redeploy; or the release-37 image. |
 | 37 | 2026-10-01 01:1x | Phone top bar one strip again: one CSS rule in the landscape-phone block (points chip a two-row grid). | none | #671 | `deployment-01M3TXZ85YHJM108TBPWKN8BB2` from main `12f20305`. Rollback: release-36 image. |
 | 36 | 2026-09-30 11:53 | THE FIRST MODEL CHANGE SINCE RELEASE 30: the gen-5 SMV3 outcome head (checkpoint 3e89e86f) as one package `smv3out-491ee4bf.npz`; search, bury, budgets and prior unchanged. | new package `491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670`; served name `pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25` | #666 (evidence #663; sidecar #658) | `deployment-01M3SG9NVC1AC3PNPEH5Y34N0D` from main `30318531`. Rollback: restore the three release-30 lines kept as the comment above (`SHENGJI_BOT`, `SHENGJI_PV_CKPT`, `SHENGJI_PV_SHA256`), redeploy; or the release-35 image. |
@@ -74,7 +75,23 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 | 28 | 2026-09-16 00:5x | JS-M1, the from-scratch joint net, as ONE package (value and prior) inside the MC shortlist. | new package `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`; served name `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` | #425 / #435 (#455, #457) | `deployment-01M2M90VYR34R7CWKTTEA4C57V` from main `bf7fde5e`. Rollback: release 27 (`deployment-01M2M1B48P44H5HJXEP6ETYQXE`) or release 24 (`deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`); prior-only rollback removes the four `SHENGJI_CWV_PRIOR_*` settings. |
 | 22–27 | — | The release-28 plan as approved, release 27, the release-26 image rollback, release 25 and its plan, and the release-22 boundary (hybrid bury on W32, the September-8 W32 rollout, the release-19/18 boundaries). | see the archive | — | [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md), heading "Moved from DEPLOY.md on 2026-10-01". |
 
-## Current production (release 38)
+## Current production (release 39; release-38 backend and bot)
+
+- Release 39 changes only `/app/web/dist`, built from merged #778 (`0a1f4e3a`).
+  Its final image starts from the exact release-38 digest
+  `sha256:3214dcd6eeee19e6b559af3e95796f4c56a0e61dd3ec3d825163cafec051bc98`.
+  The backend is **not** main at the frontend commit. One machine
+  `48e7e35a9597e8` remains; public health and served JS/CSS bytes were verified.
+  The 60 frontend tests and production build passed. Real-phone first-room and
+  complete-game acceptance remain pending, not implied by HTTP health.
+- Deployment evidence and the reviewed overlay recipe:
+  [#778 release record](https://github.com/jerryyyu/shengji/pull/778#issuecomment-5988860620).
+  A first build selected the configured default Dockerfile despite the external
+  argument; it was canceled before deployment, while production remained v38.
+  The reviewed overlay was then placed at the configured Dockerfile path,
+  built with `--build-only --push`, and deployed separately by immutable digest.
+  Do not replace main's normal Dockerfile with this one-off overlay.
+- UI rollback (single machine): `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji@sha256:3214dcd6eeee19e6b559af3e95796f4c56a0e61dd3ec3d825163cafec051bc98`.
 
 - Served bot: `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`, derived by
   the registry from the `fly.toml` env and pinned by `tests/test_bury_fly_config.py`.

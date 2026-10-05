@@ -162,14 +162,18 @@ def test_projection_composes_one_prediction_with_saved_values(mode, arm):
 
 
 @pytest.mark.parametrize('damage', ['job', 'baseline', 'means', 'cards'])
-def test_projection_refuses_damage_before_prediction(damage):
-    selected, fixture, bot = selected_inputs('history-primed')
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_projection_refuses_damage_before_prediction(damage, mode):
+    selected, fixture, bot = selected_inputs(mode)
     if damage == 'job':
         selected['job']['seed'] = 1
     elif damage == 'baseline':
         selected['job']['treatment_ballot'] = [['not-a-card']]
     elif damage == 'means':
-        selected['panel']['collection']['full_pool_capture']['serving_value_means'][0] += 1
+        collection = selected['panel']['collection']
+        saved = (collection['captures']['full_pool'] if mode == 'fresh-root'
+                 else collection['full_pool_capture'])
+        saved['serving_value_means'][0] += 1
     else:
         selected['panel']['worlds'][-1][0][2].pop()
     # inputs() has forbidden sampler, predictor and value callbacks installed.

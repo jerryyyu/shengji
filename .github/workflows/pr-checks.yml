@@ -50,6 +50,7 @@ jobs:
           tests/test_test_checkout.py
           tests/test_prepare_llm_panel_roots.py
           tests/test_panel_root_import.py
+          tests/test_prepared_panel_runner.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
           tests/test_prepared_play_error_hook.py

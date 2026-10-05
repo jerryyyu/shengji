@@ -120,3 +120,127 @@ def test_bound_root_scores_original_tape_once_with_stub_predictor(mode):
     assert result['actions'] == panel['actions']
     assert result['world_count'] == 64
     assert result['provenance_verified'] is False
+
+
+def selected_inputs(mode):
+    panel, fixture, bot = inputs(mode)
+    actions = panel['actions']
+    values = [float(i) for i in range(len(actions))]
+    saved = {'schema': 'fixed-tape-same-leaf-capture-v1',
+             'actions': copy.deepcopy(actions), 'world_count': 64,
+             'value_matrix': [values[:] for _ in range(64)],
+             'serving_value_means': values,
+             'signed_trick_points': [[0] * len(actions) for _ in range(64)]}
+    panel['collection'] = ({'captures': {'full_pool': saved}} if mode == 'fresh-root'
+                           else {'full_pool_capture': saved})
+    job = {key: panel[key] for key in ('fixture_id', 'mode', 'seed')}
+    job.update(control_ballot=copy.deepcopy(actions[:1]),
+               treatment_ballot=copy.deepcopy(actions[-1:]))
+    return {'schema': 'selected-m9-panel-v1', 'panel': panel, 'job': job}, fixture, bot
+
+
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+@pytest.mark.parametrize('arm', ['control', 'treatment'])
+def test_projection_composes_one_prediction_with_saved_values(mode, arm):
+    import numpy as np
+    selected, fixture, bot = selected_inputs(mode)
+    before = copy.deepcopy((selected, fixture.to_json(), bot.sampler.rng.getstate()))
+    calls = []
+    def predict(x):
+        calls.append(len(x))
+        return np.tile(np.arange(54), (len(x), 1))
+    bot.predict = predict
+    result = module.project_panel_rank_repair(selected, fixture, bot, arm=arm)
+    assert calls == [64]
+    assert result['projection']['baseline']['actions'] == selected['job'][f'{arm}_ballot']
+    index = 0 if arm == 'control' else len(selected['panel']['actions']) - 1
+    assert result['projection']['baseline']['raw_value_max'] == float(index)
+    assert result['capture']['world_count'] == 64
+    assert result['provenance_verified'] is False
+    assert result['serving_choice_assessed'] is False
+    assert (selected, fixture.to_json(), bot.sampler.rng.getstate()) == before
+
+
+@pytest.mark.parametrize('damage', ['job', 'baseline', 'means', 'cards'])
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_projection_refuses_damage_before_prediction(damage, mode):
+    selected, fixture, bot = selected_inputs(mode)
+    if damage == 'job':
+        selected['job']['seed'] = 1
+    elif damage == 'baseline':
+        selected['job']['treatment_ballot'] = [['not-a-card']]
+    elif damage == 'means':
+        collection = selected['panel']['collection']
+        saved = (collection['captures']['full_pool'] if mode == 'fresh-root'
+                 else collection['full_pool_capture'])
+        saved['serving_value_means'][0] += 1
+    else:
+        selected['panel']['worlds'][-1][0][2].pop()
+    # inputs() has forbidden sampler, predictor and value callbacks installed.
+    with pytest.raises(ValueError):
+        module.project_panel_rank_repair(selected, fixture, bot, arm='treatment')
+
+
+@pytest.mark.parametrize('expire_at', [1, 2, 3, 4])
+@pytest.mark.parametrize('both_arms', [False, True])
+def test_projection_budget_refusal_returns_no_result(expire_at, both_arms):
+    import numpy as np
+    selected, fixture, bot = selected_inputs('fresh-root')
+    calls = []
+    def predict(x):
+        calls.append(len(x))
+        return np.zeros((len(x), 54))
+    bot.predict = predict
+    checks = 0
+    def budget():
+        nonlocal checks
+        checks += 1
+        if checks == expire_at:
+            raise TimeoutError('synthetic deadline')
+    with pytest.raises(TimeoutError, match='synthetic deadline'):
+        if both_arms:
+            module.project_panel_rank_repairs(selected, fixture, bot, check_budget=budget)
+        else:
+            module.project_panel_rank_repair(selected, fixture, bot,
+                                             arm='treatment', check_budget=budget)
+    assert calls == ([] if expire_at <= 2 else [64])
+
+
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_both_arms_share_one_capture_and_match_independent_projections(mode):
+    import numpy as np
+    from shengji.eval.pair_resource_admission import project_rank_repair
+    selected, fixture, bot = selected_inputs(mode)
+    before = copy.deepcopy((selected, fixture.to_json(), bot.sampler.rng.getstate()))
+    calls = []
+    def predict(x):
+        calls.append(len(x))
+        assert len(calls) == 1, 'both arms must share the same rank capture'
+        return np.tile(np.arange(54), (len(x), 1))
+    bot.predict = predict
+    result = module.project_panel_rank_repairs(selected, fixture, bot)
+    assert calls == [64]
+    assert list(result['projections']) == ['control', 'treatment']
+    panel = selected['panel']
+    root = module.bind_panel_rank_root(panel, fixture, bot)
+    for arm in ('control', 'treatment'):
+        expected = project_rank_repair(root, fixture.seat, result['capture'],
+                                      selected['job'][f'{arm}_ballot'], panel['actions'],
+                                      [float(i) for i in range(len(panel['actions']))])
+        assert result['projections'][arm] == expected
+    assert (selected, fixture.to_json(), bot.sampler.rng.getstate()) == before
+
+
+@pytest.mark.parametrize('arms', [[], ['control', 'control'], ['bogus'], 'control', [True], [{}]])
+def test_multi_arm_request_rejected_before_prediction(arms):
+    selected, fixture, bot = selected_inputs('fresh-root')
+    with pytest.raises(ValueError, match='arms'):
+        module.project_panel_rank_repairs(selected, fixture, bot, arms=arms)
+
+
+@pytest.mark.parametrize('mode', ['fresh-root', 'history-primed'])
+def test_invalid_second_arm_refuses_before_shared_prediction(mode):
+    selected, fixture, bot = selected_inputs(mode)
+    selected['job']['treatment_ballot'] = []
+    with pytest.raises(ValueError, match='baseline'):
+        module.project_panel_rank_repairs(selected, fixture, bot)

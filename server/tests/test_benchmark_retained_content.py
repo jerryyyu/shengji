@@ -15,7 +15,11 @@ from shengji.luna.canonical import canonical_json_bytes
 SEEDS = list(range(10, 20))
 
 
-def test_actual_runner_retention_report_satisfies_content_reader(tmp_path):
+@pytest.mark.parametrize('old_failures,expected_attempts,completed_count,failed,pending', [
+    (1, 2, 39, 1, 0), (7, 1, 31, 8, 1), (8, 0, 30, 8, 2),
+])
+def test_actual_runner_retention_report_satisfies_content_reader(
+        tmp_path, old_failures, expected_attempts, completed_count, failed, pending):
     """Bridge producer/reader contracts; hand-written reports alone miss fields."""
     import json
     from scripts import prepare_llm_panel_roots as producer
@@ -36,19 +40,32 @@ def test_actual_runner_retention_report_satisfies_content_reader(tmp_path):
     source = tmp_path / 'source'
     old = json.loads((source / 'result.json').read_bytes())
     old['config'] = config
+    for index, original in enumerate(old['mirrors']):
+        kind = 'pending' if index < 2 else 'typed' if index >= 40 - old_failures else 'complete'
+        row = _row(original['information'], original['seed'], original['flip'], kind)
+        old['mirrors'][index] = row
+        (source / f"mirror-sol-{row['information']}-{row['seed']}-{row['flip']}.json").write_bytes(
+            canonical_json_bytes(row))
     pin = _repin_report(plan, source, old)
+    source_bytes = {path.name: path.read_bytes() for path in source.iterdir()}
     auth = retention.load_retained_attempts(plan, pin, expected_config=config)
     attempts = []
     def completed(game, **kwargs):
         attempts.append((kwargs['information'], kwargs['seed'], kwargs['flip']))
+        if old_failures == 7:
+            return _row(kwargs['information'], kwargs['seed'], kwargs['flip'], 'typed')
         return {'complete': True, 'signed_levels': 2}
     report = runner.run_benchmark(
         **options, run=True, token_limit=1000, retention_plan=str(plan),
         retention_plan_sha256=pin, runner=completed)
-    assert attempts == [('perfect', 10, 0)]
+    assert attempts == [('actor-only', 10, flip) for flip in range(expected_attempts)]
     assert validate_retained_content(report, auth) == {
-        'status': 'scheduled-terminal', 'completed': 39, 'failed': 1,
-        'unattempted': 0, 'scheduled': 40}
+        'status': 'scheduled-terminal' if failed < 8 else 'failure-limit',
+        'completed': completed_count, 'failed': failed,
+        'unattempted': pending, 'scheduled': 40}
+    assert all(row['lineage']['kind'] == 'retained-terminal-attempt'
+               for row in report['mirrors'][2:])
+    assert {path.name: path.read_bytes() for path in source.iterdir()} == source_bytes
 
 
 def _row(mode: str, seed: int, flip: int, kind: str) -> dict:

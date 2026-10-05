@@ -7,7 +7,6 @@ policy-minus-Sol.
 """
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import math
@@ -16,7 +15,6 @@ import random
 import statistics
 from typing import Mapping, Sequence
 
-from shengji.luna.atomic_io import publish_exclusive_bytes
 from shengji.luna.benchmark_failure_protocol import (
     FAIL_STOP, PRESERVE_ILLEGAL, attempt_disposition,
 )
@@ -642,21 +640,10 @@ def _load_mapping(path_or_text: str) -> dict[str, str | None]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    if (Path(__file__).resolve().parents[2] / 'manifest.json').exists():
-        raise PanelReadoutError('Frozen bundle forbids the directory CLI; use the reviewed sealed wrapper')
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rows", required=True,
-                        help="JSON object or path to one: benchmark_id -> result directory; null/'not-run' records an unattempted row")
-    parser.add_argument("--output", "--out", required=True, type=Path)
-    args = parser.parse_args(argv)
-    try:
-        result = analyze_panel(_load_mapping(args.rows))
-        raw = (json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
-        publish_exclusive_bytes(args.output, raw, mode=0o400)
-    except (OSError, PanelReadoutError, ValueError) as exc:
-        parser.error(str(exc))
-    print(json.dumps(result, sort_keys=True))
-    return 0
+    # This guard is independent of checkout/bundle layout. Arithmetic remains
+    # importable for the sealed adapter and synthetic tests, not raw CLI reads.
+    raise PanelReadoutError(
+        'Panel readout forbids the directory CLI; use the reviewed sealed wrapper')
 
 
 if __name__ == "__main__":

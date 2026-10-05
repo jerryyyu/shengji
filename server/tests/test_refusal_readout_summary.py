@@ -3,6 +3,7 @@ import pytest
 
 from shengji.eval.refusal_readout_summary import (
     attach_five_window_summaries, five_window_extension, summarize_refusal_observations,
+    observe_refusal_max,
 )
 
 
@@ -12,6 +13,38 @@ def census(valid=0, positive=0, observations=0, missing=0, partial=0, invalid=0)
                 valid_records=valid, missing_records=missing, partial_records=partial,
                 invalid_records=invalid, refusal_observations=observations,
                 observations_positive_decisions=positive)
+
+
+def test_max_tracks_complete_arm_tuples():
+    def rec(n):
+        return dict(refusal_observations=n, refusal_rejections=0,
+                    refusal_fallback_worlds=0, refusal_pinned_codes=0)
+    out = {}
+    observe_refusal_max(out, {})
+    assert out['max_refusal_observations'] is None
+    observe_refusal_max(out, {'decision_traces': [{'side': 'arm', 'decisions': [rec(0)]}]})
+    assert out['max_refusal_observations'] == 0
+    observe_refusal_max(out, {'decision_traces': [
+        {'side': 'baseline', 'decisions': [rec(1000)]},
+        {'side': 'arm', 'decisions': [rec(4), rec(2), rec(True), rec(-1),
+                                    {'refusal_observations': 500}, None]}]})
+    assert out['max_refusal_observations'] == 4
+
+
+def test_pooled_max_preserves_unknown():
+    a = dict(census(2, 2, 6), max_refusal_observations=4)
+    b = dict(census(1, 1, 9), max_refusal_observations=9)
+    assert summarize_refusal_observations([a, b])['max_observations'] == 9
+    assert summarize_refusal_observations([a, census(missing=2)])['max_observations'] == 4
+    assert summarize_refusal_observations([a, census(1)])['max_observations'] is None
+    assert summarize_refusal_observations([census(missing=2)])['max_observations'] is None
+    assert summarize_refusal_observations([dict(census(1), max_refusal_observations=0)])['max_observations'] == 0
+
+
+@pytest.mark.parametrize('maximum', [True, -1, 0, 1, 7, 1.5])
+def test_invalid_maximum_refused(maximum):
+    with pytest.raises(ValueError, match='maximum'):
+        summarize_refusal_observations([dict(census(2, 2, 6), max_refusal_observations=maximum)])
 
 
 def test_pool_counts_not_window_rates():

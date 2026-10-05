@@ -44,6 +44,11 @@ def build():
     old_question = next(line for line in body.splitlines() if line.strip().startswith('question='))
     body = replace(body, old_question, "            question='event-complete refusal history versus release38, same package and common MC-LCB control',")
     body = body.replace('five v50t38 windows', 'five v52ec windows')
+    body = replace(body, ' common_config_sha256=COMMON_SHA,', '')
+    body = replace(body,
+        "                observe_activations(item['activations'], shard)",
+        "                observe_refusal_max(item['refusal_census'], shard)\n"
+        "                observe_activations(item['activations'], shard)")
     body = body.replace('and only if the point is above +0.015; no pooling',
                         'and only if the point is above +0.015 AND CI includes zero; no pooling')
     body += "\n    return attach_five_window_summaries(result, seeds=HOST_SEEDS['cloud'], prefixes=PREFIXES)\n"
@@ -76,7 +81,6 @@ EXPECTED_SHA = ('c177d5f51ed1bc79fbb24365fe3761e919a3054953a27dfa1832fd80f3df6ce
                 'd65a5c9e3927c6cad47ff4fdea79904c2775afb9111d0b6dcb30e74928eb572e')
 CONFIGS = Path(__file__).with_name('v52ec_expected_configs.json')
 CONFIG_SHA = '3ab67ae299b82d72c7edfeca8d86477ea15bc72aa8e9290a65fcd49364bf65bd'
-COMMON_SHA = {'cloud': '84e5579dab1441d2e9c859f138378d38227f1a6f9e9f8bab8abc9c42d26b5d2d'}
 Z_POWER = 1.959963984540054 + 0.8416212335729143
 EXTEND_ABOVE = 0.015
 RC_SHA = '439cad7189ddd6f69dcc4403798cccbfdda80b4da7d6bd28b68ad283e2f66746'

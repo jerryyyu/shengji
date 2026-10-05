@@ -11,6 +11,25 @@ import copy
 from collections.abc import Iterable, Mapping
 
 
+def observe_refusal_max(census: dict, shard: Mapping) -> None:
+    """Observe already-loaded arm tuples; match the pinned census denominator."""
+    maximum = census.get("max_refusal_observations")
+    traces = shard.get("decision_traces")
+    for trace in traces if isinstance(traces, list) else ():
+        if not isinstance(trace, dict) or trace.get("side") != "arm":
+            continue
+        records = trace.get("decisions")
+        for record in records if isinstance(records, list) else ():
+            fields = ("refusal_observations", "refusal_rejections",
+                      "refusal_fallback_worlds", "refusal_pinned_codes")
+            if not isinstance(record, dict) or not all(
+                    type(record.get(k)) is int and record[k] >= 0 for k in fields):
+                continue
+            value = record["refusal_observations"]
+            maximum = value if maximum is None else max(maximum, value)
+    census["max_refusal_observations"] = maximum
+
+
 def summarize_refusal_observations(censuses: Iterable[Mapping]) -> dict:
     """Pool counts before division; denominator is complete valid tuples.
 
@@ -22,6 +41,7 @@ fallback records, rather than silently switching to completed PV turns.
             "invalid_records", "refusal_observations",
             "observations_positive_decisions")
     total = dict.fromkeys(keys, 0)
+    maxima, missing_max = [], False
     for census in censuses:
         if (census.get("schema") != "pv-refusal-sampler-census-v1"
                 or census.get("denominator") != "validrecords"
@@ -32,6 +52,15 @@ fallback records, rather than silently switching to completed PV turns.
         valid = census["valid_records"]
         positive = census["observations_positive_decisions"]
         observations = census["refusal_observations"]
+        maximum = census.get("max_refusal_observations")
+        if maximum is not None:
+            if (type(maximum) is not int or maximum < 0 or not valid
+                    or maximum > observations or maximum * valid < observations
+                    or (maximum == 0) != (positive == 0)):
+                raise ValueError("inconsistent observation maximum")
+            maxima.append(maximum)
+        elif valid:
+            missing_max = True
         if census["decisions"] != sum(census[k] for k in
                 ("valid_records", "missing_records", "partial_records", "invalid_records")):
             raise ValueError("census population accounting mismatch")
@@ -44,6 +73,7 @@ fallback records, rather than silently switching to completed PV turns.
         "counts": total,
         "denominator": "valid_records (all four refusal fields valid)",
         "mean_observations": total["refusal_observations"] / valid if valid else None,
+        "max_observations": max(maxima) if maxima and not missing_max else None,
         "share_with_observations": total["observations_positive_decisions"] / valid if valid else None,
         "valid_record_share": valid / total["decisions"] if total["decisions"] else None,
         "status": "observed" if valid else "no valid telemetry",

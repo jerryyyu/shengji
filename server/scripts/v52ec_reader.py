@@ -18,7 +18,6 @@ EXPECTED_SHA = ('c177d5f51ed1bc79fbb24365fe3761e919a3054953a27dfa1832fd80f3df6ce
                 'd65a5c9e3927c6cad47ff4fdea79904c2775afb9111d0b6dcb30e74928eb572e')
 CONFIGS = Path(__file__).with_name('v52ec_expected_configs.json')
 CONFIG_SHA = '3ab67ae299b82d72c7edfeca8d86477ea15bc72aa8e9290a65fcd49364bf65bd'
-COMMON_SHA = {'cloud': '84e5579dab1441d2e9c859f138378d38227f1a6f9e9f8bab8abc9c42d26b5d2d'}
 Z_POWER = 1.959963984540054 + 0.8416212335729143
 EXTEND_ABOVE = 0.015
 RC_SHA = '439cad7189ddd6f69dcc4403798cccbfdda80b4da7d6bd28b68ad283e2f66746'
@@ -159,6 +158,24 @@ def arm_levels(primary, cache, roots, entries):
         out[arm] = dict(policy=NAMES[side], windows=rows, pooled=describe_pool(primary, rows))
     return out
 
+def observe_refusal_max(census: dict, shard: Mapping) -> None:
+    """Observe already-loaded arm tuples; match the pinned census denominator."""
+    maximum = census.get("max_refusal_observations")
+    traces = shard.get("decision_traces")
+    for trace in traces if isinstance(traces, list) else ():
+        if not isinstance(trace, dict) or trace.get("side") != "arm":
+            continue
+        records = trace.get("decisions")
+        for record in records if isinstance(records, list) else ():
+            fields = ("refusal_observations", "refusal_rejections",
+                      "refusal_fallback_worlds", "refusal_pinned_codes")
+            if not isinstance(record, dict) or not all(
+                    type(record.get(k)) is int and record[k] >= 0 for k in fields):
+                continue
+            value = record["refusal_observations"]
+            maximum = value if maximum is None else max(maximum, value)
+    census["max_refusal_observations"] = maximum
+
 def summarize_refusal_observations(censuses: Iterable[Mapping]) -> dict:
     """Pool counts before division; denominator is complete valid tuples.
 
@@ -170,6 +187,7 @@ fallback records, rather than silently switching to completed PV turns.
             "invalid_records", "refusal_observations",
             "observations_positive_decisions")
     total = dict.fromkeys(keys, 0)
+    maxima, missing_max = [], False
     for census in censuses:
         if (census.get("schema") != "pv-refusal-sampler-census-v1"
                 or census.get("denominator") != "validrecords"
@@ -180,6 +198,15 @@ fallback records, rather than silently switching to completed PV turns.
         valid = census["valid_records"]
         positive = census["observations_positive_decisions"]
         observations = census["refusal_observations"]
+        maximum = census.get("max_refusal_observations")
+        if maximum is not None:
+            if (type(maximum) is not int or maximum < 0 or not valid
+                    or maximum > observations or maximum * valid < observations
+                    or (maximum == 0) != (positive == 0)):
+                raise ValueError("inconsistent observation maximum")
+            maxima.append(maximum)
+        elif valid:
+            missing_max = True
         if census["decisions"] != sum(census[k] for k in
                 ("valid_records", "missing_records", "partial_records", "invalid_records")):
             raise ValueError("census population accounting mismatch")
@@ -192,6 +219,7 @@ fallback records, rather than silently switching to completed PV turns.
         "counts": total,
         "denominator": "valid_records (all four refusal fields valid)",
         "mean_observations": total["refusal_observations"] / valid if valid else None,
+        "max_observations": max(maxima) if maxima and not missing_max else None,
         "share_with_observations": total["observations_positive_decisions"] / valid if valid else None,
         "valid_record_share": valid / total["decisions"] if total["decisions"] else None,
         "status": "observed" if valid else "no valid telemetry",
@@ -375,6 +403,7 @@ def analyze(cloud_root, *, reservation, status, rc_path=RC_HELPER, support=SUPPO
                 if not cov['covered']:
                     item['coverage_failures'].append(dict(shard=path.name, issues=cov['issues']))
                 rc._add_census(item['refusal_census'], rc.describe_refusal_census(shard))
+                observe_refusal_max(item['refusal_census'], shard)
                 observe_activations(item['activations'], shard)
             return shard, sha
 
@@ -441,7 +470,7 @@ def analyze(cloud_root, *, reservation, status, rc_path=RC_HELPER, support=SUPPO
             primary_analyzer_sha256=rc.PRIMARY_SHA,
             adapter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             helper_sha256=RC_SHA, support_sha256=dict(companion=rc.COMPANION_SHA,
-                coverage=rc.COVERAGE_SHA, **companion.PINS), common_config_sha256=COMMON_SHA,
+                coverage=rc.COVERAGE_SHA, **companion.PINS),
             statistical_lower_bound_positive=triage['ci95'][0] > 0,
             strength_verdict='WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW',
             direct_head_to_head=False, outcome_filter_applied=False,

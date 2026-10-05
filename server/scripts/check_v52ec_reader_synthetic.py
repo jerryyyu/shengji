@@ -68,6 +68,9 @@ with tempfile.TemporaryDirectory(prefix='v52ec-full-synthetic-') as tmp, pytest.
     assert result['extension'].startswith('no extension')
     assert result['strength_verdict'] == 'WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW'
     assert all(row['counts']['valid_records'] == 20 for row in result['refusal_observation_summary'].values())
+    expected_max = max(fixture.record(flag)['refusal_observations'] for flag in (True, False))
+    assert all(row['max_observations'] == expected_max for row in result['refusal_observation_summary'].values())
+    assert 'common_config_sha256' not in result
     reads.clear()
     last = root / f'{reader.PREFIXES[1]}-{reader.HOST_SEEDS["cloud"][-1]}' / 'config.json'
     c = json.loads(last.read_text())

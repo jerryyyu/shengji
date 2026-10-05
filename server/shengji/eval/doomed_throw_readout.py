@@ -32,6 +32,7 @@ def empty_doomed_throw_census() -> dict:
         "swap_applied": 0,
         "budget_abandoned": 0,
         "multi_card_lead_records": 0,
+        "abandoned_multi_card_lead_records": 0,
         "ratio_invalid_records": 0,
         "refused_world_ratio_distribution": {},
         "field_presence": {field: 0 for field in _SWAP_FIELDS},
@@ -90,10 +91,16 @@ def _record_swap_fields(census: dict, record, *, candidate: bool) -> None:
     if record.get("doomed_throw_swap_abandoned") == "budget":
         census["budget_abandoned"] += 1
 
+
+def _record_lead_ratio(census: dict, record) -> None:
+    """Observe only a validated, chronologically aligned lead decision."""
     selected = record.get("doomed_throw_swap_from")
     if not isinstance(selected, str) or len(selected.split()) < 2:
         return
     census["multi_card_lead_records"] += 1
+    if "doomed_throw_swap_abandoned" in record:
+        census["abandoned_multi_card_lead_records"] += 1
+        return
     worlds = record.get("doomed_throw_swap_worlds")
     refused = record.get("doomed_throw_swap_refused_worlds")
     if (not _is_nonnegative_int(worlds) or worlds == 0
@@ -110,12 +117,12 @@ def _committed_by_seat(record):
     if not isinstance(history, list):
         return None
     by_seat = {}
-    for row in history:
+    for position, row in enumerate(history):
         if (not isinstance(row, list) or len(row) != 2
                 or type(row[0]) is not int or not isinstance(row[1], list)
                 or not row[1]):
             return None
-        by_seat.setdefault(row[0], []).append(row[1])
+        by_seat.setdefault(row[0], []).append((position, row[1]))
     return by_seat
 
 
@@ -134,7 +141,7 @@ def _attempted_length(decision):
 
 
 def _aligned_round(record, traces):
-    """Return ``(arm_plays, failed_throws)`` or ``None`` if unaligned."""
+    """Return plays, failures and lead records, or None if unaligned."""
     if (not isinstance(record, Mapping) or type(record.get("mirror")) is not int
             or record.get("mirror") not in (0, 1)):
         return None
@@ -149,6 +156,7 @@ def _aligned_round(record, traces):
     if not isinstance(traces, list) or len(traces) != 2:
         return None
     plays = failed = 0
+    leads = []
     for trace, seat in zip(traces, seats):
         if (not isinstance(trace, Mapping) or trace.get("side") != "arm"
                 or trace.get("mirror") != record.get("mirror")):
@@ -157,15 +165,17 @@ def _aligned_round(record, traces):
         committed = by_seat[seat]
         if not isinstance(decisions, list) or len(decisions) != len(committed):
             return None
-        for decision, cards in zip(decisions, committed):
+        for decision, (position, cards) in zip(decisions, committed):
             attempted = _attempted_length(decision)
             if (not isinstance(decision, Mapping) or decision.get("seat") != seat
                     or attempted is None or attempted < len(cards)):
                 return None
             plays += 1
+            if position % 4 == 0:
+                leads.append(decision)
             if attempted > len(cards):
                 failed += 1
-    return plays, failed
+    return plays, failed, leads
 
 
 def _observe_alignment(census: dict, shard) -> None:
@@ -185,18 +195,22 @@ def _observe_alignment(census: dict, shard) -> None:
         if aligned is None:
             census["unaligned_rounds"] += 1
             continue
-        plays, failed = aligned
+        plays, failed, leads = aligned
         census["aligned_rounds"] += 1
         census["aligned_arm_plays"] += plays
         census["failed_throws"] += failed
         census["failed_throw_rounds"] += int(failed > 0)
+        if census["candidate"]:
+            for decision in leads:
+                _record_lead_ratio(census, decision)
 
 
 def observe_doomed_throw(census: dict, shard, *, candidate: bool) -> None:
     """Add one already-loaded shard to a candidate or comparator census.
 
     The arm's traces are counted independently of alignment for mechanism
-    telemetry.  Failed-throw rates use only complete per-mirror alignments.
+    field telemetry. Failed-throw rates and lead ratios use only complete
+    per-mirror alignments; abandoned leads never enter the ratio distribution.
     """
     if (not isinstance(census, dict) or census.get("schema") != SCHEMA
             or type(candidate) is not bool):
@@ -215,6 +229,7 @@ def observe_doomed_throw(census: dict, shard, *, candidate: bool) -> None:
 _ADDITIVE_FIELDS = (
     "decisions", "swap_field_records", "swap_applied_field_records", "swap_applied",
     "budget_abandoned", "multi_card_lead_records", "ratio_invalid_records",
+    "abandoned_multi_card_lead_records",
     "comparator_contamination_records",
     "aligned_rounds", "unaligned_rounds", "aligned_arm_plays", "failed_throws",
     "failed_throw_rounds",

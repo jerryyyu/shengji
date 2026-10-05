@@ -47,21 +47,69 @@ def _shard(*, failed=(False, False), mismatch=False, swap=None):
     return {"records": records, "decision_traces": traces}
 
 
-def test_candidate_counts_swap_fields_budget_and_refused_ratio():
+def test_candidate_counts_swap_fields_and_refused_ratio():
     census = empty_doomed_throw_census()
     observe_doomed_throw(census, _shard(swap={
         "doomed_throw_swap_applied": True,
         "doomed_throw_swap_from": "C2 D6 D6",
         "doomed_throw_swap_worlds": 16,
         "doomed_throw_swap_refused_worlds": 16,
-        "doomed_throw_swap_abandoned": "budget",
     }), candidate=True)
 
     assert census["swap_applied"] == 1
     assert census["swap_applied_field_records"] == 1
-    assert census["budget_abandoned"] == 1
+    assert census["budget_abandoned"] == 0
     assert census["multi_card_lead_records"] == 1
     assert census["refused_world_ratio_distribution"] == {"16/16": 1}
+
+
+@pytest.mark.parametrize("abandoned", ["budget", "unexpected", None])
+def test_abandoned_lead_is_separate_and_never_a_zero_ratio(abandoned):
+    census = empty_doomed_throw_census()
+    observe_doomed_throw(census, _shard(swap={
+        "doomed_throw_swap_from": "C2 C2",
+        "doomed_throw_swap_worlds": 64,
+        "doomed_throw_swap_refused_worlds": 0,
+        "doomed_throw_swap_abandoned": abandoned,
+    }), candidate=True)
+    assert census["multi_card_lead_records"] == 1
+    assert census["abandoned_multi_card_lead_records"] == 1
+    assert census["budget_abandoned"] == int(abandoned == "budget")
+    assert census["refused_world_ratio_distribution"] == {}
+
+
+@pytest.mark.parametrize("position", [1, 2, 3, 4])
+def test_ratio_uses_chronological_lead_position_not_seat_or_trace_index(position):
+    swap = {"doomed_throw_swap_from": "C2 C2",
+            "doomed_throw_swap_worlds": 64,
+            "doomed_throw_swap_refused_worlds": 0}
+    shard = _shard(swap=swap)
+    history = shard["records"][0]["committed_history"]
+    first = history.pop(0)
+    if position == 4:
+        # A second turn by an arm seat; a later lead, not trace index zero.
+        history.insert(0, [0, ["C3"]])
+        shard["decision_traces"][0]["decisions"].insert(0, {"seat": 0, "played": ["C3"]})
+    history.insert(position, first)
+    census = empty_doomed_throw_census()
+    observe_doomed_throw(census, shard, candidate=True)
+    assert census["aligned_rounds"] == 2
+    assert census["multi_card_lead_records"] == int(position == 4)
+    assert census["refused_world_ratio_distribution"] == ({"0/64": 1} if position == 4 else {})
+
+
+def test_unaligned_round_excludes_lead_ratio_but_preserves_field_telemetry():
+    shard = _shard(swap={"doomed_throw_swap_from": "C2 C2",
+                         "doomed_throw_swap_worlds": 64,
+                         "doomed_throw_swap_refused_worlds": 0})
+    # Failure after the lead was aligned must invalidate the whole round.
+    shard["decision_traces"][1]["decisions"][0]["played"] = []
+    census = empty_doomed_throw_census()
+    observe_doomed_throw(census, shard, candidate=True)
+    assert census["swap_field_records"] == 1
+    assert census["unaligned_rounds"] == 1
+    assert census["multi_card_lead_records"] == 0
+    assert census["refused_world_ratio_distribution"] == {}
 
 
 def test_comparator_swap_fields_are_contamination_not_swap_estimates():

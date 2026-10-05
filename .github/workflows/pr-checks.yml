@@ -268,6 +268,7 @@ jobs:
           tests/test_panel_rank_root.py
           tests/test_panel_rank_worker.py
           tests/test_panel_rank_worker_reader_integration.py
+          tests/test_panel_rank_worker_authenticated_integration.py
           tests/test_m9_panel_publication.py
           tests/test_m9_panel_readout_worker.py
           tests/test_m9_readout_persistence_roundtrip.py

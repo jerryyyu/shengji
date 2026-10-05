@@ -852,6 +852,7 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
 
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
+    panel_stopped = False
     for model in models:
         for mode in information:
             arm = f"{model}-{mode}"
@@ -871,6 +872,13 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                             "source_row_sha256": source["sha256"],
                             "kind": "imported-complete",
                         }
+                    elif panel_stopped:
+                        row = {"schema": "w32-llm-benchmark-mirror-v1", "key": key,
+                               "arm": arm, "model": model, "information": mode,
+                               "seed": seed, "flip": flip, "complete": False,
+                               "status": "not_run",
+                               "error": "panel stopped after first incomplete mirror",
+                               "calls": []}
                     elif seed in setup_failures:
                         row = {"schema": "w32-llm-benchmark-mirror-v1", "key": key,
                                "arm": arm, "model": model, "information": mode,
@@ -932,6 +940,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                                 "source_row_sha256": source["sha256"],
                             }
                     _publish(output_path / f"mirror-{model}-{mode}-{seed}-{flip}.json", row)
+                    if prepared_recipe is not None and row.get("complete") is not True:
+                        panel_stopped = True
                     arm_rows.append(row)
                     all_rows.append(row)
             summaries[arm] = _summary(

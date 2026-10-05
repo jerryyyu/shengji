@@ -59,7 +59,6 @@ server/tests/test_jev_bot.py
 server/tests/test_llm_benchmark_games.py
 server/tests/test_llm_benchmark_observation.py
 server/tests/test_llm_benchmark_policy.py
-server/tests/test_llm_benchmark_rollouts.py
 server/tests/test_llm_benchmark_transport.py
 server/tests/test_luna_atomic_io.py
 server/tests/test_luna_game.py

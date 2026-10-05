@@ -285,6 +285,10 @@ def test_run_once_reads_synthetic_campaign_once_and_publishes_safe_report(
     report = json.loads(output.read_text())
     assert report["recovery_status"] == "DIAGNOSTICS_COMPLETE"
     assert report["stage"] == "complete"
+    assert report['source_sha256'] == {
+        'reader': hashlib.sha256(Path(recovery.__file__).read_bytes()).hexdigest(),
+        'diagnostics': recovery.DIAGNOSTICS_SHA,
+    }
     assert len(report["windows"]) == 5
     assert [w['n_nonzero_delta'] for w in report['windows']] == [0, 520, 520, 520, 260]
     assert [w['se_zero'] for w in report['windows']] == [True, True, False, True, False]

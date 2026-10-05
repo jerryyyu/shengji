@@ -1,11 +1,46 @@
 """Failure-path witnesses using synthetic dependencies, never screen data."""
 import importlib.util
+import hashlib
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+
+@pytest.fixture
+def real_reader():
+    path = Path(__file__).resolve().parents[1] / 'scripts/v52ec_recovery_reader.py'
+    spec = importlib.util.spec_from_file_location('recovery_source_test', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_local_dependencies_match_pins(real_reader):
+    for name, expected in [('v52ec_reader', real_reader.ORIGINAL_SHA),
+                           ('v52ec_recovery_diagnostics', real_reader.DIAGNOSTICS_SHA)]:
+        loaded = real_reader.local_module(name)
+        assert loaded._source_sha256 == expected
+        assert hashlib.sha256(Path(loaded.__file__).read_bytes()).hexdigest() == expected
+    with pytest.raises(ValueError, match='unrecognized'):
+        real_reader.local_module('../not-a-dependency')
+
+
+def test_changed_diagnostics_refuse_before_execution_or_data_access(real_reader, monkeypatch, tmp_path):
+    scripts = Path(real_reader.__file__).parent
+    original = (scripts / 'v52ec_reader.py').read_bytes()
+    (tmp_path / 'v52ec_reader.py').write_bytes(original)
+    (tmp_path / 'v52ec_recovery_diagnostics.py').write_text(
+        "raise AssertionError('unverified code executed')\n")
+    monkeypatch.setattr(real_reader, '__file__', str(tmp_path / 'reader.py'))
+    # None of these nonexistent inputs may be reached before source refusal.
+    with pytest.raises(ValueError, match='local dependency source drift'):
+        real_reader.analyze(tmp_path / 'NO-DATA', reservation=tmp_path / 'NO-RESERVATION',
+            status=tmp_path / 'NO-STATUS', rc_path=tmp_path / 'NO-HELPER',
+            support=tmp_path / 'NO-SUPPORT', reader_dir=tmp_path / 'NO-VALIDATOR',
+            primary_path=tmp_path / 'NO-PRIMARY', report={'source_sha256': {}})
 
 
 @pytest.fixture

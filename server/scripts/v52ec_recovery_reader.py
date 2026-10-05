@@ -6,23 +6,32 @@ is called. Caller must verify terminal process state and exclusive ownership.
 import copy
 import argparse
 import hashlib
-import importlib.util
+import types
 import json
 import os
 from pathlib import Path
 
 
 ORIGINAL_SHA = '0c09f172876dfc934fe9f6765aaf3997dd6030071a3dc58effb257ed57e32f51'
+DIAGNOSTICS_SHA = 'c7212f870ecd1019aa8a0d36a4d383ae34a0df9dc9798ca4d3aa7753928dd7cc'
 PREDECLARATION_SHA = '72a2ed7ab64f1ae0f8e76cc043d90b771a23714c078b4e83916d0ccb6246debe'
 
 
 def local_module(name):
+    pins = {'v52ec_reader': ORIGINAL_SHA,
+            'v52ec_recovery_diagnostics': DIAGNOSTICS_SHA}
+    if name not in pins:
+        raise ValueError('unrecognized local dependency')
     path = Path(__file__).with_name(name + '.py')
-    if name == 'v52ec_reader' and hashlib.sha256(path.read_bytes()).hexdigest() != ORIGINAL_SHA:
-        raise ValueError('original reader source drift')
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    raw = path.read_bytes()
+    sha = hashlib.sha256(raw).hexdigest()
+    if sha != pins[name]:
+        raise ValueError('local dependency source drift')
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    # Execute the authenticated bytes, not a second read or cached bytecode.
+    exec(compile(raw, str(path), 'exec'), module.__dict__)
+    module._source_sha256 = sha
     return module
 
 
@@ -34,6 +43,7 @@ def analyze(root, *, reservation, status, rc_path, support, reader_dir, primary_
     """
     old = local_module('v52ec_reader')
     diag = local_module('v52ec_recovery_diagnostics')
+    report['source_sha256']['diagnostics'] = diag._source_sha256
     rc = old.helper(rc_path)
     companion = rc.pinned(Path(support) / 'readout_with_health.py', rc.COMPANION_SHA)
     coverage = rc.pinned(Path(support) / 'play_trace_coverage.py', rc.COVERAGE_SHA)
@@ -122,6 +132,9 @@ def run_once(output, **kwargs):
                   predeclaration_sha256=PREDECLARATION_SHA,
                   original_primary='UNAVAILABLE', direction_suppressed=True,
                   outcome_blind=False, stage='source_validation',
+                  source_sha256={'reader': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                                 'diagnostics': None},
+                  expected_diagnostics_sha256=DIAGNOSTICS_SHA,
                   windows=[], input_receipts=[], trace_coverage={})
     success = False
     try:

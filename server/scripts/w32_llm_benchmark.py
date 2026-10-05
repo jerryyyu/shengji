@@ -30,6 +30,7 @@ from shengji.luna.benchmark_failure_protocol import (
     FAIL_STOP, PRESERVE_ILLEGAL, attempt_disposition, summarize_scheduled,
 )
 from shengji.luna.benchmark_recipes import PreparedRecipe
+from shengji.luna.benchmark_retention import load_retained_attempts
 from shengji.luna.benchmark_transport import BenchmarkTransport, CAPACITY_RETRY_DELAYS
 from shengji.luna.canonical import canonical_json_bytes
 from shengji.luna.game import _round_from_snapshot, _state_snapshot
@@ -676,6 +677,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   classify_final_action_failures: bool = False,
                   failure_protocol: str = FAIL_STOP,
                   illegal_failure_limit: int = 8,
+                  retention_plan: str | None = None,
+                  retention_plan_sha256: str | None = None,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -684,6 +687,12 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   recipe_reader=bury_env_recipe,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
+    if (retention_plan is None) != (retention_plan_sha256 is None):
+        raise BenchmarkRefusal("retention requires plan and SHA together")
+    if retention_plan is not None and (
+            failure_protocol != PRESERVE_ILLEGAL or prepared_recipe is None
+            or prepared_roots_from is None or continue_from is not None):
+        raise BenchmarkRefusal("retention requires amended prepared-recipe/shared-root path")
     if failure_protocol not in (FAIL_STOP, PRESERVE_ILLEGAL):
         raise BenchmarkRefusal("unknown benchmark failure protocol")
     if type(illegal_failure_limit) is not int or illegal_failure_limit <= 0:
@@ -786,6 +795,15 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
         config["provider_capacity_retry_delays"] = list(CAPACITY_RETRY_DELAYS)
     if accept_recovered_reconnects:
         config["accept_recovered_reconnects"] = True
+    retained = None
+    if retention_plan is not None:
+        retained = load_retained_attempts(
+            retention_plan, retention_plan_sha256, expected_config=config)
+        config["retained_attempts"] = {
+            "plan": str(Path(retention_plan).resolve()),
+            "plan_sha256": retention_plan_sha256,
+            "source": retained["path"], "result_sha256": retained["result_sha256"],
+        }
     if not run:
         result = {"schema": SCHEMA, "mode": "dry-run", "config": config,
                 "planned_arms": [f"{model}-{mode}" for model in models for mode in information],
@@ -878,8 +896,17 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
     panel_stopped = False
-    model_failure_count = 0
+    model_failure_count = (sum(attempt_disposition(row, protocol=PRESERVE_ILLEGAL)
+                              == "retained-model-failure"
+                              for row in retained["rows"].values())
+                           if retained is not None else 0)
     scheduled_stop_reason = None
+    if model_failure_count >= illegal_failure_limit:
+        panel_stopped = True
+        scheduled_stop_reason = {
+            "category": "model_failure_limit", "failure_count": model_failure_count,
+            "failure_limit": illegal_failure_limit,
+        }
     for model in models:
         for mode in information:
             arm = f"{model}-{mode}"
@@ -889,7 +916,22 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                     key = f"{arm}-seed{seed}-flip{flip}"
                     prior_row = (continuation["rows"].get(key)
                                  if continuation is not None else None)
-                    if prior_row is not None and prior_row.get("complete") is True:
+                    retained_row = retained["rows"].get(key) if retained is not None else None
+                    reuse_retained = (retained_row is not None and attempt_disposition(
+                        retained_row, protocol=PRESERVE_ILLEGAL) in
+                        ("complete", "retained-model-failure"))
+                    if reuse_retained:
+                        row = dict(retained_row)
+                        source = retained["source_rows"][key]
+                        row["lineage"] = {
+                            "source": retained["path"],
+                            "source_result_sha256": retained["result_sha256"],
+                            "source_row": source["path"],
+                            "source_row_sha256": source["sha256"],
+                            "kind": "retained-terminal-attempt",
+                            "retention_plan_sha256": retention_plan_sha256,
+                        }
+                    elif prior_row is not None and prior_row.get("complete") is True:
                         source = continuation["source_rows"][key]
                         row = dict(source["row"])
                         row["lineage"] = {
@@ -978,7 +1020,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                     if (failure_protocol == FAIL_STOP and prepared_recipe is not None
                             and row.get("complete") is not True):
                         panel_stopped = True
-                    if failure_protocol == PRESERVE_ILLEGAL and not panel_stopped:
+                    if (failure_protocol == PRESERVE_ILLEGAL and not panel_stopped
+                            and not reuse_retained):
                         disposition = attempt_disposition(row, protocol=PRESERVE_ILLEGAL)
                         if disposition == "retained-model-failure":
                             model_failure_count += 1
@@ -1008,18 +1051,21 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
             "attempts": continuation["prior_attempts"],
             "cost_tokens": continuation["prior_cost_tokens"],
         }
+    retained_tokens = retained["prior_cost_tokens"] if retained is not None else 0
     report = {"schema": SCHEMA, "mode": "run", "config": config,
               "roots": {str(seed): root_hashes.get(seed) for seed in seeds},
               "summaries": summaries, "mirrors": all_rows,
               "budget": {"tokens": budget.tokens,
                          "new_tokens": budget.tokens,
                          "prior_tokens": continuation["prior_cost_tokens"]
-                         if continuation is not None else 0,
+                         if continuation is not None else retained_tokens,
                          "combined_tokens": budget.tokens +
-                         (continuation["prior_cost_tokens"] if continuation is not None else 0),
+                         (continuation["prior_cost_tokens"] if continuation is not None else retained_tokens),
                          "wall_seconds": time.monotonic() - budget.started},
               "prior": prior_meta,
               "setup_failures": setup_failures}
+    if retained is not None:
+        report["retained_attempts"] = config["retained_attempts"]
     if failure_protocol == PRESERVE_ILLEGAL:
         if (scheduled_stop_reason is not None and scheduled_stop_reason["category"]
                 == "unclassified_infrastructure_failure"):

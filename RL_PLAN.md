@@ -259,8 +259,8 @@ oracle or infer true-person disjointness from mutable display names.
 - An interval overlap is not a difference test; superiority between two arms needs a
   contrast that clears zero on a common opponent or paired deals.
 - Five windows first, extend to ten only when the point exceeds +0.015 and the interval crosses
-  zero; a five-window null is
-  "not large", not "equal". Capped (300 s) and
+  zero. A five-window interval that spans zero is INCONCLUSIVE, reported with its MDE80; it
+  supports neither "not large" nor "equal" (amendment adopted on #663). Capped (300 s) and
   uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
   served policy/value-search screens. Ten shared-control windows are a nominal read, and only

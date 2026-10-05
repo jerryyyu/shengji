@@ -60,3 +60,25 @@ def test_windows_match_independent_prefix_oracle(store):
         else:
             assert store.windows(obj, order, window) == expected
         assert (order, obj.sizes, rng.getstate()) == before
+
+
+@pytest.mark.parametrize("store", [BlockStore, CwvBlockStore, CwvPackStore])
+def test_window_labels_are_accessed_only_for_the_rejected_shard(store):
+    class Entries:
+        def __init__(self):
+            self.reads = []
+
+        def __getitem__(self, index):
+            self.reads.append(index)
+            assert index == 2, "valid shards must not read diagnostic labels"
+            return (SimpleNamespace(label="oversized"),)
+
+    entries = Entries()
+    obj = SimpleNamespace(sizes=[1, 1, 9], residency=SimpleNamespace(budget=2),
+                          entries=entries)
+    assert store.windows(obj, [], 2) == []
+    assert store.windows(obj, [1, 0], 2) == [[1, 0]]
+    assert entries.reads == []
+    with pytest.raises(TrainDataError, match="oversized: decodes to 9 bytes"):
+        store.windows(obj, [0, 2], 2)
+    assert entries.reads == [2]

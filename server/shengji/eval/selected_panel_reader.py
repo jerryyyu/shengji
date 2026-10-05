@@ -2,17 +2,16 @@
 
 Caller must authenticate source/runtime, the exact file pins and terminal seal,
 and obtain exclusive permitted read ownership before calling. No sampling,
-prediction, summary reconstruction or publication occurs here. Fixture/model/
+prediction, full readout or publication occurs here. The selected record's
+cached summaries are recomputed only to validate them. Fixture/model/
 encoder and refusal semantics still need independent checks before rank use.
 """
 import copy
 import hashlib
 
 from . import observation_queue as guards
-from .ballot_matrix import _canonical_collection
 from .m9_panel_plan import build_m9_panel_plan
-from .m9_panel_readout import validate_panel_completion
-from .m9_panel_worker import _validate_panel
+from .m9_panel_readout import _read_panel, validate_panel_completion
 
 
 MAX_FILE_BYTES = 16 * 1024 * 1024
@@ -92,22 +91,11 @@ def read_selected_panel(files, *, packet_sha256, index):
     cadence = 'fresh-root' if job['mode'] == 'fresh-root' else 'single-seat-actor-turns'
     if record['ledger_cadence'] != cadence:
         raise ValueError('selected record ledger cadence mismatch')
-    panel = _validate_panel(record.get('panel'), job)
-    tape = panel.get('tape_receipt')
-    if type(tape) is not dict or tape.get('schema') != 'public-refusal-tape-v1':
-        raise ValueError('retained tape receipt required')
-    for key in ('mode', 'seed', 'fill_seed', 'checkpoint_sha256'):
-        if type(tape.get(key)) is not type(job[key]) or tape[key] != job[key]:
-            raise ValueError('retained tape identity mismatch')
-    if type(tape.get('world_count')) is not int or tape['world_count'] != 64:
-        raise ValueError('retained tape world count mismatch')
-    ledger = tape.get('ledger_receipt')
-    if type(ledger) is not dict or ledger.get('mode') != job['mode']:
-        raise ValueError('retained tape ledger mode mismatch')
-    if len(_canonical_collection(panel.get('actions'), 'actions')) != job['expected_legal_count']:
-        raise ValueError('ordered action pool size mismatch')
-    if type(panel.get('worlds')) is not list or len(panel['worlds']) != 64:
-        raise ValueError('retained 64-world tape required')
+    # Validate every saved capture and cached replay exposed to S10 consumers,
+    # including full-pool means/points and batch partition. This has no I/O or
+    # prediction and does not invoke the fifteen-panel readout/diagnostic views.
+    _read_panel(record, job, saved['analysis'])
+    panel = record['panel']
     return {'schema': 'selected-m9-panel-v1', 'index': index,
             'job': copy.deepcopy(job), 'panel': copy.deepcopy(panel),
             'input_sha256': hashes, 'packet_sha256': packet_sha256,

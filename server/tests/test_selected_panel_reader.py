@@ -123,3 +123,34 @@ def test_invalid_index_never_reads(monkeypatch, index):
     monkeypatch.setattr(reader.guards, '_stable_read', lambda *a: pytest.fail('read'))
     with pytest.raises(ValueError):
         reader.read_selected_panel({}, packet_sha256='a' * 64, index=index)
+
+
+@pytest.mark.parametrize('index', [0, 3])
+@pytest.mark.parametrize('bad', ['means', 'batches', 'points', 'summary',
+                               'schema', 'replay', 'world_card', 'world_hands'])
+def test_selected_capture_and_world_validation(monkeypatch, tmp_path, index, bad):
+    pins, sha, _ = inputs(monkeypatch, tmp_path, index)
+    def mutate(record):
+        panel = record['panel']
+        collection = panel['collection']
+        full = (collection['captures']['full_pool'] if index == 0
+                else collection['full_pool_capture'])
+        if bad == 'means':
+            full['serving_value_means'].pop()
+        elif bad == 'batches':
+            full['batches'] += 1
+        elif bad == 'points':
+            full['signed_trick_points'][-1].pop()
+        elif bad == 'summary':
+            collection['shared_matrix_summary'] = {}
+        elif bad == 'schema':
+            collection['schema'] = 'wrong-mode'
+        elif bad == 'replay':
+            record['replay_consistency'] = {'unverified': True}
+        elif bad == 'world_card':
+            panel['worlds'][-1][0][0].append('NOT-A-CARD')
+        else:
+            panel['worlds'][-1][0].pop()
+    repin(pins, 'panel', mutate)
+    with pytest.raises(ValueError):
+        reader.read_selected_panel(pins, packet_sha256=sha, index=index)

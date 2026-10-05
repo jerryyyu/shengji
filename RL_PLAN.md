@@ -215,6 +215,28 @@ oracle or infer true-person disjointness from mutable display names.
 - A missing/dirty manifest, seed-forwarding failure, hidden leakage, impossible
   world, silent short-work fallback, or unreconciled counter invalidates the
   result regardless of score.
+- Use all safe cores for independent work and record the measured scaling; do not stack competing
+  heavy jobs merely to report utilization. Optimize the path before scaling the population.
+- Opaque multi-hour stages publish progress, active workers and ETA at least every 60 seconds.
+- Material nodes are atomic, immutable, idempotently reopenable and resumable; a failure leaves a
+  typed diagnostic and preserves completed work.
+- Align with the user before a design adds a duplicate multi-hour reconstruction or integrity pass.
+  An independent reproduction must answer a meaningfully independent question, not call the same
+  implementation again.
+- A deadline at any completed DAG node (collection, reconstruction, training or scoring) is graceful
+  truncation, not automatic loss: seal the best valid completed boundary with an explicit truncated
+  status. The common-epoch clause above is the training case of this rule.
+- Seal the first interpretable scientific result before optional or independent reconstruction;
+  track later verification separately, and a verifier failure must not erase valid datasets,
+  checkpoints or sealed results.
+- Build and exercise recovery before a one-shot opening. Recovery reuses byte-bound valid inputs and
+  completed checkpoints and reruns only invalid or incomplete descendants.
+- Rehearse the exact production terminal path, not just training or helper functions: a witness must
+  reach the recorded output at the altitude where a regression would matter.
+- Do not raise a frozen resource cap merely because the measured projection exceeds it; a cap change
+  needs an independent rationale, renewed headroom analysis and explicit review.
+- Prefer one optimized critical-path owner; do not keep serial and optimized copies competing for
+  hosts unless the fallback has a named, still-useful role.
 - Negative, incomplete, and resource-failed attempts remain in the ledger with
   their useful artifacts and explicit non-claims. Rigor must prevent cherry
   picking without erasing operational learning.

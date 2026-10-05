@@ -145,10 +145,6 @@ def decompose_matching(cards: list[str], ordering: Ordering,
     runs_needed, n_singles = shape
     if len(cards) != 2 * sum(runs_needed) + n_singles:
         return None
-    if not runs_needed and n_singles == 1:
-        # A single has no pair allocation or backtracking to perform. Keep
-        # fresh component storage, as in the general Counter-based path.
-        return Decomposition([Component("single", [cards[0]], ordering.level(cards[0]), 0)])
     cnt = Counter(cards)
     by_level: dict[int, list[str]] = {}
     for c, k in cnt.items():

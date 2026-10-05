@@ -5,33 +5,75 @@ from shengji.engine.combos import decompose, find_tractor_runs, has_tractor
 from shengji.engine.legal import IllegalPlay, beats, validate_follow, validate_lead
 
 
-def test_single_matching_all_cards_and_orderings_without_counter(monkeypatch):
-    from shengji.engine import combos, fast
-    from shengji.engine.cards import RANKS
+def test_single_beats_specialization_matches_legacy(monkeypatch):
+    """Singleton beats agrees with decomposition and bypasses both helpers."""
+    from shengji.engine import fast, legal
+    from shengji.engine.cards import RANKS, TRUMP
+
     active = bool(fast._saved)
     if active:
         fast.deactivate()
     try:
+        pure_uniform_suit = legal.uniform_suit
+        pure_decompose = legal.decompose
+        pure_decompose_matching = legal.decompose_matching
+
+        def legacy(challenger, lead, incumbent_suit, incumbent_top, ordering):
+            eff = pure_uniform_suit(challenger, ordering)
+            if eff is None:
+                return False, 0
+            lead_dec = pure_decompose(lead, ordering)
+            ch_dec = pure_decompose_matching(
+                challenger, ordering, lead_dec.shape())
+            if ch_dec is None:
+                return False, 0
+            top = ch_dec.top_level()
+            if eff == incumbent_suit:
+                return top > incumbent_top, top
+            if eff == TRUMP:
+                return True, top
+            return False, 0
+
+        # The non-singleton route remains decomposition-based.
+        ordering = Ordering("H", "7")
+        lead = ["S5", "S5"]
+        challenger = ["SK", "SK"]
+        assert legal.beats(challenger, lead, "S", 2, ordering) == \
+            legacy(challenger, lead, "S", 2, ordering)
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError("singleton beats called a decomposition helper")
+
         with monkeypatch.context() as patch:
-            def forbidden(*args, **kwargs):
-                raise AssertionError("single matching must not allocate a Counter")
-            patch.setattr(combos, "Counter", forbidden)
-            for suit in (None, "S", "H", "D", "C"):
-                for rank in RANKS:
-                    ordering = Ordering(suit, rank)
-                    for card in sorted(set(make_deck())):
-                        cards = [card]
-                        got = combos.decompose_matching(cards, ordering, ((), 1))
-                        assert got == combos.Decomposition([
-                            combos.Component("single", [card], ordering.level(card), 0)])
-                        assert got.components[0].cards is not cards
-                        got.components[0].cards.append(card)
-                        assert cards == [card]
-            ordering = Ordering("H", "7")
-            assert combos.decompose_matching([], ordering, ((), 1)) is None
-            assert combos.decompose_matching(["S2", "S2"], ordering, ((), 1)) is None
-            assert combos.decompose_matching(["S2"], ordering, ((1,), 0)) is None
+            patch.setattr(legal, "decompose", forbidden)
+            patch.setattr(legal, "decompose_matching", forbidden)
+
+            cards = sorted(set(make_deck()))
+            incumbent_suits = ("S", "H", "D", "C", TRUMP)
+            for trump_suit in (None, "S", "H", "D", "C"):
+                for trump_rank in RANKS:
+                    ordering = Ordering(trump_suit, trump_rank)
+                    for lead_card in cards:
+                        for challenger_card in cards:
+                            lead = [lead_card]
+                            challenger = [challenger_card]
+                            top = ordering.level(challenger_card)
+                            for incumbent_suit in incumbent_suits:
+                                boundaries = (top - 1, top, top + 1) \
+                                    if incumbent_suit == ordering.eff_suit(challenger_card) \
+                                    else (top,)
+                                for incumbent_top in boundaries:
+                                    before = (list(challenger), list(lead))
+                                    got = legal.beats(
+                                        challenger, lead, incumbent_suit,
+                                        incumbent_top, ordering)
+                                    assert got == legacy(
+                                        challenger, lead, incumbent_suit,
+                                        incumbent_top, ordering)
+                                    assert (challenger, lead) == before
     finally:
+        # Restore pure helper bindings before compiled routing snapshots them.
+        monkeypatch.undo()
         if active:
             fast.activate()
 

@@ -13,6 +13,37 @@ from shengji.train import pv_search_policy as pv
 ACTIONS = [["DK"], ["D6"]]
 
 
+def test_capacity_retained_pair_does_not_contradict_follow_history():
+    from collections import Counter
+    from pathlib import Path
+    from shengji.ai.memory import Memory
+    from shengji.ai.refusal import pin_unplayed_attempt
+    from shengji.eval import tactical
+    from shengji.eval.public_refusal_history import public_root_with_ledger
+
+    fixture = tactical.load_fixtures(
+        Path(__file__).parent / "tactical/capacity_m9.jsonl")[0]
+
+    def contradictions(candidate):
+        root, ledger, _ = public_root_with_ledger(candidate, mode="history-primed")
+        mem = Memory(root, candidate.seat, own_kitty=True)
+        for refusal in ledger.refusals:
+            pin_unplayed_attempt(mem, root, refusal, candidate.seat)
+        assert mem.known["S3"] == (0, 2)
+        pairs = Counter()
+        for code, (seat, count) in mem.known.items():
+            pairs[seat, root.ordering.eff_suit(code)] += count // 2
+        return [(seat, suit) for (seat, suit), count in pairs.items()
+                if count > mem.pair_cap[seat].get(suit, float("inf"))]
+
+    assert contradictions(fixture) == []
+    # The original history followed SK SK with three singles despite still
+    # holding S3 S3. This witness must reject it even if sampling happens to pass.
+    old = copy.deepcopy(fixture.to_json())
+    old["plays"][10]["cards"] = ["SQ", "SJ", "S10"]
+    assert contradictions(tactical.fixture_from_json(old)) == [(0, "S")]
+
+
 @pytest.mark.parametrize("fill_seed", [0, 17])
 @pytest.mark.parametrize("mode,refusals", [("fresh-root", 0), ("history-primed", 1)])
 def test_synthetic_capacity_fixture_has_complete_wide_pool_and_history(
@@ -44,8 +75,9 @@ def test_synthetic_capacity_fixture_has_complete_wide_pool_and_history(
 
 
 @pytest.mark.parametrize("mode,refusals", [("fresh-root", 0), ("history-primed", 1)])
+@pytest.mark.parametrize("strict_voids", [False, True])
 def test_synthetic_capacity_fixture_samples_without_any_model_prediction(
-        monkeypatch, mode, refusals):
+        monkeypatch, mode, refusals, strict_voids):
     from pathlib import Path
     from shengji.eval import tactical
     from shengji.eval.public_refusal_tape import sample_public_refusal_tape
@@ -53,7 +85,11 @@ def test_synthetic_capacity_fixture_samples_without_any_model_prediction(
 
     fixture = tactical.load_fixtures(
         Path(__file__).parent / "tactical/capacity_m9.jsonl")[0]
-    bot = served(seed=17, worlds=2, refusal_constraints=True)
+    if strict_voids:
+        monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    else:
+        monkeypatch.delenv("SHENGJI_REQUIRE_VOIDS", raising=False)
+    bot = served(seed=17, worlds=64, refusal_constraints=True)
     def forbidden(*args, **kwargs):
         pytest.fail("capacity fixture validation must not score or predict")
     monkeypatch.setattr(bot, "predict", forbidden)
@@ -61,7 +97,7 @@ def test_synthetic_capacity_fixture_samples_without_any_model_prediction(
     root, worlds, receipt = sample_public_refusal_tape(
         bot, fixture, mode=mode, seed=17)
     assert root.turn == fixture.seat
-    assert len(worlds) == receipt["world_count"] == 2
+    assert len(worlds) == receipt["world_count"] == 64
     assert len(receipt["ledger_receipt"]["retained_refusals"]) == refusals
     assert receipt["model_verified"] is False
 

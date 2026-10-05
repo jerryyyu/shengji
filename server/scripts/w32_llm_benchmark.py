@@ -669,6 +669,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   prepared_recipe: PreparedRecipe | None = None,
                   capacity_retries: bool = False,
                   accept_recovered_reconnects: bool = False,
+                  invalid_action_feedback: bool = False,
+                  classify_final_action_failures: bool = False,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -678,7 +680,9 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
     for name, value in (("capacity_retries", capacity_retries),
-                        ("accept_recovered_reconnects", accept_recovered_reconnects)):
+                        ("accept_recovered_reconnects", accept_recovered_reconnects),
+                        ("invalid_action_feedback", invalid_action_feedback),
+                        ("classify_final_action_failures", classify_final_action_failures)):
         if type(value) is not bool:
             raise BenchmarkRefusal(f"{name} must be boolean")
     if run and (type(token_limit) is not int or token_limit <= 0):
@@ -705,7 +709,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     else:
         checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
-    if (capacity_retries or accept_recovered_reconnects) and (
+    if (capacity_retries or accept_recovered_reconnects or invalid_action_feedback
+            or classify_final_action_failures) and (
             prepared_recipe is None or models != ("sol",)):
         raise BenchmarkRefusal("recovery controls require the explicit Sol prepared-recipe path")
     information = tuple(information)
@@ -757,6 +762,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
             "root_hashes": prepared_roots["root_hashes"],
             "source_config": prepared_roots["source_config"],
         }
+    for name, enabled in (("invalid_action_feedback", invalid_action_feedback),
+                          ("classify_final_action_failures", classify_final_action_failures)):
+        if enabled:
+            config[name] = True
     if capacity_retries:
         config["provider_capacity_retry_delays"] = list(CAPACITY_RETRY_DELAYS)
     if accept_recovered_reconnects:
@@ -908,11 +917,17 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                                 transports.append(transport)
                                 return _BudgetedPlanner(transport, budget)
 
+                            action_options = {}
+                            if invalid_action_feedback:
+                                action_options["invalid_action_feedback"] = True
+                            if classify_final_action_failures:
+                                action_options["classify_final_action_failures"] = True
                             row = dict(runner(
                                 roots[seed], flip=flip, information=mode,
                                 planner_factory=planner_factory,
                                 baseline_factory=baseline_fn, seed=seed,
-                                before_decision=lambda: budget.check("decision")))
+                                before_decision=lambda: budget.check("decision"),
+                                **action_options))
                             row.update(schema="w32-llm-benchmark-mirror-v1", key=key,
                                        arm=arm, model=model, information=mode,
                                        seed=seed, flip=flip)

@@ -135,6 +135,19 @@ token; off, it is absent from the payload, so every existing name and the
 served selection are unchanged.  No model call and no leaf rebuild is added.
 The prior rule itself costs nothing, so it needs no budget check; the points
 rule keeps its own deadline handling.
+
+Optional played-action rule (OXPS round 1, release 38), OFF BY DEFAULT:
+``SHENGJI_PV_DOOMED_THROW_SWAP=1`` -- on a LEAD whose selected action is a throw
+the engine refuses in EVERY sampled world with the same forced component, that
+component is played instead of the throw (the throw's leaf already is that
+component played, so the value is unchanged; only the public failed-throw notice
+and the cards it shows go away; definition: `policy_value_search`).  ``0`` or
+``1`` only; on, it enters the recipe digest and adds ``-dts`` to the name as the
+last rule token; off, it is absent from the payload, so every existing name
+(release 38: ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457``)
+and the played action are unchanged.  No model call and no leaf rebuild is
+added; the W engine validations run under the play budget and, on expiry, the
+check abandons itself and the selected action is played.
 """
 from __future__ import annotations
 
@@ -155,8 +168,8 @@ from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
-                                  LEAD_ANCHOR_DEFAULTS, LEAD_TIEBREAK_DEFAULTS,
-                                  TIEBREAK_DEFAULTS,
+                                  DOOMED_THROW_DEFAULTS, LEAD_ANCHOR_DEFAULTS,
+                                  LEAD_TIEBREAK_DEFAULTS, TIEBREAK_DEFAULTS,
                                   PolicyValueBot)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
                               BuryPolicyError, CWVBuryConfig,
@@ -191,15 +204,18 @@ ADAPTIVE_K_TOKEN = ("adaptive_k", f"ak{ADAPTIVE_K_DEFAULTS['candidates_lead_mult
 LEAD_ANCHOR_RULE = {"LEAD_ANCHOR": "lead_anchor"}
 #: the optional lead selection rule (`policy_value_search`): env flag -> recipe key
 LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
+#: the optional played-action rule (`policy_value_search`): env flag -> recipe key
+DOOMED_THROW_RULE = {"DOOMED_THROW_SWAP": "doomed_throw_swap"}
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width, anchor, lead
-#: selection): div, fs, rc, rcec, tb, ak16, la, lp
+#: selection, played action): div, fs, rc, rcec, tb, ak16, la, lp, dts
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
-              **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE}
+              **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("lead_anchor", "la"),
-                                                   ("lead_tiebreak_prior", "lp"))
+                                                   ("lead_tiebreak_prior", "lp"),
+                                                   ("doomed_throw_swap", "dts"))
 ENV_PREFIX = "SHENGJI_PV_"
 #: the fallback record's ``error_message`` is the exception text cut to this
 #: many characters (#707 S9)
@@ -295,6 +311,8 @@ class PVSearchConfig:
     lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"]
     # the optional lead selection rule (board A8); the same contract
     lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
+    # the optional played-action rule (OXPS r1 doomed throw); the same contract
+    doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -359,7 +377,8 @@ class PVSearchBot(PolicyValueBot):
                          tiebreak_points=config.tiebreak_points,
                          adaptive_k=config.adaptive_k,
                          lead_anchor=config.lead_anchor,
-                         lead_tiebreak_prior=config.lead_tiebreak_prior)
+                         lead_tiebreak_prior=config.lead_tiebreak_prior,
+                         doomed_throw_swap=config.doomed_throw_swap)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -576,6 +595,9 @@ class PVSearchBot(PolicyValueBot):
         # expiry, abandons itself in favour of the argmax (`policy_value_search`)
         winner = self._select(rnd, seat, admitted, means, worlds=worlds, check_budget=check_budget,
                               priors=[float(preferences[i]) for i in chosen])
+        # the optional doomed-throw swap changes only the cards played, never the
+        # selection (``selected_index`` and ``value_means`` still describe the search)
+        played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, check_budget)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -593,14 +615,15 @@ class PVSearchBot(PolicyValueBot):
             "value_evaluations": len(worlds) * len(admitted),
             "anchor_selected": winner == 0, "encoder_version": self.version,
             # ``played`` is the server's record/play contract (`api.server._log_play`)
-            "played": list(admitted[winner]),
+            "played": list(played),
             "seconds": time.perf_counter() - started, "work_complete": True,
             **self._admission_record(),
             **self._sampler_record(),
             **self._tiebreak_record(),
             **self._lead_tiebreak_record(),
+            **self._doomed_throw_record(),
         }
-        return list(admitted[winner])
+        return list(played)
 
     def _sampler_record(self):
         """The refusal rule's fields for the decision record: present only while
@@ -713,7 +736,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                        adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
-                       lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
+                       lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
+                       doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -746,7 +770,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
-                            lead_tiebreak_prior=lead_tiebreak_prior)
+                            lead_tiebreak_prior=lead_tiebreak_prior,
+                            doomed_throw_swap=doomed_throw_swap)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -806,7 +831,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                         adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                         lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
-                        lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
+                        lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
+                        doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -821,7 +847,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
-                            lead_tiebreak_prior=lead_tiebreak_prior)
+                            lead_tiebreak_prior=lead_tiebreak_prior,
+                            doomed_throw_swap=doomed_throw_swap)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -871,7 +898,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                tiebreak_points=config.tiebreak_points,
                                adaptive_k=config.adaptive_k,
                                lead_anchor=config.lead_anchor,
-                               lead_tiebreak_prior=config.lead_tiebreak_prior),
+                               lead_tiebreak_prior=config.lead_tiebreak_prior,
+                               doomed_throw_swap=config.doomed_throw_swap),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -887,7 +915,8 @@ def pv_env_recipe(environ=None) -> dict:
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
-    ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
+    ``_DOOMED_THROW_SWAP`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

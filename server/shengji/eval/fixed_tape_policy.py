@@ -20,6 +20,7 @@ def capture_policy_ranks(bot, root, seat, actions, worlds, *, check_budget=None)
     bracket the indivisible prediction; expiration returns no result.
     """
     from ..train.pv_search_policy import PVSearchBot
+    from ..ai.mcbot import MCBot, DeterminizationContractError
 
     if (not isinstance(bot, PVSearchBot)
             or getattr(bot.scores, '__func__', None) is not PVSearchBot.scores):
@@ -32,10 +33,23 @@ def capture_policy_ranks(bot, root, seat, actions, worlds, *, check_budget=None)
     hand = Counter(root.hands[seat])
     if any(Counter(action) - hand for action in actions):
         raise ValueError('action is not a subset of actor hand')
+    # This existing validator is state-free: do not initialize a sampler or
+    # consume RNG. Its sorted return is deliberately discarded; score the
+    # caller's original ordered tape, not a canonicalized replacement.
+    validator = object.__new__(MCBot)
     for world in worlds:
         if (not isinstance(world, (tuple, list)) or len(world) != 2
                 or len(world[0]) != 4 or Counter(world[0][seat]) != hand):
             raise ValueError('world must retain actor hand and four seats')
+        hands, buried = world
+        if len(buried) != len(root.buried):
+            raise ValueError('world must retain buried card count')
+        try:
+            MCBot._complete_determinized_hands(
+                validator, root, seat,
+                {s: hands[s] for s in range(4) if s != seat}, buried=buried)
+        except DeterminizationContractError as exc:
+            raise ValueError('world violates card conservation or hand counts') from exc
     if check_budget is not None:
         check_budget()
     scores = np.asarray(PVSearchBot.scores(

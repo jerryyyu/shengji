@@ -48,6 +48,7 @@ jobs:
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
+          tests/test_benchmark_final_action_boundary.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
           tests/test_prepared_play_error_hook.py
@@ -78,6 +79,7 @@ jobs:
           SHENGJI_FAST: "1"
         run: >-
           uv run pytest -q --durations=10
+          tests/test_benchmark_final_action_boundary.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py
           tests/test_action_semantics.py

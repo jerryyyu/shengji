@@ -423,6 +423,224 @@ def _load_continuation(prior: str | os.PathLike, *, seeds: tuple[int, ...],
             "prior_attempts": len(rows_by_key)}
 
 
+def _compatible_panel_setup(recorded: object, *, report_sha256: str) -> bool:
+    """Compare setup content, not checkout location; admit one reviewed legacy source.
+
+    The original panel recorded the whole benchmark module as the snapshot
+    identity. Retry/accounting edits in that module do not change its snapshot
+    producer. Only the exact sealed Oct 2 report gets that compatibility bridge,
+    and only while the snapshot functions and their engine serializer remain
+    byte-identical to the reviewed producer. Root hashes and exact restoration
+    are still checked independently by the caller.
+    """
+    expected = _panel_setup_identity()
+    if not isinstance(recorded, Mapping) or set(recorded) != set(expected):
+        return False
+    for key in ("schema", "seats", "policy"):
+        if recorded[key] != expected[key] or type(recorded[key]) is not type(expected[key]):
+            return False
+    normalized = {}
+    current = {}
+    for key in ("engine", "prepare_round", "smartbot", "snapshot"):
+        value = recorded[key]
+        if (not isinstance(value, Mapping) or set(value) != set(expected[key])
+                or any(type(item) is not str for item in value.values())):
+            return False
+        normalized[key] = {k: v for k, v in value.items() if k != "path"}
+        current[key] = {k: v for k, v in expected[key].items() if k != "path"}
+    if normalized == current:
+        return True
+    if report_sha256 != "8ed56de254e7c7ff4341905a02a9a3dd2346412db04b6902f2098b0b839c5f5e":
+        return False
+    if normalized["snapshot"].get("sha256") != "bd52ee31cb2d07345b4a2de1063c659dd1558313ba4605572f1e6a397ac90700":
+        return False
+    normalized["snapshot"]["sha256"] = current["snapshot"]["sha256"]
+    if normalized['prepare_round'] != current['prepare_round']:
+        # Exact reviewed whole-file pair: the sole delta adds an optional
+        # play-error callback to play_prepared_round, not prepare_round.
+        # This does not admit arbitrary future edits or any other root source.
+        if (normalized['prepare_round'].get('sha256') !=
+                'c61f7cebf2133ad1cc6daaad8698f246178d6ebf41a4b6e569888a7b373a6d26'
+                or current['prepare_round'].get('sha256') !=
+                'fe434d5a30e32d38c4c3aa3c4812e11c10c8534b31a4a23da9155c34428ecd87'):
+            return False
+        normalized['prepare_round']['sha256'] = current['prepare_round']['sha256']
+    if normalized != current:
+        return False
+    definitions = (
+        (_root_snapshot, "dacbb1e2dc74aa3ed191732ccdfe2bd95da2b9e682a10a6d5a479b250408e392"),
+        (_json_safe, "ed50cd407eaee087abc37cc6075dc243878c35e84f1404ff8e5877b8fd47351c"),
+    )
+    if any(_sha_bytes(inspect.getsource(fn).strip().encode()) != digest
+           for fn, digest in definitions):
+        return False
+    return _callable_source_identity(_state_snapshot)["sha256"] == \
+        "03c8569ca8232c49218264047d7221c310288701e7bc6ca1cd81b08e8064787f"
+
+def _prepared_root_identity(root: Mapping[str, object], *, seed: int,
+                            rank_index: int, expected_banker: int | None = None) -> None:
+    """Validate the private, replayable root contract used by root-only imports."""
+    if root.get("schema") != "w32-llm-benchmark-root-v1":
+        raise BenchmarkRefusal(f"prior root-{seed}.json has an unknown schema")
+    if (type(root.get("seed")) is not int or root.get("seed") != seed
+            or type(root.get("rank_index")) is not int
+            or root.get("rank_index") != rank_index):
+        raise BenchmarkRefusal(f"prior root-{seed}.json seed/rank_index mismatch")
+    levels = root.get("level_idx")
+    if (type(levels) is not list or len(levels) != 2
+            or any(type(level) is not int or not 0 <= level < len(RANKS)
+                   for level in levels)
+            or levels != [rank_index, rank_index]):
+        raise BenchmarkRefusal(f"prior root-{seed}.json has invalid level_idx")
+    banker = root.get("banker")
+    if (type(banker) is not int or not 0 <= banker < 4):
+        raise BenchmarkRefusal(f"prior root-{seed}.json has invalid banker")
+    if expected_banker is not None and banker != expected_banker:
+        raise BenchmarkRefusal(f"prior root-{seed}.json banker identity mismatch")
+    snapshot = root.get("round")
+    if (not isinstance(snapshot, Mapping) or snapshot.get("phase") != "play"
+            or snapshot.get("banker") != banker):
+        raise BenchmarkRefusal(f"prior root-{seed}.json is not a play-phase root")
+
+
+def _load_root_source_roots(result_obj: Mapping[str, object], result_raw: bytes,
+                            prior_path: Path, *, seeds: tuple[int, ...],
+                            game_factory: Callable[[object], object]) -> dict[str, object]:
+    """Load the dedicated provider-free roots-only source schema."""
+    if result_raw != canonical_json_bytes(result_obj):
+        raise BenchmarkRefusal("prepared roots-only result.json is not canonical JSON")
+    if (result_obj.get("mode") != "roots-only"
+            or result_obj.get("root_schema") != "w32-llm-benchmark-root-v1"
+            or result_obj.get("roots_only") is not True
+            or result_obj.get("gameplay") is not False
+            or result_obj.get("provider_calls") != 0
+            or result_obj.get("model_calls") != 0):
+        raise BenchmarkRefusal("prepared root source is not a roots-only attestation")
+    config = result_obj.get("config")
+    if not isinstance(config, Mapping):
+        raise BenchmarkRefusal("prepared roots-only source has no config")
+    if (result_obj.get("seeds") != list(seeds)
+            or result_obj.get("policies") != list(PANEL_POLICIES)
+            or result_obj.get("setup") != config.get("setup")):
+        raise BenchmarkRefusal("prepared roots-only top-level identity mismatch")
+    if config.get("schema") != ROOT_SOURCE_SCHEMA:
+        raise BenchmarkRefusal("prepared roots-only source config schema mismatch")
+    if "continue_from" in config or "prepared_roots_from" in config:
+        raise BenchmarkRefusal("prepared roots-only source cannot be recycled")
+    if config.get("seeds") != list(seeds):
+        raise BenchmarkRefusal("prepared root config seeds must exactly match requested seeds")
+    if config.get("policies") != list(PANEL_POLICIES):
+        raise BenchmarkRefusal("prepared roots-only policy roster mismatch")
+    if not _compatible_panel_setup(config.get("setup"), report_sha256=_sha_bytes(result_raw)):
+        raise BenchmarkRefusal("prepared roots-only setup identity mismatch")
+    roots_obj = result_obj.get("roots")
+    expected_keys = {str(seed) for seed in seeds}
+    if not isinstance(roots_obj, Mapping) or set(roots_obj) != expected_keys:
+        raise BenchmarkRefusal("prepared root result.json does not cover requested seeds")
+
+    roots: dict[int, Mapping[str, object]] = {}
+    games: dict[int, object] = {}
+    hashes: dict[str, str] = {}
+    for index, seed in enumerate(seeds):
+        root_path = prior_path / f"root-{seed}.json"
+        root_obj, root_raw = _load_json_file(root_path, label=f"root-{seed}.json")
+        if not isinstance(root_obj, Mapping):
+            raise BenchmarkRefusal(f"prior root-{seed}.json is malformed")
+        if root_raw != canonical_json_bytes(root_obj):
+            raise BenchmarkRefusal(f"prior root-{seed}.json is not canonical JSON")
+        _prepared_root_identity(root_obj, seed=seed,
+                                rank_index=index % len(RANKS),
+                                expected_banker=seed % 4)
+        root_hash = _sha(root_obj)
+        if roots_obj.get(str(seed)) != root_hash:
+            raise BenchmarkRefusal(f"prior root hash mismatch for seed {seed}")
+        try:
+            restored = _restore_game(root_obj, seed, game_factory)
+        except Exception as exc:
+            raise BenchmarkRefusal(
+                f"prior root-{seed}.json cannot restore game state") from exc
+        if (getattr(restored, "level_idx", None) != root_obj["level_idx"]
+                or getattr(getattr(restored, "round", None), "phase", None) != "play"
+                or _state_snapshot(restored.round) != root_obj["round"]):
+            raise BenchmarkRefusal(
+                f"prior root-{seed}.json restored game state mismatch")
+        roots[seed] = dict(root_obj, _source_bytes_sha256=_sha_bytes(root_raw))
+        games[seed] = restored
+        hashes[str(seed)] = root_hash
+    return {"path": str(prior_path), "result_sha256": _sha_bytes(result_raw),
+            "source_config": config, "roots": roots, "games": games,
+            "root_hashes": hashes}
+
+
+def _load_prepared_roots(prior: str | os.PathLike, *, seeds: tuple[int, ...],
+                         game_factory: Callable[[object], object],
+                         expected_result_sha256: str | None = None) -> dict[str, object]:
+    """Load only sealed roots, validating restoration before output creation."""
+    prior_path = Path(prior).expanduser()
+    if (not prior_path.is_dir() or prior_path.is_symlink()):
+        raise BenchmarkRefusal(
+            "--prepared-roots-from must name a prior output directory")
+    prior_path = prior_path.resolve()
+    result_path = prior_path / "result.json"
+    result_obj, result_raw = _load_json_file(result_path, label="result.json")
+    if (expected_result_sha256 is not None
+            and _sha_bytes(result_raw) != expected_result_sha256):
+        raise BenchmarkRefusal("prepared root source report SHA256 mismatch")
+    if isinstance(result_obj, Mapping) \
+            and result_obj.get("schema") == ROOT_SOURCE_SCHEMA:
+        return _load_root_source_roots(result_obj, result_raw, prior_path,
+                                       seeds=seeds, game_factory=game_factory)
+    if (not isinstance(result_obj, Mapping) or result_obj.get("schema") != SCHEMA
+            or result_obj.get("mode") != "run"):
+        raise BenchmarkRefusal(
+            "prepared root result.json is not a terminal benchmark report")
+    config = result_obj.get("config")
+    if (isinstance(config, Mapping)
+            and ("prepared_roots_from" in config or "continue_from" in config)):
+        raise BenchmarkRefusal("prepared roots require an original root-producing report")
+    if (not isinstance(config, Mapping)
+            or config.get("seeds") != list(seeds)):
+        raise BenchmarkRefusal(
+            "prepared root config seeds must exactly match requested seeds")
+    roots_obj = result_obj.get("roots")
+    expected_keys = {str(seed) for seed in seeds}
+    if (not isinstance(roots_obj, Mapping)
+            or set(roots_obj) != expected_keys):
+        raise BenchmarkRefusal(
+            "prepared root result.json does not cover requested seeds")
+
+    roots: dict[int, Mapping[str, object]] = {}
+    games: dict[int, object] = {}
+    hashes: dict[str, str] = {}
+    for index, seed in enumerate(seeds):
+        root_path = prior_path / f"root-{seed}.json"
+        root_obj, root_raw = _load_json_file(root_path, label=f"root-{seed}.json")
+        if not isinstance(root_obj, Mapping):
+            raise BenchmarkRefusal(f"prior root-{seed}.json is malformed")
+        _prepared_root_identity(root_obj, seed=seed,
+                                rank_index=index % len(RANKS))
+        root_hash = _sha(root_obj)
+        if roots_obj.get(str(seed)) != root_hash:
+            raise BenchmarkRefusal(f"prior root hash mismatch for seed {seed}")
+        try:
+            restored = _restore_game(root_obj, seed, game_factory)
+        except Exception as exc:
+            raise BenchmarkRefusal(
+                f"prior root-{seed}.json cannot restore game state") from exc
+        if (getattr(restored, "level_idx", None) != root_obj["level_idx"]
+                or getattr(getattr(restored, "round", None), "phase", None) != "play"
+                or _state_snapshot(restored.round) != root_obj["round"]):
+            raise BenchmarkRefusal(
+                f"prior root-{seed}.json restored game state mismatch")
+        roots[seed] = dict(root_obj, _source_bytes_sha256=_sha_bytes(root_raw))
+        games[seed] = restored
+        hashes[str(seed)] = root_hash
+    return {"path": str(prior_path), "result_sha256": _sha_bytes(result_raw),
+            "source_config": config,
+            "roots": roots, "games": games, "root_hashes": hashes}
+
+
+
 def _restore_game(root: Mapping[str, object], seed: int, game_factory: Callable[[object], object]):
     """Restore a Game from an imported private root; never deal or bury it."""
     level_idx = root.get("level_idx")

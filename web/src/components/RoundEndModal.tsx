@@ -1,5 +1,5 @@
 import type { GameState, RoundResult } from "../protocol";
-import { clearSavedRoom, conn } from "../ws";
+import { conn } from "../ws";
 import Card from "./Card";
 import { useId } from "react";
 import ResultDialog from "./ResultDialog";
@@ -43,10 +43,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           </p>
           <button
             className="btn primary big"
-            onClick={() => {
-              clearSavedRoom();
-              location.reload();
-            }}
+            onClick={() => conn.leaveToLobby()}
           >
             Back to lobby
           </button>

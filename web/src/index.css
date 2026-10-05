@@ -965,15 +965,15 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
+/* A pulse, not a background-position shimmer: animating the clipped text
+   gradient restyled and repainted the label on the main thread every frame
+   for as long as a bot thought (~8% of a 4x-throttled phone CPU, measured);
+   opacity animates on the compositor. */
 .thinking {
   font-size: 12px;
   font-style: italic;
-  background: linear-gradient(90deg, #8a93a3 25%, #ffffff 50%, #8a93a3 75%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 1.4s linear infinite;
+  color: #d5dbe5;
+  animation: thinking-pulse 1.4s ease-in-out infinite alternate;
 }
 
 .bot-banter {
@@ -1014,13 +1014,9 @@ textarea:focus-visible {
   .bot-progress > span { animation: none; transform: translateX(90%); }
 }
 
-@keyframes shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
+@keyframes thinking-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
 }
 
 .their-turn {

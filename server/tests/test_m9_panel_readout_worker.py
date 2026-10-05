@@ -558,3 +558,210 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     monkeypatch.setattr(sys, "path", list(sys.path))
     assert worker.run(str(path), digest, "b" * 64) == {"synthetic": True}
+
+
+def _qualification_fixture(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    server = checkout / "server"
+    (server / "scripts").mkdir(parents=True)
+    reader = server / "scripts" / "m9_panel_readout_worker.py"
+    reader.write_text("# synthetic reader\n")
+    baseline_path = tmp_path / "baseline-runtime.json"
+    baseline_path.write_bytes(b"baseline")
+    bootstrap_sha = "b" * 64
+    baseline = {
+        "schema": "shengji-m9-runtime-v1",
+        "source_root": str(server),
+        "source_files": {"scripts/observation_worker.py": bootstrap_sha},
+        "environment": {"LANG": "C.UTF-8"},
+    }
+    helper = _load_actual_helper()
+    monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
+    monkeypatch.setattr(worker, "_load_helper", lambda _: helper)
+    monkeypatch.setattr(worker, "_qualification_paths", lambda _: (reader, server))
+    monkeypatch.setattr(helper, "_read_runtime", lambda *_: baseline)
+    return server, reader, baseline_path, baseline, bootstrap_sha, helper
+
+
+def test_capture_runtime_is_model_free_and_uses_only_readout_closure(
+        tmp_path, monkeypatch):
+    server, _reader, baseline_path, baseline, bootstrap_sha, _helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+    output = tmp_path / "qualified" / "runtime.json"
+    output.parent.mkdir()
+    events = []
+    captured = dict(baseline)
+    captured["external_runtime"] = {"source_root": str(server), "imports": []}
+
+    class Adapter:
+        @staticmethod
+        def capture(source, *, profile):
+            assert source == server
+            assert profile == "panel-readout"
+            events.append("capture")
+            return captured
+
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda source: (events.append("imports") or
+                                        (Adapter, object(), object())))
+    for name in ("_read_invocation", "_read_collection_packet", "_read_controls",
+                 "_verify_terminal_seal", "_read_collection_runtime"):
+        monkeypatch.setattr(worker, name, lambda *args, _name=name: pytest.fail(
+            f"qualification accessed {_name}"))
+
+    worker.capture_runtime(str(baseline_path), _sha(b"baseline"), bootstrap_sha,
+                           str(output))
+    assert events == ["imports", "capture"]
+    assert json.loads(output.read_bytes()) == captured
+
+
+def test_capture_runtime_rejects_manifest_mismatch_before_publication(
+        tmp_path, monkeypatch):
+    _server, _reader, baseline_path, baseline, bootstrap_sha, _helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+    output = tmp_path / "qualified.json"
+    bad = dict(baseline)
+    bad["environment"] = {"LANG": "C"}
+
+    class Adapter:
+        @staticmethod
+        def capture(source, *, profile):
+            return bad
+
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: (Adapter, object(), object()))
+    with pytest.raises(ValueError, match="environment"):
+        worker.capture_runtime(str(baseline_path), _sha(b"baseline"),
+                               bootstrap_sha, str(output))
+    assert not output.exists()
+
+
+def test_qualification_bad_manifest_binding_precedes_application_import(
+        tmp_path, monkeypatch):
+    server, _reader, baseline_path, baseline, bootstrap_sha, helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+    imported = []
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: imported.append(True))
+    bad = dict(baseline)
+    bad["source_files"] = {"scripts/observation_worker.py": "c" * 64}
+    monkeypatch.setattr(helper, "_read_runtime", lambda *_: bad)
+    with pytest.raises(ValueError, match="bind authenticated bootstrap"):
+        worker.capture_runtime(str(baseline_path), _sha(b"baseline"),
+                               bootstrap_sha, str(tmp_path / "out.json"))
+    assert imported == []
+    assert server.is_dir()
+
+
+def test_qualification_bad_runtime_digest_precedes_application_import(
+        tmp_path, monkeypatch):
+    server = tmp_path / "checkout" / "server"
+    (server / "scripts").mkdir(parents=True)
+    reader = server / "scripts" / "m9_panel_readout_worker.py"
+    reader.write_text("# synthetic reader\n")
+    baseline_path = tmp_path / "baseline-runtime.json"
+    baseline_path.write_bytes(b"{}")
+    helper = _load_actual_helper()
+    monkeypatch.setattr(worker, "_runtime_gate", lambda: None)
+    monkeypatch.setattr(worker, "_load_helper", lambda _: helper)
+    monkeypatch.setattr(worker, "_qualification_paths", lambda _: (reader, server))
+    imported = []
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: imported.append(True))
+    with pytest.raises(ValueError, match="runtime hash mismatch"):
+        worker.capture_runtime(str(baseline_path), "0" * 64, "b" * 64,
+                               str(tmp_path / "qualified.json"))
+    assert imported == []
+
+
+@pytest.mark.parametrize("kind", ["existing", "symlink", "inside"])
+def test_capture_runtime_output_is_exclusive_nonsymlink_and_outside_checkout(
+        tmp_path, monkeypatch, kind):
+    server, _reader, baseline_path, _baseline, bootstrap_sha, _helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+    if kind == "existing":
+        output = tmp_path / "existing.json"
+        output.write_bytes(b"keep")
+    elif kind == "symlink":
+        real = tmp_path / "real.json"
+        real.write_bytes(b"keep")
+        output = tmp_path / "link.json"
+        output.symlink_to(real)
+    else:
+        output = server / "inside.json"
+    imported = []
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: imported.append(True))
+    with pytest.raises(ValueError):
+        worker.capture_runtime(str(baseline_path), _sha(b"baseline"),
+                               bootstrap_sha, str(output))
+    assert imported == []
+
+
+def test_verify_runtime_false_check_refuses_without_collection_access(
+        tmp_path, monkeypatch):
+    _server, _reader, baseline_path, baseline, bootstrap_sha, _helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+
+    class Runtime:
+        def check(self):
+            return False
+
+    class Adapter:
+        ObservationRuntime = lambda *args, **kwargs: Runtime()
+
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: (Adapter, object(), object()))
+    for name in ("_read_invocation", "_read_collection_packet", "_read_controls",
+                 "_verify_terminal_seal", "_read_collection_runtime"):
+        monkeypatch.setattr(worker, name, lambda *args, _name=name: pytest.fail(
+            f"qualification accessed {_name}"))
+    with pytest.raises(ValueError, match="runtime verification failed"):
+        worker.verify_runtime(str(baseline_path), _sha(b"baseline"),
+                              bootstrap_sha)
+
+
+def test_verify_runtime_uses_panel_readout_profile(tmp_path, monkeypatch):
+    _server, _reader, baseline_path, _baseline, bootstrap_sha, _helper = \
+        _qualification_fixture(tmp_path, monkeypatch)
+    profiles = []
+
+    class Runtime:
+        def check(self):
+            return True
+
+    class Adapter:
+        @staticmethod
+        def ObservationRuntime(manifest, *, profile):
+            profiles.append(profile)
+            return Runtime()
+
+    monkeypatch.setattr(worker, "_import_readout_application",
+                        lambda *_: (Adapter, object(), object()))
+    assert worker.verify_runtime(str(baseline_path), _sha(b"baseline"),
+                                 bootstrap_sha)
+    assert profiles == ["panel-readout"]
+
+
+def test_main_preserves_three_positional_real_run(monkeypatch):
+    seen = []
+    monkeypatch.setattr(worker, "run", lambda *args: seen.append(args))
+    assert worker.main(["invocation", "i" * 64, "b" * 64]) == 0
+    assert seen == [("invocation", "i" * 64, "b" * 64)]
+
+
+def test_main_dispatches_strict_runtime_qualification_cli(monkeypatch):
+    capture = []
+    verify = []
+    monkeypatch.setattr(worker, "capture_runtime",
+                        lambda *args: capture.append(args))
+    monkeypatch.setattr(worker, "verify_runtime",
+                        lambda *args: verify.append(args))
+    assert worker.main(["--capture-runtime", "base", "a" * 64,
+                        "b" * 64, "out"]) == 0
+    assert worker.main(["--verify-runtime", "runtime", "c" * 64,
+                        "b" * 64]) == 0
+    assert capture == [("base", "a" * 64, "b" * 64, "out")]
+    assert verify == [("runtime", "c" * 64, "b" * 64)]
+    assert worker.main(["--capture-runtime", "base"]) == 1
+    assert worker.main(["--verify-runtime", "runtime", "c" * 64]) == 1

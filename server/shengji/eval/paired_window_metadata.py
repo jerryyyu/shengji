@@ -35,6 +35,8 @@ def preflight_paired_windows(root, expected_configs, *, seeds, prefixes,
             or any(not isinstance(p, str) or not p or '/' in p for p in prefixes)):
         raise ValueError('invalid frozen population')
     names = {f'{prefix}-{seed}' for prefix in prefixes for seed in seeds}
+    if len(names) != 2 * len(seeds):
+        raise ValueError('colliding arm directory names')
     if set(expected_configs) != names:
         raise ValueError('incomplete or extra frozen configs')
     if {p.name for p in root.iterdir() if p.is_dir() or p.is_symlink()} != names:

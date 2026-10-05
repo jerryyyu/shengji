@@ -86,3 +86,9 @@ def test_validator_terminal_failure_is_not_swallowed(panel):
     panel[2]._arm_metadata = fail
     with pytest.raises(ValueError, match='unsealed'):
         run(panel)
+
+
+def test_rendered_arm_name_collision_refused(panel):
+    with pytest.raises(ValueError, match='colliding'):
+        preflight_paired_windows(panel[0], {}, seeds=(-1, 1), prefixes=('arm', 'arm-'),
+                                 clusters=2, validator=panel[2])

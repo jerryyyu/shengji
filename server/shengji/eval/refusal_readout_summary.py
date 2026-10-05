@@ -91,6 +91,8 @@ def attach_five_window_summaries(result: Mapping, *, seeds: tuple[int, ...],
     if not isinstance(health, Mapping):
         raise ValueError("missing per-window census")
     expected = {f"{prefix}-{seed}" for prefix in prefixes for seed in seeds}
+    if len(expected) != 10:
+        raise ValueError("colliding arm directory names")
     by_name = {}
     for path, item in health.items():
         if not isinstance(path, str):

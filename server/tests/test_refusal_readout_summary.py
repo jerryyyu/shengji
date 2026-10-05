@@ -128,3 +128,8 @@ def test_positive_interval_replaces_old_extension_without_changing_primary():
     assert output['triage'] == result['triage']
     assert output['statistical_result'] == 'POSITIVE'
     assert output['strength_verdict'] == result['strength_verdict']
+
+
+def test_rendered_arm_name_collision_refused():
+    with pytest.raises(ValueError, match='colliding'):
+        attach_five_window_summaries(readout(), seeds=(-1, 1, 2, 3, 4), prefixes=('arm', 'arm-'))

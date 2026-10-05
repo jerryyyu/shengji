@@ -261,6 +261,54 @@ def test_bad_manifest_schema_importset_and_paths_refuse(tmp_path, monkeypatch, m
         runtime.ObservationRuntime(bad)
 
 
+@pytest.mark.parametrize("stage,reader", [
+    ("source", "source_stat_inventory"),
+    ("module_origins", "_origins"),
+    ("dependencies", "_dependencies"),
+])
+def test_postcheck_reports_exact_inventory_delta_without_rehash(tmp_path, monkeypatch,
+                                                              stage, reader):
+    manifest, _, _, _, _, _ = _capture_manifest(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
+                        lambda *args: SimpleNamespace(check=lambda: True))
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    admitted = runtime.ObservationRuntime(manifest)
+    monkeypatch.setattr(runtime, "_sha", lambda path: pytest.fail("postcheck rehashed"))
+    original = getattr(runtime, reader)
+    expected = original(admitted.source)
+    key = next(iter(expected))
+    changed = dict(expected)
+    changed[key] = object()  # includes same-path module identity replacement
+    changed["new-origin"] = object()
+    monkeypatch.setattr(runtime, reader, lambda path: changed)
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": stage, "added": ["new-origin"],
+                                     "removed": [], "changed": [key]}
+    monkeypatch.setattr(runtime, reader, lambda path: {})
+    assert not admitted.check()
+    assert admitted.last_failure["removed"] == sorted(expected)
+    monkeypatch.setattr(runtime, reader, original)
+    assert admitted.check()
+    assert admitted.last_failure is None
+
+
+def test_postcheck_reports_exception_and_external_failure(tmp_path, monkeypatch):
+    manifest, _, _, _, _, _ = _capture_manifest(tmp_path, monkeypatch)
+    fence = SimpleNamespace(check=lambda: True)
+    monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence", lambda *args: fence)
+    monkeypatch.setattr(runtime, "_routes", lambda path: None)
+    admitted = runtime.ObservationRuntime(manifest)
+    fence.check = lambda: False
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "external_runtime"}
+    def fail(path):
+        raise ValueError("foreign module origin")
+    monkeypatch.setattr(runtime, "_routes", fail)
+    assert not admitted.check()
+    assert admitted.last_failure == {"stage": "routes", "error_type": "ValueError",
+                                     "error": "foreign module origin"}
+
+
 def test_capture_rejects_source_pyc_and_does_not_publish_or_launch(tmp_path,
                                                                     monkeypatch):
     source = _source(tmp_path)

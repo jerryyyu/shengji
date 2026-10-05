@@ -6,10 +6,48 @@ from pathlib import Path
 
 import pytest
 
-from shengji.luna.benchmark_transport import BenchmarkTransport, output_schema
+import shengji.luna.benchmark_transport as benchmark_transport
+from shengji.luna.benchmark_transport import (CAPACITY_RETRY_DELAYS,
+                                              BenchmarkTransport, output_schema)
 from shengji.luna.transport import (CodexExecPlannerTransport, CodexTurnTransportError,
+                                    CODE_MODE_DISABLED_DIAGNOSTIC,
+                                    CodexProviderResourceError,
                                     InvocationResult, _events_and_usage)
 from test_luna_transport import trace
+
+
+CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+
+
+def capacity_trace(*, malformed=False, tool=False):
+    rows = [
+        {"type": "thread.started", "thread_id": "capacity"},
+        {"type": "item.completed", "item": {
+            "id": "diagnostic", "type": "error",
+            "message": CODE_MODE_DISABLED_DIAGNOSTIC}},
+        {"type": "turn.started"},
+        {"type": "error", "message": CAPACITY_MESSAGE},
+        {"type": "turn.failed", "error": {"message": CAPACITY_MESSAGE}},
+    ]
+    if malformed:
+        rows[-1]["error"]["extra"] = True
+    if tool:
+        rows[3] = {"type": "item.completed", "item": {
+            "id": "tool", "type": "command_execution"}}
+    return b"".join(json.dumps(row).encode() + b"\n" for row in rows)
+
+
+class FakeRetryClock:
+    def __init__(self):
+        self.now = 0
+        self.sleeps = []
+
+    def monotonic_ns(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds * 1_000_000_000
 
 
 def test_real_timeout_retains_streams_and_benchmark_refuses_once(tmp_path, monkeypatch):
@@ -184,3 +222,192 @@ def test_final_message_mode_rejects_message_after_completion():
     raw = b"\n".join(json.dumps(row).encode() for row in rows)
     with pytest.raises(CodexTurnTransportError, match="^Codex final-message ordering drift$"):
         _events_and_usage(raw, use_final_message=True)
+
+
+def test_capacity_retry_succeeds_with_identical_serialized_request(tmp_path,
+                                                                   monkeypatch):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    final = {"cards": ["C3"], "evaluations": None, "memory": "lead"}
+    prompts, schemas, commands = [], [], []
+
+    def run(command, prompt, workspace, timeout):
+        commands.append(command)
+        prompts.append(prompt)
+        schemas.append((workspace / "schema.json").read_bytes())
+        if len(commands) == 1:
+            return InvocationResult(1, capacity_trace(), b"", 1)
+        (workspace / "final.json").write_text(json.dumps(final))
+        return InvocationResult(0, trace(final), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    assert transport({"packet": 1}) == {"cards": ["C3"], "memory": "lead"}
+    assert len(transport.calls) == 2
+    assert prompts[0] == prompts[1] and schemas[0] == schemas[1]
+    assert commands[0][commands[0].index("-m") + 1] == commands[1][commands[1].index("-m") + 1]
+    assert commands[0][commands[0].index("--output-schema") + 1] != \
+        commands[1][commands[1].index("--output-schema") + 1]
+    assert transport.calls[0]["error_type"] == "provider_capacity"
+    assert transport.calls[0]["attempt_ordinal"] == 1
+    assert transport.calls[0]["backoff_planned"] is True
+    assert clock.sleeps == [15]
+
+
+def test_capacity_retry_is_disabled_by_default(tmp_path, monkeypatch):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append(workspace)
+        return InvocationResult(1, capacity_trace(), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(calls) == len(transport.calls) == 1
+    assert not transport.calls[0]["retry_enabled"]
+    assert clock.sleeps == []
+
+
+@pytest.mark.parametrize("delays", [None, [], [15, 30, 60], (15,),
+                                  (15.0, 30, 60), (True, 30, 60), (0, 30, 60)])
+def test_capacity_retry_schedule_is_exact(tmp_path, delays):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid retry schedule must refuse before runtime or dispatch")
+
+    with pytest.raises(CodexTurnTransportError, match="capacity retry drift"):
+        BenchmarkTransport(evidence_root=tmp_path, capacity_retry_delays=delays,
+                           runtime_attestor=forbidden, run_command=forbidden)
+
+
+def test_capacity_retry_exhaustion_is_four_bounded_attempts(tmp_path, monkeypatch):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append((workspace, timeout))
+        return InvocationResult(1, capacity_trace(), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=120,
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexProviderResourceError, match="capacity exhausted"):
+        transport({})
+    assert len(calls) == len(transport.calls) == 4
+    assert clock.sleeps == [15, 30, 60]
+    assert [receipt["attempt_ordinal"] for receipt in transport.calls] == [1, 2, 3, 4]
+    assert all(receipt["error_type"] == "provider_capacity"
+               for receipt in transport.calls)
+
+
+def test_capacity_retry_stops_before_backoff_when_deadline_is_insufficient(
+        tmp_path, monkeypatch):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append(timeout)
+        return InvocationResult(1, capacity_trace(), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=10,
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexProviderResourceError,
+                       match="deadline exceeded before capacity retry"):
+        transport({})
+    assert len(calls) == len(transport.calls) == 1
+    assert clock.sleeps == []
+    assert transport.calls[0]["error_type"] == "provider_capacity"
+    assert transport.calls[0]["backoff_planned"] is False
+
+
+@pytest.mark.parametrize("raw", [b"not-json\n", capacity_trace(malformed=True),
+                                  capacity_trace(tool=True)])
+def test_noncanonical_capacity_trace_never_retries(tmp_path, raw):
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append(True)
+        return InvocationResult(1, raw, b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(calls) == len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("late", [False, True])
+def test_retry_obeys_earlier_row_deadline(tmp_path, monkeypatch, late):
+    from shengji.luna import transport as transport_module
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    monkeypatch.setattr(transport_module, "time", clock)
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append(timeout)
+        if late:
+            clock.now = 11_000_000_000
+        return InvocationResult(1, capacity_trace(), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=300,
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        deadline_provider=lambda: 10_000_000_000,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexProviderResourceError, match="deadline exceeded"):
+        transport({})
+    assert calls == [10]
+    assert clock.sleeps == []
+
+
+@pytest.mark.parametrize("kind", ["timeout", "signal", "generic", "final", "usage", "action"])
+def test_retry_does_not_hide_noncapacity_failures(tmp_path, kind):
+    calls = []
+
+    def run(command, prompt, workspace, timeout):
+        calls.append(workspace)
+        if kind == "timeout":
+            raise CodexProviderResourceError("synthetic timeout")
+        if kind == "final":
+            (workspace / "final.json").write_text("{}")
+        raw = capacity_trace()
+        if kind == "generic":
+            raw = raw.replace(CAPACITY_MESSAGE.encode(), b"Authentication failed")
+        if kind in ("usage", "action"):
+            rows = [json.loads(line) for line in raw.splitlines()]
+            if kind == "usage":
+                rows[-1]["usage"] = {"input_tokens": 100}
+            else:
+                rows.insert(-1, {"type": "item.completed", "item": {
+                    "type": "agent_message", "text": '{"cards":["C3"]}'}})
+            raw = b"\n".join(json.dumps(row).encode() for row in rows)
+        return InvocationResult(-9 if kind == "signal" else 1, raw, b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(calls) == len(transport.calls) == 1

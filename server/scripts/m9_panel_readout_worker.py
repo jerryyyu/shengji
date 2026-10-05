@@ -304,6 +304,112 @@ def _read_collection_runtime(helper, packet, records):
         raise ValueError("reservation launcher differs from sealed collection runtime")
 
 
+def _qualification_paths(helper) -> tuple[Path, Path]:
+    """Return the authenticated reader and its server source root."""
+    reader = Path(__file__)
+    if (not reader.is_absolute() or reader.is_symlink() or not reader.is_file()
+            or any(parent.is_symlink() for parent in (reader, *reader.parents))):
+        raise ValueError("canonical nonsymlink reader path required")
+    server = reader.parent.parent
+    if (not server.is_absolute() or not server.is_dir()
+            or server.is_symlink()
+            or any(parent.is_symlink() for parent in (server, *server.parents))):
+        raise ValueError("canonical nonsymlink server root required")
+    # Keep qualification's path checks on the authenticated helper's exact
+    # canonical-path rules, rather than allowing a spelling alias here.
+    return helper._canonical_absolute(str(reader), "reader"), \
+        helper._canonical_absolute(str(server), "server root")
+
+
+def _qualification_output(helper, value, server: Path) -> Path:
+    """Validate an exclusive manifest output outside the checkout."""
+    target = helper._canonical_absolute(value, "qualification output")
+    if target.is_relative_to(server.parent):
+        raise ValueError("qualification output must be outside the source checkout")
+    if target.exists() or target.is_symlink():
+        raise ValueError("qualification output exists; preserve it")
+    if (not target.parent.is_dir()
+            or any(parent.is_symlink() for parent in (target.parent, *target.parent.parents))):
+        raise ValueError("qualification output parent must be a nonsymlink directory")
+    return target
+
+
+def _read_qualification_runtime(helper, path, digest: str, server: Path,
+                                bootstrap_sha: str) -> dict:
+    """Read and authenticate one runtime manifest before application imports."""
+    path = helper._canonical_absolute(path, "runtime manifest")
+    _stamp(path)
+    helper._strict_sha(digest, "runtime SHA")
+    manifest = helper._read_runtime(
+        {"runtime": {"path": str(path), "sha256": digest}}, server)
+    if (type(manifest) is not dict
+            or manifest.get("schema") != "shengji-m9-runtime-v1"
+            or any(key not in manifest for key in
+                   ("source_root", "source_files", "environment"))):
+        raise ValueError("qualified runtime manifest schema mismatch")
+    source_files = manifest.get("source_files") if type(manifest) is dict else None
+    if (type(source_files) is not dict
+            or source_files.get("scripts/observation_worker.py") != bootstrap_sha):
+        raise ValueError("runtime manifest does not bind authenticated bootstrap")
+    return manifest
+
+
+def _import_readout_application(server: Path):
+    """Import exactly the runtime/recipe/publication closure used by real runs."""
+    import importlib
+
+    sys.path.insert(0, str(server))
+    importlib.invalidate_caches()
+    runtime_adapter = importlib.import_module("shengji.eval.observation_runtime")
+    recipe = importlib.import_module("shengji.eval.m9_panel_recipe")
+    publication = importlib.import_module("shengji.eval.m9_panel_publication")
+    return runtime_adapter, recipe, publication
+
+
+def capture_runtime(baseline_path: str, baseline_sha: str, bootstrap_sha: str,
+                    output: str) -> dict:
+    """Capture a model-free panel-readout runtime through the real closure."""
+    _runtime_gate()
+    helper = _load_helper(bootstrap_sha)
+    _reader, server = _qualification_paths(helper)
+    baseline = _read_qualification_runtime(
+        helper, baseline_path, baseline_sha, server, bootstrap_sha)
+    target = _qualification_output(helper, output, server)
+    runtime_adapter, _recipe, _publication = _import_readout_application(server)
+    manifest = runtime_adapter.capture(server, profile="panel-readout")
+    if (type(manifest) is not dict
+            or any(key not in manifest for key in
+                   ("source_root", "source_files", "environment"))):
+        raise ValueError("qualified runtime manifest is incomplete")
+    for key in ("source_root", "source_files", "environment"):
+        if manifest.get(key) != baseline.get(key):
+            raise ValueError("qualified application changed: " + key)
+    raw = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+    # Recheck the path immediately before the exclusive create to catch a
+    # symlink or competing output appearing during the import-only capture.
+    target = _qualification_output(helper, output, server)
+    with target.open("xb") as handle:
+        handle.write(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    print("M9 PANEL READOUT RUNTIME CAPTURED sha256=" + digest, flush=True)
+    return manifest
+
+
+def verify_runtime(runtime_path: str, runtime_sha: str, bootstrap_sha: str):
+    """Verify one authenticated panel-readout runtime without collection access."""
+    _runtime_gate()
+    helper = _load_helper(bootstrap_sha)
+    _reader, server = _qualification_paths(helper)
+    manifest = _read_qualification_runtime(
+        helper, runtime_path, runtime_sha, server, bootstrap_sha)
+    runtime_adapter, _recipe, _publication = _import_readout_application(server)
+    admitted = runtime_adapter.ObservationRuntime(manifest, profile="panel-readout")
+    if admitted.check() is not True:
+        raise ValueError("readout runtime verification failed")
+    print("M9 PANEL READOUT RUNTIME VERIFIED", flush=True)
+    return admitted
+
+
 def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
     """Authenticate and perform one already-reviewed publication invocation."""
     _runtime_gate()
@@ -351,9 +457,18 @@ def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
     try:
-        if len(args) != 3:
-            raise ValueError("three positional arguments required")
-        run(args[0], args[1], args[2])
+        if args and args[0] == "--capture-runtime":
+            if len(args) != 5:
+                raise ValueError("capture-runtime requires five arguments")
+            capture_runtime(args[1], args[2], args[3], args[4])
+        elif args and args[0] == "--verify-runtime":
+            if len(args) != 4:
+                raise ValueError("verify-runtime requires four arguments")
+            verify_runtime(args[1], args[2], args[3])
+        else:
+            if len(args) != 3:
+                raise ValueError("three positional arguments required")
+            run(args[0], args[1], args[2])
     except BaseException as exc:
         # Deliberately do not expose paths, scientific values, or exception
         # messages at this boundary.  The reviewed handoff owns diagnostics.

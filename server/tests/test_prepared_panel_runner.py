@@ -7,6 +7,7 @@ from scripts import w32_llm_benchmark as runner
 from shengji.luna.benchmark_recipes import prepare_recipe
 from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
 from test_llm_benchmark_games import planner
+from test_benchmark_retention import _write_source, _repin_report
 
 
 @pytest.fixture
@@ -156,6 +157,117 @@ def test_preserve_protocol_keeps_complete_and_forfeit_endpoints_separate(kwargs)
     assert modes['actor-only']['forfeit_paired_mean'] == 1
     assert modes['perfect']['completed_paired_mean'] == 3
     assert modes['perfect']['forfeit_paired_mean'] == 3
+
+
+def _retention_fixture(kwargs, tmp_path):
+    config = runner.run_benchmark(**kwargs)['config']
+    # The one retained failure occurs LAST, but must count before first dispatch.
+    plan, pin, _, source = _write_source(tmp_path, config=config, kinds={
+        ('actor-only', 0): 'pending', ('actor-only', 1): 'complete',
+        ('perfect', 0): 'complete', ('perfect', 1): 'typed'})
+    report = json.loads((source / 'result.json').read_bytes())
+    row = report['mirrors'][1]
+    row['calls'] = [{'usage': {'input_tokens': 4, 'output_tokens': 3}}]
+    path = source / f"mirror-sol-actor-only-{kwargs['seeds'][0]}-1.json"
+    path.write_bytes(runner.canonical_json_bytes(row))
+    pin = _repin_report(plan, source, report)
+    return plan, pin, source
+
+
+@pytest.mark.parametrize('limit,expected_new', [(1, 0), (2, 1)])
+def test_retention_authenticates_and_counts_before_dispatch(kwargs, tmp_path, limit, expected_new):
+    plan, pin, source = _retention_fixture(kwargs, tmp_path)
+    original = {p.name: p.read_bytes() for p in source.iterdir()}
+    attempted = []
+    def complete(game, **options):
+        attempted.append((options['information'], options['flip']))
+        return {'complete': True, 'signed_levels': 2}
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000, runner=complete,
+        failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True,
+        illegal_failure_limit=limit, retention_plan=str(plan), retention_plan_sha256=pin)
+    assert len(attempted) == expected_new
+    assert report['scheduled_summary']['failed'] == 1  # never counted twice
+    assert report['budget']['prior_tokens'] == report['budget']['combined_tokens'] == 7
+    assert report['budget']['new_tokens'] == 0
+    assert report['mirrors'][0]['complete'] is bool(expected_new)
+    for row in report['mirrors'][1:]:
+        assert row['lineage']['kind'] == 'retained-terminal-attempt'
+        assert row['lineage']['retention_plan_sha256'] == pin
+    assert {p.name: p.read_bytes() for p in source.iterdir()} == original
+    assert report['retained_attempts'] == report['config']['retained_attempts']
+    assert report['retained_attempts']['prior_cost_tokens'] == 7
+    assert set(report['retained_attempts']) == {
+        'plan', 'plan_sha256', 'source', 'result_sha256', 'prior_cost_tokens'}
+
+
+@pytest.mark.parametrize('change', ['wrong_pin', 'missing_pin', 'missing_plan', 'default_protocol', 'continue'])
+def test_bad_retention_refuses_before_output(kwargs, tmp_path, change):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    kwargs.update(retention_plan=str(plan), retention_plan_sha256=pin,
+                  failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True)
+    if change == 'wrong_pin':
+        kwargs['retention_plan_sha256'] = '0' * 64
+    elif change == 'missing_pin':
+        kwargs['retention_plan_sha256'] = None
+    elif change == 'missing_plan':
+        kwargs['retention_plan'] = None
+    elif change == 'default_protocol':
+        kwargs.pop('failure_protocol')
+    else:
+        kwargs['continue_from'] = 'not-read'
+    with pytest.raises(ValueError):
+        runner.run_benchmark(**kwargs, run=True, token_limit=1000000)
+    assert not kwargs['output'].exists()
+
+
+def test_retention_dry_run_checks_plan_but_does_not_write(kwargs, tmp_path):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    report = runner.run_benchmark(
+        **kwargs, retention_plan=str(plan), retention_plan_sha256=pin,
+        failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True)
+    assert report['mode'] == 'dry-run'
+    assert report['config']['retained_attempts']['plan_sha256'] == pin
+    assert not kwargs['output'].exists()
+
+
+@pytest.mark.parametrize('limit', [6, 7])
+@pytest.mark.parametrize('execute', [False, True])
+def test_retained_cost_exhaustion_refuses_before_output(kwargs, tmp_path, limit, execute):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    with pytest.raises(runner.BenchmarkRefusal, match='exhaust soft token'):
+        runner.run_benchmark(
+            **kwargs, run=execute, token_limit=limit, retention_plan=str(plan),
+            retention_plan_sha256=pin, failure_protocol=PRESERVE_ILLEGAL,
+            classify_final_action_failures=True)
+    assert not kwargs['output'].exists()
+
+
+def test_retained_tokens_reduce_budget_for_new_provider_calls(kwargs, tmp_path):
+    plan, pin, _ = _retention_fixture(kwargs, tmp_path)
+    called = []
+    class FakeTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            called.append(packet)
+            self.calls.append({'usage': {'input_tokens': 1, 'output_tokens': 0}})
+            return {'cards': [], 'memory': ''}
+    def two_calls(game, **options):
+        provider = options['planner_factory'](0)
+        provider({})
+        provider({})  # must refuse: prior 7 + first new 1 reaches total ceiling 8
+        raise AssertionError('budget failed to stop second provider call')
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=8, runner=two_calls,
+        transport_factory=FakeTransport, retention_plan=str(plan),
+        retention_plan_sha256=pin, failure_protocol=PRESERVE_ILLEGAL,
+        classify_final_action_failures=True)
+    assert len(called) == 1
+    assert report['budget']['new_tokens'] == 1
+    assert report['budget']['prior_tokens'] == 7
+    assert report['budget']['combined_tokens'] == 8
+    assert report['scheduled_summary']['blocked'] is True
 
 
 @pytest.mark.parametrize("capacity", [False, True])

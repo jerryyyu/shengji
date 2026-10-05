@@ -23,7 +23,6 @@ server/tests/test_deep_capture.py
 server/tests/test_douzero_micro.py
 server/tests/test_encode_banker_kitty_corrected.py
 server/tests/test_encode_versions.py
-server/tests/test_encoder_bytes_golden.py
 server/tests/test_encoder_default_version.py
 server/tests/test_encoder_identity.py
 server/tests/test_encoder_v4_opponent_pairs.py

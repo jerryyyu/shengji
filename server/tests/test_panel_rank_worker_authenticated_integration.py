@@ -320,3 +320,54 @@ def test_synthetic_preflight_authenticated_bootstrap_to_real_reader(
     assert receipt["release"] == bundle["release_pin"]
     assert receipt["previous_receipt"] == bundle["spec"]["receipt"]
     assert bundle["release_pin"]["path"] != bundle["packet"]["release"]
+
+
+@pytest.mark.parametrize("changed_input", ["release", "model", "panel"])
+def test_authenticated_prediction_drift_refuses_publication(
+        tmp_path, monkeypatch, changed_input):
+    """Real post-prediction stamp checks must reject a mid-call mutation."""
+    bundle = _complete_authenticated_bundle(tmp_path, monkeypatch)
+    factory_calls = _install_allowed_boundaries(monkeypatch, bundle)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    target = {
+        "release": Path(bundle["release_pin"]["path"]),
+        "model": Path(bundle["packet"]["recipe"]["model"]),
+        "panel": bundle["panel_path"],
+    }[changed_input]
+    predict = bundle["bot"].predict
+
+    def mutate_during_prediction(batch):
+        result = predict(batch)
+        # Change size as well as metadata, avoiding timestamp-resolution
+        # assumptions. Only test-owned bytes are touched.
+        target.write_bytes(target.read_bytes() + b"\nchanged during prediction\n")
+        return result
+
+    monkeypatch.setattr(bundle["bot"], "predict", mutate_during_prediction)
+    args = (bundle["invocation_pin"]["path"],
+            bundle["invocation_pin"]["sha256"],
+            bundle["release_pin"]["path"],
+            bundle["release_pin"]["sha256"],
+            bundle["bootstrap_sha"], bundle["helper_sha"])
+    expected = ("authenticated control changed" if changed_input == "release"
+                else "panel rank authenticated input changed")
+    with pytest.raises(ValueError, match=expected):
+        worker.run(*args)
+
+    output = Path(bundle["spec"]["output_dir"])
+    ownership = Path(bundle["spec"]["ownership_dir"])
+    assert bundle["predict_calls"] == [64]
+    assert len(factory_calls) == 1
+    assert not (output / "result.json").exists()
+    assert not (output / "receipt.json").exists()
+    refusal = json.loads((output / "refusal.json").read_bytes())
+    assert refusal["stage"] == "rank-projection"
+    assert refusal["error_type"] == "ValueError"
+    claim = (ownership / "claim.json").read_bytes()
+    assert json.loads((output / "claim.json").read_bytes())["status"] == "spent_no_retry"
+    # A second invocation cannot turn a rejected attempt into fresh work.
+    with pytest.raises(ValueError, match="fresh output required"):
+        worker.run(*args)
+    assert (ownership / "claim.json").read_bytes() == claim
+    assert bundle["predict_calls"] == [64]
+    assert len(factory_calls) == 1

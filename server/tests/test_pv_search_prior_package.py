@@ -4,16 +4,14 @@ swapped with production's value, recipe, bury and budgets held fixed.  The serve
 one package to both roles; this adds the optional second binding, through the same env,
 registry and constructor the screens use, with the prior's identity in the policy name."""
 import copy
-import random
 
 import numpy as np
 import pytest
 
 from shengji.ai.heuristic import HeuristicBot
 from shengji.ai.registry import REGISTRY, make_bot, register_pv_search_policies
-from shengji.engine.game import Game
 from shengji.train import pv_search_policy as pv
-from tests.test_pv_search_serving import package  # noqa: F401  (module fixture: one joint package)
+from tests.test_pv_search_serving import _play_state, package  # noqa: F401  (shared setup and fixture)
 
 
 def _joint_package(tmp_path_factory, seed, enc_version=2):
@@ -43,23 +41,6 @@ def _joint_package(tmp_path_factory, seed, enc_version=2):
 def other_package(tmp_path_factory):
     """A second joint package with DIFFERENT weights (another seed)."""
     return _joint_package(tmp_path_factory, 23)
-
-
-def _play_state(seed=625091990):
-    rnd = Game(random.Random(seed)).start_round()
-    h = HeuristicBot()
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        c = h.decide_declare(rnd, seat)
-        if c:
-            rnd.declare(seat, c)
-    for seat in range(4):
-        c = h.decide_declare(rnd, seat, final=True)
-        if c:
-            rnd.declare(seat, c)
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, h.decide_bury(rnd, rnd.banker))
-    return rnd
 
 
 def _registered(monkeypatch, value, prior=None):

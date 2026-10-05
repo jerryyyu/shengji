@@ -25,7 +25,7 @@ _MAX_COLLECTION_PACKET_BYTES = 1024 * 1024
 _INVOCATION_SCHEMA = "m9-panel-readout-invocation-v1"
 _INVOCATION_KEYS = frozenset({
     "schema", "files", "packet_sha256", "collection_packet", "output_dir",
-    "runtime", "controls",
+    "runtime", "controls", "terminal_seal",
 })
 _HELPER_NAME = "_m9_panel_readout_observation_worker"
 
@@ -234,6 +234,74 @@ def _read_controls(helper, invocation, packet):
             or process["timeout_seconds"] != timeout
             or process["comparison_validated"] is not False):
         raise ValueError("historical process claim binding mismatch")
+    return records
+
+
+def _verify_terminal_seal(helper, invocation, packet):
+    """Authenticate an exact SHA256SUMS inventory without opening outcomes.
+
+    The externally reviewed seal covers the 26 consumed collection inputs:
+    20 reader files, four controls, collection packet and collection runtime.
+    Unconsumed raw captures/logs remain archive material, not another readout.
+    The seal's authority comes from the canonical handoff, never its filename.
+    """
+    ref = invocation["terminal_seal"]
+    if type(ref) is not dict or set(ref) != {"path", "sha256"}:
+        raise ValueError("exact terminal seal pin required")
+    path = helper._canonical_absolute(ref["path"], "terminal seal")
+    helper._strict_sha(ref["sha256"], "terminal seal")
+    _stamp(path)
+    raw, _ = helper._stable_read(path, 64 * 1024)
+    if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+        raise ValueError("terminal seal SHA mismatch")
+    expected = {}
+    refs = [*invocation["files"].values(), *invocation["controls"].values(),
+            invocation["collection_packet"], packet["runtime"]]
+    if len(refs) != 26:
+        raise ValueError("exact 26 collection input pins required")
+    for entry in refs:
+        if type(entry) is not dict or set(entry) != {"path", "sha256"}:
+            raise ValueError("exact sealed input pin required")
+        target = str(helper._canonical_absolute(entry["path"], "sealed input"))
+        helper._strict_sha(entry["sha256"], "sealed input")
+        if target in expected or target == str(path):
+            raise ValueError("distinct seal and input paths required")
+        expected[target] = entry["sha256"]
+    text = raw.decode("utf-8")
+    if not text.endswith("\n") or "\r" in text:
+        raise ValueError("seal requires newline-terminated SHA256SUMS")
+    found = {}
+    for line in text[:-1].split("\n"):
+        if len(line) < 67 or line[64:66] != "  ":
+            raise ValueError("malformed terminal seal entry")
+        digest, name = line[:64], line[66:]
+        helper._strict_sha(digest, "seal entry")
+        helper._canonical_absolute(name, "seal entry")
+        if name in found:
+            raise ValueError("duplicate terminal seal entry")
+        found[name] = digest
+    if found != expected:
+        raise ValueError("terminal seal differs from readout input pins")
+
+
+def _read_collection_runtime(helper, packet, records):
+    """Bind the sealed collection launcher without rehashing old source trees."""
+    ref = packet["runtime"]  # exact pin already validated by seal check
+    path = helper._canonical_absolute(ref["path"], "collection runtime")
+    _stamp(path)
+    raw, _ = helper._stable_read(path, 1024 * 1024)
+    if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+        raise ValueError("collection runtime SHA mismatch")
+    manifest = helper._parse_object(raw)
+    source = str(Path(packet["recipe"]["source_root"]) / "server")
+    if (manifest.get("schema") != "shengji-m9-runtime-v1"
+            or manifest.get("source_root") != source
+            or type(manifest.get("source_files")) is not dict):
+        raise ValueError("collection runtime source binding mismatch")
+    launcher_sha = manifest["source_files"].get("scripts/observation_worker.py")
+    helper._strict_sha(launcher_sha, "collection launcher SHA")
+    if records["reservation"].get("launcher_sha256") != launcher_sha:
+        raise ValueError("reservation launcher differs from sealed collection runtime")
 
 
 def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
@@ -262,7 +330,9 @@ def run(invocation_path: str, invocation_sha: str, bootstrap_sha: str):
             or source_files.get("scripts/observation_worker.py") != bootstrap_sha):
         raise ValueError("runtime manifest does not bind authenticated bootstrap")
 
-    _read_controls(helper, invocation, collection_packet)
+    _verify_terminal_seal(helper, invocation, collection_packet)
+    controls = _read_controls(helper, invocation, collection_packet)
+    _read_collection_runtime(helper, collection_packet, controls)
 
     import importlib
 

@@ -38,6 +38,7 @@ def _invocation(tmp_path: Path) -> tuple[dict, Path]:
         "schema": "m9-panel-readout-invocation-v1",
         "files": files,
         "controls": {},
+        "terminal_seal": {"path": str(tmp_path / "SHA256SUMS"), "sha256": "d" * 64},
         "packet_sha256": "a" * 64,
         "collection_packet": {"path": str(tmp_path / "collection-packet.json"),
                               "sha256": "a" * 64},
@@ -52,6 +53,73 @@ def _invocation(tmp_path: Path) -> tuple[dict, Path]:
 def _load_actual_helper():
     path = Path(worker.__file__).with_name("observation_worker.py")
     return worker._load_helper(_sha(path.read_bytes()))
+
+
+@pytest.mark.parametrize("bad", [None, "hash", "missing", "extra", "duplicate",
+                                    "digest", "relative", "newline", "alias"])
+def test_terminal_inventory_binds_all_pins_without_outcome_access(tmp_path, monkeypatch, bad):
+    invocation, _ = _invocation(tmp_path)
+    invocation["controls"] = {str(i): {"path": str(tmp_path / f"control-{i}"),
+                                        "sha256": "b" * 64} for i in range(4)}
+    packet = {"runtime": {"path": str(tmp_path / "collection-runtime"), "sha256": "c" * 64}}
+    refs = [*invocation["files"].values(), *invocation["controls"].values(),
+            invocation["collection_packet"], packet["runtime"]]
+    lines = [f'{ref["sha256"]}  {ref["path"]}' for ref in refs]
+    if bad == "missing":
+        lines.pop()
+    elif bad == "extra":
+        lines.append(f'{"d" * 64}  {tmp_path / "extra"}')
+    elif bad == "duplicate":
+        lines[-1] = lines[0]
+    elif bad == "digest":
+        lines[-1] = "f" * 64 + lines[-1][64:]
+    elif bad == "relative":
+        lines[-1] = "f" * 64 + "  relative"
+    elif bad == "alias":
+        packet["runtime"] = invocation["collection_packet"]
+    raw = ("\n".join(lines) + ("" if bad == "newline" else "\n")).encode()
+    path = tmp_path / "SHA256SUMS"
+    path.write_bytes(raw)
+    invocation["terminal_seal"] = {"path": str(path), "sha256": _sha(raw)}
+    if bad == "hash":
+        invocation["terminal_seal"]["sha256"] = "0" * 64
+    helper = _load_actual_helper()
+    stable_read = helper._stable_read
+    reads = []
+    def read(p, limit):
+        assert p == path, "seal verification must not open outcomes or controls"
+        reads.append(p)
+        return stable_read(p, limit)
+    monkeypatch.setattr(helper, "_stable_read", read)
+    if bad is None:
+        worker._verify_terminal_seal(helper, invocation, packet)
+    else:
+        with pytest.raises(ValueError):
+            worker._verify_terminal_seal(helper, invocation, packet)
+    assert reads == [path]
+
+
+@pytest.mark.parametrize("bad", [None, "hash", "source", "launcher"])
+def test_collection_runtime_binds_historical_launcher(tmp_path, bad):
+    manifest = {"schema": "shengji-m9-runtime-v1", "source_root": "/collection/server",
+                "source_files": {"scripts/observation_worker.py": "e" * 64}}
+    if bad == "source":
+        manifest["source_root"] = "/other/server"
+    raw = _canonical(manifest)
+    path = tmp_path / "collection-runtime.json"
+    path.write_bytes(raw)
+    packet = {"recipe": {"source_root": "/collection"},
+              "runtime": {"path": str(path), "sha256": _sha(raw)}}
+    records = {"reservation": {"launcher_sha256": "e" * 64}}
+    if bad == "hash":
+        packet["runtime"]["sha256"] = "0" * 64
+    elif bad == "launcher":
+        records["reservation"]["launcher_sha256"] = "f" * 64
+    if bad is None:
+        worker._read_collection_runtime(_load_actual_helper(), packet, records)
+    else:
+        with pytest.raises(ValueError):
+            worker._read_collection_runtime(_load_actual_helper(), packet, records)
 
 
 @pytest.mark.parametrize("bad", [None, "release", "owner_command", "pid_bool",
@@ -333,6 +401,8 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
     manifest = {"source_files": {"scripts/observation_worker.py": "b" * 64}}
     check = lambda: True
     seen = []
+    monkeypatch.setattr(worker, "_verify_terminal_seal", lambda *_: seen.append("seal"))
+    monkeypatch.setattr(worker, "_read_collection_runtime", lambda *_: seen.append("collection-runtime"))
     monkeypatch.setattr(worker, "_read_controls", lambda *_: seen.append("controls"))
 
     def admit(value, *, profile):
@@ -342,7 +412,7 @@ def test_admitted_bootstrap_passes_runtime_check_and_invocation(monkeypatch, tmp
         return SimpleNamespace(check=check)
 
     def publish(value, *, invocation_sha256, runtime_check, collection_packet):
-        assert seen == ["controls", "admitted", "recipe"]
+        assert seen == ["seal", "controls", "collection-runtime", "admitted", "recipe"]
         assert value is invocation
         assert invocation_sha256 == digest
         assert runtime_check is check

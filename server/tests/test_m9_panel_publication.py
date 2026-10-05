@@ -18,6 +18,7 @@ def invocation_for(pins, output):
         "schema": "m9-panel-readout-invocation-v1",
         "files": copy.deepcopy(pins),
         "controls": {},  # authenticated by bootstrap, not this adapter
+        "terminal_seal": {"path": str(output.parent / "SHA256SUMS"), "sha256": "d" * 64},
         "packet_sha256": "a" * 64,
         "collection_packet": {"path": str(output.parent / "collection-packet.json"),
                               "sha256": "a" * 64},

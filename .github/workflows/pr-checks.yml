@@ -176,7 +176,12 @@ jobs:
             tests/test_pv_tree_search.py \
             tests/test_pv_search_serving.py \
             tests/test_pv_search_hooks.py \
-            tests/test_pv_value_matrix.py
+            tests/test_pv_value_matrix.py \
+            tests/test_pv_adaptive_k.py \
+            tests/test_pv_lead_tiebreak_prior.py \
+            tests/test_pv_search_bury.py \
+            tests/test_pv_search_prior_package.py \
+            tests/test_pv_serving_smoke.py
 
   luna-profiles:
     runs-on: ubuntu-latest

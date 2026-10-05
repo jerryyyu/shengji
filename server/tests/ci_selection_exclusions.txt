@@ -99,11 +99,6 @@ server/tests/test_policy_world_search.py
 server/tests/test_prior_live_telemetry.py
 server/tests/test_profile_luna_tokens.py
 server/tests/test_provenance_admission.py
-server/tests/test_pv_adaptive_k.py
-server/tests/test_pv_lead_tiebreak_prior.py
-server/tests/test_pv_search_bury.py
-server/tests/test_pv_search_prior_package.py
-server/tests/test_pv_serving_smoke.py
 server/tests/test_report_fold_throw_fail.py
 server/tests/test_report_lcb_perf_accepted_stack_receipt.py
 server/tests/test_review_authority_inventory.py

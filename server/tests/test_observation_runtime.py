@@ -109,7 +109,9 @@ def test_panel_profile_capture_and_admission_require_same_explicit_profile(tmp_p
     manifest = runtime.capture(source, profile="panel")
     assert manifest["external_runtime"]["imports"] == list(runtime.PANEL_PRELOAD_IMPORTS)
     assert runtime.PANEL_PRELOAD_IMPORTS == runtime.PRELOAD_IMPORTS + (
-        "shengji.eval.m9_panel_persistence", "shengji.eval.m9_panel_readout")
+        "shengji.eval.m9_panel_persistence", "shengji.eval.m9_panel_readout",
+        "shengji.eval.m9_panel_recipe", "shengji.eval.m9_panel_inputs",
+        "shengji.eval.m9_panel_execution")
     monkeypatch.setattr(runtime, "_routes", lambda path: None)
     monkeypatch.setattr(runtime.runtime_fence, "RuntimeFence",
                         lambda *args: SimpleNamespace(check=lambda: True))

@@ -1,5 +1,6 @@
 """Offline tests for the pair-resource admission hypothesis."""
 import copy
+import json
 import random
 from collections import Counter
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest
 from shengji.engine.cards import Ordering
 from shengji.eval.pair_resource_admission import (
     pair_resource_ballot, pair_resource_rank_repair, project_rank_repair,
+    _pair_inputs,
 )
 from shengji.harvest.legal import enumerate_legal
 from shengji.train.policy_value_search import structure_key, _near_duplicate
@@ -372,3 +374,134 @@ def test_projection_refuses_incompatible_or_invalid_inputs(failure):
         values.pop()
     with pytest.raises(ValueError):
         project_rank_repair(rnd, 1, capture, baseline, actions, values)
+
+
+# Frozen S10 function from f7b5ed04, retained as an independent default oracle.
+# Do not update alongside the implementation: this defines pre-ablation behavior.
+def _frozen_s10_rank_repair(rnd, seat, actions, ranked, baseline):
+    """Offline single-swap hypothesis; caller supplies the legacy ballot.
+
+    Keep its anchor and size, and every covered played shape AND exact pair
+    state. Consider excluded actions in supplied policy order; replace the
+    worst-ranked removable non-anchor only with a better-ranked action that
+    overlaps a retained action using different pair resources. Do not introduce
+    same-resource overlap. Stop after one swap, returning its explicit indices.
+
+    This does NOT preserve shape multiplicities, every action, tractor/control
+    value, or utility. It cannot assert why the original selector omitted an
+    action; it only tests a bounded alternative to global filter relaxation.
+    """
+    if (not baseline or any(type(i) is not int for i in baseline)
+            or len(set(baseline)) != len(baseline)
+            or any(not 0 <= i < len(actions) for i in baseline)):
+        raise ValueError('invalid baseline ballot')
+    counts, signatures = _pair_inputs(
+        rnd, seat, actions, ranked, baseline[0], len(baseline), 1
+    )
+    shapes = {}
+
+    def shape(i):
+        if i not in shapes:
+            shapes[i] = structure_key(rnd, actions[i])
+        return shapes[i]
+
+    chosen = list(baseline)
+    covered_shapes = {shape(i) for i in chosen}
+    covered_resources = {signatures[i] for i in chosen}
+    rank = {i: position for position, i in enumerate(ranked)}
+    for candidate in ranked:
+        if candidate in chosen:
+            continue
+        for removed in sorted(chosen[1:], key=rank.get, reverse=True):
+            if rank[candidate] >= rank[removed]:
+                continue
+            retained = [i for i in chosen if i != removed]
+            overlaps = [i for i in retained if _near_duplicate(
+                counts[candidate], len(actions[candidate]),
+                [(len(actions[i]), counts[i])]
+            )]
+            if not overlaps or any(signatures[i] == signatures[candidate] for i in overlaps):
+                continue
+            if not covered_shapes <= {shape(i) for i in retained} | {shape(candidate)}:
+                continue
+            if not covered_resources <= {signatures[i] for i in retained} | {signatures[candidate]}:
+                continue
+            chosen[chosen.index(removed)] = candidate
+            return {'chosen': chosen, 'swap': {'removed': removed, 'added': candidate}}
+    return {'chosen': chosen, 'swap': None}
+
+
+def test_signature_veto_off_admits_blocked_witness_only():
+    rnd, actions = _synthetic_round(), _resource_actions()
+    ranked, baseline = [0, 2, 1, 3, 4, 5, 6, 7], [0, 3]
+    assert pair_resource_rank_repair(rnd, 1, actions, ranked, baseline) == {
+        "chosen": [0, 1], "swap": {"removed": 3, "added": 1}}
+    assert pair_resource_rank_repair(
+        rnd, 1, actions, ranked, baseline, signature_overlap_veto=False
+    ) == {"chosen": [0, 2], "swap": {"removed": 3, "added": 2}}
+
+
+def test_signature_veto_nonbinding_swap_identical():
+    rnd, actions = _synthetic_round(), _resource_actions()
+    args = (rnd, 1, actions, list(range(8)), [0, 3])
+    expected = {"chosen": [0, 1], "swap": {"removed": 3, "added": 1}}
+    for veto in (True, False):
+        assert pair_resource_rank_repair(
+            *args, signature_overlap_veto=veto) == expected
+
+
+@pytest.mark.parametrize("bad", [0, 1, None, "false"])
+def test_signature_veto_requires_boolean(bad):
+    with pytest.raises(ValueError, match="must be a bool"):
+        pair_resource_rank_repair(
+            _synthetic_round(), 1, _resource_actions(), list(range(8)),
+            [0, 3], signature_overlap_veto=bad)
+
+
+def test_default_byte_parity_and_both_mode_invariants_randomized():
+    rng = random.Random(1105)
+    rnd = _synthetic_round()
+    fixed = _resource_actions()
+    changed = 0
+    for case in range(500):
+        # Existing fixture pool and random unique hand-subset pools; synthetic,
+        # not a claim of engine-legal play or sampled gameplay evidence.
+        if case < 100:
+            actions = copy.deepcopy(fixed)
+        else:
+            identities = {tuple(sorted(action)) for action in fixed}
+            for _ in range(16):
+                identities.add(tuple(sorted(rng.sample(rnd.hands[1], rng.randint(1, 5)))))
+            actions = [list(action) for action in sorted(identities)]
+        ranked = list(range(len(actions)))
+        rng.shuffle(ranked)
+        baseline = rng.sample(ranked, rng.randint(1, min(8, len(actions))))
+        before = copy.deepcopy((rnd.hands, actions, ranked, baseline))
+        args = (rnd, 1, actions, ranked, baseline)
+        old = _frozen_s10_rank_repair(*args)
+        default = pair_resource_rank_repair(*args)
+        explicit = pair_resource_rank_repair(*args, signature_overlap_veto=True)
+        assert json.dumps(default).encode() == json.dumps(old).encode()
+        assert json.dumps(explicit).encode() == json.dumps(old).encode()
+        _, signatures = _pair_inputs(rnd, 1, actions, ranked, baseline[0], len(baseline), 1)
+        shapes = [structure_key(rnd, action) for action in actions]
+        rank = {index: pos for pos, index in enumerate(ranked)}
+        off = pair_resource_rank_repair(*args, signature_overlap_veto=False)
+        changed += off != default
+        for result in (default, off):
+            chosen = result["chosen"]
+            assert chosen[0] == baseline[0]
+            assert len(chosen) == len(set(chosen)) == len(baseline)
+            assert {shapes[i] for i in baseline} <= {shapes[i] for i in chosen}
+            assert {signatures[i] for i in baseline} <= {signatures[i] for i in chosen}
+            if result["swap"]:
+                removed, added = result["swap"]["removed"], result["swap"]["added"]
+                assert removed in baseline[1:] and added not in baseline
+                assert rank[added] < rank[removed]
+                assert len(set(chosen) - set(baseline)) == 1
+                assert any(_near_duplicate(
+                    Counter(actions[added]), len(actions[added]),
+                    [(len(actions[i]), Counter(actions[i]))])
+                    for i in baseline if i != removed)
+        assert (rnd.hands, actions, ranked, baseline) == before
+    assert changed > 0

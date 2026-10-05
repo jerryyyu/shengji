@@ -11,6 +11,57 @@ from test_launch_production_llm_panel import _config, _real_validation_fixture, 
 from test_launch_sol_recovery import _binding, _report, _retention, _controls
 
 
+def _snapshot(page_size=16384, free=1, inactive=2, speculative=3):
+    return (f'Mach Virtual Memory Statistics: (page size of {page_size} bytes)\n'
+            f'Pages free: {free}.\nPages inactive: {inactive}.\n'
+            f'Pages speculative: {speculative}.\n')
+
+
+@pytest.mark.parametrize('page_size', [4096, 16384])
+def test_memory_parser_counts_reclaimable_pages_once(page_size):
+    assert launcher.benchmark_batch.available_memory_bytes(
+        _snapshot(page_size)) == 6 * page_size
+
+
+@pytest.mark.parametrize('snapshot', [
+    None, '', _snapshot(8192), _snapshot(free=-1),
+    _snapshot().replace('Pages inactive: 2.\n', ''),
+    _snapshot() + 'Pages free: 1.\n',
+    _snapshot() + _snapshot(),
+    _snapshot().replace('Pages free: 1.', 'Pages free: 1.5.'),
+    _snapshot(free=2 ** 64),
+])
+def test_memory_parser_refuses_unknown_or_ambiguous_snapshot(snapshot):
+    with pytest.raises(ValueError):
+        launcher.benchmark_batch.available_memory_bytes(snapshot)
+
+
+def test_memory_guard_unsupported_platform_never_probes(monkeypatch):
+    guard = launcher.benchmark_batch
+    monkeypatch.setattr(guard.sys, 'platform', 'linux')
+    monkeypatch.setattr(guard.subprocess, 'run',
+                        lambda *a, **kw: pytest.fail('unsupported host probe'))
+    assert not guard.assert_memory_headroom()
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'os-error', 'bad-snapshot', 'low-memory'])
+def test_memory_guard_probe_failure_is_unsafe(monkeypatch, failure):
+    from types import SimpleNamespace
+    guard = launcher.benchmark_batch
+    monkeypatch.setattr(guard.sys, 'platform', 'darwin')
+    def probe(command, **kwargs):
+        if command == ['/usr/bin/vm_stat']:
+            if failure == 'timeout':
+                raise guard.subprocess.TimeoutExpired(command, 5)
+            if failure == 'os-error':
+                raise OSError('synthetic missing probe')
+            return SimpleNamespace(stdout='malformed' if failure == 'bad-snapshot'
+                                   else _snapshot())
+        return SimpleNamespace(stdout='1')
+    monkeypatch.setattr(guard.subprocess, 'run', probe)
+    assert not guard.assert_memory_headroom()
+
+
 @pytest.mark.parametrize('pressure,expected', [('1', True), ('2', False), ('4', False)])
 def test_real_guard_requires_normal_pressure(monkeypatch, pressure, expected):
     from types import SimpleNamespace

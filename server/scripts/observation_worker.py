@@ -14,7 +14,9 @@ import json
 import math
 import os
 from pathlib import Path
+import socket
 import sys
+import time
 
 
 _MAX_PACKET_BYTES = 1024 * 1024
@@ -26,6 +28,9 @@ _PACKET_KEYS = frozenset({
     "watchdog", "read_complete", "queue", "release", "hold", "host_lock",
     "other_locks", "reservation", "status", "claim",
 })
+_PANEL_PACKET_SCHEMA = "m9-panel-admission-v1"
+_PANEL_PACKET_KEYS = frozenset((*(_PACKET_KEYS - {"read_complete"}),
+                                "timeout_seconds", "process_timeout_seconds"))
 _CLAIM_KEYS = frozenset({
     "schema", "packet_sha256", "status", "comparison_validated", "owner_pid",
     "inner_command",
@@ -126,14 +131,16 @@ def _repository_root() -> Path:
     return script.parents[2]
 
 
-def _read_packet(packet_path, packet_sha):
+def _read_packet(packet_path, packet_sha, *, panel=False):
     path = _canonical_absolute(packet_path, "packet")
     _strict_sha(packet_sha, "packet SHA")
     raw, _ = _stable_read(path, _MAX_PACKET_BYTES)
     if hashlib.sha256(raw).hexdigest() != packet_sha:
         raise ValueError("packet SHA mismatch")
     packet = _parse_object(raw)
-    if set(packet) != _PACKET_KEYS or packet.get("schema") != _PACKET_SCHEMA:
+    expected_keys = _PANEL_PACKET_KEYS if panel else _PACKET_KEYS
+    expected_schema = _PANEL_PACKET_SCHEMA if panel else _PACKET_SCHEMA
+    if set(packet) != expected_keys or packet.get("schema") != expected_schema:
         raise ValueError("exact M9 packet required")
     return path, packet
 
@@ -205,7 +212,7 @@ def _read_runtime(packet, source: Path):
     return manifest
 
 
-def _import_application(server: Path):
+def _import_application(server: Path, *, panel=False):
     # This is the first point at which importing Shengji is permitted.
     import importlib
 
@@ -215,11 +222,19 @@ def _import_application(server: Path):
     runtime = importlib.import_module("shengji.eval.observation_runtime")
     guards = importlib.import_module("shengji.eval.observation_queue")
     tactical = importlib.import_module("scripts.tactical_report")
+    if panel:
+        recipe = importlib.import_module("shengji.eval.m9_panel_recipe")
+        panel_execution = importlib.import_module("shengji.eval.m9_panel_execution")
+        return recipe, runtime, guards, tactical, panel_execution
     return recipe, runtime, guards, tactical
 
 
-def _verify_claim_and_controls(packet, packet_sha, guards):
-    from shengji.eval.observation_recipe import build_observation_command
+def _verify_claim_and_controls(packet, packet_sha, guards, *, panel=False,
+                               packet_path=None):
+    if panel:
+        from shengji.eval.m9_panel_recipe import build_panel_worker_command
+    else:
+        from shengji.eval.observation_recipe import build_observation_command
     controls = {}
     for key in ("release", "hold", "host_lock", "reservation", "status", "claim"):
         controls[key] = _canonical_absolute(packet[key], key)
@@ -229,15 +244,26 @@ def _verify_claim_and_controls(packet, packet_sha, guards):
     if type(other_locks) is not list or not other_locks:
         raise ValueError("explicit peer lock paths required")
     other_locks = [_canonical_absolute(path, "peer lock") for path in other_locks]
+    if panel:
+        controls["_other_locks"] = other_locks
 
-    claim_raw, _ = _stable_read(controls["claim"], _MAX_CLAIM_BYTES)
+    claim_raw, claim_stamp = _stable_read(controls["claim"], _MAX_CLAIM_BYTES)
     claim = _parse_object(claim_raw)
-    if (set(claim) != _CLAIM_KEYS or claim.get("schema") != "m9-owner-attempt-v1"
+    claim_keys = _CLAIM_KEYS | ({"queue_snapshot", "deadline_monotonic"} if panel else set())
+    claim_schema = "m9-panel-owner-attempt-v1" if panel else "m9-owner-attempt-v1"
+    if (set(claim) != claim_keys or claim.get("schema") != claim_schema
             or claim.get("packet_sha256") != packet_sha
             or claim.get("status") != "spent_no_retry"
             or claim.get("comparison_validated") is not False):
         raise ValueError("strict spent owner claim required")
-    if claim["inner_command"] != list(build_observation_command(packet["recipe"])):
+    if panel:
+        if packet_path is None:
+            raise ValueError("panel packet path required for owner command")
+        expected_command = build_panel_worker_command(
+            packet["recipe"], str(packet_path), packet_sha)
+    else:
+        expected_command = build_observation_command(packet["recipe"])
+    if claim["inner_command"] != list(expected_command):
         raise ValueError("owner inner command mismatch")
     owner_pid = claim.get("owner_pid")
     if type(owner_pid) is not int or owner_pid <= 0:
@@ -252,8 +278,9 @@ def _verify_claim_and_controls(packet, packet_sha, guards):
     if os.path.lexists(controls["hold"]) \
             or any(os.path.lexists(path) for path in other_locks):
         raise ValueError("HOLD or peer lock present")
+    release_schema = "m9-panel-release-v1" if panel else "m9-release-v1"
     if not guards.guard_release(
-            controls["release"], {"schema": "m9-release-v1", "packet_sha256": packet_sha}):
+            controls["release"], {"schema": release_schema, "packet_sha256": packet_sha}):
         raise ValueError("exact RELEASE missing or changed")
 
     host_lock = controls["host_lock"]
@@ -270,16 +297,24 @@ def _verify_claim_and_controls(packet, packet_sha, guards):
         owner_text = owner_raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("host lock owner is not UTF-8") from exc
-    if owner_text != f"m9 {owner_pid} {packet_sha}\n":
+    owner_prefix = "m9-panel" if panel else "m9"
+    if owner_text != f"{owner_prefix} {owner_pid} {packet_sha}\n":
         raise ValueError("host lock owner mismatch")
     if _stamp(host_lock) != lock_before:
         raise ValueError("host lock changed during verification")
+    if panel:
+        controls["_claim"] = claim
+        controls["_claim_stamp"] = list(claim_stamp)
     return controls
 
 
-def _bootstrap(packet_path, packet_sha):
+def _bootstrap(packet_path, packet_sha, *, panel=False):
     """Authenticate all application bytes using only the standard library."""
-    _, packet = _read_packet(packet_path, packet_sha)
+    if panel:
+        _, packet = _read_packet(packet_path, packet_sha, panel=True)
+    else:
+        # Keep the historical two-argument call shape for test/adaptor users.
+        _, packet = _read_packet(packet_path, packet_sha)
     repo = _repository_root()
     recipe_value = packet.get("recipe")
     if type(recipe_value) is not dict or recipe_value.get("source_root") != str(repo):
@@ -289,7 +324,7 @@ def _bootstrap(packet_path, packet_sha):
     return packet, server, runtime_manifest
 
 
-def _import_owner(server):
+def _import_owner(server: Path, *, panel=False):
     import importlib
 
     sys.path.insert(0, str(server))
@@ -297,8 +332,12 @@ def _import_owner(server):
     return importlib.import_module("shengji.eval.observation_admission")
 
 
-def run_owner_packet(packet_path, packet_sha):
+def run_owner_packet(packet_path, packet_sha, *, panel=False):
     """Bootstrap the owning caller; this does not create RELEASE or skip guards."""
+    if panel:
+        _, server, _ = _bootstrap(packet_path, packet_sha, panel=True)
+        owner = _import_owner(server)
+        return owner.run_panel_packet(packet_path, packet_sha)
     _, server, _ = _bootstrap(packet_path, packet_sha)
     owner = _import_owner(server)
     return owner.run_packet(packet_path, packet_sha)
@@ -330,6 +369,114 @@ def run_packet(packet_path, packet_sha):
         sys.argv = original_argv
 
 
+def _panel_reservation(controls, packet, packet_sha, owner_pid, recipe):
+    """Read and bind the owner's reservation without importing application code."""
+    raw, stamp = _stable_read(controls["reservation"], _MAX_CLAIM_BYTES)
+    record = _parse_object(raw)
+    if (type(record) is not dict
+            or record.get("schema") != "codex-m9-panel-reservation-v1"
+            or record.get("lane") != "m9-panel"
+            or record.get("packet_sha256") != packet_sha
+            or record.get("pid") != owner_pid
+            or record.get("output_root") != recipe["output_dir"]
+            or record.get("count") != 15
+            or record.get("status") != str(controls["status"])):
+        raise ValueError("panel reservation binding mismatch")
+    return {"path": str(controls["reservation"]), "stamp": list(stamp)}
+
+
+def run_panel_packet(packet_path, packet_sha):
+    """Authenticate and run one admitted fixed panel in this process."""
+    started = time.monotonic()
+    packet, server, runtime_manifest = _bootstrap(packet_path, packet_sha, panel=True)
+    packet_path = _canonical_absolute(str(packet_path), "packet")
+    recipe_value = packet["recipe"]
+    recipe, runtime_adapter, guards, _tactical, panel_execution = _import_application(
+        server, panel=True)
+    recipe.validate_panel_recipe(recipe_value)
+    if Path(str(recipe_value["python"])).resolve() != Path(sys.executable).resolve():
+        raise ValueError("panel interpreter mismatch")
+    if packet.get("hostname") != socket.gethostname():
+        raise ValueError("panel hostname mismatch")
+    if packet.get("environment") != runtime_adapter.ENVIRONMENT:
+        raise ValueError("panel environment mismatch")
+    timeout = packet.get("timeout_seconds")
+    if type(timeout) is not int or timeout <= 0:
+        raise ValueError("panel timeout_seconds must be a strict positive integer")
+    process_timeout = packet.get("process_timeout_seconds")
+    if type(process_timeout) is not int or process_timeout <= timeout:
+        raise ValueError("panel process timeout must exceed inner deadline")
+
+    controls = _verify_claim_and_controls(
+        packet, packet_sha, guards, panel=True, packet_path=packet_path)
+    owner_pid = controls["_claim"]["owner_pid"]
+    deadline = controls["_claim"].get("deadline_monotonic")
+    if (type(deadline) not in (int, float) or not math.isfinite(deadline)
+            or deadline <= 0 or deadline > started + timeout):
+        raise ValueError("owner-bound monotonic panel deadline required")
+    own = _panel_reservation(controls, packet, packet_sha, owner_pid, recipe_value)
+    queue_spec = guards.validate_queue_spec(packet["queue"])
+    if controls["reservation"].parent != Path(queue_spec["reservation_dir"]):
+        raise ValueError("panel reservation must use shared queue directory")
+    snapshot = controls["_claim"].get("queue_snapshot")
+    if not guards.queue_unchanged(queue_spec, snapshot, owned_record=own):
+        raise ValueError("panel queue changed before body")
+
+    packet_stamp = list(_stamp(packet_path))
+    release_stamp = list(_stamp(controls["release"]))
+    claim_stamp = controls["_claim_stamp"]
+    reservation_stamp = own["stamp"]
+    host_lock = controls["host_lock"]
+    host_owner = host_lock / "owner"
+    lock_stamp = list(_stamp(host_lock))
+    owner_stamp = list(_stamp(host_owner))
+    expected_release = {"schema": "m9-panel-release-v1", "packet_sha256": packet_sha}
+    expected_owner = f"m9-panel {owner_pid} {packet_sha}\n"
+
+    def check_admission():
+        try:
+            if list(_stamp(packet_path)) != packet_stamp:
+                raise ValueError("panel packet changed")
+            if os.path.lexists(controls["hold"]):
+                raise ValueError("HOLD or peer lock present")
+            if any(os.path.lexists(path) for path in controls["_other_locks"]):
+                raise ValueError("HOLD or peer lock present")
+            if list(_stamp(controls["release"])) != release_stamp or not guards.guard_release(
+                    controls["release"], expected_release):
+                raise ValueError("panel RELEASE changed")
+            if list(_stamp(controls["claim"])) != claim_stamp:
+                raise ValueError("panel claim changed")
+            try:
+                os.kill(owner_pid, 0)
+            except PermissionError:
+                pass
+            except (ProcessLookupError, OSError) as exc:
+                raise ValueError("panel owner process is stale") from exc
+            if list(_stamp(controls["reservation"])) != reservation_stamp:
+                raise ValueError("panel reservation changed")
+            if os.path.lexists(controls["status"]):
+                raise ValueError("panel terminal status appeared")
+            if (list(_stamp(host_lock)) != lock_stamp
+                    or list(_stamp(host_owner)) != owner_stamp
+                    or host_owner.read_text(encoding="utf-8") != expected_owner):
+                raise ValueError("panel host lease changed")
+            if not guards.queue_unchanged(queue_spec, snapshot, owned_record=own):
+                raise ValueError("panel queue changed")
+            return True
+        except (OSError, UnicodeError, TypeError, ValueError) as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError("panel admission control unreadable") from exc
+
+    def check_budget():
+        if time.monotonic() >= deadline:
+            raise TimeoutError("panel deadline exceeded")
+
+    return panel_execution.run_panel_body(
+        recipe_value, runtime_manifest,
+        check_admission=check_admission, check_budget=check_budget)
+
+
 def main(argv=None):
     import argparse
 
@@ -338,9 +485,15 @@ def main(argv=None):
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--admit", action="store_true",
                         help="bootstrap the owning caller; exact RELEASE and all admission guards required")
+    parser.add_argument("--panel", action="store_true",
+                        help="use the authenticated fixed M9 panel packet and child")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    entry = run_owner_packet if args.admit else run_packet
-    result = entry(args.packet, args.sha256)
+    if args.admit:
+        result = (run_owner_packet(args.packet, args.sha256, panel=True)
+                  if args.panel else run_owner_packet(args.packet, args.sha256))
+    else:
+        result = (run_panel_packet(args.packet, args.sha256)
+                  if args.panel else run_packet(args.packet, args.sha256))
     if args.admit:
         if (type(result) is not dict or result.get("status") != "exited"
                 or type(result.get("returncode")) is not int or result["returncode"] != 0):

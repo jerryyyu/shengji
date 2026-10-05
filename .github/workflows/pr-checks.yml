@@ -54,6 +54,7 @@ jobs:
           tests/test_panel_forfeit_alignment.py
           tests/test_panel_memory_reader.py
           tests/test_production_llm_panel_readout.py
+          tests/test_production_llm_panel.py
           tests/test_sealed_panel_reader.py
           tests/test_sealed_readout_wrapper.py
           tests/test_engine.py

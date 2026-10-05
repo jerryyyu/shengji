@@ -3,7 +3,7 @@
 Run only in a fresh isolated Perf process under an external hard timeout and
 the agreed free-host guard. This script creates no queue claim or RELEASE.
 Its fixed synthetic fixture cannot be replaced with the scientific population.
-The qualified aaafc3e7 source remains untouched; copy this script outside it.
+The qualified f7838cfb source remains untouched; copy this script outside it.
 """
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ import sys
 import time
 
 
-STAGE = Path("/root/m9-panel-aaafc3e7-20261005.wMj71L")
-MANIFEST_SHA = "9a95cba38cb7c8f6a1626fb6af94377bf93ddb05207ca8e44834bacd35813f2a"
-ADAPTER_SHA = "ef0b9f9039a0207db8626a0525e68ccbc172df69c516c92713fc8fa3cb1a9820"
+STAGE = Path("/root/m9-recovery-f7838cfb-20261005.pt0Gyc")
+MANIFEST_SHA = "146a97b34555937b2b9174df094fc2e7b30a24279bb849ce08af6aa6625200dd"
+ADAPTER_SHA = "a2d2f776398781dd1b417d94a0b898c6af91a22ddc0972f4092a5e66c98fdb24"
 FIXTURE_SHA = "fc375d84408f58e15521e7fb21696804aeae4900af0d461dc195334f58ca2c1b"
 MODEL_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 SEED = 17
@@ -164,7 +164,7 @@ def main():
     if not sys.flags.isolated or not sys.dont_write_bytecode or not sys.platform.startswith("linux"):
         parser.error("fresh Linux -I -B interpreter required")
     # Deliberately no model/source/output generalization or runtime recapture.
-    if (args.output.parent != Path("/root/m9-capacity-timing-20261005")
+    if (args.output.parent != Path("/root/m9-capacity-recovery-20261005")
             or args.output.name != args.mode
             or any(p.is_symlink() for p in (args.output, *args.output.parents))):
         parser.error("output must be the dedicated timing root / mode")

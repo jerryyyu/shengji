@@ -266,6 +266,7 @@ jobs:
           tests/test_m9_panel_artifact_reader.py
           tests/test_selected_panel_reader.py
           tests/test_panel_rank_root.py
+          tests/test_panel_rank_worker.py
           tests/test_m9_panel_publication.py
           tests/test_m9_panel_readout_worker.py
           tests/test_m9_readout_persistence_roundtrip.py

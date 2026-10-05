@@ -5,6 +5,7 @@ import pytest
 from scripts import prepare_llm_panel_roots as producer
 from scripts import w32_llm_benchmark as runner
 from shengji.luna.benchmark_recipes import prepare_recipe
+from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
 from test_llm_benchmark_games import planner
 
 
@@ -76,6 +77,85 @@ def test_attributed_illegal_action_still_stops_panel(kwargs):
     assert 'signed_levels' not in failed
     assert len(pending) == 3
     assert all(row['status'] == 'not_run' and row['calls'] == [] for row in pending)
+
+
+@pytest.mark.parametrize('limit', [1, 2, 8])
+def test_preserve_protocol_counts_real_illegal_actions_without_retry(kwargs, limit):
+    calls = []
+    class IllegalTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            calls.append(packet)
+            return {'cards': [], 'memory': ''}
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000,
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL,
+        illegal_failure_limit=limit, transport_factory=IllegalTransport)
+    attempted = min(limit, 4)
+    assert len(calls) == attempted
+    assert len(report['mirrors']) == 4
+    assert len({row['key'] for row in report['mirrors']}) == 4
+    assert all(row['failure']['category'] == 'model_illegal_action'
+               for row in report['mirrors'][:attempted])
+    assert all(row['status'] == 'not_run' for row in report['mirrors'][attempted:])
+    assert all(not row['complete'] and 'signed_levels' not in row
+               for row in report['mirrors'])
+    assert report['scheduled_summary']['failed'] == attempted
+    assert report['scheduled_summary']['stop_required'] is (limit <= 4)
+    assert report['config']['illegal_failure_limit'] == limit
+
+
+@pytest.mark.parametrize('throws', [False, True])
+def test_preserve_protocol_infrastructure_failure_blocks_summary(kwargs, throws):
+    attempted = []
+    def broken(game, **options):
+        attempted.append(options['flip'])
+        if throws:
+            raise RuntimeError('synthetic timeout')
+        return {'complete': False, 'error': 'synthetic timeout'}
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000, runner=broken,
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL)
+    assert len(attempted) == 1
+    assert report['scheduled_summary']['blocked'] is True
+    assert report['scheduled_summary']['blocked_reason']['category'] == 'unclassified_infrastructure_failure'
+    assert all(row['status'] == 'not_run' for row in report['mirrors'][1:])
+
+
+@pytest.mark.parametrize('change', [
+    {'failure_protocol': 'retry'}, {'illegal_failure_limit': True},
+    {'illegal_failure_limit': 0}, {'illegal_failure_limit': 8.0},
+    {'classify_final_action_failures': False}, {'models': ['luna']},
+])
+def test_preserve_protocol_invalid_configuration_refuses(kwargs, change):
+    kwargs.update(failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True)
+    kwargs.update(change)
+    with pytest.raises(runner.BenchmarkRefusal):
+        runner.run_benchmark(**kwargs)
+    assert not kwargs['output'].exists()
+
+
+def test_preserve_protocol_keeps_complete_and_forfeit_endpoints_separate(kwargs):
+    attempted = []
+    def mixed(game, **options):
+        attempted.append((options['information'], options['flip']))
+        if len(attempted) == 1:
+            return {'complete': False, 'error': 'IllegalPlay: synthetic',
+                    'events': [{'seat': 0, 'attempted_cards': []}],
+                    'failure': {'schema': 'benchmark-action-failure-v1',
+                                'category': 'model_illegal_action', 'stage': 'engine_play',
+                                'seat': 0, 'attempted_cards': [], 'event_index': 0}}
+        return {'complete': True, 'signed_levels': 3}
+    report = runner.run_benchmark(
+        **kwargs, run=True, token_limit=1000000, runner=mixed,
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL)
+    assert len(attempted) == len(set(attempted)) == 4
+    modes = report['scheduled_summary']['modes']
+    assert modes['actor-only']['completed_paired_mean'] is None
+    assert modes['actor-only']['forfeit_paired_mean'] == 1
+    assert modes['perfect']['completed_paired_mean'] == 3
+    assert modes['perfect']['forfeit_paired_mean'] == 3
 
 
 @pytest.mark.parametrize("capacity", [False, True])

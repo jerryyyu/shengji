@@ -26,6 +26,9 @@ from shengji.engine.cards import RANKS
 from shengji.engine.game import Game
 from shengji.luna.atomic_io import publish_exclusive_bytes
 from shengji.luna.benchmark_games import play_mirror
+from shengji.luna.benchmark_failure_protocol import (
+    FAIL_STOP, PRESERVE_ILLEGAL, attempt_disposition, summarize_scheduled,
+)
 from shengji.luna.benchmark_recipes import PreparedRecipe
 from shengji.luna.benchmark_transport import BenchmarkTransport, CAPACITY_RETRY_DELAYS
 from shengji.luna.canonical import canonical_json_bytes
@@ -671,6 +674,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   accept_recovered_reconnects: bool = False,
                   invalid_action_feedback: bool = False,
                   classify_final_action_failures: bool = False,
+                  failure_protocol: str = FAIL_STOP,
+                  illegal_failure_limit: int = 8,
                   run: bool = False, codex_binary: str = "codex",
                   timeout_seconds: int = 90, runner=play_mirror,
                   transport_factory=BenchmarkTransport, game_factory=Game,
@@ -679,6 +684,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                   recipe_reader=bury_env_recipe,
                   bot_factory=make_bot) -> dict[str, object]:
     """Validate, optionally execute, and return the sealed benchmark report."""
+    if failure_protocol not in (FAIL_STOP, PRESERVE_ILLEGAL):
+        raise BenchmarkRefusal("unknown benchmark failure protocol")
+    if type(illegal_failure_limit) is not int or illegal_failure_limit <= 0:
+        raise BenchmarkRefusal("illegal_failure_limit must be a positive integer")
     for name, value in (("capacity_retries", capacity_retries),
                         ("accept_recovered_reconnects", accept_recovered_reconnects),
                         ("invalid_action_feedback", invalid_action_feedback),
@@ -709,6 +718,10 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     else:
         checkpoint_id = _checkpoint_identity(checkpoint)
     models = tuple(models)
+    if failure_protocol == PRESERVE_ILLEGAL and (
+            prepared_recipe is None or models != ("sol",) or continue_from is not None
+            or not classify_final_action_failures):
+        raise BenchmarkRefusal("preserve protocol requires prepared Sol with final-action attribution")
     if (capacity_retries or accept_recovered_reconnects or invalid_action_feedback
             or classify_final_action_failures) and (
             prepared_recipe is None or models != ("sol",)):
@@ -766,6 +779,9 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                           ("classify_final_action_failures", classify_final_action_failures)):
         if enabled:
             config[name] = True
+    if failure_protocol == PRESERVE_ILLEGAL:
+        config["failure_protocol"] = failure_protocol
+        config["illegal_failure_limit"] = illegal_failure_limit
     if capacity_retries:
         config["provider_capacity_retry_delays"] = list(CAPACITY_RETRY_DELAYS)
     if accept_recovered_reconnects:
@@ -862,6 +878,8 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
     all_rows: list[dict[str, object]] = []
     summaries: dict[str, object] = {}
     panel_stopped = False
+    model_failure_count = 0
+    scheduled_stop_reason = None
     for model in models:
         for mode in information:
             arm = f"{model}-{mode}"
@@ -886,7 +904,9 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                                "arm": arm, "model": model, "information": mode,
                                "seed": seed, "flip": flip, "complete": False,
                                "status": "not_run",
-                               "error": "panel stopped after first incomplete mirror",
+                               "error": ("panel stopped after first incomplete mirror"
+                                         if scheduled_stop_reason is None
+                                         else "panel stopped: " + scheduled_stop_reason["category"]),
                                "calls": []}
                     elif seed in setup_failures:
                         row = {"schema": "w32-llm-benchmark-mirror-v1", "key": key,
@@ -955,8 +975,26 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                                 "source_row_sha256": source["sha256"],
                             }
                     _publish(output_path / f"mirror-{model}-{mode}-{seed}-{flip}.json", row)
-                    if prepared_recipe is not None and row.get("complete") is not True:
+                    if (failure_protocol == FAIL_STOP and prepared_recipe is not None
+                            and row.get("complete") is not True):
                         panel_stopped = True
+                    if failure_protocol == PRESERVE_ILLEGAL and not panel_stopped:
+                        disposition = attempt_disposition(row, protocol=PRESERVE_ILLEGAL)
+                        if disposition == "retained-model-failure":
+                            model_failure_count += 1
+                            if model_failure_count >= illegal_failure_limit:
+                                panel_stopped = True
+                                scheduled_stop_reason = {
+                                    "category": "model_failure_limit",
+                                    "failure_count": model_failure_count,
+                                    "failure_limit": illegal_failure_limit,
+                                }
+                        elif disposition != "complete":
+                            panel_stopped = True
+                            scheduled_stop_reason = {
+                                "category": "unclassified_infrastructure_failure",
+                                "key": key, "error": row.get("error"),
+                            }
                     arm_rows.append(row)
                     all_rows.append(row)
             summaries[arm] = _summary(
@@ -982,6 +1020,16 @@ def run_benchmark(*, checkpoint: str | None, policy: str, output: str | os.PathL
                          "wall_seconds": time.monotonic() - budget.started},
               "prior": prior_meta,
               "setup_failures": setup_failures}
+    if failure_protocol == PRESERVE_ILLEGAL:
+        if (scheduled_stop_reason is not None and scheduled_stop_reason["category"]
+                == "unclassified_infrastructure_failure"):
+            report["scheduled_summary"] = {
+                "protocol": PRESERVE_ILLEGAL, "failure_limit": illegal_failure_limit,
+                "blocked": True, "blocked_reason": scheduled_stop_reason,
+            }
+        else:
+            report["scheduled_summary"] = summarize_scheduled(
+                all_rows, failure_limit=illegal_failure_limit)
     if prepared_roots is not None:
         report["prepared_roots"] = {
             "source": prepared_roots["path"],

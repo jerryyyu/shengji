@@ -16,6 +16,7 @@ fraction threshold is honoured.
 """
 import copy
 from collections import Counter
+import random
 
 import numpy as np
 import pytest
@@ -26,6 +27,71 @@ from shengji.train import policy_value_search as module
 from shengji.train import pv_search_policy as pv
 from shengji.train.policy_value_search import PolicyValueBot, structure_key
 from test_policy_world_search import state
+
+
+def _pair_preservation_follow():
+    """Complete double-deck allocation; seat1 is void in a legal trump lead."""
+    from shengji.engine.cards import Ordering, make_deck
+    from shengji.engine.round import Round, Trick
+    deck = make_deck()
+    follower = ['S6', 'S6', 'S8', 'D8', 'C2', 'C4', 'C4']
+    for card in follower:
+        deck.remove(card)
+    ordering = Ordering('H', '7')
+    for card in list(deck):
+        if len(follower) == 25:
+            break
+        if ordering.eff_suit(card) != 'T':
+            follower.append(card)
+            deck.remove(card)
+    lead = ['BJ', 'BJ', 'LJ']
+    for card in lead:
+        deck.remove(card)
+    leader = lead + deck[:22]
+    deck = deck[22:]
+    rnd = Round('7', 0, random.Random(0))
+    rnd.hands = [leader, follower, deck[:25], deck[25:50]]
+    rnd.buried = deck[50:]
+    rnd.phase, rnd.turn, rnd.trump_suit = 'play', 0, 'H'
+    rnd.ordering, rnd.trick = ordering, Trick(0)
+    assert len(rnd.buried) == 8
+    assert Counter(sum(rnd.hands, []) + rnd.buried) == Counter(make_deck())
+    rnd.play(0, lead)
+    assert Counter(rnd.trick.plays[0].cards) == Counter(lead)
+    assert rnd.turn == 1
+    return rnd
+
+
+def test_pair_preserving_legal_follow_can_be_suppressed_by_overlap(monkeypatch):
+    """A mechanism witness, not proof of the historical M9 exclusion cause.
+
+    Current diversity uses played structure/overlap, not remaining resources.
+    Policy ranks here are constructed; no model or strength claim is made.
+    """
+    rnd = _pair_preservation_follow()
+    bot = harness(admission_diversity=True)
+    legal = enumerate_legal(rnd, 1, cap=4000)
+    actions = list(legal.actions)
+    anchor = ('C2', 'D8', 'S6')
+    preserving = ('C2', 'D8', 'S8')
+    keys = [tuple(sorted(a)) for a in actions]
+    a, b = keys.index(anchor), keys.index(preserving)
+    assert structure_key(rnd, actions[a]) == structure_key(rnd, actions[b])
+    for index, remaining in [(a, 1), (b, 2)]:
+        played = copy.deepcopy(rnd)
+        played.play(1, list(actions[index]))
+        assert Counter(played.hands[1])['S6'] == remaining
+    ranked = [a, b] + [i for i in range(len(actions)) if i not in (a, b)]
+    chosen = bot._admit_diverse(rnd, actions, ranked, a, k=8)
+    assert len(chosen) == 8 and chosen[0] == a
+    assert b not in chosen and b in bot._diversity_skipped
+    # Raising the structure cap alone cannot rescue it: overlap is independent.
+    bot.max_per_structure = 1000
+    assert b not in bot._admit_diverse(rnd, actions, ranked, a, k=8)
+    # Isolate the cause, without proposing removal of the overlap protection.
+    bot.max_per_structure = 2
+    monkeypatch.setattr(module, '_near_duplicate', lambda *args: False)
+    assert bot._admit_diverse(rnd, actions, ranked, a, k=8)[:2] == [a, b]
 
 PRODUCTION_NAME = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
 PRODUCTION_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"

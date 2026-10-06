@@ -8,7 +8,8 @@ import pytest
 
 from shengji.luna import benchmark_retention as retention
 from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_scheduled
-from shengji.luna.benchmark_retained_content import validate_retained_content
+from shengji.luna.benchmark_retained_content import (
+    validate_retained_content, validate_retained_lineage)
 from shengji.luna.canonical import canonical_json_bytes
 
 
@@ -211,7 +212,8 @@ def test_no_retention_binding_is_outside_content_validator():
     "score", "usage", "lineage", "extra_lineage", "source_row_sha",
     "top_level", "pending_lineage", "schedule_key",
 ])
-def test_retained_content_rejects_content_or_binding_drift(tmp_path, mutation):
+@pytest.mark.parametrize("validator", [validate_retained_content, validate_retained_lineage])
+def test_retained_content_rejects_content_or_binding_drift(tmp_path, mutation, validator):
     loaded, plan, plan_sha = _source(tmp_path)
     report = _report(loaded, plan, plan_sha)
     attempted = "sol-actor-only-seed10-flip0"
@@ -232,10 +234,55 @@ def test_retained_content_rejects_content_or_binding_drift(tmp_path, mutation):
     elif mutation == "schedule_key":
         report["mirrors"][0]["key"] = attempted + "-changed"
     with pytest.raises(ValueError):
-        validate_retained_content(report, loaded)
+        validator(report, loaded)
 
 
 def test_retained_content_requires_authenticated_input(tmp_path):
     loaded, plan, plan_sha = _source(tmp_path)
     with pytest.raises(ValueError):
         validate_retained_content(_report(loaded, plan, plan_sha), None)
+
+
+def test_failed_recovery_lineage_can_be_audited_without_accepting_failure(tmp_path):
+    loaded, plan, pin = _source(tmp_path)
+    report = _report(loaded, plan, pin)
+    new = next(row for row in report["mirrors"]
+               if row["key"] == "sol-perfect-seed10-flip0")
+    new.pop("signed_levels")
+    new.update(complete=False, error="IllegalPlay: tool request rejected",
+               calls=[{"usage": {"input_tokens": 17, "output_tokens": 3}}])
+    report.pop("scheduled_summary")
+    before = copy.deepcopy((report, loaded))
+    assert validate_retained_lineage(report, loaded) == {
+        "status": "retained-lineage-verified", "retained": 39, "new_slots": 1}
+    with pytest.raises(ValueError, match="unknown failure"):
+        validate_retained_content(report, loaded)
+    assert (report, loaded) == before
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "missing", "foreign", "bool_flip",
+                                      "duplicate_seed", "old_to_pending"])
+def test_lineage_audit_refuses_schedule_loss_or_reopening(tmp_path, mutation):
+    loaded, plan, pin = _source(tmp_path)
+    report = _report(loaded, plan, pin)
+    if mutation == "duplicate":
+        report["mirrors"][-1] = copy.deepcopy(report["mirrors"][0])
+    elif mutation == "missing":
+        report["mirrors"].pop()
+    elif mutation == "foreign":
+        report["mirrors"][-1]["key"] = "foreign"
+    elif mutation == "bool_flip":
+        report["mirrors"][0]["flip"] = False
+    elif mutation == "duplicate_seed":
+        report["config"]["seeds"] = [*SEEDS, SEEDS[0]]
+    elif mutation == "old_to_pending":
+        report["mirrors"][0] = _row("actor-only", 10, 0, "pending")
+    with pytest.raises(ValueError):
+        validate_retained_lineage(report, loaded)
+
+
+def test_lineage_audit_does_not_claim_unbound_or_unauthenticated_success(tmp_path):
+    assert validate_retained_lineage({"config": {}}, None) is None
+    loaded, plan, pin = _source(tmp_path)
+    with pytest.raises(ValueError, match="lacks authenticated retention"):
+        validate_retained_lineage(_report(loaded, plan, pin), None)

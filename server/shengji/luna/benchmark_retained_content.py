@@ -124,13 +124,15 @@ def _retained_binding(report: dict[str, Any], auth: Mapping[str, Any]) -> dict[s
     return binding
 
 
-def validate_retained_content(
+def validate_retained_lineage(
         report: dict[str, Any],
         authenticated_retention: Mapping[str, Any] | None) -> dict[str, int | str] | None:
-    """Validate that a recovery report copied only authenticated old attempts.
+    """Audit inherited content, including in a failed recovery report.
 
-    Reports without a retained-attempt binding are outside this validator and
-    return ``None``.  A bound report returns the ordinary terminal counts.
+    The caller authenticates the report and supplies the historical loader's
+    result. This verifies exact inherited rows and their lineage, NOT new-row
+    dispositions, summary, costs or terminality. It grants no retry or scoring
+    authority. Unbound reports return None, not a successful lineage audit.
     """
     if type(report) is not dict:
         raise ValueError("retained report must be an object")
@@ -148,28 +150,38 @@ def validate_retained_content(
     assert binding is not None
     seeds = config.get("seeds")
     if (type(seeds) is not list
+            or len(seeds) != 10
             or any(type(seed) is not int or isinstance(seed, bool) for seed in seeds)
             or set(seeds) != {
                 int(key.split("-seed", 1)[1].split("-flip", 1)[0])
                 for key in auth_keys
             }):
         raise ValueError("retained report seeds do not match authenticated retention")
-    counts = validate_scheduled_terminal(
-        report, seeds=seeds,
-        retention_binding={
-            "source": authenticated_retention["path"],
-            "result_sha256": authenticated_retention["result_sha256"],
-            "plan_sha256": authenticated_retention["plan_sha256"],
-        })
-    report_rows = {row["key"]: row for row in report["mirrors"]}
+    mirrors = report.get("mirrors")
+    if type(mirrors) is not list or len(mirrors) != len(auth_keys):
+        raise ValueError("retained report must contain exact schedule")
+    report_rows = {}
+    for row in mirrors:
+        if type(row) is not dict or type(row.get("key")) is not str:
+            raise ValueError("retained report row is malformed")
+        key = row["key"]
+        if key not in auth_keys or key in report_rows:
+            raise ValueError("retained report keys are not the exact schedule")
+        original = authenticated_retention["rows"][key]
+        for field in ("schema", "arm", "model", "information", "seed", "flip"):
+            if field not in row or not _strict_equal(row[field], original[field]):
+                raise ValueError(f"retained report identity drift for {key}")
+        report_rows[key] = row
     auth_rows = authenticated_retention["rows"]
     source_rows = authenticated_retention["source_rows"]
+    retained_count = 0
     for key in auth_keys:
         original = auth_rows[key]
         disposition = attempt_disposition(original, protocol=PRESERVE_ILLEGAL)
         current = report_rows[key]
         lineage = current.get("lineage")
         if disposition in ("complete", "retained-model-failure"):
+            retained_count += 1
             expected_lineage = {
                 "source": authenticated_retention["path"],
                 "source_result_sha256": authenticated_retention["result_sha256"],
@@ -189,7 +201,24 @@ def validate_retained_content(
                 raise ValueError(f"new attempt {key} carries retained lineage")
         else:
             raise ValueError(f"authenticated retained row {key} has unknown disposition")
-    return counts
+    return {"status": "retained-lineage-verified", "retained": retained_count,
+            "new_slots": len(auth_keys) - retained_count}
 
 
-__all__ = ["validate_retained_content"]
+def validate_retained_content(
+        report: dict[str, Any],
+        authenticated_retention: Mapping[str, Any] | None) -> dict[str, int | str] | None:
+    """Verify inherited content AND ordinary terminal acceptance."""
+    if validate_retained_lineage(report, authenticated_retention) is None:
+        return None
+    assert authenticated_retention is not None
+    return validate_scheduled_terminal(
+        report, seeds=report["config"]["seeds"],
+        retention_binding={
+            "source": authenticated_retention["path"],
+            "result_sha256": authenticated_retention["result_sha256"],
+            "plan_sha256": authenticated_retention["plan_sha256"],
+        })
+
+
+__all__ = ["validate_retained_content", "validate_retained_lineage"]

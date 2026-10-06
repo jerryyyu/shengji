@@ -2,6 +2,8 @@ import json
 import os
 import sys
 import time
+import subprocess
+import venv
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,32 @@ from test_luna_transport import trace
 
 
 CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+
+
+def test_default_runner_uninstalled_venv_and_evidence_cwd(tmp_path, monkeypatch):
+    from shengji.luna.transport import _default_run
+
+    runtime = tmp_path / "runtime"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(runtime)
+    python = runtime / "bin" / "python"
+    workspace = tmp_path / "evidence"
+    workspace.mkdir()
+    probe = subprocess.run(
+        [str(python), "-I", "-c",
+         "import importlib.util; assert importlib.util.find_spec('shengji') is None"],
+        cwd=workspace, capture_output=True, timeout=10)
+    assert probe.returncode == 0, probe.stderr
+    # An ambient source path must not be needed or passed to the child.
+    monkeypatch.setenv("PYTHONPATH", "/nonexistent-source")
+    monkeypatch.setattr(sys, "executable", str(python))
+    result = _default_run((str(python), "-c",
+        "import os,sys; assert 'PYTHONPATH' not in os.environ; "
+        "sys.stdout.buffer.write(sys.stdin.buffer.read()); "
+        "sys.stderr.write('diagnostic'); raise SystemExit(7)"),
+        b"prompt-through-real-watchdog", workspace, 5)
+    assert (result.returncode, result.stdout, result.stderr) == (
+        7, b"prompt-through-real-watchdog", b"diagnostic")
+    assert not (workspace / "timeout.json").exists()
 
 
 def capacity_trace(*, malformed=False, tool=False):
@@ -50,17 +78,9 @@ class FakeRetryClock:
         self.now += seconds * 1_000_000_000
 
 
-def test_real_timeout_retains_streams_and_benchmark_refuses_once(tmp_path, monkeypatch):
-    from shengji.luna import transport as transport_module
+def test_real_timeout_retains_streams_and_benchmark_refuses_once(tmp_path):
     from shengji.luna.transport import _default_run, CodexProviderResourceError
 
-    # The test venv may have an editable install of a different worktree.
-    # Exercise this source's real watchdog, not that stale installed module.
-    start = transport_module._start_contained_process
-    def start_current_source(command, *, workspace, env, active_calls):
-        env = {**env, "PYTHONPATH": str(Path(transport_module.__file__).resolve().parents[2])}
-        return start(command, workspace=workspace, env=env, active_calls=active_calls)
-    monkeypatch.setattr(transport_module, "_start_contained_process", start_current_source)
     completed = _default_run((sys.executable, "-c",
         "import sys; sys.stdout.buffer.write(b'OUT'); "
         "sys.stderr.buffer.write(b'ERR'); raise SystemExit(7)"), b"", tmp_path, 5)

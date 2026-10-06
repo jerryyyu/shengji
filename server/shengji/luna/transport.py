@@ -430,15 +430,17 @@ def _start_contained_process(command: tuple[str, ...], *, workspace: Path,
         -> tuple[subprocess.Popen[bytes], int]:
     """Launch one RPC behind a pipe-triggered parent-death watchdog.
 
-    An explicit script runs through the current interpreter in isolated mode;
-    its interpreter and script pinning remain the caller's responsibility.
+    Run the source-adjacent script in isolated mode by default. The evidence
+    cwd need not contain (or have installed) the shengji package. Interpreter
+    and script pinning remain the caller's responsibility.
     """
-    if watchdog_script is not None:
-        if (not watchdog_script.is_absolute()
-                or watchdog_script.is_symlink()
-                or not watchdog_script.is_file()):
-            raise ValueError(
-                "watchdog_script must be an absolute regular nonsymlink file")
+    if watchdog_script is None:
+        watchdog_script = Path(__file__).absolute().with_name("watchdog.py")
+    if (not watchdog_script.is_absolute()
+            or watchdog_script.is_symlink()
+            or not watchdog_script.is_file()):
+        raise ValueError(
+            "watchdog_script must be an absolute regular nonsymlink file")
     # No cancellation may close/reuse the liveness FD during ownership
     # transfer. Only process creation/registration is serialized, not work.
     with active_calls._lock:
@@ -447,14 +449,9 @@ def _start_contained_process(command: tuple[str, ...], *, workspace: Path,
         read_fd, write_fd = os.pipe()
         process = None
         try:
-            if watchdog_script is None:
-                wrapper = (
-                    sys.executable, "-B", "-m",
-                    "shengji.luna.watchdog", str(read_fd), *command)
-            else:
-                wrapper = (
-                    sys.executable, "-I", "-B", str(watchdog_script),
-                    str(read_fd), *command)
+            wrapper = (
+                sys.executable, "-I", "-B", str(watchdog_script),
+                str(read_fd), *command)
             process = subprocess.Popen(
                 wrapper, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, cwd=workspace, env=env,

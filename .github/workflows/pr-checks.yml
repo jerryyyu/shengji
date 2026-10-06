@@ -62,6 +62,7 @@ jobs:
           tests/test_sol_release_gate.py
           tests/test_sealed_panel_reader.py
           tests/test_sealed_readout_wrapper.py
+          tests/test_stage1_seal_plan.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
           tests/test_heuristic_suit_groups.py
@@ -106,6 +107,7 @@ jobs:
         run: >-
           uv run python scripts/test_checkout.py --engine compiled -- -q --durations=10
           tests/test_benchmark_final*.py
+          tests/test_stage1_seal_plan.py
           tests/test_prepared_panel_runner.py
           tests/test_llm_benchmark_rollouts.py
           tests/test_production_llm_panel_readout.py

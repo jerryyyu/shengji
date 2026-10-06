@@ -14,6 +14,85 @@ from shengji.luna.canonical import canonical_json_bytes
 from test_benchmark_retained_content import _report, _source
 
 
+def test_actual_failed_runner_output_authenticates_without_accepting_failure(tmp_path):
+    """Exercise publication, stop behavior and authentication together."""
+    from scripts import prepare_llm_panel_roots as producer
+    from scripts import w32_llm_benchmark as runner
+    from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+    from shengji.luna.benchmark_recipes import prepare_recipe
+    from test_benchmark_retained_content import SEEDS, _row
+    from test_benchmark_retention import _repin_report
+
+    roots = tmp_path / "roots"
+    producer.prepare_roots(output=roots, seeds=SEEDS)
+    recipe = prepare_recipe("smart", {})
+    output = tmp_path / "recovery"
+    options = dict(
+        checkpoint=None, policy=recipe.policy, prepared_recipe=recipe,
+        prepared_roots_from=roots,
+        prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
+        seeds=SEEDS, models=["sol"], output=output,
+        failure_protocol=PRESERVE_ILLEGAL, classify_final_action_failures=True)
+    config = runner.run_benchmark(**options)["config"]
+    _, plan, _ = _source(tmp_path)
+    source = tmp_path / "source"
+    old = json.loads((source / "result.json").read_bytes())
+    old["config"] = config
+    for index, original in enumerate(old["mirrors"]):
+        kind = "pending" if index < 3 else "typed" if index == 39 else "complete"
+        row = _row(original["information"], original["seed"], original["flip"], kind)
+        if index in (3, 39):
+            row["calls"] = [{"usage": {"input_tokens": 3 if index == 39 else 2,
+                                       "output_tokens": 1}}]
+        old["mirrors"][index] = row
+        (source / f"mirror-sol-{row['information']}-{row['seed']}-{row['flip']}.json").write_bytes(
+            canonical_json_bytes(row))
+    plan_sha = _repin_report(plan, source, old)
+    authenticated = retention.load_retained_attempts(plan, plan_sha, expected_config=config)
+    original_bytes = {path.name: path.read_bytes() for path in source.iterdir()}
+    attempts = []
+
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            self.calls = []
+
+        def __call__(self, packet):
+            self.calls.append({"usage": {"input_tokens": 3, "output_tokens": 2}})
+            return {"cards": [], "memory": ""}
+
+    def play(game, **kwargs):
+        attempts.append((kwargs["information"], kwargs["seed"], kwargs["flip"]))
+        kwargs["planner_factory"](0)({})
+        if len(attempts) == 2:
+            raise RuntimeError("synthetic unknown rollout failure")
+        return {"complete": True, "signed_levels": 2}
+
+    report = runner.run_benchmark(
+        **options, run=True, token_limit=1000, retention_plan=str(plan),
+        retention_plan_sha256=plan_sha, runner=play, transport_factory=FakeTransport)
+    assert attempts == [("actor-only", 10, 0), ("actor-only", 10, 1)]
+    assert report["scheduled_summary"]["blocked"] is True
+    published_bytes = {path.name: path.read_bytes() for path in output.iterdir() if path.is_file()}
+    result_sha = hashlib.sha256(published_bytes["result.json"]).hexdigest()
+    result = load_recovery_source(
+        output, result_sha, expected_config=config, authenticated_retention=authenticated)
+    assert result["report"] == report
+    assert result["lineage"] == {
+        "status": "retained-lineage-verified", "retained": 37, "new_slots": 3}
+    assert result["costs"] == {
+        "status": "retained-recorded-costs-verified", "tokens": 10,
+        "new_tokens": 10, "prior_tokens": 7, "combined_tokens": 17}
+    failed = result["source_rows"]["sol-actor-only-seed10-flip1"]["row"]
+    assert failed["error"] == "RuntimeError: synthetic unknown rollout failure"
+    assert failed["calls"] == [{"usage": {"input_tokens": 3, "output_tokens": 2}}]
+    pending = result["source_rows"]["sol-actor-only-seed11-flip0"]["row"]
+    assert pending["status"] == "not_run" and pending["calls"] == []
+    with pytest.raises(ValueError, match="unknown failure"):
+        validate_retained_content(result["report"], authenticated)
+    assert {path.name: path.read_bytes() for path in source.iterdir()} == original_bytes
+    assert {path.name: path.read_bytes() for path in output.iterdir() if path.is_file()} == published_bytes
+
+
 def _fixture(tmp_path: Path):
     loaded, plan, plan_sha = _source(tmp_path)
     report = _report(loaded, plan, plan_sha)

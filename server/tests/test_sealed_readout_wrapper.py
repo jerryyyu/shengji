@@ -31,7 +31,10 @@ def bundle(tmp_path):
         'from pathlib import Path\n'
         'def read_sealed_panel(path, sha):\n'
         '    with (Path(path).parent / "opened").open("x") as out: out.write("once")\n'
-        '    return {"synthetic": True}\n')
+        '    return {"synthetic": True, "reader": "nine"}\n'
+        'def read_sealed_stage1(path, sha):\n'
+        '    with (Path(path).parent / "opened").open("x") as out: out.write("once")\n'
+        '    return {"synthetic": True, "reader": "stage1"}\n')
     manifest = dict(schema='sol-panel-analysis-bundle-v1', source_root=str(source),
                     python=sys.executable,
                     python_binary_sha256=hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
@@ -53,17 +56,65 @@ def invoke(bundle):
                            ref['path'], ref['sha256']], env=env, capture_output=True, text=True)
 
 
-def test_fresh_process_once_and_receipt(bundle):
+@pytest.mark.parametrize('stage1', [False, True])
+def test_fresh_process_once_and_receipt(bundle, stage1):
     base, _, _, spec = bundle
+    if stage1:
+        spec['schema'] = 'sol-stage1-read-invocation-v1'
     first = invoke(bundle)
     assert first.returncode == 0, first.stderr
     receipt = json.loads((base / 'output/receipt.json').read_text())
     assert receipt['status'] == 'complete'
     assert receipt['identity']['plan'] == spec['plan']
     assert receipt['result_sha256'] == hashlib.sha256((base / 'output/result.json').read_bytes()).hexdigest()
+    assert json.loads((base / 'output/result.json').read_bytes())['reader'] == ('stage1' if stage1 else 'nine')
     second = invoke(bundle)
     assert second.returncode != 0 and 'already exists' in second.stderr
     assert (base / 'opened').read_text() == 'once'
+
+
+def test_unknown_invocation_refuses_before_claim(bundle):
+    base, _, _, spec = bundle
+    spec['schema'] = 'sol-automatic-reader-selection'
+    outcome = invoke(bundle)
+    assert outcome.returncode != 0 and 'invocation schema mismatch' in outcome.stderr
+    assert not (base / 'output').exists() and not (base / 'opened').exists()
+
+
+def assert_stage1_wrapper(tmp_path, plan_ref):
+    """Join the real synthetic terminal producer fixture to this fresh entry."""
+    base = tmp_path / 'wrapped-stage1'
+    base.mkdir()
+    source = base / 'source'
+    original = Path(__file__).resolve().parents[1]
+    for package in ('scripts', 'shengji'):
+        for path in (original / package).rglob('*'):
+            if not path.is_file() or path.suffix not in ('.py', '.so', '.pyd'):
+                continue
+            destination = source / path.relative_to(original)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(path.read_bytes())
+    # The frozen wrapper requires file-bound packages, not namespace packages.
+    # Match the existing nine-row fixture's explicit scripts package marker.
+    (source / 'scripts/__init__.py').touch(exist_ok=True)
+    manifest = dict(schema='sol-panel-analysis-bundle-v1', source_root=str(source),
+        python=sys.executable, python_binary_sha256=hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
+        environment={'SHENGJI_FAST': os.environ.get('SHENGJI_FAST', '0')},
+        source_files={p.relative_to(source).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+                      for p in source.rglob('*') if p.is_file()})
+    spec = dict(schema='sol-stage1-read-invocation-v1', manifest=write(base / 'manifest.json', manifest),
+                plan=plan_ref, output_dir=str(base / 'output'))
+    packet = base, source, manifest, spec
+    outcome = invoke(packet)
+    assert outcome.returncode == 0, outcome.stderr
+    result = json.loads((base / 'output/result.json').read_bytes())
+    receipt = json.loads((base / 'output/receipt.json').read_bytes())
+    assert receipt['result_sha256'] == hashlib.sha256((base / 'output/result.json').read_bytes()).hexdigest()
+    assert result['panel_size'] == 2 and result['seals']['metadata_and_content_validated']
+    assert set(result['policies']) == {'smv3-pv', 'm1-prior'}
+    second = invoke(packet)
+    assert second.returncode != 0 and 'already exists' in second.stderr
+    return result
 
 
 @pytest.mark.parametrize('corruption', ['source', 'python', 'environment', 'extra', 'manifest'])

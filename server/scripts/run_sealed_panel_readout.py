@@ -88,7 +88,8 @@ def verify_bundle(manifest_path, digest):
 def run(invocation_path, invocation_sha256):
     spec = decode(pinned(invocation_path, invocation_sha256))
     require(set(spec) == {'schema', 'manifest', 'plan', 'output_dir'}, 'invocation fields mismatch')
-    require(spec['schema'] == 'sol-panel-read-invocation-v1', 'invocation schema mismatch')
+    require(spec['schema'] in ('sol-panel-read-invocation-v1',
+                              'sol-stage1-read-invocation-v1'), 'invocation schema mismatch')
     for key in ('manifest', 'plan'):
         require(set(spec[key]) == {'path', 'sha256'}, 'invalid reference')
     source, files, stamps = verify_bundle(spec['manifest']['path'], spec['manifest']['sha256'])
@@ -97,7 +98,10 @@ def run(invocation_path, invocation_sha256):
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(source))
     from shengji.luna.benchmark_readout_receipt import run_once
-    from scripts.sealed_production_llm_panel_readout import read_sealed_panel
+    if spec['schema'] == 'sol-stage1-read-invocation-v1':
+        from scripts.sealed_production_llm_panel_readout import read_sealed_stage1 as reader
+    else:
+        from scripts.sealed_production_llm_panel_readout import read_sealed_panel as reader
 
     def check_imports():
         for name, module in list(sys.modules.items()):
@@ -115,7 +119,7 @@ def run(invocation_path, invocation_sha256):
             require(fast.activate() and legal.check_in_hand.__module__ == 'shengji.engine._fast',
                     'native engine activation failed')
         check_imports()
-        result = read_sealed_panel(spec['plan']['path'], spec['plan']['sha256'])
+        result = reader(spec['plan']['path'], spec['plan']['sha256'])
         check_imports()
         return result
 

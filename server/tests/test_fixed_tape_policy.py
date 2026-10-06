@@ -107,6 +107,38 @@ def test_release38_adapter_accepts_actual_rank_producer_without_another_predicti
     assert len(result['baseline_actions']) == 8
 
 
+def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
+    from dataclasses import fields
+    from pathlib import Path
+    import tomllib
+    from shengji.ai import cwv_policy
+    from shengji.train import pv_search_policy as pv
+    from test_pv_admission_rules import predict, ZeroEvaluator
+
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    recipe = pv.pv_env_recipe(env)
+    monkeypatch.setattr(cwv_policy, 'checkpoint_id', lambda path: recipe['sha256'][:8])
+    assert list(pv.pv_registry_entries(**recipe)) == [
+        'pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457']
+    config = pv.PVSearchConfig(checkpoint_sha256=recipe['sha256'], **{
+        f.name: recipe[f.name] for f in fields(pv.PVSearchConfig) if f.name in recipe})
+    bot = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+                         config=config, checkpoint='/dev/null', seed=17)
+    assert (bot.cap, bot.candidates, bot.max_per_structure) == (4000, 8, 2)
+    assert (bot.admission_diversity, bot.lead_anchor,
+            bot.admit_forced_single, bot.adaptive_k) == (True, True, False, False)
+    assert config.worlds == 64 and config.refusal_constraints and config.tiebreak_points
+    _, root, anchor, capture = _admission_fixture('follow')
+    result = release38_admission(root, root.turn, capture)
+    actions = list(bot._legal(root, root.turn, [anchor]).actions)
+    anchor_index = next(i for i, action in enumerate(actions)
+                        if sorted(action) == sorted(anchor))
+    chosen = bot._admission(root, root.turn, actions, np.array(capture['preferences']),
+                            anchor_index, None)
+    assert chosen == result['chosen_indices']
+    assert bot._admission_record() == result['admission_record']
+
+
 @pytest.mark.parametrize('stop', [1, 2, 3])
 def test_release38_adapter_budget_expiry_returns_no_partial_result(stop):
     _, root, _, capture = _admission_fixture()

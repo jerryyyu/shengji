@@ -1084,6 +1084,28 @@
    "takeaway": "Inconclusive: failed throws fell 33.8 to 12.4 per 1000 plays with no strength gain; interval spans zero. #830 stays off, no deploy.",
    "note": "SEALED 10-05; readout (Claude, one pass) #707 issuecomment-6008139625. Paired -0.011258 [-0.024569,+0.002052], SE 0.006791, MDE80 0.019026, tau 0, Q 2.29, I2 0%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met: no extension, not promoted; strength verdict withheld per the predeclaration. Window deltas +0.0058, -0.0067, -0.0202, -0.0221, -0.0135. Descriptive own-arm levels vs MC-LCB: candidate 0.2268 [0.2022,0.2513], release 38 0.2379 [0.2130,0.2627] (their difference is not the paired primary). Mechanism (descriptive): failed bot throws 33.8 -> 12.4 per 1000 aligned arm plays; rounds with at least one failed throw 64% -> 36%; no lane defect, no swap fields in the comparator. Health: 725,088 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks; MC-LCB receipts unclassified by the PV health reader. Decision: #830 stays merged with the flag off; no deploy. Reader sha256 be524e8596c1bc230e49dad5090e0649d4f80f6ab2401111957bf96508cfe626; result sha256 13507714d7af936a2451feb9c17774047c4e078778b16b77203347c2c3e0ff29; launcher sha256 b9e107dfd65005e1c3346ee398c868773f4fbed205d21387f11d77028a99f6e6; predeclaration sha256 8d882019c82ad9226b9b8631d1e191de5117a1debc0d80d668f2dc305b188197; SHA256SUMS c7e8f0c5b11336102ff86e587de9c8337563fc1448f2fa1bd1fc69b15598a66b. Archived ~/shengji-archive/2026-09-13/readouts/v53dts-doomed-throw-vs-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6008139625"
+  },
+  {
+   "id": "v54ep9b",
+   "date": "2026-10-06",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "C11 epoch 9 vs epoch 6, both under release-38 rules",
+   "candidate": "C11 epoch-9 checkpoint exported as c11e09out-19815aa5, served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury) as pv-search-19815aa5-w64-k8-div-rc-tb-la-r7a79e2e6-bury-hybrid-4d4fe8f7e647; vs C11's val_ce-selected best.pt (epoch 6) under the same rules. The checkpoint epoch is the only difference.",
+   "comparator": "the C11 package c11out-faf37d6d (epoch 6) under release-38 rules, served as pv-search-faf37d6d-w64-k8-div-rc-tb-la-r31659a98-bury-hybrid-ed54675d1a3d, NOT release 38 (grouped under release 38 because the schema's vs must name a baseline release, as v49tc does)",
+   "vs": 38,
+   "vs_group": "the C11 package under release-38 rules",
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory",
+   "seeds": "54060910 54160910 54260910 54360910 54460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.018962,
+   "lo": -0.010495,
+   "hi": 0.04842,
+   "takeaway": "Inconclusive: epoch 9 read +0.019 over the val-selected epoch 6, interval spans zero; a fresh confirmation is next.",
+   "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6009612731. Paired +0.018962 [-0.010495,+0.048420], SE 0.015029, MDE80 0.042106, tau 0, Q 2.77, I2 0%; INCONCLUSIVE (interval spans zero): not a positive result. Extension trigger (point > +0.015 and CI includes zero) met: only a NEW predeclared five-window confirmation on fresh seeds, judged alone, no pooling; strength verdict withheld. Window deltas +0.0058, +0.0183, +0.0404, -0.0202, +0.0500. Descriptive own-arm levels vs MC-LCB: epoch 9 0.2224 [0.1976,0.2472], epoch 6 0.2039 [0.1794,0.2284] (their difference is not the paired primary). Health: 729,768 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Read: attempt 1 failed before any outcome access (macOS /private/tmp purge of pinned support files), disclosed #707 issuecomment-6009573405, Codex concurred issuecomment-6009588223, same reader rerun once. Bears on M7 (val_ce early stopping may leave served strength unused) and on DEEP8 (same selector). Reader sha256 3bee25522e641e8b7b733f3ec6d3bee12d4a885fcb9537db5a30037d62171023; result sha256 86a1ce317e01ec16b857d6605b2193c7c3c06674f77938d145f26f650c9654a3; launcher sha256 3d49e67a2317e86aba28c012e4cea6e7bcea1cc8a05a5a387eb1bd4b6bac6886; predeclaration sha256 245d2266096011bf0ae83ba6cc7dbe68ee9d2e294d8d0c39486fe6a01fd915ad; SHA256SUMS 9701a596e368cd043f5923866316cb6e953d6a87d461de0227121521435ba1ba. Archived ~/shengji-archive/2026-09-13/readouts/v54ep9b-c11e09-vs-c11out/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6009612731"
   }
  ],
  "context_screens": [

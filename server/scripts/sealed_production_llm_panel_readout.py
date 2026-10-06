@@ -109,10 +109,33 @@ def read_sealed_panel(plan_path, expected_sha256):
 
 def read_sealed_stage1(plan_path, expected_sha256):
     """Admit fresh stage-1 metadata before opening either pinned row result."""
+    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'stage1 plan')
+    admitted = admit_stage1_metadata(plan)
+    reports = {row: _metadata(plan['rows'][row]['result'], row + ' result')
+               for row in admitted['rows']}
+    result = arithmetic.analyze_stage1_reports(
+        reports, {row: admitted['context'] for row in admitted['rows']})
+    _require(_strict_equal(result['terminal_accounting'], admitted['accounting']),
+             'stage1 recomputed accounting mismatch')
+    label_endpoint_coverage(result, admitted['accounting'])
+    result['accounting_note'] = 'Use terminal_accounting for failures versus unattempted slots.'
+    result['seals'] = dict(plan_sha256=expected_sha256,
+                          result_refs={row: plan['rows'][row]['result']
+                                       for row in admitted['rows']},
+                          metadata_and_content_validated=True)
+    return result
+
+
+def admit_stage1_metadata(plan):
+    """Authenticate stage-1 metadata while leaving row results unopened.
+
+    Result references are shape-checked only.  A plan builder can therefore
+    pass all-zero result digests in memory, admit this complete metadata cone,
+    and take one subsequent streaming pass over each result.
+    """
     from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA
     from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
 
-    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'stage1 plan')
     _require(set(plan) == {'schema', 'campaign', 'rows'}
              and plan['schema'] == 'sol-feedback-on-stage1-seals-v1', 'invalid stage1 plan')
     refs = plan['campaign']
@@ -173,17 +196,11 @@ def read_sealed_stage1(plan_path, expected_sha256):
                  and counts['status'] == ('failure-limit' if counts['failed'] == 8 else 'scheduled-terminal')
                  and (counts['failed'] == 8 or counts['unattempted'] == 0), 'stage1 accounting invalid')
         accounting[row] = counts
-    # All campaign/row terminal metadata has been admitted before raw results.
     roots = _metadata({'path': str(Path(config['prepared_roots']) / 'result.json'),
                        'sha256': config['prepared_roots_sha256']}, 'stage1 roots')
     context = dict(seeds=config['seeds'], source_result_sha256=config['prepared_roots_sha256'],
                    root_hashes=roots.get('roots'))
-    reports = {row: _metadata(plan['rows'][row]['result'], row + ' result') for row in STAGE1_ROWS}
-    result = arithmetic.analyze_stage1_reports(reports, {row: context for row in STAGE1_ROWS})
-    _require(_strict_equal(result['terminal_accounting'], accounting), 'stage1 recomputed accounting mismatch')
-    label_endpoint_coverage(result, accounting)
-    result['accounting_note'] = 'Use terminal_accounting for failures versus unattempted slots.'
-    result['seals'] = dict(plan_sha256=expected_sha256,
-                          result_refs={row: plan['rows'][row]['result'] for row in STAGE1_ROWS},
-                          metadata_and_content_validated=True)
-    return result
+    return {'status': 'metadata-admitted-results-unverified', 'plan': plan,
+            'rows': tuple(STAGE1_ROWS), 'config': config,
+            'terminal': terminal, 'summary': summary,
+            'accounting': accounting, 'context': context}

@@ -225,15 +225,10 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     def ref(path):
         return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     output = Path(config['output'])
-    plan = dict(schema='sol-feedback-on-stage1-seals-v1', campaign=dict(
-        config=ref(config_path), output_config=ref(output / 'config.json'),
-        terminal=ref(output / 'terminal.json'), summary=ref(output / 'stage1-summary.json')),
-        rows={row: dict(result=ref(output / row / 'result.json'),
-                        terminal=ref(output / (row + '.terminal.json')),
-                        accounting=ref(output / (row + '.accounting.json')))
-              for row in launcher.STAGE1_ROWS})
-    plan_path = tmp_path / 'read-plan.json'
-    plan_path.write_text(json.dumps(plan))
+    from scripts.prepare_stage1_seal_plan import prepare_stage1_seal_plan
+    plan_dir = tmp_path / 'seal-plan'
+    plan = prepare_stage1_seal_plan(config_path, digest, plan_dir)
+    plan_path = plan_dir / 'result.json'
     admitted = sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
     assert admitted['terminal_accounting'] == result['terminal_accounting']
     assert admitted['panel_size'] == 2
@@ -243,6 +238,7 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     bad_terminal['status'] = 'failed'
     terminal_path.write_text(json.dumps(bad_terminal))
     plan['campaign']['terminal'] = ref(terminal_path)
+    plan_path = tmp_path / 'bad-plan.json'
     plan_path.write_text(json.dumps(plan))
     real_metadata = sealed._metadata
     def no_results(reference, label):

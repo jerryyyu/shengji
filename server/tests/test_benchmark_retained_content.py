@@ -9,7 +9,7 @@ import pytest
 from shengji.luna import benchmark_retention as retention
 from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_scheduled
 from shengji.luna.benchmark_retained_content import (
-    validate_retained_content, validate_retained_lineage)
+    audit_retained_costs, validate_retained_content, validate_retained_lineage)
 from shengji.luna.canonical import canonical_json_bytes
 
 
@@ -90,6 +90,15 @@ def test_actual_runner_retention_report_satisfies_content_reader(
     assert len(provider_calls) == (expected_attempts if new_tokens_per_call else 0)
     assert report['budget']['new_tokens'] == expected_new_tokens
     assert report['budget']['combined_tokens'] == prior_tokens + expected_new_tokens
+    assert audit_retained_costs(report, auth) == {
+        'status': 'retained-recorded-costs-verified', 'tokens': expected_new_tokens,
+        'new_tokens': expected_new_tokens, 'prior_tokens': prior_tokens,
+        'combined_tokens': prior_tokens + expected_new_tokens}
+    if prior_tokens:
+        doubled = copy.deepcopy(report)
+        doubled['budget']['combined_tokens'] += prior_tokens
+        with pytest.raises(ValueError, match='combined_tokens'):
+            audit_retained_costs(doubled, auth)
     assert sum(call['usage']['input_tokens'] + call['usage'].get('output_tokens', 0)
                for row in report['mirrors'] for call in row.get('calls', [])) == (
                    prior_tokens + expected_new_tokens)
@@ -251,10 +260,13 @@ def test_failed_recovery_lineage_can_be_audited_without_accepting_failure(tmp_pa
     new.pop("signed_levels")
     new.update(complete=False, error="IllegalPlay: tool request rejected",
                calls=[{"usage": {"input_tokens": 17, "output_tokens": 3}}])
+    report["budget"] = {"tokens": 20, "new_tokens": 20,
+                        "prior_tokens": 0, "combined_tokens": 20}
     report.pop("scheduled_summary")
     before = copy.deepcopy((report, loaded))
     assert validate_retained_lineage(report, loaded) == {
         "status": "retained-lineage-verified", "retained": 39, "new_slots": 1}
+    assert audit_retained_costs(report, loaded)["combined_tokens"] == 20
     with pytest.raises(ValueError, match="unknown failure"):
         validate_retained_content(report, loaded)
     assert (report, loaded) == before
@@ -286,3 +298,31 @@ def test_lineage_audit_does_not_claim_unbound_or_unauthenticated_success(tmp_pat
     loaded, plan, pin = _source(tmp_path)
     with pytest.raises(ValueError, match="lacks authenticated retention"):
         validate_retained_lineage(_report(loaded, plan, pin), None)
+
+
+@pytest.mark.parametrize("field", ["tokens", "new_tokens", "prior_tokens", "combined_tokens"])
+@pytest.mark.parametrize("bad", [True, -1, 1, None])
+def test_cost_audit_refuses_inconsistent_or_noninteger_budget(tmp_path, field, bad):
+    loaded, plan, pin = _source(tmp_path)
+    report = _report(loaded, plan, pin)
+    report["budget"] = dict(tokens=0, new_tokens=0, prior_tokens=0, combined_tokens=0)
+    report["budget"][field] = bad
+    with pytest.raises(ValueError, match="recorded budget"):
+        audit_retained_costs(report, loaded)
+
+
+@pytest.mark.parametrize("bad_usage", [-1, True, 1.5, "20"])
+def test_cost_audit_rejects_malformed_new_call_usage(tmp_path, bad_usage):
+    loaded, plan, pin = _source(tmp_path)
+    report = _report(loaded, plan, pin)
+    new = next(row for row in report["mirrors"] if "lineage" not in row)
+    new["calls"] = [{"usage": {"input_tokens": bad_usage}}]
+    with pytest.raises(ValueError, match="nonnegative integer"):
+        audit_retained_costs(report, loaded)
+
+
+def test_cost_audit_does_not_claim_unbound_success_or_ignore_missing_budget(tmp_path):
+    assert audit_retained_costs({"config": {}}, None) is None
+    loaded, plan, pin = _source(tmp_path)
+    with pytest.raises(ValueError, match="requires recorded budget"):
+        audit_retained_costs(_report(loaded, plan, pin), loaded)

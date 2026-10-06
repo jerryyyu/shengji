@@ -8,6 +8,13 @@ from shengji.eval import s11_admission_once as module
 from test_s11_schedule import PIN, slots, trajectory
 
 
+@pytest.fixture(autouse=True)
+def synthetic_plan_boundary(monkeypatch):
+    # These unit tests isolate once/failure behavior. The real planner and
+    # reader are joined in test_s11_input_bundle's synthetic corpus witness.
+    monkeypatch.setattr(module, 'plan_s11_staging', lambda *a, **kw: None)
+
+
 def run(path):
     return module.admit_s11_inputs_once('/unused/manifest.json', '/unused/root', path,
         manifest_sha256=PIN, packet_sha256='b' * 64, max_manifest_bytes=1024)

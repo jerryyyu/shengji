@@ -35,6 +35,22 @@ def _config(*, seed=7, roots=None):
     }
 
 
+def _m1_prior_config(*, checkpoint="/old/mini/m1.npz",
+                     prior_checkpoint="/old/mini/prior.npz"):
+    config = _config()
+    config["policy"] = "m1-prior"
+    sha256 = "d" * 64
+    prior_sha256 = "e" * 64
+    config["baseline_recipe"] = {
+        "schema": "sol-panel-recipe-v1", "benchmark_id": "m1-prior",
+        "policy": "m1-prior", "kind": "shortlist", "checkpoint": checkpoint,
+        "sha256": sha256, "prior_checkpoint": prior_checkpoint,
+        "prior_sha256": prior_sha256, "worlds": 32,
+    }
+    config["checkpoint"] = {"path": checkpoint, "sha256": sha256}
+    return config
+
+
 def _row(model, mode, seed, flip, *, kind="complete"):
     key = f"{model}-{mode}-seed{seed}-flip{flip}"
     row = {
@@ -151,6 +167,114 @@ def test_prepared_root_comparison_ignores_path_and_source_config(tmp_path):
     loaded = retention.load_retained_attempts(plan, plan_sha,
                                                expected_config=expected)
     assert loaded["result_sha256"]
+
+
+def test_m1_prior_relocation_preserves_rows_cost_and_inputs(tmp_path):
+    actual_config = _m1_prior_config(
+        checkpoint="/perf/m1.npz", prior_checkpoint="/perf/prior.npz")
+    plan, _, _, source = _write_source(tmp_path, config=actual_config)
+    mirror_path = source / "mirror-sol-actor-only-7-0.json"
+    row = json.loads(mirror_path.read_text())
+    row["calls"] = [{"usage": {"input_tokens": 4, "output_tokens": 3}}]
+    mirror_path.write_bytes(canonical_json_bytes(row))
+    report = json.loads((source / "result.json").read_text())
+    report["mirrors"][0] = row
+    plan_sha = _repin_report(plan, source, report)
+    expected = copy.deepcopy(actual_config)
+    expected["baseline_recipe"]["checkpoint"] = "/mini/m1.npz"
+    expected["baseline_recipe"]["prior_checkpoint"] = "/mini/prior.npz"
+    expected["checkpoint"]["path"] = "/mini/m1.npz"
+    expected_before = copy.deepcopy(expected)
+    result_before = (source / "result.json").read_bytes()
+
+    loaded = retention.load_retained_attempts(
+        plan, plan_sha, expected_config=expected)
+
+    assert len(loaded["rows"]) == 4
+    assert loaded["prior_cost_tokens"] == 7
+    assert expected == expected_before
+    assert (source / "result.json").read_bytes() == result_before
+
+
+@pytest.mark.parametrize("binding", ["checkpoint", "prior_checkpoint"])
+def test_m1_prior_relocation_allows_one_binding_at_a_time(tmp_path, binding):
+    actual_config = _m1_prior_config(
+        checkpoint="/perf/m1.npz", prior_checkpoint="/perf/prior.npz")
+    plan, plan_sha, _, _ = _write_source(tmp_path, config=actual_config)
+    expected = copy.deepcopy(actual_config)
+    if binding == "checkpoint":
+        expected["baseline_recipe"]["checkpoint"] = "/mini/m1.npz"
+        expected["checkpoint"]["path"] = "/mini/m1.npz"
+    else:
+        expected["baseline_recipe"]["prior_checkpoint"] = "/mini/prior.npz"
+
+    loaded = retention.load_retained_attempts(
+        plan, plan_sha, expected_config=expected)
+    assert len(loaded["rows"]) == 4
+
+
+@pytest.mark.parametrize("mutation", [
+    "changed_pin", "missing_pin", "malformed_pin", "changed_field",
+    "inconsistent_top_level", "unknown_extra", "metadata_deleted",
+])
+def test_m1_prior_relocation_rejects_untrusted_changes(tmp_path, mutation):
+    actual_config = _m1_prior_config(
+        checkpoint="/perf/m1.npz", prior_checkpoint="/perf/prior.npz")
+    plan, _, _, source = _write_source(tmp_path, config=actual_config)
+    expected = copy.deepcopy(actual_config)
+    expected["baseline_recipe"]["checkpoint"] = "/mini/m1.npz"
+    expected["baseline_recipe"]["prior_checkpoint"] = "/mini/prior.npz"
+    expected["checkpoint"]["path"] = "/mini/m1.npz"
+
+    report = json.loads((source / "result.json").read_text())
+    recipe = report["config"]["baseline_recipe"]
+    if mutation == "changed_pin":
+        recipe["sha256"] = "f" * 64
+        report["config"]["checkpoint"]["sha256"] = "f" * 64
+    elif mutation == "missing_pin":
+        del recipe["sha256"]
+    elif mutation == "malformed_pin":
+        recipe["prior_sha256"] = "E" * 64
+        report["config"]["checkpoint"]["sha256"] = recipe["sha256"]
+    elif mutation == "changed_field":
+        recipe["worlds"] = 64
+    elif mutation == "inconsistent_top_level":
+        report["config"]["checkpoint"]["path"] = "/perf/wrong.npz"
+    elif mutation == "unknown_extra":
+        recipe["unexpected"] = True
+    else:
+        del recipe["worlds"]
+    pin = _repin_report(plan, source, report)
+
+    with pytest.raises(retention.RetentionRefusal):
+        retention.load_retained_attempts(plan, pin, expected_config=expected)
+
+
+def test_non_panel_relocation_remains_strict(tmp_path):
+    plan, _, config, source = _write_source(tmp_path)
+    report = json.loads((source / "result.json").read_text())
+    report["config"]["checkpoint"]["path"] = "/perf/model.npz"
+    pin = _repin_report(plan, source, report)
+    with pytest.raises(retention.RetentionRefusal, match="checkpoint disagrees"):
+        retention.load_retained_attempts(plan, pin, expected_config=config)
+
+
+@pytest.mark.parametrize("side", ["actual", "expected"])
+@pytest.mark.parametrize("field,value", [
+    ("checkpoint", ""), ("checkpoint", 12),
+    ("prior_checkpoint", ""), ("prior_checkpoint", None),
+    ("sha256", None), ("sha256", ""),
+    ("prior_sha256", None), ("prior_sha256", "f" * 64),
+    ("prior_sha256", ""), ("prior_sha256", 123),
+])
+def test_m1_binding_fail_closed_on_each_side(tmp_path, side, field, value):
+    actual = _m1_prior_config()
+    expected = _m1_prior_config(checkpoint="/new/m1", prior_checkpoint="/new/prior")
+    target = actual if side == "actual" else expected
+    target["baseline_recipe"][field] = value
+    plan, pin, _, _ = _write_source(tmp_path, config=actual)
+    with pytest.raises(retention.RetentionRefusal):
+        retention.load_retained_attempts(plan, pin, expected_config=expected)
 
 
 def test_exact_legacy_witness_can_be_explicitly_allowlisted(tmp_path, monkeypatch):

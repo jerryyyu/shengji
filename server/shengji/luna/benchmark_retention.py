@@ -161,16 +161,83 @@ def _expected_schedule(config: Mapping[str, Any]) -> tuple[list[str], list[str],
     return models, information, seeds
 
 
+def _panel_recipe_marker(recipe: Any) -> bool:
+    return (type(recipe) is dict
+            and recipe.get("schema") == "sol-panel-recipe-v1"
+            and recipe.get("benchmark_id") == "m1-prior")
+
+
+def _nonempty_path(value: Any, label: str) -> str:
+    if type(value) is not str or not value:
+        raise RetentionRefusal(f"{label} must be a nonempty path")
+    return value
+
+
+def _panel_bindings(config: Mapping[str, Any], label: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    recipe = config.get("baseline_recipe")
+    checkpoint = config.get("checkpoint")
+    if type(recipe) is not dict or type(checkpoint) is not dict:
+        raise RetentionRefusal(f"{label} m1-prior bindings are malformed")
+    recipe_checkpoint = _nonempty_path(
+        recipe.get("checkpoint"), f"{label} baseline checkpoint")
+    recipe_sha = _hex(recipe.get("sha256"), f"{label} baseline checkpoint SHA256")
+    _nonempty_path(
+        recipe.get("prior_checkpoint"), f"{label} prior checkpoint")
+    _hex(recipe.get("prior_sha256"), f"{label} prior checkpoint SHA256")
+    top_checkpoint = _nonempty_path(
+        checkpoint.get("path"), f"{label} top-level checkpoint")
+    top_sha = _hex(checkpoint.get("sha256"),
+                   f"{label} top-level checkpoint SHA256")
+    if recipe_checkpoint != top_checkpoint or recipe_sha != top_sha:
+        raise RetentionRefusal(
+            f"{label} baseline and top-level checkpoint bindings disagree")
+    # Return shallow copies so the caller can normalize only the explicitly
+    # relocatable paths without mutating either authenticated config object.
+    return dict(recipe), dict(checkpoint)
+
+
+def _compare_panel_bindings(actual: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
+    actual_recipe, actual_checkpoint = _panel_bindings(actual, "result config")
+    expected_recipe, expected_checkpoint = _panel_bindings(expected, "expected config")
+
+    # Digests are the identity of these assets.  They must remain unchanged
+    # across relocation, while every other recipe/checkpoint field remains
+    # subject to the normal strict comparison below.
+    if (actual_recipe["sha256"] != expected_recipe["sha256"]
+            or actual_recipe["prior_sha256"] != expected_recipe["prior_sha256"]):
+        raise RetentionRefusal("m1-prior checkpoint SHA256 pins disagree")
+
+    actual_recipe["checkpoint"] = expected_recipe["checkpoint"]
+    actual_recipe["prior_checkpoint"] = expected_recipe["prior_checkpoint"]
+    actual_checkpoint["path"] = expected_checkpoint["path"]
+    if not _strict_equal(actual_recipe, expected_recipe):
+        raise RetentionRefusal("result config baseline_recipe disagrees")
+    if not _strict_equal(actual_checkpoint, expected_checkpoint):
+        raise RetentionRefusal("result config checkpoint disagrees")
+
+
 def _compare_config(actual: Any, expected: Mapping[str, Any]) -> None:
     if type(actual) is not dict:
         raise RetentionRefusal("result config is not an object")
-    fields = ("seeds", "models", "information", "policy",
-              "baseline_recipe", "checkpoint")
+    fields = ("seeds", "models", "information", "policy")
     for field in fields:
         if field not in expected or field not in actual:
             raise RetentionRefusal(f"result config is missing {field}")
         if not _strict_equal(actual[field], expected[field]):
             raise RetentionRefusal(f"result config {field} disagrees")
+    for field in ("baseline_recipe", "checkpoint"):
+        if field not in expected or field not in actual:
+            raise RetentionRefusal(f"result config is missing {field}")
+    actual_panel = _panel_recipe_marker(actual["baseline_recipe"])
+    expected_panel = _panel_recipe_marker(expected["baseline_recipe"])
+    if actual_panel or expected_panel:
+        if not actual_panel or not expected_panel:
+            raise RetentionRefusal("m1-prior recipe binding is not explicit in both configs")
+        _compare_panel_bindings(actual, expected)
+    else:
+        for field in ("baseline_recipe", "checkpoint"):
+            if not _strict_equal(actual[field], expected[field]):
+                raise RetentionRefusal(f"result config {field} disagrees")
     expected_roots = expected.get("prepared_roots_from")
     actual_roots = actual.get("prepared_roots_from")
     if expected_roots is None or actual_roots is None:

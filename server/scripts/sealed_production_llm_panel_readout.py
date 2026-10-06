@@ -8,7 +8,7 @@ from pathlib import Path
 
 from scripts import production_llm_panel_readout as arithmetic
 from shengji.luna.benchmark_failure_protocol import FAIL_STOP
-from shengji.luna.benchmark_panel_seals import ROWS, _metadata, _require, admit_panel_metadata
+from shengji.luna.benchmark_panel_seals import ROWS, _metadata, _require, _at, _row_exit, admit_panel_metadata
 from shengji.luna.benchmark_retention import _strict_equal, load_retained_attempts
 from shengji.luna.benchmark_terminal import validate_scheduled_terminal
 from shengji.luna.benchmark_retained_content import validate_retained_content
@@ -104,4 +104,86 @@ def read_sealed_panel(plan_path, expected_sha256):
                        'result_refs': {row: plan['rows'][row]['result'] for row in ROWS},
                        'retained_result': plan['retained_result'],
                        'metadata_and_content_validated': True}
+    return result
+
+
+def read_sealed_stage1(plan_path, expected_sha256):
+    """Admit fresh stage-1 metadata before opening either pinned row result."""
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA
+    from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+
+    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'stage1 plan')
+    _require(set(plan) == {'schema', 'campaign', 'rows'}
+             and plan['schema'] == 'sol-feedback-on-stage1-seals-v1', 'invalid stage1 plan')
+    refs = plan['campaign']
+    _require(type(refs) is dict and set(refs) == {'config', 'output_config', 'terminal', 'summary'},
+             'stage1 campaign reference keys')
+    _require(type(plan['rows']) is dict and set(plan['rows']) == set(STAGE1_ROWS), 'stage1 row set')
+    config = _metadata(refs['config'], 'stage1 config')
+    _require(config.get('schema') == STAGE1_SCHEMA and config.get('rows') == list(STAGE1_ROWS)
+             and 'retention' not in config, 'stage1 fresh recipe required')
+    _require(_strict_equal(config.get('recovery_controls'), dict(capacity_retries=True,
+             accept_recovered_reconnects=False, invalid_action_feedback=True,
+             classify_final_action_failures=True)), 'stage1 controls')
+    _require(all(type(config.get(k)) is int and config[k] == expected for k, expected in
+                 (('row_wall_seconds', 43200), ('row_soft_tokens', 45000000),
+                  ('provider_call_seconds', 300)))
+             and _strict_equal(config.get('provider_capacity_retry_delays'), [15, 30, 60]),
+             'stage1 budget/retry limits')
+    _require(config.get('failure_protocol') == PRESERVE_ILLEGAL
+             and type(config.get('illegal_failure_limit')) is int
+             and config['illegal_failure_limit'] == 8, 'stage1 failure limit')
+    output = Path(config.get('output', ''))
+    _require(output.is_absolute(), 'stage1 output must be absolute')
+    for field, name in (('output_config', 'config.json'), ('terminal', 'terminal.json'),
+                        ('summary', 'stage1-summary.json')):
+        _at(refs[field], output / name)
+    _require(_strict_equal(config, _metadata(refs['output_config'], 'stage1 output config')),
+             'stage1 output config drift')
+    terminal = _metadata(refs['terminal'], 'stage1 terminal')
+    summary = _metadata(refs['summary'], 'stage1 summary')
+    for record in (terminal, summary):
+        _require(record.get('config_sha256') == refs['config']['sha256']
+                 and record.get('status') == 'scheduled-terminal', 'stage1 not terminal')
+    _require(summary.get('schema') == 'sol-feedback-on-stage1-summary-v1'
+             and summary.get('required_prior_rows') == []
+             and type(summary.get('rows')) is dict
+             and set(summary['rows']) == set(STAGE1_ROWS), 'stage1 summary drift')
+    exits = terminal.get('rows')
+    _require(type(exits) is list and len(exits) == 2, 'stage1 terminal cardinality')
+    accounting = {}
+    for index, row in enumerate(STAGE1_ROWS):
+        row_refs = plan['rows'][row]
+        _require(type(row_refs) is dict and set(row_refs) == {'result', 'terminal', 'accounting'},
+                 'stage1 row refs')
+        _at(row_refs['result'], output / row / 'result.json')
+        _at(row_refs['terminal'], output / (row + '.terminal.json'))
+        _at(row_refs['accounting'], output / (row + '.accounting.json'))
+        exit_record = _metadata(row_refs['terminal'], row + ' terminal')
+        _row_exit(exit_record, row)
+        _require(_strict_equal(exit_record, exits[index]), 'stage1 row exit mismatch')
+        counts = _metadata(row_refs['accounting'], row + ' accounting')
+        _require(_strict_equal(counts, summary['rows'][row]), 'stage1 accounting mismatch')
+        _require(set(counts) == {'status', 'completed', 'failed', 'unattempted', 'scheduled'}
+                 and all(type(counts[k]) is int and counts[k] >= 0
+                         for k in ('completed', 'failed', 'unattempted', 'scheduled'))
+                 and counts['scheduled'] == 40
+                 and counts['completed'] + counts['failed'] + counts['unattempted'] == 40
+                 and counts['failed'] <= 8
+                 and counts['status'] == ('failure-limit' if counts['failed'] == 8 else 'scheduled-terminal')
+                 and (counts['failed'] == 8 or counts['unattempted'] == 0), 'stage1 accounting invalid')
+        accounting[row] = counts
+    # All campaign/row terminal metadata has been admitted before raw results.
+    roots = _metadata({'path': str(Path(config['prepared_roots']) / 'result.json'),
+                       'sha256': config['prepared_roots_sha256']}, 'stage1 roots')
+    context = dict(seeds=config['seeds'], source_result_sha256=config['prepared_roots_sha256'],
+                   root_hashes=roots.get('roots'))
+    reports = {row: _metadata(plan['rows'][row]['result'], row + ' result') for row in STAGE1_ROWS}
+    result = arithmetic.analyze_stage1_reports(reports, {row: context for row in STAGE1_ROWS})
+    _require(_strict_equal(result['terminal_accounting'], accounting), 'stage1 recomputed accounting mismatch')
+    label_endpoint_coverage(result, accounting)
+    result['accounting_note'] = 'Use terminal_accounting for failures versus unattempted slots.'
+    result['seals'] = dict(plan_sha256=expected_sha256,
+                          result_refs={row: plan['rows'][row]['result'] for row in STAGE1_ROWS},
+                          metadata_and_content_validated=True)
     return result

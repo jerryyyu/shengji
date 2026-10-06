@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -74,6 +75,182 @@ def _panel(tmp_path, *, failed=False, omit_rollouts=False):
                                    failed=failed and index == 0,
                                    omit_rollouts=omit_rollouts and index == 0)
             for index, benchmark_id in enumerate(readout.POLICIES)}
+
+
+def _stage1_reports(tmp_path):
+    from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_scheduled
+    reports, contexts = {}, {}
+    for index, key in enumerate(('smv3-pv', 'm1-prior')):
+        path = _report(tmp_path, key, offset=index)
+        report = json.loads((path / 'result.json').read_text())
+        report['config'].update(invalid_action_feedback=True,
+                                failure_protocol=PRESERVE_ILLEGAL, illegal_failure_limit=8)
+        for row in report['mirrors']:
+            row['invalid_action_feedback'] = True
+            row['final_action_feedback_counts'] = dict(
+                decisions_with_rejections=1, rejected_attempts=1,
+                corrected_decisions=1, exhausted_decisions=0, interrupted_decisions=0)
+        report['scheduled_summary'] = summarize_scheduled(report['mirrors'])
+        reports[key] = report
+        contexts[key] = dict(seeds=SEEDS, source_result_sha256=SOURCE_SHA, root_hashes=ROOTS)
+    return reports, contexts
+
+
+def test_stage1_reuses_paired_scoring_without_historical_rows(tmp_path):
+    reports, contexts = _stage1_reports(tmp_path)
+    result = readout.analyze_stage1_reports(reports, contexts)
+    assert result['schema'] == 'sol-feedback-on-stage1-readout-v1'
+    assert result['panel_size'] == 2
+    assert len(result['row_differences']) == 1
+    assert result['policies']['smv3-pv']['sol']['paired_signed_levels']['mean'] == -5.5
+    assert result['policies']['smv3-pv']['pt_sol']['paired_signed_levels']['mean'] == 5.5
+    assert result['row_differences'][0]['sol']['mean'] == 1
+    counts = result['policies']['smv3-pv']['sol']['final_action_feedback_counts']
+    assert counts['corrected_decisions'] == 20
+    assert counts['exhausted_decisions'] == counts['interrupted_decisions'] == 0
+
+
+@pytest.mark.parametrize('mutation', ['off', 'missing', 'extra', 'retained', 'roots', 'unknown_failure',
+                                      'mirror_off', 'counts_missing', 'counts_drift'])
+def test_stage1_refuses_mixed_or_unadmitted_results(tmp_path, mutation):
+    reports, contexts = _stage1_reports(tmp_path)
+    report = reports['smv3-pv']
+    if mutation == 'off':
+        report['config']['invalid_action_feedback'] = False
+    elif mutation == 'missing':
+        reports.pop('m1-prior')
+    elif mutation == 'extra':
+        reports['smart'] = report
+    elif mutation == 'retained':
+        report['config']['retained_attempts'] = {'source': 'old-OFF'}
+    elif mutation == 'roots':
+        contexts['smv3-pv'] = dict(contexts['smv3-pv'], source_result_sha256='b' * 64)
+    elif mutation == 'mirror_off':
+        report['mirrors'][0]['invalid_action_feedback'] = False
+    elif mutation == 'counts_missing':
+        report['mirrors'][0].pop('final_action_feedback_counts')
+    elif mutation == 'counts_drift':
+        report['mirrors'][0]['final_action_feedback_counts']['interrupted_decisions'] = 1
+    else:
+        report['mirrors'][0].update(complete=False, error='unknown')
+    with pytest.raises(ValueError):
+        readout.analyze_stage1_reports(reports, contexts)
+
+
+@pytest.mark.parametrize('outcome', ['legal', 'corrected', 'exhausted', 'interrupted', 'tool_overflow'])
+def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
+    """Real roots, scheduler, engine, feedback and terminal; synthetic policy/provider.
+
+    Static factories stand in for neural recipes. This is a consumer contract
+    witness, not model-load qualification or a scientific result.
+    """
+    from dataclasses import replace
+    from scripts import production_llm_panel as panel
+    from scripts import launch_production_llm_panel as launcher
+    from test_launch_production_llm_panel import _real_validation_fixture
+    from test_launch_sol_recovery import _stage1
+
+    config_path, _, _ = _real_validation_fixture(tmp_path)
+    config = _stage1(json.loads(config_path.read_text()))
+    roots = tmp_path / 'real-roots'
+    root_producer.prepare_roots(output=roots, seeds=SEEDS)
+    config.update(prepared_roots=str(roots),
+                  prepared_roots_sha256=hashlib.sha256((roots / 'result.json').read_bytes()).hexdigest())
+    config_path.write_text(json.dumps(config))
+    digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    (tmp_path / 'RELEASE').write_text(digest + '\n')
+    monkeypatch.setattr(launcher, 'LOCK', tmp_path / 'lock')
+    monkeypatch.setattr(launcher.os, 'nice', lambda increment: 10)
+    monkeypatch.setattr(launcher.benchmark_batch, 'assert_memory_headroom', lambda: True)
+
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            self.calls = []
+        def __call__(self, packet):
+            if outcome == 'tool_overflow':
+                return {'evaluations': [{'cards': [], 'continuation': 'heuristic-all'}],
+                        'memory': ''}
+            if outcome == 'interrupted' and packet['final_action_errors']:
+                raise RuntimeError('synthetic provider interruption after feedback')
+            if outcome == 'exhausted' or (outcome in ('corrected', 'interrupted')
+                                          and not packet['final_action_errors']):
+                return {'cards': [], 'memory': ''}
+            return planner(packet)
+
+    real_runner = panel.run_benchmark
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kwargs: real_runner(
+        **kwargs, transport_factory=FakeTransport))
+    static = prepare_recipe('smart', {})
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda row, paths: replace(
+        static, identity=dict(static.identity, benchmark_id=row)))
+    reports, contexts = {}, {}
+
+    def supervise(command, *, row, output, **kwargs):
+        assert '--invalid-action-feedback' in command
+        assert '--retention-plan' not in command
+        reports[row] = panel.run_row(
+            row=row, model_paths={}, seeds=SEEDS, output=output,
+            prepared_roots_from=roots,
+            prepared_roots_sha256=config['prepared_roots_sha256'],
+            codex_binary=config['codex_binary'], run=True,
+            capacity_retries=True, invalid_action_feedback=True,
+            classify_final_action_failures=True, failure_protocol=launcher.PRESERVE_ILLEGAL)
+        contexts[row] = dict(seeds=SEEDS, source_result_sha256=config['prepared_roots_sha256'],
+                             root_hashes=reports[row]['roots'])
+        return {'returncode': 0, 'status': 'exited', 'row': row}
+
+    monkeypatch.setattr(launcher, 'supervise', supervise)
+    if outcome == 'interrupted':
+        with pytest.raises(ValueError):
+            launcher.run(config_path, digest, arm=True)
+        assert list(reports) == ['smv3-pv']
+        failed = reports['smv3-pv']['mirrors'][0]
+        assert failed['final_action_feedback_counts']['interrupted_decisions'] == 1
+        assert failed['final_action_feedback_counts']['exhausted_decisions'] == 0
+        assert (Path(config['output']) / 'smv3-pv' / 'result.json').exists()
+        assert not (tmp_path / 'lock').exists()
+        return
+    terminal = launcher.run(config_path, digest, arm=True)
+    assert terminal['status'] == 'scheduled-terminal'
+    result = readout.analyze_stage1_reports(reports, contexts)
+    for row in launcher.STAGE1_ROWS:
+        counts = result['policies'][row]['sol']['final_action_feedback_counts']
+        assert counts['exhausted_decisions'] == (8 if outcome == 'exhausted' else 0)
+        assert (counts['corrected_decisions'] > 0) is (outcome == 'corrected')
+        assert result['terminal_accounting'][row]['failed'] == (8 if outcome in ('exhausted', 'tool_overflow') else 0)
+        assert result['terminal_accounting'][row]['completed'] == (0 if outcome in ('exhausted', 'tool_overflow') else 40)
+        assert result['policies'][row]['sol']['tool_budget_exhausted_mirrors'] == (8 if outcome == 'tool_overflow' else 0)
+    assert not (tmp_path / 'lock').exists()
+    from scripts import sealed_production_llm_panel_readout as sealed
+    def ref(path):
+        return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    output = Path(config['output'])
+    plan = dict(schema='sol-feedback-on-stage1-seals-v1', campaign=dict(
+        config=ref(config_path), output_config=ref(output / 'config.json'),
+        terminal=ref(output / 'terminal.json'), summary=ref(output / 'stage1-summary.json')),
+        rows={row: dict(result=ref(output / row / 'result.json'),
+                        terminal=ref(output / (row + '.terminal.json')),
+                        accounting=ref(output / (row + '.accounting.json')))
+              for row in launcher.STAGE1_ROWS})
+    plan_path = tmp_path / 'read-plan.json'
+    plan_path.write_text(json.dumps(plan))
+    admitted = sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
+    assert admitted['terminal_accounting'] == result['terminal_accounting']
+    assert admitted['panel_size'] == 2
+    # An authenticated but nonterminal campaign must refuse before result access.
+    terminal_path = output / 'terminal.json'
+    bad_terminal = json.loads(terminal_path.read_text())
+    bad_terminal['status'] = 'failed'
+    terminal_path.write_text(json.dumps(bad_terminal))
+    plan['campaign']['terminal'] = ref(terminal_path)
+    plan_path.write_text(json.dumps(plan))
+    real_metadata = sealed._metadata
+    def no_results(reference, label):
+        assert not label.endswith(' result'), 'raw results opened before metadata admission'
+        return real_metadata(reference, label)
+    monkeypatch.setattr(sealed, '_metadata', no_results)
+    with pytest.raises(ValueError, match='not terminal'):
+        sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
 
 
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):

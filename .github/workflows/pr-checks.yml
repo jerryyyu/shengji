@@ -108,6 +108,7 @@ jobs:
           tests/test_benchmark_final*.py
           tests/test_prepared_panel_runner.py
           tests/test_llm_benchmark_rollouts.py
+          tests/test_production_llm_panel_readout.py
           tests/test_llm_benchmark_games.py
           tests/test_benchmark_terminal.py
           tests/test_engine_parity.py

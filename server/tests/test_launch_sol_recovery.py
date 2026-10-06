@@ -37,6 +37,83 @@ def _binding():
     return {'source': '/sealed', 'result_sha256': 'b' * 64, 'plan_sha256': 'a' * 64}
 
 
+def _stage1(config):
+    config.update(schema=launcher.STAGE1_SCHEMA, rows=list(launcher.STAGE1_ROWS),
+                  **_controls(), failure_protocol=PRESERVE_ILLEGAL,
+                  illegal_failure_limit=8)
+    config['recovery_controls']['invalid_action_feedback'] = True
+    return config
+
+
+@pytest.mark.parametrize('mutation', ['none', 'rows', 'feedback', 'retention', 'binary', 'limit'])
+def test_fresh_stage1_recipe_validation(tmp_path, mutation):
+    path, _, _ = _real_validation_fixture(tmp_path)
+    config = _stage1(json.loads(path.read_text()))
+    if mutation == 'rows':
+        config['rows'] = list(launcher.ROWS)
+    elif mutation == 'feedback':
+        config['recovery_controls']['invalid_action_feedback'] = False
+    elif mutation == 'retention':
+        config['retention'] = {}
+    elif mutation == 'binary':
+        config.pop('codex_binary_sha256')
+    elif mutation == 'limit':
+        config['illegal_failure_limit'] = True
+    path.write_text(json.dumps(config))
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if mutation != 'none':
+        with pytest.raises(ValueError):
+            launcher.validate(path, digest)
+    else:
+        actual, stamps = launcher.validate(path, digest)
+        assert actual['rows'] == ['smv3-pv', 'm1-prior']
+        launcher.fence(stamps)
+
+
+@pytest.mark.parametrize('refuse_first', [False, True])
+def test_stage1_dispatch_and_terminal_path(tmp_path, monkeypatch, refuse_first):
+    from scripts import production_llm_panel_readout
+    monkeypatch.setattr(production_llm_panel_readout, 'analyze_panel',
+                        lambda *a, **kw: pytest.fail('stage1 sent to nine-row reader'))
+    config = _stage1(_config(tmp_path))
+    _stub_validation(monkeypatch, config)
+    monkeypatch.setattr(launcher, 'LOCK', tmp_path / 'lock')
+    releases = []
+    monkeypatch.setattr(launcher, '_require_recovery_release',
+                        lambda *args: releases.append(args))
+    seen = []
+
+    def supervise(command, *, row, output, **kwargs):
+        seen.append(row)
+        assert '--retention-plan' not in command
+        assert '--invalid-action-feedback' in command
+        assert '--classify-final-action-failures' in command
+        assert command.count('--retry-provider-capacity') == 1
+        output.mkdir()
+        report = _report(config['seeds'], failures=0, pending=refuse_first)
+        report['config']['invalid_action_feedback'] = True
+        (output / 'result.json').write_text(json.dumps(report))
+        return {'returncode': 0, 'status': 'exited', 'row': row}
+
+    monkeypatch.setattr(launcher, 'supervise', supervise)
+    if refuse_first:
+        with pytest.raises(ValueError):
+            launcher.run(tmp_path / 'config.json', 'synthetic', arm=True)
+        assert seen == ['smv3-pv']
+    else:
+        result = launcher.run(tmp_path / 'config.json', 'synthetic', arm=True)
+        assert result['status'] == 'scheduled-terminal'
+        assert seen == ['smv3-pv', 'm1-prior']
+    assert len(releases) == 1 + len(seen)
+    output = tmp_path / 'campaign-output'
+    summary = json.loads((output / 'stage1-summary.json').read_text())
+    assert summary['required_prior_rows'] == []
+    assert set(summary['rows']) == set(launcher.STAGE1_ROWS)
+    assert summary['status'] == ('failed' if refuse_first else 'scheduled-terminal')
+    assert not (output / 'panel-readout.json').exists()
+    assert not (output / 'recovery-summary.json').exists()
+
+
 @pytest.mark.parametrize('mutation', ['omit', 'substitute'])
 def test_external_config_digest_binds_transport_declaration(tmp_path, mutation):
     config = {'schema': launcher.RECOVERY_SCHEMA,

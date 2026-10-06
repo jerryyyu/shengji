@@ -7,9 +7,18 @@ Legacy failures are deliberately not inferred from exception text.
 from __future__ import annotations
 import math
 import statistics
+import re
 
 FAIL_STOP = 'fail-stop-v1'
 PRESERVE_ILLEGAL = 'preserve-model-illegal-v1'
+
+
+class ToolBudgetExceeded(ValueError):
+    """Exact model request beyond the decision's existing tool-batch cap."""
+
+    def __init__(self, failure):
+        super().__init__('planner rollout call budget exhausted')
+        self.failure = failure
 
 
 def attempt_disposition(row: dict, *, protocol: str = FAIL_STOP) -> str:
@@ -32,6 +41,26 @@ def attempt_disposition(row: dict, *, protocol: str = FAIL_STOP) -> str:
     if protocol == FAIL_STOP or row.get('status') is not None:
         return 'stop'
     failure, events, flip = row.get('failure'), row.get('events'), row.get('flip')
+    if type(failure) is dict and failure.get('category') == 'model_tool_budget_exhausted':
+        fields = {'schema', 'category', 'stage', 'seat', 'request_index', 'limit',
+                  'packet_sha256', 'reply_sha256', 'completed_play_events'}
+        valid = (set(failure) == fields
+                 and failure['schema'] == 'benchmark-tool-budget-failure-v1'
+                 and failure['stage'] == 'rollout_request'
+                 and row.get('invalid_action_feedback') is True
+                 and row.get('classify_final_action_failures') is True
+                 and type(flip) is int and flip in (0, 1)
+                 and type(failure['seat']) is int and failure['seat'] in range(4)
+                 and failure['seat'] % 2 == flip
+                 and type(failure['request_index']) is int and failure['request_index'] == 2
+                 and type(failure['limit']) is int and failure['limit'] == 2
+                 and type(events) is list
+                 and type(failure['completed_play_events']) is int
+                 and failure['completed_play_events'] == len(events)
+                 and type(row.get('error')) is str and bool(row['error'])
+                 and all(type(failure[k]) is str and re.fullmatch(r'[0-9a-f]{64}', failure[k])
+                         for k in ('packet_sha256', 'reply_sha256')))
+        return 'retained-model-failure' if valid else 'stop'
     if (type(failure) is not dict or set(failure) != {
             'schema', 'category', 'stage', 'seat', 'attempted_cards', 'event_index'}
             or failure['schema'] != 'benchmark-action-failure-v1'

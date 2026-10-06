@@ -26,6 +26,8 @@ ROWS = ("smv3-pv", "soft-pv", "js-m1-shortlist", "m1-prior", "w32-original",
         "mc-lcb", "mc-strong", "mc", "smart")
 RECOVERY_SCHEMA = "sol-six-row-recovery-v1"
 RECOVERY_ROWS = ROWS[3:]
+STAGE1_SCHEMA = "sol-feedback-on-stage1-v1"
+STAGE1_ROWS = ("smv3-pv", "m1-prior")
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
 def default_reservation_path(platform):
     # Linux fleet screens use this same atomic directory reservation. A
@@ -103,22 +105,34 @@ def validate(config_path, expected):
     config = json.loads(raw)
     schema = config.get("schema")
     recovery = schema == RECOVERY_SCHEMA
+    stage1 = schema == STAGE1_SCHEMA
+    controlled = recovery or stage1
     retries = config.get("provider_capacity_retry_delays", [])
-    if recovery:
+    if controlled:
         recovery_control_args(config)
+    if stage1 and config['recovery_controls'] != {
+            'capacity_retries': True, 'accept_recovered_reconnects': False,
+            'invalid_action_feedback': True, 'classify_final_action_failures': True}:
+        raise ValueError('stage1 feedback/control recipe drift')
     expected_retries = (list(CAPACITY_RETRY_DELAYS)
                         if schema == "sol-nine-policy-campaign-v2" or
-                        (recovery and config['recovery_controls']['capacity_retries']) else [])
-    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA)
+                        (controlled and config['recovery_controls']['capacity_retries']) else [])
+    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA)
             or type(retries) is not list
             or any(type(delay) is not int for delay in retries)
             or retries != expected_retries
-            or config.get("rows") != list(RECOVERY_ROWS if recovery else ROWS)
+            or config.get("rows") != list(STAGE1_ROWS if stage1 else RECOVERY_ROWS if recovery else ROWS)
             or config.get("row_wall_seconds") != 43200
             or config.get("row_soft_tokens") != 45000000
             or config.get("provider_call_seconds") != 300):
         raise ValueError("campaign recipe drift")
-    if recovery:
+    if stage1:
+        if (config.get("failure_protocol") != PRESERVE_ILLEGAL
+                or type(config.get("illegal_failure_limit")) is not int
+                or config['illegal_failure_limit'] != 8
+                or 'retention' in config or 'memory_wait' in config):
+            raise ValueError('stage1 requires fresh rows and bounded failure protocol')
+    elif recovery:
         if (config.get("failure_protocol") != PRESERVE_ILLEGAL
                 or type(config.get("illegal_failure_limit")) is not int
                 or config["illegal_failure_limit"] != 8
@@ -180,7 +194,7 @@ def validate(config_path, expected):
     # Recovery packets must bind the executable, not merely its path. Honor
     # declared pins on historical packets too, while allowing their old schema
     # without this field. Hash once; the existing row fences detect later edits.
-    if recovery or "codex_binary_sha256" in config:
+    if controlled or "codex_binary_sha256" in config:
         digest = config.get("codex_binary_sha256")
         if (type(digest) is not str or len(digest) != 64
                 or any(char not in "0123456789abcdef" for char in digest)):
@@ -388,7 +402,9 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
 def run(config_path, expected, *, arm=False):
     config, stamps = validate(config_path, expected)
     recovery = config.get("schema") == RECOVERY_SCHEMA
-    rows = RECOVERY_ROWS if recovery else ROWS
+    stage1 = config.get("schema") == STAGE1_SCHEMA
+    controlled = recovery or stage1
+    rows = STAGE1_ROWS if stage1 else RECOVERY_ROWS if recovery else ROWS
     output = Path(config["output"])
     hold = config_path.parent / "HOLD"
     if os.path.lexists(hold) or os.path.lexists(output):
@@ -397,7 +413,7 @@ def run(config_path, expected, *, arm=False):
         return {"status": "unarmed", "rows": len(rows), "rounds": 40 * len(rows)}
     if os.nice(0) < 10:
         raise ValueError("campaign requires nice >=10")
-    if recovery:
+    if controlled:
         _require_recovery_memory("reservation")
         _require_recovery_release(config_path, expected)
     env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_")}
@@ -421,7 +437,7 @@ def run(config_path, expected, *, arm=False):
                         with (output / f"{row}.memory-wait.jsonl").open("x") as wait_log:
                             _wait_for_recovery_row_memory(config, hold, stage, log=wait_log)
                 fence(stamps)
-                if recovery and (not results or "memory_wait" not in config):
+                if controlled and (not results or "memory_wait" not in config):
                     _require_recovery_memory(f"row {row} dispatch")
                 if os.path.lexists(hold):
                     raise ValueError("HOLD before row dispatch")
@@ -432,18 +448,18 @@ def run(config_path, expected, *, arm=False):
                            "--prepared-roots-sha256", config["prepared_roots_sha256"],
                            "--seeds", *map(str, config["seeds"]), "--output", str(row_output),
                            "--codex-binary", config["codex_binary"], "--run"]
-                if not recovery and config.get("provider_capacity_retry_delays"):
+                if not controlled and config.get("provider_capacity_retry_delays"):
                     command.append("--retry-provider-capacity")
-                if recovery:
+                if controlled:
                     command.extend(recovery_control_args(config))
                     command.extend(["--failure-protocol", PRESERVE_ILLEGAL])
-                    if row in config["retention"]:
+                    if recovery and row in config["retention"]:
                         retained = config["retention"][row]
                         command.extend(["--retention-plan", retained["plan"],
                                         "--retention-plan-sha256", retained["sha256"]])
                 print(json.dumps({"event": "row-start", "row": row}), flush=True)
                 with (output / f"{row}.log").open("x") as log:
-                    if recovery:
+                    if controlled:
                         _require_recovery_release(config_path, expected)
                     result = supervise(command, cwd=config["source_root"], env=env,
                                        log=log, row=row, output=row_output, python=config["python"])
@@ -452,11 +468,13 @@ def run(config_path, expected, *, arm=False):
                 if result["returncode"] != 0 or result["status"] == "deadline":
                     raise ValueError("row terminated; preserve partials, no retry or further spend")
                 report = json.loads((row_output / "result.json").read_bytes())
-                if recovery:
+                if stage1 and report.get('config', {}).get('invalid_action_feedback') is not True:
+                    raise ValueError('stage1 terminal must declare feedback ON')
+                if controlled:
                     from shengji.luna.benchmark_terminal import validate_scheduled_terminal
                     fence(stamps)
                     retention_binding = None
-                    if row in config['retention']:
+                    if recovery and row in config['retention']:
                         retained = config['retention'][row]
                         plan = json.loads(Path(retained['plan']).read_bytes())
                         retention_binding = {
@@ -472,10 +490,10 @@ def run(config_path, expected, *, arm=False):
                     if len(mirrors) != 40 or any(r.get("complete") is not True for r in mirrors):
                         raise ValueError("incomplete row; preserve results and stop campaign without retry")
                 fence(stamps)
-                print(json.dumps({"event": "row-terminal" if recovery else "row-complete",
+                print(json.dumps({"event": "row-terminal" if controlled else "row-complete",
                                   "row": row, "completed": len(results),
                                   "total": len(rows)}), flush=True)
-            terminal["status"] = "scheduled-terminal" if recovery else "complete"
+            terminal["status"] = "scheduled-terminal" if controlled else "complete"
         except BaseException as exc:
             terminal.update(error_type=type(exc).__name__, error=str(exc))
             raise
@@ -483,7 +501,20 @@ def run(config_path, expected, *, arm=False):
             publish(output / "terminal.json", terminal)
             # Scoring is a separate terminal consumer: an analysis refusal
             # must never erase or relabel the already-sealed game evidence.
-            if recovery:
+            if stage1:
+                publish(output / "stage1-summary.json", {
+                    "schema": "sol-feedback-on-stage1-summary-v1",
+                    "config_sha256": expected,
+                    "status": terminal['status'],
+                    "scientific_readout": "pending-feedback-on-stage1-reader",
+                    "required_prior_rows": [],
+                    "rows": {
+                        row: (json.loads((output / f"{row}.accounting.json").read_bytes())
+                              if (output / f"{row}.accounting.json").exists()
+                              else {"status": "not-terminally-validated"})
+                        for row in rows},
+                })
+            elif recovery:
                 # Six recovery rows cannot satisfy the nine-policy reader.
                 # Publish operational accounting only. Scientific comparison
                 # must bind the three original rows plus these six rows in a

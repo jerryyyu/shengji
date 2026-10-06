@@ -30,6 +30,18 @@ progress, and keep every material node resumable.
 
 ## Reviews and evidence
 
+- A blocked lane is not a blocked goal. Before ending for a blocker, consult
+  the current board and bus, identify independently authorized work outside
+  that dependency, and complete the highest-value eligible step. Report a
+  whole-goal blocker only after checking every useful path; preserve pauses
+  and launch holds. Use `RL_PLAN.md` "Fleet handover and review latency" for
+  successor preparation, review handoffs and passive waits.
+- Return all load-bearing findings in one review: exact defect, shortest
+  acceptable fix or evidence, owner, and what remains unblocked. Separate
+  execution safety, scientific claim limits and nonblocking documentation.
+  Scope a follow-up to the repair and its affected dependencies; use existing
+  checkpoint exposure evidence before proposing corpus reconstruction.
+
 - Ask for review only when PASS directly unblocks a named capacity run, freeze,
   one-shot execution, merge or deployment.
 - Make one launch-ready source packet: complete dependency cone, exact command,
@@ -60,6 +72,9 @@ progress, and keep every material node resumable.
   surfaces. Use at most three concurrent subagents.
 - The primary agent inspects every resulting diff and its validation evidence.
   Parallel workers prepare support work; they do not become competing truth.
+- Attempt delegation before depending on its result. If capacity is exhausted,
+  continue the bounded task locally or hand it to an available owner; record
+  it as unassigned, not running. Do not retry spawning unchanged requests.
 - Preserve unrelated user changes. Never use `git add .`, and never commit,
   push, merge, deploy or launch merely because a subagent finished.
 
@@ -117,6 +132,12 @@ acting.
   own, and never act on a pointer whose canonical target you have not read.
 
 ## Project records
+
+For receipt metadata inspection, use `server/scripts/receipt_summary.py` on
+an explicitly authorized file. It bounds input and output and omits nested
+exposure arrays. Oversize refusal calls for a targeted projection or an
+explicit reviewed input-limit increase, not a full receipt dump. This helper
+does not validate provenance or authorize opening sealed scientific results.
 
 | what | where |
 |---|---|

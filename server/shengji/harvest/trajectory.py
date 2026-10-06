@@ -2128,6 +2128,24 @@ CODE_IDENTITY_KEYS = ("source_tree_sha256", "fast_module_sha256_16", "ballot",
                       "fast_engine", "require_voids", "env")
 
 
+def _fast_engine_active() -> bool:
+    """Observe activation without importing an unused optional extension."""
+    from ..engine import combos
+    fast = sys.modules.get("shengji.engine.fast")
+    return bool(fast is not None and fast.HAVE_FAST
+                and combos.decompose is fast.decompose)
+
+
+def _fast_module_path() -> str | None:
+    """Fingerprint a discoverable native file without executing it in pure mode."""
+    import importlib.util
+    native = sys.modules.get("shengji.engine._fast")
+    if native is not None:
+        return getattr(native, "__file__", None)
+    spec = importlib.util.find_spec("shengji.engine._fast")
+    return spec.origin if spec is not None and spec.has_location else None
+
+
 def environment_identity() -> dict:
     """The behaviour-changing environment inputs, raw and resolved.
 
@@ -2135,14 +2153,13 @@ def environment_identity() -> dict:
     resolved values are the module's constants, not a fresh look at
     ``os.environ``."""
     from ..ai import mcbot
-    from ..engine import combos, fast
     return {
         "raw": {name: os.environ.get(name) for name in ENV_IDENTITY_KEYS},
         "resolved": {
             "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
             "uniform_deal": bool(mcbot.UNIFORM_DEAL),
             "physical_fills": bool(mcbot.PHYSICAL_FILLS),
-            "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+            "fast_engine": _fast_engine_active(),
             "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         },
     }
@@ -2164,10 +2181,9 @@ def _env_drift(old: dict | None, new: dict) -> list[str]:
 
 def identity(config: dict) -> dict:
     from ..engine.ballot import mc_ballot
-    from ..engine import combos, fast
     repo = SERVER.parent
     probe = make_trajectory_bot(config, seed=0, explore_rng=random.Random(0))
-    fast_path = getattr(getattr(fast, "_fast", None), "__file__", None)
+    fast_path = _fast_module_path()
     return {
         "git_sha": _git(["rev-parse", "HEAD"], repo),
         "git_dirty": bool(_git(["status", "--porcelain", "--untracked-files=no"],
@@ -2178,7 +2194,7 @@ def identity(config: dict) -> dict:
         "mcbot_sha256_16": _digest(SERVER / "shengji" / "ai" / "mcbot.py"),
         "registry_sha256_16": _digest(SERVER / "shengji" / "ai" / "registry.py"),
         "legal_sha256_16": _digest(SERVER / "shengji" / "harvest" / "legal.py"),
-        "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+        "fast_engine": _fast_engine_active(),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "env": environment_identity(),
         "ballot": str(mc_ballot(probe)),

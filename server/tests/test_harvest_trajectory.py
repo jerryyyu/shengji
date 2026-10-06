@@ -36,6 +36,73 @@ from shengji.harvest.schema import (SchemaError, canonical_json, finalize_record
                                     validate_record)
 
 SERVER = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize("compiled_requested", [False, True])
+def test_provenance_does_not_execute_inactive_native_module(tmp_path, compiled_requested):
+    """A discoverable but broken extension must not break pure provenance."""
+    native = tmp_path / "stale-native.so"
+    native.write_bytes(b"synthetic stale extension")
+    code = """
+import importlib.abc, importlib.util, json, os, sys
+class BrokenNative(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'shengji.engine._fast':
+            return importlib.util.spec_from_file_location(fullname, sys.argv[1], loader=self)
+    def create_module(self, spec):
+        return None
+    def exec_module(self, module):
+        raise RuntimeError('synthetic native execution refused')
+sys.meta_path.insert(0, BrokenNative())
+from shengji.harvest import trajectory
+config = trajectory.build_config(seed0=4100000)
+result = trajectory.identity(config)
+assert 'shengji.engine.fast' not in sys.modules
+assert 'shengji.engine._fast' not in sys.modules
+print(json.dumps({'fast': result['fast_engine'],
+                  'resolved': result['env']['resolved']['fast_engine'],
+                  'digest': result['fast_module_sha256_16']}))
+"""
+    env = dict(os.environ, PYTHONPATH=str(SERVER))
+    env["SHENGJI_FAST"] = "1" if compiled_requested else "0"
+    result = subprocess.run([sys.executable, "-P", "-B", "-c", code, str(native)],
+                            cwd=tmp_path, env=env, capture_output=True, text=True)
+    if compiled_requested:
+        assert result.returncode != 0
+        assert "synthetic native execution refused" in result.stderr
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(result.stdout) == {
+            "fast": False, "resolved": False,
+            "digest": hashlib.sha256(native.read_bytes()).hexdigest()[:16],
+        }
+
+
+def test_provenance_keeps_native_fingerprint_across_activation(tmp_path):
+    import importlib.util
+    if importlib.util.find_spec("shengji.engine._fast") is None:
+        pytest.skip("native extension not built")
+    code = """
+from pathlib import Path
+from shengji.harvest import trajectory
+assert not trajectory._fast_engine_active()
+path = trajectory._fast_module_path()
+before = trajectory._digest(Path(path))
+from shengji.engine import fast
+assert path == fast._fast.__file__
+assert fast.activate()
+assert trajectory.environment_identity()['resolved']['fast_engine'] is True
+assert trajectory._digest(Path(trajectory._fast_module_path())) == before
+fast.deactivate()
+assert trajectory.environment_identity()['resolved']['fast_engine'] is False
+assert trajectory._digest(Path(trajectory._fast_module_path())) == before
+"""
+    env = dict(os.environ, PYTHONPATH=str(SERVER), SHENGJI_FAST="0")
+    result = subprocess.run([sys.executable, "-P", "-B", "-c", code], cwd=tmp_path,
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 SEED0 = 4_100_000
 ROUNDS = 2
 WORK = {"select_worlds": 2, "report_worlds": 30}

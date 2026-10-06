@@ -160,7 +160,8 @@ def test_actual_tool_result_reaches_planner_then_engine():
                                  "completed_evaluations": 1, "completed_world_rollouts": 2}
 
 
-def test_invalid_rollout_is_feedback_and_allows_legal_final_play():
+@pytest.mark.parametrize("invalid_cards", [["SJ"], ["NOT_A_CARD"], ["C4"] * 100])
+def test_invalid_rollout_is_feedback_and_allows_legal_final_play(invalid_cards):
     from test_llm_benchmark_rollouts import root
     from shengji.ai.heuristic import HeuristicBot
     rnd = root()
@@ -170,11 +171,11 @@ def test_invalid_rollout_is_feedback_and_allows_legal_final_play():
     def planner(packet):
         received.append(packet)
         if not packet["rollout_results"]:
-            return {"evaluations": [{"cards": ["SJ"],
+            return {"evaluations": [{"cards": invalid_cards,
                                       "continuation": "heuristic-all"}],
                     "memory": "correct after refusal"}
         assert packet["rollout_results"] == [{
-            "status": "invalid", "cards": ["SJ"],
+            "status": "invalid", "cards": invalid_cards,
             "continuation": "heuristic-all", "worlds": 0,
             "error": "illegal_action", "message": "You don't hold those cards."}]
         return {"cards": legal, "memory": "selected legal play"}

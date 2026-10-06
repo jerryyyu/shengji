@@ -48,6 +48,8 @@ def test_worlds_reused_and_budget_enforced():
     ([], "You don't hold those cards."),
     (["S5", "S5"], "You don't hold those cards."),
     (["C8"], "You must follow suit."),
+    (["NOT_A_CARD"], "You don't hold those cards."),
+    (["C4"] * 100, "You don't hold those cards."),
 ])
 def test_invalid_follow_shapes_return_feedback_and_consume_evaluation(cards, message):
     rnd = root()

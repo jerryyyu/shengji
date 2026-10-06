@@ -7,6 +7,7 @@ conditioning on the real opponents' cards or real non-banker burial is allowed.
 from __future__ import annotations
 
 import copy
+from collections import Counter
 
 from shengji.ai.mcbot import MCBot
 from shengji.ai.memory import Memory
@@ -70,6 +71,11 @@ class DecisionRollouts:
         # Lead structure is checked without consulting the real hidden hands;
         # throw reduction occurs independently inside each sampled world.
         try:
+            # Normalize actor-owned input errors before native card decoding.
+            # Preserve the historical feedback-OFF exception/budget behavior.
+            if self._invalid_action_feedback and (
+                    not cards or Counter(cards) - Counter(rnd.hands[seat])):
+                raise IllegalPlay("You don't hold those cards.")
             if rnd.trick.plays:
                 validate_follow(cards, rnd.hands[seat], rnd.trick.plays[0].cards,
                                 rnd.ordering)

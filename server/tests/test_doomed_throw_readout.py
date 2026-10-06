@@ -166,6 +166,9 @@ def test_alignment_accepts_canonical_played_card_lists():
 
 
 def test_alignment_consumes_real_timed_policy_trace_shape():
+    # Lightweight server CI has no RL dependencies. The search-regression
+    # matrix runs this suite in both engines after requiring torch to import.
+    pytest.importorskip("torch")
     from shengji.train.search_screen import TimedPolicy
 
     shard = _shard()

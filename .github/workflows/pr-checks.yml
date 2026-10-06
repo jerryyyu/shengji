@@ -295,6 +295,7 @@ jobs:
           tests/test_s11_collection_phase.py
           tests/test_s11_host_phase.py
           tests/test_s11_saved_readout.py
+          tests/test_sealed_s11_readout.py
           tests/test_s11_inventory.py
           tests/test_s11_reconstruction.py
           tests/test_s11_public_view.py

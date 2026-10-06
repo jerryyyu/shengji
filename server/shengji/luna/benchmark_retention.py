@@ -219,6 +219,15 @@ def _compare_panel_bindings(actual: Mapping[str, Any], expected: Mapping[str, An
 def _compare_config(actual: Any, expected: Mapping[str, Any]) -> None:
     if type(actual) is not dict:
         raise RetentionRefusal("result config is not an object")
+    # Older reports omit this opt-in, meaning feedback OFF. A reviewed
+    # retention plan authenticates bytes; it cannot make different feedback
+    # treatments scientifically interchangeable.
+    actual_feedback = actual.get("invalid_action_feedback", False)
+    expected_feedback = expected.get("invalid_action_feedback", False)
+    if type(actual_feedback) is not bool or type(expected_feedback) is not bool:
+        raise RetentionRefusal("invalid_action_feedback must be boolean")
+    if actual_feedback != expected_feedback:
+        raise RetentionRefusal("result config invalid_action_feedback disagrees")
     fields = ("seeds", "models", "information", "policy")
     for field in fields:
         if field not in expected or field not in actual:

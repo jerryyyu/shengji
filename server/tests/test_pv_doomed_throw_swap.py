@@ -27,6 +27,8 @@ import copy
 import numpy as np
 import pytest
 
+from shengji.ai.memory import Memory
+from shengji.ai.refusal import RefusalLedger, pin_unplayed_attempt
 from shengji.harvest.legal import forced_lead
 from shengji.rl.replay_log import rebuild_round
 from shengji.train import policy_value_search as module
@@ -188,6 +190,36 @@ def test_engine_plays_the_same_card_and_only_the_throw_posts_a_notice():
     assert sorted(thrown.hands[SEAT]) == sorted(swapped.hands[SEAT])
     assert thrown.notice is not None and thrown.notice["attempted"] == THROW
     assert swapped.notice is None
+
+
+@pytest.mark.parametrize("observer", [0, 2, 3])
+def test_same_committed_play_can_expose_different_cards_to_other_seats(observer):
+    """A lower failed-throw count need not mean different committed cards.
+
+    Extend the existing matched-state witness through the real public-memory
+    path, without sampling worlds or attributing the screen's strength result.
+    """
+    thrown, swapped = oxps(), oxps()
+    thrown.play(SEAT, list(THROW))
+    swapped.play(SEAT, list(FORCED))
+    assert thrown.hands == swapped.hands
+    assert thrown.trick.plays == swapped.trick.plays
+    assert thrown.turn == swapped.turn
+    assert thrown.history == swapped.history
+
+    exposed = Memory(thrown, observer, own_kitty=True)
+    quiet = Memory(swapped, observer, own_kitty=True)
+    assert exposed.known == quiet.known
+    failures = RefusalLedger().observe(thrown)
+    assert len(failures) == 1
+    assert RefusalLedger().observe(swapped) == []
+    assert pin_unplayed_attempt(exposed, thrown, failures[0], observer) == 2
+    for card in ("D6", "DQ"):
+        assert exposed.known[card] == (SEAT, 2)
+        assert card not in quiet.known
+    # The forced card was played, not information about an unplayed holding.
+    assert "C2" not in exposed.known
+    assert pin_unplayed_attempt(exposed, thrown, failures[0], observer) == 0
 
 
 # ------------------------------------------------------- (c) throws that are not doomed everywhere

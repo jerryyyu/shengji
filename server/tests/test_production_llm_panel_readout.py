@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -134,6 +135,88 @@ def test_stage1_refuses_mixed_or_unadmitted_results(tmp_path, mutation):
         report['mirrors'][0].update(complete=False, error='unknown')
     with pytest.raises(ValueError):
         readout.analyze_stage1_reports(reports, contexts)
+
+
+@pytest.mark.parametrize('outcome', ['legal', 'corrected', 'exhausted', 'interrupted'])
+def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
+    """Real roots, scheduler, engine, feedback and terminal; synthetic policy/provider.
+
+    Static factories stand in for neural recipes. This is a consumer contract
+    witness, not model-load qualification or a scientific result.
+    """
+    from dataclasses import replace
+    from scripts import production_llm_panel as panel
+    from scripts import launch_production_llm_panel as launcher
+    from test_launch_production_llm_panel import _real_validation_fixture
+    from test_launch_sol_recovery import _stage1
+
+    config_path, _, _ = _real_validation_fixture(tmp_path)
+    config = _stage1(json.loads(config_path.read_text()))
+    roots = tmp_path / 'real-roots'
+    root_producer.prepare_roots(output=roots, seeds=SEEDS)
+    config.update(prepared_roots=str(roots),
+                  prepared_roots_sha256=hashlib.sha256((roots / 'result.json').read_bytes()).hexdigest())
+    config_path.write_text(json.dumps(config))
+    digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    (tmp_path / 'RELEASE').write_text(digest + '\n')
+    monkeypatch.setattr(launcher, 'LOCK', tmp_path / 'lock')
+    monkeypatch.setattr(launcher.os, 'nice', lambda increment: 10)
+    monkeypatch.setattr(launcher.benchmark_batch, 'assert_memory_headroom', lambda: True)
+
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            self.calls = []
+        def __call__(self, packet):
+            if outcome == 'interrupted' and packet['final_action_errors']:
+                raise RuntimeError('synthetic provider interruption after feedback')
+            if outcome == 'exhausted' or (outcome in ('corrected', 'interrupted')
+                                          and not packet['final_action_errors']):
+                return {'cards': [], 'memory': ''}
+            return planner(packet)
+
+    real_runner = panel.run_benchmark
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kwargs: real_runner(
+        **kwargs, transport_factory=FakeTransport))
+    static = prepare_recipe('smart', {})
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda row, paths: replace(
+        static, identity=dict(static.identity, benchmark_id=row)))
+    reports, contexts = {}, {}
+
+    def supervise(command, *, row, output, **kwargs):
+        assert '--invalid-action-feedback' in command
+        assert '--retention-plan' not in command
+        reports[row] = panel.run_row(
+            row=row, model_paths={}, seeds=SEEDS, output=output,
+            prepared_roots_from=roots,
+            prepared_roots_sha256=config['prepared_roots_sha256'],
+            codex_binary=config['codex_binary'], run=True,
+            capacity_retries=True, invalid_action_feedback=True,
+            classify_final_action_failures=True, failure_protocol=launcher.PRESERVE_ILLEGAL)
+        contexts[row] = dict(seeds=SEEDS, source_result_sha256=config['prepared_roots_sha256'],
+                             root_hashes=reports[row]['roots'])
+        return {'returncode': 0, 'status': 'exited', 'row': row}
+
+    monkeypatch.setattr(launcher, 'supervise', supervise)
+    if outcome == 'interrupted':
+        with pytest.raises(ValueError):
+            launcher.run(config_path, digest, arm=True)
+        assert list(reports) == ['smv3-pv']
+        failed = reports['smv3-pv']['mirrors'][0]
+        assert failed['final_action_feedback_counts']['interrupted_decisions'] == 1
+        assert failed['final_action_feedback_counts']['exhausted_decisions'] == 0
+        assert (Path(config['output']) / 'smv3-pv' / 'result.json').exists()
+        assert not (tmp_path / 'lock').exists()
+        return
+    terminal = launcher.run(config_path, digest, arm=True)
+    assert terminal['status'] == 'scheduled-terminal'
+    result = readout.analyze_stage1_reports(reports, contexts)
+    for row in launcher.STAGE1_ROWS:
+        counts = result['policies'][row]['sol']['final_action_feedback_counts']
+        assert counts['exhausted_decisions'] == (8 if outcome == 'exhausted' else 0)
+        assert (counts['corrected_decisions'] > 0) is (outcome == 'corrected')
+        assert result['terminal_accounting'][row]['failed'] == (8 if outcome == 'exhausted' else 0)
+        assert result['terminal_accounting'][row]['completed'] == (0 if outcome == 'exhausted' else 40)
+    assert not (tmp_path / 'lock').exists()
 
 
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):

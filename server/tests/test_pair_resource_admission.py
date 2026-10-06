@@ -332,6 +332,8 @@ def test_projection_joins_by_multiset_not_position_and_can_show_value_loss():
     values = [0., -10., 10., 0., 0., 0., 0., 0.]
     original = copy.deepcopy((capture, baseline, actions, values))
     result = project_rank_repair(rnd, 1, capture, baseline, actions, values)
+    assert result == project_rank_repair(rnd, 1, capture, baseline, actions, values,
+                                         signature_overlap_veto=True)
     shuffled = project_rank_repair(rnd, 1, capture, baseline,
                                   [list(reversed(a)) for a in reversed(actions)],
                                   list(reversed(values)))
@@ -350,6 +352,57 @@ def test_projection_values_cannot_change_the_rank_repair():
     b = project_rank_repair(rnd, 1, capture, baseline, actions, [100., -100.] * 4)
     assert a['swap'] == b['swap']
     assert a['repaired']['actions'] == b['repaired']['actions']
+
+
+@pytest.mark.parametrize('values,removed_max,unique,loss', [
+    ([0., -10., 10., 0., 0., 0., 0., 0.], True, True, True),
+    ([10., -10., 10., 0., 0., 0., 0., 0.], True, False, False),
+    ([0., 20., 10., 0., 0., 0., 0., 0.], True, True, False),
+    ([20., -10., 10., 0., 0., 0., 0., 0.], False, False, False),
+])
+def test_displacement_distinguishes_tied_max_unique_max_and_actual_loss(
+        values, removed_max, unique, loss):
+    rnd, capture, baseline, actions = _projection_inputs()
+    result = project_rank_repair(rnd, 1, capture, baseline, actions, values)
+    audit = result['displacement_audit']
+    assert audit['removed_was_baseline_max'] is removed_max
+    assert audit['removed_was_unique_baseline_max'] is unique
+    assert audit['repaired_max_below_baseline'] is loss
+    assert audit['baseline_max_tie_count'] == (2 if values[0] == values[2] else 1)
+    assert Counter(audit['removed']['action']) == Counter(actions[2])
+    assert audit['removed']['policy_rank_1based'] == 3
+    assert audit['removed']['saved_value_mean'] == values[2]
+    assert audit['added']['policy_rank_1based'] == 2
+    pairs = sorted(card for card, count in Counter(rnd.hands[1]).items() if count == 2)
+    assert audit['removed']['cell']['held_pair_remainders'] == [
+        [card, 2 - Counter(actions[2])[card]] for card in pairs]
+    assert audit['removed']['cell']['structure'] == list(structure_key(rnd, actions[2]))
+
+
+def test_projection_signature_veto_is_explicit_and_values_do_not_select_swap():
+    rnd, actions = _synthetic_round(), _resource_actions()
+    ranked = [0, 2, 1, 3, 4, 5, 6, 7]
+    preferences = [8 - ranked.index(i) for i in range(8)]
+    capture = {'schema': 'fixed-tape-policy-ranks-v1', 'actions': actions,
+               'preferences': preferences, 'ranked_indices': ranked}
+    for veto, added in ((True, 1), (False, 2)):
+        for values in ([0.] * 8, list(range(8))):
+            result = project_rank_repair(rnd, 1, capture, [actions[0], actions[3]],
+                                        actions, values, signature_overlap_veto=veto)
+            assert result['signature_overlap_veto'] is veto
+            assert result['swap'] == {'removed': 3, 'added': added}
+            assert result['displacement_audit']['added']['pool_index'] == added
+    with pytest.raises(ValueError, match='bool'):
+        project_rank_repair(rnd, 1, capture, [actions[0]], actions, [0.] * 8,
+                            signature_overlap_veto=0)
+
+
+def test_no_swap_has_no_displacement_observation():
+    rnd, capture, baseline, actions = _projection_inputs()
+    result = project_rank_repair(rnd, 1, capture, baseline[:1], actions, [0.] * 8,
+                                signature_overlap_veto=False)
+    assert result['swap'] is None
+    assert result['displacement_audit'] is None
 
 
 @pytest.mark.parametrize('failure', ['rank', 'tie', 'missing', 'duplicate', 'nan', 'bool', 'length'])

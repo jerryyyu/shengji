@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .benchmark_failure_protocol import PRESERVE_ILLEGAL, attempt_disposition
-from .benchmark_retention import _strict_equal
+from .benchmark_retention import _row_cost, _strict_equal
 from .benchmark_terminal import validate_scheduled_terminal
 
 
@@ -205,6 +205,39 @@ def validate_retained_lineage(
             "new_slots": len(auth_keys) - retained_count}
 
 
+def audit_retained_costs(
+        report: dict[str, Any],
+        authenticated_retention: Mapping[str, Any] | None) -> dict[str, int | str] | None:
+    """Reconcile recorded usage without accepting a failed recovery report.
+
+    Call after authenticating report bytes. Inherited rows are verified first,
+    then counted once, not added again to the source total. New failed calls
+    count too. This checks recorded token arithmetic, not provider billing or
+    completeness of external call evidence. It does not classify or retry.
+    """
+    if validate_retained_lineage(report, authenticated_retention) is None:
+        return None
+    assert authenticated_retention is not None
+    old_tokens = new_tokens = 0
+    for row in report["mirrors"]:
+        tokens = _row_cost(row)
+        if "lineage" in row:
+            old_tokens += tokens
+        else:
+            new_tokens += tokens
+    if old_tokens != authenticated_retention["prior_cost_tokens"]:
+        raise ValueError("inherited token sum disagrees with authenticated source")
+    expected = {"tokens": new_tokens, "new_tokens": new_tokens,
+                "prior_tokens": old_tokens, "combined_tokens": old_tokens + new_tokens}
+    budget = report.get("budget")
+    if type(budget) is not dict:
+        raise ValueError("retained cost audit requires recorded budget")
+    for key, value in expected.items():
+        if type(budget.get(key)) is not int or budget[key] != value:
+            raise ValueError(f"recorded budget {key} disagrees with mirror usage")
+    return {"status": "retained-recorded-costs-verified", **expected}
+
+
 def validate_retained_content(
         report: dict[str, Any],
         authenticated_retention: Mapping[str, Any] | None) -> dict[str, int | str] | None:
@@ -221,4 +254,4 @@ def validate_retained_content(
         })
 
 
-__all__ = ["validate_retained_content", "validate_retained_lineage"]
+__all__ = ["validate_retained_content", "validate_retained_lineage", "audit_retained_costs"]

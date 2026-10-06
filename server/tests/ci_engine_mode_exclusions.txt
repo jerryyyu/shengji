@@ -1,0 +1,19 @@
+# Engine-boundary test modules exempt from the two-engine rule
+# (see server/scripts/check_ci_test_selection.py, "Engine modes").
+#
+# A test module that imports shengji.engine.legal/fast/_fast, or a
+# shengji.luna.benchmark_* module that itself imports one, must be selected by
+# at least one PURE and one COMPILED pytest command in CI (#888 failed only
+# under SHENGJI_FAST=1 after passing pure CI; #891 patched that one file).
+#
+# This list is a RATCHET, not an allowlist to grow:
+#   * Add a line only with a reviewed reason on the same line:
+#       server/tests/test_example.py  # needs a GPU in compiled mode; run manually
+#   * The check fails on stale lines: the file is gone, no longer imports the
+#     boundary, is listed in ci_selection_exclusions.txt, or is now selected in
+#     both modes.
+#
+# Format: one repository-relative path per line; '#' starts a comment.
+#
+# Empty at introduction: every boundary module on main a88ba4e4 was added to a
+# pure and a compiled step instead.

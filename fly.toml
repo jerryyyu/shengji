@@ -42,11 +42,19 @@ primary_region = 'ewr'
   # and the lead anchor (#694; v43cla: combo+la minus combo +0.0106 [+0.0006, +0.0205]). Rollback:
   # delete the four SHENGJI_PV_* rule lines below and restore the release-36 name:
   # RELEASE 36 name: pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457'
+  # RELEASE 42 (Jerry 2026-10-06: "OK let's ship it"): release 38 plus the doomed-throw swap (#830,
+  # -dts): on a lead whose throw the engine refuses in every sampled world with the same forced
+  # component, play that component instead (same value, no public failed-throw notice). Evidence
+  # v57dts (ten fresh windows vs release 38): -0.0002 [-0.0102, +0.0099], DEPLOY-ELIGIBLE (not
+  # noninferiority); failed throws 12,239 -> 4,402 (-64%). Rollback: delete the
+  # SHENGJI_PV_DOOMED_THROW_SWAP line and restore the release-38 name:
+  # RELEASE 38 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
+  SHENGJI_PV_DOOMED_THROW_SWAP = '1'
   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'

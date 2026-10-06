@@ -284,6 +284,7 @@ jobs:
           tests/test_s11_report_integration.py
           tests/test_s11_report_summary.py
           tests/test_s11_collection.py
+          tests/test_s11_model.py
           tests/test_s11_persistence.py
           tests/test_s11_once.py
           tests/test_s11_schedule.py

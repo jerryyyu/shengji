@@ -76,6 +76,66 @@ def _panel(tmp_path, *, failed=False, omit_rollouts=False):
             for index, benchmark_id in enumerate(readout.POLICIES)}
 
 
+def _stage1_reports(tmp_path):
+    from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_scheduled
+    reports, contexts = {}, {}
+    for index, key in enumerate(('smv3-pv', 'm1-prior')):
+        path = _report(tmp_path, key, offset=index)
+        report = json.loads((path / 'result.json').read_text())
+        report['config'].update(invalid_action_feedback=True,
+                                failure_protocol=PRESERVE_ILLEGAL, illegal_failure_limit=8)
+        for row in report['mirrors']:
+            row['invalid_action_feedback'] = True
+            row['final_action_feedback_counts'] = dict(
+                decisions_with_rejections=1, rejected_attempts=1,
+                corrected_decisions=1, exhausted_decisions=0, interrupted_decisions=0)
+        report['scheduled_summary'] = summarize_scheduled(report['mirrors'])
+        reports[key] = report
+        contexts[key] = dict(seeds=SEEDS, source_result_sha256=SOURCE_SHA, root_hashes=ROOTS)
+    return reports, contexts
+
+
+def test_stage1_reuses_paired_scoring_without_historical_rows(tmp_path):
+    reports, contexts = _stage1_reports(tmp_path)
+    result = readout.analyze_stage1_reports(reports, contexts)
+    assert result['schema'] == 'sol-feedback-on-stage1-readout-v1'
+    assert result['panel_size'] == 2
+    assert len(result['row_differences']) == 1
+    assert result['policies']['smv3-pv']['sol']['paired_signed_levels']['mean'] == -5.5
+    assert result['policies']['smv3-pv']['pt_sol']['paired_signed_levels']['mean'] == 5.5
+    assert result['row_differences'][0]['sol']['mean'] == 1
+    counts = result['policies']['smv3-pv']['sol']['final_action_feedback_counts']
+    assert counts['corrected_decisions'] == 20
+    assert counts['exhausted_decisions'] == counts['interrupted_decisions'] == 0
+
+
+@pytest.mark.parametrize('mutation', ['off', 'missing', 'extra', 'retained', 'roots', 'unknown_failure',
+                                      'mirror_off', 'counts_missing', 'counts_drift'])
+def test_stage1_refuses_mixed_or_unadmitted_results(tmp_path, mutation):
+    reports, contexts = _stage1_reports(tmp_path)
+    report = reports['smv3-pv']
+    if mutation == 'off':
+        report['config']['invalid_action_feedback'] = False
+    elif mutation == 'missing':
+        reports.pop('m1-prior')
+    elif mutation == 'extra':
+        reports['smart'] = report
+    elif mutation == 'retained':
+        report['config']['retained_attempts'] = {'source': 'old-OFF'}
+    elif mutation == 'roots':
+        contexts['smv3-pv'] = dict(contexts['smv3-pv'], source_result_sha256='b' * 64)
+    elif mutation == 'mirror_off':
+        report['mirrors'][0]['invalid_action_feedback'] = False
+    elif mutation == 'counts_missing':
+        report['mirrors'][0].pop('final_action_feedback_counts')
+    elif mutation == 'counts_drift':
+        report['mirrors'][0]['final_action_feedback_counts']['interrupted_decisions'] = 1
+    else:
+        report['mirrors'][0].update(complete=False, error='unknown')
+    with pytest.raises(ValueError):
+        readout.analyze_stage1_reports(reports, contexts)
+
+
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):
     result = readout.analyze_panel(_panel(tmp_path))
     row = result["policies"]["smv3-pv"]

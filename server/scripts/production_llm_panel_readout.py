@@ -560,14 +560,71 @@ def analyze_panel_reports(report_data, campaign_contexts, *, bootstrap_seed=BOOT
     return _analyze_validated(reports, *common, bootstrap_seed=bootstrap_seed)
 
 
-def _analyze_validated(reports, common_seeds, common_source, common_roots, *, bootstrap_seed):
+def analyze_stage1_reports(report_data, campaign_contexts, *, bootstrap_seed=BOOTSTRAP_SEED):
+    """Analyze only authenticated, fresh feedback-ON stage-1 decoded reports.
+
+    No filesystem access or implicit historical rows. The sealed caller owns
+    provenance admission; terminal, treatment and shared-root checks live here.
+    """
+    from shengji.luna.benchmark_terminal import validate_scheduled_terminal
+
+    policies = ('smv3-pv', 'm1-prior')
+    if (type(report_data) is not dict or set(report_data) != set(policies)
+            or type(campaign_contexts) is not dict or set(campaign_contexts) != set(policies)):
+        raise PanelReadoutError('stage1 requires exactly two reports and contexts')
+    reports, accounting = {}, {}
+    common = None
+    for key in policies:
+        report = _mapping(report_data[key], label='stage1 report')
+        config = _mapping(report.get('config'), label='stage1 config')
+        if config.get('invalid_action_feedback') is not True:
+            raise PanelReadoutError('stage1 requires explicit feedback ON')
+        context = _mapping(campaign_contexts[key], label='stage1 context')
+        validated = _validate_row_report(key, None, campaign=context, report_data=report)
+        identity = validated[2]
+        if identity['seeds'] != context['seeds']:
+            raise PanelReadoutError('stage1 seed order differs from campaign')
+        current = (identity['seeds'], identity['source_result_sha256'], identity['root_hashes'])
+        if common is not None and current != common:
+            raise PanelReadoutError('stage1 reports do not share root/schedule identity')
+        common = current
+        accounting[key] = validate_scheduled_terminal(report, seeds=identity['seeds'])
+        reports[key] = validated
+    result = _analyze_validated(reports, *common, bootstrap_seed=bootstrap_seed, policies=policies)
+    result.update(schema='sol-feedback-on-stage1-readout-v1', treatment='feedback-ON',
+                  terminal_accounting=accounting)
+    count_keys = ('decisions_with_rejections', 'rejected_attempts',
+                  'corrected_decisions', 'exhausted_decisions', 'interrupted_decisions')
+    for key in policies:
+        for arm, information in INFORMATION.items():
+            counts = dict.fromkeys(count_keys, 0)
+            for row in reports[key][1]:
+                if row['information'] != information or not row['_attempted']:
+                    continue
+                if row.get('invalid_action_feedback') is not True:
+                    raise PanelReadoutError('stage1 mirror must declare feedback ON')
+                raw_counts = row.get('final_action_feedback_counts')
+                if (type(raw_counts) is not dict or set(raw_counts) != set(count_keys)
+                        or any(type(v) is not int or v < 0 for v in raw_counts.values())
+                        or raw_counts['decisions_with_rejections'] != sum(
+                            raw_counts[k] for k in ('corrected_decisions', 'exhausted_decisions',
+                                                   'interrupted_decisions'))):
+                    raise PanelReadoutError('stage1 feedback counters missing or inconsistent')
+                for field in count_keys:
+                    counts[field] += raw_counts[field]
+            result['policies'][key][arm]['final_action_feedback_counts'] = counts
+    return result
+
+
+def _analyze_validated(reports, common_seeds, common_source, common_roots, *, bootstrap_seed,
+                       policies=POLICIES):
     protocols = {key: value[0].get('config', {}).get('failure_protocol', FAIL_STOP)
                  for key, value in reports.items()}
     if any(protocol not in (FAIL_STOP, PRESERVE_ILLEGAL) for protocol in protocols.values()):
         raise PanelReadoutError('unknown failure protocol')
     amended_panel = PRESERVE_ILLEGAL in protocols.values()
     policy_rows: dict[str, object] = {}
-    for benchmark_id in POLICIES:
+    for benchmark_id in policies:
         report, rows, identity = reports[benchmark_id]
         sol = _arm_report(rows, INFORMATION["sol"], bootstrap_seed=bootstrap_seed)
         pt_sol = _arm_report(rows, INFORMATION["pt_sol"], bootstrap_seed=bootstrap_seed)
@@ -595,8 +652,8 @@ def _analyze_validated(reports, common_seeds, common_source, common_roots, *, bo
             policy_rows[benchmark_id]['comparison_endpoint'] = 'forfeit_endpoint'
             policy_rows[benchmark_id]['failure_protocol'] = protocol
     differences: list[dict[str, object]] = []
-    for index, left_id in enumerate(POLICIES):
-        for right_id in POLICIES[index + 1:]:
+    for index, left_id in enumerate(policies):
+        for right_id in policies[index + 1:]:
             left_rows, right_rows = reports[left_id][1], reports[right_id][1]
             differences.append({"left": left_id, "right": right_id,
                                 "definition": "left policy minus right policy on matching completed deals",
@@ -615,7 +672,7 @@ def _analyze_validated(reports, common_seeds, common_source, common_roots, *, bo
                     definition='left policy minus right policy on matching scored deal pairs; model illegality forfeits one level; unattempted never imputed',
                     **alternate)
     return {"schema": PANEL_SCHEMA, "status": "complete" if all(item["status"] == "complete" for item in policy_rows.values()) else "partial",
-            "panel_size": len(POLICIES), "benchmark_ids": list(POLICIES), "seeds": common_seeds,
+            "panel_size": len(policies), "benchmark_ids": list(policies), "seeds": common_seeds,
             "prepared_roots": {"source_result_sha256": common_source, "root_hashes": common_roots},
             "bootstrap": {"method": "iid deal-cluster bootstrap", "seed": bootstrap_seed,
                           "replicates": BOOTSTRAP_REPLICATES, "confidence": 0.95},

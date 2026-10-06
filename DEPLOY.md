@@ -27,7 +27,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
 ## Release checklist
 
 Preconditions, every release (the gate `AI_POLICIES.md` called "serving qualification"; it has held
-for releases 29–38):
+for releases 29–38 and 42):
 
 1. A non-author PASS on the PR at its exact head, and all CI checks green. CI fetches the pinned
    production package and loads it on the tree (`.github/workflows/pr-checks.yml`);
@@ -61,6 +61,8 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 
 | release | deployed (ET) | what changed | package/bot change? | PR(s) | image / rollback |
 |---:|---|---|---|---|---|
+| 42 | 2026-10-06 19:08 | The doomed-throw swap on, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_SWAP` (#830, token `dts`): on a lead whose throw the engine refuses in every sampled world with the same forced component, play that component instead. Package, width, rules, bury and budgets are release 38's. A backend release from main (normal Dockerfile; supersedes the release 39–41 overlay recipe), so it also ships the decision-preserving engine/heuristic perf PRs since release 38's image `c8d487a6` (#736, #772, #773, #798, #825, #836, #896, #897, #898), flag-gated-off #777 and #716, the error-report fix #800, and main's web (release 41 UI #845 + #854). Evidence v57dts −0.000150 [−0.010232, +0.009931] vs release 38, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority); failed throws −64%. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d`; same package `491ee4bf…`, same prior `0d17fd03…` | #918 (evidence v57dts, #707 issuecomment-6026001554; swap #830) | `deployment-01M49QGK2ZP18P143S8BXVW28X` (Fly v42), digest `sha256:05d8b84fdbff096a1622e9913cedf9a3b7652d8aebe97829dea1f29d50a6c8af`, from main `e3aa1724`. Rollback: delete the `SHENGJI_PV_DOOMED_THROW_SWAP` line, restore the release-38 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-41 image. |
+| 41 | 2026-10-05 21:40 | Web performance: in-app Back to lobby, memoized hand cards, static first paint, composited thinking pulse. Frontend-only overlay on the immutable release-38 image (release-39 recipe). | none | #845 ([release record](https://github.com/jerryyyu/shengji/pull/845#issuecomment-6007495036)) | digest `sha256:4d1e796f7f2dd2c2ff337c05b09b2ebdf672c43ecf7232d2f5954b796c7b52ee` (label `release41-ui`, Fly v41); web source `ef920afc`. Rollback: release-40 digest `sha256:2b24572af11b7098c32f4033956f5dde4ce39eeb6e2f95bba0b7f25d24fb6736`. |
 | 40 | 2026-10-05 11:34 | Mobile landscape layout: the trick area stays clear of the turn pill, Play button and hand; declare/bury keep a one-row action bar; throw-failed banner floats. Frontend-only overlay on the immutable release-38 image (release-39 recipe). | none | #829 | digest `sha256:2b24572af11b7098c32f4033956f5dde4ce39eeb6e2f95bba0b7f25d24fb6736` (label `release40-ui`); web source `0663c4c0`. Rollback: release-39 digest `sha256:bfd4b192e82e71e2b05d7ad612e4cf3a15491ac5890bc99cd8b6fe1b90bf759e`. Health/assets verified at 0 rooms; real-phone landscape acceptance pending. |
 | 39 | 2026-10-05 01:47 | Mobile UI, touch controls and accessibility. Frontend-only overlay on the immutable release-38 image; no intervening backend/search changes shipped. | none | #778 | `deployment-01M459KDH29EQFN9SDRH7P4GQ2`, digest `sha256:bfd4b192e82e71e2b05d7ad612e4cf3a15491ac5890bc99cd8b6fe1b90bf759e`; web source `0a1f4e3a`. Rollback: release-38 image. Health/assets verified; first real-phone room and complete-game acceptance pending. |
 | 38 | 2026-10-03 09:41 | Four search rules on, as `fly.toml` flags: `SHENGJI_PV_ADMISSION_DIVERSITY`, `SHENGJI_PV_REFUSAL_CONSTRAINTS`, `SHENGJI_PV_TIEBREAK_POINTS`, `SHENGJI_PV_LEAD_ANCHOR`. Package, width, bury and budgets are release 36's. | flags only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`; same package `491ee4bf…`, same prior `0d17fd03…` | #698 (evidence #676; rules #680, #689, #682, #694) | `deployment-01M40ZWSAHNX4782CGKJ615YF7` from main `c8d487a6`. Rollback: delete the four rule lines, restore the release-36 `SHENGJI_BOT` kept as the comment above them, redeploy; or the release-37 image. |
@@ -76,46 +78,53 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 | 28 | 2026-09-16 00:5x | JS-M1, the from-scratch joint net, as ONE package (value and prior) inside the MC shortlist. | new package `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`; served name `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` | #425 / #435 (#455, #457) | `deployment-01M2M90VYR34R7CWKTTEA4C57V` from main `bf7fde5e`. Rollback: release 27 (`deployment-01M2M1B48P44H5HJXEP6ETYQXE`) or release 24 (`deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`); prior-only rollback removes the four `SHENGJI_CWV_PRIOR_*` settings. |
 | 22–27 | — | The release-28 plan as approved, release 27, the release-26 image rollback, release 25 and its plan, and the release-22 boundary (hybrid bury on W32, the September-8 W32 rollout, the release-19/18 boundaries). | see the archive | — | [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md), heading "Moved from DEPLOY.md on 2026-10-01". |
 
-## Current production (release 40; release-38 backend and bot)
+## Current production (release 42; release 38 plus the doomed-throw swap)
 
-- Release 40 changes only `/app/web/dist`, built from merged #829 (`0663c4c0`), with the release-39
-  overlay recipe below; [release record](https://github.com/jerryyyu/shengji/pull/829). Release 39 before it
-  shipped #778 (`0a1f4e3a`) the same way.
-  Its final image starts from the exact release-38 digest
-  `sha256:3214dcd6eeee19e6b559af3e95796f4c56a0e61dd3ec3d825163cafec051bc98`.
-  The backend is **not** main at the frontend commit. One machine
-  `48e7e35a9597e8` remains; public health and served JS/CSS bytes were verified.
-  The 60 frontend tests and production build passed. Real-phone first-room and
-  complete-game acceptance remain pending, not implied by HTTP health.
-- Deployment evidence and the reviewed overlay recipe:
-  [#778 release record](https://github.com/jerryyyu/shengji/pull/778#issuecomment-5988860620).
-  A first build selected the configured default Dockerfile despite the external
-  argument; it was canceled before deployment, while production remained v38.
-  The reviewed overlay was then placed at the configured Dockerfile path,
-  built with `--build-only --push`, and deployed separately by immutable digest.
-  Do not replace main's normal Dockerfile with this one-off overlay.
-- UI rollback (single machine): to release 39, `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji@sha256:bfd4b192e82e71e2b05d7ad612e4cf3a15491ac5890bc99cd8b6fe1b90bf759e`;
-  to release 38, the same command with `sha256:3214dcd6eeee19e6b559af3e95796f4c56a0e61dd3ec3d825163cafec051bc98`.
-
-- Served bot: `pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`, derived by
+- Release 42 is a normal backend release built from main `e3aa1724` (#918, squash at the reviewed head
+  `d44c8918`) with main's Dockerfile; Fly version v42, image `deployment-01M49QGK2ZP18P143S8BXVW28X`,
+  digest `sha256:05d8b84fdbff096a1622e9913cedf9a3b7652d8aebe97829dea1f29d50a6c8af`, machine
+  `48e7e35a9597e8`, deployed 2026-10-06 19:08 ET on Jerry's word ("OK let's ship it"), 0 rooms at deploy.
+  Releases 39–41 were frontend-only overlays on release 38's exact image (digest `sha256:3214dcd6…`);
+  release 42 retires that one-off overlay recipe. Because it is built from main, it also ships the
+  serving-path changes since release 38's image `c8d487a6`: decision-preserving engine/heuristic
+  performance PRs (#736, #772, #773, #798, #825, #836, #896, #897, #898), the flag-gated-off #777 and
+  #716, the server error-report fix #800, and #830; the web is main's (release 41 UI #845 + #854).
+- Served bot: `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d`, derived by
   the registry from the `fly.toml` env and pinned by `tests/test_bury_fly_config.py`.
 - Package: `smv3out-491ee4bf.npz`, sha256
   `491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670` (`/healthz` `pv_search.sha256`);
-  prior `0d17fd03…` under `prior` (the retained release-28 keys). 64 worlds, 8 admitted candidates,
-  3 s play budget, hybrid bury at 2 s.
+  prior `0d17fd03…` under `prior` (the retained release-28 keys; threshold 1000, top 256). 64 worlds,
+  8 admitted candidates, 3 s play budget, hybrid bury at 2 s. All unchanged from release 38.
 - Search-rule flags, each `'1'`: `SHENGJI_PV_ADMISSION_DIVERSITY`, `SHENGJI_PV_REFUSAL_CONSTRAINTS`,
-  `SHENGJI_PV_TIEBREAK_POINTS`, `SHENGJI_PV_LEAD_ANCHOR`.
-- Rollback: in `fly.toml` delete the four `SHENGJI_PV_*` rule lines and restore the release-36
-  `SHENGJI_BOT` kept as the comment directly above them
-  (`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`), then `fly deploy --ha=false`; or
-  redeploy the release-37 image `deployment-01M3TXZ85YHJM108TBPWKN8BB2`. No package moves either way.
-  Deeper: release 30 by its three commented lines; release 28 by `SHENGJI_BOT` alone.
-- **Every NEW screen compares against release 38 as served** (Jerry, 2026-10-03). Screens already
-  read against release 36 or the combo keep their declared comparator.
+  `SHENGJI_PV_TIEBREAK_POINTS`, `SHENGJI_PV_LEAD_ANCHOR` (release 38) and
+  `SHENGJI_PV_DOOMED_THROW_SWAP` (release 42, #830: on a lead whose throw the engine refuses in every
+  sampled world with the same forced component, play that component instead).
+- Evidence (ladder row 11 in `AI_POLICIES.md`): v57dts, ten fresh windows vs release 38 as served,
+  −0.000150 [−0.010232, +0.009931], INCONCLUSIVE; the deploy gate read DEPLOY-ELIGIBLE (not
+  statistically demonstrated negative), which is NOT noninferiority. Failed throws 12,239 → 4,402
+  (−64%, descriptive). Gates as met: Codex PASS at the exact head and CI 8/8; serving smoke on the merged
+  tree `e3aa1724` (40 server turns, bury 0.13 s, plays ≤ 0.09 s, no fallback); Codex's bounded
+  decision-identity witness `f7b5ed04` → `d44c8918`, 348/348 actions and RNG identical; `/healthz` and
+  live room-flow acceptance (create, host sets level, guest sees it, guest refused, unknown level
+  refused) passed after deploy.
+- Rollback: in `fly.toml` delete the `SHENGJI_PV_DOOMED_THROW_SWAP` line and restore the release-38
+  `SHENGJI_BOT` kept as the comment directly above it
+  (`pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457`), then
+  `fly deploy --ha=false`; or redeploy the release-41 image:
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji@sha256:4d1e796f7f2dd2c2ff337c05b09b2ebdf672c43ecf7232d2f5954b796c7b52ee`
+  (Fly v41; release 38's backend with the release-41 web). No package moves either way. Deeper: release
+  36 by deleting the four release-38 rule lines too; release 30 by its three commented lines; release 28
+  by `SHENGJI_BOT` alone.
+- Comparator: Jerry set release 38 as served as the comparator for new screens on 2026-10-03. That
+  every NEW screen compares against release 42 as served is **proposed, pending Jerry's confirmation**.
+  Screens already read against release 36, the combo or release 38 keep their declared comparator.
 - Watch list: `/healthz` bot is the name above; `pv-search-fallback-v1` records, decision wall
-  p50/p95, bury seconds; the first live room's log.
-- Full record (evidence, preconditions as met, latency):
-  [docs_archive/deploy-releases-28-38.md](docs_archive/deploy-releases-28-38.md).
+  p50/p95, bury seconds; the first live room's log; the public failed-throw notices the swap should
+  make rarer.
+- Earlier records: releases 28–38 in
+  [docs_archive/deploy-releases-28-38.md](docs_archive/deploy-releases-28-38.md); the release 39–41
+  overlay recipe in the [#778 release record](https://github.com/jerryyyu/shengji/pull/778#issuecomment-5988860620)
+  (do not replace main's normal Dockerfile with it).
 
 ## The `pv-search` bot mode (policy/value search) — production since release 29
 

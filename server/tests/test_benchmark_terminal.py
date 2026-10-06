@@ -58,6 +58,19 @@ def test_full_schedule_with_typed_failure_is_terminal():
         "unattempted": 0, "scheduled": 40}
 
 
+@pytest.mark.parametrize('stage', ['rollout_validate', 'rollout_continuation'])
+def test_rollout_diagnostic_is_not_an_accepted_failure_disposition(stage):
+    report = _report(failed=1)
+    row = report['mirrors'][0]
+    del row['failure']
+    row['rollout_diagnostic'] = dict(schema='benchmark-rollout-diagnostic-v1',
+        stage=stage, error_type='IllegalPlay', seat=0, request_index=0,
+        evaluation_index=2, cards=['H8'], continuation='exact-endgame-smart',
+        completed_play_events=0)
+    with pytest.raises(ValueError, match='unknown failure'):
+        validate_scheduled_terminal(report, seeds=SEEDS)
+
+
 def test_exact_failure_limit_accepts_remaining_pending_slots():
     assert validate_scheduled_terminal(_report(failed=8, pending=32), seeds=SEEDS) == {
         "status": "failure-limit", "completed": 0, "failed": 8,

@@ -95,6 +95,14 @@ def test_mirror_feedback_option_and_partial_rollout_accounting(feedback):
     if not feedback:
         assert row["error"].startswith("IllegalPlay:")
         assert "signed_levels" not in row
+        assert "failure" not in row
+        assert row["rollout_diagnostic"] == {
+            "schema": "benchmark-rollout-diagnostic-v1", "stage": "rollout_validate",
+            "error_type": "IllegalPlay", "seat": 0, "request_index": 0,
+            "evaluation_index": 0, "cards": [], "continuation": "heuristic-all",
+            "completed_play_events": 0}
+    else:
+        assert "rollout_diagnostic" not in row
     assert game.round.hands == original
 
 

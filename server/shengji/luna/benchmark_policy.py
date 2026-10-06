@@ -39,6 +39,7 @@ class SeatPlannerPolicy:
         # Lifetime totals for this seat-policy instance, including partial failures.
         # World counts cover returned successful evaluations, not internal work
         # completed before an evaluator raises midway through its world loop.
+        self.rollout_diagnostic = None
         self.rollout_usage = {"requested_batches": 0, "attempted_evaluations": 0,
                               "completed_evaluations": 0, "completed_world_rollouts": 0}
 
@@ -55,6 +56,7 @@ class SeatPlannerPolicy:
         return self.setup_policy.decide_bury(rnd, seat)
 
     def decide_play(self, rnd, seat):
+        self.rollout_diagnostic = None
         self._check_seat(seat)
         visible = observation(rnd, seat, information=self.information)
         if rnd is not self._round:
@@ -98,11 +100,22 @@ class SeatPlannerPolicy:
                     seed=self.seed + int(visible["observation_sha256"][:16], 16),
                     invalid_action_feedback=self.invalid_action_feedback)
             results = []
-            for evaluation in reply["evaluations"]:
+            for evaluation_index, evaluation in enumerate(reply["evaluations"]):
                 if type(evaluation) is not dict or set(evaluation) != {"cards", "continuation"}:
                     raise ValueError("invalid planner rollout evaluation")
                 self.rollout_usage["attempted_evaluations"] += 1
-                result = tool.evaluate(**evaluation)
+                try:
+                    result = tool.evaluate(**evaluation)
+                except Exception:
+                    if tool.last_failure is not None:
+                        self.rollout_diagnostic = {
+                            "schema": "benchmark-rollout-diagnostic-v1",
+                            **tool.last_failure, "seat": seat,
+                            "request_index": request_index,
+                            "evaluation_index": evaluation_index,
+                            "cards": list(evaluation["cards"]),
+                            "continuation": evaluation["continuation"]}
+                    raise
                 if result.get("status") != "invalid":
                     self.rollout_usage["completed_evaluations"] += 1
                     self.rollout_usage["completed_world_rollouts"] += result["worlds"]

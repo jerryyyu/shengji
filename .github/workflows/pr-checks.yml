@@ -99,6 +99,9 @@ jobs:
         run: >-
           uv run pytest -q --durations=10
           tests/test_benchmark_final_action_boundary.py
+          tests/test_llm_benchmark_rollouts.py
+          tests/test_llm_benchmark_games.py
+          tests/test_benchmark_terminal.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py
           tests/test_action_semantics.py

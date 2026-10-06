@@ -116,6 +116,8 @@ def test_internal_rollout_illegal_play_is_not_treated_as_invalid_candidate(monke
                             invalid_action_feedback=feedback)
     with pytest.raises(IllegalPlay, match="internal rollout failure"):
         tool.evaluate(cards)
+    assert tool.last_failure == {"stage": "rollout_continuation",
+                                 "error_type": "IllegalPlay", "world_index": 0}
 
 
 @pytest.mark.parametrize("option", [{}, {"invalid_action_feedback": False}])
@@ -125,7 +127,21 @@ def test_default_invalid_candidate_is_fatal_without_spending_budget(option):
                             max_evaluations=1, **option)
     with pytest.raises(IllegalPlay):
         tool.evaluate([])
+    assert tool.last_failure == {"stage": "rollout_validate", "error_type": "IllegalPlay"}
     assert tool.evaluate(HeuristicBot().decide_play(rnd, 1))["worlds"] == 1
+    assert tool.last_failure is None
+
+
+def test_r3_rank_trump_candidate_is_not_a_heart_follow():
+    from shengji.engine.cards import Ordering
+    from shengji.engine.legal import validate_follow
+    ordering = Ordering('S', '8')
+    hand = ['C3','C6','C7','C8','C9','CA','CJ','D5','D8','H10','H6',
+            'H7','H8','HJ','HK','HQ','S10','S2','S3','S7']
+    for card in ['H6', 'H7', 'HJ', 'HQ', 'HK', 'H10']:
+        validate_follow([card], hand, ['HA'], ordering)
+    with pytest.raises(IllegalPlay, match='must follow suit'):
+        validate_follow(['H8'], hand, ['HA'], ordering)
 
 
 @pytest.mark.parametrize("option", [None, 0, 1, "true"])

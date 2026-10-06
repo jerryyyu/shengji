@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ..engine.cards import Ordering, make_deck, total_points
+from ..engine.cards import Ordering, card_suit, make_deck, total_points
 from ..engine.combos import decompose
 from ..engine.legal import IllegalPlay, beats, uniform_suit, validate_follow, validate_lead
 from ..engine.round import HAND_SIZE, KITTY_SIZE, Round, TrickPlay
@@ -205,6 +205,19 @@ def placeholder_hands(fx: Fixture, fill_seed: int = 0) -> tuple[list[list[str]],
         pool -= pins[s]
     free = sorted(pool.elements())
     random.Random(fill_seed).shuffle(free)
+    flip_burial: list[str] = []
+    if (not fx.setup.get("declarations") and fx.seat != banker
+            and not any(card_suit(c) == fx.setup.get("trump_suit")
+                        for c in by[banker])):
+        # Public trump proves the banker's original 33-card pool contained a
+        # card of this suit. Reserve an unseen witness in the placeholder
+        # burial before filling other hands. This is not the real burial and
+        # never changes the actor's cards or publicly committed plays.
+        flip = next((c for c in free if card_suit(c) == fx.setup.get("trump_suit")), None)
+        if flip is None:
+            raise TacticalError(f"{fx.id}: no unseen card can witness the kitty-flipped trump")
+        free.remove(flip)
+        flip_burial.append(flip)
     for s in range(4):
         if s == fx.seat:
             continue
@@ -217,8 +230,9 @@ def placeholder_hands(fx: Fixture, fill_seed: int = 0) -> tuple[list[list[str]],
     if fx.seat == banker:
         buried = sorted(fx.setup["buried"])
     else:
-        buried = sorted(free[:KITTY_SIZE])
-        free = free[KITTY_SIZE:]
+        need = KITTY_SIZE - len(flip_burial)
+        buried = sorted(flip_burial + free[:need])
+        free = free[need:]
     if free:
         raise TacticalError(f"{fx.id}: {len(free)} unseen cards left over after the fill")
     return hands, buried
@@ -255,11 +269,16 @@ def public_round(fx: Fixture, fill_seed: int = 0) -> Round:
     hidden hands.  Raises if the public history does not replay to the seat's turn
     with the stored hand."""
     setup = fx.setup
-    if not setup.get("declarations"):
-        raise TacticalError(f"{fx.id}: a kitty-flipped trump is not supported by the public rebuild")
+    declarations = setup.get("declarations") or []
+    if not declarations and (setup.get("trump_is_nt")
+                             or setup.get("trump_suit") not in ("C", "D", "H", "S")):
+        # Four jokers cannot fill an eight-card kitty: a valid undeclared
+        # round must flip a non-joker and therefore have a suited trump.
+        raise TacticalError(f"{fx.id}: impossible undeclared trump")
     hands, buried = placeholder_hands(fx, fill_seed)
-    final = setup["declarations"][-1]
-    declaration = {"seat": int(final["seat"]), "cards": list(final["cards"])}
+    final = declarations[-1] if declarations else None
+    declaration = ({"seat": int(final["seat"]), "cards": list(final["cards"])}
+                   if final is not None else None)
     try:
         deck = synthetic_deck(hands, buried, banker=int(setup["banker"]), declaration=declaration,
                               trump_suit=setup.get("trump_suit"),
@@ -267,7 +286,7 @@ def public_round(fx: Fixture, fill_seed: int = 0) -> Round:
         rnd = round_from_setup(deck, {
             "trump_rank": setup["trump_rank"], "banker": int(setup["banker"]),
             "declarations": [{"seat": int(d["seat"]), "cards": list(d["cards"])}
-                             for d in setup["declarations"]],
+                             for d in declarations],
             "trump_suit": setup.get("trump_suit"), "trump_is_nt": bool(setup.get("trump_is_nt")),
             "buried": buried})
     except (RebuildError, IllegalPlay) as exc:

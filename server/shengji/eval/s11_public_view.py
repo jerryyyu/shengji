@@ -22,9 +22,9 @@ def public_s11_fixture(rows, selected_ply, *, root_id, fill_seed=0):
     not the production room-shared bot cadence. Full deck, original deal seed,
     other hands, non-banker burial, future actions and labels are never exported.
 
-    The existing public rebuild does not support undeclared kitty-flip roots;
-    it raises explicitly. Neither omit these roots from a scheduled report nor
-    draw a replacement. Broader population support remains an integration gate.
+    Undeclared suited-trump roots use only the public kitty-flip constraint
+    when filling placeholders. Any invalid reconstruction remains an explicit
+    scheduled-root refusal, never permission to draw a replacement.
     """
     if type(root_id) is not str or not root_id:
         raise ValueError("nonempty opaque root_id required")

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import sys
 import time
@@ -16,9 +17,73 @@ from shengji.luna.transport import (CodexExecPlannerTransport, CodexTurnTranspor
                                     CodexProviderResourceError,
                                     InvocationResult, _events_and_usage)
 from test_luna_transport import trace
+from shengji.luna.canonical import canonical_json_bytes
 
 
 CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+
+
+@pytest.mark.parametrize("rollout", [False, True])
+def test_response_binding_joins_raw_final_to_normalized_reply(tmp_path, rollout):
+    final = {"cards": None if rollout else ["C3"],
+             "evaluations": [{"cards": ["H8"], "continuation": "heuristic-all"}]
+                            if rollout else None,
+             "memory": "remember"}
+    # JSONL text and final file are semantically equal but byte-distinct.
+    raw = json.dumps(final, indent=2).encode() + b"\n"
+    captured = []
+
+    def run(command, prompt, workspace, timeout):
+        captured.append((prompt, workspace))
+        (workspace / "final.json").write_bytes(raw)
+        return InvocationResult(0, trace(final), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    for index in range(2):
+        packet = {"request": index}
+        answer = transport(packet)
+        key = "evaluations" if rollout else "cards"
+        assert answer == {key: final[key], "memory": "remember"}
+        expected = {
+            "schema": "benchmark-response-binding-v1",
+            "packet_sha256": hashlib.sha256(canonical_json_bytes(packet)).hexdigest(),
+            "final_sha256": hashlib.sha256(raw).hexdigest(),
+            "reply_sha256": hashlib.sha256(canonical_json_bytes(answer)).hexdigest()}
+        receipt = json.loads((captured[-1][1] / "receipt.json").read_bytes())
+        assert receipt["accepted"] is True
+        assert receipt["response_binding"] == expected
+        assert transport.calls[-1]["response_binding"] == expected
+        assert captured[-1][0].endswith(canonical_json_bytes(packet))
+        assert expected["final_sha256"] != expected["reply_sha256"]
+    assert (transport.calls[0]["response_binding"]["packet_sha256"] !=
+            transport.calls[1]["response_binding"]["packet_sha256"])
+
+
+@pytest.mark.parametrize("kind", ["mismatch", "shape", "malformed"])
+def test_rejected_response_never_gets_an_accepted_binding(tmp_path, kind):
+    final = {"cards": ["C3"], "evaluations": None, "memory": ""}
+    if kind == "shape":
+        final["evaluations"] = []
+    def run(command, prompt, workspace, timeout):
+        raw = b"not json" if kind == "malformed" else json.dumps(final).encode()
+        (workspace / "final.json").write_bytes(raw)
+        message = {**final, "memory": "different"} if kind == "mismatch" else final
+        return InvocationResult(0, trace(message), b"", 1)
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(transport.calls) == 1
+    receipt = transport.calls[0]
+    assert receipt["accepted"] is False
+    assert "response_binding" not in receipt
+    saved = json.loads((Path(receipt["evidence_path"]) / "receipt.json").read_bytes())
+    assert "response_binding" not in saved
 
 
 def test_default_runner_uninstalled_venv_and_evidence_cwd(tmp_path, monkeypatch):

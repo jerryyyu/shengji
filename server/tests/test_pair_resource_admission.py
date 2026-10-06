@@ -301,6 +301,40 @@ def test_rank_repair_no_pair_parity_and_singleton_anchor():
     }
 
 
+def test_rank_repair_top_ranked_prefix_cannot_explore_excluded_actions():
+    """S10 limitation: rank improvement forbids every exclusion from top-K."""
+    rnd, actions = _synthetic_round(), _resource_actions()
+    for k in range(2, len(actions)):
+        baseline = list(range(k))
+        assert pair_resource_rank_repair(rnd, 1, actions, list(range(8)), baseline) == {
+            "chosen": baseline, "swap": None,
+        }
+    # A controlled rank-only change makes the otherwise identical swap
+    # eligible, separating this veto from shape/resource/overlap constraints.
+    baseline = [0, 3]
+    assert pair_resource_rank_repair(
+        rnd, 1, actions, [0, 3, 1, 2, 4, 5, 6, 7], baseline
+    ) == {"chosen": baseline, "swap": None}
+    assert pair_resource_rank_repair(
+        rnd, 1, actions, [0, 1, 3, 2, 4, 5, 6, 7], baseline
+    ) == {"chosen": [0, 1], "swap": {"removed": 3, "added": 1}}
+
+
+def test_rank_repair_same_resource_overlap_veto_is_independent_of_rank():
+    """S10 mechanism, not an assertion that the excluded move is better play."""
+    rnd, actions = _synthetic_round(), _resource_actions()
+    ranked, baseline = [0, 2, 1, 3, 4, 5, 6, 7], [0, 3]
+    pairs = sorted(c for c, count in Counter(rnd.hands[1]).items() if count == 2)
+    signature = lambda i: tuple(2 - Counter(actions[i])[c] for c in pairs)
+    assert ranked.index(2) < ranked.index(1) < ranked.index(3)
+    assert structure_key(rnd, actions[2]) == structure_key(rnd, actions[3])
+    assert signature(0) == signature(2) == signature(3) != signature(1)
+    assert _near_duplicate(Counter(actions[2]), len(actions[2]),
+                           [(len(actions[0]), Counter(actions[0]))])
+    result = pair_resource_rank_repair(rnd, 1, actions, ranked, baseline)
+    assert result == {"chosen": [0, 1], "swap": {"removed": 3, "added": 1}}
+
+
 @pytest.mark.parametrize("baseline", [[], [True], [0, 0], [99], [-1]])
 def test_rank_repair_refuses_invalid_baseline(baseline):
     with pytest.raises(ValueError):

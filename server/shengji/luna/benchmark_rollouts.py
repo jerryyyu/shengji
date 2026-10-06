@@ -30,6 +30,7 @@ class DecisionRollouts:
         self._rnd = copy.deepcopy(rnd)
         self._seat = seat
         self._remaining = max_evaluations
+        self.last_failure = None
         self._worlds = []
         if information == "perfect":
             self._worlds.append(({s: list(rnd.hands[s]) for s in range(4) if s != seat},
@@ -54,6 +55,7 @@ class DecisionRollouts:
                 raise ValueError("public rollout world population underfilled")
 
     def evaluate(self, cards, *, continuation="heuristic-all"):
+        self.last_failure = None
         rnd, seat = self._rnd, self._seat
         if self._remaining <= 0:
             raise ValueError("decision rollout budget exhausted")
@@ -75,6 +77,8 @@ class DecisionRollouts:
                 validate_lead(cards, rnd.hands[seat], [], rnd.ordering)
         except IllegalPlay as exc:
             if not self._invalid_action_feedback:
+                self.last_failure = {"stage": "rollout_validate",
+                                     "error_type": type(exc).__name__}
                 raise
             return {"status": "invalid", "cards": list(cards),
                     "continuation": continuation, "worlds": 0,
@@ -89,9 +93,15 @@ class DecisionRollouts:
             world = copy.copy(rnd)
             world.hands = evaluator._complete_determinized_hands(rnd, seat, hands, buried=buried)
             world.buried = list(buried)
-            points.append(evaluator._rollout(
-                world, seat, hands, buried, cards,
-                exact_session=evaluator._new_exact_world_session(world, buried)))
+            try:
+                points.append(evaluator._rollout(
+                    world, seat, hands, buried, cards,
+                    exact_session=evaluator._new_exact_world_session(world, buried)))
+            except Exception as exc:
+                self.last_failure = {"stage": "rollout_continuation",
+                                     "error_type": type(exc).__name__,
+                                     "world_index": len(points)}
+                raise
         utilities = [signed_level_utility(int(p), banker_seat=rnd.banker,
                                           perspective_seat=seat) for p in points]
         return {"cards": list(cards), "continuation": continuation,

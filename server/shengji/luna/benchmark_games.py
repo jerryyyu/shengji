@@ -85,6 +85,12 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
                           perspective_seat=flip))
     except Exception as exc:
         record["error"] = f"{type(exc).__name__}: {exc}"
+        for bot in planner_bots:
+            if bot.rollout_diagnostic is not None:
+                # Diagnostic only: deliberately NOT an accepted `failure`
+                # disposition. Terminal validation still blocks this mirror.
+                record["rollout_diagnostic"] = dict(bot.rollout_diagnostic,
+                                                    completed_play_events=len(events))
     record["wall_seconds"] = time.monotonic() - started
     record["calls"] = [call for planner in planners for call in getattr(planner, "calls", ())]
     record["rollout_usage"] = {

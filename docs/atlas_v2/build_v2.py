@@ -3,7 +3,7 @@ atlas_v2.html next to it.  The page is BUILT, not tracked (#688): publish from t
 `--check` refuses when the registry breaks an invariant or the page cannot be built, and -- when a
 built atlas_v2.html is on disk -- when that stale page differs from a fresh build.  Never hand-edit
 the HTML (Jerry 2026-09-22; #604)."""
-import json, html, datetime, sys, tempfile
+import json, html, datetime, re, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 R = json.loads((HERE / "registry.json").read_text())
@@ -27,6 +27,61 @@ FORMS = ("served bot", "card play", "bury decision")
 # no point/lo/hi, must say why in its note, and is never drawn as a mark on the chart (v52ec, #676).
 STATUSES = ("planned", "running", "restarting", "sealed", "stopped", "unavailable")
 NO_ESTIMATE = "no estimate (unavailable)"
+
+
+# A screen's ``seeds`` is the EXPLICIT list of its window seed0s: integers separated by single spaces,
+# optionally followed by a parenthesized host label, groups joined by "; " -- e.g.
+# "48060910 48160910 (Perf); 48560910 48660910 (cloud)".  Never a range: "29960910..30360910" was read
+# as its two endpoints and an audit reported zero overlaps for a window (30260910) that sat inside a
+# training span (v35d, #707 2026-10-06).  A row whose seeds are not window seed0s at all is a LEGACY row:
+# allow-listed here by id with its exact text, and its expansion is recomputed from that text.
+SEEDS_GROUP = r"\d+(?: \d+)*(?: \([A-Za-z0-9][A-Za-z0-9 _.-]*\))?"
+SEEDS_RE = re.compile(rf"{SEEDS_GROUP}(?:; {SEEDS_GROUP})*")
+LEGACY_SEEDS = {
+    # one contiguous block of deal seeds, not window seed0s (launch-plan.json: RESERVED 626710000:626710260)
+    "depth-screen": {"text": "626710000..626710259", "kind": "deal seeds", "first": 626710000, "count": 260},
+    # generated-deal indices of a derived namespace, not deal seeds at all
+    "v48bury": {"text": "deal indices 2080..4159 (all-ranks-known-banker-v1)", "kind": "deal indices",
+                "first": 2080, "count": 2080},
+}
+LEGACY_RE = re.compile(r"(?P<kind>deal indices )?(?P<lo>\d+)\.\.(?P<hi>\d+)(?: \([^()]+\))?")
+
+
+def seed_windows(seeds):
+    """The window seed0s an explicit ``seeds`` text lists (``SEEDS_RE``), in order; None if not explicit."""
+    if not isinstance(seeds, str) or not SEEDS_RE.fullmatch(seeds):
+        return None
+    return [int(t) for t in re.sub(r"\([^()]*\)", " ", seeds).replace(";", " ").split()]
+
+
+def legacy_expansion(text):
+    """``{"kind", "first", "count"}`` computed from a legacy inclusive ``lo..hi`` text, or None."""
+    m = LEGACY_RE.fullmatch(text or "")
+    if not m or int(m["hi"]) < int(m["lo"]):
+        return None
+    return {"kind": "deal indices" if m["kind"] else "deal seeds", "first": int(m["lo"]),
+            "count": int(m["hi"]) - int(m["lo"]) + 1}
+
+
+def check_seeds(s):
+    """The seeds invariant for one screen row (``SEEDS_RE`` / ``LEGACY_SEEDS``)."""
+    sid, seeds = s.get("id"), s.get("seeds")
+    if sid in LEGACY_SEEDS:
+        legacy = LEGACY_SEEDS[sid]
+        if seeds != legacy["text"]:
+            return [f"{sid}: legacy seeds text changed ({seeds!r} != allow-listed {legacy['text']!r}); "
+                    "write an explicit window list or update LEGACY_SEEDS"]
+        got = legacy_expansion(seeds)
+        want = {k: legacy[k] for k in ("kind", "first", "count")}
+        return [] if got == want else [f"{sid}: legacy seeds expand to {got}, allow-listed as {want}"]
+    if seeds is None and s.get("status") in ("planned", "running", "restarting"):
+        return []
+    windows = seed_windows(seeds)
+    if not windows:
+        return [f"{sid}: seeds must be an explicit list of window seed0s ('A B C (host); D E (host)'), "
+                f"never a range or prose; got {seeds!r}"]
+    dup = sorted({w for w in windows if windows.count(w) > 1})
+    return [f"{sid}: seeds repeat a window seed0 {dup}"] if dup else []
 
 
 def check_registry(reg):
@@ -94,6 +149,8 @@ def check_registry(reg):
                 errs.append(f"{s['id']}: sealed family with an unread arm")
         elif s.get("status") == "sealed" and s.get("point") is None:
             errs.append(f"{s['id']}: sealed without a read")
+    for s in reg["screens"] + [c for c in reg["context_screens"] if c.get("seeds") is not None]:
+        errs.extend(check_seeds(s))
     for m in reg["models"]:
         if m.get("val_ce") is not None and not (0.3 < m["val_ce"] < 1.0):
             errs.append(f"{m['name']}: val_ce {m['val_ce']} out of range")

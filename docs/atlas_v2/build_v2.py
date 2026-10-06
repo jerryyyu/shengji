@@ -383,7 +383,7 @@ a{{color:var(--accent)}}
 {baseline_cards()}
 
 <h2>Screens against release {CMP} ({CMP_ROLE})</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal, and a row marked {esc(NO_ESTIMATE)} finished without a strength estimate and has no mark. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
+<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal, and a row marked {esc(NO_ESTIMATE)} finished without a strength estimate and has no mark. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {CMP} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {CMP} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
 {now_block}
 {earlier_sections()}

@@ -310,12 +310,14 @@ def test_seeds_are_an_explicit_window_list_never_a_range():
 def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_says_so():
     import copy, json
     from pathlib import Path
-    import build_v2 as b
+    b = _load()
     reg = json.loads((Path(b.__file__).parent / "registry.json").read_text())
     assert b.production_release(reg) == 42
     # Pending: new screens stay on release 38 and the page says production is 42 and the switch is pending.
     assert reg["screen_comparator"]["status"] == "pending" and b.comparator_release(reg) == 38
-    page = b.PAGE if hasattr(b, "PAGE") else (Path(b.__file__).parent / "atlas_v2.html").read_text()
+    page = b.page                                                 # a fresh in-memory build; the HTML is untracked
+    i = page.index("Green clears zero"); chart = page[i:page.index("</p>", i)]
+    assert "release 38 first" in chart and "release 42" not in chart   # the chart explanation follows the comparator
     assert "read against <b>release 38 as served</b>" in page
     assert "Production is release 42" in page and "pending" in page
     assert "Screens against release 38 (the screen comparator; production is release 42)" in page

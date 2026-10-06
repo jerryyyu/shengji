@@ -42,6 +42,9 @@ class SeatPlannerPolicy:
         self._round = None
         self._memory = ""
         self.final_action_feedback = []
+        self.final_action_feedback_counts = dict(
+            decisions_with_rejections=0, rejected_attempts=0,
+            corrected_decisions=0, exhausted_decisions=0)
         # Lifetime totals for this seat-policy instance, including partial failures.
         # World counts cover returned successful evaluations, not internal work
         # completed before an evaluator raises midway through its world loop.
@@ -187,6 +190,9 @@ class SeatPlannerPolicy:
                 else:
                     validate_lead(cards, rnd.hands[seat], [], rnd.ordering)
             except IllegalPlay as exc:
+                self.final_action_feedback_counts["rejected_attempts"] += 1
+                if correction_index == 0:
+                    self.final_action_feedback_counts["decisions_with_rejections"] += 1
                 feedback = {"cards": list(cards), "error": "illegal_action",
                             "message": str(exc)}
                 self.final_action_feedback.append({
@@ -198,6 +204,7 @@ class SeatPlannerPolicy:
                     "message": feedback["message"],
                 })
                 if correction_index >= MAX_FINAL_ACTION_CORRECTIONS:
+                    self.final_action_feedback_counts["exhausted_decisions"] += 1
                     if self.classify_final_action_failures:
                         # Submit the actual exhausted attempt to the engine.
                         # Only its rejection may create an engine_play failure;
@@ -214,5 +221,7 @@ class SeatPlannerPolicy:
                 # same decision-local observation, rollout results and tool.
                 continue
 
+            if correction_index:
+                self.final_action_feedback_counts["corrected_decisions"] += 1
             self._memory = memory
             return list(cards)

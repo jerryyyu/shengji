@@ -105,6 +105,16 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
             dict(feedback)
             for bot in planner_bots
             for feedback in bot.final_action_feedback]
+        counts = {
+            key: sum(bot.final_action_feedback_counts[key] for bot in planner_bots)
+            for key in ("decisions_with_rejections", "rejected_attempts",
+                        "corrected_decisions", "exhausted_decisions")}
+        # A provider/budget/internal fault after rejection is not successful
+        # correction and is not exhaustion of the model's correction allowance.
+        counts["interrupted_decisions"] = (counts["decisions_with_rejections"]
+                                            - counts["corrected_decisions"]
+                                            - counts["exhausted_decisions"])
+        record["final_action_feedback_counts"] = counts
     return record
 
 

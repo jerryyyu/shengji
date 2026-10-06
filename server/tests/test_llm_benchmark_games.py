@@ -222,3 +222,4 @@ def test_feedback_and_final_action_attribution_are_independent(feedback, classif
         assert row["error"] == "IllegalPlay: You don't hold those cards."
     else:
         assert "final_action_feedback" not in row
+        assert "final_action_feedback_counts" not in row

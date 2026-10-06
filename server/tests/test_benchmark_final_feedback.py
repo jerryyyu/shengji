@@ -29,23 +29,27 @@ def bot(planner, **kwargs):
 
 
 @pytest.mark.parametrize("classify", [False, True])
-def test_final_follow_corrected_without_mutating_round(classify):
+@pytest.mark.parametrize("rejections", [1, 2])
+def test_final_follow_corrected_without_mutating_round(classify, rejections):
     rnd = follow_root()
     before = copy.deepcopy(rnd.__dict__)
     packets = []
     def choose(packet):
         packets.append(copy.deepcopy(packet))
-        return {"cards": ["C4", "C4"] if len(packets) == 1 else ["C4"],
+        return {"cards": ["C4", "C4"] if len(packets) <= rejections else ["C4"],
                 "memory": "own memory"}
     policy = bot(choose, invalid_action_feedback=True,
                  classify_final_action_failures=classify)
     cards = policy.decide_play(rnd, 0)
-    assert cards == ["C4"] and len(packets) == 2
+    assert cards == ["C4"] and len(packets) == rejections + 1
     assert packets[0]["observation"] == packets[1]["observation"]
     assert packets[1]["memory"] == "own memory"
     assert packets[1]["final_action_errors"][0]["message"] == "Must play exactly 1 card(s)."
     assert rnd.hands == before["hands"] and rnd.trick == before["trick"]
-    assert len(policy.final_action_feedback) == 1
+    assert len(policy.final_action_feedback) == rejections
+    assert policy.final_action_feedback_counts == {
+        "decisions_with_rejections": 1, "rejected_attempts": rejections,
+        "corrected_decisions": 1, "exhausted_decisions": 0}
     rnd.play(0, cards)
 
 
@@ -191,6 +195,12 @@ def test_mirror_retains_invalid_final_and_all_call_receipts(exhaust):
                       invalid_action_feedback=True)
     assert row["complete"] is not exhaust
     assert len(row["final_action_feedback"]) == (3 if exhaust else 2)
+    assert row["final_action_feedback_counts"] == {
+        "decisions_with_rejections": 1 if exhaust else 2,
+        "rejected_attempts": 3 if exhaust else 2,
+        "corrected_decisions": 0 if exhaust else 2,
+        "exhausted_decisions": 1 if exhaust else 0,
+        "interrupted_decisions": 0}
     assert all(c["tokens"] == 7 for c in row["calls"])
     if exhaust:
         assert len(row["calls"]) == 3 and "signed_levels" not in row

@@ -151,6 +151,10 @@ def test_feedback_exhaustion_real_scheduler_and_budget(tmp_path, token_limit):
         assert len(packets) == 1
         failed = report['mirrors'][0]
         assert len(failed['calls']) == len(failed['final_action_feedback']) == 1
+        assert failed['final_action_feedback_counts'] == {
+            'decisions_with_rejections': 1, 'rejected_attempts': 1,
+            'corrected_decisions': 0, 'exhausted_decisions': 0,
+            'interrupted_decisions': 1}
         assert 'BudgetStop' in failed['error'] and 'failure' not in failed
         assert report['budget']['tokens'] == 7
         assert report['scheduled_summary']['blocked'] is True
@@ -162,6 +166,10 @@ def test_feedback_exhaustion_real_scheduler_and_budget(tmp_path, token_limit):
         assert report['budget']['tokens'] == 168
         assert all(len(row['calls']) == len(row['final_action_feedback']) == 3
                    for row in report['mirrors'][:8])
+        assert all(row['final_action_feedback_counts'] == {
+            'decisions_with_rejections': 1, 'rejected_attempts': 3,
+            'corrected_decisions': 0, 'exhausted_decisions': 1,
+            'interrupted_decisions': 0} for row in report['mirrors'][:8])
         assert validate_scheduled_terminal(report, seeds=seeds) == {
             'status': 'failure-limit', 'completed': 0, 'failed': 8,
             'unattempted': 32, 'scheduled': 40}

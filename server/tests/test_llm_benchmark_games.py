@@ -65,6 +65,67 @@ def test_expiry_retains_failure_without_scoring_or_playing():
     assert row["error"] == "TimeoutError: benchmark deadline"
 
 
+def test_failed_mirror_groups_calls_by_seat_but_counts_rollouts_globally():
+    """Historical adapters must join decision context, not calls[-1]."""
+    game = Game(random.Random(733))
+    prepare_round(game, [HeuristicBot() for _ in range(4)])
+    original = copy.deepcopy(game.round.hands)
+    chronological = []
+
+    class RecordingPlanner:
+        def __init__(self, seat):
+            self.seat = seat
+            self.calls = []
+            self.decisions = set()
+
+        def __call__(self, packet):
+            observation = packet["observation"]
+            self.decisions.add(observation["observation_sha256"])
+            receipt = {"seat": self.seat, "ordinal": len(chronological),
+                       "decision_results": len(packet["rollout_results"]),
+                       "observation_sha256": observation["observation_sha256"]}
+            self.calls.append(receipt)
+            chronological.append(receipt)
+            cards = planner(packet)["cards"]
+            if self.seat == 1 and len(self.decisions) == 2:
+                # Match the historical 4+3+16 prior evaluations, then fail at
+                # index2 of a seven-candidate batch. This is synthetic: no H8
+                # artifact or exact-endgame continuation is replayed here.
+                candidates = ([cards] * 16 if not packet["rollout_results"]
+                              else [cards, cards, [], cards, cards, cards, cards])
+            elif not packet["rollout_results"]:
+                candidates = [cards] * (4 if self.seat == 1 else 3)
+            else:
+                return planner(packet)
+            return {"evaluations": [{"cards": list(candidate),
+                                      "continuation": "heuristic-all"}
+                                     for candidate in candidates], "memory": ""}
+
+    row = play_mirror(
+        game, flip=1, information="perfect", planner_factory=RecordingPlanner,
+        baseline_factory=lambda seat, seed: HeuristicBot(), seed=733,
+        invalid_action_feedback=False, classify_final_action_failures=True)
+
+    assert row["complete"] is False
+    assert "failure" not in row and "signed_levels" not in row
+    assert [call["seat"] for call in chronological] == [1, 1, 3, 3, 1, 1]
+    assert [call["ordinal"] for call in row["calls"]] == [0, 1, 4, 5, 2, 3]
+    assert row["calls"][-1]["seat"] == 3  # NOT the failing call.
+    assert chronological[-1]["seat"] == 1
+    # The failing packet exposes16 local results, not the23 global results
+    # completed before its batch; seven were completed at earlier decisions.
+    assert chronological[-1]["decision_results"] == 16
+    assert row["rollout_usage"] == {
+        "requested_batches": 4, "attempted_evaluations": 26,
+        "completed_evaluations": 25, "completed_world_rollouts": 25}
+    diagnostic = row["rollout_diagnostic"]
+    assert diagnostic["seat"] == 1 and diagnostic["stage"] == "rollout_validate"
+    assert diagnostic["request_index"] == 1 and diagnostic["evaluation_index"] == 2
+    assert diagnostic["completed_play_events"] == len(row["events"])
+    assert row["rollout_request_binding"]["observation_sha256"] == chronological[-1]["observation_sha256"]
+    assert game.round.hands == original
+
+
 @pytest.mark.parametrize("feedback", [False, True])
 def test_mirror_feedback_option_and_partial_rollout_accounting(feedback):
     game = Game(random.Random(733))

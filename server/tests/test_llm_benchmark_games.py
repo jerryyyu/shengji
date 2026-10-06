@@ -101,8 +101,15 @@ def test_mirror_feedback_option_and_partial_rollout_accounting(feedback):
             "error_type": "IllegalPlay", "seat": 0, "request_index": 0,
             "evaluation_index": 0, "cards": [], "continuation": "heuristic-all",
             "completed_play_events": 0}
+        binding = row["rollout_request_binding"]
+        assert binding["schema"] == "benchmark-rollout-request-binding-v1"
+        assert (binding["seat"], binding["request_index"], binding["evaluation_index"],
+                binding["completed_play_events"]) == (0, 0, 0, 0)
+        assert all(len(binding[key]) == 64 for key in
+                   ("packet_sha256", "reply_sha256", "observation_sha256"))
     else:
         assert "rollout_diagnostic" not in row
+        assert "rollout_request_binding" not in row
     assert game.round.hands == original
 
 

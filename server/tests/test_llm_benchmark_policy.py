@@ -1,9 +1,46 @@
 import copy
+import hashlib
 
 import pytest
 
 from shengji.luna.benchmark_policy import SeatPlannerPolicy
+from shengji.luna.canonical import canonical_json_bytes
 from test_llm_benchmark_observation import state
+
+
+@pytest.mark.parametrize("non_json", [False, True])
+def test_rollout_binding_preserves_error_and_resets_on_next_decision(non_json):
+    from shengji.engine.legal import IllegalPlay
+    received = []
+    reply = {"evaluations": [{"cards": [], "continuation": "heuristic-all"}],
+             "memory": ""}
+    if non_json:
+        # A later malformed entry must not mask the first engine error.
+        reply["evaluations"].append({"cards": object(), "continuation": "heuristic-all"})
+
+    def choose(packet):
+        received.append(copy.deepcopy(packet))
+        # Mutation of detached callback input cannot rewrite the evidence.
+        packet["memory"] = "mutated"
+        return reply
+
+    bot = policy(1, choose, information="perfect")
+    with pytest.raises(IllegalPlay):
+        bot.decide_play(state(), 1)
+    assert bot.rollout_diagnostic["stage"] == "rollout_validate"
+    if non_json:
+        assert bot.rollout_request_binding is None
+    else:
+        assert bot.rollout_request_binding == {
+            "schema": "benchmark-rollout-request-binding-v1",
+            "seat": 1, "request_index": 0, "evaluation_index": 0,
+            "observation_sha256": received[0]["observation"]["observation_sha256"],
+            "packet_sha256": hashlib.sha256(canonical_json_bytes(received[0])).hexdigest(),
+            "reply_sha256": hashlib.sha256(canonical_json_bytes(reply)).hexdigest()}
+    bot.planner = lambda packet: {"cards": [packet["observation"]["own_hand"][0]], "memory": ""}
+    bot.decide_play(state(), 1)
+    assert bot.rollout_diagnostic is None
+    assert bot.rollout_request_binding is None
 
 
 @pytest.mark.parametrize("pair,illegal", [(False, False), (True, False), (False, True)])

@@ -241,6 +241,38 @@ oracle or infer true-person disjointness from mutable display names.
   their useful artifacts and explicit non-claims. Rigor must prevent cherry
   picking without erasing operational learning.
 
+### Fleet handover and review latency
+
+1. While a predecessor runs, maintain its next named successor on the existing
+   #707 board/owning issue: priority, owner, user-authority reference, source
+   and model recipe, remaining review gates, required predecessor outputs,
+   host reservation and next action. A prepared successor is not ARMED.
+2. Prepare those gates before the predecessor ends. If no successor is ready,
+   name the exact blocker and the useful preparation that can proceed. Recheck
+   current authority when a user decision changes; retire superseded budget
+   or scope blockers rather than copying the previous status.
+3. During an active work session, target a delta-review response within 15
+   minutes when it would free a host. If that is not feasible, send an explicit
+   ownership handoff and current blocker instead of silently holding the queue.
+   This is a triage target, not permission to skip evidence or a background SLA.
+4. For unchanged CI or a live predecessor, use one existing passive watcher
+   (`gh run watch <run-id>` or cursor-neutral `agent-bus watch --actionable`)
+   and work on an independent task. Record the watcher handle before yielding;
+   reuse it. Observation timeout is not job failure. If persistent observation
+   is unavailable, leave the pending pointer for the next real work turn.
+5. At handover, verify the terminal state and usable required outputs, current
+   host guards and reservation. Let an existing authorized launcher advance;
+   intervene only with evidence of a stalled handover. Claude still owns
+   RELEASE, and every launch retains its independent authority and review gates.
+6. Spare capacity may run only named, authorized, reviewed filler. Before using
+   a preemptible supervisor, test its actual stop/resume path: it owns the
+   process group, stops only its own children, waits for them to exit before
+   releasing the host lock, preserves completed shards, resumes without
+   overwriting them, and cannot reacquire ahead of a higher-priority request.
+   Exercise competing admission and stale-PID cases. If these guarantees are
+   unresolved, keep the filler on HOLD and prepare the higher-priority lane;
+   an idle host does not justify an unsafe launch or killing a peer job.
+
 ## Measurement rules
 
 - Use deterministic factories and mirrored deal-seed clusters; report paired

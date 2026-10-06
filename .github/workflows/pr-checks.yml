@@ -81,6 +81,7 @@ jobs:
           tests/test_mc_benchmark_normalization.py
           tests/test_bury_fly_config.py
           tests/test_check_ci_test_selection.py
+          tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
           tests/test_doomed_throw_readout.py
           tests/test_v53dts_reader_build.py

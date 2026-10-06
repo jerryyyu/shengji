@@ -177,6 +177,19 @@ def validate(config_path, expected):
     for path in (Path(config["model_assets"]), Path(config["prepared_roots"]) / "result.json",
                  Path(config["codex_binary"]), Path(config["python"]).resolve()):
         stamps[path] = stamp(path)
+    # Recovery packets must bind the executable, not merely its path. Honor
+    # declared pins on historical packets too, while allowing their old schema
+    # without this field. Hash once; the existing row fences detect later edits.
+    if recovery or "codex_binary_sha256" in config:
+        digest = config.get("codex_binary_sha256")
+        if (type(digest) is not str or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)):
+            raise ValueError("Codex binary SHA256 pin required")
+        binary = Path(config["codex_binary"])
+        with binary.open("rb") as handle:
+            actual = hashlib.file_digest(handle, "sha256").hexdigest()
+        if actual != digest or stamp(binary) != stamps[binary]:
+            raise ValueError("Codex binary hash or identity drift")
     if hashlib.sha256(Path(config["model_assets"]).read_bytes()).hexdigest() != config["model_assets_sha256"]:
         raise ValueError("model mapping drift")
     assets = json.loads(Path(config["model_assets"]).read_bytes())

@@ -232,6 +232,7 @@ def _real_validation_fixture(tmp_path):
         "prepared_roots": str(roots),
         "prepared_roots_sha256": hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
         "codex_binary": str(codex),
+        "codex_binary_sha256": hashlib.sha256(codex.read_bytes()).hexdigest(),
         "python": sys.executable,
         "output": str(tmp_path / "output"),
     }
@@ -239,6 +240,60 @@ def _real_validation_fixture(tmp_path):
     config_path.write_text(json.dumps(config, sort_keys=True))
     expected = hashlib.sha256(config_path.read_bytes()).hexdigest()
     return config_path, expected, source
+
+
+@pytest.mark.parametrize("pin", ["0" * 64, "ABC", None, True, 123])
+def test_declared_codex_digest_is_verified(tmp_path, pin):
+    path, _, _ = _real_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    config["codex_binary_sha256"] = pin
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="Codex binary"):
+        launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_substituted_codex_refuses_before_reservation(tmp_path, monkeypatch):
+    path, expected, _ = _real_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    Path(config["codex_binary"]).write_text("other")
+    lock = tmp_path / "lock"
+    monkeypatch.setattr(launcher, "LOCK", lock)
+    monkeypatch.setattr(launcher, "supervise", lambda *a, **kw: pytest.fail("launch"))
+    with pytest.raises(ValueError, match="Codex binary"):
+        launcher.run(path, expected, arm=True)
+    assert not lock.exists()
+    assert not Path(config["output"]).exists()
+
+
+def test_historical_packet_without_codex_pin_remains_valid(tmp_path):
+    path, _, _ = _real_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    del config["codex_binary_sha256"]
+    path.write_text(json.dumps(config))
+    launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_codex_mutation_after_validation_is_fenced(tmp_path):
+    path, expected, _ = _real_validation_fixture(tmp_path)
+    config, stamps = launcher.validate(path, expected)
+    Path(config["codex_binary"]).write_text("other")
+    with pytest.raises(ValueError, match="changed after validation"):
+        launcher.fence(stamps)
+
+
+def test_codex_mutation_during_hash_is_refused(tmp_path, monkeypatch):
+    path, expected, _ = _real_validation_fixture(tmp_path)
+    binary = Path(json.loads(path.read_text())["codex_binary"])
+    original = launcher.hashlib.file_digest
+
+    def mutate(handle, algorithm):
+        result = original(handle, algorithm)
+        binary.write_text("other")
+        return result
+
+    monkeypatch.setattr(launcher.hashlib, "file_digest", mutate)
+    with pytest.raises(ValueError, match="Codex binary hash or identity drift"):
+        launcher.validate(path, expected)
 
 
 def test_config_hash_drift_is_refused(tmp_path):

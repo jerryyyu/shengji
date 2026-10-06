@@ -405,6 +405,9 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
 
 def run(config_path, expected, *, arm=False):
     config, stamps = validate(config_path, expected)
+    if config.get("schema") == STAGE2_SCHEMA:
+        from scripts.launch_sol_stage2 import require_predecessor
+        require_predecessor(config)
     recovery = config.get("schema") == RECOVERY_SCHEMA
     stage1 = config.get("schema") in (STAGE1_SCHEMA, STAGE2_SCHEMA)
     stage = 2 if config.get("schema") == STAGE2_SCHEMA else 1

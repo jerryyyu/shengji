@@ -252,6 +252,62 @@ def test_declared_codex_digest_is_verified(tmp_path, pin):
         launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
 
 
+@pytest.mark.parametrize('bare', [False, True])
+@pytest.mark.parametrize('gate', ['unarmed', 'hold', 'release', 'memory', 'host', 'source',
+                                 'predecessor_missing', 'predecessor_live'])
+def test_stage2_predecessor_entry_preserves_real_launcher_gates(tmp_path, monkeypatch, gate, bare):
+    from test_launch_sol_recovery import _stage1, _stage2_predecessor
+
+    path, _, source = _real_validation_fixture(tmp_path)
+    config = _stage1(json.loads(path.read_text()))
+    config.update(schema=launcher.STAGE2_SCHEMA, rows=list(launcher.STAGE2_ROWS))
+    entry, predecessor, save = _stage2_predecessor(
+        tmp_path, monkeypatch,
+        mutate=lambda result: result['prepared_roots'].update(
+            source_result_sha256=config['prepared_roots_sha256']))
+    config['predecessor_publication'] = predecessor['predecessor_publication']
+    if gate == 'predecessor_missing':
+        config.pop('predecessor_publication')
+    if gate == 'predecessor_live':
+        monkeypatch.setattr(entry.os, 'kill', lambda *args: None)
+    ref = save('campaign.json', config)
+    monkeypatch.setattr(launcher.os, 'nice', lambda _: 10)
+    monkeypatch.setattr(launcher.benchmark_batch, 'assert_memory_headroom',
+                        lambda: gate != 'memory')
+    monkeypatch.setattr(launcher, 'supervise', lambda *a, **k: pytest.fail('worker dispatched'))
+    monkeypatch.setattr(launcher.subprocess, 'Popen', lambda *a, **k: pytest.fail('process launched'))
+    lock = tmp_path / 'host-lock'
+    monkeypatch.setattr(launcher, 'LOCK', lock)
+    run = launcher.run if bare else entry.run
+    if gate == 'hold':
+        (tmp_path / 'HOLD').touch()
+    elif gate == 'host':
+        lock.mkdir()
+        (lock / 'owner').write_text('peer-owned')
+        (tmp_path / 'RELEASE').write_text(ref['sha256'])
+    elif gate == 'source':
+        source.write_text('changed source')
+    if gate == 'unarmed':
+        assert run(path, ref['sha256']) == {'status': 'unarmed', 'rows': 7, 'rounds': 280}
+    else:
+        error, message = {
+            'hold': (ValueError, 'HOLD'),
+            'release': (ValueError, 'RELEASE'),
+            'memory': (ValueError, 'memory headroom'),
+            'host': (FileExistsError, None),
+            'source': (ValueError, 'source'),
+            'predecessor_missing': (ValueError, 'predecessor publication required'),
+            'predecessor_live': (ValueError, 'predecessor process still exists'),
+        }[gate]
+        with pytest.raises(error, match=message):
+            run(path, ref['sha256'], arm=True)
+    assert not Path(config['output']).exists()
+    if gate == 'host':
+        assert (lock / 'owner').read_text() == 'peer-owned'
+    else:
+        assert not lock.exists()
+
+
 def test_substituted_codex_refuses_before_reservation(tmp_path, monkeypatch):
     path, expected, _ = _real_validation_fixture(tmp_path)
     config = json.loads(path.read_text())

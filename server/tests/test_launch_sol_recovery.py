@@ -181,6 +181,8 @@ def test_stage1_dispatch_and_terminal_path(tmp_path, monkeypatch, refuse_first, 
     rows = launcher.STAGE1_ROWS if stage == 1 else launcher.STAGE2_ROWS
     if stage == 2:
         config.update(schema=launcher.STAGE2_SCHEMA, rows=list(rows))
+        _, predecessor, _ = _stage2_predecessor(tmp_path, monkeypatch)
+        config['predecessor_publication'] = predecessor['predecessor_publication']
     _stub_validation(monkeypatch, config)
     monkeypatch.setattr(launcher, 'LOCK', tmp_path / 'lock')
     assert launcher.run(tmp_path / 'config.json', 'synthetic') == {

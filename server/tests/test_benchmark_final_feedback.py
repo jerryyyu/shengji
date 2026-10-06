@@ -196,3 +196,36 @@ def test_mirror_retains_invalid_final_and_all_call_receipts(exhaust):
         assert len(row["calls"]) == 3 and "signed_levels" not in row
     else:
         assert len(row["calls"]) > len(row["final_action_feedback"])
+
+
+@pytest.mark.parametrize("cards", [[], ["NOT_A_CARD"]])
+def test_exhaustion_reaches_classified_schedule_terminal(cards):
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+    from shengji.luna.benchmark_terminal import validate_scheduled_terminal
+    from test_benchmark_terminal import _report, SEEDS
+    game = Game(random.Random(0))
+    prepare_round(game, [HeuristicBot() for _ in range(4)])
+    class Planner:
+        def __init__(self):
+            self.calls = []
+        def __call__(self, packet):
+            self.calls.append({"ordinal": len(self.calls), "tokens": 7})
+            return {"cards": cards, "memory": ""}
+    actual = play_mirror(
+        game, flip=0, information="actor-only",
+        planner_factory=lambda seat: Planner(),
+        baseline_factory=lambda seat, seed: HeuristicBot(), seed=0,
+        invalid_action_feedback=True, classify_final_action_failures=True)
+    assert not actual["complete"] and "signed_levels" not in actual
+    assert actual["failure"]["category"] == "model_illegal_action"
+    assert actual["failure"]["stage"] == "engine_play"
+    assert actual["events"][-1]["attempted_cards"] == cards
+    assert len(actual["calls"]) == len(actual["final_action_feedback"]) == 3
+    assert all(entry["message"] == "You don't hold those cards."
+               for entry in actual["final_action_feedback"])
+    report = _report(failed=1)
+    report["mirrors"][0].update(actual)
+    report["scheduled_summary"] = summarize_scheduled(report["mirrors"])
+    assert validate_scheduled_terminal(report, seeds=SEEDS) == {
+        "status": "scheduled-terminal", "completed": 39, "failed": 1,
+        "unattempted": 0, "scheduled": 40}

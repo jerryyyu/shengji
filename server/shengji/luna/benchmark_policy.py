@@ -192,6 +192,12 @@ class SeatPlannerPolicy:
                     "message": feedback["message"],
                 })
                 if correction_index >= MAX_FINAL_ACTION_CORRECTIONS:
+                    if self.classify_final_action_failures:
+                        # Submit the actual exhausted attempt to the engine.
+                        # Only its rejection may create an engine_play failure;
+                        # correction attempts above were never played.
+                        self._memory = memory
+                        return list(cards)
                     raise
                 packet["final_action_errors"].append(feedback)
                 correction_index += 1

@@ -10,7 +10,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -201,6 +203,38 @@ def _require_recovery_memory(stage: str) -> None:
         raise ValueError(f"recovery memory headroom unsafe before {stage}")
 
 
+def _require_recovery_release(config_path, expected) -> None:
+    """Require the recovery RELEASE marker to bind this exact config digest."""
+    if (type(expected) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", expected) is None):
+        raise ValueError("invalid recovery RELEASE digest")
+    release = Path(config_path).parent / "RELEASE"
+    flags = os.O_RDONLY
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise ValueError("recovery RELEASE requires O_NOFOLLOW support")
+    flags |= nofollow
+    nonblock = getattr(os, "O_NONBLOCK", 0)
+    if nonblock:
+        flags |= nonblock
+    fd = None
+    try:
+        fd = os.open(release, flags)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("recovery RELEASE must be a regular file")
+        payload = os.read(fd, 67)
+    except (OSError, ValueError) as exc:
+        raise ValueError("missing, malformed, or unsafe recovery RELEASE") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if payload.endswith(b"\n"):
+        payload = payload[:-1]
+    if payload != expected.encode("ascii"):
+        raise ValueError("recovery RELEASE digest mismatch")
+
+
 def _wait_for_recovery_row_memory(config, hold, stage: str, *, log=None) -> None:
     """Wait for memory only between completed recovery rows."""
     wait = config.get("memory_wait")
@@ -334,6 +368,7 @@ def run(config_path, expected, *, arm=False):
         raise ValueError("campaign requires nice >=10")
     if recovery:
         _require_recovery_memory("reservation")
+        _require_recovery_release(config_path, expected)
     env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_")}
     env.pop("PYTHONPATH", None)
     env.update(SHENGJI_FAST="1", PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1")
@@ -377,6 +412,8 @@ def run(config_path, expected, *, arm=False):
                                         "--retention-plan-sha256", retained["sha256"]])
                 print(json.dumps({"event": "row-start", "row": row}), flush=True)
                 with (output / f"{row}.log").open("x") as log:
+                    if recovery:
+                        _require_recovery_release(config_path, expected)
                     result = supervise(command, cwd=config["source_root"], env=env,
                                        log=log, row=row, output=row_output, python=config["python"])
                 results.append(result)

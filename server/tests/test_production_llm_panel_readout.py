@@ -278,7 +278,7 @@ def test_stage2_and_combined_feedback_panel(tmp_path):
         readout.analyze_feedback_panel_reports(reports, contexts)
 
 
-@pytest.mark.parametrize('mutation', ['none', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals', 'value_count', 'duplicate_seed'])
+@pytest.mark.parametrize('mutation', ['none', 'shuffled', 'partial', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals', 'value_count', 'duplicate_seed'])
 def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation):
     import hashlib
     from scripts import sealed_production_llm_panel_readout as sealed
@@ -292,6 +292,21 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
         return dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest())
 
     reports, contexts = _stage1_reports(tmp_path, policies=readout.POLICIES)
+    if mutation == 'partial':
+        from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+        # Different missing completed pairs in the two stages. Each remains a
+        # valid scheduled terminal report, with typed failures kept separate.
+        for key, seed in (('smv3-pv', 0), ('smart', 1)):
+            report = reports[key]
+            row = next(r for r in report['mirrors'] if r['seed'] == seed
+                       and r['flip'] == 0 and r['information'] == 'actor-only')
+            row.update(complete=False, error='synthetic illegal action',
+                events=[dict(seat=0, attempted_cards=['S2'])],
+                failure=dict(schema='benchmark-action-failure-v1', category='model_illegal_action',
+                             stage='engine_play', seat=0, attempted_cards=['S2'], event_index=0))
+            row.pop('signed_levels')
+            row['final_action_feedback_counts'].update(corrected_decisions=0, exhausted_decisions=1)
+            report['scheduled_summary'] = summarize_scheduled(report['mirrors'])
     stages, saved = {}, {}
     for stage, rows, analyze in ((1, STAGE1_ROWS, readout.analyze_stage1_reports),
                                  (2, STAGE2_ROWS, readout.analyze_stage2_reports)):
@@ -301,6 +316,11 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
         result['seals'] = dict(metadata_and_content_validated=True,
             result_refs={k: dict(path='/forbidden/raw/' + k, sha256='0'*64) for k in rows})
         if stage == 2:
+            if mutation == 'shuffled':
+                for policy in result['policies'].values():
+                    for mode in ('sol', 'pt_sol'):
+                        policy[mode]['complete_deal_seeds'].reverse()
+                        policy[mode]['paired_signed_levels']['values'].reverse()
             if mutation == 'feedback': result['treatment'] = 'feedback-OFF'
             if mutation == 'rows': result['policies'].pop(rows[0])
             if mutation == 'roots': result['prepared_roots']['source_result_sha256'] = '0'*64
@@ -321,7 +341,7 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
         assert ref['path'] in allowed, 'raw access attempted'
         return real_metadata(ref, label)
     monkeypatch.setattr(sealed, '_metadata', guarded)
-    if mutation != 'none':
+    if mutation not in ('none', 'shuffled', 'partial'):
         with pytest.raises(ValueError):
             sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
         return
@@ -329,6 +349,12 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
     assert combined['panel_size'] == 9
     assert len(combined['cross_stage_row_differences']) == 14
     assert combined['cross_stage_forfeit_differences']['status'] == 'unavailable'
+    if mutation == 'partial':
+        assert combined['status'] == 'partial'
+        pair = next(d for d in combined['cross_stage_row_differences']
+                    if d['left'] == 'smv3-pv' and d['right'] == 'smart')
+        assert pair['sol']['matched_deal_seeds'] == list(range(2, 10))
+        assert pair['sol']['count'] == 8
     direct = readout.analyze_feedback_panel_reports(reports, contexts)
     oracle = {(row['left'], row['right']): row for row in direct['row_differences']}
     for difference in combined['cross_stage_row_differences']:

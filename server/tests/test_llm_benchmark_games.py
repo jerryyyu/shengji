@@ -204,16 +204,18 @@ def test_feedback_and_final_action_attribution_are_independent(feedback, classif
                       invalid_action_feedback=feedback,
                       classify_final_action_failures=classify)
     assert not row["complete"] and "signed_levels" not in row
-    assert len(calls) == (2 if feedback else 1)
+    assert len(calls) == (4 if feedback else 1)
     assert row["rollout_usage"] == {
         "requested_batches": 1, "attempted_evaluations": 1,
         "completed_evaluations": 0, "completed_world_rollouts": 0}
     assert row["invalid_action_feedback"] is feedback
     assert row.get("classify_final_action_failures", False) is classify
-    if feedback and classify:
-        assert row["failure"]["category"] == "model_illegal_action"
-        assert row["failure"]["stage"] == "engine_play"
-        assert row["events"][-1]["attempted_cards"] == []
+    # Feedback exhaustion happens before engine_play. Classification must not
+    # invent a played-action forfeit for those unplayed correction attempts.
+    assert "failure" not in row
+    assert row["events"] == []
+    if feedback:
+        assert len(row["final_action_feedback"]) == 3
+        assert row["error"] == "IllegalPlay: You don't hold those cards."
     else:
-        assert "failure" not in row
-        assert row["events"] == []
+        assert "final_action_feedback" not in row

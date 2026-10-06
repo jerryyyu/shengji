@@ -100,6 +100,11 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
         key: sum(bot.rollout_usage[key] for bot in planner_bots)
         for key in ("requested_batches", "attempted_evaluations",
                     "completed_evaluations", "completed_world_rollouts")}
+    if invalid_action_feedback:
+        record["final_action_feedback"] = [
+            dict(feedback)
+            for bot in planner_bots
+            for feedback in bot.final_action_feedback]
     return record
 
 

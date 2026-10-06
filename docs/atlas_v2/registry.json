@@ -1063,6 +1063,27 @@
    "takeaway": "No estimate: every window had SE 0 (all 2,600 paired clusters tied), so the reader refused. Not equivalence; no strength claim, no promotion.",
    "note": "PRIMARY UNAVAILABLE. Dispatched 2026-10-05 05:02:42Z (#676 issuecomment-5988436569), LANE DONE 07:19:51Z; cloud, capped 300 s. The pinned reader (0c09f172) refused in pool() because every window had SE = 0, so there is no point, interval or verdict. Predeclared amendment r5 (predeclaration sha 72a2ed7a\u2026) then ran a direction-suppressed diagnostic (diagnostics.json c79d5b36\u2026; #676 issuecomment-5990723972): all 5 windows n_nonzero_delta = 0 (2600/2600 paired clusters tied); history-digest agreement 5200/5200 (HASH AGREEMENT ONLY); committed-play equality UNIDENTIFIABLE. Reading: no observed paired-outcome difference and no detected history difference on these decks; NOT equivalence, no strength claim, no extension or promotion. Archived ~/shengji-archive/2026-09-13/readouts/v52ec-rcec-vs-r38-recovery/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/676#issuecomment-5990723972"
+  },
+  {
+   "id": "v53dts",
+   "date": "2026-10-05",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Release 38 + doomed-throw swap vs release 38",
+   "candidate": "release 38 with SHENGJI_PV_DOOMED_THROW_SWAP=1 (#830), otherwise unchanged (same package smv3out-491ee4bf and release-38 rules), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d; vs release 38 as served (pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457). On a lead, when every sampled world refuses the chosen multi-card throw and forces the same component, the bot plays that component instead.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory",
+   "seeds": "53060910 53160910 53260910 53360910 53460910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.011258,
+   "lo": -0.024569,
+   "hi": 0.002052,
+   "takeaway": "Inconclusive: failed throws fell 33.8 to 12.4 per 1000 plays with no strength gain; interval spans zero. #830 stays off, no deploy.",
+   "note": "SEALED 10-05; readout (Claude, one pass) #707 issuecomment-6008139625. Paired -0.011258 [-0.024569,+0.002052], SE 0.006791, MDE80 0.019026, tau 0, Q 2.29, I2 0%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met: no extension, not promoted; strength verdict withheld per the predeclaration. Window deltas +0.0058, -0.0067, -0.0202, -0.0221, -0.0135. Descriptive own-arm levels vs MC-LCB: candidate 0.2268 [0.2022,0.2513], release 38 0.2379 [0.2130,0.2627] (their difference is not the paired primary). Mechanism (descriptive): failed bot throws 33.8 -> 12.4 per 1000 aligned arm plays; rounds with at least one failed throw 64% -> 36%; no lane defect, no swap fields in the comparator. Health: 725,088 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks; MC-LCB receipts unclassified by the PV health reader. Decision: #830 stays merged with the flag off; no deploy. Reader sha256 be524e8596c1bc230e49dad5090e0649d4f80f6ab2401111957bf96508cfe626; result sha256 13507714d7af936a2451feb9c17774047c4e078778b16b77203347c2c3e0ff29; launcher sha256 b9e107dfd65005e1c3346ee398c868773f4fbed205d21387f11d77028a99f6e6; predeclaration sha256 8d882019c82ad9226b9b8631d1e191de5117a1debc0d80d668f2dc305b188197; SHA256SUMS c7e8f0c5b11336102ff86e587de9c8337563fc1448f2fa1bd1fc69b15598a66b. Archived ~/shengji-archive/2026-09-13/readouts/v53dts-doomed-throw-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6008139625"
   }
  ],
  "context_screens": [

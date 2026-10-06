@@ -64,6 +64,7 @@ jobs:
           tests/test_sealed_readout_wrapper.py
           tests/test_engine.py
           tests/test_heuristic_lowest.py
+          tests/test_heuristic_suit_groups.py
           tests/test_prepared_play_error_hook.py
           tests/test_engine_parity.py
           tests/test_action_semantics.py

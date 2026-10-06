@@ -17,6 +17,18 @@ from ..engine.round import Round
 PLAIN_SUITS = "SHDC"
 
 
+def _lead_suit_groups(hand: list[str], ordering: Ordering) -> dict[str, list[str]]:
+    # Keep the historical suit iteration and within-suit hand order: both
+    # participate in the lead policy's tie-breaking. No state is cached.
+    # Custom orderings may observe call order or expose non-engine suit tags.
+    if type(ordering) is not Ordering:
+        return {s: suit_cards(hand, s, ordering) for s in (*PLAIN_SUITS, TRUMP)}
+    groups = {s: [] for s in (*PLAIN_SUITS, TRUMP)}
+    for card in hand:
+        groups[ordering.eff_suit(card)].append(card)
+    return groups
+
+
 class HeuristicBot:
     DECLARE_MIN = 9     # trump-count needed to declare during the deal
     DECLARE_FINAL = 7   # lower bar in the grace window
@@ -99,7 +111,7 @@ class HeuristicBot:
         o = rnd.ordering
         assert o is not None
         hand = rnd.hands[seat]
-        by_suit = {s: suit_cards(hand, s, o) for s in list(PLAIN_SUITS) + [TRUMP]}
+        by_suit = _lead_suit_groups(hand, o)
 
         # Longest tractor anywhere (>=2 pairs) is a strong lead.
         best_tr: list[str] | None = None

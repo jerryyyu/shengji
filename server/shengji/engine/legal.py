@@ -229,9 +229,12 @@ def validate_follow(play: list[str], hand: list[str], lead: list[str],
         if len(p_suit) != len(play):
             raise IllegalPlay("You must follow suit.")
         lead_dec = decompose(lead, ordering)
-        need_pairs = min(lead_dec.n_pairs, pair_count(h_suit))
-        if pair_count(play) < need_pairs:
-            raise IllegalPlay("You must play pairs from the led suit.")
+        # A pair-free lead imposes no pair obligation, regardless of the
+        # pairs available in hand. Avoid counting two multisets in that case.
+        if lead_dec.n_pairs:
+            need_pairs = min(lead_dec.n_pairs, pair_count(h_suit))
+            if pair_count(play) < need_pairs:
+                raise IllegalPlay("You must play pairs from the led suit.")
         # Tractor obligation for a pure tractor lead.
         if (len(lead_dec.components) == 1
                 and lead_dec.components[0].kind == "tractor"):

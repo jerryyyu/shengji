@@ -38,6 +38,46 @@ def test_uniform_singleton_preserves_general_iterable_and_ordering_behavior():
         uniform(["S2"], CustomOrdering())
 
 
+def test_pair_free_follow_skips_pair_counts(monkeypatch):
+    from shengji.engine import fast, legal
+    from shengji.engine.cards import RANKS
+
+    follow = fast._saved.get("validate_follow", legal.validate_follow)
+
+    def forbidden(*args):
+        raise AssertionError("pair-free lead must not count pairs")
+
+    monkeypatch.setattr(legal, "pair_count", forbidden)
+    for suit in (None, "S", "H", "D", "C"):
+        for rank in RANKS:
+            ordering = Ordering(suit, rank)
+            cards = [c for c in dict.fromkeys(make_deck())
+                     if ordering.eff_suit(c) == "S"]
+            if len(cards) < 3:
+                cards = [c for c in dict.fromkeys(make_deck())
+                         if ordering.eff_suit(c) == "D"]
+            a, b, c = cards[:3]
+            hand = [a, a, b, c]
+            before = list(hand)
+            follow([b], hand, [a], ordering)
+            follow([b, c], hand, [a, b], ordering)
+            assert hand == before
+            # A missing-card failure must still happen before shape checks.
+            with pytest.raises(IllegalPlay):
+                follow([b, b], hand, [a, b], ordering)
+
+
+def test_pair_follow_still_requires_available_pair():
+    from shengji.engine import fast, legal
+
+    follow = fast._saved.get("validate_follow", legal.validate_follow)
+    ordering = Ordering("H", "7")
+    hand = ["S3", "S3", "S5", "S6"]
+    with pytest.raises(IllegalPlay, match="must play pairs"):
+        follow(["S5", "S6"], hand, ["S3", "S3"], ordering)
+    follow(["S3", "S3"], hand, ["S3", "S3"], ordering)
+
+
 def test_single_beats_specialization_matches_legacy(monkeypatch):
     """Singleton beats agrees with decomposition and bypasses both helpers."""
     from shengji.engine import fast, legal

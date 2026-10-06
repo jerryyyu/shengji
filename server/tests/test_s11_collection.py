@@ -10,7 +10,7 @@ from shengji.train.pv_search_policy import PVSearchBot, PVSearchConfig
 from test_s11_public_view import trajectory
 
 
-def factory(calls, **changes):
+def factory(calls, *, seed=17, **changes):
     options = dict(checkpoint_sha256='f' * 64, worlds=64, cap=4000,
                    candidates=8, batch_size=128, refusal_constraints=True,
                    admission_diversity=True, lead_anchor=True,
@@ -29,7 +29,7 @@ def factory(calls, **changes):
     def build():
         bot = PVSearchBot(predict, evaluator=Evaluator(), version=2,
                           config=PVSearchConfig(**options),
-                          checkpoint='/synthetic-no-model', seed=17)
+                          checkpoint='/synthetic-no-model', seed=seed)
         calls['bots'].append(bot)
         return bot
     return build

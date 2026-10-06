@@ -87,10 +87,21 @@ def cwv_corpus_factory(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def cwv_gru_checkpoint_factory(tmp_path_factory):
-    """Build the tiny GRU checkpoint once, then make isolated consumer files.
+    """Build the fixed tiny GRU recipe once per session."""
+    return _cwv_checkpoint_factory(tmp_path_factory, "gru")
+
+
+@pytest.fixture(scope="session")
+def cwv_mlp_checkpoint_factory(tmp_path_factory):
+    """Build the fixed tiny MLP recipe once per session."""
+    return _cwv_checkpoint_factory(tmp_path_factory, "mlp")
+
+
+def _cwv_checkpoint_factory(tmp_path_factory, architecture):
+    """Build one tiny checkpoint, then make isolated consumer files.
 
     This is deliberately a fixed TEST-ONLY recipe rather than a generic
-    recipe cache: both CWV modules exercise the same default GRU checkpoint.
+    recipe cache: each architecture has its own fixed recipe and cache.
     The successful checkpoint is retained as immutable bytes, while every
     consumer receives a fresh file written with exclusive creation.  Training
     runs inside a CPU-only ``fork_rng`` context so the helper's seeding cannot
@@ -100,7 +111,7 @@ def cwv_gru_checkpoint_factory(tmp_path_factory):
     recipe = {
         "seed0": 4_200_000,
         "rounds": 2,
-        "architecture": "gru",
+        "architecture": architecture,
         "width": 16,
         "max_epochs": 2,
         "patience": 4,
@@ -112,7 +123,7 @@ def cwv_gru_checkpoint_factory(tmp_path_factory):
         nonlocal cached_bytes
         destination = Path(destination)
         if cached_bytes is None:
-            staging = tmp_path_factory.mktemp("cwv-gru-checkpoint") / "checkpoint.pt"
+            staging = tmp_path_factory.mktemp(f"cwv-{architecture}-checkpoint") / "checkpoint.pt"
             import torch
 
             with torch.random.fork_rng(devices=[]):

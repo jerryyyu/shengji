@@ -1,6 +1,7 @@
 import fcntl
 import hashlib
 import os
+import shutil
 
 import pytest
 
@@ -17,14 +18,34 @@ MANIFEST = 'a' * 64
 PACKET = 'b' * 64
 
 
-@pytest.fixture
-def slots(trajectory):
+def _slots(trajectory):
     return [dict(root_id=f's11-{MANIFEST}-draw-{draw:02d}', draw_index=draw,
                  status='valid', selected_ply=98,
                  fixture=public_s11_fixture(
                      trajectory, 98,
                      root_id=f's11-{MANIFEST}-draw-{draw:02d}'))
             for draw in range(64)]
+
+
+@pytest.fixture
+def slots(trajectory):
+    return _slots(trajectory)
+
+
+@pytest.fixture(scope='module')
+def completed_source(tmp_path_factory, trajectory):
+    """Exercise the real full collector once, not once per corruption case."""
+    directory = tmp_path_factory.mktemp('s11-completed-source')
+    collect(_slots(trajectory), directory,
+            factory(dict(leaves=0, policy=[], bots=[])))
+    return directory
+
+
+@pytest.fixture
+def completed_run(tmp_path, completed_source):
+    # Copies, never hard links: corruption in one test cannot reach another.
+    shutil.copytree(completed_source, tmp_path, dirs_exist_ok=True)
+    return tmp_path
 
 
 def collect(slots, path, build, **kwargs):
@@ -94,15 +115,15 @@ def test_input_refusal_is_durable_and_prevents_inference(tmp_path, slots):
     assert result['roots'][4]['status'] == 'refused'
 
 
-def test_all_completed_roots_are_reused_without_collection(tmp_path, slots):
-    collect(slots, tmp_path, factory(dict(leaves=0, policy=[], bots=[])))
+def test_all_completed_roots_are_reused_without_collection(completed_run, slots):
+    tmp_path = completed_run
     result = inspect(slots, tmp_path)
     assert result['counts'] == {
         'completed': 64, 'refused': 0, 'interrupted': 0, 'unattempted': 0}
 
 
-def test_mismatched_binding_refuses_before_root_inspection(tmp_path, slots):
-    collect(slots, tmp_path, factory(dict(leaves=0, policy=[], bots=[])))
+def test_mismatched_binding_refuses_before_root_inspection(completed_run, slots):
+    tmp_path = completed_run
     before = (tmp_path / 'schedule.json').read_bytes()
     with pytest.raises(ValueError, match='schedule binding mismatch'):
         inspect(slots, tmp_path, packet_sha256='c' * 64)
@@ -110,10 +131,14 @@ def test_mismatched_binding_refuses_before_root_inspection(tmp_path, slots):
 
 
 @pytest.mark.parametrize('damage', ['contradictory', 'corrupt', 'partial'])
-def test_contradictory_or_corrupt_completion_is_interrupted(tmp_path, slots, damage):
-    collect(slots, tmp_path, factory(dict(leaves=0, policy=[], bots=[])))
+def test_contradictory_or_corrupt_completion_is_interrupted(
+        completed_run, completed_source, slots, damage):
+    tmp_path = completed_run
     first_root = root(tmp_path, slots[0]['fixture'])
     completion = first_root / 'completed.json'
+    source_completion = completed_source / completion.relative_to(tmp_path)
+    source_bytes = source_completion.read_bytes()
+    assert completion.stat().st_ino != source_completion.stat().st_ino
     if damage == 'contradictory':
         failed = first_root / 'failed.json'
         failed.write_bytes(b'contradictory')
@@ -128,6 +153,8 @@ def test_contradictory_or_corrupt_completion_is_interrupted(tmp_path, slots, dam
     result = inspect(slots, tmp_path)
     assert result['roots'][0]['status'] == 'interrupted'
     assert result['counts']['completed'] == 63
+    assert source_completion.read_bytes() == source_bytes
+    assert not (source_completion.parent / 'failed.json').exists()
 
 
 def test_live_root_lock_conflict_fails_closed_without_model_work(tmp_path, slots):

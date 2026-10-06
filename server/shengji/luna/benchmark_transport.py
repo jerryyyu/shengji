@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import re
 import tempfile
 import time
@@ -162,6 +163,7 @@ class BenchmarkTransport(CodexExecPlannerTransport):
         return deadline - time.monotonic_ns(), deadline
 
     def __call__(self, packet):
+        packet_bytes = canonical_json_bytes(packet)
         prompt = ("Play Shengji for the observing seat's partnership. Card codes use S/H/C/D "
                   "and ranks 2..A; BJ/LJ are jokers. Use only the provided information. "
                   "Your memory belongs to this seat, not your partner. Return cards to play "
@@ -182,7 +184,7 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                   "worlds in actor-only mode; results are estimates under the named policy, "
                   "not guaranteed outcomes. Positive signed levels favor your partnership. "
                   "Keep a concise updated memory. No prose outside JSON.\n" +
-                  canonical_json_bytes(packet).decode("ascii")).encode("utf-8")
+                  packet_bytes.decode("ascii")).encode("utf-8")
         schema_bytes = canonical_json_bytes(output_schema())
         retry_delays = self.capacity_retry_delays
         logical_deadline = (time.monotonic_ns() + self.timeout_seconds * 1_000_000_000
@@ -265,7 +267,8 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                         _, usage, message = _events_and_usage(
                             result.stdout, use_final_message=True)
                     receipt["usage"] = usage
-                    final = _strict_json(final_path.read_bytes(), "benchmark final")
+                    final_bytes = final_path.read_bytes()
+                    final = _strict_json(final_bytes, "benchmark final")
                     if final != _strict_json(message.encode(), "benchmark message"):
                         raise CodexTurnTransportError("benchmark final/message mismatch")
                     if (type(final) is not dict
@@ -274,8 +277,16 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                             or (final["cards"] is None) == (final["evaluations"] is None)):
                         raise CodexTurnTransportError("benchmark action shape refused")
                     key = "evaluations" if final["cards"] is None else "cards"
-                    receipt["accepted"] = True  # protocol shape only; engine validation follows
                     answer = {key: final[key], "memory": final["memory"]}
+                    # Join the saved provider bytes to the normalized policy
+                    # reply through this actual parser. Evidence only: neither
+                    # a legality classification nor a scoring disposition.
+                    receipt["response_binding"] = {
+                        "schema": "benchmark-response-binding-v1",
+                        "packet_sha256": hashlib.sha256(packet_bytes).hexdigest(),
+                        "final_sha256": hashlib.sha256(final_bytes).hexdigest(),
+                        "reply_sha256": hashlib.sha256(canonical_json_bytes(answer)).hexdigest()}
+                    receipt["accepted"] = True  # protocol shape only; engine validation follows
             except BaseException as exc:
                 if "error_type" not in receipt:
                     receipt["error"] = f"{type(exc).__name__}: {exc}"

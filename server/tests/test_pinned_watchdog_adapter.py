@@ -16,7 +16,7 @@ class _CapturedProcess:
     pid = 8123
 
 
-def test_default_watchdog_wrapper_is_unchanged(tmp_path, monkeypatch):
+def test_default_watchdog_wrapper_uses_source_adjacent_isolated_script(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def capture(argv, **kwargs):
@@ -32,7 +32,8 @@ def test_default_watchdog_wrapper_is_unchanged(tmp_path, monkeypatch):
     try:
         assert process.pid == 8123
         assert captured["argv"] == (
-            sys.executable, "-B", "-m", "shengji.luna.watchdog",
+            sys.executable, "-I", "-B",
+            str(Path(transport.__file__).absolute().with_name("watchdog.py")),
             str(captured["kwargs"]["pass_fds"][0]), "provider", "--flag")
     finally:
         manager.release(process.pid, watchdog_fd)

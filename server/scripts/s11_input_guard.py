@@ -100,8 +100,9 @@ def supervise_s11_input(command, *, cwd, env, log, python=sys.executable,
                         sample_seconds=0.25, term_grace_seconds=0.5):
     """Run one private input worker behind the existing parent-death watchdog.
 
-    Non-default limits are for synthetic qualification only; the real packet
-    must pin the accepted values. Any census failure terminates the group.
+    Input defaults are not authority for model collection. Other callers must
+    independently qualify and pin their reviewed packet limits; non-default
+    values grant no launch authority. Any census failure terminates the group.
     No raw log/exception content is copied to the operational receipt.
     """
     for value in (wall_seconds, rss_threshold_bytes, sample_seconds, term_grace_seconds):

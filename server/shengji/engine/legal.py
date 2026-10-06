@@ -43,6 +43,10 @@ def check_in_hand(hand: list[str], play: list[str]) -> None:
 
 
 def uniform_suit(play: list[str], ordering: Ordering) -> str | None:
+    # Singleton engine plays need no temporary set. Keep the general path
+    # for custom iterables/orderings (including their hashing semantics).
+    if type(play) is list and len(play) == 1 and type(ordering) is Ordering:
+        return ordering.eff_suit(play[0])
     suits = {ordering.eff_suit(c) for c in play}
     return suits.pop() if len(suits) == 1 else None
 

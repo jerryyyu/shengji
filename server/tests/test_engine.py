@@ -5,6 +5,39 @@ from shengji.engine.combos import decompose, find_tractor_runs, has_tractor
 from shengji.engine.legal import IllegalPlay, beats, validate_follow, validate_lead
 
 
+def test_uniform_singleton_matches_set_reference_across_all_orderings():
+    from shengji.engine import fast, legal
+    from shengji.engine.cards import RANKS, SUITS
+
+    uniform = fast._saved.get("uniform_suit", legal.uniform_suit)
+    deck = make_deck()[:54]
+    for suit in (None, *SUITS):
+        for rank in RANKS:
+            ordering = Ordering(suit, rank)
+            for play in [[], *[[c] for c in deck], *[[c, c] for c in deck], deck]:
+                suits = {ordering.eff_suit(c) for c in play}
+                expected = suits.pop() if len(suits) == 1 else None
+                before = play.copy()
+                assert uniform(play, ordering) == expected
+                assert play == before
+
+
+def test_uniform_singleton_preserves_general_iterable_and_ordering_behavior():
+    from shengji.engine import fast, legal
+
+    uniform = fast._saved.get("uniform_suit", legal.uniform_suit)
+    ordering = Ordering("H", "7")
+    assert uniform(iter(["S2"]), ordering) == "S"
+    assert uniform(("S2", "H2"), ordering) is None
+
+    class CustomOrdering:
+        def eff_suit(self, card):
+            return []  # historical set construction must still reject this
+
+    with pytest.raises(TypeError):
+        uniform(["S2"], CustomOrdering())
+
+
 def test_single_beats_specialization_matches_legacy(monkeypatch):
     """Singleton beats agrees with decomposition and bypasses both helpers."""
     from shengji.engine import fast, legal

@@ -275,3 +275,39 @@ def test_terminal_error_must_corroborate_rejection(tmp_path, error):
     _repin_row(fixture)
     with pytest.raises(ValueError, match="terminal error"):
         _audit(fixture)
+
+
+def test_receipt_permutation_and_rejected_transport_do_not_change_inference(tmp_path):
+    fixture = _legacy_fixture(tmp_path)
+    original = _audit(fixture)
+    fixture["row"]["calls"].reverse()
+    # Rejected transport attempts never reach the evaluator. They remain
+    # authenticated by the mirror pin, but need no accepted-reply evidence.
+    rejected = copy.deepcopy(fixture["row"]["calls"][0])
+    rejected.update(accepted=False, evidence_path="synthetic-rejected-attempt")
+    fixture["row"]["calls"].insert(1, rejected)
+    _repin_row(fixture)
+    actual = _audit(fixture)
+    for key in original.keys() - {"row_sha256", "pins_sha256"}:
+        assert actual[key] == original[key]
+
+
+@pytest.mark.parametrize("mutation", ["cards", "continuation", "worlds", "count", "request"])
+def test_rebound_packet_local_join_drift_refuses(tmp_path, mutation):
+    fixture = _legacy_fixture(tmp_path)
+    path = _failed_call(fixture)["evidence_path"]
+    prompt = fixture["evidence"][path]["prompt_bytes"]
+    prefix, packet_bytes = prompt.split(b"\n", 1)
+    packet = json.loads(packet_bytes)
+    if mutation == "count":
+        packet["rollout_results"].pop()
+    elif mutation == "request":
+        packet["rollout_calls_remaining"] = 2
+    else:
+        packet["rollout_results"][0][mutation] = {
+            "cards": [], "continuation": "smart-all", "worlds": True}[mutation]
+    rebound = prefix + b"\n" + canonical_json_bytes(packet)
+    fixture["evidence"][path]["prompt_bytes"] = rebound
+    fixture["pins"]["calls"][path]["prompt_sha256"] = hashlib.sha256(rebound).hexdigest()
+    with pytest.raises(ValueError):
+        _audit(fixture)

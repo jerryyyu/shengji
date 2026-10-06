@@ -200,11 +200,12 @@ def init_links(metadata: Mapping[str, Any], receipt: Mapping[str, Any] | None
     return out
 
 
-def load_node(path: str | Path, load_metadata: Callable[[str | Path], dict]) -> dict[str, Any]:
+def load_node(path: str | Path, load_metadata: Callable[[str | Path], dict],
+              sha256: str | None = None) -> dict[str, Any]:
     path = Path(path)
     metadata = load_metadata(path)
     receipt, receipt_path = find_receipt(path, metadata)
-    return {"path": str(path), "sha256": sha256_file(path), "metadata": metadata,
+    return {"path": str(path), "sha256": sha256 or sha256_file(path), "metadata": metadata,
             "receipt": receipt_path, "exposure": exposure_sets(metadata, path=str(path)),
             "links": init_links(metadata, receipt)}
 
@@ -214,41 +215,54 @@ def lineage(root: str | Path, *, follow_init: bool,
             ) -> tuple[list[dict], list[dict]]:
     """``(nodes, unresolved)``: the root and, with ``follow_init``, every reachable warm-start link.
     A link is UNRESOLVED when it is missing, unreadable, carries conflicting recorded sha256s, its
-    bytes differ from the recorded sha256, or it has no usable exposure."""
+    bytes differ from the recorded sha256, or it has no usable exposure.
+
+    EVERY edge is validated, including edges into a node an earlier edge already loaded: a diamond
+    whose second edge records a wrong sha256 is unresolved even though the node itself loaded through
+    a valid (or path-only) first edge.  Only node loading and traversal are deduplicated; each file's
+    actual digest is computed once and cached."""
     load_metadata = load_metadata or torch_metadata
     nodes = [load_node(root, load_metadata)]
     unresolved: list[dict] = []
     if not follow_init:
         return nodes, unresolved
-    seen = {str(Path(root))}
+    loaded = {nodes[0]["path"]: nodes[0]}
+    digests = {nodes[0]["path"]: nodes[0]["sha256"]}
+    load_failed: dict[str, str] = {}
     queue = [(nodes[0], link, 1) for link in nodes[0]["links"]]
     while queue:
         parent, link, depth = queue.pop(0)
-        if link["path"] in seen:
-            continue
-        seen.add(link["path"])
+        path = str(Path(link["path"]))
         bad = {"path": link["path"], "from": parent["path"], "via": link["via"]}
         if "conflict" in link:
             unresolved.append({**bad, "reason": f"conflicting recorded sha256s {link['conflict']}"})
             continue
+        if path not in digests:
+            if not Path(path).is_file():
+                unresolved.append({**bad, "reason": "file not found"})
+                continue
+            digests[path] = sha256_file(path)
+        actual = digests[path]
+        if link["sha256"] is not None and actual != link["sha256"]:
+            unresolved.append({**bad, "reason": f"sha256 {actual} != recorded {link['sha256']}"})
+            continue
+        if path in loaded:                       # edge valid; node already loaded and traversed
+            continue
+        if path in load_failed:
+            unresolved.append({**bad, "reason": load_failed[path]})
+            continue
         if depth > MAX_LINK_DEPTH:
             unresolved.append({**bad, "reason": f"lineage deeper than {MAX_LINK_DEPTH}"})
             continue
-        if not Path(link["path"]).is_file():
-            unresolved.append({**bad, "reason": "file not found"})
-            continue
-        if link["sha256"] is not None:
-            actual = sha256_file(link["path"])
-            if actual != link["sha256"]:
-                unresolved.append({**bad, "reason": f"sha256 {actual} != recorded {link['sha256']}"})
-                continue
         try:
-            node = load_node(link["path"], load_metadata)
+            node = load_node(path, load_metadata, actual)
         except Exception as exc:  # noqa: BLE001 -- any failure to read the link is unresolved
-            unresolved.append({**bad, "reason": f"{type(exc).__name__}: {exc}"})
+            load_failed[path] = f"{type(exc).__name__}: {exc}"
+            unresolved.append({**bad, "reason": load_failed[path]})
             continue
         node["reached_from"] = parent["path"]
         node["sha256_recorded"] = link["sha256"]
+        loaded[path] = node
         nodes.append(node)
         queue.extend((node, nxt, depth + 1) for nxt in node["links"])
     return nodes, unresolved

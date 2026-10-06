@@ -216,6 +216,65 @@ def test_missing_link_is_unresolved(tmp_path):
                                 "via": ["metadata.config.init"], "reason": "file not found"}]
 
 
+def _diamond(tmp_path, *, root_b, a_b, b_path_only_first=False):
+    """root -> A, root -> B, A -> B (Codex HOLD on #900: a path-only or valid first visit of B must
+    not suppress a later hash-bound edge's check).  ``root_b`` / ``a_b`` are "good" or "bad" (the
+    recorded sha256 of that edge into B)."""
+    b = _write(tmp_path / "B" / "best.pt", {"exposure": _exposure(_keys([5003]), [])})
+    sha = {"good": _sha(b), "bad": "f" * 64}
+    a = _write(tmp_path / "A" / "best.pt", {"exposure": _exposure(_keys([9001]), [],
+               ancestors=[{"path": str(b), "sha256": sha[a_b]}])})
+    ancestors = [{"path": str(a), "sha256": _sha(a)}]
+    if not b_path_only_first:
+        ancestors.append({"path": str(b), "sha256": sha[root_b]})
+    meta = {"exposure": _exposure(_keys([9000]), [], ancestors=ancestors)}
+    if b_path_only_first:
+        meta["config"] = {"init": str(b)}              # path-only, and first in link order
+    root = _write(tmp_path / "root" / "best.pt", meta)
+    r = sc.clear(sc.windows_of(5000, 4), [root], follow_init=True, control_seeds=[9000],
+                 control_probes=1, load_metadata=_json_loader)
+    return r, str(root), str(a), str(b)
+
+
+@pytest.mark.parametrize("root_b,a_b,bad_from", [("good", "bad", "A"), ("bad", "good", "root")])
+def test_diamond_bad_edge_is_unresolved_in_either_order(tmp_path, root_b, a_b, bad_from):
+    r, root, a, b = _diamond(tmp_path, root_b=root_b, a_b=a_b)
+    assert len(r["unresolved"]) == 1, r["unresolved"]
+    u = r["unresolved"][0]
+    assert u["path"] == b and u["from"] == {"A": a, "root": root}[bad_from]
+    assert "!= recorded " + "f" * 64 in u["reason"]
+    paths = [n["path"] for n in r["checkpoints"][0]["nodes"]]
+    assert sorted(paths) == sorted([root, a, b]) and len(paths) == 3   # B loaded once, via the good edge
+    assert r["overlaps"] == 1
+
+
+def test_diamond_path_only_first_visit_does_not_suppress_a_bad_hash(tmp_path):
+    r, root, a, b = _diamond(tmp_path, root_b=None, a_b="bad", b_path_only_first=True)
+    assert [(u["path"], u["from"]) for u in r["unresolved"]] == [(b, a)]
+    r2, *_ = _diamond(tmp_path / "ok", root_b=None, a_b="good", b_path_only_first=True)
+    assert not r2["unresolved"]
+
+
+def test_diamond_valid_repeated_link_passes(tmp_path):
+    r, root, a, b = _diamond(tmp_path, root_b="good", a_b="good")
+    assert not r["unresolved"] and r["overlaps"] == 1
+    assert [n["path"] for n in r["checkpoints"][0]["nodes"]] == [root, a, b]
+
+
+def test_cli_fails_on_a_diamond_bad_edge(tmp_path, capsys, monkeypatch):
+    b = _write(tmp_path / "B.json", {"exposure": _exposure(_keys([7]), [])})
+    a = _write(tmp_path / "A.json", {"exposure": _exposure(_keys([8]), [],
+               ancestors=[{"path": str(b), "sha256": "0" * 64}])})
+    root = _write(tmp_path / "root.json", {"exposure": _exposure(_keys([9000]), [], ancestors=[
+        {"path": str(a), "sha256": _sha(a)}, {"path": str(b), "sha256": _sha(b)}])})
+    monkeypatch.setattr("shengji.train.seed_clearance.torch_metadata", _json_loader)
+    argv = ["clear", "5000", "4", "--checkpoint", str(root), "--follow-init",
+            "--control-seed", "9000", "--control-probes", "1"]
+    assert _cli().main(argv) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert "1 unresolved link(s)" in out[1] and json.loads(out[0])["unresolved"][0]["from"] == str(a)
+
+
 # --------------------------------------------------------------------- CLI
 
 def _cli():

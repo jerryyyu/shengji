@@ -28,6 +28,9 @@ RECOVERY_SCHEMA = "sol-six-row-recovery-v1"
 RECOVERY_ROWS = ROWS[3:]
 STAGE1_SCHEMA = "sol-feedback-on-stage1-v1"
 STAGE1_ROWS = ("smv3-pv", "m1-prior")
+STAGE2_SCHEMA = "sol-feedback-on-stage2-v1"
+STAGE2_ROWS = ("smart", "mc-lcb", "soft-pv", "js-m1-shortlist",
+               "w32-original", "mc-strong", "mc")
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
 def default_reservation_path(platform):
     # Linux fleet screens use this same atomic directory reservation. A
@@ -105,7 +108,8 @@ def validate(config_path, expected):
     config = json.loads(raw)
     schema = config.get("schema")
     recovery = schema == RECOVERY_SCHEMA
-    stage1 = schema == STAGE1_SCHEMA
+    stage1 = schema in (STAGE1_SCHEMA, STAGE2_SCHEMA)
+    stage_rows = STAGE2_ROWS if schema == STAGE2_SCHEMA else STAGE1_ROWS
     controlled = recovery or stage1
     retries = config.get("provider_capacity_retry_delays", [])
     if controlled:
@@ -117,11 +121,11 @@ def validate(config_path, expected):
     expected_retries = (list(CAPACITY_RETRY_DELAYS)
                         if schema == "sol-nine-policy-campaign-v2" or
                         (controlled and config['recovery_controls']['capacity_retries']) else [])
-    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA)
+    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA, STAGE2_SCHEMA)
             or type(retries) is not list
             or any(type(delay) is not int for delay in retries)
             or retries != expected_retries
-            or config.get("rows") != list(STAGE1_ROWS if stage1 else RECOVERY_ROWS if recovery else ROWS)
+            or config.get("rows") != list(stage_rows if stage1 else RECOVERY_ROWS if recovery else ROWS)
             or config.get("row_wall_seconds") != 43200
             or config.get("row_soft_tokens") != 45000000
             or config.get("provider_call_seconds") != 300):
@@ -402,9 +406,10 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
 def run(config_path, expected, *, arm=False):
     config, stamps = validate(config_path, expected)
     recovery = config.get("schema") == RECOVERY_SCHEMA
-    stage1 = config.get("schema") == STAGE1_SCHEMA
+    stage1 = config.get("schema") in (STAGE1_SCHEMA, STAGE2_SCHEMA)
+    stage = 2 if config.get("schema") == STAGE2_SCHEMA else 1
     controlled = recovery or stage1
-    rows = STAGE1_ROWS if stage1 else RECOVERY_ROWS if recovery else ROWS
+    rows = (STAGE2_ROWS if stage == 2 else STAGE1_ROWS) if stage1 else RECOVERY_ROWS if recovery else ROWS
     output = Path(config["output"])
     hold = config_path.parent / "HOLD"
     if os.path.lexists(hold) or os.path.lexists(output):
@@ -502,12 +507,12 @@ def run(config_path, expected, *, arm=False):
             # Scoring is a separate terminal consumer: an analysis refusal
             # must never erase or relabel the already-sealed game evidence.
             if stage1:
-                publish(output / "stage1-summary.json", {
-                    "schema": "sol-feedback-on-stage1-summary-v1",
+                publish(output / f"stage{stage}-summary.json", {
+                    "schema": f"sol-feedback-on-stage{stage}-summary-v1",
                     "config_sha256": expected,
                     "status": terminal['status'],
-                    "scientific_readout": "pending-feedback-on-stage1-reader",
-                    "required_prior_rows": [],
+                    "scientific_readout": f"pending-feedback-on-stage{stage}-reader",
+                    "required_prior_rows": list(STAGE1_ROWS) if stage == 2 else [],
                     "rows": {
                         row: (json.loads((output / f"{row}.accounting.json").read_bytes())
                               if (output / f"{row}.accounting.json").exists()

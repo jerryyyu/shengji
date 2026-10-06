@@ -109,11 +109,110 @@ def read_sealed_panel(plan_path, expected_sha256):
 
 def read_sealed_stage1(plan_path, expected_sha256):
     """Admit fresh stage-1 metadata before opening either pinned row result."""
+    return _read_sealed_stage(plan_path, expected_sha256, stage=1)
+
+
+def read_sealed_stage2(plan_path, expected_sha256):
+    """Read the seven separately sealed feedback-ON rows, not an implicit panel."""
+    return _read_sealed_stage(plan_path, expected_sha256, stage=2)
+
+
+def read_saved_feedback_panel(plan_path, expected_sha256):
+    """Assemble published stage results only; never follow their raw refs.
+
+    The reviewed plan must pin the previously accepted result AND receipt for
+    each stage. Hash agreement authenticates bytes, not scientific approval.
+    Completed-only contrasts use saved seed-indexed values, not marginal CIs.
+    """
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
+    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'saved-stage plan')
+    _require(set(plan) == {'schema', 'stages'}
+             and plan['schema'] == 'sol-saved-feedback-panel-plan-v1', 'invalid saved-stage plan')
+    _require(type(plan['stages']) is dict and set(plan['stages']) == {'stage1', 'stage2'},
+             'exact two saved stages required')
+    stages = {}
+    for stage, rows in ((1, STAGE1_ROWS), (2, STAGE2_ROWS)):
+        name = f'stage{stage}'
+        refs = plan['stages'][name]
+        _require(type(refs) is dict and set(refs) == {'result', 'receipt'}, 'saved-stage refs')
+        receipt = _metadata(refs['receipt'], name + ' publication receipt')
+        _require(receipt.get('status') == 'complete'
+                 and receipt.get('result_sha256') == refs['result']['sha256'],
+                 'saved-stage publication incomplete or mismatched')
+        result = _metadata(refs['result'], name + ' saved readout')
+        _require(result.get('schema') == f'sol-feedback-on-stage{stage}-readout-v1'
+                 and result.get('treatment') == 'feedback-ON'
+                 and result.get('status') in ('complete', 'partial')
+                 and type(result.get('panel_size')) is int and result['panel_size'] == len(rows)
+                 and result.get('benchmark_ids') == list(rows), 'saved-stage identity mismatch')
+        seals = result.get('seals', {})
+        _require(seals.get('metadata_and_content_validated') is True
+                 and type(seals.get('result_refs')) is dict
+                 and set(seals['result_refs']) == set(rows), 'saved-stage seals missing')
+        for field in ('policies', 'terminal_accounting'):
+            _require(type(result.get(field)) is dict and set(result[field]) == set(rows),
+                     'saved-stage row coverage mismatch')
+        for key, policy in result['policies'].items():
+            _require(policy.get('benchmark_id') == key, 'saved-stage policy identity mismatch')
+        _require(type(result.get('row_differences')) is list, 'saved-stage contrasts missing')
+        stages[name] = result
+    first, second = stages['stage1'], stages['stage2']
+    for field in ('seeds', 'prepared_roots', 'bootstrap'):
+        _require(field in first and field in second
+                 and _strict_equal(first[field], second[field]), 'saved-stage ' + field + ' mismatch')
+    policies = {key: stage['policies'][key] for stage in stages.values() for key in stage['policies']}
+    values = {}
+    for key, policy in policies.items():
+        for mode in ('sol', 'pt_sol'):
+            arm = policy[mode]
+            seeds = arm['complete_deal_seeds']
+            contrast = arm['paired_signed_levels']
+            saved_values = contrast['values']
+            _require(type(seeds) is list and all(type(s) is int for s in seeds)
+                     and len(set(seeds)) == len(seeds) and set(seeds) <= set(first['seeds'])
+                     and type(saved_values) is list and len(saved_values) == len(seeds)
+                     and type(contrast['count']) is int and contrast['count'] == len(seeds)
+                     and all(arithmetic._number(v) for v in saved_values),
+                     'invalid saved completed-deal values')
+            values[key, mode] = dict(zip(seeds, saved_values))
+    cross = []
+    for index, left in enumerate(arithmetic.POLICIES):
+        for right in arithmetic.POLICIES[index + 1:]:
+            if (left in STAGE1_ROWS) == (right in STAGE1_ROWS):
+                continue
+            difference = dict(left=left, right=right,
+                definition='left policy minus right policy on matching completed deals')
+            for mode in ('sol', 'pt_sol'):
+                a, b = values[left, mode], values[right, mode]
+                seeds = sorted(set(a) & set(b))
+                difference[mode] = arithmetic._contrast(
+                    [a[s] - b[s] for s in seeds], seed=first['bootstrap']['seed'])
+                difference[mode]['matched_deal_seeds'] = seeds
+            cross.append(difference)
+    return {
+        'schema': 'sol-saved-feedback-panel-v1', 'treatment': 'feedback-ON',
+        'status': 'complete' if all(s['status'] == 'complete' for s in stages.values()) else 'partial',
+        'panel_size': 9, 'benchmark_ids': list(arithmetic.POLICIES),
+        **{field: first[field] for field in ('seeds', 'prepared_roots', 'bootstrap')},
+        **{field: {key: stage[field][key] for stage in stages.values() for key in stage[field]}
+           for field in ('policies', 'terminal_accounting')},
+        'within_stage_row_differences': {key: stage['row_differences'] for key, stage in stages.items()},
+        'cross_stage_row_differences': cross,
+        'cross_stage_forfeit_differences': {
+            'status': 'unavailable',
+            'reason': 'Saved forfeit values lack scored-deal seed IDs; no alignment inferred or raw reread.'},
+        'provenance': {'plan_sha256': expected_sha256, 'stages': plan['stages']},
+        'interpretation': 'Saved rows copied unchanged; completed-only cross-stage contrasts pair saved seed-indexed values. No superiority or equivalence claim.',
+    }
+
+
+def _read_sealed_stage(plan_path, expected_sha256, *, stage):
     plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'stage1 plan')
-    admitted = admit_stage1_metadata(plan)
+    admitted = _admit_stage_metadata(plan, stage=stage)
     reports = {row: _metadata(plan['rows'][row]['result'], row + ' result')
                for row in admitted['rows']}
-    result = arithmetic.analyze_stage1_reports(
+    analyze = arithmetic.analyze_stage1_reports if stage == 1 else arithmetic.analyze_stage2_reports
+    result = analyze(
         reports, {row: admitted['context'] for row in admitted['rows']})
     _require(_strict_equal(result['terminal_accounting'], admitted['accounting']),
              'stage1 recomputed accounting mismatch')
@@ -133,17 +232,27 @@ def admit_stage1_metadata(plan):
     pass all-zero result digests in memory, admit this complete metadata cone,
     and take one subsequent streaming pass over each result.
     """
-    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA
+    return _admit_stage_metadata(plan, stage=1)
+
+
+def admit_stage2_metadata(plan):
+    return _admit_stage_metadata(plan, stage=2)
+
+
+def _admit_stage_metadata(plan, *, stage):
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA, STAGE2_ROWS, STAGE2_SCHEMA
     from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+    rows = STAGE1_ROWS if stage == 1 else STAGE2_ROWS
+    schema = STAGE1_SCHEMA if stage == 1 else STAGE2_SCHEMA
 
     _require(set(plan) == {'schema', 'campaign', 'rows'}
-             and plan['schema'] == 'sol-feedback-on-stage1-seals-v1', 'invalid stage1 plan')
+             and plan['schema'] == f'sol-feedback-on-stage{stage}-seals-v1', 'invalid stage plan')
     refs = plan['campaign']
     _require(type(refs) is dict and set(refs) == {'config', 'output_config', 'terminal', 'summary'},
              'stage1 campaign reference keys')
-    _require(type(plan['rows']) is dict and set(plan['rows']) == set(STAGE1_ROWS), 'stage1 row set')
+    _require(type(plan['rows']) is dict and set(plan['rows']) == set(rows), 'stage1 row set')
     config = _metadata(refs['config'], 'stage1 config')
-    _require(config.get('schema') == STAGE1_SCHEMA and config.get('rows') == list(STAGE1_ROWS)
+    _require(config.get('schema') == schema and config.get('rows') == list(rows)
              and 'retention' not in config, 'stage1 fresh recipe required')
     _require(_strict_equal(config.get('recovery_controls'), dict(capacity_retries=True,
              accept_recovered_reconnects=False, invalid_action_feedback=True,
@@ -159,7 +268,7 @@ def admit_stage1_metadata(plan):
     output = Path(config.get('output', ''))
     _require(output.is_absolute(), 'stage1 output must be absolute')
     for field, name in (('output_config', 'config.json'), ('terminal', 'terminal.json'),
-                        ('summary', 'stage1-summary.json')):
+                        ('summary', f'stage{stage}-summary.json')):
         _at(refs[field], output / name)
     _require(_strict_equal(config, _metadata(refs['output_config'], 'stage1 output config')),
              'stage1 output config drift')
@@ -168,14 +277,14 @@ def admit_stage1_metadata(plan):
     for record in (terminal, summary):
         _require(record.get('config_sha256') == refs['config']['sha256']
                  and record.get('status') == 'scheduled-terminal', 'stage1 not terminal')
-    _require(summary.get('schema') == 'sol-feedback-on-stage1-summary-v1'
-             and summary.get('required_prior_rows') == []
+    _require(summary.get('schema') == f'sol-feedback-on-stage{stage}-summary-v1'
+             and summary.get('required_prior_rows') == ([] if stage == 1 else list(STAGE1_ROWS))
              and type(summary.get('rows')) is dict
-             and set(summary['rows']) == set(STAGE1_ROWS), 'stage1 summary drift')
+             and set(summary['rows']) == set(rows), 'stage1 summary drift')
     exits = terminal.get('rows')
-    _require(type(exits) is list and len(exits) == 2, 'stage1 terminal cardinality')
+    _require(type(exits) is list and len(exits) == len(rows), 'stage1 terminal cardinality')
     accounting = {}
-    for index, row in enumerate(STAGE1_ROWS):
+    for index, row in enumerate(rows):
         row_refs = plan['rows'][row]
         _require(type(row_refs) is dict and set(row_refs) == {'result', 'terminal', 'accounting'},
                  'stage1 row refs')
@@ -201,6 +310,6 @@ def admit_stage1_metadata(plan):
     context = dict(seeds=config['seeds'], source_result_sha256=config['prepared_roots_sha256'],
                    root_hashes=roots.get('roots'))
     return {'status': 'metadata-admitted-results-unverified', 'plan': plan,
-            'rows': tuple(STAGE1_ROWS), 'config': config,
+            'rows': tuple(rows), 'config': config,
             'terminal': terminal, 'summary': summary,
             'accounting': accounting, 'context': context}

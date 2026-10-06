@@ -77,10 +77,10 @@ def _panel(tmp_path, *, failed=False, omit_rollouts=False):
             for index, benchmark_id in enumerate(readout.POLICIES)}
 
 
-def _stage1_reports(tmp_path):
+def _stage1_reports(tmp_path, policies=('smv3-pv', 'm1-prior')):
     from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_scheduled
     reports, contexts = {}, {}
-    for index, key in enumerate(('smv3-pv', 'm1-prior')):
+    for index, key in enumerate(policies):
         path = _report(tmp_path, key, offset=index)
         report = json.loads((path / 'result.json').read_text())
         report['config'].update(invalid_action_feedback=True,
@@ -138,7 +138,8 @@ def test_stage1_refuses_mixed_or_unadmitted_results(tmp_path, mutation):
 
 
 @pytest.mark.parametrize('outcome', ['legal', 'corrected', 'exhausted', 'interrupted', 'tool_overflow'])
-def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
+@pytest.mark.parametrize('stage', [1, 2])
+def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome, stage):
     """Real roots, scheduler, engine, feedback and terminal; synthetic policy/provider.
 
     Static factories stand in for neural recipes. This is a consumer contract
@@ -152,6 +153,9 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
 
     config_path, _, _ = _real_validation_fixture(tmp_path)
     config = _stage1(json.loads(config_path.read_text()))
+    stage_rows = launcher.STAGE1_ROWS if stage == 1 else launcher.STAGE2_ROWS
+    if stage == 2:
+        config.update(schema=launcher.STAGE2_SCHEMA, rows=list(stage_rows))
     roots = tmp_path / 'real-roots'
     root_producer.prepare_roots(output=roots, seeds=SEEDS)
     config.update(prepared_roots=str(roots),
@@ -203,17 +207,19 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     if outcome == 'interrupted':
         with pytest.raises(ValueError):
             launcher.run(config_path, digest, arm=True)
-        assert list(reports) == ['smv3-pv']
-        failed = reports['smv3-pv']['mirrors'][0]
+        assert list(reports) == [stage_rows[0]]
+        failed = reports[stage_rows[0]]['mirrors'][0]
         assert failed['final_action_feedback_counts']['interrupted_decisions'] == 1
         assert failed['final_action_feedback_counts']['exhausted_decisions'] == 0
-        assert (Path(config['output']) / 'smv3-pv' / 'result.json').exists()
+        assert (Path(config['output']) / stage_rows[0] / 'result.json').exists()
         assert not (tmp_path / 'lock').exists()
         return
     terminal = launcher.run(config_path, digest, arm=True)
     assert terminal['status'] == 'scheduled-terminal'
-    result = readout.analyze_stage1_reports(reports, contexts)
-    for row in launcher.STAGE1_ROWS:
+    analyze = readout.analyze_stage1_reports if stage == 1 else readout.analyze_stage2_reports
+    result = analyze(reports, contexts)
+    assert list(reports) == list(stage_rows)
+    for row in stage_rows:
         counts = result['policies'][row]['sol']['final_action_feedback_counts']
         assert counts['exhausted_decisions'] == (8 if outcome == 'exhausted' else 0)
         assert (counts['corrected_decisions'] > 0) is (outcome == 'corrected')
@@ -225,15 +231,17 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     def ref(path):
         return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     output = Path(config['output'])
-    from scripts.prepare_stage1_seal_plan import prepare_stage1_seal_plan
+    from scripts.prepare_stage1_seal_plan import prepare_stage1_seal_plan, prepare_stage2_seal_plan
+    prepare_plan = prepare_stage1_seal_plan if stage == 1 else prepare_stage2_seal_plan
+    read_plan = sealed.read_sealed_stage1 if stage == 1 else sealed.read_sealed_stage2
     plan_dir = tmp_path / 'seal-plan'
-    plan = prepare_stage1_seal_plan(config_path, digest, plan_dir)
+    plan = prepare_plan(config_path, digest, plan_dir)
     plan_path = plan_dir / 'result.json'
-    admitted = sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
+    admitted = read_plan(plan_path, ref(plan_path)['sha256'])
     assert admitted['terminal_accounting'] == result['terminal_accounting']
-    assert admitted['panel_size'] == 2
+    assert admitted['panel_size'] == len(stage_rows)
     from test_sealed_readout_wrapper import assert_stage1_wrapper
-    wrapped = assert_stage1_wrapper(tmp_path, ref(plan_path))
+    wrapped = assert_stage1_wrapper(tmp_path, ref(plan_path), stage=stage)
     assert wrapped['terminal_accounting'] == admitted['terminal_accounting']
     assert wrapped['policies'] == admitted['policies']
     # An authenticated but nonterminal campaign must refuse before result access.
@@ -250,7 +258,116 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
         return real_metadata(reference, label)
     monkeypatch.setattr(sealed, '_metadata', no_results)
     with pytest.raises(ValueError, match='not terminal'):
-        sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
+        read_plan(plan_path, ref(plan_path)['sha256'])
+
+
+def test_stage2_and_combined_feedback_panel(tmp_path):
+    from scripts.launch_production_llm_panel import STAGE2_ROWS
+    reports, contexts = _stage1_reports(tmp_path, policies=readout.POLICIES)
+    second = readout.analyze_stage2_reports({k: reports[k] for k in STAGE2_ROWS},
+                                           {k: contexts[k] for k in STAGE2_ROWS})
+    assert second['panel_size'] == 7
+    assert second['schema'] == 'sol-feedback-on-stage2-readout-v1'
+    combined = readout.analyze_feedback_panel_reports(reports, contexts)
+    assert combined['panel_size'] == 9
+    assert len(combined['row_differences']) == 36
+    assert combined['treatment'] == 'feedback-ON'
+    assert all(combined['policies'][k] == second['policies'][k] for k in STAGE2_ROWS)
+    reports['smart']['config']['invalid_action_feedback'] = False
+    with pytest.raises(ValueError, match='feedback ON'):
+        readout.analyze_feedback_panel_reports(reports, contexts)
+
+
+@pytest.mark.parametrize('mutation', ['none', 'shuffled', 'partial', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals', 'value_count', 'duplicate_seed'])
+def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation):
+    import hashlib
+    from scripts import sealed_production_llm_panel_readout as sealed
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
+    from test_sealed_readout_wrapper import assert_stage1_wrapper
+
+    def write(name, value):
+        path = tmp_path / name
+        raw = json.dumps(value).encode()
+        path.write_bytes(raw)
+        return dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+
+    reports, contexts = _stage1_reports(tmp_path, policies=readout.POLICIES)
+    if mutation == 'partial':
+        from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+        # Different missing completed pairs in the two stages. Each remains a
+        # valid scheduled terminal report, with typed failures kept separate.
+        for key, seed in (('smv3-pv', 0), ('smart', 1)):
+            report = reports[key]
+            row = next(r for r in report['mirrors'] if r['seed'] == seed
+                       and r['flip'] == 0 and r['information'] == 'actor-only')
+            row.update(complete=False, error='synthetic illegal action',
+                events=[dict(seat=0, attempted_cards=['S2'])],
+                failure=dict(schema='benchmark-action-failure-v1', category='model_illegal_action',
+                             stage='engine_play', seat=0, attempted_cards=['S2'], event_index=0))
+            row.pop('signed_levels')
+            row['final_action_feedback_counts'].update(corrected_decisions=0, exhausted_decisions=1)
+            report['scheduled_summary'] = summarize_scheduled(report['mirrors'])
+    stages, saved = {}, {}
+    for stage, rows, analyze in ((1, STAGE1_ROWS, readout.analyze_stage1_reports),
+                                 (2, STAGE2_ROWS, readout.analyze_stage2_reports)):
+        result = analyze({k: reports[k] for k in rows}, {k: contexts[k] for k in rows})
+        sealed.label_endpoint_coverage(result, result['terminal_accounting'])
+        # Deliberately nonexistent raw references: even the subprocess cannot read them.
+        result['seals'] = dict(metadata_and_content_validated=True,
+            result_refs={k: dict(path='/forbidden/raw/' + k, sha256='0'*64) for k in rows})
+        if stage == 2:
+            if mutation == 'shuffled':
+                for policy in result['policies'].values():
+                    for mode in ('sol', 'pt_sol'):
+                        policy[mode]['complete_deal_seeds'].reverse()
+                        policy[mode]['paired_signed_levels']['values'].reverse()
+            if mutation == 'feedback': result['treatment'] = 'feedback-OFF'
+            if mutation == 'rows': result['policies'].pop(rows[0])
+            if mutation == 'roots': result['prepared_roots']['source_result_sha256'] = '0'*64
+            if mutation == 'seeds': result['seeds'] = list(reversed(result['seeds']))
+            if mutation == 'bootstrap': result['bootstrap']['seed'] += 1
+            if mutation == 'seals': result['seals']['metadata_and_content_validated'] = False
+            if mutation == 'value_count': result['policies'][rows[0]]['sol']['paired_signed_levels']['values'].pop()
+            if mutation == 'duplicate_seed': result['policies'][rows[0]]['sol']['complete_deal_seeds'][1] = result['policies'][rows[0]]['sol']['complete_deal_seeds'][0]
+        saved[f'stage{stage}'] = result
+        result_ref = write(f'stage{stage}.json', result)
+        receipt = dict(status='complete', result_sha256=result_ref['sha256'])
+        if stage == 2 and mutation == 'receipt': receipt['result_sha256'] = '0'*64
+        stages[f'stage{stage}'] = dict(result=result_ref, receipt=write(f'receipt{stage}.json', receipt))
+    plan = write('plan.json', dict(schema='sol-saved-feedback-panel-plan-v1', stages=stages))
+    real_metadata = sealed._metadata
+    allowed = {plan['path']} | {ref['path'] for refs in stages.values() for ref in refs.values()}
+    def guarded(ref, label):
+        assert ref['path'] in allowed, 'raw access attempted'
+        return real_metadata(ref, label)
+    monkeypatch.setattr(sealed, '_metadata', guarded)
+    if mutation not in ('none', 'shuffled', 'partial'):
+        with pytest.raises(ValueError):
+            sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
+        return
+    combined = sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
+    assert combined['panel_size'] == 9
+    assert len(combined['cross_stage_row_differences']) == 14
+    assert combined['cross_stage_forfeit_differences']['status'] == 'unavailable'
+    if mutation == 'partial':
+        assert combined['status'] == 'partial'
+        pair = next(d for d in combined['cross_stage_row_differences']
+                    if d['left'] == 'smv3-pv' and d['right'] == 'smart')
+        assert pair['sol']['matched_deal_seeds'] == list(range(2, 10))
+        assert pair['sol']['count'] == 8
+    direct = readout.analyze_feedback_panel_reports(reports, contexts)
+    oracle = {(row['left'], row['right']): row for row in direct['row_differences']}
+    for difference in combined['cross_stage_row_differences']:
+        for mode in ('sol', 'pt_sol'):
+            actual = dict(difference[mode])
+            actual.pop('matched_deal_seeds')
+            assert actual == oracle[difference['left'], difference['right']][mode]
+    for name, original in saved.items():
+        assert combined['within_stage_row_differences'][name] == original['row_differences']
+        for key, row in original['policies'].items():
+            assert combined['policies'][key] == row
+    wrapped = assert_stage1_wrapper(tmp_path, plan, saved_panel=True)
+    assert wrapped == combined
 
 
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):

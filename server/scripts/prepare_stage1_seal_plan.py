@@ -158,12 +158,15 @@ def _hash_result_once(path: Path, label: str) -> tuple[str, tuple[int, int, int,
                                after.st_mtime_ns, after.st_ctime_ns)
 
 
-def _build(config_path: Path, expected_sha256: str, output_dir: Path) -> dict[str, Any]:
+def _build(config_path: Path, expected_sha256: str, output_dir: Path, *, stage=1) -> dict[str, Any]:
     _sha(expected_sha256, "config digest")
     config, config_stamp, _ = _read_metadata(config_path, "stage1 config", expected_sha256)
-    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE1_SCHEMA, STAGE2_ROWS, STAGE2_SCHEMA
+    from scripts.sealed_production_llm_panel_readout import admit_stage2_metadata
+    rows = STAGE1_ROWS if stage == 1 else STAGE2_ROWS
+    schema = STAGE1_SCHEMA if stage == 1 else STAGE2_SCHEMA
 
-    _require(config.get("schema") == STAGE1_SCHEMA and config.get("rows") == list(STAGE1_ROWS),
+    _require(config.get("schema") == schema and config.get("rows") == list(rows),
              "stage1 fresh recipe required")
     campaign_output = _safe_path(Path(config.get("output", "")), "campaign output")
     _require(campaign_output != output_dir, "plan output must be separate from campaign output")
@@ -176,12 +179,12 @@ def _build(config_path: Path, expected_sha256: str, output_dir: Path) -> dict[st
         return {"path": str(path), "sha256": digest}
 
     plan = {
-        "schema": SCHEMA,
+        "schema": f"sol-feedback-on-stage{stage}-seals-v1",
         "campaign": {
             "config": {"path": str(config_path), "sha256": expected_sha256},
             "output_config": ref(campaign_output / "config.json", "stage1 output config"),
             "terminal": ref(campaign_output / "terminal.json", "stage1 terminal"),
-            "summary": ref(campaign_output / "stage1-summary.json", "stage1 summary"),
+            "summary": ref(campaign_output / f"stage{stage}-summary.json", "stage1 summary"),
         },
         "rows": {
             row: {
@@ -190,7 +193,7 @@ def _build(config_path: Path, expected_sha256: str, output_dir: Path) -> dict[st
                 "terminal": ref(campaign_output / (row + ".terminal.json"), row + " terminal"),
                 "accounting": ref(campaign_output / (row + ".accounting.json"), row + " accounting"),
             }
-            for row in STAGE1_ROWS
+            for row in rows
         },
     }
 
@@ -200,13 +203,13 @@ def _build(config_path: Path, expected_sha256: str, output_dir: Path) -> dict[st
     ref(prepared_roots, "stage1 roots", config["prepared_roots_sha256"])
     # This is the complete metadata gate.  It intentionally sees only
     # placeholder result digests and never opens a row result.
-    admit_stage1_metadata(plan)
+    (admit_stage1_metadata if stage == 1 else admit_stage2_metadata)(plan)
     for path, stamp in metadata_stamps.items():
         _require(_stamp(path, "stage1 metadata") == stamp,
                  f"stage1 metadata changed during admission: {path}")
 
     result_stamps = {}
-    for row in STAGE1_ROWS:
+    for row in rows:
         result_path = _safe_path(campaign_output / row / "result.json", row + " result")
         digest, stamp = _hash_result_once(result_path, row + " result")
         plan["rows"][row]["result"]["sha256"] = digest
@@ -231,17 +234,29 @@ def prepare_stage1_seal_plan(config_path: str | os.PathLike[str], expected_sha25
     return run_once(output, identity, lambda: _build(config, expected_sha256, output))
 
 
+def prepare_stage2_seal_plan(config_path: str | os.PathLike[str], expected_sha256: str,
+                             output_dir: str | os.PathLike[str]) -> dict[str, Any]:
+    """Claim a separate seven-row plan; stage-1 evidence remains unchanged."""
+    config = _safe_path(Path(config_path), "config")
+    output = _safe_path(Path(output_dir), "plan output")
+    identity = {"schema": "sol-feedback-on-stage2-seals-v1",
+                "config": {"path": str(config), "sha256": expected_sha256}}
+    return run_once(output, identity, lambda: _build(config, expected_sha256, output, stage=2))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--config-sha256", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--stage", type=int, choices=(1, 2), default=1)
     parser.add_argument("--execute", action="store_true",
                         help="required acknowledgement for hashing and sealing row-result bytes")
     args = parser.parse_args(argv)
     if not args.execute:
         parser.error("refusing to read inputs without --execute")
-    prepare_stage1_seal_plan(args.config, args.config_sha256, args.output_dir)
+    prepare = prepare_stage1_seal_plan if args.stage == 1 else prepare_stage2_seal_plan
+    prepare(args.config, args.config_sha256, args.output_dir)
     return 0
 
 

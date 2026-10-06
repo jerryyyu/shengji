@@ -81,7 +81,7 @@ def test_unknown_invocation_refuses_before_claim(bundle):
     assert not (base / 'output').exists() and not (base / 'opened').exists()
 
 
-def assert_stage1_wrapper(tmp_path, plan_ref):
+def assert_stage1_wrapper(tmp_path, plan_ref, *, stage=1, saved_panel=False):
     """Join the real synthetic terminal producer fixture to this fresh entry."""
     base = tmp_path / 'wrapped-stage1'
     base.mkdir()
@@ -102,7 +102,8 @@ def assert_stage1_wrapper(tmp_path, plan_ref):
         environment={'SHENGJI_FAST': os.environ.get('SHENGJI_FAST', '0')},
         source_files={p.relative_to(source).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in source.rglob('*') if p.is_file()})
-    spec = dict(schema='sol-stage1-read-invocation-v1', manifest=write(base / 'manifest.json', manifest),
+    schema = 'sol-saved-feedback-panel-invocation-v1' if saved_panel else f'sol-stage{stage}-read-invocation-v1'
+    spec = dict(schema=schema, manifest=write(base / 'manifest.json', manifest),
                 plan=plan_ref, output_dir=str(base / 'output'))
     packet = base, source, manifest, spec
     outcome = invoke(packet)
@@ -110,8 +111,12 @@ def assert_stage1_wrapper(tmp_path, plan_ref):
     result = json.loads((base / 'output/result.json').read_bytes())
     receipt = json.loads((base / 'output/receipt.json').read_bytes())
     assert receipt['result_sha256'] == hashlib.sha256((base / 'output/result.json').read_bytes()).hexdigest()
-    assert result['panel_size'] == 2 and result['seals']['metadata_and_content_validated']
-    assert set(result['policies']) == {'smv3-pv', 'm1-prior'}
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
+    rows = STAGE1_ROWS + STAGE2_ROWS if saved_panel else STAGE1_ROWS if stage == 1 else STAGE2_ROWS
+    assert result['panel_size'] == len(rows)
+    if not saved_panel:
+        assert result['seals']['metadata_and_content_validated']
+    assert set(result['policies']) == set(rows)
     second = invoke(packet)
     assert second.returncode != 0 and 'already exists' in second.stderr
     return result

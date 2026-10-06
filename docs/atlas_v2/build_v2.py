@@ -167,6 +167,17 @@ def production_release(reg):
     """The one production baseline's release number (checked above)."""
     return [b for b in reg["baseline"] if b["status"] == "production"][0]["release"]
 
+def comparator_release(reg):
+    """The release NEW screens are read against. It equals production unless the registry's
+    ``screen_comparator`` says otherwise (e.g. a new production release whose adoption as the
+    screen comparator is still pending Jerry's ruling); the two are never conflated."""
+    sc = reg.get("screen_comparator")
+    if sc is None:
+        return production_release(reg)
+    assert set(sc) == {"release", "status", "note"} and sc["status"] in ("pending", "confirmed"), sc
+    assert any(b["release"] == sc["release"] for b in reg["baseline"]), "comparator must be a baseline release"
+    return sc["release"]
+
 esc = lambda s: html.escape(str(s if s is not None else ""))
 def iv(p, lo, hi):
     if p is None: return "—"
@@ -186,12 +197,17 @@ def _chart_rows(items, kind):
             out.append((tag, r["label"] or s.get("title") or s["candidate"], s["comparator"], r["point"], r["lo"], r["hi"], s["status"], kind, r["confidence"], r.get("role", "primary")))
     return out
 PROD = production_release(R)
-PROD_SINCE = next(b["since"] for b in R["baseline"] if b["release"] == PROD).split(" ")[0]      # the date it took over
+CMP = comparator_release(R)          # what new screens are read against (== PROD unless pending/confirmed otherwise)
+PROD_SINCE = next(b["since"] for b in R["baseline"] if b["release"] == CMP).split(" ")[0]      # the date it took over
 # The releases that screens were read against before the current one, in order ("29, then 30, then 36, ").
-_COMPARATORS = sorted({s["vs"] for s in R["screens"] if s["vs"] != PROD} | {29})
+_COMPARATORS = sorted({s["vs"] for s in R["screens"] if s["vs"] != CMP} | {29})
 EARLIER_PRODS = ", then ".join(str(r) for r in _COMPARATORS) + (", " if _COMPARATORS else "")
-SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == PROD]
-SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != PROD]
+SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == CMP]
+CMP_ROLE = "the current production" if CMP == PROD else f"the screen comparator; production is release {PROD}"
+_SC = R.get("screen_comparator")
+COMPARATOR_NOTE = (f" <b>Production is release {PROD}</b>; {esc(_SC['note'])}" if _SC and CMP != PROD
+                   else (f" {esc(_SC['note'])}" if _SC else ""))
+SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != CMP]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
 def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
 def comparator_sections(reg):
@@ -199,7 +215,8 @@ def comparator_sections(reg):
     ones, newest first.  Within a release the reads against the release AS SERVED come first, then each
     named comparator (``vs_group``: a variant, a control, card play) in registry order.  Grouping never
     depends on which release is production, so a promotion keeps every named comparator apart."""
-    prod = production_release(reg)
+    prod = comparator_release(reg)
+    live = production_release(reg)
     rels = [prod] + sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}, reverse=True)
     out = []
     for rel in rels:
@@ -207,7 +224,7 @@ def comparator_sections(reg):
         for s in sorted((s for s in reg["screens"] if s["vs"] == rel), key=lambda s: bool(s.get("vs_group"))):
             groups.setdefault(s.get("vs_group"), []).append(s)
         for g, items in groups.items():
-            tail = (" · current production" if g is None else "") if rel == prod else " · closed comparator"
+            tail = ((" · current production" if rel == live else " · current comparator") if g is None else "") if rel == prod else " · closed comparator"
             out.append({"release": rel, "group": g, "label": (f"release {rel} as served" if g is None else g) + tail,
                         "kind": "main" if rel == prod else "prev", "items": items})
     return out
@@ -312,10 +329,10 @@ models_note = ('<p class="lede small">' + esc(R["models_note"]) + "</p>") if R.g
 head_note = ('<p class="sub small">' + esc(R["head_ladder_note"]) + "</p>") if R.get("head_ladder_note") else ""
 def comparator_tables(sections):
     return "\n".join(f'<h4>Screens against {esc(c["label"])} · {_reads(len(c["items"]))}</h4>' + screens_table(c["items"]) for c in sections)
-now_block = (comparator_tables([c for c in COMPARATORS if c["release"] == PROD]) if SCREENS_NOW
-             else f'<p class="sub">No screen has read against release {PROD} yet; every new candidate from {esc(PROD_SINCE)} is read here.</p>')
+now_block = (comparator_tables([c for c in COMPARATORS if c["release"] == CMP]) if SCREENS_NOW
+             else f'<p class="sub">No screen has read against release {CMP} yet; every new candidate from {esc(PROD_SINCE)} is read here.</p>')
 def earlier_sections():
-    return comparator_tables([c for c in COMPARATORS if c["release"] != PROD])
+    return comparator_tables([c for c in COMPARATORS if c["release"] != CMP])
 
 data_rows = "".join(f'<tr><td class="mono">{esc(d["name"])}</td><td>{esc(d["box"])}</td>'
                     f'<td class="mono">{esc(d["seed0"]) if d.get("seed0") else "&#8212;"}</td>'
@@ -360,12 +377,12 @@ a{{color:var(--accent)}}
 </style>
 <main>
 <h1>Shengji Atlas v2</h1>
-<p class="lede">The release-29 era. Every new model and every search screen is read against the <b>current production release</b> ({esc(EARLIER_PRODS)}now <b>{PROD}</b>). One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
+<p class="lede">The release-29 era. Every new model and every search screen is read against <b>release {CMP} as served</b> ({esc(EARLIER_PRODS)}now <b>{CMP}</b>).{COMPARATOR_NOTE} One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
 
 <h2>Production</h2>
 {baseline_cards()}
 
-<h2>Screens against release {PROD} (the current production)</h2>
+<h2>Screens against release {CMP} ({CMP_ROLE})</h2>
 <p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal, and a row marked {esc(NO_ESTIMATE)} finished without a strength estimate and has no mark. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {PROD} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {PROD} was chosen), then the context rows against release 28 (lighter).</p>
 <div class="figure">{SVG}</div>
 {now_block}
@@ -382,7 +399,7 @@ a{{color:var(--accent)}}
 <h2>Data generation on the search</h2>
 <div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>clusters</th><th>status</th></tr></thead><tbody>{data_rows}</tbody></table></div>
 
-<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(SCREENS_NOW)} screens vs release {PROD}, {len(SCREENS_EARLIER)} vs the era's earlier releases, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
+<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs the era's earlier releases, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
 </main>
 '''
 def _stable(p):
@@ -405,7 +422,7 @@ if __name__ == "__main__":
                 print("BUILD FAILED: temp page size mismatch"); sys.exit(1)
         if out.exists() and _stable(out.read_text()) != _stable(page):
             print("OUT OF DATE: atlas_v2.html differs from registry.json; run build_v2.py"); sys.exit(1)
-        print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {PROD}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
+        print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
     else:
         out.write_text(page)
         print("built", out, len(page), "bytes;", len(rows), "chart rows")

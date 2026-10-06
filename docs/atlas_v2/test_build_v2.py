@@ -116,9 +116,11 @@ def test_the_page_splits_screens_by_comparator_release_and_carries_the_head_ladd
     """After release 36 the page leads with the reads against the CURRENT production release and keeps
     the earlier comparators as closed sections; every model row carries its policy-head-alone read."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
-    prod = mod.production_release(reg)
+    prod = mod.comparator_release(reg)                           # the release NEW screens are read against
     page = mod.page                                               # a fresh build; the page is not tracked
-    assert f"Screens against release {prod} (the current production)" in page
+    role = ("the current production" if prod == mod.production_release(reg)
+            else f"the screen comparator; production is release {mod.production_release(reg)}")
+    assert f"Screens against release {prod} ({role})" in page
     for rel in sorted({s["vs"] for s in reg["screens"] if s["vs"] != prod}):
         assert f"Screens against release {rel}" in page
     assert "policy head alone vs SmartBot" in page
@@ -138,7 +140,7 @@ def test_the_chart_and_tables_carry_one_band_per_comparator():
     (release, actual comparator) for the current AND the earlier releases (Codex HOLD on #697): the
     release as served first, then each named comparator (``vs_group``)."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
-    prod = mod.production_release(reg)
+    prod = mod.comparator_release(reg)                           # the band that leads is the screen comparator
     labels = [label for label, _, _ in mod.SECTIONS]
     if any(s["vs"] == prod for s in reg["screens"]):
         assert labels[0].startswith(f"against release {prod} as served")
@@ -176,6 +178,7 @@ def test_a_promotion_keeps_every_named_comparator_in_its_own_section():
     old = mod.production_release(reg)
     read_vs = next(s for s in reg["screens"] if s["id"] == "v43cla")["vs"]
     promoted = copy.deepcopy(reg)
+    promoted.pop("screen_comparator", None)                       # a confirmed promotion: comparator == production
     new = copy.deepcopy(next(b for b in promoted["baseline"] if b["release"] == old)); new["release"] = old + 2
     for b in promoted["baseline"]: b["status"] = "superseded"
     promoted["baseline"].append(new)
@@ -302,3 +305,20 @@ def test_seeds_are_an_explicit_window_list_never_a_range():
     ok["screens"][0].update(point=None, lo=None, hi=None)
     ok["screens"][0].pop("results", None)
     assert not any("seeds" in e for e in mod.check_registry(ok))
+
+
+def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_says_so():
+    import copy, json
+    from pathlib import Path
+    import build_v2 as b
+    reg = json.loads((Path(b.__file__).parent / "registry.json").read_text())
+    assert b.production_release(reg) == 42
+    # Pending: new screens stay on release 38 and the page says production is 42 and the switch is pending.
+    assert reg["screen_comparator"]["status"] == "pending" and b.comparator_release(reg) == 38
+    page = b.PAGE if hasattr(b, "PAGE") else (Path(b.__file__).parent / "atlas_v2.html").read_text()
+    assert "read against <b>release 38 as served</b>" in page
+    assert "Production is release 42" in page and "pending" in page
+    assert "Screens against release 38 (the screen comparator; production is release 42)" in page
+    # Without the field, the comparator falls back to production (the pre-existing behaviour).
+    plain = copy.deepcopy(reg); plain.pop("screen_comparator")
+    assert b.comparator_release(plain) == 42

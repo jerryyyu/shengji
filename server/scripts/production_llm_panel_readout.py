@@ -566,12 +566,34 @@ def analyze_stage1_reports(report_data, campaign_contexts, *, bootstrap_seed=BOO
     No filesystem access or implicit historical rows. The sealed caller owns
     provenance admission; terminal, treatment and shared-root checks live here.
     """
-    from shengji.luna.benchmark_terminal import validate_scheduled_terminal
+    return _analyze_feedback_reports(report_data, campaign_contexts,
+        policies=('smv3-pv', 'm1-prior'), schema='sol-feedback-on-stage1-readout-v1',
+        bootstrap_seed=bootstrap_seed)
 
-    policies = ('smv3-pv', 'm1-prior')
+
+def analyze_stage2_reports(report_data, campaign_contexts, *, bootstrap_seed=BOOTSTRAP_SEED):
+    from scripts.launch_production_llm_panel import STAGE2_ROWS
+    return _analyze_feedback_reports(report_data, campaign_contexts,
+        policies=STAGE2_ROWS, schema='sol-feedback-on-stage2-readout-v1',
+        bootstrap_seed=bootstrap_seed)
+
+
+def analyze_feedback_panel_reports(report_data, campaign_contexts, *, bootstrap_seed=BOOTSTRAP_SEED):
+    """Nine authenticated feedback-ON rows; never silently mix historical OFF rows.
+
+    Caller owns separate stage seals. This pure decoded-data path allows one
+    terminal consumer to produce a combined table without changing arithmetic.
+    """
+    return _analyze_feedback_reports(report_data, campaign_contexts,
+        policies=POLICIES, schema='sol-feedback-on-panel-readout-v1',
+        bootstrap_seed=bootstrap_seed)
+
+
+def _analyze_feedback_reports(report_data, campaign_contexts, *, policies, schema, bootstrap_seed):
+    from shengji.luna.benchmark_terminal import validate_scheduled_terminal
     if (type(report_data) is not dict or set(report_data) != set(policies)
             or type(campaign_contexts) is not dict or set(campaign_contexts) != set(policies)):
-        raise PanelReadoutError('stage1 requires exactly two reports and contexts')
+        raise PanelReadoutError('feedback stage requires exactly its declared reports and contexts')
     reports, accounting = {}, {}
     common = None
     for key in policies:
@@ -591,7 +613,7 @@ def analyze_stage1_reports(report_data, campaign_contexts, *, bootstrap_seed=BOO
         accounting[key] = validate_scheduled_terminal(report, seeds=identity['seeds'])
         reports[key] = validated
     result = _analyze_validated(reports, *common, bootstrap_seed=bootstrap_seed, policies=policies)
-    result.update(schema='sol-feedback-on-stage1-readout-v1', treatment='feedback-ON',
+    result.update(schema=schema, treatment='feedback-ON',
                   terminal_accounting=accounting)
     count_keys = ('decisions_with_rejections', 'rejected_attempts',
                   'corrected_decisions', 'exhausted_decisions', 'interrupted_decisions')

@@ -89,7 +89,8 @@ def run(invocation_path, invocation_sha256):
     spec = decode(pinned(invocation_path, invocation_sha256))
     require(set(spec) == {'schema', 'manifest', 'plan', 'output_dir'}, 'invocation fields mismatch')
     require(spec['schema'] in ('sol-panel-read-invocation-v1',
-                              'sol-stage1-read-invocation-v1'), 'invocation schema mismatch')
+                              'sol-stage1-read-invocation-v1',
+                              'sol-stage2-read-invocation-v1'), 'invocation schema mismatch')
     for key in ('manifest', 'plan'):
         require(set(spec[key]) == {'path', 'sha256'}, 'invalid reference')
     source, files, stamps = verify_bundle(spec['manifest']['path'], spec['manifest']['sha256'])
@@ -100,6 +101,8 @@ def run(invocation_path, invocation_sha256):
     from shengji.luna.benchmark_readout_receipt import run_once
     if spec['schema'] == 'sol-stage1-read-invocation-v1':
         from scripts.sealed_production_llm_panel_readout import read_sealed_stage1 as reader
+    elif spec['schema'] == 'sol-stage2-read-invocation-v1':
+        from scripts.sealed_production_llm_panel_readout import read_sealed_stage2 as reader
     else:
         from scripts.sealed_production_llm_panel_readout import read_sealed_panel as reader
 

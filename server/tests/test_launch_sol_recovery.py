@@ -45,12 +45,22 @@ def _stage1(config):
     return config
 
 
-@pytest.mark.parametrize('mutation', ['none', 'rows', 'feedback', 'retention', 'binary', 'limit'])
-def test_fresh_stage1_recipe_validation(tmp_path, mutation):
+@pytest.mark.parametrize('mutation', ['none', 'rows', 'order', 'feedback', 'retention', 'binary', 'limit', 'tokens', 'reconnect'])
+@pytest.mark.parametrize('stage', [1, 2])
+def test_fresh_stage1_recipe_validation(tmp_path, mutation, stage):
     path, _, _ = _real_validation_fixture(tmp_path)
     config = _stage1(json.loads(path.read_text()))
+    rows = launcher.STAGE1_ROWS if stage == 1 else launcher.STAGE2_ROWS
+    if stage == 2:
+        config.update(schema=launcher.STAGE2_SCHEMA, rows=list(rows))
     if mutation == 'rows':
         config['rows'] = list(launcher.ROWS)
+    elif mutation == 'order':
+        config['rows'].reverse()
+    elif mutation == 'tokens':
+        config['row_soft_tokens'] += 1
+    elif mutation == 'reconnect':
+        config['recovery_controls']['accept_recovered_reconnects'] = True
     elif mutation == 'feedback':
         config['recovery_controls']['invalid_action_feedback'] = False
     elif mutation == 'retention':
@@ -66,18 +76,25 @@ def test_fresh_stage1_recipe_validation(tmp_path, mutation):
             launcher.validate(path, digest)
     else:
         actual, stamps = launcher.validate(path, digest)
-        assert actual['rows'] == ['smv3-pv', 'm1-prior']
+        assert actual['rows'] == list(rows)
         launcher.fence(stamps)
 
 
 @pytest.mark.parametrize('refuse_first', [False, True])
-def test_stage1_dispatch_and_terminal_path(tmp_path, monkeypatch, refuse_first):
+@pytest.mark.parametrize('stage', [1, 2])
+def test_stage1_dispatch_and_terminal_path(tmp_path, monkeypatch, refuse_first, stage):
     from scripts import production_llm_panel_readout
     monkeypatch.setattr(production_llm_panel_readout, 'analyze_panel',
                         lambda *a, **kw: pytest.fail('stage1 sent to nine-row reader'))
     config = _stage1(_config(tmp_path))
+    rows = launcher.STAGE1_ROWS if stage == 1 else launcher.STAGE2_ROWS
+    if stage == 2:
+        config.update(schema=launcher.STAGE2_SCHEMA, rows=list(rows))
     _stub_validation(monkeypatch, config)
     monkeypatch.setattr(launcher, 'LOCK', tmp_path / 'lock')
+    assert launcher.run(tmp_path / 'config.json', 'synthetic') == {
+        'status': 'unarmed', 'rows': len(rows), 'rounds': 40 * len(rows)}
+    assert not Path(config['output']).exists()
     releases = []
     monkeypatch.setattr(launcher, '_require_recovery_release',
                         lambda *args: releases.append(args))
@@ -99,16 +116,16 @@ def test_stage1_dispatch_and_terminal_path(tmp_path, monkeypatch, refuse_first):
     if refuse_first:
         with pytest.raises(ValueError):
             launcher.run(tmp_path / 'config.json', 'synthetic', arm=True)
-        assert seen == ['smv3-pv']
+        assert seen == [rows[0]]
     else:
         result = launcher.run(tmp_path / 'config.json', 'synthetic', arm=True)
         assert result['status'] == 'scheduled-terminal'
-        assert seen == ['smv3-pv', 'm1-prior']
+        assert seen == list(rows)
     assert len(releases) == 1 + len(seen)
     output = tmp_path / 'campaign-output'
-    summary = json.loads((output / 'stage1-summary.json').read_text())
-    assert summary['required_prior_rows'] == []
-    assert set(summary['rows']) == set(launcher.STAGE1_ROWS)
+    summary = json.loads((output / f'stage{stage}-summary.json').read_text())
+    assert summary['required_prior_rows'] == ([] if stage == 1 else list(launcher.STAGE1_ROWS))
+    assert set(summary['rows']) == set(rows)
     assert summary['status'] == ('failed' if refuse_first else 'scheduled-terminal')
     assert not (output / 'panel-readout.json').exists()
     assert not (output / 'recovery-summary.json').exists()

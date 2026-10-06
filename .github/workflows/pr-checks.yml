@@ -291,6 +291,7 @@ jobs:
           tests/test_s11_once.py
           tests/test_s11_schedule.py
           tests/test_s11_phases.py
+          tests/test_s11_cost_handoff.py
           tests/test_s11_inventory.py
           tests/test_s11_reconstruction.py
           tests/test_s11_public_view.py

@@ -120,13 +120,19 @@ def test_real_input_reader_roundtrip_without_second_raw_access(tmp_path, monkeyp
     manifest, pin, shards = input_frame(tmp_path)
     for cluster, raw in shards.items():
         (tmp_path / 'shards' / f'cluster-{cluster:06d}.jsonl').write_bytes(raw)
-    slots = s11_inputs.read_s11_inputs(manifest, sha256=pin, root=tmp_path)
-    assert len(slots) == 64 and all(s['status'] == 'valid' for s in slots)
-    path = tmp_path / 'bundle.json'
-    receipt = publish(slots, path, pin)
+    from shengji.eval.s11_admission_once import admit_s11_inputs_once
+    manifest_path = tmp_path / 'manifest.json'
+    manifest_path.write_bytes(manifest)
+    output = tmp_path / 'admission'
+    output.mkdir()
+    receipt = admit_s11_inputs_once(manifest_path, tmp_path, output,
+        manifest_sha256=pin, packet_sha256='b' * 64, max_manifest_bytes=1 << 20)
+    path = output / 'bundle.json'
+    inventory = json.loads(path.read_bytes())['slots']
     monkeypatch.setattr(s11_inputs, '_read_shard', lambda *_: pytest.fail('raw reread'))
     restored, _ = load_s11_input_bundle(path.read_bytes(), sha256=receipt['bundle_sha256'])
-    assert restored == slots
+    assert len(restored) == 64 and all(s['status'] == 'valid' for s in restored)
+    assert [{**s, 'fixture': s['fixture'].to_json()} for s in restored] == inventory
 
 
 def test_illegal_public_history_refuses_before_publication_and_reload(tmp_path, slots):

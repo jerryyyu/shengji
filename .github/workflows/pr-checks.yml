@@ -296,6 +296,7 @@ jobs:
           tests/test_s11_input_join.py
           tests/test_s11_inputs.py
           tests/test_s11_input_bundle.py
+          tests/test_s11_admission_once.py
           tests/test_fixed_tape_panel.py
           tests/test_public_fixture_panel.py
           tests/test_m9_replay_binding.py

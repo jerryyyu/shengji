@@ -2096,6 +2096,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         stage = {"batch_wait": 0.0, "to_device": 0.0, "policy_wait": 0.0, "step": 0.0, "sync": 0.0}
         loader_stage = {} if loader_stage_timing else None
         loader_stage_counts = {} if loader_stage_timing else None
+        loader_decode_stage = {} if loader_stage_timing else None
 
         def timed_batches(gen):
             while True:
@@ -2114,6 +2115,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if loader_stage is not None:
             loader_iter_kw["stage_secs"] = loader_stage
             loader_iter_kw["stage_counts"] = loader_stage_counts
+            loader_iter_kw["decode_stage_secs"] = loader_decode_stage
         for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size,
                                                         **loader_iter_kw))):
             t_iter = time.perf_counter()
@@ -2249,6 +2251,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 k: round(v, 3) for k, v in loader_stage.items()
             }
             train_metrics["loader_stage_counts"] = dict(loader_stage_counts)
+            train_metrics["loader_decode_stage_secs"] = {
+                k: round(v, 3) for k, v in loader_decode_stage.items()
+            }
         say("epoch %02d train stages: " % epoch + ", ".join(
             "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
             for k, v in stage.items() if k != "total"))

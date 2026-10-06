@@ -45,7 +45,7 @@ def _store(blocks: list[CwvBlock]) -> CwvBlockStore:
     return store
 
 
-def _collect(store, *, seed: int, stage_secs=None):
+def _collect(store, *, seed: int, stage_secs=None, decode_stage_secs=None):
     return [{name: np.array(value, copy=True) for name, value in batch.items()}
             for batch in store.iter_batches(
                 lambda block: block.target % 2 == 0,
@@ -53,17 +53,23 @@ def _collect(store, *, seed: int, stage_secs=None):
                 rng=np.random.default_rng(seed),
                 window=2,
                 stage_secs=stage_secs,
+                decode_stage_secs=decode_stage_secs,
             )]
 
 
 def test_opt_in_timing_preserves_every_batch_field():
     plain = _collect(_store([_block(0), _block(1), _block(2)]), seed=17)
     stages = {"caller": 3.0}
+    details = {}
     timed = _collect(_store([_block(0), _block(1), _block(2)]), seed=17,
-                     stage_secs=stages)
+                     stage_secs=stages, decode_stage_secs=details)
 
     assert stages["caller"] == 3.0
     assert set(stages) == {"caller", "setup", "decode", "prepare", "gather", "cleanup"}
+    assert set(details) == {"submit", "future_wait", "block"}
+    assert details["future_wait"] == 0.0  # serial loading, not worker wait
+    assert all(value >= 0 for value in details.values())
+    assert sum(details.values()) <= stages["decode"]
     assert len(timed) == len(plain)
     for actual, expected in zip(timed, plain):
         assert set(actual) == set(expected)
@@ -95,6 +101,7 @@ def test_timing_excludes_consumer_pause_and_partial_close_cleans_pool(monkeypatc
             self.max_workers = max_workers
 
         def submit(self, *args):
+            now[0] += 3.0
             return Future()
 
         def shutdown(self, *, cancel_futures):
@@ -126,13 +133,16 @@ def test_timing_excludes_consumer_pause_and_partial_close_cleans_pool(monkeypatc
 
     monkeypatch.setattr(cwv_data, "gather", timed_gather)
     stages = {}
+    details = {}
     batches = store.iter_batches(lambda block: np.ones(block.n, dtype=bool), 1,
                                  rng=np.random.default_rng(2), window=1,
-                                 decode_workers=1, stage_secs=stages)
+                                 decode_workers=1, stage_secs=stages,
+                                 decode_stage_secs=details)
     next(batches)
     now[0] += 100.0  # time spent by the consumer while suspended at yield
     next(batches)
-    assert stages["decode"] == 14.0
+    assert stages["decode"] == 20.0
+    assert details == {"submit": 6.0, "future_wait": 10.0, "block": 4.0}
     assert stages["gather"] == 8.0
     batches.close()
     assert stages["cleanup"] == 7.0
@@ -140,13 +150,16 @@ def test_timing_excludes_consumer_pause_and_partial_close_cleans_pool(monkeypatc
     error = RuntimeError("synthetic decoder failure")
     future_error[0] = error
     failed_stages = {}
+    failed_details = {}
     failed = store.iter_batches(lambda block: np.ones(block.n, dtype=bool), 1,
                                 rng=np.random.default_rng(2), window=1,
-                                decode_workers=1, stage_secs=failed_stages)
+                                decode_workers=1, stage_secs=failed_stages,
+                                decode_stage_secs=failed_details)
     with pytest.raises(RuntimeError) as caught:
         next(failed)
     assert caught.value is error
     assert failed_stages["cleanup"] == 7.0
+    assert failed_details == {"submit": 3.0, "future_wait": 5.0, "block": 0.0}
 
 
 def test_stage_counts_cover_parallel_loader_and_exclude_consumer_residency(monkeypatch):

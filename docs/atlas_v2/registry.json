@@ -1149,6 +1149,27 @@
    "takeaway": "Inconclusive: epoch 9's confirmed gain over epoch 6 did not show over release 38. No extension; release 38 stays.",
    "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6014801441. Paired -0.014494 [-0.045475,+0.016488], SE 0.015807, MDE80 0.044285, tau 0.0087, Q 4.26, I2 6.1%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met; promotion_gate NO PROMOTION; strength verdict withheld. Window deltas +0.0144, +0.0087, -0.0683, +0.0048, -0.0327. Descriptive own-arm levels vs MC-LCB: c11e09 0.2087 [0.1799,0.2375], release 38 0.2231 [0.1983,0.2478] (not the paired primary). Health: 729,552 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Context (separate contrasts, separate seeds, not additive): v45c11 c11out vs r38 +0.0096 inconclusive; v54ep9c epoch 9 vs epoch 6 +0.0455 CONFIRMED. Seeds registry-checked (seed_windows.py check). Reader sha256 326377bbdefc5299e39f2757d00824ec87a9db7628344f409ccb5966042af31e; result sha256 3f8b2b29037393d10fd1d260ea4454822a4be0f16457b9dedb8aa72d7048f6ca; launcher sha256 85559c5046a71ab06af89a7d8ba438e9842d25868bce911d3e9fdf0c2a30e84b; predeclaration sha256 e45fab3a069dd5f7e6a92c7a75c3c30ffe8b2292c5c3745e38b106033b83d507; SHA256SUMS 1888f9284f602b8b47d066e739d51ee9c95e72cf0f6d4fa5453d6127034bfe06. Archived ~/shengji-archive/2026-09-13/readouts/v55e9r38-c11e09-vs-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6014801441"
+  },
+  {
+   "id": "v56s15r38",
+   "date": "2026-10-06",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "SMV3 epoch 15 vs release 38",
+   "candidate": "SMV3 rank-selected epoch-15 package smv3e15out-2df98654 served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury) as pv-search-2df98654-w64-k8-div-rc-tb-la-rc9bc9423-bury-hybrid-b9ab087dcca6; vs release 38 as served (smv3out-491ee4bf = SMV3's val_ce-selected epoch 13). Only the package differs. SMV3 counterpart of v55e9r38.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "58060910 58160910 58260910 58360910 58460910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.018934,
+   "lo": -0.047396,
+   "hi": 0.009529,
+   "takeaway": "Inconclusive: SMV3's rank-selected epoch 15 did not beat release 38 as served (its val-selected epoch 13). No extension; release 38 stays.",
+   "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6021409485; digests #707 issuecomment-6021395554; Codex PASS #707 issuecomment-6018831961. Paired -0.018934 [-0.047396,+0.009529], SE 0.014522, MDE80 0.040683, tau 0, Q 1.32, I2 0%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met; promotion_gate NO PROMOTION (first-stage read not positive); strength verdict withheld. Window deltas -0.0423, -0.0192, +0.0115, -0.0192, -0.0231. Descriptive own-arm levels vs MC-LCB: smv3e15 0.2241 [0.1909,0.2574], release 38 0.2442 [0.1981,0.2903] (not the paired primary). Health: 727,228 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Context (separate contrasts, separate seeds, not additive): v55e9r38 C11 epoch 9 vs r38 -0.0145 inconclusive. Seeds registry-checked (seed_windows.py check); training-lineage deal-key clearance in predeclaration amendment r2. Reader sha256 5bde1d2aa2c230d1bafca74ffa0cc4769b40eb6dcdf67eef180c113575148ccc; result sha256 98402381e1ba4237fe4a3138c3c26974c96210964218c067075fb41e99e4d489; launcher sha256 541284a77ae4344255fd4be4e95817c920daed542c0e28528dd0dbf451eff758; predeclaration (r3) sha256 f014e38e3d711a808891e93ac304ef32f294667749fa764e9db669cd3a27d9bc; SHA256SUMS 2be318365fbc0f76b453a7f2881ec0f92405cec09f01efab846acfdb889f8a35. Archived ~/shengji-archive/2026-09-13/readouts/v56s15r38-smv3e15-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6021409485"
   }
  ],
  "context_screens": [

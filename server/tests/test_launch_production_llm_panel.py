@@ -101,6 +101,61 @@ def test_reservation_cleanup_removes_only_owned_identity(tmp_path):
     assert (lock / "peer.json").read_text() == "peer-owned"
 
 
+def test_host_reservation_platform_contract():
+    assert launcher.default_reservation_path('linux') == Path('/root/.claude-host.lock')
+    assert launcher.default_reservation_path('darwin') == Path('/private/tmp/shengji-sol-panel-mini.lock')
+
+
+def test_screen_first_blocks_sol_without_modifying_owner(tmp_path):
+    lock = tmp_path / '.claude-host.lock'
+    lock.mkdir()  # Actual screen arbitration primitive.
+    (lock / 'owner').write_text('12345 v54ep9 synthetic\n')
+    with pytest.raises(FileExistsError):
+        with launcher.reservation(lock, shared_host=True):
+            pytest.fail('overlap')
+    assert (lock / 'owner').read_text() == '12345 v54ep9 synthetic\n'
+    assert list(lock.iterdir()) == [lock / 'owner']
+
+
+def test_sol_first_blocks_screen_and_releases_after_failure(tmp_path):
+    lock = tmp_path / '.claude-host.lock'
+    with pytest.raises(RuntimeError, match='synthetic row failure'):
+        with launcher.reservation(lock, shared_host=True):
+            assert (lock / 'owner').read_text() == f'{os.getpid()} sol-nine-policy\n'
+            with pytest.raises(FileExistsError):
+                lock.mkdir()  # Screen cannot claim while Sol owns it.
+            raise RuntimeError('synthetic row failure')
+    assert not lock.exists()
+
+
+def test_shared_cleanup_preserves_changed_peer_owner(tmp_path):
+    lock = tmp_path / '.claude-host.lock'
+    with pytest.raises(OSError):
+        with launcher.reservation(lock, shared_host=True):
+            (lock / 'owner').write_text('67890 peer\n')
+    assert (lock / 'owner').read_text() == '67890 peer\n'
+
+
+@pytest.mark.parametrize('recovery', [False, True])
+def test_linux_run_refuses_screen_before_creating_output(tmp_path, monkeypatch, recovery):
+    config = _config(tmp_path)
+    if recovery:
+        config['schema'] = launcher.RECOVERY_SCHEMA
+        monkeypatch.setattr(launcher, '_require_recovery_memory', lambda stage: None)
+        (tmp_path / 'RELEASE').write_text('a' * 64)
+    _stub_validation(monkeypatch, config)
+    lock = tmp_path / '.claude-host.lock'
+    lock.mkdir()
+    (lock / 'owner').write_text('12345 screen\n')
+    monkeypatch.setattr(launcher, 'LOCK', lock)
+    monkeypatch.setattr(launcher.sys, 'platform', 'linux')
+    monkeypatch.setattr(launcher, 'supervise', lambda *a, **kw: pytest.fail('launched'))
+    with pytest.raises(FileExistsError):
+        launcher.run(tmp_path / 'campaign.json', 'a' * 64, arm=True)
+    assert not Path(config['output']).exists()
+    assert (lock / 'owner').read_text() == '12345 screen\n'
+
+
 @pytest.mark.parametrize("failure", ["nonzero", "incomplete", "deadline"])
 def test_sequential_campaign_stops_and_preserves_partial_artifacts(
     tmp_path, monkeypatch, failure,

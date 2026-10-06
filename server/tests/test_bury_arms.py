@@ -37,7 +37,13 @@ BURY = dict(max_candidates=4, model_worlds=2, selection_worlds=2, alternatives=1
 
 
 def _fly_env():
-    return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    # The bury screen (v48bury) and its arm names are bound to RELEASE 38's play recipe.
+    # Production is release 42 (release 38 + SHENGJI_PV_DOOMED_THROW_SWAP, a played-card
+    # rule only), so derive the release-38 env as production minus the swap line, which is
+    # exactly the documented release-38 rollback.
+    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    assert env.get("SHENGJI_PV_DOOMED_THROW_SWAP") == "1"
+    return {k: v for k, v in env.items() if k != "SHENGJI_PV_DOOMED_THROW_SWAP"}
 
 
 def _names(monkeypatch, **overrides):

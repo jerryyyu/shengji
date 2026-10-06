@@ -178,7 +178,8 @@ def test_recovery_incomplete_below_cap_stops_campaign(tmp_path, monkeypatch):
                for row in summary['rows'].values())
 
 
-def test_recovery_config_and_plan_fence(tmp_path):
+@pytest.mark.parametrize('missing_runtime_pin', [False, True])
+def test_recovery_config_and_plan_fence(tmp_path, missing_runtime_pin):
     path, _, _ = _real_validation_fixture(tmp_path)
     config = json.loads(path.read_text())
     source = tmp_path / 'prior'
@@ -191,7 +192,13 @@ def test_recovery_config_and_plan_fence(tmp_path):
                   failure_protocol=PRESERVE_ILLEGAL, illegal_failure_limit=8,
                   retention={'m1-prior': {'plan': str(plan),
                              'sha256': hashlib.sha256(plan.read_bytes()).hexdigest()}})
+    if missing_runtime_pin:
+        del config['codex_binary_sha256']
     path.write_text(json.dumps(config))
+    if missing_runtime_pin:
+        with pytest.raises(ValueError, match='Codex binary SHA256 pin required'):
+            launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+        return
     _, stamps = launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
     launcher.fence(stamps)
     plan.write_text(plan.read_text() + '\n')

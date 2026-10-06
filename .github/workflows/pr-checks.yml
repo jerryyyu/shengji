@@ -274,6 +274,12 @@ jobs:
       - name: Install locked observation-test dependencies
         if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
         run: uv sync --frozen --group dev --group rl
+      # conftest's review-ledger guard fetches the PR base/head commits when they are
+      # missing; two pytest sessions starting together would race on the same .git.
+      # Fetch them once here so the guard finds both locally (the check itself is unchanged).
+      - name: Prefetch PR base and head for the review-ledger guard
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
       # The two suites are independent single-process pytest runs (one CPU each on
       # the two-core runner), so run them as parallel steps (GitHub Actions
       # `parallel`, 2026-06-25). -p no:cacheprovider keeps the two sessions from

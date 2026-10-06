@@ -9,6 +9,97 @@ from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL, summarize_
 from test_launch_production_llm_panel import _config, _stub_validation, _real_validation_fixture
 
 
+def _stage2_predecessor(tmp_path, monkeypatch, *, status='complete', mutate=None):
+    from scripts import launch_sol_stage2 as entry
+
+    def missing(pid, signal):
+        assert signal == 0
+        raise ProcessLookupError(pid)
+
+    monkeypatch.setattr(entry.os, 'kill', missing)
+    result = dict(schema='sol-feedback-on-stage1-readout-v1', treatment='feedback-ON',
+                  status=status, panel_size=2, benchmark_ids=list(launcher.STAGE1_ROWS),
+                  policies={row: {} for row in launcher.STAGE1_ROWS},
+                  terminal_accounting={row: {} for row in launcher.STAGE1_ROWS},
+                  seals={'metadata_and_content_validated': True}, seeds=list(range(10)),
+                  prepared_roots={'source_result_sha256': 'a' * 64},
+                  raw_results='/must-not-open')
+    if mutate:
+        mutate(result)
+
+    def save(name, value):
+        path = tmp_path / name
+        path.write_text(json.dumps(value))
+        return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    result_ref = save('readout.json', result)
+    receipt_ref = save('receipt.json', {'status': 'complete',
+                                     'result_sha256': result_ref['sha256']})
+    config = dict(schema=launcher.STAGE2_SCHEMA, seeds=list(range(10)),
+                  prepared_roots_sha256='a' * 64,
+                  predecessor_publication={'result': result_ref, 'receipt': receipt_ref,
+                                           'pids': [123, 124, 125]})
+    return entry, config, save
+
+
+@pytest.mark.parametrize('status', ['complete', 'partial'])
+@pytest.mark.parametrize('arm', [False, True])
+def test_stage2_entry_accepts_pinned_publication_and_preserves_launcher(tmp_path, monkeypatch,
+                                                                     status, arm):
+    entry, config, save = _stage2_predecessor(tmp_path, monkeypatch, status=status)
+    ref = save('config.json', config)
+    calls = []
+    monkeypatch.setattr(launcher, 'run', lambda *args, **kw: calls.append((args, kw)))
+    entry.run(ref['path'], ref['sha256'], arm=arm)
+    assert calls == [((Path(ref['path']), ref['sha256']), {'arm': arm})]
+
+
+@pytest.mark.parametrize('field,value', [
+    ('schema', 'other'), ('status', 'running'), ('treatment', 'feedback-OFF'),
+    ('panel_size', True), ('benchmark_ids', ['smv3-pv']), ('policies', {}),
+    ('terminal_accounting', {}), ('seals', None),
+    ('seeds', list(range(1, 11))), ('prepared_roots', {})])
+def test_stage2_entry_rejects_wrong_saved_publication(tmp_path, monkeypatch, field, value):
+    entry, config, save = _stage2_predecessor(
+        tmp_path, monkeypatch, mutate=lambda result: result.update({field: value}))
+    ref = save('config.json', config)
+    monkeypatch.setattr(launcher, 'run', lambda *a, **k: pytest.fail('launcher reached'))
+    with pytest.raises(ValueError):
+        entry.run(ref['path'], ref['sha256'], arm=True)
+
+
+@pytest.mark.parametrize('mode', ['alive', 'permission', 'pid_missing', 'pid_duplicate',
+                                 'result_hash', 'receipt_hash', 'receipt_binding',
+                                 'receipt_incomplete', 'config_hash', 'no_roots', 'no_seeds'])
+def test_stage2_entry_failures_never_reach_launcher(tmp_path, monkeypatch, mode):
+    entry, config, save = _stage2_predecessor(tmp_path, monkeypatch)
+    refs = config['predecessor_publication']
+    if mode == 'alive':
+        monkeypatch.setattr(entry.os, 'kill', lambda *a: None)
+    elif mode == 'permission':
+        def denied(*args):
+            raise PermissionError('unresolved')
+        monkeypatch.setattr(entry.os, 'kill', denied)
+    elif mode == 'pid_missing':
+        refs['pids'] = []
+    elif mode == 'pid_duplicate':
+        refs['pids'] = [123, 123, 124]
+    elif mode in ('result_hash', 'receipt_hash'):
+        refs[mode.split('_')[0]]['sha256'] = 'b' * 64
+    elif mode in ('receipt_binding', 'receipt_incomplete'):
+        refs['receipt'] = save('receipt.json', {
+            'status': 'running' if mode == 'receipt_incomplete' else 'complete',
+            'result_sha256': 'b' * 64 if mode == 'receipt_binding' else refs['result']['sha256']})
+    elif mode == 'no_roots':
+        config.pop('prepared_roots_sha256')
+    elif mode == 'no_seeds':
+        config.pop('seeds')
+    ref = save('config.json', config)
+    monkeypatch.setattr(launcher, 'run', lambda *a, **k: pytest.fail('launcher reached'))
+    with pytest.raises(ValueError):
+        entry.run(ref['path'], 'b' * 64 if mode == 'config_hash' else ref['sha256'], arm=True)
+
+
 def _controls():
     return dict(recovery_controls=dict(capacity_retries=True,
                 accept_recovered_reconnects=False, invalid_action_feedback=False,

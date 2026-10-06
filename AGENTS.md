@@ -141,7 +141,7 @@ against a rule marked *none* counts as a repeat.
 |---|---|---|
 | merge only at the reviewed head | `gh api …/merge -f sha=<head>` refuses if the head moved; PASS and green CI are checked by the merging agent | none on GitHub (`main` is unprotected) |
 | every test module is selected by a CI job or explicitly excluded; engine-boundary tests run in both pure and compiled jobs | `check_ci_test_selection.py` | CI `test-selection` |
-| encoder/round edits keep the release-30 compatibility allowance (historical identity plus differential encodings) | `tests/test_encoder_round_compat.py` | CI `server`; this does not prove the current production package loads, which has no CI witness |
+| the hash-pinned production package still builds a served bot on this tree; encoder/round edits keep the release-30 compatibility allowance | `test_the_production_package_constructs_a_served_bot` (fails, never skips, under `SHENGJI_REQUIRE_PV_PACKAGE=1`) and the identity/differential tests in `tests/test_encoder_round_compat.py` | CI `server`, compiled engine, package fetched from the `serving-packages` release |
 | every `shengji` module imports | `tests/test_import_walk.py` | CI `import-walk` |
 | screen seeds avoid registered corpus intervals; screen deals avoid checkpoint exposure | `seed_windows.py check` (registered numeric intervals only); `seed_windows.py clear` with the full checkpoint lineage and its controls (deal keys vs exposure) | author runs it; reviewer checks the output |
 | Atlas HTML is generated, never hand-edited | `docs/atlas_v2/build_v2.py --check`, `test_build_v2.py` | author runs it; not in CI |

@@ -198,7 +198,7 @@ def test_mirror_retains_invalid_final_and_all_call_receipts(exhaust):
         assert len(row["calls"]) > len(row["final_action_feedback"])
 
 
-@pytest.mark.parametrize("cards", [[], ["NOT_A_CARD"]])
+@pytest.mark.parametrize("cards", [[], ["NOT_A_CARD"], ["C4"] * 100])
 def test_exhaustion_reaches_classified_schedule_terminal(cards):
     from shengji.luna.benchmark_failure_protocol import summarize_scheduled
     from shengji.luna.benchmark_terminal import validate_scheduled_terminal

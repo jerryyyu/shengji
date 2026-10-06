@@ -175,6 +175,12 @@ class SeatPlannerPolicy:
                 return list(cards)
 
             try:
+                # Native validators decode card IDs before ownership checks and
+                # can raise KeyError/ValueError for unknown/oversized proposals.
+                # Reject those using only the actor's hand, without masking
+                # unexpected validator faults as model feedback.
+                if not cards or Counter(cards) - Counter(rnd.hands[seat]):
+                    raise IllegalPlay("You don't hold those cards.")
                 if plays:
                     validate_follow(cards, rnd.hands[seat], plays[0]["cards"],
                                     rnd.ordering)

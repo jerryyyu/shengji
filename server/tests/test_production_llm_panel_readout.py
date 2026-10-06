@@ -278,6 +278,62 @@ def test_stage2_and_combined_feedback_panel(tmp_path):
         readout.analyze_feedback_panel_reports(reports, contexts)
 
 
+@pytest.mark.parametrize('mutation', ['none', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals'])
+def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation):
+    import hashlib
+    from scripts import sealed_production_llm_panel_readout as sealed
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
+    from test_sealed_readout_wrapper import assert_stage1_wrapper
+
+    def write(name, value):
+        path = tmp_path / name
+        raw = json.dumps(value).encode()
+        path.write_bytes(raw)
+        return dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+
+    reports, contexts = _stage1_reports(tmp_path, policies=readout.POLICIES)
+    stages, saved = {}, {}
+    for stage, rows, analyze in ((1, STAGE1_ROWS, readout.analyze_stage1_reports),
+                                 (2, STAGE2_ROWS, readout.analyze_stage2_reports)):
+        result = analyze({k: reports[k] for k in rows}, {k: contexts[k] for k in rows})
+        sealed.label_endpoint_coverage(result, result['terminal_accounting'])
+        # Deliberately nonexistent raw references: even the subprocess cannot read them.
+        result['seals'] = dict(metadata_and_content_validated=True,
+            result_refs={k: dict(path='/forbidden/raw/' + k, sha256='0'*64) for k in rows})
+        if stage == 2:
+            if mutation == 'feedback': result['treatment'] = 'feedback-OFF'
+            if mutation == 'rows': result['policies'].pop(rows[0])
+            if mutation == 'roots': result['prepared_roots']['source_result_sha256'] = '0'*64
+            if mutation == 'seeds': result['seeds'] = list(reversed(result['seeds']))
+            if mutation == 'bootstrap': result['bootstrap']['seed'] += 1
+            if mutation == 'seals': result['seals']['metadata_and_content_validated'] = False
+        saved[f'stage{stage}'] = result
+        result_ref = write(f'stage{stage}.json', result)
+        receipt = dict(status='complete', result_sha256=result_ref['sha256'])
+        if stage == 2 and mutation == 'receipt': receipt['result_sha256'] = '0'*64
+        stages[f'stage{stage}'] = dict(result=result_ref, receipt=write(f'receipt{stage}.json', receipt))
+    plan = write('plan.json', dict(schema='sol-saved-feedback-panel-plan-v1', stages=stages))
+    real_metadata = sealed._metadata
+    allowed = {plan['path']} | {ref['path'] for refs in stages.values() for ref in refs.values()}
+    def guarded(ref, label):
+        assert ref['path'] in allowed, 'raw access attempted'
+        return real_metadata(ref, label)
+    monkeypatch.setattr(sealed, '_metadata', guarded)
+    if mutation != 'none':
+        with pytest.raises(ValueError):
+            sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
+        return
+    combined = sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
+    assert combined['panel_size'] == 9
+    assert combined['cross_stage_row_differences']['status'] == 'unavailable'
+    for name, original in saved.items():
+        assert combined['within_stage_row_differences'][name] == original['row_differences']
+        for key, row in original['policies'].items():
+            assert combined['policies'][key] == row
+    wrapped = assert_stage1_wrapper(tmp_path, plan, saved_panel=True)
+    assert wrapped == combined
+
+
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):
     result = readout.analyze_panel(_panel(tmp_path))
     row = result["policies"]["smv3-pv"]

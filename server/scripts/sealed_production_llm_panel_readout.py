@@ -117,6 +117,65 @@ def read_sealed_stage2(plan_path, expected_sha256):
     return _read_sealed_stage(plan_path, expected_sha256, stage=2)
 
 
+def read_saved_feedback_panel(plan_path, expected_sha256):
+    """Assemble published stage results only; never follow their raw refs.
+
+    The reviewed plan must pin the previously accepted result AND receipt for
+    each stage. Hash agreement authenticates bytes, not scientific approval.
+    Cross-stage paired contrasts cannot be recovered from marginal summaries.
+    """
+    from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
+    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'saved-stage plan')
+    _require(set(plan) == {'schema', 'stages'}
+             and plan['schema'] == 'sol-saved-feedback-panel-plan-v1', 'invalid saved-stage plan')
+    _require(type(plan['stages']) is dict and set(plan['stages']) == {'stage1', 'stage2'},
+             'exact two saved stages required')
+    stages = {}
+    for stage, rows in ((1, STAGE1_ROWS), (2, STAGE2_ROWS)):
+        name = f'stage{stage}'
+        refs = plan['stages'][name]
+        _require(type(refs) is dict and set(refs) == {'result', 'receipt'}, 'saved-stage refs')
+        receipt = _metadata(refs['receipt'], name + ' publication receipt')
+        _require(receipt.get('status') == 'complete'
+                 and receipt.get('result_sha256') == refs['result']['sha256'],
+                 'saved-stage publication incomplete or mismatched')
+        result = _metadata(refs['result'], name + ' saved readout')
+        _require(result.get('schema') == f'sol-feedback-on-stage{stage}-readout-v1'
+                 and result.get('treatment') == 'feedback-ON'
+                 and result.get('status') in ('complete', 'partial')
+                 and type(result.get('panel_size')) is int and result['panel_size'] == len(rows)
+                 and result.get('benchmark_ids') == list(rows), 'saved-stage identity mismatch')
+        seals = result.get('seals', {})
+        _require(seals.get('metadata_and_content_validated') is True
+                 and type(seals.get('result_refs')) is dict
+                 and set(seals['result_refs']) == set(rows), 'saved-stage seals missing')
+        for field in ('policies', 'terminal_accounting'):
+            _require(type(result.get(field)) is dict and set(result[field]) == set(rows),
+                     'saved-stage row coverage mismatch')
+        for key, policy in result['policies'].items():
+            _require(policy.get('benchmark_id') == key, 'saved-stage policy identity mismatch')
+        _require(type(result.get('row_differences')) is list, 'saved-stage contrasts missing')
+        stages[name] = result
+    first, second = stages['stage1'], stages['stage2']
+    for field in ('seeds', 'prepared_roots', 'bootstrap'):
+        _require(field in first and field in second
+                 and _strict_equal(first[field], second[field]), 'saved-stage ' + field + ' mismatch')
+    return {
+        'schema': 'sol-saved-feedback-panel-v1', 'treatment': 'feedback-ON',
+        'status': 'complete' if all(s['status'] == 'complete' for s in stages.values()) else 'partial',
+        'panel_size': 9, 'benchmark_ids': list(arithmetic.POLICIES),
+        **{field: first[field] for field in ('seeds', 'prepared_roots', 'bootstrap')},
+        **{field: {key: stage[field][key] for stage in stages.values() for key in stage[field]}
+           for field in ('policies', 'terminal_accounting')},
+        'within_stage_row_differences': {key: stage['row_differences'] for key, stage in stages.items()},
+        'cross_stage_row_differences': {
+            'status': 'unavailable',
+            'reason': 'Saved aggregates lack joint per-deal values; no raw reread or covariance imputation.'},
+        'provenance': {'plan_sha256': expected_sha256, 'stages': plan['stages']},
+        'interpretation': 'Saved row statistics copied unchanged. No new ranking, superiority or equivalence claim.',
+    }
+
+
 def _read_sealed_stage(plan_path, expected_sha256, *, stage):
     plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'stage1 plan')
     admitted = _admit_stage_metadata(plan, stage=stage)

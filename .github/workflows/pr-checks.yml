@@ -269,95 +269,102 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      - name: Test Luna collector prompt profiles
-        env:
-          SHENGJI_FAST: "1"
-        run: uv run pytest -q ${{ matrix.tests }}
+      # Install every group BEFORE the parallel block: a uv sync while a test step
+      # is importing from the same venv would race it.
       - name: Install locked observation-test dependencies
         if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
         run: uv sync --frozen --group dev --group rl
-      - name: Test observation evidence and process containment
-        if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
-        run: >-
-          uv run python -B -m pytest -q --durations=10
-          tests/test_observation_opportunity_integration.py
-          tests/test_ballot_selection.py
-          tests/test_ballot_matrix.py
-          tests/test_ballot_full_pool.py
-          tests/test_ballot_points_selection.py
-          tests/test_fixed_tape_capture.py
-          tests/test_fixed_tape_policy.py
-          tests/test_s11_report_integration.py
-          tests/test_s11_report_summary.py
-          tests/test_s11_collection.py
-          tests/test_s11_model.py
-          tests/test_s11_persistence.py
-          tests/test_s11_once.py
-          tests/test_s11_schedule.py
-          tests/test_s11_phases.py
-          tests/test_s11_cost_handoff.py
-          tests/test_s11_collection_phase.py
-          tests/test_s11_host_phase.py
-          tests/test_s11_saved_readout.py
-          tests/test_sealed_s11_readout.py
-          tests/test_s11_inventory.py
-          tests/test_s11_reconstruction.py
-          tests/test_s11_public_view.py
-          tests/test_s11_shard.py
-          tests/test_s11_selection.py
-          tests/test_s11_manifest.py
-          tests/test_s11_input_join.py
-          tests/test_s11_inputs.py
-          tests/test_s11_input_bundle.py
-          tests/test_s11_handoff.py
-          tests/test_s11_admission_once.py
-          tests/test_s11_staging.py
-          tests/test_s11_input_guard.py
-          tests/test_s11_input_worker.py
-          tests/test_s11_input_phase.py
-          tests/test_s11_input_transfer.py
-          tests/test_fixed_tape_panel.py
-          tests/test_public_fixture_panel.py
-          tests/test_m9_replay_binding.py
-          tests/test_m9_panel_plan.py
-          tests/test_m9_capacity_timing.py
-          tests/test_m9_panel_recipe.py
-          tests/test_m9_panel_inputs.py
-          tests/test_m9_panel_execution.py
-          tests/test_m9_panel_admission.py
-          tests/test_m9_panel_authenticated_worker.py
-          tests/test_m9_panel_factory_preflight.py
-          tests/test_observation_queue_m9.py
-          tests/test_m9_panel_worker.py
-          tests/test_m9_panel_persistence.py
-          tests/test_m9_panel_readout.py
-          tests/test_m9_panel_completion.py
-          tests/test_m9_panel_artifact_reader.py
-          tests/test_selected_panel_reader.py
-          tests/test_panel_rank_root.py
-          tests/test_panel_rank_worker.py
-          tests/test_panel_rank_worker_reader_integration.py
-          tests/test_panel_rank_worker_authenticated_integration.py
-          tests/test_panel_rank_worker_isolated_integration.py
-          tests/test_m9_panel_publication.py
-          tests/test_m9_panel_readout_worker.py
-          tests/test_m9_readout_persistence_roundtrip.py
-          tests/test_observation_summary.py
-          tests/test_observation_partial_evidence.py
-          tests/test_tactical_public_observations.py
-          tests/test_public_refusal_history.py
-          tests/test_observation_process.py
-          tests/test_observation_process_cli.py
-          tests/test_observation_recipe.py
-          tests/test_observation_numeric_recipe.py
-          tests/test_observation_control_rejections.py
-          tests/test_observation_lease.py
-          tests/test_observation_runtime.py
-          tests/test_observation_runtime_fence.py
-          tests/test_observation_queue.py
-          tests/test_observation_worker.py
-          tests/test_observation_admission.py
-          tests/test_luna_startup_cleanup.py
+      # The two suites are independent single-process pytest runs (one CPU each on
+      # the two-core runner), so run them as parallel steps (GitHub Actions
+      # `parallel`, 2026-06-25). -p no:cacheprovider keeps the two sessions from
+      # writing the same .pytest_cache.
+      - parallel:
+          - name: Test Luna collector prompt profiles
+            env:
+              SHENGJI_FAST: "1"
+            run: uv run pytest -q -p no:cacheprovider ${{ matrix.tests }}
+          - name: Test observation evidence and process containment
+            if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
+            run: >-
+              uv run python -B -m pytest -q -p no:cacheprovider --durations=10
+              tests/test_observation_opportunity_integration.py
+              tests/test_ballot_selection.py
+              tests/test_ballot_matrix.py
+              tests/test_ballot_full_pool.py
+              tests/test_ballot_points_selection.py
+              tests/test_fixed_tape_capture.py
+              tests/test_fixed_tape_policy.py
+              tests/test_s11_report_integration.py
+              tests/test_s11_report_summary.py
+              tests/test_s11_collection.py
+              tests/test_s11_model.py
+              tests/test_s11_persistence.py
+              tests/test_s11_once.py
+              tests/test_s11_schedule.py
+              tests/test_s11_phases.py
+              tests/test_s11_cost_handoff.py
+              tests/test_s11_collection_phase.py
+              tests/test_s11_host_phase.py
+              tests/test_s11_saved_readout.py
+              tests/test_sealed_s11_readout.py
+              tests/test_s11_inventory.py
+              tests/test_s11_reconstruction.py
+              tests/test_s11_public_view.py
+              tests/test_s11_shard.py
+              tests/test_s11_selection.py
+              tests/test_s11_manifest.py
+              tests/test_s11_input_join.py
+              tests/test_s11_inputs.py
+              tests/test_s11_input_bundle.py
+              tests/test_s11_handoff.py
+              tests/test_s11_admission_once.py
+              tests/test_s11_staging.py
+              tests/test_s11_input_guard.py
+              tests/test_s11_input_worker.py
+              tests/test_s11_input_phase.py
+              tests/test_s11_input_transfer.py
+              tests/test_fixed_tape_panel.py
+              tests/test_public_fixture_panel.py
+              tests/test_m9_replay_binding.py
+              tests/test_m9_panel_plan.py
+              tests/test_m9_capacity_timing.py
+              tests/test_m9_panel_recipe.py
+              tests/test_m9_panel_inputs.py
+              tests/test_m9_panel_execution.py
+              tests/test_m9_panel_admission.py
+              tests/test_m9_panel_authenticated_worker.py
+              tests/test_m9_panel_factory_preflight.py
+              tests/test_observation_queue_m9.py
+              tests/test_m9_panel_worker.py
+              tests/test_m9_panel_persistence.py
+              tests/test_m9_panel_readout.py
+              tests/test_m9_panel_completion.py
+              tests/test_m9_panel_artifact_reader.py
+              tests/test_selected_panel_reader.py
+              tests/test_panel_rank_root.py
+              tests/test_panel_rank_worker.py
+              tests/test_panel_rank_worker_reader_integration.py
+              tests/test_panel_rank_worker_authenticated_integration.py
+              tests/test_panel_rank_worker_isolated_integration.py
+              tests/test_m9_panel_publication.py
+              tests/test_m9_panel_readout_worker.py
+              tests/test_m9_readout_persistence_roundtrip.py
+              tests/test_observation_summary.py
+              tests/test_observation_partial_evidence.py
+              tests/test_tactical_public_observations.py
+              tests/test_public_refusal_history.py
+              tests/test_observation_process.py
+              tests/test_observation_process_cli.py
+              tests/test_observation_recipe.py
+              tests/test_observation_numeric_recipe.py
+              tests/test_observation_control_rejections.py
+              tests/test_observation_lease.py
+              tests/test_observation_runtime.py
+              tests/test_observation_runtime_fence.py
+              tests/test_observation_queue.py
+              tests/test_observation_worker.py
+              tests/test_observation_admission.py
+              tests/test_luna_startup_cleanup.py
 
   frontend:
     runs-on: ubuntu-latest

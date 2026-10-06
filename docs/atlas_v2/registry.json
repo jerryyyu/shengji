@@ -1170,6 +1170,27 @@
    "takeaway": "Inconclusive: SMV3's rank-selected epoch 15 did not beat release 38 as served (its val-selected epoch 13). No extension; release 38 stays.",
    "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6021409485; digests #707 issuecomment-6021395554; Codex PASS #707 issuecomment-6018831961. Paired -0.018934 [-0.047396,+0.009529], SE 0.014522, MDE80 0.040683, tau 0, Q 1.32, I2 0%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met; promotion_gate NO PROMOTION (first-stage read not positive); strength verdict withheld. Window deltas -0.0423, -0.0192, +0.0115, -0.0192, -0.0231. Descriptive own-arm levels vs MC-LCB: smv3e15 0.2241 [0.1909,0.2574], release 38 0.2442 [0.1981,0.2903] (not the paired primary). Health: 727,228 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Context (separate contrasts, separate seeds, not additive): v55e9r38 C11 epoch 9 vs r38 -0.0145 inconclusive. Seeds registry-checked (seed_windows.py check); training-lineage deal-key clearance in predeclaration amendment r2. Reader sha256 5bde1d2aa2c230d1bafca74ffa0cc4769b40eb6dcdf67eef180c113575148ccc; result sha256 98402381e1ba4237fe4a3138c3c26974c96210964218c067075fb41e99e4d489; launcher sha256 541284a77ae4344255fd4be4e95817c920daed542c0e28528dd0dbf451eff758; predeclaration (r3) sha256 f014e38e3d711a808891e93ac304ef32f294667749fa764e9db669cd3a27d9bc; SHA256SUMS 2be318365fbc0f76b453a7f2881ec0f92405cec09f01efab846acfdb889f8a35. Archived ~/shengji-archive/2026-09-13/readouts/v56s15r38-smv3e15-vs-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6021409485"
+  },
+  {
+   "id": "v57dts",
+   "date": "2026-10-06",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Doomed-throw swap vs release 38 (ten-window confirmation)",
+   "candidate": "release 38 with SHENGJI_PV_DOOMED_THROW_SWAP=1 (#830), otherwise unchanged (same package smv3out-491ee4bf and release-38 rules), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d; vs release 38 as served (pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457). Ten-window confirmation of v53dts on fresh seeds, judged alone, never pooled with v53dts.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten fresh 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; predeclared confirmation design, judged alone",
+   "seeds": "59060910 59160910 59260910 59360910 59460910 59560910 59660910 59760910 59860910 59960910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.00015,
+   "lo": -0.010232,
+   "hi": 0.009931,
+   "takeaway": "Inconclusive, tightly bounded (about +/-0.01); failed throws -64%. Deploy-eligible (not noninferiority); deploy is Jerry's decision.",
+   "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6026001554; digests #707 issuecomment-6025987774; Codex PASS #707 issuecomment-6019124692. Paired -0.000150 [-0.010232,+0.009931], SE 0.005144, MDE80 0.014411, tau 0.006349, Q 10.62, I2 15.2%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. deploy_gate DEPLOY-ELIGIBLE: not statistically demonstrated negative under the declared gate (CI upper >= 0); harm remains compatible with an inconclusive interval; NOT noninferiority; deploy remains Jerry's decision via DEPLOY.md gates; this read authorizes nothing. No further extension (predeclared confirmation design); strength verdict withheld pending health and provenance review. Window deltas -0.0058, -0.0231, -0.0077, +0.0029, +0.0067, +0.0192, +0.0250, -0.0038, +0.0058, -0.0231. Descriptive own-arm levels vs MC-LCB: candidate 0.2363 [0.2186,0.2541], release 38 0.2365 [0.2189,0.2541] (not the paired primary). Mechanism (descriptive): failed bot throws 12,239 -> 4,402 (-64%), 33.58 -> 12.07 per 1000 aligned arm plays; rounds with at least one failed throw 62.6% -> 35.1%; swap applied 8,018 times; 10,400 aligned rounds per arm; no swap fields in the comparator. Health: 1,458,680 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks; MC-LCB receipts unclassified by the PV health reader. Context (separate contrast, separate seeds, not pooled): v53dts five-window exploratory -0.0113 inconclusive. Reader sha256 3eb5eaffa7d200dbaa5eea856f13a82ef7088581d481f9451d569800de6c1da9; result sha256 656f0f258844eb6470c762b9328f76ee2627d5ea47f1d5bbb3ba16a8a115a9a7; launcher sha256 2a27105a74c66376ba621b4e7c8c60be3138135023b96be07943503e566d16e5; predeclaration (r2) sha256 db8ede450798242f97de97c65fc281896a57dd4f15a9c21711029bfd69994ec4; SHA256SUMS f1cf27fdaf9b754cbee1750062481c03ad1e57de3a61ae96b436f96da985c2d2. Archived ~/shengji-archive/2026-09-13/readouts/v57dts-throwfix-confirm-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6026001554"
   }
  ],
  "context_screens": [

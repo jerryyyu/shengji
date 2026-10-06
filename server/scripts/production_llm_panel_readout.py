@@ -613,6 +613,10 @@ def analyze_stage1_reports(report_data, campaign_contexts, *, bootstrap_seed=BOO
                 for field in count_keys:
                     counts[field] += raw_counts[field]
             result['policies'][key][arm]['final_action_feedback_counts'] = counts
+            result['policies'][key][arm]['tool_budget_exhausted_mirrors'] = sum(
+                row['information'] == information and
+                row.get('failure', {}).get('category') == 'model_tool_budget_exhausted'
+                for row in reports[key][1])
     return result
 
 

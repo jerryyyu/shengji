@@ -13,6 +13,7 @@ import json
 from shengji.engine.legal import IllegalPlay, validate_follow, validate_lead
 from .benchmark_observation import observation
 from .canonical import canonical_json_bytes
+from .benchmark_failure_protocol import ToolBudgetExceeded
 from .benchmark_rollouts import DecisionRollouts
 from .game import (MAX_ROLLOUT_CALLS_PER_DECISION, MAX_NEW_EVALUATIONS_PER_CALL,
                    WideHeuristicBallotBot)
@@ -110,6 +111,15 @@ class SeatPlannerPolicy:
                         or not 1 <= len(reply["evaluations"]) <= MAX_NEW_EVALUATIONS_PER_CALL):
                     raise ValueError("invalid planner rollout request")
                 if request_index == MAX_ROLLOUT_CALLS_PER_DECISION:
+                    if self.invalid_action_feedback and self.classify_final_action_failures:
+                        raise ToolBudgetExceeded({
+                            'schema': 'benchmark-tool-budget-failure-v1',
+                            'category': 'model_tool_budget_exhausted', 'stage': 'rollout_request',
+                            'seat': seat, 'request_index': request_index,
+                            'limit': MAX_ROLLOUT_CALLS_PER_DECISION,
+                            'packet_sha256': hashlib.sha256(packet_bytes).hexdigest(),
+                            'reply_sha256': hashlib.sha256(canonical_json_bytes(reply)).hexdigest(),
+                        })
                     raise ValueError("planner rollout call budget exhausted")
                 self.rollout_usage["requested_batches"] += 1
                 if tool is None:

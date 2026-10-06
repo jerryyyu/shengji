@@ -137,7 +137,7 @@ def test_stage1_refuses_mixed_or_unadmitted_results(tmp_path, mutation):
         readout.analyze_stage1_reports(reports, contexts)
 
 
-@pytest.mark.parametrize('outcome', ['legal', 'corrected', 'exhausted', 'interrupted'])
+@pytest.mark.parametrize('outcome', ['legal', 'corrected', 'exhausted', 'interrupted', 'tool_overflow'])
 def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     """Real roots, scheduler, engine, feedback and terminal; synthetic policy/provider.
 
@@ -167,6 +167,9 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
         def __init__(self, **kwargs):
             self.calls = []
         def __call__(self, packet):
+            if outcome == 'tool_overflow':
+                return {'evaluations': [{'cards': [], 'continuation': 'heuristic-all'}],
+                        'memory': ''}
             if outcome == 'interrupted' and packet['final_action_errors']:
                 raise RuntimeError('synthetic provider interruption after feedback')
             if outcome == 'exhausted' or (outcome in ('corrected', 'interrupted')
@@ -214,9 +217,40 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
         counts = result['policies'][row]['sol']['final_action_feedback_counts']
         assert counts['exhausted_decisions'] == (8 if outcome == 'exhausted' else 0)
         assert (counts['corrected_decisions'] > 0) is (outcome == 'corrected')
-        assert result['terminal_accounting'][row]['failed'] == (8 if outcome == 'exhausted' else 0)
-        assert result['terminal_accounting'][row]['completed'] == (0 if outcome == 'exhausted' else 40)
+        assert result['terminal_accounting'][row]['failed'] == (8 if outcome in ('exhausted', 'tool_overflow') else 0)
+        assert result['terminal_accounting'][row]['completed'] == (0 if outcome in ('exhausted', 'tool_overflow') else 40)
+        assert result['policies'][row]['sol']['tool_budget_exhausted_mirrors'] == (8 if outcome == 'tool_overflow' else 0)
     assert not (tmp_path / 'lock').exists()
+    from scripts import sealed_production_llm_panel_readout as sealed
+    def ref(path):
+        return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    output = Path(config['output'])
+    plan = dict(schema='sol-feedback-on-stage1-seals-v1', campaign=dict(
+        config=ref(config_path), output_config=ref(output / 'config.json'),
+        terminal=ref(output / 'terminal.json'), summary=ref(output / 'stage1-summary.json')),
+        rows={row: dict(result=ref(output / row / 'result.json'),
+                        terminal=ref(output / (row + '.terminal.json')),
+                        accounting=ref(output / (row + '.accounting.json')))
+              for row in launcher.STAGE1_ROWS})
+    plan_path = tmp_path / 'read-plan.json'
+    plan_path.write_text(json.dumps(plan))
+    admitted = sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
+    assert admitted['terminal_accounting'] == result['terminal_accounting']
+    assert admitted['panel_size'] == 2
+    # An authenticated but nonterminal campaign must refuse before result access.
+    terminal_path = output / 'terminal.json'
+    bad_terminal = json.loads(terminal_path.read_text())
+    bad_terminal['status'] = 'failed'
+    terminal_path.write_text(json.dumps(bad_terminal))
+    plan['campaign']['terminal'] = ref(terminal_path)
+    plan_path.write_text(json.dumps(plan))
+    real_metadata = sealed._metadata
+    def no_results(reference, label):
+        assert not label.endswith(' result'), 'raw results opened before metadata admission'
+        return real_metadata(reference, label)
+    monkeypatch.setattr(sealed, '_metadata', no_results)
+    with pytest.raises(ValueError, match='not terminal'):
+        sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
 
 
 def test_readout_negates_producer_sign_and_keeps_sol_pt_columns(tmp_path):

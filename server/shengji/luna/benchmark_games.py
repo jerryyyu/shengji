@@ -10,6 +10,7 @@ from shengji.ai.env import play_prepared_round
 from shengji.engine.cards import make_deck
 from shengji.engine.legal import IllegalPlay
 from .benchmark_policy import SeatPlannerPolicy
+from .benchmark_failure_protocol import ToolBudgetExceeded
 from .game import signed_level_utility
 
 
@@ -85,6 +86,9 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
                           perspective_seat=flip))
     except Exception as exc:
         record["error"] = f"{type(exc).__name__}: {exc}"
+        if (type(exc) is ToolBudgetExceeded and invalid_action_feedback
+                and classify_final_action_failures):
+            record['failure'] = dict(exc.failure, completed_play_events=len(events))
         for bot in planner_bots:
             if bot.rollout_diagnostic is not None:
                 # Diagnostic only: deliberately NOT an accepted `failure`

@@ -14,6 +14,38 @@ def failed():
                         'seat': 3, 'attempted_cards': ['C7'], 'event_index': 0}}
 
 
+def tool_failed():
+    return dict(complete=False, flip=1, events=[], error='ToolBudgetExceeded: exhausted',
+                invalid_action_feedback=True, classify_final_action_failures=True,
+                failure=dict(schema='benchmark-tool-budget-failure-v1',
+                             category='model_tool_budget_exhausted', stage='rollout_request',
+                             seat=3, request_index=2, limit=2, completed_play_events=0,
+                             packet_sha256='a' * 64, reply_sha256='b' * 64))
+
+
+def test_tool_failure_requires_explicit_on_and_attribution():
+    row = tool_failed()
+    assert attempt_disposition(row) == 'stop'
+    assert attempt_disposition(row, protocol=PRESERVE_ILLEGAL) == 'retained-model-failure'
+    for field in ('invalid_action_feedback', 'classify_final_action_failures'):
+        other = copy.deepcopy(row)
+        other[field] = False
+        assert attempt_disposition(other, protocol=PRESERVE_ILLEGAL) == 'stop'
+    row.pop('failure')
+    assert attempt_disposition(row, protocol=PRESERVE_ILLEGAL) == 'stop'
+
+
+@pytest.mark.parametrize('field,value', [
+    ('schema', 'old'), ('stage', 'rollout_continuation'), ('seat', 2), ('seat', True),
+    ('request_index', 1), ('request_index', True), ('limit', 3),
+    ('completed_play_events', 1), ('packet_sha256', 'a'), ('reply_sha256', None),
+])
+def test_tool_failure_rejects_malformed_binding(field, value):
+    row = tool_failed()
+    row['failure'][field] = value
+    assert attempt_disposition(row, protocol=PRESERVE_ILLEGAL) == 'stop'
+
+
 def test_explicit_opt_in_preserves_failure_without_mutation():
     row = failed()
     original = copy.deepcopy(row)

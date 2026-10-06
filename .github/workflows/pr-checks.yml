@@ -264,6 +264,7 @@ jobs:
           tests/test_s11_report_summary.py
           tests/test_s11_collection.py
           tests/test_s11_persistence.py
+          tests/test_s11_once.py
           tests/test_s11_reconstruction.py
           tests/test_s11_public_view.py
           tests/test_s11_shard.py

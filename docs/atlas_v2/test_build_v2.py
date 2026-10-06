@@ -262,3 +262,43 @@ def test_an_unavailable_screen_has_no_chart_mark_and_is_never_pending(tmp_path):
     for s in (x for x in mod.R["screens"] if x["status"] == "unavailable"):
         lead = next(l for l in mod.page.split("\n") if l.startswith(f'<tr class="lead"><td class="mono">{s["id"]}<'))
         assert "pending" not in lead and "no estimate (unavailable)" in lead
+
+
+def test_seeds_are_an_explicit_window_list_never_a_range():
+    """#707 2026-10-06: v35d's seeds "29960910..30360910" were read as two endpoints and an audit
+    reported zero overlaps for its 30260910 window, which sat inside the run-C training span.  Seeds
+    are the explicit window seed0s; the two non-window rows are allow-listed with a computed expansion."""
+    mod = _load(); reg = json.loads((HERE / "registry.json").read_text())
+    assert mod.check_registry(reg) == []
+    v35d = next(s for s in reg["screens"] if s["id"] == "v35d")
+    assert 30260910 in mod.seed_windows(v35d["seeds"]) and len(mod.seed_windows(v35d["seeds"])) == 5
+    drt = next(s for s in reg["screens"] if s["id"] == "v38drt")
+    assert mod.seed_windows(drt["seeds"]) == [39460910, 39560910, 39660910, 39760910, 39860910,
+                                              39960910, 40060910, 40160910, 40360910, 40460910]
+    for text in ("29960910..30360910", "1 2, 3", "1  2", "1 2 (Perf), 3 (cloud)", "five windows",
+                 "1 2 (Perf);3", "", None, "1 2 (Perf) (cloud)"):
+        bad = copy.deepcopy(reg); bad["screens"][0]["seeds"] = text
+        assert any("explicit list of window seed0s" in e for e in mod.check_registry(bad)), text
+    for text in ("1", "1 2 3", "1 2 (cloud)", "1 2 (Perf); 3 4 (cloud)", "7 8; 9"):
+        ok = copy.deepcopy(reg); ok["screens"][0]["seeds"] = text
+        assert mod.check_registry(ok) == [], text
+    bad = copy.deepcopy(reg); bad["screens"][0]["seeds"] = "1 2 1"
+    assert any("repeat a window seed0" in e for e in mod.check_registry(bad))
+    # a legacy row keeps its exact allow-listed text, and its expansion is recomputed
+    assert mod.legacy_expansion("626710000..626710259") == {"kind": "deal seeds", "first": 626710000, "count": 260}
+    assert mod.legacy_expansion("deal indices 2080..4159 (all-ranks-known-banker-v1)") == {
+        "kind": "deal indices", "first": 2080, "count": 2080}
+    bad = copy.deepcopy(reg)
+    next(s for s in bad["screens"] if s["id"] == "depth-screen")["seeds"] = "626710000..626710359"
+    assert any("legacy seeds text changed" in e for e in mod.check_registry(bad))
+    saved = dict(mod.LEGACY_SEEDS["depth-screen"])
+    try:
+        mod.LEGACY_SEEDS["depth-screen"]["count"] = 261
+        assert any("legacy seeds expand to" in e for e in mod.check_registry(reg))
+    finally:
+        mod.LEGACY_SEEDS["depth-screen"] = saved
+    # a planned or running row may not have its windows yet
+    ok = copy.deepcopy(reg); ok["screens"][0].pop("seeds"); ok["screens"][0]["status"] = "running"
+    ok["screens"][0].update(point=None, lo=None, hi=None)
+    ok["screens"][0].pop("results", None)
+    assert not any("seeds" in e for e in mod.check_registry(ok))

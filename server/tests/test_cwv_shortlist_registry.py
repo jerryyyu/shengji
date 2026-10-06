@@ -50,13 +50,11 @@ def _load_script(name: str):
 
 
 @pytest.fixture(scope="module")
-def checkpoint(tmp_path_factory) -> str:
+def checkpoint(tmp_path_factory, cwv_mlp_checkpoint_factory) -> str:
     """A tiny MLP checkpoint, so ``mlp-static`` is the effective encoding."""
     out = tmp_path_factory.mktemp("shortlist") / "tiny.pt"
-    _load_script("cwv_dev_checkpoint").build_dev_checkpoint(
-        str(out), rounds=2, architecture="mlp", width=16, max_epochs=2,
-        quiet=True)
-    return str(out)
+    return cwv_mlp_checkpoint_factory(
+        out, _load_script("cwv_dev_checkpoint").build_dev_checkpoint)
 
 
 @pytest.fixture
@@ -223,4 +221,3 @@ def test_the_derived_name_tracks_a_non_default_recipe(checkpoint):
     assert k8.shortlist_config.alternatives == 8
     assert k8.policy_name != default.policy_name, (
         "K8 built under the K4 identity; a resume would accept the wrong search")
-

@@ -47,6 +47,16 @@ def _prepare_imports(engine: str) -> tuple[ModuleType, ModuleType]:
     target = str(SERVER_DIR)
     sys.path[:] = [entry for entry in sys.path if entry != target]
     sys.path.insert(0, target)
+    # Tests also launch Python CLIs, including with -P from foreign working
+    # directories. sys.path changes alone are not inherited by those children.
+    # Resolve existing relative entries before chdir so their meaning is kept.
+    inherited = os.environ.get("PYTHONPATH")
+    child_paths = [] if inherited is None else [
+        str(Path(entry or ".").resolve()) for entry in inherited.split(os.pathsep)
+    ]
+    os.environ["PYTHONPATH"] = os.pathsep.join(
+        [target, *(entry for entry in child_paths if entry != target)]
+    )
     os.chdir(SERVER_DIR)
 
     if engine == "pure":

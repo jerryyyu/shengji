@@ -16,6 +16,7 @@ from .pair_resource_admission import project_rank_repair
 
 ROOT_SCHEMA = "s11-joined-root-v1"
 SUMMARY_SCHEMA = "s11-joined-summary-v1"
+VALUE_SCOPE = "model-relative saved-value coverage; not realised strength"
 
 
 def _root_id(value, label="root_id") -> str:
@@ -58,6 +59,7 @@ def project_s11(root_id, root, seat, capture, value_actions, value_means, *,
         "control": control,
         "treatment": treatment,
         "provenance_verified": False,
+        "value_scope": VALUE_SCOPE,
     }
 
 
@@ -239,6 +241,7 @@ def summarize_s11(reports, scheduled_root_ids, *, bootstrap_seed=0,
     scheduled_set = set(scheduled)
     seen = set()
     valid_rows = []
+    failures = []
     failed = refused = 0
     for report in reports:
         if not isinstance(report, dict):
@@ -251,8 +254,11 @@ def summarize_s11(reports, scheduled_root_ids, *, bootstrap_seed=0,
         seen.add(root_id)
         status = report.get("status")
         if status in ("failed", "refused"):
-            if set(report) != {"root_id", "status"}:
-                raise ValueError("failed/refused records may contain only root_id/status")
+            if set(report) != {"root_id", "status", "reason"}:
+                raise ValueError("failed/refused records require root_id/status/reason")
+            if type(report["reason"]) is not str or not report["reason"].strip():
+                raise ValueError("failed/refused reason must be a nonempty string")
+            failures.append(dict(report))
             if status == "failed":
                 failed += 1
             else:
@@ -338,7 +344,9 @@ def summarize_s11(reports, scheduled_root_ids, *, bootstrap_seed=0,
         return {"numerator": count,
                 "all_valid_denominator": denominator}
 
-    no_op = sum(not row["arms_changed"] for row in valid_rows)
+    equal_arms = sum(not row["arms_changed"] for row in valid_rows)
+    no_op = sum(not row["control_changed"] and not row["treatment_changed"]
+                for row in valid_rows)
     changes = {
         "control_vs_baseline": fraction(
             sum(row["control_changed"] for row in valid_rows), n),
@@ -368,13 +376,17 @@ def summarize_s11(reports, scheduled_root_ids, *, bootstrap_seed=0,
         "schema": SUMMARY_SCHEMA,
         "status": "valid" if n else "UNAVAILABLE",
         "provenance_verified": False,
+        "value_scope": VALUE_SCOPE,
         "scheduled_root_ids": sorted(scheduled),
         "scheduled_count": len(scheduled),
         "valid_count": n,
         "failed_count": failed,
         "refused_count": refused,
         "missing_count": missing,
+        "coverage_complete": n == len(scheduled),
+        "failures": sorted(failures, key=lambda row: row["root_id"]),
         "no_op_count": no_op,
+        "treatment_equals_control_count": equal_arms,
         "primary": {
             "estimand": "T-C max_saved",
             "denominator": "all_valid_roots",
@@ -384,10 +396,12 @@ def summarize_s11(reports, scheduled_root_ids, *, bootstrap_seed=0,
             "negative_root_count": sum(value < 0 for value in primary_values),
             "zero_root_count": sum(value == 0 for value in primary_values),
             "bootstrap": {"seed": bootstrap_seed,
+                          "percentile_method": "sorted replicate index floor(p * (N - 1))",
                           "samples": bootstrap_samples,
                           "replicates": bootstrap_samples if n >= 2 else 0},
         },
         "diagnostics": {
+            "primary": False,
             "control_minus_baseline_mean": mean(cb_values, "C-B"),
             "treatment_minus_baseline_mean": mean(tb_values, "T-B"),
             "change_counts": changes,

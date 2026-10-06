@@ -104,7 +104,8 @@ def test_multiple_roots_are_sorted_and_bootstrap_does_not_touch_global_rng():
     # means at floor(.025*19)=0 and floor(.975*19)=18 are -4/3,+4/3.
     assert first["primary"]["interval95"] == [-4 / 3, 4 / 3]
     assert first["primary"]["bootstrap"] == {
-        "seed": 9, "samples": 20, "replicates": 20}
+        "seed": 9, "samples": 20, "replicates": 20,
+        "percentile_method": "sorted replicate index floor(p * (N - 1))"}
 
 
 def test_mixed_noop_keeps_all_valid_denominators_and_null_audits():
@@ -153,6 +154,8 @@ def test_noop_maximum_and_displacement_index_must_be_coherent():
         audit["removed_was_unique_baseline_max"] = False
         audit["repaired_max_below_baseline"] = False
     tied_summary = summarize_s11([tied], ["r"])
+    assert tied_summary["treatment_equals_control_count"] == 1
+    assert tied_summary["no_op_count"] == 0
     assert tied_summary["diagnostics"]["displacement"]["control"][
         "removed_was_unique_baseline_max"]["numerator"] == 0
 
@@ -165,17 +168,40 @@ def test_derived_difference_overflow_is_rejected():
 
 def test_failures_refusals_missing_and_single_root_have_no_ci():
     result = summarize_s11([report("ok", 4, 2),
-                            {"root_id": "bad", "status": "failed"},
-                            {"root_id": "ref", "status": "refused"}],
+                            {"root_id": "bad", "status": "failed", "reason": "budget expired"},
+                            {"root_id": "ref", "status": "refused", "reason": "pool mismatch"}],
                            ["ok", "bad", "ref", "missing"])
     assert (result["valid_count"], result["failed_count"],
             result["refused_count"], result["missing_count"]) == (1, 1, 1, 1)
     assert result["primary"]["interval95"] is None
+    assert result["coverage_complete"] is False
+    assert result["failures"] == [
+        {"root_id": "bad", "status": "failed", "reason": "budget expired"},
+        {"root_id": "ref", "status": "refused", "reason": "pool mismatch"}]
+    assert result["value_scope"] == "model-relative saved-value coverage; not realised strength"
+    assert result["diagnostics"]["primary"] is False
 
     empty = summarize_s11([], ["missing"])
     assert empty["status"] == "UNAVAILABLE"
     assert empty["primary"]["mean"] is None
     assert empty["primary"]["interval95"] is None
+
+
+@pytest.mark.parametrize('status', ['failed', 'refused'])
+@pytest.mark.parametrize('reason', [None, '', '  ', 1, False])
+def test_failures_require_nonempty_string_reason(status, reason):
+    row = {'root_id': 'r', 'status': status}
+    if reason is not None:
+        row['reason'] = reason
+    with pytest.raises(ValueError, match='reason'):
+        summarize_s11([row], ['r'])
+
+
+def test_complete_noop_has_both_counts_and_no_failures():
+    result = summarize_s11([report('r', 0, 0, changed=False)], ['r'])
+    assert result['no_op_count'] == result['treatment_equals_control_count'] == 1
+    assert result['coverage_complete'] is True
+    assert result['failures'] == []
 
 
 def test_duplicate_outside_schedule_and_malformed_are_rejected():

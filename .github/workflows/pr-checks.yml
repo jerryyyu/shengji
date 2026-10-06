@@ -90,12 +90,15 @@ jobs:
           tests/test_v52ec_recovery_traces.py
           tests/test_v52ec_recovery_reader.py
           tests/test_v52ec_recovery_integration.py
+          tests/test_fast_parity.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_benchmark_*.py
           tests/test_llm_benchmark_*.py
+      # Every test module importing the engine boundary must also run here (or in
+      # another compiled step); check_ci_test_selection.py enforces it (#888, #891).
       - name: Test compiled engine and policy parity
         env:
           SHENGJI_FAST: "1"
@@ -116,6 +119,13 @@ jobs:
           tests/test_structured_bury.py
           tests/test_report_world_reuse.py
           tests/test_mc_benchmark_normalization.py
+          tests/test_benchmark_legacy_evidence.py
+          tests/test_benchmark_rollout_proof.py
+          tests/test_llm_benchmark_policy.py
+          tests/test_engine.py
+          tests/test_heuristic_suit_groups.py
+          tests/test_memory.py
+          tests/test_harvest_ballot_capture.py
       # #636: the served bot must still CONSTRUCT from the real production package on this
       # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches
       # it from the repo's `serving-packages` release by tag and verifies the sha256 pinned
@@ -223,7 +233,8 @@ jobs:
             tests/test_pv_search_prior_package.py \
             tests/test_pv_serving_smoke.py \
             tests/test_pv_refusal_event_complete.py \
-            tests/test_pv_sampler_telemetry.py
+            tests/test_pv_sampler_telemetry.py \
+            tests/test_tactical_public_observations.py
 
   luna-profiles:
     runs-on: ubuntu-latest

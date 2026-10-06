@@ -122,6 +122,7 @@ from .data import (
     split_deals,
     split_mask,
     SplitSelector,
+    _window_groups,
 )
 
 CACHE_SCHEMA = "shengji-cwv-cache-v1"
@@ -1046,26 +1047,8 @@ class CwvBlockStore:
             yield self.block(i)
 
     def windows(self, order: Sequence[int], window: int) -> list[list[int]]:
-        budget = self.residency.budget
-        groups: list[list[int]] = []
-        cur: list[int] = []
-        cur_bytes = 0
-        for i in order:
-            i = int(i)
-            size = self.sizes[i]
-            if budget is not None and size > budget:
-                raise TrainDataError(
-                    f"{self.entries[i][0].label}: decodes to {size} bytes, above the "
-                    f"residency budget of {budget}; raise --resident-bytes")
-            if cur and (len(cur) >= max(1, int(window))
-                        or (budget is not None and cur_bytes + size > budget)):
-                groups.append(cur)
-                cur, cur_bytes = [], 0
-            cur.append(i)
-            cur_bytes += size
-        if cur:
-            groups.append(cur)
-        return groups
+        return _window_groups(order, self.sizes, self.residency.budget, window,
+                              lambda i: self.entries[i][0].label)
 
     def iter_batches(self, mask_fn: Callable[[CwvBlock], np.ndarray], batch_size: int, *,
                      rng: np.random.Generator | None = None, window: int = 64,

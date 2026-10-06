@@ -122,7 +122,7 @@ def read_saved_feedback_panel(plan_path, expected_sha256):
 
     The reviewed plan must pin the previously accepted result AND receipt for
     each stage. Hash agreement authenticates bytes, not scientific approval.
-    Cross-stage paired contrasts cannot be recovered from marginal summaries.
+    Completed-only contrasts use saved seed-indexed values, not marginal CIs.
     """
     from scripts.launch_production_llm_panel import STAGE1_ROWS, STAGE2_ROWS
     plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'saved-stage plan')
@@ -160,6 +160,35 @@ def read_saved_feedback_panel(plan_path, expected_sha256):
     for field in ('seeds', 'prepared_roots', 'bootstrap'):
         _require(field in first and field in second
                  and _strict_equal(first[field], second[field]), 'saved-stage ' + field + ' mismatch')
+    policies = {key: stage['policies'][key] for stage in stages.values() for key in stage['policies']}
+    values = {}
+    for key, policy in policies.items():
+        for mode in ('sol', 'pt_sol'):
+            arm = policy[mode]
+            seeds = arm['complete_deal_seeds']
+            contrast = arm['paired_signed_levels']
+            saved_values = contrast['values']
+            _require(type(seeds) is list and all(type(s) is int for s in seeds)
+                     and len(set(seeds)) == len(seeds) and set(seeds) <= set(first['seeds'])
+                     and type(saved_values) is list and len(saved_values) == len(seeds)
+                     and type(contrast['count']) is int and contrast['count'] == len(seeds)
+                     and all(arithmetic._number(v) for v in saved_values),
+                     'invalid saved completed-deal values')
+            values[key, mode] = dict(zip(seeds, saved_values))
+    cross = []
+    for index, left in enumerate(arithmetic.POLICIES):
+        for right in arithmetic.POLICIES[index + 1:]:
+            if (left in STAGE1_ROWS) == (right in STAGE1_ROWS):
+                continue
+            difference = dict(left=left, right=right,
+                definition='left policy minus right policy on matching completed deals')
+            for mode in ('sol', 'pt_sol'):
+                a, b = values[left, mode], values[right, mode]
+                seeds = sorted(set(a) & set(b))
+                difference[mode] = arithmetic._contrast(
+                    [a[s] - b[s] for s in seeds], seed=first['bootstrap']['seed'])
+                difference[mode]['matched_deal_seeds'] = seeds
+            cross.append(difference)
     return {
         'schema': 'sol-saved-feedback-panel-v1', 'treatment': 'feedback-ON',
         'status': 'complete' if all(s['status'] == 'complete' for s in stages.values()) else 'partial',
@@ -168,11 +197,12 @@ def read_saved_feedback_panel(plan_path, expected_sha256):
         **{field: {key: stage[field][key] for stage in stages.values() for key in stage[field]}
            for field in ('policies', 'terminal_accounting')},
         'within_stage_row_differences': {key: stage['row_differences'] for key, stage in stages.items()},
-        'cross_stage_row_differences': {
+        'cross_stage_row_differences': cross,
+        'cross_stage_forfeit_differences': {
             'status': 'unavailable',
-            'reason': 'Saved aggregates lack joint per-deal values; no raw reread or covariance imputation.'},
+            'reason': 'Saved forfeit values lack scored-deal seed IDs; no alignment inferred or raw reread.'},
         'provenance': {'plan_sha256': expected_sha256, 'stages': plan['stages']},
-        'interpretation': 'Saved row statistics copied unchanged. No new ranking, superiority or equivalence claim.',
+        'interpretation': 'Saved rows copied unchanged; completed-only cross-stage contrasts pair saved seed-indexed values. No superiority or equivalence claim.',
     }
 
 

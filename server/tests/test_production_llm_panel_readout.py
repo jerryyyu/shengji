@@ -278,7 +278,7 @@ def test_stage2_and_combined_feedback_panel(tmp_path):
         readout.analyze_feedback_panel_reports(reports, contexts)
 
 
-@pytest.mark.parametrize('mutation', ['none', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals'])
+@pytest.mark.parametrize('mutation', ['none', 'receipt', 'feedback', 'rows', 'roots', 'seeds', 'bootstrap', 'seals', 'value_count', 'duplicate_seed'])
 def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation):
     import hashlib
     from scripts import sealed_production_llm_panel_readout as sealed
@@ -307,6 +307,8 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
             if mutation == 'seeds': result['seeds'] = list(reversed(result['seeds']))
             if mutation == 'bootstrap': result['bootstrap']['seed'] += 1
             if mutation == 'seals': result['seals']['metadata_and_content_validated'] = False
+            if mutation == 'value_count': result['policies'][rows[0]]['sol']['paired_signed_levels']['values'].pop()
+            if mutation == 'duplicate_seed': result['policies'][rows[0]]['sol']['complete_deal_seeds'][1] = result['policies'][rows[0]]['sol']['complete_deal_seeds'][0]
         saved[f'stage{stage}'] = result
         result_ref = write(f'stage{stage}.json', result)
         receipt = dict(status='complete', result_sha256=result_ref['sha256'])
@@ -325,7 +327,15 @@ def test_saved_stage_composition_never_opens_raw(tmp_path, monkeypatch, mutation
         return
     combined = sealed.read_saved_feedback_panel(plan['path'], plan['sha256'])
     assert combined['panel_size'] == 9
-    assert combined['cross_stage_row_differences']['status'] == 'unavailable'
+    assert len(combined['cross_stage_row_differences']) == 14
+    assert combined['cross_stage_forfeit_differences']['status'] == 'unavailable'
+    direct = readout.analyze_feedback_panel_reports(reports, contexts)
+    oracle = {(row['left'], row['right']): row for row in direct['row_differences']}
+    for difference in combined['cross_stage_row_differences']:
+        for mode in ('sol', 'pt_sol'):
+            actual = dict(difference[mode])
+            actual.pop('matched_deal_seeds')
+            assert actual == oracle[difference['left'], difference['right']][mode]
     for name, original in saved.items():
         assert combined['within_stage_row_differences'][name] == original['row_differences']
         for key, row in original['policies'].items():

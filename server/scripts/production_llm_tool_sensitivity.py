@@ -12,7 +12,9 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from scripts.production_llm_panel_readout import BOOTSTRAP_SEED, _contrast
+from scripts.production_llm_panel_readout import (
+    BOOTSTRAP_SEED, INFORMATION, POLICIES, _contrast, analyze_panel_reports,
+)
 from shengji.luna.benchmark_failure_protocol import (
     PRESERVE_ILLEGAL,
     attempt_disposition,
@@ -284,4 +286,76 @@ def analyze_tool_sensitivity(
             mode["counts"]["pending"] for mode in modes.values()
         ) else "scored-scenario",
         "modes": modes,
+    }
+
+
+def analyze_panel_tool_sensitivity(
+    report_data, campaign_contexts, *, evidence, amendment,
+    bootstrap_seed=BOOTSTRAP_SEED,
+):
+    """Compare all nine policies on aligned pairs under the proposed rule.
+
+    The canonical reader validates recipe/root/schedule joins and remains in
+    ``baseline`` without modification. No report is rewritten to pretend it
+    ran under the proposal. Caller authentication and terminal admission are
+    still required externally. This only supplies the hypothetical analysis;
+    it neither adopts the amendment nor defines new ranking/tier thresholds.
+    """
+    _require(type(evidence) is dict and set(evidence) == set(POLICIES),
+             "evidence must name exactly the nine policies")
+    _require(amendment == PROPOSED_AMENDMENT, "unknown proposed amendment")
+    baseline = analyze_panel_reports(
+        report_data, campaign_contexts, bootstrap_seed=bootstrap_seed)
+    policies = {
+        policy: analyze_tool_sensitivity(
+            report_data[policy]["mirrors"], evidence=evidence[policy],
+            amendment=amendment, bootstrap_seed=bootstrap_seed)
+        for policy in POLICIES
+    }
+    # Cache only values already admitted by the proof-bound per-row analysis.
+    # Each comparison below aligns by seed, never by row or list position.
+    values = {
+        policy: {
+            mode: dict(zip(
+                policies[policy]["modes"][information]["primary_paired_seeds"],
+                policies[policy]["modes"][information]["primary"]["values"],
+                strict=True))
+            for mode, information in INFORMATION.items()
+        }
+        for policy in POLICIES
+    }
+    differences = []
+    for index, left in enumerate(POLICIES):
+        for right in POLICIES[index + 1:]:
+            comparison = {"left": left, "right": right}
+            for mode, information in INFORMATION.items():
+                a, b = values[left][mode], values[right][mode]
+                common = sorted(set(a) & set(b))
+                excluded = sorted(
+                    set(policies[left]["modes"][information]["dropped_pair_seeds"])
+                    | set(policies[right]["modes"][information]["dropped_pair_seeds"]))
+                kept = sorted(set(common) - set(excluded))
+                primary = _contrast([a[seed] - b[seed] for seed in common],
+                                    seed=bootstrap_seed)
+                sensitivity = _contrast([a[seed] - b[seed] for seed in kept],
+                                        seed=bootstrap_seed)
+                comparison[mode] = {
+                    "primary": primary, "sensitivity": sensitivity,
+                    "primary_paired_seeds": common,
+                    "sensitivity_paired_seeds": kept,
+                    "excluded_tool_pair_seeds": excluded,
+                    "removed_scored_pair_seeds": sorted(set(common) & set(excluded)),
+                    "mean_sign_change": _sign_change(primary["mean"], sensitivity["mean"]),
+                }
+            differences.append(comparison)
+    return {
+        "schema": "production-llm-panel-tool-sensitivity-v1",
+        "amendment": amendment,
+        "amendment_status": "proposed-scenario-only-not-approved",
+        "scenario_disclosure": SENSITIVITY_DISCLOSURE,
+        "tier_comparison": TIER_DISCLOSURE,
+        "baseline": baseline, "policies": policies,
+        "row_differences": differences,
+        "definition": "left policy minus right policy on matching scored deal pairs; "
+                      "sensitivity excludes pairs with a tool failure in either policy",
     }

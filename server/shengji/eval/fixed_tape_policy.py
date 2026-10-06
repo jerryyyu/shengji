@@ -73,3 +73,69 @@ def capture_policy_ranks(bot, root, seat, actions, worlds, *, check_budget=None)
         'provenance_verified': False, 'legal_completeness_verified': False,
         'serving_choice_assessed': False,
     }
+
+
+def release38_admission(root, seat, capture, *, check_budget=None):
+    """Reproduce release-38's admission boundary on supplied policy scores.
+
+    No predictor, sampler, value evaluator or file access. Recompute the
+    canonical heuristic anchor and capped ordered pool, then invoke serving's
+    actual admission methods (K8, diversity and lead-anchor on; extras off).
+    Refuse captures from a different pool/order instead of reindexing ties.
+    The caller still authenticates root, model, refusal-aware W64 tape and
+    capture provenance. This is not full served-choice or strength evidence.
+    """
+    from ..ai.heuristic import HeuristicBot
+    from ..train.pv_search_policy import PVSearchBot
+    from .ballot_matrix import _finite_number
+
+    if type(seat) is not int or seat not in range(4) or root.turn != seat:
+        raise ValueError('seat must be the current player')
+    if (not isinstance(capture, dict)
+            or capture.get('schema') != 'fixed-tape-policy-ranks-v1'
+            or type(capture.get('world_count')) is not int
+            or capture['world_count'] != 64):
+        raise ValueError('release38 requires a W64 policy capture')
+    canonical = _canonical_collection(capture.get('actions'), 'policy actions')
+    preferences, ranked = capture.get('preferences'), capture.get('ranked_indices')
+    if (type(preferences) is not list or len(preferences) != len(canonical)
+            or type(ranked) is not list or any(type(i) is not int for i in ranked)):
+        raise ValueError('complete policy preferences and integer ranks required')
+    for value in preferences:
+        _finite_number(value, 'policy preference')
+    preferences = np.asarray(preferences, dtype=np.float64)
+    if ranked != sorted(range(len(canonical)), key=lambda i: (-preferences[i], i)):
+        raise ValueError('policy rank order drift')
+    if check_budget is not None:
+        check_budget()
+    rnd = copy.deepcopy(root)
+    # Allocate only the state consumed by canonical enumeration/admission.
+    # No constructor/factory can load a model or initialize a sampler here.
+    bot = object.__new__(PVSearchBot)
+    bot.cap, bot.candidates, bot.max_per_structure = 4000, 8, 2
+    bot.admission_diversity, bot.lead_anchor = True, True
+    bot.admit_forced_single, bot.adaptive_k = False, False
+    anchor = HeuristicBot.decide_play(bot, rnd, seat)
+    legal = PVSearchBot._legal(bot, rnd, seat, [anchor])
+    actions = list(legal.actions)
+    if canonical != _canonical_collection(actions, 'served actions'):
+        raise ValueError('capture differs from release38 ordered scored pool')
+    if check_budget is not None:
+        check_budget()
+    anchor_key = tuple(sorted(anchor))
+    anchor_index = next(i for i, action in enumerate(actions)
+                        if tuple(sorted(action)) == anchor_key)
+    chosen = bot._admission(rnd, seat, actions, preferences,
+                            anchor_index, None, check_budget)
+    if check_budget is not None:
+        check_budget()
+    return {
+        'schema': 'release38-admission-boundary-v1',
+        'actions': copy.deepcopy(actions), 'chosen_indices': chosen,
+        'baseline_actions': [list(actions[i]) for i in chosen],
+        'heuristic_anchor_index': anchor_index, 'effective_anchor_index': chosen[0],
+        'admission_record': bot._admission_record(),
+        'legal_count': legal.count, 'legal_complete': legal.complete,
+        'cap': 4000, 'candidates': 8,
+        'provenance_verified': False, 'serving_choice_assessed': False,
+    }

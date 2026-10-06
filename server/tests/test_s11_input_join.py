@@ -40,7 +40,7 @@ def _rows(seed, cluster, mirror):
     return sorted(rows, key=lambda row: (row['seat'], row['ply']))
 
 
-def test_full_manifest_to_scheduled_public_fixture(tmp_path):
+def input_frame(tmp_path):
     (tmp_path / 'shards').mkdir()
     shards, sidecars = {}, {}
     for cluster in range(64):
@@ -57,6 +57,11 @@ def test_full_manifest_to_scheduled_public_fixture(tmp_path):
                                   merged=None, out_dir=tmp_path)
     raw_manifest = json.dumps(manifest).encode()
     pin = hashlib.sha256(raw_manifest).hexdigest()
+    return raw_manifest, pin, shards
+
+
+def test_full_manifest_to_scheduled_public_fixture(tmp_path):
+    raw_manifest, pin, shards = input_frame(tmp_path)
     schedule = select_manifest_shards(raw_manifest, sha256=pin)
     completed = []
     for item in schedule:

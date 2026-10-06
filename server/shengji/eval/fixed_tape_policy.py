@@ -103,6 +103,7 @@ def release38_admission(root, seat, capture, *, check_budget=None):
         raise ValueError('complete policy preferences and integer ranks required')
     for value in preferences:
         _finite_number(value, 'policy preference')
+    preferences = np.asarray(preferences, dtype=np.float64)
     if ranked != sorted(range(len(canonical)), key=lambda i: (-preferences[i], i)):
         raise ValueError('policy rank order drift')
     if check_budget is not None:
@@ -124,7 +125,7 @@ def release38_admission(root, seat, capture, *, check_budget=None):
     anchor_key = tuple(sorted(anchor))
     anchor_index = next(i for i, action in enumerate(actions)
                         if tuple(sorted(action)) == anchor_key)
-    chosen = bot._admission(rnd, seat, actions, np.asarray(preferences),
+    chosen = bot._admission(rnd, seat, actions, preferences,
                             anchor_index, None, check_budget)
     if check_budget is not None:
         check_budget()

@@ -70,7 +70,7 @@ def test_release38_adapter_matches_actual_search_admission_boundary(kind, ties):
     assert result['provenance_verified'] is False
 
 
-@pytest.mark.parametrize('damage', ['order', 'missing', 'rank', 'nan', 'bool', 'worlds'])
+@pytest.mark.parametrize('damage', ['order', 'missing', 'rank', 'nan', 'bool', 'worlds', 'integer_precision'])
 def test_release38_adapter_refuses_incompatible_capture(damage):
     _, root, _, capture = _admission_fixture()
     if damage == 'order':
@@ -85,6 +85,9 @@ def test_release38_adapter_refuses_incompatible_capture(damage):
         capture['preferences'][0] = float('nan')
     elif damage == 'bool':
         capture['preferences'][0] = True
+    elif damage == 'integer_precision':
+        capture['preferences'] = [2**80 + i for i in range(len(capture['actions']))]
+        capture['ranked_indices'].reverse()
     else:
         capture['world_count'] = 32
     with pytest.raises(ValueError):

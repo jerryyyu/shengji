@@ -258,7 +258,7 @@ def inspect_s11_schedule(slots, directory, *, manifest_sha256, packet_sha256,
 
 def collect_s11_schedule(slots, directory, bot_factory, *, manifest_sha256,
                          packet_sha256, seed, max_public_refusals,
-                         fill_seed=0, check_budget=None):
+                         fill_seed=0, check_budget=None, pinned_completions=None):
     """Bind the whole schedule before any inference; never replace a root.
 
     The refusal ceiling is mandatory and must be predeclared in the external
@@ -267,6 +267,11 @@ def collect_s11_schedule(slots, directory, bot_factory, *, manifest_sha256,
     """
     slots, inventory, refused = _bind_s11_schedule(
         slots, manifest_sha256, packet_sha256, seed, max_public_refusals, fill_seed)
+    pins = {} if pinned_completions is None else dict(pinned_completions)
+    valid_ids = {slot['root_id'] for slot in slots if slot['status'] == 'valid'}
+    if not set(pins) <= valid_ids or any(type(pin) is not str or
+            not re.fullmatch('[0-9a-f]{64}', pin) for pin in pins.values()):
+        raise ValueError('invalid pinned completion map')
     directory = Path(directory)
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError('owned existing run directory required')
@@ -293,7 +298,7 @@ def collect_s11_schedule(slots, directory, bot_factory, *, manifest_sha256,
             else:
                 result = collect_s11_once(directory, bot_factory, slot['fixture'],
                     packet_sha256=packet_sha256, seed=seed, fill_seed=fill_seed,
-                    check_budget=check_budget)
+                    check_budget=check_budget, expected_completion_sha256=pins.get(slot['root_id']))
                 reports.append(result['report'])
         summary = summarize_s11(reports, [slot['root_id'] for slot in slots])
         publish_exclusive_bytes(directory / 'summary.json', _encode(summary), existing_equal_ok=True)

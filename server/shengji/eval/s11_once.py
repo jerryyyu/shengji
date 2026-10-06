@@ -30,7 +30,7 @@ def _require_start(path, expected):
 
 
 def collect_s11_once(directory, bot_factory, fixture, *, packet_sha256, seed,
-                     fill_seed=0, check_budget=None):
+                     fill_seed=0, check_budget=None, expected_completion_sha256=None):
     """Reuse a completion or collect once; started-without-completion refuses.
 
     Existing failure/started markers are never removed, reset or retried.
@@ -61,7 +61,8 @@ def collect_s11_once(directory, bot_factory, fixture, *, packet_sha256, seed,
         completed, started, failed = (root / name for name in ('completed.json', 'started.json', 'failed.json'))
         start_bytes = _encode(dict(schema='s11-root-attempt-v1', status='started', context=context))
         saved = load_s11_root(completed, packet_sha256=packet_sha256,
-                              fixture=fixture, seed=seed, fill_seed=fill_seed)
+                              fixture=fixture, seed=seed, fill_seed=fill_seed,
+                              expected_sha256=expected_completion_sha256)
         if saved is not None:
             _require_start(started, start_bytes)
             if publication_slot_occupied(failed):

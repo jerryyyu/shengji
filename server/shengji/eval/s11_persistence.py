@@ -115,16 +115,24 @@ def save_s11_root(path, result, *, packet_sha256, fixture):
     publish_exclusive_bytes(Path(path), envelope)
 
 
-def load_s11_root(path, *, packet_sha256, fixture, seed, fill_seed=0):
+def load_s11_root(path, *, packet_sha256, fixture, seed, fill_seed=0,
+                  expected_sha256=None):
     """Reuse a matching completion; None only for an absent completion file.
 
     Corruption, incompatible input/packet and special files fail closed. This
     function performs no sampling, inference, reconstruction or auto-repair.
+    An external expected_sha256 authenticates exact bytes before JSON decoding;
+    a missing pinned completion refuses rather than authorizing recollection.
     """
     context = _context(packet_sha256, fixture, seed, fill_seed)
+    if expected_sha256 is not None and (type(expected_sha256) is not str or
+            not re.fullmatch('[0-9a-f]{64}', expected_sha256)):
+        raise ValueError('external completion SHA256 required')
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
+        if expected_sha256 is not None:
+            raise ValueError('pinned completion missing; no recollection')
         staged = partial_path(Path(path))
         if staged.exists() or staged.is_symlink():
             raise ValueError('interrupted publication requires explicit recovery')
@@ -139,11 +147,17 @@ def load_s11_root(path, *, packet_sha256, fixture, seed, fill_seed=0):
             staged = partial_path(Path(path)).stat(follow_symlinks=False)
             if (staged.st_dev, staged.st_ino) != (before.st_dev, before.st_ino):
                 raise ValueError('completion link identity mismatch')
-        envelope = json.load(stream)
+        if expected_sha256 is not None and before.st_size > 128 << 20:
+            raise ValueError('pinned completion exceeds128MiB bound')
+        raw = stream.read() if expected_sha256 is None else stream.read((128 << 20) + 1)
         after = os.fstat(stream.fileno())
         if any(getattr(before, key) != getattr(after, key) for key in
                ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink', 'st_mode', 'st_uid')):
             raise ValueError('completion changed during read')
+    if expected_sha256 is not None and (len(raw) > 128 << 20 or
+            hashlib.sha256(raw).hexdigest() != expected_sha256):
+        raise ValueError('external completion SHA256 mismatch')
+    envelope = json.loads(raw)
     if not isinstance(envelope, dict) or set(envelope) != {'payload', 'sha256'}:
         raise ValueError('saved root envelope mismatch')
     payload = envelope['payload']

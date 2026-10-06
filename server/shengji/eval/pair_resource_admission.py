@@ -130,7 +130,8 @@ def pair_resource_rank_repair(rnd, seat, actions, ranked, baseline, *,
     return {'chosen': chosen, 'swap': None}
 
 
-def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, value_means):
+def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, value_means,
+                        *, signature_overlap_veto=True):
     """Model-free action-identity join, not a served-choice or provenance gate.
 
     Caller authenticates that root, rank capture and saved full-pool values
@@ -138,6 +139,8 @@ def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, val
     pool order, but must contain exactly the same unique card multisets. Values
     never enter admission. Report raw-value maxima only, not points tie-break,
     serving reduction/batching equivalence, uncertainty or tactical correctness.
+    S11a can disable the signature veto explicitly. The displacement audit
+    describes that same selected swap after admission; it never selects a swap.
     """
     if not isinstance(capture, dict) or capture.get('schema') != 'fixed-tape-policy-ranks-v1':
         raise ValueError('fixed-tape policy capture required')
@@ -158,7 +161,9 @@ def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, val
         raise ValueError('rank order differs from preferences/index tie order')
     index = {action: i for i, action in enumerate(canonical)}
     baseline_indices = [index[action] for action in baseline]
-    repair = pair_resource_rank_repair(rnd, seat, actions, ranked, baseline_indices)
+    repair = pair_resource_rank_repair(
+        rnd, seat, actions, ranked, baseline_indices,
+        signature_overlap_veto=signature_overlap_veto)
     lookup = dict(zip(values_canonical, value_means))
     values = [lookup[action] for action in canonical]
     full_best = max(values)
@@ -170,8 +175,32 @@ def project_rank_repair(rnd, seat, capture, baseline_actions, value_actions, val
                 'gap_to_full_pool': _finite_result(full_best - best, 'value gap')}
 
     old, new = describe(baseline_indices), describe(repair['chosen'])
+    audit = None
+    if repair['swap'] is not None:
+        rank = {index: position + 1 for position, index in enumerate(ranked)}
+        hand = Counter(rnd.hands[seat])
+        pairs = sorted(card for card, count in hand.items() if count == 2)
+
+        def action_audit(index):
+            used = Counter(actions[index])
+            return {'pool_index': index, 'action': list(canonical[index]),
+                    'policy_rank_1based': rank[index],
+                    'cell': {'structure': list(structure_key(rnd, actions[index])),
+                             'held_pair_remainders': [[card, 2 - used[card]] for card in pairs]},
+                    'saved_value_mean': values[index]}
+
+        removed, added = repair['swap']['removed'], repair['swap']['added']
+        max_count = sum(values[i] == old['raw_value_max'] for i in baseline_indices)
+        removed_max = values[removed] == old['raw_value_max']
+        audit = {'removed': action_audit(removed), 'added': action_audit(added),
+                 'removed_was_baseline_max': removed_max,
+                 'baseline_max_tie_count': max_count,
+                 'removed_was_unique_baseline_max': removed_max and max_count == 1,
+                 'repaired_max_below_baseline': new['raw_value_max'] < old['raw_value_max']}
     return {
         'schema': 'pair-resource-rank-repair-projection-v1',
+        'signature_overlap_veto': signature_overlap_veto,
+        'displacement_audit': audit,
         'baseline': old, 'repaired': new, 'swap': repair['swap'],
         'raw_value_max_delta': _finite_result(new['raw_value_max'] - old['raw_value_max'], 'max delta'),
         'value_scope': 'descriptive saved full-pool means; no served selection replay',

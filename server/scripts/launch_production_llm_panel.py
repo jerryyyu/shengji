@@ -1,4 +1,4 @@
-"""One sequential Mini campaign; optional bounded capacity-only call retries.
+"""One sequential host campaign; optional bounded capacity-only call retries.
 
 Never retries a failed row or overwrites a previous campaign.
 """
@@ -27,7 +27,15 @@ ROWS = ("smv3-pv", "soft-pv", "js-m1-shortlist", "m1-prior", "w32-original",
 RECOVERY_SCHEMA = "sol-six-row-recovery-v1"
 RECOVERY_ROWS = ROWS[3:]
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
-LOCK = Path("/private/tmp/shengji-sol-panel-mini.lock")
+def default_reservation_path(platform):
+    # Linux fleet screens use this same atomic directory reservation. A
+    # Sol-only name cannot exclude an already-running screen on that host.
+    if platform == "linux":
+        return Path("/root/.claude-host.lock")
+    return Path("/private/tmp/shengji-sol-panel-mini.lock")
+
+
+LOCK = default_reservation_path(sys.platform)
 SOURCE_SUFFIXES = frozenset({".py", ".so"})
 
 CONTROL_FLAGS = {
@@ -287,15 +295,25 @@ def _wait_for_recovery_row_memory(config, hold, stage: str, *, log=None) -> None
 
 
 @contextmanager
-def reservation(path):
+def reservation(path, *, shared_host=False):
     path.mkdir(mode=0o700)  # No waiting through or replacing another owner.
     identity = path.stat().st_dev, path.stat().st_ino
     try:
         publish(path / "owner.json", {"pid": os.getpid(), "campaign": "sol-nine-policy"})
+        if shared_host:
+            # Screen launchers display the first field of this text file as
+            # the owner PID. They arbitrate by mkdir, not by this metadata.
+            with (path / "owner").open("x") as handle:
+                handle.write(f"{os.getpid()} sol-nine-policy\n")
         yield
     finally:
         if path.exists() and (path.stat().st_dev, path.stat().st_ino) == identity:
             (path / "owner.json").unlink(missing_ok=True)
+            if shared_host:
+                owner = path / "owner"
+                if (not owner.is_symlink() and owner.is_file()
+                        and owner.read_text() == f"{os.getpid()} sol-nine-policy\n"):
+                    owner.unlink()
             path.rmdir()  # Unexpected peer contents refuse destructive cleanup.
 
 
@@ -377,7 +395,7 @@ def run(config_path, expected, *, arm=False):
         env[key] = "1"
     results = []
     terminal = {"status": "failed", "config_sha256": expected, "rows": results}
-    with reservation(LOCK):
+    with reservation(LOCK, shared_host=sys.platform == "linux"):
         output.mkdir(mode=0o700)
         publish(output / "config.json", config)
         try:

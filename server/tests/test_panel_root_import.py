@@ -163,3 +163,26 @@ def test_historical_exception_requires_every_pin(monkeypatch, drift):
         "sha256": "0" * 64 if drift == "serializer" else
         "03c8569ca8232c49218264047d7221c310288701e7bc6ca1cd81b08e8064787f"})
     assert runner._compatible_panel_setup(recorded, report_sha256=report) is (drift is None)
+
+
+def test_sealed_oct2_setup_accepts_actual_current_source_without_identity_mocks():
+    # The earlier exception test synthesized its "current" env hash. It could
+    # pass even when the shipped consumer refused the real sealed input.
+    recorded = {
+        'schema': 'w32-llm-panel-root-setup-v1', 'policy': 'SmartBot', 'seats': 4,
+        'engine': {'module': 'shengji.engine.game', 'qualname': 'Game',
+                   'path': '/historical/source/shengji/engine/game.py',
+                   'sha256': '9ff03090d5ad5171776dbf255084f15a2b2cb6566814bbf0fab7ba8fd3e8f7f6'},
+        'prepare_round': {'module': 'shengji.ai.env', 'qualname': 'prepare_round',
+                          'path': '/historical/source/shengji/ai/env.py',
+                          'sha256': 'c61f7cebf2133ad1cc6daaad8698f246178d6ebf41a4b6e569888a7b373a6d26'},
+        'smartbot': {'module': 'shengji.ai.smart', 'qualname': 'SmartBot',
+                     'path': '/historical/source/shengji/ai/smart.py',
+                     'sha256': 'facfb6a9bb67f82d1bddb855f01ce49adf5f0caaca92bfb5da09ba343c29512c'},
+        'snapshot': {'module': 'scripts.w32_llm_benchmark', 'qualname': '_root_snapshot',
+                     'path': '/historical/source/scripts/w32_llm_benchmark.py',
+                     'sha256': 'bd52ee31cb2d07345b4a2de1063c659dd1558313ba4605572f1e6a397ac90700'},
+    }
+    assert runner._compatible_panel_setup(recorded, report_sha256=
+        '8ed56de254e7c7ff4341905a02a9a3dd2346412db04b6902f2098b0b839c5f5e')
+    assert not runner._compatible_panel_setup(recorded, report_sha256='0' * 64)

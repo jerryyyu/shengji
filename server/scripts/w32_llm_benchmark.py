@@ -461,13 +461,15 @@ def _compatible_panel_setup(recorded: object, *, report_sha256: str) -> bool:
         return False
     normalized["snapshot"]["sha256"] = current["snapshot"]["sha256"]
     if normalized['prepare_round'] != current['prepare_round']:
-        # Exact reviewed whole-file pair: the sole delta adds an optional
-        # play-error callback to play_prepared_round, not prepare_round.
+        # Exact reviewed whole-file versions: post-setup changes add an optional
+        # play-error callback and committed-play observers to play_prepared_round,
+        # not prepare_round. The latter is the merged #777/#800 version.
         # This does not admit arbitrary future edits or any other root source.
         if (normalized['prepare_round'].get('sha256') !=
                 'c61f7cebf2133ad1cc6daaad8698f246178d6ebf41a4b6e569888a7b373a6d26'
-                or current['prepare_round'].get('sha256') !=
-                'fe434d5a30e32d38c4c3aa3c4812e11c10c8534b31a4a23da9155c34428ecd87'):
+                or current['prepare_round'].get('sha256') not in (
+                    'fe434d5a30e32d38c4c3aa3c4812e11c10c8534b31a4a23da9155c34428ecd87',
+                    '9d374aec6144ce04b0dc84ee35920cb5ce571bb7b788729f613bf132885189e0')):
             return False
         normalized['prepare_round']['sha256'] = current['prepare_round']['sha256']
     if normalized != current:

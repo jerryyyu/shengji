@@ -301,6 +301,7 @@ jobs:
           tests/test_s11_input_guard.py
           tests/test_s11_input_worker.py
           tests/test_s11_input_phase.py
+          tests/test_s11_input_transfer.py
           tests/test_fixed_tape_panel.py
           tests/test_public_fixture_panel.py
           tests/test_m9_replay_binding.py

@@ -3,7 +3,9 @@
 The reviewed outer controller must run this through s11_input_guard, freeze
 source/runtime and own transport/RELEASE gates. Output is PRIVATE staging,
 not a published bundle. Only the controller may promote after guard success.
-This worker never transports files, launches children, retries or loads models.
+An explicitly pinned stage_from_perf packet adds only the bounded fixed-frame
+transport; its SSH/rsync children remain in this worker's guarded group. It
+never retries or loads models.
 """
 import argparse
 import hashlib
@@ -29,8 +31,8 @@ def validate_packet(raw, pin):
     config = json.loads(raw, object_pairs_hook=unique)
     if (type(config) is not dict or set(config) != {
             'schema', 'manifest_path', 'manifest_sha256', 'root', 'output',
-            'wall_seconds', 'max_manifest_bytes'} or
-            config['schema'] != 's11-mini-input-worker-v1'):
+            'wall_seconds', 'max_manifest_bytes', 'stage_from_perf'} or
+            config['schema'] != 's11-mini-input-worker-v2'):
         raise ValueError('worker packet schema refused')
     for key in ('manifest_path', 'root', 'output'):
         value = config[key]
@@ -43,7 +45,36 @@ def validate_packet(raw, pin):
     for key, exact in (('wall_seconds', 900), ('max_manifest_bytes', 8 << 20)):
         if type(config[key]) is not int or config[key] != exact:
             raise ValueError('worker packet limits differ from accepted design')
+    if type(config['stage_from_perf']) is not bool:
+        raise ValueError('explicit transport mode required')
+    if config['stage_from_perf'] and Path(config['manifest_path']) != Path(config['root']) / 'manifest.json':
+        raise ValueError('transport manifest must be inside fresh staging root')
+    if config['stage_from_perf'] and Path(config['root']) == Path(config['output']):
+        raise ValueError('transport staging and admission output must differ')
     return config
+
+
+def stage_inputs(config):
+    from scripts.s11_input_transfer import transfer_manifest, transfer_shards
+    from shengji.eval.s11_admission_once import _manifest, plan_s11_staging
+    from shengji.eval.s11_schedule import _owned_directory
+    import stat
+    root = _owned_directory(config['root'])
+    if stat.S_IMODE(root.stat().st_mode) != 0o700 or any(root.iterdir()):
+        raise ValueError('fresh private staging root required; no implicit retry')
+    # Even an empty log from a crash makes staging nonempty and prevents reentry.
+    with (root / 'transfer.log').open('xb') as log:
+        log.flush()
+        os.fsync(log.fileno())
+        parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+        transfer_manifest(config['manifest_path'], log=log)
+        raw = _manifest(config['manifest_path'], config['max_manifest_bytes'])
+        plan = plan_s11_staging(raw, manifest_sha256=config['manifest_sha256'])
+        transfer_shards(plan, root / 'transfer-files', root, log=log)
 
 
 def run_worker(config, pin):
@@ -53,6 +84,8 @@ def run_worker(config, pin):
     os.nice(10)
     signal.signal(signal.SIGALRM, signal.SIG_DFL)
     signal.setitimer(signal.ITIMER_REAL, config['wall_seconds'])
+    if config['stage_from_perf']:
+        stage_inputs(config)
     from shengji.eval.s11_admission_once import admit_s11_inputs_once
     admit_s11_inputs_once(config['manifest_path'], config['root'], config['output'],
         manifest_sha256=config['manifest_sha256'], packet_sha256=pin,

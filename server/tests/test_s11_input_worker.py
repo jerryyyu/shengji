@@ -8,7 +8,7 @@ from scripts import s11_input_worker as worker
 
 @pytest.fixture
 def packet(tmp_path):
-    config = dict(schema='s11-mini-input-worker-v1', manifest_path='/unused/manifest',
+    config = dict(schema='s11-mini-input-worker-v2', stage_from_perf=False, manifest_path='/unused/manifest',
                   manifest_sha256='a' * 64, root='/unused/root', output='/unused/private',
                   wall_seconds=900, max_manifest_bytes=8 << 20)
     raw = json.dumps(config).encode()
@@ -56,7 +56,8 @@ def test_released_worker_called_once_and_output_is_sanitized(packet, monkeypatch
 
 @pytest.mark.parametrize('key,value', [('wall_seconds', True), ('wall_seconds', 901),
     ('max_manifest_bytes', 1), ('root', '../private'), ('output', '/a/../b'),
-    ('manifest_sha256', 'bad'), ('extra', 'SECRET')])
+    ('manifest_sha256', 'bad'), ('extra', 'SECRET'), ('stage_from_perf', 1),
+    ('stage_from_perf', True)])
 def test_invalid_packet_refused(packet, key, value):
     _, _, config = packet
     config[key] = value
@@ -93,6 +94,20 @@ def test_worker_sets_limits_before_admission(packet, monkeypatch):
     assert len(events) == 4
 
 
+def test_transport_runs_after_limits_and_before_admission(packet, monkeypatch):
+    from shengji.eval import s11_admission_once
+    _, pin, config = packet
+    config['stage_from_perf'] = True
+    events = []
+    monkeypatch.setattr(worker.os, 'nice', lambda n: events.append('nice'))
+    monkeypatch.setattr(worker.signal, 'signal', lambda *a: events.append('signal'))
+    monkeypatch.setattr(worker.signal, 'setitimer', lambda *a: events.append('timer'))
+    monkeypatch.setattr(worker, 'stage_inputs', lambda c: events.append('transport'))
+    monkeypatch.setattr(s11_admission_once, 'admit_s11_inputs_once', lambda *a, **kw: events.append('admit'))
+    worker.run_worker(config, pin)
+    assert events == ['nice', 'signal', 'timer', 'transport', 'admit']
+
+
 def test_guard_to_cli_to_real_admission_on_synthetic_frame(tmp_path):
     import os
     from pathlib import Path
@@ -106,7 +121,7 @@ def test_guard_to_cli_to_real_admission_on_synthetic_frame(tmp_path):
     manifest_path.write_bytes(manifest)
     output = tmp_path / 'private'
     output.mkdir(mode=0o700)
-    config = dict(schema='s11-mini-input-worker-v1', manifest_path=str(manifest_path),
+    config = dict(schema='s11-mini-input-worker-v2', stage_from_perf=False, manifest_path=str(manifest_path),
                   manifest_sha256=manifest_pin, root=str(tmp_path), output=str(output),
                   wall_seconds=900, max_manifest_bytes=8 << 20)
     packet = tmp_path / 'packet.json'

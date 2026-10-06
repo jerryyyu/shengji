@@ -14,7 +14,7 @@ def phase_packet(tmp_path):
     output, control = tmp_path / 'private', tmp_path / 'control'
     output.mkdir(mode=0o700)
     control.mkdir(mode=0o700)
-    config = dict(schema='s11-mini-input-worker-v1', manifest_path=str(tmp_path / 'manifest'),
+    config = dict(schema='s11-mini-input-worker-v2', stage_from_perf=False, manifest_path=str(tmp_path / 'manifest'),
         manifest_sha256='a' * 64, root=str(tmp_path), output=str(output),
         wall_seconds=900, max_manifest_bytes=8 << 20)
     packet = tmp_path / 'packet.json'

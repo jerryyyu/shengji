@@ -1072,6 +1072,7 @@ class CwvBlockStore:
                      decode_workers: int = 0,
                      stage_secs: dict[str, float] | None = None,
                      stage_counts: dict[str, int] | None = None,
+                     decode_stage_secs: dict[str, float] | None = None,
                      ) -> Iterator[dict[str, np.ndarray]]:
         """Batches over the rows ``mask_fn`` selects, gathered from the
         resident blocks of each window; the batch sequence is a function of
@@ -1088,6 +1089,12 @@ class CwvBlockStore:
         integer window/request/submission and residency deltas for the decode /
         admission region only; ``requested_shards`` counts shards in each
         requested window, not cache misses.
+
+        Optional ``decode_stage_secs`` subdivides (does not add to) ``decode``:
+        ``submit`` includes staging/residency work, ``future_wait`` includes
+        worker scheduling/execution/IPC wait, and ``block`` is parent-side
+        admission/construction or serial loading. These are host wall regions,
+        not worker CPU time or an IO/compute attribution.
         """
         if stage_secs is not None:
             for name in ("setup", "decode", "prepare", "gather", "cleanup"):
@@ -1097,6 +1104,21 @@ class CwvBlockStore:
                          "serial_budget_fallback_windows", "residency_loads",
                          "residency_evictions"):
                 stage_counts.setdefault(name, 0)
+        if decode_stage_secs is not None:
+            for name in ("submit", "future_wait", "block"):
+                decode_stage_secs.setdefault(name, 0.0)
+
+        def measure_decode(name, function, *args, **kwargs):
+            started = time.perf_counter()
+            try:
+                return function(*args, **kwargs)
+            finally:
+                decode_stage_secs[name] += time.perf_counter() - started
+
+        def timed_block(i, group, pending):
+            decoded = (measure_decode("future_wait", pending.pop(i).result)
+                       if i in pending else None)
+            return measure_decode("block", self.block, i, pinned=group, decoded=decoded)
 
         def start_stage() -> float | None:
             return time.perf_counter() if stage_secs is not None else None
@@ -1162,11 +1184,15 @@ class CwvBlockStore:
                 evictions_before = self.residency.evictions if stage_counts is not None else 0
                 started = start_stage()
                 try:
-                    pending = submit(group)
-                    blocks = [self.block(i, pinned=group,
-                                         decoded=(pending.pop(i).result()
-                                                  if i in pending else None))
-                              for i in group]
+                    if decode_stage_secs is None:
+                        pending = submit(group)
+                        blocks = [self.block(i, pinned=group,
+                                             decoded=(pending.pop(i).result()
+                                                      if i in pending else None))
+                                  for i in group]
+                    else:
+                        pending = measure_decode("submit", submit, group)
+                        blocks = [timed_block(i, group, pending) for i in group]
                 finally:
                     finish_stage("decode", started)
                     if stage_counts is not None:

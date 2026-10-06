@@ -45,6 +45,10 @@ def test_every_epoch_reports_finite_stage_seconds_that_add_up(store_dir, luna, t
             assert all(math.isfinite(v) and v >= 0.0 for v in loader.values())
             # All five regions lie inside next(generator); allow rounding only.
             assert sum(loader.values()) <= stage["batch_wait"] + 0.01
+            detail = row["train"]["loader_decode_stage_secs"]
+            assert set(detail) == {"submit", "future_wait", "block"}
+            assert all(math.isfinite(v) and v >= 0.0 for v in detail.values())
+            assert sum(detail.values()) <= loader["decode"] + 0.01
             counts = row["train"]["loader_stage_counts"]
             assert set(counts) == {"windows", "requested_shards", "decode_submitted",
                                    "serial_budget_fallback_windows", "residency_loads",
@@ -54,3 +58,4 @@ def test_every_epoch_reports_finite_stage_seconds_that_add_up(store_dir, luna, t
         else:
             assert "loader_stage_secs" not in row["train"]
             assert "loader_stage_counts" not in row["train"]
+            assert "loader_decode_stage_secs" not in row["train"]

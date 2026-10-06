@@ -38,6 +38,14 @@ def _fake_import_roots(tmp_path: Path) -> tuple[Path, Path, Path]:
         "    print('fake pytest shengji:', shengji.__file__)\n"
         "    print('fake pytest legal:', legal.__file__)\n"
         "    print('fake pytest follow:', legal.validate_follow.__module__)\n"
+        "    if os.environ.get('CHECK_CHILD_IMPORT'):\n"
+        "        import subprocess, sys\n"
+        "        child = subprocess.run([sys.executable, '-P', '-B', '-c',\n"
+        "            'import shengji; from shengji.engine import legal; '\n"
+        "            'print(shengji.__file__); print(legal.validate_follow.__module__)'],\n"
+        "            cwd=os.environ['CHILD_CWD'], capture_output=True, text=True)\n"
+        "        assert child.returncode == 0, child.stderr\n"
+        "        assert child.stdout.splitlines() == [shengji.__file__, legal.validate_follow.__module__]\n"
         "    return int(os.environ.get('FAKE_PYTEST_EXIT', '0'))\n"
     )
     return fake, wrong, foreign
@@ -69,12 +77,21 @@ def _run(
     fast: str = "0",
     script: Path = SCRIPT,
     pytest_exit: int = 0,
+    child: bool = False,
+    relative_pythonpath: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     fake, wrong, foreign = _fake_import_roots(tmp_path)
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join((str(wrong), str(fake)))
+    if relative_pythonpath:
+        env["PYTHONPATH"] = os.pathsep.join(
+            os.path.relpath(path, foreign) for path in (wrong, fake)
+        )
     env["SHENGJI_FAST"] = fast
     env["FAKE_PYTEST_EXIT"] = str(pytest_exit)
+    if child:
+        env["CHECK_CHILD_IMPORT"] = "1"
+        env["CHILD_CWD"] = str(foreign)
     return subprocess.run(
         [sys.executable, str(script), *args],
         cwd=foreign,
@@ -126,6 +143,16 @@ def test_pytest_exit_status_is_propagated(tmp_path):
     result = _run(tmp_path, "--engine", "pure", pytest_exit=7)
 
     assert result.returncode == 7
+
+
+@pytest.mark.parametrize("engine", ["pure", "compiled"])
+@pytest.mark.parametrize("relative_pythonpath", [False, True])
+def test_child_python_inherits_checkout_over_foreign_pythonpath(
+        tmp_path, engine, relative_pythonpath):
+    script = _fake_checkout(tmp_path, compiled=True) if engine == "compiled" else SCRIPT
+    result = _run(tmp_path, "--engine", engine, script=script, child=True,
+                  relative_pythonpath=relative_pythonpath)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_engine_is_required(tmp_path):

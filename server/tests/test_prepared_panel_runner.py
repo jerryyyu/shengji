@@ -124,6 +124,50 @@ def test_preserve_protocol_infrastructure_failure_blocks_summary(kwargs, throws)
     assert all(row['status'] == 'not_run' for row in report['mirrors'][1:])
 
 
+@pytest.mark.parametrize('token_limit', [1000000, 7])
+def test_feedback_exhaustion_real_scheduler_and_budget(tmp_path, token_limit):
+    from shengji.luna.benchmark_terminal import validate_scheduled_terminal
+    roots = tmp_path / 'roots'
+    seeds = list(range(10))
+    producer.prepare_roots(output=roots, seeds=seeds)
+    recipe = prepare_recipe('smart', {})
+    packets = []
+    class IllegalTransport:
+        def __init__(self, **options):
+            self.calls = []
+        def __call__(self, packet):
+            packets.append(packet)
+            self.calls.append({'usage': {'input_tokens': 5, 'output_tokens': 2}})
+            return {'cards': [], 'memory': ''}
+    report = runner.run_benchmark(
+        checkpoint=None, policy=recipe.policy, prepared_recipe=recipe,
+        prepared_roots_from=roots,
+        prepared_roots_sha256=runner._sha_bytes((roots / 'result.json').read_bytes()),
+        seeds=seeds, models=['sol'], output=tmp_path / 'output',
+        run=True, token_limit=token_limit, invalid_action_feedback=True,
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL,
+        transport_factory=IllegalTransport)
+    if token_limit == 7:
+        assert len(packets) == 1
+        failed = report['mirrors'][0]
+        assert len(failed['calls']) == len(failed['final_action_feedback']) == 1
+        assert 'BudgetStop' in failed['error'] and 'failure' not in failed
+        assert report['budget']['tokens'] == 7
+        assert report['scheduled_summary']['blocked'] is True
+        assert all(row['status'] == 'not_run' for row in report['mirrors'][1:])
+        with pytest.raises(ValueError, match='unknown failure'):
+            validate_scheduled_terminal(report, seeds=seeds)
+    else:
+        assert len(packets) == 24  # three calls per exhausted mirror, eight mirrors
+        assert report['budget']['tokens'] == 168
+        assert all(len(row['calls']) == len(row['final_action_feedback']) == 3
+                   for row in report['mirrors'][:8])
+        assert validate_scheduled_terminal(report, seeds=seeds) == {
+            'status': 'failure-limit', 'completed': 0, 'failed': 8,
+            'unattempted': 32, 'scheduled': 40}
+    assert json.loads((tmp_path / 'output' / 'result.json').read_text()) == report
+
+
 @pytest.mark.parametrize('change', [
     {'failure_protocol': 'retry'}, {'illegal_failure_limit': True},
     {'illegal_failure_limit': 0}, {'illegal_failure_limit': 8.0},

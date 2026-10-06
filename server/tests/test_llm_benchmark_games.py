@@ -204,7 +204,7 @@ def test_feedback_and_final_action_attribution_are_independent(feedback, classif
                       invalid_action_feedback=feedback,
                       classify_final_action_failures=classify)
     assert not row["complete"] and "signed_levels" not in row
-    assert len(calls) == (2 if feedback else 1)
+    assert len(calls) == (4 if feedback else 1)
     assert row["rollout_usage"] == {
         "requested_batches": 1, "attempted_evaluations": 1,
         "completed_evaluations": 0, "completed_world_rollouts": 0}
@@ -217,3 +217,8 @@ def test_feedback_and_final_action_attribution_are_independent(feedback, classif
     else:
         assert "failure" not in row
         assert row["events"] == []
+    if feedback:
+        assert len(row["final_action_feedback"]) == 3
+        assert row["error"] == "IllegalPlay: You don't hold those cards."
+    else:
+        assert "final_action_feedback" not in row

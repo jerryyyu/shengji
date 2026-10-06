@@ -205,3 +205,23 @@ def test_composition_refuses_unstatable_source_identity(tmp_path, monkeypatch):
     with pytest.raises(retention.RetentionRefusal, match="cannot compare"):
         compose_recovery_sources(plan, plan_sha, recovery_dir, recovery_sha,
                                  expected_config=expected)
+
+
+@pytest.mark.parametrize("status", ["not_run", "unknown_failure"])
+def test_spent_original_slot_cannot_be_discarded_by_composition(tmp_path, status):
+    from test_benchmark_retention import _repin_report
+
+    loaded, plan, _, expected, recovery_dir, recovery_sha, _ = _fixture(tmp_path)
+    source = Path(loaded["path"])
+    original = json.loads((source / "result.json").read_bytes())
+    pending = next(row for row in original["mirrors"] if row.get("status") == "not_run")
+    pending["calls"] = [{"usage": {"input_tokens": 99, "output_tokens": 1}}]
+    if status == "unknown_failure":
+        del pending["status"]
+        pending["error"] = "RuntimeError: original attempted failure"
+    _write_report(source, original)
+    plan_sha = _repin_report(plan, source, original)
+    # Refuse in the original loader, before comparing the recovery binding.
+    with pytest.raises(retention.RetentionRefusal, match="unclassified attempted failure"):
+        compose_recovery_sources(plan, plan_sha, recovery_dir, recovery_sha,
+                                 expected_config=expected)

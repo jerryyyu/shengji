@@ -59,7 +59,8 @@ def test_full_schedule_with_typed_failure_is_terminal():
 
 
 @pytest.mark.parametrize('stage', ['rollout_validate', 'rollout_continuation'])
-def test_rollout_diagnostic_is_not_an_accepted_failure_disposition(stage):
+@pytest.mark.parametrize('bound', [False, True])
+def test_rollout_diagnostic_is_not_an_accepted_failure_disposition(stage, bound):
     report = _report(failed=1)
     row = report['mirrors'][0]
     del row['failure']
@@ -67,6 +68,12 @@ def test_rollout_diagnostic_is_not_an_accepted_failure_disposition(stage):
         stage=stage, error_type='IllegalPlay', seat=0, request_index=0,
         evaluation_index=2, cards=['H8'], continuation='exact-endgame-smart',
         completed_play_events=0)
+    if bound:
+        row['rollout_request_binding'] = dict(
+            schema='benchmark-rollout-request-binding-v1', seat=0,
+            request_index=0, evaluation_index=2, completed_play_events=0,
+            packet_sha256='a' * 64, reply_sha256='b' * 64,
+            observation_sha256='c' * 64)
     with pytest.raises(ValueError, match='unknown failure'):
         validate_scheduled_terminal(report, seeds=SEEDS)
 

@@ -7,6 +7,7 @@ comparison adapter, not a transport sandbox or a rollout-tool implementation.
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 
 from .benchmark_observation import observation
@@ -40,6 +41,7 @@ class SeatPlannerPolicy:
         # World counts cover returned successful evaluations, not internal work
         # completed before an evaluator raises midway through its world loop.
         self.rollout_diagnostic = None
+        self.rollout_request_binding = None
         self.rollout_usage = {"requested_batches": 0, "attempted_evaluations": 0,
                               "completed_evaluations": 0, "completed_world_rollouts": 0}
 
@@ -57,6 +59,7 @@ class SeatPlannerPolicy:
 
     def decide_play(self, rnd, seat):
         self.rollout_diagnostic = None
+        self.rollout_request_binding = None
         self._check_seat(seat)
         visible = observation(rnd, seat, information=self.information)
         if rnd is not self._round:
@@ -82,7 +85,8 @@ class SeatPlannerPolicy:
         for request_index in range(MAX_ROLLOUT_CALLS_PER_DECISION + 1):
             packet["rollout_calls_remaining"] = MAX_ROLLOUT_CALLS_PER_DECISION - request_index
             # Detach mutable values and exercise the actual JSON transport boundary.
-            reply = self.planner(json.loads(canonical_json_bytes(packet)))
+            packet_bytes = canonical_json_bytes(packet)
+            reply = self.planner(json.loads(packet_bytes))
             if type(reply) is not dict or "evaluations" not in reply:
                 break
             if (set(reply) != {"evaluations", "memory"}
@@ -115,6 +119,22 @@ class SeatPlannerPolicy:
                             "evaluation_index": evaluation_index,
                             "cards": list(evaluation["cards"]),
                             "continuation": evaluation["continuation"]}
+                        # Diagnostic evidence only, not a failure disposition.
+                        # These bind canonical structured JSON, NOT raw provider
+                        # output or a prompt file. Preserve the evaluator error
+                        # even if a synthetic planner returns non-JSON values.
+                        try:
+                            reply_bytes = canonical_json_bytes(reply)
+                        except (TypeError, ValueError, RecursionError):
+                            pass
+                        else:
+                            self.rollout_request_binding = {
+                                "schema": "benchmark-rollout-request-binding-v1",
+                                "seat": seat, "request_index": request_index,
+                                "evaluation_index": evaluation_index,
+                                "observation_sha256": visible["observation_sha256"],
+                                "packet_sha256": hashlib.sha256(packet_bytes).hexdigest(),
+                                "reply_sha256": hashlib.sha256(reply_bytes).hexdigest()}
                     raise
                 if result.get("status") != "invalid":
                     self.rollout_usage["completed_evaluations"] += 1

@@ -91,6 +91,9 @@ def play_mirror(prepared_game, *, flip, information, planner_factory,
                 # disposition. Terminal validation still blocks this mirror.
                 record["rollout_diagnostic"] = dict(bot.rollout_diagnostic,
                                                     completed_play_events=len(events))
+                if bot.rollout_request_binding is not None:
+                    record["rollout_request_binding"] = dict(
+                        bot.rollout_request_binding, completed_play_events=len(events))
     record["wall_seconds"] = time.monotonic() - started
     record["calls"] = [call for planner in planners for call in getattr(planner, "calls", ())]
     record["rollout_usage"] = {

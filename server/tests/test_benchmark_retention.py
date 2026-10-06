@@ -107,6 +107,35 @@ def _write_source(tmp_path: Path, *, kinds=None, config=None):
     return plan_path, hashlib.sha256(plan_raw).hexdigest(), config, source
 
 
+@pytest.mark.parametrize('source_flag', [None, False, True])
+@pytest.mark.parametrize('target_flag', [None, False, True])
+def test_retention_keeps_feedback_cohorts_separate(tmp_path, source_flag, target_flag):
+    config = _config()
+    if source_flag is not None:
+        config['invalid_action_feedback'] = source_flag
+    plan, digest, _, source = _write_source(tmp_path, config=config)
+    expected = _config()
+    if target_flag is not None:
+        expected['invalid_action_feedback'] = target_flag
+    original = (source / 'result.json').read_bytes()
+    if bool(source_flag) != bool(target_flag):
+        with pytest.raises(retention.RetentionRefusal, match='feedback'):
+            retention.load_retained_attempts(plan, digest, expected_config=expected)
+    else:
+        assert retention.load_retained_attempts(plan, digest, expected_config=expected)['rows']
+    assert (source / 'result.json').read_bytes() == original
+
+
+@pytest.mark.parametrize('invalid', [0, 1, 'false', None])
+@pytest.mark.parametrize('side', ['source', 'target'])
+def test_retention_rejects_nonboolean_feedback(tmp_path, invalid, side):
+    config, expected = _config(), _config()
+    (config if side == 'source' else expected)['invalid_action_feedback'] = invalid
+    plan, digest, _, _ = _write_source(tmp_path, config=config)
+    with pytest.raises(retention.RetentionRefusal, match='feedback'):
+        retention.load_retained_attempts(plan, digest, expected_config=expected)
+
+
 def test_loads_typed_complete_pending_and_cost_without_mutation(tmp_path):
     plan, plan_sha, config, source = _write_source(tmp_path)
     # Add usage to one original source row; cached tokens are intentionally ignored.

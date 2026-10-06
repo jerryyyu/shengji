@@ -237,6 +237,10 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome):
     admitted = sealed.read_sealed_stage1(plan_path, ref(plan_path)['sha256'])
     assert admitted['terminal_accounting'] == result['terminal_accounting']
     assert admitted['panel_size'] == 2
+    from test_sealed_readout_wrapper import assert_stage1_wrapper
+    wrapped = assert_stage1_wrapper(tmp_path, ref(plan_path))
+    assert wrapped['terminal_accounting'] == admitted['terminal_accounting']
+    assert wrapped['policies'] == admitted['policies']
     # An authenticated but nonterminal campaign must refuse before result access.
     terminal_path = output / 'terminal.json'
     bad_terminal = json.loads(terminal_path.read_text())

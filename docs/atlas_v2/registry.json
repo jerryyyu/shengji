@@ -1128,6 +1128,27 @@
    "takeaway": "Confirmed: epoch 9 beats the val-selected epoch 6 by +0.045; val_ce early stopping leaves served strength unused.",
    "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6011818463. CONFIRMATION of v54ep9b. Paired +0.045498 [+0.007874,+0.083121], SE 0.019196, MDE80 0.053778, tau 0.0262, Q 6.39, I2 37.4%; lower bound > 0: CONFIRMED (predeclared confirmation rule; no further extension). Window deltas +0.0298, +0.1250, +0.0212, +0.0212, +0.0346 (all positive; window 2 drives the heterogeneity). Descriptive own-arm levels vs MC-LCB: epoch 9 0.2500 [0.2247,0.2754], epoch 6 0.2042 [0.1703,0.2381] (not the paired primary). Health: 727,728 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Strength verdict withheld pending health/provenance review per the predeclaration. DEV tier: no deploy or promotion; motivates a rank-based checkpoint selector (separate review) and an epoch-selection read for DEEP8. c11e09 has not been screened against release 38. Seeds registry-checked (seed_windows.py check, all five clear). Reader sha256 7bbb8e11c62464f978a3f42c1687a87c9c941a56190c2122aa29fc484213d67e; result sha256 57c8b521097e0d05f0166a6bbd94fb65e489b26e4d982bc8fd2abdaf8205620c; launcher sha256 5cca2a1d74378925c8b489b401c9624aaa4daeccb7b9bf0a1978e38d498997c3; predeclaration sha256 55a7e51658225d500c03122aa34dc203c1506d2e9cc7d21a5b4f3af0dc60ee84; SHA256SUMS e02bdba043186359eef295633ea3a0e5a5627f3955c18ad74843935d7c7c2b5c. Archived ~/shengji-archive/2026-09-13/readouts/v54ep9c-c11e09-vs-c11out-confirm/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6011818463"
+  },
+  {
+   "id": "v55e9r38",
+   "date": "2026-10-06",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "C11 epoch 9 vs release 38",
+   "candidate": "C11 epoch-9 checkpoint c11e09out-19815aa5 served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury) as pv-search-19815aa5-w64-k8-div-rc-tb-la-r7a79e2e6-bury-hybrid-4d4fe8f7e647; vs release 38 as served (smv3out-491ee4bf). Only the package differs. Requested by Jerry after v54ep9c confirmed epoch 9 over the val-selected epoch 6.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "57060910 57160910 57260910 57360910 57460910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.014494,
+   "lo": -0.045475,
+   "hi": 0.016488,
+   "takeaway": "Inconclusive: epoch 9's confirmed gain over epoch 6 did not show over release 38. No extension; release 38 stays.",
+   "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6014801441. Paired -0.014494 [-0.045475,+0.016488], SE 0.015807, MDE80 0.044285, tau 0.0087, Q 4.26, I2 6.1%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. Extension trigger (point > +0.015) not met; promotion_gate NO PROMOTION; strength verdict withheld. Window deltas +0.0144, +0.0087, -0.0683, +0.0048, -0.0327. Descriptive own-arm levels vs MC-LCB: c11e09 0.2087 [0.1799,0.2375], release 38 0.2231 [0.1983,0.2478] (not the paired primary). Health: 729,552 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks. Context (separate contrasts, separate seeds, not additive): v45c11 c11out vs r38 +0.0096 inconclusive; v54ep9c epoch 9 vs epoch 6 +0.0455 CONFIRMED. Seeds registry-checked (seed_windows.py check). Reader sha256 326377bbdefc5299e39f2757d00824ec87a9db7628344f409ccb5966042af31e; result sha256 3f8b2b29037393d10fd1d260ea4454822a4be0f16457b9dedb8aa72d7048f6ca; launcher sha256 85559c5046a71ab06af89a7d8ba438e9842d25868bce911d3e9fdf0c2a30e84b; predeclaration sha256 e45fab3a069dd5f7e6a92c7a75c3c30ffe8b2292c5c3745e38b106033b83d507; SHA256SUMS 1888f9284f602b8b47d066e739d51ee9c95e72cf0f6d4fa5453d6127034bfe06. Archived ~/shengji-archive/2026-09-13/readouts/v55e9r38-c11e09-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6014801441"
   }
  ],
  "context_screens": [

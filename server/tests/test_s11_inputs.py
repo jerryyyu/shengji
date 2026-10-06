@@ -1,10 +1,41 @@
 from types import SimpleNamespace
+import json
 
 import pytest
 
 from shengji.eval import s11_inputs as module
 from shengji.eval.s11_manifest import select_manifest_shards
 from test_s11_input_join import input_frame
+
+
+def test_full_schedule_reaches_serialized_report_consumer(tmp_path, frame):
+    from shengji.eval.s11_collection import collect_s11_fixture
+    from shengji.eval.s11_report import summarize_s11
+    from test_s11_collection import factory
+
+    manifest, pin, shards = frame
+    (tmp_path / 'shards').mkdir()
+    for cluster, raw in shards.items():
+        (tmp_path / 'shards' / f'cluster-{cluster:06d}.jsonl').write_bytes(raw)
+    slots = module.read_s11_inputs(manifest, sha256=pin, root=tmp_path)
+    assert len(slots) == 64
+    assert [slot['draw_index'] for slot in slots] == list(range(64))
+    reports = []
+    for slot in slots:
+        assert slot['status'] == 'valid'
+        calls = dict(leaves=0, policy=[], bots=[])
+        result = collect_s11_fixture(factory(calls), slot['fixture'], seed=17)
+        actions = result['policy_capture']['actions']
+        assert calls['policy'] == [64]
+        assert calls['leaves'] == 64 * len(actions)
+        assert result['value_capture']['actions'] == actions
+        assert result['root_id'] == slot['root_id']
+        assert not result['model_verified'] and not result['provenance_verified']
+        # Real serialized consumer boundary; synthetic zero evaluator only.
+        reports.append(json.loads(json.dumps(result, allow_nan=False))['report'])
+    summary = summarize_s11(reports, [slot['root_id'] for slot in slots])
+    assert summary['coverage_complete'] and summary['valid_count'] == 64
+    assert summary['primary']['mean'] == 0
 
 
 @pytest.fixture(scope='module')

@@ -157,8 +157,8 @@
   },
   {
    "release": 38,
-   "status": "production",
-   "since": "2026-10-03 09:41 ET",
+   "status": "superseded",
+   "since": "2026-10-03 09:41 ET \u2192 2026-10-06 19:08 ET",
    "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457",
    "head": "3e89e86f",
    "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
@@ -209,7 +209,63 @@
     "latency: play p50 0.119 s vs release 36's 0.107 s on the same 808 states (\u2248 +10%), p95 0.200 / 0.180 s, zero play or bury fallbacks on either arm",
     "every NEW screen compares against release 38 as served (Jerry 2026-10-03); screens already read against release 36 or the combo keep their declared comparator, now a closed comparator",
     "rollback: delete the four SHENGJI_PV_* rule lines and restore the release-36 SHENGJI_BOT kept as a comment in fly.toml, then fly deploy --ha=false; or redeploy the release-37 image deployment-01M3TXZ85YHJM108TBPWKN8BB2",
-    "release 37 (2026-10-01, #671) was a CSS-only release on release 36's bot and is not a baseline card"
+    "release 37 (2026-10-01, #671) was a CSS-only release on release 36's bot and is not a baseline card",
+    "releases 39\u201341 (2026-10-05/06; #778, #829, #845) were frontend-only overlays on release 38's exact image and bot; they change nothing the search does and are not baseline cards; superseded by release 42, the doomed-throw swap"
+   ]
+  },
+  {
+   "release": 42,
+   "status": "production",
+   "since": "2026-10-06 19:08 ET",
+   "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d",
+   "head": "3e89e86f",
+   "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
+   "oneline": "Release 38 + the doomed-throw swap (dts). Ten fresh windows vs release 38: \u22120.0002 [\u22120.010, +0.010], inconclusive, deploy-eligible; failed throws \u221264%.",
+   "recipe": "release 38's package, search, rules, bury and budgets exactly (W64/K8, div + rc + tb + la, hybrid bury, 3 s / 2 s, JS-M1 prior keys) with one more flag on: SHENGJI_PV_DOOMED_THROW_SWAP (dts, #830): on a lead whose throw the engine refuses in every sampled world with the same forced component, play that component instead. A backend release from main e3aa1724 (#918), so it also carries the decision-preserving engine/heuristic performance PRs since release 38's image c8d487a6 (#736, #772, #773, #798, #825, #836, #896, #897, #898), the flag-gated-off #777 and #716, the server error-report fix #800, and main's web (release 41 UI #845 + #854). Jerry 2026-10-06: \"OK let's ship it\".",
+   "evidence": [
+    {
+     "what": "v57dts: release 38 + dts as served vs release 38 as served, each vs the common MC-LCB control, ten FRESH 520-cluster windows (cloud, seeds 59060910..59960910 step 100000), INCONCLUSIVE; deploy gate DEPLOY-ELIGIBLE (not statistically demonstrated negative), NOT noninferiority (#707 issuecomment-6026001554)",
+     "point": -0.00015,
+     "lo": -0.010232,
+     "hi": 0.009931,
+     "ref": "v57dts"
+    },
+    {
+     "what": "mechanism (descriptive, v57dts): failed bot throws 12,239 \u2192 4,402 (\u221264%), 33.58 \u2192 12.07 per 1000 plays; rounds with a failed throw 62.6% \u2192 35.1%",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "v57dts"
+    },
+    {
+     "what": "serving smoke on the MERGED tree e3aa1724 against the SHA-verified packages, 40 server turns through _paced_bot_step/_commit_bot_turn (bury 0.13 s, plays \u2264 0.09 s, no fallback); earlier also at 8d3371ee",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "#918"
+    },
+    {
+     "what": "Codex bounded decision-identity witness f7b5ed04 (v57's tree) \u2192 d44c8918: 348/348 actions and RNG identical (script and results retained at Codex worktree commit ca68a323)",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "#918"
+    },
+    {
+     "what": "/healthz after deploy: bot = the name above, pv_search.sha256 491ee4bf\u2026, worlds 64, candidates 8, budget 3 s, bury hybrid at 2 s, prior 0d17fd03\u2026 (threshold 1000, top 256), fast true; live room-level acceptance (create, host sets level, guest sees it, guest's set refused, unknown level refused): all three PASS",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "23:08Z"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M49QGK2ZP18P143S8BXVW28X (Fly version 42, digest sha256:05d8b84fdbff\u2026), main e3aa1724 (#918, squash at the reviewed head d44c8918); Codex PASS at the exact head; CI 8/8; machine 48e7e35a9597e8, 0 rooms at deploy",
+    "no strength gain is claimed: v57dts is INCONCLUSIVE and tightly bounded (about \u00b10.01); DEPLOY-ELIGIBLE means not statistically demonstrated negative, NOT noninferiority, and harm stays compatible with the interval; the first read v53dts (five windows) was \u22120.011 [\u22120.025, +0.002], inconclusive",
+    "the failed-throw counts are descriptive mechanism, not a strength claim",
+    "comparator for NEW screens: release 42 as served is PROPOSED, pending Jerry's confirmation (he set release 38 as the baseline on 2026-10-03 and has not ruled on 42); existing rows keep their declared comparator",
+    "rollback: delete the SHENGJI_PV_DOOMED_THROW_SWAP line and restore the release-38 SHENGJI_BOT kept as a comment in fly.toml, then fly deploy --ha=false; or redeploy the release-41 image (sha256:4d1e796f7f2d\u2026, Fly v41)",
+    "release 42 is built from main's normal Dockerfile and supersedes the release 39\u201341 frontend-overlay recipe"
    ]
   }
  ],
@@ -1648,5 +1704,10 @@
   "note": "rows 1\u201355 and every pre-release-29 model live there, frozen"
  },
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
- "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36."
+ "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
+ "screen_comparator": {
+  "release": 38,
+  "status": "pending",
+  "note": "Release 42 (release 38 + the doomed-throw swap, a played-card rule) is production since 2026-10-06. Making release 42 the comparator for NEW screens is proposed and pending Jerry's ruling; until he rules, new screens keep release 38 as served, his 2026-10-03 baseline."
+ }
 }

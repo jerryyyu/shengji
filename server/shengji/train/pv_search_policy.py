@@ -148,6 +148,19 @@ last rule token; off, it is absent from the payload, so every existing name
 and the played action are unchanged.  No model call and no leaf rebuild is
 added; the W engine validations run under the play budget and, on expiry, the
 check abandons itself and the selected action is played.
+
+Optional admission exclusion (#676 online lead review fix 3, board #707 S4, was
+A9), OFF BY DEFAULT: ``SHENGJI_PV_SMALL_JOKER_GUARD=1`` -- on a LEAD where the
+seat holds a small joker and at least three other trumps while a big joker is
+still outstanding (not in its hand, not played, not in its own kitty: public
+information and its own holdings only), the single small-joker lead is dropped
+from the admission, slot 0 included (definition and evidence:
+`policy_value_search`).  ``0`` or ``1`` only; on, it enters the recipe digest and
+adds ``-sjg`` to the name as the last rule token; off, it is absent from the
+payload, so every existing name (release 38:
+``pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457``)
+and the admitted ballot are unchanged.  No model call and no leaf rebuild is
+added.
 """
 from __future__ import annotations
 
@@ -169,8 +182,8 @@ from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
                                   DOOMED_THROW_DEFAULTS, LEAD_ANCHOR_DEFAULTS,
-                                  LEAD_TIEBREAK_DEFAULTS, TIEBREAK_DEFAULTS,
-                                  PolicyValueBot)
+                                  LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
+                                  TIEBREAK_DEFAULTS, PolicyValueBot)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -206,16 +219,21 @@ LEAD_ANCHOR_RULE = {"LEAD_ANCHOR": "lead_anchor"}
 LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 #: the optional played-action rule (`policy_value_search`): env flag -> recipe key
 DOOMED_THROW_RULE = {"DOOMED_THROW_SWAP": "doomed_throw_swap"}
+#: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
+SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width, anchor, lead
-#: selection, played action): div, fs, rc, rcec, tb, ak16, la, lp, dts
+#: selection, played action, small-joker guard): div, fs, rc, rcec, tb, ak16, la,
+#: lp, dts, sjg
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
-              **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE}
+              **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
+              **SMALL_JOKER_GUARD_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
-                                                   ("doomed_throw_swap", "dts"))
+                                                   ("doomed_throw_swap", "dts"),
+                                                   ("small_joker_guard", "sjg"))
 ENV_PREFIX = "SHENGJI_PV_"
 #: the fallback record's ``error_message`` is the exception text cut to this
 #: many characters (#707 S9)
@@ -313,6 +331,8 @@ class PVSearchConfig:
     lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"]
     # the optional played-action rule (OXPS r1 doomed throw); the same contract
     doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
+    # the optional single small-joker lead exclusion (#707 S4); the same contract
+    small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -378,7 +398,8 @@ class PVSearchBot(PolicyValueBot):
                          adaptive_k=config.adaptive_k,
                          lead_anchor=config.lead_anchor,
                          lead_tiebreak_prior=config.lead_tiebreak_prior,
-                         doomed_throw_swap=config.doomed_throw_swap)
+                         doomed_throw_swap=config.doomed_throw_swap,
+                         small_joker_guard=config.small_joker_guard)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -737,7 +758,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                        lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
-                       doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
+                       doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
+                       small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -771,7 +793,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
-                            doomed_throw_swap=doomed_throw_swap)
+                            doomed_throw_swap=doomed_throw_swap,
+                            small_joker_guard=small_joker_guard)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -832,7 +855,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                         lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                         lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
-                        doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
+                        doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
+                        small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -848,7 +872,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
-                            doomed_throw_swap=doomed_throw_swap)
+                            doomed_throw_swap=doomed_throw_swap,
+                            small_joker_guard=small_joker_guard)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -899,7 +924,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                adaptive_k=config.adaptive_k,
                                lead_anchor=config.lead_anchor,
                                lead_tiebreak_prior=config.lead_tiebreak_prior,
-                               doomed_throw_swap=config.doomed_throw_swap),
+                               doomed_throw_swap=config.doomed_throw_swap,
+                               small_joker_guard=config.small_joker_guard),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -916,7 +942,7 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
-    ``_DOOMED_THROW_SWAP`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

@@ -152,6 +152,31 @@ off the played action is the selected candidate exactly as before):
   check runs under the serving deadline (strided like the forced-component
   rule); on expiry it abandons itself and the selected action is played, with
   ``doomed_throw_swap_abandoned`` ``"budget"``.
+
+Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
+unseen-BJ guard", board #707 S4 formerly A9; OFF BY DEFAULT, and while off the
+admitted indices, slot 0 and the record are exactly what they were):
+
+* ``small_joker_guard`` -- when the acting seat is LEADING, holds a small joker
+  (``LJ``) and at least ``SMALL_JOKER_GUARD_MIN_OTHER_TRUMPS`` (3) other trumps
+  (the trumps in its hand minus the one led small joker), and at least one big
+  joker (``BJ``) is OUTSTANDING, the single-``LJ`` lead is dropped from the
+  admission: it never enters the K policy slots, it is never slot 0 (a
+  heuristic or ``lead_anchor`` slot 0 that is the single ``LJ`` is replaced by
+  the best remaining policy-ranked action), and it is never a forced extra.
+  The policy back-fills the slot from its own ranking, so K is unchanged.
+  "Outstanding" uses only what the seat knows: the deck's big jokers minus
+  those in its own hand, those played in any resolved trick or the current one,
+  and (banker only) those in its own buried kitty -- never another seat's hand.
+  Multi-card leads that contain an ``LJ`` (``LJ LJ``, a throw) and every
+  follow are untouched.  Evidence (#676, Claude's online lead review): LJ
+  leads won only 6/12 tricks in production and all six losses were to the big
+  joker; self-play won 73% of 67.  No model is called and nothing is rebuilt.
+  The record carries scalars only: ``small_joker_guard_active`` (the condition
+  held and a single-``LJ`` lead was in the scored set, i.e. it was excluded),
+  ``small_joker_guard_big_jokers_out``, ``small_joker_guard_other_trumps`` and
+  ``small_joker_guard_anchor_replaced`` (slot 0 was the single ``LJ``).  The
+  budget fallback still plays the heuristic anchor (the rule does not reach it).
 """
 from __future__ import annotations
 
@@ -162,7 +187,7 @@ import numpy as np
 
 from ..ai.cwv_policy import afterstate
 from ..ai.heuristic import HeuristicBot
-from ..engine.cards import TRUMP, make_deck
+from ..engine.cards import BJ, LJ, TRUMP, make_deck
 from ..engine.combos import decompose
 from ..harvest.legal import enumerate_legal, forced_lead
 from .policy_world_search import PolicyWorldBot
@@ -199,7 +224,13 @@ DOOMED_THROW_DEFAULTS = dict(doomed_throw_swap=False)
 #: the cooperative budget is checked after every this-many sampled worlds
 #: inside the swap's throw-resolution loop
 DOOMED_THROW_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
+
+#: `small_joker_guard`: the optional single-LJ lead exclusion (module docstring)
+SMALL_JOKER_GUARD_DEFAULTS = dict(small_joker_guard=False)
+#: the guard needs this many trumps in hand besides the led small joker
+SMALL_JOKER_GUARD_MIN_OTHER_TRUMPS = 3
 _DECK = tuple(sorted(set(make_deck())))
+_BIG_JOKERS_IN_DECK = make_deck().count(BJ)
 
 
 def _cards_text(cards):
@@ -223,6 +254,21 @@ def _is_top_live(rnd, seat, card):
         gone.update(rnd.buried)
     return not any(ordering.eff_suit(c) == suit and ordering.level(c) > level
                    and gone[c] < 2 for c in _DECK)
+
+
+def big_jokers_outstanding(rnd, seat):
+    """Big jokers ``seat`` cannot account for from public play and its own
+    holdings: the deck's copies minus those in its hand, those played in a
+    resolved trick or the current one, and (banker only) its own buried kitty.
+    Never reads another seat's hand."""
+    gone = rnd.hands[seat].count(BJ)
+    tricks = list(rnd.history) + ([rnd.trick] if rnd.trick is not None else [])
+    for trick in tricks:
+        for play in trick.plays:
+            gone += list(play.cards).count(BJ)
+    if rnd.banker == seat and rnd.buried:
+        gone += list(rnd.buried).count(BJ)
+    return max(0, _BIG_JOKERS_IN_DECK - gone)
 
 
 def leading(rnd):
@@ -275,6 +321,12 @@ def _budget_exceeded():
 
 
 class PolicyValueBot(PolicyWorldBot):
+    # class-level OFF defaults for the later optional rule, so a bare instance
+    # built without __init__ (`eval.fixed_tape_policy.release38_admission`
+    # allocates one and sets only the release-38 fields) admits exactly as before
+    small_joker_guard = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
+    _small_joker = None
+
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
                  max_per_structure=ADMISSION_DEFAULTS["max_per_structure"],
@@ -288,6 +340,7 @@ class PolicyValueBot(PolicyWorldBot):
                  lead_tiebreak_prior=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
                  lead_tiebreak_epsilon=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"],
                  doomed_throw_swap=DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
+                 small_joker_guard=SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -348,6 +401,10 @@ class PolicyValueBot(PolicyWorldBot):
             raise ValueError('doomed_throw_swap must be a bool')
         self.doomed_throw_swap = doomed_throw_swap
         self._doomed_throw = None
+        if type(small_joker_guard) is not bool:
+            raise ValueError('small_joker_guard must be a bool')
+        self.small_joker_guard = small_joker_guard
+        self._small_joker = None
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -591,9 +648,16 @@ class PolicyValueBot(PolicyWorldBot):
         """
         worlds, check_budget = self._admission_context
         ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
+        guarded = set()
+        if self.small_joker_guard:
+            guarded = self._small_joker_guarded(rnd, seat, actions)
+            if guarded:
+                ranked = [i for i in ranked if i not in guarded]
         if self.lead_anchor:
             anchor_index = self._lead_anchor_index(rnd, seat, actions, preferences,
                                                    anchor_index, ranked)
+        if anchor_index in guarded:
+            anchor_index = self._small_joker_anchor(actions, preferences, anchor_index, ranked)
         k, applied = self._admission_k(rnd, actions, preferences)
         self._adaptive = {'adaptive_k_applied': applied, 'k_used': int(k)}
         self._diversity_skipped = []
@@ -609,9 +673,47 @@ class PolicyValueBot(PolicyWorldBot):
                 raise ValueError('admit_forced_single needs the sampled worlds at admission')
             extras, detail = self._forced_extras(rnd, seat, actions, chosen, worlds,
                                                  check_budget=check_budget)
+            if guarded:
+                extras = [i for i in extras if i not in guarded]
             self._forced_added, self._forced_detail = extras, detail
             chosen = list(chosen) + extras
         return chosen
+
+    # -- admission: the optional single small-joker lead exclusion -------------
+
+    def _small_joker_guarded(self, rnd, seat, actions):
+        """The indices (into ``actions``) of the single-``LJ`` lead when the
+        module docstring's ``small_joker_guard`` condition holds, else the empty
+        set.  Sets ``self._small_joker`` (the record fields) on every decision."""
+        hand = rnd.hands[seat]
+        trumps = sum(1 for c in hand if rnd.ordering.eff_suit(c) == TRUMP)
+        other = trumps - 1 if LJ in hand else trumps
+        out = big_jokers_outstanding(rnd, seat)
+        singles = {i for i, action in enumerate(actions) if list(action) == [LJ]}
+        active = bool(leading(rnd) and LJ in hand and out > 0
+                      and other >= SMALL_JOKER_GUARD_MIN_OTHER_TRUMPS
+                      and singles and len(singles) < len(actions))
+        self._small_joker = {
+            "small_joker_guard_active": active,
+            "small_joker_guard_big_jokers_out": int(out),
+            "small_joker_guard_other_trumps": int(other),
+            "small_joker_guard_anchor_replaced": False,
+        }
+        return singles if active else set()
+
+    def _small_joker_anchor(self, actions, preferences, anchor_index, ranked):
+        """Slot 0 when it is the guarded single ``LJ``: the best remaining
+        policy-ranked action (``ranked`` already excludes the guarded lead)."""
+        finite = [i for i in ranked if np.isfinite(preferences[i])]
+        target = finite[0] if finite else ranked[0]
+        self._small_joker["small_joker_guard_anchor_replaced"] = True
+        self._small_joker["small_joker_guard_anchor_to"] = _cards_text(actions[target])
+        return target
+
+    def _small_joker_record(self):
+        if not self.small_joker_guard or self._small_joker is None:
+            return {}
+        return dict(self._small_joker)
 
     def _lead_anchor_index(self, rnd, seat, actions, preferences, anchor_index, ranked):
         """Slot 0 under ``lead_anchor`` (module docstring): the heuristic's index,
@@ -650,7 +752,11 @@ class PolicyValueBot(PolicyWorldBot):
 
     def _effective_anchor_key(self, anchor_key):
         """The cards key slot 0 must hold: the heuristic anchor's, or (rule on)
-        the one `_lead_anchor_index` chose for this decision."""
+        the one `_lead_anchor_index` chose for this decision, or (guard on) the
+        replacement of a guarded single small joker."""
+        if self.small_joker_guard and self._small_joker is not None \
+                and self._small_joker["small_joker_guard_anchor_replaced"]:
+            return tuple(sorted(self._small_joker["small_joker_guard_anchor_to"].split(" ")))
         if self.lead_anchor and self._lead_anchor is not None:
             return tuple(sorted(self._lead_anchor["lead_anchor_to"].split(" ")))
         return anchor_key
@@ -735,6 +841,7 @@ class PolicyValueBot(PolicyWorldBot):
         """`_admit` with the per-decision context (worlds, deadline) in place."""
         self._admission_context = (worlds, check_budget)
         self._lead_anchor = None
+        self._small_joker = None
         try:
             return [int(i) for i in self._admit(rnd, seat, actions, preferences, anchor_index)]
         finally:
@@ -752,6 +859,7 @@ class PolicyValueBot(PolicyWorldBot):
             record.update(self._adaptive)
         if self.lead_anchor and self._lead_anchor is not None:
             record.update(self._lead_anchor)
+        record.update(self._small_joker_record())
         return record
 
     def decide_play(self, rnd, seat):

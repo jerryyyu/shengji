@@ -1228,6 +1228,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6021409485"
   },
   {
+   "id": "v58d8e15r38",
+   "date": "2026-10-07",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "DEEP8 epoch 15 vs release 38",
+   "candidate": "DEEP8 (C11's recipe with an 8-block trunk) rank-selected epoch-15 package d8e15out-46e9457d served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury) as pv-search-46e9457d-w64-k8-div-rc-tb-la-r61dea2c2-bury-hybrid-119a62ce9aec; vs release 38 as served (smv3out-491ee4bf). Only the package differs. PRIMARY DEEP8 selection screen; gates C12 depth.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "62060910 62160910 62260910 62360910 62460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.017204,
+   "lo": -0.012754,
+   "hi": 0.047162,
+   "takeaway": "Inconclusive, +0.017 with all five windows positive: the first positive DEEP8 point. Not POSITIVE, so C12 stays depth 4; confirmation-eligible.",
+   "note": "SEALED 10-07; readout (Claude, one pass) #663 and #707 2026-10-07; digests posted on #663 before the read; Codex packet PASS #663 issuecomment-6032580920. Paired +0.017204 [-0.012754,+0.047162], SE 0.015285, MDE80 0.042821, tau 0, Q 0.89, I2 0%; INCONCLUSIVE (interval spans zero). Extension trigger (point > +0.015, CI spans zero) met: a NEW predeclared confirmation may be proposed, no launch authority; promotion_gate NO PROMOTION (first-stage read not positive); strength verdict withheld. Window deltas +0.0144, +0.0462, +0.0038, +0.0135, +0.0096. Descriptive own-arm levels vs MC-LCB: d8e15 0.2396 [0.2138,0.2653], release 38 0.2226 [0.1982,0.2471] (not the paired primary). Health: 729,180 expected play calls all recorded, zero coverage failures, zero outer timeouts; 8 refusal-fallback decisions in two candidate windows (descriptive). C12 depth gate (predeclared r2, Jerry's criterion): primary not POSITIVE -> depth 4. Context (separate contrasts, separate seeds, not additive): v55e9r38 C11 epoch 9 vs r38 -0.0145; v56s15r38 SMV3 epoch 15 vs r38 -0.0189; both inconclusive. Seeds: seed_windows.py clear over the full lineage incl. comparator SMV3 best.pt (0 overlap). Reader sha256 4bf969a584f0a9adad482012068d90ecfca0bdbaae049ec7d0afbc5b5157b6dd; result sha256 30602d56cbca1f095b4f7fcd445bf32287b9fe290960444f1394101b5f82d696; launcher sha256 927ce95038dc801d646fecc46c3173d3d7c14fe28924543329ef01caae5da092; predeclaration (r2) sha256 d5d6deb6ed15bc9ae43ab9d6f09e2011a422445b0fead3b128bdc6fa8ac57c93; SHA256SUMS 4da1327a5d2ffd09f321ffdbc989f48b1ad89ffd8f65a3d87241b3c994a06dc7. Archive ~/shengji-archive/2026-09-13/readouts/v58d8e15r38-deep8e15-vs-r38/. Reader attempt 0 refused at its own output claim before analyze(); no outcome read.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6035018780"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

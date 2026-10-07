@@ -129,3 +129,24 @@ def round_notice_identity(current, paths=None):
         return hashlib.sha256(payload.encode("ascii")).hexdigest()
     except (AttributeError, KeyError, TypeError, ValueError):
         return None
+
+
+def round_notice_history_import_identity(current, paths):
+    """Compose ONLY the two proven migrations for checkpoints predating both.
+
+    Preserve every other current source digest. The history helper still checks
+    computation, constants and dependencies; the round substitution still needs
+    its exact proven source pair and version. Never mutate the current identity.
+    """
+    try:
+        if current.get("enc_version", 1) not in PROVEN_VERSIONS:
+            return None
+        sources = dict(current["source_sha256s"])
+        legacy = ROUND_EQUIVALENT_SOURCES.get(sources.get("round"))
+        if legacy is None:
+            return None
+        sources["round"] = legacy
+        return history_import_move_identity(
+            dict(current, source_sha256s=sources), paths)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None

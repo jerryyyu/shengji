@@ -350,7 +350,8 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     # actual new source hashes in new checkpoints; accept a legacy full
     # identity only while the extracted computation is still identical.
     from .cwv_encoder_compat import (history_import_move_identity,
-                                     round_notice_identity)
+                                     round_notice_identity,
+                                     round_notice_history_import_identity)
     legacy = history_import_move_identity(current, AFTERSTATE_SOURCE_PATHS)
     if legacy is not None and legacy in declared:
         return legacy
@@ -360,6 +361,9 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     # proven tensor-identical by a differential test; every other drift still
     # refuses here, including a further change to round.py itself.
     legacy = round_notice_identity(current)
+    if legacy is not None and legacy in declared:
+        return legacy
+    legacy = round_notice_history_import_identity(current, AFTERSTATE_SOURCE_PATHS)
     if legacy is not None and legacy in declared:
         return legacy
     drifted = sorted(

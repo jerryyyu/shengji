@@ -233,7 +233,7 @@ def test_the_monolithic_loader_carries_or_fills_the_tags(tmp_path):
     assert not next(plain.batches(10, np.random.default_rng(0)))["explore_flag"].any()
 
 
-def test_extract_on_a_real_store_writes_the_tags_and_the_manifest_counts_add_up(store_dir, tmp_path):  # noqa: F811
+def test_extract_on_a_real_store_writes_the_tags_and_the_manifest_counts_add_up(store_dir, tmp_path, monkeypatch):  # noqa: F811
     """The fixture store is generated with explore_rate 0.5 / explore_k 2, so draws exist."""
     out = tmp_path / "chunked"
     pp.extract(out, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1, chunk_rows=64)
@@ -256,6 +256,57 @@ def test_extract_on_a_real_store_writes_the_tags_and_the_manifest_counts_add_up(
     summary = pp.extract(flat, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1)
     assert summary["explore_tags"] is True and summary["explore_flag_counts"] == counts
     assert PolicyRows(flat).identity["explore_flag_counts"] == counts
+    # Differential producer-to-consumer witness against the previous eager map.
+    def eager(ex, args, workers):
+        yield from ex.map(pp._shard_rows, args, chunksize=4)
+    monkeypatch.setattr(pp, '_bounded_shard_rows', eager)
+    reference = tmp_path / 'reference'
+    pp.extract(reference, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0,
+               max_rows=400, workers=2, chunk_rows=64)
+    ref = json.loads((reference / 'manifest.json').read_text())
+    assert man == ref
+    for chunk in man['chunks']:
+        assert (out / chunk['file']).read_bytes() == (reference / chunk['file']).read_bytes()
+
+
+@pytest.mark.parametrize('fail', [False, True])
+def test_bounded_shards_preserve_order_and_cancel_unconsumed_tasks(fail):
+    from concurrent.futures import Future
+    class Pool:
+        def __init__(self):
+            self.calls = []
+        def submit(self, fn, batch):
+            f = Future()
+            self.calls.append((batch, f))
+            # Only the first task finishes; later tasks stay pending to prove
+            # close/error cancellation without timing-sensitive real threads.
+            if len(self.calls) == 1:
+                if fail:
+                    f.set_exception(ValueError('bad shard'))
+                else:
+                    f.set_result(list(batch))
+            return f
+    pool = Pool()
+    rows = pp._bounded_shard_rows(pool, iter(range(1000)), 2)
+    if fail:
+        with pytest.raises(ValueError, match='bad shard'):
+            next(rows)
+    else:
+        assert [next(rows) for _ in range(4)] == [0, 1, 2, 3]
+        rows.close()
+    assert [batch for batch, _ in pool.calls] == [list(range(i, i+4)) for i in range(0, 16, 4)]
+    assert all(f.cancelled() for _, f in pool.calls[1:])
+
+
+def test_bounded_shards_refill_in_order_and_handle_empty_input():
+    from concurrent.futures import Future
+    class Pool:
+        def submit(self, fn, batch):
+            f = Future()
+            f.set_result(list(batch))
+            return f
+    assert list(pp._bounded_shard_rows(Pool(), [], 2)) == []
+    assert list(pp._bounded_shard_rows(Pool(), range(101), 2)) == list(range(101))
 
 
 # ------------------------------------------------------------------ the W=1.0 identity

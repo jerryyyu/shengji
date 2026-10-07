@@ -176,6 +176,8 @@ jobs:
         run: uv run python -P -B -m pytest -q tests/test_import_walk.py
       - name: Test CWV consumers in both engine modes
         run: bash scripts/ci_cwv_modes.sh
+      - name: Test policy-head training and search in both engine modes
+        run: bash scripts/ci_policy_modes.sh
 
   search-regression:
     runs-on: ubuntu-latest

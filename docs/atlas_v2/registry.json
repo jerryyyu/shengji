@@ -1249,6 +1249,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6035018780"
   },
   {
+   "id": "v58d8bestr38",
+   "date": "2026-10-07",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "DEEP8 best.pt (epoch 18) vs release 38",
+   "candidate": "DEEP8 (C11's recipe with an 8-block trunk) val_ce-selected best.pt (epoch 18) package d8bestout-d5a32c25 served with the release-38 rules (div+rc+tb+lead-anchor, W64/K8, hybrid bury) as pv-search-d5a32c25-w64-k8-div-rc-tb-la-r54e3f312-bury-hybrid-0a2562812b3b; vs release 38 as served (smv3out-491ee4bf). Only the package differs. SECONDARY / descriptive DEEP8 selection screen; does not gate C12 depth.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "62560910 62660910 62760910 62860910 62960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.030425,
+   "lo": 0.000399,
+   "hi": 0.060451,
+   "takeaway": "First-stage POSITIVE (+0.030, lower bound +0.0004), all five windows positive. Descriptive lane: C12 stays depth 4; a fresh confirmation is required.",
+   "note": "SEALED 10-07; readout (Claude, one pass) #663 and #707 2026-10-07; digests posted on #663 before the read; Codex packet PASS #663 issuecomment-6032580920; Codex saved-result cross-check #663 issuecomment-6037292469. Paired +0.030425 [+0.000399,+0.060451], SE 0.015319, MDE80 0.042919, tau 0, Q 3.33, I2 0%; statistical_result POSITIVE (first stage); promotion_gate CONFIRMATION REQUIRED: a new predeclared confirmation on fresh seeds before any promotion/deploy proposal (deploy is Jerry's); this read authorizes nothing; strength verdict withheld. Lower bound barely above zero (winner's-curse zone). Window deltas +0.0606, +0.0077, +0.0048, +0.0673, +0.0096. Descriptive own-arm levels vs MC-LCB: d8best 0.2430 [0.2180,0.2679], release 38 0.2115 [0.1872,0.2358] (not the paired primary). Health: 725,824 expected play calls all recorded, zero coverage failures, zero known outer timeouts, zero refusal fallbacks; CAVEAT (Codex): tiebreak_abandoned telemetry missing and MC-LCB baseline play status unclassified on 362,912 records each, so those zeros are not blanket proof that no internal fallback/abandonment occurred. Predeclared SECONDARY: never gates C12 depth (primary v58d8e15r38 +0.0172 inconclusive -> depth 4). Different windows from v58d8e15r38: no cross-lane subtraction (not evidence that val_ce beats rank-regret selection or that e18 beats e15). Seeds: seed_windows.py clear over the full lineage incl. comparator (0 overlap). Reader sha256 0acb1264363b8742f31f87e674093d2617b67b21b9b3ab49d21cbe737d68c635; result sha256 4dfd3adb6ac10646bb4bef8cb58e1332fcaf3c024fa3b1ee8461db7274172164; launcher sha256 359a1f39299f93402f49849d9bdde5ff28cf6504bcce514ee18c1d7df6165e0e; predeclaration (r2) sha256 42096b49ae99107570a1951681862a47a8cd06d99c77c2eb428d5b3ebf9d714d; SHA256SUMS 2fb53e583d92d9841c4ea5456641c846163e2878c5e04335b42439471bd98412. Archive ~/shengji-archive/2026-09-13/readouts/v58d8bestr38-deep8best-vs-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6037234508"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

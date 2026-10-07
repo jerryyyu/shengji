@@ -149,7 +149,7 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome, stage):
     from scripts import production_llm_panel as panel
     from scripts import launch_production_llm_panel as launcher
     from test_launch_production_llm_panel import _real_validation_fixture
-    from test_launch_sol_recovery import _stage1
+    from test_launch_sol_recovery import _stage1, _stage2_predecessor
 
     config_path, _, _ = _real_validation_fixture(tmp_path)
     config = _stage1(json.loads(config_path.read_text()))
@@ -160,6 +160,14 @@ def test_stage1_real_runner_to_reader(tmp_path, monkeypatch, outcome, stage):
     root_producer.prepare_roots(output=roots, seeds=SEEDS)
     config.update(prepared_roots=str(roots),
                   prepared_roots_sha256=hashlib.sha256((roots / 'result.json').read_bytes()).hexdigest())
+    if stage == 2:
+        # Exercise the real predecessor gate with a pinned synthetic publication
+        # for these exact roots; only the predecessor process liveness is faked.
+        _, predecessor, _ = _stage2_predecessor(
+            tmp_path, monkeypatch, mutate=lambda result: result.update(
+                seeds=config['seeds'],
+                prepared_roots={'source_result_sha256': config['prepared_roots_sha256']}))
+        config['predecessor_publication'] = predecessor['predecessor_publication']
     config_path.write_text(json.dumps(config))
     digest = hashlib.sha256(config_path.read_bytes()).hexdigest()
     (tmp_path / 'RELEASE').write_text(digest + '\n')

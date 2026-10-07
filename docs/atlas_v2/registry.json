@@ -1270,6 +1270,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6037234508"
   },
   {
+   "id": "v59d8bestc",
+   "date": "2026-10-07",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "DEEP8 epoch 18 confirmation vs release 38",
+   "candidate": "Predeclared fresh-seed CONFIRMATION of v58d8bestr38 (Jerry 2026-10-07): the same arms, DEEP8 best.pt (epoch 18) package d8bestout-d5a32c25 under release-38 rules vs release 38 as served; five new windows; judged alone, never pooled.",
+   "comparator": "release 38 as served",
+   "vs": 38,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "63060910 63160910 63260910 63360910 63460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.011739,
+   "lo": -0.017983,
+   "hi": 0.041461,
+   "takeaway": "Not confirmed: +0.012, CI spans zero (4/5 windows positive). The v58 first-stage +0.030 shrank; C12 stays depth 4.",
+   "note": "SEALED 10-07; readout (Claude, one pass) #663/#707 2026-10-07; digests posted on #663 before the read; Codex packet PASS #663 issuecomment-6043555465. Paired +0.011739 [-0.017983,+0.041461], SE 0.015164, MDE80 0.042484, tau 0, Q 3.68, I2 0%; INCONCLUSIVE; confirmation_verdict 'INCONCLUSIVE: v58d8bestr38 not confirmed'; promotion_gate NOT CONFIRMED (no promotion); no further extension; strength verdict withheld. Window deltas -0.0452, +0.0154, +0.0202, +0.0269, +0.0385. Descriptive own-arm levels vs MC-LCB: d8best 0.2268 [0.2020,0.2516], release 38 0.2162 [0.1833,0.2491] (not the paired primary). Health: 726,232 expected play calls all recorded, zero coverage failures, zero known outer timeouts, 11 refusal-fallback decisions (descriptive). Consistent with the winner's curse flagged in the predeclaration; not evidence of no effect. C12 depth stays 4 (approved gate). Context (separate lanes, not pooled): v58d8e15r38 +0.0172 inconclusive; v58d8bestr38 +0.0304 first-stage positive. Seeds: seed_windows.py clear --follow-init vs candidate AND comparator lineage (0 overlap). Reader sha256 90bb74fbfb5f625b6026709a4010951dfc086952739c4c97ac696ba5d9de677c; result sha256 d9c6f3e1aeba79c8f684e522286f1064b0234eaf501d87ad8f04033c0810ec6f; launcher sha256 79d8a9217db62c396a0edf9b6a562a8ea65e108d845ade649ec45716daa50358; predeclaration sha256 4af8bdca7bc0ad4184cedf0d8d126a3697dcea0275c7cda41251dcc01ddc1e8e; SHA256SUMS a2610d4d3b5aa9345eafeb43f9955c499c1ddcbac6a56e17b2b35ae56e63690f. Archive ~/shengji-archive/2026-09-13/readouts/v59d8bestc-deep8best-confirm-r38/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6045918314"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

@@ -500,7 +500,8 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     # checkpoints predate the field).
     declared = bind_encoder_version(metadata, model.config, path=path)
     want = cwv_encoder_identity(declared)
-    from ..ai.cwv_encoder_compat import history_import_move_identity, round_notice_identity
+    from ..ai.cwv_encoder_compat import (history_import_move_identity, round_notice_identity,
+                                         round_notice_history_import_identity)
     from .cwv_data import CWV_SOURCE_PATHS
     accepted = {want["implementation_sha256"]}
     legacy = history_import_move_identity(want, CWV_SOURCE_PATHS)
@@ -514,6 +515,9 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
     # after a three-hour cache rebuild), while serving accepted the same
     # checkpoint.  One named pair; every other drift still refuses here.
     legacy = round_notice_identity(want)
+    if legacy is not None:
+        accepted.add(legacy)
+    legacy = round_notice_history_import_identity(want, CWV_SOURCE_PATHS)
     if legacy is not None:
         accepted.add(legacy)
     if enc.get("implementation_sha256") not in accepted:

@@ -70,3 +70,85 @@ def test_training_and_serving_hash_actual_extracted_dependency():
         actual = cwv_policy.local_encoder_identity(version)
         assert "public_history" in actual["source_sha256s"]
         assert actual["implementation_sha256"] == cwv_encoder_identity(version)["implementation_sha256"]
+
+
+W32_IDENTITY = "c4c6b7c30203ccf33ddbf549fa500d94659149d69bd368533e67db620b4a78dc"
+
+
+def _combined_identity(version):
+    # Independently rebuild the pre-extraction identity, with the actual archived
+    # round source (not the compatibility helper's mapping).
+    from pathlib import Path
+    legacy = _legacy_identity(version)
+    sources = dict(legacy['source_sha256s'])
+    sources['round'] = hashlib.sha256(
+        (Path(__file__).parent / 'data/round_release30.py.txt').read_bytes()).hexdigest()
+    parts = [legacy['identity_schema'], legacy['afterstate_schema']]
+    if version != 1:
+        parts.append(f'enc_version:{version}')
+    digest = hashlib.sha256('|'.join(parts + [f'{n}:{h}' for n,h in sorted(sources.items())]).encode()).hexdigest()
+    return dict(legacy, source_sha256s=sources, implementation_sha256=digest)
+
+
+@pytest.mark.parametrize('version', [1, 2, 4, 5])
+def test_composed_migrations_match_independent_legacy_identity(version):
+    from shengji.ai.cwv_encoder_compat import round_notice_history_import_identity
+    current = cwv_policy.local_encoder_identity(version)
+    before = copy.deepcopy(current)
+    legacy = _combined_identity(version)
+    assert round_notice_history_import_identity(current, cwv_policy.AFTERSTATE_SOURCE_PATHS) == legacy['implementation_sha256']
+    assert current == before
+    assert cwv_policy.verify_checkpoint_identity({'encoder':legacy}) == legacy['implementation_sha256']
+    if version == 2:
+        assert legacy['implementation_sha256'] == W32_IDENTITY
+
+
+@pytest.mark.parametrize('mutation', ['version', 'round', 'memory', 'history'])
+def test_composed_migrations_still_refuse_unproven_changes(tmp_path, monkeypatch, mutation):
+    from shengji.ai.cwv_encoder_compat import round_notice_history_import_identity
+    current = copy.deepcopy(cwv_policy.local_encoder_identity(2))
+    paths = dict(cwv_policy.AFTERSTATE_SOURCE_PATHS)
+    if mutation == 'version':
+        current['enc_version'] = 6
+    elif mutation == 'history':
+        path = tmp_path / 'public_history.py'
+        text = paths['public_history'].read_text()
+        changed = text.replace('+= 0.5', '+= 0.25')
+        assert changed != text
+        path.write_text(changed)
+        paths['public_history'] = path
+    else:
+        current['source_sha256s'][mutation] = 'f' * 64
+    assert round_notice_history_import_identity(current, paths) != W32_IDENTITY
+    monkeypatch.setattr(cwv_policy, 'AFTERSTATE_SOURCE_PATHS', paths)
+    with pytest.raises(cwv_policy.CWVCheckpointMismatch):
+        cwv_policy.verify_checkpoint_identity({'encoder': _combined_identity(2)}, identity=current)
+
+
+def test_combined_legacy_checkpoint_loads_through_trainer_export_and_evaluator(tmp_path):
+    from test_encoder_round_compat import _trainer_checkpoint
+    from shengji.train.train_cwv import load_cwv_checkpoint
+    from scripts.export_cwv_numpy import export_cwv_numpy
+    from shengji.ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+    checkpoint = _trainer_checkpoint(tmp_path, W32_IDENTITY)
+    model, metadata, _ = load_cwv_checkpoint(checkpoint)
+    assert model.config.enc_version == 2
+    assert metadata['encoder']['implementation_sha256'] == W32_IDENTITY
+    package = tmp_path / 'combined.npz'
+    export_cwv_numpy(checkpoint, package)
+    assert NumpyCompleteWorldEvaluator(package).enc_version == 2
+
+
+@pytest.mark.parametrize('seed', [98260924, 98260925])
+def test_both_migrations_together_preserve_replayed_tensors(monkeypatch, seed):
+    from test_encoder_round_compat import _trace, PROVEN_VERSIONS
+    from shengji.rl import value_afterstate, douzero_micro
+    current, script = _trace(seed, PROVEN_VERSIONS)
+    monkeypatch.setattr(value_afterstate, 'encode_public_history', douzero_micro.encode_public_history)
+    legacy, replayed = _trace(seed, PROVEN_VERSIONS, legacy=True, script=script)
+    assert len(current) == len(legacy) >= 20
+    assert replayed == script
+    for (seat_a, tensors_a), (seat_b, tensors_b) in zip(current, legacy):
+        assert seat_a == seat_b
+        for version in PROVEN_VERSIONS:
+            assert tensors_a[version].tobytes() == tensors_b[version].tobytes()

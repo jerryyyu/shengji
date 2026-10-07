@@ -17,26 +17,30 @@ import pytest
 from shengji.ai.cwv_numpy import CWVNumpyError, PACKAGE_SCHEMA_V2, load_cwv_numpy
 
 
-@pytest.fixture(scope="module")
-def joint(tmp_path_factory):
+@pytest.fixture(scope="module", params=[(32, 64, 2), (165, 330, 8)],
+                ids=["small", "deep8-shape"])
+def joint(tmp_path_factory, request):
     torch = pytest.importorskip("torch")
     from scripts.export_cwv_numpy import export_cwv_numpy
     from shengji.ai.cwv_policy import local_encoder_identity
     from shengji.rl.value_checkpoint import save_checkpoint
     from shengji.rl.value_model import ValueModelConfig, ValueNetwork
     d = tmp_path_factory.mktemp("joint")
+    # DEEP8 uses hidden=330, which resolves to width165/feedforward330.
+    # Synthetic weights only: no trained checkpoint or live output access.
+    width, feedforward, layers = request.param
     torch.manual_seed(11)
-    net = ValueNetwork(ValueModelConfig(architecture="mlp", width=32, feedforward_width=64, public_dim=561,
+    net = ValueNetwork(ValueModelConfig(architecture="mlp", width=width, feedforward_width=feedforward, public_dim=561,
                                         enc_version=2, attention_heads=1, trunk_block="residual",
-                                        trunk_layers=2, search_head=True, policy_head=True))
+                                        trunk_layers=layers, search_head=True, policy_head=True))
     net.eval()
     ckpt = d / "joint.pt"
     save_checkpoint(ckpt, net, metadata={"encoder": local_encoder_identity(2), "sees_hidden_hands": True})
     pkg = d / "joint.npz"
     export_cwv_numpy(ckpt, pkg)
-    headless = ValueNetwork(ValueModelConfig(architecture="mlp", width=32, feedforward_width=64, public_dim=561,
+    headless = ValueNetwork(ValueModelConfig(architecture="mlp", width=width, feedforward_width=feedforward, public_dim=561,
                                              enc_version=2, attention_heads=1, trunk_block="residual",
-                                             trunk_layers=2, search_head=True))
+                                             trunk_layers=layers, search_head=True))
     headless.eval()
     hckpt = d / "headless.pt"
     save_checkpoint(hckpt, headless, metadata={"encoder": local_encoder_identity(2), "sees_hidden_hands": True})
@@ -50,6 +54,7 @@ def test_joint_package_reproduces_the_torch_policy_head_and_value_softmax(joint)
     net, ckpt, pkg, hpkg = joint
     model = load_cwv_numpy(pkg)
     assert model.policy_head is True
+    assert model.trunk_layers == net.config.trunk_layers
     meta = json.loads(str(np.load(pkg)["metadata"].item()))
     assert meta["schema"] == PACKAGE_SCHEMA_V2 and meta["config"]["policy_head"] is True
     rng = np.random.default_rng(5)

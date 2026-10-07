@@ -1291,6 +1291,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/663#issuecomment-6045918314"
   },
   {
+   "id": "v60sjg42",
+   "date": "2026-10-07",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "S4 small-joker lead guard vs release 42",
+   "candidate": "Release 42 as served + SHENGJI_PV_SMALL_JOKER_GUARD=1 (S4, #920: avoid leading the small joker while a big joker is outstanding and >=3 other trumps remain), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-sjg-r19810aca-bury-hybrid-0c2da9cca501; same package smv3out-491ee4bf; flag-only contrast. Cloud tree claude-main-29 (ccda93e6).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "64060910 64160910 64260910 64360910 64460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.003738,
+   "lo": -0.00109,
+   "hi": 0.008565,
+   "takeaway": "Estimated +0.0037; 95% CI [-0.0011, +0.0086], inconclusive; no promotion.",
+   "note": "SEALED 10-07; readout (Claude, one pass) #707; digests posted on #707 before the read; Codex technical PASS #707 issuecomment-6044670180 and predecl r2 PASS 6045598736. Paired +0.003738 [-0.001090,+0.008565], SE 0.002463, MDE80 0.006900 (observed; smaller than prior model screens; mechanism attribution not measured), tau 0, Q 3.65, I2 0%; INCONCLUSIVE; promotion_gate NO PROMOTION; no extension; strength verdict withheld. Window deltas +0.0019, +0.0087, +0.0087, -0.0029, -0.0010. Descriptive own-arm levels vs MC-LCB: r42+S4 0.2276 [0.2010,0.2542], release 42 0.2245 [0.1962,0.2528] (not the paired primary). Health: 726,852 expected play calls all recorded, zero coverage failures, zero known outer timeouts, zero refusal fallbacks. Activation: the guard emits activation scalars into traces but the pinned reader does not summarize them (predeclared r2). INCONCLUSIVE establishes neither benefit nor noninferiority. First screen against release 42 (Jerry's 10-07 comparator ruling). Release 42's served name on main-29 equals fly.toml's SHENGJI_BOT. Seeds: seed_windows.py clear --follow-init vs the shared SMV3 lineage (0 overlap). Reader sha256 909d7d698277d8cb64d399fdf18a5227c3bf6545738b16de408f162c6328c890; result sha256 511401d49c02ae76f89784a3c8d4fe2423e8a8a1bde68adf2b1eda4d61ad8c1c; launcher sha256 20801cebc42eaaa963fddce25f0ef80fe9d6c28336a978db39f5692a64574829; predeclaration (r2) sha256 d0cec9c7e73501b07e3e5d8a1a1378428c419f1706aa22883543ad6746a1c2c5; SHA256SUMS 20e8ca34c29162fc71af51cb8ae1f1f668198f122eab919356140fb1327f0cb2. Archive ~/shengji-archive/2026-09-13/readouts/v60sjg42-s4-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6048070286"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",
@@ -1769,8 +1790,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 38,
-  "status": "pending",
-  "note": "Release 42 (release 38 + the doomed-throw swap, a played-card rule) is production since 2026-10-06. Making release 42 the comparator for NEW screens is proposed and pending Jerry's ruling; until he rules, new screens keep release 38 as served, his 2026-10-03 baseline."
+  "release": 42,
+  "status": "confirmed",
+  "note": "Jerry 2026-10-07 (#707 issuecomment-6039234721): new screens compare against release 42 as served (release 38 + the doomed-throw swap). Confirmations keep their parent's comparator (v59d8bestc stays vs release 38)."
  }
 }

@@ -364,6 +364,9 @@ def test_the_trainer_refuses_a_weight_on_an_untagged_extract_and_records_the_tag
     (the --policy-soft-targets pattern), never train the unweighted thing under the label."""
     tagged = tmp_path / "tagged"
     pp.extract(tagged, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1, chunk_rows=64)
+    from scripts.compose_policy_rows import compose
+    composed = tmp_path / "composed"
+    compose(composed, [('fixture', tagged)])
     # strip the tags: the chunk arrays and the manifest keys, re-hashing each chunk
     untagged = tmp_path / "untagged"; untagged.mkdir()
     man = json.load(open(tagged / "manifest.json"))
@@ -387,7 +390,7 @@ def test_the_trainer_refuses_a_weight_on_an_untagged_extract_and_records_the_tag
     assert r0["policy_head"]["explore_tags"] is False
     assert r0["policy_head"]["explore_flag_counts"] == {"0": r0["policy_head"]["rows"]["rows_used"], "1": 0, "2": 0}
     # the weighted arm on the tagged extract records the weight and the (post-exclusion) counts
-    r2 = train_cwv.train(out=tmp_path / "weighted", policy_rows=str(tagged), policy_explore_weight=2.0, **kw)
+    r2 = train_cwv.train(out=tmp_path / "weighted", policy_rows=str(composed), policy_explore_weight=2.0, **kw)
     assert r2["config"]["policy_explore_weight"] == 2.0 and r2["policy_head"]["explore_weight"] == 2.0
     assert r2["policy_head"]["explore_tags"] is True
     counts = r2["policy_head"]["explore_flag_counts"]
@@ -395,6 +398,86 @@ def test_the_trainer_refuses_a_weight_on_an_untagged_extract_and_records_the_tag
     assert r2["epochs"][0]["train"]["policy_rows"] > 0
     receipt = json.load(open(tmp_path / "weighted" / "receipt.json"))
     assert receipt["config"]["policy_explore_weight"] == 2.0 and receipt["policy_head"]["explore_flag_counts"] == counts
+
+
+def _compose_part(root, *, tagged=True):
+    root.mkdir()
+    part = _chunk_dir(root, ROWS, with_tags=tagged)
+    manifest = json.loads((part / 'manifest.json').read_text())
+    if tagged:
+        manifest['explore_flag_names'] = {str(k): v for k, v in pp.EXPLORE_FLAG_NAMES.items()}
+    (part / 'manifest.json').write_text(json.dumps(manifest))
+    return part
+
+
+def test_composer_cli_preserves_tags_bytes_and_post_exclusion_weights(tmp_path, capsys):
+    from scripts.compose_policy_rows import main
+    first, second = _compose_part(tmp_path / 'first'), _compose_part(tmp_path / 'second')
+    originals = [(p / 'chunk-00000.npz').read_bytes() for p in (first, second)]
+    out = tmp_path / 'joined'
+    main([str(out), '--part', 'first', str(first), '--part', 'second', str(second)])
+    assert json.loads(capsys.readouterr().out)['explore_flag_counts'] == {'0': 2, '1': 2, '2': 4}
+    for tag, path, original in zip(('first', 'second'), (first, second), originals):
+        link = out / f'{tag}-chunk-00000.npz'
+        assert link.is_symlink() and link.resolve() == path / 'chunk-00000.npz'
+        assert link.read_bytes() == original
+    data = PolicyRowsStream(out, exclude={'deck:a'})
+    assert data.identity['explore_tags'] is True
+    assert data.identity['explore_flag_counts'] == {'0': 2, '1': 0, '2': 2}
+    batch = next(data.batches(10, np.random.default_rng(0)))
+    weights = explore_row_weights(data.tensors(batch, 'cpu')['explore_flag'], 3.0)
+    assert sorted(weights.tolist()) == [1.0, 1.0, 3.0, 3.0]
+
+
+@pytest.mark.parametrize('bad', ['untagged', 'encoder', 'counts', 'missing_array', 'scale', 'escape'])
+def test_composer_refuses_bad_parts_before_creating_output(tmp_path, bad):
+    from scripts.compose_policy_rows import compose
+    first = _compose_part(tmp_path / 'first')
+    second = _compose_part(tmp_path / 'second', tagged=bad != 'untagged')
+    path = second / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    if bad == 'encoder':
+        manifest['enc_version'] = 4
+    elif bad == 'counts':
+        manifest['explore_flag_counts']['2'] += 1
+    elif bad == 'missing_array':
+        chunk = second / 'chunk-00000.npz'
+        with np.load(chunk) as arrays:
+            kept = {k: arrays[k] for k in arrays.files if k != 'explore_margin'}
+        np.savez_compressed(chunk, **kept)
+    elif bad == 'scale':
+        manifest['values_scale'] = 'levels'
+    elif bad == 'escape':
+        manifest['chunks'][0]['file'] = '../chunk-00000.npz'
+    path.write_text(json.dumps(manifest))
+    out = tmp_path / 'refused'
+    with pytest.raises(ValueError):
+        compose(out, [('first', first), ('second', second)])
+    assert not out.exists()
+
+
+def test_composer_refuses_duplicate_inputs_and_existing_output(tmp_path):
+    from scripts.compose_policy_rows import compose
+    part = _compose_part(tmp_path / 'part')
+    out = tmp_path / 'out'
+    for parts in ([], [('same', part), ('same', part)],
+                  [('a', part), ('b', part)], [('../bad', part)]):
+        with pytest.raises(ValueError):
+            compose(out, parts)
+        assert not out.exists()
+    second = _compose_part(tmp_path / 'second')
+    (second / 'chunk-00000.npz').rename(second / 'b-chunk-00000.npz')
+    manifest = json.loads((second / 'manifest.json').read_text())
+    manifest['chunks'][0]['file'] = 'b-chunk-00000.npz'
+    (second / 'manifest.json').write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='names collide'):
+        compose(out, [('a-b', part), ('a', second)])
+    assert not out.exists()
+    out.mkdir()
+    (out / 'sentinel').write_text('preserve')
+    with pytest.raises(ValueError, match='already exists'):
+        compose(out, [('a', part)])
+    assert (out / 'sentinel').read_text() == 'preserve'
 
 
 def test_cli_parses_and_forwards_the_weight():

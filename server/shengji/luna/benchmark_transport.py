@@ -16,6 +16,9 @@ from .transport import (CodexExecPlannerTransport, CodexTurnTransportError,
 
 CAPACITY_RETRY_DELAYS = (15, 30, 60)
 _CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+_PROVIDER_5XX_RECONNECT = re.compile(
+    r"Reconnecting\.\.\. ([1-5])/5 \(unexpected status (5[0-9]{2}) "
+    r"[^\r\n]+\)")
 _RECOVERED_WEBSOCKET = re.compile(
     r"Reconnecting\.\.\. ([1-5])/5 \(stream disconnected before completion: "
     r"WebSocket protocol error: Connection reset without closing handshake\)")
@@ -100,6 +103,59 @@ class BenchmarkTransport(CodexExecPlannerTransport):
         self.evidence_root = Path(evidence_root)
         self.evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.calls = []
+
+    @staticmethod
+    def _provider_5xx_reconnect(result, final_path):
+        """Discard an otherwise valid completed turn with a provider 5xx notice.
+
+        This is a retry trigger, never permission to accept the recovered answer.
+        Validate the remaining trace and final binding before retrying so a 5xx
+        cannot hide tool use, unknown events, or a malformed model response.
+        Incomplete/failed turns deliberately retain the existing refusal path.
+        """
+        raw = result.stdout
+        if (type(result.returncode) is not int or result.returncode != 0
+                or type(raw) is not bytes or not raw or len(raw) > MAX_TRACE_BYTES
+                or not final_path.is_file() or final_path.is_symlink()):
+            return None
+        filtered, notices = [], []
+        started = completed = False
+        last_attempt = 0
+        try:
+            for line in raw.splitlines():
+                if not line:
+                    return None
+                event = _strict_json(line, "provider 5xx JSONL event")
+                if type(event) is not dict:
+                    return None
+                if event.get("type") == "error":
+                    message = event.get("message")
+                    match = (_PROVIDER_5XX_RECONNECT.fullmatch(message)
+                             if type(message) is str else None)
+                    if (set(event) != {"type", "message"} or not match
+                            or not started or completed
+                            or int(match[1]) <= last_attempt):
+                        return None
+                    last_attempt = int(match[1])
+                    notices.append(event)
+                    continue
+                started = started or event.get("type") == "turn.started"
+                completed = completed or event.get("type") == "turn.completed"
+                filtered.append(line)
+            if not notices:
+                return None
+            _, usage, message = _events_and_usage(
+                b"\n".join(filtered), use_final_message=True)
+            final = _strict_json(final_path.read_bytes(), "provider 5xx final")
+            if (final != _strict_json(message.encode(), "provider 5xx message")
+                    or type(final) is not dict
+                    or set(final) != {"cards", "evaluations", "memory"}
+                    or type(final["memory"]) is not str
+                    or (final["cards"] is None) == (final["evaluations"] is None)):
+                return None
+        except CodexTurnTransportError:
+            return None
+        return notices, usage
 
     @staticmethod
     def _capacity_failure(result, final_path):
@@ -234,23 +290,30 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                             "Codex game deadline exceeded after dispatch")
                 else:
                     self._check_dispatch_deadline(deadline)
-                if retry_delays and self._capacity_failure(result, final_path):
-                    receipt.update(error_type="provider_capacity",
-                                   error="provider_capacity",
-                                   capacity_message=_CAPACITY_MESSAGE)
+                capacity = retry_delays and self._capacity_failure(result, final_path)
+                reconnect = (self._provider_5xx_reconnect(result, final_path)
+                             if retry_delays and not capacity else None)
+                if capacity or reconnect:
+                    reason = "capacity" if capacity else "5xx reconnect"
+                    error_type = "provider_capacity" if capacity else "provider_5xx"
+                    receipt.update(error_type=error_type, error=error_type)
+                    if capacity:
+                        receipt["capacity_message"] = _CAPACITY_MESSAGE
+                    else:
+                        receipt["discarded_provider_5xx_notices"], receipt["usage"] = reconnect
                     if attempt_ordinal < len(retry_delays) + 1:
                         delay = retry_delays[attempt_ordinal - 1]
                         remaining, _ = self._deadline_remaining(
                             logical_deadline, earliest_deadline)
                         if remaining <= delay * 1_000_000_000:
                             raise CodexProviderResourceError(
-                                "Codex turn deadline exceeded before capacity retry")
+                                f"Codex turn deadline exceeded before {reason} retry")
                         receipt.update(backoff_seconds=delay,
                                        backoff_planned=True)
                         retry_after = delay
                     else:
                         raise CodexProviderResourceError(
-                            "Codex provider capacity exhausted")
+                            f"Codex provider {reason} exhausted")
                 else:
                     if result.returncode or not final_path.is_file() \
                             or final_path.is_symlink():

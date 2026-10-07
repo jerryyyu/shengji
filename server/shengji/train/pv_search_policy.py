@@ -161,6 +161,19 @@ payload, so every existing name (release 38:
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457``)
 and the admitted ballot are unchanged.  No model call and no leaf rebuild is
 added.
+
+Optional unresolved-decision evidence rule, OFF BY DEFAULT:
+``SHENGJI_PV_ADAPTIVE_WORLDS=1`` -- when the top-2 admitted candidates' value
+gap on the W base worlds is below ``ADAPTIVE_WORLDS_Z`` (2) paired standard
+errors, the admitted candidates are scored on ``ADAPTIVE_WORLDS_EXTRA_ROUNDS``
+(3) more batches of W sampled worlds and selected on the 4W means; under a
+serving budget the extra stage starts only below 50% of it and abandons itself
+at 80%, keeping the base result (definition and evidence: `PVSearchBot`).
+``0`` or ``1`` only; on, it enters the recipe digest with its constants and adds
+``-aw`` to the name as the last rule token; it refuses the tree.  Off, it is
+absent from the payload, so every existing name (release 42:
+``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d``)
+and every decision are unchanged.
 """
 from __future__ import annotations
 
@@ -221,19 +234,34 @@ LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 DOOMED_THROW_RULE = {"DOOMED_THROW_SWAP": "doomed_throw_swap"}
 #: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
 SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
+#: the optional unresolved-decision evidence rule (`PVSearchBot._adaptive_worlds_means`)
+ADAPTIVE_WORLDS_RULE = {"ADAPTIVE_WORLDS": "adaptive_worlds"}
+ADAPTIVE_WORLDS_DEFAULTS = dict(adaptive_worlds=False)
+#: `adaptive_worlds`: the top-2 value gap is unresolved when it is below this many
+#: paired standard errors of (v_a - v_b) over the base worlds
+ADAPTIVE_WORLDS_Z = 2.0
+#: `adaptive_worlds`: on an unresolved decision, this many further batches of W
+#: worlds are drawn and the admitted candidates scored on them (4W in all)
+ADAPTIVE_WORLDS_EXTRA_ROUNDS = 3
+#: `adaptive_worlds` under a serving budget: the extra stage starts only while
+#: the decision has used less than this share of the budget ...
+ADAPTIVE_WORLDS_START_FRACTION = 0.5
+#: ... and abandons itself (base means and worlds kept) at this share
+ADAPTIVE_WORLDS_SOFT_FRACTION = 0.8
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width, anchor, lead
-#: selection, played action, small-joker guard): div, fs, rc, rcec, tb, ak16, la,
-#: lp, dts, sjg
+#: selection, played action, small-joker guard, adaptive worlds): div, fs, rc,
+#: rcec, tb, ak16, la, lp, dts, sjg, aw
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
-              **SMALL_JOKER_GUARD_RULE}
+              **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
                                                    ("doomed_throw_swap", "dts"),
-                                                   ("small_joker_guard", "sjg"))
+                                                   ("small_joker_guard", "sjg"),
+                                                   ("adaptive_worlds", "aw"))
 ENV_PREFIX = "SHENGJI_PV_"
 #: the fallback record's ``error_message`` is the exception text cut to this
 #: many characters (#707 S9)
@@ -333,6 +361,8 @@ class PVSearchConfig:
     doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"]
     # the optional single small-joker lead exclusion (#707 S4); the same contract
     small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
+    # the optional unresolved-decision evidence rule; the same contract
+    adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -363,6 +393,16 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["candidates_lead_multi"] = ADAPTIVE_K_DEFAULTS["candidates_lead_multi"]
     if config.lead_tiebreak_prior:
         payload["lead_tiebreak_epsilon"] = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"]
+    if config.adaptive_worlds:
+        if config.tree is not None:
+            # the tree reads the PV pass's W x K matrix and re-selects on it; a
+            # 4W selection would mix two evidence bases (PVSearchBot docstring)
+            raise PVSearchPolicyError("adaptive_worlds does not combine with the tree "
+                                      "(SHENGJI_PV_ADAPTIVE_WORLDS=1 with SHENGJI_PV_TREE_SIMS)")
+        payload.update(adaptive_worlds_z=ADAPTIVE_WORLDS_Z,
+                       adaptive_worlds_extra_rounds=ADAPTIVE_WORLDS_EXTRA_ROUNDS,
+                       adaptive_worlds_start_fraction=ADAPTIVE_WORLDS_START_FRACTION,
+                       adaptive_worlds_soft_fraction=ADAPTIVE_WORLDS_SOFT_FRACTION)
     return payload
 
 
@@ -384,8 +424,59 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
             f"-r{recipe_digest(config)}")
 
 
+class _AdaptiveWorldsExpired(Exception):
+    """The `adaptive_worlds` extra stage reached its soft deadline (internal)."""
+
+
 class PVSearchBot(PolicyValueBot):
-    """`PolicyValueBot` on a NumPy package, with the serving budget and record."""
+    """`PolicyValueBot` on a NumPy package, with the serving budget and record.
+
+    Optional unresolved-decision evidence rule ``adaptive_worlds`` (OFF BY
+    DEFAULT; while off `_search` takes exactly the path it always took, no
+    matrix is allocated, no extra world is drawn, and the record gains no key).
+    Evidence: on release 42 (smv3out-491ee4bf, W64, K8) the value head decides
+    about 90% of picks, and on LEADS the top-2 value gap was within one paired
+    standard error in 35% of decisions (two SE in 56%); resampling the 64 worlds
+    flipped the pick 18% of the time.  With the rule on, after the admitted
+    candidates are scored on the W base worlds (serving's `_score_leaves`, with
+    its additive ``capture`` keeping the W x K matrix) and when at least two
+    are admitted: ``a`` is the value-mean argmax, ``b`` the runner-up (highest
+    other mean, lowest admitted position on a tie), ``margin = m_a - m_b`` and
+    ``se`` the paired standard error of ``v_a - v_b`` over the base worlds
+    (sample std, ddof 1, over sqrt W; W < 2 never triggers).  The decision is
+    unresolved when ``margin < ADAPTIVE_WORLDS_Z * se`` (2.0), or when both are
+    exactly zero.  Then ``ADAPTIVE_WORLDS_EXTRA_ROUNDS`` (3) further batches of
+    W worlds are drawn through this bot's own `_worlds` (the same sampler, the
+    refusal-aware path, the void check), ONLY the admitted candidates are scored
+    on them (`_score_leaves`), and the means are ``(base sums + extra sums) /
+    4W``.  Admission is unchanged (base worlds only); `_select` and
+    `_swap_doomed_throw` receive the combined world list, so every later rule
+    sees the same evidence the means came from.
+    Budget: the extra stage must never cost the decision its search result.
+    With a serving budget it starts only while elapsed < ``START_FRACTION``
+    (50%) of the budget, and runs under a soft deadline at ``SOFT_FRACTION``
+    (80%); on expiry -- or on any error inside the extra stage -- it abandons
+    itself and the base means and worlds stand.  The hard `check_budget`
+    elsewhere is unchanged.
+    Record (only with the rule on): ``adaptive_worlds_triggered`` (the decision
+    was unresolved), ``_total`` (worlds behind the selection), ``_margin``,
+    ``_se``, ``_skipped_budget`` (unresolved but past the start share),
+    ``_abandoned`` (+ ``_abandon_reason``), ``_changed`` (the selection's value
+    argmax differs from the base argmax).  ``value_means`` are the means used
+    for selection, ``worlds`` stays the base W and ``value_evaluations`` counts
+    the leaves of every COMPLETED scoring pass (base plus completed extra rounds;
+    a round cut by the soft deadline is not counted).
+    Only this class: the harness `PolicyValueBot.decide_play` has no budget and
+    no capture path.  A subclass that replaces `_value_means` (the tree, which
+    re-selects on the PV pass's W x K matrix; the belief-weighted exploiter) is
+    refused with the rule on: its reducer and this rule's would disagree about
+    what the means are.
+    """
+
+    # class-level OFF default (as `small_joker_guard`): a bare instance built
+    # without __init__ takes the served path
+    adaptive_worlds = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
+    _adaptive_worlds = None
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0):
@@ -417,6 +508,13 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("refusal_event_complete requires refusal_constraints")
         self._refusals = RefusalLedger()
         self._last_sampling = {}
+        if type(config.adaptive_worlds) is not bool:
+            raise PVSearchPolicyError("adaptive_worlds must be a bool")
+        if config.adaptive_worlds and type(self)._value_means is not PVSearchBot._value_means:
+            raise PVSearchPolicyError(f"adaptive_worlds needs serving's own _value_means; "
+                                      f"{type(self).__name__} replaces it")
+        self.adaptive_worlds = config.adaptive_worlds
+        self._adaptive_worlds = None
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -609,16 +707,25 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("admission exceeded the candidate budget",
                                       stage="admission_budget")
         admitted = [actions[i] for i in chosen]
-        means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
+        if self.adaptive_worlds:
+            # the optional evidence rule (class docstring): the means and the
+            # worlds every later rule sees, base or base + extras
+            means, batches, selection_worlds, evaluations = self._adaptive_worlds_means(
+                rnd, seat, admitted, worlds, started, check_budget)
+        else:
+            means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
+            selection_worlds, evaluations = worlds, len(worlds) * len(admitted)
         if check_budget is not None:
             check_budget()   # pre-success: nothing past the deadline is published
         # the optional tie-break rebuilds leaves under the same deadline and, on
         # expiry, abandons itself in favour of the argmax (`policy_value_search`)
-        winner = self._select(rnd, seat, admitted, means, worlds=worlds, check_budget=check_budget,
+        winner = self._select(rnd, seat, admitted, means, worlds=selection_worlds,
+                              check_budget=check_budget,
                               priors=[float(preferences[i]) for i in chosen])
         # the optional doomed-throw swap changes only the cards played, never the
         # selection (``selected_index`` and ``value_means`` still describe the search)
-        played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, check_budget)
+        played = self._swap_doomed_throw(rnd, seat, admitted[winner], selection_worlds,
+                                         check_budget)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -633,7 +740,7 @@ class PVSearchBot(PolicyValueBot):
             "policy_log_odds_admitted": [float(preferences[i]) for i in chosen],
             "policy_log_odds_listing": [float(v) for v in preferences[:min(len(actions), 256)]],
             "selected_index": chosen[winner], "value_batches": batches,
-            "value_evaluations": len(worlds) * len(admitted),
+            "value_evaluations": evaluations,
             "anchor_selected": winner == 0, "encoder_version": self.version,
             # ``played`` is the server's record/play contract (`api.server._log_play`)
             "played": list(played),
@@ -643,8 +750,90 @@ class PVSearchBot(PolicyValueBot):
             **self._tiebreak_record(),
             **self._lead_tiebreak_record(),
             **self._doomed_throw_record(),
+            **self._adaptive_worlds_record(),
         }
         return list(played)
+
+    # -- the optional unresolved-decision evidence rule (class docstring) ---------
+
+    def _adaptive_worlds_means(self, rnd, seat, admitted, worlds, started, check_budget=None):
+        """``(means, batches, selection worlds, evaluations)`` under
+        ``adaptive_worlds``; sets ``self._adaptive_worlds`` (the record fields)."""
+        n_worlds, n_admitted = len(worlds), len(admitted)
+        matrix = np.full((n_worlds, n_admitted), np.nan, dtype=np.float64)
+        # serving's loop and accumulator; ``capture`` is additive (`_score_leaves`)
+        sums, batches = self._score_leaves(rnd, seat, admitted, worlds, check_budget,
+                                           capture=matrix)
+        means = sums / n_worlds   # serving's reducer
+        evaluations = n_worlds * n_admitted
+        state = {"adaptive_worlds_triggered": False, "adaptive_worlds_total": n_worlds,
+                 "adaptive_worlds_margin": None, "adaptive_worlds_se": None,
+                 "adaptive_worlds_skipped_budget": False,
+                 "adaptive_worlds_abandoned": False, "adaptive_worlds_changed": False}
+        self._adaptive_worlds = state
+        if n_admitted < 2 or n_worlds < 2:
+            return means, batches, worlds, evaluations
+        if not np.isfinite(matrix).all():
+            raise PVSearchPolicyError("adaptive_worlds value matrix has unfilled cells",
+                                      stage="adaptive_worlds_matrix")
+        best = int(np.argmax(means))
+        runner = max((i for i in range(n_admitted) if i != best), key=lambda i: (means[i], -i))
+        margin = float(means[best] - means[runner])
+        se = float(np.std(matrix[:, best] - matrix[:, runner], ddof=1) / math.sqrt(n_worlds))
+        triggered = margin < ADAPTIVE_WORLDS_Z * se or (se == 0.0 and margin == 0.0)
+        state.update(adaptive_worlds_triggered=bool(triggered), adaptive_worlds_margin=margin,
+                     adaptive_worlds_se=se)
+        if not triggered:
+            return means, batches, worlds, evaluations
+        budget = self.serving_budget_seconds
+        if budget is not None and time.perf_counter() - started >= ADAPTIVE_WORLDS_START_FRACTION * budget:
+            state["adaptive_worlds_skipped_budget"] = True
+            return means, batches, worlds, evaluations
+        gate = None
+        if budget is not None:
+            stop = started + ADAPTIVE_WORLDS_SOFT_FRACTION * budget
+
+            def gate():
+                if time.perf_counter() >= stop:
+                    raise _AdaptiveWorldsExpired("adaptive_worlds soft deadline")
+        # `_worlds` overwrites the sampler record; the record describes the base draw
+        base_sampling = self._last_sampling
+        total_sums, extra_worlds, extra_batches, extra_evaluations = sums.copy(), [], 0, 0
+        try:
+            for _ in range(ADAPTIVE_WORLDS_EXTRA_ROUNDS):
+                drawn, _attempts = self._worlds(rnd, seat, gate)
+                round_sums, round_batches = self._score_leaves(rnd, seat, admitted, drawn, gate)
+                extra_evaluations += len(drawn) * n_admitted
+                extra_batches += round_batches
+                total_sums = total_sums + round_sums
+                extra_worlds.extend(drawn)
+            if gate is not None:
+                gate()   # nothing computed past the soft deadline is used
+        except Exception as exc:
+            # The base pass was complete and within budget; only the optional
+            # extra evidence failed or ran out of time, so the base means and
+            # worlds stand and nothing falls back to the heuristic anchor.  The
+            # sampler stream HAS advanced by the abandoned draws; that changes
+            # later decisions' worlds only, never this one's result, and the
+            # served (flag-off) stream is untouched.
+            state["adaptive_worlds_abandoned"] = True
+            state["adaptive_worlds_abandon_reason"] = (
+                "budget" if isinstance(exc, _AdaptiveWorldsExpired) else "error")
+            state["adaptive_worlds_abandon_error"] = type(exc).__name__
+            return means, batches, worlds, evaluations + extra_evaluations
+        finally:
+            self._last_sampling = base_sampling
+        combined = list(worlds) + extra_worlds
+        combined_means = total_sums / len(combined)
+        state.update(adaptive_worlds_total=len(combined),
+                     adaptive_worlds_changed=int(np.argmax(combined_means)) != best)
+        return (combined_means, batches + extra_batches, combined,
+                evaluations + extra_evaluations)
+
+    def _adaptive_worlds_record(self):
+        if not self.adaptive_worlds or self._adaptive_worlds is None:
+            return {}
+        return dict(self._adaptive_worlds)
 
     def _sampler_record(self):
         """The refusal rule's fields for the decision record: present only while
@@ -759,7 +948,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                        lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
                        doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
-                       small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
+                       small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
+                       adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -794,7 +984,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
                             doomed_throw_swap=doomed_throw_swap,
-                            small_joker_guard=small_joker_guard)
+                            small_joker_guard=small_joker_guard,
+                            adaptive_worlds=adaptive_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -856,7 +1047,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                         lead_tiebreak_prior: bool = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
                         doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
-                        small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
+                        small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
+                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -873,7 +1065,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
                             doomed_throw_swap=doomed_throw_swap,
-                            small_joker_guard=small_joker_guard)
+                            small_joker_guard=small_joker_guard,
+                            adaptive_worlds=adaptive_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -925,7 +1118,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                lead_anchor=config.lead_anchor,
                                lead_tiebreak_prior=config.lead_tiebreak_prior,
                                doomed_throw_swap=config.doomed_throw_swap,
-                               small_joker_guard=config.small_joker_guard),
+                               small_joker_guard=config.small_joker_guard,
+                               adaptive_worlds=config.adaptive_worlds),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -942,7 +1136,7 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
-    ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

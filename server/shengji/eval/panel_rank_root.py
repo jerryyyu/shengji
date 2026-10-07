@@ -15,7 +15,7 @@ from .public_refusal_history import public_root_with_ledger
 
 #: optional PVSearchConfig rules added after panels were first saved; a saved
 #: config without one matches only a strictly-False config AND bot
-_LATER_OPTIONAL_RULES = ('doomed_throw_swap', 'small_joker_guard')
+_LATER_OPTIONAL_RULES = ('doomed_throw_swap', 'small_joker_guard', 'adaptive_worlds')
 
 
 def bind_panel_rank_root(panel, fixture, bot):
@@ -39,7 +39,8 @@ def bind_panel_rank_root(panel, fixture, bot):
     # Compare a detached current snapshot in that one historical spelling only;
     # never rewrite authenticated panel bytes or discard other/new config keys.
     # Require strict False on BOTH config and effective bot, not falsy values.
-    # The same holds for #707 S4's later optional ``small_joker_guard`` field.
+    # The same holds for #707 S4's later optional ``small_joker_guard`` field
+    # and the later optional ``adaptive_worlds`` evidence rule.
     saved_config = panel.get('config')
     for field in _LATER_OPTIONAL_RULES:
         if (type(saved_config) is dict and field not in saved_config

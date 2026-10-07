@@ -243,7 +243,7 @@ def test_reject_hostile_packages(tmp_path):
     with pytest.raises(CWVNumpyError): load_numpy_checkpoint(duplicate)
 
 
-@pytest.mark.parametrize("layers", [2, 4])
+@pytest.mark.parametrize("layers", [2, 4, 8])
 def test_residual_trunk_export_matches_torch_and_loads_torch_free(tmp_path, layers):
     """#435: M1's residual trunk (stem -> L tabular-ResNet blocks -> LayerNorm -> ReLU) exports
     as a v2 package that a Torch-free process loads and that reproduces the Torch softmax."""

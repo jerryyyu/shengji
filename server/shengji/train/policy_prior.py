@@ -57,7 +57,10 @@ import math
 import random
 import sys
 import time
+from collections import deque
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import closing
+from itertools import islice
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -313,6 +316,39 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
             "value_units": dict(units), "explore_flag_counts": explore_flag_counts(explore_flag)}
 
 
+def _shard_batch(args):
+    return [_shard_rows(arg) for arg in args]
+
+
+def _bounded_shard_rows(ex, args, workers):
+    """Ordered four-shard tasks, at most two tasks per worker in flight.
+
+    Executor.map eagerly submits the entire corpus on supported older Python
+    versions. Slow chunk writes can therefore retain corpus-sized results.
+    Preserve its chunksize=4 ordering without requiring Python 3.14 buffersize.
+    The caller must close this iterator on an early row-cap exit.
+    """
+    pending = deque()
+    args = iter(args)
+
+    def submit():
+        batch = list(islice(args, 4))
+        if batch:
+            pending.append(ex.submit(_shard_batch, batch))
+        return bool(batch)
+
+    try:
+        for _ in range(2 * workers):
+            if not submit():
+                break
+        while pending:
+            yield from pending.popleft().result()
+            submit()
+    finally:
+        for future in pending:
+            future.cancel()
+
+
 def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, thin: float,
             max_rows: int, workers: int, seed: int = 1, chunk_rows: int | None = None,
             version: int = ENC_VERSION) -> dict:
@@ -342,8 +378,9 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
         out_dir.mkdir(parents=True, exist_ok=True)
         if any(out_dir.glob("chunk-*.npz")):
             raise PolicyPriorError(f"{out_dir}: chunks already present; refusing to mix extractions")
-    with ProcessPoolExecutor(workers) as ex:
-        for got in ex.map(_shard_rows, [(p, lo, hi, thin, seed, version) for p in paths], chunksize=4):
+    args = ((p, lo, hi, thin, seed, version) for p in paths)
+    with ProcessPoolExecutor(workers) as ex, closing(_bounded_shard_rows(ex, args, workers)) as batches:
+        for got in batches:
             for x, y, n, legal, ballot, taken, complete, deal, key, means_raw, units, eflag, emargin in got:
                 X.append(x); Y.append(y)
                 meta.append({"n_legal": n, "legal": legal, "ballot": ballot, "taken": taken, "complete": complete,
@@ -364,10 +401,8 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                         chunks.append(_write_chunk(out_dir, len(chunks), X[:keep], Y[:keep], meta[:keep]))
                         total += keep
                     X, Y, meta = [], [], []
-                    ex.shutdown(cancel_futures=True)
                     break
             elif len(X) >= max_rows:
-                ex.shutdown(cancel_futures=True)
                 break
     if out_dir is not None:
         keep = min(len(X), max_rows - total)

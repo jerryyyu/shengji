@@ -21,6 +21,118 @@ from shengji.luna.canonical import canonical_json_bytes
 
 
 CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+# Exact error-only projection from failed stage2 call-q6qgyx5z. No game content.
+PROVIDER_5XX_NOTICE = (
+    "Reconnecting... 2/5 (unexpected status 503 Service Unavailable: An error "
+    "occurred while processing your request. You can retry your request, or "
+    "contact us through our help center at help.openai.com if the error persists.)")
+
+
+def provider_5xx_trace(final):
+    rows = [json.loads(line) for line in trace(final).splitlines()]
+    rows.insert(-2, {"type": "error", "message": PROVIDER_5XX_NOTICE})
+    return b"\n".join(json.dumps(row).encode() for row in rows)
+
+
+@pytest.mark.parametrize("mode", ["success", "exhausted", "deadline", "row-deadline", "disabled", "mixed"])
+def test_provider_5xx_retry_discards_response_and_preserves_budget(tmp_path, monkeypatch, mode):
+    from shengji.luna import transport as transport_module
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    monkeypatch.setattr(transport_module, "time", clock)
+    final = {"cards": ["C3"], "evaluations": None, "memory": "discard this"}
+    good = {**final, "memory": "fresh invocation"}
+    prompts, timeouts = [], []
+
+    def run(command, prompt, workspace, timeout):
+        prompts.append(prompt)
+        timeouts.append(timeout)
+        if mode == "mixed" and len(prompts) % 2 == 0:
+            return InvocationResult(1, capacity_trace(), b"", 1)
+        value = good if mode == "success" and len(prompts) == 2 else final
+        (workspace / "final.json").write_text(json.dumps(value))
+        raw = trace(value) if value is good else provider_5xx_trace(value)
+        return InvocationResult(0, raw, b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        timeout_seconds=10 if mode == "deadline" else 120,
+        deadline_provider=(lambda: 10_000_000_000) if mode == "row-deadline" else None,
+        capacity_retry_delays=() if mode == "disabled" else CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    assert transport.accept_recovered_reconnects is False
+    if mode == "success":
+        assert transport({"packet": 1}) == {"cards": ["C3"], "memory": good["memory"]}
+        assert clock.sleeps == [15] and timeouts == [120, 105]
+        assert transport.calls[1]["accepted"] is True
+        from scripts.w32_llm_benchmark import _row_cost
+        usage = transport.calls[1]["usage"]
+        assert _row_cost({"calls": transport.calls}) == 2 * (
+            usage["input_tokens"] + usage["output_tokens"])
+    else:
+        with pytest.raises(CodexTurnTransportError if mode == "disabled"
+                           else CodexProviderResourceError):
+            transport({"packet": 1})
+        assert clock.sleeps == ([15, 30, 60] if mode in ("exhausted", "mixed") else [])
+    assert len(set(prompts)) == 1
+    discarded = transport.calls[:-1] if mode == "success" else transport.calls
+    for receipt in discarded:
+        assert receipt["accepted"] is False
+        assert "response_binding" not in receipt
+        if mode != "disabled" and receipt.get("error_type") != "provider_capacity":
+            assert receipt["error_type"] == "provider_5xx"
+            assert receipt["discarded_provider_5xx_notices"][0]["message"] == PROVIDER_5XX_NOTICE
+            assert receipt["usage"]
+        path = Path(receipt["evidence_path"])
+        assert (path / "stdout.jsonl").is_file()
+        assert json.loads((path / "receipt.json").read_bytes())["accepted"] is False
+
+
+@pytest.mark.parametrize("kind", ["tool", "unknown", "failed", "400", "websocket",
+    "extra", "late", "early", "duplicate", "mismatch", "shape", "usage", "signal"])
+def test_provider_5xx_notice_cannot_hide_refusals(tmp_path, monkeypatch, kind):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    final = {"cards": ["C3"], "evaluations": None, "memory": ""}
+    if kind == "shape":
+        final["evaluations"] = []
+    rows = [json.loads(line) for line in provider_5xx_trace(final).splitlines()]
+    notice = next(row for row in rows if row["type"] == "error")
+    if kind in ("tool", "unknown", "failed"):
+        rows.insert(-1, {"type": "item.completed", "item": {
+            "id": "bad", "type": "command_execution"}} if kind == "tool"
+            else {"type": "turn.failed" if kind == "failed" else "unknown"})
+    elif kind == "400":
+        notice["message"] = notice["message"].replace("503", "400")
+    elif kind == "websocket":
+        notice["message"] = "Reconnecting... 2/5 (stream disconnected before completion)"
+    elif kind == "extra":
+        notice["extra"] = True
+    elif kind in ("late", "early"):
+        rows.remove(notice)
+        rows.insert(len(rows) if kind == "late" else 0, notice)
+    elif kind == "duplicate":
+        rows.insert(-2, notice)
+    elif kind == "usage":
+        rows[-1]["usage"] = {}
+
+    def run(command, prompt, workspace, timeout):
+        (workspace / "final.json").write_text(json.dumps(
+            {**final, "memory": "different"} if kind == "mismatch" else final))
+        return InvocationResult(-9 if kind == "signal" else 0,
+            b"\n".join(json.dumps(row).encode() for row in rows), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(transport.calls) == 1 and clock.sleeps == []
+    assert transport.calls[0]["accepted"] is False
+    assert "provider_5xx" != transport.calls[0].get("error_type")
 
 
 @pytest.mark.parametrize("rollout", [False, True])

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import weakref
 
 import numpy as np
@@ -273,8 +274,16 @@ def test_source_chunks_and_completed_windows_are_not_retained_while_streaming():
     gen = stream.batches(1, OrderedRng())
     first = next(gen)
     assert all(ref() is None for ref in source_refs)
-    completed_window_refs.extend(weakref.ref(gen.gi_frame.f_locals[name])
+    frame_locals = gen.gi_frame.f_locals
+    completed_window_refs.extend(weakref.ref(frame_locals[name])
                                  for name in ("X", "Y", "ball", "mask", "tgt", "vals", "eflag", "emargin"))
+    if sys.version_info < (3, 13):
+        # Before PEP 667, f_locals is a snapshot dict CACHED on the frame: it would keep the
+        # window alive itself and fail this test on 3.12 (CI) though the generator frees it.
+        # Clearing the snapshot never writes back to the frame's fast locals.  On 3.13+ it is a
+        # write-through proxy, so it must not be cleared.
+        frame_locals.clear()
+    del frame_locals
     next(gen)  # second batch of window zero
     second_window = next(gen)  # asserts old window is gone inside load(1)
     assert all(ref() is None for ref in source_refs)

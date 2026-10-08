@@ -482,6 +482,56 @@ def test_budget_expiry_abandons_and_plays_the_first_selection(at):
              means=means)
 
 
+def _reselect_budget_case(at, **rules):
+    """YJQJ SJ position, the throw first, CA then S4 S4; 64 worlds, so the
+    throw's doomed test makes checks 1-4 (worlds 16, 32, 48, then once after)."""
+    d = DECISIONS["SJ"]
+    rnd = yjqj(d["plays"])
+    worlds = draw(rnd, 0)
+    admitted = [d["throw"], ["CA"], ["S4", "S4"]]
+    means, priors = [0.9, 0.5, 0.49], [0.0, 0.0, 0.0]
+    clean = served(**rules)
+    clean._select(rnd, SEAT, admitted, np.asarray(means), worlds=worlds, priors=priors)
+    bot = served(doomed_throw_reselect=True, **rules)
+    expire = Expire(at)
+    result = tail(bot, rnd, d, worlds, check_budget=expire, admitted=admitted, means=means,
+                  priors=priors)
+    return result, bot, clean, expire, d
+
+
+def test_expiry_absorbed_by_the_masked_points_rule_abandons_the_reselect():
+    """Codex HOLD on #946: the masked `_select_rules` runs `_select_by_points`,
+    which absorbs the expiry and returns its argmax (CA, a single: no further
+    doomed check).  The latched deadline still abandons the re-selection."""
+    (winner, played), bot, clean, expire, d = _reselect_budget_case(5, tiebreak_points=True)
+    record = bot._doomed_throw_record()
+    assert (winner, played) == (0, d["throw"])
+    assert record["doomed_throw_reselect_abandoned"] == "budget"
+    assert record["doomed_throw_reselect_applied"] is False
+    assert record["doomed_throw_reselect_to"] == record["doomed_throw_reselect_from"]
+    # the first selection's rule records, exactly
+    assert bot._tiebreak == clean._tiebreak
+    assert "tiebreak_abandoned" not in bot._tiebreak
+
+
+@pytest.mark.parametrize("rules", [{}, {"lead_tiebreak_prior": True}], ids=["bare", "lp"])
+def test_expiry_at_the_final_check_before_publishing_abandons_the_reselect(rules):
+    """No rule checks the deadline in the masked selection here (no points
+    rule) and CA is a single, so the 5th check is the final one before the
+    replacement is published."""
+    (winner, played), bot, clean, expire, d = _reselect_budget_case(5, **rules)
+    record = bot._doomed_throw_record()
+    assert expire.calls == 5
+    assert (winner, played) == (0, d["throw"])
+    assert record["doomed_throw_reselect_abandoned"] == "budget"
+    assert record["doomed_throw_reselect_applied"] is False
+    assert bot._lead_tiebreak == clean._lead_tiebreak
+    # one check later the replacement is published
+    (winner, played), bot, _, expire, _ = _reselect_budget_case(6, **rules)
+    assert (winner, played) == (1, ["CA"]) and expire.calls == 5
+    assert bot._doomed_throw_record()["doomed_throw_reselect_applied"] is True
+
+
 def test_the_swap_is_unchanged_by_the_shared_test():
     """`_swap_doomed_throw` now runs `_doomed_verdicts`; its verdicts and record
     are what they were on the YJQJ throws and on one-component leads."""

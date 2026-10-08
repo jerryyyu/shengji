@@ -191,7 +191,10 @@ DEFAULT, and while off `_select` and the played action are exactly as before):
   swap; on expiry the rule abandons itself, the selection rules' records are
   restored and the FIRST selection is played as selected (what the swap does on
   expiry), with ``doomed_throw_reselect_abandoned`` ``"budget"``; never the
-  heuristic fallback.  Not combined with the tree (refused by the recipe): the
+  heuristic fallback.  The re-selection is one transaction under a latching
+  deadline: an expiry a nested selection rule absorbs (the points rule abandons
+  itself) still abandons it, and a final check precedes publishing any
+  replacement or fallback.  Not combined with the tree (refused by the recipe): the
   tree re-selects on its own Q matrix.
 
 Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
@@ -657,10 +660,21 @@ class PolicyValueBot(PolicyWorldBot):
         keys = [tuple(sorted(a)) for a in admitted]
         excluded, doomed, aliases, current = set(), 0, 0, first
         first_forced = None
+        # the transaction's deadline: LATCHES the first expiry, so one a nested
+        # rule absorbs (`_select_by_points` abandons itself and returns its
+        # argmax) still abandons the whole re-selection
+        expired = []
+        guard = None
+        if check_budget is not None:
+            def guard():
+                try:
+                    check_budget()
+                except _budget_exceeded() as exc:
+                    expired.append(exc)
+                    raise
         try:
             while True:
-                forced = self._doomed_component(rnd, seat, admitted[current], worlds,
-                                                check_budget)
+                forced = self._doomed_component(rnd, seat, admitted[current], worlds, guard)
                 if forced is None:
                     break
                 doomed += 1
@@ -677,7 +691,15 @@ class PolicyValueBot(PolicyWorldBot):
                 masked = np.array(means, dtype=np.float64)
                 masked[sorted(excluded)] = -np.inf
                 current = int(self._select_rules(rnd, seat, admitted, masked, worlds,
-                                                 check_budget, priors))
+                                                 guard, priors))
+                if expired:
+                    raise expired[0]
+            if current != first:
+                # nothing decided past the deadline replaces the first selection
+                if guard is not None:
+                    guard()
+                if expired:
+                    raise expired[0]
         except _budget_exceeded() as exc:
             for name, value in kept.items():
                 setattr(self, name, value)

@@ -186,6 +186,19 @@ adds ``-awl`` to the name as the last rule token; it refuses the tree.  Off,
 every existing name (release 42 above; the ``aw`` name
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-aw-reba5b0fc-bury-hybrid-0fc096017bf0``)
 and every decision are unchanged.
+
+Optional lead admission width rule, OFF BY DEFAULT:
+``SHENGJI_PV_WIDE_LEAD_ADMISSION=1`` -- when the acting seat LEADS
+(`policy_value_search.leading`) the policy admission shortlist is
+``WIDE_LEAD_K`` (32) wide instead of ``candidates`` (8), through the same
+admission path (anchor slot 0, ``lead_anchor``, the diversity caps, the forced
+extras, the small-joker guard -- all as served, only K is larger); on a follow
+the decision is the flag-off one, byte for byte (definition and evidence:
+`PVSearchBot`).  ``0`` or ``1`` only; it refuses ``SHENGJI_PV_ADAPTIVE_K`` (two
+lead-width rules); on, it enters the recipe digest with ``WIDE_LEAD_K`` and adds
+``-wla`` to the name in the width slot, right after ``-ak16`` (the two are
+exclusive, so they never both appear) and before ``-la``.  Off, every existing
+name (release 42, ``aw``, ``awl`` above) and every decision are unchanged.
 """
 from __future__ import annotations
 
@@ -252,6 +265,11 @@ SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 ADAPTIVE_WORLDS_RULE = {"ADAPTIVE_WORLDS": "adaptive_worlds",
                         "ADAPTIVE_WORLDS_LEADS": "adaptive_worlds_leads"}
 ADAPTIVE_WORLDS_DEFAULTS = dict(adaptive_worlds=False, adaptive_worlds_leads=False)
+#: the optional lead admission width rule (`PVSearchBot._admission_k`)
+WIDE_LEAD_RULE = {"WIDE_LEAD_ADMISSION": "wide_lead_admission"}
+WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
+#: `wide_lead_admission`: the policy admission width on every lead (served K is 8)
+WIDE_LEAD_K = 32
 #: `adaptive_worlds`: the top-2 value gap is unresolved when it is below this many
 #: paired standard errors of (v_a - v_b) over the base worlds
 ADAPTIVE_WORLDS_Z = 2.0
@@ -267,14 +285,16 @@ ADAPTIVE_WORLDS_SOFT_FRACTION = 0.8
 #: and an abandoned re-selection could overwrite; snapshotted and restored
 ADAPTIVE_WORLDS_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_last_sampling")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
-#: name order (admission rules, the sampler rules, selection, width, anchor, lead
+#: name order (admission rules, the sampler rules, selection, width -- the
+#: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
-#: scope): div, fs, rc, rcec, tb, ak16, la, lp, dts, sjg, aw, awl
+#: scope): div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
-              **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE}
+              **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
+                                                   ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
                                                    ("doomed_throw_swap", "dts"),
@@ -282,6 +302,8 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("adaptive_worlds", "aw"),
                                                    ("adaptive_worlds_leads", "awl"))
 ENV_PREFIX = "SHENGJI_PV_"
+_WIDE_LEAD_EXCLUSIVE = ("wide_lead_admission and adaptive_k are exclusive "
+                        "(SHENGJI_PV_WIDE_LEAD_ADMISSION=1 with SHENGJI_PV_ADAPTIVE_K=1)")
 _ADAPTIVE_WORLDS_EXCLUSIVE = ("adaptive_worlds and adaptive_worlds_leads are exclusive "
                               "(SHENGJI_PV_ADAPTIVE_WORLDS=1 with SHENGJI_PV_ADAPTIVE_WORLDS_LEADS=1)")
 #: the fallback record's ``error_message`` is the exception text cut to this
@@ -386,6 +408,8 @@ class PVSearchConfig:
     adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
     # its leads-only scope (exclusive with ``adaptive_worlds``); the same contract
     adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
+    # the optional lead admission width (exclusive with ``adaptive_k``); the same contract
+    wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -414,6 +438,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["tiebreak_epsilon"] = TIEBREAK_DEFAULTS["tiebreak_epsilon"]
     if config.adaptive_k:
         payload["candidates_lead_multi"] = ADAPTIVE_K_DEFAULTS["candidates_lead_multi"]
+    if config.wide_lead_admission:
+        if config.adaptive_k:
+            raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
+        payload["wide_lead_k"] = WIDE_LEAD_K
     if config.lead_tiebreak_prior:
         payload["lead_tiebreak_epsilon"] = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"]
     if config.adaptive_worlds and config.adaptive_worlds_leads:
@@ -515,6 +543,37 @@ class PVSearchBot(PolicyValueBot):
     ``adaptive_worlds_*`` key, so a follow's decision, record and sampler
     stream are the flag-off ones (the record's key set says whether the rule
     ran: present on every lead, absent on every follow).
+
+    Optional lead admission width ``wide_lead_admission`` (OFF BY DEFAULT;
+    while off `_admission_k` is the harness's and nothing else differs).  On a
+    LEAD (`leading`: no play yet in the trick) the admission width is
+    ``max(candidates, WIDE_LEAD_K)`` (32 against the served 8), decided in
+    `_admission_k`, i.e. inside the harness's own `_admit`: slot 0 (the
+    heuristic anchor, ``lead_anchor``'s replacement, the small-joker guard's),
+    the ``admission_diversity`` caps and back-fill and the ``admit_forced_single``
+    extras all run exactly as served, only with the wider K, so the ballot is
+    what a ``candidates=32`` recipe admits on that lead.  On a FOLLOW the width
+    is ``candidates`` and the decision, the record (no ``wide_lead_*`` key) and
+    the sampler stream are the flag-off ones.  The candidate-budget check in
+    `_search` allows ``k_used`` up to ``WIDE_LEAD_K`` on a lead (plus the
+    ``FORCED_EXTRA_SLOTS``), and the existing bound elsewhere.  Refuses
+    ``adaptive_k`` (two width rules on the same leads would need a precedence
+    nobody has measured).  Combines with ``adaptive_worlds`` /
+    ``adaptive_worlds_leads``: their extra stage re-scores the admitted set,
+    which on a lead is the wider one (4W x up to 34 leaves), under the same
+    50%/80% budget guards.  Record (leads only, flag on):
+    ``wide_lead_admission_k`` (the width used, before forced extras) and
+    ``wide_lead_admission_applied`` (it exceeded ``candidates``).
+    Evidence (DEV diagnostics on release 42, archives
+    ``~/shengji-archive/2026-09-13/readouts/leaddiag-r42-20261008`` and
+    ``leaddiag2-r42-20261008``): the value head's best lead lies outside the
+    8-move policy shortlist at 44% of leads (51% of multi-card leads); a K=32
+    policy shortlist through this admission path cuts lead regret against the
+    value head's own 512-world reference from 0.0223 to 0.0084 (87% of the
+    full-set gain) at about 3.1x the lead cost (p99 0.46 s single core on
+    cloud).  Earlier served evidence: adaptive K16 on multi-card leads (v41ak
+    vs release 36) -0.006, inconclusive.  This is agreement with the value
+    head, not playing strength.
     Only this class: the harness `PolicyValueBot.decide_play` has no budget and
     no capture path.  A subclass that replaces `_value_means` (the tree, which
     re-selects on the PV pass's W x K matrix; the belief-weighted exploiter) is
@@ -527,6 +586,8 @@ class PVSearchBot(PolicyValueBot):
     adaptive_worlds = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"]
     adaptive_worlds_leads = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
     _adaptive_worlds = None
+    wide_lead_admission = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+    _wide_lead = None
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0):
@@ -569,6 +630,12 @@ class PVSearchBot(PolicyValueBot):
         self.adaptive_worlds = config.adaptive_worlds
         self.adaptive_worlds_leads = config.adaptive_worlds_leads
         self._adaptive_worlds = None
+        if type(config.wide_lead_admission) is not bool:
+            raise PVSearchPolicyError("wide_lead_admission must be a bool")
+        if config.wide_lead_admission and config.adaptive_k:
+            raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
+        self.wide_lead_admission = config.wide_lead_admission
+        self._wide_lead = None
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -729,6 +796,40 @@ class PVSearchBot(PolicyValueBot):
         will price."""
         return super()._admit(rnd, seat, actions, preferences, anchor_index)
 
+    # -- the optional lead admission width (class docstring) ----------------------
+
+    def _admission_k(self, rnd, actions, preferences):
+        """The harness's width, or under ``wide_lead_admission`` on a lead
+        ``max(candidates, WIDE_LEAD_K)``; sets ``self._wide_lead`` (the record
+        fields) on that lead.  Called by the harness's `_admit`, so the width
+        reaches the same anchor, diversity and forced-extra code as served."""
+        if not self.wide_lead_admission or not leading(rnd):
+            return super()._admission_k(rnd, actions, preferences)
+        k = max(self.candidates, WIDE_LEAD_K)
+        self._wide_lead = {"wide_lead_admission_k": int(k),
+                           "wide_lead_admission_applied": k > self.candidates}
+        return k, k > self.candidates
+
+    def _admission(self, rnd, seat, actions, preferences, anchor_index, worlds,
+                   check_budget=None):
+        self._wide_lead = None
+        return super()._admission(rnd, seat, actions, preferences, anchor_index, worlds,
+                                  check_budget)
+
+    def _admission_record(self):
+        record = super()._admission_record()
+        if self.wide_lead_admission and self._wide_lead is not None:
+            record.update(self._wide_lead)
+        return record
+
+    def _candidate_limit(self, rnd):
+        """The largest admission width (``k_used``) the candidate-budget check
+        accepts: the harness's bound, and ``WIDE_LEAD_K`` on a wide lead."""
+        limit = max(self.candidates, self.candidates_lead_multi)
+        if self.wide_lead_admission and leading(rnd):
+            limit = max(limit, WIDE_LEAD_K)
+        return limit
+
     def _search(self, rnd, seat, anchor, started, check_budget=None):
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
@@ -757,7 +858,7 @@ class PVSearchBot(PolicyValueBot):
         draw_keys = getattr(self, "_draw_keys", None) or ()
         budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
         if len(budgeted) > self._adaptive["k_used"] + FORCED_EXTRA_SLOTS \
-                or self._adaptive["k_used"] > max(self.candidates, self.candidates_lead_multi):
+                or self._adaptive["k_used"] > self._candidate_limit(rnd):
             raise PVSearchPolicyError("admission exceeded the candidate budget",
                                       stage="admission_budget")
         admitted = [actions[i] for i in chosen]
@@ -1069,7 +1170,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
                        small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
-                       adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
+                       adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
+                       wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1106,7 +1208,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             doomed_throw_swap=doomed_throw_swap,
                             small_joker_guard=small_joker_guard,
                             adaptive_worlds=adaptive_worlds,
-                            adaptive_worlds_leads=adaptive_worlds_leads)
+                            adaptive_worlds_leads=adaptive_worlds_leads,
+                            wide_lead_admission=wide_lead_admission)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -1170,7 +1273,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         doomed_throw_swap: bool = DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
                         small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                         adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
-                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
+                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
+                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1189,7 +1293,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             doomed_throw_swap=doomed_throw_swap,
                             small_joker_guard=small_joker_guard,
                             adaptive_worlds=adaptive_worlds,
-                            adaptive_worlds_leads=adaptive_worlds_leads)
+                            adaptive_worlds_leads=adaptive_worlds_leads,
+                            wide_lead_admission=wide_lead_admission)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -1243,7 +1348,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                doomed_throw_swap=config.doomed_throw_swap,
                                small_joker_guard=config.small_joker_guard,
                                adaptive_worlds=config.adaptive_worlds,
-                               adaptive_worlds_leads=config.adaptive_worlds_leads),
+                               adaptive_worlds_leads=config.adaptive_worlds_leads,
+                               wide_lead_admission=config.wide_lead_admission),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -1260,7 +1366,8 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
-    ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
+    ``_WIDE_LEAD_ADMISSION`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

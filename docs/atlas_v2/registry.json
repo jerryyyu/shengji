@@ -1312,6 +1312,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6048070286"
   },
   {
+   "id": "v61aw42",
+   "date": "2026-10-08",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Adaptive worlds on unresolved decisions vs release 42",
+   "candidate": "Release 42 as served + SHENGJI_PV_ADAPTIVE_WORLDS=1 (#936: when the top-2 admitted value gap is under 2 paired SEs on the 64 base worlds, score the admitted candidates on 3 more batches of 64 worlds and select on 256; never a fallback), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-aw-reba5b0fc-bury-hybrid-0fc096017bf0; same package smv3out-491ee4bf; flag-only contrast. Cloud tree claude-main-30 (385371bf).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "66060910 66160910 66260910 66360910 66460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.021707,
+   "lo": -0.004779,
+   "hi": 0.048193,
+   "takeaway": "Estimated +0.0217; 95% CI [-0.0048, +0.0482], inconclusive; extension rule met, fresh-seed confirmation v62aw42c next.",
+   "note": "SEALED 10-08 (LANE DONE 06:29:57Z); readout (Claude, one pass) #707; digests posted on #707 issuecomment-6053957403 before the read; Codex r2 delta PASS #707 issuecomment-6051760205 (r1 HOLD 6051151519 restored the five-window first stage and fresh confirmation). Paired +0.021707 [-0.004779,+0.048193], SE 0.013513, MDE80 0.0379, tau 0, Q 2.75, I2 0%; INCONCLUSIVE; promotion_gate NO PROMOTION; extension trigger (point > +0.015, CI includes zero) met: only a NEW predeclared confirmation on fresh seeds (v62aw42c) may follow; strength verdict withheld. Window deltas +0.0144, +0.0558, -0.0048, +0.0375, +0.0048. Descriptive own-arm levels vs MC-LCB: aw 0.2353 [0.2043,0.2663], release 42 0.2143 [0.1894,0.2392] (not the paired primary). Health: 729,604 expected play calls all recorded, zero coverage failures, zero known outer timeouts, zero budget or search-error fallbacks on either arm. Telemetry (descriptive; screen-host wall time, not serving latency): aw triggered on 32.3% of the candidate's decisions, changed the value pick on 7.3% and the cards played on 6.9%, skipped 0, abandoned 0; decision seconds p50/p90/p99 0.109/0.447/0.551 vs release 42 0.088/0.133/0.209. Prior evidence: uniform W128/W256 vs W64 read +0.024 each (AI_POLICIES.md:104). Motivated by the 10-08 decision-noise diagnostic (leads: top-2 gap within 1 SE in 35% of decisions). Seeds: seed_windows.py clear --follow-init vs the SMV3 lineage (0 overlap). Reader sha256 af17929917e7058ecd5351f39f7151d5c17a3453955adc8cb0e95fe94c7fe336; result sha256 cf10ccd7514963de8bb68960c5fae1b970c949fb75d931d075d3f886acddd506; launcher sha256 4e538b25bfcd38b48ad7da31da5ecd7772a314bd8332b1f821ca3d26db1ab41f; predeclaration (r2) sha256 0e8556a99ae22e40ebdc6041ade649ed137a4f5d05c5be83e628a8eea856398a; SHA256SUMS bb187854f0b09c123f274aa838eed98c93884f01368e390a9d6ffec209ba9d48. Archive ~/shengji-archive/2026-09-13/readouts/v61aw42-aw-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6053976392"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

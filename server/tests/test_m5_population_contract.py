@@ -101,12 +101,15 @@ def test_trainer_consumes_frozen_base_and_fit_only_addition(store_dir, other_dir
               val_rank_records=50, encoder_version=2, policy_head=True,
               policy_rows=policy_rows, **THIRDS)
     base = tc.train(data=[str(store_dir)], out=tmp_path / "base", **kw)
-    manifest = {"schema": SCHEMA, **{p: base["population"][p] for p in ("train", "val", "test")}}
-    contract = {"schema": "shengji-frozen-training-contract-v1", "population": manifest,
-                "digests": base["population"]["digest"], "added_stores": [str(other_dir)],
-                "candidates": {p: base["final"][p]["search_facing"]["candidate_set"]["digest"]
-                               for p in ("val", "test")},
-                "policy_identity": base["policy_head"]["rows"]}
+    from shengji.train.frozen_population import contract_from_receipt
+    contract = contract_from_receipt(base, expected_digests=base["population"]["digest"],
+                                     added_stores=[str(other_dir)])
+    with pytest.raises(ValueError, match="digest mismatch"):
+        contract_from_receipt(base, expected_digests={**base["population"]["digest"], "val": "0" * 64},
+                              added_stores=[str(other_dir)])
+    with pytest.raises(ValueError, match="incomplete"):
+        contract_from_receipt({"population": base["population"]},
+                              expected_digests=base["population"]["digest"], added_stores=[str(other_dir)])
     path = tmp_path / "frozen.json"
     raw = json.dumps(contract).encode()
     path.write_bytes(raw)
@@ -123,6 +126,14 @@ def test_trainer_consumes_frozen_base_and_fit_only_addition(store_dir, other_dir
     model, metadata, _ = tc.load_cwv_checkpoint(tmp_path / "bound" / "best.pt", "cpu")
     assert metadata["population"]["val"] == base["population"]["val"]
     assert set(result["population"]["train"]) <= tc.exposure_sets(metadata["exposure"])["fit"]
+    metadata["exposure"] = tc.exposure_block(set(base["population"]["train"]) |
+                                             set(base["population"]["val"]), base["population"]["val"])
+    tc.save_cwv_checkpoint(tmp_path / "exposed.pt", model, metadata=metadata)
+    with pytest.raises(tc.TrainError, match="init exposure would alter frozen"):
+        tc.train(data=[str(store_dir), str(other_dir)], out=tmp_path / "exposure-refused",
+                 frozen_population=str(path), frozen_population_sha256=pin,
+                 init=str(tmp_path / "exposed.pt"), init_exclude_exposed=True, **kw)
+    assert not (tmp_path / "exposure-refused" / "checkpoints" / "epoch-01.pt").exists()
     contract["candidates"]["test"] = "0" * 64
     raw = json.dumps(contract).encode()
     path.write_bytes(raw)
@@ -173,3 +184,36 @@ def test_policy_identity_guard_rejects_count_or_digest_drift():
                     {**identity, "fit_deals_digest": "b" * 64}):
         with pytest.raises(ValueError, match="effective policy rows differ"):
             require_policy_identity({"policy_identity": identity}, changed)
+
+
+def test_receipt_command_produces_pinned_loadable_contract_and_refuses_overwrite(tmp_path):
+    from scripts.prepare_frozen_population import main
+    from shengji.train.frozen_population import load_contract
+    keys = ["deck:" + hashlib.sha256(str(i).encode()).hexdigest() for i in range(10)]
+    manifest, pins = manifest_of(split_deals(keys, seed=1))
+    population = {p: manifest[p] for p in ("train", "val", "test")}
+    population.update(digest=pins, counts={p: len(manifest[p]) for p in pins})
+    receipt = {"population": population, "epochs": [{"epoch": 1}], "best_epoch": 1,
+               "final": {p: {"search_facing": {"candidate_set": {"digest": "a" * 64}}}
+                         for p in ("val", "test")},
+               "policy_head": {"rows": {"rows_used": 80, "fit_deals_digest": "b" * 64}}}
+    source = tmp_path / "receipt.json"
+    source.write_text(json.dumps(receipt))
+    receipt_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    output = tmp_path / "contract.json"
+    args = ["--receipt", str(source), "--receipt-sha256", receipt_sha,
+            "--added-store", str(tmp_path / "sl"), "--out", str(output)]
+    for part, pin in pins.items():
+        args += [f"--{part}-sha256", pin]
+    assert main(args) == 0
+    encoded = output.read_bytes()
+    contract = load_contract(output, hashlib.sha256(encoded).hexdigest())
+    assert contract["population"] == manifest
+    with pytest.raises(ValueError, match="output already exists"):
+        main(args)
+    assert output.read_bytes() == encoded
+    args[args.index(receipt_sha)] = "0" * 64
+    args[args.index(str(output))] = str(tmp_path / "refused.json")
+    with pytest.raises(ValueError, match="receipt sha256 mismatch"):
+        main(args)
+    assert not (tmp_path / "refused.json").exists()

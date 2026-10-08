@@ -31,7 +31,15 @@ def raw(rows):
 @pytest.mark.parametrize("option", [{}, {"accept_recovered_reconnects": False},
                                     {"accept_recovered_reconnects": True}])
 @pytest.mark.parametrize("retries", [(), CAPACITY_RETRY_DELAYS])
-def test_recovered_notice_requires_independent_opt_in(tmp_path, option, retries):
+def test_recovered_notice_requires_independent_opt_in(tmp_path, monkeypatch, option, retries):
+    """Accepting a recovered answer needs the explicit opt-in.  Without it, retries
+    on means #355's discard-and-retry (never acceptance); retries off refuses."""
+    from shengji.luna import benchmark_transport, transport as transport_module
+    from test_llm_benchmark_transport import FakeRetryClock
+    from shengji.luna.transport import CodexProviderResourceError
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    monkeypatch.setattr(transport_module, "time", clock)
     stream = raw(recovered_rows())
     calls = []
 
@@ -41,17 +49,22 @@ def test_recovered_notice_requires_independent_opt_in(tmp_path, option, retries)
         return InvocationResult(0, stream, b"", 13746)
 
     transport = BenchmarkTransport(
-        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=120,
         capacity_retry_delays=retries, **option,
         runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
         run_command=run)
     enabled = option.get("accept_recovered_reconnects", False)
+    retry = not enabled and retries == CAPACITY_RETRY_DELAYS
     if enabled:
         assert transport({}) == {"cards": ["C3"], "memory": "lead"}
+    elif retry:
+        with pytest.raises(CodexProviderResourceError, match="stream reconnect exhausted"):
+            transport({})
     else:
         with pytest.raises(CodexTurnTransportError, match="trace event forbidden"):
             transport({})
-    assert len(calls) == 1
+    assert len(calls) == (1 + len(retries) if retry else 1)
+    assert clock.sleeps == (list(retries) if retry else [])
     receipt = transport.calls[0]
     assert receipt["accepted"] is enabled
     assert receipt["accept_recovered_reconnects"] is enabled
@@ -60,6 +73,9 @@ def test_recovered_notice_requires_independent_opt_in(tmp_path, option, retries)
         assert receipt["usage"]["input_tokens"] == 100
     else:
         assert "recovered_reconnects" not in receipt
+        assert all(r["accepted"] is False for r in transport.calls)
+        if retry:
+            assert all(r["error_type"] == "provider_reconnect" for r in transport.calls)
     assert (Path(receipt["evidence_path"]) / "stdout.jsonl").read_bytes() == stream
     with pytest.raises(CodexTurnTransportError, match="trace event forbidden"):
         _events_and_usage(stream)  # legacy parser stays strict

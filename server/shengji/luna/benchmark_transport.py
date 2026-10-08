@@ -105,8 +105,12 @@ class BenchmarkTransport(CodexExecPlannerTransport):
         self.calls = []
 
     @staticmethod
-    def _provider_5xx_reconnect(result, final_path):
-        """Discard an otherwise valid completed turn with a provider 5xx notice.
+    def _provider_5xx_reconnect(result, final_path, *, websocket=False):
+        """Discard an otherwise valid completed turn with a provider 5xx notice,
+        or with the exact recovered WebSocket-reset notice (`_RECOVERED_WEBSOCKET`,
+        observed once in 5,321 stage-2 retry calls; #355) when ``websocket`` --
+        i.e. only when the transport has NOT opted in to accepting recovered
+        reconnects (`accept_recovered_reconnects`), whose acceptance path is unchanged.
 
         This is a retry trigger, never permission to accept the recovered answer.
         Validate the remaining trace and final binding before retrying so a 5xx
@@ -130,7 +134,8 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                     return None
                 if event.get("type") == "error":
                     message = event.get("message")
-                    match = (_PROVIDER_5XX_RECONNECT.fullmatch(message)
+                    match = ((_PROVIDER_5XX_RECONNECT.fullmatch(message)
+                              or (websocket and _RECOVERED_WEBSOCKET.fullmatch(message)))
                              if type(message) is str else None)
                     if (set(event) != {"type", "message"} or not match
                             or not started or completed
@@ -291,16 +296,26 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                 else:
                     self._check_dispatch_deadline(deadline)
                 capacity = retry_delays and self._capacity_failure(result, final_path)
-                reconnect = (self._provider_5xx_reconnect(result, final_path)
+                reconnect = (self._provider_5xx_reconnect(
+                                 result, final_path,
+                                 websocket=not self.accept_recovered_reconnects)
                              if retry_delays and not capacity else None)
                 if capacity or reconnect:
-                    reason = "capacity" if capacity else "5xx reconnect"
-                    error_type = "provider_capacity" if capacity else "provider_5xx"
+                    # a turn whose notices are all provider 5xx keeps #932's labels; any
+                    # recovered WebSocket-reset notice makes it a provider_reconnect
+                    only_5xx = bool(reconnect) and all(
+                        _PROVIDER_5XX_RECONNECT.fullmatch(n["message"]) for n in reconnect[0])
+                    reason = ("capacity" if capacity else
+                              "5xx reconnect" if only_5xx else "stream reconnect")
+                    error_type = ("provider_capacity" if capacity else
+                                  "provider_5xx" if only_5xx else "provider_reconnect")
                     receipt.update(error_type=error_type, error=error_type)
                     if capacity:
                         receipt["capacity_message"] = _CAPACITY_MESSAGE
-                    else:
+                    elif only_5xx:
                         receipt["discarded_provider_5xx_notices"], receipt["usage"] = reconnect
+                    else:
+                        receipt["discarded_reconnect_notices"], receipt["usage"] = reconnect
                     if attempt_ordinal < len(retry_delays) + 1:
                         delay = retry_delays[attempt_ordinal - 1]
                         remaining, _ = self._deadline_remaining(

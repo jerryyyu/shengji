@@ -247,3 +247,79 @@ def test_stage_counts_record_oversized_parallel_window_serial_fallback(monkeypat
     assert counts["requested_shards"] == 3
     assert counts["serial_budget_fallback_windows"] == 1
     assert counts["decode_submitted"] == 1
+
+
+@pytest.mark.parametrize("seed", [1, 17])
+@pytest.mark.parametrize("window", [1, 2, 4])
+@pytest.mark.parametrize("workers", [0, 2])
+@pytest.mark.parametrize("sidecar", [False, True])
+def test_split_skips_heldout_decode_without_changing_batches_or_rng(
+        monkeypatch, seed, window, workers, sidecar):
+    # Mixed-deal shard 2 must still load; shard 1 is entirely held out.
+    blocks = [_block(i, rows=3) for i in range(3)]
+    for block in blocks:
+        block.optional = CwvBlock.OPTIONAL_ARRAYS
+        for name in block.optional:
+            setattr(block, name, np.full(block.n, float(block.target[0])))
+    if not sidecar:
+        # A held-out shard can still control gather's optional-column schema.
+        blocks[1].optional = ()
+    assignment = {key: ("train" if i == 0 or (i == 2 and j == 0) else "val")
+                  for i, block in enumerate(blocks)
+                  for j, key in enumerate(block.deal_key.tolist())}
+    selector = cwv_data.SplitSelector(assignment, "train")
+    submissions = []
+
+    class Future:
+        def result(self):
+            return None
+
+    class Pool:
+        def __init__(self, **kw):
+            pass
+
+        def submit(self, fn, task):
+            submissions.append(task)
+            return Future()
+
+        def shutdown(self, **kw):
+            pass
+
+    monkeypatch.setattr(cwv_data, "ProcessPoolExecutor", Pool)
+
+    def collect(mask):
+        store = _store(blocks)
+        store.sidecar_dir = "fixture-sidecar" if sidecar else None
+        store._keys = [block.deal_key for block in blocks]
+        store.is_resident = lambda i: False
+        store._key = lambda i: i
+        store.decode_task = lambda i: i
+        store.decode_submitted = 0
+        loaded = []
+        original = store.block
+
+        def block(i, **kw):
+            loaded.append(i)
+            return original(i, **kw)
+
+        store.block = block
+        rng = np.random.default_rng(seed)
+        counts = {}
+        batches = list(store.iter_batches(mask, 2, rng=rng, window=window,
+                                          decode_workers=workers, stage_counts=counts))
+        return batches, rng.bit_generator.state, loaded, counts
+
+    old, old_rng, old_loads, _ = collect(lambda block: selector(block))
+    submissions.clear()
+    new, new_rng, new_loads, counts = collect(selector)
+    assert set(old_loads) == {0, 1, 2}
+    assert set(new_loads) == ({0, 2} if sidecar else {0, 1, 2})
+    if sidecar:
+        assert 1 not in submissions
+    assert counts["requested_shards"] == (2 if sidecar else 3)
+    assert new_rng == old_rng
+    assert len(new) == len(old)
+    for actual, expected in zip(new, old):
+        assert actual.keys() == expected.keys()
+        for name in actual:
+            np.testing.assert_array_equal(actual[name], expected[name])

@@ -7,6 +7,8 @@ store provenance, candidate tensors, or the effective policy-row receipt.
 from collections.abc import Mapping, Sequence
 import hashlib
 import re
+import json
+from pathlib import Path
 
 PARTS = ("train", "val", "test")
 SCHEMA = "shengji-frozen-population-v1"
@@ -57,3 +59,60 @@ def bind_frozen_population(manifest: Mapping, *, expected_digests: Mapping,
         raise ValueError("added stores collide with frozen base")
     assignment.update(dict.fromkeys(added, "train"))
     return assignment
+
+
+def load_contract(path, sha256):
+    """Read one externally pinned input; JSON duplicate keys are refused."""
+    if (path is None) != (sha256 is None):
+        raise ValueError("frozen population path and sha256 must be supplied together")
+    if path is None:
+        return None
+    raw = Path(path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != sha256:
+        raise ValueError("frozen population contract sha256 mismatch")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate frozen contract field")
+            result[key] = value
+        return result
+    contract = json.loads(raw, object_pairs_hook=pairs)
+    required = {"schema", "population", "digests", "added_stores", "candidates", "policy_identity"}
+    if not isinstance(contract, dict) or set(contract) != required:
+        raise ValueError("invalid frozen contract fields")
+    if contract["schema"] != "shengji-frozen-training-contract-v1":
+        raise ValueError("invalid frozen training contract schema")
+    roots = contract["added_stores"]
+    if not isinstance(roots, list) or not roots or any(
+        not isinstance(p, str) or not Path(p).is_absolute() for p in roots
+    ) or len({str(Path(p).resolve()) for p in roots}) != len(roots):
+        raise ValueError("distinct absolute added-store roots required")
+    cands = contract["candidates"]
+    if not isinstance(cands, dict) or set(cands) != {"val", "test"} or any(
+        not isinstance(v, str) or re.fullmatch(r"[0-9a-f]{64}", v) is None
+        for v in cands.values()
+    ):
+        raise ValueError("val/test candidate digest pins required")
+    identity = contract["policy_identity"]
+    if not isinstance(identity, dict) or not {"rows_used", "fit_deals_digest"} <= identity.keys():
+        raise ValueError("effective policy identity required")
+    return contract
+
+
+def bind_store(contract, store):
+    added_roots = {str(Path(p).resolve()) for p in contract["added_stores"]}
+    base, added, seen = set(), set(), set()
+    for index, (shard, _cache) in enumerate(store.entries):
+        root = str(Path(shard.store).resolve())
+        seen.add(root)
+        (added if root in added_roots else base).update(store.keys_of(index))
+    if not added_roots <= seen or not added:
+        raise ValueError("added stores missing or empty")
+    return bind_frozen_population(contract["population"], expected_digests=contract["digests"],
+                                  base_keys=sorted(base), added_keys=sorted(added))
+
+
+def require_policy_identity(contract, identity):
+    if identity != contract["policy_identity"]:
+        raise ValueError("effective policy rows differ from frozen base receipt")

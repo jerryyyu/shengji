@@ -9,6 +9,8 @@ from shengji.train.data import split_deals
 from shengji.train.policy_rows import open_policy_rows
 from shengji.train.policy_prior import input_dim
 from shengji.train.frozen_population import SCHEMA, bind_frozen_population
+from tests.test_cwv_train import store_dir, other_dir, THIRDS  # noqa: F401
+from tests.test_cwv_train_policy_head import policy_rows  # noqa: F401
 
 
 def manifest_of(assignment):
@@ -89,3 +91,72 @@ def test_frozen_population_refuses_bad_bindings(defect):
     with pytest.raises(ValueError):
         bind_frozen_population(manifest, expected_digests=pins,
                                base_keys=base, added_keys=extra)
+
+
+def test_trainer_consumes_frozen_base_and_fit_only_addition(store_dir, other_dir, policy_rows, tmp_path):
+    from shengji.train import train_cwv as tc
+    kw = dict(arch="mlp", device="cpu", epochs=1, seed=7, batch_size=64,
+              n_boot=2, hidden=16, log=None, cache_workers=1, eval_workers=1,
+              cache_dir=str(tmp_path / "cache"), bench_batch=8,
+              val_rank_records=50, encoder_version=2, policy_head=True,
+              policy_rows=policy_rows, **THIRDS)
+    base = tc.train(data=[str(store_dir)], out=tmp_path / "base", **kw)
+    manifest = {"schema": SCHEMA, **{p: base["population"][p] for p in ("train", "val", "test")}}
+    contract = {"schema": "shengji-frozen-training-contract-v1", "population": manifest,
+                "digests": base["population"]["digest"], "added_stores": [str(other_dir)],
+                "candidates": {p: base["final"][p]["search_facing"]["candidate_set"]["digest"]
+                               for p in ("val", "test")},
+                "policy_identity": base["policy_head"]["rows"]}
+    path = tmp_path / "frozen.json"
+    raw = json.dumps(contract).encode()
+    path.write_bytes(raw)
+    pin = hashlib.sha256(raw).hexdigest()
+    result = tc.train(data=[str(store_dir), str(other_dir)], out=tmp_path / "bound",
+                      frozen_population=str(path), frozen_population_sha256=pin, **kw)
+    for part in ("val", "test"):
+        assert result["population"][part] == base["population"][part]
+        assert result["final"][part]["search_facing"]["candidate_set"]["digest"] == contract["candidates"][part]
+    assert set(base["population"]["train"]) < set(result["population"]["train"])
+    assert result["policy_head"]["rows"] == base["policy_head"]["rows"]
+    assert result["config"]["frozen_population"]["sha256"] == pin
+    assert "frozen_population" not in base["config"]
+    contract["candidates"]["test"] = "0" * 64
+    raw = json.dumps(contract).encode()
+    path.write_bytes(raw)
+    with pytest.raises(tc.TrainError, match="test: frozen candidate digest mismatch"):
+        tc.train(data=[str(store_dir), str(other_dir)], out=tmp_path / "refused",
+                 frozen_population=str(path), frozen_population_sha256=hashlib.sha256(raw).hexdigest(), **kw)
+    assert not (tmp_path / "refused" / "checkpoints" / "epoch-01.pt").exists()
+
+
+def test_frozen_cli_pair_and_early_hash_refusal(tmp_path):
+    from shengji.train import train_cwv as tc
+    args = tc.build_parser().parse_args(["train", "--data", "absent", "--out", str(tmp_path),
+        "--frozen-population", "contract.json", "--frozen-population-sha256", "f" * 64])
+    assert args.frozen_population == "contract.json"
+    with pytest.raises(tc.TrainError, match="supplied together"):
+        tc.train(data=["absent"], out=tmp_path, frozen_population="absent")
+
+
+@pytest.mark.parametrize("payload,pin", [
+    (b"{}", "0" * 64),
+    (b'{"schema":1,"schema":2}', None),
+    (b"[]", None),
+    (b"not json", None),
+])
+def test_contract_rejects_unpinned_or_malformed_input(tmp_path, payload, pin):
+    from shengji.train.frozen_population import load_contract
+    path = tmp_path / "bad.json"
+    path.write_bytes(payload)
+    with pytest.raises(ValueError):
+        load_contract(path, pin or hashlib.sha256(payload).hexdigest())
+
+
+def test_policy_identity_guard_rejects_count_or_digest_drift():
+    from shengji.train.frozen_population import require_policy_identity
+    identity = {"rows_used": 80, "fit_deals_digest": "a" * 64}
+    require_policy_identity({"policy_identity": identity}, dict(identity))
+    for changed in ({**identity, "rows_used": 81},
+                    {**identity, "fit_deals_digest": "b" * 64}):
+        with pytest.raises(ValueError, match="effective policy rows differ"):
+            require_policy_identity({"policy_identity": identity}, changed)

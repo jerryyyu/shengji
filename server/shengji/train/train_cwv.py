@@ -1627,11 +1627,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_tower_layers: int = 0, policy_tower_width: int | None = None,
           policy_trunk_grad_scale: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
+          frozen_population: str | None = None, frozen_population_sha256: str | None = None,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
     if loader_stage_timing and pack_dir is not None:
         raise TrainError("--loader-stage-timing is not supported with --pack-dir")
+    from .frozen_population import load_contract, bind_store, require_policy_identity
+    try:
+        frozen = load_contract(frozen_population, frozen_population_sha256)
+    except (ValueError, OSError) as exc:
+        raise TrainError(str(exc)) from exc
+    if frozen is not None and not policy_head:
+        raise TrainError("frozen population requires the base policy-row consumer")
     holdouts = parse_holdouts(eval_holdout)
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
@@ -1656,6 +1664,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
         encoder_version=encoder_version)
     config["eval_holdouts"] = dict(holdouts)
+    if frozen is not None:
+        config["frozen_population"] = {"path": str(Path(frozen_population).resolve()),
+                                        "sha256": frozen_population_sha256}
+        config["split_method"] = "frozen-base-plus-fit-only"
     enc_version = int(config["encoder_version"])
     history = arch == "seq"
     budget = _resident_budget(resident_bytes)
@@ -1715,8 +1727,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"pack: blocks come from {Path(pack_dir).resolve()} (#531); the cache validated every shard")
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
-    assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
-                             test_fraction=test_fraction)
+    if frozen is None:
+        assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
+                                 test_fraction=test_fraction)
+    else:
+        try:
+            assignment = bind_store(frozen, store)
+        except ValueError as exc:
+            raise TrainError(str(exc)) from exc
     init_loaded = None
     source_exposure = None
     init_excluded = None
@@ -1725,6 +1743,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         source_exposure = exposure_of_checkpoint(init_loaded[1], path=init)
         conflict = exposure_conflict(source_exposure, assignment)
         n_conflict = {part: len(keys) for part, keys in conflict.items()}
+        if frozen is not None and any(n_conflict.values()):
+            raise TrainError("init exposure would alter frozen validation/test populations")
         if any(n_conflict.values()) and not init_exclude_exposed:
             raise TrainError(
                 f"--init {init}: {n_conflict['val']} deal(s) the source (or an ancestor) was "
@@ -1804,6 +1824,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         assert not root_fit & held
         policy_batch = max(1, int(round(batch_size * float(policy_batch_fraction))))
         pd_ = policy_data.identity
+        if frozen is not None:
+            try:
+                require_policy_identity(frozen, pd_)
+            except ValueError as exc:
+                raise TrainError(str(exc)) from exc
         say(f"policy rows: {pd_['rows_used']} of {pd_['rows_read']} read "
             f"({pd_['rows_excluded']} rows / {pd_['deals_excluded']} deals dropped as val/test/eval); "
             f"{pd_['deals']} root fit deals ({len(root_fit - value_fit)} beyond the value fit); "
@@ -1856,6 +1881,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                         or val_cands.records == 0):
         raise TrainError(f"--select-metric {select_metric}: the validation split has no "
                          "search record (no action_values means)")
+    if frozen is not None:
+        from .cwv_eval import candidate_set_digest
+        for part in ("val", "test"):
+            shard_keys = shard_keys_of(store, set(population[part]))
+            digest = candidate_set_digest(
+                shard_keys, per_shard_limit=per_shard_cap(int(val_rank_records), len(shard_keys)),
+                history=history, version=enc_version)
+            if digest != frozen["candidates"][part]:
+                raise TrainError(f"{part}: frozen candidate digest mismatch")
+        if val_cands is None or val_cands.meta["digest"] != frozen["candidates"]["val"]:
+            raise TrainError("frozen validation candidate consumer mismatch")
 
     luna: tuple[Any, CwvBlockStore] | None = None
     luna_prepared: Prepared | None = None
@@ -2909,6 +2945,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")
+    t.add_argument("--frozen-population", default=None,
+                   help="opt-in frozen base split, candidate and policy-row contract")
+    t.add_argument("--frozen-population-sha256", default=None,
+                   help="independently reviewed SHA256 of --frozen-population")
     t.add_argument("--init", default=None,
                    help="warm start: a train_cwv checkpoint of the same arch / hidden / "
                         "feature layout whose trunk and heads are loaded")
@@ -2970,6 +3010,8 @@ def main(argv: list[str] | None = None) -> int:
                   policy_tower_width=args.policy_tower_width,
                   policy_trunk_grad_scale=args.policy_trunk_grad_scale,
                   val_rank_records=args.val_rank_records, init=args.init,
+                  frozen_population=args.frozen_population,
+                  frozen_population_sha256=args.frozen_population_sha256,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,
                   encoder_version=args.encoder_version,

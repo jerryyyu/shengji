@@ -194,7 +194,8 @@ DEFAULT, and while off `_select` and the played action are exactly as before):
   heuristic fallback.  The re-selection is one transaction under a latching
   deadline: an expiry a nested selection rule absorbs (the points rule abandons
   itself) still abandons it, and a final check precedes publishing any
-  replacement or fallback.  Not combined with the tree (refused by the recipe): the
+  replacement or fallback (the shared transaction
+  `optional_stage.OptionalStage`).  Not combined with the tree (refused by the recipe): the
   tree re-selects on its own Q matrix.
 
 Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
@@ -224,7 +225,6 @@ admitted indices, slot 0 and the record are exactly what they were):
 """
 from __future__ import annotations
 
-import copy
 import time
 from collections import Counter
 
@@ -235,6 +235,7 @@ from ..ai.heuristic import HeuristicBot
 from ..engine.cards import BJ, LJ, TRUMP, make_deck
 from ..engine.combos import decompose
 from ..harvest.legal import enumerate_legal, forced_lead
+from .optional_stage import OptionalStage
 from .policy_world_search import PolicyWorldBot
 
 #: `admit_forced_single` may grow the shortlist by at most this many slots (K+2).
@@ -655,24 +656,18 @@ class PolicyValueBot(PolicyWorldBot):
         self._doomed_throw = record
         if not worlds or not leading(rnd):
             return first
-        kept = {name: copy.deepcopy(getattr(self, name, None))
-                for name in _RESELECT_SELECTION_STATE}
+        # the transaction (`optional_stage`): the selection rules' records are
+        # snapshotted, and its deadline LATCHES the first expiry, so one a
+        # nested rule absorbs (`_select_by_points` abandons itself and returns
+        # its argmax) still abandons the whole re-selection
+        stage = OptionalStage(self, _RESELECT_SELECTION_STATE, hard_check=check_budget,
+                              budget_errors=_budget_exceeded(),
+                              abandon_on=_budget_exceeded())
+        guard = stage.guard
         keys = [tuple(sorted(a)) for a in admitted]
         excluded, doomed, aliases, current = set(), 0, 0, first
         first_forced = None
-        # the transaction's deadline: LATCHES the first expiry, so one a nested
-        # rule absorbs (`_select_by_points` abandons itself and returns its
-        # argmax) still abandons the whole re-selection
-        expired = []
-        guard = None
-        if check_budget is not None:
-            def guard():
-                try:
-                    check_budget()
-                except _budget_exceeded() as exc:
-                    expired.append(exc)
-                    raise
-        try:
+        with stage:
             while True:
                 forced = self._doomed_component(rnd, seat, admitted[current], worlds, guard)
                 if forced is None:
@@ -692,26 +687,18 @@ class PolicyValueBot(PolicyWorldBot):
                 masked[sorted(excluded)] = -np.inf
                 current = int(self._select_rules(rnd, seat, admitted, masked, worlds,
                                                  guard, priors))
-                if expired:
-                    raise expired[0]
-            if current != first:
-                # nothing decided past the deadline replaces the first selection
-                if guard is not None:
-                    guard()
-                if expired:
-                    raise expired[0]
-        except _budget_exceeded() as exc:
-            for name, value in kept.items():
-                setattr(self, name, value)
+                stage.raise_if_tripped()
+            # nothing decided past the deadline replaces the first selection
+            stage.publish(changed=current != first)
+        if stage.abandoned:
             record['doomed_throw_reselect_abandoned'] = 'budget'
-            record['doomed_throw_reselect_abandon_error'] = type(exc).__name__
+            record['doomed_throw_reselect_abandon_error'] = stage.error
             return first
         record['doomed_throw_reselect_doomed_candidates'] = doomed
         record['doomed_throw_reselect_forced_excluded'] = aliases
         if current is None:
             # every admitted candidate excluded: the swap's forced component
-            for name, value in kept.items():
-                setattr(self, name, value)
+            stage.restore()
             record['doomed_throw_reselect_fallback_forced'] = True
             record['doomed_throw_reselect_to'] = _cards_text(first_forced)
             return first

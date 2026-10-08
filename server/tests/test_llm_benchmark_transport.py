@@ -608,3 +608,97 @@ def test_retry_does_not_hide_noncapacity_failures(tmp_path, kind):
     with pytest.raises(CodexTurnTransportError):
         transport({})
     assert len(calls) == len(transport.calls) == 1
+
+
+# Exact error-only projection from failed stage2-retry call-pf3mr2jt (#355). No game content.
+WEBSOCKET_RESET_NOTICE = ("Reconnecting... 2/5 (stream disconnected before completion: "
+                          "WebSocket protocol error: Connection reset without closing handshake)")
+
+
+def websocket_reset_trace(final, notices=(WEBSOCKET_RESET_NOTICE,)):
+    rows = [json.loads(line) for line in trace(final).splitlines()]
+    for notice in notices:
+        rows.insert(-2, {"type": "error", "message": notice})
+    return b"\n".join(json.dumps(row).encode() for row in rows)
+
+
+@pytest.mark.parametrize("mode", ["success", "exhausted", "disabled", "mixed-5xx"])
+def test_websocket_reset_retry_discards_response(tmp_path, monkeypatch, mode):
+    """The recovered WebSocket-reset notice takes #932's discard-and-retry path:
+    the recovered answer is never accepted, the turn is re-run with the same prompt."""
+    from shengji.luna import transport as transport_module
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    monkeypatch.setattr(transport_module, "time", clock)
+    final = {"cards": ["C3"], "evaluations": None, "memory": "discard this"}
+    good = {**final, "memory": "fresh invocation"}
+    notices = ((WEBSOCKET_RESET_NOTICE,) if mode != "mixed-5xx"
+               else (WEBSOCKET_RESET_NOTICE.replace("2/5", "1/5"), PROVIDER_5XX_NOTICE))
+    prompts = []
+
+    def run(command, prompt, workspace, timeout):
+        prompts.append(prompt)
+        value = good if mode in ("success", "mixed-5xx") and len(prompts) == 2 else final
+        (workspace / "final.json").write_text(json.dumps(value))
+        raw = trace(value) if value is good else websocket_reset_trace(value, notices)
+        return InvocationResult(0, raw, b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=120,
+        capacity_retry_delays=() if mode == "disabled" else CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    assert transport.accept_recovered_reconnects is False
+    if mode in ("success", "mixed-5xx"):
+        assert transport({"packet": 1}) == {"cards": ["C3"], "memory": good["memory"]}
+        assert clock.sleeps == [15] and transport.calls[1]["accepted"] is True
+    else:
+        with pytest.raises(CodexTurnTransportError if mode == "disabled"
+                           else CodexProviderResourceError):
+            transport({"packet": 1})
+        assert clock.sleeps == ([15, 30, 60] if mode == "exhausted" else [])
+    assert len(set(prompts)) == 1
+    discarded = transport.calls[:-1] if mode in ("success", "mixed-5xx") else transport.calls
+    for receipt in discarded:
+        assert receipt["accepted"] is False and "response_binding" not in receipt
+        if mode != "disabled":
+            assert receipt["error_type"] == "provider_reconnect"
+            assert "discarded_provider_5xx_notices" not in receipt
+            assert [n["message"] for n in receipt["discarded_reconnect_notices"]] == list(notices)
+            assert receipt["usage"]
+
+
+@pytest.mark.parametrize("kind", ["truncated", "other-protocol", "after-completed",
+                                  "repeated-attempt", "tool"])
+def test_websocket_reset_notice_cannot_hide_refusals(tmp_path, monkeypatch, kind):
+    clock = FakeRetryClock()
+    monkeypatch.setattr(benchmark_transport, "time", clock)
+    final = {"cards": ["C3"], "evaluations": None, "memory": ""}
+    rows = [json.loads(line) for line in websocket_reset_trace(final).splitlines()]
+    notice = next(row for row in rows if row["type"] == "error")
+    if kind == "truncated":
+        notice["message"] = "Reconnecting... 2/5 (stream disconnected before completion)"
+    elif kind == "other-protocol":
+        notice["message"] = notice["message"].replace("Connection reset without closing handshake",
+                                                      "Invalid frame header")
+    elif kind == "after-completed":
+        rows.remove(notice); rows.append(notice)
+    elif kind == "repeated-attempt":
+        rows.insert(rows.index(notice), dict(notice))
+    elif kind == "tool":
+        rows.insert(-1, {"type": "item.completed", "item": {"id": "bad", "type": "command_execution"}})
+
+    def run(command, prompt, workspace, timeout):
+        (workspace / "final.json").write_text(json.dumps(final))
+        return InvocationResult(0, b"\n".join(json.dumps(row).encode() for row in rows), b"", 1)
+
+    transport = BenchmarkTransport(
+        evidence_root=tmp_path, codex_binary="/usr/bin/true",
+        capacity_retry_delays=CAPACITY_RETRY_DELAYS,
+        runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
+        run_command=run)
+    with pytest.raises(CodexTurnTransportError):
+        transport({})
+    assert len(transport.calls) == 1 and clock.sleeps == []
+    assert transport.calls[0]["accepted"] is False
+    assert transport.calls[0].get("error_type") not in ("provider_5xx", "provider_reconnect")

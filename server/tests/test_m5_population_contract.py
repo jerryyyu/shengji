@@ -184,3 +184,36 @@ def test_policy_identity_guard_rejects_count_or_digest_drift():
                     {**identity, "fit_deals_digest": "b" * 64}):
         with pytest.raises(ValueError, match="effective policy rows differ"):
             require_policy_identity({"policy_identity": identity}, changed)
+
+
+def test_receipt_command_produces_pinned_loadable_contract_and_refuses_overwrite(tmp_path):
+    from scripts.prepare_frozen_population import main
+    from shengji.train.frozen_population import load_contract
+    keys = ["deck:" + hashlib.sha256(str(i).encode()).hexdigest() for i in range(10)]
+    manifest, pins = manifest_of(split_deals(keys, seed=1))
+    population = {p: manifest[p] for p in ("train", "val", "test")}
+    population.update(digest=pins, counts={p: len(manifest[p]) for p in pins})
+    receipt = {"population": population, "epochs": [{"epoch": 1}], "best_epoch": 1,
+               "final": {p: {"search_facing": {"candidate_set": {"digest": "a" * 64}}}
+                         for p in ("val", "test")},
+               "policy_head": {"rows": {"rows_used": 80, "fit_deals_digest": "b" * 64}}}
+    source = tmp_path / "receipt.json"
+    source.write_text(json.dumps(receipt))
+    receipt_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    output = tmp_path / "contract.json"
+    args = ["--receipt", str(source), "--receipt-sha256", receipt_sha,
+            "--added-store", str(tmp_path / "sl"), "--out", str(output)]
+    for part, pin in pins.items():
+        args += [f"--{part}-sha256", pin]
+    assert main(args) == 0
+    encoded = output.read_bytes()
+    contract = load_contract(output, hashlib.sha256(encoded).hexdigest())
+    assert contract["population"] == manifest
+    with pytest.raises(ValueError, match="output already exists"):
+        main(args)
+    assert output.read_bytes() == encoded
+    args[args.index(receipt_sha)] = "0" * 64
+    args[args.index(str(output))] = str(tmp_path / "refused.json")
+    with pytest.raises(ValueError, match="receipt sha256 mismatch"):
+        main(args)
+    assert not (tmp_path / "refused.json").exists()

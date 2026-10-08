@@ -217,7 +217,6 @@ selection rules' own is added.
 """
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import math
@@ -239,6 +238,7 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   LEAD_ANCHOR_DEFAULTS,
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
+from .optional_stage import OptionalStage
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -549,7 +549,8 @@ class PVSearchBot(PolicyValueBot):
     hard budget, then a soft deadline at ``SOFT_FRACTION`` (80%); a final hard
     check precedes publishing the 4W decision.  Any expiry or error there --
     including a hard expiry a rule absorbed -- abandons the stage: the
-    snapshot is restored and the cached base decision is played,
+    snapshot is restored and the cached base decision is played (the shared
+    transaction `optional_stage.OptionalStage`),
     ``work_complete`` True, never the heuristic fallback
     (`_adaptive_worlds_decision`).  A failure in the base pass or base
     finalization is a base failure and falls back exactly as flag-off.
@@ -1017,27 +1018,21 @@ class PVSearchBot(PolicyValueBot):
         if budget is not None and base_elapsed >= ADAPTIVE_WORLDS_START_FRACTION * budget:
             state["adaptive_worlds_skipped_budget"] = True
             return base
-        # the finalized base decision's rule records; restored on an abandon
-        snapshot = {name: copy.deepcopy(getattr(self, name, None))
-                    for name in ADAPTIVE_WORLDS_RULE_STATE}
-        guard, tripped = None, []
-        if budget is not None:
-            stop = started + ADAPTIVE_WORLDS_SOFT_FRACTION * budget
-
-            def guard():
-                if check_budget is not None:
-                    try:
-                        check_budget()
-                    except PVSearchBudgetExceeded as exc:
-                        # a rule (the tie-break, the doomed-throw check) may catch
-                        # this and publish a degraded result; remember it
-                        tripped.append(("hard_budget", type(exc).__name__))
-                        raise
-                if time.perf_counter() >= stop:
-                    tripped.append(("soft_budget", _AdaptiveWorldsExpired.__name__))
-                    raise _AdaptiveWorldsExpired("adaptive_worlds soft deadline")
+        # the finalized base decision's rule records, restored on an abandon;
+        # every check in the stage latches (`optional_stage`)
+        stage = OptionalStage(
+            self, ADAPTIVE_WORLDS_RULE_STATE,
+            hard_check=check_budget if budget is not None else None,
+            budget_errors=PVSearchBudgetExceeded,
+            soft_deadline=(started + ADAPTIVE_WORLDS_SOFT_FRACTION * budget
+                           if budget is not None else None),
+            clock=lambda: time.perf_counter(), soft_error=_AdaptiveWorldsExpired,
+            final_check=check_budget, abandon_on=Exception,
+            # `_worlds` overwrites the sampler record; the record describes the base draw
+            restore_always=("_last_sampling",))
+        guard = stage.guard
         total_sums, extra_worlds, extra_batches, extra_evaluations = sums.copy(), [], 0, 0
-        try:
+        with stage:
             # 2. the optional stage
             for _ in range(ADAPTIVE_WORLDS_EXTRA_ROUNDS):
                 state["adaptive_worlds_sampler_advanced"] = True
@@ -1055,28 +1050,15 @@ class PVSearchBot(PolicyValueBot):
                                            check_budget=guard, priors=priors)
             combined_played = self._swap_doomed_throw(rnd, seat, admitted[combined_winner],
                                                       combined, guard)
-            if tripped:
-                # a rule absorbed an expiry and returned a degraded 4W result
-                raise _AdaptiveWorldsExpired("adaptive_worlds re-selection abandoned a rule")
-            # 3. nothing past the hard deadline is published
-            if check_budget is not None:
-                check_budget()
-        except Exception as exc:
-            if tripped:
-                reason, error = tripped[0]
-            elif isinstance(exc, PVSearchBudgetExceeded):
-                reason, error = "hard_budget", type(exc).__name__
-            else:
-                reason, error = "error", type(exc).__name__
-            for name, value in snapshot.items():
-                setattr(self, name, value)
-            state.update(adaptive_worlds_abandoned=True, adaptive_worlds_abandon_reason=reason,
-                         adaptive_worlds_abandon_error=error,
+            # 3. an expiry a rule absorbed abandons; nothing past the hard
+            # deadline is published
+            stage.publish()
+        if stage.abandoned:
+            state.update(adaptive_worlds_abandoned=True,
+                         adaptive_worlds_abandon_reason=stage.reason,
+                         adaptive_worlds_abandon_error=stage.error,
                          adaptive_worlds_abandoned_evaluations=extra_evaluations)
             return base
-        finally:
-            # `_worlds` overwrites the sampler record; the record describes the base draw
-            self._last_sampling = snapshot["_last_sampling"]
         state.update(adaptive_worlds_total=len(combined),
                      adaptive_worlds_changed=int(np.argmax(combined_means)) != best,
                      adaptive_worlds_played_changed=list(combined_played) != list(played))

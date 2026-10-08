@@ -337,3 +337,21 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
     # Without the field, the comparator falls back to production (the pre-existing behaviour).
     plain = copy.deepcopy(reg); plain.pop("screen_comparator")
     assert b.comparator_release(plain) == 42
+
+
+def test_archive_shas_refuse_a_cited_sha_the_named_archive_does_not_hold(tmp_path):
+    """A hand-copied sha (#931's wrong reader sha) must exist in the archive the row names."""
+    import hashlib
+    b = _load()
+    lane = tmp_path / "v99x"; lane.mkdir()
+    (lane / "reader.py").write_text("print('reader')\n")
+    good = hashlib.sha256(b"print('reader')\n").hexdigest()
+    (lane / "receipt.json").write_text('{"result_sha256": "' + "a" * 64 + '"}')
+    bad = good[:-1] + ("0" if good[-1] != "0" else "1")
+    row = lambda sha: {"screens": [{"id": "v99x", "note": f"reader sha256 {sha}; archive ~/shengji-archive/2026-09-13/readouts/v99x/"}]}
+    assert b.check_archive_shas(row(good), archive=tmp_path)[:2] == ([], 1)
+    assert b.check_archive_shas(row("a" * 64), archive=tmp_path)[:2] == ([], 1)   # cited inside a text file
+    errs, checked, _ = b.check_archive_shas(row(bad), archive=tmp_path)
+    assert checked == 1 and len(errs) == 1 and bad[:16] in errs[0]
+    # an archive that is not on this machine is skipped and counted, never failed
+    assert b.check_archive_shas(row(bad), archive=tmp_path / "absent") == ([], 0, 1)

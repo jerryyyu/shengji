@@ -3,7 +3,7 @@ atlas_v2.html next to it.  The page is BUILT, not tracked (#688): publish from t
 `--check` refuses when the registry breaks an invariant or the page cannot be built, and -- when a
 built atlas_v2.html is on disk -- when that stale page differs from a fresh build.  Never hand-edit
 the HTML (Jerry 2026-09-22; #604)."""
-import json, html, datetime, re, sys, tempfile
+import json, html, datetime, hashlib, re, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 R = json.loads((HERE / "registry.json").read_text())
@@ -408,6 +408,52 @@ def _stable(p):
     return _re.sub(r"Built [^<]* from registry.json", "Built <t> from registry.json", p)
 
 
+ARCHIVE = Path.home() / "shengji-archive" / "2026-09-13" / "readouts"
+_SHA = re.compile(r"\b[0-9a-f]{64}\b")
+_ARCHIVE_DIR = re.compile(r"readouts/([A-Za-z0-9._-]+)/")
+
+
+def check_archive_shas(reg, archive=ARCHIVE):
+    """Every full sha256 a row cites must exist in the archive the row names, when that archive is on
+    this disk: a hand-copied sha that appears nowhere in the archive (a typo, or a sibling lane's file)
+    is refused.  Known hashes are every 64-hex token in the archive's top-level files of at most 8 MB
+    (SHA256SUMS, receipt.json, result.json, the predeclaration) plus each such file's own sha256.  Rows with no archive path, or whose archive is not on
+    this machine, are skipped and counted, so a CI box without the archive still builds."""
+    errs, checked, skipped = [], 0, 0
+    known_by_dir = {}
+    for s in reg["screens"]:
+        text = json.dumps({k: v for k, v in s.items() if k != "ref"})
+        dirs = sorted(set(_ARCHIVE_DIR.findall(text)))
+        cited = set(_SHA.findall(text))
+        if not dirs or not cited:
+            continue
+        present = [archive / d for d in dirs if (archive / d).is_dir()]
+        if not present:
+            skipped += 1
+            continue
+        known = set()
+        for d in present:
+            if d not in known_by_dir:
+                # top-level files only (raw output stays unread): every 64-hex token in a small
+                # file -- SHA256SUMS lists the archived files, receipt/result cite the rest --
+                # plus each small file's own sha256 (SHA256SUMS's included)
+                k = set()
+                for f in d.iterdir():
+                    if not f.is_file() or f.stat().st_size > 8 << 20:
+                        continue
+                    data = f.read_bytes()
+                    k.add(hashlib.sha256(data).hexdigest())
+                    k.update(_SHA.findall(data.decode("utf-8", "replace")))
+                known_by_dir[d] = k
+            known |= known_by_dir[d]
+        missing = sorted(cited - known)
+        checked += 1
+        if missing:
+            errs.append(f"{s['id']}: cites sha256 not found in its archive {', '.join(dirs)}: "
+                        + ", ".join(m[:16] + "..." for m in missing))
+    return errs, checked, skipped
+
+
 if __name__ == "__main__":
     errs = check_registry(R)
     if errs:
@@ -422,7 +468,11 @@ if __name__ == "__main__":
                 print("BUILD FAILED: temp page size mismatch"); sys.exit(1)
         if out.exists() and _stable(out.read_text()) != _stable(page):
             print("OUT OF DATE: atlas_v2.html differs from registry.json; run build_v2.py"); sys.exit(1)
+        sha_errs, sha_checked, sha_skipped = check_archive_shas(R)
+        if sha_errs:
+            print("ARCHIVE SHA ERRORS:\n  " + "\n  ".join(sha_errs)); sys.exit(1)
         print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
+        print(f"archive shas: {sha_checked} rows verified against their archives, {sha_skipped} archives not on this machine")
     else:
         out.write_text(page)
         print("built", out, len(page), "bytes;", len(rows), "chart rows")

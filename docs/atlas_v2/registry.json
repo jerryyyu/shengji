@@ -1354,6 +1354,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6056910600"
   },
   {
+   "id": "v64dtr42",
+   "date": "2026-10-08",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Doomed-throw re-select vs release 42",
+   "candidate": "Release 42 with SHENGJI_PV_DOOMED_THROW_RESELECT=1 in place of the swap (#946: when the selected lead is a throw refused in every sampled world, re-run the selection excluding doomed throws and the throw's forced component, instead of playing the forced component), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b; same package smv3out-491ee4bf. Cloud tree claude-main-31 (c11a7d99).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "68060910 68160910 68260910 68360910 68460910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.002778,
+   "lo": -0.023204,
+   "hi": 0.017649,
+   "takeaway": "Estimated -0.0028; 95% CI [-0.0232, +0.0176], inconclusive; acts on ~2% of decisions; no promotion under the first-stage gate.",
+   "note": "SEALED 10-08 (LANE DONE 20:08:20Z); readout (Claude, one pass) #707; digests posted on #707 issuecomment-6068187615 before the read; Codex packet PASS #700 issuecomment-6065849862. Jerry 10-08 asked for this fix after production room YJQJ (Bot 2 led a lone SJ into an outstanding SA and a lone CJ after doomed throws). Paired -0.002778 [-0.023204,+0.017649], SE 0.010422, MDE80 0.0292, tau 0.0127, Q 5.69, I2 29.7%; INCONCLUSIVE; promotion_gate NO PROMOTION; no extension; strength verdict withheld. Window deltas -0.0048, +0.0087, -0.0231, -0.0260, +0.0288. Descriptive own-arm levels vs MC-LCB: dtr 0.2542 [0.2299,0.2785], release 42 0.2580 [0.2290,0.2870] (not the paired primary). Health: 727,692 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified candidate and comparator pv-search records. Telemetry (descriptive): a doomed throw was selected on 2.19% of candidate decisions; dtr re-selected on 99.4% of those, excluded the forced component on 28.2%, fell back to the forced component on 0.6%, abandoned 0; the comparator's swap fired on 2.14% of decisions; decision seconds p50/p90/p99 0.091/0.140/0.230 vs 0.089/0.135/0.218. INCONCLUSIVE establishes neither benefit nor noninferiority; any deploy as a play-quality fix is Jerry's decision outside this gate. Seeds: seed_windows.py clear --follow-init vs the SMV3 lineage (0 overlap). Reader sha256 012598ef4ebc0cc6762b114bc1c53c032645c97ecfc2cb797c6070b006b73e39; result sha256 d40221cae7d2308878e98a02e00b2b2387087e329aa7b9aaadeaba2d215b6d09; launcher sha256 fdea0462fff5099a950f20ca4db68844a555bd6196f9cee642b511fa57eb58f2; predeclaration sha256 53b182a714257482fb852da4cca8ab20630631bb10d4ff5cd5d0241f81d01feb; SHA256SUMS 07771f525dda5b47a7193ade9854bd04dfe0defe9ec74ae4e94c8efe49f8cc7f. Archive ~/shengji-archive/2026-09-13/readouts/v64dtr42-dtr-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6068198425"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

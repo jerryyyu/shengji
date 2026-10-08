@@ -165,6 +165,32 @@ def test_search_head_needs_a_sidecar_and_a_realised_primary(two_head_run):
                         search_mean_sidecar=str(r["side"]), **r["kw"])
 
 
+def test_split_decode_pruning_preserves_trained_checkpoint(two_head_run, monkeypatch):
+    from shengji.train.cwv_data import CwvBlockStore
+    r = two_head_run
+    optimized = r["two"]
+    original = CwvBlockStore.iter_batches
+
+    def unpruned(self, mask, *args, **kwargs):
+        # The generic callable follows the original load-all-window path.
+        return original(self, lambda block: mask(block), *args, **kwargs)
+
+    monkeypatch.setattr(CwvBlockStore, "iter_batches", unpruned)
+    reference = train_cwv.train(out=r["tmp"] / "unpruned", search_head=True,
+                                search_mean_sidecar=str(r["side"]), **r["kw"])
+    assert optimized["population"] == reference["population"]
+    assert optimized["best_epoch"] == reference["best_epoch"]
+    for actual, expected in zip(optimized["epochs"], reference["epochs"]):
+        actual_train = {k: v for k, v in actual["train"].items() if k != "stage_secs"}
+        expected_train = {k: v for k, v in expected["train"].items() if k != "stage_secs"}
+        assert actual_train == expected_train
+    fast, _, _ = cwv_policy.load_cwv_checkpoint(r["tmp"] / "two" / "best.pt")
+    slow, _, _ = cwv_policy.load_cwv_checkpoint(r["tmp"] / "unpruned" / "best.pt")
+    assert fast.state_dict().keys() == slow.state_dict().keys()
+    for name, tensor in fast.state_dict().items():
+        assert torch.equal(tensor, slow.state_dict()[name]), name
+
+
 def test_evaluator_reads_the_named_head_and_binds_it_in_its_identity(two_head_run):
     ckpt = two_head_run["tmp"] / "two" / "best.pt"
     default = cwv_policy.CompleteWorldEvaluator(ckpt, threads=1)

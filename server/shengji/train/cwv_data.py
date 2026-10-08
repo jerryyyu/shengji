@@ -1160,6 +1160,16 @@ class CwvBlockStore:
             return {i: pool.submit(decode_arrays, self.decode_task(i)) for i in todo}
         try:
             for group in groups:
+                original_positions = None
+                if type(mask_fn) is SplitSelector and self.sidecar_dir is not None:
+                    # Preserve window boundaries, partial batches and RNG order.
+                    # Sidecar attachment guarantees BOTH optional arrays on every
+                    # block; without it, removing an empty shard could change
+                    # gather's all-block optional-column intersection.
+                    original_positions = np.asarray([
+                        j for j, i in enumerate(group) if mask_fn.selects_any(self.keys_of(i))
+                    ], dtype=np.int64)
+                    group = [group[j] for j in original_positions]
                 if stage_counts is not None:
                     stage_counts["windows"] += 1
                     stage_counts["requested_shards"] += len(group)
@@ -1211,6 +1221,8 @@ class CwvBlockStore:
                             try:
                                 sl = idx[b0:b0 + batch_size]
                                 batch = gather(blocks, which[sl], rows[sl])
+                                if original_positions is not None:
+                                    batch["block"] = original_positions[batch["block"]]
                             finally:
                                 finish_stage("gather", started)
                             yield batch

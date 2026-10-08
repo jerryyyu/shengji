@@ -167,8 +167,9 @@ Optional unresolved-decision evidence rule, OFF BY DEFAULT:
 gap on the W base worlds is below ``ADAPTIVE_WORLDS_Z`` (2) paired standard
 errors, the admitted candidates are scored on ``ADAPTIVE_WORLDS_EXTRA_ROUNDS``
 (3) more batches of W sampled worlds and selected on the 4W means; under a
-serving budget the extra stage starts only below 50% of it and abandons itself
-at 80%, keeping the base result (definition and evidence: `PVSearchBot`).
+serving budget the extra stage starts only below 50% of it, after the base
+decision is finalized, and abandons itself at 80% or on the hard budget or any
+error, playing the cached base decision (definition and evidence: `PVSearchBot`).
 ``0`` or ``1`` only; on, it enters the recipe digest with its constants and adds
 ``-aw`` to the name as the last rule token; it refuses the tree.  Off, it is
 absent from the payload, so every existing name (release 42:
@@ -177,6 +178,7 @@ and every decision are unchanged.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -248,6 +250,9 @@ ADAPTIVE_WORLDS_EXTRA_ROUNDS = 3
 ADAPTIVE_WORLDS_START_FRACTION = 0.5
 #: ... and abandons itself (base means and worlds kept) at this share
 ADAPTIVE_WORLDS_SOFT_FRACTION = 0.8
+#: `adaptive_worlds`: the per-decision rule records the base finalization sets
+#: and an abandoned re-selection could overwrite; snapshotted and restored
+ADAPTIVE_WORLDS_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_last_sampling")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds): div, fs, rc,
@@ -425,7 +430,8 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
 
 
 class _AdaptiveWorldsExpired(Exception):
-    """The `adaptive_worlds` extra stage reached its soft deadline (internal)."""
+    """The `adaptive_worlds` extra stage reached its soft deadline, or a rule in
+    its re-selection absorbed an expiry (internal)."""
 
 
 class PVSearchBot(PolicyValueBot):
@@ -452,20 +458,35 @@ class PVSearchBot(PolicyValueBot):
     4W``.  Admission is unchanged (base worlds only); `_select` and
     `_swap_doomed_throw` receive the combined world list, so every later rule
     sees the same evidence the means came from.
-    Budget: the extra stage must never cost the decision its search result.
-    With a serving budget it starts only while elapsed < ``START_FRACTION``
-    (50%) of the budget, and runs under a soft deadline at ``SOFT_FRACTION``
-    (80%); on expiry -- or on any error inside the extra stage -- it abandons
-    itself and the base means and worlds stand.  The hard `check_budget`
-    elsewhere is unchanged.
+    Budget: the extra stage must never cost the decision its search result
+    (#936 HOLD).  The base decision is FINALIZED first, exactly as the flag-off
+    path finalizes it (`_select` and `_swap_doomed_throw` on the base worlds
+    after the pre-success hard check), and cached with a snapshot of the rule
+    records it set.  With a serving budget the extra stage starts only while
+    elapsed < ``START_FRACTION`` (50%) of the budget, and every check inside it
+    (sampling, scoring, the 4W `_select` and `_swap_doomed_throw`) tests the
+    hard budget, then a soft deadline at ``SOFT_FRACTION`` (80%); a final hard
+    check precedes publishing the 4W decision.  Any expiry or error there --
+    including a hard expiry a rule absorbed -- abandons the stage: the
+    snapshot is restored and the cached base decision is played,
+    ``work_complete`` True, never the heuristic fallback
+    (`_adaptive_worlds_decision`).  A failure in the base pass or base
+    finalization is a base failure and falls back exactly as flag-off.
     Record (only with the rule on): ``adaptive_worlds_triggered`` (the decision
     was unresolved), ``_total`` (worlds behind the selection), ``_margin``,
     ``_se``, ``_skipped_budget`` (unresolved but past the start share),
-    ``_abandoned`` (+ ``_abandon_reason``), ``_changed`` (the selection's value
-    argmax differs from the base argmax).  ``value_means`` are the means used
-    for selection, ``worlds`` stays the base W and ``value_evaluations`` counts
-    the leaves of every COMPLETED scoring pass (base plus completed extra rounds;
-    a round cut by the soft deadline is not counted).
+    ``_abandoned`` (+ ``_abandon_reason`` ``soft_budget``/``hard_budget``/
+    ``error``, ``_abandon_error`` the exception class, ``_abandoned_evaluations``
+    the leaves of COMPLETED extra rounds thrown away; a round cut by a check
+    is not counted), ``_changed`` (the selection's value
+    argmax differs from the base argmax), ``_played_changed`` (the cards differ
+    from the base decision's), ``_sampler_advanced`` (extra draws were begun:
+    the sampler stream moved, even when abandoned -- later decisions' worlds
+    differ, never this one's result) and ``_base_seconds`` (elapsed at the base
+    finalization; ``seconds`` stays the total).  ``value_means``,
+    ``value_batches`` and ``value_evaluations`` describe the published
+    selection: the 4W pass when it completed, else exactly the base pass;
+    ``worlds`` stays the base W.
     Only this class: the harness `PolicyValueBot.decide_play` has no budget and
     no capture path.  A subclass that replaces `_value_means` (the tree, which
     re-selects on the PV pass's W x K matrix; the belief-weighted exploiter) is
@@ -708,24 +729,25 @@ class PVSearchBot(PolicyValueBot):
                                       stage="admission_budget")
         admitted = [actions[i] for i in chosen]
         if self.adaptive_worlds:
-            # the optional evidence rule (class docstring): the means and the
-            # worlds every later rule sees, base or base + extras
-            means, batches, selection_worlds, evaluations = self._adaptive_worlds_means(
-                rnd, seat, admitted, worlds, started, check_budget)
+            # the optional evidence rule (class docstring): the FINALIZED base
+            # decision first, then -- only if it is unresolved and in time -- the
+            # 4W re-selection, which on any failure returns the base decision
+            means, batches, winner, played, evaluations = self._adaptive_worlds_decision(
+                rnd, seat, admitted, worlds, started, check_budget,
+                [float(preferences[i]) for i in chosen])
         else:
             means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
-            selection_worlds, evaluations = worlds, len(worlds) * len(admitted)
-        if check_budget is not None:
-            check_budget()   # pre-success: nothing past the deadline is published
-        # the optional tie-break rebuilds leaves under the same deadline and, on
-        # expiry, abandons itself in favour of the argmax (`policy_value_search`)
-        winner = self._select(rnd, seat, admitted, means, worlds=selection_worlds,
-                              check_budget=check_budget,
-                              priors=[float(preferences[i]) for i in chosen])
-        # the optional doomed-throw swap changes only the cards played, never the
-        # selection (``selected_index`` and ``value_means`` still describe the search)
-        played = self._swap_doomed_throw(rnd, seat, admitted[winner], selection_worlds,
-                                         check_budget)
+            evaluations = len(worlds) * len(admitted)
+            if check_budget is not None:
+                check_budget()   # pre-success: nothing past the deadline is published
+            # the optional tie-break rebuilds leaves under the same deadline and, on
+            # expiry, abandons itself in favour of the argmax (`policy_value_search`)
+            winner = self._select(rnd, seat, admitted, means, worlds=worlds,
+                                  check_budget=check_budget,
+                                  priors=[float(preferences[i]) for i in chosen])
+            # the optional doomed-throw swap changes only the cards played, never the
+            # selection (``selected_index`` and ``value_means`` still describe the search)
+            played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, check_budget)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -756,9 +778,31 @@ class PVSearchBot(PolicyValueBot):
 
     # -- the optional unresolved-decision evidence rule (class docstring) ---------
 
-    def _adaptive_worlds_means(self, rnd, seat, admitted, worlds, started, check_budget=None):
-        """``(means, batches, selection worlds, evaluations)`` under
-        ``adaptive_worlds``; sets ``self._adaptive_worlds`` (the record fields)."""
+    def _adaptive_worlds_decision(self, rnd, seat, admitted, worlds, started, check_budget,
+                                  priors):
+        """``(means, batches, winner, played, evaluations)`` under
+        ``adaptive_worlds``; sets ``self._adaptive_worlds`` (the record fields).
+
+        Control flow (#936 HOLD: optional work must never cost the completed
+        base search):
+        1. the base pass and the base FINALIZATION exactly as the flag-off path
+           (the pre-success hard check, `_select` and `_swap_doomed_throw` on the
+           base worlds) -- a failure here is a base failure and takes the normal
+           fallback in `_decide_play`;
+        2. only on an unresolved decision begun below ``START_FRACTION`` of the
+           budget: the extra rounds and the re-selection on the combined worlds,
+           every check under ``guard`` (the hard budget first, then the soft
+           deadline);
+        3. a final hard check before the 4W decision is published.
+        ANY ``Exception`` in 2-3 -- the soft deadline, the hard budget (raised,
+        or absorbed and reported by a rule that abandons itself on it), an
+        error -- abandons the optional stage: the per-decision rule records are
+        restored to the base finalization's snapshot and the cached base
+        decision is returned, ``work_complete`` True.  ``BaseException``
+        propagates.  The sampler stream is NOT rewound on an abandon (the
+        record's ``adaptive_worlds_sampler_advanced`` says it moved); the
+        fallback path's rewind for a genuine base failure is unchanged.
+        """
         n_worlds, n_admitted = len(worlds), len(admitted)
         matrix = np.full((n_worlds, n_admitted), np.nan, dtype=np.float64)
         # serving's loop and accumulator; ``capture`` is additive (`_score_leaves`)
@@ -769,65 +813,103 @@ class PVSearchBot(PolicyValueBot):
         state = {"adaptive_worlds_triggered": False, "adaptive_worlds_total": n_worlds,
                  "adaptive_worlds_margin": None, "adaptive_worlds_se": None,
                  "adaptive_worlds_skipped_budget": False,
-                 "adaptive_worlds_abandoned": False, "adaptive_worlds_changed": False}
+                 "adaptive_worlds_abandoned": False, "adaptive_worlds_changed": False,
+                 "adaptive_worlds_played_changed": False,
+                 "adaptive_worlds_sampler_advanced": False,
+                 "adaptive_worlds_base_seconds": None}
         self._adaptive_worlds = state
-        if n_admitted < 2 or n_worlds < 2:
-            return means, batches, worlds, evaluations
-        if not np.isfinite(matrix).all():
-            raise PVSearchPolicyError("adaptive_worlds value matrix has unfilled cells",
-                                      stage="adaptive_worlds_matrix")
-        best = int(np.argmax(means))
-        runner = max((i for i in range(n_admitted) if i != best), key=lambda i: (means[i], -i))
-        margin = float(means[best] - means[runner])
-        se = float(np.std(matrix[:, best] - matrix[:, runner], ddof=1) / math.sqrt(n_worlds))
-        triggered = margin < ADAPTIVE_WORLDS_Z * se or (se == 0.0 and margin == 0.0)
-        state.update(adaptive_worlds_triggered=bool(triggered), adaptive_worlds_margin=margin,
-                     adaptive_worlds_se=se)
+        triggered, best = False, None
+        if n_admitted >= 2 and n_worlds >= 2:
+            if not np.isfinite(matrix).all():
+                raise PVSearchPolicyError("adaptive_worlds value matrix has unfilled cells",
+                                          stage="adaptive_worlds_matrix")
+            best = int(np.argmax(means))
+            runner = max((i for i in range(n_admitted) if i != best),
+                         key=lambda i: (means[i], -i))
+            margin = float(means[best] - means[runner])
+            se = float(np.std(matrix[:, best] - matrix[:, runner], ddof=1) / math.sqrt(n_worlds))
+            triggered = bool(margin < ADAPTIVE_WORLDS_Z * se or (se == 0.0 and margin == 0.0))
+            state.update(adaptive_worlds_triggered=triggered, adaptive_worlds_margin=margin,
+                         adaptive_worlds_se=se)
+        # 1. the base finalization, exactly the flag-off path
+        if check_budget is not None:
+            check_budget()   # pre-success: nothing past the deadline is published
+        winner = self._select(rnd, seat, admitted, means, worlds=worlds,
+                              check_budget=check_budget, priors=priors)
+        played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, check_budget)
+        base = (means, batches, winner, played, evaluations)
+        base_elapsed = time.perf_counter() - started
+        state["adaptive_worlds_base_seconds"] = base_elapsed
         if not triggered:
-            return means, batches, worlds, evaluations
+            return base
         budget = self.serving_budget_seconds
-        if budget is not None and time.perf_counter() - started >= ADAPTIVE_WORLDS_START_FRACTION * budget:
+        if budget is not None and base_elapsed >= ADAPTIVE_WORLDS_START_FRACTION * budget:
             state["adaptive_worlds_skipped_budget"] = True
-            return means, batches, worlds, evaluations
-        gate = None
+            return base
+        # the finalized base decision's rule records; restored on an abandon
+        snapshot = {name: copy.deepcopy(getattr(self, name, None))
+                    for name in ADAPTIVE_WORLDS_RULE_STATE}
+        guard, tripped = None, []
         if budget is not None:
             stop = started + ADAPTIVE_WORLDS_SOFT_FRACTION * budget
 
-            def gate():
+            def guard():
+                if check_budget is not None:
+                    try:
+                        check_budget()
+                    except PVSearchBudgetExceeded as exc:
+                        # a rule (the tie-break, the doomed-throw check) may catch
+                        # this and publish a degraded result; remember it
+                        tripped.append(("hard_budget", type(exc).__name__))
+                        raise
                 if time.perf_counter() >= stop:
+                    tripped.append(("soft_budget", _AdaptiveWorldsExpired.__name__))
                     raise _AdaptiveWorldsExpired("adaptive_worlds soft deadline")
-        # `_worlds` overwrites the sampler record; the record describes the base draw
-        base_sampling = self._last_sampling
         total_sums, extra_worlds, extra_batches, extra_evaluations = sums.copy(), [], 0, 0
         try:
+            # 2. the optional stage
             for _ in range(ADAPTIVE_WORLDS_EXTRA_ROUNDS):
-                drawn, _attempts = self._worlds(rnd, seat, gate)
-                round_sums, round_batches = self._score_leaves(rnd, seat, admitted, drawn, gate)
+                state["adaptive_worlds_sampler_advanced"] = True
+                drawn, _attempts = self._worlds(rnd, seat, guard)
+                round_sums, round_batches = self._score_leaves(rnd, seat, admitted, drawn, guard)
                 extra_evaluations += len(drawn) * n_admitted
                 extra_batches += round_batches
                 total_sums = total_sums + round_sums
                 extra_worlds.extend(drawn)
-            if gate is not None:
-                gate()   # nothing computed past the soft deadline is used
+            if guard is not None:
+                guard()
+            combined = list(worlds) + extra_worlds
+            combined_means = total_sums / len(combined)
+            combined_winner = self._select(rnd, seat, admitted, combined_means, worlds=combined,
+                                           check_budget=guard, priors=priors)
+            combined_played = self._swap_doomed_throw(rnd, seat, admitted[combined_winner],
+                                                      combined, guard)
+            if tripped:
+                # a rule absorbed an expiry and returned a degraded 4W result
+                raise _AdaptiveWorldsExpired("adaptive_worlds re-selection abandoned a rule")
+            # 3. nothing past the hard deadline is published
+            if check_budget is not None:
+                check_budget()
         except Exception as exc:
-            # The base pass was complete and within budget; only the optional
-            # extra evidence failed or ran out of time, so the base means and
-            # worlds stand and nothing falls back to the heuristic anchor.  The
-            # sampler stream HAS advanced by the abandoned draws; that changes
-            # later decisions' worlds only, never this one's result, and the
-            # served (flag-off) stream is untouched.
-            state["adaptive_worlds_abandoned"] = True
-            state["adaptive_worlds_abandon_reason"] = (
-                "budget" if isinstance(exc, _AdaptiveWorldsExpired) else "error")
-            state["adaptive_worlds_abandon_error"] = type(exc).__name__
-            return means, batches, worlds, evaluations + extra_evaluations
+            if tripped:
+                reason, error = tripped[0]
+            elif isinstance(exc, PVSearchBudgetExceeded):
+                reason, error = "hard_budget", type(exc).__name__
+            else:
+                reason, error = "error", type(exc).__name__
+            for name, value in snapshot.items():
+                setattr(self, name, value)
+            state.update(adaptive_worlds_abandoned=True, adaptive_worlds_abandon_reason=reason,
+                         adaptive_worlds_abandon_error=error,
+                         adaptive_worlds_abandoned_evaluations=extra_evaluations)
+            return base
         finally:
-            self._last_sampling = base_sampling
-        combined = list(worlds) + extra_worlds
-        combined_means = total_sums / len(combined)
+            # `_worlds` overwrites the sampler record; the record describes the base draw
+            self._last_sampling = snapshot["_last_sampling"]
         state.update(adaptive_worlds_total=len(combined),
-                     adaptive_worlds_changed=int(np.argmax(combined_means)) != best)
-        return (combined_means, batches + extra_batches, combined,
+                     adaptive_worlds_changed=int(np.argmax(combined_means)) != best,
+                     adaptive_worlds_played_changed=list(combined_played) != list(played))
+        return (combined_means, batches + extra_batches, combined_winner, combined_played,
                 evaluations + extra_evaluations)
 
     def _adaptive_worlds_record(self):

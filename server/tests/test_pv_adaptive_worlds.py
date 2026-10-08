@@ -39,7 +39,9 @@ RELEASE42_RULES = {**RELEASE38_RULES, "doomed_throw_swap": True}
 FLAG = "SHENGJI_PV_ADAPTIVE_WORLDS"
 RULE_KEYS = {"adaptive_worlds_triggered", "adaptive_worlds_total", "adaptive_worlds_margin",
              "adaptive_worlds_se", "adaptive_worlds_skipped_budget",
-             "adaptive_worlds_abandoned", "adaptive_worlds_changed"}
+             "adaptive_worlds_abandoned", "adaptive_worlds_changed",
+             "adaptive_worlds_played_changed", "adaptive_worlds_sampler_advanced",
+             "adaptive_worlds_base_seconds"}
 W = 8
 
 
@@ -333,7 +335,9 @@ def test_near_tie_triggers_and_scores_only_the_admitted_on_4w(evaluator):
     # base + three extra rounds, every one on exactly the admitted candidates
     assert [n for _, n in log["scored"]] == [W] * 4
     assert all(actions == rec["admitted"] for actions, _ in log["scored"])
-    assert log["select_worlds"] == [4 * W] and log["swap_worlds"] == [4 * W]
+    # the base decision is finalized first, then re-selected on the 4W evidence
+    assert log["select_worlds"] == [W, 4 * W] and log["swap_worlds"] == [W, 4 * W]
+    assert rec["adaptive_worlds_sampler_advanced"] is True
     assert rec["adaptive_worlds_margin"] < pv.ADAPTIVE_WORLDS_Z * rec["adaptive_worlds_se"] \
         or rec["adaptive_worlds_margin"] == rec["adaptive_worlds_se"] == 0.0
     assert all(type(rec[key]) is bool for key in ("adaptive_worlds_triggered",
@@ -418,13 +422,15 @@ def test_soft_expiry_abandons_and_plays_the_base_selection(clock):
     assert rec["schema"] == RECORD_SCHEMA and rec["schema"] != pv.FALLBACK_SCHEMA
     assert rec["work_complete"] is True
     assert rec["adaptive_worlds_triggered"] is True and rec["adaptive_worlds_abandoned"] is True
-    assert rec["adaptive_worlds_abandon_reason"] == "budget"
+    assert rec["adaptive_worlds_abandon_reason"] == "soft_budget"
     assert rec["adaptive_worlds_total"] == W and rec["adaptive_worlds_changed"] is False
     assert log["select_worlds"] == [W] and log["swap_worlds"] == [W]
     assert rec["value_means"] == base["value_means"]
     assert rec["selected_index"] == base["selected_index"] and played == ref_played
     # completed scoring passes only: the abandoned round never completed
     assert rec["value_evaluations"] == W * len(rec["admitted"])
+    assert rec["adaptive_worlds_abandoned_evaluations"] == 0
+    assert _comparable(rec) == _comparable(base)
 
 
 def test_extra_stage_error_abandons_without_fallback():
@@ -461,6 +467,202 @@ def test_sampler_record_describes_the_base_draw():
     assert len(calls) == 4 and rec["refusal_observations"] == 7
 
 
+# ------------------------------------------------------- (d2) the cached base decision (#936 HOLD)
+# Optional work must never cost the completed base search: the base decision is
+# finalized and cached before the extra stage, and ANY expiry or error in that
+# stage plays it.  Codex's witness (review comment 6050486577) is the first test.
+
+def _comparable(record):
+    """A decision record without its timing, the rule's own fields and the
+    sampler's cumulative-counter deltas (telemetry an abandoned draw moves)."""
+    return {k: v for k, v in record.items()
+            if k not in ("seconds", "elapsed_seconds") and not k.startswith("adaptive_worlds")
+            and not k.endswith("_delta")}
+
+
+def _assert_base_played(played, rec, ref_played, base, reason, error):
+    assert rec["schema"] == RECORD_SCHEMA and rec["schema"] != pv.FALLBACK_SCHEMA, rec
+    assert rec["work_complete"] is True and played == ref_played == rec["played"]
+    assert rec["adaptive_worlds_triggered"] is True and rec["adaptive_worlds_abandoned"] is True
+    assert rec["adaptive_worlds_abandon_reason"] == reason
+    assert rec["adaptive_worlds_abandon_error"] == error
+    assert rec["adaptive_worlds_total"] == W and rec["adaptive_worlds_changed"] is False
+    assert rec["adaptive_worlds_played_changed"] is False
+    assert rec["adaptive_worlds_sampler_advanced"] is True
+    # exactly the record the flag-off decision published, rule records included
+    assert _comparable(rec) == _comparable(base)
+
+
+@pytest.mark.parametrize("rules", [{}, RELEASE42_RULES], ids=["bare", "release42"])
+def test_optional_score_crossing_hard_deadline_keeps_completed_base(clock, rules):
+    base_bot = served(ClockEvaluator(clock, [1.0]), budget=10.0, **rules)
+    expected, base_record = decide(base_bot)
+    assert base_record["schema"] == RECORD_SCHEMA
+    clock.now = 1000.0
+    # base 1 s; the first extra score takes 10 s: past the soft AND hard deadline
+    adaptive = served(ClockEvaluator(clock, [1.0, 10.0]), budget=10.0, adaptive_worlds=True,
+                      **rules)
+    actual, record = decide(adaptive)
+    _assert_base_played(actual, record, expected, base_record, "hard_budget",
+                        "PVSearchBudgetExceeded")
+    assert record["value_means"] == base_record["value_means"]
+    assert record["seconds"] == 11.0 and record["adaptive_worlds_base_seconds"] == 1.0
+    # the round's post-score check raised: it never completed, nothing is counted
+    assert record["adaptive_worlds_abandoned_evaluations"] == 0
+    assert record["value_evaluations"] == base_record["value_evaluations"]
+    # the abandoned draw advanced the sampler stream (and the record says so)
+    assert adaptive.sampler.rng.getstate() != base_bot.sampler.rng.getstate()
+
+
+def test_sampling_call_crossing_hard_deadline_keeps_completed_base(clock, monkeypatch):
+    ref = served(ClockEvaluator(clock, [1.0]), budget=10.0)
+    ref_played, base = decide(ref)
+    clock.now = 1000.0
+    orig, calls = pv.sample_worlds, []
+
+    def sample_worlds(*a, **kw):
+        calls.append(1)
+        if len(calls) == 2:
+            clock.now += 10.0   # the first EXTRA draw runs past the hard deadline
+        return orig(*a, **kw)
+    monkeypatch.setattr(pv, "sample_worlds", sample_worlds)
+    bot = served(ClockEvaluator(clock, [1.0]), budget=10.0, adaptive_worlds=True)
+    log = spy(bot)
+    played, rec = decide(bot)
+    assert len(calls) == 2 and [n for _, n in log["scored"]] == [W]
+    _assert_base_played(played, rec, ref_played, base, "hard_budget", "PVSearchBudgetExceeded")
+    assert rec["adaptive_worlds_abandoned_evaluations"] == 0
+
+
+def test_hard_expiry_inside_the_4w_tiebreak_keeps_completed_base(clock):
+    """The tie-break catches a hard expiry and returns its argmax; inside the
+    re-selection that degraded result is never published."""
+    rules = dict(tiebreak_points=True, doomed_throw_swap=True)
+    ref = served(ClockEvaluator(clock, [1.0], inner=ConstantEvaluator()), budget=10.0, **rules)
+    ref_played, base = decide(ref)
+    assert len(base["tiebreak_near_set"]) >= 2 and "tiebreak_abandoned" not in base
+    clock.now = 1000.0
+    bot = served(ClockEvaluator(clock, [1.0], inner=ConstantEvaluator()), budget=10.0,
+                 adaptive_worlds=True, **rules)
+    fired = []
+    orig = bot._trick_points
+
+    def _trick_points(rnd, seat, hands, buried, action, world_index):
+        if world_index >= W and not fired:   # an EXTRA world: the 4W rebuild
+            fired.append(1)
+            clock.now += 10.0
+        return orig(rnd, seat, hands, buried, action, world_index)
+    bot._trick_points = _trick_points
+    log = spy(bot)
+    played, rec = decide(bot)
+    assert fired and log["select_worlds"] == [W, 4 * W]
+    _assert_base_played(played, rec, ref_played, base, "hard_budget", "PVSearchBudgetExceeded")
+    # the restored records are the base finalization's, not the absorbed 4W ones
+    assert "tiebreak_abandoned" not in rec and rec["doomed_throw_swap_worlds"] == W
+
+
+def test_final_hard_check_restores_every_rule_record(clock):
+    """The 4W re-selection completes and overwrites the rule records; the final
+    hard check then fails: the snapshot is restored and the base is played."""
+    rules = dict(RELEASE42_RULES, lead_tiebreak_prior=True)
+    ref = served(ClockEvaluator(clock, [1.0], inner=ConstantEvaluator()), budget=10.0, **rules)
+    ref_played, base = decide(ref)
+    assert {"tiebreak_near_set", "lead_tiebreak_leading", "doomed_throw_swap_worlds"} <= set(base)
+    clock.now = 1000.0
+    bot = served(ClockEvaluator(clock, [1.0], inner=ConstantEvaluator()), budget=10.0,
+                 adaptive_worlds=True, **rules)
+    orig_select = bot._select
+    selects, seen = [], {}
+
+    def _select(*a, **kw):
+        out = orig_select(*a, **kw)
+        selects.append(1)
+        if len(selects) == 2:
+            seen["tiebreak"] = copy.deepcopy(bot._tiebreak)
+            clock.now += 10.0   # the 4W selection finished past the deadline
+        return out
+    bot._select = _select
+    played, rec = decide(bot)
+    assert len(selects) == 2
+    # the 4W selection did overwrite the record state before it was restored
+    assert seen["tiebreak"] != {k: base[k] for k in seen["tiebreak"]}
+    _assert_base_played(played, rec, ref_played, base, "hard_budget", "PVSearchBudgetExceeded")
+
+
+def test_extra_scoring_exception_keeps_completed_base():
+    class Boom(NoisyEvaluator):
+        calls = 0
+
+        def score(self, leaves, seat):
+            Boom.calls += 1
+            if Boom.calls == 3:   # the SECOND extra round (one batch per round)
+                raise RuntimeError("extra scoring failed")
+            return super().score(leaves, seat)
+    ref_played, base = decide(served(NoisyEvaluator()))
+    bot = served(Boom(), adaptive_worlds=True)
+    played, rec = decide(bot)
+    _assert_base_played(played, rec, ref_played, base, "error", "RuntimeError")
+    # the completed first extra round is reported as thrown away, never published
+    assert rec["adaptive_worlds_abandoned_evaluations"] == W * len(rec["admitted"])
+    assert rec["value_evaluations"] == base["value_evaluations"]
+
+
+def test_base_interrupt_is_not_swallowed():
+    class Interrupting(NoisyEvaluator):
+        calls = 0
+
+        def score(self, leaves, seat):
+            Interrupting.calls += 1
+            if Interrupting.calls == 2:
+                raise KeyboardInterrupt
+            return super().score(leaves, seat)
+    with pytest.raises(KeyboardInterrupt):
+        decide(served(Interrupting(), budget=100.0, adaptive_worlds=True))
+
+
+@pytest.mark.parametrize("steps", [[11.0], [0.0, 0.0, 0.0]], ids=["base-score", "base-sampling"])
+def test_base_failure_falls_back_exactly_as_flag_off(clock, monkeypatch, steps):
+    """A budget expiry in the BASE pass is a base failure: the normal fallback,
+    the sampler stream rewound, exactly as with the rule off."""
+    if steps == [0.0, 0.0, 0.0]:
+        orig = pv.sample_worlds
+
+        def sample_worlds(*a, **kw):
+            clock.now += 11.0
+            return orig(*a, **kw)
+        monkeypatch.setattr(pv, "sample_worlds", sample_worlds)
+    off = served(ClockEvaluator(clock, steps), budget=10.0)
+    before = off.sampler.rng.getstate()
+    off_played, off_rec = decide(off)
+    clock.now = 1000.0
+    on = served(ClockEvaluator(clock, steps), budget=10.0, adaptive_worlds=True)
+    on_played, on_rec = decide(on)
+    assert off_rec["schema"] == on_rec["schema"] == pv.FALLBACK_SCHEMA
+    assert on_rec["reason"] == "budget" and on_rec["work_complete"] is False
+    assert on_played == off_played
+    assert _comparable(on_rec) == _comparable(off_rec)
+    assert on.sampler.rng.getstate() == off.sampler.rng.getstate() == before
+
+
+def test_unresolved_past_half_after_finalization_is_skipped(clock):
+    """The start share is read AFTER the base finalization: a base tie-break that
+    runs the decision past 50% leaves the base decision standing."""
+    bot = served(ClockEvaluator(clock, [1.0], inner=ConstantEvaluator()), budget=10.0,
+                 adaptive_worlds=True, tiebreak_points=True)
+    orig = bot._trick_points
+
+    def _trick_points(*a):
+        clock.now += 0.1
+        return orig(*a)
+    bot._trick_points = _trick_points
+    log = spy(bot)
+    played, rec = decide(bot)
+    assert rec["adaptive_worlds_triggered"] is True and rec["adaptive_worlds_skipped_budget"] is True
+    assert rec["adaptive_worlds_base_seconds"] >= 5.0 and log["worlds"] == 1
+    assert rec["adaptive_worlds_sampler_advanced"] is False
+    assert played == rec["played"]
+
+
 # ------------------------------------------------------- (e) later rules see the combined worlds
 
 def test_tiebreak_points_rebuild_over_the_combined_worlds():
@@ -476,9 +678,11 @@ def test_tiebreak_points_rebuild_over_the_combined_worlds():
     bot._trick_points = _trick_points
     _, rec = decide(bot)
     assert rec["adaptive_worlds_total"] == 4 * W
-    assert log["select_worlds"] == [4 * W] and log["swap_worlds"] == [4 * W]
+    assert log["select_worlds"] == [W, 4 * W] and log["swap_worlds"] == [W, 4 * W]
     near = rec["tiebreak_near_set"]
-    assert len(near) >= 2 and len(seen) == 4 * W * len(near)
+    # the constant head puts every admitted candidate in both near-sets: the
+    # base finalization rebuilds W worlds each, the re-selection 4W
+    assert len(near) == len(rec["admitted"]) >= 2 and len(seen) == 5 * W * len(near)
     assert max(seen) == 4 * W - 1
     assert rec["doomed_throw_swap_worlds"] == 4 * W
 

@@ -78,6 +78,11 @@ def load_contract(path, sha256):
             result[key] = value
         return result
     contract = json.loads(raw, object_pairs_hook=pairs)
+    return validate_contract(contract)
+
+
+def validate_contract(contract):
+    """Shared producer/consumer structural validation."""
     required = {"schema", "population", "digests", "added_stores", "candidates", "policy_identity"}
     if not isinstance(contract, dict) or set(contract) != required:
         raise ValueError("invalid frozen contract fields")
@@ -116,3 +121,40 @@ def bind_store(contract, store):
 def require_policy_identity(contract, identity):
     if identity != contract["policy_identity"]:
         raise ValueError("effective policy rows differ from frozen base receipt")
+
+
+def contract_from_receipt(receipt, *, expected_digests, added_stores):
+    """Project a completed training receipt without consulting live checkpoints.
+
+    Caller authenticates the receipt file and terminal run separately. Population
+    pins come from the reviewed base design, not from the receipt being checked.
+    """
+    import copy
+    if not isinstance(receipt, Mapping):
+        raise ValueError("completed training receipt required")
+    try:
+        population = receipt["population"]
+        manifest = {"schema": SCHEMA, **{p: population[p] for p in PARTS}}
+        base_keys = [k for p in PARTS for k in population[p]]
+        bind_frozen_population(manifest, expected_digests=expected_digests,
+                               base_keys=base_keys, added_keys=[])
+        if population["digest"] != expected_digests:
+            raise ValueError("receipt population digest differs from reviewed base")
+        if population["counts"] != {p: len(population[p]) for p in PARTS}:
+            raise ValueError("receipt population counts mismatch")
+        candidates = {p: receipt["final"][p]["search_facing"]["candidate_set"]["digest"]
+                      for p in ("val", "test")}
+        identity = receipt["policy_head"]["rows"]
+        if not receipt["epochs"] or receipt["best_epoch"] not in {
+            row["epoch"] for row in receipt["epochs"]
+        }:
+            raise ValueError("completed epoch selection required")
+        if not {"rows_used", "fit_deals_digest"} <= identity.keys():
+            raise ValueError("base effective policy receipt missing")
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("incomplete base training receipt") from exc
+    # Detach the projection so later caller edits cannot mutate the base receipt.
+    return validate_contract(copy.deepcopy({"schema": "shengji-frozen-training-contract-v1",
+                          "population": manifest, "digests": dict(expected_digests),
+                          "added_stores": list(added_stores), "candidates": candidates,
+                          "policy_identity": identity}))

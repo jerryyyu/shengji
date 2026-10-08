@@ -2355,6 +2355,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     test_cands = candidate_set_for(store, test_keys, cache, n_records=int(val_rank_records),
                                    history=history, workers=eval_workers, label="test",
                                    progress=say, version=enc_version)
+    if frozen is not None and (test_cands is None
+                              or test_cands.meta["digest"] != frozen["candidates"]["test"]):
+        raise TrainError("frozen test candidate consumer mismatch")
     final["val"]["search_facing"] = search_facing(model, ev_val, val_cands, dev,
                                                   batch_size=batch_size)
     final["test"]["search_facing"] = search_facing(model, ev_test, test_cands, dev,

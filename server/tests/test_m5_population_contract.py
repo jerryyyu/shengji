@@ -120,6 +120,9 @@ def test_trainer_consumes_frozen_base_and_fit_only_addition(store_dir, other_dir
     assert result["policy_head"]["rows"] == base["policy_head"]["rows"]
     assert result["config"]["frozen_population"]["sha256"] == pin
     assert "frozen_population" not in base["config"]
+    model, metadata, _ = tc.load_cwv_checkpoint(tmp_path / "bound" / "best.pt", "cpu")
+    assert metadata["population"]["val"] == base["population"]["val"]
+    assert set(result["population"]["train"]) <= tc.exposure_sets(metadata["exposure"])["fit"]
     contract["candidates"]["test"] = "0" * 64
     raw = json.dumps(contract).encode()
     path.write_bytes(raw)
@@ -136,6 +139,16 @@ def test_frozen_cli_pair_and_early_hash_refusal(tmp_path):
     assert args.frozen_population == "contract.json"
     with pytest.raises(tc.TrainError, match="supplied together"):
         tc.train(data=["absent"], out=tmp_path, frozen_population="absent")
+
+
+def test_cli_forwards_frozen_contract_to_train(monkeypatch, tmp_path):
+    from shengji.train import train_cwv as tc
+    seen = []
+    monkeypatch.setattr(tc, "train", lambda **kw: seen.append(kw))
+    assert tc.main(["train", "--data", "fixture", "--out", str(tmp_path),
+        "--frozen-population", "contract.json", "--frozen-population-sha256", "f" * 64]) == 0
+    assert seen[0]["frozen_population"] == "contract.json"
+    assert seen[0]["frozen_population_sha256"] == "f" * 64
 
 
 @pytest.mark.parametrize("payload,pin", [

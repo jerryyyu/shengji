@@ -153,6 +153,47 @@ off the played action is the selected candidate exactly as before):
   rule); on expiry it abandons itself and the selected action is played, with
   ``doomed_throw_swap_abandoned`` ``"budget"``.
 
+Optional SELECTION rule replacing the swap (YJQJ round 1, release 42; OFF BY
+DEFAULT, and while off `_select` and the played action are exactly as before):
+
+* ``doomed_throw_reselect`` -- EXCLUSIVE with ``doomed_throw_swap`` (both on is
+  refused).  After the selection rules above, on a LEAD, the selected candidate
+  is tested with the swap's exact doomed test (`_doomed_component`: a
+  multi-component lead the engine refuses in EVERY sampled world with ONE
+  forced component, the same worlds the means came from).  When it is doomed,
+  its forced component is NOT played (the swap played it; production's forced
+  components were the engine's lowest beatable component, e.g. ``SJ`` from
+  ``S4 S4 SJ`` into an outstanding ``SA``).  Instead the doomed throw is
+  excluded, and so is every admitted candidate that IS its forced component:
+  the throw's leaf already is that component played, so the two carry the
+  same value mean and the alias would otherwise win the re-selection (YJQJ:
+  ``S4 S4 SJ`` and ``SJ`` both -0.3302).  Then the bot's own selection rules
+  (`_select_rules`: argmax, ``tiebreak_points``, ``lead_tiebreak_prior``, their
+  tie-breaks included) are re-run over the admitted ballot with the excluded
+  candidates' means masked to ``-inf`` (positions stay admitted positions; no
+  rule ever picks a non-finite mean while a finite one exists).  The new
+  selection is tested in turn, lazily in selection order, so only throws the
+  selection actually reaches are checked: singles, pairs and tractors (one
+  component) are never doomed and cost nothing.  If every admitted candidate is
+  excluded (not expected: the anchor is the heuristic lead), the original
+  selection stands and its forced component is played, as the swap would
+  (``doomed_throw_reselect_fallback_forced``).  No model is called; the value
+  means are unchanged.  RECORD SEMANTICS (unlike the swap): ``selected_index``
+  is the candidate actually played and ``played`` equals its cards, except in
+  the all-excluded fallback, where ``played`` is the forced component of the
+  selected throw (the swap's semantics).  The selection rules' own records
+  (``tiebreak_*``, ``lead_tiebreak_*``) describe the FINAL (masked) run when a
+  re-selection happened.  Record fields (only with the rule on, on every
+  decision): ``doomed_throw_reselect_applied``, ``_from`` (the first
+  selection's cards), ``_to`` (the played cards), ``_doomed_candidates`` (doomed
+  throws found), ``_forced_excluded`` (admitted forced-component aliases
+  excluded) and ``_fallback_forced``.  Budget: the same strided checks as the
+  swap; on expiry the rule abandons itself, the selection rules' records are
+  restored and the FIRST selection is played as selected (what the swap does on
+  expiry), with ``doomed_throw_reselect_abandoned`` ``"budget"``; never the
+  heuristic fallback.  Not combined with the tree (refused by the recipe): the
+  tree re-selects on its own Q matrix.
+
 Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
 unseen-BJ guard", board #707 S4 formerly A9; OFF BY DEFAULT, and while off the
 admitted indices, slot 0 and the record are exactly what they were):
@@ -180,6 +221,7 @@ admitted indices, slot 0 and the record are exactly what they were):
 """
 from __future__ import annotations
 
+import copy
 import time
 from collections import Counter
 
@@ -224,6 +266,12 @@ DOOMED_THROW_DEFAULTS = dict(doomed_throw_swap=False)
 #: the cooperative budget is checked after every this-many sampled worlds
 #: inside the swap's throw-resolution loop
 DOOMED_THROW_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
+#: `doomed_throw_reselect`: the optional selection rule replacing the swap
+#: (module docstring); exclusive with ``doomed_throw_swap``
+DOOMED_THROW_RESELECT_DEFAULTS = dict(doomed_throw_reselect=False)
+#: the selection rules' per-decision records a re-selection overwrites; restored
+#: when the re-selection abandons itself on the budget
+_RESELECT_SELECTION_STATE = ("_tiebreak", "_lead_tiebreak")
 
 #: `small_joker_guard`: the optional single-LJ lead exclusion (module docstring)
 SMALL_JOKER_GUARD_DEFAULTS = dict(small_joker_guard=False)
@@ -326,6 +374,7 @@ class PolicyValueBot(PolicyWorldBot):
     # allocates one and sets only the release-38 fields) admits exactly as before
     small_joker_guard = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
     _small_joker = None
+    doomed_throw_reselect = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
 
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
@@ -341,6 +390,7 @@ class PolicyValueBot(PolicyWorldBot):
                  lead_tiebreak_epsilon=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"],
                  doomed_throw_swap=DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
                  small_joker_guard=SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
+                 doomed_throw_reselect=DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -405,6 +455,11 @@ class PolicyValueBot(PolicyWorldBot):
             raise ValueError('small_joker_guard must be a bool')
         self.small_joker_guard = small_joker_guard
         self._small_joker = None
+        if type(doomed_throw_reselect) is not bool:
+            raise ValueError('doomed_throw_reselect must be a bool')
+        if doomed_throw_reselect and doomed_throw_swap:
+            raise ValueError('doomed_throw_swap and doomed_throw_reselect are exclusive')
+        self.doomed_throw_reselect = doomed_throw_reselect
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -440,6 +495,16 @@ class PolicyValueBot(PolicyWorldBot):
         """The admitted position to play.  ``priors`` are the admitted
         candidates' policy preference scores (the admission's ranking scores),
         needed only by ``lead_tiebreak_prior``."""
+        chosen = self._select_rules(rnd, seat, admitted, means, worlds, check_budget, priors)
+        if self.doomed_throw_reselect:
+            chosen = self._reselect_doomed_throw(rnd, seat, admitted, means, worlds,
+                                                 check_budget, priors, chosen)
+        return chosen
+
+    def _select_rules(self, rnd, seat, admitted, means, worlds=None, check_budget=None,
+                      priors=None):
+        """The selection rules (argmax, then ``tiebreak_points``, then
+        ``lead_tiebreak_prior``): `_select` before ``doomed_throw_reselect``."""
         winner = int(np.argmax(means))  # anchor retained on an exact value tie
         chosen = winner
         if self.tiebreak_points:
@@ -505,8 +570,15 @@ class PolicyValueBot(PolicyWorldBot):
         Sets ``self._doomed_throw`` (the record fields) whenever the rule is on.
         On the serving deadline the check abandons itself and ``action`` stands
         (the value pass and the selection were complete)."""
-        self._doomed_throw = None
         action = list(action)
+        if self.doomed_throw_reselect:
+            # the exclusive re-select rule decided inside `_select` and left its
+            # record here; only its all-excluded fallback plays the forced component
+            record = self._doomed_throw
+            if record is not None and record.get('doomed_throw_reselect_fallback_forced'):
+                return record['doomed_throw_reselect_to'].split(' ')
+            return action
+        self._doomed_throw = None
         if not self.doomed_throw_swap:
             return action
         record = {'doomed_throw_swap_applied': False,
@@ -518,19 +590,8 @@ class PolicyValueBot(PolicyWorldBot):
         self._doomed_throw = record
         if not worlds or not leading(rnd) or len(action) < 2:
             return action
-        refused, variants = 0, set()
         try:
-            for world_index, (hands, _) in enumerate(worlds):
-                if check_budget is not None and world_index \
-                        and world_index % DOOMED_THROW_BUDGET_STRIDE == 0:
-                    check_budget()
-                forced = forced_lead(rnd, seat, action, hands)
-                if forced is not None:
-                    refused += 1
-                    variants.add(tuple(forced))
-            # nothing computed past the deadline may be published
-            if check_budget is not None:
-                check_budget()
+            refused, variants = self._doomed_verdicts(rnd, seat, action, worlds, check_budget)
         except _budget_exceeded() as exc:
             record['doomed_throw_swap_abandoned'] = 'budget'
             record['doomed_throw_swap_abandon_error'] = type(exc).__name__
@@ -544,8 +605,101 @@ class PolicyValueBot(PolicyWorldBot):
         record['doomed_throw_swap_to'] = _cards_text(forced)
         return forced
 
+    def _doomed_verdicts(self, rnd, seat, action, worlds, check_budget=None):
+        """``(refused, variants)``: how many of ``worlds`` the engine refuses
+        ``action`` in, and the distinct forced components.  The swap's test;
+        ``check_budget`` every `DOOMED_THROW_BUDGET_STRIDE` worlds and once
+        after the loop (its expiry propagates to the caller)."""
+        refused, variants = 0, set()
+        for world_index, (hands, _) in enumerate(worlds):
+            if check_budget is not None and world_index \
+                    and world_index % DOOMED_THROW_BUDGET_STRIDE == 0:
+                check_budget()
+            forced = forced_lead(rnd, seat, action, hands)
+            if forced is not None:
+                refused += 1
+                variants.add(tuple(forced))
+        # nothing computed past the deadline may be published
+        if check_budget is not None:
+            check_budget()
+        return refused, variants
+
+    def _doomed_component(self, rnd, seat, action, worlds, check_budget=None):
+        """The forced component when ``action`` is doomed under the swap's test
+        (refused in every one of ``worlds`` with one forced component), else
+        None.  A one-component lead (single, pair, tractor) stands as led, so
+        it is never doomed and costs no engine call."""
+        if not worlds or not leading(rnd) or len(action) < 2 \
+                or len(decompose(list(action), rnd.ordering).components) < 2:
+            return None
+        refused, variants = self._doomed_verdicts(rnd, seat, list(action), worlds, check_budget)
+        if refused != len(worlds) or len(variants) != 1:
+            return None
+        return list(next(iter(variants)))
+
+    def _reselect_doomed_throw(self, rnd, seat, admitted, means, worlds, check_budget,
+                               priors, chosen):
+        """The module docstring's ``doomed_throw_reselect``: the admitted
+        position to play given the selection rules' ``chosen``.  Sets
+        ``self._doomed_throw`` (the record fields) on every decision."""
+        first = int(chosen)
+        record = {'doomed_throw_reselect_applied': False,
+                  'doomed_throw_reselect_from': _cards_text(admitted[first]),
+                  'doomed_throw_reselect_to': _cards_text(admitted[first]),
+                  'doomed_throw_reselect_doomed_candidates': 0,
+                  'doomed_throw_reselect_forced_excluded': 0,
+                  'doomed_throw_reselect_fallback_forced': False}
+        self._doomed_throw = record
+        if not worlds or not leading(rnd):
+            return first
+        kept = {name: copy.deepcopy(getattr(self, name, None))
+                for name in _RESELECT_SELECTION_STATE}
+        keys = [tuple(sorted(a)) for a in admitted]
+        excluded, doomed, aliases, current = set(), 0, 0, first
+        first_forced = None
+        try:
+            while True:
+                forced = self._doomed_component(rnd, seat, admitted[current], worlds,
+                                                check_budget)
+                if forced is None:
+                    break
+                doomed += 1
+                first_forced = forced if first_forced is None else first_forced
+                excluded.add(current)
+                alias = tuple(sorted(forced))
+                for i, key in enumerate(keys):
+                    if key == alias and i not in excluded:
+                        excluded.add(i)
+                        aliases += 1
+                if len(excluded) == len(admitted):
+                    current = None
+                    break
+                masked = np.array(means, dtype=np.float64)
+                masked[sorted(excluded)] = -np.inf
+                current = int(self._select_rules(rnd, seat, admitted, masked, worlds,
+                                                 check_budget, priors))
+        except _budget_exceeded() as exc:
+            for name, value in kept.items():
+                setattr(self, name, value)
+            record['doomed_throw_reselect_abandoned'] = 'budget'
+            record['doomed_throw_reselect_abandon_error'] = type(exc).__name__
+            return first
+        record['doomed_throw_reselect_doomed_candidates'] = doomed
+        record['doomed_throw_reselect_forced_excluded'] = aliases
+        if current is None:
+            # every admitted candidate excluded: the swap's forced component
+            for name, value in kept.items():
+                setattr(self, name, value)
+            record['doomed_throw_reselect_fallback_forced'] = True
+            record['doomed_throw_reselect_to'] = _cards_text(first_forced)
+            return first
+        record['doomed_throw_reselect_applied'] = current != first
+        record['doomed_throw_reselect_to'] = _cards_text(admitted[current])
+        return current
+
     def _doomed_throw_record(self):
-        if not self.doomed_throw_swap or self._doomed_throw is None:
+        if not (self.doomed_throw_swap or self.doomed_throw_reselect) \
+                or self._doomed_throw is None:
             return {}
         return dict(self._doomed_throw)
 

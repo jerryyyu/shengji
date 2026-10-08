@@ -199,6 +199,21 @@ lead-width rules); on, it enters the recipe digest with ``WIDE_LEAD_K`` and adds
 ``-wla`` to the name in the width slot, right after ``-ak16`` (the two are
 exclusive, so they never both appear) and before ``-la``.  Off, every existing
 name (release 42, ``aw``, ``awl`` above) and every decision are unchanged.
+
+Optional selection rule replacing the played-action swap (YJQJ round 1, release
+42), OFF BY DEFAULT: ``SHENGJI_PV_DOOMED_THROW_RESELECT=1`` -- when the selected
+lead is a throw the swap would replace (refused in EVERY sampled world with one
+forced component), neither the throw nor its forced component is played: both
+are excluded and the bot's own selection rules re-select among the remaining
+admitted candidates (definition, record and budget semantics:
+`policy_value_search`).  ``0`` or ``1`` only; EXCLUSIVE with
+``SHENGJI_PV_DOOMED_THROW_SWAP`` (both on refuses) and refused with the tree; on,
+it enters the recipe digest and adds ``-dtr`` to the name as the last rule
+token.  Off, it is absent from the payload, so every existing name (release 42
+above; the ``aw`` name above; the ``awl`` name
+``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-r7965ea65-bury-hybrid-ed3b15d1e9a0``)
+and every decision are unchanged.  No model call and no leaf rebuild beyond the
+selection rules' own is added.
 """
 from __future__ import annotations
 
@@ -220,7 +235,8 @@ from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
-                                  DOOMED_THROW_DEFAULTS, LEAD_ANCHOR_DEFAULTS,
+                                  DOOMED_THROW_DEFAULTS, DOOMED_THROW_RESELECT_DEFAULTS,
+                                  LEAD_ANCHOR_DEFAULTS,
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
@@ -258,6 +274,8 @@ LEAD_ANCHOR_RULE = {"LEAD_ANCHOR": "lead_anchor"}
 LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 #: the optional played-action rule (`policy_value_search`): env flag -> recipe key
 DOOMED_THROW_RULE = {"DOOMED_THROW_SWAP": "doomed_throw_swap"}
+#: the optional selection rule replacing it (`policy_value_search`; exclusive with it)
+DOOMED_THROW_RESELECT_RULE = {"DOOMED_THROW_RESELECT": "doomed_throw_reselect"}
 #: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
 SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 #: the optional unresolved-decision evidence rule (`PVSearchBot._adaptive_worlds_means`)
@@ -288,10 +306,12 @@ ADAPTIVE_WORLDS_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
-#: scope): div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl
+#: scope, the doomed-throw re-select): div, fs, rc, rcec, tb, ak16, wla, la, lp,
+#: dts, sjg, aw, awl, dtr
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
-              **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE}
+              **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
+              **DOOMED_THROW_RESELECT_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
@@ -300,12 +320,15 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("doomed_throw_swap", "dts"),
                                                    ("small_joker_guard", "sjg"),
                                                    ("adaptive_worlds", "aw"),
-                                                   ("adaptive_worlds_leads", "awl"))
+                                                   ("adaptive_worlds_leads", "awl"),
+                                                   ("doomed_throw_reselect", "dtr"))
 ENV_PREFIX = "SHENGJI_PV_"
 _WIDE_LEAD_EXCLUSIVE = ("wide_lead_admission and adaptive_k are exclusive "
                         "(SHENGJI_PV_WIDE_LEAD_ADMISSION=1 with SHENGJI_PV_ADAPTIVE_K=1)")
 _ADAPTIVE_WORLDS_EXCLUSIVE = ("adaptive_worlds and adaptive_worlds_leads are exclusive "
                               "(SHENGJI_PV_ADAPTIVE_WORLDS=1 with SHENGJI_PV_ADAPTIVE_WORLDS_LEADS=1)")
+_DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are exclusive "
+                           "(SHENGJI_PV_DOOMED_THROW_SWAP=1 with SHENGJI_PV_DOOMED_THROW_RESELECT=1)")
 #: the fallback record's ``error_message`` is the exception text cut to this
 #: many characters (#707 S9)
 ERROR_MESSAGE_MAX = 200
@@ -410,6 +433,8 @@ class PVSearchConfig:
     adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
     # the optional lead admission width (exclusive with ``adaptive_k``); the same contract
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+    # the optional selection rule replacing the swap (exclusive with it); the same contract
+    doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -444,6 +469,12 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["wide_lead_k"] = WIDE_LEAD_K
     if config.lead_tiebreak_prior:
         payload["lead_tiebreak_epsilon"] = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"]
+    if config.doomed_throw_swap and config.doomed_throw_reselect:
+        raise PVSearchPolicyError(_DOOMED_THROW_EXCLUSIVE)
+    if config.doomed_throw_reselect and config.tree is not None:
+        # the tree re-selects on its own Q matrix after `_select`
+        raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree "
+                                  "(SHENGJI_PV_DOOMED_THROW_RESELECT=1 with SHENGJI_PV_TREE_SIMS)")
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.adaptive_worlds or config.adaptive_worlds_leads:
@@ -601,7 +632,8 @@ class PVSearchBot(PolicyValueBot):
                          lead_anchor=config.lead_anchor,
                          lead_tiebreak_prior=config.lead_tiebreak_prior,
                          doomed_throw_swap=config.doomed_throw_swap,
-                         small_joker_guard=config.small_joker_guard)
+                         small_joker_guard=config.small_joker_guard,
+                         doomed_throw_reselect=config.doomed_throw_reselect)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -636,6 +668,8 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         self.wide_lead_admission = config.wide_lead_admission
         self._wide_lead = None
+        if config.doomed_throw_reselect and config.tree is not None:
+            raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree")
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -1171,7 +1205,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
-                       wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+                       wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                       doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1209,7 +1244,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             small_joker_guard=small_joker_guard,
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
-                            wide_lead_admission=wide_lead_admission)
+                            wide_lead_admission=wide_lead_admission,
+                            doomed_throw_reselect=doomed_throw_reselect)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -1274,7 +1310,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         small_joker_guard: bool = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                         adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                         adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
-                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1294,7 +1331,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             small_joker_guard=small_joker_guard,
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
-                            wide_lead_admission=wide_lead_admission)
+                            wide_lead_admission=wide_lead_admission,
+                            doomed_throw_reselect=doomed_throw_reselect)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -1349,7 +1387,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                small_joker_guard=config.small_joker_guard,
                                adaptive_worlds=config.adaptive_worlds,
                                adaptive_worlds_leads=config.adaptive_worlds_leads,
-                               wide_lead_admission=config.wide_lead_admission),
+                               wide_lead_admission=config.wide_lead_admission,
+                               doomed_throw_reselect=config.doomed_throw_reselect),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -1367,7 +1406,7 @@ def pv_env_recipe(environ=None) -> dict:
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
-    ``_WIDE_LEAD_ADMISSION`` rule flags (``0`` or ``1`` only; unset or empty is
+    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` rule flags (``0`` or ``1`` only; unset or empty is
     off), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ

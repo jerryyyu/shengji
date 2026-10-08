@@ -1375,6 +1375,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6068198425"
   },
   {
+   "id": "v65wla42",
+   "date": "2026-10-08",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Wide lead admission (K=32 on leads) vs release 42",
+   "candidate": "Release 42 + SHENGJI_PV_WIDE_LEAD_ADMISSION=1 (#945: the policy admission shortlist is 32 instead of 8 on leads only, through the served admission path; follows unchanged), served as pv-search-491ee4bf-w64-k8-div-rc-tb-wla-la-dts-rcee583b3-bury-hybrid-df9b527bdef2; same package smv3out-491ee4bf. Cloud tree claude-main-31 (c11a7d99).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "69060910 69160910 69260910 69360910 69460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.010368,
+   "lo": -0.015704,
+   "hi": 0.03644,
+   "takeaway": "Estimated +0.0104; 95% CI [-0.0157, +0.0364], inconclusive; below the +0.015 extension trigger; no promotion.",
+   "note": "SEALED 10-08 (LANE DONE 22:32:56Z); readout (Claude, one pass) #707; digests posted on #707 issuecomment-6070439530 before the read; Codex packet PASS #707 issuecomment-6065860728. Motivated by Jerry's 10-08 'leads matter most' and the lead diagnostics (archives leaddiag-r42-20261008, leaddiag2-r42-20261008: the value head's best lead is outside the 8-move shortlist at 44% of leads; K=32 cut lead regret vs the value head's 512-world reference from 0.0223 to 0.0084). Prior served evidence: adaptive K16 on multi-card leads (v41ak vs release 36) -0.006 inconclusive. Paired +0.010368 [-0.015704,+0.036440], SE 0.013302, MDE80 0.0373, tau 0, Q 1.65, I2 0%; INCONCLUSIVE; promotion_gate NO PROMOTION; no extension (point below +0.015); strength verdict withheld. Window deltas +0.0337, +0.0163, +0.0019, -0.0163, +0.0221. Descriptive own-arm levels vs MC-LCB: wla 0.2211 [0.1919,0.2503], release 42 0.2086 [0.1839,0.2332] (not the paired primary). Health: 728,948 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified candidate and comparator pv-search records. Telemetry (descriptive): leads were 24.2% of candidate decisions and all 43,956 were widened to K=32; decision seconds p50/p90/p99/max 0.089/0.404/0.504/0.964 vs 0.090/0.138/0.228/0.738 (screen host). INCONCLUSIVE establishes neither benefit nor noninferiority; an effect near +0.01 is below this screen's resolution. Seeds: seed_windows.py clear --follow-init vs the SMV3 lineage (0 overlap). Reader sha256 db08354db25ffc58ef3fb2a3dea5b40fa0bb7593cf9f98d32d8e1e8900048a4c; result sha256 a45d4a59534b1c151b3a8381a29bbc481bb3386ba85b1071d760b93c703bff0c; launcher sha256 b1b2dd800eb9d7dfd997d6790f31b9fe8104248296dee7ae99336b97420cc5a3; predeclaration sha256 a89f6857496043a67d0a250d316ad4d48d20288117cabdb78872ed598e33967e; SHA256SUMS aa0db37eddb906bca1f413ffc6c204b50c776e21dfae78c9757004cd659dc1e0. Archive ~/shengji-archive/2026-09-13/readouts/v65wla42-wla-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6070455207"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

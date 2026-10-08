@@ -3,7 +3,7 @@ atlas_v2.html next to it.  The page is BUILT, not tracked (#688): publish from t
 `--check` refuses when the registry breaks an invariant or the page cannot be built, and -- when a
 built atlas_v2.html is on disk -- when that stale page differs from a fresh build.  Never hand-edit
 the HTML (Jerry 2026-09-22; #604)."""
-import json, html, datetime, hashlib, re, sys, tempfile
+import json, html, datetime, hashlib, re, stat, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 R = json.loads((HERE / "registry.json").read_text())
@@ -410,16 +410,44 @@ def _stable(p):
 
 ARCHIVE = Path.home() / "shengji-archive" / "2026-09-13" / "readouts"
 _SHA = re.compile(r"\b[0-9a-f]{64}\b")
-_ARCHIVE_DIR = re.compile(r"readouts/([A-Za-z0-9._-]+)/")
+_ARCHIVE_DIR = re.compile(r"readouts/([A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*)/")
+#: the ONLY archive files the check opens: provenance metadata, never outputs or raw data
+_PROVENANCE = ("SHA256SUMS", "receipt.json", "result.json", "raw_manifest.sha256")
+_PROVENANCE_GLOB = "predeclare_*.md"
+_PROVENANCE_MAX = 1 << 20
+
+
+def _provenance_files(lane):
+    """The allowlisted provenance files of one archive lane: regular files (never symlinks), directly
+    inside ``lane``, at most 1 MiB each.  Nothing else in the lane is opened."""
+    names = list(_PROVENANCE) + sorted(p.name for p in lane.glob(_PROVENANCE_GLOB))
+    out = []
+    for name in names:
+        f = lane / name
+        try:
+            st = f.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or st.st_size > _PROVENANCE_MAX:
+            continue
+        out.append(f)
+    return out
 
 
 def check_archive_shas(reg, archive=ARCHIVE):
-    """Every full sha256 a row cites must exist in the archive the row names, when that archive is on
-    this disk: a hand-copied sha that appears nowhere in the archive (a typo, or a sibling lane's file)
-    is refused.  Known hashes are every 64-hex token in the archive's top-level files of at most 8 MB
-    (SHA256SUMS, receipt.json, result.json, the predeclaration) plus each such file's own sha256.  Rows with no archive path, or whose archive is not on
-    this machine, are skipped and counted, so a CI box without the archive still builds."""
+    """Cited-hash PRESENCE check: every full sha256 a row cites must be present in the provenance
+    metadata of the archive the row names, when that archive is on this disk.  A hand-copied sha that
+    appears nowhere there (a typo, or a sibling lane's file) is refused.  This is not role binding and
+    not seal validation: it proves only that the lane's own provenance records the cited hash.
+
+    Opened: only `_PROVENANCE` and ``predeclare_*.md`` directly in the lane directory, regular files
+    (symlinks are never followed), at most 1 MiB each; raw output and every other file are never
+    opened.  Known hashes are every 64-hex token in those files plus each one's own sha256 (so
+    SHA256SUMS vouches for the launcher, reader and predeclaration by their listed digests).  A lane
+    name must be one plain path component under ``archive`` (no dot or parent names, no symlinked
+    lane); rows whose archive is not on this machine are skipped and counted."""
     errs, checked, skipped = [], 0, 0
+    root = archive.resolve() if archive.exists() else archive
     known_by_dir = {}
     for s in reg["screens"]:
         text = json.dumps({k: v for k, v in s.items() if k != "ref"})
@@ -427,29 +455,34 @@ def check_archive_shas(reg, archive=ARCHIVE):
         cited = set(_SHA.findall(text))
         if not dirs or not cited:
             continue
-        present = [archive / d for d in dirs if (archive / d).is_dir()]
+        present = []
+        for d in dirs:
+            lane = archive / d
+            if lane.is_symlink():
+                errs.append(f"{s['id']}: archive lane {d} is a symlink; refusing to follow it")
+                continue
+            if lane.is_dir():
+                if lane.resolve().parent != root:
+                    errs.append(f"{s['id']}: archive lane {d} escapes {archive}")
+                    continue
+                present.append(lane)
         if not present:
             skipped += 1
             continue
         known = set()
-        for d in present:
-            if d not in known_by_dir:
-                # top-level files only (raw output stays unread): every 64-hex token in a small
-                # file -- SHA256SUMS lists the archived files, receipt/result cite the rest --
-                # plus each small file's own sha256 (SHA256SUMS's included)
+        for lane in present:
+            if lane not in known_by_dir:
                 k = set()
-                for f in d.iterdir():
-                    if not f.is_file() or f.stat().st_size > 8 << 20:
-                        continue
+                for f in _provenance_files(lane):
                     data = f.read_bytes()
                     k.add(hashlib.sha256(data).hexdigest())
                     k.update(_SHA.findall(data.decode("utf-8", "replace")))
-                known_by_dir[d] = k
-            known |= known_by_dir[d]
+                known_by_dir[lane] = k
+            known |= known_by_dir[lane]
         missing = sorted(cited - known)
         checked += 1
         if missing:
-            errs.append(f"{s['id']}: cites sha256 not found in its archive {', '.join(dirs)}: "
+            errs.append(f"{s['id']}: cites sha256 not present in its archive's provenance {', '.join(dirs)}: "
                         + ", ".join(m[:16] + "..." for m in missing))
     return errs, checked, skipped
 
@@ -472,7 +505,7 @@ if __name__ == "__main__":
         if sha_errs:
             print("ARCHIVE SHA ERRORS:\n  " + "\n  ".join(sha_errs)); sys.exit(1)
         print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
-        print(f"archive shas: {sha_checked} rows verified against their archives, {sha_skipped} archives not on this machine")
+        print(f"archive shas: {sha_checked} rows' cited hashes present in their archives' provenance, {sha_skipped} archives not on this machine")
     else:
         out.write_text(page)
         print("built", out, len(page), "bytes;", len(rows), "chart rows")

@@ -340,18 +340,52 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
 
 
 def test_archive_shas_refuse_a_cited_sha_the_named_archive_does_not_hold(tmp_path):
-    """A hand-copied sha (#931's wrong reader sha) must exist in the archive the row names."""
+    """A hand-copied sha (#931's wrong reader sha) must be present in the named archive's provenance."""
     import hashlib
     b = _load()
     lane = tmp_path / "v99x"; lane.mkdir()
     (lane / "reader.py").write_text("print('reader')\n")
     good = hashlib.sha256(b"print('reader')\n").hexdigest()
+    (lane / "SHA256SUMS").write_text(f"{good}  ./reader.py\n")
     (lane / "receipt.json").write_text('{"result_sha256": "' + "a" * 64 + '"}')
     bad = good[:-1] + ("0" if good[-1] != "0" else "1")
     row = lambda sha: {"screens": [{"id": "v99x", "note": f"reader sha256 {sha}; archive ~/shengji-archive/2026-09-13/readouts/v99x/"}]}
-    assert b.check_archive_shas(row(good), archive=tmp_path)[:2] == ([], 1)
-    assert b.check_archive_shas(row("a" * 64), archive=tmp_path)[:2] == ([], 1)   # cited inside a text file
+    assert b.check_archive_shas(row(good), archive=tmp_path) == ([], 1, 0)        # listed by SHA256SUMS
+    assert b.check_archive_shas(row("a" * 64), archive=tmp_path) == ([], 1, 0)    # cited by receipt.json
     errs, checked, _ = b.check_archive_shas(row(bad), archive=tmp_path)
     assert checked == 1 and len(errs) == 1 and bad[:16] in errs[0]
     # an archive that is not on this machine is skipped and counted, never failed
     assert b.check_archive_shas(row(bad), archive=tmp_path / "absent") == ([], 0, 1)
+
+
+def test_archive_shas_open_only_allowlisted_provenance(tmp_path, monkeypatch):
+    """Codex HOLD on #937: raw output, unrecognised files and symlink targets are never opened, and a
+    lane name cannot escape the archive (witness test_review_937_raw_boundary.py, adapted)."""
+    from pathlib import Path
+    b = _load()
+    lane = tmp_path / "example"; lane.mkdir()
+    digest = "a" * 64
+    (lane / "receipt.json").write_text('{"reader_sha256":"' + digest + '"}')
+    raw = lane / "raw.jsonl"; raw.write_text('{"synthetic_raw":true,"x":"' + "b" * 64 + '"}\n')
+    out = lane / "output.json"; out.write_text('{"c":"' + "c" * 64 + '"}')
+    outside = tmp_path / "outside.json"; outside.write_text('{"d":"' + "d" * 64 + '"}')
+    (lane / "result.json").symlink_to(outside)                     # an allowlisted NAME that is a symlink
+    original = Path.read_bytes
+    forbidden = {raw, out, outside, lane / "result.json"}
+
+    def guarded_read(path):
+        assert path not in forbidden and path.resolve() != outside, f"archive checker opened {path}"
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+    note = lambda sha, d="example": {"screens": [{"id": "x", "note": f"sha256 {sha}; readouts/{d}/"}]}
+    assert b.check_archive_shas(note(digest), archive=tmp_path) == ([], 1, 0)
+    for unseen in ("b" * 64, "c" * 64, "d" * 64):                   # hashes only raw/other/symlinked files hold
+        errs, checked, _ = b.check_archive_shas(note(unseen), archive=tmp_path)
+        assert checked == 1 and len(errs) == 1, unseen
+    # dot and parent names never match the lane pattern; a symlinked lane is refused, not followed
+    for d in ("..", ".", "../example"):
+        assert b.check_archive_shas(note(digest, d), archive=tmp_path) == ([], 0, 0), d
+    (tmp_path / "linked").symlink_to(lane)
+    errs, checked, _ = b.check_archive_shas(note(digest, "linked"), archive=tmp_path)
+    assert checked == 0 and len(errs) == 1 and "symlink" in errs[0]

@@ -1396,6 +1396,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6070455207"
   },
   {
+   "id": "v66lead42",
+   "date": "2026-10-08",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Lead package (wide leads + re-select), 15 windows",
+   "candidate": "Release 42 with SHENGJI_PV_WIDE_LEAD_ADMISSION=1 (#945, K=32 on leads) and SHENGJI_PV_DOOMED_THROW_RESELECT=1 (#946) in place of the swap, served as pv-search-491ee4bf-w64-k8-div-rc-tb-wla-la-dtr-rfe61664c-bury-hybrid-0ffe3b31d1dd; same package smv3out-491ee4bf. Cloud tree claude-main-31 (c11a7d99). A combination: cannot attribute an effect to either rule.",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; exploratory, promotion path",
+   "seeds": "71060910 71160910 71260910 71360910 71460910 71560910 71660910 71760910 71860910 71960910 72060910 72160910 72260910 72360910 72460910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.012645,
+   "lo": -0.002222,
+   "hi": 0.027511,
+   "takeaway": "Estimated +0.0126; 95% CI [-0.0022, +0.0275], inconclusive (15 windows); points +0.30 [-0.05, +0.65]; no promotion.",
+   "note": "SEALED 10-09 (LANE DONE 07:03:51Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707; digests posted on #707 issuecomment-6076256571 before the read; Codex packet PASS #707 issuecomment-6071333006. Jerry-ruled design (reviewer session 2026-10-08 ~23:20Z: 'I'm ok with a combo first'): fifteen windows first, judged alone, no extension. Paired +0.012645 [-0.002222,+0.027511], SE 0.007585, MDE80 0.0212, tau 0, Q 12.42 (14 df), I2 0%; INCONCLUSIVE: neither benefit nor noninferiority; no promotion; strength verdict withheld. 9 of 15 windows positive. Predeclared secondary (descriptive): points margin +0.302 [-0.050,+0.653] per round, MDE80 0.502. Health: 2,176,192 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified pv-search records. Telemetry (descriptive): every lead (24.4% of decisions) widened to K=32; a doomed throw was selected on 3.85% of decisions (higher than v64's 2.19% because the wider shortlist admits more throws), re-selected on 99.96% of those, forced component excluded on 50.3%; decision seconds p50/p90/p99/max 0.089/0.409/0.562/1.709 vs 0.089/0.136/0.220/1.648. Reader sha256 cf0c26d7cf9594023d9b35aa46b026ed10388371ab7f08ed0149246f6e12ae11; result sha256 d7d9cb9100fa0ad7f484ad08496ccbff8692d8b4a5c9f7c85a882432ecaef753; launcher sha256 6066c1577009eaf2c60c1c9f08e24ed055db40bdebfd3c8011f8519b492d795f; predeclaration sha256 8c6d4c99235f8ab342170943b6a4db9b3d7260a66d668224f53c7a7dbc31b819; SHA256SUMS e777e90300212c676afca6732aae6e4cc9441e6bc65e6a7cfea492166e474447. Archive ~/shengji-archive/2026-09-13/readouts/v66lead42-lead-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6076269908"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

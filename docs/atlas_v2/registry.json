@@ -1417,6 +1417,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6076269908"
   },
   {
+   "id": "v67dtrg",
+   "date": "2026-10-09",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Doomed-throw re-select deploy guard vs release 42",
+   "candidate": "Release 42 with SHENGJI_PV_DOOMED_THROW_RESELECT=1 in place of the swap (#946), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b; same package smv3out-491ee4bf. Cloud tree claude-main-31 (c11a7d99). Ten FRESH windows, separate from v64dtr42.",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; predeclared deploy guard (CI upper < 0 = NEGATIVE, else DEPLOY-ELIGIBLE, not noninferiority)",
+   "seeds": "73060910 73160910 73260910 73360910 73460910 73560910 73660910 73760910 73860910 73960910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.000431,
+   "lo": -0.012248,
+   "hi": 0.011386,
+   "takeaway": "Estimated -0.0004; 95% CI [-0.0122, +0.0114], inconclusive; deploy guard DEPLOY-ELIGIBLE (not noninferiority); no strength claim.",
+   "note": "SEALED 10-09 (LANE DONE 11:31:42Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707; digests posted on #707 issuecomment-6080094226 before the read; Codex packet PASS r2 #707 issuecomment-6071963487. Paired -0.000431 [-0.012248,+0.011386], SE 0.006029, MDE80 0.0169, tau 0, Q 4.66 (9 df), I2 0%; INCONCLUSIVE: neither benefit nor noninferiority; strength verdict withheld then accepted as INCONCLUSIVE on health review; no extension (none predeclared). Deploy guard DEPLOY-ELIGIBLE: harm down to -0.0122 remains compatible. 5 of 10 windows positive; window deltas +0.0019, +0.0356, -0.0058, -0.0106, -0.0067, -0.0173, +0.0019, -0.0010, +0.0010, +0.0038. Predeclared secondary (descriptive): points margin -0.067 [-0.358,+0.224] per round, MDE80 0.416. Descriptive own-arm levels vs MC-LCB: dtr 0.2326 [0.2153,0.2499], release 42 0.2328 [0.2152,0.2504] (not the paired primary). Health: 1,457,576 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified pv-search records. Telemetry (descriptive): a doomed throw was found on 2.27% of candidate decisions; re-selected on 99.05% of those, forced component excluded on 28.2%, fell back to the forced component on 0.95%, abandoned 0; the comparator's swap fired on 2.13%; decision seconds p50/p90/p99/max 0.090/0.138/0.224/1.54 vs 0.091/0.141/0.237/0.88. Jerry 2026-10-09 (reviewer session) ruled dtr deploys as a functional correctness fix if this guard passed; release-43 PR #953. Reader sha256 64eac9b3bc9eebe1e152a943a44b3bb2eb6322e70e6bf81f39c341c3dcc9c95a; result sha256 a9ad32a11043bbcac4019b7e4e1f9fa1d9a88c6ae0d49aa390c273b5384d1d87; launcher sha256 6bb0daf797060bae7a110febd2058049946e7d75d353a80994746b2532b9c6ba; predeclaration sha256 5b5f98d2fcd41ce203bc006b329a7f09478968304211187e47008219f8c94cf4; SHA256SUMS 98fd7cdc534327c84246fde89397dbc897a65af5d76ec89ab5de5a25c4a7adce. Archive ~/shengji-archive/2026-09-13/readouts/v67dtrg-dtr-guard-vs-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6080113005"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

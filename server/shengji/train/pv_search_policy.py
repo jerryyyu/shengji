@@ -767,7 +767,7 @@ class PVSearchBot(PolicyValueBot):
 
     # -- the optional declaration rule (module docstring) -----------------------
 
-    def decide_declare(self, rnd, seat, final=False):
+    def decide_declare(self, rnd, seat, final=False, *, check_budget=None):
         """The heuristic's declaration, or under ``value_declare`` the value head's.
 
         Off: exactly `HeuristicBot.decide_declare` (no record, no attribute set).
@@ -791,7 +791,13 @@ class PVSearchBot(PolicyValueBot):
         heuristic's outcome first) replaces the heuristic's choice only when its
         mean exceeds the heuristic outcome's by MORE than
         ``value_declare_margin``.
-        Budget: the evaluation is one `OptionalStage` after the finalized base;
+        Budget: optional caller ``check_budget`` is a cooperative per-call
+        deadline/cancellation guard, composed with (never replacing) the bot's
+        serving budget. Raise ``PVSearchBudgetExceeded`` for heuristic fallback;
+        ``BaseException`` cancellation propagates. Omitting the caller guard
+        preserves the existing recipe and budget. This does not move work off-loop or
+        interrupt an in-flight evaluator batch.
+        The evaluation is one `OptionalStage` after the finalized base;
         with a serving budget every bounded step (each world, each value batch)
         passes the stage's latching guard and the replacement is published only
         after the final hard check.  An expiry -- also one a nested step
@@ -814,11 +820,14 @@ class PVSearchBot(PolicyValueBot):
         if not options or (not final and heuristic is None):
             return heuristic
         budget = self.serving_budget_seconds
+        caller_check = check_budget
         check_budget = None
-        if budget is not None:
+        if budget is not None or caller_check is not None:
             def check_budget():
-                if time.perf_counter() - started >= budget:
+                if budget is not None and time.perf_counter() - started >= budget:
                     raise PVSearchBudgetExceeded("pv-search serving budget expired")
+                if caller_check is not None:
+                    caller_check()
         return self._value_declare_decision(rnd, seat, final, heuristic, options, started,
                                             check_budget)
 

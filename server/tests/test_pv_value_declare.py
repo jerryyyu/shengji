@@ -307,6 +307,77 @@ def test_a_budget_that_holds_publishes_the_value_choice():
     assert bot.last_declare_record["fallback_reason"] is None
 
 
+@pytest.mark.parametrize("budget", [None, 60.0])
+def test_caller_declare_deadline_falls_back_before_model_work(budget):
+    rnd, seat = state_at(*NT_CASE)
+    bot = served(NTEvaluator(), budget=budget, value_declare=True)
+    rng = bot.sampler.rng.getstate()
+
+    def expired():
+        raise pv.PVSearchBudgetExceeded("declare caller deadline")
+
+    assert bot.decide_declare(rnd, seat, check_budget=expired) == HEURISTIC.decide_declare(rnd, seat)
+    assert bot.last_declare_record["fallback_reason"] == "hard_budget"
+    assert bot.evaluator.calls == 0
+    assert bot.sampler.rng.getstate() == rng
+
+
+def test_caller_guard_cannot_disable_the_existing_budget():
+    rnd, seat = state_at(*NT_CASE)
+    bot = served(NTEvaluator(), budget=1e-9, value_declare=True)
+    assert bot.decide_declare(rnd, seat, check_budget=lambda: None) == HEURISTIC.decide_declare(rnd, seat)
+    assert bot.last_declare_record["fallback_reason"] == "hard_budget"
+    assert bot.evaluator.calls == 0
+
+
+def test_live_caller_guard_preserves_choice_and_record():
+    rnd, seat = state_at(*NT_CASE)
+    baseline = served(NTEvaluator(), value_declare=True)
+    guarded = served(NTEvaluator(), value_declare=True)
+    checks = []
+    expected = baseline.decide_declare(rnd, seat)
+    assert guarded.decide_declare(rnd, seat, check_budget=lambda: checks.append(True)) == expected
+    assert len(checks) > guarded.value_declare_worlds
+    for record in (baseline.last_declare_record, guarded.last_declare_record):
+        record.pop("seconds")
+    assert guarded.last_declare_record == baseline.last_declare_record
+
+
+@pytest.mark.parametrize("swallow", [False, True])
+def test_caller_guard_catches_final_publish_and_swallowed_expiry(monkeypatch, swallow):
+    rnd, seat = state_at(*NT_CASE)
+    bot = served(NTEvaluator(), value_declare=True)
+
+    def expired():
+        raise pv.PVSearchBudgetExceeded("declare caller deadline")
+
+    def completed(_rnd, _seat, candidates, check_budget, progress):
+        if swallow:
+            try:
+                check_budget()
+            except pv.PVSearchBudgetExceeded:
+                pass
+        return np.arange(len(candidates), dtype=float)
+
+    monkeypatch.setattr(bot, "_value_declare_means", completed)
+    assert bot.decide_declare(rnd, seat, check_budget=expired) == HEURISTIC.decide_declare(rnd, seat)
+    assert bot.last_declare_record["fallback_reason"] == "hard_budget"
+    assert bot.last_declare_record["evaluated"] is False
+
+
+def test_caller_guard_interrupt_propagates_and_off_path_is_unchanged():
+    rnd, seat = state_at(*NT_CASE)
+
+    def cancelled():
+        raise KeyboardInterrupt("caller cancelled")
+
+    off = served(value_declare=False)
+    assert off.decide_declare(rnd, seat, check_budget=cancelled) == HEURISTIC.decide_declare(rnd, seat)
+    on = served(value_declare=True)
+    with pytest.raises(KeyboardInterrupt):
+        on.decide_declare(rnd, seat, check_budget=cancelled)
+
+
 def test_an_evaluator_exception_falls_back_and_records_the_reason():
     rnd, seat = state_at(*NT_CASE)
     for budget in (None, 60.0):

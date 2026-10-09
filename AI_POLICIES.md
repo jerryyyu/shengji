@@ -14,7 +14,7 @@ Git and `docs_archive/`; do not append dated status blocks here.
 
 ## Production contract
 
-What is served is release 42: the `pv-search` policy/value search (the package's policy head admits 8 of the legal
+What is served is release 43: the `pv-search` policy/value search (the package's policy head admits 8 of the legal
 actions over 64 sampled worlds, its value head prices their afterstates, no playouts), value-guided hybrid bury on the
 same package, budgets 3 s play / 2 s bury, the JS-M1 prior keys retained from release 28, and four search rules that
 are off by default in source and on in production (#676): admission diversity `div` (#680; at most 2 admitted
@@ -22,13 +22,16 @@ actions per structural key, near-duplicates skipped, back-fill when short), refu
 sampled worlds must make this round's refused throws refusable with the same forced component), tie-break by points
 `tb` (#682; among candidates within 0.02 level of the best mean, the most root-team points from the current trick)
 and the lead anchor `la` (#694; on a lead whose heuristic anchor is a non-trump single that is not the top live card,
-slot 0 becomes the highest plain pair/tractor, else the policy's top action), plus, since release 42, the
-doomed-throw swap `dts` (#830; on a lead whose throw the engine refuses in every sampled world with the same forced
-component, play that component instead). On budget expiry the bot plays the
+slot 0 becomes the highest plain pair/tractor, else the policy's top action), plus, since release 43, the
+doomed-throw re-select `dtr` (#946, replacing release 42's swap `dts`, #830): when the selected lead is a throw the
+engine refuses in every sampled world with the same forced component and re-selection completes with an eligible
+alternative, the throw and that component are excluded and the bot re-selects among its remaining admitted leads;
+on budget abandonment it keeps the first selection, and when every alternative is excluded it plays the forced
+component. On budget expiry the bot plays the
 heuristic anchor. The served bot name, package SHA256, `fly.toml` environment, deploy date, rollback steps and the
 earlier releases are in `DEPLOY.md` ("Current production" and the Releases table); the registry derives the name from
 that environment and it is never hand-written. Changing the package, world count, admitted-candidate count, cap,
-sampler, rules or bury arm makes a new policy and needs fresh evidence (ladder rows 10 and 11 for the rules, row 9
+sampler, rules or bury arm makes a new policy and needs fresh evidence (ladder rows 10, 11 and 12 for the rules, row 9
 for the package). The release gate every deploy must pass is `DEPLOY.md` "Release checklist". The release-era subsections
 this file used to carry (policy prior admission, the soft head, JS-M1, serving qualification, hybrid bury
 integration, `mc-s0-report-lcb`) are archived verbatim in
@@ -55,6 +58,7 @@ its lead-anchor increment is a small positive read, not a confirmation.
 | 9 | **SMV3 outcome head** (release 36) | the release-30 package, same search | **+0.0393 [+0.0033, +0.0752]** as served (confirmation v36a2; the first read v36a +0.0361 [+0.0015, +0.0707]) | five 520-cluster windows each, common MC-LCB control, vs release 30 as served | The gen-5 SMV3 checkpoint 3e89e86f's OUTCOME head (arm F's recipe + sidecar v3, #658) in release 30's search unchanged. Confirmed by a predeclared second read; a common-opponent summary-level estimate like row 7. Policy head alone beats the production head +0.21 level/round in paired duels while served head swaps sit within ±0.02: measured decoupling, not a ceiling (#663). |
 | 10 | **Search rules div + rc + tb + la** (release 38, deployed 2026-10-03) | release 36/37, same package | **+0.0461 [+0.0242, +0.0681]** (div + rc + tb vs release 36, ten fresh windows: CONFIRMED); +0.0106 [+0.0006, +0.0205] (+ la over that combination, ten windows: POSITIVE incremental) | 520-cluster windows, common MC-LCB control | One confirmed contrast (the three-rule combination, #676 issuecomment-5962364713) and one small positive incremental contrast with a lower bound near zero (lead-anchor on the combination, issuecomment-5965252288), which is not a second confirmation. Indirect reads through the common control, not head-to-head win rates, and not additive. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive exploratory (+0.0138 [+0.0013, +0.0262], five windows, below the extension triage). Deployed as release 38 on 2026-10-03 09:41 ET; play p50 ≈ +10% latency, zero fallbacks. |
 | 11 | **Doomed-throw swap `dts`** (release 42, deployed 2026-10-06) | release 38, same package and rules | −0.0002 [−0.0102, +0.0099] as served (v57dts, ten fresh windows: INCONCLUSIVE; the first read v53dts −0.011 [−0.025, +0.002], five windows, inconclusive) | ten fresh 520-cluster windows, common MC-LCB control, vs release 38 as served | No strength claim. Shipped for correctness of play: on a lead whose throw the engine refuses in every sampled world with the same forced component, the bot plays that component instead of the doomed throw. The deploy gate read DEPLOY-ELIGIBLE, meaning not statistically demonstrated negative; it is NOT noninferiority, and harm stays compatible with the interval (about ±0.01). Mechanism, descriptive: failed bot throws 12,239 → 4,402 (−64%), 33.58 → 12.07 per 1000 plays, rounds with a failed throw 62.6% → 35.1% (#707 issuecomment-6026001554). Deployed as release 42 on 2026-10-06 19:08 ET. |
+| 12 | **Doomed-throw re-select `dtr`** (release 43, deployed 2026-10-09) | release 42's swap `dts`, same package and rules | −0.0004 [−0.0122, +0.0114] as served (v67dtrg, ten fresh windows vs release 42: INCONCLUSIVE; deploy guard DEPLOY-ELIGIBLE; the first read v64dtr42 −0.0028 [−0.0232, +0.0176], five windows, inconclusive) | ten fresh 520-cluster windows, common MC-LCB control, vs release 42 as served | No strength claim. Shipped as a functional correctness fix (Jerry 2026-10-09): release 42's swap played a doomed throw's forced component, usually the throw's weakest piece (production room YJQJ round 1); the re-select instead excludes the throw and that component and picks the best remaining admitted lead, keeping the reviewed fallbacks (budget abandonment keeps the first selection; all-excluded plays the forced component). DEPLOY-ELIGIBLE means not statistically demonstrated negative; it is NOT noninferiority, and harm down to −0.0122 stays compatible. Mechanism, descriptive: a doomed throw on 2.27% of decisions, re-selected on 99.05% of those, forced-component fallback 0.95%, zero budget or search-error fallbacks (#707 issuecomment-6080113005). Deployed as release 43 on 2026-10-09 15:46 ET. |
 
 **Gen 5, not taken (2026-09-24 to 09-27).** Five one-variable retrains of the production head, each screened as
 served vs release 30 on five fresh 520-cluster mirrored windows (common MC-LCB control, DL random effects, MDE80 ≈

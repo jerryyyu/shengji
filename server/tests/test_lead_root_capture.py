@@ -44,6 +44,41 @@ def test_actual_producer_json_to_engine_consumer_with_expired_refusals():
     assert any(e['attempted'] != e['accepted'] for row in rows for e in row['plays'])
 
 
+def test_every_captured_lead_replays_to_round_end_with_observed_ledger():
+    # Snapshot equality alone does not exercise the continuation consumer.
+    # Build an independent uninterrupted trajectory, preserving each seat's
+    # actual observe-on-own-turn cadence (not an omniscient shared ledger).
+    rnd = rebuild_round(EVENTS)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    states, observations = [], {}
+    for index, event in enumerate(PLAYS):
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        observations[index] = normalized(vars(ledgers[seat]))
+        rnd.play(seat, event['attempted'])
+        states.append(fingerprint(rnd))
+    assert rnd.phase == 'round_end'
+
+    transitions = 0
+    for row in packets():
+        root, ledger = restore_with_ledger(row)
+        owner = root.turn
+        start = len(row['plays'])
+        for index in range(start, len(PLAYS)):
+            if root.turn == owner:
+                ledger.observe(root)
+                assert normalized(vars(ledger)) == observations[index]
+            event = PLAYS[index]
+            assert root.turn == event['seat']
+            root.play(root.turn, event['attempted'])
+            assert fingerprint(root) == states[index]
+            transitions += 1
+        # Includes final points, kitty settlement and winner in the full state.
+        assert root.phase == 'round_end'
+        assert fingerprint(root) == states[-1]
+    assert transitions == sum(range(4, 65, 4)) == 544
+
+
 def test_accepted_only_replay_is_rejected():
     row = next(r for r in packets() if any(e['attempted'] != e['accepted'] for e in r['plays']))
     for event in row['plays']:

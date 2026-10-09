@@ -241,6 +241,44 @@ def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):
     assert room.round.phase == "bury"
 
 
+def test_declare_response_search_does_not_consume_new_human_grace(monkeypatch):
+    room = _declare_room()
+    room.seats[3].is_bot = False
+    room.seats[3].connected = True
+    clock = [0.0]
+    calls = []
+
+    async def declares(r, seats, final=False):
+        calls.append(1)
+        if len(calls) == 2:
+            clock[0] += 100  # old deadline expires while search runs
+            r.round.declaration = dict(r.round.declaration)
+        return True
+
+    async def sleep(_):
+        if len(calls) == 1:
+            seat = next(s for s in range(4) if room.round.declare_options(s))
+            room.round.declare(seat, room.round.declare_options(seat)[0])
+        else:
+            # The server must yield a human response opportunity rather than
+            # finalize against the deadline that expired inside search.
+            assert room.round.phase == "declare"
+            room.round.passed.add(3)
+        clock[0] += 0.25
+
+    async def broadcast(_):
+        pass
+
+    monkeypatch.setattr(srv, "_bot_declares", declares)
+    monkeypatch.setattr(srv.asyncio, "get_event_loop", lambda: SimpleNamespace(time=lambda: clock[0]))
+    monkeypatch.setattr(srv.asyncio, "sleep", sleep)
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    asyncio.run(srv.run_deal(room))
+    assert len(calls) == 3
+    assert room.round.phase == "bury"
+
+
 def _prepare_real(room: srv.Room, *, mode: str = "bot") \
         -> srv._PreparedBotTurn:
     seat = room.round.turn

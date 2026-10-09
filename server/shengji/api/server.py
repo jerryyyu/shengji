@@ -1357,6 +1357,10 @@ async def run_deal(room: Room) -> None:
                 # stale response as a pass or finalize before the next attempt.
                 continue
             if respond:
+                if rnd.declaration is not last_declaration:
+                    # Search may consume the old grace period. Give humans a
+                    # full response window to a declaration committed afterward.
+                    deadline = max(deadline, loop.time() + DECLARE_EXTEND)
                 for s in range(4):
                     if room.seats[s].is_bot:
                         rnd.passed.add(s)

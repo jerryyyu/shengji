@@ -224,6 +224,7 @@ jobs:
             tests/test_pv_admission_rules.py \
             tests/test_m5_population_contract.py \
             tests/test_pair_resource_admission.py \
+            tests/test_within_cell_admission.py \
             tests/test_pair_resource_pipeline.py \
             tests/test_refusal_constraints.py \
             tests/test_pv_tiebreak_points.py \

@@ -490,7 +490,11 @@ def run_cluster(config, cluster):
         "timings": [timing for _, timing in rows],
         "decision_traces": [{"mirror": i // 4, "side": side,
                              "decisions": policy.decisions,
-                             "bury_decisions": getattr(policy, "bury_decisions", [])}
+                             "bury_decisions": getattr(policy, "bury_decisions", []),
+                             # only a policy that published declare records
+                             # (pv-search ``value_declare``) carries the key
+                             **({"declare_decisions": policy.__dict__["declare_decisions"]}
+                                if policy.__dict__.get("declare_decisions") else {})}
                             for i, (side, policy) in enumerate(created)],
     }
 

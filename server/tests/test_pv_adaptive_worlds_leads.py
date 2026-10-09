@@ -199,7 +199,7 @@ def test_awl_token_last_and_digest_when_on(production_package):
     assert on == AWL_NAME
     every, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_SMALL_JOKER_GUARD": "1"})
     assert every.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-sjg-awl-r")
-    assert pv.RULE_TOKENS[-2] == ("adaptive_worlds_leads", "awl")   # then dtr
+    assert pv.RULE_TOKENS[-3] == ("adaptive_worlds_leads", "awl")   # then dtr, vd
     assert pv.RULE_FLAGS["ADAPTIVE_WORLDS_LEADS"] == "adaptive_worlds_leads"
     base = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0)
     aw = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0,

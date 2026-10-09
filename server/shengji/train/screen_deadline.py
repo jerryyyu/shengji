@@ -31,7 +31,8 @@ def _snapshot(wrapped):
     # Evaluators are immutable runtime assets, reconstructed through the factory
     # and shared per process; they must never cross the per-move IPC channel.
     state = {k: v for k, v in vars(wrapped.bot).items() if k != "evaluator"}
-    timing = {k: v for k, v in vars(wrapped).items() if k not in ("bot", "decisions", "bury_decisions")}
+    timing = {k: v for k, v in vars(wrapped).items()
+              if k not in ("bot", "decisions", "bury_decisions", "declare_decisions")}
     defaults = {}
     for cls in reversed(type(wrapped.bot).__mro__):
         defaults.update({k: v for k, v in vars(cls).items()
@@ -114,6 +115,7 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
                 wrapped = bots[index]
                 wrapped.decisions.clear()
                 wrapped.bury_decisions.clear()
+                vars(wrapped).pop("declare_decisions", None)   # created by its first record
                 if method == "register":
                     result = None
                 elif method == "decide_play":
@@ -123,7 +125,10 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
                         result = wrapped.decide_play(*args, **kwargs)
                 else:
                     result = getattr(wrapped, method)(*args, **kwargs)
-                traces = wrapped.bury_decisions if method == "decide_bury" else wrapped.decisions
+                if method == "decide_declare":
+                    traces = vars(wrapped).get("declare_decisions", [])
+                else:
+                    traces = wrapped.bury_decisions if method == "decide_bury" else wrapped.decisions
                 conn.send((request, "result", (result, _snapshot(wrapped), traces)))
             except Exception:
                 conn.send((request, "error", traceback.format_exc()))
@@ -245,7 +250,11 @@ class DeadlinePolicy:
         raise AttributeError(name)
 
     def decide_declare(self, rnd, seat, final=False):
-        return self.session.call(self.index, "decide_declare", (rnd, seat), {"final": final})[0]
+        result, traces, _, _ = self.session.call(self.index, "decide_declare", (rnd, seat),
+                                                 {"final": final})
+        if traces:   # declare receipts (see TimedPolicy); the key exists only once one does
+            self.__dict__.setdefault("declare_decisions", []).extend(dict(t) for t in traces)
+        return result
 
     def decide_bury(self, rnd, seat):
         result, traces, _, _ = self.session.call(self.index, "decide_bury", (rnd, seat), {})

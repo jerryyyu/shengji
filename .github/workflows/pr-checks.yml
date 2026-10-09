@@ -236,6 +236,7 @@ jobs:
             tests/test_pv_lead_tiebreak_prior.py \
             tests/test_pv_doomed_throw_swap.py \
             tests/test_pv_doomed_throw_reselect.py \
+            tests/test_pv_value_declare.py \
             tests/test_xmtj_throw_regressions.py \
             tests/test_pv_small_joker_lead.py \
             tests/test_pv_adaptive_worlds.py \

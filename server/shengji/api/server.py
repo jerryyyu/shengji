@@ -1231,20 +1231,73 @@ def _spawn_room_task(room: "Room", attr: str, coro) -> asyncio.Task:
 
 
 # ---------------------------------------------------------------- deal task
-def _bot_declares(room: Room, seats: list[int], final: bool = False) -> None:
-    if room.evaluation is not None and room.evaluation_invalidated:
-        return
-    rnd = room.round
-    assert rnd is not None
+async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bool:
+    """Declare without holding the room lock during optional model search.
+
+    Callers must NOT hold the lock. Each decision sees the last committed
+    declaration. A concurrent human declaration or seat claim invalidates the
+    speculative bot state as well as its cards. The flag-off path stays inline.
+    """
+    original_round = room.round
+    complete = True
     for s in seats:
-        if room.seats[s].is_bot:
-            cards = room.bot.decide_declare(rnd, s, final=final)
+        async with room.lock:
+            rnd = room.round
+            if (rnd is not original_round or rnd is None
+                    or rnd.phase not in ("deal", "declare")
+                    or (room.evaluation is not None and room.evaluation_invalidated)):
+                return False
+            if s >= len(room.seats) or not room.seats[s].is_bot:
+                continue
+            bot = room.bot
+            if not getattr(bot, "value_declare", False):
+                cards = bot.decide_declare(rnd, s, final=final)
+                if cards:
+                    try:
+                        rnd.declare(s, cards)
+                        room.log_event("declare", seat=s, cards=cards, bot=True)
+                    except IllegalPlay:
+                        pass
+                continue
+            game, owner = room.game, room.seats[s]
+            phase, declaration = rnd.phase, rnd.declaration
+            hands = tuple(tuple(hand) for hand in rnd.hands)
+            round_copy, bot_copy = copy.deepcopy(rnd), copy.deepcopy(bot)
+
+        def emit(kind, **fields):
+            room.log_event("model_search", seat=s, mode="bot", phase="declare",
+                           policy=getattr(bot_copy, "policy_name", "W32"),
+                           event=kind, **fields)
+
+        # The shared admission wrapper retains its permit through cancellation
+        # and drains the thread before returning: no orphan declaration workers.
+        # PVSearchBot retains its own cooperative serving budget and heuristic
+        # fallback; this wiring does not select a new deployment budget.
+        cards = await run_model_search(
+            lambda: asyncio.to_thread(bot_copy.decide_declare, round_copy, s,
+                                      final=final), emit)
+        async with room.lock:
+            if (room.game is not game or room.round is not rnd
+                    or room.bot is not bot or rnd.phase != phase
+                    or rnd.declaration is not declaration
+                    or tuple(tuple(hand) for hand in rnd.hands) != hands
+                    or s >= len(room.seats) or room.seats[s] is not owner
+                    or not owner.is_bot
+                    or (room.evaluation is not None and room.evaluation_invalidated)):
+                complete = False
+                continue
             if cards:
                 try:
                     rnd.declare(s, cards)
                     room.log_event("declare", seat=s, cards=cards, bot=True)
                 except IllegalPlay:
-                    pass
+                    complete = False
+                    continue
+            room.bot = bot_copy
+            record = getattr(bot_copy, "last_declare_record", None)
+            if record is not None:
+                room.log_event("declare_decision", seat=s, record=record, bot=True)
+    return complete
 
 
 async def run_deal(room: Room) -> None:
@@ -1261,17 +1314,21 @@ async def run_deal(room: Room) -> None:
                 break
             seat, idx, code = rnd.deal_next()
             room.ids[seat][idx] = code
-            _bot_declares(room, [seat])
+        await _bot_declares(room, [seat])
+        async with room.lock:
+            if room.round is not rnd:
+                return
             await broadcast(room)
         await asyncio.sleep(DEAL_DELAY)
 
     loop = asyncio.get_event_loop()
+    needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
-        if room.evaluation is not None and room.evaluation_invalidated:
+        if (room.round is not rnd or rnd.phase != "declare"
+                or (room.evaluation is not None and room.evaluation_invalidated)):
             return
-        _bot_declares(room, list(range(4)), final=True)
         for s in range(4):
-            if room.seats[s].is_bot:
+            if room.seats[s].is_bot and not needs_response:
                 rnd.passed.add(s)
         await broadcast(room)
     deadline = loop.time() + DECLARE_GRACE
@@ -1283,10 +1340,23 @@ async def run_deal(room: Room) -> None:
                 return
             if room.round is not rnd or rnd.phase != "declare":
                 return
-            if rnd.declaration is not last_declaration:
+            if needs_response or rnd.declaration is not last_declaration:
                 last_declaration = rnd.declaration
                 deadline = max(deadline, loop.time() + DECLARE_EXTEND)
-                _bot_declares(room, list(range(4)), final=True)
+                respond = True
+            else:
+                respond = False
+        if respond:
+            needs_response = not await _bot_declares(room, list(range(4)), final=True)
+        async with room.lock:
+            if (room.round is not rnd or rnd.phase != "declare"
+                    or (room.evaluation is not None and room.evaluation_invalidated)):
+                return
+            if needs_response:
+                # A human changed the position during search. Do not mark a
+                # stale response as a pass or finalize before the next attempt.
+                continue
+            if respond:
                 for s in range(4):
                     if room.seats[s].is_bot:
                         rnd.passed.add(s)

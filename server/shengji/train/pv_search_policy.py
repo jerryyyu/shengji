@@ -220,7 +220,7 @@ the trump declaration is chosen with the value head instead of the inherited
 heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
 first as the base decision).  Only where the heuristic would DECLARE now, or in
 the final grace window (``final=True``), every declare option plus PASS is
-scored on ``SHENGJI_PV_VALUE_DECLARE_WORLDS`` (default 16) sampled complete
+scored on ``SHENGJI_PV_VALUE_DECLARE_WORLDS`` (default 64) sampled complete
 deals by the value head from the seat's team (world model:
 `value_declare`), and the argmax replaces the heuristic's choice only when it
 beats it by more than ``SHENGJI_PV_VALUE_DECLARE_MARGIN`` (default 0.0, in the
@@ -328,7 +328,7 @@ ADAPTIVE_WORLDS_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_
 VALUE_DECLARE_RULE = {"VALUE_DECLARE": "value_declare"}
 #: its parameters: sampled deals per evaluation, and the value margin (expected
 #: signed levels, the head's units) the best candidate must beat the heuristic's by
-VALUE_DECLARE_DEFAULTS = dict(value_declare=False, value_declare_worlds=16,
+VALUE_DECLARE_DEFAULTS = dict(value_declare=False, value_declare_worlds=64,
                               value_declare_margin=0.0)
 VALUE_DECLARE_PARAMS = {"VALUE_DECLARE_WORLDS": "value_declare_worlds",
                         "VALUE_DECLARE_MARGIN": "value_declare_margin"}

@@ -37,7 +37,7 @@ does NOT know the undealt cards, the other hands or the kitty.  One world:
 The bury is NOT the served hybrid arm (`cwv_bury_policy.CWVBuryMixin`): that
 arm samples its own 32 worlds, ranks up to 32 candidates with the value head
 and rolls out the finalists -- about a second per bury -- and the declare
-evaluation needs one bury per (world, outcome), 16 x up to 5.  The heuristic
+evaluation needs one bury per (world, outcome), 64 x up to 5.  The heuristic
 bury is the hybrid arm's incumbent (its slot 0) and its budget fallback.
 
 Candidates that lead to the same (banker, trump) are the same outcome in this

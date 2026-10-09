@@ -167,7 +167,7 @@ def test_vd_token_last_and_digest_when_on(production_package):
     base = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA)
     vd = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, value_declare=True)
     payload = pv.recipe_payload(vd)
-    assert payload["value_declare"] is True and payload["value_declare_worlds"] == 16
+    assert payload["value_declare"] is True and payload["value_declare_worlds"] == 64
     assert payload["value_declare_margin"] == 0.0
     assert payload["value_declare_model"] == vdm.MODEL
     assert pv.recipe_digest(base) != pv.recipe_digest(vd)
@@ -228,7 +228,7 @@ def test_on_returns_legal_choices_and_gates_like_documented(seed):
         seen["records"] += 1
         assert record["schema"] == pv.VALUE_DECLARE_RECORD_SCHEMA
         assert record["evaluated"] is True and record["fallback_reason"] is None
-        assert record["worlds_completed"] == record["worlds"] == 16
+        assert record["worlds_completed"] == record["worlds"] == 64
         assert record["heuristic"] == (vdm.PASS if heuristic is None else " ".join(heuristic))
         assert record["played"] == (vdm.PASS if choice is None else " ".join(choice))
         assert record["changed"] == (choice != heuristic)

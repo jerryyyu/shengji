@@ -49,12 +49,26 @@ primary_region = 'ewr'
   # noninferiority); failed throws 12,239 -> 4,402 (-64%). Rollback: delete the
   # SHENGJI_PV_DOOMED_THROW_SWAP line and restore the release-38 name:
   # RELEASE 38 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d'
+  # RELEASE 43 (Jerry 2026-10-09: deploy "as a functional correctness fix" if the no-harm check
+  # passes): the doomed-throw re-select (#946, -dtr) REPLACES the swap. When the selected lead is a
+  # throw the swap would replace and re-selection completes with an eligible alternative, the
+  # doomed throw and its forced component are excluded and the bot re-selects among its remaining
+  # admitted leads with its own selection rules; on budget abandonment it keeps the first selection,
+  # and when every alternative is excluded it plays the forced component (the reviewed fallbacks).
+  # A correctness fix for leading a doomed throw's weakest component (YJQJ round 1), NOT a strength
+  # claim. Evidence v67dtrg (ten fresh windows vs release 42 as served): -0.0004 [-0.0122, +0.0114],
+  # DEPLOY-ELIGIBLE (not noninferiority; harm down to -0.0122 stays compatible); a doomed throw on
+  # 2.27% of decisions, re-selected on 99.05% of those, forced-component fallback 0.95%, abandoned 0;
+  # zero budget or search-error fallbacks (#707 issuecomment-6080113005). Rollback: replace the
+  # SHENGJI_PV_DOOMED_THROW_RESELECT line with SHENGJI_PV_DOOMED_THROW_SWAP = '1' and restore the
+  # release-42 name:
+  # RELEASE 42 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
-  SHENGJI_PV_DOOMED_THROW_SWAP = '1'
+  SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'

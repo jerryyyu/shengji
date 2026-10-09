@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.ai.memory import Memory
+from shengji.ai.refusal import refusal_consistent
 from shengji.eval.tactical import (not_a_throw_refuted_by_public_refusal,
                                    refusal_args)
 from shengji.harvest.legal import forced_lead
@@ -58,6 +59,7 @@ def test_legal_replay_sampler_has_no_relaxed_draw_or_void_violation(
     for seat, bot in enumerate(bots):
         bot.sampler.rng.seed(seed + seat)
     observations = 0
+    expired_notice_checks = 0
     for index, event in enumerate(PLAYS):
         seat = rnd.turn
         assert seat == event['seat']
@@ -70,8 +72,25 @@ def test_legal_replay_sampler_has_no_relaxed_draw_or_void_violation(
                            for c in rnd.hands[other]), (index, other)
         worlds, attempts = bot._worlds(rnd, seat)
         assert len(worlds) == 4 and attempts >= 4, index
+        # Voids alone do not establish that retained throw constraints are
+        # feasible. Reconstruct each historical throw using the real deal,
+        # adding back subsequently played cards, and ask the engine whether
+        # it forces the recorded component. Do not observe again here: check
+        # exactly the ledger consumed by the real sampling call.
+        refusals = bot._refusals.refusals
+        for refusal in refusals:
+            assert refusal_consistent(rnd, rnd.hands, refusal), (index, refusal)
+            if rnd.notice is None:
+                expired_notice_checks += 1
         observations += bot._last_sampling.get('refusal_observations', 0)
-        for hands, buried in worlds:
+        fallback = bot._last_sampling.get('refusal_fallback_worlds', 0)
+        for world_index, (hands, buried) in enumerate(worlds):
+            # Plain fallback worlds are appended after constrained draws and
+            # deliberately need not satisfy refusals. Never count them as
+            # accepted constrained worlds (or confuse them with void fallback).
+            if world_index < len(worlds) - fallback:
+                for refusal in refusals:
+                    assert refusal_consistent(rnd, hands, refusal), (index, refusal)
             assert Counter(hands[seat]) == Counter(rnd.hands[seat])
             assert [len(h) for h in hands] == [len(h) for h in rnd.hands]
             assert Counter(c for h in hands for c in h) + Counter(buried) == (
@@ -89,6 +108,7 @@ def test_legal_replay_sampler_has_no_relaxed_draw_or_void_violation(
             for observer in bots:
                 observer.observe_public(rnd)
     assert rnd.phase == 'round_end' and observations > 0
+    assert expired_notice_checks > 0
 
 
 @pytest.mark.parametrize('index,forced', [(40, 'DA'), (44, 'S2'), (48, 'D2')])

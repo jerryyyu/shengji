@@ -77,6 +77,21 @@ class TimedPolicy:
     def __getattr__(self, name):
         return getattr(self.bot, name)
 
+    def decide_declare(self, rnd, seat, final=False):
+        """Declare through the wrapped bot; a bot that publishes a declare record
+        (pv-search's ``value_declare`` rule: ``pv-value-declare-decision-v1``, set
+        only on the calls its gate admits) leaves its scalar receipt in
+        ``declare_decisions``, created on the first one, so a screen without
+        the rule carries no new key."""
+        try:
+            return self.bot.decide_declare(rnd, seat, final=final)
+        finally:
+            rec = getattr(self.bot, "last_declare_record", None)
+            if rec:
+                self.__dict__.setdefault("declare_decisions", []).append({
+                    "seat": seat, "phase": "declare", **trace_fields(rec),
+                })
+
     def decide_bury(self, rnd, seat):
         """Bury through the wrapped bot; a bot that publishes a bury record (the served
         CWV bury arms: ``cwv-bury-policy-v1`` / ``cwv-bury-fallback-v1``) leaves its

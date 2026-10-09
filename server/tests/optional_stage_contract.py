@@ -8,7 +8,7 @@ to the parametrization in ``test_optional_stage_contract.py``; every check in
 `CONTRACT` then runs against it:
 
 * `check_inner_swallowed_expiry` -- the deadline expires inside a NESTED rule
-  (`_select_rules`, entered inside the stage) that SWALLOWS the expiry and
+  (`_select_rules`, or the case's ``nested`` method, entered inside the stage) that SWALLOWS the expiry and
   returns normally (the #936 / #946 defect class); the deadline is not expired
   for any later check, so only the latch can see it.  The stage must abandon
   (``hard_budget``) and publish exactly the base decision.
@@ -57,19 +57,22 @@ class StageCase:
     entered, and returns ``(bot, outcome)``; ``base()`` is the outcome the
     cached base decision publishes; ``abandon(bot)`` is ``(reason, error)``
     from the record, or None when the stage did not abandon;
-    ``abandons_errors`` is the stage's policy for a non-budget Exception.
+    ``abandons_errors`` is the stage's policy for a non-budget Exception;
+    ``nested`` is the ``(class, method)`` the stage calls with its guard as
+    ``check_budget`` (the play stages' `PolicyValueBot._select_rules`).
     """
     name: str
     run: Callable[[Deadline], tuple]
     base: Callable[[], Any]
     abandon: Callable[[Any], Any]
     abandons_errors: bool
+    nested: tuple = (PolicyValueBot, "_select_rules")
 
 
 class _Probe:
     """Instruments `OptionalStage` and `_select_rules` for one run."""
 
-    def __init__(self, monkeypatch):
+    def __init__(self, monkeypatch, nested=(PolicyValueBot, "_select_rules")):
         self.depth, self.entries, self.exits, self.publish_calls = 0, [], [], []
         self.deadline = None
         self.inject = None          # called (with the rule's check) inside the stage
@@ -100,17 +103,18 @@ class _Probe:
         monkeypatch.setattr(cls, "__enter__", __enter__)
         monkeypatch.setattr(cls, "__exit__", __exit__)
         monkeypatch.setattr(cls, "publish", _publish)
-        rules = PolicyValueBot._select_rules
+        owner, method = nested
+        rules = getattr(owner, method)
         signature = inspect.signature(rules)
 
-        def _select_rules(bot, *a, **kw):
+        def _nested(bot, *a, **kw):
             if probe.depth and probe.inject is not None:
                 inject, probe.inject = probe.inject, None
                 check = signature.bind(bot, *a, **kw).arguments.get("check_budget")
                 assert check is not None, "the nested rule must receive the stage's guard"
                 inject(check)
             return rules(bot, *a, **kw)
-        monkeypatch.setattr(PolicyValueBot, "_select_rules", _select_rules)
+        monkeypatch.setattr(owner, method, _nested)
 
     def outer(self):
         assert self.entries, "the scenario never entered an optional stage"
@@ -128,7 +132,7 @@ def _assert_abandoned_to_base(case, probe, bot, outcome, reason, error):
 
 
 def check_inner_swallowed_expiry(case, monkeypatch):
-    probe = _Probe(monkeypatch)
+    probe = _Probe(monkeypatch, case.nested)
     deadline = probe.deadline = Deadline()
 
     def swallow(check):
@@ -147,14 +151,14 @@ def check_inner_swallowed_expiry(case, monkeypatch):
 
 
 def check_final_publish_expiry(case, monkeypatch):
-    probe = _Probe(monkeypatch)
+    probe = _Probe(monkeypatch, case.nested)
     deadline = probe.deadline = Deadline()
     _, published = case.run(deadline)
     assert published != case.base(), "the scenario must publish a replacement"
     assert probe.publish_calls, "the stage never reached publish()"
     final = probe.publish_calls[0] + 1   # the final hard check is publish's next call
     monkeypatch.undo()
-    probe = _Probe(monkeypatch)
+    probe = _Probe(monkeypatch, case.nested)
     deadline = probe.deadline = Deadline(at=final)
     bot, outcome = case.run(deadline)
     assert deadline.calls == final and probe.publish_calls == [final - 1]
@@ -163,7 +167,7 @@ def check_final_publish_expiry(case, monkeypatch):
 
 
 def check_error_inside_stage(case, monkeypatch):
-    probe = _Probe(monkeypatch)
+    probe = _Probe(monkeypatch, case.nested)
     probe.deadline = Deadline()
 
     def fail(check):
@@ -178,7 +182,7 @@ def check_error_inside_stage(case, monkeypatch):
 
 
 def check_keyboard_interrupt_propagates(case, monkeypatch):
-    probe = _Probe(monkeypatch)
+    probe = _Probe(monkeypatch, case.nested)
     probe.deadline = Deadline()
 
     def interrupt(check):

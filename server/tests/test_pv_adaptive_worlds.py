@@ -286,7 +286,7 @@ def test_aw_token_last_and_digest_when_on(production_package):
     assert on.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-aw-r") and "-bury-hybrid-" in on
     every, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_SMALL_JOKER_GUARD": "1"})
     assert every.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-sjg-aw-r")
-    assert pv.RULE_TOKENS[-3] == ("adaptive_worlds", "aw")   # then its leads-only awl, dtr
+    assert pv.RULE_TOKENS[-4] == ("adaptive_worlds", "aw")   # then its leads-only awl, dtr, vd
     assert pv.RULE_FLAGS["ADAPTIVE_WORLDS"] == "adaptive_worlds"
     base = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0)
     aw = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0,

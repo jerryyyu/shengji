@@ -651,8 +651,8 @@ def test_lp_token_digest_and_payload_when_on(production_package):
     assert "tiebreak_epsilon" not in payload
     assert pv.recipe_digest(on) != "4a09aef5"
     assert pv.RULE_FLAGS["LEAD_TIEBREAK_PRIOR"] == "lead_tiebreak_prior"
-    assert pv.RULE_TOKENS[-6] == ("lead_tiebreak_prior", "lp")   # dts, sjg (#707 S4), aw, awl, dtr follow
-    assert [t for _, t in pv.RULE_TOKENS] == ["div", "fs", "rc", "rcec", "tb", "ak16", "wla", "la", "lp", "dts", "sjg", "aw", "awl", "dtr"]
+    assert pv.RULE_TOKENS[-7] == ("lead_tiebreak_prior", "lp")   # dts, sjg (#707 S4), aw, awl, dtr, vd follow
+    assert [t for _, t in pv.RULE_TOKENS] == ["div", "fs", "rc", "rcec", "tb", "ak16", "wla", "la", "lp", "dts", "sjg", "aw", "awl", "dtr", "vd"]
     assert served(lead_tiebreak_prior=True).lead_tiebreak_prior is True
     assert served().lead_tiebreak_prior is False
 

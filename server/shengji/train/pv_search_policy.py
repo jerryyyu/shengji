@@ -214,6 +214,27 @@ above; the ``aw`` name above; the ``awl`` name
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-r7965ea65-bury-hybrid-ed3b15d1e9a0``)
 and every decision are unchanged.  No model call and no leaf rebuild beyond the
 selection rules' own is added.
+
+Optional declaration rule, OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE=1`` --
+the trump declaration is chosen with the value head instead of the inherited
+heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
+first as the base decision).  Only where the heuristic would DECLARE now, or in
+the final grace window (``final=True``), every declare option plus PASS is
+scored on ``SHENGJI_PV_VALUE_DECLARE_WORLDS`` (default 16) sampled complete
+deals by the value head from the seat's team (world model:
+`value_declare`), and the argmax replaces the heuristic's choice only when it
+beats it by more than ``SHENGJI_PV_VALUE_DECLARE_MARGIN`` (default 0.0, in the
+head's units: expected signed levels).  The evaluation runs as an
+`optional_stage.OptionalStage` under the per-decision serving budget
+(``SHENGJI_PV_SERVING_BUDGET_SECONDS``); an expiry or any error abandons it to
+the heuristic's choice and is recorded (definition, gate and record:
+`PVSearchBot.decide_declare`).  ``0`` or ``1`` only; its two parameters are
+refused while it is off (a parameter with no effect would still enter no
+identity); on, it enters the recipe digest with its parameters and its model
+and adds ``-vd`` to the name as the last rule token.  It combines with every
+play rule (they never see a declaration decision).  Off, it is absent from the
+payload, so every existing name (release 42 above) and every decision are
+unchanged, and ``decide_declare`` IS the heuristic's.
 """
 from __future__ import annotations
 
@@ -239,6 +260,7 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
 from .optional_stage import OptionalStage
+from . import value_declare as value_declare_model
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
@@ -302,16 +324,26 @@ ADAPTIVE_WORLDS_SOFT_FRACTION = 0.8
 #: `adaptive_worlds`: the per-decision rule records the base finalization sets
 #: and an abandoned re-selection could overwrite; snapshotted and restored
 ADAPTIVE_WORLDS_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_last_sampling")
+#: the optional declaration rule (`PVSearchBot.decide_declare`, `value_declare`)
+VALUE_DECLARE_RULE = {"VALUE_DECLARE": "value_declare"}
+#: its parameters: sampled deals per evaluation, and the value margin (expected
+#: signed levels, the head's units) the best candidate must beat the heuristic's by
+VALUE_DECLARE_DEFAULTS = dict(value_declare=False, value_declare_worlds=16,
+                              value_declare_margin=0.0)
+VALUE_DECLARE_PARAMS = {"VALUE_DECLARE_WORLDS": "value_declare_worlds",
+                        "VALUE_DECLARE_MARGIN": "value_declare_margin"}
+#: the record a value-declare decision leaves in ``last_declare_record``
+VALUE_DECLARE_RECORD_SCHEMA = "pv-value-declare-decision-v1"
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
-#: scope, the doomed-throw re-select): div, fs, rc, rcec, tb, ak16, wla, la, lp,
-#: dts, sjg, aw, awl, dtr
+#: scope, the doomed-throw re-select, the value declaration): div, fs, rc, rcec,
+#: tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
-              **DOOMED_THROW_RESELECT_RULE}
+              **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
@@ -321,7 +353,8 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("small_joker_guard", "sjg"),
                                                    ("adaptive_worlds", "aw"),
                                                    ("adaptive_worlds_leads", "awl"),
-                                                   ("doomed_throw_reselect", "dtr"))
+                                                   ("doomed_throw_reselect", "dtr"),
+                                                   ("value_declare", "vd"))
 ENV_PREFIX = "SHENGJI_PV_"
 _WIDE_LEAD_EXCLUSIVE = ("wide_lead_admission and adaptive_k are exclusive "
                         "(SHENGJI_PV_WIDE_LEAD_ADMISSION=1 with SHENGJI_PV_ADAPTIVE_K=1)")
@@ -435,6 +468,18 @@ class PVSearchConfig:
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
+    # the optional declaration rule and its two parameters; the same contract
+    # (the parameters too are ABSENT from the payload while the rule is off)
+    value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
+    value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
+    value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+
+
+def _check_value_declare_params(worlds, margin):
+    if type(worlds) is not int or worlds < 1:
+        raise PVSearchPolicyError("value_declare_worlds must be a positive int")
+    if type(margin) not in (int, float) or not math.isfinite(margin) or margin < 0:
+        raise PVSearchPolicyError("value_declare_margin must be a finite number >= 0")
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -489,6 +534,16 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                        adaptive_worlds_extra_rounds=ADAPTIVE_WORLDS_EXTRA_ROUNDS,
                        adaptive_worlds_start_fraction=ADAPTIVE_WORLDS_START_FRACTION,
                        adaptive_worlds_soft_fraction=ADAPTIVE_WORLDS_SOFT_FRACTION)
+    _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
+    if config.value_declare:
+        payload["value_declare_margin"] = float(config.value_declare_margin)
+        payload["value_declare_model"] = value_declare_model.MODEL
+    else:
+        if (config.value_declare_worlds != VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
+                or config.value_declare_margin != VALUE_DECLARE_DEFAULTS["value_declare_margin"]):
+            raise PVSearchPolicyError("value_declare_worlds / value_declare_margin need "
+                                      "value_declare (SHENGJI_PV_VALUE_DECLARE=1)")
+        del payload["value_declare_worlds"], payload["value_declare_margin"]
     return payload
 
 
@@ -620,6 +675,12 @@ class PVSearchBot(PolicyValueBot):
     _adaptive_worlds = None
     wide_lead_admission = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
     _wide_lead = None
+    value_declare = VALUE_DECLARE_DEFAULTS["value_declare"]
+    value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
+    value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    #: set (only with ``value_declare`` on) by every `decide_declare` call: the
+    #: decision's record when the rule's gate admitted it, else None
+    last_declare_record = None
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0):
@@ -671,6 +732,15 @@ class PVSearchBot(PolicyValueBot):
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
             raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree")
+        if type(config.value_declare) is not bool:
+            raise PVSearchPolicyError("value_declare must be a bool")
+        _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
+        if config.value_declare:
+            # instance state only when on: a flag-off bot's attributes (the
+            # screen worker's checkpointed state) are exactly what they were
+            self.value_declare = True
+            self.value_declare_worlds = config.value_declare_worlds
+            self.value_declare_margin = float(config.value_declare_margin)
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -694,6 +764,147 @@ class PVSearchBot(PolicyValueBot):
         """
         if self.refusal_constraints and self.refusal_event_complete:
             self._refusals.observe(rnd)
+
+    # -- the optional declaration rule (module docstring) -----------------------
+
+    def decide_declare(self, rnd, seat, final=False):
+        """The heuristic's declaration, or under ``value_declare`` the value head's.
+
+        Off: exactly `HeuristicBot.decide_declare` (no record, no attribute set).
+
+        On: the heuristic's choice is computed FIRST and is the base decision.
+        Gate: the value evaluation runs only when the seat has declare options
+        AND either ``final`` (the grace window, where the heuristic's lower bar
+        and its last word are) or the heuristic would declare now; every other
+        call (most dealt cards) returns the heuristic's None unchanged with
+        ``last_declare_record`` None.  This bounds the cost to the moments a
+        declaration is actually on the table, and means the rule can withhold,
+        redirect (another suit / NT) or -- only in the grace window -- add a
+        declaration, but never fires a mid-deal declaration the heuristic would
+        not have made.
+        Evaluation: each distinct outcome (`value_declare.candidate_outcomes`:
+        every option and PASS, merged when they reach the same banker and trump)
+        is scored on the SAME ``value_declare_worlds`` sampled deals
+        (`value_declare` world model; a per-decision RNG, so no bot stream
+        moves); the mean is the value head's expected signed level for the
+        seat's team.  The argmax (lowest candidate position on a tie, the
+        heuristic's outcome first) replaces the heuristic's choice only when its
+        mean exceeds the heuristic outcome's by MORE than
+        ``value_declare_margin``.
+        Budget: the evaluation is one `OptionalStage` after the finalized base;
+        with a serving budget every bounded step (each world, each value batch)
+        passes the stage's latching guard and the replacement is published only
+        after the final hard check.  An expiry -- also one a nested step
+        swallowed -- or any ``Exception`` abandons it: the heuristic's choice is
+        returned and the record says why.  ``BaseException`` propagates.
+        Record (``last_declare_record``, schema ``pv-value-declare-decision-v1``;
+        cards as space-joined strings, PASS as ``"PASS"``): ``evaluated`` (the
+        evaluation completed), ``heuristic``, ``value_choice`` (the argmax),
+        ``played`` (returned), ``changed`` (played != heuristic), ``worlds``,
+        ``worlds_completed``, ``fallback_reason`` (None / ``hard_budget`` /
+        ``error``), ``fallback_error``, ``outcomes``, ``outcome_means``,
+        ``heuristic_mean``, ``best_mean``, ``margin``, ``final``, ``seconds``.
+        """
+        heuristic = super().decide_declare(rnd, seat, final)
+        if not self.value_declare:
+            return heuristic
+        started = time.perf_counter()
+        self.last_declare_record = None
+        options = rnd.declare_options(seat)
+        if not options or (not final and heuristic is None):
+            return heuristic
+        budget = self.serving_budget_seconds
+        check_budget = None
+        if budget is not None:
+            def check_budget():
+                if time.perf_counter() - started >= budget:
+                    raise PVSearchBudgetExceeded("pv-search serving budget expired")
+        return self._value_declare_decision(rnd, seat, final, heuristic, options, started,
+                                            check_budget)
+
+    def _value_declare_decision(self, rnd, seat, final, heuristic, options, started,
+                                check_budget):
+        """The gated decision (`decide_declare`): the optional stage over the
+        finalized ``heuristic`` base, under ``check_budget`` (None: no budget)."""
+        outcomes = value_declare_model.candidate_outcomes(rnd, seat, options, heuristic)
+        progress = {"worlds_completed": 0}
+        stage = OptionalStage(self, (), hard_check=check_budget,
+                              budget_errors=PVSearchBudgetExceeded, abandon_on=Exception)
+        means = best = None
+        with stage:
+            means = self._value_declare_means(rnd, seat, [option for _, option in outcomes],
+                                              check_budget=stage.guard, progress=progress)
+            best = max(range(len(outcomes)), key=lambda i: (float(means[i]), -i))
+            switch = bool(means[best] - means[0] > self.value_declare_margin)
+            played = outcomes[best][1] if switch else heuristic
+            stage.publish(changed=switch)
+        if stage.abandoned:
+            played, best, means = heuristic, None, None
+
+        def cards(option):
+            return value_declare_model.PASS if option is None else " ".join(option)
+        record = {
+            "schema": VALUE_DECLARE_RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
+            "seat": int(seat), "final": bool(final),
+            "cards_dealt": sum(len(h) for h in rnd.hands),
+            "evaluated": not stage.abandoned,
+            "heuristic": cards(heuristic),
+            "value_choice": None if best is None else cards(outcomes[best][1]),
+            "played": cards(played),
+            "changed": cards(played) != cards(heuristic),
+            "worlds": self.value_declare_worlds,
+            "worlds_completed": progress["worlds_completed"],
+            "fallback_reason": stage.reason, "fallback_error": stage.error,
+            "outcomes": " | ".join(f"{b}:{t}={cards(o)}" for (b, t), o in outcomes),
+            "outcome_means": None if means is None else [float(m) for m in means],
+            "heuristic_mean": None if means is None else float(means[0]),
+            "best_mean": None if means is None else float(means[best]),
+            "margin": self.value_declare_margin,
+            "seconds": time.perf_counter() - started,
+        }
+        self.last_declare_record = record
+        return None if played is None else list(played)
+
+    def _value_declare_means(self, rnd, seat, candidates, check_budget=None, progress=None):
+        """Mean value-head score per candidate (None = PASS) over
+        ``value_declare_worlds`` sampled deals, world-major, in value batches of
+        at most ``batch_size`` that end on a world boundary; ``check_budget``
+        runs before every world and around every batch."""
+        rng = value_declare_model.decision_rng(self.seed, rnd, seat)
+        sums = np.zeros(len(candidates), dtype=np.float64)
+        pending, indices, worlds_pending = [], [], 0
+
+        def flush():
+            nonlocal worlds_pending
+            if not pending:
+                return
+            if check_budget is not None:
+                check_budget()
+            scores = np.asarray(self.evaluator.score(list(pending), seat), dtype=np.float64)
+            if scores.shape != (len(pending),) or not np.isfinite(scores).all():
+                raise ValueError("value evaluator requires one finite root-team score per position")
+            np.add.at(sums, indices, scores)
+            if progress is not None:
+                progress["worlds_completed"] += worlds_pending
+            worlds_pending = 0
+            pending.clear()
+            indices.clear()
+            if check_budget is not None:
+                check_budget()
+
+        for _ in range(self.value_declare_worlds):
+            if check_budget is not None:
+                check_budget()
+            hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
+            for index, option in enumerate(candidates):
+                pending.append(value_declare_model.declare_outcome_position(
+                    rnd, seat, hands, kitty, option))
+                indices.append(index)
+            worlds_pending += 1
+            if len(pending) >= self.batch_size:
+                flush()
+        flush()
+        return sums / self.value_declare_worlds
 
     # -- the two harness hooks that serving changes -------------------------
 
@@ -1188,7 +1399,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
-                       doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
+                       doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
+                       value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
+                       value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
+                       value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1227,7 +1441,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
-                            doomed_throw_reselect=doomed_throw_reselect)
+                            doomed_throw_reselect=doomed_throw_reselect,
+                            value_declare=value_declare,
+                            value_declare_worlds=value_declare_worlds,
+                            value_declare_margin=value_declare_margin)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -1293,7 +1510,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                         adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                         wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
-                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
+                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
+                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
+                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
+                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1314,7 +1534,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
-                            doomed_throw_reselect=doomed_throw_reselect)
+                            doomed_throw_reselect=doomed_throw_reselect,
+                            value_declare=value_declare,
+                            value_declare_worlds=value_declare_worlds,
+                            value_declare_margin=value_declare_margin)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -1370,7 +1593,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                adaptive_worlds=config.adaptive_worlds,
                                adaptive_worlds_leads=config.adaptive_worlds_leads,
                                wide_lead_admission=config.wide_lead_admission,
-                               doomed_throw_reselect=config.doomed_throw_reselect),
+                               doomed_throw_reselect=config.doomed_throw_reselect,
+                               value_declare=config.value_declare,
+                               value_declare_worlds=config.value_declare_worlds,
+                               value_declare_margin=config.value_declare_margin),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -1388,8 +1614,9 @@ def pv_env_recipe(environ=None) -> dict:
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
-    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` rule flags (``0`` or ``1`` only; unset or empty is
-    off), as keyword arguments for
+    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` rule flags (``0`` or ``1``
+    only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN``
+    parameters (refused unless ``_VALUE_DECLARE=1``), as keyword arguments for
     `pv_registry_entries`."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
@@ -1422,6 +1649,22 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
         if raw == "1":
             recipe[key] = True
+    # the declaration rule's parameters: only with the rule on
+    for suffix, key in VALUE_DECLARE_PARAMS.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if not recipe.get("value_declare"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}VALUE_DECLARE=1")
+        try:
+            value = int(raw) if key == "value_declare_worlds" else float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not a number: {raw!r}") from None
+        _check_value_declare_params(value if key == "value_declare_worlds"
+                                    else VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
+                                    value if key == "value_declare_margin"
+                                    else VALUE_DECLARE_DEFAULTS["value_declare_margin"])
+        recipe[key] = value
     tree = tree_env(env, ENV_PREFIX)   # SHENGJI_PV_TREE_SIMS (+ _CONT / _EPS / _ZMIN / ...)
     if tree is not None:
         recipe["tree"] = tree

@@ -1,7 +1,8 @@
 """`shengji.train.optional_stage`: the shared transaction for an optional
 serving stage after a finalized base decision, and the reusable contract
 (`optional_stage_contract.CONTRACT`) applied to every stage that uses it:
-``adaptive_worlds`` (#936) and ``doomed_throw_reselect`` (#946).
+``adaptive_worlds`` (#936), ``doomed_throw_reselect`` (#946) and
+``value_declare`` (its nested step is `PVSearchBot._value_declare_means`).
 
 A NEW optional stage adds a `StageCase` to ``CASES`` below.
 """
@@ -13,12 +14,13 @@ import pytest
 from optional_stage_contract import CONTRACT, Deadline, StageCase
 from shengji.ai.heuristic import HeuristicBot
 from shengji.train.optional_stage import OptionalStage, OptionalStageTripped
-from shengji.train.pv_search_policy import PVSearchBudgetExceeded
+from shengji.train.pv_search_policy import PVSearchBot, PVSearchBudgetExceeded
 from test_policy_world_search import state
 from test_pv_adaptive_worlds import (RELEASE42_RULES, NoisyEvaluator, _comparable,
                                      served as aw_served)
 from test_pv_doomed_throw_reselect import (DECISIONS, draw, served as dtr_served, tail,
                                            yjqj)
+from test_pv_value_declare import NT_CASE, NTEvaluator, served as vd_served, state_at
 
 
 # ------------------------------------------------------- the stages under the contract
@@ -68,6 +70,27 @@ def _dtr_abandon(bot):
     return "hard_budget", record["doomed_throw_reselect_abandon_error"]
 
 
+def _vd_run(deadline, on=True):
+    """Seat 0 at the 81st card of deal 22: the heuristic declares a suit, a
+    no-trump-preferring head redirects to the joker pair (a replacement)."""
+    rnd, seat = state_at(*NT_CASE)
+    bot = vd_served(NTEvaluator(), value_declare=on)
+    heuristic = HeuristicBot().decide_declare(rnd, seat)
+    if not on:
+        return bot, heuristic
+    played = bot._value_declare_decision(rnd, seat, False, heuristic, rnd.declare_options(seat),
+                                         time.perf_counter(), deadline)
+    return bot, played
+
+
+def _vd_abandon(bot):
+    record = bot.last_declare_record
+    if record is None or record["fallback_reason"] is None:
+        return None
+    assert record["evaluated"] is False and record["changed"] is False
+    return record["fallback_reason"], record["fallback_error"]
+
+
 CASES = [
     StageCase("adaptive_worlds", run=_aw_run,
               base=lambda: _aw_run(Deadline(), adaptive=False)[1],
@@ -75,6 +98,10 @@ CASES = [
     StageCase("doomed_throw_reselect", run=_dtr_run,
               base=lambda: _dtr_run(Deadline(), reselect=False)[1],
               abandon=_dtr_abandon, abandons_errors=False),
+    StageCase("value_declare", run=_vd_run,
+              base=lambda: _vd_run(Deadline(), on=False)[1],
+              abandon=_vd_abandon, abandons_errors=True,
+              nested=(PVSearchBot, "_value_declare_means")),
 ]
 
 

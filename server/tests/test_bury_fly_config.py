@@ -18,6 +18,7 @@ SERVED_PV_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c267
 RELEASE36 = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
 RELEASE38 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
 RELEASE42 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d"
+RELEASE43 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b"
 
 
 def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
@@ -57,20 +58,26 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     # Release 38 (Jerry 2026-10-03): release 36's package, search, bury and budgets with the
     # four search rules on (combo = div + rc + tb, #676; lead anchor, #694).
     # Release 42 (Jerry 2026-10-06): release 38 plus the doomed-throw swap (#830, v57dts).
+    # Release 43 (Jerry 2026-10-09): the doomed-throw re-select (#946) replaces the swap.
     for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR",
-                 "DOOMED_THROW_SWAP"):
+                 "DOOMED_THROW_RESELECT"):
         assert pv_recipe["SHENGJI_PV_" + flag] == "1"
     # The served name is the one the server derives from this env (pv_env_recipe ->
     # pv_registry_entries); the package is not in the repo, so only its on-disk hash
     # lookup is stood in by the pinned sha.
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: SERVED_PV_SHA[:8])
     names = list(pv.pv_registry_entries(**pv.pv_env_recipe(env)))
-    assert names == [env["SHENGJI_BOT"]] == [RELEASE42]
+    assert names == [env["SHENGJI_BOT"]] == [RELEASE43]
     # Rollback to release 38: the same env without the swap line registers release 38's name.
-    release38 = {k: v for k, v in env.items() if k != "SHENGJI_PV_DOOMED_THROW_SWAP"}
+    # Rollback to release 42: the re-select line swapped back for the swap line.
+    assert "SHENGJI_PV_DOOMED_THROW_SWAP" not in env
+    release42 = {k: v for k, v in env.items() if k != "SHENGJI_PV_DOOMED_THROW_RESELECT"}
+    release42["SHENGJI_PV_DOOMED_THROW_SWAP"] = "1"
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release42))) == [RELEASE42]
+    release38 = {k: v for k, v in env.items() if k != "SHENGJI_PV_DOOMED_THROW_RESELECT"}
     assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release38))) == [RELEASE38]
     # Deeper rollback: without the five rule lines it registers release 36's name.
-    rollback = {k: v for k, v in env.items() if k not in ("SHENGJI_PV_DOOMED_THROW_SWAP",
+    rollback = {k: v for k, v in env.items() if k not in ("SHENGJI_PV_DOOMED_THROW_RESELECT",
         "SHENGJI_PV_ADMISSION_DIVERSITY", "SHENGJI_PV_REFUSAL_CONSTRAINTS",
         "SHENGJI_PV_TIEBREAK_POINTS", "SHENGJI_PV_LEAD_ANCHOR")}
     assert list(pv.pv_registry_entries(**pv.pv_env_recipe(rollback))) == [RELEASE36]

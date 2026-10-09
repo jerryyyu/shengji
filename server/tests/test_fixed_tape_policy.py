@@ -117,11 +117,12 @@ def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
 
     env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
     # The adapter is the HISTORICAL release-38 admission boundary. Production moved to
-    # release 42 (release 38 + SHENGJI_PV_DOOMED_THROW_SWAP, which changes only the played
-    # cards, never admission), so bind the release-38 environment explicitly: production's
-    # env without the swap line, which is exactly the documented release-38 rollback.
-    assert env.get('SHENGJI_PV_DOOMED_THROW_SWAP') == '1'
-    env = {k: v for k, v in env.items() if k != 'SHENGJI_PV_DOOMED_THROW_SWAP'}
+    # release 43 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, which re-selects among the
+    # already-admitted candidates and never changes admission), so bind the release-38
+    # environment explicitly: production's env without the re-select line, which is exactly
+    # the documented release-38 rollback.
+    assert env.get('SHENGJI_PV_DOOMED_THROW_RESELECT') == '1'
+    env = {k: v for k, v in env.items() if k != 'SHENGJI_PV_DOOMED_THROW_RESELECT'}
     recipe = pv.pv_env_recipe(env)
     monkeypatch.setattr(cwv_policy, 'checkpoint_id', lambda path: recipe['sha256'][:8])
     assert list(pv.pv_registry_entries(**recipe)) == [

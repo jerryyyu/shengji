@@ -1459,6 +1459,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6084193432"
   },
   {
+   "id": "v69vd42c",
+   "date": "2026-10-09",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Value-based declare confirmation vs release 42",
+   "candidate": "Release 42 with SHENGJI_PV_VALUE_DECLARE=1 (#952), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-vd-r1a835989-bury-hybrid-cd2c5affdc0d; same package smv3out-491ee4bf; dts on both arms. Ten FRESH windows confirming v68vd42. Cloud tree claude-main-32 (0d731aec).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; predeclared confirmation (CONFIRMED iff the 95% CI lower bound > 0; judged alone, never pooled)",
+   "seeds": "76060910 76160910 76260910 76360910 76460910 76560910 76660910 76760910 76860910 76960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.058964,
+   "lo": 0.047353,
+   "hi": 0.070576,
+   "takeaway": "Estimated +0.0590; 95% CI [+0.0474, +0.0706], CONFIRMED (all ten windows positive); no deploy claim yet.",
+   "note": "SEALED 10-09 (LANE DONE 21:36:43Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707; digests posted on #707 issuecomment-6089746867 before the read; Codex packet PASS #707 issuecomment-6085292590. Paired +0.058964 [+0.047353,+0.070576], SE 0.005924, MDE80 0.0166, tau 0, Q 8.85 (9 df), I2 0%; CONFIRMED (predeclared: 95% CI lower bound > 0; judged alone, never pooled with v68vd42 +0.047510 [+0.029882,+0.065139]); no extension. Window deltas +0.0471, +0.0221, +0.0769, +0.0462, +0.0587, +0.0846, +0.0760, +0.0683, +0.0596, +0.0519. Points margin -12.060 [-13.108,-11.013] is role-confounded (banker share 43.7% -> 52.1%); role-split (descriptive, unpaired): attacker points per attacking round 76.87 vs 77.87, points conceded per banking round 64.07 vs 64.66 -- per-role card play about equal; the gain comes through declaration/banker outcomes. Descriptive own-arm levels vs MC-LCB: vd 0.2900 [0.2684,0.3115], release 42 0.2305 [0.2071,0.2540]. Health: 1,449,836 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified pv-search records. Telemetry (descriptive): 11,969 gated declare evaluations (1.15 per round), all complete at 64 worlds, zero fallbacks; declaration changed on 53.4%; mean 0.053 s per evaluation; play decision seconds p50/p90/p99 0.090/0.136/0.225 vs 0.090/0.137/0.225. Measured on release 42; release 43 (dtr) + value declare is unscreened. No deploy claim: served decide_declare runs synchronously in server.py without its own budget. Reader sha256 cb92e7a67c99182f178f3b723c50fceb3a2e99a837ec39d9d656a746dd1a5dba; result sha256 834d72e79af200cdc47e5c5d6fa72339146df468399273b3f0cc94c9fcdcee7a; launcher sha256 b597b5242ab018640c2ad0cfad732c5823435b4e79bd63ebac478f991b518a83; predeclaration sha256 51fe6e0b7fa78fffd73d89f8bf4d1a62f0ce16e6cb144ce6c4c0efaf5da53b5e; SHA256SUMS 985d2505c0a23ace69e38bf5cd6cf66adf5f165b510ce08fb94e5c069b56fffc. Archive ~/shengji-archive/2026-09-13/readouts/v69vd42c-vd-confirm-r42/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6089757746"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

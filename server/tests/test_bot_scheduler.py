@@ -79,6 +79,206 @@ def _real_room(seed: int = 91) -> srv.Room:
     return room
 
 
+def _declare_room():
+    room = srv.Room(code="DECL")
+    room.game = Game(random.Random(91))
+    rnd = room.game.start_round()
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    room.seats = [srv.Seat(name=f"Bot {seat}", is_bot=True) for seat in range(4)]
+    room.records = []
+    room.log_event = lambda kind, **data: room.records.append((kind, data))
+    return room
+
+
+@pytest.mark.parametrize("change", [None, "claim", "round", "declare", "hand", "bot", "invalid"])
+def test_declare_worker_is_off_loop_and_discards_stale_state(change):
+    async def scenario():
+        room = _declare_room()
+        entered, release = threading.Event(), threading.Event()
+
+        class SlowBot(HeuristicBot):
+            value_declare = True
+            calls = 0
+
+            def decide_declare(self, rnd, seat, final=False):
+                entered.set()
+                assert release.wait(3)
+                self.calls += 1
+                self.last_declare_record = {"played": "PASS"}
+                return None
+
+        room.bot = original = SlowBot()
+        task = asyncio.create_task(srv._bot_declares(room, [0], final=True))
+        assert await asyncio.to_thread(entered.wait, 2)
+        try:
+            # Acquiring this while the CPU worker is blocked proves that neither
+            # the event loop nor the room lock is occupied by declaration search.
+            async with asyncio.timeout(1):
+                async with room.lock:
+                    if change == "claim":
+                        room.seats[0].is_bot = False
+                    elif change == "round":
+                        room.game.start_round()
+                    elif change == "declare":
+                        for seat in range(4):
+                            options = room.round.declare_options(seat)
+                            if options:
+                                room.round.declare(seat, options[0])
+                                break
+                        assert room.round.declaration is not None
+                    elif change == "hand":
+                        room.round.hands[0].reverse()
+                    elif change == "bot":
+                        room.bot = HeuristicBot()
+                    elif change == "invalid":
+                        room.evaluation = object()
+                        room.evaluation_invalidated = True
+        finally:
+            release.set()
+        await task
+        assert original.calls == 0
+        records = [data for kind, data in room.records if kind == "declare_decision"]
+        assert len(records) == (1 if change is None else 0)
+        if change is None:
+            assert room.bot.calls == 1
+        elif change != "bot":
+            assert room.bot is original
+
+    asyncio.run(scenario())
+
+
+def test_declare_cancellation_drains_worker_without_commit():
+    async def scenario():
+        room = _declare_room()
+        entered, release = threading.Event(), threading.Event()
+
+        class SlowBot(HeuristicBot):
+            value_declare = True
+
+            def decide_declare(self, rnd, seat, final=False):
+                entered.set()
+                assert release.wait(3)
+                return None
+
+        room.bot = original = SlowBot()
+        task = asyncio.create_task(srv._bot_declares(room, [0], final=True))
+        assert await asyncio.to_thread(entered.wait, 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert room.bot is original
+        assert not any(kind == "declare_decision" for kind, _ in room.records)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("budget", [None, 1e-12])
+def test_real_value_declare_flows_through_server_and_logs_fallback(budget):
+    from test_pv_value_declare import served
+
+    room = _declare_room()
+    room.bot = served(value_declare=True, value_declare_worlds=2, budget=budget)
+    seat = next(s for s in range(4) if room.round.declare_options(s))
+    direct = copy.deepcopy(room.bot)
+    expected = direct.decide_declare(copy.deepcopy(room.round), seat, final=True)
+    asyncio.run(srv._bot_declares(room, [seat], final=True))
+    record = next(data["record"] for kind, data in room.records if kind == "declare_decision")
+    assert record["fallback_reason"] == ("hard_budget" if budget else None)
+    assert room.round.declaration == (None if not expected else {
+        "seat": seat, "cards": expected,
+        "strength": room.round._declaration_strength(expected),
+    })
+
+
+@pytest.mark.parametrize("value_declare", [False, True])
+def test_run_deal_reaches_bury_with_declare_path(monkeypatch, value_declare):
+    from test_pv_value_declare import served
+
+    room = _declare_room()
+    room.game.start_round()
+    room.ids = [{}, {}, {}, {}]
+    room.bot = (served(value_declare=True, value_declare_worlds=2)
+                if value_declare else HeuristicBot())
+
+    async def broadcast(_):
+        pass
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("flag-off declaration used model admission")
+
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0)
+    if not value_declare:
+        monkeypatch.setattr(srv, "run_model_search", forbidden)
+    asyncio.run(srv.run_deal(room))
+    assert room.round.phase == "bury"
+    assert any(kind == "declare_decision" for kind, _ in room.records) == value_declare
+
+
+def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):
+    room = _declare_room()
+    calls = []
+
+    async def declares(r, seats, final=False):
+        assert r.round.phase == "declare"
+        assert final
+        calls.append(1)
+        return len(calls) > 1
+
+    async def broadcast(_):
+        pass
+
+    monkeypatch.setattr(srv, "_bot_declares", declares)
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    asyncio.run(srv.run_deal(room))
+    assert len(calls) == 2
+    assert room.round.phase == "bury"
+
+
+def test_declare_response_search_does_not_consume_new_human_grace(monkeypatch):
+    room = _declare_room()
+    room.seats[3].is_bot = False
+    room.seats[3].connected = True
+    clock = [0.0]
+    calls = []
+
+    async def declares(r, seats, final=False):
+        calls.append(1)
+        if len(calls) == 2:
+            clock[0] += 100  # old deadline expires while search runs
+            r.round.declaration = dict(r.round.declaration)
+        return True
+
+    async def sleep(_):
+        if len(calls) == 1:
+            seat = next(s for s in range(4) if room.round.declare_options(s))
+            room.round.declare(seat, room.round.declare_options(seat)[0])
+        else:
+            # The server must yield a human response opportunity rather than
+            # finalize against the deadline that expired inside search.
+            assert room.round.phase == "declare"
+            room.round.passed.add(3)
+        clock[0] += 0.25
+
+    async def broadcast(_):
+        pass
+
+    monkeypatch.setattr(srv, "_bot_declares", declares)
+    monkeypatch.setattr(srv.asyncio, "get_event_loop", lambda: SimpleNamespace(time=lambda: clock[0]))
+    monkeypatch.setattr(srv.asyncio, "sleep", sleep)
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    asyncio.run(srv.run_deal(room))
+    assert len(calls) == 3
+    assert room.round.phase == "bury"
+
+
 def _prepare_real(room: srv.Room, *, mode: str = "bot") \
         -> srv._PreparedBotTurn:
     seat = room.round.turn

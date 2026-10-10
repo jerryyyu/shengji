@@ -441,7 +441,8 @@ PACKAGE = os.environ.get("SHENGJI_PV_PACKAGE_PATH")
 PACKAGE_SHA = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
 
 
-def test_the_production_package_constructs_a_served_bot():
+@pytest.fixture(scope="module")
+def pinned_production_package():
     """THE REAL LOAD SMOKE: hash-pinned artifact, actual bot construction.
 
     Under SHENGJI_REQUIRE_PV_PACKAGE=1 a missing or unreadable artifact FAILS
@@ -466,6 +467,11 @@ def test_the_production_package_constructs_a_served_bot():
         pytest.fail(f"pinned package is missing: {path}")
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     assert actual == PACKAGE_SHA, f"package is {actual[:12]}, not the pinned {PACKAGE_SHA[:12]}"
+    return path
+
+
+def test_the_production_package_constructs_a_served_bot(pinned_production_package):
+    path = pinned_production_package
 
     from shengji.train.pv_search_policy import PVSearchBuryBot, make_pv_search_bot
 
@@ -473,6 +479,58 @@ def test_the_production_package_constructs_a_served_bot():
                              cap=256, batch_size=64, bury_arm="hybrid")
     assert isinstance(bot, PVSearchBuryBot)
     assert bot.checkpoint_sha256 == PACKAGE_SHA
+
+
+@pytest.mark.parametrize("budget", [3.0, 1e-12])
+def test_production_package_value_declare_server_smoke(pinned_production_package, budget):
+    """Actual NumPy inference -> off-loop server -> engine -> logged decision.
+
+    This is a fixed-state functional gate, not a strength or host-capacity
+    measurement. The tiny-budget arm must commit the real heuristic fallback.
+    No environment recipe or deployed flag is changed.
+    """
+    import asyncio
+    import random
+
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train.pv_search_policy import make_pv_search_bot
+
+    room = srv.Room(code="PKGD")
+    room.game = Game(random.Random(91))
+    rnd = room.game.start_round()
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    room.seats = [srv.Seat(name=f"Bot {s}", is_bot=True) for s in range(4)]
+    events = []
+    room.log_event = lambda kind, **data: events.append((kind, data))
+    room.bot = make_pv_search_bot(
+        str(pinned_production_package), sha256=PACKAGE_SHA,
+        worlds=64, candidates=8, cap=4000, batch_size=128,
+        serving_budget_seconds=budget, value_declare=True,
+        value_declare_worlds=64, bury_arm="hybrid")
+    original = room.bot
+    seat = next(s for s in range(4) if rnd.declare_options(s))
+    legal = rnd.declare_options(seat)
+    heuristic = HeuristicBot().decide_declare(rnd, seat, final=True)
+    assert asyncio.run(srv._bot_declares(room, [seat], final=True))
+    assert room.bot is not original
+    record = next(data["record"] for kind, data in events if kind == "declare_decision")
+    assert record["worlds"] == 64
+    assert record["fallback_reason"] == ("hard_budget" if budget < 1 else None)
+    assert record["evaluated"] == (budget >= 1)
+    if budget >= 1:
+        assert record["worlds_completed"] == 64
+        assert all(np.isfinite(record["outcome_means"]))
+    else:
+        assert record["played"] == ("PASS" if heuristic is None else " ".join(heuristic))
+    played = None if record["played"] == "PASS" else record["played"].split()
+    assert played is None or played in legal
+    assert rnd.declaration == (None if played is None else {
+        "seat": seat, "cards": played, "strength": rnd._declaration_strength(played)})
+    stages = [data["event"] for kind, data in events if kind == "model_search"]
+    assert stages == ["queued", "running", "completed"]
 
 
 def test_a_foreign_identity_is_still_refused():

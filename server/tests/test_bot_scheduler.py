@@ -91,6 +91,31 @@ def _declare_room():
     return room
 
 
+def test_cheap_declare_gate_precedes_copy_and_model_admission(monkeypatch):
+    class CheapBot(HeuristicBot):
+        value_declare = True
+        calls = 0
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, False
+
+        def __deepcopy__(self, memo):
+            pytest.fail("cheap declaration must not copy its bot")
+
+        def decide_declare(self, rnd, seat, final=False):
+            self.calls += 1
+            return None
+
+    async def forbidden_admission(*args):
+        pytest.fail("cheap declaration must not wait for the shared permit")
+
+    monkeypatch.setattr(srv, "run_model_search", forbidden_admission)
+    room = _declare_room()
+    room.bot = bot = CheapBot()
+    assert asyncio.run(srv._bot_declares(room, [0], final=True))
+    assert room.bot is bot and bot.calls == 1
+
+
 @pytest.mark.parametrize("change", [None, "claim", "round", "declare", "hand", "bot", "invalid"])
 def test_declare_worker_is_off_loop_and_discards_stale_state(change):
     async def scenario():

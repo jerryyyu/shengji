@@ -533,6 +533,50 @@ def test_production_package_value_declare_server_smoke(pinned_production_package
     assert stages == ["queued", "running", "completed"]
 
 
+def test_value_declare_full_deal_admits_only_gated_decisions(
+        pinned_production_package, monkeypatch):
+    """No-op dealt cards must not queue behind another room's model work."""
+    import asyncio
+    import random
+
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train.pv_search_policy import make_pv_search_bot
+
+    room = srv.Room(code="GATE")
+    room.game = Game(random.Random(91))
+    rnd = room.game.start_round()
+    room.seats = [srv.Seat(name=f"Bot {s}", is_bot=True) for s in range(4)]
+    room.bot = make_pv_search_bot(
+        str(pinned_production_package), sha256=PACKAGE_SHA, worlds=64,
+        candidates=8, value_declare=True, serving_budget_seconds=3.0)
+    events = []
+    room.log_event = lambda kind, **data: events.append((kind, data))
+    admitted = []
+    real_admission = srv.run_model_search
+
+    async def admission(compute, emit):
+        admitted.append(1)
+        # Model a contended permit without a seconds-long timing assertion.
+        await asyncio.sleep(0.005)
+        return await real_admission(compute, emit)
+
+    async def broadcast(_):
+        pass
+
+    monkeypatch.setattr(srv, "run_model_search", admission)
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0)
+    asyncio.run(srv.run_deal(room))
+    decisions = [d for kind, d in events if kind == "declare_decision"]
+    queued = [d for kind, d in events
+              if kind == "model_search" and d["event"] == "queued"]
+    assert rnd.phase == "bury"
+    assert 0 < len(admitted) == len(queued) == len(decisions) < 104
+    assert all(d["record"]["evaluated"] for d in decisions)
+
+
 def test_a_foreign_identity_is_still_refused():
     """The guard must not have been widened into a rubber stamp."""
     from shengji.ai.cwv_policy import CWVCheckpointMismatch, verify_checkpoint_identity

@@ -1250,7 +1250,14 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
             if s >= len(room.seats) or not room.seats[s].is_bot:
                 continue
             bot = room.bot
-            if not getattr(bot, "value_declare", False):
+            value_declare = getattr(bot, "value_declare", False)
+            gate = getattr(bot, "declare_gate", None)
+            # Most dealt cards cannot trigger value evaluation. Keep those
+            # calls inline before copying or queueing behind another room's
+            # model search. Unknown bot implementations stay on the safe
+            # off-loop path; only the bot's own gate can certify a cheap call.
+            gated = value_declare and (not callable(gate) or gate(rnd, s, final)[1])
+            if not gated:
                 cards = bot.decide_declare(rnd, s, final=final)
                 if cards:
                     try:

@@ -767,6 +767,13 @@ class PVSearchBot(PolicyValueBot):
 
     # -- the optional declaration rule (module docstring) -----------------------
 
+    def declare_gate(self, rnd, seat, final=False):
+        """Cheap, read-only serving gate; no model admission or snapshot needed."""
+        heuristic = super().decide_declare(rnd, seat, final)
+        gated = (self.value_declare and bool(rnd.declare_options(seat))
+                 and (final or heuristic is not None))
+        return heuristic, gated
+
     def decide_declare(self, rnd, seat, final=False):
         """The heuristic's declaration, or under ``value_declare`` the value head's.
 
@@ -805,14 +812,14 @@ class PVSearchBot(PolicyValueBot):
         ``error``), ``fallback_error``, ``outcomes``, ``outcome_means``,
         ``heuristic_mean``, ``best_mean``, ``margin``, ``final``, ``seconds``.
         """
-        heuristic = super().decide_declare(rnd, seat, final)
+        heuristic, gated = self.declare_gate(rnd, seat, final)
         if not self.value_declare:
             return heuristic
         started = time.perf_counter()
         self.last_declare_record = None
-        options = rnd.declare_options(seat)
-        if not options or (not final and heuristic is None):
+        if not gated:
             return heuristic
+        options = rnd.declare_options(seat)
         budget = self.serving_budget_seconds
         check_budget = None
         if budget is not None:

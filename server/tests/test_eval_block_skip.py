@@ -101,3 +101,60 @@ def test_the_equivalence_check_fails_when_the_filter_is_wrong():
     got = _collect(_Store(keys), selector, broken)
     assert got != expected, "a wrong filter must be caught by this comparison"
     assert len(got) == len(expected) - 3
+
+
+@pytest.mark.parametrize("batch_size", [2, 3])
+def test_run_eval_releases_assembled_chunks_and_preserves_metrics(monkeypatch, batch_size):
+    """Exercise run_eval itself; weakrefs witness release, not an RSS guess."""
+    import weakref
+    from types import SimpleNamespace
+
+    torch = pytest.importorskip("torch")
+    from shengji.train import train_cwv as train
+
+    block = SimpleNamespace(n=6, has_search_means=np.array([True, False] * 3))
+    store = SimpleNamespace(iter_blocks=lambda **kwargs: iter([block]))
+
+    def collate(b, idx):
+        return {
+            "target": idx % train.OUTCOME_CLASSES,
+            "utility": idx.astype(float) / 10,
+            "ply": idx.astype(np.int16),
+            "role_attacker": idx % 2 == 0,
+            "points_so_far": idx.astype(np.float32),
+            "attacker_points": idx.astype(np.int16) * 5,
+            "deal_key": np.array([f"deal-{i // 2}" for i in idx]),
+            "source_ref": np.array([f"source-{i}" for i in idx]),
+        }
+
+    monkeypatch.setattr(train, "collate", collate)
+    monkeypatch.setattr(train, "tensors_of", lambda raw, device: {
+        "target": torch.tensor(raw["target"], dtype=torch.long)})
+    monkeypatch.setattr(train, "forward_batch", lambda model, t, aux: (
+        torch.zeros((len(t["target"]), train.OUTCOME_CLASSES)), None))
+    concatenate = np.concatenate
+    expected = {}
+    refs = []
+
+    def tracked(chunks):
+        # The first batch has no last-iteration local aliases in run_eval.
+        # Old code retains this via out until ALL fields have been assembled.
+        assert all(ref() is None for ref in refs), "previous field chunks retained"
+        refs.append(weakref.ref(chunks[0]))
+        joined = concatenate(chunks)
+        expected[len(expected)] = joined.copy()
+        return joined
+
+    with monkeypatch.context() as patch:
+        patch.setattr(train.np, "concatenate", tracked)
+        result = train.run_eval(SimpleNamespace(eval=lambda: None), store,
+                                lambda b: np.ones(b.n, dtype=bool),
+                                torch.device("cpu"), batch_size=batch_size)
+    assert len(result) == 16
+    for i, value in enumerate(result.values()):
+        np.testing.assert_array_equal(value, expected[i])
+        assert value.dtype == expected[i].dtype
+    np.testing.assert_array_equal(result["target"], np.arange(6))
+    np.testing.assert_allclose(result["ce"], np.log(train.OUTCOME_CLASSES), rtol=1e-6)
+    assert train.quick_metrics(result)["n"] == 6
+    assert all(ref() is None for ref in refs)

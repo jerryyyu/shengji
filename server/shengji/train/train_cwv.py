@@ -589,7 +589,13 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
             out["has_search_means"].append(block.has_search_means[idx])
     if not out["ce"]:
         return {k: np.zeros(0) for k in keys}
-    return {k: np.concatenate(v) for k, v in out.items()}
+    # Release each field's batch arrays as soon as its contiguous result exists.
+    # Otherwise all input chunks and all output arrays coexist at the end of
+    # a large validation pass.
+    result = {}
+    for key in keys:
+        result[key] = np.concatenate(out.pop(key))
+    return result
 
 
 def quick_metrics(ev: Mapping[str, np.ndarray]) -> dict:

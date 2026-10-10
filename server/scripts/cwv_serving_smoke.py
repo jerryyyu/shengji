@@ -16,6 +16,16 @@ server's own ``_paced_bot_step`` / ``_commit_bot_turn`` for every bot seat.
 ``--map`` rewrites volume paths to local files (the SHA of each local file is
 recorded; compare it with the volume before deploying). Exit status 0 only
 when every turn committed.
+
+With ``SHENGJI_PV_VALUE_DECLARE=1`` in the env (the value-guided declaration),
+the deal is NOT replayed with a helper heuristic: ``--declare-rounds`` deals
+(default 1) are streamed through the server's own ``run_deal``, so every gated
+declare decision takes the off-loop, budgeted path (`_offloop_declare`) with
+the production bot.  Each such decision is a ``declare_turns`` entry (seconds,
+status, fallback reason, acted, stale); the smoke passes only if at least one
+gated declaration completed off the loop and none hit an error.  The bury and
+play turns then continue the last streamed deal.  Without the flag the smoke is
+unchanged.
 """
 from __future__ import annotations
 
@@ -76,34 +86,88 @@ def build_production_bot(env: dict[str, str]):
     return name, registry.make_bot(name, seed=13)
 
 
-def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> dict:
+def stream_deals_through_server(room, bot, *, rounds: int, deal_seed: int) -> list[dict]:
+    """Deal ``rounds`` fresh rounds through the server's ``run_deal`` with ``bot``
+    at all four seats; return one entry per off-loop declare decision.  The room
+    is left in the last round's bury phase."""
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    declare_turns: list[dict] = []
+    original_log = room.log_event
+
+    def log_event(kind, **data):
+        if kind == "bot_declare_timing":
+            record = data.get("decision") or {}
+            declare_turns.append({
+                "round": None,  # set after the deal below
+                "seat": data["seat"], "final": data["final"],
+                "seconds": round(data["compute_seconds"], 4),
+                "status": data["status"], "fallback_reason": data["fallback_reason"],
+                "acted": data["acted"], "stale": data["stale_discarded"],
+                "changed": record.get("changed"),
+                "bot_fallback_reason": record.get("fallback_reason")})
+        return original_log(kind, **data)
+
+    room.log_event = log_event
+    saved = srv.DEAL_DELAY, srv.kick_bots
+    srv.DEAL_DELAY, srv.kick_bots = 0.0, (lambda r: None)
+    try:
+        for index in range(int(rounds)):
+            room.game = Game(random.Random(deal_seed + index))
+            room.game.start_round()
+            room.index_round()
+            first = len(declare_turns)
+            asyncio.run(srv.run_deal(room))
+            for entry in declare_turns[first:]:
+                entry["round"] = index
+            if room.round.phase != "bury":
+                raise RuntimeError(f"run_deal ended in phase {room.round.phase}")
+    finally:
+        srv.DEAL_DELAY, srv.kick_bots = saved
+        room.log_event = original_log
+    return declare_turns
+
+
+def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91,
+              declare_rounds: int = 1) -> dict:
     from shengji.ai.heuristic import HeuristicBot
     from shengji.api import server as srv
     from shengji.engine.game import Game
 
     name, bot = build_production_bot(env)
     room = srv.Room(code="SMOKE")
-    room.game = Game(random.Random(deal_seed))
-    rnd = room.game.start_round()
-    helper = HeuristicBot()
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        card = helper.decide_declare(rnd, seat)
-        if card:
-            rnd.declare(seat, card)
-    for seat in range(4):
-        card = helper.decide_declare(rnd, seat, final=True)
-        if card:
-            rnd.declare(seat, card)
-    rnd.finalize_declare()
     room.seats = [srv.Seat(name=f"Bot {seat}", is_bot=True) for seat in range(4)]
     room.bot = bot
-    room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
-    room._kitty_given = True
+    value_declare = getattr(bot, "value_declare", False) is True
+    declare_turns = None
+    if value_declare:
+        declare_turns = stream_deals_through_server(room, bot, rounds=declare_rounds,
+                                                    deal_seed=deal_seed)
+        rnd = room.round
+    else:
+        room.game = Game(random.Random(deal_seed))
+        rnd = room.game.start_round()
+        helper = HeuristicBot()
+        while rnd.phase == "deal":
+            seat, _, _ = rnd.deal_next()
+            card = helper.decide_declare(rnd, seat)
+            if card:
+                rnd.declare(seat, card)
+        for seat in range(4):
+            card = helper.decide_declare(rnd, seat, final=True)
+            if card:
+                rnd.declare(seat, card)
+        rnd.finalize_declare()
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
     receipt = {"schema": SCHEMA, "policy": name, "bot_class": type(bot).__name__,
                "files": {k: {"path": v, "sha256": file_sha256(v)} for k, v in env.items()
                          if k.endswith("_CKPT")},
                "turns": [], "passed": False}
+    if declare_turns is not None:
+        receipt["declare_turns"] = declare_turns
+        receipt["declare_budget_seconds"] = srv.DECLARE_BUDGET_SECONDS
 
     async def scenario():
         assert rnd.phase == "bury", rnd.phase
@@ -124,6 +188,10 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> d
     asyncio.run(scenario())
     phases = {t["phase"] for t in receipt["turns"]}
     receipt["passed"] = "bury" in phases and "play" in phases
+    if declare_turns is not None:
+        receipt["passed"] = receipt["passed"] and bool(declare_turns) and any(
+            t["status"] == "complete" for t in declare_turns) and not any(
+            t["fallback_reason"] == "server-error" for t in declare_turns)
     return receipt
 
 
@@ -132,12 +200,14 @@ def main(argv=None) -> int:
     parser.add_argument("--fly-toml", required=True)
     parser.add_argument("--map", action="append", default=[], help="volume_path=local_path")
     parser.add_argument("--turns", type=int, default=12)
+    parser.add_argument("--declare-rounds", type=int, default=1,
+                        help="deals streamed through run_deal when SHENGJI_PV_VALUE_DECLARE=1")
     parser.add_argument("--receipt", type=Path)
     args = parser.parse_args(argv)
     mappings = dict(item.split("=", 1) for item in args.map)
     env = env_from_fly_toml(args.fly_toml, mappings)
     try:
-        receipt = run_smoke(env, turns=args.turns)
+        receipt = run_smoke(env, turns=args.turns, declare_rounds=args.declare_rounds)
     except Exception as exc:  # noqa: BLE001 - the smoke's job is to surface exactly this
         print(f"FAIL: {type(exc).__name__}: {exc}")
         if args.receipt:
@@ -147,6 +217,17 @@ def main(argv=None) -> int:
     if args.receipt:
         args.receipt.write_text(json.dumps(receipt, indent=1, sort_keys=True))
     walls = ", ".join(f"{t['phase']}:{t['seconds']}s" for t in receipt["turns"])
+    if "declare_turns" in receipt:
+        declares = receipt["declare_turns"]
+        seconds = sorted(t["seconds"] for t in declares)
+        statuses = {}
+        for t in declares:
+            key = t["status"] if t["fallback_reason"] is None else t["fallback_reason"]
+            statuses[key] = statuses.get(key, 0) + 1
+        print(f"declare: {len(declares)} off-loop decisions {statuses}"
+              + (f", seconds mean {sum(seconds) / len(seconds):.4f} max {seconds[-1]:.4f}"
+                 if seconds else "")
+              + f", budget {receipt['declare_budget_seconds']}s")
     print(f"{'PASS' if receipt['passed'] else 'FAIL'}: {receipt['policy']} ({receipt['bot_class']}) "
           f"{len(receipt['turns'])} server turns [{walls}]")
     return 0 if receipt["passed"] else 1

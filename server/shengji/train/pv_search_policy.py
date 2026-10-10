@@ -822,6 +822,22 @@ class PVSearchBot(PolicyValueBot):
         return self._value_declare_decision(rnd, seat, final, heuristic, options, started,
                                             check_budget)
 
+    def declare_gate(self, rnd, seat, final=False):
+        """``(heuristic, gated)`` for one `decide_declare` call, without evaluating.
+
+        ``heuristic`` is the base decision `decide_declare` computes first;
+        ``gated`` is True exactly when `decide_declare` would run the value
+        evaluation (``value_declare`` on, the seat has declare options, and
+        ``final`` or the heuristic would declare now).  Reads only; sets no
+        attribute.  The server uses it to run only gated calls off the event
+        loop under its own budget, and the heuristic as their fallback
+        (`shengji.api.server._run_deal_offloop`).
+        """
+        heuristic = super().decide_declare(rnd, seat, final)
+        gated = bool(self.value_declare and rnd.declare_options(seat)
+                     and (final or heuristic is not None))
+        return heuristic, gated
+
     def _value_declare_decision(self, rnd, seat, final, heuristic, options, started,
                                 check_budget):
         """The gated decision (`decide_declare`): the optional stage over the

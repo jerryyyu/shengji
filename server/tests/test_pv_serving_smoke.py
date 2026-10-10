@@ -52,3 +52,25 @@ def test_pv_search_env_with_the_wrong_sha_is_refused_before_play(package, clean_
     env["SHENGJI_PV_SHA256"] = "0" * 64
     with pytest.raises(pv.PVSearchPolicyError, match="on disk"):
         build_production_bot(env)
+
+
+def test_value_declare_env_streams_the_deal_through_the_server(package, clean_registry):
+    """With SHENGJI_PV_VALUE_DECLARE=1 the smoke deals through the server's
+    ``run_deal``, so gated declare decisions take the off-loop budgeted path."""
+    path, sha = package
+    env, name = _env(path, sha, SHENGJI_PV_VALUE_DECLARE="1")
+    assert "-vd-r" in name
+    receipt = run_smoke(env, turns=6, declare_rounds=3)
+    assert receipt["passed"] is True and receipt["policy"] == name
+    declares = receipt["declare_turns"]
+    assert declares and {t["round"] for t in declares} <= {0, 1, 2}
+    assert all(t["status"] == "complete" and not t["stale"] for t in declares)
+    assert any(t["final"] for t in declares)
+    assert "bury" in [t["phase"] for t in receipt["turns"]]
+
+
+def test_flag_off_smoke_records_no_declare_turns(package, clean_registry):
+    path, sha = package
+    env, _ = _env(path, sha)
+    receipt = run_smoke(env, turns=2)
+    assert "declare_turns" not in receipt

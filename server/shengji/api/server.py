@@ -50,12 +50,17 @@ def _pv_search_health() -> dict | None:
     try:
         from ..ai.cwv_policy import file_sha256
         from ..train.pv_search_policy import DEFAULTS
-        return {"sha256": file_sha256(path),
-                "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
-                "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
-                "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS"),
-                "bury_arm": os.environ.get("SHENGJI_PV_BURY_ARM") or "heuristic",
-                "bury_budget_seconds": os.environ.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS")}
+        health = {"sha256": file_sha256(path),
+                  "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
+                  "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
+                  "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS"),
+                  "bury_arm": os.environ.get("SHENGJI_PV_BURY_ARM") or "heuristic",
+                  "bury_budget_seconds": os.environ.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS")}
+        if os.environ.get("SHENGJI_PV_VALUE_DECLARE") == "1":
+            # only with the flag on, so the flag-off health body is unchanged
+            health["value_declare"] = True
+            health["declare_budget_seconds"] = DECLARE_BUDGET_SECONDS
+        return health
     except Exception as exc:                # noqa: BLE001 - health must answer
         return {"error": f"{type(exc).__name__}: {exc}"}
 
@@ -1247,8 +1252,306 @@ def _bot_declares(room: Room, seats: list[int], final: bool = False) -> None:
                     pass
 
 
+def _declare_budget_from_env() -> float:
+    raw = os.environ.get("SHENGJI_PV_DECLARE_BUDGET_SECONDS", "0.5")
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError("SHENGJI_PV_DECLARE_BUDGET_SECONDS must be a finite "
+                         "number > 0") from exc
+    if not (value > 0 and value != float("inf")):
+        raise ValueError("SHENGJI_PV_DECLARE_BUDGET_SECONDS must be a finite "
+                         "number > 0")
+    return value
+
+
+#: Wall budget of one off-loop value-guided declaration, queue wait included:
+#: how long the deal of one room may pause for a bot's declare decision.  Read
+#: at import so a bad deployment value fails before the server accepts rooms
+#: (as ``SHENGJI_MODEL_SEARCH_CONCURRENCY``).  Default 0.5 s: the v69vd42c
+#: confirmation measured a 0.053 s mean over 11,969 gated calls with zero
+#: hard-budget fallbacks under the 3 s play budget, so 0.5 s is ~10x the mean
+#: and still a fraction of the 5 s grace window.
+DECLARE_BUDGET_SECONDS = _declare_budget_from_env()
+DECLARE_FALLBACK_SCHEMA = "pv-declare-serving-fallback-v1"
+DECLARE_ERROR_MESSAGE_MAX = 300
+
+
+def _declare_offloop(room: Room) -> bool:
+    """True only for a value-guided declaring bot (``SHENGJI_PV_VALUE_DECLARE=1``).
+
+    Every other bot -- the production default -- keeps the synchronous
+    `_bot_declares` path, unchanged."""
+    bot = room.bot
+    return (getattr(bot, "value_declare", False) is True
+            and callable(getattr(bot, "declare_gate", None)))
+
+
+@dataclass(frozen=True)
+class _DeclareSnapshot:
+    """One gated declare decision: ownership tokens plus isolated copies."""
+
+    game_token: Game
+    round_token: Round
+    declaration_token: Any      # the live ``rnd.declaration`` object (identity)
+    phase: str
+    cards_dealt: int
+    round_copy: Round
+    bot_copy: Any
+    seat: int
+    final: bool
+    heuristic: list[str] | None
+
+
+def _declare_still_owned(room: Room, snap: _DeclareSnapshot) -> bool:
+    rnd = room.round
+    return not (
+        (room.evaluation is not None and room.evaluation_invalidated)
+        or room.game is not snap.game_token
+        or rnd is not snap.round_token
+        or rnd.phase != snap.phase
+        or sum(len(h) for h in rnd.hands) != snap.cards_dealt
+        or rnd.declaration is not snap.declaration_token
+        or not room.seats[snap.seat].is_bot)
+
+
+def _declare_step_locked(room: Room, rnd: Round, seat: int,
+                         final: bool) -> _DeclareSnapshot | None:
+    """One seat's declare chance (caller holds ``room.lock``).
+
+    A call the bot's gate does not send to the value evaluation is decided
+    right here, synchronously, exactly as `_bot_declares` decides it.  A gated
+    call is snapshotted for `_offloop_declare` instead and nothing is applied.
+    """
+    if not room.seats[seat].is_bot:
+        return None
+    heuristic, gated = room.bot.declare_gate(rnd, seat, final)
+    if not gated:
+        _bot_declares(room, [seat], final=final)
+        return None
+    return _DeclareSnapshot(
+        game_token=room.game, round_token=rnd,
+        declaration_token=rnd.declaration, phase=rnd.phase,
+        cards_dealt=sum(len(h) for h in rnd.hands),
+        round_copy=copy.deepcopy(rnd), bot_copy=copy.deepcopy(room.bot),
+        seat=seat, final=final,
+        heuristic=None if heuristic is None else list(heuristic))
+
+
+def _compute_declare(snap: _DeclareSnapshot):
+    cards = snap.bot_copy.decide_declare(snap.round_copy, snap.seat,
+                                         final=snap.final)
+    return None if cards is None else list(cards)
+
+
+def _swallow_task_outcome(task: asyncio.Task) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
+async def _offloop_declare(room: Room, snap: _DeclareSnapshot) -> str:
+    """Evaluate a gated declaration off the event loop, then commit it if fresh.
+
+    Called WITHOUT ``room.lock``.  The decision runs on the snapshot's copies in
+    a worker thread (admitted through `run_model_search` for a served model, as
+    play search is), under ``DECLARE_BUDGET_SECONDS`` of wall time counted from
+    the request, queue wait included.  The budget is enforced twice: the bot
+    copy's own serving budget is lowered to it, so its `OptionalStage` stops the
+    worker cooperatively, and the wait here is abandoned at it regardless (the
+    worker then drains in the background, holding its permit, on a copy nobody
+    reads).  On expiry or any ``Exception`` the snapshot's heuristic choice is
+    used and a ``pv-declare-serving-fallback-v1`` record is logged.  The result
+    is applied only if the round, its deal position, its declaration and the
+    seat's bot ownership are unchanged since the snapshot (`_declare_still_owned`);
+    otherwise it is discarded -- a human who declared meanwhile wins the race,
+    and the bot gets its next chance at its next dealt card or, in the grace
+    window, when `run_deal` re-asks every bot after a new declaration.
+    Returns ``"applied"`` (a declaration was applied), ``"kept"`` (fresh, no
+    declaration) or ``"stale"`` (discarded).
+    """
+    budget = DECLARE_BUDGET_SECONDS
+    bot = snap.bot_copy
+    own = getattr(bot, "serving_budget_seconds", None)
+    bot.serving_budget_seconds = budget if own is None else min(float(own), budget)
+    started = time.perf_counter()
+    model_serving = getattr(getattr(bot, "evaluator", None),
+                            "backend", None) == "numpy"
+
+    def compute():
+        return asyncio.to_thread(_compute_declare, snap)
+
+    if model_serving:
+        def emit(kind, **fields):
+            room.log_event("model_search", seat=snap.seat, mode="bot",
+                           policy=getattr(bot, "policy_name", "W32"),
+                           phase="declare", event=kind, **fields)
+        work = asyncio.ensure_future(run_model_search(compute, emit))
+    else:
+        work = asyncio.ensure_future(compute())
+    try:
+        done, _ = await asyncio.wait({work}, timeout=budget)
+    except asyncio.CancelledError:
+        work.cancel()
+        work.add_done_callback(_swallow_task_outcome)
+        raise
+    elapsed = time.perf_counter() - started
+    record = None
+    reason = error = None
+    if not done:
+        work.cancel()
+        work.add_done_callback(_swallow_task_outcome)
+        reason = "server_budget"
+    elif work.cancelled():
+        reason, error = "server-error", asyncio.CancelledError("declare worker cancelled")
+    elif work.exception() is not None:
+        reason, error = "server-error", work.exception()
+    if reason is None:
+        cards = work.result()
+        record = getattr(bot, "last_declare_record", None)
+    else:
+        cards = snap.heuristic
+        if error is not None:
+            logging.warning("room %s value declare failed at seat %s: %s: %s",
+                            room.code, snap.seat, type(error).__name__, error)
+        record = {
+            "schema": DECLARE_FALLBACK_SCHEMA,
+            "policy": getattr(bot, "policy_name", None),
+            "seat": snap.seat, "final": snap.final,
+            "cards_dealt": snap.cards_dealt,
+            "heuristic": snap.heuristic, "played": cards,
+            "reason": reason,
+            "error_class": None if error is None else type(error).__name__,
+            "error_message": (None if error is None
+                              else str(error)[:DECLARE_ERROR_MESSAGE_MAX]),
+            "budget_seconds": budget,
+            "elapsed_seconds": elapsed,
+            "work_complete": False,
+        }
+    async with room.lock:
+        fresh = _declare_still_owned(room, snap)
+        applied = False
+        if fresh and cards:
+            try:
+                snap.round_token.declare(snap.seat, cards)
+                room.log_event("declare", seat=snap.seat, cards=cards, bot=True)
+                applied = True
+            except IllegalPlay:
+                pass
+        room.log_event(
+            "bot_declare_timing", seat=snap.seat, final=snap.final,
+            policy=getattr(bot, "policy_name", type(bot).__name__),
+            compute_seconds=round(elapsed, 6), budget_seconds=budget,
+            status="fallback" if reason is not None else "complete",
+            fallback_reason=reason, event_loop_offloaded=True,
+            snapshot_isolated=True, acted=applied,
+            stale_discarded=not fresh, decision=record)
+        if applied:
+            await broadcast(room)
+    return "stale" if not fresh else ("applied" if applied else "kept")
+
+
+async def _declares_offloop(room: Room, rnd: Round, seats, final: bool) -> bool:
+    """`_bot_declares` for a value-declaring bot: seat by seat, in order, each
+    seat seeing every earlier seat's committed declaration.  Takes the lock
+    itself.  A seat whose decision went stale (a human declared while it was
+    evaluated) is asked again on the new state, so no declaration made during
+    the pass goes unanswered; declarations only strengthen, so this ends.
+    Returns False when the round is gone (caller stops)."""
+    for seat in seats:
+        while True:
+            async with room.lock:
+                if (room.round is not rnd
+                        or (room.evaluation is not None and room.evaluation_invalidated)
+                        or rnd.phase not in ("deal", "declare")):
+                    return False
+                snap = _declare_step_locked(room, rnd, seat, final)
+            if snap is None or await _offloop_declare(room, snap) != "stale":
+                break
+    return True
+
+
+async def _run_deal_offloop(room: Room) -> None:
+    """`run_deal` for a value-declaring bot (``SHENGJI_PV_VALUE_DECLARE=1``).
+
+    Same events in the same order as `run_deal`; the only difference is that a
+    GATED declare call (`PVSearchBot.declare_gate`) releases the room lock while
+    it is evaluated off the loop (`_offloop_declare`), so the deal of this room
+    pauses for at most ``DECLARE_BUDGET_SECONDS`` while every other room, and
+    this room's humans, keep being served.  Ungated calls (most dealt cards)
+    are decided inside the same locked step as the dealt card, as before.
+    """
+    rnd = room.round
+    assert rnd is not None
+    while True:
+        async with room.lock:
+            if room.round is not rnd:
+                return
+            if room.evaluation is not None and room.evaluation_invalidated:
+                return
+            if rnd.phase != "deal":
+                break
+            seat, idx, code = rnd.deal_next()
+            room.ids[seat][idx] = code
+            snap = _declare_step_locked(room, rnd, seat, False)
+            await broadcast(room)
+        if snap is not None:
+            await _offloop_declare(room, snap)
+        await asyncio.sleep(DEAL_DELAY)
+
+    loop = asyncio.get_event_loop()
+    if not await _declares_offloop(room, rnd, range(4), True):
+        return
+    async with room.lock:
+        if room.evaluation is not None and room.evaluation_invalidated:
+            return
+        if room.round is not rnd or rnd.phase != "declare":
+            return
+        for s in range(4):
+            if room.seats[s].is_bot:
+                rnd.passed.add(s)
+        await broadcast(room)
+    deadline = loop.time() + DECLARE_GRACE
+    last_declaration = rnd.declaration
+    while True:
+        await asyncio.sleep(0.25)
+        redeclare = False
+        async with room.lock:
+            if room.evaluation is not None and room.evaluation_invalidated:
+                return
+            if room.round is not rnd or rnd.phase != "declare":
+                return
+            if rnd.declaration is not last_declaration:
+                last_declaration = rnd.declaration
+                deadline = max(deadline, loop.time() + DECLARE_EXTEND)
+                redeclare = True
+        if redeclare:
+            if not await _declares_offloop(room, rnd, range(4), True):
+                return
+        async with room.lock:
+            if room.evaluation is not None and room.evaluation_invalidated:
+                return
+            if room.round is not rnd or rnd.phase != "declare":
+                return
+            if redeclare:
+                for s in range(4):
+                    if room.seats[s].is_bot:
+                        rnd.passed.add(s)
+            humans = [i for i, s in enumerate(room.seats)
+                      if not s.is_bot and s.connected]
+            if all(i in rnd.passed for i in humans) or loop.time() >= deadline:
+                rnd.finalize_declare()
+                room.log_event("trump", suit=rnd.trump_suit or "NT",
+                               rank=rnd.trump_rank, banker=rnd.banker,
+                               declared=rnd.declaration is not None)
+                await broadcast(room)
+                kick_bots(room)
+                return
+
+
 async def run_deal(room: Room) -> None:
     """Stream the deal card by card, then run the declare grace window."""
+    if _declare_offloop(room):
+        return await _run_deal_offloop(room)
     rnd = room.round
     assert rnd is not None
     while True:

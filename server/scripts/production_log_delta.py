@@ -92,6 +92,19 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
     refusal_fallback_worlds = sum(
         int(decision.get("refusal_fallback_worlds") or 0) for decision in decisions
     )
+    declare_events = [event for event in events
+                      if event.get("e") == "declare_decision" and event.get("bot") is True]
+    declare_records = [event["record"] for event in declare_events
+                       if isinstance(event.get("record"), dict)
+                       and event["record"].get("schema") == "pv-value-declare-decision-v1"]
+    declare_policies = Counter(record["policy"] for record in declare_records
+                               if isinstance(record.get("policy"), str) and record["policy"])
+    fallback_reasons = Counter(record["fallback_reason"] for record in declare_records
+                               if isinstance(record.get("fallback_reason"), str)
+                               and record["fallback_reason"])
+    declare_searches = [event for event in events
+                        if event.get("e") == "model_search" and event.get("phase") == "declare"
+                        and event.get("event") == "completed"]
     return {
         "appended_events": len(events),
         "event_kinds": dict(sorted(Counter(str(event.get("e")) for event in events).items())),
@@ -106,6 +119,25 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
         "observed_event_policy_counts": dict(sorted(event_policies.items())),
         "search_fallbacks": search_fallbacks,
         "refusal_fallback_worlds": refusal_fallback_worlds,
+        "declaration": {
+            # Records are committed gated decisions (including PASS). Worker
+            # completions can be discarded by stale-state guards, so they are
+            # deliberately a separate denominator, never inferred decisions.
+            "committed_events": len(declare_events),
+            "value_records": len(declare_records),
+            "unknown_records": len(declare_events) - len(declare_records),
+            "policy_counts": dict(sorted(declare_policies.items())),
+            "unknown_policy_records": len(declare_records) - sum(declare_policies.values()),
+            "evaluated": sum(r.get("evaluated") is True for r in declare_records),
+            "not_evaluated": sum(r.get("evaluated") is False for r in declare_records),
+            "changed": sum(r.get("changed") is True for r in declare_records),
+            "fallback_reasons": dict(sorted(fallback_reasons.items())),
+            "fallback_fraction": (sum(fallback_reasons.values()) / len(declare_records)
+                                  if declare_records else None),
+            "decision_seconds_p50": _median(r.get("seconds") for r in declare_records),
+            "model_search_completed": len(declare_searches),
+            "model_search_seconds_p50": _median(e.get("elapsed_seconds") for e in declare_searches),
+        },
         "latency_seconds_p50": {
             "decision": _median(decision.get("seconds") for decision in decisions),
             "model_search_completed": _median(event.get("elapsed_seconds") for event in completed),

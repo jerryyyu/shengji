@@ -63,12 +63,22 @@ primary_region = 'ewr'
   # SHENGJI_PV_DOOMED_THROW_RESELECT line with SHENGJI_PV_DOOMED_THROW_SWAP = '1' and restore the
   # release-42 name:
   # RELEASE 42 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b'
+  # RELEASE 44 (Jerry 2026-10-11: "I'm ok to ship"): release 43 plus the value-guided trump
+  # declaration (#952, -vd): at each declare chance where the heuristic would declare, or in the
+  # grace window, every option and PASS is scored by the value head over 64 sampled completed
+  # deals and the heuristic's choice is replaced only when beaten; served off the event loop with
+  # stale guards and the heuristic as fallback (#959). Evidence: v70vd43 (ten fresh windows vs
+  # release 43 as served) +0.0497 [+0.0379, +0.0615] POSITIVE, all ten windows positive (#707
+  # issuecomment-6103734355); on release 42, v68vd42 +0.0475 POSITIVE and v69vd42c +0.0590
+  # CONFIRMED. Rollback: delete the SHENGJI_PV_VALUE_DECLARE line and restore the release-43 name:
+  # RELEASE 43 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
   SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
+  SHENGJI_PV_VALUE_DECLARE = '1'
   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'

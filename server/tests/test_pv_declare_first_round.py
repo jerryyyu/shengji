@@ -89,7 +89,14 @@ def sequence(rnd, bot):
 
 
 def fly_env():
-    return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    """The RELEASE-43 env: production's fly.toml minus the value-declare line.
+
+    Production is release 44 (release 43 + SHENGJI_PV_VALUE_DECLARE), so the flag-off
+    identities below are derived from the documented release-43 rollback, exactly as
+    test_bury_arms / test_fixed_tape_policy derive release 38."""
+    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    assert env.get(VD) == "1"
+    return {k: v for k, v in env.items() if k != VD}
 
 
 # ------------------------------------------------------------ (a) off: identity

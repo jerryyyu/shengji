@@ -87,6 +87,52 @@ def test_accepted_only_replay_is_rejected():
         restore(row)
 
 
+def test_alternative_lead_continuation_matches_independent_state_and_isolates_forks():
+    from shengji.ai.heuristic import HeuristicBot
+
+    # Exercise a different legal action, not another historical replay. No
+    # network or counterfactual quality estimate: the heuristic only drives
+    # the two equivalent engine states to settlement.
+    row = next(row for row in packets()
+               if row['plays'] and row['ledger']['refusals'])
+    saved = copy.deepcopy(row)
+    restored, ledger = restore_with_ledger(row)
+    untouched, untouched_ledger = restore_with_ledger(row)
+    independent = rebuild_round(EVENTS)
+    observed = [RefusalLedger() for _ in range(4)]
+    for event in PLAYS[:len(row['plays'])]:
+        observed[independent.turn].observe(independent)
+        independent.play(independent.turn, event['attempted'])
+    owner = independent.turn
+    observed[owner].observe(independent)
+    assert normalized(vars(observed[owner])) == normalized(vars(ledger))
+    # A singleton lead is always legal; choose one different from history.
+    alternative = next([card] for card in sorted(set(independent.hands[owner]))
+                       if [card] != row['decision']['played'])
+    independent.play(owner, alternative)
+    restored.play(owner, alternative)
+    assert fingerprint(restored) == fingerprint(independent)
+    driver = HeuristicBot()
+    transitions = 1
+    while independent.phase == 'play':
+        seat = independent.turn
+        if seat == owner:
+            ledger.observe(restored)
+            observed[owner].observe(independent)
+            assert normalized(vars(ledger)) == normalized(vars(observed[owner]))
+        cards = driver.decide_play(independent, seat)
+        independent.play(seat, cards)
+        restored.play(seat, cards)
+        assert fingerprint(restored) == fingerprint(independent)
+        transitions += 1
+        assert transitions <= 100
+    assert restored.phase == independent.phase == 'round_end'
+    assert row == saved
+    assert fingerprint(untouched) == row['root']
+    assert normalized(vars(untouched_ledger)) == row['ledger']
+    assert fingerprint(restore(row)) == row['root']
+
+
 def test_capture_rejects_missing_prefix_and_foreign_ledger():
     rnd = rebuild_round(EVENTS)
     capture = LeadCapture(rnd)

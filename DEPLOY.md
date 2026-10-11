@@ -107,7 +107,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   meanwhile wins; expiry or error falls back to the heuristic and logs `pv-declare-serving-fallback-v1`.
 - Evidence (ladder row 13 in `AI_POLICIES.md`): v70vd43, ten fresh first-round windows vs release 43 as served,
   +0.049732 [+0.037941, +0.061522] POSITIVE; v71vd43lr, ten fresh fixed-banker (later-round) windows,
-  +0.035189 [+0.023339, +0.047039] POSITIVE; 20/20 windows positive, clean health, never pooled. Gates as met:
+  +0.035189 [+0.023297, +0.047081] POSITIVE; 20/20 windows positive, clean health, never pooled. Gates as met:
   Codex PASS at the exact head `b58de867` and CI 8/8; serving smoke on the merged tree `8ac9543e` with the flag
   on (40 server turns, bury 0.117 s, plays ≤ 0.08 s, every turn committed); `/healthz` after deploy reports the
   name above, `fast: true`, and the unchanged package and prior.

@@ -34,6 +34,13 @@ BASELINE_SELECT_WORLDS = 30
 BASELINE_REPORT_WORLDS = 300
 RANK = "2"
 ARMS = ("learned", "uniform", "production", "identity", "policy")
+#: "first": the first round of a game (banker unknown; the first declarer
+#: becomes banker and takes the kitty) -- every screen before the option.
+#: "fixed_banker": a later round, as Game.start_round deals it once a banker
+#: exists; declaring only names the trump suit.  Only the non-default value is
+#: ever written to a config, so a "first" config and recipe are byte-identical
+#: to those written before the option.
+ROUND_KINDS = ("first", "fixed_banker")
 
 
 class CWVWideTailBuryBot(CWVBuryBot, CWVWideTailBot):
@@ -98,6 +105,31 @@ def rank_for(config: dict, cluster: int) -> str:
     """Return the configured rank for a cluster, preserving legacy rank 2."""
     ranks = config.get("trump_ranks") or (RANK,)
     return ranks[cluster % len(ranks)]
+
+
+def round_kind_of(config: dict) -> str:
+    """The config's round kind; an absent key is a first round."""
+    if "round_kind" not in config:
+        return "first"
+    kind = config["round_kind"]
+    # "first" is spelled by ABSENCE only: one behaviour, one identity.
+    if kind != "fixed_banker":
+        raise ValueError(f"unsupported config round_kind {kind!r}")
+    return kind
+
+
+def banker_for(config: dict, cluster: int) -> int | None:
+    """The fixed banker seat of ``cluster`` (None: first-round rule).
+
+    Both mirrors of a cluster keep the same deal and the same banker SEAT,
+    and the mirror swaps which team the arm sits on (mirror 0: seats 0/2,
+    mirror 1: seats 1/3), so the arm is the banker team in exactly one of the
+    cluster's two rounds.  ``cluster % 4`` rotates the banker over all seats,
+    hence over each side's two seat-bots, in every four clusters.
+    """
+    if round_kind_of(config) == "first":
+        return None
+    return cluster % 4
 
 
 def _cost_order(directory: Path, clusters, seed0: int, trump_ranks=None) -> dict:
@@ -421,7 +453,7 @@ def _recipe(config):
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
                 "hybrid_bury", "corrected_rollout", "wide_tail", "prior",
-                "arm_policy", "arm_policy_identity"):
+                "arm_policy", "arm_policy_identity", "round_kind"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -446,6 +478,7 @@ def run_cluster(config, cluster):
         return wrapped
 
     rank = rank_for(config, cluster)
+    banker = banker_for(config, cluster)
     policy = base_policy_of(config)
     select_worlds, report_worlds = effective_baseline_budget(policy)
     base = duel.build_config(arm="none", base_policy=policy,
@@ -455,7 +488,8 @@ def run_cluster(config, cluster):
     games = []
 
     def game_factory(rng):
-        game = _game_factory_for(rank)(rng)
+        game = (_game_factory_for(rank) if banker is None
+                else _game_factory_for(rank, banker))(rng)
         games.append(game)
         return game
 
@@ -472,6 +506,8 @@ def run_cluster(config, cluster):
     for (record, _), game in zip(rows, games, strict=True):
         if record["trump_rank"] != rank:
             raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
+        if banker is not None and record["banker"] != banker:
+            raise ValueError(f"cluster {cluster} banker {record['banker']!r}, expected fixed {banker!r}")
         record["arm"] = config["arm"]
         if "trump_ranks" in config:
             round_state = getattr(game, "round", None)
@@ -513,6 +549,8 @@ def reopen_shard(path, config, cluster):
                    or r.get("arm") != config["arm"]
                    or ("trump_ranks" in config
                        and r.get("trump_suit") not in ("S", "H", "D", "C", "NT"))
+                   or ("round_kind" in config
+                       and r.get("banker") != banker_for(config, cluster))
                    for r in rows)):
         raise ValueError("completed shard does not match its mirrored pair and recipe")
     return shard
@@ -624,6 +662,14 @@ def summary_for(shards, config):
             by_suit[suit] += 1
         result["trump_ranks"] = list(config["trump_ranks"])
         result["coverage"] = {"by_rank": by_rank, "by_trump_suit": by_suit}
+    if "round_kind" in config:
+        records = [record for shard in shards for record in shard["records"]]
+        by_role = {"banker": 0, "attacker": 0}
+        for record in records:
+            by_role[record["arm_role"]] += 1
+        result["round_kind"] = round_kind_of(config)
+        result["arm_role_coverage"] = by_role
+        result["claim"] += "; fixed-banker (later-round) deals, banker seat = cluster % 4"
     if config.get("decision_deadline"):
         result["decision_latency"] = latency_summary(shards)
         complete_accounting = all(row["work_accounting_complete"]
@@ -699,6 +745,10 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--trump-ranks",
                         help="comma-separated distinct trump ranks for the cluster cycle")
+    parser.add_argument("--round-kind", choices=ROUND_KINDS, default="first",
+                        help="first (default): banker unknown, first declarer takes it; "
+                             "fixed_banker: a later round, banker seat = cluster %% 4 and the "
+                             "cluster's rank is the banker team's level")
     parser.add_argument("--cost-order-from", type=Path,
                         help="order pending clusters by prior shard wall time")
     args = parser.parse_args(argv)
@@ -848,6 +898,8 @@ def _run_screen(args, trump_ranks):
         config["hybrid_bury"] = True
     if trump_ranks is not None:
         config["trump_ranks"] = list(trump_ranks)
+    if args.round_kind != "first":
+        config["round_kind"] = args.round_kind
     if args.inner_mode is not None:
         config["double_shortlist"] = {
             "guidance": "selection-fraction-ceil-v2",

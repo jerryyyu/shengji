@@ -37,6 +37,9 @@ def main(argv=None):
     parser.add_argument("--encoding", choices=("reference", "mlp-static"),
                         default="mlp-static")
     parser.add_argument("--trump-ranks", default="2,3,4,5,6,7,8,9,10,J,Q,K,A")
+    parser.add_argument("--round-kind", choices=screen.ROUND_KINDS, default="first",
+                        help="fixed_banker: later-round deals (banker seat = cluster %% 4); "
+                             "passed through to every window only when not the default")
     parser.add_argument("--cost-order-root", type=Path,
                         help="optional completed prior windows, named NAME-SEED")
     parser.add_argument("--cost-order-name",
@@ -98,6 +101,8 @@ def main(argv=None):
                 if args.cost_order_root is not None:
                     prior = args.cost_order_root / f"{args.cost_order_name or args.name}-{seed}"
                     command += ["--cost-order-from", str(prior)]
+                if args.round_kind != "first":
+                    command += ["--round-kind", args.round_kind]
                 print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume (policy {args.arm_policy})",
                       flush=True)
                 result = screen.main(command)
@@ -124,6 +129,8 @@ def main(argv=None):
             if args.cost_order_root is not None:
                 prior = args.cost_order_root / f"{args.cost_order_name or args.name}-{seed}"
                 command += ["--cost-order-from", str(prior)]
+            if args.round_kind != "first":
+                command += ["--round-kind", args.round_kind]
             if args.report_tie_keeps_incumbent:
                 command += ["--report-tie-keeps-incumbent"]
             if args.value_head is not None:

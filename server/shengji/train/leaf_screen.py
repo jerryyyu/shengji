@@ -361,16 +361,24 @@ def work_counters(bots) -> dict:
 
 # ------------------------------------------------------------------ rounds
 
-def _game_factory_for(rank: str):
+def _game_factory_for(rank: str, banker: int | None = None):
+    """``banker=None`` (the default): a first round, whose first declarer
+    becomes banker.  ``banker`` a seat: a later round of a game in progress,
+    as ``Game.start_round`` builds it -- the banker is fixed, ``rank`` is the
+    banker team's level, and declaring only names the trump suit."""
+    if banker is not None and (type(banker) is not int or not 0 <= banker < 4):
+        raise ValueError(f"fixed banker must be a seat 0..3, got {banker!r}")
+
     def game_factory(rng):
         game = Game(rng)
         game.level_idx = [RANKS.index(rank), RANKS.index(rank)]
 
         # Game.start_round uses rank 2 when the banker is not yet known; keep
         # the first-round declaration rule but cycle the trump rank by cluster
-        # (search_screen.run_cluster).
+        # (search_screen.run_cluster).  With a fixed banker this is exactly
+        # Game.start_round: Round(level of the banker's team, banker, rng).
         def start():
-            game.round = Round(rank, None, game.rng)
+            game.round = Round(rank, banker, game.rng)
             game.round_no += 1
             return game.round
         game.start_round = start

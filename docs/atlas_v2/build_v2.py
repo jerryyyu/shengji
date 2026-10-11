@@ -224,7 +224,10 @@ def comparator_sections(reg):
         for s in sorted((s for s in reg["screens"] if s["vs"] == rel), key=lambda s: bool(s.get("vs_group"))):
             groups.setdefault(s.get("vs_group"), []).append(s)
         for g, items in groups.items():
-            tail = ((" · current production" if rel == live else " · current comparator") if g is None else "") if rel == prod else " · closed comparator"
+            # a band is "closed" only when its release is neither the comparator nor live production
+            # (e.g. production 43 while new screens still read against 42: the 43 band is current production)
+            tail = (((" · current production" if rel == live else " · current comparator") if g is None else "") if rel == prod
+                    else ((" · current production" if g is None else "") if rel == live else " · closed comparator"))
             out.append({"release": rel, "group": g, "label": (f"release {rel} as served" if g is None else g) + tail,
                         "kind": "main" if rel == prod else "prev", "items": items})
     return out

@@ -117,6 +117,8 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--compact", action="store_true",
+                        help="emit one-line JSON for a calling script")
     parser.add_argument("before", type=Path, help="pre-refresh room log")
     parser.add_argument("after", type=Path, help="post-refresh room log")
     args = parser.parse_args(argv)
@@ -124,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         report = summarize(appended_events(args.before, args.after))
     except (DeltaError, OSError) as exc:
         parser.error(str(exc))
-    print(json.dumps(report, sort_keys=True, indent=2))
+    print(json.dumps(report, sort_keys=True, indent=None if args.compact else 2))
     return 0
 
 

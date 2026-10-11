@@ -235,6 +235,47 @@ and adds ``-vd`` to the name as the last rule token.  It combines with every
 play rule (they never see a declaration decision).  Off, it is absent from the
 payload, so every existing name (release 42 above) and every decision are
 unchanged, and ``decide_declare`` IS the heuristic's.
+
+Its first-round gate widening (#707 "Declare-frequency diagnostic"), OFF BY
+DEFAULT: ``SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1`` -- in a round with no fixed
+banker (``rnd.banker is None``: the game's first round, where the first
+declarer takes the bank) the value-declare gate admits EVERY declare chance at
+which the seat has an option (`Round.declare_options` non-empty), not only the
+chances where the heuristic would declare or the grace window; in a round with
+a fixed banker the gate is exactly ``value_declare``'s.  Only the gate changes
+(`PVSearchBot.declare_gate`, the single source of truth the server's off-loop
+admission reads too): the candidate set, the world model, the worlds, the
+margin, the argmax and tie rule and every fallback are ``value_declare``'s.
+The record gains ``gate`` (``"heuristic"`` / ``"final"`` / ``"every_first"``:
+why the chance was admitted; ``final`` and a heuristic declaration keep their
+names, so ``every_first`` counts exactly the chances this flag added).  ``0``
+or ``1`` only; it REQUIRES ``SHENGJI_PV_VALUE_DECLARE=1`` (refused otherwise: a
+gate for a rule that is off admits nothing); on, it enters the recipe digest
+and adds ``-vdef`` to the name immediately after ``-vd``.  Off, it is absent
+from the payload, so every existing name and every decision are unchanged.
+
+Optional heuristic declaration variant with NO model call (the same
+diagnostic), OFF BY DEFAULT: ``SHENGJI_PV_DECLARE_ASAP_FIRST=1`` -- in a round
+with no fixed banker, at EVERY declare chance where the seat has an option,
+the strongest option by the engine's own declaration strength
+(`Round._declaration_strength`: single 1 < pair 2 < small-joker pair 3 <
+big-joker pair 4, the order `Round.declare` enforces for an overcall) is
+declared at once; equal strengths (singles or pairs of the trump rank in
+different suits) go to the suit the hand holds most cards of, then engine
+option order.  `Round.declare_options` lists only declarations STRICTLY
+stronger than the current one whoever made it, so the seat overcalls itself
+(its pair after its single) and other seats alike, and never re-declares what
+it already holds.  No heuristic bar, no grace-window distinction.  In a round
+with a fixed banker the decision IS the heuristic's.  EXCLUSIVE with
+``SHENGJI_PV_VALUE_DECLARE`` (both on refuses: one declare policy at a time).
+Record (``last_declare_record``, schema ``pv-declare-asap-decision-v1``, set on
+every call with the flag on, None where it does not declare; carried by the
+screen like the value-declare records): ``cards_dealt``, ``options`` (count),
+``chosen``, ``strength``, ``overcall`` (a declaration stood), ``overcall_self``.
+``0`` or ``1`` only; on, it enters the recipe digest and adds ``-asap`` to the
+name in the declare slot (after ``-vdef``; the two policies never both
+appear).  Off, it is absent from the payload, so every existing name and every
+decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``asap``.
 """
 from __future__ import annotations
 
@@ -243,11 +284,13 @@ import json
 import math
 import os
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 
 import numpy as np
 
 from ..ai.cwv_policy import file_sha256, sample_worlds, shared_evaluator
+from ..engine.cards import card_suit, is_joker
 from ..ai.heuristic import HeuristicBot
 from ..ai.memory import Memory
 from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
@@ -334,16 +377,28 @@ VALUE_DECLARE_PARAMS = {"VALUE_DECLARE_WORLDS": "value_declare_worlds",
                         "VALUE_DECLARE_MARGIN": "value_declare_margin"}
 #: the record a value-declare decision leaves in ``last_declare_record``
 VALUE_DECLARE_RECORD_SCHEMA = "pv-value-declare-decision-v1"
+#: its first-round gate widening (requires ``value_declare``; module docstring)
+VALUE_DECLARE_EVERY_FIRST_RULE = {"VALUE_DECLARE_EVERY_FIRST": "value_declare_every_first"}
+VALUE_DECLARE_EVERY_FIRST_DEFAULTS = dict(value_declare_every_first=False)
+#: the gate names the value-declare record carries (why a chance was admitted)
+VALUE_DECLARE_GATES = ("heuristic", "final", "every_first")
+#: the model-free first-round declaration variant (exclusive with ``value_declare``)
+DECLARE_ASAP_RULE = {"DECLARE_ASAP_FIRST": "declare_asap_first"}
+DECLARE_ASAP_DEFAULTS = dict(declare_asap_first=False)
+#: the record a declare-asap declaration leaves in ``last_declare_record``
+DECLARE_ASAP_RECORD_SCHEMA = "pv-declare-asap-decision-v1"
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
-#: scope, the doomed-throw re-select, the value declaration): div, fs, rc, rcec,
-#: tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd
+#: scope, the doomed-throw re-select, the value declaration, its first-round
+#: gate, the model-free first-round declaration): div, fs, rc, rcec, tb, ak16,
+#: wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, asap
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
-              **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE}
+              **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
+              **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
@@ -354,8 +409,15 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("adaptive_worlds", "aw"),
                                                    ("adaptive_worlds_leads", "awl"),
                                                    ("doomed_throw_reselect", "dtr"),
-                                                   ("value_declare", "vd"))
+                                                   ("value_declare", "vd"),
+                                                   ("value_declare_every_first", "vdef"),
+                                                   ("declare_asap_first", "asap"))
 ENV_PREFIX = "SHENGJI_PV_"
+_VALUE_DECLARE_EVERY_FIRST_REQUIRES = ("value_declare_every_first requires value_declare "
+                                       "(SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1 needs "
+                                       "SHENGJI_PV_VALUE_DECLARE=1)")
+_DECLARE_ASAP_EXCLUSIVE = ("declare_asap_first and value_declare are exclusive "
+                           "(SHENGJI_PV_DECLARE_ASAP_FIRST=1 with SHENGJI_PV_VALUE_DECLARE=1)")
 _WIDE_LEAD_EXCLUSIVE = ("wide_lead_admission and adaptive_k are exclusive "
                         "(SHENGJI_PV_WIDE_LEAD_ADMISSION=1 with SHENGJI_PV_ADAPTIVE_K=1)")
 _ADAPTIVE_WORLDS_EXCLUSIVE = ("adaptive_worlds and adaptive_worlds_leads are exclusive "
@@ -473,6 +535,10 @@ class PVSearchConfig:
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    # its first-round gate widening (requires ``value_declare``); the same contract
+    value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
+    # the model-free first-round declaration (exclusive with ``value_declare``); the same contract
+    declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
 
 
 def _check_value_declare_params(worlds, margin):
@@ -544,6 +610,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
             raise PVSearchPolicyError("value_declare_worlds / value_declare_margin need "
                                       "value_declare (SHENGJI_PV_VALUE_DECLARE=1)")
         del payload["value_declare_worlds"], payload["value_declare_margin"]
+    if config.value_declare_every_first and not config.value_declare:
+        raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_FIRST_REQUIRES)
+    if config.declare_asap_first and config.value_declare:
+        raise PVSearchPolicyError(_DECLARE_ASAP_EXCLUSIVE)
     return payload
 
 
@@ -678,8 +748,11 @@ class PVSearchBot(PolicyValueBot):
     value_declare = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
-    #: set (only with ``value_declare`` on) by every `decide_declare` call: the
-    #: decision's record when the rule's gate admitted it, else None
+    value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
+    declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
+    #: set (only with ``value_declare`` or ``declare_asap_first`` on) by every
+    #: `decide_declare` call: the decision's record when the rule's gate
+    #: admitted it (asap: when it declared), else None
     last_declare_record = None
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
@@ -741,6 +814,17 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare = True
             self.value_declare_worlds = config.value_declare_worlds
             self.value_declare_margin = float(config.value_declare_margin)
+        for key in ("value_declare_every_first", "declare_asap_first"):
+            if type(getattr(config, key)) is not bool:
+                raise PVSearchPolicyError(f"{key} must be a bool")
+        if config.value_declare_every_first and not config.value_declare:
+            raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_FIRST_REQUIRES)
+        if config.declare_asap_first and config.value_declare:
+            raise PVSearchPolicyError(_DECLARE_ASAP_EXCLUSIVE)
+        if config.value_declare_every_first:
+            self.value_declare_every_first = True
+        if config.declare_asap_first:
+            self.declare_asap_first = True
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -767,17 +851,37 @@ class PVSearchBot(PolicyValueBot):
 
     # -- the optional declaration rule (module docstring) -----------------------
 
+    def _declare_gate_name(self, rnd, seat, final, heuristic):
+        """Why ``value_declare`` admits this chance (one of `VALUE_DECLARE_GATES`),
+        or None: the single definition of the gate.  ``final`` and a heuristic
+        declaration keep their names under ``value_declare_every_first``, which
+        adds only ``"every_first"``: a first-round chance with an option the
+        plain gate would have skipped."""
+        if not self.value_declare or not rnd.declare_options(seat):
+            return None
+        if final:
+            return "final"
+        if heuristic is not None:
+            return "heuristic"
+        if self.value_declare_every_first and rnd.banker is None:
+            return "every_first"
+        return None
+
     def declare_gate(self, rnd, seat, final=False):
-        """Cheap, read-only serving gate; no model admission or snapshot needed."""
+        """Cheap, read-only serving gate; no model admission or snapshot needed.
+        ``(heuristic choice, admitted)``: the server copies the room and runs
+        `decide_declare` off-loop only when ``admitted``."""
         heuristic = super().decide_declare(rnd, seat, final)
-        gated = (self.value_declare and bool(rnd.declare_options(seat))
-                 and (final or heuristic is not None))
-        return heuristic, gated
+        return heuristic, self._declare_gate_name(rnd, seat, final, heuristic) is not None
 
     def decide_declare(self, rnd, seat, final=False, *, check_budget=None):
-        """The heuristic's declaration, or under ``value_declare`` the value head's.
+        """The heuristic's declaration, or under ``value_declare`` the value head's,
+        or under ``declare_asap_first`` the model-free first-round rule's.
 
         Off: exactly `HeuristicBot.decide_declare` (no record, no attribute set).
+
+        ``declare_asap_first`` (module docstring; exclusive with
+        ``value_declare``): `_asap_declare_decision`, no model call, no budget.
 
         On: the heuristic's choice is computed FIRST and is the base decision.
         Gate: the value evaluation runs only when the seat has declare options
@@ -816,14 +920,19 @@ class PVSearchBot(PolicyValueBot):
         ``played`` (returned), ``changed`` (played != heuristic), ``worlds``,
         ``worlds_completed``, ``fallback_reason`` (None / ``hard_budget`` /
         ``error``), ``fallback_error``, ``outcomes``, ``outcome_means``,
-        ``heuristic_mean``, ``best_mean``, ``margin``, ``final``, ``seconds``.
+        ``heuristic_mean``, ``best_mean``, ``margin``, ``final``, ``seconds``,
+        ``gate`` (why the chance was admitted: `VALUE_DECLARE_GATES`; under
+        ``value_declare_every_first`` only the gate changes).
         """
-        heuristic, gated = self.declare_gate(rnd, seat, final)
+        heuristic = super().decide_declare(rnd, seat, final)
+        if self.declare_asap_first:
+            return self._asap_declare_decision(rnd, seat, final, heuristic)
         if not self.value_declare:
             return heuristic
         started = time.perf_counter()
         self.last_declare_record = None
-        if not gated:
+        gate = self._declare_gate_name(rnd, seat, final, heuristic)
+        if gate is None:
             return heuristic
         options = rnd.declare_options(seat)
         budget = self.serving_budget_seconds
@@ -836,12 +945,49 @@ class PVSearchBot(PolicyValueBot):
                 if caller_check is not None:
                     caller_check()
         return self._value_declare_decision(rnd, seat, final, heuristic, options, started,
-                                            check_budget)
+                                            check_budget, gate=gate)
+
+    def _asap_declare_decision(self, rnd, seat, final, heuristic):
+        """``declare_asap_first`` (module docstring): in a first round, the
+        strongest available option at every chance that has one; with a fixed
+        banker, the heuristic's choice.  Sets ``last_declare_record``
+        (``pv-declare-asap-decision-v1``) when it declares, else None."""
+        self.last_declare_record = None
+        if rnd.banker is not None:
+            return heuristic
+        options = rnd.declare_options(seat)
+        if not options:
+            return None
+        hand = rnd.hands[seat]
+        suit_length = Counter(card_suit(c) for c in hand if not is_joker(c))
+
+        def preference(indexed):
+            index, option = indexed
+            code = option[0]
+            held = 0 if is_joker(code) else suit_length[card_suit(code)]
+            return (rnd._declaration_strength(option), held, -index)
+        _, chosen = max(enumerate(options), key=preference)
+        current = rnd.declaration
+        self.last_declare_record = {
+            "schema": DECLARE_ASAP_RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
+            "seat": int(seat), "final": bool(final),
+            "cards_dealt": sum(len(h) for h in rnd.hands),
+            "options": len(options),
+            "chosen": " ".join(chosen),
+            "strength": int(rnd._declaration_strength(chosen)),
+            "overcall": current is not None,
+            "overcall_self": current is not None and current["seat"] == seat,
+            "heuristic": value_declare_model.PASS if heuristic is None else " ".join(heuristic),
+        }
+        return list(chosen)
 
     def _value_declare_decision(self, rnd, seat, final, heuristic, options, started,
-                                check_budget):
+                                check_budget, gate=None):
         """The gated decision (`decide_declare`): the optional stage over the
-        finalized ``heuristic`` base, under ``check_budget`` (None: no budget)."""
+        finalized ``heuristic`` base, under ``check_budget`` (None: no budget).
+        ``gate`` is the record's admission name (None: the plain gate's)."""
+        if gate is None:
+            gate = "final" if final else "heuristic"
         outcomes = value_declare_model.candidate_outcomes(rnd, seat, options, heuristic)
         progress = {"worlds_completed": 0}
         stage = OptionalStage(self, (), hard_check=check_budget,
@@ -877,6 +1023,7 @@ class PVSearchBot(PolicyValueBot):
             "best_mean": None if means is None else float(means[best]),
             "margin": self.value_declare_margin,
             "seconds": time.perf_counter() - started,
+            "gate": gate,
         }
         self.last_declare_record = record
         return None if played is None else list(played)
@@ -1418,7 +1565,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
-                       value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+                       value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                       value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
+                       declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1460,7 +1609,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
-                            value_declare_margin=value_declare_margin)
+                            value_declare_margin=value_declare_margin,
+                            value_declare_every_first=value_declare_every_first,
+                            declare_asap_first=declare_asap_first)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -1529,7 +1680,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
-                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
+                        declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1553,7 +1706,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
-                            value_declare_margin=value_declare_margin)
+                            value_declare_margin=value_declare_margin,
+                            value_declare_every_first=value_declare_every_first,
+                            declare_asap_first=declare_asap_first)
     recipe_payload(config)   # refuses a non-bool rule flag
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -1612,7 +1767,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
-                               value_declare_margin=config.value_declare_margin),
+                               value_declare_margin=config.value_declare_margin,
+                               value_declare_every_first=config.value_declare_every_first,
+                               declare_asap_first=config.declare_asap_first),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -1630,10 +1787,12 @@ def pv_env_recipe(environ=None) -> dict:
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
-    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` rule flags (``0`` or ``1``
+    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
+    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_DECLARE_ASAP_FIRST`` rule flags (``0`` or ``1``
     only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN``
     parameters (refused unless ``_VALUE_DECLARE=1``), as keyword arguments for
-    `pv_registry_entries`."""
+    `pv_registry_entries`.  ``_VALUE_DECLARE_EVERY_FIRST=1`` without ``_VALUE_DECLARE=1``
+    and ``_DECLARE_ASAP_FIRST=1`` with it are refused there (`recipe_payload`)."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:

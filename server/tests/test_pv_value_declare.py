@@ -159,7 +159,9 @@ def test_vd_token_last_and_digest_when_on(production_package):
     assert "-bury-hybrid-" in on and on != RELEASE42_NAME
     every, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_ADAPTIVE_WORLDS_LEADS": "1"})
     assert every.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-vd-r")
-    assert pv.RULE_TOKENS[-1] == ("value_declare", "vd")
+    # the declare slot: vd, then its first-round gate, then the model-free variant
+    assert pv.RULE_TOKENS[-3:] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+                                   ("declare_asap_first", "asap"))
     assert pv.RULE_FLAGS["VALUE_DECLARE"] == "value_declare"
     worlds, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_WORLDS": "32"})
     margin, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_MARGIN": "0.05"})

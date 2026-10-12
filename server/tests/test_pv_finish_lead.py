@@ -235,6 +235,26 @@ def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_p
     asyncio.run(scenario())
 
 
+def test_portable_qualification_preserves_partial_and_refuses_overwrite(tmp_path):
+    import runpy
+    module = runpy.run_path(str(Path(__file__).parents[1] / 'scripts/qualify_exact_lead.py'))
+    main = module['main']
+    calls = []
+    async def incomplete(checkpoint, dest):
+        calls.append(checkpoint)
+        dest.write('{"passed":false}\n')
+        dest.flush()
+        return 1
+    main.__globals__['qualify'] = incomplete
+    out = tmp_path / 'qualification.jsonl'
+    argv = ['--checkpoint', 'not-opened.npz', '--out', str(out)]
+    assert main(argv) == 1
+    assert json.loads(out.read_text()) == {'passed': False}
+    with pytest.raises(FileExistsError):
+        main(argv)
+    assert len(calls) == 1
+
+
 def test_exact_flag_identity_and_incompatible_recipes(package):
     path, sha = package
     env = dict(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha)

@@ -154,6 +154,13 @@ class CWVBuryMixin:
         snapshot = getattr(bot, "_sampler_snapshot", None)
         return None if snapshot is None else dict(snapshot())
 
+    def _leaf_first_trick(self, fallback, check_budget=None):
+        """The value leaf's first-trick player, or None for the heuristic
+        continuation (``fallback``, the model helper's rollout policy).  The
+        mixin's own answer is None; `pv_search_policy.PVSearchBuryBot` returns
+        a `leaf_first_trick.PolicyFirstTrick` under its ``lpft`` rule."""
+        return None
+
     def decide_bury(self, rnd, seat):
         if self.bury_serving_budget_seconds is None:
             return self._decide_bury(rnd, seat)
@@ -210,6 +217,10 @@ class CWVBuryMixin:
         options = {} if check_budget is None else {"check_budget": check_budget}
         if progress is None:
             progress = {"mc_rollouts": 0, "model_positions": 0}
+        # the value leaf's first trick: the heuristic's unless `_leaf_first_trick`
+        # supplies a player (its fallback count is reported either way)
+        progress["leaf_first_trick"] = "heuristic"
+        progress["leaf_first_trick_fallbacks"] = 0
         if check_budget is not None:
             check_budget()
         # The control arm is exactly the inherited heuristic action.  Do not
@@ -245,9 +256,19 @@ class CWVBuryMixin:
                 progress["model_positions"] = None
                 model_worlds, model_attempts = _worlds(
                     model_bot, rnd, seat, self.bury_config.model_worlds, "model", **options)
-                model_values = score_bury_candidates(
-                    rnd, candidates, model_worlds, self.evaluator,
-                    first_trick_policy=model_bot.rollout_policy, **options)
+                leaf = self._leaf_first_trick(model_bot.rollout_policy, check_budget)
+                if leaf is None:
+                    first_trick = {"first_trick_policy": model_bot.rollout_policy}
+                else:
+                    progress["leaf_first_trick"] = "policy"
+                    first_trick = {"first_trick_batch": leaf.play_first_tricks}
+                try:
+                    model_values = score_bury_candidates(
+                        rnd, candidates, model_worlds, self.evaluator,
+                        **first_trick, **options)
+                finally:
+                    if leaf is not None:
+                        progress["leaf_first_trick_fallbacks"] = int(leaf.fallbacks)
                 if not np.isfinite(model_values).all():
                     raise BuryPolicyError("model bury values must be finite")
                 means = np.mean(model_values, axis=0)
@@ -338,6 +359,10 @@ class CWVBuryMixin:
             "mc_rollouts": mc_rollouts,
             "model_positions": (len(candidates) * self.bury_config.model_worlds
                                 if self.bury_arm in _MODEL_ARMS else 0),
+            # who played the value leaf's first trick (`_leaf_first_trick`), and
+            # how many seats the policy player handed to the heuristic
+            "leaf_first_trick": progress["leaf_first_trick"],
+            "leaf_first_trick_fallbacks": progress["leaf_first_trick_fallbacks"],
             "counters": {
                 "wrapper": self._counter(self),
                 "model_before": model_counter_before,

@@ -276,6 +276,39 @@ screen like the value-declare records): ``cards_dealt``, ``options`` (count),
 name in the declare slot (after ``-vdef``; the two policies never both
 appear).  Off, it is absent from the payload, so every existing name and every
 decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``asap``.
+
+Optional value-leaf rule (Jerry 2026-10-11: "where we use heuristics, it may be
+better to use the model"), OFF BY DEFAULT: ``SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1``
+-- in BOTH value leaves of this bot, the bury scoring of `PVSearchBuryBot`'s
+hybrid/value arms (`cwv_bury.score_bury_candidates`) and the value declaration's
+outcome position (`value_declare.declare_outcome_position`), the first trick
+the frozen encoder needs before the value head can score the position is played
+by the POLICY HEAD's argmax over each seat's COMPLETE legal set (the same
+package's prior and the admission's additive score, one cheap call per seat and
+world, no value call, no search; the argmax is computed from the legal set's
+structure, not by enumerating it: `leaf_first_trick.PolicyFirstTrick`) instead
+of the heuristic's play.  A seat whose policy call fails or ranks nothing falls
+back to the heuristic play and is counted.  The calls run inside the stages'
+existing budget checks (the bury's ``check_budget``, the declare's
+`OptionalStage` guard), before every predictor batch, so the bury's 2 s and the
+declare's budget bound them exactly as before and an expiry falls back to the
+stage's incumbent (the heuristic bury, the heuristic declaration).  Measured on
+release 44's package (smv3out-491ee4bf, 20 DEV bury roots / 20 seeded deals,
+compiled engine, one thread, Mini): bury 0.11 s -> 0.59 s mean (max 0.94 s),
+value declare 0.026 s -> 0.11 s mean (max 0.22 s).  ``0`` or ``1`` only; it
+REQUIRES a leaf it changes --
+``value_declare`` or a hybrid/value bury arm (refused otherwise: a name token
+for a rule with no effect would be a lie); on, it enters the recipe digest
+(with ``value_declare_model`` naming the policy first trick when the value
+declaration is on) and adds ``-lpft`` to the name as the last rule token, after
+the declare tokens (``vd``, ``vdef``, ``asap``).  Records: the bury record
+(``cwv-bury-policy-v1`` and the fallback record) and the value-declare record
+gain ``leaf_first_trick`` (``"heuristic"`` / ``"policy"``) and
+``leaf_first_trick_fallbacks``.  Off, it is absent from the payload and the
+leaves are untouched, so every existing name (release 44:
+``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6``)
+and every decision are unchanged.  Rule token order:
+div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, asap, lpft.
 """
 from __future__ import annotations
 
@@ -304,9 +337,11 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
 from .optional_stage import OptionalStage
 from . import value_declare as value_declare_model
-from .cwv_bury_policy import (_ARMS as BURY_ARMS, ARM_ALIASES as BURY_ARM_ALIASES,
+from .cwv_bury_policy import (_ARMS as BURY_ARMS, _MODEL_ARMS as BURY_MODEL_ARMS,
+                              ARM_ALIASES as BURY_ARM_ALIASES,
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
+from .leaf_first_trick import PolicyFirstTrick
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
 SCHEMA = "pv-search-recipe-v1"
@@ -387,18 +422,26 @@ DECLARE_ASAP_RULE = {"DECLARE_ASAP_FIRST": "declare_asap_first"}
 DECLARE_ASAP_DEFAULTS = dict(declare_asap_first=False)
 #: the record a declare-asap declaration leaves in ``last_declare_record``
 DECLARE_ASAP_RECORD_SCHEMA = "pv-declare-asap-decision-v1"
+#: the optional value-leaf rule (module docstring; `leaf_first_trick`): the
+#: policy head plays the leaf's first trick in the bury scoring and the value
+#: declaration; requires one of those leaves
+LEAF_POLICY_RULE = {"LEAF_POLICY_FIRST_TRICK": "leaf_policy_first_trick"}
+LEAF_POLICY_DEFAULTS = dict(leaf_policy_first_trick=False)
+#: the record values of ``leaf_first_trick`` (who played the leaf's first trick)
+LEAF_FIRST_TRICK_PLAYERS = ("heuristic", "policy")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
 #: scope, the doomed-throw re-select, the value declaration, its first-round
-#: gate, the model-free first-round declaration): div, fs, rc, rcec, tb, ak16,
-#: wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, asap
+#: gate, the model-free first-round declaration, the policy-played value leaf):
+#: div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
+#: asap, lpft
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
-              **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE}
+              **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
@@ -411,8 +454,12 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), AD
                                                    ("doomed_throw_reselect", "dtr"),
                                                    ("value_declare", "vd"),
                                                    ("value_declare_every_first", "vdef"),
-                                                   ("declare_asap_first", "asap"))
+                                                   ("declare_asap_first", "asap"),
+                                                   ("leaf_policy_first_trick", "lpft"))
 ENV_PREFIX = "SHENGJI_PV_"
+_LEAF_POLICY_NO_EFFECT = ("leaf_policy_first_trick needs a value leaf it changes: value_declare "
+                          "or a hybrid/value bury arm (SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1 "
+                          "without SHENGJI_PV_VALUE_DECLARE=1 or SHENGJI_PV_BURY_ARM=hybrid|value)")
 _VALUE_DECLARE_EVERY_FIRST_REQUIRES = ("value_declare_every_first requires value_declare "
                                        "(SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1 needs "
                                        "SHENGJI_PV_VALUE_DECLARE=1)")
@@ -539,6 +586,10 @@ class PVSearchConfig:
     value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     # the model-free first-round declaration (exclusive with ``value_declare``); the same contract
     declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
+    # the policy head playing the value leaf's first trick (module docstring; it
+    # needs ``value_declare`` or a hybrid/value bury arm, checked where the arm is
+    # known: the constructors and the registry); the same contract
+    leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
 
 
 def _check_value_declare_params(worlds, margin):
@@ -603,7 +654,9 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
     if config.value_declare:
         payload["value_declare_margin"] = float(config.value_declare_margin)
-        payload["value_declare_model"] = value_declare_model.MODEL
+        payload["value_declare_model"] = (value_declare_model.MODEL_POLICY_FIRST_TRICK
+                                          if config.leaf_policy_first_trick
+                                          else value_declare_model.MODEL)
     else:
         if (config.value_declare_worlds != VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
                 or config.value_declare_margin != VALUE_DECLARE_DEFAULTS["value_declare_margin"]):
@@ -750,6 +803,10 @@ class PVSearchBot(PolicyValueBot):
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
+    leaf_policy_first_trick = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
+    #: the bury arm a subclass binds BEFORE `__init__` (`PVSearchBuryBot`), so the
+    #: leaf rule's effect check knows whether a bury leaf exists; None = no bury arm
+    _leaf_bury_arm = None
     #: set (only with ``value_declare`` or ``declare_asap_first`` on) by every
     #: `decide_declare` call: the decision's record when the rule's gate
     #: admitted it (asap: when it declared), else None
@@ -825,6 +882,12 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare_every_first = True
         if config.declare_asap_first:
             self.declare_asap_first = True
+        if type(config.leaf_policy_first_trick) is not bool:
+            raise PVSearchPolicyError("leaf_policy_first_trick must be a bool")
+        if config.leaf_policy_first_trick:
+            if not config.value_declare and self._leaf_bury_arm not in BURY_MODEL_ARMS:
+                raise PVSearchPolicyError(_LEAF_POLICY_NO_EFFECT)
+            self.leaf_policy_first_trick = True
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -989,7 +1052,9 @@ class PVSearchBot(PolicyValueBot):
         if gate is None:
             gate = "final" if final else "heuristic"
         outcomes = value_declare_model.candidate_outcomes(rnd, seat, options, heuristic)
-        progress = {"worlds_completed": 0}
+        progress = {"worlds_completed": 0,
+                    "leaf_first_trick": "policy" if self.leaf_policy_first_trick else "heuristic",
+                    "leaf_first_trick_fallbacks": 0}
         stage = OptionalStage(self, (), hard_check=check_budget,
                               budget_errors=PVSearchBudgetExceeded, abandon_on=Exception)
         means = best = None
@@ -1024,9 +1089,20 @@ class PVSearchBot(PolicyValueBot):
             "margin": self.value_declare_margin,
             "seconds": time.perf_counter() - started,
             "gate": gate,
+            # who played the leaves' first trick (`leaf_policy_first_trick`) and
+            # how many seats the policy player handed to the heuristic
+            "leaf_first_trick": progress["leaf_first_trick"],
+            "leaf_first_trick_fallbacks": progress["leaf_first_trick_fallbacks"],
         }
         self.last_declare_record = record
         return None if played is None else list(played)
+
+    def _policy_first_trick(self, fallback, check_budget=None):
+        """The ``leaf_policy_first_trick`` player on this bot's own policy prior
+        and encoder version (module docstring), or None while the rule is off."""
+        if not self.leaf_policy_first_trick:
+            return None
+        return PolicyFirstTrick(self.predict, self.version, fallback, check_budget=check_budget)
 
     def _value_declare_means(self, rnd, seat, candidates, check_budget=None, progress=None):
         """Mean value-head score per candidate (None = PASS) over
@@ -1036,6 +1112,9 @@ class PVSearchBot(PolicyValueBot):
         rng = value_declare_model.decision_rng(self.seed, rnd, seat)
         sums = np.zeros(len(candidates), dtype=np.float64)
         pending, indices, worlds_pending = [], [], 0
+        # the leaf's first trick: the heuristic's inside `declare_outcome_position`,
+        # or (``leaf_policy_first_trick``) the policy head's on each batch
+        leaf = self._policy_first_trick(value_declare_model.default_finisher(), check_budget)
 
         def flush():
             nonlocal worlds_pending
@@ -1043,6 +1122,12 @@ class PVSearchBot(PolicyValueBot):
                 return
             if check_budget is not None:
                 check_budget()
+            if leaf is not None:
+                try:
+                    leaf.play_first_tricks(pending)
+                finally:
+                    if progress is not None:
+                        progress["leaf_first_trick_fallbacks"] = int(leaf.fallbacks)
             scores = np.asarray(self.evaluator.score(list(pending), seat), dtype=np.float64)
             if scores.shape != (len(pending),) or not np.isfinite(scores).all():
                 raise ValueError("value evaluator requires one finite root-team score per position")
@@ -1061,7 +1146,7 @@ class PVSearchBot(PolicyValueBot):
             hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
             for index, option in enumerate(candidates):
                 pending.append(value_declare_model.declare_outcome_position(
-                    rnd, seat, hands, kitty, option))
+                    rnd, seat, hands, kitty, option, first_trick=leaf is None))
                 indices.append(index)
             worlds_pending += 1
             if len(pending) >= self.batch_size:
@@ -1520,6 +1605,9 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
                  bury_config: CWVBuryConfig | None = None, bury_serving_budget_seconds=None):
         if bury_arm not in BURY_ARMS:
             raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
+        # bound before the base constructor: its ``leaf_policy_first_trick`` effect
+        # check asks whether a model bury arm (a value leaf) exists
+        self._leaf_bury_arm = bury_arm
         super().__init__(predict, evaluator=evaluator, version=version, config=config,
                          checkpoint=checkpoint, seed=seed)
         self.bury_arm = bury_arm
@@ -1531,6 +1619,20 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
 
     def _bury_rng(self):
         return self.sampler.rng
+
+    def _leaf_first_trick(self, fallback, check_budget=None):
+        """The bury leaf's first-trick player (`CWVBuryMixin._leaf_first_trick`):
+        the policy head under ``leaf_policy_first_trick``, else None (the
+        heuristic continuation, ``fallback``)."""
+        return self._policy_first_trick(fallback, check_budget)
+
+
+def _check_leaf_policy_effect(config: PVSearchConfig, bury_arm) -> None:
+    """``leaf_policy_first_trick`` needs a value leaf it changes (module
+    docstring): the value declaration, or a model bury arm."""
+    if config.leaf_policy_first_trick and not config.value_declare \
+            and bury_arm not in BURY_MODEL_ARMS:
+        raise PVSearchPolicyError(_LEAF_POLICY_NO_EFFECT)
 
 
 def _require_pv_search(bot, name: str):
@@ -1567,7 +1669,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
-                       declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
+                       declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
+                       leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1611,8 +1714,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
-                            declare_asap_first=declare_asap_first)
+                            declare_asap_first=declare_asap_first,
+                            leaf_policy_first_trick=leaf_policy_first_trick)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
+    _check_leaf_policy_effect(config, bury_arm)
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
     predict = NumpyPriorPredict(path, sha256)
@@ -1682,7 +1787,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                         value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
-                        declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
+                        declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
+                        leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1708,8 +1814,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
-                            declare_asap_first=declare_asap_first)
+                            declare_asap_first=declare_asap_first,
+                            leaf_policy_first_trick=leaf_policy_first_trick)
     recipe_payload(config)   # refuses a non-bool rule flag
+    _check_leaf_policy_effect(config, bury_arm)
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
         raise PVSearchPolicyError(f"pv-search package on disk is {ckpt8}, bound SHA256 says {sha256[:8]}")
@@ -1769,7 +1877,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
                                value_declare_every_first=config.value_declare_every_first,
-                               declare_asap_first=config.declare_asap_first),
+                               declare_asap_first=config.declare_asap_first,
+                               leaf_policy_first_trick=config.leaf_policy_first_trick),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -1788,11 +1897,13 @@ def pv_env_recipe(environ=None) -> dict:
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
-    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_DECLARE_ASAP_FIRST`` rule flags (``0`` or ``1``
-    only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN``
-    parameters (refused unless ``_VALUE_DECLARE=1``), as keyword arguments for
-    `pv_registry_entries`.  ``_VALUE_DECLARE_EVERY_FIRST=1`` without ``_VALUE_DECLARE=1``
-    and ``_DECLARE_ASAP_FIRST=1`` with it are refused there (`recipe_payload`)."""
+    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_DECLARE_ASAP_FIRST`` / ``_LEAF_POLICY_FIRST_TRICK``
+    rule flags (``0`` or ``1`` only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS``
+    / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless ``_VALUE_DECLARE=1``), as keyword
+    arguments for `pv_registry_entries`.  ``_VALUE_DECLARE_EVERY_FIRST=1`` without
+    ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1`` with it are refused there
+    (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without ``_VALUE_DECLARE=1`` or a
+    hybrid/value ``_BURY_ARM`` is refused there too (`_check_leaf_policy_effect`)."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:

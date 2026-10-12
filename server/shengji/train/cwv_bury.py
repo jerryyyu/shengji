@@ -144,18 +144,30 @@ def _checked_batch_size(evaluator: Any) -> int:
 
 def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
                           worlds: Sequence[Any], evaluator: Any, *,
-                          first_trick_policy=None, check_budget=None) -> np.ndarray:
+                          first_trick_policy=None, first_trick_batch=None,
+                          check_budget=None) -> np.ndarray:
     """Score every world/candidate post-bury position in bounded chunks.
 
     Rows are WORLD-MAJOR: ``values[w, c]`` is world ``w`` with candidate
     ``c``.  Only one evaluator batch, bounded by ``evaluator.max_batch``, is
     resident at a time.
+
+    The frozen afterstate encoder requires at least one play, so a first-trick
+    player completes exactly the first trick of every position before the
+    evaluator sees it: ``first_trick_policy`` (``decide_play(rnd, seat)``, the
+    heuristic continuation) position by position as it is built, or
+    ``first_trick_batch`` (``callable(positions)``, the policy head of
+    `leaf_first_trick.PolicyFirstTrick.play_first_tricks`) on each evaluator
+    batch just before it is scored -- the same positions, trick and budget
+    checks, batched so the policy predictor runs per batch.  One or the other.
     """
     banker = _require_bury_round(rnd)
     candidates = tuple(tuple(candidate) for candidate in candidates)
     worlds = tuple(_world_parts(world) for world in worlds)
     if not candidates or not worlds:
         raise BuryValueError("bury scoring needs at least one candidate and world")
+    if first_trick_policy is not None and first_trick_batch is not None:
+        raise BuryValueError("first_trick_policy and first_trick_batch are exclusive")
     max_batch = _checked_batch_size(evaluator)
     values = np.empty((len(worlds), len(candidates)), dtype=np.float64)
     positions: list[Round] = []
@@ -166,6 +178,8 @@ def score_bury_candidates(rnd: Round, candidates: Sequence[Sequence[str]],
             return
         if check_budget is not None:
             check_budget()
+        if first_trick_batch is not None:
+            first_trick_batch(positions)
         # Pass a stable batch object: clearing our work buffer after the call
         # must not retroactively empty a recorder's reference to the batch.
         scored = np.asarray(evaluator.score(list(positions), banker), dtype=np.float64)

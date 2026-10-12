@@ -29,7 +29,9 @@ does NOT know the undealt cards, the other hands or the kitty.  One world:
    because the frozen value encoder rejects a position with no played card --
    exactly the leaf `cwv_bury.score_bury_candidates` scores a bury with
    (``first_trick_policy``, the "after one heuristic-continuation trick" leaf
-   of `cwv_bury_diagnostic`).
+   of `cwv_bury_diagnostic`).  Under the bot's ``lpft`` rule
+   (`pv_search_policy`, OFF BY DEFAULT) that first trick is the policy head's
+   instead, in both leaves (`leaf_first_trick`; `MODEL_POLICY_FIRST_TRICK`).
 3. The value head scores that position from the declaring seat's TEAM
    (`evaluator.score(positions, seat)`: expected signed level, the head's own
    units).
@@ -60,6 +62,9 @@ from ..engine.round import HAND_SIZE, KITTY_SIZE
 SCHEMA = "pv-value-declare-v1"
 #: the model the recipe digest binds (module docstring)
 MODEL = "uniform-unseen|no-counter-declare|heuristic-bury|heuristic-first-trick|value-head-seat-team"
+#: the same model with the first trick played by the policy head
+#: (`leaf_first_trick`; the ``lpft`` rule of `pv_search_policy`)
+MODEL_POLICY_FIRST_TRICK = MODEL.replace("heuristic-first-trick", "policy-first-trick")
 PASS = "PASS"
 #: the bury every world's banker makes (stateless)
 _HEURISTIC = HeuristicBot()
@@ -146,10 +151,14 @@ def sample_declare_world(rnd, seat: int, rng: random.Random):
     return hands, kitty
 
 
-def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None):
+def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None, *,
+                             first_trick=True):
     """The engine position the value head scores for ``option`` in one world
     (module docstring, step 2): declare window closed, buried, first trick
-    played.  ``rnd`` is never mutated."""
+    played by ``policy`` (the heuristic).  ``first_trick=False`` returns the
+    position with the trick still to play (the banker to lead), for a caller
+    that plays it on a batch (`leaf_first_trick.PolicyFirstTrick`, the
+    ``lpft`` rule of `pv_search_policy`).  ``rnd`` is never mutated."""
     policy = default_finisher() if policy is None else policy
     world = copy.copy(rnd)
     world.hands = [list(h) for h in hands]
@@ -181,12 +190,14 @@ def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None):
     world.finalize_declare()
     banker = world.banker
     world.bury(banker, _HEURISTIC.decide_bury(world, banker))
-    for _ in range(4):
-        actor = world.turn
-        world.play(actor, policy.decide_play(world, actor))
+    if first_trick:
+        for _ in range(4):
+            actor = world.turn
+            world.play(actor, policy.decide_play(world, actor))
     world._determinized_world = True
     return world
 
 
-__all__ = ["SCHEMA", "MODEL", "PASS", "ValueDeclareError", "outcome_key", "candidate_outcomes",
+__all__ = ["SCHEMA", "MODEL", "MODEL_POLICY_FIRST_TRICK", "PASS", "ValueDeclareError",
+           "outcome_key", "candidate_outcomes",
            "decision_rng", "sample_declare_world", "declare_outcome_position"]

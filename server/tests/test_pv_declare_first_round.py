@@ -171,8 +171,8 @@ def test_vdef_token_follows_vd_and_asap_takes_the_declare_slot(production_packag
     assert asap.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-asap-r")
     awl, = names({**RELEASE42_ENV, "SHENGJI_PV_ADAPTIVE_WORLDS_LEADS": "1", ASAP: "1"})
     assert awl.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-asap-r")
-    assert pv.RULE_TOKENS[-3:] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
-                                   ("declare_asap_first", "asap"))
+    assert pv.RULE_TOKENS[-4:-1] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+                                     ("declare_asap_first", "asap"))   # then the value-leaf rule lpft
     assert pv.RULE_FLAGS["VALUE_DECLARE_EVERY_FIRST"] == "value_declare_every_first"
     assert pv.RULE_FLAGS["DECLARE_ASAP_FIRST"] == "declare_asap_first"
     vd = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, value_declare=True)

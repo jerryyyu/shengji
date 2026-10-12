@@ -6,6 +6,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
+def test_c12_wide_lead_row_names_the_frozen_candidate_intervention():
+    """Frozen v63c12rwla launcher: WIDE_LEAD_ADMISSION is candidate-only;
+    LEAD_ANCHOR is already on in both release-42 arms, not the intervention.
+    Prevent the previously repeated world-lead-anchor attribution error.
+    """
+    reg = json.loads((HERE / "registry.json").read_text())
+    row = next(s for s in reg["screens"] if s["id"] == "v63c12rwla")
+    assert "wide lead admission" in row["title"].lower()
+    assert "SHENGJI_PV_WIDE_LEAD_ADMISSION=1" in row["candidate"]
+    assert "SHENGJI_PV_WORLD_LEAD_ANCHOR" not in row["candidate"]
+
+
 def _load():
     spec = importlib.util.spec_from_file_location("build_v2", HERE / "build_v2.py")
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)

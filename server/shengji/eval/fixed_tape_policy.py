@@ -115,6 +115,7 @@ def release38_admission(root, seat, capture, *, check_budget=None):
     bot.cap, bot.candidates, bot.max_per_structure = 4000, 8, 2
     bot.admission_diversity, bot.lead_anchor = True, True
     bot.admit_forced_single, bot.adaptive_k = False, False
+    bot.finish_lead_admission = False  # Preserve the frozen release-38 ballot.
     anchor = HeuristicBot.decide_play(bot, rnd, seat)
     legal = PVSearchBot._legal(bot, rnd, seat, [anchor])
     actions = list(legal.actions)

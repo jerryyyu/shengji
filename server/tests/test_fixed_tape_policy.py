@@ -61,6 +61,7 @@ def test_release38_adapter_matches_actual_search_admission_boundary(kind, ties):
         bot._search(root, root.turn, anchor, 0)
     assert result['baseline_actions'] == observed
     assert result['admission_record'] == bot._admission_record()
+    assert 'finish_lead_admission_added' not in result['admission_record']
     assert len(observed) == min(8, len(capture['actions']))
     assert (root.hands, root.history, capture, random.getstate()) == before
     if kind == 'lead':

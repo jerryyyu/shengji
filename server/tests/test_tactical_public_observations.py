@@ -412,7 +412,8 @@ def test_diversity_can_admit_available_alternative_but_cannot_create_it(cases):
 
 
 @pytest.mark.parametrize("fill_seed", [0, 1])
-def test_real_pv_candidate_stage_keeps_pair_preserving_follow(cases, fill_seed):
+@pytest.mark.parametrize("finish_admission", [False, True])
+def test_real_pv_candidate_stage_keeps_pair_preserving_follow(cases, fill_seed, finish_admission):
     from shengji.ai.heuristic import HeuristicBot
     from shengji.engine.legal import validate_follow
     from shengji.harvest.legal import enumerate_legal
@@ -421,8 +422,13 @@ def test_real_pv_candidate_stage_keeps_pair_preserving_follow(cases, fill_seed):
     rnd = T.public_round(fx, fill_seed)
     anchor = HeuristicBot().decide_play(rnd, fx.seat)
     assert anchor == ["S6", "S6", "S8"]
-    # Actual PV candidate hook; no bot/model construction or sampled worlds.
-    legal = PVSearchBot._legal(SimpleNamespace(cap=4000), rnd, fx.seat, [anchor])
+    # Actual PV candidate hook; no model construction or sampled worlds.
+    # Use the real candidate-hook owner without constructing a model. The
+    # serving hook may call other PV methods; a namespace is not that owner.
+    candidate_bot = object.__new__(PVSearchBot)
+    candidate_bot.cap = 4000
+    candidate_bot.finish_lead_admission = finish_admission
+    legal = candidate_bot._legal(rnd, fx.seat, [anchor])
     assert legal.complete and legal.count == len(legal.actions) == 712
     # Independent small combinatorial oracle: actor is void in ordinary hearts.
     oracle = {tuple(sorted(cards)) for cards in combinations(fx.hand, 3)}

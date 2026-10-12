@@ -293,3 +293,70 @@ def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
     assert policy._tiebreak == {'base': True}
     assert policy._exact_lead['exact_lead_abandon_reason'] == 'soft_budget'
     assert policy._exact_lead['exact_lead_worlds_completed'] is None
+
+
+def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):
+    """#700 captured root 94121012:0 / round7 / trick11 / seat3.
+
+    Ordinary W64 sampler, restored refusal history and actual server commit.
+    Fresh diagnostic seed, NOT original RNG replay. Disable wall-clock deadlines
+    for deterministic correctness CI; real local budget witnesses live on #700.
+    """
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train.lead_root_capture import restore_with_ledger
+    from types import SimpleNamespace
+
+    # Replace this module's clock reference, not global time used by asyncio.
+    monkeypatch.setattr(pv, 'time', SimpleNamespace(perf_counter=lambda: 0.0))
+    packet = json.loads((Path(__file__).parent / 'fixtures/r44_joker_lead.json').read_text())
+    # Pin the captured release, not tomorrow's fly.toml.
+    env = dict(SHENGJI_PV_WORLDS='64', SHENGJI_PV_CANDIDATES='8',
+        SHENGJI_PV_CAP='4000', SHENGJI_PV_BATCH_SIZE='128',
+        SHENGJI_PV_ADMISSION_DIVERSITY='1', SHENGJI_PV_REFUSAL_CONSTRAINTS='1',
+        SHENGJI_PV_TIEBREAK_POINTS='1', SHENGJI_PV_LEAD_ANCHOR='1',
+        SHENGJI_PV_DOOMED_THROW_RESELECT='1', SHENGJI_PV_VALUE_DECLARE='1',
+        SHENGJI_PV_SERVING_BUDGET_SECONDS='3', SHENGJI_PV_BURY_ARM='hybrid',
+        SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2')
+
+    async def scenario():
+        records = []
+        for enabled in (False, True):
+            rnd, ledger = restore_with_ledger(packet)
+            assert len(ledger.refusals) == 1 and rnd.turn == 3
+            recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': str(pinned_production_package),
+                'SHENGJI_PV_SHA256': PACKAGE_SHA, 'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled))})
+            entries = pv.pv_registry_entries(**recipe)
+            name, = entries
+            if not enabled:
+                assert name == ('pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-'
+                                'radd86676-bury-hybrid-6c1fb26b80e6')
+            policy = entries[name](seed=941210121)
+            policy._refusals = ledger
+            game = Game(random.Random(7))
+            game.round = rnd
+            room = srv.Room(code='JOKER', game=game, bot=policy,
+                seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+            room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+            room._kitty_given = True
+            room.log_event = lambda *a, **kw: None
+            before = copy.deepcopy(rnd.hands)
+            prepared = await srv._paced_bot_step(room, 3, minimum_turn_seconds=0)
+            assert prepared is not None and rnd.hands == before
+            expected = ['BJ'] if enabled else ['BJ', 'S5', 'S8', 'SQ']
+            assert list(prepared.decision.cards) == expected
+            copied = prepared.decision.snapshot.bot_copy
+            record = copied.last_decision_record
+            assert record['work_complete'] and record['worlds'] == 64
+            if enabled:
+                assert record['exact_lead_status'] == 'complete'
+                assert record['exact_lead_worlds_completed'] == 64
+                assert record['value_means'][record['admitted'].index(['BJ'])] == 2.296875
+            assert srv._commit_bot_turn(room, prepared)
+            assert room.bot is copied and not srv._commit_bot_turn(room, prepared)
+            records.append((record, copied.sampler.rng.getstate()))
+        assert records[0][0]['admitted'] == records[1][0]['admitted']
+        assert records[0][0]['value_means'] == records[1][0]['exact_lead_base_value_means']
+        assert records[0][1] == records[1][1]
+
+    asyncio.run(scenario())

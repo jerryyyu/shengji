@@ -4,8 +4,11 @@ XMTJ's real eight-card late lead is a refused throw: this deliberately tests
 that admission is NOT permission to play all eight cards successfully.
 """
 import copy
+import asyncio
 import json
+import random
 import time
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +19,7 @@ from shengji.harvest.legal import resolve_lead
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_pv_search_serving import package  # noqa: F401
+from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
 
 
 def root():
@@ -154,3 +158,71 @@ def test_env_factory_identity_and_budget_fallback(package):
     assert 'finish_lead_admission' not in pv.recipe_payload(false)
     with pytest.raises(pv.PVSearchPolicyError):
         pv.pv_env_recipe({**env, 'SHENGJI_PV_FINISH_LEAD_ADMISSION': 'yes'})
+
+
+@pytest.fixture(params=['tiny', 'production'])
+def decision_package(request):
+    if request.param == 'tiny':
+        return request.getfixturevalue('package')
+    return str(request.getfixturevalue('pinned_production_package')), PACKAGE_SHA
+
+
+@pytest.mark.parametrize('expired', [False, True])
+def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_package, tmp_path, expired):
+    """Current serving flags/W64/bury wrapper and actual API consumer.
+
+    Tiny and hash-pinned production packages; not a strength comparison or
+    production-host latency measurement. CI's required package gate cannot skip.
+    """
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    path, sha = decision_package
+    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': path,
+                              'SHENGJI_PV_SHA256': sha,
+                              'SHENGJI_PV_FINISH_LEAD_ADMISSION': '1'})
+    if expired:
+        recipe['serving_budget_seconds'] = 1e-9
+    entries = pv.pv_registry_entries(**recipe)
+    name, = entries
+
+    async def scenario():
+        rnd = root()
+        policy = entries[name](seed=17)
+        direct = entries[name](seed=17)
+        expected = direct.decide_play(copy.deepcopy(rnd), rnd.turn)
+        accepted, _ = resolve_lead(rnd, rnd.turn, expected)
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='FINISH', game=game, bot=policy,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        events = []
+        room.log_event = lambda kind, **data: events.append((kind, data))
+        seat = rnd.turn
+        before = policy.sampler.rng.getstate()
+        hand_before = list(rnd.hands[seat])
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None and room.bot is policy
+        assert policy.sampler.rng.getstate() == before and rnd.hands[seat] == hand_before
+        copied = prepared.decision.snapshot.bot_copy
+        assert copied is not policy and copied.finish_lead_admission
+        assert isinstance(copied, pv.PVSearchBuryBot)
+        record = copied.last_decision_record
+        assert record['work_complete'] == (not expired)
+        if expired:
+            assert record['reason'] == 'budget' and copied.sampler.rng.getstate() == before
+        else:
+            assert sorted(hand_before) in [sorted(a) for a in record['admitted']]
+            assert record['worlds'] == 64
+            assert 'finish_lead_admission_added' in record
+        assert list(prepared.decision.cards) == expected
+        assert any(kind == 'model_search' for kind, _ in events)
+        assert srv._commit_bot_turn(room, prepared)
+        assert room.bot is copied and room.bot.finish_lead_admission
+        assert len(rnd.hands[seat]) == len(hand_before) - len(accepted)
+        assert not srv._commit_bot_turn(room, prepared)  # no duplicate commit
+
+    asyncio.run(scenario())

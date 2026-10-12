@@ -1694,6 +1694,26 @@
    "takeaway": "Estimated -0.0107; 95% CI [-0.0480, +0.0266], INCONCLUSIVE (2/5 windows); no promotion, no extension; no demonstrated gain with wla either.",
    "note": "SEALED 10-12 (LANE DONE 04:13:35Z); readout (Claude, one pass) #663 issuecomment-6117922371; digests posted on #663 before the read. Paired -0.010702 [-0.048021,+0.026617], SE 0.019040, MDE80 0.0533, tau 0.0251, Q 6.12 (4 df), I2 34.6%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas +0.0567, -0.0231, +0.0058, -0.0471, -0.0413. Package c12rout-66e3a06c.npz 66e3a06c31f0269aff15b388fa3bd75b4408f3adb32e18536709202954f35258 (epoch-08.pt e6784aa6); C12's test evaluation is deferred (25-30 GB prepare on the Mini). Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 f025150aa4691873e5725433151ff3c45d0f4c3dde8c2e507b23c9d0c31a1d13; result sha256 9005b9afd89096c6cff6a6a9222fc0242380014289621db39c37ee4dcd55115a; launcher sha256 8bc05680c8fca9909066540deafd9c6d746969418d44da00b2d44e62dc68acc5; predeclaration sha256 7dc2d7d7ec6364489d8a9ae59fe31bac3616f6d6edbb7783fa9bf1a2f1eee617; SHA256SUMS 84673ac46dd15aa98b54749bbed7989ac6967fd839af355bf6a420a65a601798. Archive ~/shengji-archive/2026-09-13/readouts/v63c12rwla-c12e8wla-vs-r42/."
   },
+{
+   "id": "v63c12v",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "perf",
+   "title": "C12 val_ce epoch 16 vs release 42",
+   "candidate": "C12 (gen-5 SMV3 recipe + runPVC1..10, 19/20 epochs: host memory kill at epoch 20; #663) val_ce selection epoch 16 (epoch-16.pt 4136494e) as package c12vout-edb1589a.npz on the release-42 search (W64/K8, div + rc + tb + la, dts, hybrid bury) vs release 42 as served. First-round deals. Perf tree claude-main-31 (c11a7d99). Third and last C12 package screen.",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; five-window first stage with the predeclared extension rule",
+   "seeds": "67060910 67160910 67260910 67360910 67460910 (perf)",
+   "confidence": 0.95,
+   "point": -0.013131,
+   "lo": -0.043673,
+   "hi": 0.01741,
+   "takeaway": "Estimated -0.0131; 95% CI [-0.0437, +0.0174], INCONCLUSIVE (2/5 windows); no promotion, no extension; no demonstrated gain vs release 42.",
+   "note": "SEALED 10-12 (LANE DONE 06:35:05Z); readout (Claude, one pass) #663 issuecomment-6119248471; digests posted on #663 before the read. Paired -0.013131 [-0.043673,+0.017410], SE 0.015582, MDE80 0.0437, tau 0.0000, Q 2.71 (4 df), I2 0.0%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas -0.0163, -0.0587, +0.0154, -0.0154, +0.0087. Package c12vout-edb1589a.npz edb1589ab549fb48861ce739a11b7335ee9f033d7eb68feeda3a6870a80e6656 (epoch-16.pt 4136494e); C12's test evaluation is deferred (25-30 GB prepare on the Mini). C12 closes with no demonstrated gain from any of its three screened packages (v63c12r, v63c12rwla, this lane); inconclusive is not equivalence; the package screens are not a PVC ablation; C12 was recovered at 19/20 epochs. Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 997850e9210eb3c1db36ceae764f8836eed5134e832287544662a2b277a912c5; result sha256 f70e5ad1b9fc1f06462699da344b0c2eff06da1cf15e4fe4be211d4500386ca7; launcher sha256 ccf68af238a70a8f5555df42400c706969f768f227b5aa7bf7bf1b8a5f66dc6d; predeclaration sha256 ef5554f26291f347c97806ee2782072d82bdfaab0c41626f2038ec1225bfcfa1; SHA256SUMS c7282b1ccfd74d6fb694ec374b9e53cd85e0e60ae2372bc024a79cec1389a20b. Archive ~/shengji-archive/2026-09-13/readouts/v63c12v-c12e16v-vs-r42/."
+  },
   {
    "id": "v57dts",
    "date": "2026-10-06",

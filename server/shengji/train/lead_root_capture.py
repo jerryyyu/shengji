@@ -8,9 +8,87 @@ import copy
 import json
 from collections import Counter
 from dataclasses import asdict, is_dataclass
+from contextlib import contextmanager
 
 from shengji.harvest.rebuild import round_from_setup, setup_from_round
 from shengji.ai.refusal import Refusal, RefusalLedger, on_record
+
+
+def finish_eligible(rnd, seat):
+    hand = rnd.hands[seat]
+    return (rnd.phase == 'play' and not rnd.trick.plays and 2 <= len(hand) <= 8
+            and len({rnd.ordering.eff_suit(c) for c in hand}) == 1)
+
+
+@contextmanager
+def observe_finish_pool(bot, rnd, seat):
+    """Observe the actual returned legal pool; never rerun enumeration/inference.
+
+    Unknown if the decision expires before returning a pool. This instrumentation
+    is collector-only and neither changes the factory class nor supplies actions.
+    """
+    evidence = {'eligible': finish_eligible(rnd, seat), 'present': None}
+    if not evidence['eligible'] or not hasattr(bot, '_legal'):
+        yield evidence
+        return
+    hand = tuple(sorted(rnd.hands[seat]))
+    original = bot._legal
+    had_own = '_legal' in vars(bot)
+    own = vars(bot).get('_legal')
+
+    def observed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        evidence.update(present=any(tuple(sorted(a)) == hand for a in result.actions),
+                        complete=result.complete, count=result.count)
+        return result
+
+    bot._legal = observed
+    try:
+        yield evidence
+    finally:
+        if had_own:
+            bot._legal = own
+        else:
+            del bot._legal
+
+
+def classify_finish_lead(row):
+    """Engine-only evidence, not counterfactual value or strength attribution.
+
+    True-deal refusal is hindsight, not information available to the bot. Missing
+    capture/admission fields remain unknown, including budget-fallback records.
+    """
+    from shengji.harvest.legal import forced_lead
+    rnd, _ = restore_with_ledger(row['replay'])
+    if rnd.phase != 'play' or rnd.trick.plays or rnd.turn != row['seat']:
+        raise ValueError('not the captured lead turn')
+    rec = row['replay'].get('decision') or {}
+    attempted = row.get('attempted', rec.get('played'))
+    if not attempted or (rec.get('played') is not None
+                         and sorted(attempted) != sorted(rec['played'])):
+        raise ValueError('attempted action drift')
+    eligible = finish_eligible(rnd, rnd.turn)
+    pool = row.get('finish_pool')
+    if pool is not None and pool.get('eligible') != eligible:
+        raise ValueError('finish eligibility drift')
+    present = None if pool is None else pool.get('present')
+    if present is not None and type(present) is not bool:
+        raise ValueError('invalid pool presence')
+    hand = sorted(rnd.hands[rnd.turn])
+    admitted = (rec.get('admitted') if rec.get('schema') == 'pv-search-decision-v1'
+                and rec.get('work_complete') is True else None)
+    in_admitted = (any(sorted(a) == hand for a in admitted)
+                   if eligible and isinstance(admitted, list) else None)
+    if present is False and in_admitted is True:
+        raise ValueError('admitted finish absent from captured pool')
+    forced = forced_lead(rnd, rnd.turn, hand) if eligible else None
+    return dict(eligible=eligible, hand_size=len(hand),
+                decision_schema=rec.get('schema'), work_complete=rec.get('work_complete'),
+                pool_present=present if eligible else None, admitted=in_admitted,
+                whole_hand_played=sorted(attempted) == hand,
+                whole_hand_refused_true_deal=(forced is not None) if eligible else None,
+                forced_component=forced,
+                ranking_or_horizon_error=None)
 
 
 def normalized(obj):

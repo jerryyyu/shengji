@@ -33,7 +33,8 @@ Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json] 
 import copy
 import argparse
 import json, os, random, sys, time
-from shengji.train.lead_root_capture import LeadCapture, normalized
+from shengji.train.lead_root_capture import LeadCapture, normalized, observe_finish_pool
+from contextlib import nullcontext
 import numpy as np
 from shengji.engine.game import Game
 from shengji.ai import env
@@ -287,7 +288,9 @@ def main(argv=None):
                     trick += 1
                     check()
                 started = time.perf_counter()
-                cards = bot.decide_play(rnd, seat)
+                with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
+                      else nullcontext(None)) as finish_pool:
+                    cards = bot.decide_play(rnd, seat)
                 decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
                 eligible = identity is not None or (rec and rec.get("work_complete") and bot._cap is not None
@@ -298,7 +301,8 @@ def main(argv=None):
                     row["replay"] = capture.capture(rnd, ledger=bot._refusals, decision=rec)
                     # Analysis mutates diagnostic fields; retain the actual decision first.
                     if identity is not None:
-                        row.update(collection=identity, attempted=list(cards), decision_seconds=decision_seconds)
+                        row.update(collection=identity, attempted=list(cards), decision_seconds=decision_seconds,
+                                   finish_pool=finish_pool)
                     else:
                         row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
                     out.write(json.dumps(row) + "\n")

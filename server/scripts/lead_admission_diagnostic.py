@@ -33,7 +33,7 @@ Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json] 
 import copy
 import argparse
 import json, os, random, sys, time
-from shengji.train.lead_root_capture import LeadCapture, normalized, observe_finish_pool
+from shengji.train.lead_root_capture import LeadCapture, normalized, observe_finish_pool, observe_throw_verdicts
 from contextlib import nullcontext
 import numpy as np
 from shengji.engine.game import Game
@@ -289,7 +289,9 @@ def main(argv=None):
                     check()
                 started = time.perf_counter()
                 with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
-                      else nullcontext(None)) as finish_pool:
+                      else nullcontext(None)) as finish_pool, (
+                      observe_throw_verdicts(bot) if identity is not None and is_lead
+                      else nullcontext(None)) as throw_verdicts:
                     cards = bot.decide_play(rnd, seat)
                 decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
@@ -302,7 +304,7 @@ def main(argv=None):
                     # Analysis mutates diagnostic fields; retain the actual decision first.
                     if identity is not None:
                         row.update(collection=identity, attempted=list(cards), decision_seconds=decision_seconds,
-                                   finish_pool=finish_pool)
+                                   finish_pool=finish_pool, throw_verdicts=throw_verdicts)
                     else:
                         row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
                     out.write(json.dumps(row) + "\n")

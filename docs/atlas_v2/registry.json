@@ -1671,7 +1671,7 @@
    "point": -0.01303,
    "lo": -0.045813,
    "hi": 0.019753,
-   "takeaway": "Estimated -0.0130; 95% CI [-0.0458, +0.0198], INCONCLUSIVE (2/5 windows); no promotion, no extension; flat vs release 42.",
+   "takeaway": "Estimated -0.0130; 95% CI [-0.0458, +0.0198], INCONCLUSIVE (2/5 windows); no promotion, no extension; no demonstrated gain vs release 42.",
    "note": "SEALED 10-12 (LANE DONE 01:36:41Z); readout (Claude, one pass) #663 issuecomment-6116292809; digests posted on #663 before the read. Paired -0.013030 [-0.045813,+0.019753], SE 0.016726, MDE80 0.0469, tau 0.0151, Q 4.78 (4 df), I2 16.3%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas +0.0308, -0.0481, +0.0279, -0.0250, -0.0423. Package c12rout-66e3a06c.npz 66e3a06c31f0269aff15b388fa3bd75b4408f3adb32e18536709202954f35258 (epoch-08.pt e6784aa6); C12's test evaluation is deferred (25-30 GB prepare on the Mini). Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 6681116e05f2bcb57422d2c9259b7993e265d784a8456a5bb68253c6390aeabe; result sha256 5ea1fd22461d27fd8154e7825fe5c1c097d555913ef6da6959df3ff762b17857; launcher sha256 b89002bda8b30ff10c915f3d0f75fe099558e3607a8d0f14d3234a22ad469a2e; predeclaration sha256 c5f686617d547993dc99ddbf13b12300fe90520555ef4839af6b40ab31c6162d; SHA256SUMS d6cba771236fbef6425ce749173f263a3e61b40d69be49312760b5aed78cea04. Archive ~/shengji-archive/2026-09-13/readouts/v63c12r-c12e8-vs-r42/."
   },
 {
@@ -1679,8 +1679,8 @@
    "date": "2026-10-12",
    "status": "sealed",
    "box": "perf",
-   "title": "C12 rank-regret epoch 8 + lead anchor vs release 42",
-   "candidate": "As v63c12r (C12 rank-regret epoch 8, package c12rout-66e3a06c.npz, release-42 search) with SHENGJI_PV_WORLD_LEAD_ANCHOR=1 (wla, #918) on the candidate, vs release 42 as served. First-round deals. Perf tree claude-main-31 (c11a7d99).",
+   "title": "C12 rank-regret epoch 8 + wide lead admission vs release 42",
+   "candidate": "As v63c12r (C12 rank-regret epoch 8, package c12rout-66e3a06c.npz, release-42 search) with SHENGJI_PV_WIDE_LEAD_ADMISSION=1 (wla: wide lead admission, 32 lead candidates instead of 8; not the separate la lead-anchor rule) on the candidate, vs release 42 as served. First-round deals. Perf tree claude-main-31 (c11a7d99).",
    "comparator": "release 42 as served",
    "vs": 42,
    "form": "served bot",
@@ -1691,7 +1691,7 @@
    "point": -0.010702,
    "lo": -0.048021,
    "hi": 0.026617,
-   "takeaway": "Estimated -0.0107; 95% CI [-0.0480, +0.0266], INCONCLUSIVE (2/5 windows); no promotion, no extension; flat vs release 42 with wla too.",
+   "takeaway": "Estimated -0.0107; 95% CI [-0.0480, +0.0266], INCONCLUSIVE (2/5 windows); no promotion, no extension; no demonstrated gain with wla either.",
    "note": "SEALED 10-12 (LANE DONE 04:13:35Z); readout (Claude, one pass) #663 issuecomment-6117922371; digests posted on #663 before the read. Paired -0.010702 [-0.048021,+0.026617], SE 0.019040, MDE80 0.0533, tau 0.0251, Q 6.12 (4 df), I2 34.6%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas +0.0567, -0.0231, +0.0058, -0.0471, -0.0413. Package c12rout-66e3a06c.npz 66e3a06c31f0269aff15b388fa3bd75b4408f3adb32e18536709202954f35258 (epoch-08.pt e6784aa6); C12's test evaluation is deferred (25-30 GB prepare on the Mini). Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 f025150aa4691873e5725433151ff3c45d0f4c3dde8c2e507b23c9d0c31a1d13; result sha256 9005b9afd89096c6cff6a6a9222fc0242380014289621db39c37ee4dcd55115a; launcher sha256 8bc05680c8fca9909066540deafd9c6d746969418d44da00b2d44e62dc68acc5; predeclaration sha256 7dc2d7d7ec6364489d8a9ae59fe31bac3616f6d6edbb7783fa9bf1a2f1eee617; SHA256SUMS 84673ac46dd15aa98b54749bbed7989ac6967fd839af355bf6a420a65a601798. Archive ~/shengji-archive/2026-09-13/readouts/v63c12rwla-c12e8wla-vs-r42/."
   },
   {

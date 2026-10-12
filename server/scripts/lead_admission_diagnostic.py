@@ -279,6 +279,7 @@ def main(argv=None):
             capture = LeadCapture(rnd)
             trick = 0
             while rnd.phase == "play":
+                check()  # do not start another decision after the cooperative deadline
                 seat = rnd.turn
                 bot = bots[seat]
                 if identity is None:
@@ -308,6 +309,8 @@ def main(argv=None):
                     out.write(json.dumps(row) + "\n")
                     out.flush()
                     n += 1
+                    if n >= MAXPOS:
+                        raise Yield("max_positions")  # captured root is durable; no further play
                 rnd.play(seat, cards)
                 capture.committed(rnd, seat, cards)
                 env.observe_committed_play(rnd, bots)

@@ -322,6 +322,7 @@ def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
     (0.25, 1, True, 'post_selection_override'),
 ])
 def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, delta, winner, override, kind):
+    pytest.importorskip('torch')  # TimedPolicy imports training code; server CI is torch-free.
     from shengji.train import pv_exact_endgame as exact
     from shengji.train.search_screen import TimedPolicy
     rnd = root(2)

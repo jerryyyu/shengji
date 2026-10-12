@@ -8,6 +8,7 @@ A NEW optional stage adds a `StageCase` to ``CASES`` below.
 """
 import copy
 import time
+import numpy as np
 
 import pytest
 
@@ -91,7 +92,29 @@ def _vd_abandon(bot):
     return record["fallback_reason"], record["fallback_error"]
 
 
+def _exact_run(deadline, on=True):
+    from test_pv_finish_lead import root, bot as lead_bot
+    rnd = root(2)
+    bot = lead_bot(False, exact_lead_endgame=True)
+    actions = [[rnd.hands[rnd.turn][0]]]
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    base = (np.array([-100.0]), 1, 0, actions[0], 1)
+    result = (bot._exact_lead_decision(rnd, rnd.turn, actions, worlds,
+              time.perf_counter(), deadline, [0.0], base) if on else base)
+    return bot, (result[0].tolist(), list(result[3]))
+
+
+def _exact_abandon(bot):
+    record = bot._exact_lead
+    if record['exact_lead_status'] != 'abandoned':
+        return None
+    return record['exact_lead_abandon_reason'], record['exact_lead_abandon_error']
+
+
 CASES = [
+    StageCase("exact_lead_endgame", run=_exact_run,
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
     StageCase("adaptive_worlds", run=_aw_run,
               base=lambda: _aw_run(Deadline(), adaptive=False)[1],
               abandon=_aw_abandon, abandons_errors=True),

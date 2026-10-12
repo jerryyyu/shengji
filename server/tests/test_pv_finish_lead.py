@@ -22,11 +22,11 @@ from test_pv_search_serving import package  # noqa: F401
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
 
 
-def root():
+def root(cards=8):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     rnd = rebuild_round(events)
     for event in (e for e in events if e['e'] == 'play'):
-        if not rnd.trick.plays and len(rnd.hands[rnd.turn]) == 8:
+        if not rnd.trick.plays and len(rnd.hands[rnd.turn]) == cards:
             return rnd
         rnd.play(event['seat'], event['attempted'])
     raise AssertionError('fixture root missing')
@@ -168,7 +168,8 @@ def decision_package(request):
 
 
 @pytest.mark.parametrize('expired', [False, True])
-def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_package, tmp_path, expired):
+@pytest.mark.parametrize('candidate', ['finish', 'exact'])
+def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_package, tmp_path, expired, candidate):
     """Current serving flags/W64/bury wrapper and actual API consumer.
 
     Tiny and hash-pinned production packages; not a strength comparison or
@@ -179,16 +180,17 @@ def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_p
 
     path, sha = decision_package
     env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    flag = 'SHENGJI_PV_FINISH_LEAD_ADMISSION' if candidate == 'finish' else 'SHENGJI_PV_EXACT_LEAD_ENDGAME'
     recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': path,
                               'SHENGJI_PV_SHA256': sha,
-                              'SHENGJI_PV_FINISH_LEAD_ADMISSION': '1'})
+                              flag: '1'})
     if expired:
         recipe['serving_budget_seconds'] = 1e-9
     entries = pv.pv_registry_entries(**recipe)
     name, = entries
 
     async def scenario():
-        rnd = root()
+        rnd = root(8 if candidate == 'finish' else 2)
         policy = entries[name](seed=17)
         direct = entries[name](seed=17)
         expected = direct.decide_play(copy.deepcopy(rnd), rnd.turn)
@@ -208,21 +210,86 @@ def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_p
         assert prepared is not None and room.bot is policy
         assert policy.sampler.rng.getstate() == before and rnd.hands[seat] == hand_before
         copied = prepared.decision.snapshot.bot_copy
-        assert copied is not policy and copied.finish_lead_admission
+        attr = 'finish_lead_admission' if candidate == 'finish' else 'exact_lead_endgame'
+        assert copied is not policy and getattr(copied, attr)
         assert isinstance(copied, pv.PVSearchBuryBot)
         record = copied.last_decision_record
         assert record['work_complete'] == (not expired)
         if expired:
             assert record['reason'] == 'budget' and copied.sampler.rng.getstate() == before
         else:
-            assert sorted(hand_before) in [sorted(a) for a in record['admitted']]
             assert record['worlds'] == 64
-            assert 'finish_lead_admission_added' in record
+            if candidate == 'finish':
+                assert sorted(hand_before) in [sorted(a) for a in record['admitted']]
+                assert 'finish_lead_admission_added' in record
+            else:
+                assert record['exact_lead_status'] == 'complete'
+                assert record['exact_lead_worlds_completed'] == 64
         assert list(prepared.decision.cards) == expected
         assert any(kind == 'model_search' for kind, _ in events)
         assert srv._commit_bot_turn(room, prepared)
-        assert room.bot is copied and room.bot.finish_lead_admission
+        assert room.bot is copied and getattr(room.bot, attr)
         assert len(rnd.hands[seat]) == len(hand_before) - len(accepted)
         assert not srv._commit_bot_turn(room, prepared)  # no duplicate commit
 
     asyncio.run(scenario())
+
+
+def test_exact_flag_identity_and_incompatible_recipes(package):
+    path, sha = package
+    env = dict(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha)
+    off = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    explicit_off = pv.pv_registry_entries(**pv.pv_env_recipe({**env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME':'0'}))
+    assert list(off) == list(explicit_off)
+    assert 'exact_lead_endgame' not in pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256=sha))
+    on = pv.pv_registry_entries(**pv.pv_env_recipe({**env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME':'1'}))
+    name, = on
+    assert '-ele-' in name and on[name](seed=1).exact_lead_endgame
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.pv_env_recipe({**env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME':'yes'})
+    for other in ('adaptive_worlds', 'adaptive_worlds_leads', 'oracle_worlds'):
+        with pytest.raises(pv.PVSearchPolicyError, match='excludes'):
+            pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256=sha,
+                                               exact_lead_endgame=True, **{other: True}))
+
+
+def test_exact_failure_preserves_completed_base_and_selection_state(package, monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    path, sha = package
+    rnd = root(2)
+    off = pv.make_pv_search_bot(path, sha256=sha, worlds=2, candidates=8, seed=17)
+    on = pv.make_pv_search_bot(path, sha256=sha, worlds=2, candidates=8, seed=17,
+                             exact_lead_endgame=True)
+    expected = off.decide_play(copy.deepcopy(rnd), rnd.turn)
+    def fail(*args, **kwargs):
+        on._tiebreak = {'corrupted': True}
+        raise RuntimeError('incomplete exact pass')
+    monkeypatch.setattr(exact, 'exact_lead_means', fail)
+    actual = on.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert actual == expected and on.sampler.rng.getstate() == off.sampler.rng.getstate()
+    assert on.last_decision_record['work_complete']
+    assert on.last_decision_record['exact_lead_status'] == 'abandoned'
+    assert on.last_decision_record['value_means'] == off.last_decision_record['value_means']
+    assert on._tiebreak == off._tiebreak
+
+
+def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+    base = (np.array([-2.0]), 1, 0, [rnd.hands[rnd.turn][0]], 1)
+    policy._tiebreak = {'base': True}
+    def expire(rnd, seat, actions, worlds, leaf, check, **kwargs):
+        policy._tiebreak = {'partial': True}
+        clock[0] = 3.0
+        check()
+        raise AssertionError('expired exact pass continued')
+    monkeypatch.setattr(exact, 'exact_lead_means', expire)
+    result = policy._exact_lead_decision(rnd, rnd.turn, [base[3]],
+        [(copy.deepcopy(rnd.hands), list(rnd.buried))], 0.0, None, [0.0], base)
+    assert result is base
+    assert policy._tiebreak == {'base': True}
+    assert policy._exact_lead['exact_lead_abandon_reason'] == 'soft_budget'
+    assert policy._exact_lead['exact_lead_worlds_completed'] is None

@@ -437,7 +437,8 @@ RETAIN_ALL_LEAD_PAIRS_MIN_CAP = 13
 #: (``production`` is their baseline, not a widening)
 WIDEN_VARIANTS = tuple(v for v in ballot_capture.VARIANTS if v != "production")
 COUNT_KEYS = ("rounds", "decisions", "bury_records", "searched", "tractor_locked",
-              "single_candidate", "explore_opportunities", "explore_fired",
+              "single_candidate", "doomed_throw_fallback",
+              "explore_opportunities", "explore_fired",
               "explore_added", "explore_played", "explore_pool_skipped",
               "widen_decisions", "widen_added", "widen_played",
               "short_searches", "zero_world", "incomplete_work", "failed_throws",
@@ -1482,6 +1483,24 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         allocation = point_mass_allocation("single_candidate")
         preference = point_mass_preference()
         action_values = None
+    elif rec.get("doomed_throw_reselect_fallback_forced"):
+        # pv-search ``doomed_throw_reselect``, all-excluded fallback: every
+        # admitted candidate was a doomed throw or its forced alias, so the
+        # producer kept ``selected_index`` = the throw and played its forced
+        # component (the module docstring's RECORD SEMANTICS).  The component
+        # is often not admitted, so it cannot be mapped onto the priced ballot;
+        # the row is the k=1 point mass of what was played, like a tractor lock.
+        if action_key(rec["played"]) != action_key(action):
+            raise TrajectoryError("decision record played a different action")
+        stats["doomed_throw_fallback"] += 1
+        ballot = [list(action)]
+        legal = enumerate_legal(rnd, seat, cap=cap, must_include=[action])
+        allocation = point_mass_allocation("doomed_throw_fallback")
+        preference = point_mass_preference()
+        action_values = None
+        production_ballot = None
+        exploration = None                 # a draw is never on this one-row ballot
+        widening = None
     elif rec.get("schema") == "pv-search-decision-v1":
         stats["searched"] += 1
         allocation, preference, action_values = pv_fields_from_record(rec, ballot)

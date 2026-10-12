@@ -445,6 +445,56 @@ def test_all_excluded_falls_back_to_the_forced_component(case):
     assert record["doomed_throw_reselect_to"] == " ".join(d["played"])
 
 
+@pytest.mark.parametrize("case", ["alias", "two-throws"])
+def test_the_all_excluded_fallback_record_harvests_as_a_point_mass_row(case):
+    """The consumer side of the fallback (#663, runVD1 lost 989/16000 clusters to
+    it): ``selected_index`` is the throw and ``played`` its forced component, so
+    ``played`` maps to NO admitted position.  The harvest no longer tries: the
+    row is the k=1 point mass of the played cards (``doomed_throw_fallback``,
+    the ``tractor_lock`` / ``single_candidate`` shape), on a legal set that
+    includes them, with no priced ballot, draw or widening.  A fallback record
+    whose ``played`` is not the harvested action is still refused."""
+    from collections import Counter
+    from types import SimpleNamespace
+    from shengji.harvest import trajectory
+    from shengji.harvest.common import action_key
+    key = {"alias": "SJ", "two-throws": "CJ"}[case]
+    d = DECISIONS[key]
+    rnd = yjqj(d["plays"])
+    worlds = draw(rnd, 0)
+    admitted = {"alias": [["S4", "S4", "SJ"], ["SJ"]],
+                "two-throws": [["CA", "CJ", "CQ"], ["C3", "CJ"]]}[case]
+    bot = served(doomed_throw_reselect=True, **DTR_RULES)
+    winner, played = tail(bot, rnd, d, worlds, admitted=admitted, means=[0.5, 0.4],
+                          priors=[0.0, 0.0])
+    # the record `PVSearchBot._search` publishes for this decision (its fields
+    # the harvest reads), with the rule's record as the producer leaves it
+    record = {"schema": pv.RECORD_SCHEMA, "worlds": len(worlds), "admitted": admitted,
+              "admitted_indices": [3, 7], "selected_index": [3, 7][winner],
+              "value_means": [0.5, 0.4], "policy_log_odds_admitted": [0.0, 0.0],
+              "played": list(played), "work_complete": True, **bot._doomed_throw_record()}
+    assert record["doomed_throw_reselect_fallback_forced"] is True
+    assert action_key(record["admitted"][winner]) != action_key(record["played"])
+    stub = SimpleNamespace(last_decision_record=record, last_ballot=admitted, last_legal=None,
+                           last_exploration={"rate": 1.0, "added": [], "pool_count": 0},
+                           last_widening=None, last_production_ballot=admitted,
+                           production_probe=None, WIDEN=())
+    stats = Counter()
+    fields = trajectory._play_fields({}, "run", 0, 0, rnd, SEAT, [], list(played), stub, 256, stats)
+    assert stats == Counter({"doomed_throw_fallback": 1})
+    assert fields["ballot"] == [list(played)] == [fields["action"]]
+    assert fields["allocation"] == trajectory.point_mass_allocation("doomed_throw_fallback")
+    assert fields["preference"] == trajectory.point_mass_preference()
+    assert fields["action_values"] is None and fields["exploration"] is None
+    assert fields["production_ballot"] is None and "widening" not in fields
+    assert action_key(played) in {action_key(a) for a in fields["legal_actions"]}
+    assert fields["legal_actions_complete"] == (fields["legal_actions_count"] == len(fields["legal_actions"]))
+    # the fail-closed check survives: played != the harvested action is refused
+    with pytest.raises(trajectory.TrajectoryError, match="played a different action"):
+        trajectory._play_fields({}, "run", 0, 0, rnd, SEAT, [], admitted[winner], stub, 256,
+                                Counter())
+
+
 class Expire:
     """A serving deadline that expires at its ``at``-th check."""
 

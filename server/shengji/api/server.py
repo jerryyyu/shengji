@@ -32,6 +32,27 @@ from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
 
 
+#: the pv-search DIAGNOSTIC flags the game server refuses outright (#707 S16:
+#: perfect-information worlds exist only inside the screen harness)
+_PV_DIAGNOSTIC_FLAGS = ("SHENGJI_PV_ORACLE_WORLDS",)
+
+
+def _refuse_pv_diagnostics(environ=None) -> None:
+    """The served process REFUSES a pv-search diagnostic flag at import, before
+    any room can build a bot: ``SHENGJI_PV_ORACLE_WORLDS`` prices plays over
+    the TRUE hidden hands and belongs to `train.cwv_shortlist_screen` only
+    (`train.pv_search_policy`: the registry factory refuses it too, without
+    the harness's hook).  Unset, empty and ``0`` are off; anything else raises."""
+    env = os.environ if environ is None else environ
+    for flag in _PV_DIAGNOSTIC_FLAGS:
+        if env.get(flag) not in (None, "", "0"):
+            raise RuntimeError(f"{flag}={env.get(flag)!r}: a screen-harness diagnostic, "
+                               "never served; unset it before starting the game server")
+
+
+_refuse_pv_diagnostics()
+
+
 def _fast_active() -> bool:
     """True only if the compiled decompose is the one in use."""
     try:

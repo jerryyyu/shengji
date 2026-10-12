@@ -272,6 +272,42 @@ def _policy_identity(bot) -> dict:
     return identity
 
 
+#: the pv-search DIAGNOSTIC this harness alone can switch on (#707 S16): with
+#: ``SHENGJI_PV_ORACLE_WORLDS=1`` in the environment that registered the
+#: ``-orc`` arm, the arm bot is built with `oracle_true_deal` as its hook
+ORACLE_WORLDS_FLAG = "SHENGJI_PV_ORACLE_WORLDS"
+
+
+def oracle_true_deal(rnd, seat):
+    """The screen harness's perfect-information hook (`PVSearchBot.bind_oracle_deal`):
+    the TRUE deal of the round this harness owns -- the four hands as they
+    stand and the kitty -- for the pv-search oracle diagnostic.  The harness
+    drives the round (`ai.env.play_prepared_round`) and hands the bot the
+    very `Round` it owns, so the deal is read here, on the harness's side of
+    the boundary, and never by the bot.  Refuses anything but a play-phase
+    round whose turn is the asking seat."""
+    if getattr(rnd, "phase", None) != "play" or rnd.turn != seat:
+        raise ValueError("the oracle hook answers only the seat on turn of a play-phase round")
+    return [list(hand) for hand in rnd.hands], list(rnd.buried)
+
+
+def oracle_worlds_requested(environ=None) -> bool:
+    """Whether the environment asked for the oracle arm (``0``/empty/unset: no)."""
+    env = os.environ if environ is None else environ
+    raw = env.get(ORACLE_WORLDS_FLAG)
+    if raw in (None, "", "0"):
+        return False
+    if raw != "1":
+        raise ValueError(f"{ORACLE_WORLDS_FLAG} must be 0 or 1, not {raw!r}")
+    return True
+
+
+def _arm_policy_kwargs(config: dict) -> dict:
+    """The registry build arguments beyond ``seed`` for ``--arm policy``: the
+    oracle hook when the config recorded the diagnostic, nothing otherwise."""
+    return {"oracle_deal": oracle_true_deal} if config.get("oracle_worlds") else {}
+
+
 def make_side(config: dict, side: str, seed: int):
     if (config.get("hybrid_bury")
             and (config["arm"] != "learned" or config.get("baseline") not in
@@ -293,7 +329,7 @@ def make_side(config: dict, side: str, seed: int):
         # Workers register the name from the SHENGJI_* environment at import, exactly
         # as the game server does; the identity recorded at configuration time must
         # match what the worker builds.
-        bot = make_bot(config["arm_policy"], seed=seed)
+        bot = make_bot(config["arm_policy"], seed=seed, **_arm_policy_kwargs(config))
         identity = _policy_identity(bot)
         if identity != config["arm_policy_identity"]:
             raise ValueError("registry policy identity changed between configuration and worker")
@@ -453,7 +489,7 @@ def _recipe(config):
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
                 "hybrid_bury", "corrected_rollout", "wide_tail", "prior",
-                "arm_policy", "arm_policy_identity", "round_kind"):
+                "arm_policy", "arm_policy_identity", "round_kind", "oracle_worlds"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -572,6 +608,9 @@ def _arm_description(config):
         return "production identity control"
     if arm == "policy":
         identity = config["arm_policy_identity"]
+        if config.get("oracle_worlds"):
+            return (f"DIAGNOSTIC registry policy {config['arm_policy']} ({identity['bot_class']}; "
+                    "oracle worlds: the true deal, never served)")
         return f"served registry policy {config['arm_policy']} ({identity['bot_class']})"
     raise ValueError(f"unsupported CWV shortlist arm: {arm!r}")
 
@@ -913,7 +952,11 @@ def _run_screen(args, trump_ranks):
     if args.baseline != "production":
         config["baseline"] = args.baseline
     if args.arm == "policy":
-        probe = make_bot(args.arm_policy, seed=0)
+        if oracle_worlds_requested():
+            # the diagnostic (#707 S16): recorded in the receipt, and every
+            # worker builds the arm with the harness hook (`make_side`)
+            config["oracle_worlds"] = True
+        probe = make_bot(args.arm_policy, seed=0, **_arm_policy_kwargs(config))
         config["arm_policy"] = args.arm_policy
         config["arm_policy_identity"] = _policy_identity(probe)
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,

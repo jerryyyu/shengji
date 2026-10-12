@@ -340,6 +340,35 @@ and ``k``) and the bury segment of the name gains ``-bwv`` after the arm
 (``...-bury-hybrid-bwv-<12 hex>``); the play digest ``-r<recipe8>`` is untouched.
 Off, it is absent from the identity, the bot's instance state and every record,
 so every existing name and every decision are unchanged.
+
+DIAGNOSTIC ONLY, never served (#707 S16, the perfect-information ceiling), OFF
+BY DEFAULT: ``SHENGJI_PV_ORACLE_WORLDS=1`` (token ``orc``, the last rule token
+after ``lpft``; enters the recipe digest) replaces the W sampled completions of
+the hidden hands with ONE world, the TRUE deal (the other three hands as dealt
+and the kitty), for every PLAY decision: `_worlds` returns exactly that world,
+``attempts`` 1, the sampler's RNG untouched, and the same search (admission,
+value leaves, selection, the doomed-throw rules, the tree) runs over it.  Only
+the play decisions are covered: the value declaration and the bury leaves draw
+through their own samplers (`value_declare.sample_declare_world`,
+`cwv_bury`) and are unchanged.  One world is sufficient: every consumer
+reduces with ``sums / len(worlds)``, the tree visits ``min(len(worlds), ..)``
+and ``adaptive_worlds`` needs two worlds to trigger, so the two adaptive rules
+are refused with the oracle (they could never act).  A screen of this arm
+against release 44 bounds how much of the remaining strength gap is
+information (belief) rather than evaluation.
+
+Privacy: the true hands reach the bot ONLY through the screen harness's hook
+(`PVSearchBot.bind_oracle_deal`, installed by `cwv_shortlist_screen.make_side`
+from `cwv_shortlist_screen.oracle_true_deal`); the bot itself never reads
+another seat's hand off a `Round`.  With the rule on and no hook bound the
+bot REFUSES (`OracleWorldsError`) -- before the serving fallback, which never
+absorbs an oracle error, so no decision silently degrades to the heuristic.
+Serving refuses it: `make_pv_search_bot` and the registry factory raise
+without the harness's ``oracle_deal`` (the game server's `make_bot(name)`
+passes none), `api.server` refuses the environment flag at import, and the
+production package test (`SHENGJI_REQUIRE_PV_PACKAGE=1`) runs without it.
+Off, the key is absent from the payload and `_worlds` is exactly production's
+draw.  Rule token order with it: ..., vdef, asap, lpft, orc.
 """
 from __future__ import annotations
 
@@ -476,20 +505,26 @@ _BURY_WIDE_VALUE_NO_EFFECT = ("bury_wide_value needs a model bury arm, hybrid or
                               "(SHENGJI_PV_BURY_WIDE_VALUE=1 with SHENGJI_PV_BURY_ARM=heuristic|mc)")
 _BURY_WIDE_K_REQUIRES = ("bury_wide_k needs bury_wide_value "
                          "(SHENGJI_PV_BURY_WIDE_K needs SHENGJI_PV_BURY_WIDE_VALUE=1)")
+#: the DIAGNOSTIC perfect-information rule (module docstring; #707 S16): the
+#: play worlds are the one true deal, supplied by the screen harness's hook;
+#: never served
+ORACLE_WORLDS_RULE = {"ORACLE_WORLDS": "oracle_worlds"}
+ORACLE_WORLDS_DEFAULTS = dict(oracle_worlds=False)
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
 #: scope, the doomed-throw re-select, the value declaration, its first-round
-#: gate, the model-free first-round declaration, the policy-played value leaf):
+#: gate, the model-free first-round declaration, the policy-played value leaf,
+#: the diagnostic oracle worlds):
 #: div, fs, rc, rcec, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
-#: asap, lpft
+#: asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
-              **FINISH_LEAD_RULE}
+              **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"), ADAPTIVE_K_TOKEN,
@@ -504,8 +539,17 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("value_declare", "vd"),
                                                    ("value_declare_every_first", "vdef"),
                                                    ("declare_asap_first", "asap"),
-                                                   ("leaf_policy_first_trick", "lpft"))
+                                                   ("leaf_policy_first_trick", "lpft"),
+                                                   ("oracle_worlds", "orc"))
 ENV_PREFIX = "SHENGJI_PV_"
+_ORACLE_NOT_SERVED = ("oracle_worlds is a screen-harness diagnostic and is never served: "
+                      "SHENGJI_PV_ORACLE_WORLDS=1 needs the harness's true-deal hook "
+                      "(cwv_shortlist_screen passes oracle_deal=; the game server never does)")
+_ORACLE_HOOK_WITHOUT_RULE = ("oracle_deal is the oracle_worlds hook; this recipe has the rule "
+                             "off (SHENGJI_PV_ORACLE_WORLDS unset)")
+_ORACLE_ADAPTIVE_EXCLUSIVE = ("oracle_worlds and the adaptive-worlds rules are exclusive: one "
+                              "true world can never trigger them (SHENGJI_PV_ORACLE_WORLDS=1 "
+                              "with SHENGJI_PV_ADAPTIVE_WORLDS=1 or _ADAPTIVE_WORLDS_LEADS=1)")
 _LEAF_POLICY_NO_EFFECT = ("leaf_policy_first_trick needs a value leaf it changes: value_declare "
                           "or a hybrid/value bury arm (SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1 "
                           "without SHENGJI_PV_VALUE_DECLARE=1 or SHENGJI_PV_BURY_ARM=hybrid|value)")
@@ -545,6 +589,13 @@ class PVSearchPolicyError(RuntimeError):
 
 class PVSearchBudgetExceeded(PVSearchPolicyError):
     """The cooperative play budget expired at a bounded boundary."""
+
+
+class OracleWorldsError(PVSearchPolicyError):
+    """The diagnostic oracle (module docstring) cannot supply the true deal: no
+    harness hook is bound, or the hook's deal fails the world contract.  NEVER
+    absorbed by the serving fallback: a diagnostic that silently played the
+    heuristic would measure nothing."""
 
 
 def _serving_budget(value):
@@ -640,6 +691,9 @@ class PVSearchConfig:
     # needs ``value_declare`` or a hybrid/value bury arm, checked where the arm is
     # known: the constructors and the registry); the same contract
     leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
+    # DIAGNOSTIC ONLY (module docstring, #707 S16): the play worlds are the one
+    # true deal from the screen harness's hook; never served; the same contract
+    oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
 
 
 def _check_value_declare_params(worlds, margin):
@@ -693,6 +747,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                                   "(SHENGJI_PV_DOOMED_THROW_RESELECT=1 with SHENGJI_PV_TREE_SIMS)")
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
+    if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
+        raise PVSearchPolicyError(_ORACLE_ADAPTIVE_EXCLUSIVE)
+    if config.oracle_worlds:
+        # the digest says what the one world is; a reader never has to infer it
+        payload["oracle_worlds_information"] = "true-deal"
     if config.adaptive_worlds or config.adaptive_worlds_leads:
         if config.tree is not None:
             # the tree reads the PV pass's W x K matrix and re-selects on it; a
@@ -858,6 +917,11 @@ class PVSearchBot(PolicyValueBot):
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
     leaf_policy_first_trick = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
+    #: the diagnostic oracle (module docstring) and its harness hook: a callable
+    #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
+    #: screen harness); None = unbound, and an oracle bot then refuses to play
+    oracle_worlds = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
+    _oracle_deal = None
     #: the bury arm a subclass binds BEFORE `__init__` (`PVSearchBuryBot`), so the
     #: leaf rule's effect check knows whether a bury leaf exists; None = no bury arm
     _leaf_bury_arm = None
@@ -948,6 +1012,14 @@ class PVSearchBot(PolicyValueBot):
             if not config.value_declare and self._leaf_bury_arm not in BURY_MODEL_ARMS:
                 raise PVSearchPolicyError(_LEAF_POLICY_NO_EFFECT)
             self.leaf_policy_first_trick = True
+        if type(config.oracle_worlds) is not bool:
+            raise PVSearchPolicyError("oracle_worlds must be a bool")
+        if config.oracle_worlds:
+            if config.adaptive_worlds or config.adaptive_worlds_leads:
+                raise PVSearchPolicyError(_ORACLE_ADAPTIVE_EXCLUSIVE)
+            # instance state only when on; the hook stays unbound until the
+            # screen harness binds it (`bind_oracle_deal`)
+            self.oracle_worlds = True
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -971,6 +1043,55 @@ class PVSearchBot(PolicyValueBot):
         """
         if self.refusal_constraints and self.refusal_event_complete:
             self._refusals.observe(rnd)
+
+    # -- the diagnostic oracle's harness hook (module docstring, #707 S16) -----
+
+    def bind_oracle_deal(self, source) -> None:
+        """Install the screen harness's true-deal hook: ``source(rnd, seat)``
+        returns ``(hands, buried)``, the four hands as dealt (this seat's
+        included) and the kitty, for the round the harness owns.  The ONLY way
+        the true hands reach this bot.  Refused on a bot whose rule is off (a
+        hook with no rule would be a served bot carrying hidden information)."""
+        if not self.oracle_worlds:
+            raise PVSearchPolicyError(_ORACLE_HOOK_WITHOUT_RULE)
+        if not callable(source):
+            raise PVSearchPolicyError("the oracle_deal hook must be callable")
+        self._oracle_deal = source
+
+    def _require_oracle_bound(self):
+        if self.oracle_worlds and self._oracle_deal is None:
+            raise OracleWorldsError("oracle_worlds is on but no harness hook is bound "
+                                    "(PVSearchBot.bind_oracle_deal); refusing to play",
+                                    stage="oracle_worlds_unbound")
+
+    def _oracle_world(self, rnd, seat, mem):
+        """The one true world through production's world contract: the hook's
+        deal is validated exactly as a sampled world is
+        (`MCBot._complete_determinized_hands`: the other seats' sizes, card
+        conservation against the deck) and canonicalised the same way."""
+        self._require_oracle_bound()
+        try:
+            hands, buried = self._oracle_deal(rnd, seat)
+            hands = [list(hand) for hand in hands]
+            buried = sorted(buried)
+        except OracleWorldsError:
+            raise
+        except Exception as exc:
+            raise OracleWorldsError(f"the oracle_deal hook failed: {type(exc).__name__}: {exc}",
+                                    stage="oracle_worlds_hook") from exc
+        if len(hands) != 4:
+            raise OracleWorldsError("the oracle deal must carry four hands",
+                                    stage="oracle_worlds_contract")
+        if Counter(hands[seat]) != Counter(rnd.hands[seat]):
+            raise OracleWorldsError("the oracle deal's hand for this seat is not this seat's hand",
+                                    stage="oracle_worlds_contract")
+        try:
+            complete = self.sampler._complete_determinized_hands(
+                rnd, seat, {s: hands[s] for s in range(4) if s != seat}, buried=buried)
+        except Exception as exc:
+            raise OracleWorldsError(f"the oracle deal violates the world contract: {exc}",
+                                    stage="oracle_worlds_contract") from exc
+        return [(complete, buried)], 1
 
     # -- the optional declaration rule (module docstring) -----------------------
 
@@ -1237,7 +1358,13 @@ class PVSearchBot(PolicyValueBot):
         mem = Memory(rnd, seat, own_kitty=getattr(self.sampler, "BANKER_KITTY", True))
         self._last_sampling = {}
         refusals = self._refusals.observe(rnd) if self.refusal_constraints else ()
-        if refusals:
+        if self.oracle_worlds:
+            # the diagnostic (module docstring): one world, the true deal from the
+            # harness hook; no draw, the sampler's stream untouched, the refusal
+            # ledger observed above as always (its record stays zero: nothing to
+            # constrain); the void check below applies to it as to any world
+            worlds, attempts = self._oracle_world(rnd, seat, mem)
+        elif refusals:
             worlds, attempts, self._last_sampling = sample_worlds_refusal_aware(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget)
@@ -1246,11 +1373,17 @@ class PVSearchBot(PolicyValueBot):
             # unchanged (the same stream, the same worlds for the same seed)
             worlds, attempts = sample_worlds(self.sampler, rnd, seat, self.worlds, mem=mem,
                                              check_budget=check_budget)
-        if len(worlds) != self.worlds:
-            raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{self.worlds}",
+        expected = 1 if self.oracle_worlds else self.worlds
+        if len(worlds) != expected:
+            raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{expected}",
                                       stage="world_sampling_short")
         if any(rnd.ordering.eff_suit(c) in mem.voids[s]
                for hands, _ in worlds for s in range(4) if s != seat for c in hands[s]):
+            if self.oracle_worlds:
+                # the TRUE deal contradicts an inferred void: a memory defect,
+                # never a sampling accident; the diagnostic fails closed
+                raise OracleWorldsError("the true deal violates an inferred public void",
+                                        stage="oracle_worlds_void_check")
             raise PVSearchPolicyError("policy world sampling violates public voids",
                                       stage="world_sampling_void_check")
         return worlds, attempts
@@ -1650,6 +1783,9 @@ class PVSearchBot(PolicyValueBot):
 
     def _decide_play(self, rnd, seat, started):
         self.last_decision_record = None
+        # the diagnostic oracle refuses BEFORE the fallback below can absorb
+        # anything: an unbound hook is a configuration error, not a search error
+        self._require_oracle_bound()
         anchor = HeuristicBot.decide_play(self, rnd, seat)
         if self.serving_budget_seconds is None:
             return self._search(rnd, seat, anchor, started)
@@ -1661,6 +1797,9 @@ class PVSearchBot(PolicyValueBot):
 
         try:
             return self._search(rnd, seat, anchor, started, check_budget)
+        except OracleWorldsError:
+            # the diagnostic never degrades to the heuristic (module docstring)
+            raise
         except Exception as exc:
             # Synchronous unwind, as the bury budget: no partial search result is
             # ever played; the sampler stream is restored so the next decision
@@ -1778,6 +1917,19 @@ def _check_leaf_policy_effect(config: PVSearchConfig, bury_arm) -> None:
         raise PVSearchPolicyError(_LEAF_POLICY_NO_EFFECT)
 
 
+def _check_oracle_hook(oracle_worlds, oracle_deal) -> None:
+    """The diagnostic oracle is NEVER served (module docstring): with the rule
+    on, construction needs the screen harness's true-deal hook; with it off,
+    a hook is refused (a served bot must not carry one).  Checked before any
+    package is read, so a served process refuses without touching the model."""
+    if type(oracle_worlds) is not bool:
+        raise PVSearchPolicyError("oracle_worlds must be a bool")
+    if oracle_worlds and oracle_deal is None:
+        raise PVSearchPolicyError(_ORACLE_NOT_SERVED)
+    if oracle_deal is not None and not oracle_worlds:
+        raise PVSearchPolicyError(_ORACLE_HOOK_WITHOUT_RULE)
+
+
 def _require_pv_search(bot, name: str):
     """REFUSE anything that is not the production wrapper under a pv-search name."""
     if not isinstance(bot, PVSearchBot):
@@ -1816,7 +1968,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
                        leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                        bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
-                       bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]
+                       bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
+                       oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
+                       oracle_deal=None
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -1834,6 +1988,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     reaches exactly the classes below; whatever a factory returns is checked to
     be the class serving would have built, so it can only ever be a subclass.
     """
+    _check_oracle_hook(oracle_worlds, oracle_deal)   # the diagnostic is never served: first
     path = str(checkpoint)
     if not path.lower().endswith(".npz"):
         raise PVSearchPolicyError("pv-search serves a NumPy package (.npz); Torch checkpoints are not served")
@@ -1862,7 +2017,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
                             declare_asap_first=declare_asap_first,
-                            leaf_policy_first_trick=leaf_policy_first_trick)
+                            leaf_policy_first_trick=leaf_policy_first_trick,
+                            oracle_worlds=oracle_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k)
@@ -1907,6 +2063,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
             f"bot_factory built {type(bot).__name__}, not a {expected.__name__}")
     bot.prior_checkpoint = None if prior_checkpoint is None else str(prior_checkpoint)
     bot.prior_sha256 = prior_sha256
+    if oracle_deal is not None:
+        bot.bind_oracle_deal(oracle_deal)
     if name is not None:
         bot.policy_name = name
     return bot
@@ -1943,7 +2101,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
                         leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                         bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
-                        bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]
+                        bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
+                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -1973,7 +2132,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
                             declare_asap_first=declare_asap_first,
-                            leaf_policy_first_trick=leaf_policy_first_trick)
+                            leaf_policy_first_trick=leaf_policy_first_trick,
+                            oracle_worlds=oracle_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k)
@@ -2012,6 +2172,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
         bury_config, bury_serving_budget_seconds = bconfig, bbudget
 
     def factory(**kw):
+        # the diagnostic oracle's hook: only the screen harness passes it
+        # (`make_bot(name, seed=, oracle_deal=)`); the game server never does,
+        # so an oracle name refuses to build there (`_check_oracle_hook`)
+        oracle_deal = kw.get("oracle_deal")
         bot = _require_pv_search(
             make_pv_search_bot(checkpoint, sha256=sha256, worlds=config.worlds,
                                candidates=config.candidates, cap=config.cap,
@@ -2043,7 +2207,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare_every_first=config.value_declare_every_first,
                                declare_asap_first=config.declare_asap_first,
                                leaf_policy_first_trick=config.leaf_policy_first_trick,
-                               bury_wide_value=bury_wide_value, bury_wide_k=bury_wide_k),
+                               bury_wide_value=bury_wide_value, bury_wide_k=bury_wide_k,
+                               oracle_worlds=config.oracle_worlds,
+                               oracle_deal=oracle_deal),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -2063,15 +2229,18 @@ def pv_env_recipe(environ=None) -> dict:
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_DECLARE_ASAP_FIRST`` / ``_LEAF_POLICY_FIRST_TRICK``
-    rule flags (``0`` or ``1`` only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS``
-    / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless ``_VALUE_DECLARE=1``), as keyword
-    arguments for `pv_registry_entries`.  ``_VALUE_DECLARE_EVERY_FIRST=1`` without
-    ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1`` with it are refused there
-    (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without ``_VALUE_DECLARE=1`` or a
-    hybrid/value ``_BURY_ARM`` is refused there too (`_check_leaf_policy_effect`).
-    ``_BURY_WIDE_VALUE`` (``0`` or ``1``; needs ``_BURY_ARM``, a hybrid/value one) and its
-    ``_BURY_WIDE_K`` cap (an int >= 2; refused unless ``_BURY_WIDE_VALUE=1``) select the
-    wide value-only bury chooser (module docstring)."""
+    / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
+    ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
+    ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
+    ``_VALUE_DECLARE_EVERY_FIRST=1`` without ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1``
+    with it are refused there (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without
+    ``_VALUE_DECLARE=1`` or a hybrid/value ``_BURY_ARM`` is refused there too
+    (`_check_leaf_policy_effect`).  ``_BURY_WIDE_VALUE`` (``0`` or ``1``; needs ``_BURY_ARM``,
+    a hybrid/value one) and its ``_BURY_WIDE_K`` cap (an int >= 2; refused unless
+    ``_BURY_WIDE_VALUE=1``) select the wide value-only bury chooser (module docstring).
+    ``_ORACLE_WORLDS=1`` (the diagnostic) registers a name whose factory REFUSES to build
+    without the screen harness's ``oracle_deal`` hook (`_check_oracle_hook`), so the game
+    server can never serve it; `api.server` refuses the flag at import besides."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:

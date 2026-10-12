@@ -1568,6 +1568,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6110908081"
   },
   {
+   "id": "v72vdev43",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Value declare at every first-round chance vs release 43",
+   "candidate": "Release 43 with SHENGJI_PV_VALUE_DECLARE=1 and SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1 (#965 vdef: in a first round the value-declare gate admits every chance with options, not only when the heuristic would declare), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-vdef-rf4c6c3c2-bury-hybrid-2be7b44246f4; same package smv3out-491ee4bf. First-round deals. Cloud tree claude-main-34 (9138c7dd).",
+   "comparator": "release 43 as served",
+   "vs": 43,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "79060910 79160910 79260910 79360910 79460910 79560910 79660910 79760910 79860910 79960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.066012,
+   "lo": 0.0426,
+   "hi": 0.089424,
+   "takeaway": "Estimated +0.0660; 95% CI [+0.0426, +0.0894], POSITIVE (9/10 windows, one zero); banker share 71%; not a contrast with release 44's gate.",
+   "note": "SEALED 10-12 (LANE DONE 00:08:24Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707; digests posted on #707 issuecomment-6115481248 before the read; Codex packet PASS #707 (19:43Z 10-11). Jerry 2026-10-11: 'Yes build diagnostic and execute on these'. Paired +0.066012 [+0.042600,+0.089424], SE 0.011945, MDE80 0.0335, tau 0.0233, Q 14.53 (9 df), I2 38.0%; POSITIVE (v70's CI-bound rule; judged alone). Window deltas +0.0510, +0.0942, +0.1202, +0.0000, +0.0808, +0.0452, +0.0865, +0.0279, +0.1067, +0.0413. Mechanism (descriptive): the arm is banker in 70.7% of rounds vs 43.7%; per role it plays slightly worse (attacker points per attacking round 74.79 vs 77.19; conceded per banking round 68.64 vs 64.55), i.e. it takes the bank with weaker hands and still nets positive levels; the points margin -41.711 is role-confounded. Descriptive own-arm levels vs MC-LCB: vdef 0.2831 [0.2644,0.3018], release 43 0.2174 [0.2001,0.2348]. Health: 1,443,524 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified pv-search records. Telemetry (descriptive): 41,126 evaluations (4.0 per round; gate every_first 35,146, heuristic 4,945, final 1,035), all complete at 64 worlds, zero fallbacks; changed on 34.6%; mean 0.040 s; play decision seconds p50/p90/p99 0.092/0.136/0.222 vs 0.089/0.136/0.224. Against release 44's gate on the same population (v70vd43 +0.049732 [+0.037941,+0.061522]) the intervals overlap: 'vdef beats release 44' is NOT established; any release-45 deploy screen must compare the candidate against release 44 as served. Companion: v73asap43 (model-free ASAP). Reader sha256 5c57aa206ff995b31663a8a057cdf251fdcf86963f32b194ec78f1057455e205; result sha256 6faadd9e0670fa390bc5fe104b7e56a4e787a59ef6c4ab97ca8759545fb4d466; launcher sha256 05588307f9953032b2678542621d91aa2372be7edff4b2cfb92efbce4d0560b9; predeclaration sha256 08b4763da79905d35ef83e37e86cb5c4eb30a23bb33194cd4074ed60bc98a21c; SHA256SUMS ef8d88d94cb1b59b8a1c8888d4f3c38f2294b2145a3ae0b5241d4bb0e83b29e9. Archive ~/shengji-archive/2026-09-13/readouts/v72vdev43-vdef-vs-r43/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6115492373"
+  },
+  {
    "id": "v57dts",
    "date": "2026-10-06",
    "status": "sealed",

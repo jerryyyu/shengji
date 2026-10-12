@@ -16,7 +16,8 @@ from test_pv_search_serving import package  # noqa: F401
 
 
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback'])
-def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize('limit', [1, 16])
+def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode, limit, capsys):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
     rnd = rebuild_round(events)
@@ -49,7 +50,7 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             pass
 
         def finish_round(self):
-            assert rnd.phase == 'round_end'
+            pytest.fail('capture cap must stop before completing the round')
 
     def analyze(bot, root, seat, rec, times, samplers):
         # Mimic later diagnostic mutation; saved actual decision must survive.
@@ -70,25 +71,27 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         monkeypatch.setattr(collector, 'served_capture_bots',
                             lambda *a: ([Bot() for _ in range(4)], {'mode': 'test-served'}))
     out = tmp_path / 'rows.jsonl'
-    args = ['unused', 'unused', '1', '16', '9999999999', str(out), str(tmp_path/'lock'), str(tmp_path/'stop')]
+    args = ['unused', 'unused', '1', str(limit), '9999999999', str(out), str(tmp_path/'lock'), str(tmp_path/'stop')]
     if mode != 'historical':
         snapshot = tmp_path / 'env.json'
         snapshot.write_text('{}')
         args = ['--served-env', str(snapshot), *args]
     collector.main(args)
     rows = [json.loads(line) for line in out.read_text().splitlines()]
-    assert cursor == len(plays) == 64
-    assert len(rows) == 16
+    assert cursor == (limit - 1) * 4 + 1  # no follow decision or commit after last captured lead
+    assert len(rows) == limit
+    assert f'EXIT reason=max_positions positions={limit} rounds=0' in capsys.readouterr().out
     if mode != 'historical':
         from scripts.lead_finish_classify import main as classify
         classified = tmp_path / 'classified.json'
         classify([str(out), str(classified)])
         result = json.loads(classified.read_text())
-        assert result['counts']['all_roots'] == 16
-        assert result['counts']['eligible_roots'] == 5
-        assert result['counts']['eligible:whole_hand_refused_true_deal:True'] == 5
-        assert result['counts']['eligible:pool_present:None'] == 5
-        assert result['counts']['eligible:admitted:None'] == 5
+        assert result['counts']['all_roots'] == limit
+        assert result['counts']['eligible_roots'] == (5 if limit == 16 else 0)
+        if limit == 16:
+            assert result['counts']['eligible:whole_hand_refused_true_deal:True'] == 5
+            assert result['counts']['eligible:pool_present:None'] == 5
+            assert result['counts']['eligible:admitted:None'] == 5
         assert all(r['ranking_or_horizon_error'] is None for r in result['rows'])
         with pytest.raises(FileExistsError):
             classify([str(out), str(classified)])
@@ -101,8 +104,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             assert row['attempted'] == row['replay']['decision']['played']
             assert 'variants' not in row
         assert ledger.observe(root) == ledger.refusals
-    assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
-    assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
+    if limit == 16:
+        assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
+        assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
     saved = out.read_bytes()
     with pytest.raises(FileExistsError):
         collector.main(args)

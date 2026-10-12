@@ -1386,42 +1386,70 @@ def action_values_from_record(rec: dict) -> dict:
     }
 
 
+def pv_trajectory_ballot(rec: dict, ballot: list[list[str]]) -> list[list[str]]:
+    """Keep priced candidates; append an unpriced post-search forced play if needed.
+
+    Selection still identifies the searched throw, not its forced component.
+    Only the two explicit producer override records may break that identity.
+    """
+    admitted = [list(a) for a in rec["admitted"]]
+    if [action_key(a) for a in admitted] != [action_key(a) for a in ballot]:
+        raise TrajectoryError("pv-search record admitted a different ballot than the mixin captured")
+    indices = [int(i) for i in rec["admitted_indices"]]
+    if len(indices) != len(admitted) or int(rec["selected_index"]) not in indices:
+        raise TrajectoryError("pv-search record indices are not aligned with its ballot")
+    selected = admitted[indices.index(int(rec["selected_index"]))]
+    played = list(rec["played"])
+    if action_key(selected) != action_key(played):
+        valid = any(
+            rec.get(flag) is True
+            and action_key(str(rec.get(prefix + "_from", "")).split()) == action_key(selected)
+            and action_key(str(rec.get(prefix + "_to", "")).split()) == action_key(played)
+            for prefix, flag in (
+                ("doomed_throw_swap", "doomed_throw_swap_applied"),
+                ("doomed_throw_reselect", "doomed_throw_reselect_fallback_forced")))
+        if not valid:
+            raise TrajectoryError("pv-search played_index does not map to the played cards")
+    if action_key(played) not in {action_key(a) for a in admitted}:
+        admitted.append(played)
+    return admitted
+
+
 def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dict, dict]:
     """``allocation`` / ``preference`` / ``action_values`` for a
     ``pv-search-decision-v1`` record (#592, Codex's adapter requirements):
 
     * the ballot is the record's ``admitted`` cards in admission order and
-      ``played_index`` is the position of ``selected_index`` in
-      ``admitted_indices`` -- never the legal index;
-    * ``selection_worlds`` is W per candidate (every candidate is priced in
+      ``played_index`` identifies the actual play, not necessarily the search
+      selection. An absent forced component is appended with zero search work
+      and no value target; the original priced ballot stays in order;
+    * ``selection_worlds`` is W per priced candidate (every admitted candidate is priced in
       every sampled world; W is a sampled-world count, not MC visits);
     * ``action_values.means`` are the value head's mean bootstrap values
       after the candidate's trick, ``PV_VALUE_UNITS``, acting-team
       perspective -- not completed returns and not paired MC evidence, so
       ``paired_se`` is absent and ``preference.tau`` is None (the softmax is
-      the uniform "no paired evidence" case of ``preference_from_evidence``);
+      the uniform "no paired evidence" case of ``preference_from_evidence``).
+      With an unpriced appended play, preference uses that helper's missing-
+      evidence final-decision fallback, never a fabricated model value;
       the policy log-odds of the admitted candidates ride along.
     """
-    admitted = [list(a) for a in rec["admitted"]]
+    admitted = pv_trajectory_ballot(rec, rec["admitted"])
     if [action_key(a) for a in admitted] != [action_key(b) for b in ballot]:
         raise TrajectoryError("pv-search record admitted a different ballot than the mixin captured")
     k = len(admitted)
-    indices = [int(i) for i in rec["admitted_indices"]]
-    if len(indices) != k or int(rec["selected_index"]) not in indices:
-        raise TrajectoryError("pv-search record indices are not aligned with its ballot")
-    played = indices.index(int(rec["selected_index"]))
-    if action_key(admitted[played]) != action_key(rec["played"]):
-        raise TrajectoryError("pv-search played_index does not map to the played cards")
+    priced = len(rec["admitted"])
+    played = [action_key(a) for a in admitted].index(action_key(rec["played"]))
     means = [float(m) for m in rec["value_means"]]
-    if len(means) != k:
+    if len(means) != priced:
         raise TrajectoryError("value_means are not aligned with the ballot")
     worlds = int(rec["worlds"])
-    total = worlds * k
+    total = worlds * priced
     allocation = {
         "kind": ALLOCATION_KIND,
-        "weights": [1.0 / k] * k if k else [],
+        "weights": [1.0 / priced] * priced + [0.0] * (k - priced),
         "counter": "fixed-design work split: every admitted candidate priced in every sampled world (pv-search)",
-        "selection_worlds": [worlds] * k,
+        "selection_worlds": [worlds] * priced + [0] * (k - priced),
         "report_worlds": [0] * k,
         "total_worlds": total,
         "played_index": played,
@@ -1437,13 +1465,20 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
                  "legal_complete": bool(rec.get("legal_complete", False)),
                  "legal_count": _finite(rec.get("legal_count"))},
     }
-    preference = preference_from_evidence(means, [math.inf] * k, played, [])
+    selected = rec["admitted_indices"].index(rec["selected_index"])
+    if selected != played:
+        allocation["post_search_override"] = {
+            "reason": "doomed_throw_forced_component",
+            "selected_index": selected, "appended_unpriced": k > priced,
+        }
+    preference = preference_from_evidence(means + [math.nan] * (k - priced),
+                                          [math.inf] * k, played, [])
     action_values = {
         "kind": ACTION_VALUES_KIND,
         "perspective": "acting-team",
         "means": [_finite(m) for m in means],
-        "paired_se": [None] * k,
-        "eligible_indices": list(range(k)),
+        "paired_se": [None] * priced,
+        "eligible_indices": list(range(priced)),
         "raw_winner_index": None,
         "report": None,
         "units": PV_VALUE_UNITS,
@@ -1484,6 +1519,9 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         action_values = None
     elif rec.get("schema") == "pv-search-decision-v1":
         stats["searched"] += 1
+        ballot = pv_trajectory_ballot(rec, ballot)
+        if action_key(action) not in {action_key(a) for a in legal.actions}:
+            legal = enumerate_legal(rnd, seat, cap=cap, must_include=ballot)
         allocation, preference, action_values = pv_fields_from_record(rec, ballot)
         if action_key(rec["played"]) != action_key(action):
             raise TrajectoryError("decision record played a different action")

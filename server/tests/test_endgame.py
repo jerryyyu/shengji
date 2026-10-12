@@ -93,6 +93,30 @@ def test_two_card_tree_uses_defender_min_at_internal_nodes():
     assert result.action == ("C9",)
 
 
+@pytest.mark.parametrize('leader', range(4))
+@pytest.mark.parametrize('hands', [
+    [['H2', 'C3'], ['CA', 'C9'], ['C10', 'C4'], ['C6', 'C8']],
+    [['C3', 'C3', 'C5'], ['C4', 'C4', 'C10'],
+     ['C6', 'C6', 'CK'], ['CA', 'CA', 'C9']],
+])
+def test_alpha_beta_matches_exhaustive_and_reused_frontiers(leader, hands):
+    from shengji.ai.endgame import _clone_for_play
+    rnd = _round(hands, leader=leader, buried=['H5'])
+    pruned = ExactWorldSession(rnd, alpha_beta=True)
+    plain = ExactWorldSession(rnd)
+    frontiers = [rnd]
+    for action in exhaustive_legal_actions(rnd, leader):
+        child = _clone_for_play(rnd)
+        child.play(leader, action)
+        frontiers.append(child)
+    for frontier in frontiers + list(reversed(frontiers)):
+        expected = plain.solve(frontier)
+        actual = pruned.solve(frontier)
+        assert (actual.attacker_points, actual.action) == (expected.attacker_points, expected.action)
+    # Bound-cache reuse must preserve exact values even across different windows;
+    # pruning is not guaranteed to reduce total nodes for every move ordering.
+
+
 def test_shared_session_state_key_separates_accumulated_attacker_points():
     """Two otherwise-identical frontiers must not collide in the exact cache."""
     hands = [

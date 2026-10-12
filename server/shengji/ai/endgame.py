@@ -163,7 +163,7 @@ def _state_key(rnd: Round):
 
 class _ExactSolver:
     def __init__(self, *, max_hand_cards: int, max_nodes: int,
-                 check_budget=None):
+                 check_budget=None, alpha_beta=False):
         if (isinstance(max_hand_cards, bool)
                 or not isinstance(max_hand_cards, int)
                 or max_hand_cards < 1):
@@ -174,11 +174,13 @@ class _ExactSolver:
         self.max_hand_cards = max_hand_cards
         self.max_nodes = max_nodes
         self.check_budget = check_budget
+        self.alpha_beta = alpha_beta
         self.nodes = 0
         self.cache_hits = 0
         self.cache: dict[tuple, int] = {}
+        self.bounds: dict[tuple, tuple[float, float]] = {}
 
-    def value(self, rnd: Round) -> int:
+    def value(self, rnd: Round, alpha=float('-inf'), beta=float('inf')) -> int:
         if self.check_budget is not None:
             self.check_budget()
         if rnd.phase == "round_end":
@@ -190,6 +192,10 @@ class _ExactSolver:
         if key in self.cache:
             self.cache_hits += 1
             return self.cache[key]
+        lower, upper = self.bounds.get(key, (float('-inf'), float('inf')))
+        if lower >= beta or upper <= alpha:
+            self.cache_hits += 1
+            return lower if lower >= beta else upper
         if self.nodes >= self.max_nodes:
             raise ExactEndgameBudgetExceeded(
                 f"exact endgame exceeded max_nodes={self.max_nodes}",
@@ -199,13 +205,29 @@ class _ExactSolver:
         seat = rnd.turn
         actions = exhaustive_legal_actions(
             rnd, seat, max_hand_cards=self.max_hand_cards)
-        values = []
+        original_alpha, original_beta = alpha, beta
+        maximize = rnd.is_attacker(seat)
+        answer = float('-inf') if maximize else float('inf')
         for action in actions:
             child = _clone_for_play(rnd)
             child.play(seat, action)
-            values.append(self.value(child))
-        answer = max(values) if rnd.is_attacker(seat) else min(values)
-        self.cache[key] = answer
+            value = self.value(child, alpha, beta)
+            answer = max(answer, value) if maximize else min(answer, value)
+            if self.alpha_beta:
+                if maximize:
+                    alpha = max(alpha, answer)
+                else:
+                    beta = min(beta, answer)
+                if alpha >= beta:
+                    break
+        # Fail-high/low results are bounds, not exact transposition values.
+        # Never let a pruned frontier poison another candidate's full-window solve.
+        if original_alpha < answer < original_beta:
+            self.cache[key] = answer
+        elif answer <= original_alpha:
+            self.bounds[key] = (lower, min(upper, answer))
+        else:
+            self.bounds[key] = (max(lower, answer), upper)
         return answer
 
 
@@ -243,11 +265,11 @@ class ExactWorldSession:
     """
 
     def __init__(self, rnd: Round, *, max_hand_cards: int = 4,
-                 max_nodes: int = 250_000, check_budget=None):
+                 max_nodes: int = 250_000, check_budget=None, alpha_beta=False):
         self.context = _context_key(rnd)
         self.solver = _ExactSolver(
             max_hand_cards=max_hand_cards, max_nodes=max_nodes,
-            check_budget=check_budget)
+            check_budget=check_budget, alpha_beta=alpha_beta)
         self.frontiers = 0
 
     @property

@@ -96,7 +96,7 @@ def exact_lead_means(
         world_root = root_clone(rnd, hands, buried)
         session = ExactWorldSession(
             world_root, max_hand_cards=4, max_nodes=max_nodes,
-            check_budget=check_budget)
+            check_budget=check_budget, alpha_beta=True)
         for action_index, action in enumerate(candidate_actions):
             leaf = leaf_fn(world_root, seat, hands, buried, action, world_index)
             if type(leaf) is not Round:

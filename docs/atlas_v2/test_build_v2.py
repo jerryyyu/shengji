@@ -312,20 +312,20 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
     from pathlib import Path
     b = _load()
     reg = json.loads((Path(b.__file__).parent / "registry.json").read_text())
-    assert b.production_release(reg) == 43
+    assert b.production_release(reg) == 44
     # Confirmed (Jerry 2026-10-07): new screens are read against release 42; release 38 becomes an earlier band.
-    # Production moved to 43 on 2026-10-09 without a comparator ruling, so the two differ and the page says so;
-    # the value-declare deploy screens (v70/v71) read against 43 by a one-off ruling and sit in the 43 band,
-    # which is labelled current production, never "closed".
+    # Production moved to 43 (2026-10-09) and 44 (2026-10-11) without a comparator ruling, so the two differ and
+    # the page says so; the value-declare deploy screens (v70/v71) read against 43 by a one-off ruling and sit in
+    # the 43 band, which is a closed comparator now that 44 is served (the record of how 44 was chosen).
     assert reg["screen_comparator"]["status"] == "confirmed" and b.comparator_release(reg) == 42
     page = b.page                                                 # a fresh in-memory build; the HTML is untracked
     i = page.index("Green clears zero"); chart = page[i:page.index("</p>", i)]
     assert "release 42 first" in chart
-    assert "read against <b>release 42 as served</b>" in page and "Production is release 43" in page
+    assert "read against <b>release 42 as served</b>" in page and "Production is release 44" in page
     assert all(s["vs"] == 42 for s in b.SCREENS_NOW) and 38 in b.EARLIER_RELEASES and 43 in b.EARLIER_RELEASES
     band43 = [c for c in b.COMPARATORS if c["release"] == 43 and c["group"] is None][0]
-    assert band43["label"] == "release 43 as served · current production"
-    assert not any("closed comparator" in c["label"] for c in b.COMPARATORS if c["release"] == 43)
+    assert band43["label"] == "release 43 as served · closed comparator"
+    assert not any("current production" in c["label"] for c in b.COMPARATORS if c["release"] == 43)
     # Pending: rebuild a copy with the switch pending -- new screens stay on 38 and the page says so.
     pend = copy.deepcopy(reg)
     pend["screen_comparator"] = {"release": 38, "status": "pending", "note": "Release 42 is pending Jerry's ruling."}

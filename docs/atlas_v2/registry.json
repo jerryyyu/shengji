@@ -270,8 +270,8 @@
   },
   {
      "release": 43,
-     "status": "production",
-     "since": "2026-10-09 15:46 ET",
+     "status": "superseded",
+     "since": "2026-10-09 15:46 ET → 2026-10-11 17:05 ET",
      "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b",
      "head": "3e89e86f",
      "package": "smv3out-491ee4bf.npz (sha256 491ee4bf…), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
@@ -312,6 +312,52 @@
         "no strength gain is claimed: v67dtrg is INCONCLUSIVE; DEPLOY-ELIGIBLE means not statistically demonstrated negative, NOT noninferiority, and harm down to −0.0122 stays compatible; the first read v64dtr42 (five windows) was −0.0028 [−0.0232, +0.0176], inconclusive; v66lead42 (dtr + wla, fifteen windows) +0.0126 [−0.0022, +0.0275], inconclusive",
         "comparator for NEW screens stays release 42 as served (Jerry 2026-10-07); v70vd43 and v71vd43lr compare against release 43 by Jerry's one-off ruling for the value-declare deploy decision (2026-10-11)",
         "rollback: replace the SHENGJI_PV_DOOMED_THROW_RESELECT line with SHENGJI_PV_DOOMED_THROW_SWAP = '1' and restore the release-42 SHENGJI_BOT kept as a comment in fly.toml, then fly deploy --ha=false; or redeploy the release-42 image deployment-01M49QGK2ZP18P143S8BXVW28X"
+     ]
+  },
+  {
+     "release": 44,
+     "status": "production",
+     "since": "2026-10-11 17:05 ET",
+     "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6",
+     "head": "3e89e86f",
+     "package": "smv3out-491ee4bf.npz (sha256 491ee4bf…), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
+     "oneline": "Release 43 with the value-guided trump declaration (vd) on. Vs release 43: +0.0497 [+0.038, +0.062] first-round, +0.0352 [+0.023, +0.047] later-round, both POSITIVE.",
+     "recipe": "release 43's package, search, rules, bury and budgets exactly (W64/K8, div + rc + tb + la, dtr, hybrid bury, 3 s / 2 s, JS-M1 prior keys) with SHENGJI_PV_VALUE_DECLARE (vd, #952): at each gated declare chance (the heuristic would declare, or the grace window) every option plus PASS is scored by the value head over 64 sampled completions (heuristic bury and first trick, value from the seat's team) and the heuristic's choice is replaced only when beaten; served off the event loop with stale guards, the human wins a race and the heuristic is the fallback (#959, #958, #965's gate fix). Built from main 8ac9543e (#963). Jerry 2026-10-11: 'I'm ok to ship, update documentation' after the later-round screen; 'OK let's deploy'.",
+     "evidence": [
+        {
+           "what": "v70vd43: release 43 + vd as served vs release 43 as served, each vs the common MC-LCB control, ten 520-cluster windows on FIRST-ROUND deals (cloud), POSITIVE, 10/10 windows (#707 issuecomment-6103734355)",
+           "point": 0.049732,
+           "lo": 0.037941,
+           "hi": 0.061522,
+           "ref": "v70vd43"
+        },
+        {
+           "what": "v71vd43lr: the same contrast on FIXED-BANKER (later-round) deals (#964 round_kind fixed_banker), ten windows (cloud), POSITIVE, 10/10 windows (#707 issuecomment-6110908081); separate population from v70, never pooled",
+           "point": 0.035189,
+           "lo": 0.023297,
+           "hi": 0.047081,
+           "ref": "v71vd43lr"
+        },
+        {
+           "what": "mechanism (descriptive): banker share 52.6% vs 43.7% on first-round deals (v70); the head prices the bank at about +0.35 levels; the points margin is role-confounded for declare changes",
+           "point": null,
+           "lo": null,
+           "hi": null,
+           "ref": "v70vd43"
+        },
+        {
+           "what": "serving smoke on the merged tree against the SHA-verified packages through _paced_bot_step/_commit_bot_turn (#963); /healthz after deploy: bot = the name above, pv_search.sha256 491ee4bf…, worlds 64, candidates 8, budget 3 s, bury hybrid at 2 s, prior 0d17fd03…",
+           "point": null,
+           "lo": null,
+           "hi": null,
+           "ref": "#963"
+        }
+     ],
+     "caveats": [
+        "image deployment-01M4PC7724HSXC27PCEEREZWY4 (Fly version 44, digest sha256:d618f2371cd7…), main 8ac9543e (#963); Codex PASS at the exact head; CI green; deployed 2026-10-11 21:05Z",
+        "first-round gain is bank capture: the model-free declare-ASAP rule (v73asap43 +0.0507 [+0.0320, +0.0695]) and value declare at every chance (v72vdev43 +0.0660 [+0.0426, +0.0894]) read the same direction vs release 43; no ordering among vd / vdef / asap is established and none is established over release 44 (separate screens, not paired contrasts)",
+        "comparator for NEW screens stays release 42 as served (Jerry 2026-10-07) except where Jerry rules otherwise; v70/v71/v72/v73 compare against release 43 by his one-off rulings for the value-declare decision (2026-10-11)",
+        "rollback: delete the SHENGJI_PV_VALUE_DECLARE line, restore the release-43 SHENGJI_BOT kept as a comment in fly.toml, redeploy; or the release-43 image deployment-01M4H37RYNM42YHH6ZPEC6GKCK"
      ]
   }
  ],
@@ -1587,6 +1633,66 @@
    "takeaway": "Estimated +0.0660; 95% CI [+0.0426, +0.0894], POSITIVE (9/10 windows, one zero); banker share 71%; not a contrast with release 44's gate.",
    "note": "SEALED 10-12 (LANE DONE 00:08:24Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707; digests posted on #707 issuecomment-6115481248 before the read; Codex packet PASS #707 (19:43Z 10-11). Jerry 2026-10-11: 'Yes build diagnostic and execute on these'. Paired +0.066012 [+0.042600,+0.089424], SE 0.011945, MDE80 0.0335, tau 0.0233, Q 14.53 (9 df), I2 38.0%; POSITIVE (v70's CI-bound rule; judged alone). Window deltas +0.0510, +0.0942, +0.1202, +0.0000, +0.0808, +0.0452, +0.0865, +0.0279, +0.1067, +0.0413. Banker share rises from 43.7% to 70.7%. Role-conditional attacker points are 74.79 vs 77.19 and banker concessions 68.64 vs 64.55; these condition on different policy-selected round subsets and do not identify a within-role play-quality effect or hand-quality mechanism. The overall level result remains positive; the signed points margin (-41.711) is role-confounded. Descriptive own-arm levels vs MC-LCB: vdef 0.2831 [0.2644,0.3018], release 43 0.2174 [0.2001,0.2348]. Health: 1,443,524 expected play calls all recorded, zero coverage failures, zero known outer timeouts; zero budget or search-error fallbacks among the classified pv-search records. Telemetry (descriptive): 41,126 evaluations (4.0 per round; gate every_first 35,146, heuristic 4,945, final 1,035), all complete at 64 worlds, zero fallbacks; changed on 34.6%; mean 0.040 s; play decision seconds p50/p90/p99 0.092/0.136/0.222 vs 0.089/0.136/0.224. Separate screens against release 43 (this lane; v70vd43 +0.049732 [+0.037941,+0.061522] for release 44's gate) do not estimate the paired vdef-versus-release-44 contrast; superiority over release 44 is not established. Any release-45 deploy screen must compare the candidate against release 44 as served. Companion: v73asap43 (model-free ASAP). Reader sha256 5c57aa206ff995b31663a8a057cdf251fdcf86963f32b194ec78f1057455e205; result sha256 6faadd9e0670fa390bc5fe104b7e56a4e787a59ef6c4ab97ca8759545fb4d466; launcher sha256 05588307f9953032b2678542621d91aa2372be7edff4b2cfb92efbce4d0560b9; predeclaration sha256 08b4763da79905d35ef83e37e86cb5c4eb30a23bb33194cd4074ed60bc98a21c; SHA256SUMS ef8d88d94cb1b59b8a1c8888d4f3c38f2294b2145a3ae0b5241d4bb0e83b29e9. Archive ~/shengji-archive/2026-09-13/readouts/v72vdev43-vdef-vs-r43/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6115492373"
+  },
+  {
+   "id": "v73asap43",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Declare ASAP (model-free) vs release 43",
+   "candidate": "Release 43 with SHENGJI_PV_DECLARE_ASAP_FIRST=1 (#965 asap: in a first round declare at the first legal chance, strongest available option, no model; value declare and its gate off on both arms), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-asap-r*-bury-hybrid-*; same package smv3out-491ee4bf. First-round deals. Cloud tree claude-main-34 (9138c7dd). Companion of v72vdev43 (value declare at every chance): the model-free baseline for the first-round declare question.",
+   "comparator": "release 43 as served",
+   "vs": 43,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "81060910 81160910 81260910 81360910 81460910 81560910 81660910 81760910 81860910 81960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.05074,
+   "lo": 0.032007,
+   "hi": 0.069472,
+   "takeaway": "Estimated +0.0507; 95% CI [+0.0320, +0.0695], POSITIVE (10/10 windows); banker share 73%: the model-free rule matches gated value declare (v70).",
+   "note": "SEALED 10-12 (LANE DONE 04:30:28Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707 issuecomment-6117892131; digests posted on #707 before the read; Codex packet PASS #707. Jerry 2026-10-11: 'It does seem like declare ASAP when it gives chance to be banker in first round seems reasonable as a baseline as well'. Paired +0.050740 [+0.032007,+0.069472], SE 0.009557, MDE80 0.0268, tau 0.0000, Q 7.70 (9 df), I2 0.0%; POSITIVE (v70's CI-bound rule; judged alone). Window deltas +0.0827, +0.0144, +0.0279, +0.0279, +0.0356, +0.0510, +0.0327, +0.0596, +0.0827, +0.0952. Banker share rises from 43.4% to 73.0% (v70vd43 first-round reference 52.6% / 43.7%). Declarations (descriptive): Declare-asap declarations (descriptive): 1.41 per round on the candidate; cards dealt at declaration mean 35.0 (p50 27, p90 81, min 1, max 100); overcalls 33.5% (self 20.3%) of declarations; the comparator carries none. Role-conditional secondaries (descriptive, per arm, not paired): attacker points per attacking round, candidate 75.98 (SE 0.70) vs comparator 77.72 (SE 0.46); points conceded per banking round (lower is better), candidate 70.17 (SE 0.34) vs comparator 65.27 (SE 0.50). These condition on different policy-selected round subsets and do not identify a within-role play-quality effect. The signed points margin (-46.283) is role-confounded. Three separate screens against release 43 (v70vd43 gated vd +0.049732 [+0.037941,+0.061522]; v72vdev43 every chance +0.066012 [+0.042600,+0.089424]; this lane) do not estimate the paired contrasts among vd / vdef / asap; none is established over the others, and superiority over release 44 is not established. Health: all 20 windows 520/520 shards, zero coverage failures. Reader sha256 6114a9ae211d338a8f5e32b5c1ef01f53058d2e478246eb64ae1b3409eded3a0; result sha256 762c262dc8dab281b5a2f1137c4d48e5471774a83921dc9004ce4d9edb6cbfc2; launcher sha256 e30189eaa91e012466e6c42b3b1483e114253b8a2777f3007ce097e5e1065c21; predeclaration sha256 28dff475836479abec1f7488585eca2eb78b02c8ba64d856bb7d9a48522061ac; SHA256SUMS 4b3f906d44d6bbcad0299722fb8e3e1152df6c7b7b79d9eeab9f28b22031f442. Archive ~/shengji-archive/2026-09-13/readouts/v73asap43-asap-vs-r43/."
+  },
+{
+   "id": "v63c12r",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "perf",
+   "title": "C12 rank-regret epoch 8 vs release 42",
+   "candidate": "C12 (gen-5 SMV3 recipe + runPVC1..10, 19/20 epochs: host memory kill at epoch 20; #663) rank-regret selection epoch 8 (epoch-08.pt e6784aa6) as package c12rout-66e3a06c.npz on the release-42 search (W64/K8, div + rc + tb + la, dts, hybrid bury) vs release 42 as served. First-round deals. Perf tree claude-main-31 (c11a7d99); first screen lane on perf (host qualification #663).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; five-window first stage with the predeclared extension rule",
+   "seeds": "67060910 67160910 67260910 67360910 67460910 (perf)",
+   "confidence": 0.95,
+   "point": -0.01303,
+   "lo": -0.045813,
+   "hi": 0.019753,
+   "takeaway": "Estimated -0.0130; 95% CI [-0.0458, +0.0198], INCONCLUSIVE (2/5 windows); no promotion, no extension; flat vs release 42.",
+   "note": "SEALED 10-12 (LANE DONE 01:36:41Z); readout (Claude, one pass) #663 issuecomment-6116292809; digests posted on #663 before the read. Paired -0.013030 [-0.045813,+0.019753], SE 0.016726, MDE80 0.0469, tau 0.0151, Q 4.78 (4 df), I2 16.3%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas +0.0308, -0.0481, +0.0279, -0.0250, -0.0423. Package c12rout-66e3a06c.npz 66e3a06c31f0269aff15b388fa3bd75b4408f3adb32e18536709202954f35258 (epoch-08.pt e6784aa6); C12's test evaluation is deferred (25-30 GB prepare on the Mini). Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 6681116e05f2bcb57422d2c9259b7993e265d784a8456a5bb68253c6390aeabe; result sha256 5ea1fd22461d27fd8154e7825fe5c1c097d555913ef6da6959df3ff762b17857; launcher sha256 b89002bda8b30ff10c915f3d0f75fe099558e3607a8d0f14d3234a22ad469a2e; predeclaration sha256 c5f686617d547993dc99ddbf13b12300fe90520555ef4839af6b40ab31c6162d; SHA256SUMS d6cba771236fbef6425ce749173f263a3e61b40d69be49312760b5aed78cea04. Archive ~/shengji-archive/2026-09-13/readouts/v63c12r-c12e8-vs-r42/."
+  },
+{
+   "id": "v63c12rwla",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "perf",
+   "title": "C12 rank-regret epoch 8 + lead anchor vs release 42",
+   "candidate": "As v63c12r (C12 rank-regret epoch 8, package c12rout-66e3a06c.npz, release-42 search) with SHENGJI_PV_WORLD_LEAD_ANCHOR=1 (wla, #918) on the candidate, vs release 42 as served. First-round deals. Perf tree claude-main-31 (c11a7d99).",
+   "comparator": "release 42 as served",
+   "vs": 42,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "five 520-cluster mirrored windows (2,600 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; five-window first stage with the predeclared extension rule",
+   "seeds": "67060910 67160910 67260910 67360910 67460910 (perf)",
+   "confidence": 0.95,
+   "point": -0.010702,
+   "lo": -0.048021,
+   "hi": 0.026617,
+   "takeaway": "Estimated -0.0107; 95% CI [-0.0480, +0.0266], INCONCLUSIVE (2/5 windows); no promotion, no extension; flat vs release 42 with wla too.",
+   "note": "SEALED 10-12 (LANE DONE 04:13:35Z); readout (Claude, one pass) #663 issuecomment-6117922371; digests posted on #663 before the read. Paired -0.010702 [-0.048021,+0.026617], SE 0.019040, MDE80 0.0533, tau 0.0251, Q 6.12 (4 df), I2 34.6%; INCONCLUSIVE (interval spans zero; not a negative result). NO PROMOTION: the first-stage read is not positive; no extension under the predeclared rule. Window deltas +0.0567, -0.0231, +0.0058, -0.0471, -0.0413. Package c12rout-66e3a06c.npz 66e3a06c31f0269aff15b388fa3bd75b4408f3adb32e18536709202954f35258 (epoch-08.pt e6784aa6); C12's test evaluation is deferred (25-30 GB prepare on the Mini). Health: 10 windows 520/520 shards, zero coverage failures. Reader sha256 f025150aa4691873e5725433151ff3c45d0f4c3dde8c2e507b23c9d0c31a1d13; result sha256 9005b9afd89096c6cff6a6a9222fc0242380014289621db39c37ee4dcd55115a; launcher sha256 8bc05680c8fca9909066540deafd9c6d746969418d44da00b2d44e62dc68acc5; predeclaration sha256 7dc2d7d7ec6364489d8a9ae59fe31bac3616f6d6edbb7783fa9bf1a2f1eee617; SHA256SUMS 84673ac46dd15aa98b54749bbed7989ac6967fd839af355bf6a420a65a601798. Archive ~/shengji-archive/2026-09-13/readouts/v63c12rwla-c12e8wla-vs-r42/."
   },
   {
    "id": "v57dts",

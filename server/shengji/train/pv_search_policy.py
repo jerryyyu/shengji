@@ -200,6 +200,17 @@ lead-width rules); on, it enters the recipe digest with ``WIDE_LEAD_K`` and adds
 exclusive, so they never both appear) and before ``-la``.  Off, every existing
 name (release 42, ``aw``, ``awl`` above) and every decision are unchanged.
 
+Optional late-hand finish admission, OFF BY DEFAULT:
+``SHENGJI_PV_FINISH_LEAD_ADMISSION=1`` adds at most ONE whole-hand lead when
+2--8 remaining cards share an effective suit and the unchanged ballot omits it.
+It preserves the anchor and all existing admitted actions, including forced
+extras. The capped pool also retains this candidate. Normal engine throw
+resolution, value scoring and selection still apply: it is NOT a must-play
+or a claim that the throw will stand. At W64 the extra value work is at most
+64 leaves with fixed W64, versus 1536 for widening K8 to K32. Local/host time still needs
+measurement. Off, the recipe/name/record do not change; on, the name adds
+``-fla`` and the recipe pins the eight-card limit. Tree combinations are refused.
+
 Optional selection rule replacing the played-action swap (YJQJ round 1, release
 42), OFF BY DEFAULT: ``SHENGJI_PV_DOOMED_THROW_RESELECT=1`` -- when the selected
 lead is a throw the swap would replace (refused in EVERY sampled world with one
@@ -388,6 +399,8 @@ WIDE_LEAD_RULE = {"WIDE_LEAD_ADMISSION": "wide_lead_admission"}
 WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 #: `wide_lead_admission`: the policy admission width on every lead (served K is 8)
 WIDE_LEAD_K = 32
+FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
+FINISH_LEAD_MAX_CARDS = 8
 #: `adaptive_worlds`: the top-2 value gap is unresolved when it is below this many
 #: paired standard errors of (v_a - v_b) over the base worlds
 ADAPTIVE_WORLDS_Z = 2.0
@@ -435,15 +448,17 @@ LEAF_FIRST_TRICK_PLAYERS = ("heuristic", "policy")
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
 #: scope, the doomed-throw re-select, the value declaration, its first-round
 #: gate, the model-free first-round declaration, the policy-played value leaf):
-#: div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
+#: div, fs, rc, rcec, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
 #: asap, lpft
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
-              **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE}
+              **VALUE_DECLARE_EVERY_FIRST_RULE, **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
+              **FINISH_LEAD_RULE}
 RULES = RULE_FLAGS
-RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"), ADAPTIVE_K_TOKEN,
+RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
+                                                   ("finish_lead_admission", "fla"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
@@ -575,6 +590,7 @@ class PVSearchConfig:
     adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
     # the optional lead admission width (exclusive with ``adaptive_k``); the same contract
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+    finish_lead_admission: bool = False
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -629,6 +645,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         if config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         payload["wide_lead_k"] = WIDE_LEAD_K
+    if config.finish_lead_admission:
+        if config.tree is not None:
+            raise PVSearchPolicyError('finish_lead_admission does not combine with the tree')
+        payload['finish_lead_max_cards'] = FINISH_LEAD_MAX_CARDS
     if config.lead_tiebreak_prior:
         payload["lead_tiebreak_epsilon"] = LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"]
     if config.doomed_throw_swap and config.doomed_throw_reselect:
@@ -859,6 +879,12 @@ class PVSearchBot(PolicyValueBot):
         if config.wide_lead_admission and config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         self.wide_lead_admission = config.wide_lead_admission
+        if type(config.finish_lead_admission) is not bool:
+            raise PVSearchPolicyError('finish_lead_admission must be a bool')
+        if config.finish_lead_admission and config.tree is not None:
+            raise PVSearchPolicyError('finish_lead_admission does not combine with the tree')
+        self.finish_lead_admission = config.finish_lead_admission
+        self._finish_lead_added = False
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
             raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree")
@@ -1278,7 +1304,24 @@ class PVSearchBot(PolicyValueBot):
         """The scored set: the capped legal enumeration (``self.cap``, labelled by
         ``legal_complete``/``legal_count`` -- never exhaustive by assumption) with
         ``must_include`` forced in."""
-        return enumerate_legal(rnd, seat, cap=self.cap, must_include=list(must_include))
+        extra = self._finish_lead_action(rnd, seat)
+        return enumerate_legal(rnd, seat, cap=self.cap,
+                               must_include=list(must_include) + ([extra] if extra else []))
+
+    def _finish_lead_action(self, rnd, seat):
+        """One bounded hypothesis, not a must-play rule or a safe-throw claim.
+
+        Price the whole hand alongside the unchanged ballot. Engine resolution
+        and the normal value/selection path still decide whether it is useful.
+        """
+        if not self.finish_lead_admission or not leading(rnd):
+            return None
+        hand = rnd.hands[seat]
+        if not 2 <= len(hand) <= FINISH_LEAD_MAX_CARDS:
+            return None
+        if len({rnd.ordering.eff_suit(c) for c in hand}) != 1:
+            return None
+        return sorted(hand)
 
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
         """Indices (into ``actions``) the value head prices -- the FINAL ballot: the
@@ -1288,7 +1331,16 @@ class PVSearchBot(PolicyValueBot):
         admission context `_search` sets).  A wrapper that captures the ballot here
         (the trajectory mixin, a hook override) captures everything the value head
         will price."""
-        return super()._admit(rnd, seat, actions, preferences, anchor_index)
+        chosen = super()._admit(rnd, seat, actions, preferences, anchor_index)
+        self._finish_lead_added = False
+        finish = self._finish_lead_action(rnd, seat)
+        if finish:
+            for i, action in enumerate(actions):
+                if sorted(action) == finish and i not in chosen and np.isfinite(preferences[i]):
+                    chosen = list(chosen) + [i]
+                    self._finish_lead_added = True
+                    break
+        return chosen
 
     # -- the optional lead admission width (class docstring) ----------------------
 
@@ -1312,6 +1364,8 @@ class PVSearchBot(PolicyValueBot):
 
     def _admission_record(self):
         record = super()._admission_record()
+        if self.finish_lead_admission:
+            record['finish_lead_admission_added'] = self._finish_lead_added
         if self.wide_lead_admission and self._wide_lead is not None:
             record.update(self._wide_lead)
         return record
@@ -1351,7 +1405,8 @@ class PVSearchBot(PolicyValueBot):
         # included -- is bounded.
         draw_keys = getattr(self, "_draw_keys", None) or ()
         budgeted = [i for i in chosen if tuple(sorted(actions[i])) not in draw_keys]
-        if len(budgeted) > self._adaptive["k_used"] + FORCED_EXTRA_SLOTS \
+        finish_extra = int(self.finish_lead_admission and self._finish_lead_added)
+        if len(budgeted) > self._adaptive["k_used"] + FORCED_EXTRA_SLOTS + finish_extra \
                 or self._adaptive["k_used"] > self._candidate_limit(rnd):
             raise PVSearchPolicyError("admission exceeded the candidate budget",
                                       stage="admission_budget")
@@ -1664,6 +1719,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                       finish_lead_admission: bool = False,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -1709,6 +1765,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
+                            finish_lead_admission=finish_lead_admission,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -1782,6 +1839,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                         adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                         wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                        finish_lead_admission: bool = False,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -1809,6 +1867,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
+                            finish_lead_admission=finish_lead_admission,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -1872,6 +1931,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                adaptive_worlds=config.adaptive_worlds,
                                adaptive_worlds_leads=config.adaptive_worlds_leads,
                                wide_lead_admission=config.wide_lead_admission,
+                               finish_lead_admission=config.finish_lead_admission,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
@@ -1896,7 +1956,7 @@ def pv_env_recipe(environ=None) -> dict:
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
-    ``_WIDE_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
+    ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_DECLARE_ASAP_FIRST`` / ``_LEAF_POLICY_FIRST_TRICK``
     rule flags (``0`` or ``1`` only; unset or empty is off) and the ``_VALUE_DECLARE_WORLDS``
     / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless ``_VALUE_DECLARE=1``), as keyword

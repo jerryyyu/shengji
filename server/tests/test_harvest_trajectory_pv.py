@@ -22,14 +22,13 @@ BURY = CWVBuryConfig(max_candidates=4, model_worlds=2, selection_worlds=2, alter
 SEED0 = 4_300_000
 
 
-@pytest.fixture
-def data_policy(package, monkeypatch):
+def _register_data_policy(package, monkeypatch, **extra):
     """The served recipe WITHOUT serving budgets (the data teacher), registered in this
     process and exported through SHENGJI_PV_* so a spawned worker registers the same name."""
     path, sha = package
     from dataclasses import asdict
     for key, value in dict(CKPT=path, SHA256=sha, BURY_ARM="hybrid", **{k.upper(): v for k, v in SMALL.items()},
-                           **{"BURY_" + k.upper(): v for k, v in asdict(BURY).items()}).items():
+                           **{"BURY_" + k.upper(): v for k, v in asdict(BURY).items()}, **extra).items():
         monkeypatch.setenv("SHENGJI_PV_" + key, str(value))
     monkeypatch.delenv("SHENGJI_PV_SERVING_BUDGET_SECONDS", raising=False)
     monkeypatch.delenv("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS", raising=False)
@@ -39,6 +38,46 @@ def data_policy(package, monkeypatch):
     finally:
         for n in names:
             REGISTRY.pop(n, None)
+
+
+@pytest.fixture
+def data_policy(package, monkeypatch):
+    yield from _register_data_policy(package, monkeypatch)
+
+
+@pytest.fixture
+def dtr_policy(package, monkeypatch):
+    """The data teacher with ``doomed_throw_reselect`` (the VD1 teacher's ``-dtr`` token)."""
+    yield from _register_data_policy(package, monkeypatch, DOOMED_THROW_RESELECT=1)
+
+
+@pytest.fixture
+def dtr_vd_policy(package, monkeypatch):
+    """``-dtr`` plus ``value_declare`` (the VD1 teacher's ``-vd`` token), on few worlds."""
+    yield from _register_data_policy(package, monkeypatch, DOOMED_THROW_RESELECT=1,
+                                     VALUE_DECLARE=1, VALUE_DECLARE_WORLDS=2)
+
+
+def force_all_excluded_fallback(monkeypatch):
+    """Drive every lead into ``_reselect_doomed_throw``'s all-excluded fallback: every
+    candidate the re-selection reaches is "doomed" with its lowest card as the forced
+    component, so the excluded set grows until it covers the admitted ballot and the
+    producer plays the FIRST selection's component (``played`` != ``admitted[selected]``
+    for a multi-card throw).  The seam is the one engine test the rule makes; the
+    selection rules, the record and the swap semantics stay the producer's."""
+    from shengji.train.policy_value_search import PolicyValueBot, leading
+    monkeypatch.setattr(PolicyValueBot, "_doomed_component",
+                        lambda self, rnd, seat, action, worlds, check_budget=None: [sorted(action)[0]])
+    seen = []                                   # per lead: (first selection's cards, the rule's record)
+    original = PolicyValueBot._reselect_doomed_throw
+
+    def spy(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen):
+        out = original(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen)
+        if leading(rnd):
+            seen.append((list(admitted[int(chosen)]), dict(self._doomed_throw)))
+        return out
+    monkeypatch.setattr(PolicyValueBot, "_reselect_doomed_throw", spy)
+    return seen
 
 
 def _gen(out, policy, **opt):
@@ -99,8 +138,10 @@ def test_explore_zero_is_the_served_bot_and_a_rerun_is_byte_identical(data_polic
     assert first["seat"] == rnd.turn
 
 
-def test_the_exploration_draw_is_scored_priced_and_recorded(data_policy, tmp_path):
-    run = _gen(tmp_path / "x", data_policy, explore_rate=1.0, explore_k=2)
+@pytest.mark.parametrize("policy_fixture", ["data_policy", "dtr_policy"])
+def test_the_exploration_draw_is_scored_priced_and_recorded(policy_fixture, request, tmp_path):
+    policy = request.getfixturevalue(policy_fixture)
+    run = _gen(tmp_path / "x", policy, explore_rate=1.0, explore_k=2)
     plays = [r for r in run["records"] if r["decision_kind"] == "play" and r["allocation"]["searched"]]
     drawn = [r for r in plays if r.get("exploration") is not None]
     fired = [r for r in drawn if r["exploration"]["added"]]
@@ -113,6 +154,81 @@ def test_the_exploration_draw_is_scored_priced_and_recorded(data_policy, tmp_pat
         assert len(r["action_values"]["means"]) == len(keys)       # ... and priced
         assert set(keys) - {action_key(a) for a in r["production_ballot"]} == added - set(action_key(a) for a in r["production_ballot"])
     assert run["manifest"]["counts"]["explore_fired"] == len(drawn)   # a draw with an empty pool still fired
+
+
+def _assert_fallback_rows(run, seen, *, explore_k):
+    """The dtr all-excluded fallback (#663, runVD1's 989 lost clusters) is harvested as
+    a k=1 point-mass row of the played component: the shape ``train/data.py`` already
+    consumes for ``tractor_lock`` / ``single_candidate``.  ``seen`` is the producer-side
+    witness: every lead the rule decided, with its record."""
+    from shengji.harvest import schema
+    plays = [r for r in run["records"] if r["decision_kind"] == "play"]
+    fallback = [r for r in plays if r["allocation"]["reason"] == "doomed_throw_fallback"]
+    forced = [(sel, rec) for sel, rec in seen if rec["doomed_throw_reselect_fallback_forced"]]
+    assert forced and len(forced) == len(seen), "the seam must drive every lead into the fallback"
+    # the row that broke the old mapping: a multi-card throw selected, its component played
+    assert any(len(sel) > 1 and rec["doomed_throw_reselect_to"] != rec["doomed_throw_reselect_from"]
+               for sel, rec in forced)
+    assert run["manifest"]["counts"]["doomed_throw_fallback"] == len(fallback) == len(forced)
+    for r in fallback:
+        assert r["ballot"] == [r["action"]] and r.get("production_ballot") is None
+        assert r["allocation"]["searched"] is False and r["allocation"]["played_index"] == 0
+        assert r["allocation"]["weights"] == [1.0] and r["allocation"]["total_worlds"] == 0
+        assert r["preference"]["final"] == r["preference"]["softmax"] == [1.0]
+        assert r["preference"]["tau"] is None and r["preference"]["played_index"] == 0
+        assert r["action_values"] is None and r["exploration"] is None
+        assert "widening" not in r
+        assert action_key(r["action"]) in {action_key(a) for a in r["legal_actions"]}
+        schema.validate_record(r)
+    assert all(len(r["action"]) == 1 and r["ply"] % 4 == 0 for r in fallback)   # the seam's component, on a lead
+    # every other play still carries the priced ballot, draws included
+    searched = [r for r in plays if r["allocation"]["searched"]]
+    assert searched
+    for r in searched:
+        assert action_key(r["ballot"][r["allocation"]["played_index"]]) == action_key(r["action"])
+        assert len(r["action_values"]["means"]) == len(r["ballot"])
+    if explore_k:
+        assert run["manifest"]["counts"]["explore_fired"] == sum(
+            1 for r in plays if r.get("exploration") is not None)
+    return fallback
+
+
+def test_the_dtr_all_excluded_fallback_is_a_point_mass_row(dtr_policy, tmp_path, monkeypatch):
+    seen = force_all_excluded_fallback(monkeypatch)
+    run = _gen(tmp_path / "dtr", dtr_policy, explore_rate=0.5, explore_k=2)
+    _assert_fallback_rows(run, seen, explore_k=2)
+
+
+def test_the_dtr_fallback_rows_are_the_same_shape_under_value_declare(dtr_vd_policy, tmp_path,
+                                                                     monkeypatch):
+    seen = force_all_excluded_fallback(monkeypatch)
+    evaluated = []
+    original = pv.PVSearchBot._value_declare_decision
+
+    def spy(self, *args, **kwargs):
+        out = original(self, *args, **kwargs)
+        evaluated.append(self.last_declare_record)
+        return out
+    monkeypatch.setattr(pv.PVSearchBot, "_value_declare_decision", spy)
+    run = _gen(tmp_path / "dtrvd", dtr_vd_policy, explore_rate=0.5, explore_k=2)
+    assert evaluated and all(r["schema"] == pv.VALUE_DECLARE_RECORD_SCHEMA for r in evaluated)
+    assert run["manifest"]["config"]["policy"] == dtr_vd_policy
+    _assert_fallback_rows(run, seen, explore_k=2)
+
+
+def test_a_fallback_record_that_played_another_action_is_refused():
+    """The consumer's fail-closed check survives the new branch: a fallback record whose
+    ``played`` is not the harvested action is a producer/consumer disagreement, not data."""
+    from collections import Counter
+    from types import SimpleNamespace
+    bot = SimpleNamespace(last_decision_record={"schema": pv.RECORD_SCHEMA,
+                                                "doomed_throw_reselect_fallback_forced": True,
+                                                "admitted": [["S4", "S4", "SJ"]], "admitted_indices": [0],
+                                                "selected_index": 0, "played": ["SJ"]},
+                          last_ballot=[["S4", "S4", "SJ"]], last_legal=None, last_exploration=None,
+                          last_widening=None, production_probe=None, WIDEN=())
+    with pytest.raises(trajectory.TrajectoryError, match="played a different action"):
+        trajectory._play_fields({}, "run", 0, 0, None, 0, [], ["S4"], bot, None, Counter())
 
 
 def test_budgeted_serving_recipes_and_knobs_are_refused(package, tmp_path, monkeypatch):

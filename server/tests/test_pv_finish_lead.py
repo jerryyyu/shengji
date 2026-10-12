@@ -352,6 +352,8 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
                 assert record['exact_lead_status'] == 'complete'
                 assert record['exact_lead_worlds_completed'] == 64
                 assert record['value_means'][record['admitted'].index(['BJ'])] == 2.296875
+                assert record['exact_lead_changed'] is True
+                assert record['admitted'][record['exact_lead_base_selected_index']] == ['BJ', 'S5', 'S8', 'SQ']
             assert srv._commit_bot_turn(room, prepared)
             assert room.bot is copied and not srv._commit_bot_turn(room, prepared)
             records.append((record, copied.sampler.rng.getstate()))

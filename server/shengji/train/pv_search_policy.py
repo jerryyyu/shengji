@@ -1668,7 +1668,8 @@ class PVSearchBot(PolicyValueBot):
         """
         from .pv_exact_endgame import exact_lead_means
         state = dict(exact_lead_status='ineligible', exact_lead_worlds_completed=0,
-                     exact_lead_nodes=None, exact_lead_cache_hits=None)
+                     exact_lead_nodes=None, exact_lead_cache_hits=None,
+                     exact_lead_changed=False)
         self._exact_lead = state
         if not leading(rnd) or max(map(len, rnd.hands)) > EXACT_LEAD_LIMITS['max_hand_cards']:
             return base
@@ -1700,6 +1701,8 @@ class PVSearchBot(PolicyValueBot):
             return base
         state.update(exact_lead_status='complete', exact_lead_worlds_completed=stats['worlds_completed'],
                      exact_lead_nodes=stats['nodes'], exact_lead_cache_hits=stats['cache_hits'],
+                     exact_lead_changed=sorted(played) != sorted(base[3]),
+                     exact_lead_base_selected_index=int(base[2]),
                      exact_lead_base_value_means=base[0].tolist(),
                      exact_lead_base_played=list(base[3]))
         return means, base[1], winner, played, base[4]

@@ -356,28 +356,66 @@ def test_claim_preserves_private_hand_and_ids(client):
         assert sorted(room.round.hands[want]) == before
 
 
-def test_claim_during_bot_delay_is_atomic(client):
+def test_claim_during_bot_delay_is_atomic(client, monkeypatch):
     """Claiming the seat whose bot turn is pending must cancel that bot move."""
     import asyncio
 
+    from shengji.ai.heuristic import HeuristicBot
     from shengji.api import server as srv
 
-    with client.websocket_connect("/ws") as a:
-        code, room = _start_game(client, a, to_play=True)
-        turn = room.round.turn
-        assert turn is not None and room.round.phase == "play"
-        if not room.seats[turn].is_bot:      # seat 0 (human) leads
-            turn = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
-        hand_before = list(room.round.hands[turn])
-        with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
-                         "name": "sniper", "seat": turn})
-            _drain(b, "state", tries=60)
-            # pump_bots re-checks is_bot after sleeping; the seat is human now.
-            assert not room.seats[turn].is_bot
-            assert room.round.turn == turn, "bot moved for a claimed seat"
-            assert list(room.round.hands[turn]) == hand_before
-    del asyncio, srv
+    # No declaration deterministically makes the human seat 0 the banker.
+    # Advance its lead over the socket; never substitute an off-turn bot.
+    monkeypatch.setattr(HeuristicBot, "decide_declare",
+                        lambda self, rnd, seat, final=False: None)
+    monkeypatch.setattr(srv, "BOT_DELAY", 60.0)
+    pending = threading.Event()
+    release = threading.Event()
+    committed = threading.Event()
+    records = []
+    real_sleep = asyncio.sleep
+
+    async def controlled_sleep(delay, *args, **kwargs):
+        # Only the deliberately long bot pacing sleep, not deal/cleanup.
+        if delay > 30:
+            pending.set()
+            assert await asyncio.to_thread(release.wait, 10), "pacing never released"
+        else:
+            await real_sleep(delay, *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "sleep", controlled_sleep)
+    try:
+        with client.websocket_connect("/ws") as a:
+            code, room = _start_game(client, a, to_play=True)
+            assert room.round.turn == 0 and not room.seats[0].is_bot
+            original_log = room.log_event
+
+            def capture_log(kind, **data):
+                original_log(kind, **data)
+                if kind == "bot_timing" and data.get("phase") == "play":
+                    records.append(data)
+                    committed.set()
+
+            room.log_event = capture_log
+            card = next(iter(room.ids[0]))
+            a.send_json({"type": "play", "card_ids": [card]})
+            assert pending.wait(timeout=5), "on-turn bot never reached pacing"
+            turn = room.round.turn
+            assert turn is not None and room.seats[turn].is_bot
+            hand_before = list(room.round.hands[turn])
+            with client.websocket_connect("/ws") as b:
+                b.send_json({"type": "join_room", "room": code,
+                             "name": "sniper", "seat": turn})
+                state = _drain(b, "state", tries=60)
+                assert state["you"] == turn and not release.is_set()
+                assert not room.seats[turn].is_bot
+                release.set()
+                assert committed.wait(timeout=5), "pending move never reached commit guard"
+                assert records[-1]["stale_discarded"] is True
+                assert records[-1]["acted"] is False
+                assert room.round.turn == turn, "bot moved for a claimed seat"
+                assert list(room.round.hands[turn]) == hand_before
+    finally:
+        release.set()
 
 
 def test_claim_during_blocked_search_is_prompt_and_discards_snapshot(

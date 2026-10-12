@@ -313,6 +313,41 @@ def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
     assert policy._tiebreak == {'base': True}
     assert policy._exact_lead['exact_lead_abandon_reason'] == 'soft_budget'
     assert policy._exact_lead['exact_lead_worlds_completed'] is None
+    assert 'exact_lead_selected_level_delta' not in policy._exact_lead
+
+
+@pytest.mark.parametrize('delta,winner,override,kind', [
+    (0.25, 1, False, 'higher'), (0.0, 1, False, 'tie'),
+    (-0.25, 1, False, 'lower'), (0.25, 0, False, 'unchanged'),
+    (0.25, 1, True, 'post_selection_override'),
+])
+def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, delta, winner, override, kind):
+    from shengji.train import pv_exact_endgame as exact
+    from shengji.train.search_screen import TimedPolicy
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    actions = [['C3'], ['C4']] + [['C5']] * 15
+    means = np.array([1.0, 1.0 + delta] + [0.0] * 15)
+    # Deliberately unrelated head predictions: delta must use exact means only.
+    base = (np.array([100.0] * 17), 1, 0, actions[0], 1)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (means, dict(worlds_completed=2, nodes=12, cache_hits=1)))
+    monkeypatch.setattr(policy, '_select', lambda *a, **kw: winner)
+    monkeypatch.setattr(policy, '_swap_doomed_throw', lambda *a, **kw:
+        ['D3'] if override else actions[winner])
+    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [],
+        time.perf_counter(), None, [0.0] * 17, base)
+    policy.last_decision_record = {'schema': 'pv-search-decision-v1',
+        'played': result[3], 'value_means': result[0].tolist(), **policy._exact_lead}
+    monkeypatch.setattr(policy, 'decide_play', lambda *a: result[3])
+    consumer = TimedPolicy(policy)
+    assert consumer.decide_play(rnd, rnd.turn) == result[3]
+    trace, = consumer.decisions
+    assert 'value_means' not in trace and trace['value_means__len'] == 17
+    assert trace['exact_lead_change_kind'] == kind
+    assert trace['exact_lead_selected_level_mean'] == means[winner]
+    assert trace['exact_lead_base_level_mean'] == 1.0
+    assert trace['exact_lead_selected_level_delta'] == means[winner] - 1.0
 
 
 def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):
@@ -373,6 +408,8 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
                 assert record['exact_lead_worlds_completed'] == 64
                 assert record['value_means'][record['admitted'].index(['BJ'])] == 2.296875
                 assert record['exact_lead_changed'] is True
+                assert record['exact_lead_change_kind'] == 'higher'
+                assert record['exact_lead_selected_level_delta'] == 0.328125
                 assert record['admitted'][record['exact_lead_base_selected_index']] == ['BJ', 'S5', 'S8', 'SQ']
             assert srv._commit_bot_turn(room, prepared)
             assert room.bot is copied and not srv._commit_bot_turn(room, prepared)

@@ -1699,9 +1699,24 @@ class PVSearchBot(PolicyValueBot):
             state.update(exact_lead_status='abandoned', exact_lead_worlds_completed=None,
                          exact_lead_abandon_reason=stage.reason, exact_lead_abandon_error=stage.error)
             return base
+        # Scalar witnesses survive trace_fields even when a widened ballot's
+        # means exceed its numeric-list limit. These compare TWO exact means,
+        # never an exact level with the baseline value head's prediction.
+        selected_level = float(means[winner])
+        base_level = float(means[base[2]])
+        delta = selected_level - base_level
+        changed = sorted(played) != sorted(base[3])
+        aligned = (sorted(played) == sorted(admitted[winner])
+                   and sorted(base[3]) == sorted(admitted[base[2]]))
+        change_kind = ('unchanged' if not changed else 'post_selection_override' if not aligned
+                       else 'higher' if delta > 0 else 'lower' if delta < 0 else 'tie')
         state.update(exact_lead_status='complete', exact_lead_worlds_completed=stats['worlds_completed'],
                      exact_lead_nodes=stats['nodes'], exact_lead_cache_hits=stats['cache_hits'],
-                     exact_lead_changed=sorted(played) != sorted(base[3]),
+                     exact_lead_changed=changed,
+                     exact_lead_change_kind=change_kind,
+                     exact_lead_selected_level_mean=selected_level,
+                     exact_lead_base_level_mean=base_level,
+                     exact_lead_selected_level_delta=delta,
                      exact_lead_base_selected_index=int(base[2]),
                      exact_lead_base_value_means=base[0].tolist(),
                      exact_lead_base_played=list(base[3]))

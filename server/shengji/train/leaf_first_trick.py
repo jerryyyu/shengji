@@ -49,9 +49,13 @@ finite 54-wide log-odds) or whose follow enumeration is incomplete is played
 by the HEURISTIC (``fallback.decide_play``), and `PolicyFirstTrick.fallbacks`
 counts those seats; `policy_plays` counts the seats the policy played.  The
 serving deadline (``check_budget``) is never swallowed: it runs OUTSIDE the
-guarded calls, before every predictor batch, so an expiry propagates to the
-stage's own fallback (the bury's heuristic incumbent, the declare's heuristic
-choice).
+guarded calls, at every expensive-work boundary -- before each play's row
+encoding, again after the encoding and BEFORE the predictor dispatch (an
+expiry during encoding begins no model call), and once more after the trick's
+last play, BEFORE the consumer's value inference (an expiry on the fourth
+policy batch begins no value batch) -- so an expiry propagates to the stage's
+own fallback (the bury's heuristic incumbent, the declare's heuristic choice)
+without starting another model call.
 
 `play_first_tricks` plays the trick on a BATCH of positions, play by play
 (the lead at every position, one predictor call over the batch, then the
@@ -182,6 +186,8 @@ class PolicyFirstTrick:
         if self.check_budget is not None:
             self.check_budget()
         row = self._row(rnd, seat)
+        if self.check_budget is not None:
+            self.check_budget()   # an expiry during encoding starts no predictor call
         log_odds = None if row is None else self._log_odds([row])
         if log_odds is not None:
             self.batches += 1
@@ -197,6 +203,8 @@ class PolicyFirstTrick:
             if self.check_budget is not None:
                 self.check_budget()
             rows = [self._row(position, position.turn) for position in positions]
+            if self.check_budget is not None:
+                self.check_budget()   # an expiry during encoding starts no predictor call
             encoded = [row for row in rows if row is not None]
             log_odds = self._log_odds(encoded) if encoded else None
             if log_odds is not None:
@@ -210,6 +218,8 @@ class PolicyFirstTrick:
                         log_odds_row = log_odds[cursor]
                     cursor += 1
                 position.play(seat, self._play(position, seat, log_odds_row))
+        if self.check_budget is not None:
+            self.check_budget()   # an expiry on the last play starts no value batch
 
 
 __all__ = ["FOLLOW_CAP", "TRICK_PLAYS", "PolicyFirstTrick", "best_lead", "best_follow"]

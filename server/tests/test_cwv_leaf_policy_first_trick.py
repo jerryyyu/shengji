@@ -640,17 +640,105 @@ def test_the_leaf_player_never_swallows_the_deadline():
 
     def check():
         ticks.append(1)
-        if len(ticks) >= 2:
+        if len(ticks) >= 3:
             raise Deadline()
     player = lft.PolicyFirstTrick(RaisingPredict(), 2, HeuristicBot(), check_budget=check)
     positions = pre_trick_positions("declare")[:2]
     with pytest.raises(Deadline):
         player.play_first_tricks(positions)
-    assert len(ticks) == 2
+    # play 1: before encoding, after encoding (the predictor then raises and both
+    # seats fall back); play 2: before encoding -> the deadline
+    assert len(ticks) == 3
     assert all(len(p.history) == 0 and len(p.trick.plays) == 1 for p in positions)
     assert player.fallbacks == 2                      # the raising predictor's first play
     with pytest.raises(Deadline):
         player.decide_play(positions[0], positions[0].turn)
+
+
+def test_an_expiry_during_encoding_starts_no_predictor_call():
+    """The check between the row encoding and the predictor dispatch: an
+    expiry raised there (the second tick of a play) reaches the caller before
+    the predictor runs, on both the batch and the sequential path."""
+    class Deadline(Exception):
+        pass
+    ticks = []
+
+    def check():
+        ticks.append(1)
+        if len(ticks) == 2:
+            raise Deadline()
+    predict = CountingPredict()
+    player = lft.PolicyFirstTrick(predict, 2, HeuristicBot(), check_budget=check)
+    positions = pre_trick_positions("declare")[:2]
+    with pytest.raises(Deadline):
+        player.play_first_tricks(positions)
+    assert len(ticks) == 2 and predict.calls == 0 and player.batches == 0
+    assert all(len(p.history) == 0 and not p.trick.plays for p in positions)
+    assert player.fallbacks == 0 and player.policy_plays == 0
+    ticks.clear()
+    with pytest.raises(Deadline):
+        player.decide_play(positions[0], positions[0].turn)
+    assert len(ticks) == 2 and predict.calls == 0 and not positions[0].trick.plays
+
+
+class ExpireOnFourthPredict(CountingPredict):
+    """Codex's review-972 witness: the clock jumps past every deadline the
+    moment the FOURTH policy batch (the trick's last play) returns."""
+
+    def __init__(self, clock):
+        super().__init__()
+        self.clock = clock
+
+    def __call__(self, X):
+        result = super().__call__(X)
+        if self.calls == 4:
+            self.clock["expired"] = True
+        return result
+
+
+@pytest.fixture
+def jumping_clock(monkeypatch):
+    """`time.perf_counter` (the serving budgets' clock) plus 100 s once
+    ``clock["expired"]`` is set."""
+    clock = {"expired": False}
+    real = time.perf_counter
+    monkeypatch.setattr(time, "perf_counter",
+                        lambda: real() + (100.0 if clock["expired"] else 0.0))
+    return clock
+
+
+def test_bury_expiry_on_the_fourth_policy_batch_starts_no_value_batch(jumping_clock):
+    """Review 972 (Codex HOLD): the helper's final check, after the trick's
+    last play and before `cwv_bury.score_bury_candidates.flush` scores the
+    batch.  The stage still falls back to the heuristic incumbent; the value
+    head is NEVER invoked."""
+    rnd = bury_state(65)
+    incumbent = HEURISTIC.decide_bury(copy.deepcopy(rnd), rnd.banker)
+    bot = served_bury(ExpireOnFourthPredict(jumping_clock), arm="value", bury_budget=0.5,
+                      leaf_policy_first_trick=True)
+    assert bot.decide_bury(rnd, rnd.banker) == list(incumbent)
+    record = bot.last_bury_record
+    assert record["schema"] == "cwv-bury-fallback-v1" and record["reason"] == "budget"
+    assert record["error_class"] == "BuryBudgetExceeded"
+    assert bot.predict.calls == 4                         # the whole trick was played
+    assert bot.evaluator.calls == 0                       # and no value batch began
+
+
+def test_declare_expiry_on_the_fourth_policy_batch_starts_no_value_batch(jumping_clock):
+    """Review 972 (Codex HOLD), the declare consumer
+    (`PVSearchBot._value_declare_means.flush`)."""
+    rnd, seat, _, _, _ = _declare_args()
+    heuristic = HEURISTIC.decide_declare(copy.deepcopy(rnd), seat, final=True)
+    bot = served(ExpireOnFourthPredict(jumping_clock), NTEvaluator(), budget=0.5,
+                 value_declare=True, value_declare_worlds=2, leaf_policy_first_trick=True)
+    assert bot.decide_declare(rnd, seat, final=True) == heuristic
+    record = bot.last_declare_record
+    assert not record["evaluated"] and record["fallback_reason"] == "hard_budget"
+    assert record["fallback_error"] == "PVSearchBudgetExceeded"
+    assert record["played"] == record["heuristic"] and record["changed"] is False
+    assert record["worlds_completed"] == 0
+    assert bot.predict.calls == 4                         # the whole trick was played
+    assert bot.evaluator.calls == 0                       # and no value batch began
 
 
 # ------------------------------------------------------------ (f) the screen wrapper carries the keys

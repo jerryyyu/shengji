@@ -1,4 +1,14 @@
-"""DEV (tier i) lead-admission width diagnostic for release 42 (follow-up to leaddiag-r42-20261008).
+"""DEV lead capture, with an optional historical release-42 width diagnostic.
+
+With --served-env SNAPSHOT.json, use the explicit serving environment mapping
+(including SHENGJI_BOT and SHENGJI_PV_* pins/rules/budgets) through the production
+registry factory. The positional package is a local copy at the same SHA. Capture
+EVERY lead, including incomplete/fallback decisions; do not run extra analysis.
+The headless declare/bury lifecycle is not websocket scheduling or host parity.
+Selecting a recipe does not establish that it is currently deployed: the caller
+must verify the snapshot against the canonical deployment before a collection.
+
+Without --served-env, retain the historical diagnostic below:
 
 Self-play with four release-42 pv-search bots (div rc tb la dts, W64 K8, no serving budget, heuristic bury).  Play
 always continues with the release-42 move.  At every LEAD with >= 2 legal actions, after the served decision:
@@ -17,16 +27,17 @@ full-set (64w) top 3.  regret(v) = ref(ref_best) - ref(pick_v): the value head's
 Yields to /root/.claude-host.lock between positions and before every value batch.
 Prepared collector integration; no run is authorized by this file. Replay payloads include the
 full hidden deal for DEV reconstruction only, never as policy input. It does not restore bot RNG.
-Origin: archived leaddiag2-r42-20261008/lead_diag2.py; scientific diagnostic unchanged.
-Usage: python -m scripts.lead_admission_diagnostic <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
+Origin: archived leaddiag2-r42-20261008/lead_diag2.py; historical diagnostic unchanged.
+Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json] <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
 """
 import copy
+import argparse
 import json, os, random, sys, time
-from shengji.train.lead_root_capture import LeadCapture
+from shengji.train.lead_root_capture import LeadCapture, normalized
 import numpy as np
 from shengji.engine.game import Game
 from shengji.ai import env
-from shengji.train.pv_search_policy import PVSearchBot, make_pv_search_bot
+from shengji.train.pv_search_policy import PVSearchBot, make_pv_search_bot, pv_env_recipe, pv_registry_entries
 from shengji.train.policy_value_search import leading
 
 R42 = dict(admission_diversity=True, refusal_constraints=True, tiebreak_points=True,
@@ -212,15 +223,49 @@ def analyze(bot, rnd, seat, rec, served_t, samplers):
         "variants": out, "t_analysis": time.time() - T0}
 
 
+def served_capture_bots(package, sha, seed, environ):
+    """Use the serving registry factory, not the historical Probe subclass.
+
+    An explicit JSON environment snapshot names the policy and pins the local
+    package. Only the package location is remapped. No ambient recipe overrides.
+    """
+    recipe = pv_env_recipe(environ)
+    if recipe['sha256'] != sha:
+        raise ValueError('capture package SHA differs from serving snapshot')
+    recipe['checkpoint'] = package
+    entries = pv_registry_entries(**recipe)
+    name = environ.get('SHENGJI_BOT')
+    if name not in entries:
+        raise ValueError('SHENGJI_BOT differs from computed serving recipe')
+    bots = [entries[name](seed=seed * 10 + s) for s in range(4)]
+    identity = dict(mode='served-recipe-capture-only', policy=name,
+                    recipe=normalized(recipe),
+                    seat_seeds=[seed * 10 + s for s in range(4)],
+                    limits=['Headless env declaration timing, not websocket scheduling.',
+                            'Local serving budgets, not production-host latency parity.',
+                            'No counterfactual analysis or bot RNG restoration.'])
+    return bots, identity
+
+
 def main(argv=None):
     global PKG, SHA, SEED, MAXPOS, DEADLINE, OUT, LOCK, STOP
-    args = sys.argv[1:] if argv is None else argv
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--served-env', help='JSON environment snapshot: capture only, including fallback leads')
+    parser.add_argument('args', nargs=8, metavar='ARG')
+    options = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    args = options.args
     PKG, SHA, SEED, MAXPOS, DEADLINE, OUT, LOCK, STOP = (
         args[0], args[1], int(args[2]), int(args[3]), float(args[4]), args[5], args[6], args[7])
-    bots = [make_pv_search_bot(PKG, sha256=SHA, seed=SEED * 10 + s, bot_factory=Probe, **R42) for s in range(4)]
-    sampler_cls = type(bots[0].sampler)
-    samplers = [[sampler_cls(seed=SEED * 10 + s + 7_000_000), sampler_cls(seed=SEED * 10 + s + 9_000_000)]
-                for s in range(4)]
+    identity = None
+    if options.served_env:
+        with open(options.served_env) as source:
+            bots, identity = served_capture_bots(PKG, SHA, SEED, json.load(source))
+        samplers = None
+    else:
+        bots = [make_pv_search_bot(PKG, sha256=SHA, seed=SEED * 10 + s, bot_factory=Probe, **R42) for s in range(4)]
+        sampler_cls = type(bots[0].sampler)
+        samplers = [[sampler_cls(seed=SEED * 10 + s + 7_000_000), sampler_cls(seed=SEED * 10 + s + 9_000_000)]
+                    for s in range(4)]
     out = open(OUT, "x")  # a fresh DEV collection; never append a duplicate prefix
     game, gid = Game(random.Random(SEED)), 0
     t0, n, r, reason = time.time(), 0, 0, "max_positions"
@@ -235,21 +280,27 @@ def main(argv=None):
             while rnd.phase == "play":
                 seat = rnd.turn
                 bot = bots[seat]
-                bot._probe, bot._cap, bot._t = None, None, {}
+                if identity is None:
+                    bot._probe, bot._cap, bot._t = None, None, {}
                 is_lead = bool(leading(rnd))
                 if is_lead:
                     trick += 1
                     check()
+                started = time.perf_counter()
                 cards = bot.decide_play(rnd, seat)
+                decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
-                served_t = dict(bot._t)
-                if is_lead and n < MAXPOS and rec and rec.get("work_complete") and bot._cap is not None \
-                        and bot._probe is not None and len(bot._cap[0]) >= 2:
+                eligible = identity is not None or (rec and rec.get("work_complete") and bot._cap is not None
+                                                    and bot._probe is not None and len(bot._cap[0]) >= 2)
+                if is_lead and n < MAXPOS and eligible:
                     row = {"seed": SEED, "round": r, "game": f"{SEED}:{gid}", "trick": trick,
                            "seat": seat, "hand": len(rnd.hands[seat]), "is_attacker": bool(rnd.is_attacker(seat))}
                     row["replay"] = capture.capture(rnd, ledger=bot._refusals, decision=rec)
                     # Analysis mutates diagnostic fields; retain the actual decision first.
-                    row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), served_t, samplers[seat]))
+                    if identity is not None:
+                        row.update(collection=identity, attempted=list(cards), decision_seconds=decision_seconds)
+                    else:
+                        row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
                     out.write(json.dumps(row) + "\n")
                     out.flush()
                     n += 1

@@ -289,6 +289,24 @@ the name after ``-vdef``.  The record gains ``served_bury`` (``ordinary_choice``
 the margin test used, ``outcome_means`` stays the ordinary pass's.  Off, it is
 absent from the payload, the record and the instance state, so every existing
 name and every decision are unchanged.
+Its pass-conditioned world model (#707 S15(4)), OFF BY DEFAULT:
+``SHENGJI_PV_VALUE_DECLARE_PASS_WORLDS=1`` -- each declare world is drawn from
+the uniform posterior and ACCEPTED with the likelihood of the other seats'
+silence (`declare_pass_worlds`): a seat that in that world has held a
+combination stronger than the current declaration for ``d`` of its own dealt
+cards, and has not declared, contributes ``(1 - 0.02) ** d``; the deciding seat
+and the current declarer contribute 1.  A soft weight, not an exclusion: in
+the production logs humans passed an over-declaring pair to the end of the
+window in 39 of 64 episodes.  At most 32 draws per world; the last draw is kept
+after that (a counted fallback).  The candidate set, the leaves, the worlds
+count, the margin and every fallback are ``value_declare``'s.  ``0`` or ``1``
+only; it REQUIRES ``SHENGJI_PV_VALUE_DECLARE=1`` (refused otherwise); on, it
+enters the recipe digest (``value_declare_model`` names
+``pass-conditioned-unseen``, with the hazard and the attempt cap) and adds
+``-vdpw`` to the name after ``-vdef`` and ``-vdsb``.  The record gains ``pass_worlds``
+(``hazard``, ``max_attempts``, ``worlds``, ``attempts``, ``fallbacks``).  Off,
+it is absent from the payload, the record and the instance state, so every
+existing name and every decision are unchanged.
 
 Optional heuristic declaration variant with NO model call (the same
 diagnostic), OFF BY DEFAULT: ``SHENGJI_PV_DECLARE_ASAP_FIRST=1`` -- in a round
@@ -311,7 +329,7 @@ screen like the value-declare records): ``cards_dealt``, ``options`` (count),
 ``0`` or ``1`` only; on, it enters the recipe digest and adds ``-asap`` to the
 name in the declare slot (after ``-vdef``; the two policies never both
 appear).  Off, it is absent from the payload, so every existing name and every
-decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``vdsb``, ``asap``.
+decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``vdsb``, ``vdpw``, ``asap``.
 
 Optional value-leaf rule (Jerry 2026-10-11: "where we use heuristics, it may be
 better to use the model"), OFF BY DEFAULT: ``SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1``
@@ -344,7 +362,8 @@ gain ``leaf_first_trick`` (``"heuristic"`` / ``"policy"``) and
 leaves are untouched, so every existing name (release 44:
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6``)
 and every decision are unchanged.  Rule token order:
-div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, vdsb, asap, lpft.
+div, fs, rc, rcec, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, vdsb, vdpw, asap,
+lpft.
 
 Optional wide value-only bury chooser (#707 S15), OFF BY DEFAULT:
 ``SHENGJI_PV_BURY_WIDE_VALUE=1`` (`bury_wide_value`; a BURY setting of
@@ -441,6 +460,7 @@ from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as 
                               TOKEN as BURY_WIDE_TOKEN, TOKEN_TWO_SWAPS as BURY_WIDE_TOKEN_TWO_SWAPS,
                               check_wide_k, check_wide_swaps, decide_wide_value_bury)
 from . import declare_served_bury
+from . import declare_pass_worlds
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
 SCHEMA = "pv-search-recipe-v1"
@@ -522,6 +542,10 @@ VALUE_DECLARE_GATES = ("heuristic", "final", "every_first")
 #: and the wide value-only bury chooser; module docstring, `declare_served_bury`)
 VALUE_DECLARE_SERVED_BURY_RULE = {"VALUE_DECLARE_SERVED_BURY": "value_declare_served_bury"}
 VALUE_DECLARE_SERVED_BURY_DEFAULTS = dict(value_declare_served_bury=False)
+#: its pass-conditioned declare worlds (requires ``value_declare``; module
+#: docstring, `declare_pass_worlds`)
+VALUE_DECLARE_PASS_WORLDS_RULE = {"VALUE_DECLARE_PASS_WORLDS": "value_declare_pass_worlds"}
+VALUE_DECLARE_PASS_WORLDS_DEFAULTS = dict(value_declare_pass_worlds=False)
 #: the model-free first-round declaration variant (exclusive with ``value_declare``)
 DECLARE_ASAP_RULE = {"DECLARE_ASAP_FIRST": "declare_asap_first"}
 DECLARE_ASAP_DEFAULTS = dict(declare_asap_first=False)
@@ -562,15 +586,17 @@ ORACLE_WORLDS_DEFAULTS = dict(oracle_worlds=False)
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
 #: scope, the doomed-throw re-select, the value declaration, its first-round
-#: gate, the served bury in its worlds, the model-free first-round declaration,
-#: the policy-played value leaf, the diagnostic oracle worlds):
+#: gate, the served bury in its worlds, its pass-conditioned worlds, the
+#: model-free first-round declaration, the policy-played value leaf, the
+#: diagnostic oracle worlds):
 #: div, fs, rc, rcec, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
-#: vdsb, asap, lpft, orc
+#: vdsb, vdpw, asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
+              **VALUE_DECLARE_PASS_WORLDS_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE}
 RULES = RULE_FLAGS
@@ -588,6 +614,8 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("value_declare_every_first", "vdef"),
                                                    ("value_declare_served_bury",
                                                     declare_served_bury.TOKEN),
+                                                   ("value_declare_pass_worlds",
+                                                    declare_pass_worlds.TOKEN),
                                                    ("declare_asap_first", "asap"),
                                                    ("leaf_policy_first_trick", "lpft"),
                                                    ("oracle_worlds", "orc"))
@@ -613,6 +641,9 @@ _VALUE_DECLARE_SERVED_BURY_NO_EFFECT = ("value_declare_served_bury needs the ser
                                         "value-only bury (SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1 "
                                         "needs SHENGJI_PV_BURY_ARM=hybrid|value and "
                                         "SHENGJI_PV_BURY_WIDE_VALUE=1)")
+_VALUE_DECLARE_PASS_WORLDS_REQUIRES = ("value_declare_pass_worlds requires value_declare "
+                                       "(SHENGJI_PV_VALUE_DECLARE_PASS_WORLDS=1 needs "
+                                       "SHENGJI_PV_VALUE_DECLARE=1)")
 _DECLARE_ASAP_EXCLUSIVE = ("declare_asap_first and value_declare are exclusive "
                            "(SHENGJI_PV_DECLARE_ASAP_FIRST=1 with SHENGJI_PV_VALUE_DECLARE=1)")
 _WIDE_LEAD_EXCLUSIVE = ("wide_lead_admission and adaptive_k are exclusive "
@@ -745,6 +776,8 @@ class PVSearchConfig:
     # the served bury in its worlds (requires ``value_declare`` and, checked where
     # the bury is known, the wide value-only chooser); the same contract
     value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
+    # its pass-conditioned worlds (requires ``value_declare``); the same contract
+    value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"]
     # the model-free first-round declaration (exclusive with ``value_declare``); the same contract
     declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
     # the policy head playing the value leaf's first trick (module docstring; it
@@ -838,6 +871,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                                declare_served_bury.MODEL_WORLDS_DEFAULT),
                            value_declare_served_bury_worlds=declare_served_bury.WORLDS_DEFAULT,
                            value_declare_served_bury_outcomes=declare_served_bury.OUTCOMES)
+        if config.value_declare_pass_worlds:
+            payload["value_declare_model"] = payload["value_declare_model"].replace(
+                "uniform-unseen", declare_pass_worlds.MODEL_UNSEEN)
+            payload.update(value_declare_pass_hazard=declare_pass_worlds.HAZARD,
+                           value_declare_pass_max_attempts=declare_pass_worlds.MAX_ATTEMPTS)
     else:
         if (config.value_declare_worlds != VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
                 or config.value_declare_margin != VALUE_DECLARE_DEFAULTS["value_declare_margin"]):
@@ -848,6 +886,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_FIRST_REQUIRES)
     if config.value_declare_served_bury and not config.value_declare:
         raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_REQUIRES)
+    if config.value_declare_pass_worlds and not config.value_declare:
+        raise PVSearchPolicyError(_VALUE_DECLARE_PASS_WORLDS_REQUIRES)
     if config.declare_asap_first and config.value_declare:
         raise PVSearchPolicyError(_DECLARE_ASAP_EXCLUSIVE)
     return payload
@@ -986,6 +1026,7 @@ class PVSearchBot(PolicyValueBot):
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     value_declare_served_bury = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
+    value_declare_pass_worlds = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"]
     declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
     leaf_policy_first_trick = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
@@ -1067,6 +1108,7 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare_worlds = config.value_declare_worlds
             self.value_declare_margin = float(config.value_declare_margin)
         for key in ("value_declare_every_first", "value_declare_served_bury",
+                    "value_declare_pass_worlds",
                     "declare_asap_first"):
             if type(getattr(config, key)) is not bool:
                 raise PVSearchPolicyError(f"{key} must be a bool")
@@ -1079,6 +1121,10 @@ class PVSearchBot(PolicyValueBot):
                 # the wide chooser itself is checked by `PVSearchBuryBot`
                 raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_NO_EFFECT)
             self.value_declare_served_bury = True
+        if config.value_declare_pass_worlds:
+            if not config.value_declare:
+                raise PVSearchPolicyError(_VALUE_DECLARE_PASS_WORLDS_REQUIRES)
+            self.value_declare_pass_worlds = True
         if config.declare_asap_first and config.value_declare:
             raise PVSearchPolicyError(_DECLARE_ASAP_EXCLUSIVE)
         if config.value_declare_every_first:
@@ -1315,6 +1361,11 @@ class PVSearchBot(PolicyValueBot):
         progress = {"worlds_completed": 0,
                     "leaf_first_trick": "policy" if self.leaf_policy_first_trick else "heuristic",
                     "leaf_first_trick_fallbacks": 0}
+        if self.value_declare_pass_worlds:
+            # only with the rule on: the sampler's acceptance counts
+            progress["pass_worlds"] = {"hazard": declare_pass_worlds.HAZARD,
+                                       "max_attempts": declare_pass_worlds.MAX_ATTEMPTS,
+                                       "worlds": 0, "attempts": 0, "fallbacks": 0}
         stage = OptionalStage(self, (), hard_check=check_budget,
                               budget_errors=PVSearchBudgetExceeded, abandon_on=Exception)
         means = best = None
@@ -1364,6 +1415,9 @@ class PVSearchBot(PolicyValueBot):
         if self.value_declare_served_bury:
             # only with the rule on: a flag-off record's key set is unchanged
             record["served_bury"] = served
+        if self.value_declare_pass_worlds:
+            # only with the rule on: a flag-off record's key set is unchanged
+            record["pass_worlds"] = dict(progress["pass_worlds"])
         self.last_declare_record = record
         return None if played is None else list(played)
 
@@ -1437,9 +1491,14 @@ class PVSearchBot(PolicyValueBot):
         ``batch_size`` that end on a world boundary; ``check_budget`` runs
         before every world and around every batch.  ``buries`` (one per
         candidate; None = the heuristic's) is the bury each candidate's world
-        banker makes (`value_declare.declare_outcome_position`)."""
+        banker makes (`value_declare.declare_outcome_position`).  Under
+        ``value_declare_pass_worlds`` each world is the pass-conditioned draw
+        (`declare_pass_worlds.sample_pass_world`, counted in
+        ``progress["pass_worlds"]`` when the caller passes it) from the same
+        per-decision stream."""
         worlds = self.value_declare_worlds if worlds is None else worlds
         rng = value_declare_model.decision_rng(self.seed, rnd, seat)
+        pass_stats = None if progress is None else progress.get("pass_worlds")
         sums = np.zeros(len(candidates), dtype=np.float64)
         pending, indices, worlds_pending = [], [], 0
         # the leaf's first trick: the heuristic's inside `declare_outcome_position`,
@@ -1473,7 +1532,10 @@ class PVSearchBot(PolicyValueBot):
         for _ in range(worlds):
             if check_budget is not None:
                 check_budget()
-            hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
+            if self.value_declare_pass_worlds:
+                hands, kitty = declare_pass_worlds.sample_pass_world(rnd, seat, rng, pass_stats)
+            else:
+                hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
             for index, option in enumerate(candidates):
                 pending.append(value_declare_model.declare_outcome_position(
                     rnd, seat, hands, kitty, option, first_trick=leaf is None,
@@ -2147,6 +2209,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                        value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
+                       value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
                        declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
                        leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                        bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
@@ -2200,6 +2263,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
+                            value_declare_pass_worlds=value_declare_pass_worlds,
                             declare_asap_first=declare_asap_first,
                             leaf_policy_first_trick=leaf_policy_first_trick,
                             oracle_worlds=oracle_worlds)
@@ -2286,6 +2350,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                         value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                         value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
+                        value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
                         declare_asap_first: bool = DECLARE_ASAP_DEFAULTS["declare_asap_first"],
                         leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                         bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
@@ -2321,6 +2386,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
+                            value_declare_pass_worlds=value_declare_pass_worlds,
                             declare_asap_first=declare_asap_first,
                             leaf_policy_first_trick=leaf_policy_first_trick,
                             oracle_worlds=oracle_worlds)
@@ -2401,6 +2467,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare_margin=config.value_declare_margin,
                                value_declare_every_first=config.value_declare_every_first,
                                value_declare_served_bury=config.value_declare_served_bury,
+                               value_declare_pass_worlds=config.value_declare_pass_worlds,
                                declare_asap_first=config.declare_asap_first,
                                leaf_policy_first_trick=config.leaf_policy_first_trick,
                                bury_wide_value=bury_wide_value, bury_wide_k=bury_wide_k,
@@ -2425,13 +2492,14 @@ def pv_env_recipe(environ=None) -> dict:
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
-    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_DECLARE_ASAP_FIRST`` /
+    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
+    / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``
     / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
     ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
     ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
-    ``_VALUE_DECLARE_EVERY_FIRST=1`` without ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1``
-    with it are refused there (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without
+    ``_VALUE_DECLARE_EVERY_FIRST=1`` or ``_VALUE_DECLARE_PASS_WORLDS=1`` without
+    ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1`` with it are refused there (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without
     ``_VALUE_DECLARE=1`` or a hybrid/value ``_BURY_ARM`` is refused there too
     (`_check_leaf_policy_effect`), and ``_VALUE_DECLARE_SERVED_BURY=1`` without
     ``_VALUE_DECLARE=1`` or the wide chooser (`_check_served_bury_effect`).  ``_BURY_WIDE_VALUE`` (``0`` or ``1``; needs ``_BURY_ARM``,

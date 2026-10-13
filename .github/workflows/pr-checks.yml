@@ -239,6 +239,7 @@ jobs:
             tests/test_pv_value_declare.py \
             tests/test_pv_declare_first_round.py \
             tests/test_pv_declare_served_bury.py \
+            tests/test_pv_declare_pass_worlds.py \
             tests/test_lead_root_capture.py \
             tests/test_lead_capture_collector.py \
             tests/test_xmtj_throw_regressions.py \

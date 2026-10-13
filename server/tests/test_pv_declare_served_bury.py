@@ -173,7 +173,7 @@ def test_the_token_the_digest_and_the_payload_when_on(production_package):
     assert on.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-vdsb-r")
     assert on.endswith(RELEASE45_VDSB[-len("-bury-hybrid-bwv-795be79f52eb"):])
     tokens = [token for _, token in pv.RULE_TOKENS]
-    assert tokens.index("vdsb") == tokens.index("vdef") + 1 == tokens.index("asap") - 1
+    assert tokens.index("vdsb") == tokens.index("vdef") + 1 == tokens.index("vdpw") - 1
     assert pv.RULE_FLAGS["VALUE_DECLARE_SERVED_BURY"] == "value_declare_served_bury"
     every, = names({**env, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1"})
     assert "-vd-vdef-vdsb-r" in every

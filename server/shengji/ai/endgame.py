@@ -19,9 +19,13 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from itertools import combinations
+from collections import Counter
+
+import numpy as np
 
 from ..engine.legal import IllegalPlay, uniform_suit, validate_follow, validate_lead
 from ..engine.round import Round, Trick, TrickPlay
+from ..rl.value_afterstate import category_signed_level, signed_level_category
 
 
 class ExactEndgameRefusal(RuntimeError):
@@ -162,7 +166,8 @@ def _state_key(rnd: Round):
 
 
 class _ExactSolver:
-    def __init__(self, *, max_hand_cards: int, max_nodes: int):
+    def __init__(self, *, max_hand_cards: int, max_nodes: int,
+                 check_budget=None):
         if (isinstance(max_hand_cards, bool)
                 or not isinstance(max_hand_cards, int)
                 or max_hand_cards < 1):
@@ -172,11 +177,14 @@ class _ExactSolver:
             raise ValueError("max_nodes must be a positive integer")
         self.max_hand_cards = max_hand_cards
         self.max_nodes = max_nodes
+        self.check_budget = check_budget
         self.nodes = 0
         self.cache_hits = 0
         self.cache: dict[tuple, int] = {}
 
     def value(self, rnd: Round) -> int:
+        if self.check_budget is not None:
+            self.check_budget()
         if rnd.phase == "round_end":
             return int(rnd.attacker_points)
         if rnd.phase != "play" or rnd.turn is None:
@@ -239,10 +247,11 @@ class ExactWorldSession:
     """
 
     def __init__(self, rnd: Round, *, max_hand_cards: int = 4,
-                 max_nodes: int = 250_000):
+                 max_nodes: int = 250_000, check_budget=None):
         self.context = _context_key(rnd)
         self.solver = _ExactSolver(
-            max_hand_cards=max_hand_cards, max_nodes=max_nodes)
+            max_hand_cards=max_hand_cards, max_nodes=max_nodes,
+            check_budget=check_budget)
         self.frontiers = 0
 
     @property
@@ -254,6 +263,8 @@ class ExactWorldSession:
         return self.solver.cache_hits
 
     def solve(self, rnd: Round) -> ExactEndgameResult:
+        if self.solver.check_budget is not None:
+            self.solver.check_budget()
         if _context_key(rnd) != self.context:
             raise ExactEndgameRefusal(
                 "exact session context differs in banker/trump/buried cards")
@@ -307,3 +318,86 @@ def solve_exact_endgame(
     session = ExactWorldSession(
         rnd, max_hand_cards=max_hand_cards, max_nodes=max_nodes)
     return session.solve(rnd)
+
+
+def _first_trick_world(rnd: Round, hands, buried, world_index: int) -> Round:
+    """Build one complete world root without filling hidden cards."""
+    if type(hands) is not list or len(hands) != 4:
+        raise ExactEndgameRefusal(f"world {world_index} must carry four hands")
+    if type(buried) is not list or len(buried) != len(rnd.buried):
+        raise ExactEndgameRefusal(f"world {world_index} buried cards differ from root")
+    if any(type(hand) is not list for hand in hands):
+        raise ExactEndgameRefusal(f"world {world_index} hands must be lists")
+    if any(len(hand) > 4 for hand in hands) or any(len(hand) > 4 for hand in rnd.hands):
+        raise ExactEndgameRefusal("first-trick exact search requires hands of at most four cards")
+    if any(len(hand) != len(root_hand)
+           for hand, root_hand in zip(hands, rnd.hands)):
+        raise ExactEndgameRefusal(f"world {world_index} hand sizes differ from root")
+    if Counter(hands[rnd.turn]) != Counter(rnd.hands[rnd.turn]):
+        raise ExactEndgameRefusal(f"world {world_index} root hand differs from root")
+    world = _clone_for_play(rnd)
+    world.hands = [list(hand) for hand in hands]
+    world.buried = list(buried)
+    world._determinized_world = True
+    return world
+
+
+def exact_first_trick_means(
+        rnd: Round, seat: int, actions, worlds, check_budget=None, *,
+        max_nodes: int = 10_000):
+    """Score fixed leads by real engine play followed by exact continuation.
+
+    Every world gets its own bounded :class:`ExactWorldSession`; all candidate
+    leads in that world share its transposition table.  The submitted lead is
+    applied through ``Round.play`` before solving, so failed throws retain the
+    engine's forced component.  No world is completed from the live root.
+    """
+    if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat:
+        raise ExactEndgameRefusal("first-trick exact search requires an active root")
+    if rnd.trick is None or rnd.trick.plays:
+        raise ExactEndgameRefusal("first-trick exact search requires a lead root")
+    if isinstance(seat, bool) or type(seat) is not int or not 0 <= seat < 4:
+        raise ExactEndgameRefusal("seat must be an engine seat")
+    if check_budget is not None and not callable(check_budget):
+        raise ExactEndgameRefusal("check_budget must be callable or None")
+    if isinstance(max_nodes, bool) or type(max_nodes) is not int or max_nodes < 1:
+        raise ExactEndgameRefusal("max_nodes must be a positive integer")
+    if type(actions) not in (list, tuple) or not actions:
+        raise ExactEndgameRefusal("actions must be a non-empty sequence")
+    candidate_actions = []
+    for index, action in enumerate(actions):
+        if type(action) not in (list, tuple) or not action:
+            raise ExactEndgameRefusal(f"action {index} must be non-empty")
+        candidate_actions.append(list(action))
+    if type(worlds) not in (list, tuple) or not worlds:
+        raise ExactEndgameRefusal("worlds must be a non-empty sequence")
+
+    means = [0.0] * len(candidate_actions)
+    worlds_completed = 0
+    nodes = 0
+    cache_hits = 0
+    for world_index, world_data in enumerate(worlds):
+        if type(world_data) not in (list, tuple) or len(world_data) != 2:
+            raise ExactEndgameRefusal(f"world {world_index} must be (hands, buried)")
+        world_root = _first_trick_world(rnd, world_data[0], world_data[1], world_index)
+        session = ExactWorldSession(
+            world_root, max_hand_cards=4, max_nodes=max_nodes,
+            check_budget=check_budget)
+        for index, action in enumerate(candidate_actions):
+            if check_budget is not None:
+                check_budget()
+            child = _clone_for_play(world_root)
+            child.play(seat, action)
+            result = session.solve(child)
+            # Exact continuation returns attacker points.  Convert to the
+            # root-team signed level used by policy/value comparisons.
+            means[index] += category_signed_level(
+                signed_level_category(result.attacker_points,
+                                      child.is_attacker(seat)))
+        worlds_completed += 1
+        nodes += session.nodes
+        cache_hits += session.cache_hits
+    count = len(worlds)
+    return (np.asarray(means, dtype=np.float64) / count,
+            {"worlds_completed": worlds_completed,
+             "nodes": nodes, "cache_hits": cache_hits})

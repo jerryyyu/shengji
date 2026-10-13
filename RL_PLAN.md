@@ -1,31 +1,28 @@
 # Learning and search research plan
 
-Last reconciled: **2026-10-03 (release 38 live since 09:41 ET: release 36's model, the gen-5 SMV3
-outcome head in the release-30 policy/value search, + four search rules; every new screen compares
-against release 38)**. This document owns the research architecture, the estimands and the decision
-tree. Priority is tracked on GitHub: the board issue #707 (its predecessor #679 is closed and holds everything finished through 2026-10-03), its topic issues, and open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03); live compute and review asks are on GitHub issues and in
-`server/scripts/fleet_status.sh` (`HANDOFF_ACTIVE.md` was deleted, #674);
-policy names and deployment state are in `AI_POLICIES.md`; immutable authority markers are
-in `HANDOFF_REVIEW.md` (frozen to its markers, #674; prose lives on GitHub issues); every training run and screen is on the scaling page
-(`docs/scaling_log/`) and the search atlas. The retired lines (BELIEF, privileged teachers,
-the shortlist-era screens) are summarised once below and live in `docs_archive/`.
+Last reconciled: **2026-10-13** (release 45 live; new screens compare against release 45 as served).
+This document owns the research architecture, the estimands, the decision tree and the planned work.
+Live state is on GitHub: the board issue #707 (one row per open question; its predecessor #679 holds
+everything finished through 2026-10-03), its topic issues and open PRs; fleet state is
+`server/scripts/fleet_status.sh`. Policy names, deployment state and the measured ladder are in
+`AI_POLICIES.md`; every screen is in Atlas v2 (`docs/atlas_v2/registry.json`) and every training run on
+the scaling page (`docs/scaling_log/`). Retired lines are summarised once below and live in
+`docs_archive/`.
 
 ## Objective and evidence standard
 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
 correct engine and a reproducible evaluator: beat the live policy on fresh mirrored whole games with a
 single learned model that keeps improving from its own search data, and keep production's latency
-tail bounded. Production is release 38 (deployed 2026-10-03 09:41 ET)
-on release 36's model: the gen-5 SMV3 checkpoint `3e89e86f`'s outcome head served as one
-NumPy package (`smv3out-491ee4bf.npz`) inside the search release 30 served unchanged — its policy
-head admitting eight candidates over 64 sampled worlds and its value head pricing them, no Monte
-Carlo playouts in play, value-guided hybrid bury — plus, from release 38, four search rules:
-admission diversity, refusal-constraint sampling, a points tie-break and lead-anchor (release 37,
-2026-10-01, was a phone-HUD fix on release 36's bot). The champion for every NEW strength claim is
-therefore the served release-38 bot (Jerry, 2026-10-03: every new screen compares against release 38;
-screens already read against release 36 or the combo keep their comparator; release 29/30's reads below are the labeled historical
-evidence of the soft head 8ecd4fea, which releases 29–35 served). Historical MC-LCB results
-keep their original labels; MC-LCB is no longer the prospective control.
+tail bounded. Production is release 45 (deployed 2026-10-13 05:27 ET): the gen-5 SMV3 checkpoint
+`3e89e86f`'s outcome head as one NumPy package (`smv3out-491ee4bf.npz`, served since release 36) in the
+policy/value search — the policy head admits eight candidates over 64 sampled worlds, the value head
+prices them, no Monte Carlo playouts — with five search rules (div, rc, tb, la, dtr), the value-guided
+trump declaration (release 44) and the wide value-only bury (release 45). The exact contract is
+`AI_POLICIES.md` "Production contract". The champion for every NEW strength claim is release 45 as
+served (2026-10-13, #707 issuecomment-6142519054); confirmations keep their parent's comparator and
+historical reads keep their original labels. MC-LCB is the common control inside each screen, not the
+prospective comparator.
 
 Evidence labels:
 
@@ -53,17 +50,69 @@ A lane enters tier iii only when a candidate beats the champion on a tier ii pai
 
 ## Current program
 
-The work queue and each lane's state are on the board issue [#707](https://github.com/jerryyyu/shengji/issues/707)
-(corpus status: row M6); production and its rollback are in `DEPLOY.md` "Current production".
+The work queue and each lane's state are on the board issue [#707](https://github.com/jerryyyu/shengji/issues/707);
+model plans and decision gates on #663; search and gameplay diagnostics on #700. Production and its rollback are
+in `DEPLOY.md` "Current production".
 
-#663 (what to train and screen next) and the data-use audit #667 own the next decision. The
-release-30-era program (gen-4 #538 and the gen-5 search corpora #592, both closed; search scaling
-#577, parked) is recorded in Atlas v2 (`docs/atlas_v2/registry.json`).
+**What would change production next:** a change that beats release 45 as served on a ten-window served-bot screen,
+then the `DEPLOY.md` release checklist and Jerry's word. Releases 44 and 45 shipped on POSITIVE ten-window screens
+without a separate fresh-seed confirmation, on Jerry's word; whether a confirmation is owed is his call per change.
+Correctness fixes may ship with no strength claim when the served screen is not demonstrated negative (releases 42
+and 43).
 
-**What would change production next:** a head that beats the production release (release 38 as
-served, since 2026-10-03) on the served-bot design, or a search change whose served contrast
-clears zero. Nothing else. (The search rules of release 38 are the first search change to do so
-since release 29.)
+**The direction (Jerry, 2026-10-11 and 2026-10-13).** "Where we use heuristics, it may be better to use the model";
+after release 45, "we should keep trying in this direction." The value head already beats the heuristic at the two
+decisions it took over (declaration, release 44; bury, release 45; `AI_POLICIES.md` ladder rows 13–14). The
+remaining heuristic decisions are the play anchor, the heuristic first trick inside each value leaf and the
+continuations the search uses.
+
+## Planned work
+
+Each item is a board row on #707 (row id in brackets); its state there is authoritative.
+
+1. **Heuristic replacement, declare and bury [S15].** Screens of release 45 plus one flag, vs release 45 as served,
+   in this order: the wider bury (two-card swaps #984, merged off by default; K up to 128); declare worlds that
+   score with the served bury instead of the heuristic one; declare worlds consistent with the opponents' passes,
+   plus a 'wait' option; wide-bury attribution arms (K32 value-only, K64 hybrid), since release 45 changed width
+   and chooser together. The paired contrast of value declare at every first-round chance vs declare-ASAP
+   (v74vdefasap) is reviewed and waiting for a host. Not pursued: the policy-head first trick in the value leaf
+   (`lpft`, #972; v75lpft44 inconclusive).
+2. **Exact small-endgame leads [S18, #981, Codex].** An opt-in exact continuation for small endgames; fixed-root
+   host qualification and the local full-round cost gate are complete. Next: a fresh paired screen vs release 45
+   as served. Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
+   lead admission [S20, #986]. The whole-hand lead admission `fla` (#973) stays off: the release-44 diagnostic
+   found its admission omissions were all refused throws.
+3. **C14, the grid trunk [M9].** The G1 grid trunk (`--trunk-block grid --grid-channels 44`, d3, h330),
+   warm-started from GEN4-G1-SOFT-336k (checkpoint `4b829486`, the largest offline val_ce step of any
+   generation and a served null in gen 4; #663 issuecomment-6130726746), on the C11 base + runPVC1–10 +
+   runVD1–4, with C12's settings and both checkpoint selections (val_ce and rank regret). Jerry 2026-10-13: "We can start training grid model now"; the launch
+   packet is in review (#663 issuecomment-6142031551, 6142039324). Claim limit: against C12 it moves data, init
+   lineage and trunk together, so a positive read is a representation swing, not an attribution. The warm start
+   loads every G1 tensor, including its search head, so this is fine-tuning on the new targets. Screens: both
+   selections vs release 45 as served. Width (h1024) moves to C15; C13 (C12's recipe + VD data) is parked as the
+   one-variable control if attribution is wanted.
+4. **True-world probe [S16] and learned belief [S17].** S16 runs the served search with the TRUE hidden hands as
+   its one world (`SHENGJI_PV_ORACLE_WORLDS`, #975, merged; the screen harness only, serving refuses it) vs the
+   served bot. It is a diagnostic of the current imperfect policy, not a perfect-information ceiling or a
+   belief-vs-evaluation split: it keeps the finite candidate set, the evaluator and the heuristic continuation,
+   and changes W64 to W1. S17, a learned belief over hidden hands that weights sampled worlds, opens only if S16
+   reads large AND the read can be attributed to information rather than the W64→1 change (a sampled-world W1
+   control may be needed).
+5. **History encoder [M10].** The model sees per-seat counts of played cards, not play order, declaration history
+   or scores (`rl/encode.py`). A sequence encoder over the trick history is a new model class: an encoder-closure
+   change that needs a compatibility path for the hash-pinned package and a full re-encode. Design only, sequenced
+   after S16 and C14 show where the gain is.
+6. **Human-play metric [D4].** Bot win and level rate against humans in production rooms, by release, from the
+   refreshed production logs. Report only when a release reaches 20 complete human rounds; refresh the log cache
+   (`scripts/fetch_fly_logs.sh`) after each release.
+
+Data: the runVD1–6 block (16k deals each, the release-44 bot as teacher) feeds C14; runVD1–4 are ingested, VD5–6
+are kept for a follow-up. The doomed-throw re-select's all-excluded fallback (it plays the throw's forced component,
+which the admitted list does not contain) broke the trajectory extract until #977 recorded that play as a point
+mass; completed shards were preserved and only missing clusters regenerated.
+
+Parked or low priority (board rows): further tree/PUCT variants [S2], search beyond W64 [S6], the lookahead-teacher
+corpus [M3], runSL value-only data [M5], early-round value bias [M8], the level-scale ladder benchmark [D2].
 
 ## What the scaling work taught (models)
 
@@ -85,6 +134,10 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 - **The soft target is the ingredient with the largest point estimate** in the head-driven
   search (soft +0.086 vs its hard twin +0.024 on the same deals, paired +0.063 exploratory);
   no head in the W64 family is shown superior to another; a confirmation is owed.
+- **Since gen 5, data and recipe changes have not moved the served read.** The five gen-5 retrains
+  (`AI_POLICIES.md`), C11 and C12's three packages were inconclusive against production; deeper
+  trunks (DEEP8) and the tower ladder (TOWER1) did not confirm. The open model bets are
+  representation (C14's grid trunk) and inputs (M10's history encoder).
 - **Corpus seeds are decks.** A screen window inside a corpus's seed range replays decks the
   trained model saw; ranges are recorded on #436 and excluded per model.
 
@@ -104,6 +157,10 @@ Every row is on the scaling page with its receipt; these are the conclusions.
   the same package lost (−0.417 signed levels per round vs release 36) and adaptive K16 did not
   resolve. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive
   exploratory, below the extension triage.
+- **The value head beats the heuristic where it takes over a decision** (2026-10): the trump
+  declaration (release 44, POSITIVE in first-round and later-round deals) and the bury (release 45,
+  POSITIVE on first-round deals), against search-side changes that mostly did not resolve
+  (adaptive worlds not confirmed, wide lead admission inconclusive, `lpft` inconclusive).
 - **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
   and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
 - **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs
@@ -114,10 +171,10 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 
 ## Search and teacher strategy
 
-1. **Candidate admission and search cost.** Keep the release-38 recipe as the reference;
+1. **Candidate admission and search cost.** Keep the release-45 recipe as the reference;
    separate exact speedups from policy changes; compute-match controls when a claim is about
    cost.
-2. **Depth and allocation.** Test one bounded change against the frozen release-38 control
+2. **Depth and allocation.** Test one bounded change against the frozen release-45 control
    before any larger tree recipe; the ballot-rooted PUCT ladder is closed.
 3. **Model and teacher transport.** Improve data and targets against the actual consumer (the
    search's own values as the target), preserve held-out deals, then test the resulting head in
@@ -137,6 +194,11 @@ Measure search work, world quality, consumer decision dose and whole-game utilit
   into whole-game play; Luna data retained as evidence, no active lane.
 - **Global learned rankers, V11, Direct-Q, T4 widening, S4/S6 mechanisms, C0:** better label
   fit did not transport; none cleared a registered bar. Do not revive unchanged.
+- **C12** (C11 base + runPVC1–10, exploration-miss weighting): three packages inconclusive vs release 42,
+  closed 2026-10-12 with no demonstrated gain (#663 issuecomment-6119248471). **C13** (C12's recipe + VD data)
+  is parked as C14's one-variable control.
+- **Search-side flags left off** (Atlas v2 has each read): adaptive worlds (S12), wide lead admission (`wla`),
+  the small-joker lead guard (S4), event-complete refusal history (S8), policy-head first trick (`lpft`).
 - **The shortlist era (releases 22–28)** is condensed in `docs_archive/ai-policies-release-sections-through-r38.md`.
 
 ## Literature-derived design constraints
@@ -295,11 +357,15 @@ oracle or infer true-person disjointness from mutable display names.
   supports neither "not large" nor "equal" (amendment adopted on #663). Capped (300 s) and
   uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
-  served policy/value-search screens. Ten shared-control windows are a nominal read, and only
-  fresh held-out deals confirm.
+  served policy/value-search screens; each readout reports its own MDE80. Ten shared-control
+  windows are a nominal read, and only fresh held-out deals confirm.
+- First-round deals (the banker is decided by the declaration) and later-round deals (the banker
+  is fixed) are separate populations, screened and read separately, never pooled.
+- The points margin is a predeclared descriptive secondary since v66 (Jerry, 2026-10-09; #707
+  board); it never overrides the level primary and is role-confounded when an arm changes who
+  banks.
 
 ## Archive boundary
 
 Closed lanes live in `docs_archive/` and the tag `archive/code-lanes-pre-cleanup-20260905`.
-Update this file only when the architecture, estimand, or live decision tree
-changes.
+Update this file when the architecture, estimand, live decision tree or planned work changes.

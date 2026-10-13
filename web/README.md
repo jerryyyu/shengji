@@ -12,11 +12,15 @@ once. Component-level detail stays in the components.
 | file | role |
 |---|---|
 | `ws.ts` | the single connection — auto-reconnect with backoff, re-joins the saved room, buffers chat. Everything else talks to the server through `conn`. |
+| `intent.ts` | which room this socket should be in and why (invite, saved room, manual action), in one place. |
 | `App.tsx` | routes server messages to screens; owns `game` state and the lobby/table decision. |
 | `components/Lobby.tsx` | name, create/join, invite links, mid-game seat picker. |
-| `components/Table.tsx` | the game screen: hand, trick area, opponents, chat, x-ray. |
-| `components/Hud.tsx` | room code (tap to copy an invite link), levels, phase. |
-| `components/RoundEndModal.tsx` | round result and the ready-to-continue tally. |
+| `components/Room.tsx` | the pre-game room: seats, bots, the host's starting-level picker. |
+| `components/Table.tsx` | the game screen: hand, trick area, opponents, chat. |
+| `components/Hud.tsx`, `HudMenu.tsx` | room code (tap to copy an invite link), levels, phase; the phone's overflow menu. |
+| `components/RoundEndModal.tsx` | round result, the revealed bury ("Buried by <banker> · N pts") and the ready-to-continue tally. |
+| `components/XrayPanel.tsx` | hidden debug overlay: what the bot would do from this position (needs the debug token). |
+| `audio.ts` | the Mandarin voice announcements. |
 | `components/ChatPanel.tsx` | overlay chat; system lines render centred/italic. |
 | `protocol.ts` | the wire types — keep in sync with `server/shengji/api/server.py`. |
 
@@ -79,17 +83,18 @@ Client → server messages worth knowing:
 
 ## Testing
 
-There is no client test suite yet. The protocol guarantees are covered
-server-side in `server/tests/test_server_ws.py`, which drives real WebSockets.
-That file exists because `peek_room` shipped **entirely unimplemented** on the
-server while the client was already sending it, and the Python suite stayed
-green — nothing spoke the wire protocol.
+`npm test` runs the Vitest + React Testing Library suite (`*.test.ts(x)` next
+to the code: invite precedence, the connection and chat buffer, round-end
+rendering, the landscape layout and the components). CI's `frontend` job runs
+`npm ci`, `npm run lint`, `npm test` and `npm run build` on every PR.
+
+The protocol guarantees are covered server-side in
+`server/tests/test_server_ws.py`, which drives real WebSockets. That file exists
+because `peek_room` shipped **entirely unimplemented** on the server while the
+client was already sending it, and the Python suite stayed green — nothing
+spoke the wire protocol.
 
 `npm run build` type-checks, and that is all it does. It cannot see a missing
 handler, a field absent from a payload, or a tally that is never recomputed;
 all three shipped green. Treat a green build as "it compiles", never as "it
 works".
-
-Wanted, roughly in priority order: Vitest + React Testing Library covering
-invite precedence, the seat-picker request/response cycle, round-ready
-rendering, and chat-before-state.

@@ -295,10 +295,11 @@ the uniform posterior and ACCEPTED with the likelihood of the other seats'
 silence (`declare_pass_worlds`): a seat that in that world has held a
 combination stronger than the current declaration for ``d`` of its own dealt
 cards, and has not declared, contributes ``(1 - 0.02) ** d``; the deciding seat
-and the current declarer contribute 1.  A soft weight, not an exclusion: in
-the production logs humans passed an over-declaring pair to the end of the
-window in 39 of 64 episodes.  At most 32 draws per world; the last draw is kept
-after that (a counted fallback).  The candidate set, the leaves, the worlds
+and the current declarer contribute 1 (0.02 is an exploratory fixed constant,
+not a calibrated rate).  A soft weight, not an exclusion: in the production
+logs humans passed an over-declaring pair to the end of the window in 39 of 64
+episodes.  At most 32 draws per world; after that the last (rejected, so not
+uniform) draw is kept as a counted fallback.  The candidate set, the leaves, the worlds
 count, the margin and every fallback are ``value_declare``'s.  ``0`` or ``1``
 only; it REQUIRES ``SHENGJI_PV_VALUE_DECLARE=1`` (refused otherwise); on, it
 enters the recipe digest (``value_declare_model`` names

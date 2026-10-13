@@ -24,27 +24,33 @@ it since, and stayed silent.  With a constant per-card declare hazard ``h``::
     P(silent | world) = prod_s (1 - h) ** (n_s - a_s)
 
 (a seat with no such combination contributes 1).  A world is accepted with that
-probability (rejection sampling: the accepted worlds are exact draws from the
-uniform posterior times the silence likelihood).  Each draw takes one shuffle
+probability (rejection sampling: an accepted world is an exact draw from the
+uniform posterior times the silence likelihood; the capped fallback below is
+not).  Each draw takes one shuffle
 and one ``random()`` from the decision's own stream, so no bot RNG moves.
 
-``HAZARD`` (0.02 per own card) is fitted on the production room logs (the
-human corpus, 262 rounds): over every episode in which a HUMAN seat held a
-combination stronger than the current declaration, declarations during the
-deal per own card dealt while it held one were 58 / 1879 = 0.031 for a single
-of the trump rank with nothing declared and 11 / 571 = 0.019 for an
-over-declaring pair (14 more human pair declarations came only in the grace
-window after the deal; the deal positions are reconstructed from event times,
-and a slower assumed deal moves these to 0.034 / 0.033).  Humans holding an
-over-declaring pair PASSED it to the end of the window in 39 of the 64
-episodes that were not pre-empted, so a hard exclusion of such worlds would
-reject the true world most of the time; the bots in the same rooms passed 40
-of 93.  ``HAZARD`` is the conservative end (the weakest conditioning) of the
-human fits, one value for both kinds.  A seat that has held a combination for
-its whole 25-card hand keeps weight 0.98 ** 25 = 0.60; three such seats, 0.22,
-so the acceptance rate is bounded below and the sampler cannot starve.  The
-cap ``MAX_ATTEMPTS`` bounds it regardless: a world whose every draw was
-rejected is the last draw (uniform), counted as a fallback.
+``HAZARD`` (0.02 per own card) is an EXPLORATORY FIXED CONSTANT, not a
+calibrated rate.  It is chosen at or below what the production room logs (the
+human corpus, 262 rounds; `scripts/declare_pass_evidence.py`, deal positions
+reconstructed from event times) show for HUMAN seats once a seat has passed
+its first chance: deal-time declarations per own card held silently were
+0.031 (a trump-rank single with nothing declared) and 0.019 (an over-declaring
+pair) at the server's deal rate, 0.032 / 0.027 assuming a slower deal.  The
+weight leaves out the zero-wait factor (a seat declaring on the very card that
+made it eligible: 0 of 330 human episodes at the server rate, 4-12% at the
+slower one; 2-43% for bots), which could only strengthen the conditioning.
+Humans holding an over-declaring pair PASSED it to the end of the window in
+39 of the 64 episodes that were not pre-empted, so a hard exclusion of such
+worlds would reject the true world most of the time; the bots in the same
+rooms passed 40 of 135.  One value serves both kinds.  A seat that has held a
+combination for its whole 25-card hand keeps weight 0.98 ** 25 = 0.60; three
+such seats, 0.22, so the acceptance rate is bounded below.  The cap
+``MAX_ATTEMPTS`` bounds the draws regardless: after that many rejections the
+last draw is kept and counted as a fallback.  That world is NOT a uniform draw
+(it is rejection-conditioned, distributed as ``q(w) (1 - weight(w)) / (1 - Z)``
+with ``Z`` the mean acceptance), so the sampler is exact only up to the
+counted fallbacks; with acceptance at least 0.22 a fallback has probability
+below 0.78 ** 32 < 0.001 per world.
 
 Not modelled (each would need its own data and flag): the grace-window passes
 (``rnd.passed``) and the seats' silence against a declaration that has since

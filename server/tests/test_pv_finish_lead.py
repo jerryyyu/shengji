@@ -389,7 +389,8 @@ def test_diagnostic_recipe_is_release44_plus_exact(pinned_production_package):
     assert list(entries) == ['pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6']
 
 
-def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):
+@pytest.mark.parametrize('wide_bury', [False, True], ids=['release44', 'proposed_release45'])
+def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch, wide_bury):
     """#700 captured root 94121012:0 / round7 / trick11 / seat3.
 
     Ordinary W64 sampler, restored refusal history and actual server commit.
@@ -412,6 +413,10 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
         SHENGJI_PV_DOOMED_THROW_RESELECT='1', SHENGJI_PV_VALUE_DECLARE='1',
         SHENGJI_PV_SERVING_BUDGET_SECONDS='3', SHENGJI_PV_BURY_ARM='hybrid',
         SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2')
+    if wide_bury:
+        # Proposed next comparator: change BOTH arms' bury, never only the
+        # candidate. This replay begins after bury and makes no bury-strength claim.
+        env.update(SHENGJI_PV_BURY_WIDE_VALUE='1', SHENGJI_PV_BURY_WIDE_K='64')
 
     async def scenario():
         records = []
@@ -424,7 +429,8 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
             name, = entries
             if not enabled:
                 assert name == ('pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-'
-                                'radd86676-bury-hybrid-6c1fb26b80e6')
+                                'radd86676-bury-hybrid-' +
+                                ('bwv-7a73e8fbf1a8' if wide_bury else '6c1fb26b80e6'))
             policy = entries[name](seed=941210121)
             policy._refusals = ledger
             game = Game(random.Random(7))

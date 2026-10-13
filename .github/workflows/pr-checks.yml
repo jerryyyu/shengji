@@ -243,6 +243,7 @@ jobs:
             tests/test_xmtj_throw_regressions.py \
             tests/test_pv_small_joker_lead.py \
             tests/test_lead_structure_admission.py \
+            tests/test_qualify_tractor_reservation.py \
             tests/test_pv_adaptive_worlds.py \
             tests/test_pv_adaptive_worlds_leads.py \
             tests/test_optional_stage_contract.py \

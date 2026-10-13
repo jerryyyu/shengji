@@ -8,9 +8,11 @@ The set runs the real `pv-search` bot through the real `decide_play` entry
 point on the real serving package, built from a fly.toml-shaped environment
 exactly as the server registers it (`pv_env_recipe` -> `pv_registry_entries`).
 
-**It is not a gate.**  The production bot (release 36,
-`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`) fails 21 of
-the 22 fixtures; those are `xfail(strict=False)` in the pytest module, so the
+**It is not a gate.**  The recorded verdicts (`current_bot`) were stamped
+against release 36 (`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`),
+which fails 21 of the 22 fixtures; they have not been re-stamped for later
+releases (production is now release 45, `DEPLOY.md`), so read a candidate's table
+against a fresh run of the production recipe, not only the stamps.  The failures are `xfail(strict=False)` in the pytest module, so the
 suite is green and informative.  Its purpose is to show what MOVED when an
 admission or tie-break change (#676 A/C/E, #680) is screened: run
 `scripts/tactical_report.py` against the candidate and read the per-fixture

@@ -10,10 +10,10 @@ touches it checks the mount first and refuses otherwise.
 `shasum -a 256 -c <checksum file>` from inside the directory that holds it.
 
 **The inventory of record is on the SSD itself:** `/Volumes/Extreme SSD/shengji-INVENTORY.md`,
-maintained by Claude and appended whenever something is added. This page is the pointer and the rules;
-the inventory is the list.
+maintained by Claude and appended whenever something is added (it does not yet list the APFS images below).
+This page is the pointer and the rules; the inventory is the list.
 
-## What is there (2026-09-20)
+## Backups and moved artifacts (2026-09-20)
 
 | path | what | verification | size |
 |---|---|---|---|
@@ -27,11 +27,27 @@ the inventory is the list.
 in #542 and the ledger; a pack is rebuildable from the Mini's caches with the #549 builder. The `shengji-pack/`
 directory no longer exists.
 
-**Added by 2026-10-01** (seen with `ls ~/shengji-ssd/shengji-sl ~/shengji-ssd/shengji-pvr`; `~/shengji-ssd` is a symlink
-to `/Volumes/Extreme SSD`; checksum files and sizes: the inventory on the SSD): `shengji-sl/` — `runSL1`..`runSL6` (the
-W32 shortlist rollout-teacher stores) plus `policy_rows_gen5_sl` and `policy_rows_gen5_sl56`; `shengji-pvr/` —
-`runPVR1`..`runPVR4` (release-36 teacher stores) plus `policy_rows_gen5_pvr`. runPVR5/6 (sealed) and runPVR7/8 (dealing)
-were not under `shengji-pvr/` when this line was written.
+## Trajectory corpora: APFS sparse-bundle images (since 2026-10-07)
+
+The SSD itself is exFAT with large clusters, so a store of tens of thousands of small shard files occupied about
+three times its data size there (#663 issuecomment-6035728775). The trajectory corpora therefore live in APFS
+sparse-bundle images on the SSD, one per corpus family, each mounted at `/Volumes/<name>`; the trainer and the ingest
+lanes read them there. Contents as listed on 2026-10-13 (`ls /Volumes/<name>`; sizes: `df -h /Volumes/shengji-*`):
+
+| image on the SSD | mounted at | holds |
+|---|---|---|
+| `shengji-pv-apfs.sparsebundle` | `/Volumes/shengji-pv` | runPV stores and the gen-5 `policy_rows_gen5_pv*` / `_js` / `_pvd` extracts |
+| `shengji-pvr-apfs.sparsebundle` | `/Volumes/shengji-pvr` | runPVR1–8 (release-36 teacher) and `policy_rows_gen5_pvr*` |
+| `shengji-pvc-apfs.sparsebundle` | `/Volumes/shengji-pvc` | runPVC1–10 (C12's added data) |
+| `shengji-mclcb-apfs.sparsebundle` | `/Volumes/shengji-mclcb` | the MC-LCB runs (runA, runC, runD, runE, runF2, runG, runH, runI, runK, runL) |
+| `shengji-sl-apfs.sparsebundle` | `/Volumes/shengji-sl` | runSL1–6 (W32 shortlist rollout-teacher stores) and `policy_rows_gen5_sl*` |
+| `shengji-js-apfs.sparsebundle` | `/Volumes/shengji-js` | runJS1–10 (no longer on the Mini's boot volume) |
+| `shengji-vd-apfs.sparsebundle` | `/Volumes/shengji-vd` | runVD1–4 (release-44 teacher; with VD5–6, C14's added data); VD5–6 stay on their hosts until ingested |
+
+The images replaced the earlier exFAT directories (`shengji-sl/`, `shengji-pvr/`, `shengji-pvc/` and the pv/mclcb
+copies; #663 issuecomment-6121792925). The training and ingest lanes since C12 check that
+the image they read is mounted from the expected bundle (APFS) and refuse otherwise. Mount a bundle with
+`hdiutil attach "/Volumes/Extreme SSD/<name>-apfs.sparsebundle"`.
 
 Moves are done by `fl-pilot/claude_move_to_ssd.armed.sh`: tar, then every file read back from the tar
 and its sha256 compared with the original, then the original deleted, then the inventory appended.

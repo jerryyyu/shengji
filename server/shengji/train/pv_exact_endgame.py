@@ -1,4 +1,11 @@
-"""Model-free exact values for bounded lead candidates."""
+"""Model-free exact values for a bounded set of lead candidates.
+
+This is an opt-in diagnostic seam.  It accepts only already-determinized
+worlds; it never completes a missing hand from the live round and never calls
+an evaluator.  One :class:`ExactWorldSession` is shared by all candidates in
+one world, while the transposition table is deliberately not shared between
+worlds.
+"""
 
 from __future__ import annotations
 
@@ -23,13 +30,16 @@ def _validate_world(rnd: Round, world, world_index: int) -> tuple[list[list[str]
     hands, buried = world
     if type(hands) is not list or len(hands) != 4:
         _refuse(f"world {world_index} must carry four hands")
-    if type(buried) is not list or len(buried) != len(rnd.buried):
+    if type(buried) is not list:
+        _refuse(f"world {world_index} buried cards must be a list")
+    if len(buried) != len(rnd.buried):
         _refuse(f"world {world_index} buried-card count differs from root")
     copied = [list(hand) if type(hand) is list else _refuse(
-        f"world {world_index} hand {seat} must be a list")
-              for seat, hand in enumerate(hands)]
-    if any(len(hand) > 4 for hand in copied + rnd.hands):
-        _refuse("exact lead endgame requires every hand to contain at most four cards")
+        f"world {world_index} hand {seat} must be a list") for seat, hand in enumerate(hands)]
+    if any(len(hand) > 4 for hand in copied):
+        _refuse("exact lead endgame requires every world hand to contain at most four cards")
+    if any(len(hand) > 4 for hand in rnd.hands):
+        _refuse("exact lead endgame requires every live root hand to contain at most four cards")
     if any(len(hand) != len(root_hand)
            for hand, root_hand in zip(copied, rnd.hands)):
         _refuse(f"world {world_index} hand sizes differ from public root")
@@ -42,49 +52,67 @@ def exact_lead_means(
         rnd: Round, seat: int, actions: Sequence[Sequence[str]], worlds,
         leaf_fn: Callable, check_budget: Callable | None, *,
         max_nodes: int = 10_000) -> tuple[np.ndarray, dict]:
-    """Evaluate produced candidate leaves exactly, preserving old behavior."""
+    """Return exact root-team level means for every candidate and world.
+
+    ``leaf_fn`` is the existing candidate-to-leaf producer.  It receives the
+    world-substituted root, seat, that world's hands and kitty, the submitted
+    action, and its world index; it must return a Round reached through the
+    real engine transition.  The function intentionally publishes no partial
+    matrix: any invalid world, failed leaf, cancellation, or node-cap refusal
+    raises before returning.
+    """
     if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat:
         _refuse("exact lead values require an active root play decision")
     if rnd.trick is None or rnd.trick.plays:
         _refuse("exact lead values require a lead root")
+    if isinstance(seat, bool) or type(seat) is not int or not 0 <= seat < 4:
+        _refuse("seat must be an engine seat")
     if not callable(leaf_fn):
         _refuse("leaf_fn must be callable")
+    if check_budget is not None and not callable(check_budget):
+        _refuse("check_budget must be callable or None")
     if isinstance(max_nodes, bool) or type(max_nodes) is not int or max_nodes < 1:
         _refuse("max_nodes must be a positive integer")
     if type(actions) not in (list, tuple) or not actions:
         _refuse("actions must be a non-empty sequence")
-    candidate_actions = [list(action) for action in actions]
+    candidate_actions: list[list[str]] = []
+    for index, action in enumerate(actions):
+        if type(action) not in (list, tuple) or not action:
+            _refuse(f"action {index} must be a non-empty sequence")
+        candidate_actions.append(list(action))
     if type(worlds) not in (list, tuple) or not worlds:
         _refuse("worlds must be a non-empty sequence")
-    validated = [_validate_world(rnd, world, index)
-                 for index, world in enumerate(worlds)]
+
+    validated_worlds = [
+        _validate_world(rnd, world, index)
+        for index, world in enumerate(worlds)
+    ]
     means = np.zeros(len(candidate_actions), dtype=np.float64)
-    stats = {"worlds_completed": 0, "nodes": 0, "cache_hits": 0}
-    for world_index, (hands, buried) in enumerate(validated):
-        root = root_clone(rnd, hands, buried)
-        session = ExactWorldSession(root, max_hand_cards=4,
-                                    max_nodes=max_nodes,
-                                    check_budget=check_budget)
+    node_total = 0
+    cache_total = 0
+    completed = 0
+
+    for world_index, (hands, buried) in enumerate(validated_worlds):
+        world_root = root_clone(rnd, hands, buried)
+        session = ExactWorldSession(
+            world_root, max_hand_cards=4, max_nodes=max_nodes,
+            check_budget=check_budget, alpha_beta=True)
         for action_index, action in enumerate(candidate_actions):
-            if check_budget is not None:
-                check_budget()
-            leaf = leaf_fn(root, seat, hands, buried, action, world_index)
+            leaf = leaf_fn(world_root, seat, hands, buried, action, world_index)
             if type(leaf) is not Round:
                 _refuse("leaf_fn must return a Round")
-            points = (leaf.attacker_points if leaf.phase == "round_end"
+            if check_budget is not None:
+                check_budget()
+            points = (leaf.attacker_points if leaf.phase == 'round_end'
                       else session.solve(leaf).attacker_points)
             means[action_index] += category_signed_level(
-                signed_level_category(points, leaf.is_attacker(seat)))
-        stats["worlds_completed"] += 1
-        stats["nodes"] += session.nodes
-        stats["cache_hits"] += session.cache_hits
-    return means / len(validated), stats
+                signed_level_category(points,
+                                      leaf.is_attacker(seat)))
+        completed += 1
+        node_total += session.nodes
+        cache_total += session.cache_hits
 
-
-def exact_first_trick_means(rnd, seat, actions, worlds, check_budget=None, *,
-                            max_nodes=10_000):
-    """Evaluate fixed leads by engine application then exact continuation."""
-    from ..ai.endgame import exact_first_trick_means as _means
-    return _means(rnd, seat, actions, worlds, check_budget,
-                  max_nodes=max_nodes)
+    means /= len(validated_worlds)
+    return means, {"worlds_completed": completed,
+                   "nodes": node_total, "cache_hits": cache_total}
 

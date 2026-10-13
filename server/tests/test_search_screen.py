@@ -33,10 +33,27 @@ def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
     assert result['sides']['baseline']['missing'] == 1
 
 
+def test_exact_lead_summary_keeps_legacy_complete_trace_unbound():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=64, played=['C4'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid'] and result['sides']['arm']['unbound'] == 1
+    assert result['sides']['arm']['bound'] == 0
+
+
 def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():
     trace = S.trace_fields({'exact_lead_base_played': ['BJ', 'S5'],
+                            'exact_lead_selected_played': ['BJ'],
+                            'admitted': [['BJ'], ['S5']],
+                            'exact_lead_status': 'complete',
                             'other_cards': ['BJ', 'S5']})
     assert trace['exact_lead_base_played'] == ['BJ', 'S5']
+    assert trace['exact_lead_selected_played'] == ['BJ']
+    assert trace['admitted'] == [['BJ'], ['S5']]
     assert 'other_cards' not in trace and trace['other_cards__len'] == 2
     assert trace['trace_dropped_fields'] == 1
     oversized = S.trace_fields({'exact_lead_base_played': ['S5'] * 17})
@@ -74,13 +91,21 @@ def test_exact_stage_cost_rejects_invalid_measurements(seconds):
     {'exact_lead_selected_level_delta': float('nan')},
     {'exact_lead_worlds_completed': 0},
     {'played': ['C3']}, {'exact_lead_base_played': None},
+    {'exact_lead_selected_index': 2},
+    {'exact_lead_selected_played': ['C3']},
+    {'admitted': [['C3']]},
+    {'exact_lead_base_selected_index': 2},
     {'exact_lead_selected_level_mean': 99},
 ])
 def test_exact_lead_summary_flags_bad_complete_evidence(patch):
     row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
                exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
                exact_lead_worlds_completed=64, played=['C4'],
-               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.0,
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'],
+               exact_lead_base_selected_index=1,
+               exact_lead_base_selected_played=['C3'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=2.0,
                exact_lead_base_level_mean=1.0)
     row.update(patch)
     result = S.exact_lead_summary([{'decision_traces': [
@@ -88,6 +113,36 @@ def test_exact_lead_summary_flags_bad_complete_evidence(patch):
     assert not result['valid']
     assert result['sides']['arm']['invalid'] == 1
     assert result['sides']['arm']['statuses']['complete'] == 0
+
+
+def test_exact_lead_summary_accepts_post_selection_override_with_selected_witness():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='post_selection_override',
+               exact_lead_trace_version=2,
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=2, played=['D3'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'], exact_lead_base_selected_index=1,
+               exact_lead_base_selected_played=['C3'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid']
+    assert result['sides']['arm']['change_kinds']['post_selection_override'] == 1
+
+
+def test_exact_lead_summary_keeps_unchanged_kind_when_baseline_was_already_overridden():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='unchanged',
+               exact_lead_trace_version=2,
+               exact_lead_changed=False, exact_lead_selected_level_delta=0.0,
+               exact_lead_worlds_completed=2, played=['C3'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'], exact_lead_base_selected_index=0,
+               exact_lead_base_selected_played=['C4'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=1.0, exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid'] and result['sides']['arm']['change_kinds']['unchanged'] == 1
 
 
 class Heads:

@@ -1742,18 +1742,25 @@ class PVSearchBot(PolicyValueBot):
         base_level = float(means[base[2]])
         delta = selected_level - base_level
         changed = sorted(played) != sorted(base[3])
-        aligned = (sorted(played) == sorted(admitted[winner])
-                   and sorted(base[3]) == sorted(admitted[base[2]]))
-        change_kind = ('unchanged' if not changed else 'post_selection_override' if not aligned
+        selected_played = list(admitted[winner])
+        base_selected_played = list(admitted[base[2]])
+        selected_override = sorted(played) != sorted(selected_played)
+        base_override = sorted(base[3]) != sorted(base_selected_played)
+        change_kind = ('unchanged' if not changed else
+                       'post_selection_override' if selected_override or base_override
                        else 'higher' if delta > 0 else 'lower' if delta < 0 else 'tie')
         state.update(exact_lead_status='complete', exact_lead_worlds_completed=stats['worlds_completed'],
+                     exact_lead_trace_version=2,
                      exact_lead_nodes=stats['nodes'], exact_lead_cache_hits=stats['cache_hits'],
                      exact_lead_changed=changed,
                      exact_lead_change_kind=change_kind,
                      exact_lead_selected_level_mean=selected_level,
                      exact_lead_base_level_mean=base_level,
                      exact_lead_selected_level_delta=delta,
+                     exact_lead_selected_index=int(winner),
+                     exact_lead_selected_played=selected_played,
                      exact_lead_base_selected_index=int(base[2]),
+                     exact_lead_base_selected_played=base_selected_played,
                      exact_lead_base_value_means=base[0].tolist(),
                      exact_lead_base_played=list(base[3]))
         return means, base[1], winner, played, base[4]

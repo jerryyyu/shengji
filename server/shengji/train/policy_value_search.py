@@ -840,7 +840,11 @@ class PolicyValueBot(PolicyWorldBot):
         else:
             chosen = self._admit_diverse(rnd, actions, ranked, anchor_index, k)
         if self.tractor_reservation and leading(rnd):
-            chosen = self._reserve_tractor(rnd, actions, preferences, ranked, chosen, k)
+            chosen = self._reserve_tractor(
+                rnd, actions, preferences, ranked, chosen, k,
+                check_budget=check_budget)
+            self._diversity_skipped = [
+                i for i in self._diversity_skipped if i not in chosen]
         if self.admit_forced_single:
             if worlds is None:
                 raise ValueError('admit_forced_single needs the sampled worlds at admission')
@@ -852,7 +856,8 @@ class PolicyValueBot(PolicyWorldBot):
             chosen = list(chosen) + extras
         return chosen
 
-    def _reserve_tractor(self, rnd, actions, preferences, ranked, chosen, k):
+    def _reserve_tractor(self, rnd, actions, preferences, ranked, chosen, k,
+                         check_budget=None):
         """Keep one policy-ranked pure tractor in a lead ballot when available.
 
         This is deliberately a single bounded slot: it preserves the existing
@@ -862,6 +867,8 @@ class PolicyValueBot(PolicyWorldBot):
         ordering = rnd.ordering
 
         def pure_tractor(action):
+            if check_budget is not None:
+                check_budget()
             if len(action) < 4:
                 return False
             groups = {ordering.eff_suit(card) for card in action}

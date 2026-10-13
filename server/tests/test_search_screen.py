@@ -19,6 +19,38 @@ def config(arm="none"):
             "report_worlds": 30, "seed0": 431, "clusters": 1}
 
 
+def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
+    rows = [{}, *({'exact_lead_status': s} for s in
+                   ('ineligible', 'skipped_budget', 'abandoned'))]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows},
+        {'side': 'baseline', 'decisions': [{}]}]}])
+    assert result['valid']
+    arm = result['sides']['arm']
+    assert arm['total_traces'] == 4 and arm['missing'] == 1
+    assert arm['statuses'] == dict(ineligible=1, skipped_budget=1, abandoned=1, complete=0)
+    assert arm['changed'] == 0
+    assert result['sides']['baseline']['missing'] == 1
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
+    {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},
+    {'exact_lead_selected_level_delta': float('nan')},
+    {'exact_lead_worlds_completed': 0},
+])
+def test_exact_lead_summary_flags_bad_complete_evidence(patch):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=64)
+    row.update(patch)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['statuses']['complete'] == 0
+
+
 class Heads:
     metadata = {"checkpoint_sha256": "test-checkpoint"}
 
@@ -80,6 +112,8 @@ def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypat
         S.reopen_shard(path, dict(cfg, seed0=cfg["seed0"] + 1), 0)
     summary = S.summary_for([shard], cfg)
     assert summary["complete"]
+    assert summary['exact_lead']['valid']
+    assert summary['exact_lead']['sides']['arm']['missing'] > 0
     assert not summary["equal_work_strength_claim"]
     assert summary["arm_over_baseline_decision_cpu"] > 0
     costly = copy.deepcopy(shard)

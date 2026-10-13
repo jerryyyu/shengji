@@ -349,6 +349,16 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     assert trace['exact_lead_selected_level_mean'] == means[winner]
     assert trace['exact_lead_base_level_mean'] == 1.0
     assert trace['exact_lead_selected_level_delta'] == means[winner] - 1.0
+    # Consume the JSON-persisted real producer -> TimedPolicy trace, including
+    # wide ballots whose numeric vectors have deliberately been dropped.
+    import json
+    from shengji.train.search_screen import exact_lead_summary
+    saved = json.loads(json.dumps([{'decision_traces': [
+        {'side': 'arm', 'decisions': consumer.decisions}]}]))
+    summary = exact_lead_summary(saved)
+    assert summary['valid']
+    assert summary['sides']['arm']['change_kinds'][kind] == 1
+    assert summary['sides']['arm']['changed'] == int(kind != 'unchanged')
 
 
 def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):

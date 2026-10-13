@@ -223,6 +223,59 @@ def run_cluster(config, cluster):
                                 for i, (side, bot) in enumerate(created)]}
 
 
+def exact_lead_summary(shards):
+    """Descriptive coverage of persisted traces, never a gameplay gain estimate.
+
+    Missing telemetry includes flag-off policies and early fallbacks; it cannot
+    be counted as ineligible. Override values price ballot entries, not the
+    final played actions, so no value-delta average is reported here.
+    """
+    import math
+
+    statuses = ('ineligible', 'skipped_budget', 'abandoned', 'complete')
+    kinds = ('unchanged', 'higher', 'tie', 'lower', 'post_selection_override')
+    out = {side: dict(total_traces=0, missing=0, invalid=0,
+                     statuses=dict.fromkeys(statuses, 0),
+                     change_kinds=dict.fromkeys(kinds, 0), changed=0)
+           for side in ('arm', 'baseline')}
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            side = group['side']
+            if side not in out:
+                raise ValueError('unknown exact-lead trace side')
+            counts = out[side]
+            for row in group['decisions']:
+                counts['total_traces'] += 1
+                status = row.get('exact_lead_status')
+                if status is None:
+                    counts['missing'] += 1
+                    continue
+                if status not in statuses:
+                    counts['invalid'] += 1
+                    continue
+                if status == 'complete':
+                    kind = row.get('exact_lead_change_kind')
+                    changed = row.get('exact_lead_changed')
+                    delta = row.get('exact_lead_selected_level_delta')
+                    worlds = row.get('exact_lead_worlds_completed')
+                    valid = (kind in kinds and type(changed) is bool
+                             and changed == (kind != 'unchanged')
+                             and type(worlds) is int and worlds > 0
+                             and type(delta) in (int, float) and math.isfinite(delta))
+                    if valid and kind in ('higher', 'tie', 'lower'):
+                        valid = ((delta > 0) if kind == 'higher' else
+                                 (delta < 0) if kind == 'lower' else delta == 0)
+                    if not valid:
+                        counts['invalid'] += 1
+                        continue
+                    counts['change_kinds'][kind] += 1
+                    counts['changed'] += int(changed)
+                counts['statuses'][status] += 1
+    return {'schema': 'exact-lead-trace-summary-v1', 'sides': out,
+            'claim': 'descriptive sampled-world mechanism counts, not playing strength',
+            'valid': all(c['invalid'] == 0 for c in out.values())}
+
+
 def summary_for(shards, config):
     records = [r for shard in shards for r in shard["records"]]
     base = duel.build_config(arm="none", select_worlds=config["select_worlds"],
@@ -245,6 +298,7 @@ def summary_for(shards, config):
         "candidate_evaluation_ratio": ratio("rollouts"),
         "no_more_measured_decision_cpu": cpu_ratio is not None and cpu_ratio <= 1.0,
         "equal_work_strength_claim": False,
+        "exact_lead": exact_lead_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

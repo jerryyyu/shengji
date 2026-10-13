@@ -2,11 +2,87 @@
 import copy
 import hashlib
 import json
+import importlib.util
+import inspect
+import sys
 from pathlib import Path
 
 import pytest
 
 from shengji.train import cwv_screen_queue as Q
+
+
+def capacity_module():
+    path = Path(__file__).parents[1] / 'scripts' / 'qualify_screen_capacity.py'
+    spec = importlib.util.spec_from_file_location('screen_capacity', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_capacity_dryrun_is_exact_queue_and_creates_nothing(tmp_path, capsys):
+    module = capacity_module()
+    out = tmp_path / 'capacity'
+    assert module.main(['--policy', 'mc-s0-report-lcb', '--seed', '100',
+                        '--out', str(out)]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan['launched'] is False and not out.exists()
+    assert plan['command'][2:4] == ['-m', 'shengji.train.cwv_screen_queue']
+    assert plan['command'][-2:] == ['--decision-deadline', '300']
+
+
+def test_capacity_real_queue_publication_and_resource_terminal(tmp_path, monkeypatch):
+    module = capacity_module()
+    out = tmp_path / 'capacity'
+    monkeypatch.setenv('SHENGJI_REQUIRE_VOIDS', '1')
+    # Real child/queue/config/shard/summary path; only gameplay is synthetic.
+    code = '''
+from shengji.train import cwv_screen_queue as Q
+Q.screen.execution_source_identity = lambda *a: {'source': 'synthetic-capacity'}
+Q.screen.duel.summarize = lambda *a, **kw: {'work_totals': {}}
+''' + inspect.getsource(publish_pair) + '''
+def complete(config, pending, shards, *, output, **kw):
+    for cluster in pending:
+        publish_pair(config, cluster, shards, output)
+Q.screen._run_pending = complete
+raise SystemExit(Q.main(ARGS))
+'''.replace('ARGS', repr(['--arm-policy', 'mc-s0-report-lcb', '--out', str(out / 'queue'),
+                         '--name', 'capacity', '--seeds', '100', '--clusters', '1',
+                         '--workers', '1', '--decision-deadline', '300']))
+    result = module.measure([sys.executable, '-c', code], out, 30)
+    assert result['complete'], (out / 'producer.log').read_text()
+    assert result['samples'] > 0
+    assert result['sampled_group_peak_rss_bytes'] > 0
+    summary = json.loads((out / 'queue/capacity-100/summary.json').read_text())
+    assert summary['complete'] and summary['completed_clusters'] == 1
+    assert (out / 'queue/capacity-100/cluster-00000.json').exists()
+    with pytest.raises(FileExistsError):
+        module.measure([sys.executable, '-c', code], out, 30)
+
+
+def test_capacity_timeout_preserves_partial_and_is_not_success(tmp_path):
+    module = capacity_module()
+    out = tmp_path / 'capacity'
+    code = 'import pathlib,time; pathlib.Path(' + repr(str(out / 'partial')) + ').write_text("kept"); time.sleep(30)'
+    result = module.measure([sys.executable, '-c', code], out, .2, poll_seconds=.02)
+    assert result['reason'] == 'timeout' and not result['complete']
+    assert result['returncode'] != 0 and (out / 'partial').read_text() == 'kept'
+    assert json.loads((out / 'capacity.json').read_text()) == result
+
+
+def test_capacity_samples_sum_of_group_not_largest_process(monkeypatch):
+    module = capacity_module()
+    monkeypatch.setattr(module.subprocess, 'check_output',
+                        lambda *a, **kw: '100 1024\n100 2048\n101 99999\n')
+    assert module.group_sample(100) == {'processes': 2, 'rss_bytes': 3072 * 1024}
+
+
+def test_capacity_failed_producer_is_not_complete(tmp_path):
+    module = capacity_module()
+    result = module.measure([sys.executable, '-c', 'raise SystemExit(7)'],
+                            tmp_path / 'capacity', 5)
+    assert result['reason'] == 'exit' and result['returncode'] == 7
+    assert not result['complete']
 
 
 @pytest.fixture

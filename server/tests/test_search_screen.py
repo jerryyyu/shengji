@@ -99,6 +99,7 @@ def test_exact_stage_cost_rejects_invalid_measurements(seconds):
 ])
 def test_exact_lead_summary_flags_bad_complete_evidence(patch):
     row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_trace_version=2,
                exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
                exact_lead_worlds_completed=64, played=['C4'],
                admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
@@ -113,6 +114,27 @@ def test_exact_lead_summary_flags_bad_complete_evidence(patch):
     assert not result['valid']
     assert result['sides']['arm']['invalid'] == 1
     assert result['sides']['arm']['statuses']['complete'] == 0
+    assert result['sides']['arm']['bound'] == 0
+    assert result['sides']['arm']['unbound'] == 0
+
+
+@pytest.mark.parametrize('version', [None, 2])
+def test_exact_summary_rejects_claimed_change_without_changed_cards(version):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.,
+               exact_lead_worlds_completed=2, played=['C3'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.,
+               exact_lead_base_level_mean=1.)
+    if version is not None:
+        row.update(exact_lead_trace_version=version,
+                   exact_lead_selected_index=0, exact_lead_selected_played=['C3'],
+                   exact_lead_base_selected_index=1,
+                   exact_lead_base_selected_played=['C3'])
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['bound'] == 0
+    assert result['sides']['arm']['unbound'] == 0
 
 
 def test_exact_lead_summary_accepts_post_selection_override_with_selected_witness():

@@ -298,7 +298,7 @@ def exact_lead_summary(shards):
                     present = [key in row for key in witness_keys]
                     version = row.get('exact_lead_trace_version')
                     legacy = version is None and not any(present)
-                    v2 = version == 2 and all(present)
+                    v2 = type(version) is int and version == 2 and all(present)
                     partial = not legacy and not v2
                     cards_valid = all(isinstance(cards, list) and bool(cards)
                                       and all(isinstance(c, str) for c in cards)
@@ -327,7 +327,8 @@ def exact_lead_summary(shards):
                              and type(worlds) is int and worlds > 0
                              and all(type(v) in (int, float) and math.isfinite(v)
                                      for v in (delta, selected, base_value))
-                             and cards_valid and indices_valid and ballot_valid
+                             and cards_valid and indices_valid and (legacy or ballot_valid)
+                             and changed == (sorted(played) != sorted(base_played))
                              and math.isclose(delta, selected - base_value,
                                               rel_tol=1e-12, abs_tol=1e-12))
                     if valid and v2:
@@ -335,14 +336,13 @@ def exact_lead_summary(shards):
                                  (kind == 'post_selection_override') ==
                                  (sorted(played) != sorted(selected_played) or
                                   sorted(base_played) != sorted(base_selected_played)))
-                    if valid:
-                        counts['bound' if v2 and admitted_present else 'unbound'] += 1
                     if valid and kind in ('higher', 'tie', 'lower'):
                         valid = ((delta > 0) if kind == 'higher' else
                                  (delta < 0) if kind == 'lower' else delta == 0)
                     if not valid:
                         counts['invalid'] += 1
                         continue
+                    counts['bound' if v2 and admitted_present else 'unbound'] += 1
                     counts['change_kinds'][kind] += 1
                     counts['changed'] += int(changed)
                 counts['statuses'][status] += 1

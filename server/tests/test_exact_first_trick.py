@@ -9,11 +9,11 @@ import pytest
 
 from shengji.ai.endgame import (ExactEndgameBudgetExceeded,
                                 ExactEndgameRefusal, _clone_for_play)
-from shengji.ai.endgame import category_signed_level, signed_level_category
 from shengji.ai.endgame import solve_exact_endgame
 from shengji.engine.cards import Ordering
 from shengji.engine.round import Round, Trick, TrickPlay
-from shengji.ai.endgame import exact_first_trick_means
+from shengji.rl.value_afterstate import category_signed_level, signed_level_category
+from shengji.train.pv_exact_endgame import exact_first_trick_means
 
 
 def _round(hands, *, leader=0, banker=0, buried=()):
@@ -56,7 +56,7 @@ def test_first_trick_means_matches_direct_exact_continuation():
     assert means[0] == pytest.approx(expected)
 
 
-def test_first_trick_means_keeps_failed_throw_forced_component():
+def test_first_trick_means_keeps_failed_throw_forced_component(monkeypatch):
     # The attempted pair+single contains a pair that seat 1 can beat, so the
     # real engine downgrades it to that pair before exact continuation.
     rnd = _round([
@@ -66,24 +66,40 @@ def test_first_trick_means_keeps_failed_throw_forced_component():
         ["S3", "S4", "S5"],
     ])
     world = (copy.deepcopy(rnd.hands), list(rnd.buried))
+    committed = []
+    original_play = Round.play
+
+    def record_first_lead(self, seat, cards):
+        if self.trick is not None and not self.trick.plays and seat == 0:
+            attempted = list(cards)
+            original_play(self, seat, cards)
+            committed.append((attempted, list(self.trick.plays[0].cards)))
+            return
+        return original_play(self, seat, cards)
+
+    # The evaluator must expose the engine's actual forced component, not
+    # merely score the submitted throw as if it were played.
+    monkeypatch.setattr(Round, "play", record_first_lead)
     # Use the public evaluator, while observing the clone that is actually
     # submitted to the engine through the existing Round implementation.
     means, stats = exact_first_trick_means(
         rnd, 0, [["C3", "C3", "C4"]], [world], max_nodes=10_000)
     forced, _ = exact_first_trick_means(
-        rnd, 0, [["C3", "C3"]], [world], max_nodes=10_000)
+        rnd, 0, [["C4"]], [world], max_nodes=10_000)
     assert means.shape == (1,)
     assert means[0] == forced[0]
+    assert committed[0] == (["C3", "C3", "C4"], ["C4"])
     assert stats["worlds_completed"] == 1
 
 
-@pytest.mark.parametrize("leader", [0, 1])
-def test_first_trick_means_supports_both_partnership_perspectives(leader):
+@pytest.mark.parametrize(("leader", "expected"), [(0, 2.5), (1, -2.5)])
+def test_first_trick_means_supports_both_partnership_perspectives(leader, expected):
     rnd = _round([["C3"], ["C4"], ["C5"], ["CA"]], leader=leader)
     world = (copy.deepcopy(rnd.hands), list(rnd.buried))
     means, _ = exact_first_trick_means(
         rnd, leader, [[rnd.hands[leader][0]]], [world], max_nodes=100)
     assert means.shape == (1,)
+    assert means[0] == pytest.approx(expected)
 
 
 def test_first_trick_means_propagates_cancellation_and_no_partial_result():

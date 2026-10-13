@@ -14,7 +14,8 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
-from ..ai.endgame import ExactEndgameRefusal, ExactWorldSession
+from ..ai.endgame import (ExactEndgameRefusal, ExactWorldSession,
+                           _clone_for_play)
 from ..engine.round import Round
 from ..rl.value_afterstate import category_signed_level, signed_level_category
 from .cwv_prior_admission import root_clone
@@ -115,4 +116,28 @@ def exact_lead_means(
     means /= len(validated_worlds)
     return means, {"worlds_completed": completed,
                    "nodes": node_total, "cache_hits": cache_total}
+
+
+def exact_first_trick_means(
+        rnd: Round, seat: int, actions: Sequence[Sequence[str]], worlds,
+        check_budget: Callable | None = None, *,
+        max_nodes: int = 10_000) -> tuple[np.ndarray, dict]:
+    """Evaluate fixed leads with engine play then an exact continuation.
+
+    Unlike ``exact_lead_means``, this mode has no heuristic leaf producer:
+    its leaf callback applies each lead through ``Round.play`` (including
+    failed-throw downgrades), and the existing evaluator then starts exact
+    continuation from that resulting trick.  The evaluator's ``alpha_beta``
+    flag supplies bounded transposition pruning per determinized world.
+    """
+    def apply_lead(root, lead_seat, _hands, _buried, action, _world_index):
+        if check_budget is not None:
+            check_budget()
+        child = _clone_for_play(root)
+        child.play(lead_seat, action)
+        return child
+
+    return exact_lead_means(
+        rnd, seat, actions, worlds, apply_lead, check_budget,
+        max_nodes=max_nodes)
 

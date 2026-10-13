@@ -242,6 +242,10 @@ def exact_lead_summary(shards):
                      statuses=dict.fromkeys(statuses, 0),
                      change_kinds=dict.fromkeys(kinds, 0), changed=0)
            for side in ('arm', 'baseline')}
+    # Keep abandoned work: successful calls alone understate optional-stage cost.
+    costs = {side: {status: dict(samples=[], missing=0, invalid=0)
+                    for status in ('complete', 'abandoned')}
+             for side in out}
     for shard in shards:
         for group in shard.get('decision_traces', []):
             side = group['side']
@@ -257,6 +261,15 @@ def exact_lead_summary(shards):
                 if status not in statuses:
                     counts['invalid'] += 1
                     continue
+                if status in costs[side]:
+                    cost = costs[side][status]
+                    seconds = row.get('exact_lead_seconds')
+                    if seconds is None:
+                        cost['missing'] += 1
+                    elif type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
+                        cost['invalid'] += 1
+                    else:
+                        cost['samples'].append(seconds)
                 if status == 'complete':
                     kind = row.get('exact_lead_change_kind')
                     changed = row.get('exact_lead_changed')
@@ -288,8 +301,21 @@ def exact_lead_summary(shards):
                     counts['change_kinds'][kind] += 1
                     counts['changed'] += int(changed)
                 counts['statuses'][status] += 1
+    for side, groups in costs.items():
+        for status, cost in groups.items():
+            samples = sorted(cost.pop('samples'))
+            n = len(samples)
+            cost.update(count=n, total_seconds=sum(samples),
+                        p50_seconds=samples[math.ceil(.5 * n) - 1] if n else None,
+                        p90_seconds=samples[math.ceil(.9 * n) - 1] if n else None,
+                        max_seconds=samples[-1] if n else None)
+        out[side]['stage_cost'] = groups
     return {'schema': 'exact-lead-trace-summary-v1', 'sides': out,
             'claim': 'descriptive sampled-world mechanism counts, not playing strength',
+            'cost_claim': 'optional-stage wall time, nearest-rank quantiles; not whole-decision latency',
+            'cost_valid': all(c['invalid'] == 0 for groups in costs.values() for c in groups.values()),
+            'cost_complete': all(c['missing'] == 0 and c['invalid'] == 0
+                                 for groups in costs.values() for c in groups.values()),
             'valid': all(c['invalid'] == 0 for c in out.values())}
 
 

@@ -357,6 +357,10 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
         {'side': 'arm', 'decisions': consumer.decisions}]}]))
     summary = exact_lead_summary(saved)
     assert summary['valid']
+    assert summary['cost_valid'] and summary['cost_complete']
+    cost = summary['sides']['arm']['stage_cost']['complete']
+    assert cost['count'] == 1
+    assert cost['max_seconds'] == trace['exact_lead_seconds']
     assert summary['sides']['arm']['change_kinds'][kind] == 1
     assert summary['sides']['arm']['changed'] == int(kind != 'unchanged')
     # The served-policy screen has its OWN summary path; the DEV wrapper's

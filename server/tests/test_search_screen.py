@@ -44,6 +44,30 @@ def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded()
     assert oversized['exact_lead_base_played__len'] == 17
 
 
+def test_exact_stage_cost_keeps_abandonment_and_missing_separate():
+    rows = [dict(exact_lead_status='abandoned', exact_lead_seconds=v)
+            for v in (0, .1, .2, .3, .4, .5, .6, .7, .8, 2.25)]
+    rows += [dict(exact_lead_status='abandoned'), {}]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows}]}])
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost == dict(count=10, missing=1, invalid=0, total_seconds=5.85,
+                        p50_seconds=.4, p90_seconds=.8, max_seconds=2.25)
+    assert result['cost_valid'] and not result['cost_complete']
+    assert result['sides']['baseline']['stage_cost']['abandoned']['max_seconds'] is None
+
+
+@pytest.mark.parametrize('seconds', [-1, float('nan'), float('inf'), True, '0.2'])
+def test_exact_stage_cost_rejects_invalid_measurements(seconds):
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_lead_status='abandoned',
+                                          exact_lead_seconds=seconds)]}]}])
+    assert not result['cost_valid'] and not result['cost_complete']
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost['invalid'] == 1 and cost['count'] == 0
+    assert cost['max_seconds'] is None
+
+
 @pytest.mark.parametrize('patch', [
     {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
     {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},

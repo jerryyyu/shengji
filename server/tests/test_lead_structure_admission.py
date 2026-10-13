@@ -16,6 +16,8 @@ from shengji.harvest.legal import enumerate_legal
 from shengji.api import server as srv
 from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import _play_state, package  # noqa: F401
+from test_pv_finish_lead import decision_package  # noqa: F401
+from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from shengji.train.policy_value_search import PolicyValueBot
 
 
@@ -204,8 +206,8 @@ def test_recipe_and_environment_identity_are_off_by_default_and_opt_in():
     assert pv.pv_env_recipe(env)["tractor_reservation"] is True
 
 
-def test_registry_factory_builds_real_package_bot_and_admits_tractor(package):
-    path, sha = package
+def test_registry_factory_builds_real_package_bot_and_admits_tractor(decision_package):
+    path, sha = decision_package
     entries = pv.pv_registry_entries(
         path, sha256=sha, worlds=2, candidates=4, cap=400,
         tractor_reservation=True)
@@ -218,14 +220,14 @@ def test_registry_factory_builds_real_package_bot_and_admits_tractor(package):
     assert chosen == [0, 1, 2, 4]
 
 
-def test_registry_api_snapshot_commit_scores_and_selects_reserved_tractor(package, monkeypatch):
+def test_registry_api_snapshot_commit_scores_and_selects_reserved_tractor(decision_package, monkeypatch):
     """The opt-in ballot survives the real registry/server transaction.
 
     The package remains real, while policy and value scoring are deterministic so
     the fixture isolates admission: policy ranks tractors below the top K, and the
     value fixture prefers the admitted four-card tractor.
     """
-    path, sha = package
+    path, sha = decision_package
 
     def policy_scores(self, rnd, seat, actions, worlds):
         values = np.asarray([

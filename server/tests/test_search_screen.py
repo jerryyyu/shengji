@@ -33,16 +33,31 @@ def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
     assert result['sides']['baseline']['missing'] == 1
 
 
+def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():
+    trace = S.trace_fields({'exact_lead_base_played': ['BJ', 'S5'],
+                            'other_cards': ['BJ', 'S5']})
+    assert trace['exact_lead_base_played'] == ['BJ', 'S5']
+    assert 'other_cards' not in trace and trace['other_cards__len'] == 2
+    assert trace['trace_dropped_fields'] == 1
+    oversized = S.trace_fields({'exact_lead_base_played': ['S5'] * 17})
+    assert 'exact_lead_base_played' not in oversized
+    assert oversized['exact_lead_base_played__len'] == 17
+
+
 @pytest.mark.parametrize('patch', [
     {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
     {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},
     {'exact_lead_selected_level_delta': float('nan')},
     {'exact_lead_worlds_completed': 0},
+    {'played': ['C3']}, {'exact_lead_base_played': None},
+    {'exact_lead_selected_level_mean': 99},
 ])
 def test_exact_lead_summary_flags_bad_complete_evidence(patch):
     row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
                exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
-               exact_lead_worlds_completed=64)
+               exact_lead_worlds_completed=64, played=['C4'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
     row.update(patch)
     result = S.exact_lead_summary([{'decision_traces': [
         {'side': 'arm', 'decisions': [row]}]}])

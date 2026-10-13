@@ -42,6 +42,8 @@ def trace_fields(rec, skip=()):
     * every list/tuple field gets ``<field>__len``; a numeric list of at most
       ``TRACE_LIST_MAX`` entries is also kept whole under its own name (e.g.
       ``diversity_skipped``, ``tiebreak_near_set``, ``admitted_indices``);
+      the bounded ``exact_lead_base_played`` string list is also retained so
+      the reader can verify the final-action change instead of trusting a flag;
     * ``trace_dropped_fields`` counts the fields whose full value is NOT in the
       trace (long or non-numeric lists, kept as their length only; dicts and
       other objects).  It is always present, so 0 means "nothing lost", and a
@@ -58,7 +60,9 @@ def trace_fields(rec, skip=()):
             if f"{k}__len" not in rec:
                 out[f"{k}__len"] = len(v)
             if (len(v) <= TRACE_LIST_MAX and k not in out
-                    and all(isinstance(x, (int, float)) for x in v)):
+                    and (all(isinstance(x, (int, float)) for x in v)
+                         or (k == 'exact_lead_base_played'
+                             and all(isinstance(x, str) for x in v)))):
                 out[k] = list(v)
                 whole = True
         dropped += not whole
@@ -258,10 +262,23 @@ def exact_lead_summary(shards):
                     changed = row.get('exact_lead_changed')
                     delta = row.get('exact_lead_selected_level_delta')
                     worlds = row.get('exact_lead_worlds_completed')
+                    played = row.get('played')
+                    base_played = row.get('exact_lead_base_played')
+                    selected = row.get('exact_lead_selected_level_mean')
+                    base_value = row.get('exact_lead_base_level_mean')
+                    cards_valid = all(isinstance(cards, list) and bool(cards)
+                                      and all(isinstance(c, str) for c in cards)
+                                      for cards in (played, base_played))
                     valid = (kind in kinds and type(changed) is bool
                              and changed == (kind != 'unchanged')
                              and type(worlds) is int and worlds > 0
-                             and type(delta) in (int, float) and math.isfinite(delta))
+                             and all(type(v) in (int, float) and math.isfinite(v)
+                                     for v in (delta, selected, base_value))
+                             and cards_valid)
+                    if valid:
+                        valid = (changed == (sorted(played) != sorted(base_played))
+                                 and math.isclose(delta, selected - base_value,
+                                                  rel_tol=1e-12, abs_tol=1e-12))
                     if valid and kind in ('higher', 'tie', 'lower'):
                         valid = ((delta > 0) if kind == 'higher' else
                                  (delta < 0) if kind == 'lower' else delta == 0)

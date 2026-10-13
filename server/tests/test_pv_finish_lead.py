@@ -16,6 +16,8 @@ import pytest
 
 from shengji.rl.replay_log import rebuild_round
 from shengji.harvest.legal import resolve_lead
+from shengji.ai.registry import REGISTRY, make_bot, register_pv_search_policies
+from shengji.train import cwv_shortlist_screen as screen
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_pv_search_serving import package  # noqa: F401
@@ -37,6 +39,74 @@ def bot(on, **kw):
                          config=pv.PVSearchConfig(checkpoint_sha256='f' * 64,
                              worlds=2, candidates=8, cap=4000,
                              finish_lead_admission=on, **kw), checkpoint='/dev/null', seed=7)
+
+
+def test_r45_exact_lead_registry_binds_through_shortlist_screen(pinned_production_package):
+    """The r45 served recipe and exact-lead candidate reach the real screen consumer.
+
+    This is a construction/identity test only: it does not play a deal or score a
+    diagnostic.  The candidate changes one rule flag and keeps the production
+    declaration, play/bury budgets, and wide-value bury cap unchanged.
+    """
+    package = pinned_production_package
+    package_sha = PACKAGE_SHA
+    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    base_env = {**env, 'SHENGJI_PV_CKPT': str(package), 'SHENGJI_PV_SHA256': package_sha}
+    candidate_env = {**base_env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME': '1'}
+    base_recipe = pv.pv_env_recipe(base_env)
+    candidate_recipe = pv.pv_env_recipe(candidate_env)
+    base_recipe.setdefault('exact_lead_endgame', False)
+    base_recipe.setdefault('exact_lead_first_trick', False)
+    candidate_recipe.setdefault('exact_lead_endgame', False)
+    candidate_recipe.setdefault('exact_lead_first_trick', False)
+    assert candidate_recipe.keys() == base_recipe.keys()
+    changed = {key for key in base_recipe if base_recipe[key] != candidate_recipe[key]}
+    assert changed == {'exact_lead_endgame'}
+    assert base_recipe['exact_lead_endgame'] is False
+    assert candidate_recipe['exact_lead_endgame'] is True
+    assert candidate_recipe.get('exact_lead_first_trick', False) is False
+
+    base_recipe = dict(base_recipe)
+    candidate_recipe = dict(candidate_recipe)
+    base_checkpoint = base_recipe.pop('checkpoint')
+    candidate_checkpoint = candidate_recipe.pop('checkpoint')
+    original_registry = dict(REGISTRY)
+    try:
+        base_names = register_pv_search_policies(base_checkpoint, **base_recipe)
+        candidate_names = register_pv_search_policies(candidate_checkpoint, **candidate_recipe)
+        official = env['SHENGJI_BOT']
+        assert base_names == [official]
+        assert len(candidate_names) == 1 and candidate_names[0] != official
+        base = make_bot(official, seed=0)
+        candidate = make_bot(candidate_names[0], seed=0)
+        assert isinstance(base, pv.PVSearchBuryBot)
+        assert isinstance(candidate, pv.PVSearchBuryBot)
+        assert base.value_declare == candidate.value_declare is True
+        assert base.serving_budget_seconds == candidate.serving_budget_seconds == 3.0
+        assert base.bury_serving_budget_seconds == candidate.bury_serving_budget_seconds == 2.0
+        assert base.bury_wide_value == candidate.bury_wide_value is True
+        assert base.bury_wide_k == candidate.bury_wide_k == 64
+        assert base.exact_lead_endgame is False and candidate.exact_lead_endgame is True
+        assert candidate.exact_lead_first_trick is False
+
+        def screen_config(policy_name, policy):
+            return {
+                'arm': 'policy', 'arm_policy': policy_name,
+                'arm_policy_identity': screen._policy_identity(policy),
+                'report_worlds': 300,
+                'shortlist': {'worlds': 32, 'selection_worlds': 30,
+                              'alternatives': 4, 'batch_size': 128, 'uniform': False},
+            }
+
+        base_config = screen_config(official, base)
+        candidate_config = screen_config(candidate_names[0], candidate)
+        served_base = screen.make_side(base_config, 'arm', 7)
+        served_candidate = screen.make_side(candidate_config, 'arm', 7)
+        assert screen._policy_identity(served_base) == base_config['arm_policy_identity']
+        assert screen._policy_identity(served_candidate) == candidate_config['arm_policy_identity']
+    finally:
+        REGISTRY.clear()
+        REGISTRY.update(original_registry)
 
 
 def test_admission_adds_only_finish_preserves_ballot_and_never_duplicates():

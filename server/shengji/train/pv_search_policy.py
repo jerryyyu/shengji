@@ -1719,15 +1719,32 @@ class PVSearchBot(PolicyValueBot):
             if self.exact_lead_first_trick:
                 means, stats = exact_first_trick_means(
                     rnd, seat, admitted, worlds, stage.guard,
-                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
+                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'],
+                    retain_world_values=True)
             else:
                 means, stats = exact_lead_means(
                     rnd, seat, admitted, worlds, self._leaf, stage.guard,
-                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
+                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'],
+                    retain_world_values=True)
             stage.guard()
             winner = self._select(rnd, seat, admitted, means, worlds=worlds,
                                   check_budget=stage.guard, priors=priors)
             played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, stage.guard)
+            world_values = stats.get('world_values')
+            if (not isinstance(world_values, np.ndarray)
+                    or world_values.shape != (len(worlds), len(admitted))
+                    or not np.issubdtype(world_values.dtype, np.floating)
+                    or not np.isfinite(world_values).all()):
+                raise PVSearchPolicyError('exact lead world values are malformed')
+            world_delta = world_values[:, winner] - world_values[:, int(base[2])]
+            world_robustness = dict(
+                exact_lead_world_wins=int(np.count_nonzero(world_delta > 0)),
+                exact_lead_world_ties=int(np.count_nonzero(world_delta == 0)),
+                exact_lead_world_losses=int(np.count_nonzero(world_delta < 0)),
+                exact_lead_world_delta_min=float(np.min(world_delta)),
+                exact_lead_world_delta_max=float(np.max(world_delta)),
+                exact_lead_world_delta_mean=float(np.mean(world_delta)),
+            )
             stage.guard()
             stage.publish()
         state['exact_lead_seconds'] = time.perf_counter() - now
@@ -1762,7 +1779,8 @@ class PVSearchBot(PolicyValueBot):
                      exact_lead_base_selected_index=int(base[2]),
                      exact_lead_base_selected_played=base_selected_played,
                      exact_lead_base_value_means=base[0].tolist(),
-                     exact_lead_base_played=list(base[3]))
+                     exact_lead_base_played=list(base[3]),
+                     **world_robustness)
         return means, base[1], winner, played, base[4]
 
     # -- the optional unresolved-decision evidence rule (class docstring) ---------

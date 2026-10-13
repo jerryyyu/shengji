@@ -52,7 +52,8 @@ def _validate_world(rnd: Round, world, world_index: int) -> tuple[list[list[str]
 def exact_lead_means(
         rnd: Round, seat: int, actions: Sequence[Sequence[str]], worlds,
         leaf_fn: Callable, check_budget: Callable | None, *,
-        max_nodes: int = 10_000) -> tuple[np.ndarray, dict]:
+        max_nodes: int = 10_000,
+        retain_world_values: bool = False) -> tuple[np.ndarray, dict]:
     """Return exact root-team level means for every candidate and world.
 
     ``leaf_fn`` is the existing candidate-to-leaf producer.  It receives the
@@ -60,7 +61,9 @@ def exact_lead_means(
     action, and its world index; it must return a Round reached through the
     real engine transition.  The function intentionally publishes no partial
     matrix: any invalid world, failed leaf, cancellation, or node-cap refusal
-    raises before returning.
+    raises before returning.  With ``retain_world_values=True``, the returned
+    stats additionally contain a completed ``world_values`` matrix shaped
+    ``(worlds, candidates)``; the default keeps the matrix out of stats.
     """
     if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat:
         _refuse("exact lead values require an active root play decision")
@@ -74,6 +77,8 @@ def exact_lead_means(
         _refuse("check_budget must be callable or None")
     if isinstance(max_nodes, bool) or type(max_nodes) is not int or max_nodes < 1:
         _refuse("max_nodes must be a positive integer")
+    if type(retain_world_values) is not bool:
+        _refuse("retain_world_values must be a bool")
     if type(actions) not in (list, tuple) or not actions:
         _refuse("actions must be a non-empty sequence")
     candidate_actions: list[list[str]] = []
@@ -92,12 +97,14 @@ def exact_lead_means(
     node_total = 0
     cache_total = 0
     completed = 0
+    world_values = [] if retain_world_values else None
 
     for world_index, (hands, buried) in enumerate(validated_worlds):
         world_root = root_clone(rnd, hands, buried)
         session = ExactWorldSession(
             world_root, max_hand_cards=4, max_nodes=max_nodes,
             check_budget=check_budget, alpha_beta=True)
+        world_row = [] if retain_world_values else None
         for action_index, action in enumerate(candidate_actions):
             leaf = leaf_fn(world_root, seat, hands, buried, action, world_index)
             if type(leaf) is not Round:
@@ -106,22 +113,30 @@ def exact_lead_means(
                 check_budget()
             points = (leaf.attacker_points if leaf.phase == 'round_end'
                       else session.solve(leaf).attacker_points)
-            means[action_index] += category_signed_level(
-                signed_level_category(points,
-                                      leaf.is_attacker(seat)))
+            value = category_signed_level(
+                signed_level_category(points, leaf.is_attacker(seat)))
+            means[action_index] += value
+            if world_row is not None:
+                world_row.append(value)
         completed += 1
+        if world_values is not None:
+            world_values.append(world_row)
         node_total += session.nodes
         cache_total += session.cache_hits
 
     means /= len(validated_worlds)
-    return means, {"worlds_completed": completed,
-                   "nodes": node_total, "cache_hits": cache_total}
+    stats = {"worlds_completed": completed,
+             "nodes": node_total, "cache_hits": cache_total}
+    if world_values is not None:
+        stats["world_values"] = np.asarray(world_values, dtype=np.float64)
+    return means, stats
 
 
 def exact_first_trick_means(
         rnd: Round, seat: int, actions: Sequence[Sequence[str]], worlds,
         check_budget: Callable | None = None, *,
-        max_nodes: int = 10_000) -> tuple[np.ndarray, dict]:
+        max_nodes: int = 10_000,
+        retain_world_values: bool = False) -> tuple[np.ndarray, dict]:
     """Evaluate fixed leads with engine play then an exact continuation.
 
     Unlike ``exact_lead_means``, this mode has no heuristic leaf producer:
@@ -139,5 +154,5 @@ def exact_first_trick_means(
 
     return exact_lead_means(
         rnd, seat, actions, worlds, apply_lead, check_budget,
-        max_nodes=max_nodes)
+        max_nodes=max_nodes, retain_world_values=retain_world_values)
 

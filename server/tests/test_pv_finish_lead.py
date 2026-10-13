@@ -264,13 +264,14 @@ def test_exact_first_trick_dispatches_through_real_search_stage(monkeypatch):
 
     def fake(*args, **kwargs):
         calls.append((args, kwargs))
-        return np.array([0.0]), dict(worlds_completed=2, nodes=3, cache_hits=1)
+        return np.array([0.0]), dict(worlds_completed=2, nodes=3, cache_hits=1,
+                                    world_values=np.zeros((2, 1), dtype=float))
 
     monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', fake)
     action = [rnd.hands[rnd.turn][0]]
     base = (np.array([0.0]), 0, 0, action, 0)
     result = policy._exact_lead_decision(
-        rnd, rnd.turn, [action], [], time.perf_counter(), None, [0.0], base)
+        rnd, rnd.turn, [action], [None, None], time.perf_counter(), None, [0.0], base)
     assert result[3] == action and calls
     assert policy._exact_lead['exact_lead_mode'] == 'first_trick'
     assert policy._exact_lead['exact_lead_worlds_completed'] == 2
@@ -376,6 +377,7 @@ def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
     assert policy._exact_lead['exact_lead_abandon_reason'] == 'soft_budget'
     assert policy._exact_lead['exact_lead_worlds_completed'] is None
     assert 'exact_lead_selected_level_delta' not in policy._exact_lead
+    assert not any(key.startswith('exact_lead_world_') for key in policy._exact_lead)
 
 
 @pytest.mark.parametrize('delta,winner,override,kind', [
@@ -394,11 +396,12 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     # Deliberately unrelated head predictions: delta must use exact means only.
     base = (np.array([100.0] * 17), 1, 0, actions[0], 1)
     monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
-        (means, dict(worlds_completed=2, nodes=12, cache_hits=1)))
+        (means, dict(worlds_completed=2, nodes=12, cache_hits=1,
+                    world_values=np.tile(means, (2, 1)).astype(float))))
     monkeypatch.setattr(policy, '_select', lambda *a, **kw: winner)
     monkeypatch.setattr(policy, '_swap_doomed_throw', lambda *a, **kw:
         ['D3'] if override else actions[winner])
-    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [],
+    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [None, None],
         time.perf_counter(), None, [0.0] * 17, base)
     policy.last_decision_record = {'schema': 'pv-search-decision-v1',
         'played': result[3], 'value_means': result[0].tolist(), **policy._exact_lead}
@@ -420,6 +423,10 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     summary = exact_lead_summary(saved)
     assert summary['valid']
     assert summary['cost_valid'] and summary['cost_complete']
+    robustness = summary['sides']['arm']['world_robustness']
+    assert robustness['decisions'] == 1
+    assert robustness['wins'] + robustness['ties'] + robustness['losses'] == 2
+    assert robustness['invalid'] == 0
     cost = summary['sides']['arm']['stage_cost']['complete']
     assert cost['count'] == 1
     assert cost['max_seconds'] == trace['exact_lead_seconds']
@@ -435,6 +442,76 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
                                       'clusters': 1, 'target_wall_multiplier': 1})
     assert final['exact_lead'] == summary
     assert final['outcome_sentinel'] == 7  # descriptive counts never rewrite outcomes
+
+
+def test_exact_world_robustness_telemetry_uses_paired_world_matrix(monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    actions = [['C3'], ['C4']]
+    # The exact means are the column means of the paired matrix.  Candidate 1
+    # wins two worlds, ties one, and loses one against the baseline candidate.
+    world_values = np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 2.0], [1.0, 0.0]])
+    means = world_values.mean(axis=0)
+    base = (np.array([0.0, 0.0]), 0, 0, actions[0], 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (means, dict(worlds_completed=4, nodes=12, cache_hits=1,
+                     world_values=world_values)))
+    monkeypatch.setattr(policy, '_select', lambda *a, **kw: 1)
+    monkeypatch.setattr(policy, '_swap_doomed_throw', lambda *a, **kw: actions[1])
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, actions, [None, None, None, None], time.perf_counter(), None, [0.0, 0.0], base)
+    assert result[2] == 1
+    state = policy._exact_lead
+    assert state['exact_lead_selected_level_delta'] == pytest.approx(0.25)
+    assert state['exact_lead_world_wins'] == 2
+    assert state['exact_lead_world_ties'] == 1
+    assert state['exact_lead_world_losses'] == 1
+    assert state['exact_lead_world_delta_min'] == -1.0
+    assert state['exact_lead_world_delta_max'] == 1.0
+    assert state['exact_lead_world_delta_mean'] == pytest.approx(0.25)
+    assert 'world_values' not in state
+
+
+@pytest.mark.parametrize('matrix', [None, np.zeros((1, 2)), np.array([[np.nan]]),
+                                   np.array([[1]], dtype=int)])
+def test_bad_world_telemetry_preserves_completed_baseline(monkeypatch, matrix):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    action = ['C3']
+    base = (np.array([99.0]), 0, 0, action, 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (np.array([1.0]), dict(worlds_completed=1, nodes=1,
+                             cache_hits=0, world_values=matrix)))
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [None], time.perf_counter(), None, [0.0], base)
+    assert result is base
+    assert policy._exact_lead['exact_lead_status'] == 'abandoned'
+    assert not any(key.startswith('exact_lead_world_') for key in policy._exact_lead)
+
+
+def test_exact_world_robustness_same_candidate_is_all_ties(monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    action = ['C3']
+    world_values = np.array([[1.0], [2.0], [0.0]])
+    base = (np.array([99.0]), 0, 0, action, 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (world_values.mean(axis=0), dict(worlds_completed=3, nodes=1,
+                                         cache_hits=0, world_values=world_values)))
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [None, None, None], time.perf_counter(), None, [0.0], base)
+    assert result[2] == 0
+    state = policy._exact_lead
+    assert state['exact_lead_world_wins'] == 0
+    assert state['exact_lead_world_ties'] == 3
+    assert state['exact_lead_world_losses'] == 0
+    assert state['exact_lead_world_delta_min'] == 0.0
+    assert state['exact_lead_world_delta_max'] == 0.0
+    assert state['exact_lead_world_delta_mean'] == 0.0
+    assert 'world_values' not in state
 
 
 def test_diagnostic_recipe_is_release44_plus_exact(pinned_production_package):

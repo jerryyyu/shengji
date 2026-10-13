@@ -254,6 +254,8 @@ def exact_lead_summary(shards):
     costs = {side: {status: dict(samples=[], missing=0, invalid=0)
                     for status in ('complete', 'abandoned')}
              for side in out}
+    robustness = {side: dict(decisions=0, missing=0, invalid=0,
+                            wins=0, ties=0, losses=0) for side in out}
     for shard in shards:
         for group in shard.get('decision_traces', []):
             side = group['side']
@@ -342,6 +344,33 @@ def exact_lead_summary(shards):
                     if not valid:
                         counts['invalid'] += 1
                         continue
+                    robust = robustness[side]
+                    keys = ('wins', 'ties', 'losses', 'delta_min', 'delta_max', 'delta_mean')
+                    values = [row.get('exact_lead_world_' + key) for key in keys]
+                    present = ['exact_lead_world_' + key in row for key in keys]
+                    if not any(present):
+                        robust['missing'] += 1  # Legacy traces remain usable.
+                    else:
+                        wins, ties, losses, low, high, mean = values
+                        valid_robust = (all(present) and v2
+                            and all(type(n) is int and n >= 0 for n in values[:3])
+                            and sum(values[:3]) == worlds
+                            and all(type(n) in (int, float) and math.isfinite(n)
+                                    for n in values[3:])
+                            and low <= mean <= high
+                            and math.isclose(mean, delta, rel_tol=1e-12, abs_tol=1e-12)
+                            and (wins > 0) == (high > 0)
+                            and (losses > 0) == (low < 0)
+                            and (ties == 0 or low <= 0 <= high)
+                            and (selected_index != base_index or
+                                 (ties == worlds and low == high == mean == 0)))
+                        if not valid_robust:
+                            robust['invalid'] += 1
+                            counts['invalid'] += 1
+                            continue
+                        robust['decisions'] += 1
+                        for key, n in zip(keys[:3], values[:3]):
+                            robust[key] += n
                     counts['bound' if v2 and admitted_present else 'unbound'] += 1
                     counts['change_kinds'][kind] += 1
                     counts['changed'] += int(changed)
@@ -355,9 +384,11 @@ def exact_lead_summary(shards):
                         p90_seconds=samples[math.ceil(.9 * n) - 1] if n else None,
                         max_seconds=samples[-1] if n else None)
         out[side]['stage_cost'] = groups
+        out[side]['world_robustness'] = robustness[side]
     return {'schema': 'exact-lead-trace-summary-v1', 'sides': out,
             'claim': 'descriptive sampled-world mechanism counts, not playing strength',
             'cost_claim': 'optional-stage wall time, nearest-rank quantiles; not whole-decision latency',
+            'world_robustness_claim': 'paired sampled-world values of selected ballot entries; not independent games, confidence or values of post-selection overrides',
             'cost_valid': all(c['invalid'] == 0 for groups in costs.values() for c in groups.values()),
             'cost_complete': all(c['missing'] == 0 and c['invalid'] == 0
                                  for groups in costs.values() for c in groups.values()),

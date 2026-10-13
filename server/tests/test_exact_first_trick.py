@@ -121,6 +121,19 @@ def test_first_trick_means_matches_individual_solves_for_multiple_worlds_actions
     assert stats["nodes"] > 0
 
 
+def test_first_trick_retained_world_values_are_paired_and_not_recomputed():
+    rnd = _round([["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"]])
+    world = (copy.deepcopy(rnd.hands), [])
+    means, stats = exact_first_trick_means(
+        rnd, 0, [["C3"], ["C4"]], [world], max_nodes=100_000,
+        retain_world_values=True)
+    matrix = stats["world_values"]
+    assert matrix.shape == (1, 2)
+    assert means.tolist() == pytest.approx(matrix.mean(axis=0).tolist())
+    assert "world_values" not in exact_first_trick_means(
+        rnd, 0, [["C3"]], [world], max_nodes=100_000)[1]
+
+
 @pytest.mark.parametrize(("leader", "expected"), [(0, 2.5), (1, -2.5)])
 def test_first_trick_means_supports_both_partnership_perspectives(leader, expected):
     rnd = _round([["C3"], ["C4"], ["C5"], ["CA"]], leader=leader)

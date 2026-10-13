@@ -167,6 +167,39 @@ def test_exact_lead_summary_keeps_unchanged_kind_when_baseline_was_already_overr
     assert result['valid'] and result['sides']['arm']['change_kinds']['unchanged'] == 1
 
 
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True),
+    ({'exact_lead_world_wins': True}, False),
+    ({'exact_lead_world_losses': 0}, False),
+    ({'exact_lead_world_delta_mean': float('nan')}, False),
+    ({'exact_lead_world_delta_mean': 0.5}, False),
+    ({'exact_lead_world_delta_min': 0}, False),
+    ({'exact_lead_world_delta_max': None}, False),
+])
+def test_world_robustness_survives_trace_consumer_and_rejects_malformed(patch, valid):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_trace_version=2, exact_lead_changed=True,
+               exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=4, played=['C4'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'], exact_lead_base_selected_index=1,
+               exact_lead_base_selected_played=['C3'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=2.0, exact_lead_base_level_mean=1.0,
+               exact_lead_world_wins=2, exact_lead_world_ties=1,
+               exact_lead_world_losses=1, exact_lead_world_delta_min=-1,
+               exact_lead_world_delta_max=3, exact_lead_world_delta_mean=1.0)
+    row.update(patch)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(S.trace_fields(row), played=row['played'])]}]}])
+    assert result['valid'] is valid
+    robustness = result['sides']['arm']['world_robustness']
+    if valid:
+        assert robustness == dict(decisions=1, missing=0, invalid=0,
+                                  wins=2, ties=1, losses=1)
+    else:
+        assert robustness['invalid'] == 1 and robustness['decisions'] == 0
+
+
 class Heads:
     metadata = {"checkpoint_sha256": "test-checkpoint"}
 

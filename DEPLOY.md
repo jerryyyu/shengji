@@ -93,11 +93,12 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   ("Wide bury", "Smoke test, then ship"; #707 issuecomment-6137203703). Evidence (ladder row 14 in
   `AI_POLICIES.md`): v76bwv44, ten fresh first-round windows vs release 44 as served, +0.048824 [+0.028614, +0.069034]
   POSITIVE, 10/10 windows positive; points +1.309 [+0.877, +1.741]; not confirmed on fresh seeds; the
-  arm changes width and chooser together. Server-path smoke at the PR head on the Mini (`scripts/smoke_release45_bury.py`,
-  compiled engine, single-thread BLAS): 40 first-round buries through `_paced_bot_step` / `_commit_bot_turn`,
-  p50 0.197 / p90 0.204 / max 0.210 s, 64 candidates each, 0 fallbacks, each committed exactly once; 160
-  play turns ≤ 0.08 s. Fly's shared CPU is slower than the Mini; the first live rooms' `bury` timings are the
-  check. Gates still open: Codex PASS at the exact head and CI; merge; serving smoke on the merged tree;
+  arm changes width and chooser together. Server-path smoke on the Mini (`scripts/smoke_release45_bury.py` with its
+  receipt validator, compiled engine, single-thread BLAS, the production package): 40 first-round buries through
+  `_paced_bot_step` / `_commit_bot_turn`, p50 0.208 / p90 0.213 / max 0.252 s, 64 candidates each (legal pool
+  155-213), 0 fallbacks, each committed exactly once; 160 of 160 requested play turns, max 0.090 s; validator PASS
+  (the first, unvalidated run: p50 0.197 / p90 0.204 / max 0.210 s, play max 0.084 s). Fly's shared CPU is slower
+  than the Mini; the first live rooms' `bury` timings are the check. Gates still open: Codex PASS at the exact head and CI; merge; serving smoke on the merged tree;
   `fly deploy --ha=false` at 0 rooms; `/healthz` shows the name above. Then fill the Releases row 45 image,
   digest and main sha, and move the block below to release 45. Rollback after deploy: in `fly.toml` delete the two
   `SHENGJI_PV_BURY_WIDE_*` lines and restore the release-44 `SHENGJI_BOT` kept as the comment directly above it

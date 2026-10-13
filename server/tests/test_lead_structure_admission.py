@@ -1,10 +1,16 @@
 """Synthetic PV admission witness for the opt-in tractor reservation."""
 
 from types import SimpleNamespace
+import random
 
 import numpy as np
 
 from shengji.engine.cards import Ordering
+from shengji.engine.combos import decompose
+from shengji.engine.game import Game
+from shengji.ai.heuristic import HeuristicBot
+from shengji.harvest.legal import enumerate_legal
+from shengji.train import pv_search_policy as pv
 from shengji.train.policy_value_search import PolicyValueBot
 
 
@@ -28,8 +34,8 @@ def _actions():
 
 
 def _bot(**kwargs):
-    return PolicyValueBot(lambda *_: None, evaluator=_Evaluator(), candidates=4,
-                          **kwargs)
+    options = {"candidates": 4, **kwargs}
+    return PolicyValueBot(lambda *_: None, evaluator=_Evaluator(), **options)
 
 
 def test_default_admission_keeps_byte_compatible_ranked_prefix():
@@ -66,4 +72,80 @@ def test_existing_tractor_is_not_replaced_or_duplicated():
     chosen = bot._admit(rnd, 0, actions, preferences, anchor_index=0)
     assert chosen == [0, 1, 2, 3]
     assert len(chosen) == len(set(chosen)) == 4
+
+
+def test_diversity_setting_still_reserves_one_tractor():
+    rnd, actions = _round(), _actions()
+    preferences = np.asarray([0.0, 4.0, 3.0, 2.0, 1.0])
+    bot = _bot(admission_diversity=True, tractor_reservation=True)
+    assert bot._admit(rnd, 0, actions, preferences, anchor_index=0) == [0, 1, 2, 4]
+
+
+def test_k_one_and_no_tractor_are_safe_noops():
+    rnd, actions = _round(), _actions()
+    preferences = np.asarray([0.0, 4.0, 3.0, 2.0, 1.0])
+    assert _bot(candidates=1, tractor_reservation=True)._admit(
+        rnd, 0, actions, preferences, anchor_index=0) == [0]
+    no_tractor = [action for action in actions if len(action) < 4]
+    assert _bot(tractor_reservation=True)._admit(
+        rnd, 0, no_tractor, preferences[:4], anchor_index=0) == [0, 1, 2, 3]
+
+
+def test_actual_enumerate_legal_to_admit_witness():
+    rnd = Game(random.Random(625091990)).start_round()
+    heuristic = HeuristicBot()
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        declaration = heuristic.decide_declare(rnd, seat)
+        if declaration:
+            rnd.declare(seat, declaration)
+    for seat in range(4):
+        declaration = heuristic.decide_declare(rnd, seat, final=True)
+        if declaration:
+            rnd.declare(seat, declaration)
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, heuristic.decide_bury(rnd, rnd.banker))
+    seat = rnd.turn
+    anchor = [rnd.hands[seat][0]]
+    legal = enumerate_legal(rnd, seat, cap=4000, must_include=[anchor])
+    pure_tractor = lambda action: (
+        len(action) >= 4
+        and len({rnd.ordering.eff_suit(card) for card in action}) == 1
+        and len(decompose(list(action), rnd.ordering).components) == 1
+        and decompose(list(action), rnd.ordering).components[0].pair_len >= 2)
+    tractors = [i for i, action in enumerate(legal.actions) if pure_tractor(action)]
+    assert tractors
+    preferences = np.asarray([
+        (-1000.0 if pure_tractor(action) else 100.0 - i)
+        for i, action in enumerate(legal.actions)])
+    anchor_index = next(i for i, action in enumerate(legal.actions) if action == anchor)
+    plain = _bot()._admit(rnd, seat, legal.actions, preferences, anchor_index)
+    reserved = _bot(tractor_reservation=True)._admit(
+        rnd, seat, legal.actions, preferences, anchor_index)
+    assert not any(pure_tractor(legal.actions[i]) for i in plain)
+    assert any(pure_tractor(legal.actions[i]) for i in reserved)
+    assert reserved[0] == anchor_index and len(reserved) == len(set(reserved)) == 4
+
+
+def test_reservation_does_not_mutate_inputs_or_sampler_rng():
+    rnd, actions = _round(), _actions()
+    preferences = np.asarray([0.0, 4.0, 3.0, 2.0, 1.0])
+    before_actions = [list(action) for action in actions]
+    before_preferences = preferences.copy()
+    bot = _bot(tractor_reservation=True)
+    rng_before = bot.sampler.rng.getstate()
+    bot._admit(rnd, 0, actions, preferences, anchor_index=0)
+    assert actions == before_actions and np.array_equal(preferences, before_preferences)
+    assert bot.sampler.rng.getstate() == rng_before
+
+
+def test_recipe_and_environment_identity_are_off_by_default_and_opt_in():
+    off = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
+    assert "tractor_reservation" not in pv.recipe_payload(off)
+    on = pv.PVSearchConfig(checkpoint_sha256="f" * 64, tractor_reservation=True)
+    assert pv.recipe_payload(on)["tractor_reservation"] is True
+    env = {"SHENGJI_PV_CKPT": "/tmp/model.npz",
+           "SHENGJI_PV_SHA256": "f" * 64,
+           "SHENGJI_PV_TRACTOR_RESERVATION": "1"}
+    assert pv.pv_env_recipe(env)["tractor_reservation"] is True
 

@@ -402,7 +402,8 @@ from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCE
                                   DOOMED_THROW_DEFAULTS, DOOMED_THROW_RESELECT_DEFAULTS,
                                   LEAD_ANCHOR_DEFAULTS,
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
-                                  TIEBREAK_DEFAULTS, PolicyValueBot, leading)
+                                  TRACTOR_RESERVATION_DEFAULTS, TIEBREAK_DEFAULTS,
+                                  PolicyValueBot, leading)
 from .optional_stage import OptionalStage
 from . import value_declare as value_declare_model
 from .cwv_bury_policy import (_ARMS as BURY_ARMS, _MODEL_ARMS as BURY_MODEL_ARMS,
@@ -425,9 +426,11 @@ DEFAULTS = dict(worlds=64, candidates=8, cap=4000, batch_size=128, seed=0,
                 serving_budget_seconds=None)
 #: the optional admission rules (`policy_value_search`): env flag -> recipe key
 ADMISSION_RULES = {"ADMISSION_DIVERSITY": "admission_diversity",
-                   "ADMIT_FORCED_SINGLE": "admit_forced_single"}
+                   "ADMIT_FORCED_SINGLE": "admit_forced_single",
+                   "TRACTOR_RESERVATION": "tractor_reservation"}
 #: name tokens, in name order, for the rules that are on
-ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"))
+ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"),
+                    ("tractor_reservation", "tr"))
 #: the optional sampler rule (`ai.refusal`) and its event-complete observation
 #: (#707 S8; requires the sampler rule): env flag -> recipe key, and the defaults
 SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
@@ -670,6 +673,7 @@ class PVSearchConfig:
     # name is unchanged
     admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"]
     admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"]
+    tractor_reservation: bool = TRACTOR_RESERVATION_DEFAULTS["tractor_reservation"]
     refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"]
     # the event-complete observation of the sampler rule (#707 S8): the same
     # contract, and on only together with ``refusal_constraints``
@@ -954,6 +958,7 @@ class PVSearchBot(PolicyValueBot):
                          cap=config.cap, seed=seed,
                          admission_diversity=config.admission_diversity,
                          admit_forced_single=config.admit_forced_single,
+                         tractor_reservation=config.tractor_reservation,
                          tiebreak_points=config.tiebreak_points,
                          adaptive_k=config.adaptive_k,
                          lead_anchor=config.lead_anchor,
@@ -1988,6 +1993,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
+                       tractor_reservation: bool = TRACTOR_RESERVATION_DEFAULTS["tractor_reservation"],
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                        adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                        lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
@@ -2041,6 +2047,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             refusal_event_complete=refusal_event_complete,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
+                            tractor_reservation=tractor_reservation,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
@@ -2124,6 +2131,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
+                        tractor_reservation: bool = TRACTOR_RESERVATION_DEFAULTS["tractor_reservation"],
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
                         adaptive_k: bool = ADAPTIVE_K_DEFAULTS["adaptive_k"],
                         lead_anchor: bool = LEAD_ANCHOR_DEFAULTS["lead_anchor"],
@@ -2159,6 +2167,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             refusal_event_complete=refusal_event_complete,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
+                            tractor_reservation=tractor_reservation,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
                             lead_anchor=lead_anchor,
                             lead_tiebreak_prior=lead_tiebreak_prior,
@@ -2236,6 +2245,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                refusal_event_complete=config.refusal_event_complete,
                                admission_diversity=config.admission_diversity,
                                admit_forced_single=config.admit_forced_single,
+                               tractor_reservation=config.tractor_reservation,
                                tiebreak_points=config.tiebreak_points,
                                adaptive_k=config.adaptive_k,
                                lead_anchor=config.lead_anchor,
@@ -2271,7 +2281,8 @@ def pv_env_recipe(environ=None) -> dict:
     the optional ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` pair (a separate hash-pinned policy
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
-    optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
+    optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_TRACTOR_RESERVATION`` /
+    ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /

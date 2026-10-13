@@ -9,6 +9,7 @@ the key is absent from config and recipe, and the rounds are the legacy ones.
 """
 import json
 import random
+from pathlib import Path
 
 import pytest
 
@@ -107,7 +108,19 @@ def test_absent_round_kind_leaves_config_and_recipe_unchanged(tmp_path, monkeypa
 
 def test_queue_forwards_round_kind_only_when_not_default(tmp_path, monkeypatch):
     commands = []
-    monkeypatch.setattr(Q.screen, "main", lambda command: commands.append(command) or 0)
+
+    def complete_window(command):
+        commands.append(command)
+        output = Path(command[command.index("--out") + 1])
+        clusters = int(command[command.index("--clusters") + 1])
+        output.mkdir(parents=True)
+        (output / "summary.json").write_text(json.dumps({
+            "complete": True, "completed_clusters": clusters,
+            "requested_clusters": clusters,
+        }))
+        return 0
+
+    monkeypatch.setattr(Q.screen, "main", complete_window)
     common = ["--arm-policy", "heuristic", "--name", "w", "--seeds", "100",
               "--clusters", "2", "--workers", "1"]
     assert Q.main([*common, "--out", str(tmp_path / "q1")]) == 0

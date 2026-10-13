@@ -221,6 +221,17 @@ def test_policy_queue_preserves_nonzero_status_without_summary(harness, monkeypa
     assert not (root / "trial-200").exists()
 
 
+def test_policy_queue_refuses_success_without_summary(harness, monkeypatch):
+    args, root, _, _ = harness
+    args = ["--arm-policy", "mc-s0-report-lcb", *args[4:]]
+    calls = []
+    monkeypatch.setattr(Q.screen, "main", lambda command: calls.append(command) or 0)
+    with pytest.raises(FileNotFoundError, match="summary.json"):
+        Q.main(args)
+    assert len(calls) == 1
+    assert not (root / "trial-200").exists()
+
+
 @pytest.mark.parametrize("extra", [["--seeds", "100", "101"],
                                   ["--seeds", "100", "100"],
                                   ["--checkpoint", "model.npz"],

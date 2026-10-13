@@ -359,6 +359,16 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     assert summary['valid']
     assert summary['sides']['arm']['change_kinds'][kind] == 1
     assert summary['sides']['arm']['changed'] == int(kind != 'unchanged')
+    # The served-policy screen has its OWN summary path; the DEV wrapper's
+    # summary alone is not the final consumer used by production comparisons.
+    from shengji.train import cwv_shortlist_screen as screen
+    monkeypatch.setattr(screen.duel, 'summarize', lambda *a, **kw:
+                        {'work_totals': {}, 'outcome_sentinel': 7})
+    saved[0]['records'] = []
+    final = screen.summary_for(saved, {'arm': 'uniform', 'seed0': 17,
+                                      'clusters': 1, 'target_wall_multiplier': 1})
+    assert final['exact_lead'] == summary
+    assert final['outcome_sentinel'] == 7  # descriptive counts never rewrite outcomes
 
 
 def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):

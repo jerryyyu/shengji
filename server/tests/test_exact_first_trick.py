@@ -57,8 +57,8 @@ def test_first_trick_means_matches_direct_exact_continuation():
 
 
 def test_first_trick_means_keeps_failed_throw_forced_component(monkeypatch):
-    # The attempted pair+single contains a pair that seat 1 can beat, so the
-    # real engine downgrades it to that pair before exact continuation.
+    # The attempted pair+single contains a component the other hands can
+    # beat, so the real engine downgrades it to the forced singleton C4.
     rnd = _round([
         ["C3", "C3", "C4"],
         ["C9", "C9", "C10"],
@@ -90,6 +90,35 @@ def test_first_trick_means_keeps_failed_throw_forced_component(monkeypatch):
     assert means[0] == forced[0]
     assert committed[0] == (["C3", "C3", "C4"], ["C4"])
     assert stats["worlds_completed"] == 1
+
+
+def test_first_trick_means_matches_individual_solves_for_multiple_worlds_actions():
+    rnd = _round([
+        ["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"],
+    ])
+    worlds = [
+        (copy.deepcopy(rnd.hands), []),
+        ([list(h) for h in rnd.hands[:1]] +
+         [["D3", "D4"], ["S3", "S4"], ["H3", "H4"]], []),
+    ]
+    actions = [["C3"], ["C4"]]
+    means, stats = exact_first_trick_means(
+        rnd, 0, actions, worlds, max_nodes=100_000)
+    expected = [0.0, 0.0]
+    for hands, buried in worlds:
+        for index, action in enumerate(actions):
+            child = _clone_for_play(rnd)
+            child.hands = copy.deepcopy(hands)
+            child.buried = list(buried)
+            child.play(0, action)
+            result = solve_exact_endgame(child, max_nodes=100_000)
+            expected[index] += category_signed_level(
+                signed_level_category(result.attacker_points,
+                                      child.is_attacker(0)))
+    expected = [value / len(worlds) for value in expected]
+    assert means.tolist() == pytest.approx(expected)
+    assert stats["worlds_completed"] == 2
+    assert stats["nodes"] > 0
 
 
 @pytest.mark.parametrize(("leader", "expected"), [(0, 2.5), (1, -2.5)])

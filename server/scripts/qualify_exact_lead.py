@@ -104,7 +104,9 @@ def main(argv=None):
                         help='screen exact first-trick mechanism; no action-strength claim')
     args = parser.parse_args(argv)
     with args.out.open('x') as dest:
-        return asyncio.run(qualify(args.checkpoint, dest, first_trick=args.first_trick))
+        if args.first_trick:
+            return asyncio.run(qualify(args.checkpoint, dest, first_trick=True))
+        return asyncio.run(qualify(args.checkpoint, dest))
 
 
 if __name__ == '__main__':

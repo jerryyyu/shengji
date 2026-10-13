@@ -4,6 +4,7 @@ import asyncio
 import copy
 import io
 import json
+import pytest
 from types import SimpleNamespace
 
 from scripts import qualify_exact_lead as q
@@ -118,3 +119,32 @@ def test_cli_accepts_first_trick_switch(monkeypatch, tmp_path):
     assert q.main(["--checkpoint", "model.npz", "--out", str(tmp_path / "out"),
                    "--first-trick"]) == 0
     assert called[0][2] is True
+
+
+def test_first_trick_accepts_different_action_and_preserves_partial_on_failure(monkeypatch):
+    _install_synthetic(monkeypatch, [])
+    paced = q.srv._paced_bot_step
+
+    async def different(room, *args, **kwargs):
+        prepared = await paced(room, *args, **kwargs)
+        if room.bot.enabled:
+            prepared.decision.cards = ['S5']
+            prepared.decision.snapshot.bot_copy.last_decision_record['played'] = ['S5']
+        return prepared
+
+    monkeypatch.setattr(q.srv, '_paced_bot_step', different)
+    dest = io.StringIO()
+    assert asyncio.run(q.qualify('model.npz', dest, first_trick=True)) == 0
+    assert json.loads(dest.getvalue().splitlines()[1])['cards'] == ['S5']
+
+    async def fail_second(room, *args, **kwargs):
+        if room.bot.enabled:
+            raise RuntimeError('second call failed')
+        return await paced(room, *args, **kwargs)
+
+    monkeypatch.setattr(q.srv, '_paced_bot_step', fail_second)
+    partial = io.StringIO()
+    with pytest.raises(RuntimeError, match='second call failed'):
+        asyncio.run(q.qualify('model.npz', partial, first_trick=True))
+    assert len(partial.getvalue().splitlines()) == 1
+    assert json.loads(partial.getvalue())['enabled'] is False

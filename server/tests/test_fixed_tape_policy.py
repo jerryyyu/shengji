@@ -118,12 +118,15 @@ def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
 
     env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
     # The adapter is the HISTORICAL release-38 admission boundary. Production moved to
-    # release 44 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, which re-selects among the
+    # release 45 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, which re-selects among the
     # already-admitted candidates and never changes admission, + SHENGJI_PV_VALUE_DECLARE, a
-    # declaration rule), so bind the release-38 environment explicitly: production's env without
-    # those two lines, which is exactly the documented release-38 rollback.
+    # declaration rule, + the wide value-only bury SHENGJI_PV_BURY_WIDE_VALUE/_K, a bury rule),
+    # so bind the release-38 environment explicitly: production's env without those lines,
+    # which is exactly the documented release-38 rollback.
     assert env.get('SHENGJI_PV_DOOMED_THROW_RESELECT') == '1'
-    env = {k: v for k, v in env.items() if k not in ('SHENGJI_PV_DOOMED_THROW_RESELECT', 'SHENGJI_PV_VALUE_DECLARE')}
+    env = {k: v for k, v in env.items() if k not in (
+        'SHENGJI_PV_DOOMED_THROW_RESELECT', 'SHENGJI_PV_VALUE_DECLARE',
+        'SHENGJI_PV_BURY_WIDE_VALUE', 'SHENGJI_PV_BURY_WIDE_K')}
     recipe = pv.pv_env_recipe(env)
     monkeypatch.setattr(cwv_policy, 'checkpoint_id', lambda path: recipe['sha256'][:8])
     assert list(pv.pv_registry_entries(**recipe)) == [

@@ -339,7 +339,15 @@ On, it enters the ``cwv-bury-recipe-v1`` identity (``wide_value``: the chooser
 and ``k``) and the bury segment of the name gains ``-bwv`` after the arm
 (``...-bury-hybrid-bwv-<12 hex>``); the play digest ``-r<recipe8>`` is untouched.
 Off, it is absent from the identity, the bot's instance state and every record,
-so every existing name and every decision are unchanged.
+so every existing name and every decision are unchanged.  ``SHENGJI_PV_BURY_WIDE_K``
+is an int in [2, 128].  With the chooser on, ``SHENGJI_PV_BURY_WIDE_SWAPS=2``
+(`bury_wide_swaps`; ``1`` or ``2``, default 1, refused without the flag) fills the
+slots after the ballot from the merged single- and two-card swap stream of the
+incumbent (`bury_wide_value.ranked_swaps`: the two kinds interleaved by the sum of
+their discard-preference ranks); the identity's ``wide_value`` gains ``swaps: 2``,
+the bury token becomes ``-bwv2`` and the record's ``wide_value`` gains ``swaps``
+and ``two_swap_count``.  ``swaps=1`` leaves every name, identity, record and
+decision of the chooser exactly as without the setting.
 
 DIAGNOSTIC ONLY, never served (#707 S16, the perfect-information ceiling), OFF
 BY DEFAULT: ``SHENGJI_PV_ORACLE_WORLDS=1`` (token ``orc``, the last rule token
@@ -403,7 +411,10 @@ from .cwv_bury_policy import (_ARMS as BURY_ARMS, _MODEL_ARMS as BURY_MODEL_ARMS
                               CWVBuryMixin, _serving_budget as _bury_budget)
 from .leaf_first_trick import PolicyFirstTrick
 from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as BURY_WIDE_CHOOSER,
-                              TOKEN as BURY_WIDE_TOKEN, check_wide_k, decide_wide_value_bury)
+                              WIDE_K_MAX as BURY_WIDE_K_MAX,
+                              WIDE_SWAPS_DEFAULT as BURY_WIDE_SWAPS_DEFAULT,
+                              TOKEN as BURY_WIDE_TOKEN, TOKEN_TWO_SWAPS as BURY_WIDE_TOKEN_TWO_SWAPS,
+                              check_wide_k, check_wide_swaps, decide_wide_value_bury)
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
 SCHEMA = "pv-search-recipe-v1"
@@ -505,6 +516,12 @@ _BURY_WIDE_VALUE_NO_EFFECT = ("bury_wide_value needs a model bury arm, hybrid or
                               "(SHENGJI_PV_BURY_WIDE_VALUE=1 with SHENGJI_PV_BURY_ARM=heuristic|mc)")
 _BURY_WIDE_K_REQUIRES = ("bury_wide_k needs bury_wide_value "
                          "(SHENGJI_PV_BURY_WIDE_K needs SHENGJI_PV_BURY_WIDE_VALUE=1)")
+#: its swap depth (`bury_wide_value.ranked_swaps`): 1 (the default) or 2; kept
+#: out of ``BURY_WIDE_VALUE_PARAM``/``_DEFAULTS`` so those (and every flag-off
+#: construction) are exactly what they were
+BURY_WIDE_SWAPS_PARAM = {"BURY_WIDE_SWAPS": "bury_wide_swaps"}
+_BURY_WIDE_SWAPS_REQUIRES = ("bury_wide_swaps needs bury_wide_value "
+                             "(SHENGJI_PV_BURY_WIDE_SWAPS needs SHENGJI_PV_BURY_WIDE_VALUE=1)")
 #: the DIAGNOSTIC perfect-information rule (module docstring; #707 S16): the
 #: play worlds are the one true deal, supplied by the screen harness's hook;
 #: never served
@@ -1832,15 +1849,17 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
     #: OFF: class defaults, so a flag-off bot's instance state is exactly what it was
     bury_wide_value = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"]
     bury_wide_k = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]
+    bury_wide_swaps = BURY_WIDE_SWAPS_DEFAULT
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0, bury_arm: str = "hybrid",
                  bury_config: CWVBuryConfig | None = None, bury_serving_budget_seconds=None,
                  bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
-                 bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]):
+                 bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
+                 bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT):
         if bury_arm not in BURY_ARMS:
             raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
-        _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k)
+        _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
         # bound before the base constructor: its ``leaf_policy_first_trick`` effect
         # check asks whether a model bury arm (a value leaf) exists
         self._leaf_bury_arm = bury_arm
@@ -1857,6 +1876,9 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
             # attributes are exactly what they were
             self.bury_wide_value = True
             self.bury_wide_k = bury_wide_k
+            if bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
+                # likewise: a swaps=1 bot is exactly today's flag-on bot
+                self.bury_wide_swaps = bury_wide_swaps
 
     def _bury_rng(self):
         return self.sampler.rng
@@ -1889,24 +1911,40 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
 
 def _check_wide_k(k) -> int:
     try:
-        return check_wide_k(k)
+        k = check_wide_k(k)
+    except BuryPolicyError as exc:
+        raise PVSearchPolicyError(str(exc)) from None
+    if k > BURY_WIDE_K_MAX:
+        raise PVSearchPolicyError(f"bury_wide_k must be an int >= 2 and <= {BURY_WIDE_K_MAX}")
+    return k
+
+
+def _check_wide_swaps(swaps) -> int:
+    try:
+        return check_wide_swaps(swaps)
     except BuryPolicyError as exc:
         raise PVSearchPolicyError(str(exc)) from None
 
 
-def _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k) -> None:
+def _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k,
+                           bury_wide_swaps=BURY_WIDE_SWAPS_DEFAULT) -> None:
     """``bury_wide_value`` is a bool and needs a model bury arm (the chooser
     replaces the arm's value pass and MC stage; on ``heuristic`` or ``mc`` a
-    token for a chooser with no effect would be a lie); ``bury_wide_k`` is
-    checked only with the flag on and must be the default off."""
+    token for a chooser with no effect would be a lie); ``bury_wide_k`` (an
+    int in [2, ``BURY_WIDE_K_MAX``]) and ``bury_wide_swaps`` (1 or 2) are
+    checked only with the flag on and must be the defaults off."""
     if type(bury_wide_value) is not bool:
         raise PVSearchPolicyError("bury_wide_value must be a bool")
     if bury_wide_value:
         if bury_arm not in BURY_MODEL_ARMS:
             raise PVSearchPolicyError(_BURY_WIDE_VALUE_NO_EFFECT)
         _check_wide_k(bury_wide_k)
-    elif bury_wide_k != BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]:
-        raise PVSearchPolicyError(_BURY_WIDE_K_REQUIRES)
+        _check_wide_swaps(bury_wide_swaps)
+    else:
+        if bury_wide_k != BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]:
+            raise PVSearchPolicyError(_BURY_WIDE_K_REQUIRES)
+        if type(bury_wide_swaps) is not int or bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
+            raise PVSearchPolicyError(_BURY_WIDE_SWAPS_REQUIRES)
 
 
 def _check_leaf_policy_effect(config: PVSearchConfig, bury_arm) -> None:
@@ -1969,6 +2007,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                        bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
                        bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
+                       bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
                        oracle_deal=None
                        ) -> PVSearchBot:
@@ -2021,7 +2060,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             oracle_worlds=oracle_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     _check_leaf_policy_effect(config, bury_arm)
-    _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k)
+    _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
     predict = NumpyPriorPredict(path, sha256)
@@ -2054,6 +2093,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
         # the call it always was (a diagnostic ``bot_factory`` need not know them)
         wide = ({"bury_wide_value": True, "bury_wide_k": bury_wide_k}
                 if bury_wide_value else {})
+        if bury_wide_value and bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
+            wide["bury_wide_swaps"] = bury_wide_swaps
         bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
                     checkpoint=path, seed=int(seed), bury_arm=bury_arm,
                     bury_config=bury_config,
@@ -2102,6 +2143,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_policy_first_trick: bool = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"],
                         bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
                         bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
+                        bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                         oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
@@ -2136,7 +2178,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             oracle_worlds=oracle_worlds)
     recipe_payload(config)   # refuses a non-bool rule flag
     _check_leaf_policy_effect(config, bury_arm)
-    _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k)
+    _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
         raise PVSearchPolicyError(f"pv-search package on disk is {ckpt8}, bound SHA256 says {sha256[:8]}")
@@ -2167,6 +2209,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
         if bury_wide_value:
             bury_identity["wide_value"] = {"chooser": BURY_WIDE_CHOOSER, "k": int(bury_wide_k)}
             token = f"-{BURY_WIDE_TOKEN}"
+            if bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
+                # two-card swaps: only then does the identity (and the token) change
+                bury_identity["wide_value"]["swaps"] = int(bury_wide_swaps)
+                token = f"-{BURY_WIDE_TOKEN_TWO_SWAPS}"
         encoded = json.dumps(bury_identity, sort_keys=True, separators=(",", ":")).encode()
         name = f"{name}-bury-{bury_arm}{token}-{hashlib.sha256(encoded).hexdigest()[:12]}"
         bury_config, bury_serving_budget_seconds = bconfig, bbudget
@@ -2208,6 +2254,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                declare_asap_first=config.declare_asap_first,
                                leaf_policy_first_trick=config.leaf_policy_first_trick,
                                bury_wide_value=bury_wide_value, bury_wide_k=bury_wide_k,
+                               bury_wide_swaps=bury_wide_swaps,
                                oracle_worlds=config.oracle_worlds,
                                oracle_deal=oracle_deal),
             name)
@@ -2236,8 +2283,9 @@ def pv_env_recipe(environ=None) -> dict:
     with it are refused there (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without
     ``_VALUE_DECLARE=1`` or a hybrid/value ``_BURY_ARM`` is refused there too
     (`_check_leaf_policy_effect`).  ``_BURY_WIDE_VALUE`` (``0`` or ``1``; needs ``_BURY_ARM``,
-    a hybrid/value one) and its ``_BURY_WIDE_K`` cap (an int >= 2; refused unless
-    ``_BURY_WIDE_VALUE=1``) select the wide value-only bury chooser (module docstring).
+    a hybrid/value one) and its ``_BURY_WIDE_K`` cap (an int in [2, 128]) and
+    ``_BURY_WIDE_SWAPS`` depth (``1`` or ``2``; both refused unless ``_BURY_WIDE_VALUE=1``)
+    select the wide value-only bury chooser (module docstring).
     ``_ORACLE_WORLDS=1`` (the diagnostic) registers a name whose factory REFUSES to build
     without the screen harness's ``oracle_deal`` hook (`_check_oracle_hook`), so the game
     server can never serve it; `api.server` refuses the flag at import besides."""
@@ -2328,4 +2376,13 @@ def pv_env_recipe(environ=None) -> dict:
         except ValueError:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
         _check_wide_k(recipe[key])
+    for suffix, key in BURY_WIDE_SWAPS_PARAM.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if not recipe.get("bury_wide_value"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}BURY_WIDE_VALUE=1")
+        if raw not in ("1", "2"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 1 or 2, not {raw!r}")
+        recipe[key] = int(raw)
     return recipe

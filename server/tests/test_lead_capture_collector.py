@@ -15,7 +15,8 @@ from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 
 
-@pytest.mark.parametrize('mode', ['historical', 'served', 'fallback'])
+@pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
+                                  'served_stop', 'served_error'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -33,10 +34,14 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
 
         def decide_play(self, root, seat):
             nonlocal cursor
+            if mode == 'served_error' and cursor == 4:
+                raise RuntimeError('injected later decision failure')
             self._refusals.observe(root)
             event = plays[cursor]
             assert event['seat'] == seat
             cursor += 1
+            if mode == 'served_stop' and cursor == 4:
+                (tmp_path / 'stop').touch()
             self._cap = ([event['attempted'], ['fixture-only']],)
             self._probe = True
             self.last_decision_record = dict(work_complete=mode != 'fallback', played=list(event['attempted']))
@@ -75,8 +80,35 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         snapshot = tmp_path / 'env.json'
         snapshot.write_text('{}')
         args = ['--served-env', str(snapshot), *args]
-    collector.main(args)
+    costs = tmp_path / 'costs.jsonl'
+    if mode.startswith('served_'):
+        args = ['--max-rounds', '1', '--cost-out', str(costs), *args]
+        # A round cap, not the lead cap, must stop the next deal.
+        args[args.index('16')] = '128'
+    if mode == 'served_error':
+        with pytest.raises(RuntimeError, match='injected later'):
+            collector.main(args)
+    else:
+        collector.main(args)
     rows = [json.loads(line) for line in out.read_text().splitlines()]
+    if mode.startswith('served_'):
+        journal = [json.loads(line) for line in costs.read_text().splitlines()]
+        assert journal[0]['kind'] == 'start'
+        assert journal[-1]['kind'] == 'terminal'
+        decisions = [r for r in journal if r['kind'] == 'decision']
+        assert len(decisions) == cursor
+        assert all(r['seconds'] >= 0 and r['played'] for r in decisions)
+        assert any(not r['lead'] for r in decisions)
+        assert all('scores' not in r and 'winner' not in r for r in journal)
+        if mode in ('served_stop', 'served_error'):
+            assert cursor == 4 and len(rows) == 1
+            assert journal[-1]['rounds'] == 0
+            assert journal[-1]['reason'] == ('stop_file' if mode == 'served_stop'
+                                             else 'error:RuntimeError')
+            assert not any(r['kind'] == 'round_complete' for r in journal)
+            return  # partial roots and every completed decision survived
+        assert journal[-1]['reason'] == 'max_rounds'
+        assert journal[-1]['rounds'] == 1
     assert cursor == len(plays) == 64
     assert len(rows) == 16
     if mode != 'historical':
@@ -107,6 +139,15 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
     with pytest.raises(FileExistsError):
         collector.main(args)
     assert out.read_bytes() == saved
+
+
+@pytest.mark.parametrize('flags', [['--max-rounds', '0'], ['--max-rounds', '-1'],
+                                   ['--cost-out', 'unused']])
+def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, monkeypatch):
+    monkeypatch.setattr(collector, 'make_pv_search_bot',
+                        lambda *a, **kw: pytest.fail('must reject before construction'))
+    with pytest.raises(SystemExit):
+        collector.main([*flags, *(['unused'] * 8)])
 
 
 @pytest.mark.parametrize('budget', ['0.000000001', '60'])

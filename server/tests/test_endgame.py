@@ -12,6 +12,9 @@ from shengji.ai.endgame import (ExactEndgameBudgetExceeded,
                                 ExactWorldSession,
                                 exhaustive_legal_actions,
                                 solve_exact_endgame)
+from shengji.rl.value_afterstate import category_signed_level, signed_level_category
+from shengji.train.cwv_prior_admission import root_clone
+from shengji.train.pv_exact_endgame import exact_lead_means
 from shengji.ai.heuristic import HeuristicBot
 from shengji.ai.mcbot import DeterminizationContractError, MCBot
 from shengji.engine.cards import Ordering
@@ -88,6 +91,30 @@ def test_two_card_tree_uses_defender_min_at_internal_nodes():
     # following moves. An unconditional recursive max returns 10/CA here.
     assert result.attacker_points == 0
     assert result.action == ("C9",)
+
+
+@pytest.mark.parametrize('leader', range(4))
+@pytest.mark.parametrize('hands', [
+    [['H2', 'C3'], ['CA', 'C9'], ['C10', 'C4'], ['C6', 'C8']],
+    [['C3', 'C3', 'C5'], ['C4', 'C4', 'C10'],
+     ['C6', 'C6', 'CK'], ['CA', 'CA', 'C9']],
+])
+def test_alpha_beta_matches_exhaustive_and_reused_frontiers(leader, hands):
+    from shengji.ai.endgame import _clone_for_play
+    rnd = _round(hands, leader=leader, buried=['H5'])
+    pruned = ExactWorldSession(rnd, alpha_beta=True)
+    plain = ExactWorldSession(rnd)
+    frontiers = [rnd]
+    for action in exhaustive_legal_actions(rnd, leader):
+        child = _clone_for_play(rnd)
+        child.play(leader, action)
+        frontiers.append(child)
+    for frontier in frontiers + list(reversed(frontiers)):
+        expected = plain.solve(frontier)
+        actual = pruned.solve(frontier)
+        assert (actual.attacker_points, actual.action) == (expected.attacker_points, expected.action)
+    # Bound-cache reuse must preserve exact values even across different windows;
+    # pruning is not guaranteed to reduce total nodes for every move ordering.
 
 
 def test_shared_session_state_key_separates_accumulated_attacker_points():
@@ -251,3 +278,74 @@ def test_exact_budget_refusal_is_counted_with_consumed_work():
             bot.exact_endgame_budget_exceeded) == (1, 0, 1, 1)
     assert (bot.exact_endgame_nodes,
             bot.exact_endgame_cache_hits) == (19, 4)
+
+
+def _exact_leaf(root, seat, hands, buried, action, world_index):
+    clone = root_clone(root, hands, buried)
+    clone.play(seat, list(action))
+    return clone
+
+
+@pytest.mark.parametrize("seat", [0, 1])
+def test_exact_lead_means_matches_individual_solver_for_both_teams(seat):
+    rnd = _round([
+        ["C3"], ["C4"], ["C5"], ["CA"],
+    ], leader=seat)
+    worlds = [(list(map(list, rnd.hands)), list(rnd.buried))]
+    actions = [[rnd.hands[seat][0]]]
+    means, stats = exact_lead_means(rnd, seat, actions, worlds,
+                                    _exact_leaf, None, max_nodes=100)
+    leaf = _exact_leaf(rnd, seat, worlds[0][0], worlds[0][1], actions[0], 0)
+    expected = solve_exact_endgame(leaf, max_nodes=100)
+    expected = category_signed_level(
+        signed_level_category(expected.attacker_points,
+                              leaf.is_attacker(seat)))
+    assert means.tolist() == pytest.approx([expected])
+    assert stats["worlds_completed"] == 1
+
+
+def test_exact_lead_means_covers_every_world_candidate_and_preserves_root():
+    rnd = _round([
+        ["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"],
+    ], leader=0)
+    before = (rnd.phase, rnd.turn, [list(h) for h in rnd.hands],
+              tuple((p.seat, tuple(p.cards)) for p in rnd.trick.plays))
+    worlds = [(list(map(list, rnd.hands)), list(rnd.buried)),
+              (list(map(list, rnd.hands)), list(rnd.buried))]
+    seen = []
+
+    def leaf(root, seat, hands, buried, action, world_index):
+        seen.append((world_index, tuple(action)))
+        return _exact_leaf(root, seat, hands, buried, action, world_index)
+
+    exact_lead_means(rnd, 0, [["C3"], ["C4"]], worlds, leaf, None,
+                     max_nodes=1000)
+    assert seen == [(0, ("C3",)), (0, ("C4",)),
+                    (1, ("C3",)), (1, ("C4",))]
+    assert before == (rnd.phase, rnd.turn, [list(h) for h in rnd.hands],
+                      tuple((p.seat, tuple(p.cards)) for p in rnd.trick.plays))
+
+
+def test_exact_lead_means_propagates_cancellation_without_returning_partial():
+    rnd = _round([["C3"], ["C4"], ["C5"], ["CA"]])
+    worlds = [(list(map(list, rnd.hands)), list(rnd.buried))]
+    class Cancelled(Exception):
+        pass
+    calls = []
+
+    def check():
+        calls.append(True)
+        raise Cancelled
+
+    with pytest.raises(Cancelled):
+        exact_lead_means(rnd, 0, [["C3"]], worlds, _exact_leaf,
+                         check, max_nodes=100)
+    assert calls
+
+
+def test_exact_lead_means_refuses_per_world_node_cap():
+    rnd = _round([["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"]])
+    worlds = [(list(map(list, rnd.hands)), list(rnd.buried))]
+    with pytest.raises(ExactEndgameBudgetExceeded):
+        exact_lead_means(rnd, 0, [["C3"]], worlds, _exact_leaf,
+                         None, max_nodes=1)

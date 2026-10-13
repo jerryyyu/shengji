@@ -375,6 +375,20 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     assert final['outcome_sentinel'] == 7  # descriptive counts never rewrite outcomes
 
 
+def test_diagnostic_recipe_is_release44_plus_exact(pinned_production_package):
+    import json
+    from pathlib import Path
+    from scripts.lead_admission_diagnostic import served_capture_bots
+    path, sha = pinned_production_package, PACKAGE_SHA
+    snapshot = json.loads((Path(__file__).parent / 'fixtures/r44_exact_lead_env.json').read_text())
+    bots, identity = served_capture_bots(str(path), sha, 17, snapshot)
+    assert all(b.exact_lead_endgame for b in bots)
+    assert identity['policy'] == snapshot['SHENGJI_BOT']
+    snapshot.update(SHENGJI_PV_CKPT=str(path), SHENGJI_PV_EXACT_LEAD_ENDGAME='0')
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(snapshot))
+    assert list(entries) == ['pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6']
+
+
 def test_exact_corrects_captured_joker_lead_through_api(pinned_production_package, tmp_path, monkeypatch):
     """#700 captured root 94121012:0 / round7 / trick11 / seat3.
 

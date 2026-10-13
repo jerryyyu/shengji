@@ -162,6 +162,37 @@ def test_reservation_does_not_mutate_inputs_or_sampler_rng():
     assert bot.sampler.rng.getstate() == rng_before
 
 
+def test_admission_forwards_deadline_to_tractor_scan_and_returns_no_partial_result():
+    rnd, actions = _round(), _actions()
+    preferences = np.asarray([0.0, 4.0, 3.0, 2.0, 1.0])
+    bot = _bot(tractor_reservation=True)
+    calls = []
+
+    def check_budget():
+        calls.append(True)
+        raise RuntimeError("synthetic serving deadline")
+
+    with pytest.raises(RuntimeError, match="synthetic serving deadline"):
+        bot._admission(rnd, 0, actions, preferences, 0, worlds=[],
+                       check_budget=check_budget)
+    assert calls and bot._admission_context == (None, None)
+
+
+def test_reservation_clears_a_diversity_skipped_index_it_admits(monkeypatch):
+    rnd, actions = _round(), _actions()
+    preferences = np.asarray([0.0, 4.0, 3.0, 2.0, 1.0])
+    bot = _bot(admission_diversity=True, tractor_reservation=True)
+
+    def fake_diverse(self, *_args, **_kwargs):
+        self._diversity_skipped = [4]
+        return [0, 1, 2, 4]
+
+    monkeypatch.setattr(type(bot), "_admit_diverse", fake_diverse)
+    chosen = bot._admit(rnd, 0, actions, preferences, anchor_index=0)
+    assert chosen == [0, 1, 2, 4]
+    assert bot._diversity_skipped == []
+
+
 def test_recipe_and_environment_identity_are_off_by_default_and_opt_in():
     off = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
     assert "tractor_reservation" not in pv.recipe_payload(off)
@@ -234,8 +265,10 @@ def test_registry_api_snapshot_commit_scores_and_selects_reserved_tractor(packag
     async def run(enabled):
         room, rnd, bot = build(enabled)
         before = list(rnd.hands[seat])
+        sampler_before = bot.sampler.rng.getstate()
         prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
         assert prepared is not None
+        assert bot.sampler.rng.getstate() == sampler_before
         record = prepared.decision.snapshot.bot_copy.last_decision_record
         assert record["admitted_indices"]
         actions = enumerate_legal(rnd, seat, cap=400,
@@ -250,6 +283,7 @@ def test_registry_api_snapshot_commit_scores_and_selects_reserved_tractor(packag
             assert prepared.decision.cards == tractor
         assert srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == len(before) - len(prepared.decision.cards)
+        assert not srv._commit_bot_turn(room, prepared)
         return prepared.decision.cards
 
     baseline, treatment = asyncio.run(run(False)), asyncio.run(run(True))

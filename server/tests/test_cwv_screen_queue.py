@@ -43,7 +43,7 @@ def publish_pair(config, cluster, shards, output):
              "decision_traces": [],
              "rank": rank, "recipe": Q.screen._recipe(config),
              "records": [{"cluster": cluster, "seed": seed, "mirror": mirror,
-                          "trump_rank": rank, "trump_suit": "NT", "arm": "learned"}
+                          "trump_rank": rank, "trump_suit": "NT", "arm": config["arm"]}
                          for mirror in (0, 1)]}
     Q.screen._publish(output / f"cluster-{cluster:05d}.json", shard)
     shards.append(shard)
@@ -144,8 +144,11 @@ def test_queue_refuses_wrong_checkpoint_and_drift_without_rewriting(harness, mon
     assert (first / "cluster-00000.json").read_bytes() == before
 
 
-def test_incomplete_success_is_not_admitted_to_next_window(harness, monkeypatch):
+@pytest.mark.parametrize("policy", [False, True])
+def test_incomplete_success_is_not_admitted_to_next_window(harness, monkeypatch, policy):
     args, root, _, _ = harness
+    if policy:
+        args = ["--arm-policy", "mc-s0-report-lcb", *args[4:]]
     calls = []
 
     def partial(config, pending, shards, *, output, **kwargs):
@@ -156,6 +159,66 @@ def test_incomplete_success_is_not_admitted_to_next_window(harness, monkeypatch)
     with pytest.raises(ValueError, match="^screen returned without a complete window$"):
         Q.main(args)
     assert calls == [100] and not (root / "trial-200").exists()
+    assert json.loads((root / "trial-100" / "summary.json").read_text())["complete"] is False
+    assert (root / "trial-100" / "cluster-00000.json").exists()
+
+
+def test_policy_queue_completes_then_reopens_without_worker_replay(harness, monkeypatch):
+    args, root, _, _ = harness
+    args = ["--arm-policy", "mc-s0-report-lcb", *args[4:]]
+    calls = []
+
+    def complete(config, pending, shards, *, output, **kwargs):
+        calls.append((config["seed0"], list(pending)))
+        for cluster in pending:
+            publish_pair(config, cluster, shards, output)
+
+    monkeypatch.setattr(Q.screen, "_run_pending", complete)
+    assert Q.main(args) == 0
+    retained = (root / "trial-100" / "cluster-00000.json").read_bytes()
+    assert Q.main(args) == 0
+    assert calls == [(100, [0, 1]), (200, [0, 1]), (100, []), (200, [])]
+    assert (root / "trial-100" / "cluster-00000.json").read_bytes() == retained
+
+
+@pytest.mark.parametrize("field,value", [("complete", False),
+                                       ("completed_clusters", 1),
+                                       ("requested_clusters", 3)])
+def test_policy_queue_refuses_inconsistent_completion(harness, monkeypatch, field, value):
+    args, root, _, _ = harness
+    args = ["--arm-policy", "mc-s0-report-lcb", *args[4:]]
+    calls = []
+
+    def complete(config, pending, shards, *, output, **kwargs):
+        calls.append(config["seed0"])
+        for cluster in pending:
+            publish_pair(config, cluster, shards, output)
+
+    original_summary = Q.screen.summary_for
+
+    def inconsistent(shards, config):
+        return {**original_summary(shards, config), field: value}
+
+    monkeypatch.setattr(Q.screen, "_run_pending", complete)
+    monkeypatch.setattr(Q.screen, "summary_for", inconsistent)
+    with pytest.raises(ValueError, match="^screen returned without a complete window$"):
+        Q.main(args)
+    assert calls == [100] and not (root / "trial-200").exists()
+
+
+def test_policy_queue_preserves_nonzero_status_without_summary(harness, monkeypatch):
+    args, root, _, _ = harness
+    args = ["--arm-policy", "mc-s0-report-lcb", *args[4:]]
+    calls = []
+
+    def refused(command):
+        calls.append(command)
+        return 7
+
+    monkeypatch.setattr(Q.screen, "main", refused)
+    assert Q.main(args) == 7
+    assert len(calls) == 1
+    assert not (root / "trial-200").exists()
 
 
 @pytest.mark.parametrize("extra", [["--seeds", "100", "101"],

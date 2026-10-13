@@ -16,6 +16,15 @@ import re
 from . import cwv_shortlist_screen as screen
 
 
+def _require_complete_window(output: Path, clusters: int) -> None:
+    """Exit zero alone is not a complete mirrored window, for either arm type."""
+    summary = json.loads((output / "summary.json").read_text())
+    if (summary.get("complete") is not True
+            or summary.get("completed_clusters") != clusters
+            or summary.get("requested_clusters") != clusters):
+        raise ValueError("screen returned without a complete window")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path)
@@ -108,6 +117,7 @@ def main(argv=None):
                 result = screen.main(command)
                 if result != 0:
                     return result
+                _require_complete_window(output, args.clusters)
                 continue
             with args.checkpoint.open("rb") as handle:
                 actual_sha = hashlib.file_digest(handle, "sha256").hexdigest()
@@ -150,11 +160,7 @@ def main(argv=None):
             result = screen.main(command)
             if result != 0:
                 raise RuntimeError(f"screen returned nonzero status: {result}")
-            summary = json.loads((output / "summary.json").read_text())
-            if (summary.get("complete") is not True
-                    or summary.get("completed_clusters") != args.clusters
-                    or summary.get("requested_clusters") != args.clusters):
-                raise ValueError("screen returned without a complete window")
+            _require_complete_window(output, args.clusters)
             print(f"window {index + 1}/{len(args.seeds)} seed={seed}: complete",
                   flush=True)
     return 0

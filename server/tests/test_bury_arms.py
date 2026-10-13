@@ -38,13 +38,16 @@ BURY = dict(max_candidates=4, model_worlds=2, selection_worlds=2, alternatives=1
 
 def _fly_env():
     # The bury screen (v48bury) and its arm names are bound to RELEASE 38's play recipe.
-    # Production is release 44 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, a selection rule
-    # on doomed-throw leads only, + SHENGJI_PV_VALUE_DECLARE, a declaration rule; neither touches
-    # bury), so derive the release-38 env as production minus those two lines, which is exactly
-    # the documented release-38 rollback.
+    # Production is release 45 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, a selection rule
+    # on doomed-throw leads only, + SHENGJI_PV_VALUE_DECLARE, a declaration rule, + the wide
+    # value-only bury SHENGJI_PV_BURY_WIDE_VALUE/_K, release 45's bury chooser), so derive the
+    # release-38 env as production minus those lines, which is exactly the documented release-38
+    # rollback.
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get("SHENGJI_PV_DOOMED_THROW_RESELECT") == "1"
-    return {k: v for k, v in env.items() if k not in ("SHENGJI_PV_DOOMED_THROW_RESELECT", "SHENGJI_PV_VALUE_DECLARE")}
+    return {k: v for k, v in env.items() if k not in (
+        "SHENGJI_PV_DOOMED_THROW_RESELECT", "SHENGJI_PV_VALUE_DECLARE",
+        "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
 
 
 def _names(monkeypatch, **overrides):

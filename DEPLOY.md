@@ -27,7 +27,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
 ## Release checklist
 
 Preconditions, every release (the gate `AI_POLICIES.md` called "serving qualification"; it has held
-for releases 29–38 and 42–44):
+for releases 29–38 and 42–44; release 45 pending):
 
 1. A non-author PASS on the PR at its exact head, and all CI checks green. CI fetches the pinned
    production package and loads it on the tree (`.github/workflows/pr-checks.yml`);
@@ -61,6 +61,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 
 | release | deployed (ET) | what changed | package/bot change? | PR(s) | image / rollback |
 |---:|---|---|---|---|---|
+| 45 | PENDING deploy | The wide value-only bury on, as two `fly.toml` lines: `SHENGJI_PV_BURY_WIDE_VALUE = '1'` and `SHENGJI_PV_BURY_WIDE_K = '64'` (#974, token `bwv`): the bury candidates widen to 64 and the value head alone picks the bury, no MC stage; same 2 s bury budget and heuristic fallback. Play, declaration, package and other budgets are release 44's (the play digest is unchanged; only the bury digest moves). Built from main, so it also ships main since `8ac9543e`: #972 policy-head first trick, #973 whole-hand lead admission, #975 oracle-worlds diagnostic (all flag-gated off; #975 screen harness only), #955 lead-admission diagnostic, #977 harvest, tests and Atlas. Evidence v76bwv44 +0.0488 [+0.0286, +0.0690] vs release 44 as served, first-round deals, POSITIVE, 10/10 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`; same package `491ee4bf…`, same prior `0d17fd03…` | release-45 PR (evidence #707 issuecomment-6136852119; authority 6137203703; rule #974) | PENDING: image, digest and main sha filled after deploy. Rollback: delete the two `SHENGJI_PV_BURY_WIDE_*` lines, restore the release-44 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-44 image. |
 | 44 | 2026-10-11 17:05 | The value-guided trump declaration on, as one `fly.toml` flag: `SHENGJI_PV_VALUE_DECLARE` (#952, token `vd`): at each gated declare chance every option plus PASS is scored by the value head over 64 sampled completions and the heuristic's choice is replaced only when beaten; served off the event loop with stale guards and the heuristic as fallback (#959, #958, #965's gate fix). Package, width, other rules, bury and budgets are release 43's. Evidence v70vd43 +0.0497 [+0.0379, +0.0615] (first-round deals) and v71vd43lr +0.0352 [+0.0233, +0.0471] (later-round deals), both POSITIVE vs release 43 as served, 20/20 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`; same package `491ee4bf…`, same prior `0d17fd03…` | #963 (evidence #707 issuecomment-6103734355 and 6110908081; rule #952; serving #959/#958/#965) | `deployment-01M4PC7724HSXC27PCEEREZWY4` (Fly v44), digest `sha256:d618f2371cd75fe31aad44a1e711cc5a8f13c517ad45ad93bc700d4bacc0abff`, from main `8ac9543e`. Rollback: delete the `SHENGJI_PV_VALUE_DECLARE` line, restore the release-43 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-43 image. |
 | 43 | 2026-10-09 15:46 | The doomed-throw re-select replaces the swap, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_RESELECT` (#946, token `dtr`) instead of `SHENGJI_PV_DOOMED_THROW_SWAP`. When re-selection completes with an eligible alternative, a doomed throw and its forced component are excluded and the bot re-selects among its remaining admitted leads (reviewed fallbacks: budget abandonment keeps the first selection; all-excluded plays the forced component). A functional correctness fix (YJQJ round 1), no strength claim. Package, width, other rules, bury and budgets are release 42's. Built from main, so it also ships main since `e3aa1724`: the experimental rules adaptive worlds #936, its leads-only scope #944, wide lead admission #945 and value declare #952, all flag-gated off; #949's behaviour-preserving OptionalStage guard refactor, which is active through the re-select; tests/CI; Atlas. Evidence v67dtrg −0.0004 [−0.0122, +0.0114] vs release 42, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority). | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b`; same package `491ee4bf…`, same prior `0d17fd03…` | #953 (evidence v67dtrg, #707 issuecomment-6080113005; rule #946) | `deployment-01M4H37RYNM42YHH6ZPEC6GKCK` (Fly v43), digest `sha256:2c0d94e2c263e94cf0cdc8b9cf3fce9c5c14d81d646a400b4db813ff0577eb7a`, from main `6b385b55`. Rollback: replace the `SHENGJI_PV_DOOMED_THROW_RESELECT` line with `SHENGJI_PV_DOOMED_THROW_SWAP = '1'`, restore the release-42 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-42 image. |
 | 42 | 2026-10-06 19:08 | The doomed-throw swap on, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_SWAP` (#830, token `dts`): on a lead whose throw the engine refuses in every sampled world with the same forced component, play that component instead. Package, width, rules, bury and budgets are release 38's. A backend release from main (normal Dockerfile; supersedes the release 39–41 overlay recipe), so it also ships the decision-preserving engine/heuristic perf PRs since release 38's image `c8d487a6` (#736, #772, #773, #798, #825, #836, #896, #897, #898), flag-gated-off #777 and #716, the error-report fix #800, and main's web (release 41 UI #845 + #854). Evidence v57dts −0.000150 [−0.010232, +0.009931] vs release 38, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority); failed throws −64%. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d`; same package `491ee4bf…`, same prior `0d17fd03…` | #918 (evidence v57dts, #707 issuecomment-6026001554; swap #830) | `deployment-01M49QGK2ZP18P143S8BXVW28X` (Fly v42), digest `sha256:05d8b84fdbff096a1622e9913cedf9a3b7652d8aebe97829dea1f29d50a6c8af`, from main `e3aa1724`. Rollback: delete the `SHENGJI_PV_DOOMED_THROW_SWAP` line, restore the release-38 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-41 image. |
@@ -80,8 +81,32 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 | 28 | 2026-09-16 00:5x | JS-M1, the from-scratch joint net, as ONE package (value and prior) inside the MC shortlist. | new package `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`; served name `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` | #425 / #435 (#455, #457) | `deployment-01M2M90VYR34R7CWKTTEA4C57V` from main `bf7fde5e`. Rollback: release 27 (`deployment-01M2M1B48P44H5HJXEP6ETYQXE`) or release 24 (`deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`); prior-only rollback removes the four `SHENGJI_CWV_PRIOR_*` settings. |
 | 22–27 | — | The release-28 plan as approved, release 27, the release-26 image rollback, release 25 and its plan, and the release-22 boundary (hybrid bury on W32, the September-8 W32 rollout, the release-19/18 boundaries). | see the archive | — | [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md), heading "Moved from DEPLOY.md on 2026-10-01". |
 
-## Current production (release 44; release 43 plus the value-guided trump declaration)
+## Current production (release 44; release 45 approved, PENDING deploy)
 
+- **Release 45 (PENDING deploy; this bullet becomes the block below once it is live).** Release 44 plus the wide
+  value-only bury at K=64 (#974): `fly.toml` adds `SHENGJI_PV_BURY_WIDE_VALUE = '1'` and
+  `SHENGJI_PV_BURY_WIDE_K = '64'`, and `SHENGJI_BOT` becomes
+  `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`, exactly the name v76bwv44 screened
+  (pinned by `tests/test_bury_fly_config.py`). The bury candidate set widens to 64 (the hybrid ballot plus the
+  heuristic incumbent's single-card swaps) and the value head's mean over 32 model worlds picks the bury, with no
+  MC stage; the 2 s bury budget and heuristic fallback are unchanged. Authority: Jerry in session 2026-10-13
+  ("Wide bury", "Smoke test, then ship"; #707 issuecomment-6137203703). Evidence (ladder row 14 in
+  `AI_POLICIES.md`): v76bwv44, ten fresh first-round windows vs release 44 as served, +0.048824 [+0.028614, +0.069034]
+  POSITIVE, 10/10 windows positive; points +1.309 [+0.877, +1.741]; not confirmed on fresh seeds; the
+  arm changes width and chooser together. Server-path smoke on the Mini (`scripts/smoke_release45_bury.py` with its
+  receipt validator, compiled engine, single-thread BLAS, the production package): 40 first-round buries through
+  `_paced_bot_step` / `_commit_bot_turn`, p50 0.208 / p90 0.213 / max 0.252 s, 64 candidates each (legal pool
+  155-213), 0 fallbacks, each committed exactly once; 160 of 160 requested play turns, max 0.090 s; validator PASS
+  (the first, unvalidated run: p50 0.197 / p90 0.204 / max 0.210 s, play max 0.084 s). Fly's shared CPU is slower
+  than the Mini; the first live rooms' `bury` timings are the check. Gates still open: Codex PASS at the exact head and CI; merge; serving smoke on the merged tree;
+  `fly deploy --ha=false` at 0 rooms; `/healthz` shows the name above. Then fill the Releases row 45 image,
+  digest and main sha, and move the block below to release 45. Rollback after deploy: in `fly.toml` delete the two
+  `SHENGJI_PV_BURY_WIDE_*` lines and restore the release-44 `SHENGJI_BOT` kept as the comment directly above it
+  (`pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`), then `fly deploy --ha=false`; or
+  redeploy the release-44 image
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M4PC7724HSXC27PCEEREZWY4`
+  (Fly v44). No package moves either way. Watch: `bury` and `model_search` `phase=bury` timings, any
+  `cwv-bury-fallback-v1` record (a budget fallback rate above a few percent is the rollback trigger).
 - Release 44 is a normal backend release built from main `8ac9543e` (#963, squash at the reviewed head
   `b58de867`) with main's Dockerfile; Fly version v44, image `deployment-01M4PC7724HSXC27PCEEREZWY4`,
   digest `sha256:d618f2371cd75fe31aad44a1e711cc5a8f13c517ad45ad93bc700d4bacc0abff`, machine
@@ -117,7 +142,8 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   `fly deploy --ha=false`; or redeploy the release-43 image:
   `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M4H37RYNM42YHH6ZPEC6GKCK`
   (Fly v43). No package moves either way. Deeper: release 42 by swapping the re-select line for the swap line;
-  release 38 by deleting both; release 36 by deleting the four release-38 rule lines as well.
+  release 38 by deleting both; release 36 by deleting the four release-38 rule lines as well. Once release 45
+  is live, release 44 is the first rollback step (the release-45 bullet above).
 - Comparator: new screens still compare against release 42 as served (Jerry 2026-10-07); v70/v71 read against
   release 43 by a one-off ruling for this deploy decision. Moving the comparator to 44 is Jerry's call.
 - Watch list: `/healthz` bot is the name above; `declare_decision` and `pv-declare-serving-fallback-v1` records,

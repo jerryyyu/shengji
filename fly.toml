@@ -72,7 +72,16 @@ primary_region = 'ewr'
   # issuecomment-6103734355); on release 42, v68vd42 +0.0475 POSITIVE and v69vd42c +0.0590
   # CONFIRMED. Rollback: delete the SHENGJI_PV_VALUE_DECLARE line and restore the release-43 name:
   # RELEASE 43 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6'
+  # RELEASE 45 (Jerry 2026-10-13: "Wide bury", "Smoke test, then ship"): release 44 plus the wide
+  # value-only bury (#974, -bwv, K=64): the bury candidates widen to 64 and the bot buries by the
+  # value head alone, with no MC stage; same 2 s bury budget with heuristic fallback. Play,
+  # declaration and package are release 44's (the play digest is unchanged; only the bury digest
+  # moves). Evidence: v76bwv44 (ten fresh first-round windows vs release 44 as served) +0.0488
+  # [+0.0286, +0.0690] POSITIVE, 10/10 windows positive; points +1.309 [+0.877, +1.741]
+  # (#707 issuecomment-6136852119). Rollback: delete the SHENGJI_PV_BURY_WIDE_VALUE and
+  # SHENGJI_PV_BURY_WIDE_K lines and restore the release-44 name:
+  # RELEASE 44 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
@@ -93,6 +102,9 @@ primary_region = 'ewr'
   # 4 alternatives, 2 s cooperative budget with heuristic fallback.
   SHENGJI_PV_BURY_ARM = 'hybrid'
   SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '2'
+  # Release 45: the wide value-only bury (#974) at K=64 (see the RELEASE 45 note above).
+  SHENGJI_PV_BURY_WIDE_VALUE = '1'
+  SHENGJI_PV_BURY_WIDE_K = '64'
   # Release-28 keys retained for the one-line rollback (they register the shortlist name; unused otherwise).
   # RELEASE 28 name: mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff
   SHENGJI_CWV_SHORTLIST_CKPT = '/data/models/js-m1-0d17fd03.npz'

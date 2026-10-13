@@ -64,8 +64,8 @@ Correctness fixes may ship with no strength claim when the served screen is not 
 and 43).
 
 **The direction (Jerry, 2026-10-11 and 2026-10-13).** "Where we use heuristics, it may be better to use the model";
-after release 45, "we should keep trying in this direction." The value head already beats the heuristic at the two
-decisions it took over (declaration, release 44; bury, release 45; `AI_POLICIES.md` ladder rows 13–14). The
+after release 45, "we should keep trying in this direction." Value-guided declaration improved on heuristic declaration (release 44), and the wider value-only bury improved on
+the existing hybrid bury (release 45), with width versus chooser contribution unresolved (`AI_POLICIES.md` ladder rows 13–14). The
 remaining heuristic decisions are the play anchor, the heuristic first trick inside each value leaf and the
 continuations the search uses.
 
@@ -162,10 +162,11 @@ Every row is on the scaling page with its receipt; these are the conclusions.
   the same package lost (−0.417 signed levels per round vs release 36) and adaptive K16 did not
   resolve. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive
   exploratory, below the extension triage.
-- **The value head beats the heuristic where it takes over a decision** (2026-10): the trump
-  declaration (release 44, POSITIVE in first-round and later-round deals) and the bury (release 45,
-  POSITIVE on first-round deals), against search-side changes that mostly did not resolve
-  (adaptive worlds not confirmed, wide lead admission inconclusive, `lpft` inconclusive).
+- **Model-owned decisions moved the result** (2026-10): value-guided declaration improved on heuristic
+  declaration (release 44, POSITIVE in first-round and later-round deals), and the wider value-only bury
+  improved on the existing hybrid bury (release 45, POSITIVE on first-round deals; width versus chooser
+  contribution unresolved), against search-side changes that mostly did not resolve
+  (adaptive worlds not confirmed, wide lead admission inconclusive, `lpft` no demonstrated gain).
 - **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
   and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
 - **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs

@@ -403,7 +403,7 @@
         "image deployment-01M4T9AVEVK51WP2GG8J34NRC9 (Fly version 45, digest sha256:6194eb27e62e…), main 1ca97051 (#983, squash at the reviewed head 2a2d7844); Codex PASS at the exact head; CI 8/8; machine 48e7e35a9597e8, 0 rooms at deploy; deployed 2026-10-13 09:27Z (#707 issuecomment-6142519054)",
         "two changes in one arm: the candidate set widens to 64 AND the value head alone chooses with no MC stage; which of the two carries the gain is not claimed; one screen on first-round deals, not confirmed on fresh seeds, later-round deals not screened",
         "the bury timings are the Mini's; Fly's shared CPU is slower and was unmeasured at deploy; the first live rooms' bury timings and any cwv-bury-fallback-v1 record are the check (a budget fallback rate above a few percent is the rollback trigger)",
-        "comparator for NEW screens: release 45 as served (agreed for the wider-bury v77 and exact-lead screens, #707 issuecomment-6142519054); confirmations keep their parent's comparator; v75lpft44 and v76bwv44 keep release 44",
+        "comparator for NEW screens: release 45 as served (Jerry, in-session 2026-10-13: 'Yes change to 45', recorded on #988 issuecomment-6142666693); confirmations keep their parent's comparator; v75lpft44 and v76bwv44 keep release 44",
         "rollback: delete the two SHENGJI_PV_BURY_WIDE_* lines, restore the release-44 SHENGJI_BOT kept as a comment in fly.toml, redeploy; or the release-44 image deployment-01M4PC7724HSXC27PCEEREZWY4"
      ]
   }
@@ -2284,6 +2284,6 @@
  "screen_comparator": {
   "release": 45,
   "status": "confirmed",
-  "note": "New screens compare against release 45 as served (agreed at the release-45 deploy for the wider-bury and exact-lead screens, #707 issuecomment-6142519054). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 45 as served (Jerry, in-session 2026-10-13: 'Yes change to 45', recorded on #988 issuecomment-6142666693). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

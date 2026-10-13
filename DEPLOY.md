@@ -126,8 +126,8 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   (Fly v44). No package moves either way. Deeper: release 43 by deleting the `SHENGJI_PV_VALUE_DECLARE` line too
   (image `deployment-01M4H37RYNM42YHH6ZPEC6GKCK`); release 42 by swapping the re-select line for the swap line;
   release 38 by deleting both; release 36 by deleting the four release-38 rule lines as well.
-- Comparator: new screens compare against release 45 as served (agreed for the wider-bury v77 and exact-lead
-  screens; #707 issuecomment-6142519054). Confirmations keep their parent's comparator; screens already read
+- Comparator: new screens compare against release 45 as served (Jerry, in-session 2026-10-13: "Yes change to
+  45", recorded on #988 issuecomment-6142666693). Confirmations keep their parent's comparator; screens already read
   against earlier releases (v75lpft44, v76bwv44 vs release 44) keep their declared comparator.
 - Watch list: `/healthz` bot is the name above; `bury` and `model_search` `phase=bury` timings and any
   `cwv-bury-fallback-v1` record (a budget fallback rate above a few percent is the rollback trigger); the
@@ -150,8 +150,11 @@ and bot name are in `fly.toml` and "Current production" above.
 What it does per card-play decision: heuristic anchor first; W sampled worlds through production's
 sampler (void-checked); the policy head ranks the capped legal listing (cap 4,000, the anchor forced in) and admits K with the anchor
 pinned; the value head scores each admitted action's afterstate (current trick finished
-heuristically) in every world; the highest mean plays. Declare is the heuristic; bury is the release-27/28 value-guided hybrid arm on the same package
-(`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`, `SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`). On budget expiry or any search error the sampler RNG is restored and the anchor
+heuristically) in every world; the highest mean plays. Declare is the heuristic through release 43 and, since release
+44, the value-guided declaration (`SHENGJI_PV_VALUE_DECLARE`; fallback record `pv-declare-serving-fallback-v1`). Bury
+is the release-27/28 value-guided hybrid arm on the same package (`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`,
+`SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`), since release 45 with the wide value-only chooser
+(`SHENGJI_PV_BURY_WIDE_VALUE`, `SHENGJI_PV_BURY_WIDE_K`; fallback record `cwv-bury-fallback-v1`). On budget expiry or any search error the sampler RNG is restored and the anchor
 plays with a `pv-search-fallback-v1` record; otherwise the record is `pv-search-decision-v1`
 (carries `played`, the admitted indices, value means, work counts).
 
@@ -212,7 +215,7 @@ SmartBot is p50 0.05ms / p95 0.13ms, direct v11pair is 0.25ms / 0.52ms on the
 numpy path, base N=10 MC is 77ms / 150ms, and an earlier matched benchmark put
 the production report-LCB decision at 0.390s versus 0.127s for `mc-strong`.
 Live Fly time is workload-dependent; the served policy's measured play and
-bury latency is in the release-38 record in `docs_archive/deploy-releases-28-38.md`. Off-loop execution hides event-loop blocking and overlaps
+bury latency is in the merged-tree smoke under "Current production" above (earlier releases: `docs_archive/deploy-releases-28-38.md`). Off-loop execution hides event-loop blocking and overlaps
 the 0.7s pacing floor; it does **not** make search free or let a worker react
 before the latest play. Each turn snapshots only after that play, computes,
 then revalidates before commit. Load-test the chosen policy and concurrent room

@@ -169,3 +169,37 @@ def test_a_real_pv_search_record_round_trips(package):
         assert out[f"{field}__len"] == len(rec[field])
         assert out[field] == rec[field]
     assert json.loads(json.dumps(out)) == out
+
+
+@pytest.mark.parametrize('abandon', [False, True])
+def test_exact_lead_real_decision_to_persisted_screen_trace(package, monkeypatch, abandon):
+    from test_pv_finish_lead import root
+    from shengji.train import pv_search_policy as pv, pv_exact_endgame
+    path, sha = package
+    bot = pv.make_pv_search_bot(path, sha256=sha, seed=17, worlds=2,
+                               candidates=8, exact_lead_endgame=True)
+    if abandon:
+        def fail(*a, **kw):
+            raise RuntimeError('partial exact pass')
+        monkeypatch.setattr(pv_exact_endgame, 'exact_lead_means', fail)
+    rnd = root(2)
+    policy = S.TimedPolicy(bot)
+    played = policy.decide_play(rnd, rnd.turn)
+    out, = policy.decisions
+    out = json.loads(json.dumps(out))
+    rec = bot.last_decision_record
+    assert out['played'] == played and out['work_complete'] is True
+    for field in ('exact_lead_status', 'exact_lead_worlds_completed',
+                  'exact_lead_nodes', 'exact_lead_seconds', 'exact_lead_changed'):
+        assert out[field] == rec[field]
+    if abandon:
+        assert out['exact_lead_status'] == 'abandoned'
+        assert out['exact_lead_abandon_error'] == 'RuntimeError'
+        assert out['exact_lead_changed'] is False
+    else:
+        assert out['exact_lead_status'] == 'complete'
+        assert out['exact_lead_base_selected_index'] == rec['exact_lead_base_selected_index']
+        assert out['exact_lead_base_value_means'] == rec['exact_lead_base_value_means']
+        assert out['exact_lead_selected_index'] == rec['exact_lead_selected_index']
+        assert out['exact_lead_selected_played'] == rec['exact_lead_selected_played']
+        assert out['admitted'] == rec['admitted']

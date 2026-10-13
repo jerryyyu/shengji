@@ -19,6 +19,154 @@ def config(arm="none"):
             "report_worlds": 30, "seed0": 431, "clusters": 1}
 
 
+def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
+    rows = [{}, *({'exact_lead_status': s} for s in
+                   ('ineligible', 'skipped_budget', 'abandoned'))]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows},
+        {'side': 'baseline', 'decisions': [{}]}]}])
+    assert result['valid']
+    arm = result['sides']['arm']
+    assert arm['total_traces'] == 4 and arm['missing'] == 1
+    assert arm['statuses'] == dict(ineligible=1, skipped_budget=1, abandoned=1, complete=0)
+    assert arm['changed'] == 0
+    assert result['sides']['baseline']['missing'] == 1
+
+
+def test_exact_lead_summary_keeps_legacy_complete_trace_unbound():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=64, played=['C4'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid'] and result['sides']['arm']['unbound'] == 1
+    assert result['sides']['arm']['bound'] == 0
+
+
+def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():
+    trace = S.trace_fields({'exact_lead_base_played': ['BJ', 'S5'],
+                            'exact_lead_selected_played': ['BJ'],
+                            'admitted': [['BJ'], ['S5']],
+                            'exact_lead_status': 'complete',
+                            'other_cards': ['BJ', 'S5']})
+    assert trace['exact_lead_base_played'] == ['BJ', 'S5']
+    assert trace['exact_lead_selected_played'] == ['BJ']
+    assert trace['admitted'] == [['BJ'], ['S5']]
+    assert 'other_cards' not in trace and trace['other_cards__len'] == 2
+    assert trace['trace_dropped_fields'] == 1
+    oversized = S.trace_fields({'exact_lead_base_played': ['S5'] * 17})
+    assert 'exact_lead_base_played' not in oversized
+    assert oversized['exact_lead_base_played__len'] == 17
+
+
+def test_exact_stage_cost_keeps_abandonment_and_missing_separate():
+    rows = [dict(exact_lead_status='abandoned', exact_lead_seconds=v)
+            for v in (0, .1, .2, .3, .4, .5, .6, .7, .8, 2.25)]
+    rows += [dict(exact_lead_status='abandoned'), {}]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows}]}])
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost == dict(count=10, missing=1, invalid=0, total_seconds=5.85,
+                        p50_seconds=.4, p90_seconds=.8, max_seconds=2.25)
+    assert result['cost_valid'] and not result['cost_complete']
+    assert result['sides']['baseline']['stage_cost']['abandoned']['max_seconds'] is None
+
+
+@pytest.mark.parametrize('seconds', [-1, float('nan'), float('inf'), True, '0.2'])
+def test_exact_stage_cost_rejects_invalid_measurements(seconds):
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_lead_status='abandoned',
+                                          exact_lead_seconds=seconds)]}]}])
+    assert not result['cost_valid'] and not result['cost_complete']
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost['invalid'] == 1 and cost['count'] == 0
+    assert cost['max_seconds'] is None
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
+    {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},
+    {'exact_lead_selected_level_delta': float('nan')},
+    {'exact_lead_worlds_completed': 0},
+    {'played': ['C3']}, {'exact_lead_base_played': None},
+    {'exact_lead_selected_index': 2},
+    {'exact_lead_selected_played': ['C3']},
+    {'admitted': [['C3']]},
+    {'exact_lead_base_selected_index': 2},
+    {'exact_lead_selected_level_mean': 99},
+])
+def test_exact_lead_summary_flags_bad_complete_evidence(patch):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_trace_version=2,
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=64, played=['C4'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'],
+               exact_lead_base_selected_index=1,
+               exact_lead_base_selected_played=['C3'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    row.update(patch)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['statuses']['complete'] == 0
+    assert result['sides']['arm']['bound'] == 0
+    assert result['sides']['arm']['unbound'] == 0
+
+
+@pytest.mark.parametrize('version', [None, 2])
+def test_exact_summary_rejects_claimed_change_without_changed_cards(version):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.,
+               exact_lead_worlds_completed=2, played=['C3'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.,
+               exact_lead_base_level_mean=1.)
+    if version is not None:
+        row.update(exact_lead_trace_version=version,
+                   exact_lead_selected_index=0, exact_lead_selected_played=['C3'],
+                   exact_lead_base_selected_index=1,
+                   exact_lead_base_selected_played=['C3'])
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['bound'] == 0
+    assert result['sides']['arm']['unbound'] == 0
+
+
+def test_exact_lead_summary_accepts_post_selection_override_with_selected_witness():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='post_selection_override',
+               exact_lead_trace_version=2,
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=2, played=['D3'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'], exact_lead_base_selected_index=1,
+               exact_lead_base_selected_played=['C3'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid']
+    assert result['sides']['arm']['change_kinds']['post_selection_override'] == 1
+
+
+def test_exact_lead_summary_keeps_unchanged_kind_when_baseline_was_already_overridden():
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='unchanged',
+               exact_lead_trace_version=2,
+               exact_lead_changed=False, exact_lead_selected_level_delta=0.0,
+               exact_lead_worlds_completed=2, played=['C3'],
+               admitted=[['C4'], ['C3']], exact_lead_selected_index=0,
+               exact_lead_selected_played=['C4'], exact_lead_base_selected_index=0,
+               exact_lead_base_selected_played=['C4'], exact_lead_base_played=['C3'],
+               exact_lead_selected_level_mean=1.0, exact_lead_base_level_mean=1.0)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert result['valid'] and result['sides']['arm']['change_kinds']['unchanged'] == 1
+
+
 class Heads:
     metadata = {"checkpoint_sha256": "test-checkpoint"}
 
@@ -80,6 +228,8 @@ def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypat
         S.reopen_shard(path, dict(cfg, seed0=cfg["seed0"] + 1), 0)
     summary = S.summary_for([shard], cfg)
     assert summary["complete"]
+    assert summary['exact_lead']['valid']
+    assert summary['exact_lead']['sides']['arm']['missing'] > 0
     assert not summary["equal_work_strength_claim"]
     assert summary["arm_over_baseline_decision_cpu"] > 0
     costly = copy.deepcopy(shard)

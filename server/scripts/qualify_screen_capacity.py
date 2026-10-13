@@ -40,16 +40,32 @@ def kill_group(pgid):
         pass
 
 
-def measure(command, out, seconds, *, poll_seconds=.25):
+def group_drained(pgid):
+    rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=5)
+    return not any(int(group) == pgid and not state.startswith('Z')
+                   for group, state in (line.split() for line in rows.splitlines()))
+
+
+def measure(command, out, seconds, *, poll_seconds=.25, holds=()):
+    if any(os.path.lexists(path) for path in holds):
+        raise RuntimeError('HOLD present before dispatch')
     out.mkdir(parents=True, exist_ok=False)
     start = time.monotonic()
     reason, rc, peak, samples = 'error', None, 0, 0
     child = None
+    stopped = []
+    previous = {}
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        previous[sig] = signal.signal(sig, lambda signum, frame: stopped.append(signum))
+    drained = False
     try:
         with (out / 'producer.log').open('x') as log, (out / 'resources.jsonl').open('x') as trace:
             child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)
             while True:
+                if stopped or any(os.path.lexists(path) for path in holds):
+                    reason = 'signal' if stopped else 'hold'
+                    break
                 sample = group_sample(child.pid)
                 peak = max(peak, sample['rss_bytes'])
                 samples += 1
@@ -69,15 +85,28 @@ def measure(command, out, seconds, *, poll_seconds=.25):
             # Also drain descendants after an unexpected parent-only exit.
             kill_group(child.pid)
             rc = child.wait()
+            deadline = time.monotonic() + 10
+            try:
+                while not (drained := group_drained(child.pid)) and time.monotonic() < deadline:
+                    time.sleep(.05)
+            except (OSError, subprocess.SubprocessError, ValueError):
+                drained = False  # Unknown census must not permit host release.
+        else:
+            drained = True
         elapsed = time.monotonic() - start
         result = {'schema': 'screen-capacity-v1', 'command': command,
                   'reason': reason, 'returncode': rc, 'wall_seconds': elapsed,
                   'sampled_group_peak_rss_bytes': peak, 'samples': samples,
                   'sampling_interval_seconds': poll_seconds,
-                  'complete': reason == 'exit' and rc == 0,
+                  'child_group_drained': drained,
+                  'complete': reason == 'exit' and rc == 0 and drained,
                   'note': 'Sampled concurrent RSS; can miss sub-interval peaks. '
                           'No strength inference. Queue enforces complete work on rc0.'}
-        (out / 'capacity.json').write_text(json.dumps(result, indent=2) + '\n')
+        try:
+            (out / 'capacity.json').write_text(json.dumps(result, indent=2) + '\n')
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
     return result
 
 
@@ -90,6 +119,7 @@ def main(argv=None):
     p.add_argument('--workers', type=int, default=1)
     p.add_argument('--seconds', type=int, default=900)
     p.add_argument('--run', action='store_true')
+    p.add_argument('--hold', type=Path, action='append', default=[])
     args = p.parse_args(argv)
     if not (args.seed >= 0 and 1 <= args.workers <= args.clusters <= 28
             and 1 <= args.seconds <= 1800):
@@ -99,7 +129,7 @@ def main(argv=None):
     if not args.run:
         print(json.dumps({'command': command, 'seconds': args.seconds, 'launched': False}))
         return 0
-    result = measure(command, args.out, args.seconds)
+    result = measure(command, args.out, args.seconds, holds=args.hold)
     print(json.dumps(result))
     return 0 if result['complete'] else 1
 

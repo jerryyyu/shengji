@@ -85,6 +85,51 @@ def test_capacity_failed_producer_is_not_complete(tmp_path):
     assert not result['complete']
 
 
+def test_capacity_dangling_hold_stops_and_censuses(tmp_path):
+    module = capacity_module()
+    hold = tmp_path / 'hold'
+    hold.symlink_to(tmp_path / 'absent')
+    with pytest.raises(RuntimeError, match='HOLD present before dispatch'):
+        module.measure([sys.executable, '-c', 'import time; time.sleep(30)'],
+                       tmp_path / 'refused', 5, holds=[hold])
+    assert not (tmp_path / 'refused').exists()
+    hold.unlink()
+    code = 'import pathlib,time; pathlib.Path(' + repr(str(hold)) + ').touch(); time.sleep(30)'
+    result = module.measure([sys.executable, '-c', code], tmp_path / 'capacity', 5, holds=[hold])
+    assert result['reason'] == 'hold' and not result['complete']
+    assert result['child_group_drained']
+
+
+def test_capacity_parent_term_drains_separate_queue_group(tmp_path):
+    import subprocess
+    import time
+    module = capacity_module()
+    out = tmp_path / 'capacity'
+    pidfile = tmp_path / 'child.pid'
+    child_code = 'import os,pathlib,time; pathlib.Path(' + repr(str(pidfile)) + ').write_text(str(os.getpid())); time.sleep(30)'
+    code = ('import runpy,sys; m=runpy.run_path(' + repr(module.__file__) + '); '
+            'm["measure"]([sys.executable,"-c",' + repr(child_code) + '], '
+            '__import__("pathlib").Path(' + repr(str(out)) + '), 10)')
+    parent = subprocess.Popen([sys.executable, '-c', code])
+    try:
+        deadline = time.monotonic() + 5
+        while not pidfile.exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert pidfile.exists()
+        parent.terminate()
+        parent.wait(timeout=5)
+        result = json.loads((out / 'capacity.json').read_text())
+        assert result['reason'] == 'signal' and result['child_group_drained']
+        assert not result['complete']
+        assert module.group_drained(int(pidfile.read_text()))
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait()
+        if pidfile.exists():
+            module.kill_group(int(pidfile.read_text()))
+
+
 @pytest.fixture
 def harness(tmp_path, monkeypatch):
     checkpoint = tmp_path / "model.pt"

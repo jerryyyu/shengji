@@ -161,9 +161,9 @@ def test_env_factory_identity_and_budget_fallback(package):
 
 
 @pytest.fixture(params=['tiny', 'production'])
-def decision_package(request):
+def decision_package(request, package):
     if request.param == 'tiny':
-        return request.getfixturevalue('package')
+        return package
     return str(request.getfixturevalue('pinned_production_package')), PACKAGE_SHA
 
 

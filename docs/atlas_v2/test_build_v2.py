@@ -324,20 +324,21 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
     from pathlib import Path
     b = _load()
     reg = json.loads((Path(b.__file__).parent / "registry.json").read_text())
-    assert b.production_release(reg) == 44
-    # Confirmed (Jerry 2026-10-07): new screens are read against release 42; release 38 becomes an earlier band.
-    # Production moved to 43 (2026-10-09) and 44 (2026-10-11) without a comparator ruling, so the two differ and
-    # the page says so; the value-declare deploy screens (v70/v71) read against 43 by a one-off ruling and sit in
-    # the 43 band, which is a closed comparator now that 44 is served (the record of how 44 was chosen).
-    assert reg["screen_comparator"]["status"] == "confirmed" and b.comparator_release(reg) == 42
+    assert b.production_release(reg) == 45
+    # Release 45 (2026-10-13): new screens compare against release 45 as served (agreed at its deploy), so the
+    # comparator equals production again.  Every earlier band is a closed comparator: release 44 (v75/v76, the
+    # record of how 45 was chosen), release 43 (v70/v71, how 44 was chosen) and release 42 (the 10-07 ruling).
+    assert reg["screen_comparator"]["status"] == "confirmed" and b.comparator_release(reg) == 45 == b.PROD
     page = b.page                                                 # a fresh in-memory build; the HTML is untracked
     i = page.index("Green clears zero"); chart = page[i:page.index("</p>", i)]
-    assert "release 42 first" in chart
-    assert "read against <b>release 42 as served</b>" in page and "Production is release 44" in page
-    assert all(s["vs"] == 42 for s in b.SCREENS_NOW) and 38 in b.EARLIER_RELEASES and 43 in b.EARLIER_RELEASES
-    band43 = [c for c in b.COMPARATORS if c["release"] == 43 and c["group"] is None][0]
-    assert band43["label"] == "release 43 as served · closed comparator"
-    assert not any("current production" in c["label"] for c in b.COMPARATORS if c["release"] == 43)
+    assert "release 45 first" in chart
+    assert "read against <b>release 45 as served</b>" in page and "Production is release" not in page
+    assert all(s["vs"] == 45 for s in b.SCREENS_NOW) and {42, 43, 44} <= set(b.EARLIER_RELEASES)
+    for rel in (42, 43, 44):
+        band = [c for c in b.COMPARATORS if c["release"] == rel and c["group"] is None][0]
+        assert band["label"] == f"release {rel} as served · closed comparator"
+    assert not any("current production" in c["label"] for c in b.COMPARATORS if c["release"] != 45)
+    assert {s["id"] for s in [c for c in b.COMPARATORS if c["release"] == 44][0]["items"]} == {"v75lpft44", "v76bwv44"}
     # Pending: rebuild a copy with the switch pending -- new screens stay on 38 and the page says so.
     pend = copy.deepcopy(reg)
     pend["screen_comparator"] = {"release": 38, "status": "pending", "note": "Release 42 is pending Jerry's ruling."}
@@ -346,15 +347,15 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
     (tmp_path / "registry.json").write_text(json.dumps(pend))
     spec = importlib.util.spec_from_file_location("build_v2_pending", tmp_path / "build_v2.py")
     p = importlib.util.module_from_spec(spec); spec.loader.exec_module(p)
-    assert p.CMP == 38 and p.PROD == 44
+    assert p.CMP == 38 and p.PROD == 45
     i = p.page.index("Green clears zero"); chart = p.page[i:p.page.index("</p>", i)]
     assert "release 38 first" in chart and "release 42" not in chart   # the chart explanation follows the comparator
     assert "read against <b>release 38 as served</b>" in p.page
-    assert "Production is release 44" in p.page and "pending" in p.page
-    assert "Screens against release 38 (the screen comparator; production is release 44)" in p.page
+    assert "Production is release 45" in p.page and "pending" in p.page
+    assert "Screens against release 38 (the screen comparator; production is release 45)" in p.page
     # Without the field, the comparator falls back to production (the pre-existing behaviour).
     plain = copy.deepcopy(reg); plain.pop("screen_comparator")
-    assert b.comparator_release(plain) == 44
+    assert b.comparator_release(plain) == 45
 
 
 def test_archive_shas_refuse_a_cited_sha_the_named_archive_does_not_hold(tmp_path):

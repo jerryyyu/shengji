@@ -20,11 +20,15 @@ from shengji.train.pv_search_policy import pv_env_recipe, pv_registry_entries
 
 PACKAGE_SHA = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
 BASELINE = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6'
+R45_NAMES = (
+    'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8',
+    'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-r2ac93e3d-bury-hybrid-bwv-02f0041fee6a',
+)
 
 
-async def qualify(checkpoint, dest):
-    packet = json.loads((Path(__file__).resolve().parents[1] /
-                         'tests/fixtures/r44_joker_lead.json').read_text())
+def qualification_env(checkpoint, release=44):
+    if release not in (44, 45):
+        raise ValueError('unsupported qualification release')
     env = dict(SHENGJI_PV_CKPT=str(checkpoint), SHENGJI_PV_SHA256=PACKAGE_SHA,
         SHENGJI_PV_WORLDS='64', SHENGJI_PV_CANDIDATES='8', SHENGJI_PV_CAP='4000',
         SHENGJI_PV_BATCH_SIZE='128', SHENGJI_PV_ADMISSION_DIVERSITY='1',
@@ -32,11 +36,22 @@ async def qualify(checkpoint, dest):
         SHENGJI_PV_LEAD_ANCHOR='1', SHENGJI_PV_DOOMED_THROW_RESELECT='1',
         SHENGJI_PV_VALUE_DECLARE='1', SHENGJI_PV_SERVING_BUDGET_SECONDS='3',
         SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2')
+    if release == 45:
+        env.update(SHENGJI_PV_BURY_WIDE_VALUE='1', SHENGJI_PV_BURY_WIDE_K='64')
+    return env
+
+
+async def qualify(checkpoint, dest, release=44):
+    packet = json.loads((Path(__file__).resolve().parents[1] /
+                         'tests/fixtures/r44_joker_lead.json').read_text())
+    env = qualification_env(checkpoint, release)
     for enabled in (False, True):
         entries = pv_registry_entries(**pv_env_recipe({**env,
             'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled))}))
         name, = entries
-        if not enabled and name != BASELINE:
+        if release == 45 and name != R45_NAMES[int(enabled)]:
+            raise ValueError('release45 qualification arm drift')
+        if release == 44 and not enabled and name != BASELINE:
             raise ValueError('release44 recipe drift')
         rnd, ledger = restore_with_ledger(packet)
         bot = entries[name](seed=941210121)
@@ -63,7 +78,7 @@ async def qualify(checkpoint, dest):
         passed = (rec.get('work_complete') is True and cards == expected and seconds < 3
                   and (not enabled or (rec.get('exact_lead_status') == 'complete'
                        and rec.get('exact_lead_worlds_completed') == 64)))
-        row = dict(enabled=enabled, policy=name, seconds=seconds, cards=cards,
+        row = dict(release=release, enabled=enabled, policy=name, seconds=seconds, cards=cards,
                    passed=passed, committed=committed, record=rec,
                    machine=platform.machine(), system=platform.system())
         dest.write(json.dumps(row)+'\n')
@@ -78,9 +93,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--release', type=int, choices=(44, 45), default=44,
+                        help='explicit recipe; default preserves the historical release44 qualifier')
     args = parser.parse_args(argv)
     with args.out.open('x') as dest:
-        return asyncio.run(qualify(args.checkpoint, dest))
+        return asyncio.run(qualify(args.checkpoint, dest, args.release))
 
 
 if __name__ == '__main__':

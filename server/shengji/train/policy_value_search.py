@@ -261,6 +261,9 @@ LEAD_TIEBREAK_DEFAULTS = dict(lead_tiebreak_prior=False,
 #: `adaptive_k`: the admission width on a lead whose legal set holds a
 #: multi-card action (module docstring); 16 = twice production's K=8.
 ADAPTIVE_K_DEFAULTS = dict(adaptive_k=False, candidates_lead_multi=16)
+#: Optional bounded structural reservation.  It preserves one policy-ranked
+#: pure tractor on a lead without widening K or changing follows.
+TRACTOR_RESERVATION_DEFAULTS = dict(tractor_reservation=False)
 
 #: `lead_anchor`: the optional slot-0 rule on low-single leads (module docstring)
 LEAD_ANCHOR_DEFAULTS = dict(lead_anchor=False)
@@ -377,6 +380,7 @@ class PolicyValueBot(PolicyWorldBot):
     # built without __init__ (`eval.fixed_tape_policy.release38_admission`
     # allocates one and sets only the release-38 fields) admits exactly as before
     small_joker_guard = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
+    tractor_reservation = TRACTOR_RESERVATION_DEFAULTS["tractor_reservation"]
     _small_joker = None
     doomed_throw_reselect = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
 
@@ -389,6 +393,7 @@ class PolicyValueBot(PolicyWorldBot):
                  tiebreak_epsilon=TIEBREAK_DEFAULTS["tiebreak_epsilon"],
                  adaptive_k=ADAPTIVE_K_DEFAULTS["adaptive_k"],
                  candidates_lead_multi=ADAPTIVE_K_DEFAULTS["candidates_lead_multi"],
+                 tractor_reservation=TRACTOR_RESERVATION_DEFAULTS["tractor_reservation"],
                  lead_anchor=LEAD_ANCHOR_DEFAULTS["lead_anchor"],
                  lead_tiebreak_prior=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_prior"],
                  lead_tiebreak_epsilon=LEAD_TIEBREAK_DEFAULTS["lead_tiebreak_epsilon"],
@@ -439,6 +444,9 @@ class PolicyValueBot(PolicyWorldBot):
         self.adaptive_k = adaptive_k
         self.candidates_lead_multi = candidates_lead_multi
         self._adaptive = {'adaptive_k_applied': False, 'k_used': int(candidates)}
+        if type(tractor_reservation) is not bool:
+            raise ValueError('tractor_reservation must be a bool')
+        self.tractor_reservation = tractor_reservation
         if type(lead_anchor) is not bool:
             raise ValueError('lead_anchor must be a bool')
         self.lead_anchor = lead_anchor
@@ -831,6 +839,8 @@ class PolicyValueBot(PolicyWorldBot):
             chosen = chosen[:k]
         else:
             chosen = self._admit_diverse(rnd, actions, ranked, anchor_index, k)
+        if self.tractor_reservation and leading(rnd):
+            chosen = self._reserve_tractor(rnd, actions, preferences, ranked, chosen, k)
         if self.admit_forced_single:
             if worlds is None:
                 raise ValueError('admit_forced_single needs the sampled worlds at admission')
@@ -841,6 +851,40 @@ class PolicyValueBot(PolicyWorldBot):
             self._forced_added, self._forced_detail = extras, detail
             chosen = list(chosen) + extras
         return chosen
+
+    def _reserve_tractor(self, rnd, actions, preferences, ranked, chosen, k):
+        """Keep one policy-ranked pure tractor in a lead ballot when available.
+
+        This is deliberately a single bounded slot: it preserves the existing
+        anchor and K, and does not claim that every pair/tractor is distinct
+        strategic resource.  Follows and anchor-tractor leads are unchanged.
+        """
+        ordering = rnd.ordering
+
+        def pure_tractor(action):
+            if len(action) < 4:
+                return False
+            groups = {ordering.eff_suit(card) for card in action}
+            if len(groups) != 1:
+                return False
+            components = decompose(list(action), ordering).components
+            return len(components) == 1 and components[0].pair_len >= 2
+
+        if any(pure_tractor(actions[i]) for i in chosen):
+            return chosen
+        tractor = next((i for i in ranked
+                        if i not in chosen and np.isfinite(preferences[i])
+                        and pure_tractor(actions[i])), None)
+        if tractor is None:
+            return chosen
+        if len(chosen) < k:
+            return list(chosen) + [tractor]
+        removable = [i for i in chosen if i != chosen[0]]
+        if not removable:
+            return chosen
+        rank = {i: position for position, i in enumerate(ranked)}
+        remove = max(removable, key=lambda i: (rank.get(i, len(ranked)), i))
+        return [tractor if i == remove else i for i in chosen]
 
     # -- admission: the optional single small-joker lead exclusion -------------
 

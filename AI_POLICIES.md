@@ -4,9 +4,9 @@ Last reconciled: **2026-10-13**.
 
 **Production is release 45**, live since 2026-10-13 05:27 ET: release 36's package (the gen-5 SMV3 outcome head) in
 the pv-search W64/K8 with five search rules, the value-guided trump declaration (release 44) and the wide value-only
-bury (release 45); the contract is below. **New screens compare against release 45 as served** (2026-10-13, at the
-release-45 deploy, [#707 issuecomment-6142519054](https://github.com/jerryyyu/shengji/issues/707#issuecomment-6142519054);
-it replaces the 10-07 release-42 ruling). Confirmations keep their parent's comparator; screens already read keep
+bury (release 45); the contract is below. **New screens compare against release 45 as served** (Jerry, in-session 2026-10-13:
+"Yes change to 45", recorded on [#988 issuecomment-6142666693](https://github.com/jerryyyu/shengji/pull/988#issuecomment-6142666693); it replaces the 10-07 release-42
+ruling). Confirmations keep their parent's comparator; screens already read keep
 their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work. It is not a
@@ -249,8 +249,11 @@ Every decision-bearing policy comparison binds:
 7. a behavior/work-matched null that differs only on the proposed mechanism.
 
 Elo pools, human agreement, individual decisions, offline loss, state regret and open-DEV screens prioritize
-hypotheses. Strength requires a fresh mirrored whole-game comparison against the exact live champion, followed by
-confirmation when the design calls for it.
+hypotheses. Strength requires a fresh mirrored whole-game comparison against the exact live champion. Confirmation is Jerry's
+call per change (2026-10-13, in-session; recorded on
+[#663 issuecomment-6142998363](https://github.com/jerryyyu/shengji/issues/663#issuecomment-6142998363)): a
+positive screen can ship on his word, and a fresh-seed confirmation runs when he asks or when the effect is small
+or borderline.
 
 ## Entry criteria for new scientific lanes
 

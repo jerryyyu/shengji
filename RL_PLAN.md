@@ -20,7 +20,7 @@ policy/value search — the policy head admits eight candidates over 64 sampled 
 prices them, no Monte Carlo playouts — with five search rules (div, rc, tb, la, dtr), the value-guided
 trump declaration (release 44) and the wide value-only bury (release 45). The exact contract is
 `AI_POLICIES.md` "Production contract". The champion for every NEW strength claim is release 45 as
-served (2026-10-13, #707 issuecomment-6142519054); confirmations keep their parent's comparator and
+served (Jerry, in-session 2026-10-13: "Yes change to 45", recorded on #988 issuecomment-6142666693); confirmations keep their parent's comparator and
 historical reads keep their original labels. MC-LCB is the common control inside each screen, not the
 prospective comparator.
 
@@ -46,7 +46,9 @@ a bar.
 | **ii — selection screen** | choosing between designs | tier i plus a pre-registered comparison, literal parent, matched control | the tier iii machinery |
 | **iii — confirmation** | a deploy or strength claim | the full immutable machinery: exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
 
-A lane enters tier iii only when a candidate beats the champion on a tier ii paired screen.
+A lane enters tier iii only when a candidate beats the champion on a tier ii paired screen and a confirmation is
+owed: Jerry's call per change (2026-10-13, in-session; recorded on #663 issuecomment-6142998363). A positive screen
+can ship on his word; a fresh-seed confirmation runs when he asks or when the effect is small or borderline.
 
 ## Current program
 
@@ -55,8 +57,9 @@ model plans and decision gates on #663; search and gameplay diagnostics on #700.
 in `DEPLOY.md` "Current production".
 
 **What would change production next:** a change that beats release 45 as served on a ten-window served-bot screen,
-then the `DEPLOY.md` release checklist and Jerry's word. Releases 44 and 45 shipped on POSITIVE ten-window screens
-without a separate fresh-seed confirmation, on Jerry's word; whether a confirmation is owed is his call per change.
+then the `DEPLOY.md` release checklist and Jerry's word. Confirmation is Jerry's call per change (in-session
+2026-10-13, recorded on #663 issuecomment-6142998363): a positive screen can ship on his word, and a fresh-seed
+confirmation runs when he asks or when the effect is small or borderline. Releases 44 and 45 shipped that way.
 Correctness fixes may ship with no strength claim when the served screen is not demonstrated negative (releases 42
 and 43).
 
@@ -71,7 +74,8 @@ continuations the search uses.
 Each item is a board row on #707 (row id in brackets); its state there is authoritative.
 
 1. **Heuristic replacement, declare and bury [S15].** Screens of release 45 plus one flag, vs release 45 as served,
-   in this order: the wider bury (two-card swaps #984, merged off by default; K up to 128); declare worlds that
+   the wider bury first (two-card swaps #984, merged off by default; K=128), run in parallel with the S18 screen
+   (cloud and perf, both vs release 45 as served); then, in this order: declare worlds that
    score with the served bury instead of the heuristic one; declare worlds consistent with the opponents' passes,
    plus a 'wait' option; wide-bury attribution arms (K32 value-only, K64 hybrid), since release 45 changed width
    and chooser together. The paired contrast of value declare at every first-round chance vs declare-ASAP
@@ -79,14 +83,15 @@ Each item is a board row on #707 (row id in brackets); its state there is author
    (`lpft`, #972; v75lpft44 inconclusive).
 2. **Exact small-endgame leads [S18, #981, Codex].** An opt-in exact continuation for small endgames; fixed-root
    host qualification and the local full-round cost gate are complete. Next: a fresh paired screen vs release 45
-   as served. Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
+   as served, in parallel with the S15 wider-bury screen (cloud and perf). Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
    lead admission [S20, #986]. The whole-hand lead admission `fla` (#973) stays off: the release-44 diagnostic
    found its admission omissions were all refused throws.
 3. **C14, the grid trunk [M9].** The G1 grid trunk (`--trunk-block grid --grid-channels 44`, d3, h330),
    warm-started from GEN4-G1-SOFT-336k (checkpoint `4b829486`, the largest offline val_ce step of any
    generation and a served null in gen 4; #663 issuecomment-6130726746), on the C11 base + runPVC1–10 +
-   runVD1–4, with C12's settings and both checkpoint selections (val_ce and rank regret). Jerry 2026-10-13: "We can start training grid model now"; the launch
-   packet is in review (#663 issuecomment-6142031551, 6142039324). Claim limit: against C12 it moves data, init
+   runVD1–6 (≈ 880k shards, tag `GEN5-PROD-SOFT-allPV-plusMCLCB-880k-SMV3-C14-GRID`), with C12's settings and
+   both checkpoint selections (val_ce and rank regret). Jerry 2026-10-13: "We can start training grid model now"
+   and "All six (VD1–6)" (#663 issuecomment-6142998363); the launch packet is in review. Claim limit: against C12 it moves data, init
    lineage and trunk together, so a positive read is a representation swing, not an attribution. The warm start
    loads every G1 tensor, including its search head, so this is fine-tuning on the new targets. Screens: both
    selections vs release 45 as served. Width (h1024) moves to C15; C13 (C12's recipe + VD data) is parked as the
@@ -106,8 +111,8 @@ Each item is a board row on #707 (row id in brackets); its state there is author
    refreshed production logs. Report only when a release reaches 20 complete human rounds; refresh the log cache
    (`scripts/fetch_fly_logs.sh`) after each release.
 
-Data: the runVD1–6 block (16k deals each, the release-44 bot as teacher) feeds C14; runVD1–4 are ingested, VD5–6
-are kept for a follow-up. The doomed-throw re-select's all-excluded fallback (it plays the throw's forced component,
+Data: the runVD1–6 block (16k deals each, the release-44 bot as teacher) feeds C14, all six stores; runVD1–4 are
+ingested, VD5–6 are next (their ingest lane is in review). The doomed-throw re-select's all-excluded fallback (it plays the throw's forced component,
 which the admitted list does not contain) broke the trajectory extract until #977 recorded that play as a point
 mass; completed shards were preserved and only missing clusters regenerated.
 

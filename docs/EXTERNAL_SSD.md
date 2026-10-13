@@ -42,7 +42,7 @@ lanes read them there. Contents as listed on 2026-10-13 (`ls /Volumes/<name>`; s
 | `shengji-mclcb-apfs.sparsebundle` | `/Volumes/shengji-mclcb` | the MC-LCB runs (runA, runC, runD, runE, runF2, runG, runH, runI, runK, runL) |
 | `shengji-sl-apfs.sparsebundle` | `/Volumes/shengji-sl` | runSL1–6 (W32 shortlist rollout-teacher stores) and `policy_rows_gen5_sl*` |
 | `shengji-js-apfs.sparsebundle` | `/Volumes/shengji-js` | runJS1–10 (no longer on the Mini's boot volume) |
-| `shengji-vd-apfs.sparsebundle` | `/Volumes/shengji-vd` | runVD1–4 (release-44 teacher, C14's added data); VD5–6 stay on their hosts until ingested |
+| `shengji-vd-apfs.sparsebundle` | `/Volumes/shengji-vd` | runVD1–4 (release-44 teacher; with VD5–6, C14's added data); VD5–6 stay on their hosts until ingested |
 
 The images replaced the earlier exFAT directories (`shengji-sl/`, `shengji-pvr/`, `shengji-pvc/` and the pv/mclcb
 copies; #663 issuecomment-6121792925). The training and ingest lanes since C12 check that

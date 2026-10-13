@@ -126,8 +126,8 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   (Fly v44). No package moves either way. Deeper: release 43 by deleting the `SHENGJI_PV_VALUE_DECLARE` line too
   (image `deployment-01M4H37RYNM42YHH6ZPEC6GKCK`); release 42 by swapping the re-select line for the swap line;
   release 38 by deleting both; release 36 by deleting the four release-38 rule lines as well.
-- Comparator: new screens compare against release 45 as served (agreed for the wider-bury v77 and exact-lead
-  screens; #707 issuecomment-6142519054). Confirmations keep their parent's comparator; screens already read
+- Comparator: new screens compare against release 45 as served (Jerry, in-session 2026-10-13: "Yes change to
+  45", recorded on #988 issuecomment-6142666693). Confirmations keep their parent's comparator; screens already read
   against earlier releases (v75lpft44, v76bwv44 vs release 44) keep their declared comparator.
 - Watch list: `/healthz` bot is the name above; `bury` and `model_search` `phase=bury` timings and any
   `cwv-bury-fallback-v1` record (a budget fallback rate above a few percent is the rollback trigger); the

@@ -200,3 +200,6 @@ def test_exact_lead_real_decision_to_persisted_screen_trace(package, monkeypatch
         assert out['exact_lead_status'] == 'complete'
         assert out['exact_lead_base_selected_index'] == rec['exact_lead_base_selected_index']
         assert out['exact_lead_base_value_means'] == rec['exact_lead_base_value_means']
+        assert out['exact_lead_selected_index'] == rec['exact_lead_selected_index']
+        assert out['exact_lead_selected_played'] == rec['exact_lead_selected_played']
+        assert out['admitted'] == rec['admitted']

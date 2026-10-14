@@ -260,6 +260,8 @@ jobs:
             tests/test_pv_sampler_telemetry.py \
             tests/test_tactical_public_observations.py \
             tests/test_belief_labels.py \
+            tests/test_exact_first_trick.py \
+            tests/test_qualify_first_trick.py \
             tests/test_belief_eval.py
 
   luna-profiles:

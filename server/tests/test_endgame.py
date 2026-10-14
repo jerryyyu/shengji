@@ -136,6 +136,62 @@ def test_shared_session_state_key_separates_accumulated_attacker_points():
         "a zero-node second solve indicates an attacker-points cache collision"
 
 
+
+
+def test_follow_action_cache_isolated_and_defensive(monkeypatch):
+    import shengji.ai.endgame as endgame
+    rnd = _round([['C3'], ['C4', 'C5'], ['C6'], ['CA']], plays=[(0, ['C3'])])
+    session = ExactWorldSession(rnd, alpha_beta=True)
+    original = endgame.exhaustive_legal_actions
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(endgame, 'exhaustive_legal_actions', counted)
+    expected = session.solver.actions(rnd, 1)
+    poisoned = session.solver.actions(rnd, 1)
+    poisoned[0].append('BJ')
+    rnd.attacker_points += 20
+    assert session.solver.actions(rnd, 1) == expected and len(calls) == 1
+    rnd.hands[1].append('CK')
+    assert session.solver.actions(rnd, 1) == original(rnd, 1)
+    assert len(calls) == 2
+    session.solver.max_hand_cards = 1
+    with pytest.raises(ExactEndgameRefusal):
+        session.solver.actions(rnd, 1)
+    other = ExactWorldSession(rnd, alpha_beta=True)
+    other.solver.actions(rnd, 1)
+    assert len(calls) == 4  # cap refusal + separate world's own enumeration
+
+
+@pytest.mark.parametrize('leader', range(4))
+def test_follow_cache_reduces_real_first_trick_enumerations(monkeypatch, leader):
+    import copy
+    import numpy as np
+    import shengji.ai.endgame as endgame
+    from shengji.train.pv_exact_endgame import exact_first_trick_means
+    rnd = _round([['C3', 'C3', 'C5', 'H2'], ['C4', 'C4', 'C10', 'D5'],
+                  ['C6', 'C6', 'CK', 'H3'], ['CA', 'CA', 'C9', 'DA']],
+                 leader=leader, buried=['H5'])
+    actions = exhaustive_legal_actions(rnd, leader)
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    original = endgame.exhaustive_legal_actions
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(endgame, 'exhaustive_legal_actions', counted)
+    cached = exact_first_trick_means(rnd, leader, actions, worlds)
+    cached_count = len(calls)
+    calls.clear()
+    monkeypatch.setattr(endgame._ExactSolver, 'actions', lambda self, r, s:
+        counted(r, s, max_hand_cards=self.max_hand_cards))
+    plain = exact_first_trick_means(rnd, leader, actions, worlds)
+    assert np.array_equal(cached[0], plain[0])
+    assert cached[1] == plain[1]  # same expansions, cache hits, completed worlds
+    assert cached_count < len(calls) // 2
+
+
 def test_real_three_card_endgame_completes_and_returns_a_legal_action():
     game = Game(random.Random(19))
     bots = [HeuristicBot() for _ in range(4)]

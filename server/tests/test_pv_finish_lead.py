@@ -167,7 +167,7 @@ def test_tiny_recipe_candidate_survives_server_snapshot_and_commit(package, tmp_
 
 
 @pytest.mark.parametrize('expired', [False, True])
-@pytest.mark.parametrize('candidate', ['finish', 'exact'])
+@pytest.mark.parametrize('candidate', ['finish', 'exact', 'first'])
 def test_current_recipe_candidate_survives_server_snapshot_and_commit(pinned_production_package, tmp_path, expired, candidate):
     # Do not depend on the Torch-exported tiny fixture: the required production
     # package gate deliberately runs without Torch and must execute both cases.
@@ -175,7 +175,7 @@ def test_current_recipe_candidate_survives_server_snapshot_and_commit(pinned_pro
         (str(pinned_production_package), PACKAGE_SHA), tmp_path, expired, candidate)
 
 
-def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expired, candidate):
+def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expired, candidate='finish'):
     """Current serving flags/W64/bury wrapper and actual API consumer.
 
     Tiny and hash-pinned production packages; not a strength comparison or
@@ -186,10 +186,12 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
 
     path, sha = decision_package
     env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
-    flag = 'SHENGJI_PV_FINISH_LEAD_ADMISSION' if candidate == 'finish' else 'SHENGJI_PV_EXACT_LEAD_ENDGAME'
+    flags = {'SHENGJI_PV_FINISH_LEAD_ADMISSION': '1'} if candidate == 'finish' else {
+        'SHENGJI_PV_EXACT_LEAD_ENDGAME': '1',
+        **({'SHENGJI_PV_EXACT_LEAD_FIRST_TRICK': '1'} if candidate == 'first' else {}),
+    }
     recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': path,
-                              'SHENGJI_PV_SHA256': sha,
-                              flag: '1'})
+                              'SHENGJI_PV_SHA256': sha, **flags})
     if expired:
         recipe['serving_budget_seconds'] = 1e-9
     entries = pv.pv_registry_entries(**recipe)
@@ -216,7 +218,8 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
         assert prepared is not None and room.bot is policy
         assert policy.sampler.rng.getstate() == before and rnd.hands[seat] == hand_before
         copied = prepared.decision.snapshot.bot_copy
-        attr = 'finish_lead_admission' if candidate == 'finish' else 'exact_lead_endgame'
+        attr = ('finish_lead_admission' if candidate == 'finish' else
+                'exact_lead_first_trick' if candidate == 'first' else 'exact_lead_endgame')
         assert copied is not policy and getattr(copied, attr)
         assert isinstance(copied, pv.PVSearchBuryBot)
         record = copied.last_decision_record
@@ -231,6 +234,10 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
             else:
                 assert record['exact_lead_status'] == 'complete'
                 assert record['exact_lead_worlds_completed'] == 64
+                if candidate == 'first':
+                    assert record['exact_lead_mode'] == 'first_trick'
+                else:
+                    assert 'exact_lead_mode' not in record
         assert list(prepared.decision.cards) == expected
         assert any(kind == 'model_search' for kind, _ in events)
         assert srv._commit_bot_turn(room, prepared)
@@ -241,13 +248,68 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
     asyncio.run(scenario())
 
 
+def test_exact_first_trick_is_a_distinct_opt_in_recipe_and_requires_endgame():
+    base = dict(checkpoint_sha256='f' * 64, worlds=2, candidates=8, cap=4000)
+    with pytest.raises(pv.PVSearchPolicyError, match='needs exact_lead_endgame'):
+        pv.recipe_payload(pv.PVSearchConfig(**base, exact_lead_first_trick=True))
+    leaf = pv.recipe_payload(pv.PVSearchConfig(**base, exact_lead_endgame=True))
+    first = pv.recipe_payload(pv.PVSearchConfig(
+        **base, exact_lead_endgame=True, exact_lead_first_trick=True))
+    assert 'exact_lead_first_trick' not in leaf
+    assert first['exact_lead_first_trick'] is True
+    name = pv.pv_policy_name('f' * 8, pv.PVSearchConfig(
+        **base, exact_lead_endgame=True, exact_lead_first_trick=True))
+    assert '-ele-elf-' in name
+
+
+def test_exact_first_trick_dispatches_through_real_search_stage(monkeypatch):
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True, exact_lead_first_trick=True)
+    calls = []
+    from shengji.train import pv_exact_endgame
+
+    def fake(*args, **kwargs):
+        calls.append((args, kwargs))
+        return np.array([0.0]), dict(worlds_completed=2, nodes=3, cache_hits=1)
+
+    monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', fake)
+    action = [rnd.hands[rnd.turn][0]]
+    base = (np.array([0.0]), 0, 0, action, 0)
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [], time.perf_counter(), None, [0.0], base)
+    assert result[3] == action and calls
+    assert policy._exact_lead['exact_lead_mode'] == 'first_trick'
+    assert policy._exact_lead['exact_lead_worlds_completed'] == 2
+
+
+def test_exact_first_trick_failure_restores_baseline(monkeypatch):
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True, exact_lead_first_trick=True)
+    policy._tiebreak = {'base': True}
+    from shengji.train import pv_exact_endgame
+
+    def fail(*args, **kwargs):
+        policy._tiebreak = {'baseline': True}
+        raise RuntimeError('first-trick evaluator failed')
+
+    monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', fail)
+    action = [rnd.hands[rnd.turn][0]]
+    base = (np.array([0.0]), 0, 0, action, 0)
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [], time.perf_counter(), None, [0.0], base)
+    assert result is base
+    assert policy._tiebreak == {'base': True}
+    assert policy._exact_lead['exact_lead_mode'] == 'first_trick'
+    assert policy._exact_lead['exact_lead_status'] == 'abandoned'
+
+
 @pytest.mark.parametrize('release', [44, 45])
 def test_portable_qualification_preserves_partial_and_refuses_overwrite(tmp_path, release):
     import runpy
     module = runpy.run_path(str(Path(__file__).parents[1] / 'scripts/qualify_exact_lead.py'))
     main = module['main']
     calls = []
-    async def incomplete(checkpoint, dest, selected_release):
+    async def incomplete(checkpoint, dest, selected_release=44, **_kwargs):
         calls.append((checkpoint, selected_release))
         dest.write('{"passed":false}\n')
         dest.flush()

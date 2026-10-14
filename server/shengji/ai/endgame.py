@@ -179,6 +179,21 @@ class _ExactSolver:
         self.cache_hits = 0
         self.cache: dict[tuple, int] = {}
         self.bounds: dict[tuple, tuple[float, float]] = {}
+        self.follow_actions: dict[tuple, tuple[tuple[str, ...], ...]] = {}
+
+    def actions(self, rnd: Round, seat: int) -> list[list[str]]:
+        # Legality of a follow depends on its hand, lead and ordering, not
+        # accumulated points or other seats' remaining cards. This cache lives
+        # within one solver; include rule context for standalone solver users.
+        # Return copies so neither engine play nor a caller can poison it.
+        if not self.alpha_beta or not rnd.trick.plays:
+            return exhaustive_legal_actions(rnd, seat, max_hand_cards=self.max_hand_cards)
+        key = (_context_key(rnd), self.max_hand_cards, seat, tuple(sorted(rnd.hands[seat])),
+               tuple(sorted(rnd.trick.plays[0].cards)))
+        if key not in self.follow_actions:
+            actions = exhaustive_legal_actions(rnd, seat, max_hand_cards=self.max_hand_cards)
+            self.follow_actions[key] = tuple(tuple(a) for a in actions)
+        return [list(a) for a in self.follow_actions[key]]
 
     def value(self, rnd: Round, alpha=float('-inf'), beta=float('inf')) -> int:
         if self.check_budget is not None:
@@ -213,8 +228,7 @@ class _ExactSolver:
         self.nodes += 1
 
         seat = rnd.turn
-        actions = exhaustive_legal_actions(
-            rnd, seat, max_hand_cards=self.max_hand_cards)
+        actions = self.actions(rnd, seat)
         maximize = rnd.is_attacker(seat)
         answer = float('-inf') if maximize else float('inf')
         for action in actions:

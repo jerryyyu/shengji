@@ -1,0 +1,147 @@
+"""S17 step 1: the belief evaluator (`shengji.train.belief_eval`).
+
+The metric and baseline arithmetic on hand-built arrays, the permuted-label
+control on synthetic data (a learnable signal must be learned; the same model on
+permuted labels must not beat the label-free prior), and one end-to-end run on
+a tiny synthetic extract through the real replay and the real sampler.
+"""
+from __future__ import annotations
+
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+torch = pytest.importorskip("torch")
+
+from shengji.train import belief_eval as be   # noqa: E402
+from shengji.train import belief_labels as bl  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_belief_labels import synthetic_cluster  # noqa: E402
+
+
+def test_masked_softmax_respects_the_mask():
+    logits = np.random.default_rng(0).normal(size=(3, 54, 4)).astype(np.float32)
+    mask = np.ones((3, 54, 4), bool)
+    mask[:, :, 3] = False
+    mask[0, 5] = False                       # a card with no hidden copy
+    p = be.masked_softmax(logits, mask, 1.5)
+    assert np.allclose(p[:, :, 3], 0)
+    assert np.allclose(p[0, 5], 0)
+    s = p.sum(-1)
+    assert np.allclose(s[mask.any(-1)], 1.0)
+
+
+def test_sampler_probs_smooth_only_feasible_receivers():
+    S = np.zeros((1, 54, 4), np.uint16)
+    S[0, 0, 0] = 512                         # 2 copies x 256 worlds, all with "next"
+    M = np.zeros((1, 54, 4), bool)
+    M[0, 0, :3] = True
+    p = be.sampler_probs(S, np.array([256]), M, alpha=1.0)
+    assert p[0, 0, 3] == 0
+    assert math.isclose(p[0, 0].sum(), 1.0)
+    assert p[0, 0, 0] == pytest.approx(513 / 515)
+    p0 = be.sampler_probs(S, np.array([256]), M, alpha=0.0)
+    assert p0[0, 0, 1] == 0                  # the unsmoothed marginal can be zero on a truth
+
+
+def test_uniform_weights_by_cards_held():
+    M = np.zeros((1, 54, 4), bool)
+    M[0, 0] = [True, True, False, True]
+    p = be.uniform_probs(np.array([[10, 20, 30, 8]]), M)
+    assert p[0, 0] == pytest.approx([10 / 38, 20 / 38, 0, 8 / 38])
+
+
+def test_copy_terms_subsets():
+    P = np.zeros((1, 54, 4))
+    Y = np.zeros((1, 54, 4), np.uint8)
+    P[0, 0] = [0.5, 0.25, 0.0, 0.25]
+    Y[0, 0, 0] = 1                           # in "next"
+    P[0, 1] = [0.2, 0.2, 0.2, 0.4]
+    Y[0, 1, 3] = 2                           # both copies in the kitty
+    t = be.copy_terms(P, Y)
+    assert t["all_n"][0] == 3 and t["hands_n"][0] == 1 and t["kitty_n"][0] == 2
+    assert t["hands_raw_ll"][0] == pytest.approx(-math.log(0.5))
+    assert t["hands_ll"][0] == pytest.approx(-math.log(0.5 / 0.75))     # kitty mass renormalized out
+    assert t["kitty_ll"][0] == pytest.approx(-2 * math.log(0.4))
+    assert t["all_mass"][0] == pytest.approx(0.5 + 0.8)
+
+
+def test_permutation_stays_inside_each_stratum():
+    strata = np.array([0, 0, 1, 1, 1, 2, 0, 2])
+    perm = be.permute_within_strata(strata, 3)
+    assert sorted(perm.tolist()) == list(range(len(strata)))
+    assert np.array_equal(strata[perm], strata)
+
+
+def _synthetic(n, rng):
+    """Every card's holder is the argmax of x[:3] (a learnable channel); the
+    kitty is never feasible; one copy per card."""
+    X = rng.normal(size=(n, 12)).astype(np.float32)
+    holder = X[:, :3].argmax(1)
+    Y = np.zeros((n, 54, 4), np.uint8)
+    Y[np.arange(n), :, :] = 0
+    for r in range(3):
+        Y[holder == r, :, r] = 1
+    M = np.zeros((n, 54, 4), bool)
+    M[:, :, :3] = True
+    return X, Y, M
+
+
+def test_the_permuted_control_does_not_learn_what_the_model_learns():
+    rng = np.random.default_rng(0)
+    X, Y, M = _synthetic(3000, rng)
+    Xc, Yc, Mc = _synthetic(600, rng)
+    Xt, Yt, Mt = _synthetic(600, rng)
+    model, _ = be.train_model(X, Y, M, Xc, Yc.astype(np.float32), Mc, hidden=16, epochs=4,
+                              lr=1e-2, batch=256, seed=0, log=lambda *a, **k: None)
+    perm = be.permute_within_strata(np.zeros(len(X), int), 1)
+    control, _ = be.train_model(X, Y[perm], M[perm], Xc, Yc.astype(np.float32), Mc, hidden=16,
+                                epochs=4, lr=1e-2, batch=256, seed=0, log=lambda *a, **k: None)
+    prior = math.log(3)                      # the label-free answer: uniform over three seats
+    ll_model = be.mean_ll(be.masked_softmax(be.predict_logits(model, Xt), Mt), Yt)
+    ll_control = be.mean_ll(be.masked_softmax(be.predict_logits(control, Xt), Mt), Yt)
+    assert ll_model < 0.5 * prior
+    assert ll_control > 0.97 * prior
+
+
+def test_fit_scalar_finds_a_minimum():
+    t = be.fit_scalar(lambda x: (math.log(x) - math.log(1.7)) ** 2, 0.25, 4.0)
+    assert t == pytest.approx(1.7, rel=1e-3)
+
+
+def test_deal_bootstrap_is_zero_for_identical_losses():
+    deal = np.repeat(np.arange(20), 5)
+    den = np.ones(100)
+    (lo, hi), = be.deal_bootstrap(deal, [den.copy()], den, reps=50)
+    assert lo == hi == 0.0
+
+
+def test_end_to_end_on_a_tiny_synthetic_extract(tmp_path, monkeypatch):
+    # 14 deals as one store; small sampler; a 1-epoch model -- the plumbing, not the science
+    store = tmp_path / "store" / "shards"
+    store.mkdir(parents=True)
+    for i, seed in enumerate(range(2000, 2014)):
+        with open(store / f"cluster-{i:06d}.jsonl", "w") as fh:
+            for r in synthetic_cluster(seed, throw_rate=0.2):
+                fh.write(json.dumps(r) + "\n")
+    monkeypatch.setattr(bl, "excluded_windows", lambda registry=None: [])
+    out = tmp_path / "extract"
+    m = bl.extract([str(tmp_path / "store")], str(out), cluster_stride=1, cluster_offset=0,
+                   max_clusters_per_store=None, calib=0.3, test=0.3, sampler_worlds=8,
+                   sampler_splits=("calib", "test"), sampler_stride=3, workers=1,
+                   task_clusters=7, log=lambda *a, **k: None)
+    assert not m["failed_clusters"]
+    splits = {s for c in m["chunks"] for s in c["files"]}
+    if splits != {"train", "calib", "test"}:
+        pytest.skip(f"synthetic deals did not fill every split: {sorted(splits)}")
+    md, res = be.run(str(out), hidden=8, epochs=1, lr=1e-3, batch=128, seed=0, threads=1,
+                     weight_decay=0.0, max_train_rows=None, log=lambda *a, **k: None)
+    assert "verdict" in md and res["stop_rule"]["verdict"] in ("PASS", "STOP")
+    for name in ("overall", "early", "mid", "late"):
+        assert set(res["tables"][name]) == {"model", "sampler", "control", "uniform"}
+    assert res["tables"]["overall"]["sampler"]["all"]["copies"] > 0

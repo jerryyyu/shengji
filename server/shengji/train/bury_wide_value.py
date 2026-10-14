@@ -54,6 +54,13 @@ ballot and the swaps already taken.  The record's ``wide_value`` gains
 ``swaps`` (2) and ``two_swap_count``; ``swap_count`` counts the single swaps
 taken.  ``swaps=1`` (the default) is the enumeration above, byte for byte.
 
+Optional second stage (``SHENGJI_PV_BURY_TWO_STAGE=1``, ``bury_two_stage``;
+only with the chooser on; bury-name token ``bts`` after ``bwv``/``bwv2``): after
+the argmax above, `bury_two_stage.run_stage_two` re-scores the value top-N on
+fresh common worlds with deeper policy-played positions and may replace the
+argmax; its record key is ``two_stage``.  Off (``bury_two_stage`` None, the
+class default) the chooser is the code above, byte for byte.
+
 Off (the default) nothing here is called by a decision: the bot's
 `_decide_bury` is the mixin's, every name, digest and record are unchanged.
 """
@@ -69,6 +76,7 @@ import numpy as np
 
 from ..ai.registry import make_bot
 from ..engine.cards import TRUMP, points
+from .bury_two_stage import RECORD_KEY as TWO_STAGE_RECORD_KEY, run_stage_two
 from .cwv_bury import score_bury_candidates
 from .cwv_bury_policy import BuryPolicyError, _seed, _worlds
 
@@ -287,6 +295,14 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
     model_counter_after = bot._counter(model_bot)
     if check_budget is not None:
         check_budget()
+    two_stage = bot.bury_two_stage
+    if two_stage is not None:
+        # the optional second stage (`bury_two_stage`): stage 1 is complete and
+        # inside the budget here; the stage has its own deadline and keeps
+        # ``picked`` on an expiry or an error, so it never reaches the fallback
+        stage1_seconds = time.perf_counter() - chooser_started
+        picked, stage_two = run_stage_two(bot, rnd, seat, candidates, means, two_stage,
+                                          started=started)
     now = time.perf_counter()
     bot.last_bury_record = {
         "schema": "cwv-bury-policy-v1",
@@ -327,6 +343,11 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
             **counts,
         },
     }
+    if two_stage is not None:
+        # ``model_seconds`` stays stage 1's; ``wide_value.seconds`` and
+        # ``elapsed_seconds`` include stage 2
+        bot.last_bury_record["model_seconds"] = stage1_seconds
+        bot.last_bury_record[TWO_STAGE_RECORD_KEY] = stage_two
     return list(candidates[picked])
 
 

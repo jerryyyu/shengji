@@ -16,7 +16,8 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | type | fields | when |
 |------|--------|------|
 | `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
-| `join_room` | `room` (4-letter code), `name`, optional `seat` | lobby, OR mid-game to claim a bot's seat |
+| `set_start_level` | `start_level` (same values) | host, lobby only; refused once the game has started |
+| `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
 | `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
 | `chat` | `text` (<=300 chars) | after joining |
 | `add_bot` | — | host, in lobby or between rounds |
@@ -47,15 +48,18 @@ lobby instead of retrying), and `"bad_start_level"` (`create_room` carried a
 `start_level` that is not a known rank). An unknown `start_level` is REFUSED,
 never coerced to `"2"`: silently downgrading it would hand the player a game
 their own lobby misdescribes. No room is created, and the socket stays usable.
+`"test_room_unavailable"` refuses a `create_room` that asks for a guarded test
+room (`test_policy`) when the server has them off (production does); such rooms
+add an `experimental_policy` field to `room` and `state`.
 
-### `{type: "room", room: string, you: number, host: number, start_level: string, players: RoomPlayer[]}`
+### `{type: "room", room: string, you: number, host: number, start_level: string, ready: number[], players: RoomPlayer[]}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
 
-`start_level` is the rank BOTH teams begin at, fixed when the room was created
-and echoed to everyone so a joiner knows what game they are taking a seat in.
-The victory condition is unchanged — a team still wins by successfully
-DEFENDING at `A` — so a higher start level is simply a shorter game. Starting
-at `"A"` is legal and means the first successful defence ends it.
+`start_level` is the rank BOTH teams begin at: set at `create_room`, changeable
+by the host with `set_start_level` until the game starts, and echoed to everyone
+so a joiner knows what game they are taking a seat in. A team wins a game by
+successfully DEFENDING at `A`, so a higher start level is simply a shorter game.
+The room then plays on (see `games_won` below).
 
 ### Trick plays carry a `shape`
 
@@ -65,7 +69,7 @@ whether pairs form a tractor depends on consecutiveness under the trump
 ordering, where trump-rank cards and jokers sit outside their printed ranks.
 The voice announcer inferred it and called a two-pair 甩牌 a 拖拉机.
 
-### `{type: "room_seats", room, in_game: bool, seats: [{seat, name, is_bot, connected, team}]}`
+### `{type: "room_seats", room, in_game: bool, seats: [{seat, name, is_bot, connected, team, claimable, reserved_secs, controller}]}`
 
 Reply to `peek_room`. Read-only: it does not seat the asker and reveals no
 private information. The lobby uses it to show a seat picker when a game is in
@@ -105,9 +109,14 @@ interface GameState {
     team: 0 | 1;                  // seat % 2
     cards_left: number;
     is_banker: boolean;
+    controller: "human" | "bot" | "bot_cover";  // bot_cover = a bot covering a dropped human
+    takeover_in: number | null;   // seconds before the bot covers a dropped human
+    reserved_for: string | null;  // the dropped owner's name while a bot covers the seat
+    reserved_secs: number | null; // seconds the seat stays reserved for its owner
   }[];
   hand: { id: number; code: string }[];   // your cards, sorted server-side
   levels: [string, string];       // rank symbol per team, e.g. ["2","5"]
+  games_won: [number, number];    // games each team has won by defending at A
   banker: number | null;          // banker seat (null before first declaration of game)
   trump: { suit: string | null; rank: string; declarer: number | null } | null;
     // suit: "S"|"H"|"D"|"C"|"NT" (jokers declared = no-trump). rank e.g. "2".
@@ -134,7 +143,9 @@ interface GameState {
     level_change: number;         // levels gained by winner
     next_banker: number;
     new_levels: [string, string];
-    game_over: boolean;
+    game_over: boolean;           // false in rooms: a table plays on
+    games_won: [number, number];
+    point_scored: boolean;        // this round won a game (a defence at A); levels restart
   } | null;
   message: string | null;         // transient info line ("Alice declared Hearts", "Throw failed \u2014 forced to play S3+S3", ...)
   notice: {                       // outlives `message`; null when there is none
@@ -163,12 +174,12 @@ server, so one player dismissing does not blank it for anyone else.
 3. **declare**: a short grace window (~5s) after the last card so anyone can still (over-)declare. `pass_declare` marks you done (you appear in `passed`); the window closes when every connected human has passed or the timer runs out — a new declaration resets both. If nobody declared at all, the server flips the kitty to fix trump. First round: first declarer's seat becomes banker; later rounds the banker is fixed by rotation and declaring only sets the suit.
 4. **bury**: banker's hand shows 33 cards (25 + 8 kitty); banker sends `bury` with 8 ids.
 5. **play**: `turn` rotates; send `play` with card ids. Server validates follow rules, resolves tricks (`last_trick` updates, `trick` resets to winner leading).
-6. **round_end**: `round_result` populated; any human sends `next_round` to start the next round (banker/levels advance per result).
-7. **game_over** when a team wins the round while on level A.
+6. **round_end**: `round_result` populated; every connected human sends `next_round` before the next round starts (banker/levels advance per result).
+7. A successful defence at level A scores a game: `point_scored` is set, `games_won` increments and both teams restart at the room's start level. Rooms never reach `game_over` (they are created with no game limit); the phase exists for engine games with a limit.
 
 ## Reconnect & lifecycle
 
-Rejoining with `join_room` using the same name reclaims the seat if it's disconnected, and the current `state` is resent. Bots act automatically after a short delay.
+Rejoining with `join_room` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.
 
 A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).
 

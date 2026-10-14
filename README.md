@@ -9,15 +9,17 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 38** (since 2026-10-03 09:41 ET): the SMV3 outcome-head package
-`smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds, 8 candidates) with four
-search rules (div, rc, tb, la in the diagram).
+**Live: release 45** (since 2026-10-13 05:27 ET): the SMV3 outcome-head package
+`smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds, 8 candidates) with five
+search rules (div, rc, tb, la, dtr in the diagram), the value-guided trump declaration (release 44)
+and the wide value-only bury (release 45). The model now owns declaration, bury and card play;
+the heuristic is the anchor and the fallback.
 
 ```mermaid
 flowchart TD
   turn(["bot's turn"]) --> phase{phase}
-  phase -->|declare| dec["heuristic declare"]
-  phase -->|bury| bury["hybrid bury: heuristic candidates,<br/>value head scores, MC picks among 4 alternatives<br/>(2 s budget, heuristic fallback)"]
+  phase -->|declare| dec["value declare: every legal declaration + PASS<br/>scored by the value head over 64 sampled completions;<br/>the heuristic's choice is replaced only when beaten<br/>(heuristic on expiry or error)"]
+  phase -->|bury| bury["wide value-only bury: 64 candidates (the hybrid ballot<br/>+ the heuristic bury's single-card swaps),<br/>value head picks, no MC stage<br/>(2 s budget, heuristic fallback)"]
   phase -->|play| anchor["heuristic play = anchor"]
   anchor --> legal["legal actions, capped at 4,000,<br/>anchor forced in"]
   legal --> worlds["sample 64 hidden worlds<br/>consistent with public info"]
@@ -28,24 +30,27 @@ flowchart TD
   div["div · during the walk: at most 2 per shape<br/>(suit, size, components); skip actions sharing all but<br/>one card with an admitted one, so lower-ranked actions<br/>enter; back-fill from the skipped if short"] -.-> admit
   admit --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
   value --> tb["tb · candidates within 0.02 level of the best:<br/>most root-team points from the current trick"]
-  tb --> play(["play"])
+  tb --> dtr["dtr · a selected lead throw the engine refuses in every<br/>world with the same forced component? exclude it and<br/>that component, re-select among the admitted leads"]
+  dtr --> play(["play"])
 ```
 
 **Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
 | change | against | result | reading |
 |---|---|---|---|
+| wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) |
+| value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) |
+| doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim |
 | div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) |
 | + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) |
 | SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) |
 | policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] |
-| adaptive K16 | release 36 | −0.0061 [−0.0303, +0.0181] | inconclusive, not taken |
-| PUCT (package prior / uniform) | release 36 | −0.417 / −0.894 | closed (#436) |
 
-The exact contract, the caveats on these reads and every earlier release:
+The exact contract, the caveats on these reads, what was tried and not taken, and every earlier release:
 [AI_POLICIES.md](AI_POLICIES.md#production-contract) and its
 [ladder](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
-Rollback and gates: [DEPLOY.md](DEPLOY.md). Open work: board issue #707 and [RL_PLAN.md](RL_PLAN.md).
+Rollback and gates: [DEPLOY.md](DEPLOY.md). Every screen: [Atlas v2](docs/atlas_v2/registry.json).
+Open work: board issue #707 and [RL_PLAN.md](RL_PLAN.md#planned-work).
 
 ## Quick start
 
@@ -93,8 +98,10 @@ Headless bot-vs-bot evaluation: `uv run python -m shengji.ai.env`.
 - Points: 5s=5, 10s/Ks=10 (200 total). Attackers win at 80; taking the last
   trick multiplies kitty points by 2 × the size of the winning play.
 - Scoring: attackers at 0 give the banker +3, under 40 +2, under 80 +1;
-  attackers at 80+ take the deal and gain (points−80)/40 levels. The game is
-  won by **defending** at level A.
+  attackers at 80+ take the deal and gain (points−80)/40 levels. A game is
+  won by **defending** at level A. A room then plays on: the winning team
+  scores a game and both teams restart at the room's starting level, which the
+  host picks before the first deal.
 
 House rules (v1): throws are checked against all three other hands with no
 10-point penalty; pair obligations for multi-component throws use the
@@ -110,9 +117,11 @@ server/shengji/ai/       policies: heuristic.py, smart.py + memory.py (card-coun
                          world sampling), registry.py (SHENGJI_BOT names are derived
                          from the fly.toml env, never hand-written)
 server/shengji/train/    pv_search_policy.py + policy_value_search.py (the served play
-                         search), cwv_bury_policy.py (hybrid bury), the shortlist-era
-                         bots, screens
+                         search, value declare and wide bury), cwv_bury_policy.py (hybrid
+                         bury), the shortlist-era bots, screens
 server/shengji/rl/       encoders, action enumeration, the value/policy model, trainer
+server/shengji/harvest/  self-play trajectory corpora (the training data)
+server/shengji/eval/     diagnostic panels, readers and the tactical fixture runner
 server/shengji/api/      FastAPI WebSocket server (rooms, bots, per-seat state)
 server/scripts/          export_cwv_numpy.py, cwv_serving_gate.py, cwv_serving_smoke.py,
                          replay.py, xray.py
@@ -131,9 +140,10 @@ codes per seat so hidden information never leaves the server.
 - The shortlist-era packages (releases 22–28): registered rollbacks (order in [DEPLOY.md](DEPLOY.md)).
 - `smart` and `heuristic`: the hand-written baselines.
 
-Closed lanes (G1's grid trunk in play, PUCT with the heads, root allocation, the BELIEF and
-privileged-teacher teachers, direct-Q, Suphx O0) are lessons in
-[AI_POLICIES.md](AI_POLICIES.md) and [RL_PLAN.md](RL_PLAN.md), not policies.
+Closed lanes (PUCT with the heads, root allocation, the BELIEF and privileged-teacher
+teachers, direct-Q, Suphx O0) are lessons in [AI_POLICIES.md](AI_POLICIES.md) and
+[RL_PLAN.md](RL_PLAN.md), not policies. The G1 grid trunk, a served null in gen 4, is back as the
+C14 training run (RL_PLAN "Planned work").
 
 ## Debugging & analysis tools
 
@@ -159,6 +169,7 @@ privileged-teacher teachers, direct-Q, Suphx O0) are lessons in
 | GitHub issue #707 + topic issues | the live investigation board and work queue |
 | `docs/atlas_v2/` | every screen since release 29 (`registry.json`) |
 | `docs/scaling_log/` | every model with its offline metrics; engine and search speed (with issue #208) |
+| `docs/EXTERNAL_SSD.md` | what lives on the external SSD (corpora, backups) and its rules |
 | `incidents/` / `server/tests/` | postmortems; the validation suite |
 | `AGENTS.md` | execution discipline and agent orchestration |
 | `HANDOFF_REVIEW.md` | frozen authority markers (#674) |

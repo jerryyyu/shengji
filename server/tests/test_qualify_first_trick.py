@@ -8,6 +8,7 @@ import pytest
 from types import SimpleNamespace
 
 from scripts import qualify_exact_lead as q
+from test_encoder_round_compat import pinned_production_package  # noqa: F401
 
 
 class _Round:
@@ -148,3 +149,44 @@ def test_first_trick_accepts_different_action_and_preserves_partial_on_failure(m
         asyncio.run(q.qualify('model.npz', partial, first_trick=True))
     assert len(partial.getvalue().splitlines()) == 1
     assert json.loads(partial.getvalue())['enabled'] is False
+
+
+def test_release45_real_recipe_reaches_qualifier_consumer(monkeypatch, pinned_production_package):
+    """Real recipe/registry/constructor; synthetic API decision avoids a host run."""
+    real_env, real_entries = q.pv_env_recipe, q.pv_registry_entries
+    _install_synthetic(monkeypatch, [])
+    observed = []
+
+    def entries(**kwargs):
+        actual = real_entries(**kwargs)
+        name, = actual
+        built = actual[name](seed=941210121)
+        assert built.bury_wide_value and built.bury_wide_k == 64
+        assert built.worlds == 64 and built.candidates == 8
+        enabled = kwargs.get('exact_lead_endgame', False)
+        assert built.exact_lead_first_trick is enabled
+        observed.append(name)
+        return {name: lambda **kw: _Bot(enabled, enabled)}
+
+    monkeypatch.setattr(q, 'pv_env_recipe', real_env)
+    monkeypatch.setattr(q, 'pv_registry_entries', entries)
+    dest = io.StringIO()
+    assert asyncio.run(q.qualify(pinned_production_package, dest,
+                                first_trick=True, release45=True)) == 0
+    assert observed[0] == q.BASELINE45
+    rows = [json.loads(line) for line in dest.getvalue().splitlines()]
+    assert all(row['passed'] and row['committed'] and row['recipe_release'] == 45 for row in rows)
+    assert all('not a release45 trajectory' in row['root_provenance'] for row in rows)
+
+
+def test_release45_cli_forwards_both_flags(monkeypatch, tmp_path):
+    calls = []
+
+    async def qualify(checkpoint, dest, **kwargs):
+        calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(q, 'qualify', qualify)
+    assert q.main(['--checkpoint', 'model.npz', '--out', str(tmp_path / 'out'),
+                   '--first-trick', '--release45']) == 0
+    assert calls == [dict(first_trick=True, release45=True)]

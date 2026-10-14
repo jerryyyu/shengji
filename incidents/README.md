@@ -1,7 +1,8 @@
 # Incidents
 
 Postmortems for correctness and operational failures. One file per
-incident, newest first. Numbers are assigned on publication to `main`; INC-20..22
+incident, newest first. INC-03..06, 08, 09 and 11 never had a file in this folder; their
+rows here and the incident log in the archived correctness ledger below are the record. Numbers are assigned on publication to `main`; INC-20..22
 were written locally as 13..15 and renumbered when published. `docs_archive/correctness-through-2026-09-22.md` (archived 2026-09-22) keeps the one-line index and
 the rules these incidents produced; this folder keeps the reasoning.
 
@@ -26,12 +27,13 @@ the rules these incidents produced; this folder keeps the reasoning.
 | [INC-14](INC-20260812-14-claude-session-cron-missed.md) | 08-12 | S3 | Session-only reviewer cron missed the launch-blocking 15:11 cycle | local task timeline/state timestamps |
 | [INC-13](INC-20260812-13-s4-child-boundary-launch-failure.md) | 08-12 | S3 | Reviewed S4 controller launched 16 children that all refused before gameplay | exact native child smoke after launch failure |
 | [INC-12](INC-20260812-12-fleet-monitor-false-negative.md) | 08-12 | S3 | Wrong process filter reported Air idle and triggered a duplicate S6 census | exact process/namespace reconciliation |
-| [INC-11](INC-20260803-11-fast-path-noop.md) | 08-03 | S4 | `SHENGJI_FAST=1` was a no-op outside pytest | validation agent |
+| INC-11 | 08-03 | S4 | `SHENGJI_FAST=1` was a no-op outside pytest | validation agent |
+| [unnumbered](2026-08-03-banker-search-disabled.md) | 08-03 | S2 | Banker MC search silently disabled by BANKER_KITTY (the burial was subtracted twice) | Codex review |
 | [INC-10](INC-20260803-10-orphaned-workers.md) | 08-03 | S1 | Orphaned workers wrote buggy-code data for 10h | process-age audit |
-| [INC-09](INC-20260803-09-throw-penalty-rule.md) | 08-03 | S2 | Failed throws forfeited the first, not lowest, beatable component | Jerry, from play |
-| [INC-08](INC-20260803-08-cython-drift.md) | 08-03 | S4 | Cython port implemented pre-audit memo semantics | contract tests |
+| INC-09 | 08-03 | S2 | Failed throws forfeited the first, not lowest, beatable component | Jerry, from play |
+| INC-08 | 08-03 | S4 | Cython port implemented pre-audit memo semantics | contract tests |
 | [INC-07](INC-20260803-07-cache-key-mismatch.md) | 08-03 | S1 | Memo keys didn't capture order-dependent computation | audit agent |
-| [INC-06](INC-20260802-06-determinism.md) | 08-02 | S2 | Hash-ordered iteration made "fixed seeds" irreproducible | golden tests |
-| [INC-05](INC-20260802-05-cache-alias.md) | 08-02 | S1 | Memo returned mutable lists a caller mutated | golden tests |
-| [INC-04](INC-20260802-04-ballot-leak.md) | 08-02 | S2 | MCBot default flip silently widened RL play-time ballots | Jerry's question |
-| [INC-03](INC-20260801-03-elo-798.md) | 08-01 | S2 | Ballot change collapsed the deployed net to Elo 798 | pool anomaly |
+| INC-06 | 08-02 | S2 | Hash-ordered iteration made "fixed seeds" irreproducible | golden tests |
+| INC-05 | 08-02 | S1 | Memo returned mutable lists a caller mutated | golden tests |
+| INC-04 | 08-02 | S2 | MCBot default flip silently widened RL play-time ballots | Jerry's question |
+| INC-03 | 08-01 | S2 | Ballot change collapsed the deployed net to Elo 798 | pool anomaly |

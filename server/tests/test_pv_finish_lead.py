@@ -230,16 +230,21 @@ def test_env_factory_identity_and_budget_fallback(package):
         pv.pv_env_recipe({**env, 'SHENGJI_PV_FINISH_LEAD_ADMISSION': 'yes'})
 
 
-@pytest.fixture(params=['tiny', 'production'])
-def decision_package(request):
-    if request.param == 'tiny':
-        return request.getfixturevalue('package')
-    return str(request.getfixturevalue('pinned_production_package')), PACKAGE_SHA
+@pytest.mark.parametrize('expired', [False, True])
+def test_tiny_recipe_candidate_survives_server_snapshot_and_commit(package, tmp_path, expired):
+    _check_recipe_candidate_snapshot_and_commit(package, tmp_path, expired)
 
 
 @pytest.mark.parametrize('expired', [False, True])
 @pytest.mark.parametrize('candidate', ['finish', 'exact', 'first'])
-def test_current_recipe_candidate_survives_server_snapshot_and_commit(decision_package, tmp_path, expired, candidate):
+def test_current_recipe_candidate_survives_server_snapshot_and_commit(pinned_production_package, tmp_path, expired, candidate):
+    # Do not depend on the Torch-exported tiny fixture: the required production
+    # package gate deliberately runs without Torch and must execute both cases.
+    _check_recipe_candidate_snapshot_and_commit(
+        (str(pinned_production_package), PACKAGE_SHA), tmp_path, expired, candidate)
+
+
+def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expired, candidate='finish'):
     """Current serving flags/W64/bury wrapper and actual API consumer.
 
     Tiny and hash-pinned production packages; not a strength comparison or

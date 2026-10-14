@@ -22,9 +22,10 @@ from shengji.train.pv_search_policy import pv_env_recipe, pv_registry_entries
 
 PACKAGE_SHA = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
 BASELINE = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6'
+BASELINE45 = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8'
 
 
-async def qualify(checkpoint, dest, *, first_trick=False):
+async def qualify(checkpoint, dest, *, first_trick=False, release45=False):
     packet = json.loads((Path(__file__).resolve().parents[1] /
                          'tests/fixtures/r44_joker_lead.json').read_text())
     env = dict(SHENGJI_PV_CKPT=str(checkpoint), SHENGJI_PV_SHA256=PACKAGE_SHA,
@@ -34,14 +35,16 @@ async def qualify(checkpoint, dest, *, first_trick=False):
         SHENGJI_PV_LEAD_ANCHOR='1', SHENGJI_PV_DOOMED_THROW_RESELECT='1',
         SHENGJI_PV_VALUE_DECLARE='1', SHENGJI_PV_SERVING_BUDGET_SECONDS='3',
         SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2')
+    if release45:
+        env.update(SHENGJI_PV_BURY_WIDE_VALUE='1', SHENGJI_PV_BURY_WIDE_K='64')
     for enabled in (False, True):
         entries = pv_registry_entries(**pv_env_recipe({**env,
             'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled)),
             'SHENGJI_PV_EXACT_LEAD_FIRST_TRICK': str(int(enabled and first_trick)),
         }))
         name, = entries
-        if not enabled and name != BASELINE:
-            raise ValueError('release44 recipe drift')
+        if not enabled and name != (BASELINE45 if release45 else BASELINE):
+            raise ValueError('release45 recipe drift' if release45 else 'release44 recipe drift')
         rnd, ledger = restore_with_ledger(packet)
         bot = entries[name](seed=941210121)
         bot._refusals = ledger
@@ -88,6 +91,8 @@ async def qualify(checkpoint, dest, *, first_trick=False):
                    action_record=action_record, value_record=value_record,
                    cost_record=cost_record,
                    machine=platform.machine(), system=platform.system())
+        if release45:
+            row.update(recipe_release=45, root_provenance='historical release44 fixed root; not a release45 trajectory')
         dest.write(json.dumps(row)+'\n')
         dest.flush()
         print(json.dumps({k:v for k,v in row.items() if k != 'record'}), flush=True)
@@ -102,8 +107,13 @@ def main(argv=None):
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--first-trick', action='store_true',
                         help='screen exact first-trick mechanism; no action-strength claim')
+    parser.add_argument('--release45', action='store_true',
+                        help='use release45 serving recipe on the historical fixed root')
     args = parser.parse_args(argv)
     with args.out.open('x') as dest:
+        if args.release45:
+            return asyncio.run(qualify(args.checkpoint, dest,
+                                      first_trick=args.first_trick, release45=True))
         if args.first_trick:
             return asyncio.run(qualify(args.checkpoint, dest, first_trick=True))
         return asyncio.run(qualify(args.checkpoint, dest))

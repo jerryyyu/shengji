@@ -10,6 +10,7 @@ import pytest
 from shengji.ai.endgame import (ExactEndgameBudgetExceeded,
                                 ExactEndgameRefusal, _clone_for_play)
 from shengji.ai.endgame import solve_exact_endgame
+from shengji.ai.endgame import ExactWorldSession
 from shengji.engine.cards import Ordering
 from shengji.engine.round import Round, Trick, TrickPlay
 from shengji.rl.value_afterstate import category_signed_level, signed_level_category
@@ -27,6 +28,43 @@ def _round(hands, *, leader=0, banker=0, buried=()):
     rnd.turn = leader
     rnd.deck = [card for hand in hands for card in hand] + list(buried)
     return rnd
+
+
+@pytest.mark.parametrize('leader', range(4))
+@pytest.mark.parametrize('alpha_beta', [False, True])
+def test_value_only_matches_action_solver_and_reuses_root(leader, alpha_beta):
+    rnd = _round([['C3', 'C4'], ['C5', 'C6'], ['C8', 'C9'], ['CA', 'C10']],
+                 leader=leader, buried=['D5'])
+    before = copy.deepcopy(rnd)
+    expected = solve_exact_endgame(rnd, max_nodes=10000).attacker_points
+    session = ExactWorldSession(rnd, max_nodes=10000, alpha_beta=alpha_beta)
+    assert session.value(rnd) == expected
+    nodes = session.nodes
+    assert session.value(rnd) == expected
+    assert session.nodes == nodes and session.cache_hits > 0
+    assert rnd.hands == before.hands and rnd.trick == before.trick
+    changed = copy.deepcopy(rnd)
+    changed.buried = ['D10']
+    with pytest.raises(ExactEndgameRefusal, match='context'):
+        session.value(changed)
+
+
+def test_value_only_retains_budget_and_cancellation():
+    rnd = _round([['C3'], ['C4'], ['C5'], ['CA']])
+    with pytest.raises(ExactEndgameBudgetExceeded):
+        ExactWorldSession(rnd, max_nodes=1).value(rnd)
+    def cancel():
+        raise RuntimeError('cancelled')
+    with pytest.raises(RuntimeError, match='cancelled'):
+        ExactWorldSession(rnd, check_budget=cancel).value(rnd)
+
+
+def test_value_only_avoids_unneeded_full_window_root_action_scores():
+    rnd = _round([['C3', 'C4'], ['C5', 'C6'], ['C8', 'C9'], ['CA', 'C10']])
+    action_session = ExactWorldSession(rnd, alpha_beta=True)
+    scalar_session = ExactWorldSession(rnd, alpha_beta=True)
+    assert scalar_session.value(rnd) == action_session.solve(rnd).attacker_points
+    assert scalar_session.nodes < action_session.nodes
 
 
 def test_first_trick_means_applies_real_engine_lead_and_preserves_root():
@@ -121,17 +159,35 @@ def test_first_trick_means_matches_individual_solves_for_multiple_worlds_actions
     assert stats["nodes"] > 0
 
 
-def test_first_trick_retained_world_values_are_paired_and_not_recomputed():
+def test_first_trick_retained_world_values_are_paired_and_not_recomputed(monkeypatch):
     rnd = _round([["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"]])
     world = (copy.deepcopy(rnd.hands), [])
+    calls = []
+    value = ExactWorldSession.value
+
+    def counted_value(session, leaf):
+        calls.append(session)
+        return value(session, leaf)
+
+    def unexpected_action_solve(*args, **kwargs):
+        raise AssertionError('the value consumer must not score discarded root actions')
+
+    monkeypatch.setattr(ExactWorldSession, 'value', counted_value)
+    monkeypatch.setattr(ExactWorldSession, 'solve', unexpected_action_solve)
     means, stats = exact_first_trick_means(
         rnd, 0, [["C3"], ["C4"]], [world], max_nodes=100_000,
         retain_world_values=True)
     matrix = stats["world_values"]
     assert matrix.shape == (1, 2)
     assert means.tolist() == pytest.approx(matrix.mean(axis=0).tolist())
-    assert "world_values" not in exact_first_trick_means(
-        rnd, 0, [["C3"]], [world], max_nodes=100_000)[1]
+    assert len(calls) == 2 and calls[0] is calls[1]
+    calls.clear()
+    plain_means, plain_stats = exact_first_trick_means(
+        rnd, 0, [["C3"], ["C4"]], [world], max_nodes=100_000)
+    assert len(calls) == 2 and calls[0] is calls[1]
+    assert "world_values" not in plain_stats
+    assert plain_means.tolist() == means.tolist()
+    assert plain_stats == {key: val for key, val in stats.items() if key != 'world_values'}
 
 
 @pytest.mark.parametrize(("leader", "expected"), [(0, 2.5), (1, -2.5)])

@@ -51,6 +51,20 @@ Only a complete all-candidate/all-world pass may replace baseline scores; a
 node cap, error or deadline preserves the finalized baseline decision. This
 is sampled-world perfect-information continuation, not an imperfect-information
 solution. Limits are recipe-pinned; tree/adaptive/oracle combinations are refused.
+Two independent variants, each OFF BY DEFAULT and refused without
+``SHENGJI_PV_EXACT_LEAD_ENDGAME=1``:
+``SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1`` (token ``elt``) keeps the finalized
+baseline lead unless the exact-selected lead's exact mean is STRICTLY higher
+than the exact mean of the baseline's selected candidate.  The comparison is
+exact float equality: every exact mean is a sum of half-integer level
+categories over the worlds divided by the world count, so equal sums are
+bit-equal and no epsilon is needed (a tolerance could only merge genuinely
+different means).  ``SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1`` (token ``elp``)
+completes the first trick's three responses with the served policy head's
+argmax, each responder encoded on worlds sampled from its own view
+(`exact_lead_policy_first`), instead of the heuristic; the exact solve after
+that trick is unchanged.  Both run inside the same exact-lead stage, deadline
+and fallback.
 
 Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
 ``SHENGJI_PV_ADMISSION_DIVERSITY=1`` caps near-duplicate throws in the K-1
@@ -524,6 +538,7 @@ from .cwv_bury_policy import (_ARMS as BURY_ARMS, _MODEL_ARMS as BURY_MODEL_ARMS
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
 from .leaf_first_trick import PolicyFirstTrick
+from .exact_lead_policy_first import LIMITS as EXACT_LEAD_POLICY_LIMITS
 from .bury_two_stage import (TOKEN as BURY_TWO_STAGE_TOKEN, TwoStageConfig as BuryTwoStageConfig)
 from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as BURY_WIDE_CHOOSER,
                               WIDE_K_MAX as BURY_WIDE_K_MAX,
@@ -582,6 +597,16 @@ WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 WIDE_LEAD_K = 32
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
+#: its two optional variants (module docstring); each requires ``exact_lead_endgame``
+EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
+                            "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
+#: the tie rule's recipe identity: the exact pass replaces the baseline lead
+#: only on a strictly higher exact mean (exact float comparison)
+EXACT_LEAD_TIE_RULE = "replace-only-if-selected-exact-mean-gt-baseline-exact-mean"
+_EXACT_LEAD_VARIANT_REQUIRES = ("exact_lead_tie_baseline / exact_lead_policy_first require "
+                                "exact_lead_endgame (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1 or "
+                                "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1 needs "
+                                "SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
 EXACT_LEAD_LIMITS = dict(max_hand_cards=4, max_nodes=10000, max_seconds=2.25,
                          start_fraction=0.5, soft_fraction=0.8)
 FINISH_LEAD_MAX_CARDS = 8
@@ -704,11 +729,15 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
-              **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE}
+              **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
+              **EXACT_LEAD_VARIANT_RULES}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"),
-                                                   ("exact_lead_endgame", "ele"), ADAPTIVE_K_TOKEN,
+                                                   ("exact_lead_endgame", "ele"),
+                                                   ("exact_lead_tie_baseline", "elt"),
+                                                   ("exact_lead_policy_first", "elp"),
+                                                   ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
@@ -897,6 +926,9 @@ class PVSearchConfig:
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
     finish_lead_admission: bool = False
     exact_lead_endgame: bool = False
+    # its two optional variants (module docstring); each requires it
+    exact_lead_tie_baseline: bool = False
+    exact_lead_policy_first: bool = False
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -970,6 +1002,13 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         payload['exact_lead_limits'] = EXACT_LEAD_LIMITS
+    if (config.exact_lead_tie_baseline or config.exact_lead_policy_first) \
+            and not config.exact_lead_endgame:
+        raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
+    if config.exact_lead_tie_baseline:
+        payload['exact_lead_tie_rule'] = EXACT_LEAD_TIE_RULE
+    if config.exact_lead_policy_first:
+        payload['exact_lead_policy_first_limits'] = EXACT_LEAD_POLICY_LIMITS
     if config.finish_lead_admission:
         if config.tree is not None:
             raise PVSearchPolicyError('finish_lead_admission does not combine with the tree')
@@ -1195,6 +1234,9 @@ class PVSearchBot(PolicyValueBot):
     value_declare_wait = VALUE_DECLARE_WAIT_DEFAULTS["value_declare_wait"]
     declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
     leaf_policy_first_trick = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
+    #: the exact lead's two optional variants (module docstring): class-level OFF
+    exact_lead_tie_baseline = False
+    exact_lead_policy_first = False
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
     #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
     #: screen harness); None = unbound, and an oracle bot then refuses to play
@@ -1279,6 +1321,14 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         self.exact_lead_endgame = config.exact_lead_endgame
         self._exact_lead = None
+        for key in EXACT_LEAD_VARIANT_RULES.values():
+            if type(getattr(config, key)) is not bool:
+                raise PVSearchPolicyError(f'{key} must be a bool')
+            if getattr(config, key):
+                if not config.exact_lead_endgame:
+                    raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
+                # instance state only when on: a flag-off bot is exactly S18's
+                setattr(self, key, True)
         self._finish_lead_added = False
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
@@ -2378,16 +2428,37 @@ class PVSearchBot(PolicyValueBot):
             budget_errors=PVSearchBudgetExceeded, soft_deadline=deadline,
             clock=lambda: time.perf_counter(), soft_error=_AdaptiveWorldsExpired,
             final_check=check_budget, abandon_on=Exception)
+        policy_first = None
+        if self.exact_lead_policy_first:
+            # the ``elp`` variant (module docstring): same stage, guard and fallback
+            from .exact_lead_policy_first import ExactLeadPolicyFirst
+            policy_first = ExactLeadPolicyFirst(
+                self.predict, self.version, check_budget=stage.guard,
+                seed=f'elp|{self.seed}|{len(rnd.history)}|{seat}',
+                view_worlds=EXACT_LEAD_POLICY_LIMITS['view_worlds'])
+        kept_index = None
         with stage:
-            means, stats = exact_lead_means(rnd, seat, admitted, worlds, self._leaf, stage.guard,
+            leaf_fn = (self._leaf if policy_first is None
+                       else policy_first.leaf_fn(rnd, seat, admitted, worlds))
+            means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
                                            max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
             stage.guard()
             winner = self._select(rnd, seat, admitted, means, worlds=worlds,
                                   check_budget=stage.guard, priors=priors)
             played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, stage.guard)
             stage.guard()
+            if self.exact_lead_tie_baseline and not means[winner] > means[base[2]]:
+                # the ``elt`` variant: no strict exact improvement keeps the
+                # finalized baseline lead and its selection-rule records
+                stage.restore()
+                kept_index, winner, played = int(winner), base[2], list(base[3])
             stage.publish()
         state['exact_lead_seconds'] = time.perf_counter() - now
+        if policy_first is not None:
+            state.update(exact_lead_first_trick='policy', **policy_first.counters())
+        if self.exact_lead_tie_baseline:
+            state.update(exact_lead_tie_baseline_kept=kept_index is not None,
+                         exact_lead_tie_baseline_exact_index=kept_index)
         if stage.abandoned:
             state.update(exact_lead_status='abandoned', exact_lead_worlds_completed=None,
                          exact_lead_abandon_reason=stage.reason, exact_lead_abandon_error=stage.error)
@@ -2800,6 +2871,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
                        finish_lead_admission: bool = False,
                        exact_lead_endgame: bool = False,
+                       exact_lead_tie_baseline: bool = False,
+                       exact_lead_policy_first: bool = False,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -2860,6 +2933,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             wide_lead_admission=wide_lead_admission,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
+                            exact_lead_tie_baseline=exact_lead_tie_baseline,
+                            exact_lead_policy_first=exact_lead_policy_first,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -2953,6 +3028,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
                         finish_lead_admission: bool = False,
                         exact_lead_endgame: bool = False,
+                        exact_lead_tie_baseline: bool = False,
+                        exact_lead_policy_first: bool = False,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -2994,6 +3071,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             wide_lead_admission=wide_lead_admission,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
+                            exact_lead_tie_baseline=exact_lead_tie_baseline,
+                            exact_lead_policy_first=exact_lead_policy_first,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3083,6 +3162,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                wide_lead_admission=config.wide_lead_admission,
                                finish_lead_admission=config.finish_lead_admission,
                                exact_lead_endgame=config.exact_lead_endgame,
+                               exact_lead_tie_baseline=config.exact_lead_tie_baseline,
+                               exact_lead_policy_first=config.exact_lead_policy_first,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
@@ -3117,7 +3198,8 @@ def pv_env_recipe(environ=None) -> dict:
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
-    ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
+    ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_EXACT_LEAD_ENDGAME`` /
+    ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``

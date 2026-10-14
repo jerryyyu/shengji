@@ -159,6 +159,37 @@ def test_first_trick_means_matches_individual_solves_for_multiple_worlds_actions
     assert stats["nodes"] > 0
 
 
+def test_first_trick_retained_world_values_are_paired_and_not_recomputed(monkeypatch):
+    rnd = _round([["C3", "C4"], ["C5", "C6"], ["C8", "C9"], ["CA", "C10"]])
+    world = (copy.deepcopy(rnd.hands), [])
+    calls = []
+    value = ExactWorldSession.value
+
+    def counted_value(session, leaf):
+        calls.append(session)
+        return value(session, leaf)
+
+    def unexpected_action_solve(*args, **kwargs):
+        raise AssertionError('the value consumer must not score discarded root actions')
+
+    monkeypatch.setattr(ExactWorldSession, 'value', counted_value)
+    monkeypatch.setattr(ExactWorldSession, 'solve', unexpected_action_solve)
+    means, stats = exact_first_trick_means(
+        rnd, 0, [["C3"], ["C4"]], [world], max_nodes=100_000,
+        retain_world_values=True)
+    matrix = stats["world_values"]
+    assert matrix.shape == (1, 2)
+    assert means.tolist() == pytest.approx(matrix.mean(axis=0).tolist())
+    assert len(calls) == 2 and calls[0] is calls[1]
+    calls.clear()
+    plain_means, plain_stats = exact_first_trick_means(
+        rnd, 0, [["C3"], ["C4"]], [world], max_nodes=100_000)
+    assert len(calls) == 2 and calls[0] is calls[1]
+    assert "world_values" not in plain_stats
+    assert plain_means.tolist() == means.tolist()
+    assert plain_stats == {key: val for key, val in stats.items() if key != 'world_values'}
+
+
 @pytest.mark.parametrize(("leader", "expected"), [(0, 2.5), (1, -2.5)])
 def test_first_trick_means_supports_both_partnership_perspectives(leader, expected):
     rnd = _round([["C3"], ["C4"], ["C5"], ["CA"]], leader=leader)

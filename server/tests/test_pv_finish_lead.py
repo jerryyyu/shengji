@@ -16,6 +16,8 @@ import pytest
 
 from shengji.rl.replay_log import rebuild_round
 from shengji.harvest.legal import resolve_lead
+from shengji.ai.registry import REGISTRY, make_bot, register_pv_search_policies
+from shengji.train import cwv_shortlist_screen as screen
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_pv_search_serving import package  # noqa: F401
@@ -37,6 +39,74 @@ def bot(on, **kw):
                          config=pv.PVSearchConfig(checkpoint_sha256='f' * 64,
                              worlds=2, candidates=8, cap=4000,
                              finish_lead_admission=on, **kw), checkpoint='/dev/null', seed=7)
+
+
+def test_r45_exact_lead_registry_binds_through_shortlist_screen(pinned_production_package):
+    """The r45 served recipe and exact-lead candidate reach the real screen consumer.
+
+    This is a construction/identity test only: it does not play a deal or score a
+    diagnostic.  The candidate changes one rule flag and keeps the production
+    declaration, play/bury budgets, and wide-value bury cap unchanged.
+    """
+    package = pinned_production_package
+    package_sha = PACKAGE_SHA
+    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    base_env = {**env, 'SHENGJI_PV_CKPT': str(package), 'SHENGJI_PV_SHA256': package_sha}
+    candidate_env = {**base_env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME': '1'}
+    base_recipe = pv.pv_env_recipe(base_env)
+    candidate_recipe = pv.pv_env_recipe(candidate_env)
+    base_recipe.setdefault('exact_lead_endgame', False)
+    base_recipe.setdefault('exact_lead_first_trick', False)
+    candidate_recipe.setdefault('exact_lead_endgame', False)
+    candidate_recipe.setdefault('exact_lead_first_trick', False)
+    assert candidate_recipe.keys() == base_recipe.keys()
+    changed = {key for key in base_recipe if base_recipe[key] != candidate_recipe[key]}
+    assert changed == {'exact_lead_endgame'}
+    assert base_recipe['exact_lead_endgame'] is False
+    assert candidate_recipe['exact_lead_endgame'] is True
+    assert candidate_recipe.get('exact_lead_first_trick', False) is False
+
+    base_recipe = dict(base_recipe)
+    candidate_recipe = dict(candidate_recipe)
+    base_checkpoint = base_recipe.pop('checkpoint')
+    candidate_checkpoint = candidate_recipe.pop('checkpoint')
+    original_registry = dict(REGISTRY)
+    try:
+        base_names = register_pv_search_policies(base_checkpoint, **base_recipe)
+        candidate_names = register_pv_search_policies(candidate_checkpoint, **candidate_recipe)
+        official = env['SHENGJI_BOT']
+        assert base_names == [official]
+        assert len(candidate_names) == 1 and candidate_names[0] != official
+        base = make_bot(official, seed=0)
+        candidate = make_bot(candidate_names[0], seed=0)
+        assert isinstance(base, pv.PVSearchBuryBot)
+        assert isinstance(candidate, pv.PVSearchBuryBot)
+        assert base.value_declare == candidate.value_declare is True
+        assert base.serving_budget_seconds == candidate.serving_budget_seconds == 3.0
+        assert base.bury_serving_budget_seconds == candidate.bury_serving_budget_seconds == 2.0
+        assert base.bury_wide_value == candidate.bury_wide_value is True
+        assert base.bury_wide_k == candidate.bury_wide_k == 64
+        assert base.exact_lead_endgame is False and candidate.exact_lead_endgame is True
+        assert candidate.exact_lead_first_trick is False
+
+        def screen_config(policy_name, policy):
+            return {
+                'arm': 'policy', 'arm_policy': policy_name,
+                'arm_policy_identity': screen._policy_identity(policy),
+                'report_worlds': 300,
+                'shortlist': {'worlds': 32, 'selection_worlds': 30,
+                              'alternatives': 4, 'batch_size': 128, 'uniform': False},
+            }
+
+        base_config = screen_config(official, base)
+        candidate_config = screen_config(candidate_names[0], candidate)
+        served_base = screen.make_side(base_config, 'arm', 7)
+        served_candidate = screen.make_side(candidate_config, 'arm', 7)
+        assert screen._policy_identity(served_base) == base_config['arm_policy_identity']
+        assert screen._policy_identity(served_candidate) == candidate_config['arm_policy_identity']
+    finally:
+        REGISTRY.clear()
+        REGISTRY.update(original_registry)
 
 
 def test_admission_adds_only_finish_preserves_ballot_and_never_duplicates():
@@ -269,13 +339,14 @@ def test_exact_first_trick_dispatches_through_real_search_stage(monkeypatch):
 
     def fake(*args, **kwargs):
         calls.append((args, kwargs))
-        return np.array([0.0]), dict(worlds_completed=2, nodes=3, cache_hits=1)
+        return np.array([0.0]), dict(worlds_completed=2, nodes=3, cache_hits=1,
+                                    world_values=np.zeros((2, 1), dtype=float))
 
     monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', fake)
     action = [rnd.hands[rnd.turn][0]]
     base = (np.array([0.0]), 0, 0, action, 0)
     result = policy._exact_lead_decision(
-        rnd, rnd.turn, [action], [], time.perf_counter(), None, [0.0], base)
+        rnd, rnd.turn, [action], [None, None], time.perf_counter(), None, [0.0], base)
     assert result[3] == action and calls
     assert policy._exact_lead['exact_lead_mode'] == 'first_trick'
     assert policy._exact_lead['exact_lead_worlds_completed'] == 2
@@ -381,6 +452,7 @@ def test_exact_soft_expiry_keeps_base_without_partial_values(monkeypatch):
     assert policy._exact_lead['exact_lead_abandon_reason'] == 'soft_budget'
     assert policy._exact_lead['exact_lead_worlds_completed'] is None
     assert 'exact_lead_selected_level_delta' not in policy._exact_lead
+    assert not any(key.startswith('exact_lead_world_') for key in policy._exact_lead)
 
 
 @pytest.mark.parametrize('delta,winner,override,kind', [
@@ -399,11 +471,12 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     # Deliberately unrelated head predictions: delta must use exact means only.
     base = (np.array([100.0] * 17), 1, 0, actions[0], 1)
     monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
-        (means, dict(worlds_completed=2, nodes=12, cache_hits=1)))
+        (means, dict(worlds_completed=2, nodes=12, cache_hits=1,
+                    world_values=np.tile(means, (2, 1)).astype(float))))
     monkeypatch.setattr(policy, '_select', lambda *a, **kw: winner)
     monkeypatch.setattr(policy, '_swap_doomed_throw', lambda *a, **kw:
         ['D3'] if override else actions[winner])
-    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [],
+    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [None, None],
         time.perf_counter(), None, [0.0] * 17, base)
     policy.last_decision_record = {'schema': 'pv-search-decision-v1',
         'played': result[3], 'value_means': result[0].tolist(), **policy._exact_lead}
@@ -425,6 +498,10 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
     summary = exact_lead_summary(saved)
     assert summary['valid']
     assert summary['cost_valid'] and summary['cost_complete']
+    robustness = summary['sides']['arm']['world_robustness']
+    assert robustness['decisions'] == 1
+    assert robustness['wins'] + robustness['ties'] + robustness['losses'] == 2
+    assert robustness['invalid'] == 0
     cost = summary['sides']['arm']['stage_cost']['complete']
     assert cost['count'] == 1
     assert cost['max_seconds'] == trace['exact_lead_seconds']
@@ -440,6 +517,76 @@ def test_exact_change_classification_survives_wide_screen_trace(monkeypatch, del
                                       'clusters': 1, 'target_wall_multiplier': 1})
     assert final['exact_lead'] == summary
     assert final['outcome_sentinel'] == 7  # descriptive counts never rewrite outcomes
+
+
+def test_exact_world_robustness_telemetry_uses_paired_world_matrix(monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    actions = [['C3'], ['C4']]
+    # The exact means are the column means of the paired matrix.  Candidate 1
+    # wins two worlds, ties one, and loses one against the baseline candidate.
+    world_values = np.array([[0.0, 1.0], [1.0, 2.0], [2.0, 2.0], [1.0, 0.0]])
+    means = world_values.mean(axis=0)
+    base = (np.array([0.0, 0.0]), 0, 0, actions[0], 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (means, dict(worlds_completed=4, nodes=12, cache_hits=1,
+                     world_values=world_values)))
+    monkeypatch.setattr(policy, '_select', lambda *a, **kw: 1)
+    monkeypatch.setattr(policy, '_swap_doomed_throw', lambda *a, **kw: actions[1])
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, actions, [None, None, None, None], time.perf_counter(), None, [0.0, 0.0], base)
+    assert result[2] == 1
+    state = policy._exact_lead
+    assert state['exact_lead_selected_level_delta'] == pytest.approx(0.25)
+    assert state['exact_lead_world_wins'] == 2
+    assert state['exact_lead_world_ties'] == 1
+    assert state['exact_lead_world_losses'] == 1
+    assert state['exact_lead_world_delta_min'] == -1.0
+    assert state['exact_lead_world_delta_max'] == 1.0
+    assert state['exact_lead_world_delta_mean'] == pytest.approx(0.25)
+    assert 'world_values' not in state
+
+
+@pytest.mark.parametrize('matrix', [None, np.zeros((1, 2)), np.array([[np.nan]]),
+                                   np.array([[1]], dtype=int)])
+def test_bad_world_telemetry_preserves_completed_baseline(monkeypatch, matrix):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    action = ['C3']
+    base = (np.array([99.0]), 0, 0, action, 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (np.array([1.0]), dict(worlds_completed=1, nodes=1,
+                             cache_hits=0, world_values=matrix)))
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [None], time.perf_counter(), None, [0.0], base)
+    assert result is base
+    assert policy._exact_lead['exact_lead_status'] == 'abandoned'
+    assert not any(key.startswith('exact_lead_world_') for key in policy._exact_lead)
+
+
+def test_exact_world_robustness_same_candidate_is_all_ties(monkeypatch):
+    from shengji.train import pv_exact_endgame as exact
+    rnd = root(2)
+    policy = bot(False, exact_lead_endgame=True)
+    action = ['C3']
+    world_values = np.array([[1.0], [2.0], [0.0]])
+    base = (np.array([99.0]), 0, 0, action, 0)
+    monkeypatch.setattr(exact, 'exact_lead_means', lambda *a, **kw:
+        (world_values.mean(axis=0), dict(worlds_completed=3, nodes=1,
+                                         cache_hits=0, world_values=world_values)))
+    result = policy._exact_lead_decision(
+        rnd, rnd.turn, [action], [None, None, None], time.perf_counter(), None, [0.0], base)
+    assert result[2] == 0
+    state = policy._exact_lead
+    assert state['exact_lead_world_wins'] == 0
+    assert state['exact_lead_world_ties'] == 3
+    assert state['exact_lead_world_losses'] == 0
+    assert state['exact_lead_world_delta_min'] == 0.0
+    assert state['exact_lead_world_delta_max'] == 0.0
+    assert state['exact_lead_world_delta_mean'] == 0.0
+    assert 'world_values' not in state
 
 
 def test_diagnostic_recipe_is_release44_plus_exact(pinned_production_package):

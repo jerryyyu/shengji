@@ -262,6 +262,11 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
         }
         ranking_totals = ([0.0] + d_sum[1:] if self.search_config.paired_advantage
                           else totals)
+        # Keep the already-computed paired evidence until the report challenger
+        # is known. Absolute means mix different allocated worlds and cannot
+        # reconstruct this gap. No extra evaluations or persistent matrix.
+        root["paired_sums"] = d_sum
+        root["paired_counts"] = n_by
         return ranking_totals, d_sum, d_sq, n_by, worlds, spent
 
     def decide_play(self, rnd, seat):
@@ -291,6 +296,11 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
             self.learned_counts["self_play_samples"] += 1
         self.learned_counts["off_ballot_plays"] += int(tuple(sorted(action)) not in root["production_keys"])
         if rec is not None:
+            challenger = rec.get("report_candidate_index")
+            paired_counts = root.get("paired_counts", ())
+            paired_n = (paired_counts[challenger]
+                        if challenger is not None and 0 < challenger < len(paired_counts)
+                        else 0)
             rec["learned_search"] = {
                 "schema": "learned-root-search-v1", "config": asdict(self.search_config),
                 "production_size": root["production_size"],
@@ -301,6 +311,12 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
                 "selection_units": ("acting-team signed levels x40" if
                                     self.search_config.arm in {"value", "both"} else "acting-team points"),
                 "report_evaluator": "production full heuristic rollout, point units",
+                # Selection evidence, not the independent report or final play.
+                # Missing/unevaluated challengers have no gap, not a zero tie.
+                "selection_challenger_index": challenger,
+                "selection_paired_gap": (root["paired_sums"][challenger] / paired_n
+                                         if paired_n else None),
+                "selection_paired_n": paired_n,
                 "ranking_basis": ("paired_advantage" if
                                    self.search_config.paired_advantage else
                                    "absolute_value_mean"),

@@ -250,7 +250,7 @@ def test_bad_prior_cannot_enter_search():
         bot.decide_play(rnd, rnd.turn)
 
 
-def test_paired_advantage_changes_allocation_and_final_challenger():
+def test_paired_advantage_changes_allocation_and_final_challenger(monkeypatch):
     """Raw candidate means and paired gaps disagree when worlds differ."""
     class ControlledBot(LearnedSearchBot):
         def __init__(self, config):
@@ -292,12 +292,16 @@ def test_paired_advantage_changes_allocation_and_final_challenger():
     configs = [SearchConfig(arm="both", puct_scale=1.0, paired_advantage=flag)
                for flag in (False, True)]
     bots = [ControlledBot(config) for config in configs]
+    from shengji.train.search_screen import TimedPolicy, learned_selection_summary
+    traces = []
     for bot in bots:
         bot.REPORT_RULE = "none"
         bot.REPORT_FOLD_WORLDS = 0
         bot.MARGIN = 0.0
         bot.POINT_SHY_EPS = 0.0
-        bot.decide_play(rnd, seat)
+        timed = TimedPolicy(bot)
+        timed.decide_play(rnd, seat)
+        traces.append(timed.decisions[-1])
 
     raw, paired = [bot.last_decision_record for bot in bots]
     assert raw["learned_search"]["ranking_basis"] == "absolute_value_mean"
@@ -307,6 +311,34 @@ def test_paired_advantage_changes_allocation_and_final_challenger():
     assert paired["report_candidate_index"] == 1
     assert paired["means"][0] == 0.0
     assert paired["means"][1] != raw["means"][1]
+    for bot, trace in zip(bots, traces):
+        rec = bot.last_decision_record
+        learned = rec['learned_search']
+        index = rec['report_candidate_index']
+        assert learned['selection_challenger_index'] == index
+        assert learned['selection_paired_n'] == bot.last_alloc['n_by_candidate'][index] > 0
+        for key in ('selection_challenger_index', 'selection_paired_gap',
+                    'selection_paired_n', 'selection_units'):
+            assert trace[key] == learned[key]
+    assert paired['learned_search']['selection_paired_gap'] == paired['means'][1]
+    assert raw['learned_search']['selection_paired_gap'] > raw['means'][2]
+    summary = learned_selection_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': traces}]}])
+    assert summary['valid']
+    groups = summary['sides']['arm']['groups']
+    assert set(groups) == {'paired_advantage', 'absolute_value_mean'}
+    for basis in groups:
+        bucket = groups[basis]['acting-team signed levels x40']
+        assert bucket['decisions'] == bucket['positive'] == 1
+        assert bucket['paired_n_min'] > 0
+    from shengji.train import search_screen, cwv_shortlist_screen
+    shard = {'records': [], 'decision_traces': [{'side': 'arm', 'decisions': traces}]}
+    monkeypatch.setattr(search_screen.duel, 'summarize', lambda *a, **kw:
+                        {'work_totals': {'arm': {}, 'baseline': {}}})
+    cfg = dict(arm='uniform', seed0=9, clusters=1, select_worlds=4,
+               report_worlds=0, target_wall_multiplier=1)
+    for consumer in (search_screen, cwv_shortlist_screen):
+        assert consumer.summary_for([shard], cfg)['learned_selection'] == summary
 
 
 @pytest.mark.parametrize("value", [0, 1, 1.0, "true", None])

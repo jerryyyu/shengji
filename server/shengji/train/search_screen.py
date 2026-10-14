@@ -154,6 +154,10 @@ class TimedPolicy:
                     "legal_size": learned.get("legal_size"),
                     "production_size": learned.get("production_size"),
                     "ranking_basis": learned.get("ranking_basis"),
+                    "selection_challenger_index": learned.get("selection_challenger_index"),
+                    "selection_paired_gap": learned.get("selection_paired_gap"),
+                    "selection_paired_n": learned.get("selection_paired_n"),
+                    "selection_units": learned.get("selection_units"),
                     "leaf_tricks": learned.get("config", {}).get("leaf_tricks"),
                     "counts": learned.get("counts"),
                 })
@@ -254,6 +258,8 @@ def exact_lead_summary(shards):
     costs = {side: {status: dict(samples=[], missing=0, invalid=0)
                     for status in ('complete', 'abandoned')}
              for side in out}
+    robustness = {side: dict(decisions=0, missing=0, invalid=0,
+                            wins=0, ties=0, losses=0) for side in out}
     for shard in shards:
         for group in shard.get('decision_traces', []):
             side = group['side']
@@ -342,6 +348,33 @@ def exact_lead_summary(shards):
                     if not valid:
                         counts['invalid'] += 1
                         continue
+                    robust = robustness[side]
+                    keys = ('wins', 'ties', 'losses', 'delta_min', 'delta_max', 'delta_mean')
+                    values = [row.get('exact_lead_world_' + key) for key in keys]
+                    present = ['exact_lead_world_' + key in row for key in keys]
+                    if not any(present):
+                        robust['missing'] += 1  # Legacy traces remain usable.
+                    else:
+                        wins, ties, losses, low, high, mean = values
+                        valid_robust = (all(present) and v2
+                            and all(type(n) is int and n >= 0 for n in values[:3])
+                            and sum(values[:3]) == worlds
+                            and all(type(n) in (int, float) and math.isfinite(n)
+                                    for n in values[3:])
+                            and low <= mean <= high
+                            and math.isclose(mean, delta, rel_tol=1e-12, abs_tol=1e-12)
+                            and (wins > 0) == (high > 0)
+                            and (losses > 0) == (low < 0)
+                            and (ties == 0 or low <= 0 <= high)
+                            and (selected_index != base_index or
+                                 (ties == worlds and low == high == mean == 0)))
+                        if not valid_robust:
+                            robust['invalid'] += 1
+                            counts['invalid'] += 1
+                            continue
+                        robust['decisions'] += 1
+                        for key, n in zip(keys[:3], values[:3]):
+                            robust[key] += n
                     counts['bound' if v2 and admitted_present else 'unbound'] += 1
                     counts['change_kinds'][kind] += 1
                     counts['changed'] += int(changed)
@@ -355,13 +388,61 @@ def exact_lead_summary(shards):
                         p90_seconds=samples[math.ceil(.9 * n) - 1] if n else None,
                         max_seconds=samples[-1] if n else None)
         out[side]['stage_cost'] = groups
+        out[side]['world_robustness'] = robustness[side]
     return {'schema': 'exact-lead-trace-summary-v1', 'sides': out,
             'claim': 'descriptive sampled-world mechanism counts, not playing strength',
             'cost_claim': 'optional-stage wall time, nearest-rank quantiles; not whole-decision latency',
+            'world_robustness_claim': 'paired sampled-world values of selected ballot entries; not independent games, confidence or values of post-selection overrides',
             'cost_valid': all(c['invalid'] == 0 for groups in costs.values() for c in groups.values()),
             'cost_complete': all(c['missing'] == 0 and c['invalid'] == 0
                                  for groups in costs.values() for c in groups.values()),
             'valid': all(c['invalid'] == 0 for c in out.values())}
+
+
+def learned_selection_summary(shards):
+    """Selection evidence only; never independent report or final-action gain.
+
+    Do not pool points with level-scaled values, or weight a decision by its
+    adaptively allocated world count. Legacy traces remain evidence-missing.
+    """
+    import math
+
+    keys = ('ranking_basis', 'selection_units', 'selection_challenger_index',
+            'selection_paired_gap', 'selection_paired_n')
+    sides = {side: dict(missing=0, invalid=0, unevaluated=0, groups={})
+             for side in ('arm', 'baseline')}
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            if group['side'] not in sides:
+                raise ValueError('unknown learned-selection trace side')
+            counts = sides[group['side']]
+            for row in group['decisions']:
+                if all(row.get(key) is None for key in keys[2:]):
+                    counts['missing'] += 1
+                    continue
+                basis, units, index, gap, n = (row.get(key) for key in keys)
+                valid = (basis in ('paired_advantage', 'absolute_value_mean')
+                         and units in ('acting-team points', 'acting-team signed levels x40')
+                         and type(n) is int and n >= 0
+                         and (index is None or type(index) is int and index > 0))
+                if not valid or (n == 0 and gap is not None) or (n > 0 and
+                        (index is None or type(gap) not in (int, float) or not math.isfinite(gap))):
+                    counts['invalid'] += 1
+                    continue
+                if n == 0:
+                    counts['unevaluated'] += 1
+                    continue
+                bucket = counts['groups'].setdefault(basis, {}).setdefault(units, dict(
+                    decisions=0, positive=0, zero=0, negative=0,
+                    paired_n_min=n, paired_n_max=n))
+                bucket['decisions'] += 1
+                bucket['positive' if gap > 0 else 'negative' if gap < 0 else 'zero'] += 1
+                bucket['paired_n_min'] = min(bucket['paired_n_min'], n)
+                bucket['paired_n_max'] = max(bucket['paired_n_max'], n)
+    return dict(schema='learned-selection-trace-summary-v1', sides=sides,
+                valid=all(side['invalid'] == 0 for side in sides.values()),
+                claim='descriptive challenger-minus-incumbent selection evidence by ranking basis and units; '
+                      'not independent report gain, final-action gain, calibration or playing strength')
 
 
 def summary_for(shards, config):
@@ -387,6 +468,7 @@ def summary_for(shards, config):
         "no_more_measured_decision_cpu": cpu_ratio is not None and cpu_ratio <= 1.0,
         "equal_work_strength_claim": False,
         "exact_lead": exact_lead_summary(shards),
+        "learned_selection": learned_selection_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

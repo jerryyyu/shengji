@@ -26,7 +26,7 @@ from .cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
     TimedPolicy, _publish, _run_pending, bind_output_config,
-    execution_source_identity, exact_lead_summary,
+    execution_source_identity, exact_lead_summary, learned_selection_summary,
 )
 from .screen_deadline import DeadlineSession, RECIPE as DEADLINE_RECIPE, latency_summary, validate_deadline
 
@@ -651,6 +651,7 @@ def summary_for(shards, config):
             else "within_target" if wall_ratio is not None else "unknown"),
         "equal_work_strength_claim": False,
         "exact_lead": exact_lead_summary(shards),
+        "learned_selection": learned_selection_summary(shards),
         "work_caveat": "Decision wall/CPU and cheap evaluations are measured separately; "
                         "a target overrun does not censor or invalidate outcomes.",
     })

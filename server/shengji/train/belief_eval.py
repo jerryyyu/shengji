@@ -16,6 +16,14 @@ Reads a ``belief_labels`` extract and reports, on held-out deals:
   across rows within (trick, role) strata, in the training AND calibration
   splits, so it never sees a real (input, label) pair; evaluated on real labels.
 
+The target is the genuinely UNKNOWN copies (``residualize``, Codex HOLD on
+#1002): a copy whose holder is public -- a declared card still with the
+declarer, a failed-throw pin, i.e. ``Memory.known``, which production's sampler
+already places exactly -- is subtracted from the labels, the sampler counts and
+the receiver sizes before any fit, smoothing or score, so no method can gain
+on a fact the sampler already honours.  A partly pinned duplicate code keeps
+its other copy.  This matches the step-2 / q-pin hidden layout.
+
 Metrics per hidden copy: log-loss, true-holder mass (mean probability on the
 true holder) and ECE over reliability bins of the per-(card, receiver)
 probabilities.  Every table is split by phase (tricks 1-5, 6-15, 16+) and by
@@ -48,8 +56,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .belief_labels import (KITTY, N_RECV, PHASES, ROLES, FEATURE_DIM, load_split,
-                            phase_of_trick)
+from .belief_labels import (FEATURE_BLOCKS, KITTY, N_RECV, PHASES, ROLES, FEATURE_DIM,
+                            load_split, phase_of_trick)
 
 N_CARDS = 54
 EVAL_KEYS = ("X", "Y", "M", "sizes", "trick", "role", "deal", "S", "S_n", "n_refusals")
@@ -93,6 +101,56 @@ def uniform_probs(sizes: np.ndarray, mask: np.ndarray) -> np.ndarray:
     s = w.sum(axis=-1, keepdims=True)
     fallback = mask / np.maximum(mask.sum(axis=-1, keepdims=True), 1)
     return np.where(s > 0, w / np.where(s > 0, s, 1.0), fallback)
+
+
+# ------------------------------------------------------------------ public pins
+
+def _block_slice(name: str) -> slice:
+    at = 0
+    for block, width in FEATURE_BLOCKS:
+        if block == name:
+            return slice(at, at + width)
+        at += width
+    raise BeliefEvalError(f"no feature block {name}")
+
+
+def known_counts(X: np.ndarray) -> np.ndarray:
+    """``(N, 54, 4)`` copies whose holder is PUBLIC: the ``Memory.known`` pins
+    (declared cards still with the declarer, the failed-throw pins of
+    `ai.refusal.pin_unplayed_attempt`) as the extract wrote them into the
+    ``pinned_rel1..3`` input blocks.  Production's sampler places exactly these
+    copies with these holders in every world; the kitty never holds a pin."""
+    K = np.zeros((len(X), N_CARDS, N_RECV), np.int64)
+    for rel in (1, 2, 3):
+        block = np.asarray(X[:, _block_slice(f"pinned_rel{rel}")], np.float32)
+        if np.any(block != np.round(block)) or np.any(block < 0):
+            raise BeliefEvalError("pinned counts are not whole copies")
+        K[:, :, rel - 1] = np.round(block).astype(np.int64)
+    return K
+
+
+def residualize(part: dict[str, np.ndarray]) -> dict[str, int]:
+    """Restrict a split IN PLACE to the genuinely unknown copies (Codex HOLD on
+    #1002): subtract the public known-holder counts from the labels, from the
+    sampler's counts (``S_n`` copies per pin, one per world) and from the
+    receivers' sizes; a code with no unknown copy left leaves the mask.  A
+    partly pinned duplicate code keeps its other copy, with every receiver it
+    could be with.  Nothing is smoothed onto, or scored on, a known copy."""
+    K = known_counts(part["X"])
+    Y = part["Y"].astype(np.int64) - K
+    if np.any(Y < 0):
+        raise BeliefEvalError("a public pin is not in its holder's true hand")
+    part["Y"] = Y.astype(np.uint8)
+    residual = Y.sum(axis=-1)
+    part["M"] = part["M"] & (residual > 0)[..., None]
+    if "S" in part:
+        S = part["S"].astype(np.int64) - K * part["S_n"].astype(np.int64)[:, None, None]
+        if np.any(S[part["S_n"] > 0] < 0):
+            raise BeliefEvalError("the sampler did not place a pinned copy with its holder")
+        part["S"] = np.maximum(S, 0).astype(np.uint16)
+    if "sizes" in part:
+        part["sizes"] = (part["sizes"].astype(np.int64) - K.sum(axis=1)).astype(np.int16)
+    return {"known_copies": int(K.sum()), "residual_copies": int(Y.sum())}
 
 
 # ------------------------------------------------------------------ metrics
@@ -335,6 +393,9 @@ def run(data: str, *, hidden: int, epochs: int, lr: float, batch: int, seed: int
     # every comparison is on rows where the sampler was drawn
     ca = {k: v[ca["S_n"] > 0] for k, v in ca.items()}
     te = {k: v[te["S_n"] > 0] for k, v in te.items()}
+    # the target is the genuinely unknown copies: public pins come out of labels,
+    # sampler counts and sizes alike, before any fit (Codex HOLD on #1002)
+    pins = {name: residualize(part) for name, part in (("train", tr), ("calib", ca), ("test", te))}
     for part in (tr, ca, te):
         if np.any((part["Y"] > 0) & ~part["M"]):
             raise BeliefEvalError("a true holder is outside the feasible mask")
@@ -375,7 +436,7 @@ def run(data: str, *, hidden: int, epochs: int, lr: float, batch: int, seed: int
     phase = np.asarray([phase_of_trick(int(t)) for t in te["trick"]])
     groups = [("overall", np.ones(len(Y), bool))] + [(name, phase == name) for name, _, _ in PHASES]
     roles = [(ROLES[i], te["role"] == i) for i in range(len(ROLES))]
-    results: dict[str, Any] = {"T_model": T, "T_control": Tc, "alpha_sampler": alpha,
+    results: dict[str, Any] = {"pins": pins, "T_model": T, "T_control": Tc, "alpha_sampler": alpha,
                                "params": n_params(model), "hidden": hidden,
                                "history_model": hist, "history_control": hist_c, "tables": {}}
     for gname, rows in groups + roles:
@@ -400,7 +461,7 @@ def run(data: str, *, hidden: int, epochs: int, lr: float, batch: int, seed: int
 
     # ---- markdown
     L: list[str] = []
-    L.append("# S17 step 1 DEV: belief model vs production sampler (offline)\n")
+    L.append("# S17 step 1 DEV: belief model vs production sampler (offline, unknown copies only)\n")
     L.append("Generated by `python -m shengji.train.belief_eval run`; every number below is printed "
              "by the script. Tier-i DEV: perf claim only (offline log-loss), no strength claim.\n")
     st = manifest.get("stats", {})
@@ -425,6 +486,11 @@ def run(data: str, *, hidden: int, epochs: int, lr: float, batch: int, seed: int
              f"epochs run {len(hist)} (best calib kept); T = {T:.3f}")
     L.append(f"- permuted control: same pipeline, labels+masks permuted within (trick, role) "
              f"strata in train and calib; epochs {len(hist_c)}; T = {Tc:.3f}")
+    L.append("- target: the genuinely UNKNOWN copies only. Public known-holder copies (declared "
+             "cards still with the declarer, failed-throw pins; `Memory.known`) are subtracted from "
+             "labels, sampler counts and receiver sizes before training, smoothing and scoring: "
+             + ", ".join(f"{k} {v['known_copies']} known / {v['residual_copies']} unknown copies"
+                         for k, v in pins.items()))
     L.append(f"- sampler smoothing alpha (fitted on calib) = {alpha:.4f}; uniform = feasible "
              f"receivers weighted by cards held\n")
     sr = results["stop_rule"]

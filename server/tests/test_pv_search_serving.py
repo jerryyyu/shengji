@@ -22,9 +22,13 @@ from shengji.engine.game import Game
 from shengji.train import pv_search_policy as pv
 
 
-@pytest.fixture(scope="module")
-def package(tmp_path_factory):
-    """A tiny #425-shaped joint net exported as ONE v2 NumPy package (value + policy head)."""
+@pytest.fixture(scope="module", params=["residual", "grid"], ids=["residual", "grid44"])
+def package(tmp_path_factory, request):
+    """Joint value/policy export through the real served consumer for both trunks.
+
+    Grid uses C14's 44 channels, but a small synthetic model and weights: this
+    tests serving compatibility, not the trained checkpoint or its budget.
+    """
     torch = pytest.importorskip("torch")
     from scripts.export_cwv_numpy import export_cwv_numpy
     from shengji.ai.cwv_policy import file_sha256, local_encoder_identity
@@ -34,7 +38,8 @@ def package(tmp_path_factory):
     torch.manual_seed(11)
     net = ValueNetwork(ValueModelConfig(architecture="mlp", width=32, feedforward_width=64,
                                         public_dim=561, enc_version=2, attention_heads=1,
-                                        trunk_block="residual", trunk_layers=2,
+                                        trunk_block=request.param, trunk_layers=2,
+                                        grid_channels=44 if request.param == "grid" else 0,
                                         search_head=True, policy_head=True))
     net.eval()
     ckpt = d / "joint.pt"

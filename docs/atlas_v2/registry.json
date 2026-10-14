@@ -1786,6 +1786,27 @@
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6162172182"
   },
   {
+   "id": "s18exactr45lead",
+   "date": "2026-10-14",
+   "status": "sealed",
+   "box": "perf",
+   "title": "Bounded exact endgame-lead continuation on r45 vs r45",
+   "candidate": "Release 45 with SHENGJI_PV_EXACT_LEAD_ENDGAME=1 (bounded exact continuation after the heuristic first trick for eligible small-hand leads; first-trick exact search off), served as pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-r2ac93e3d-bury-hybrid-bwv-02f0041fee6a; same package smv3out-491ee4bf; bwv K=64, vd and dtr on both arms; flag-only contrast. First-round deals. Perf, source 2976c0e4.",
+   "comparator": "release 45 as served",
+   "vs": 45,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "87060910 87160910 87260910 87360910 87460910 87560910 87660910 87760910 87860910 87960910 (perf)",
+   "confidence": 0.95,
+   "point": 0.007075,
+   "lo": 0.00175,
+   "hi": 0.012401,
+   "takeaway": "Estimated +0.0071; 95% CI [+0.0017, +0.0124], POSITIVE (8/10 windows positive); small; no deploy by itself.",
+   "note": "SEALED 10-14 (LANE DONE 10:58:22Z); readout by Codex (sole reader, one pass of reader r1 after Claude's PASS #981 issuecomment-6168112946; the r0 claim refused before raw, no raw replay) #981 issuecomment-6168698058. Integrity PASS (the reader's metadata/raw gates). The saved result's machine-readable strength_verdict is WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW; the statistical result below is the CI-bound label, and integrity PASS is not that health/provenance signoff. Paired +0.007075 [+0.001750,+0.012401], SE 0.002717, MDE80 0.0076, tau 0.0000, Q 4.78 (9 df), I2 0.0%; POSITIVE (95% CI lower bound above zero; judged alone, never pooled; no extension). Window deltas -0.0019, +0.0058, +0.0087, +0.0135, +0.0058, +0.0115, -0.0029, +0.0019, +0.0096, +0.0192 (8/10 positive). A narrow integrated endgame-lead continuation (bounded exact search after the heuristic first trick, for eligible small-hand leads; first-trick exact search OFF) shows a small positive aggregate screen effect against release 45 as served. Each arm is read against the common MC-LCB control on the same deals: this is not a direct head-to-head and not a full-match ladder result. Banker share 52.1% vs 52.1% (descriptive); the points margin +0.296 [+0.173, +0.419] points/round is a predeclared secondary, descriptive only; role-split (predeclared, descriptive, per arm, not paired): attacker points per attacking round, candidate 77.05 (SE 0.54) vs comparator 76.87 (SE 0.57); points conceded per banking round (lower is better), candidate 61.60 (SE 0.48) vs comparator 62.03 (SE 0.48). Descriptive own-arm levels vs MC-LCB: release 45 + ele 0.3244 [0.2998,0.3489], release 45 0.3174 [0.2931,0.3416]. Exact-lead mechanism (descriptive sampled-world counts, not playing strength; health true on both arms; the comparator made no attempt, asserted): 15,572 attempts, 15,512 complete, 60 optional-stage abandonments, zero budget skips; 3,963 selections changed (2,151 higher sampled exact value, 1,746 ties, 66 lower; categories descriptive, not causal strength attribution). Cost (screen-host wall seconds under 14 workers, NOT whole-decision Fly latency): exact stage completed p50/p90 0.070/1.365, abandoned p50/max 2.250/2.266; play decision (completed) p50/p90 0.105/0.158 vs 0.105/0.154; bury p50/p90 0.421/0.470 vs 0.422/0.475. Bury (descriptive): release 45's wide value-only chooser (K=64, single swaps) on both arms; the heuristic incumbent kept in 214 of 5,419 (3.9%) vs 214 of 5,419 (3.9%) completed buries; zero bury fallbacks at any stage on either arm. Health: all 20 arm-windows 520/520 shards, zero coverage failures; 1,442,308 expected play calls all recorded, zero known outer timeouts, zero play budget, search-error or unknown fallbacks. NOT CLAIMED: a direct head-to-head or full-match strength; generic search expansion (heuristic current-trick completion and sampled-world perfect-information continuations remain); a mechanism beyond the descriptive counts; serving latency on Fly (screen-host timings only); a deploy. Disposition: NO DEPLOY BY ITSELF. The effect is small, so a release needs a fresh-seed confirmation (RL_PLAN), served-path latency evidence for the exact stage and Jerry's word. Reader r1 sha256 b7d798572908cd0ae5639b5a9f939222c2ba6a9d748dca5f765eba92495197ed; freeze r1 sha256 f43085c68e87f363c93b72dede5fc6b25a3103b0bf4d09e6ea557f0f0b9c80ac; result sha256 e36c0d2525da55f3d8860b5039679d8076d4d8ba39181a9dda81a75e35fc6cc2; launcher sha256 596159335b06140df212ffa7c5fa39b7176e2255d31d2ce007d0b6193ad3c692; raw manifest sha256 e8f80e6382d9331b9c5d1dabd4ff911ba4eb42dc7cd82f96a9b62da97f3fd7f9; source 2976c0e4a8a562dd4d491c6e9fd7cf1de18158cf; SHA256SUMS fdfb0566c990e6c9aec03f36afc4d7fbc9dc073e3a2fc735e4215f74d9ae2992. Archive ~/shengji-archive/2026-09-13/readouts/s18-exactr45lead-vs-r45/.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/981#issuecomment-6168698058"
+  },
+  {
    "id": "v78orc45",
    "date": "2026-10-14",
    "status": "sealed",
